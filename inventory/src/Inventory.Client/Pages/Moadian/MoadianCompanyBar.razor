@@ -1,0 +1,74 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+@if (!ready)
+{
+    <div class="card mb-3"><div class="card-body py-2 text-center">
+        <div class="spinner-border spinner-border-sm text-primary"></div>
+    </div></div>
+}
+else if (CpInfos.Count == 0)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-building-add"></i>
+        <span>هنوز شرکتی برای سامانهٔ مودیان تعریف نشده است. برای شروع،
+            <NavLink href="moadian/connection">شرکت خود را ثبت کنید</NavLink>.</span>
+    </div>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+            <i class="bi bi-building text-primary"></i>
+            <label class="form-label mb-0 fw-semibold">شرکت مودیان:</label>
+            <select class="form-select form-select-sm" style="max-width:340px"
+                    value="@Ctx.CpInfoId" @onchange="OnCompany">
+                @foreach (var c in CpInfos)
+                {
+                    <option value="@c.cpinfoid">@c.PersianName</option>
+                }
+            </select>
+            @if (Ctx.CpInfoId > 0 && CurrentEcon != null)
+            {
+                <span class="badge badge-soft-primary num" title="شماره اقتصادی">
+                    <i class="bi bi-patch-check"></i> @CurrentEcon
+                </span>
+            }
+            <NavLink class="btn btn-sm btn-outline-secondary ms-auto" href="moadian/connection" title="تنظیمات اتصال به سامانه">
+                <i class="bi bi-plug"></i> تنظیمات اتصال
+            </NavLink>
+        </div>
+    </div>
+}
+
+@code {
+    private List<VMShowCpinfoByCompany> CpInfos = new();
+    private bool ready;
+    private string? CurrentEcon => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.EconomicNumber;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ctx.Changed += OnCtxChanged;
+        try
+        {
+            CpInfos = await Moadian.GetCpInfosAsync();
+        }
+        catch { CpInfos = new(); }
+        if (Ctx.CpInfoId == 0 && CpInfos.Count > 0)
+            Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+        ready = true;
+    }
+
+    private void OnCompany(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+            Ctx.SetCpInfoId(id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCtxChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+}

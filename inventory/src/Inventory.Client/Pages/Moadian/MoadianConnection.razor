@@ -1,0 +1,271 @@
+@page "/moadian/connection"
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+<PageTitle>سامانه مودیان — اتصال</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-plug text-primary"></i> اتصال به سامانهٔ مودیان</h1>
+        <p class="lead">تعریف شرکت، بارگذاری کلید خصوصی و تنظیم آدرس سرویس — مطابق SDK 0.0.27</p>
+    </div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else
+{
+    <div class="row g-3">
+        @* ---------- شرکت ---------- *@
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header"><i class="bi bi-building text-primary"></i> شرکت (cpinfo)</div>
+                <div class="card-body">
+                    <label class="form-label">شرکت فعال</label>
+                    @if (CpInfos.Count == 0)
+                    {
+                        <div class="alert alert-warning py-2 small">شرکتی تعریف نشده — ابتدا یک شرکت ثبت کنید.</div>
+                    }
+                    else
+                    {
+                        <select class="form-select mb-3" value="@Ctx.CpInfoId" @onchange="OnCompany">
+                            @foreach (var c in CpInfos)
+                            {
+                                <option value="@c.cpinfoid">@c.PersianName @if (!string.IsNullOrEmpty(c.Nationalid)) { <span class="text-muted">— @c.Nationalid</span> }</option>
+                            }
+                        </select>
+                    }
+
+                    <hr />
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i class="bi bi-building-add text-success"></i>
+                        <span class="fw-semibold">ثبت شرکت جدید</span>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">نام شرکت</label>
+                        <input class="form-control" value="@newCp.PersianName" @oninput="e => newCp.PersianName = e.Value?.ToString()" placeholder="مثلاً: شرکت نمونه آریا" />
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label">کد ملی / ثبت</label>
+                            <input class="form-control num" dir="ltr" value="@newCp.Nationalid" @oninput="e => newCp.Nationalid = e.Value?.ToString()" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">شماره اقتصادی</label>
+                            <input class="form-control num" dir="ltr" value="@newCp.EconomicNumber" @oninput="e => newCp.EconomicNumber = e.Value?.ToString()" />
+                        </div>
+                    </div>
+                    <button class="btn btn-success mt-3" @onclick="SaveCompany" disabled="@savingCp">
+                        @if (savingCp) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-plus-lg"></i> }
+                        ثبت شرکت
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        @* ---------- اتصال ---------- *@
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-key text-primary"></i> اتصال شرکت «@(Current?.PersianName ?? "—")» به سامانه
+                </div>
+                <div class="card-body">
+                    @if (Ctx.CpInfoId <= 0)
+                    {
+                        <div class="alert alert-warning py-2 small">ابتدا یک شرکت انتخاب یا ثبت کنید.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label">شناسهٔ حافظه (TaxMemoryID) <span class="text-danger">*</span></label>
+                                <input class="form-control num" dir="ltr" value="@conn.TaxMemoryID" @oninput="e => conn.TaxMemoryID = e.Value?.ToString() ?? string.Empty" placeholder="شناسهٔ یکتا از سامانه" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">آدرس سرویس (WebService) <span class="text-danger">*</span></label>
+                                <input class="form-control num" dir="ltr" value="@conn.WebServiceAddress" @oninput="e => conn.WebServiceAddress = e.Value?.ToString() ?? string.Empty" placeholder="https://..." />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">کلید خصوصی (PKCS#8) <span class="text-danger">*</span></label>
+                            <InputFile class="form-control" accept=".key,.pem,.p8,.txt" OnChange="OnFile" />
+                            @if (keyName != null)
+                            {
+                                <div class="form-text text-success"><i class="bi bi-file-earmark-key"></i> @(keyName!.Contains('.') ? keyName.Substring(0, keyName.LastIndexOf('.')) : keyName) — انتخاب شد</div>
+                            }
+                        </div>
+
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-primary" @onclick="SaveConnection" disabled="@savingConn || Ctx.CpInfoId <= 0">
+                                @if (savingConn) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
+                                ذخیرهٔ اتصال
+                            </button>
+                            <button class="btn btn-outline-primary" @onclick="TestConnection" disabled="@testing || connection is null">
+                                @if (testing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-lightning"></i> }
+                                تست اتصال ثبت‌شده
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                @* ---------- وضعیت اتصال فعلی ---------- *@
+                <div class="card-footer bg-light">
+                    @if (connection is null)
+                    {
+                        <span class="text-muted small"><i class="bi bi-unplug"></i> این شرکت هنوز اتصال ثبت‌شده ندارد.</span>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center gap-3 flex-wrap small">
+                            <span><i class="bi bi-link text-primary"></i> <span dir="ltr" class="num">@connection.WebServiceAddress</span></span>
+                            <span><i class="bi bi-key text-success"></i> @(connection.FilePrivatekey?.DisplayName ?? "—")</span>
+                            <span class="badge @(lastTest ? "badge-soft-success" : "badge-soft-danger")">
+                                @(lastTest ? "اتصال فعال" : "وضعیت نامشخص")
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private VMShowCpinfoByCompany newCp = new();
+    private VMConnection conn = new();
+    private List<VMShowCpinfoByCompany> CpInfos = new();
+    private VMConnection? connection;
+    private byte[]? keyBytes;
+    private string? keyName;
+    private bool loading = true, savingCp, savingConn, testing, lastTest;
+
+    private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        _ = LoadAsync();
+    }
+
+    private void OnCtxChanged() => _ = LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            CpInfos = await Moadian.GetCpInfosAsync();
+            if (Ctx.CpInfoId == 0 && CpInfos.Count > 0) Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+            if (Ctx.CpInfoId > 0)
+            {
+                connection = await Moadian.GetConnectionAsync(Ctx.CpInfoId);
+                if (connection is not null)
+                {
+                    conn.TaxMemoryID = connection.TaxMemoryID;
+                    conn.WebServiceAddress = connection.WebServiceAddress;
+                }
+            }
+            else connection = null;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void OnCompany(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id)) Ctx.SetCpInfoId(id);
+        InvokeAsync(() => _ = LoadAsync());
+    }
+
+    private void OnFile(InputFileChangeEventArgs e)
+    {
+        keyName = e.File.Name;
+        keyBytes = null;
+        using var ms = new MemoryStream();
+        e.File.OpenReadStream(5 * 1024 * 1024).CopyTo(ms);
+        keyBytes = ms.ToArray();
+    }
+
+    private async Task SaveCompany()
+    {
+        if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
+        savingCp = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.SaveCpInfoAsync(newCp);
+            if (r.Success)
+            {
+                Toast.Success("شرکت ثبت شد.");
+                newCp = new();
+                var saved = MoadianService.As<VMShowCpinfoByCompany>(r);
+                CpInfos = await Moadian.GetCpInfosAsync();
+                if (saved?.cpinfoid > 0) Ctx.SetCpInfoId(saved.cpinfoid);
+            }
+            else Toast.Error(r.Message ?? "خطا در ثبت شرکت.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingCp = false; }
+    }
+
+    private async Task SaveConnection()
+    {
+        if (string.IsNullOrWhiteSpace(conn.TaxMemoryID)) { Toast.Error("شناسهٔ حافظه الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(conn.WebServiceAddress)) { Toast.Error("آدرس سرویس الزامی است."); return; }
+        if (keyBytes is null) { Toast.Error("فایل کلید خصوصی را انتخاب کنید."); return; }
+
+        savingConn = true;
+        StateHasChanged();
+        try
+        {
+            var vm = new VMConnection
+            {
+                cpinfoid = Ctx.CpInfoId,
+                TaxMemoryID = conn.TaxMemoryID,
+                WebServiceAddress = conn.WebServiceAddress,
+                FilePrivatekey = new FileDetail { FileName = keyName!, DisplayName = keyName!, FileContent = keyBytes }
+            };
+            var r = await Moadian.SaveConnectionAsync(vm);
+            if (r.Success)
+            {
+                Toast.Success("اتصال ذخیره شد — کلید خصوصی با رمزنگاری روی سرور نگهداری می‌شود.");
+                keyBytes = null; keyName = null;
+                await LoadAsync();
+            }
+            else Toast.Error(r.Message ?? "خطا در ذخیرهٔ اتصال.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingConn = false; }
+    }
+
+    private async Task TestConnection()
+    {
+        if (connection is null) return;
+        testing = true; lastTest = false;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.IsConnectAsync(new VMConnection
+            {
+                cpinfoid = Ctx.CpInfoId,
+                TaxMemoryID = connection.TaxMemoryID,
+                WebServiceAddress = connection.WebServiceAddress,
+                FilePrivatekey = connection.FilePrivatekey
+            });
+            lastTest = r.Success;
+            if (r.Success) Toast.Success("اتصال به سامانه مودیان برقرار است.");
+            else Toast.Error($"تست اتصال ناموفق: {r.Message}");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { testing = false; StateHasChanged(); }
+    }
+
+    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+}

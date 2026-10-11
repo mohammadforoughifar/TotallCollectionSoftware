@@ -134,6 +134,16 @@ public class VMShowCpinfoByCompany
     public int cpinfoid { get; set; }
     public string? PersianName { get; set; }
     public string? Nationalid { get; set; }
+    public string? EconomicNumber { get; set; }
+}
+
+/// <summary>سال مالی صورتحساب (رابط کاربری مودیان).</summary>
+public class VMFiscalYear
+{
+    public int Id { get; set; }
+    public int CpInfoId { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
 }
 
 /// <summary>فرم ثبت/ویرایش کالا یا خدمت.</summary>

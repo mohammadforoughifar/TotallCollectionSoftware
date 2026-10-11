@@ -1,0 +1,175 @@
+@page "/moadian/units"
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>سامانه مودیان — واحدهای سنجش</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-rulers text-danger"></i> واحدهای سنجش</h1>
+        <p class="lead">واحدهای سنجش معتبر سامانهٔ مودیان (نام + کد) — مشترک بین شرکت‌ها</p>
+    </div>
+    <div class="ms-auto">
+        <button class="btn btn-primary" @onclick="() => OpenForm(null)">
+            <i class="bi bi-plus-lg"></i> واحد جدید
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex align-items-center gap-2">
+        <span><i class="bi bi-rulers text-danger"></i> فهرست واحدها</span>
+        <span class="badge badge-soft-primary num ms-auto">@(data?.TotalCount ?? 0).Num() واحد</span>
+    </div>
+    <div class="card-body p-0">
+        @if (loading)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else if (items is null || items.Count == 0)
+        {
+            <div class="empty-state">
+                <i class="bi bi-rulers"></i>
+                <h5>واحدی تعریف نشده است</h5>
+                <p class="text-muted">واحدهای سنجش معتبر (مانند عدد، کیلوگرم، متر و…) را ثبت کنید.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive grid-desktop">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>نام واحد</th>
+                            <th style="width:180px">کد</th>
+                            <th class="text-end" style="width:130px">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in items)
+                        {
+                            <tr>
+                                <td class="fw-semibold">@u.Name</td>
+                                <td><code class="num" dir="ltr">@u.Code</code></td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary" title="ویرایش" @onclick="() => OpenForm(u)"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-sm btn-outline-danger ms-1" title="حذف" @onclick="() => Delete(u)"><i class="bi bi-trash"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if ((data?.TotalPages ?? 0) > 1)
+            {
+                <div class="card-footer d-flex align-items-center gap-2">
+                    <span class="text-muted small num">صفحهٔ @pno.Num() از @(data?.TotalPages).Num()</span>
+                    <div class="ms-auto d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)"><i class="bi bi-chevron-right"></i></button>
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)"><i class="bi bi-chevron-left"></i></button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<Modal Visible="showForm" Title="@(form.UnitOfMeasurementId > 0 ? "ویرایش واحد" : "واحد جدید")" OnClose="CloseForm">
+        <ChildContent>
+    <div class="mb-2">
+        <label class="form-label">نام واحد <span class="text-danger">*</span></label>
+        <input class="form-control" value="@form.Name" @oninput="e => form.Name = e.Value?.ToString()" placeholder="مثلاً: عدد" />
+    </div>
+    <div class="mb-2">
+        <label class="form-label">کد واحد <span class="text-danger">*</span></label>
+        <input class="form-control num" dir="ltr" value="@form.Code" @oninput="e => form.Code = e.Value?.ToString()" placeholder="کد معتبر سامانه" />
+    </div>
+    @if (!string.IsNullOrEmpty(formError))
+    {
+        <div class="alert alert-danger py-2 small">@formError</div>
+    }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="CloseForm">انصراف</button>
+        <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
+            @(form.UnitOfMeasurementId > 0 ? "ذخیرهٔ تغییرات" : "ثبت واحد")
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private PagedList<VMUnitOfMeasurement>? data;
+    private List<VMUnitOfMeasurement>? items;
+    private bool loading = true;
+    private int pno = 1;
+    private const int PageSize = 10;
+
+    private bool showForm;
+    private VMUnitOfMeasurement form = new();
+    private string? formError;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync(1);
+
+    private async Task LoadAsync(int p)
+    {
+        loading = true; StateHasChanged();
+        try
+        {
+            var model = await Moadian.GetUnitsAsync(null, p, PageSize);
+            var paged = MoadianService.As<PagedList<VMUnitOfMeasurement>>(model);
+            data = paged;
+            items = paged?.Items?.ToList();
+            pno = p;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void OpenForm(VMUnitOfMeasurement? u)
+    {
+        form = u is null ? new VMUnitOfMeasurement() : new VMUnitOfMeasurement { UnitOfMeasurementId = u.UnitOfMeasurementId, Name = u.Name, Code = u.Code };
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() => showForm = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام واحد الزامی است."; return; }
+        if (string.IsNullOrWhiteSpace(form.Code)) { formError = "کد واحد الزامی است."; return; }
+        saving = true; StateHasChanged();
+        try
+        {
+            var r = form.UnitOfMeasurementId > 0
+                ? await Moadian.UpdateUnitAsync(form)
+                : await Moadian.InsertUnitAsync(form);
+            if (r.Success)
+            {
+                Toast.Success(form.UnitOfMeasurementId > 0 ? "تغییرات ذخیره شد." : "واحد ثبت شد.");
+                CloseForm();
+                await LoadAsync(pno);
+            }
+            else formError = r.Message ?? "خطا در ذخیره.";
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; StateHasChanged(); }
+    }
+
+    private async Task Delete(VMUnitOfMeasurement u)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"واحد «{u.Name}» حذف شود؟");
+        if (!ok) return;
+        try
+        {
+            var r = await Moadian.DeleteUnitAsync(u.UnitOfMeasurementId);
+            if (r.Success) { Toast.Success("واحد حذف شد."); await LoadAsync(pno); }
+            else Toast.Error(r.Message ?? "خطا در حذف.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

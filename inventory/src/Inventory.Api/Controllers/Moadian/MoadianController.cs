@@ -1,4 +1,4 @@
-﻿using Inventory.Api.Services.Moadian;
+using Inventory.Api.Services.Moadian;
 
 using Inventory.Api.Services.Moadian;
 
@@ -371,6 +371,44 @@ namespace Inventory.Api.Controllers.Moadian
         {
             return await connectService.DeleteInvoiceByIdAsync(id);
 
+        }
+
+        // ==================== مکمل رابط کاربری (شرکت / سال مالی / مشتری) ====================
+
+        [HttpGet("GetCpInfos")]
+        public async Task<ApiModel> GetCpInfos()
+        {
+            return await connectService.GetAllCpInfosAsync();
+        }
+
+        [HttpPost("SaveCpInfo")]
+        public async Task<ApiModel> SaveCpInfo(VMShowCpinfoByCompany model)
+        {
+            return await connectService.SaveCpInfoAsync(model);
+        }
+
+        [HttpGet("GetFiscalYears/{cpinfoId:int}")]
+        public async Task<ApiModel> GetFiscalYears(int cpinfoId)
+        {
+            return await connectService.GetAllFiscalYearsAsync(cpinfoId);
+        }
+
+        [HttpPost("SaveFiscalYear")]
+        public async Task<ApiModel> SaveFiscalYear(VMFiscalYear model)
+        {
+            return await connectService.SaveFiscalYearAsync(model);
+        }
+
+        [HttpPost("InsertCustomerAsync")]
+        public async Task<ApiModel> InsertCustomer(VMCustomerList model)
+        {
+            return await connectService.InsertCustomerAsync(model);
+        }
+
+        [HttpPut("UpdateCustomer")]
+        public async Task<ApiModel> UpdateCustomer(VMCustomerList model)
+        {
+            return await connectService.UpdateCustomerAsync(model);
         }
     }
 }

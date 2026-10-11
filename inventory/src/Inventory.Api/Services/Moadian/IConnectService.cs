@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -44,6 +44,15 @@ namespace Inventory.Api.Services.Moadian
         Task<ApiModel> EstelamInvoiceAsync(string ReferenceId, int InvoiceId,string dateorder);//استعلام صورتحساب
         Task<ApiModel> ErrorInvoiceAsync(string ReferenceId);//لیست خطاهای صورتحساب
         Task<ApiModel> UpdateStatusInvoiceAsync(int InvoiceId);//تغییر وضعیت صورتحساب به مشااهده شده در کارپوشه(ارسال)  صورتحساب
+        #endregion
+
+        #region مکمل رابط کاربری (شرکت / سال مالی / مشتری)
+        Task<ApiModel> GetAllCpInfosAsync();//فهرست شرکت‌های تعریف‌شده در مودیان
+        Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany model);//ثبت شرکت جدید
+        Task<ApiModel> GetAllFiscalYearsAsync(int cpinfoId);//فهرست سال‌های مالی شرکت
+        Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear model);//ثبت سال مالی جدید
+        Task<ApiModel> InsertCustomerAsync(VMCustomerList model);//ثبت مشتری جدید
+        Task<ApiModel> UpdateCustomerAsync(VMCustomerList model);//ویرایش مشتری
         #endregion
     }
 }

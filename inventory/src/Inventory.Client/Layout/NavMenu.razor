@@ -467,6 +467,43 @@
     </div>
     }
 
+    @* ============ سامانه مودیان (صورتحساب الکترونیکی) ============ *@
+    @if (Auth.IsAdmin)
+    {
+        <div class="nav-group group-moadian">
+            <button type="button" class="nav-section-title nav-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">
+                <span><i class="bi bi-receipt"></i>سامانه مودیان</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gMoadian)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="moadian" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                        <i class="bi bi-speedometer2"></i><span>نمای کلی</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/invoices" @onclick="NotifyClose">
+                        <i class="bi bi-journal-text"></i><span>صورتحساب‌ها</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/invoices/new" @onclick="NotifyClose">
+                        <i class="bi bi-journal-plus"></i><span>صورتحساب جدید</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/goods" @onclick="NotifyClose">
+                        <i class="bi bi-box-seam"></i><span>کالاهای من</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/customers" @onclick="NotifyClose">
+                        <i class="bi bi-people"></i><span>مشتریان</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/units" @onclick="NotifyClose">
+                        <i class="bi bi-rulers"></i><span>واحدهای سنجش</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/connection" @onclick="NotifyClose">
+                        <i class="bi bi-plug"></i><span>اتصال به سامانه</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     <ErpWorkspaceNav OnNavigate="NotifyClose" />
 
     @* ============ مدیریت پروژه‌ها ============ *@
@@ -701,7 +738,7 @@
     [Parameter] public EventCallback OnNavigate { get; set; }
 
     private bool gOpsBase, gOpsReports;
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
     private HrNavigation.Entry[] FaHrItems = [];

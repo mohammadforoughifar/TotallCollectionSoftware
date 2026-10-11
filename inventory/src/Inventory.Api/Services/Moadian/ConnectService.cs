@@ -1,4 +1,4 @@
-﻿
+
 using Inventory.Api.Services.Moadian;
 using Inventory.Shared.Dtos.Moadian;
 
@@ -1983,10 +1983,10 @@ context.Customers.Any(x =>
 
                 VMConnection vMconnect = new VMConnection();
 
-                var connect = await context.ConnectInfos.FirstOrDefaultAsync(c => c.CpInfo == cpinfoId);
+                var connect = await context.ConnectInfos.FirstOrDefaultAsync(c => c.CpInfo == cpinfoId && !c.IsDelete);
 
                 if (connect == null)
-                    return new ApiModel();
+                    return new ApiModel { Success = true, Status = 200, Data = null }; // اتصال ثبت‌شده ندارد (وضعیت طبیعی، نه خطا)
 
                 var fileDetail = new FileDetail(); // لیست مجزا برای نگهداری جزئیات
 
@@ -3189,6 +3189,182 @@ context.Customers.Any(x =>
             }
             return model;
         }
+
+        #region مکمل رابط کاربری (شرکت / سال مالی / مشتری)
+
+        public async Task<ApiModel> GetAllCpInfosAsync()
+        {
+            ApiModel model = new();
+            try
+            {
+                var list = await context.CPInfos.ToListAsync();
+                model.Data = list.Select(c => new VMShowCpinfoByCompany
+                {
+                    cpinfoid = c.Id,
+                    PersianName = c.PersianName,
+                    Nationalid = c.Nationalid,
+                    EconomicNumber = c.EconomicNumber
+                }).ToList();
+                model.Status = 200;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        public async Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany modeldata)
+        {
+            ApiModel model = new();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(modeldata.PersianName))
+                    return CreateErrorResponse(400);
+
+                var cp = new CpInfo
+                {
+                    PersianName = modeldata.PersianName,
+                    Nationalid = modeldata.Nationalid,
+                    EconomicNumber = modeldata.EconomicNumber
+                };
+                context.CPInfos.Add(cp);
+                await context.SaveChangesAsync();
+                modeldata.cpinfoid = cp.Id;
+                model.Data = modeldata;
+                model.Status = 201;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(201, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        public async Task<ApiModel> GetAllFiscalYearsAsync(int cpinfoId)
+        {
+            ApiModel model = new();
+            try
+            {
+                var list = await context.FiscalYears
+                    .Where(f => f.CpInfo == cpinfoId)
+                    .OrderByDescending(f => f.StartDate)
+                    .ToListAsync();
+                model.Data = list.Select(f => new VMFiscalYear
+                {
+                    Id = f.Id,
+                    CpInfoId = cpinfoId,
+                    StartDate = f.StartDate,
+                    EndDate = f.EndDate
+                }).ToList();
+                model.Status = 200;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        public async Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear modeldata)
+        {
+            ApiModel model = new();
+            try
+            {
+                if (modeldata.CpInfoId <= 0 || modeldata.EndDate < modeldata.StartDate)
+                    return CreateErrorResponse(400);
+
+                var fy = new FiscalYear
+                {
+                    CpInfo = modeldata.CpInfoId,
+                    StartDate = modeldata.StartDate,
+                    EndDate = modeldata.EndDate
+                };
+                context.FiscalYears.Add(fy);
+                await context.SaveChangesAsync();
+                modeldata.Id = fy.Id;
+                model.Data = modeldata;
+                model.Status = 201;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(201, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        public async Task<ApiModel> InsertCustomerAsync(VMCustomerList modeldata)
+        {
+            ApiModel model = new();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(modeldata.Name) || modeldata.CpInfoId <= 0)
+                    return CreateErrorResponse(400);
+
+                var customer = new Customer
+                {
+                    CpInfoId = modeldata.CpInfoId,
+                    Name = modeldata.Name,
+                    PostalCode = modeldata.PostalCode,
+                    Phone = modeldata.Phone,
+                    NationalID = modeldata.NationalID,
+                    Type = modeldata.Type,
+                    EconomicNumber = modeldata.EconomicNumber,
+                    Address = modeldata.Address
+                };
+                context.Customers.Add(customer);
+                await context.SaveChangesAsync();
+                modeldata.CustomerId = customer.Id;
+                model.Data = modeldata;
+                model.Status = 201;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(201, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        public async Task<ApiModel> UpdateCustomerAsync(VMCustomerList modeldata)
+        {
+            ApiModel model = new();
+            try
+            {
+                var customer = await context.Customers.FirstOrDefaultAsync(c => c.Id == modeldata.CustomerId);
+                if (customer == null)
+                    return CreateErrorResponse(404);
+
+                customer.Name = modeldata.Name;
+                customer.PostalCode = modeldata.PostalCode;
+                customer.Phone = modeldata.Phone;
+                customer.NationalID = modeldata.NationalID;
+                customer.Type = modeldata.Type;
+                customer.EconomicNumber = modeldata.EconomicNumber;
+                customer.Address = modeldata.Address;
+                await context.SaveChangesAsync();
+                model.Data = modeldata;
+                model.Status = 200;
+                model.Success = true;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string msg) ? msg : "کد وضعیت نامعتبر است.";
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Data = null, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
+            }
+            return model;
+        }
+
+        #endregion
 
     }
         }

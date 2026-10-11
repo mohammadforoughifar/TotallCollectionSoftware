@@ -1,0 +1,290 @@
+@page "/moadian/invoices"
+@using Inventory.Shared.Dtos.Moadian
+@using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
+@using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+<PageTitle>سامانه مودیان — صورتحساب‌ها</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-journal-text text-primary"></i> صورتحساب‌های الکترونیکی</h1>
+        <p class="lead">فهرست، صدور و پیگیری وضعیت صورتحساب در کارپوشهٔ مالیاتی</p>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+        <NavLink class="btn btn-primary" href="moadian/invoices/new"><i class="bi bi-plus-lg"></i> صورتحساب جدید</NavLink>
+    </div>
+</div>
+
+<MoadianCompanyBar />
+
+@if (Ctx.CpInfoId <= 0)
+{
+    <div class="card"><div class="card-body">
+        <div class="empty-state">
+            <i class="bi bi-building-add"></i>
+            <h5>برای مشاهدهٔ صورتحساب، ابتدا شرکت را ثبت کنید</h5>
+            <NavLink class="btn btn-primary" href="moadian/connection">ثبت شرکت و اتصال</NavLink>
+        </div>
+    </div></div>
+}
+else
+{
+    @* ---------- تب‌های وضعیت ---------- *@
+    <div class="mtabs mb-3">
+        @foreach (var (code, title, icon) in Tabs)
+        {
+            <button class="mtab @(fOp == code ? "active" : "")" @onclick="() => SetOp(code)">
+                <i class="bi @icon"></i> @title
+                @if (labels is not null)
+                {
+                    <span class="badge badge-soft-primary num ms-1">@CountOf(code).Num()</span>
+                }
+            </button>
+        }
+    </div>
+
+    @* ---------- فیلترها ---------- *@
+    <div class="card mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label">جستجو</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
+                               value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" />
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label">از تاریخ</label>
+                    <DatePicker Value="fFrom" ValueChanged="OnFrom" AllowClear="true" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label">تا تاریخ</label>
+                    <DatePicker Value="fTo" ValueChanged="OnTo" AllowClear="true" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-outline-secondary w-100" @onclick="() => ResetFilters()">
+                        <i class="bi bi-arrow-counterclockwise"></i> حذف فیلترها
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- جدول ---------- *@
+    <div class="card">
+        <div class="card-header d-flex align-items-center gap-2">
+            <span><i class="bi bi-receipt text-primary"></i> @(MoadianUi.StatusLabel(fOp == "همه" ? null : fOp) == "—" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
+            <span class="badge badge-soft-primary num ms-auto">@(data?.TotalCount ?? 0).Num() مورد</span>
+        </div>
+        <div class="card-body p-0">
+            @if (loading)
+            {
+                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+            }
+            else if (items is null || items.Count == 0)
+            {
+                <div class="empty-state">
+                    <i class="bi bi-receipt"></i>
+                    <h5>صورتحسابی یافت نشد</h5>
+                    <p class="text-muted">با دکمهٔ «صورتحساب جدید» اولین صورتحساب را صادر کنید.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive grid-desktop">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>شماره</th>
+                                <th>تاریخ</th>
+                                <th>مشتری</th>
+                                <th>موضوع</th>
+                                <th>الگو</th>
+                                <th>وضعیت</th>
+                                <th class="text-center">مبلغ کل</th>
+                                <th>شمارهٔ مالیاتی</th>
+                                <th class="text-end">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var inv in items)
+                            {
+                                <tr>
+                                    <td class="num fw-semibold">@inv.NumberInvoice</td>
+                                    <td class="num">@MoadianUi.Shamsi(inv.DateOrder)</td>
+                                    <td>@inv.CustomerName</td>
+                                    <td>
+                                        <span class="badge @(inv.Subject == "اصلی" ? "badge-soft-primary" : inv.Subject == "اصلاحی" ? "badge-soft-warning" : "badge-soft-danger")">
+                                            @inv.Subject
+                                        </span>
+                                    </td>
+                                    <td class="small">@inv.TypePattern</td>
+                                    <td>
+                                        <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)">@inv.StatusSentToSystem</span>
+                                    </td>
+                                    <td class="text-center num">@MoadianUi.Money(inv.TotallMoney)</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(inv.NewTaxNumber))
+                                        {
+                                            <code class="small" dir="ltr" title="کلیک برای کپی" style="cursor:pointer"
+                                                   @onclick="() => CopyText(inv.NewTaxNumber!)">@inv.NewTaxNumber</code>
+                                        }
+                                        else if (!string.IsNullOrEmpty(inv.TaxNumber))
+                                        {
+                                            <code class="small" dir="ltr" title="کلیک برای کپی" style="cursor:pointer"
+                                                   @onclick="() => CopyText(inv.TaxNumber!)">@inv.TaxNumber</code>
+                                        }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="text-end">
+                                        <NavLink class="btn btn-sm btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده و عملیات">
+                                            <i class="bi bi-eye"></i>
+                                        </NavLink>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @* ---------- صفحه‌بندی ---------- *@
+                @if ((data?.TotalPages ?? 0) > 1)
+                {
+                    <div class="card-footer d-flex align-items-center gap-2">
+                        <span class="text-muted small num">صفحهٔ @pno.Num() از @(data?.TotalPages).Num()</span>
+                        <div class="ms-auto d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                            @for (int p = 1; p <= (data?.TotalPages ?? 1); p++)
+                            {
+                                int pp = p;
+                                <button class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" @onclick="() => GoPage(pp)">@pp.Num()</button>
+                            }
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (string Code, string Title, string Icon)[] Tabs =
+    {
+        ("همه", "همه", "bi-collection"),
+        ("0", "ارسال نشده", "bi-inbox"),
+        ("4", "در انتظار واکنش", "bi-hourglass-split"),
+        ("2", "در انتظار بررسی", "bi-search"),
+        ("5", "دارای خطا", "bi-exclamation-triangle"),
+        ("6", "بدون نیاز به واکنش", "bi-archive"),
+    };
+
+    private PagedList<InvoiceVM>? data;
+    private List<InvoiceVM>? items;
+    private InvoiceVM? labels;
+    private string fOp = "همه";
+    private string search = "";
+    private DateTime? fFrom, fTo;
+    private int pno = 1;
+    private const int PageSize = 10;
+    private bool loading;
+    private System.Timers.Timer? searchTimer;
+
+    [Inject] private IJSRuntime JS { get; set; }
+
+    private List<InvoiceVM> Items => items ?? new();
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
+        if (Ctx.CpInfoId > 0) _ = LoadAsync(1);
+    }
+
+    private void OnCtxChanged() => _ = LoadAsync(1);
+
+    private int CountOf(string code) => (code, labels) switch
+    {
+        ("همه", var l) => l?.lblAll ?? 0,
+        ("0", var l) => l?.lblNotSentToSystem ?? 0,
+        ("4", var l) => l?.lblSentToSystem ?? 0,
+        ("2", var l) => l?.lblLackOfResponsiveness ?? 0,
+        ("5", var l) => l?.lblError ?? 0,
+        ("6", _) => 0,
+        _ => 0
+    };
+
+    private void SetOp(string code)
+    {
+        fOp = code;
+        _ = LoadAsync(1);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); }
+    }
+    private void OnFrom(DateTime? v) { fFrom = v; _ = LoadAsync(1); }
+    private void OnTo(DateTime? v) { fTo = v; _ = LoadAsync(1); }
+
+    private void ResetFilters()
+    {
+        search = ""; fFrom = null; fTo = null; fOp = "همه";
+        _ = LoadAsync(1);
+    }
+
+    private void GoPage(int p) => _ = LoadAsync(p);
+
+    private async Task LoadAsync(int p)
+    {
+        if (Ctx.CpInfoId <= 0) return;
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            var model = await Moadian.GetAllInvoicesAsync(fOp, Ctx.CpInfoId, fFrom, fTo, search, p, PageSize);
+            var resp = MoadianService.As<InvoiceResponse>(model);
+            data = resp?.Invoices;
+            items = resp?.Invoices?.Items?.ToList();
+            labels = resp?.Labels;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            pno = p;
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyText(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            InvokeAsync(() => Toast.Info("شمارهٔ مالیاتی کپی شد."));
+        }
+        catch { InvokeAsync(() => Toast.Error("کپی ممکن نبود.")); }
+    }
+
+    public void Dispose()
+    {
+        Ctx.Changed -= OnCtxChanged;
+        searchTimer?.Dispose();
+    }
+}

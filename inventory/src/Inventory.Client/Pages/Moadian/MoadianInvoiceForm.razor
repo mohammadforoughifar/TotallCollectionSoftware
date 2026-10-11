@@ -1,0 +1,397 @@
+@page "/moadian/invoices/new"
+@page "/moadian/invoices/{Id:int}/edit"
+@page "/moadian/invoices/{Id:int}/eslahi"
+@using Inventory.Shared.Dtos.Moadian
+@using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
+@using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
+@using System.Collections.ObjectModel
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject NavigationManager Nav
+@inject MoadianCompanyContext Ctx
+
+<PageTitle>سامانه مودیان — @(ModeTitle)</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-journal-plus text-primary"></i> @(ModeTitle)</h1>
+        <p class="lead">
+            @switch (Mode)
+            {
+                case FormMode.New: <span>صدور صورتحساب جدید با ردیف‌های کالا/خدمت</span> break;
+                case FormMode.Edit: <span>ویرایش صورتحساب #@(Id)</span> break;
+                default: <span>صدور صورتحساب اصلاحی بر پایهٔ #@(Id)</span> break;
+            }
+        </p>
+    </div>
+    <div class="ms-auto">
+        <NavLink class="btn btn-outline-secondary" href="moadian/invoices"><i class="bi bi-arrow-right"></i> بازگشت به فهرست</NavLink>
+    </div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else
+{
+    @if (Mode == FormMode.Eslahi)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-circle"></i>
+            <span>شما در حال صدور <b>صورتحساب اصلاحی</b> هستید. بعد از ثبت، صورتحساب جدید با موضوع «اصلاحی» و شمارهٔ مالیاتی مستقل صادر می‌شود و شمارهٔ مالیاتی اصلی (زیر) به عنوان مرجع ارسال می‌گردد.</span>
+        </div>
+    }
+
+    @* ---------- سربرگ ---------- *@
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-info-circle text-primary"></i> مشخصات صورتحساب</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">مشتری <span class="text-danger">*</span></label>
+                    @if (Customers.Count == 0)
+                    {
+                        <div class="alert alert-warning py-2 small">
+                            مشتری‌ای برای این شرکت تعریف نشده —
+                            <NavLink href="moadian/customers">ثبت مشتری</NavLink>
+                        </div>
+                    }
+                    else
+                    {
+                        <select class="form-select" value="@vm.CustomerId" @onchange="OnCustomer">
+                            <option value="">— انتخاب مشتری —</option>
+                            @foreach (var c in Customers)
+                            {
+                                <option value="@c.CustomerId">@c.Name @if (!string.IsNullOrEmpty(c.Type)) { <span class="text-muted">(@c.Type)</span> }</option>
+                            }
+                        </select>
+                    }
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">تاریخ صورتحساب <span class="text-danger">*</span></label>
+                    <DatePicker Value="vm.DateOrderPicker" ValueChanged="OnDate" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">سال مالی <span class="text-danger">*</span></label>
+                    <select class="form-select" value="@vm.FiscalYearId" @onchange="OnFiscalYear">
+                        <option value="">— انتخاب —</option>
+                        @foreach (var fy in FiscalYears)
+                        {
+                            <option value="@fy.Id">@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">نوع پرداخت</label>
+                    <select class="form-select" @bind="vm.PaymentType">
+                        <option value="نقدی">نقدی</option>
+                        <option value="نسیه">نسیه</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">الگوی صورتحساب</label>
+                    <select class="form-select" @bind="vm.TypePattern">
+                        <option value="نوع اول">نوع اول</option>
+                        <option value="نوع دوم">نوع دوم</option>
+                        <option value="نوع سوم">نوع سوم</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">شرح / توضیح</label>
+                    <input class="form-control" value="@vm.Description" @oninput="e => vm.Description = e.Value?.ToString()" placeholder="مثلاً: فاکتور فروش" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- ردیف‌ها ---------- *@
+    <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+            <span><i class="bi bi-list-ol text-primary"></i> ردیف‌های کالا/خدمت</span>
+            <button class="btn btn-sm btn-outline-success ms-auto" @onclick="AddRow">
+                <i class="bi bi-plus-lg"></i> افزودن ردیف
+            </button>
+        </div>
+        <div class="card-body p-0">
+            @if (vm.InvoiceItems.Count == 0)
+            {
+                <div class="empty-state">
+                    <i class="bi bi-box-seam"></i>
+                    <h5>هنوز ردیفی وارد نشده است</h5>
+                    <p class="text-muted">با «افزودن ردیف» کالا را انتخاب کنید؛ واحد، نرخ و ارزش افزوده خودکار پر می‌شود.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th style="min-width:220px">کالا / خدمت</th>
+                                <th style="width:90px">واحد</th>
+                                <th style="width:90px">تعداد</th>
+                                <th style="width:130px">نرخ واحد</th>
+                                <th style="width:80px">ارزش افزوده %</th>
+                                <th style="width:120px">تخفیف</th>
+                                <th style="width:130px">مبلغ ردیف</th>
+                                <th style="width:46px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in vm.InvoiceItems)
+                            {
+                                var row = item;
+                                <tr>
+                                    <td>
+                                        @if (Goods.Count == 0)
+                                        {
+                                            <input class="form-control form-control-sm" value="@row.Name" @oninput="e => row.Name = e.Value?.ToString()" placeholder="نام کالا" />
+                                        }
+                                        else
+                                        {
+                                            <select class="form-select form-select-sm" value="@row.GoodsOrServicesId" @onchange="e => OnGoods(row, e)">
+                                                <option value="">— انتخاب کالا —</option>
+                                                @foreach (var g in Goods)
+                                                {
+                                                    <option value="@g.GoodsOrServicesId">@g.Name</option>
+                                                }
+                                            </select>
+                                        }
+                                    </td>
+                                    <td class="small num">@row.UnitOfMeasurement</td>
+                                    <td>
+                                        <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
+                                               value="@row.Count" @onchange="e => OnNum(e, v => row.Count = v)" />
+                                    </td>
+                                    <td>
+                                        <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
+                                               value="@row.PriceUnit" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }" />
+                                    </td>
+                                    <td>
+                                        <input type="number" min="0" max="100" step="any" class="form-control form-control-sm num text-end"
+                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }" />
+                                    </td>
+                                    <td>
+                                        <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
+                                               value="@row.Discount" @onchange="e => { row.Discount = Dec(e); Calc(row); }" />
+                                    </td>
+                                    <td class="num fw-semibold text-end">@MoadianUi.Money(row.CalculatedPay)</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-outline-danger" title="حذف ردیف" @onclick="() => RemoveRow(row)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        @if (vm.InvoiceItems.Count > 0)
+        {
+            <div class="card-footer">
+                <div class="row text-center g-2">
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">جمع کل</div>
+                        <div class="num fw-semibold">@MoadianUi.Money(TotalGross)</div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">تخفیف</div>
+                        <div class="num text-danger">@MoadianUi.Money(TotalDiscount)</div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">پایهٔ معاف/مشمول</div>
+                        <div class="num">@MoadianUi.Money(TotalGross - TotalDiscount)</div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">ارزش افزوده</div>
+                        <div class="num text-info">@MoadianUi.Money(TotalVat)</div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">مبلغ نهایی</div>
+                        <div class="num fw-bold text-primary fs-5">@MoadianUi.Money(GrandTotal)</div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="text-muted small">نوع پرداخت</div>
+                        <div class="fw-semibold">@vm.PaymentType</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* ---------- ثبت ---------- *@
+    <div class="d-flex gap-2 mb-4">
+        <button class="btn btn-primary btn-lg" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm"></span> }
+            else { <i class="bi bi-check-lg"></i> }
+            @(Mode == FormMode.Eslahi ? "صدور صورتحساب اصلاحی" : "ثبت صورتحساب")
+        </button>
+        <NavLink class="btn btn-outline-secondary btn-lg" href="moadian/invoices"><i class="bi bi-x-lg"></i> انصراف</NavLink>
+    </div>
+}
+
+@code {
+    private enum FormMode { New, Edit, Eslahi }
+
+    [Parameter] public int? Id { get; set; }
+    private FormMode Mode;
+    private string ModeTitle => Mode switch
+    {
+        FormMode.Edit => "ویرایش صورتحساب",
+        FormMode.Eslahi => "صورتحساب اصلاحی",
+        _ => "صورتحساب جدید"
+    };
+
+    private InvoiceVM vm = new();
+    private List<VMGoodsOrServicesList> Goods = new();
+    private List<VMCustomerList> Customers = new();
+    private List<VMFiscalYear> FiscalYears = new();
+    private bool loading = true, saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri);
+        if (path.EndsWith("/edit")) Mode = FormMode.Edit;
+        else if (path.EndsWith("/eslahi")) Mode = FormMode.Eslahi;
+        else Mode = FormMode.New;
+        vm = new InvoiceVM
+        {
+            CPInfoId = Ctx.CpInfoId,
+            IsNew = Mode == FormMode.New,
+            DateOrderPicker = DateTime.Today,
+            PaymentType = "نقدی",
+            TypePattern = "نوع اول",
+            Subject = Mode == FormMode.Eslahi ? "اصلاحی" : "اصلی",
+            ShowButtons = true
+        };
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            if (Ctx.CpInfoId > 0)
+            {
+                Goods = await Moadian.GetGoodsComboAsync(Ctx.CpInfoId);
+                Customers = await Moadian.GetCustomersAsync(Ctx.CpInfoId);
+                FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
+            }
+            if (Mode != FormMode.New && Id is > 0)
+            {
+                var loaded = await Moadian.GetInvoiceAsync(Id!.Value);
+                if (loaded is null)
+                {
+                    Toast.Error("صورتحساب یافت نشد.");
+                    Nav.NavigateTo("moadian/invoices");
+                    return;
+                }
+                vm = loaded;
+                if (vm.InvoiceItems.Count == 0) vm.InvoiceItems = new ObservableCollection<VmInvoiceItems>();
+                foreach (var it in vm.InvoiceItems) Calc(it);
+            }
+            else if (FiscalYears.Count > 0)
+            {
+                vm.FiscalYearId = FiscalYears[0].Id.ToString();
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    // ---------- محاسبات ----------
+    private decimal? Dec(ChangeEventArgs e)
+        => decimal.TryParse(e.Value?.ToString(), out var d) ? d : 0m;
+
+    private void OnNum(ChangeEventArgs e, Action<decimal?> set) { set(Dec(e)); StateHasChanged(); }
+
+    private void Calc(VmInvoiceItems row)
+    {
+        decimal count = row.Count ?? 0;
+        decimal price = row.PriceUnit ?? 0;
+        decimal dis = row.Discount ?? 0;
+        decimal vat = (decimal)(row.ValueAddedPercentage ?? 0) / 100m;
+        row.TotalPrice = (price * count - dis) * (1 + vat);
+        row.CalculatedPay = row.TotalPrice;
+    }
+
+    private decimal TotalGross => vm.InvoiceItems.Sum(i => (i.PriceUnit ?? 0) * (i.Count ?? 0));
+    private decimal TotalDiscount => vm.InvoiceItems.Sum(i => i.Discount ?? 0);
+    private decimal TotalVat => vm.InvoiceItems.Sum(i => ((i.PriceUnit ?? 0) * (i.Count ?? 0) - (i.Discount ?? 0)) * ((decimal)(i.ValueAddedPercentage ?? 0) / 100m));
+    private decimal GrandTotal => vm.InvoiceItems.Sum(i => i.CalculatedPay ?? 0);
+
+    // ---------- رویدادها ----------
+    private void OnCustomer(ChangeEventArgs e)
+    {
+        vm.CustomerId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+    }
+
+    private void OnDate(DateTime? v) => vm.DateOrderPicker = v;
+
+    private void OnFiscalYear(ChangeEventArgs e) => vm.FiscalYearId = e.Value?.ToString();
+
+    private void AddRow()
+    {
+        vm.InvoiceItems.Add(new VmInvoiceItems { Count = 1, PriceUnit = 0, ValueAddedPercentage = 0, Discount = 0 });
+        StateHasChanged();
+    }
+
+    private void RemoveRow(VmInvoiceItems row)
+    {
+        vm.InvoiceItems.Remove(row);
+        StateHasChanged();
+    }
+
+    private void OnGoods(VmInvoiceItems row, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id)) return;
+        var g = Goods.FirstOrDefault(x => x.GoodsOrServicesId == id);
+        if (g is null) return;
+        row.GoodsOrServicesId = g.GoodsOrServicesId;
+        row.Name = g.Name;
+        row.UniqueIdentifier = g.UniqueIdentifier;
+        row.PriceUnit = g.Price;
+        row.ValueAddedPercentage = g.ValueAddedPercentage;
+        row.UnitOfMeasurement = ""; // نام واحد از سرور در زمان ارسال استفاده می‌شود
+        Calc(row);
+        StateHasChanged();
+    }
+
+    private async Task Save()
+    {
+        if (vm.CustomerId is null or <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
+        if (vm.DateOrderPicker is null) { Toast.Error("تاریخ صورتحساب را وارد کنید."); return; }
+        if (string.IsNullOrWhiteSpace(vm.FiscalYearId)) { Toast.Error("سال مالی را انتخاب کنید."); return; }
+        if (vm.InvoiceItems.Count == 0) { Toast.Error("حداقل یک ردیف کالا/خدمت لازم است."); return; }
+        if (vm.InvoiceItems.Any(i => string.IsNullOrEmpty(i.UniqueIdentifier)))
+        { Toast.Error("در هر ردیف باید کالا انتخاب شده باشد."); return; }
+
+        vm.TotallMoney = GrandTotal;
+        if (vm.PaymentType == "نقدی") vm.PriceNaghd = GrandTotal; else vm.PriceNesye = GrandTotal;
+        if (Mode == FormMode.New) vm.IsNew = true;
+
+        saving = true;
+        StateHasChanged();
+        try
+        {
+            var r = Mode == FormMode.Eslahi
+                ? await Moadian.EslahiInvoiceAsync(vm)
+                : await Moadian.AddInvoiceAsync(vm);
+            if (r.Success)
+            {
+                var saved = MoadianService.As<InvoiceVM>(r);
+                Toast.Success(Mode == FormMode.Eslahi
+                    ? "صورتحساب اصلاحی ثبت شد."
+                    : "صورتحساب ثبت شد — برای ارسال به سامانه از صفحهٔ جزئیات استفاده کنید.");
+                Nav.NavigateTo(saved?.Id > 0 ? $"moadian/invoices/{saved!.Id}" : "moadian/invoices");
+            }
+            else Toast.Error(r.Message ?? "خطا در ثبت صورتحساب.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; StateHasChanged(); }
+    }
+}
