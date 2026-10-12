@@ -700,6 +700,37 @@ WebServiceAddress);
 
         }
 
+        /// <summary>تست اتصالِ ثبت‌شدهٔ یک شرکت — کلید را از wwwroot/uploads/{نام شرکت} می‌خواند و احراز هویت واقعی انجام می‌دهد.</summary>
+        public async Task<ApiModel> IsConnectStoredAsync(int cpinfoId)
+        {
+            var connect = await context.ConnectInfos.FirstOrDefaultAsync(c => c.CpInfo == cpinfoId && !c.IsDelete);
+            if (connect is null)
+                return new ApiModel { Data = false, Status = 400, Success = false, Message = "برای این شرکت اتصالی ثبت نشده است." };
+            if (string.IsNullOrEmpty(connect.PrivateKeyPath))
+                return new ApiModel { Data = false, Status = 400, Success = false, Message = "کلید خصوصی برای این شرکت ذخیره نشده است." };
+
+            var filePath = await ResolveExistingKeyPathAsync(cpinfoId, connect.PrivateKeyPath);
+            if (!System.IO.File.Exists(filePath))
+                return new ApiModel { Data = false, Status = 400, Success = false, Message = "فایل کلید خصوصی روی سرور یافت نشد — اتصال را دوباره ذخیره کنید." };
+
+            return await IsConnectAsync(connect.TaxMemoryID, filePath, connect.WebServiceAddress);
+        }
+
+        /// <summary>حذف نرم شرکت (و اتصال‌هایش) — صورتحساب‌ها و سوابق حفظ می‌شوند.</summary>
+        public async Task<ApiModel> DeleteCpInfoAsync(int id)
+        {
+            var cp = await context.CPInfos.FindAsync(id);
+            if (cp is null)
+                return new ApiModel { Data = null, Status = 404, Success = false, Message = "شرکت مورد نظر یافت نشد." };
+
+            cp.IsDelete = true;
+            var connections = context.ConnectInfos.Where(x => x.CpInfo == id && !x.IsDelete).ToList();
+            foreach (var c in connections) c.IsDelete = true;
+            await context.SaveChangesAsync();
+
+            return new ApiModel { Data = null, Status = 200, Success = true, Message = "شرکت حذف شد." };
+        }
+
         public async Task<ApiModel> GetAllInvoiceAsync(string operation, int CpinfoId, GetResultQuery request)
         {
             ApiModel model = new ApiModel();
@@ -1764,8 +1795,8 @@ context.Customers.Any(x =>
 
             try
             {
-                // ذخیره فایل
-                string savedFileName = await SaveFileAsync(formFile);
+                // ذخیره فایل — در wwwroot/uploads/{نام شرکت}
+                string savedFileName = await SaveFileAsync(formFile, connection.cpinfoid);
 
                 // غیرفعال کردن رکوردهای قبلی
                 await DeactivatePreviousConnectionsAsync(connection.cpinfoid);
@@ -1786,14 +1817,43 @@ context.Customers.Any(x =>
 
         #region Private Methods
 
-        private async Task<string> SaveFileAsync(IFormFile formFile)
+        /// <summary>نام امن برای پوشهٔ شرکت روی دیسک (بدون کاراکترهای namaجاز مسیر).</summary>
+        private static string SafeFolderName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+            var invalid = Path.GetInvalidFileNameChars();
+            var chars = name.Trim().Select(c => (invalid.Contains(c) || c is ' ' or '/' or '\\' or ':') ? '-' : c).ToArray();
+            var s = new string(chars);
+            while (s.Contains("--")) s = s.Replace("--", "-");
+            return s.Trim('-');
+        }
+
+        /// <summary>پوشهٔ کلید هر شرکت (خدمات‌دهنده): wwwroot/uploads/{نام امن شرکت}</summary>
+        private async Task<string> GetKeyFolderAsync(int cpinfoId)
+        {
+            var companyName = await context.CPInfos.Where(c => c.Id == cpinfoId)
+                .Select(c => c.PersianName).FirstOrDefaultAsync();
+            return SafeFolderName(!string.IsNullOrWhiteSpace(companyName) ? companyName! : $"cp{cpinfoId}");
+        }
+
+        /// <summary>مسیر کامل کلید ذخیره‌شده؛ اول مسیر جدید uploads، سپس مسیر قدیمی File/Moadian برای رکوردهای سابق.</summary>
+        private async Task<string> ResolveExistingKeyPathAsync(int cpinfoId, string privateKeyPath)
+        {
+            var folder = await GetKeyFolderAsync(cpinfoId);
+            var latest = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", folder, privateKeyPath);
+            if (System.IO.File.Exists(latest)) return latest;
+            return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "File", "Moadian", privateKeyPath);
+        }
+
+        private async Task<string> SaveFileAsync(IFormFile formFile, int cpinfoId)
         {
             // ایجاد نام فایل منحصربه‌فرد
             string hashName = SecurityHelper.EncryptString(formFile.FileName);
             string fileName = $"{hashName}{Path.GetExtension(formFile.FileName)}";
 
-            // مسیر ذخیره‌سازی
-            string uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/File/Moadian");
+            // مسیر ذخیره‌سازی — wwwroot/uploads/{نام شرکت}/ برای هر خدمات‌دهنده
+            string folder = await GetKeyFolderAsync(cpinfoId);
+            string uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", folder);
 
             // ایجاد دایرکتوری در صورت نیاز
             Directory.CreateDirectory(uploadDir);
@@ -1801,7 +1861,7 @@ context.Customers.Any(x =>
             // مسیر کامل فایل
             string filePath = Path.Combine(uploadDir, fileName);
 
-            // ذخیره فایل
+            // ذخیره فایل (خام — قابل دانلود مستقیم)
             using (FileStream stream = new FileStream(filePath, FileMode.Create))
             {
                 await formFile.CopyToAsync(stream);
@@ -2002,10 +2062,8 @@ context.Customers.Any(x =>
                 {
                     decryptedFileName = SecurityHelper.DecryptString(connect.PrivateKeyPath);
 
-                    // ساخت مسیر کامل فایل
-
-                    var uploadsFolderPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/File/Moadian");
-                    var fullFilePath = Path.Combine(uploadsFolderPath, connect.PrivateKeyPath);
+                    // مسیر فایل — wwwroot/uploads/{نام شرکت}، با fallback به wwwroot/File/Moadian قدیمی
+                    var fullFilePath = await ResolveExistingKeyPathAsync(cpinfoId, connect.PrivateKeyPath);
 
                     // بررسی وجود فایل و خواندن محتوا
                     if (System.IO.File.Exists(fullFilePath))

@@ -12,6 +12,8 @@ namespace Inventory.Api.Services.Moadian
     public interface IConnectService
     {
         Task<ApiModel> IsConnectAsync(string shenaseyekta,string privatekey,string WebServiceAddress);
+        Task<ApiModel> IsConnectStoredAsync(int cpinfoId);//تست اتصال با کلید ذخیره‌شده روی سرور (wwwroot/uploads/{نام شرکت})
+        Task<ApiModel> DeleteCpInfoAsync(int id);//حذف نرم شرکت (و اتصال‌هایش)
         Task<ApiModel> ConnectionApiAsync(VMConnection connection,IFormFile formFile);///اتصال به سامانه
         Task<ApiModel> GetConnectionApiAsync(int cpinfoId);
         Task<ApiModel> InsertGoodOrServiceAsync(VMGoodsOrService modeldata);

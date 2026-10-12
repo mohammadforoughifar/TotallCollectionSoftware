@@ -1,0 +1,69 @@
+@page "/moadian/basic-info"
+@page "/moadian/basic-info/{Tab}"
+@using Inventory.Shared.Dtos.Moadian
+@inject NavigationManager Nav
+
+<PageTitle>سامانه مودیان — اطلاعات پایه</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-archive text-primary"></i> اطلاعات پایهٔ سامانهٔ مودیان</h1>
+        <p class="lead">شرکت (خدمات دهنده)، اتصال به سامانه، واحدهای سنجش، کالاها و مشتریان</p>
+    </div>
+</div>
+
+<MoadianCompanyBar />
+
+@* ---------- نوار تب ---------- *@
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex gap-2 flex-wrap">
+        @foreach (var t in Tabs)
+        {
+            <button class="btn @(ActiveTab == t.Key ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => Go(t.Key)">
+                <i class="bi @t.Icon"></i> @t.Title
+            </button>
+        }
+    </div>
+</div>
+
+@* فقط تب فعال رندر می‌شود؛ بارگذاری هر تب هنگام باز شدن انجام می‌شود *@
+@if (ActiveTab == "company")
+{
+    <MoadianTabCompany />
+}
+else if (ActiveTab == "connection")
+{
+    <MoadianTabConnection />
+}
+else if (ActiveTab == "units")
+{
+    <MoadianTabUnits />
+}
+else if (ActiveTab == "goods")
+{
+    <MoadianTabGoods />
+}
+else if (ActiveTab == "customers")
+{
+    <MoadianTabCustomers />
+}
+
+@code {
+    [Parameter] public string? Tab { get; set; }
+
+    private record TabInfo(string Key, string Title, string Icon);
+    private static readonly TabInfo[] TabsList =
+    {
+        new("company", "شرکت", "bi-building"),
+        new("connection", "اتصال", "bi-plug"),
+        new("units", "واحد سنجش", "bi-rulers"),
+        new("goods", "کالا / خدمات", "bi-box"),
+        new("customers", "مشتریان", "bi-people"),
+    };
+    private IEnumerable<TabInfo> Tabs => TabsList;
+
+    private string ActiveTab => TabsList.Any(t => t.Key == Tab) ? Tab! : "company";
+
+    private void Go(string key) => Nav.NavigateTo($"/moadian/basic-info/{key}", forceLoad: false);
+}

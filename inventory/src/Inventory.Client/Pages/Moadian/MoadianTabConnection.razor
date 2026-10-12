@@ -1,0 +1,266 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+<div class="card">
+    <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <i class="bi bi-key text-primary"></i> اتصال به سامانهٔ مودیان — کلید خصوصی هر شرکت در مسیر <code dir="ltr" class="small">wwwroot/uploads/{نام شرکت}/</code> نگه‌داری می‌شود
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <label class="form-label">خدمات دهنده (شرکت)</label>
+                @if (CpInfos.Count == 0)
+                {
+                    <div class="alert alert-warning py-2 small">شرکتی تعریف نشده — ابتدا در تب «شرکت» یک شرکت ثبت کنید.</div>
+                }
+                else
+                {
+                    <select class="form-select mb-3" value="@Ctx.CpInfoId" @onchange="OnCompany">
+                        @foreach (var c in CpInfos)
+                        {
+                            <option value="@c.cpinfoid">@c.PersianName @if (!string.IsNullOrEmpty(c.Nationalid)) { <text>— @c.Nationalid</text> }</option>
+                        }
+                    </select>
+
+                    @* ---------- وضعیت اتصال ثبت‌شده ---------- *@
+                    @if (connection is null)
+                    {
+                        <div class="alert alert-secondary py-2 small"><i class="bi bi-unplug"></i> برای این شرکت اتصالی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info py-2 small">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <i class="bi bi-plug-fill"></i>
+                                <span class="fw-semibold">اتصال ثبت‌شده</span>
+                                <span class="badge @(lastTest ? "badge-soft-success" : "badge-soft-muted")">
+                                    @(lastTest ? "اتصال فعال" : "تست نشده")
+                                </span>
+                            </div>
+                            <hr class="my-2" />
+                            <div><i class="bi bi-link-45deg"></i> آدرس سرویس: <span dir="ltr" class="num">@connection.WebServiceAddress</span></div>
+                            <div class="mt-1"><i class="bi bi-123"></i> شناسهٔ حافظه: <span dir="ltr" class="num">@connection.TaxMemoryID</span></div>
+                            <div class="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                                <span><i class="bi bi-file-earmark-key"></i> کلید: @(connection.FilePrivatekey?.DisplayName ?? "—")</span>
+                                @if (connection.FilePrivatekey?.FileContent?.Length > 0)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" title="دانلود فایل کلید خصوصی ذخیره‌شده" @onclick="DownloadKey">
+                                        <i class="bi bi-download"></i> دانلود کلید
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">(فایل روی سرور یافت نشد)</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="col-lg-7">
+                @if (Ctx.CpInfoId <= 0)
+                {
+                    <div class="alert alert-warning py-2 small">ابتدا یک شرکت انتخاب یا ثبت کنید.</div>
+                }
+                else
+                {
+                    <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-pencil-square text-success"></i> @((connection is null) ? "ثبت اتصال" : "به‌روزرسانی اتصال")</span>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">شناسهٔ حافظه (TaxMemoryID) <span class="text-danger">*</span></label>
+                            <input class="form-control num" dir="ltr" value="@conn.TaxMemoryID" @oninput="e => conn.TaxMemoryID = e.Value?.ToString() ?? string.Empty" placeholder="شناسهٔ یکتا از سامانه" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">آدرس سرویس (WebService) <span class="text-danger">*</span></label>
+                            <input class="form-control num" dir="ltr" value="@conn.WebServiceAddress" @oninput="e => conn.WebServiceAddress = e.Value?.ToString() ?? string.Empty" placeholder="https://..." />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">کلید خصوصی (PKCS#8) <span class="text-danger">*</span></label>
+                        <InputFile class="form-control" accept=".key,.pem,.p8,.txt" OnChange="OnFile" />
+                        @if (keyName != null)
+                        {
+                            <div class="form-text text-success"><i class="bi bi-file-earmark-key"></i> @(keyName!.Contains('.') ? keyName.Substring(0, keyName.LastIndexOf('.')) : keyName) — انتخاب شد</div>
+                        }
+                        <div class="form-text">فایل در مسیر <code dir="ltr">wwwroot/uploads/@FolderHint/</code> ذخیره می‌شود؛ در تست اتصال و ارسال‌ها از همین مسیر خوانده می‌شود.</div>
+                    </div>
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-primary" @onclick="SaveConnection" disabled="@(savingConn || Ctx.CpInfoId <= 0)"
+                                title="@(Ctx.CpInfoId <= 0 ? "ابتدا یک شرکت ثبت/انتخاب کنید" : null)">
+                            @if (savingConn) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
+                            ذخیرهٔ اتصال
+                        </button>
+                        <button class="btn btn-outline-primary" @onclick="TestConnection" disabled="@(testing || connection is null)"
+                                title="@(connection is null ? "ابتدا «ذخیرهٔ اتصال» را بزنید" : "تست اتصال با کلید ذخیره‌شده روی سرور و احراز هویت در سامانهٔ مودیان")">
+                            @if (testing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-lightning"></i> }
+                            تست اتصال ثبت‌شده
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private VMConnection conn = new();
+    private List<VMShowCpinfoByCompany> CpInfos = new();
+    private VMConnection? connection;
+    private byte[]? keyBytes;
+    private string? keyName;
+    private bool loading = true, savingConn, testing, lastTest;
+
+    private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
+    private string FolderHint => string.IsNullOrWhiteSpace(Current?.PersianName) ? "{نام شرکت}" : Current!.PersianName.Trim().Replace(' ', '-');
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        _ = LoadAsync();
+    }
+
+    private void OnCtxChanged() => _ = LoadConnectedOnly();
+
+    private async Task LoadConnectedOnly()
+    {
+        try
+        {
+            await LoadConnection();
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task LoadConnection()
+    {
+        lastTest = false;
+        if (Ctx.CpInfoId > 0)
+        {
+            connection = await Moadian.GetConnectionAsync(Ctx.CpInfoId);
+            // بقیهٔ اطلاعات از بانک خوانده و فرم پر می‌شود
+            if (connection is not null)
+            {
+                conn.TaxMemoryID = connection.TaxMemoryID;
+                conn.WebServiceAddress = connection.WebServiceAddress;
+            }
+            else
+            {
+                conn = new();
+            }
+        }
+        else
+        {
+            connection = null;
+            conn = new();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            CpInfos = await Moadian.GetCpInfosAsync();
+            if (Ctx.CpInfoId == 0 && CpInfos.Count > 0) Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+            await LoadConnection();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void OnCompany(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id)) Ctx.SetCpInfoId(id);
+        InvokeAsync(() => _ = LoadConnectedOnly());
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        keyName = e.File.Name;
+        keyBytes = null;
+        try
+        {
+            // داخل Blazor WebAssembly خواندن هم‌زمان (sync) از BrowserFileStream پشتیبانی نمی‌شود — async می‌خوانیم.
+            using var ms = new MemoryStream();
+            await using var stream = e.File.OpenReadStream(5L * 1024 * 1024);
+            await stream.CopyToAsync(ms);
+            keyBytes = ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            keyName = null;
+            Toast.Error($"خواندن فایل کلید ناموفق بود: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveConnection()
+    {
+        if (string.IsNullOrWhiteSpace(conn.TaxMemoryID)) { Toast.Error("شناسهٔ حافظه الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(conn.WebServiceAddress)) { Toast.Error("آدرس سرویس الزامی است."); return; }
+        if (keyBytes is null) { Toast.Error("فایل کلید خصوصی را انتخاب کنید."); return; }
+
+        savingConn = true;
+        StateHasChanged();
+        try
+        {
+            var vm = new VMConnection
+            {
+                cpinfoid = Ctx.CpInfoId,
+                TaxMemoryID = conn.TaxMemoryID,
+                WebServiceAddress = conn.WebServiceAddress,
+                FilePrivatekey = new FileDetail { FileName = keyName!, DisplayName = keyName!, FileContent = keyBytes }
+            };
+            var r = await Moadian.SaveConnectionAsync(vm);
+            if (r.Success)
+            {
+                Toast.Success($"اتصال ذخیره شد — کلید در wwwroot/uploads/{FolderHint}/ نگهداری می‌شود.");
+                keyBytes = null; keyName = null;
+                await LoadConnection();
+            }
+            else Toast.Error(r.Message ?? "خطا در ذخیرهٔ اتصال.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingConn = false; }
+    }
+
+    private async Task TestConnection()
+    {
+        if (connection is null) return;
+        testing = true; lastTest = false;
+        StateHasChanged();
+        try
+        {
+            // سرور رکورد اتصال را از بانک می‌خواند و کلید را از wwwroot/uploads/{نام شرکت} برمی‌دارد
+            // سپس با SDK سامانه مودیان احراز هویت می‌کند (اطلاعات سرور + دریافت توکن).
+            var r = await Moadian.IsConnectAsync(new VMConnection { cpinfoid = Ctx.CpInfoId });
+            lastTest = r.Success;
+            if (r.Success) Toast.Success("اتصال برقرار و احراز هویت در سامانهٔ مودیان انجام شد.");
+            else Toast.Error($"تست اتصال ناموفق: {r.Message}");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { testing = false; StateHasChanged(); }
+    }
+
+    private async Task DownloadKey()
+    {
+        var fd = connection?.FilePrivatekey;
+        if (fd?.FileContent is null || fd.FileContent.Length == 0) return;
+        try
+        {
+            var name = !string.IsNullOrWhiteSpace(fd.DisplayName) ? fd.DisplayName! : (fd.FileName ?? "private.key");
+            await JS.InvokeVoidAsync("downloadFileFromBase64", name, "application/octet-stream", Convert.ToBase64String(fd.FileContent));
+        }
+        catch (Exception ex) { Toast.Error($"دانلود کلید ناموفق بود: {ex.Message}"); }
+    }
+
+    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+}

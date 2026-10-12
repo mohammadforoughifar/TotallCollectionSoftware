@@ -138,3 +138,20 @@ window.repairFormKeyboard = {
         delete root.__repairFormEnterHandler;
     }
 };
+
+// دانلود محتوای باینری (base64) به‌صورت فایل — مثلاً کلید خصوصی مودیان
+window.downloadFileFromBase64 = function (fileName, contentType, base64) {
+    try {
+        const byteChars = atob(base64);
+        const byteNumbers = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteNumbers], { type: contentType || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName || 'download';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+    } catch (e) { console.error('downloadFileFromBase64 failed', e); }
+};

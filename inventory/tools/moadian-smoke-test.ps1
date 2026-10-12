@@ -209,7 +209,25 @@ Write-Host "`n[۷] گارد GetIsConnectToMoadian"
 try {
     $r = Invoke-Moadian -Method POST -Path "GetIsConnectToMoadian" -Body @{ taxMemoryID = "TEST"; webServiceAddress = "https://x"; filePrivatekey = $null }
     Check "بدون فایل کلید → 400 پیام فارسی (نه 500)" ($r.success -eq $false -and $r.status -eq 400) ($r.message)
+
+    # حالت دوم: با cpinfoid — سرور رکورد اتصال را از بانک و کلید را از uploads/{نام شرکت} می‌خواند
+    $r2 = Invoke-Moadian -Method POST -Path "GetIsConnectToMoadian" -Body @{ cpinfoid = $cpid }
+    Check "اتصال‌نثبت → 400 پیام فارسی (نه 500)" ($r2.success -eq $false -and $r2.status -eq 400) ($r2.message)
 } catch { Check "گارد تست اتصال" $false "$_" }
+
+# ---------- ۸) حذف شرکت (تمیزکاری پایانی) ----------
+Write-Host "`n[۸] حذف نرم شرکت تست"
+try {
+    $r = Invoke-Moadian -Method DELETE -Path "DeleteCpInfo/$cpid"
+    Check "DeleteCpInfo" ($r.success -eq $true) ($r.message)
+
+    $r2 = Invoke-Moadian -Method GET -Path "GetCpInfos"
+    $still = $r2.data | Where-Object { $_.cpinfoid -eq $cpid }
+    Check "شرکت حذف‌شده از فهرست نمی‌آید" ($null -eq $still)
+
+    $r3 = Invoke-Moadian -Method DELETE -Path "DeleteCpInfo/$cpid"
+    Check "حذف شرکت ناموجود → 404" ($r3.success -eq $false -and $r3.status -eq 404) ($r3.message)
+} catch { Check "بخش حذف شرکت" $false "$_" }
 
 # ---------- جمع‌بندی ----------
 Write-Host "`n========================================" -ForegroundColor Cyan

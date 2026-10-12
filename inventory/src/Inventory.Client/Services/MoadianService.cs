@@ -13,6 +13,7 @@ public interface IMoadianService
     // ---------- شرکت / سال مالی / مشتری ----------
     Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync();
     Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm);
+    Task<ApiModel> DeleteCpInfoAsync(int id);
     Task<List<VMFiscalYear>> GetFiscalYearsAsync(int cpinfoId);
     Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear vm);
     Task<List<VMCustomerList>> GetCustomersAsync(int cpinfoId);
@@ -85,6 +86,9 @@ public class MoadianService : IMoadianService
 
     public Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm)
         => _api.PostAsync<ApiModel>("Moadian/SaveCpInfo", vm);
+
+    public Task<ApiModel> DeleteCpInfoAsync(int id)
+        => _api.DeleteAsync<ApiModel>($"Moadian/DeleteCpInfo/{id}");
 
     public async Task<List<VMFiscalYear>> GetFiscalYearsAsync(int cpinfoId)
         => Must<List<VMFiscalYear>>(await _api.GetAsync<ApiModel>($"Moadian/GetFiscalYears/{cpinfoId}")) ?? new();
