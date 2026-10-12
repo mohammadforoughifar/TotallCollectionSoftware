@@ -11,7 +11,7 @@ namespace Inventory.Api.Services;
 /// </summary>
 public interface IIncomingLetterService
 {
-    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
@@ -60,7 +60,7 @@ public class IncomingLetterService : IIncomingLetterService
         return $"{pc.GetYear(date)}/V/{numberSabt}";
     }
 
-    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15)
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
@@ -71,6 +71,16 @@ public class IncomingLetterService : IIncomingLetterService
                         && e.IsBayegani != true);
 
         if (unreadOnly == true) q = q.Where(e => !e.IsRead);
+
+        // باگ B1: پوشهٔ «نشان‌شده» در کارتابل تا پیش از این هیچ فیلتری اعمال نمی‌کرد و
+        // دقیقاً همان لیست «دریافتی» را نشان می‌داد. فیلتر باید «سمت سرور» باشد چون
+        // فیلتر سمت کلاینت فقط صفحهٔ جاری را محدود می‌کند و نامه‌های نشان‌شدهٔ صفحات
+        // دیگر هرگز دیده نمی‌شدند. نشان روی Erja.IsNeshan است، یعنی به‌ازای هر کاربر —
+        // درست همان موجودیتی که ToggleNeshanAsync تغییرش می‌دهد.
+        //
+        // پارامتر عمداً در «انتهای» امضا اضافه شد تا چهار فراخوان موجودِ AiTools و
+        // AiBriefingService (که positionally صدا می‌زنند) نشکنند.
+        if (starredOnly == true) q = q.Where(e => e.IsNeshan);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

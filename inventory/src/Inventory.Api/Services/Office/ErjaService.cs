@@ -277,6 +277,42 @@ public class ErjaService : IErjaService
         return roots;
     }
 
+    /// <summary>
+    /// کانال SignalR مناسب برای «نوع» نامه.
+    ///
+    /// باگ B9: سه متد پایین کانال «letters» را سخت‌کد کرده بودند، در حالی که
+    /// AddErjaAsync (خط ۱۵۲) و AnswerAsync آن را بر اساس نوع نامه حل می‌کنند و کلاینت
+    /// هم تفکیک‌شده مشترک می‌شود (MainLayout: «incoming-letters» / «outgoing-letters»).
+    /// نتیجه: خوانده‌شدن یا بایگانی یک نامهٔ وارده/صادره روی کانال نامهٔ «داخلی»
+    /// broadcast می‌شد، پس کارتابل همان ماژول و شمارندهٔ نخوانده‌های منوی کناری
+    /// به‌روز نمی‌شدند و تا رفرش دستی کهنه می‌ماندند.
+    ///
+    /// SourceType: 1=داخلی، 2=صادره، 3=وارده — در هر سه سرویس صریحاً مقداردهی می‌شود
+    /// (InnerLetterService:161، OutgoingLetterService:247، IncomingLetterService:492)،
+    /// پس اتکا به آن از Include کردن سه navigation سبک‌تر و مطمئن‌تر است.
+    /// نامهٔ پیدا‌نشده به «letters» برمی‌گردد تا هرگز broadcast حذف نشود.
+    /// </summary>
+    private static string ChannelOf(int sourceType)
+        => sourceType switch { 2 => "outgoing-letters", 3 => "incoming-letters", _ => "letters" };
+
+    private async Task<string> ChannelForAsync(int sourceId)
+        => ChannelOf(await _db.LetterSources.AsNoTracking()
+            .Where(s => s.Id == sourceId)
+            .Select(s => s.SourceType)
+            .FirstOrDefaultAsync());
+
+    /// <summary>حالت گروهی — یک کوئی برای همهٔ نامه‌ها، و هر کانالِ درگیر فقط یک بار.</summary>
+    private async Task<List<string>> ChannelsForAsync(IEnumerable<int> sourceIds)
+    {
+        var ids = sourceIds.Distinct().ToList();
+        if (ids.Count == 0) return new List<string>();
+        var types = await _db.LetterSources.AsNoTracking()
+            .Where(s => ids.Contains(s.Id))
+            .Select(s => s.SourceType)
+            .ToListAsync();
+        return types.Select(ChannelOf).Distinct().ToList();
+    }
+
     public async Task MarkReadAsync(int erjaId, int userId)
     {
         var erja = await _db.Erjas.FirstOrDefaultAsync(e => e.ErjaId == erjaId && !e.IsDelete)
@@ -299,7 +335,7 @@ public class ErjaService : IErjaService
             pending.DateRead = now;
         }
         await _db.SaveChangesAsync();
-        await _notify.BroadcastChangedAsync("letters");
+        await _notify.BroadcastChangedAsync(await ChannelForAsync(erja.SourceId));
     }
 
     public async Task<bool> ToggleNeshanAsync(int erjaId, int userId)
@@ -311,6 +347,9 @@ public class ErjaService : IErjaService
 
         erja.IsNeshan = !erja.IsNeshan;
         await _db.SaveChangesAsync();
+        // باگ B9: این متد «هیچ» broadcast‌ای نداشت. ستاره تغییر می‌کرد ولی هیچ
+        // کارتابلی باخبر نمی‌شد — پس فهرست «نشان‌شده» تا رفرش دستی کهنه می‌ماند.
+        await _notify.BroadcastChangedAsync(await ChannelForAsync(erja.SourceId));
         return erja.IsNeshan;
     }
 
@@ -324,7 +363,7 @@ public class ErjaService : IErjaService
 
         erja.IsBayegani = erja.IsBayegani != true;
         await _db.SaveChangesAsync();
-        await _notify.BroadcastChangedAsync("letters");
+        await _notify.BroadcastChangedAsync(await ChannelForAsync(erja.SourceId));
         return erja.IsBayegani == true;
     }
 
@@ -361,7 +400,10 @@ public class ErjaService : IErjaService
         }
 
         await _db.SaveChangesAsync();
-        await _notify.BroadcastChangedAsync("letters");
+        // انتخاب گروهی می‌تواند نامه‌هایی از چند ماژول مختلف داشته باشد، پس هر کانالِ
+        // درگیر یک بار broadcast می‌شود — با «یک» کوئی، نه یکی به ازای هر نامه.
+        foreach (var ch in await ChannelsForAsync(erjas.Select(e => e.SourceId)))
+            await _notify.BroadcastChangedAsync(ch);
         return erjas.Count;
     }
 

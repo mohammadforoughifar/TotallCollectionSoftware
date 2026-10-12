@@ -4,7 +4,7 @@ namespace Inventory.Client.Services;
 
 public interface IIncomingLetterService
 {
-    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync();
@@ -57,11 +57,12 @@ public class IncomingLetterService : IIncomingLetterService
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
     private class BatchBayeganiRes { public int Count { get; set; } }
 
-    public Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
+        if (starredOnly == true) qs.Add("starredOnly=true");
         return ListOrPaged.GetPagedAsync<IncomingLetterListItemDto>(_api, $"api/incoming-letters/inbox?{string.Join("&", qs)}");
     }
 

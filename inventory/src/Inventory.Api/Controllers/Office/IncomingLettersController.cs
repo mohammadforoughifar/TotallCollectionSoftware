@@ -80,12 +80,12 @@ public class IncomingLettersController : RbacControllerBase
     }
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> GetInbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> GetInbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] bool? starredOnly = null, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly));
     }
 
     [HttpGet("archive")]
@@ -296,8 +296,15 @@ public class IncomingLettersController : RbacControllerBase
 
     /// <summary>عملگرهای ارجاع (جهت اقدام، جهت اطلاع و …)</summary>
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
+    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null)
+    {
+        // باگ B10: این سه endpoint یک گروه‌اند (recivers / groups / amalgars) ولی فقط
+        // دوتای اول گارد RBAC داشتند. این یکی بدون هیچ بررسی بود، پس هر کاربر
+        // لاگین‌کرده — حتی بدون مجوز نامه وارده — می‌توانست فهرست عملگرهای ارجاع
+        // (ساختار چارت سازمانی) را بخواند.
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
+    }
 
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
