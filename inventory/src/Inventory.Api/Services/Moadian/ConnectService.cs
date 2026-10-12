@@ -3221,18 +3221,37 @@ context.Customers.Any(x =>
             ApiModel model = new();
             try
             {
-                if (string.IsNullOrWhiteSpace(modeldata.PersianName))
+                if (string.IsNullOrWhiteSpace(modeldata.PersianName) || string.IsNullOrWhiteSpace(modeldata.Nationalid))
                     return CreateErrorResponse(400);
 
-                var cp = new CpInfo
+                // جلوگیری از ثبت شناسهٔ ملی تکراری (به‌جز خودِ رکورد در حالت ویرایش)
+                if (await context.CPInfos.AnyAsync(c => c.Nationalid == modeldata.Nationalid && c.Id != modeldata.cpinfoid))
+                    return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکتی با این شناسهٔ ملی قبلاً ثبت شده است." };
+
+                // cpinfoid=0 ← ثبت جدید | cpinfoid>0 ← ویرایش رکورد موجود
+                if (modeldata.cpinfoid > 0)
                 {
-                    PersianName = modeldata.PersianName,
-                    Nationalid = modeldata.Nationalid,
-                    EconomicNumber = modeldata.EconomicNumber
-                };
-                context.CPInfos.Add(cp);
-                await context.SaveChangesAsync();
-                modeldata.cpinfoid = cp.Id;
+                    var exist = await context.CPInfos.FindAsync(modeldata.cpinfoid);
+                    if (exist is null)
+                        return new ApiModel { Data = null, Status = 404, Success = false, Message = "شرکت مورد نظر یافت نشد." };
+
+                    exist.PersianName = modeldata.PersianName;
+                    exist.Nationalid = modeldata.Nationalid;
+                    exist.EconomicNumber = modeldata.EconomicNumber;
+                    await context.SaveChangesAsync();
+                }
+                else
+                {
+                    var cp = new CpInfo
+                    {
+                        PersianName = modeldata.PersianName,
+                        Nationalid = modeldata.Nationalid,
+                        EconomicNumber = modeldata.EconomicNumber
+                    };
+                    context.CPInfos.Add(cp);
+                    await context.SaveChangesAsync();
+                    modeldata.cpinfoid = cp.Id;
+                }
                 model.Data = modeldata;
                 model.Status = 201;
                 model.Success = true;

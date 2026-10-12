@@ -13,6 +13,11 @@ namespace Inventory.Api.Controllers.Moadian
 {
     // [ApiVersion("1", Deprecated = true)] // حذف شد: API فعلی نسخه‌بندی ندارد
 
+    // ⚠️ راه‌اندازی مسیر: کلاینت همه‌ی فراخوانی‌ها را با پیشوند /Moadian/{action} می‌زند
+    // (مثلاً http://localhost:5100/Moadian/SaveCpInfo). بدون این دو اتریبیوت، اکشن‌ها
+    // روی مسیر خام خودشان مپ می‌شدند و کلاینت 404 با بدنهٔ خالی می‌گرفت.
+    [ApiController]
+    [Route("Moadian")]
     public class MoadianController(IConnectService connectService, IWebHostEnvironment _env) : BaseApiController
     {
     
