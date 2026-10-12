@@ -109,8 +109,8 @@
 
 <div class="card shadow-sm mb-4">
     <div class="card-header fw-700 d-flex justify-content-between align-items-center" style="background:linear-gradient(135deg,#4f8cff,#8e5cff);color:#fff;border-radius:14px 14px 0 0;">
-        <span><i class="bi bi-cpu-fill me-2"></i>لیست سیستم‌های شناسایی شده</span>
-        <a href="/system-id" class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;"><i class="bi bi-plus-lg"></i> ثبت جدید</a>
+        <span><i class="bi bi-buildings-fill me-2"></i>لیست سیستم‌ها به تفکیک شرکت</span>
+        <a href="/system-id/manual" class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;"><i class="bi bi-plus-lg"></i> ثبت دستی سیستم</a>
     </div>
     <div class="card-body">
         @if (items == null)
@@ -123,45 +123,62 @@
         }
         else
         {
-            <div class="table-responsive"><table class="table table-hover align-middle mb-0" style="border-radius:12px;white-space:nowrap;">
+            <div class="company-grouping-note"><i class="bi bi-info-circle"></i> هر بخش زیر، سیستم‌های یک شرکت را جداگانه نمایش می‌دهد.</div>
+            <div class="table-responsive"><table class="table table-hover align-middle mb-0 systems-by-company" style="border-radius:12px;white-space:nowrap;">
                 <thead class="table-light">
                     <tr>
                         <th>#</th><th>ایجنت</th><th>CPU</th><th>RAM</th>
-                        <th>مادربرد</th><th>IP</th><th>سلامت</th><th>زمان</th><th>کاربر</th><th>وضعیت</th><th>عملیات</th>
+                        <th>مادربرد</th><th>IP</th><th>سلامت</th><th>زمان</th><th>واحد</th><th>کاربر</th><th>وضعیت</th><th>عملیات</th>
                     </tr>
                 </thead>
-                <tbody>
-                    @foreach (var item in items)
-                    {
-                        <tr class="@(item.IsApproved ? "table-success" : "")">
-                            <td class="fw-600 text-secondary">@item.Id</td>
-                            <td><span class="badge bg-dark">@item.AgentId</span></td>
-                            <td>
-                                        @{ var pCpu = PendingCpu(item); }
-                                        @if (!string.IsNullOrEmpty(pCpu) && pCpu != item.Cpu)
-                                        {
-                                            <div class="text-muted text-decoration-line-through small">@(string.IsNullOrEmpty(item.Cpu) ? "—" : item.Cpu)</div>
-                                            <div class="text-success fw-800">⚠️ @pCpu</div>
-                                        }
-                                        else
-                                        {
-                                            <b>@(string.IsNullOrEmpty(item.Cpu) ? "—" : item.Cpu)</b>
-                                        }
-                                    </td>
-                            <td>@(item.TotalRamGb > 0 ? item.TotalRamGb + " GB" : (string.IsNullOrEmpty(item.Ram) ? "—" : item.Ram))</td>
-                            <td>@(string.IsNullOrEmpty(item.Motherboard) ? "—" : item.Motherboard)</td>
-                                <td><span class="badge bg-dark">@GetFirstIp(item)</span></td>
-                            <td class="text-center">
-                                @if (item.Health.HasValue)
-                                {
-                                    <HealthGauge Score="item.Health" Size="40" Tooltip="@HealthTip(item.Health)" />
-                                }
-                                else
-                                {
-                                    <span class="badge bg-light text-dark border">—</span>
-                                }
+                @foreach (var companyGroup in CompanyGroups)
+                {
+                    <tbody class="@(companyGroup.CompanyId.HasValue ? "company-systems" : "company-systems company-unassigned")">
+                        <tr class="company-divider">
+                            <td colspan="12">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="company-divider-icon"><i class="bi @(companyGroup.CompanyId.HasValue ? "bi-building-fill" : "bi-question-circle-fill")"></i></span>
+                                    <b>@companyGroup.Name</b>
+                                    @if (!string.IsNullOrWhiteSpace(companyGroup.Code))
+                                    {
+                                        <span class="badge bg-light text-dark border">@companyGroup.Code</span>
+                                    }
+                                    <span class="company-count ms-auto">@companyGroup.Items.Count سیستم</span>
+                                </div>
                             </td>
-                            <td>@item.ReceivedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                        </tr>
+                        @foreach (var item in companyGroup.Items)
+                        {
+                            <tr class="@(item.IsApproved ? "table-success" : "")">
+                                <td class="fw-600 text-secondary">@item.Id</td>
+                                <td><span class="badge bg-dark">@item.AgentId</span></td>
+                                <td>
+                                    @{ var pCpu = PendingCpu(item); }
+                                    @if (!string.IsNullOrEmpty(pCpu) && pCpu != item.Cpu)
+                                    {
+                                        <div class="text-muted text-decoration-line-through small">@(string.IsNullOrEmpty(item.Cpu) ? "—" : item.Cpu)</div>
+                                        <div class="text-success fw-800">⚠️ @pCpu</div>
+                                    }
+                                    else
+                                    {
+                                        <b>@(string.IsNullOrEmpty(item.Cpu) ? "—" : item.Cpu)</b>
+                                    }
+                                </td>
+                                <td>@(item.TotalRamGb > 0 ? item.TotalRamGb + " GB" : (string.IsNullOrEmpty(item.Ram) ? "—" : item.Ram))</td>
+                                <td>@(string.IsNullOrEmpty(item.Motherboard) ? "—" : item.Motherboard)</td>
+                                <td><span class="badge bg-dark">@GetFirstIp(item)</span></td>
+                                <td class="text-center">
+                                    @if (item.Health.HasValue)
+                                    {
+                                        <HealthGauge Score="item.Health" Size="40" Tooltip="@HealthTip(item.Health)" />
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border">—</span>
+                                    }
+                                </td>
+                                <td>@item.ReceivedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                                <td>@GetDepartmentName(item.DepartmentId)</td>
                                 <td>
                                     @if (item.UserId is > 0)
                                     {
@@ -175,42 +192,43 @@
                                         @GetUserName(item.UserId)
                                     }
                                 </td>
-                            <td>
-                                @if (item.IsApproved)
-                                {
-                                    <span class="badge bg-success">تأیید شده</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-warning text-dark">در انتظار</span>
-                                }
-                                @if (!string.IsNullOrEmpty(item.PendingPayloadJson))
-                                {
-                                    <div class="mt-1"><span class="badge bg-danger">🔄 تغییر در انتظار تایید</span></div>
-                                }
-                            </td>
-                            <td>
-                                <div class="ops d-flex gap-1 justify-content-center align-items-center">
-                                    @if (!item.IsApproved)
+                                <td>
+                                    @if (item.IsApproved)
                                     {
-                                        <button class="btn btn-sm btn-success ops-btn" @onclick="() => Approve(item.Id)" title="تأیید">
-                                            <i class="bi bi-check-circle-fill"></i>
-                                        </button>
+                                        <span class="badge bg-success">تأیید شده</span>
                                     }
-                                    <a href="/system-id/@item.Id" class="btn btn-sm btn-outline-info ops-btn" title="جزئیات">
-                                        <i class="bi bi-eye-fill"></i>
-                                    </a>
-                                    <button class="btn btn-sm btn-outline-secondary ops-btn" title="تاریخچه تغییرات" @onclick="() => OpenHistory(item)">
-                                        <i class="bi bi-clock-history"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger ops-btn" @onclick="() => Delete(item.Id)" title="حذف رکورد">
-                                        <i class="bi bi-trash-fill"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">در انتظار</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(item.PendingPayloadJson))
+                                    {
+                                        <div class="mt-1"><span class="badge bg-danger">🔄 تغییر در انتظار تایید</span></div>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="ops d-flex gap-1 justify-content-center align-items-center">
+                                        @if (!item.IsApproved)
+                                        {
+                                            <button class="btn btn-sm btn-success ops-btn" @onclick="() => Approve(item.Id)" title="تأیید">
+                                                <i class="bi bi-check-circle-fill"></i>
+                                            </button>
+                                        }
+                                        <a href="/system-id/@item.Id" class="btn btn-sm btn-outline-info ops-btn" title="جزئیات">
+                                            <i class="bi bi-eye-fill"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-secondary ops-btn" title="تاریخچه تغییرات" @onclick="() => OpenHistory(item)">
+                                            <i class="bi bi-clock-history"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger ops-btn" @onclick="() => Delete(item.Id)" title="حذف رکورد">
+                                            <i class="bi bi-trash-fill"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                }
             </table></div>
         }
     </div>
@@ -278,11 +296,19 @@
 .hist-box{border-right:4px solid #8e5cff;background:#fafbff;border-radius:12px;padding:.7rem .95rem;margin-bottom:.6rem;}
 .hist-diff{font-size:.84rem;color:#3c4358;padding:.14rem 0;line-height:1.9;}
 .ops-btn{width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:8px;}
+/* ====== تفکیک سیستم‌ها بر اساس شرکت ====== */
+.company-grouping-note{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.8rem;padding:.42rem .7rem;background:#f4f1ff;border:1px solid #ddd3ff;color:#594d80;border-radius:9px;font-size:.8rem;font-weight:700;}
+.systems-by-company .company-divider td{padding:.68rem .85rem;background:linear-gradient(135deg,#eef5ff,#f5f0ff);border-top:2px solid #c7d9ff;border-bottom:1px solid #dbe5fb;color:#303a5d;}
+.systems-by-company .company-divider-icon{width:29px;height:29px;border-radius:9px;background:#6850df;color:#fff;display:inline-flex;align-items:center;justify-content:center;}
+.systems-by-company .company-count{background:#fff;border:1px solid #d7def0;border-radius:999px;padding:.18rem .58rem;font-size:.76rem;font-weight:800;color:#56617d;}
+.systems-by-company .company-unassigned .company-divider td{background:linear-gradient(135deg,#fff8e8,#fff0f1);border-top-color:#f2d494;}
+.systems-by-company .company-unassigned .company-divider-icon{background:#c58a18;}
 </style>
 
 @code {
     private List<SystemInfoItem> items = new();
     private List<SystemUserItem> users = new();
+    private List<SystemCompanyItem> companies = new();
 
     private static string GetFirstIp(SystemInfoItem it)
     {
@@ -326,6 +352,37 @@
         var u = users.FirstOrDefault(x => x.Id == userId);
         return u is null ? $"#{userId}" : $"{u.FirstName} {u.LastName}";
     }
+
+    private string GetDepartmentName(int? departmentId)
+    {
+        if (departmentId is not > 0) return "—";
+        return departments.FirstOrDefault(x => x.Id == departmentId)?.Name ?? $"واحد #{departmentId}";
+    }
+
+    private sealed class CompanySystemGroup
+    {
+        public int? CompanyId { get; init; }
+        public string Name { get; init; } = "";
+        public string? Code { get; init; }
+        public List<SystemInfoItem> Items { get; init; } = new();
+    }
+
+    private List<CompanySystemGroup> CompanyGroups => items
+        .GroupBy(item => item.CompanyId)
+        .Select(group =>
+        {
+            var company = group.Key is > 0 ? companies.FirstOrDefault(c => c.Id == group.Key.Value) : null;
+            return new CompanySystemGroup
+            {
+                CompanyId = group.Key,
+                Name = company?.Name ?? (group.Key is > 0 ? $"شرکت حذف‌شده / ناشناخته (#{group.Key})" : "بدون شرکت"),
+                Code = company?.Code,
+                Items = group.OrderByDescending(item => item.ReceivedAt).ToList()
+            };
+        })
+        .OrderBy(group => group.CompanyId.HasValue ? 0 : 1)
+        .ThenBy(group => group.Name)
+        .ToList();
 
     private static string HealthTip(int? h) => h.HasValue ? "امتیاز سلامت: " + h.Value + "از ۱۰۰" : "";
 
@@ -382,6 +439,8 @@
             items = all.OrderByDescending(x => x.ReceivedAt).ToList();
             try { users = await Http.GetFromJsonAsync<List<SystemUserItem>>("/api/SystemUsers") ?? new(); }
             catch { users = new(); }
+            try { companies = await Http.GetFromJsonAsync<List<SystemCompanyItem>>("/api/SystemCompanies") ?? new(); }
+            catch { companies = new(); }
             try { departments = await Http.GetFromJsonAsync<List<DeptItem>>("/api/SystemDepartments") ?? new(); }
             catch { departments = new(); }
             ComputeAlarm();
@@ -592,6 +651,14 @@
         public string LastName { get; set; } = "";
         public string StaffNumber { get; set; } = "";
         public int? CompanyId { get; set; }
+    }
+
+    public class SystemCompanyItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Code { get; set; }
+        public bool IsActive { get; set; }
     }
 
     public class SystemInfoItem

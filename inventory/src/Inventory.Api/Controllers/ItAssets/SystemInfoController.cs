@@ -64,6 +64,28 @@ public class SystemInfoController : ControllerBase
         public string? DetailsJson { get; set; }
     }
 
+    /// <summary>
+    /// داده‌های ثبت دستی شناسنامهٔ یک سیستم. این مسیر مخصوص مدیر سامانه است و
+    /// مستقل از گزارش خودکار ایجنت عمل می‌کند.
+    /// </summary>
+    public class ManualSystemInfoRequest
+    {
+        public string AgentId { get; set; } = "";
+        public int CompanyId { get; set; }
+        public int? DepartmentId { get; set; }
+        public int? UserId { get; set; }
+        public string? ComputerModel { get; set; }
+        public string? Motherboard { get; set; }
+        public string? Cpu { get; set; }
+        public int TotalRamGb { get; set; }
+        public string? Ram { get; set; }
+        public string? HardDisk { get; set; }
+        public string? Graphics { get; set; }
+        public string? Monitor { get; set; }
+        public string? OsName { get; set; }
+        public string? Ip { get; set; }
+    }
+
     private static readonly JsonSerializerOptions JOpt = new() { PropertyNameCaseInsensitive = true };
 
     // ================= دریافت ایجنت (upsert + مقایسه) =================
@@ -123,6 +145,121 @@ public class SystemInfoController : ControllerBase
         await _db.SaveChangesAsync();
         _ = _dash.BroadcastAsync();
         return Ok(new { id = info.Id, agent = info.AgentId, updated = false, firstRegistration = true });
+    }
+
+    // ================= ثبت دستی سیستم =================
+
+    /// <summary>
+    /// ثبت سیستم‌هایی که ایجنت روی آن‌ها اجرا نمی‌شود یا مشخصاتشان باید دستی وارد شود.
+    /// برخلاف POST اصلی، این مسیر کلید ایجنت نمی‌خواهد و با احراز هویت عادی برنامه محافظت می‌شود.
+    /// </summary>
+    [HttpPost("manual")]
+    public async Task<IActionResult> CreateManual([FromBody] ManualSystemInfoRequest request)
+    {
+        if (request == null) return BadRequest(new { message = "اطلاعات ثبت دستی ارسال نشده است." });
+
+        var agentId = (request.AgentId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(agentId))
+            return BadRequest(new { message = "نام یا کد سیستم الزامی است." });
+        if (request.CompanyId <= 0)
+            return BadRequest(new { message = "انتخاب شرکت الزامی است." });
+
+        var company = await _db.SystemCompanies.FirstOrDefaultAsync(c => c.Id == request.CompanyId && c.IsActive);
+        if (company == null)
+            return BadRequest(new { message = "شرکت انتخاب‌شده معتبر یا فعال نیست." });
+
+        if (await _db.SystemInfos.AnyAsync(s => s.AgentId == agentId))
+            return Conflict(new { message = "سیستمی با این نام یا کد قبلاً ثبت شده است." });
+
+        if (request.DepartmentId is > 0)
+        {
+            var departmentOk = await _db.SystemDepartments.AnyAsync(d => d.Id == request.DepartmentId && d.IsActive && d.CompanyId == company.Id);
+            if (!departmentOk)
+                return BadRequest(new { message = "واحد انتخاب‌شده به شرکت انتخابی تعلق ندارد." });
+        }
+
+        SystemUser? user = null;
+        if (request.UserId is > 0)
+        {
+            user = await _db.SystemUsers.FirstOrDefaultAsync(u => u.Id == request.UserId && u.IsActive);
+            if (user == null)
+                return BadRequest(new { message = "کاربر انتخاب‌شده معتبر یا فعال نیست." });
+            if (user.CompanyId != company.Id)
+                return BadRequest(new { message = "کاربر انتخاب‌شده به شرکت انتخابی تعلق ندارد." });
+        }
+
+        static string? TrimOrNull(string? value)
+        {
+            var cleaned = value?.Trim();
+            return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+        }
+
+        var cpu = TrimOrNull(request.Cpu);
+        var ram = TrimOrNull(request.Ram);
+        var disk = TrimOrNull(request.HardDisk);
+        var graphics = TrimOrNull(request.Graphics);
+        var monitor = TrimOrNull(request.Monitor);
+        var ip = TrimOrNull(request.Ip);
+        var motherboard = TrimOrNull(request.Motherboard);
+        var model = TrimOrNull(request.ComputerModel);
+        var osName = TrimOrNull(request.OsName);
+
+        // JSON ساختاریافته، تا صفحهٔ جزئیات و جدول‌های قطعات نیز برای ثبت دستی پر شوند.
+        var details = new
+        {
+            board = motherboard,
+            computerModel = model,
+            cpus = string.IsNullOrWhiteSpace(cpu) ? Array.Empty<object>() : new object[] { new { name = cpu, cores = 0, threads = 0, clockGhz = 0 } },
+            ramSticks = request.TotalRamGb > 0
+                ? new object[] { new { slot = "ثبت دستی", capacityGb = request.TotalRamGb, type = ram ?? "", speedMhz = 0, manufacturer = "", partNumber = "", serialNumber = "" } }
+                : Array.Empty<object>(),
+            disks = string.IsNullOrWhiteSpace(disk) ? Array.Empty<object>() : new object[] { new { model = disk, sizeGb = 0, @interface = "", serialNumber = "" } },
+            gpus = string.IsNullOrWhiteSpace(graphics) ? Array.Empty<object>() : new object[] { new { name = graphics, resolution = "" } },
+            monitors = string.IsNullOrWhiteSpace(monitor) ? Array.Empty<object>() : new object[] { new { name = monitor, resolution = "", serialNumber = "", isPrimary = true } },
+            netAdapters = string.IsNullOrWhiteSpace(ip) ? Array.Empty<object>() : new object[] { new { name = "ثبت دستی", description = "", type = "", macAddress = "", ipv4 = ip, gateway = "" } },
+            volumes = Array.Empty<object>()
+        };
+
+        var info = new SystemInfo
+        {
+            AgentId = agentId,
+            CompanyId = company.Id,
+            DepartmentId = request.DepartmentId,
+            UserId = user?.Id,
+            Motherboard = motherboard,
+            Cpu = cpu,
+            Ram = request.TotalRamGb > 0 ? $"{request.TotalRamGb} GB" : ram,
+            HardDisk = disk,
+            Graphics = graphics,
+            Monitor = monitor,
+            OsName = osName,
+            TotalRamGb = Math.Max(0, request.TotalRamGb),
+            DetailsJson = JsonSerializer.Serialize(details),
+            ReceivedAt = DateTime.Now,
+            // اطلاعاتی که توسط مدیر وارد می‌شود، نیازمند چرخهٔ تأیید ایجنت نیست.
+            IsApproved = true
+        };
+
+        _db.SystemInfos.Add(info);
+        await _db.SaveChangesAsync();
+        SyncComponents(info);
+
+        if (user != null)
+        {
+            _db.SystemInfoUserHistories.Add(new SystemInfoUserHistory
+            {
+                SystemInfoId = info.Id,
+                UserId = user.Id,
+                UserName = $"{user.FirstName} {user.LastName}".Trim(),
+                StaffNumber = user.StaffNumber,
+                CompanyName = company.Name,
+                FromAt = DateTime.Now
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        _ = _dash.BroadcastAsync();
+        return Ok(new { id = info.Id, message = "سیستم با موفقیت ثبت شد." });
     }
 
     [HttpGet]

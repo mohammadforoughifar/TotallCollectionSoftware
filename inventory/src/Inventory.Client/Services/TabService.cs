@@ -106,6 +106,7 @@ public sealed class TabService
         ("system-company",              "کمپانی‌ها",            "bi-building"),
         ("system-users",                "کاربران سیستم",        "bi-people-fill"),
         ("system-info",                 "سیستم‌های ثبت‌شده",    "bi-list-check"),
+        ("system-id/manual",            "ثبت دستی سیستم",       "bi-pc-display-horizontal"),
         ("system-id",                   "شناسنامه سیستم",       "bi-cpu-fill"),
         ("network-scan",                "اسکن شبکه",            "bi-broadcast-pin"),
         ("office-machines",             "ماشین‌های اداری",      "bi-printer-fill"),
