@@ -72,6 +72,22 @@
                                             <input class="form-control form-control-sm num" value="@cashAmountText"
                                                    @oninput="@(e => cashAmountText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" placeholder="0" />
                                         </div>
+                                        <div class="col-6 col-md-4">
+                                            <label class="form-label fs-8 fw-bold">بانک‌ها</label>
+                                            <div class="input-group input-group-sm">
+                                                <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
+                                                    <option value="0">— انتخاب بانک —</option>
+                                                    @foreach (var a in AccountsForCashType(MixedCashType == CashType.Cash ? CashType.CardTransfer : MixedCashType))
+                                                    {
+                                                        <option value="@a.Id">@a.DisplayName</option>
+                                                    }
+                                                </select>
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                                        @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)">
+                                                    <i class="bi bi-plus-lg ms-1"></i> تعریف بانک
+                                                </button>
+                                            </div>
+                                        </div>
                                         @if (CashPart > 0)
                                         {
                                             <div class="col-6 col-md-3">
@@ -81,22 +97,6 @@
                                                     <option value="1">کارت‌خوان (POS)</option>
                                                     <option value="2">کارت به کارت</option>
                                                 </select>
-                                            </div>
-                                            <div class="col-12 col-md-4">
-                                                <label class="form-label fs-8">بانک / صندوق @(Type == TransactionType.Sale ? "دریافت" : "پرداخت")</label>
-                                                <div class="input-group input-group-sm">
-                                                    <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
-                                                        <option value="0">— انتخاب بانک/صندوق —</option>
-                                                        @foreach (var a in AccountsForCashType(MixedCashType))
-                                                        {
-                                                            <option value="@a.Id">@a.DisplayName</option>
-                                                        }
-                                                    </select>
-                                                    <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
-                                                            @onclick="() => OpenQuickBank(MixedCashType == CashType.Cash ? TreasuryAccountKind.Cash : (MixedCashType == CashType.CardReader ? TreasuryAccountKind.Pos : TreasuryAccountKind.Bank))">
-                                                        <i class="bi bi-plus-lg"></i>
-                                                    </button>
-                                                </div>
                                             </div>
                                             <div class="col-12 col-md-2 fs-8 pb-1">
                                                 نقد: <b class="num text-success">@CashPart.Money()</b> —
@@ -133,7 +133,7 @@
                                         </div>
                                         <div class="col-md-7">
                                             <label class="form-label fs-8 fw-bold">
-                                                @(cashType == CashType.Cash ? "صندوق / حساب نقدی" : (cashType == CashType.CardReader ? "دستگاه کارت‌خوان / بانک" : "حساب بانکی"))
+                                                @(Type == TransactionType.Sale && cashType != CashType.Cash ? "بانک‌ها" : (cashType == CashType.Cash ? "صندوق / حساب نقدی" : (cashType == CashType.CardReader ? "دستگاه کارت‌خوان / بانک" : "حساب بانکی")))
                                             </label>
                                             <div class="input-group input-group-sm">
                                                 <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
