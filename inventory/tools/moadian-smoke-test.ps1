@@ -215,8 +215,8 @@ try {
     Check "اتصال‌نثبت → 400 پیام فارسی (نه 500)" ($r2.success -eq $false -and $r2.status -eq 400) ($r2.message)
 } catch { Check "گارد تست اتصال" $false "$_" }
 
-# ---------- ۸) حذف شرکت (تمیزکاری پایانی) ----------
-Write-Host "`n[۸] حذف نرم شرکت تست"
+# ---------- ۸) حذف شرکت و بازیابی (پاک‌سازی پایانی) ----------
+Write-Host "`n[۸] حذف نرم و ثبت مجدد همان شناسهٔ ملی"
 try {
     $r = Invoke-Moadian -Method DELETE -Path "DeleteCpInfo/$cpid"
     Check "DeleteCpInfo" ($r.success -eq $true) ($r.message)
@@ -227,7 +227,21 @@ try {
 
     $r3 = Invoke-Moadian -Method DELETE -Path "DeleteCpInfo/$cpid"
     Check "حذف شرکت ناموجود → 404" ($r3.success -eq $false -and $r3.status -eq 404) ($r3.message)
-} catch { Check "بخش حذف شرکت" $false "$_" }
+
+    # سناریو واقعی: ثبت شرکت بعد از حذف نرم با همان شناسهٔ ملی — باید بازیابی موفق باشد (نه خطای تکراری)
+    $r4 = Invoke-Moadian -Method POST -Path "SaveCpInfo" -Body @{
+        cpinfoid = 0; persianName = "شرکت تست دود $runId (بازیابی)"; nationalid = $nid; type = "حقوقی"
+    }
+    Check "ثبت مجدد بعد از حذف نرم (بدون خطای تکراری)" ($r4.success -eq $true) ($r4.message)
+    Check "cpinfoid همان رکورد حذف‌شده بازیابی شد" ($r4.data.cpinfoid -eq $cpid) ("cpinfoid=$($r4.data.cpinfoid)")
+
+    $r5 = Invoke-Moadian -Method GET -Path "GetCpInfos"
+    $again = $r5.data | Where-Object { $_.cpinfoid -eq $cpid }
+    Check "شرکت بازیابی‌شده دوباره در فهرست است" ($null -ne $again)
+
+    # پاک‌سازی نهایی
+    Invoke-Moadian -Method DELETE -Path "DeleteCpInfo/$cpid" | Out-Null
+} catch { Check "بخش حذف/بازیابی شرکت" $false "$_" }
 
 # ---------- جمع‌بندی ----------
 Write-Host "`n========================================" -ForegroundColor Cyan

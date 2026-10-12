@@ -3289,8 +3289,8 @@ context.Customers.Any(x =>
                 if (string.IsNullOrWhiteSpace(modeldata.PersianName) || string.IsNullOrWhiteSpace(modeldata.Nationalid))
                     return CreateErrorResponse(400);
 
-                // جلوگیری از ثبت شناسهٔ ملی تکراری (به‌جز خودِ رکورد در حالت ویرایش)
-                if (await context.CPInfos.AnyAsync(c => c.Nationalid == modeldata.Nationalid && c.Id != modeldata.cpinfoid))
+                // جلوگیری از ثبت شناسهٔ ملی تکراری (فقط میان رکوردهای فعال — رکوردهای حذف‌نرم‌شده حساب نمی‌شوند)
+                if (await context.CPInfos.AnyAsync(c => c.Nationalid == modeldata.Nationalid && !c.IsDelete && c.Id != modeldata.cpinfoid))
                     return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکتی با این شناسهٔ ملی قبلاً ثبت شده است." };
 
                 // نوع شرکت — فقط دو مقدار معتبر؛ خالی = «حقیقی» (فرم هم همین را پیشنهاد می‌دهد)
@@ -3315,19 +3315,39 @@ context.Customers.Any(x =>
                 }
                 else
                 {
-                    var cp = new CpInfo
+                    // شرکت حذف‌نرم‌شده با همین شناسهٔ ملی → بازیابی همان رکورد (id) تا
+                    // سوابق آن (سال مالی/اتصال/صورتحساب‌ها) دوباره فعال شود — همان «غیرحذف» کامل
+                    var softDeleted = await context.CPInfos
+                        .FirstOrDefaultAsync(c => c.Nationalid == modeldata.Nationalid && c.IsDelete);
+                    if (softDeleted is not null)
                     {
-                        PersianName = modeldata.PersianName,
-                        Nationalid = modeldata.Nationalid,
-                        EconomicNumber = modeldata.EconomicNumber,
-                        Type = type,
-                        EnglishName = modeldata.EnglishName,
-                        PostalCode = modeldata.PostalCode,
-                        IsDelete = false
-                    };
-                    context.CPInfos.Add(cp);
-                    await context.SaveChangesAsync();
-                    modeldata.cpinfoid = cp.Id;
+                        softDeleted.IsDelete = false;
+                        softDeleted.PersianName = modeldata.PersianName;
+                        softDeleted.EconomicNumber = modeldata.EconomicNumber;
+                        softDeleted.Type = type;
+                        softDeleted.EnglishName = modeldata.EnglishName;
+                        softDeleted.PostalCode = modeldata.PostalCode;
+                        foreach (var cc in context.ConnectInfos.Where(x => x.CpInfo == softDeleted.Id && x.IsDelete))
+                            cc.IsDelete = false;
+                        await context.SaveChangesAsync();
+                        modeldata.cpinfoid = softDeleted.Id;
+                    }
+                    else
+                    {
+                        var cp = new CpInfo
+                        {
+                            PersianName = modeldata.PersianName,
+                            Nationalid = modeldata.Nationalid,
+                            EconomicNumber = modeldata.EconomicNumber,
+                            Type = type,
+                            EnglishName = modeldata.EnglishName,
+                            PostalCode = modeldata.PostalCode,
+                            IsDelete = false
+                        };
+                        context.CPInfos.Add(cp);
+                        await context.SaveChangesAsync();
+                        modeldata.cpinfoid = cp.Id;
+                    }
                 }
                 model.Data = modeldata;
                 model.Status = 201;
