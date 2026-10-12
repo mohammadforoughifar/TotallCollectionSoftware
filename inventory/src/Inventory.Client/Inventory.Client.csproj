@@ -24,6 +24,15 @@
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>
 
+  <!-- مُهر یکتا روی service-worker منتشرشده در هر پابلیش: مرورگر بایت‌های اسکریپت SW را
+       مقایسه می‌کند؛ بدون مُهر، فایل یکسان یعنی «نسخهٔ جدید نیست» و کاربر برای همیشه روی
+       کش قدیمی می‌ماند و تغییرات را «نمی‌بیند». -->
+  <Target Name="StampServiceWorker" AfterTargets="Publish">
+    <WriteLinesToFile File="$(PublishDir)wwwroot/service-worker.js"
+                      Lines="// build-stamp: $([System.DateTime]::UtcNow.ToString(yyyyMMddHHmmssfff))"
+                      Overwrite="false" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="../Inventory.Shared/Inventory.Shared.csproj">
       <Name>Inventory.Shared</Name>
