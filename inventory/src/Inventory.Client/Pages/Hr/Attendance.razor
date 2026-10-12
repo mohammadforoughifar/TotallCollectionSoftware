@@ -378,11 +378,11 @@
         </div>
         <div class="col-12 col-sm-4">
             <label class="form-label small fw-800">ساعت شروع</label>
-            <input type="time" class="form-control form-control-sm" dir="ltr" value="@leaveStart" @onchange='e => leaveStart = e.Value?.ToString()' />
+            <TimeTextInput @bind-Value="leaveStart" Default="08:00" />
         </div>
         <div class="col-12 col-sm-4">
             <label class="form-label small fw-800">ساعت پایان</label>
-            <input type="time" class="form-control form-control-sm" dir="ltr" value="@leaveEnd" @onchange='e => leaveEnd = e.Value?.ToString()' />
+            <TimeTextInput @bind-Value="leaveEnd" Default="10:00" />
         </div>
         @if (leaveType == "HourlyMission")
         {
