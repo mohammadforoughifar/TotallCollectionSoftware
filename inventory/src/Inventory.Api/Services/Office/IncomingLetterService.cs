@@ -32,12 +32,32 @@ public class IncomingLetterService : IIncomingLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly FileStore _store;
+    private readonly ILetterStratureService _strature;
 
-    public IncomingLetterService(AppDbContext db, INotifyService notify, FileStore store)
+    public IncomingLetterService(AppDbContext db, INotifyService notify, FileStore store, ILetterStratureService strature)
     {
         _db = db;
         _notify = notify;
         _store = store;
+        _strature = strature;
+    }
+
+    /// <summary>
+    /// ساخت شمارهٔ نامهٔ وارده از ساختار پیکربندی‌شده (TypeForm=3) — قابل تنظیم از
+    /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
+    /// «سال/V-شماره» (مثل 1404/V/12) حفظ می‌شود تا شمارهٔ نامه‌های موجود و
+    /// نصب‌های پیکربندی‌نشده نشکنند — همان قراردادی که نامهٔ داخلی و صادره دارند.
+    ///
+    /// date: تاریخ ورود/ثبت نامه (DateErsal) — مبنای جزء «سال». پیش‌تر سال از
+    /// DateTime.Now گرفته می‌شد و نامهٔ backdate‌شده شمارهٔ سالِ امروز را می‌گرفت.
+    /// </summary>
+    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date)
+    {
+        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date);
+        if (!string.IsNullOrEmpty(s)) return s;
+
+        var pc = new PersianCalendar();
+        return $"{pc.GetYear(date)}/V/{numberSabt}";
     }
 
     public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15)
@@ -276,9 +296,25 @@ public class IncomingLetterService : IIncomingLetterService
 
         if (letter == null) return null;
 
+        // ---------- بررسی دسترسی ----------
+        // باگ قبلی: هیچ بررسی‌ای وجود نداشت و پارامتر isAdmin هرگز استفاده نمی‌شد؛
+        // در نتیجه هر کاربر دارای مجوز عمومی «IncomingLetters.Read» می‌توانست با
+        // حدس‌زدن letterId متن کامل و تمام گردش «هر» نامه‌ای را بخواند — از جمله
+        // نامه‌های Mahramanegi=3 (سرّی).
+        //
+        // قاعدهٔ دسترسی دقیقاً هم‌راستا با ErjaService.GetGardeshTreeAsync است تا
+        // «جزئیات نامه» و «درخت گردش» یک سطح محافظت داشته باشند:
+        //   سازندهٔ نامه  |  حاضر در گردش (ارجاع/هامش)  |  مدیر
+        //
+        // نکته: این بررسی باید «پیش از» هر اثر جانبی انجام شود؛ وگرنه کاربر
+        // غیرمجاز هم نامه را برای خودش خوانده‌شده علامت می‌زد.
+        var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
+        var inFlow = myErjas.Count > 0;
+        if (!inFlow && letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("شما در گردش این نامه نیستید و اجازهٔ مشاهدهٔ آن را ندارید.");
+
         // علامت‌گذاری «رویت شد» برای ارجاع‌های همین کاربر
         // (باگ قبلی: شرط ذخیره پس از تغییر IsRead بررسی می‌شد و هرگز درست نبود)
-        var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
         var hadUnread = false;
         foreach (var e in myErjas)
         {
@@ -323,7 +359,7 @@ public class IncomingLetterService : IIncomingLetterService
 
         var curErja = allErjas.LastOrDefault(e => e.ReciverUserId == userId);
 
-        return new IncomingLetterDetailDto
+        var dto = new IncomingLetterDetailDto
         {
             LetterId = letter.Id,
             SourceId = letter.Id,
@@ -345,17 +381,89 @@ public class IncomingLetterService : IIncomingLetterService
             IsNeshan = letter.IsNeshan,
             IsMine = letter.CreateUserId == userId,
             CurrentErja = curErja,
-            Erjas = allErjas
+            Erjas = allErjas,
+
+            // ---------- باگ B11: این پنج فیلد تا پیش از این «هرگز» پر نمی‌شدند ----------
+            // (فیلد ششم، ErjaHistory، فقط نام مستعار Erjas است و همان را برمی‌گرداند.)
+            //
+            // «ارجاعی که کاربر جاری باید به آن پاسخ دهد». دکمهٔ «ثبت پاسخ» در UI فقط وقتی
+            // ActiveErjaId.HasValue باشد رندر می‌شود، پس تا الان هرگز دیده نمی‌شد.
+            // قرارداد «هنوز پاسخ داده نشده» در کل کدبیس e.Answer == "" است
+            // (ErjaService:179 هنگام ثبت پاسخ آن را پر می‌کند؛ AiDigestService:193 و
+            // AiBriefingService:104 هم با همین شرط می‌شمارند).
+            ActiveErjaId = myErjas
+                .Where(e => string.IsNullOrEmpty(e.Answer))
+                .OrderBy(e => e.Date)
+                .LastOrDefault()?.ErjaId,
+
+            // قابل ویرایش: ثبت‌کننده (یا مدیر) و هنوز هیچ گیرنده‌ای نامه را نخوانده باشد —
+            // دقیقاً همان قاعدهٔ InnerLetterService:476 تا رفتار دو ماژول یکی باشد.
+            CanEdit = (letter.CreateUserId == userId || isAdmin) && !allErjas.Any(e => e.IsRead),
+
+            // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
+            // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
+            IsBayegani = myErjas.Any(e => e.IsBayegani == true)
         };
+
+        // پیوست‌های نامه — بدون این، بخش «پیوست‌های نامه» در پانل خواننده همیشه خالی بود.
+        // حجم فایل باید «پس از» materialize شدن حساب شود چون _store.Size یک متد سمت کلاینت
+        // است و در projection ترجمه‌پذیر به SQL نیست. همان الگوی endpoint پیوست‌ها در
+        // IncomingLettersController، تا عدد حجم در دو جا یکسان بماند.
+        var attRows = await _db.AppAttachments.AsNoTracking()
+            .Where(a => a.Module == "IncomingLetters" && a.RefId == letterId)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
+            .ToListAsync();
+
+        dto.Attachments = attRows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
+
+        // نامه‌های مرتبط (عطف/پیرو) — هم‌راستا با InnerLetterService:492
+        dto.RelatedLetters = await _db.RelatedLetters.AsNoTracking()
+            .Where(r => r.LetterId == letterId && !r.IsDelete)
+            .Select(r => new RelatedLetterDto
+            {
+                Id = r.Id,
+                Related = r.Related,
+                RelateLetterId = r.RelateLetterId,
+                RelateLetterNumber = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber : "",
+                RelateLetterTitle = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title : ""
+            })
+            .ToListAsync();
+
+        return dto;
     }
 
     public async Task<int> AddAsync(AddIncomingLetterDto dto, int userId)
     {
         var pc = new PersianCalendar();
-        var currentYear = pc.GetYear(DateTime.Now);
 
-        var startOfYear = new DateTime(currentYear, 1, 1, new PersianCalendar());
-        var endOfYear = new DateTime(currentYear + 1, 1, 1, new PersianCalendar());
+        // مبنای سال، «تاریخ ورود/ثبت نامه» است نه امروز — وگرنه نامه‌ای که با تاریخ
+        // سال قبل ثبت می‌شود شمارهٔ ترتیبی و جزء سالِ امسال را می‌گیرد.
+        var entryDate = dto.DateErsal == default ? DateTime.Now : dto.DateErsal;
+        var currentYear = pc.GetYear(entryDate);
+
+        // تقریب شروع/پایان سال شمسی به میلادی — برای فیلتر در SQL.
+        // مثل InnerLetterService.NextNumberAsync با try/catch تا تاریخ نامعتبر استارتاپ را نخواباند.
+        DateTime startOfYear, endOfYear;
+        try
+        {
+            startOfYear = new DateTime(currentYear, 1, 1, pc);
+            endOfYear = new DateTime(currentYear + 1, 1, 1, pc);
+        }
+        catch
+        {
+            startOfYear = entryDate.AddDays(-400);
+            endOfYear = entryDate.AddDays(400);
+        }
 
         var maxNumber = await _db.IncomingLetters
             .Where(l => l.DateErsal >= startOfYear && l.DateErsal < endOfYear)
@@ -376,7 +484,8 @@ public class IncomingLetterService : IIncomingLetterService
             numberSabt = maxSabt + 1;
         }
 
-        var letterNumber = $"{currentYear}/V/{numberSabt}";
+        // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
+        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate);
 
         var source = new LetterSource
         {

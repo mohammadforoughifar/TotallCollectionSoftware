@@ -225,6 +225,13 @@
 
                     @* عملیات سریع *@
                     <div class="d-flex gap-2 justify-content-end pt-2 border-top">
+                        @if (CanDabirkhane)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" title="کپی نامه — فرم ثبت نامهٔ واردهٔ جدید با اطلاعات این نامه و همهٔ افراد در گردش"
+                                    disabled="@copying" @onclick="CopyLetter">
+                                <i class="bi bi-files"></i> کپی نامه
+                            </button>
+                        }
                         <button class="btn btn-sm btn-outline-info" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
                             <i class="bi bi-diagram-3"></i> گردش
                         </button>
@@ -253,7 +260,10 @@
 <IncomingReservationManager @ref="reservationManager" />
 <BayeganiFolderPickerModal @ref="folderPicker" />
 <IncomingLetterViewModal @ref="archiveViewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
-<ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
+@* نکته: مدال ثبت نامهٔ وارده پیش‌تر در این صفحه «دو بار» رندر می‌شد (یک بار در
+   ابتدای همین بلوک و یک بار در انتهای آن). چون ref آن دوباره مقدار می‌گرفت،
+   نمونهٔ دوم برنده می‌شد و نمونهٔ اول به‌صورت DOM مرده در صفحه می‌ماند.
+   نمونهٔ تکراری حذف شد. *@
 
 @code {
     private bool showGuide;
@@ -431,6 +441,45 @@
     {
         if (composeModal is not null)
             await composeModal.OpenCreate();
+    }
+
+    /// <summary>در جریان بودن دریافت گردش برای کپی — برای غیرفعال‌کردن دکمه.</summary>
+    private bool copying;
+
+    /// <summary>
+    /// کپی نامه وارده — فرم ثبت نامهٔ «جدید» با اطلاعات نامهٔ جاری باز می‌شود و
+    /// «همهٔ افرادِ در گردش» نیز از پیش انتخاب می‌شوند.
+    /// شمارهٔ ثبت/اندیکاتور کپی نمی‌شود تا شمارهٔ نامهٔ قبلی دوباره مصرف نشود.
+    /// </summary>
+    private async Task CopyLetter()
+    {
+        if (activeDetail == null || composeModal == null) return;
+        copying = true;
+        try
+        {
+            var recivers = await CollectGardeshRecipientsAsync(activeDetail.LetterId);
+            await composeModal.OpenCopy(activeDetail, recivers);
+            Toast.Success(recivers is { IsEmpty: false }
+                ? $"فرم ثبت نامهٔ وارده با اطلاعات نامهٔ اصلی باز شد و {recivers.Total.FaDigits()} نفر از افراد در گردش از پیش انتخاب شدند؛ شمارهٔ ثبت را بررسی کنید."
+                : "فرم ثبت نامهٔ وارده با اطلاعات نامهٔ اصلی باز شد؛ گیرندگان را انتخاب و ثبت کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { copying = false; }
+    }
+
+    /// <summary>
+    /// خواندن درخت گردش نامه و سطل‌بندی افراد بر اساس نقش‌شان.
+    /// کاربر جاری حذف می‌شود چون کمبوی گیرندگان او را فهرست نمی‌کند (u.Id != MyUserId).
+    /// شکست در دریافت گردش نباید جلوی باز شدن فرم کپی را بگیرد.
+    /// </summary>
+    private async Task<LetterCopyRecipients?> CollectGardeshRecipientsAsync(int letterId)
+    {
+        try
+        {
+            var tree = await IncomingSvc.GetGardeshAsync(letterId);
+            return tree.CollectRecipients(Auth.UserId);
+        }
+        catch { return null; }
     }
     private void OpenReservationManager() => reservationManager?.Open();
     private void OpenDetailModal(int letterId) => viewModal?.Open(letterId);

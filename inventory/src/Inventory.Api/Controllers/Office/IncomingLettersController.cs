@@ -24,6 +24,37 @@ public class IncomingLettersController : RbacControllerBase
     private async Task<bool> HasDabirkhaneAsync() =>
         await HasAsync(Module, "Dabirkhane") || await IsAdminAsync();
 
+    /// <summary>
+    /// آیا کاربر جاری مجاز به دیدن «پیوست‌های این نامهٔ وارده» است؟
+    ///
+    /// چرا لازم است؟ مجوز عمومی «IncomingLetters.Read» فقط یعنی کاربر به *ماژول*
+    /// نامه وارده دسترسی دارد، نه به *هر* نامهٔ آن. بدون این بررسی، endpointهای
+    /// پیوست با پیمایش شناسه (attId / letterId) هر فایلی را لو می‌دادند — از جمله
+    /// پیوست نامه‌های Mahramanegi=3 (سرّی).
+    ///
+    /// قاعده دقیقاً همان قاعدهٔ «جزئیات نامه» در IncomingLetterService.GetDetailAsync
+    /// و «درخت گردش» در ErjaService.GetGardeshTreeAsync است تا هر سه یک سطح محافظت
+    /// داشته باشند:  سازندهٔ نامه | حاضر در گردش (ارجاع/هامش) | مدیر
+    ///
+    /// نامهٔ حذف‌شده یا ناموجود → false (نه استثنا)، تا endpoint همان 404 قبلی را بدهد.
+    /// </summary>
+    private async Task<bool> CanAccessLetterAsync(int letterId)
+    {
+        if (letterId <= 0) return false;
+
+        var creatorUserId = await Db.IncomingLetters.AsNoTracking()
+            .Where(x => x.Id == letterId && !x.IsDelete)
+            .Select(x => (int?)x.CreateUserId)
+            .FirstOrDefaultAsync();
+        if (creatorUserId == null) return false;
+
+        if (creatorUserId.Value == MyUserId) return true;
+        if (await IsAdminAsync()) return true;
+
+        return await Db.Erjas.AnyAsync(e =>
+            e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete);
+    }
+
     private async Task<string> MyDisplayNameAsync()
     {
         var u = await Db.Users.AsNoTracking()
@@ -86,9 +117,17 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> GetDetail(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
-        if (detail == null) return NotFound(new { message = "نامه وارده یافت نشد." });
-        return Ok(detail);
+        try
+        {
+            var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
+            if (detail == null) return NotFound(new { message = "نامه وارده یافت نشد." });
+            return Ok(detail);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            // کاربر در گردش این نامه نیست — هم‌راستا با Edit و Delete همین کنترلر
+            return StatusCode(403, new { message = ex.Message });
+        }
     }
 
     [HttpPost]
@@ -265,8 +304,12 @@ public class IncomingLettersController : RbacControllerBase
     {
         var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // مجوز ماژول به‌تنهایی کافی نیست — باید در گردشِ همین نامه هم باشد
+        if (!await CanAccessLetterAsync(id))
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دیدن پیوست‌های آن را ندارید." });
+
         var rows = await Db.AppAttachments.AsNoTracking()
-            .Where(a => a.Module == "IncomingLetters" && a.RefId == id)
+            .Where(a => a.Module == Module && a.RefId == id)
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
             .ToPageListAsync(pagination);
@@ -320,9 +363,18 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("attachments/{attId:int}/download")]
     public async Task<IActionResult> DownloadAttachment(int attId)
     {
+        // باگ قبلی: این endpoint «هیچ» بررسی نداشت — نه مجوز ماژول، نه مالکیت.
+        // با پیمایش attId هر پیوستی (از جمله پیوست نامهٔ سرّی) قابل دانلود بود (IDOR).
+        // نمونهٔ همسان در EmailController.DownloadAttachment این گارد را دارد.
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+
         var a = await Db.AppAttachments.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == attId && x.Module == "IncomingLetters");
+            .FirstOrDefaultAsync(x => x.Id == attId && x.Module == Module);
         if (a == null) return NotFound();
+
+        // دسترسی به «فایل» از دسترسی به «نامه» مشتق می‌شود، نه از بارگذارندهٔ فایل
+        if (!await CanAccessLetterAsync(a.RefId))
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دانلود پیوست را ندارید." });
 
         var bytes = (a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes == null) return NotFound(new { message = "فایل پیوست پیدا نشد." });
@@ -332,8 +384,15 @@ public class IncomingLettersController : RbacControllerBase
     [HttpDelete("attachments/{attId:int}")]
     public async Task<IActionResult> DeleteAttachment(int attId)
     {
-        var a = await Db.AppAttachments.FirstOrDefaultAsync(x => x.Id == attId && x.Module == "IncomingLetters");
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+
+        var a = await Db.AppAttachments.FirstOrDefaultAsync(x => x.Id == attId && x.Module == Module);
         if (a == null) return NotFound();
+
+        // پیش از قاعدهٔ «بارگذارنده یا مدیر»، کاربر باید اساساً به این نامه دسترسی داشته باشد
+        if (!await CanAccessLetterAsync(a.RefId))
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ حذف پیوست را ندارید." });
+
         if (a.UploaderUserId != MyUserId && !await IsAdminAsync())
             return StatusCode(403, new { message = "فقط بارگذارنده یا مدیر می‌تواند پیوست را حذف کند." });
 
