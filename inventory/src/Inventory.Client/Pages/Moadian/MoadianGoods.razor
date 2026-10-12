@@ -224,7 +224,7 @@
         if (string.IsNullOrWhiteSpace(form.UniqueIdentifier)) { formError = "شناسهٔ CPC الزامی است."; return; }
         if (!string.IsNullOrEmpty(form.UniqueIdentifier) && form.UniqueIdentifier.Length != 11)
         { formError = "شناسهٔ CPC باید ۱۱ رقم باشد."; return; }
-        if ((form.Price ?? 0) <= 0) { formError = "قیمت واحد باید بیشتر از صفر باشد."; return; }
+        if (form.Price <= 0) { formError = "قیمت واحد باید بیشتر از صفر باشد."; return; }
 
         saving = true; StateHasChanged();
         try
