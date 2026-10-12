@@ -104,6 +104,11 @@ public static class DbInitializer
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
 
+                // سامانه مودیان: اگر مایگریشن AddMoadianV1 به‌خاطر شیء تکراری (مثل ستون Email)
+                // «stamp و رد» شده باشد، جدول‌ها (CPInfos و...) هرگز ساخته نمی‌شوند —
+                // نتیجه: Invalid object name 'CPInfos' در ثبت شرکت. اینجا idempotent می‌سازیم.
+                await MoadianSchemaV1.EnsureAsync(db);
+
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
