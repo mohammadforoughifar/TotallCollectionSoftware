@@ -374,18 +374,36 @@
 
     private string SheetTitle => isEditLetter ? "ویرایش نامه صادره" : draftId is > 0 ? "ادامه پیش‌نویس صادره" : "ایجاد نامه صادره جدید";
 
-    public void Open(string? prefTitle = null, string? prefText = null, int? pishnevisId = null, string? prefReceiverOrg = null)
+    public void Open(string? prefTitle = null, string? prefText = null, int? pishnevisId = null, string? prefReceiverOrg = null,
+                     LetterCopyRecipients? prefRecivers = null)
     {
         ResetAll();
         title = prefTitle ?? "";
         pendingBody = prefText ?? "";
         receiverOrg = prefReceiverOrg ?? "";
         draftId = pishnevisId;
+        ApplyCopyRecipients(prefRecivers);
         visible = true;
         _ = LoadListsAsync();
         if (pishnevisId is > 0) _ = LoadDraftAttsAsync(pishnevisId.Value);
         StateHasChanged();
         _ = SetEditorSoonAsync();
+    }
+
+    /// <summary>
+    /// پیش‌انتخاب افرادِ در گردشِ نامهٔ مبدأ هنگام «کپی نامه».
+    /// هر فرد دقیقاً در همان نقشی قرار می‌گیرد که در گردش نامهٔ مبدأ داشته است:
+    /// گیرنده ← «گیرنده داخلی (تایید)»، ارجاع ← «ارجاع داخلی»، هامش ← «هامش داخلی».
+    /// باید «پس از» ResetAll فراخوانی شود چون ResetAll این مجموعه‌ها را پاک می‌کند.
+    /// امضاکنندگان عمداً کپی نمی‌شوند: امضا یک اقدام حقوقی روی همان نامه است و
+    /// نامهٔ کپی‌شده شماره و امضای مستقل خود را می‌گیرد.
+    /// </summary>
+    private void ApplyCopyRecipients(LetterCopyRecipients? r)
+    {
+        if (r == null || r.IsEmpty) return;
+        foreach (var id in r.Girande) rcvUsers.Add(id);
+        foreach (var id in r.Erja) erjaUsers.Add(id);
+        foreach (var id in r.Hamesh) hameshUsers.Add(id);
     }
 
     public void OpenEdit(OutgoingLetterDetailDto letter)

@@ -128,6 +128,46 @@ BEGIN
     IF COL_LENGTH(N'dbo.IncomingLetters', N'NumberLetterVarede') IS NULL
         ALTER TABLE dbo.IncomingLetters ADD NumberLetterVarede nvarchar(100) NULL;
 END");
+
+        // ==================== باگ B4: ایندکس یکتای شمارهٔ اندیکاتور ====================
+        // چرا لازم است؟ هر دو مسیر شماره‌گذاری «MAX()+1» بودند و تا پیش از این هیچ
+        // تراکنش، lock یا محدودیت یکتایی وجود نداشت؛ پس دو ثبت همزمان می‌توانستند
+        // NumberSabt یکسان بگیرند. منطق برنامه (تراکنش + بررسی صریح در AddAsync) تنها
+        // خطا را «گزارش» می‌کند؛ چیزی که واقعاً جلوی race را می‌گیرد محدودیت یکتایی
+        // در خود دیتابیس است، چون دو تراکنش همزمان هر دو MAX یکسانی می‌خوانند.
+        //
+        // دو نکتهٔ ایمنی که عمداً رعایت شده‌اند:
+        //  ۱) FILTERED روی IsDelete = 0 — حذف نرم وجود دارد، پس شمارهٔ یک نامهٔ
+        //     حذف‌شده نباید جلوی استفادهٔ مجدد از همان شماره را بگیرد.
+        //  ۲) فقط وقتی ساخته می‌شود که دادهٔ «موجود» تکراری نداشته باشد. نصب‌های قدیمی
+        //     به‌خاطر همین باگ احتمالاً شمارهٔ تکراری دارند و ساختِ بی‌قید‌و‌شرط باعث
+        //     خطا در راه‌اندازی می‌شد؛ بدتر اینکه LastError را آلوده می‌کرد و طبق
+        //     EnsureOnceAsync موجب تلاش مجدد در «هر» فراخوانی می‌شد. در آن حالت ایندکس
+        //     ساخته نمی‌شود و اپ مثل قبل بالا می‌آید — محافظت لایهٔ برنامه باقی است و
+        //    operator می‌تواند پس از پاک‌سازی تکراری‌ها با یک ری‌استارت ایندکس را بگیرد.
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.IncomingLetters', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = N'UX_IncomingLetters_NumberSabt'
+                     AND object_id = OBJECT_ID(N'dbo.IncomingLetters'))
+   AND NOT EXISTS (SELECT 1 FROM dbo.IncomingLetters
+                   WHERE IsDelete = 0 GROUP BY NumberSabt HAVING COUNT(*) > 1)
+BEGIN
+    CREATE UNIQUE INDEX [UX_IncomingLetters_NumberSabt]
+        ON [dbo].[IncomingLetters] ([NumberSabt]) WHERE [IsDelete] = 0;
+END");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.LetterNumberReservations', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = N'UX_LetterNumberReservations_TypeForm_NumberSabt'
+                     AND object_id = OBJECT_ID(N'dbo.LetterNumberReservations'))
+   AND NOT EXISTS (SELECT 1 FROM dbo.LetterNumberReservations
+                   WHERE IsDelete = 0 GROUP BY TypeForm, NumberSabt HAVING COUNT(*) > 1)
+BEGIN
+    CREATE UNIQUE INDEX [UX_LetterNumberReservations_TypeForm_NumberSabt]
+        ON [dbo].[LetterNumberReservations] ([TypeForm], [NumberSabt]) WHERE [IsDelete] = 0;
+END");
     }
 
     // ==================== SQLite ====================
@@ -176,6 +216,14 @@ CREATE TABLE IF NOT EXISTS LetterNumberReservations (
         await SafeAsync(db, "ALTER TABLE IncomingLetters ADD COLUMN CreatorId INTEGER NOT NULL DEFAULT 0;");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_CreateUserId ON IncomingLetters (CreateUserId);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_LetterNumberReservations_TypeForm_NumberSabt ON LetterNumberReservations (TypeForm, NumberSabt);");
+
+        // باگ B4 — همان ایندکس‌های یکتای فیلترشدهٔ مسیر SQL Server.
+        // SQLite شرط «تکراری نبودن دادهٔ موجود» را در DDL ندارد؛ اگر تکراری وجود داشته
+        // باشد خطای «unable to create a UNIQUE index: duplicate values» می‌دهد که
+        // SafeAsync آن را بی‌صدا رد می‌کند (چون حاوی کلمهٔ duplicate است) و LastError
+        // آلوده نمی‌شود — یعنی دقیقاً همان رفتار محافظتی مسیر SQL Server.
+        await SafeAsync(db, "CREATE UNIQUE INDEX IF NOT EXISTS UX_IncomingLetters_NumberSabt ON IncomingLetters (NumberSabt) WHERE IsDelete = 0;");
+        await SafeAsync(db, "CREATE UNIQUE INDEX IF NOT EXISTS UX_LetterNumberReservations_TypeForm_NumberSabt ON LetterNumberReservations (TypeForm, NumberSabt) WHERE IsDelete = 0;");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>

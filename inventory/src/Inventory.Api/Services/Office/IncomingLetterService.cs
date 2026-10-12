@@ -11,7 +11,7 @@ namespace Inventory.Api.Services;
 /// </summary>
 public interface IIncomingLetterService
 {
-    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
@@ -32,15 +32,35 @@ public class IncomingLetterService : IIncomingLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly FileStore _store;
+    private readonly ILetterStratureService _strature;
 
-    public IncomingLetterService(AppDbContext db, INotifyService notify, FileStore store)
+    public IncomingLetterService(AppDbContext db, INotifyService notify, FileStore store, ILetterStratureService strature)
     {
         _db = db;
         _notify = notify;
         _store = store;
+        _strature = strature;
     }
 
-    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15)
+    /// <summary>
+    /// ساخت شمارهٔ نامهٔ وارده از ساختار پیکربندی‌شده (TypeForm=3) — قابل تنظیم از
+    /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
+    /// «سال/V-شماره» (مثل 1404/V/12) حفظ می‌شود تا شمارهٔ نامه‌های موجود و
+    /// نصب‌های پیکربندی‌نشده نشکنند — همان قراردادی که نامهٔ داخلی و صادره دارند.
+    ///
+    /// date: تاریخ ورود/ثبت نامه (DateErsal) — مبنای جزء «سال». پیش‌تر سال از
+    /// DateTime.Now گرفته می‌شد و نامهٔ backdate‌شده شمارهٔ سالِ امروز را می‌گرفت.
+    /// </summary>
+    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date)
+    {
+        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date);
+        if (!string.IsNullOrEmpty(s)) return s;
+
+        var pc = new PersianCalendar();
+        return $"{pc.GetYear(date)}/V/{numberSabt}";
+    }
+
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
@@ -51,6 +71,16 @@ public class IncomingLetterService : IIncomingLetterService
                         && e.IsBayegani != true);
 
         if (unreadOnly == true) q = q.Where(e => !e.IsRead);
+
+        // باگ B1: پوشهٔ «نشان‌شده» در کارتابل تا پیش از این هیچ فیلتری اعمال نمی‌کرد و
+        // دقیقاً همان لیست «دریافتی» را نشان می‌داد. فیلتر باید «سمت سرور» باشد چون
+        // فیلتر سمت کلاینت فقط صفحهٔ جاری را محدود می‌کند و نامه‌های نشان‌شدهٔ صفحات
+        // دیگر هرگز دیده نمی‌شدند. نشان روی Erja.IsNeshan است، یعنی به‌ازای هر کاربر —
+        // درست همان موجودیتی که ToggleNeshanAsync تغییرش می‌دهد.
+        //
+        // پارامتر عمداً در «انتهای» امضا اضافه شد تا چهار فراخوان موجودِ AiTools و
+        // AiBriefingService (که positionally صدا می‌زنند) نشکنند.
+        if (starredOnly == true) q = q.Where(e => e.IsNeshan);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -276,9 +306,25 @@ public class IncomingLetterService : IIncomingLetterService
 
         if (letter == null) return null;
 
+        // ---------- بررسی دسترسی ----------
+        // باگ قبلی: هیچ بررسی‌ای وجود نداشت و پارامتر isAdmin هرگز استفاده نمی‌شد؛
+        // در نتیجه هر کاربر دارای مجوز عمومی «IncomingLetters.Read» می‌توانست با
+        // حدس‌زدن letterId متن کامل و تمام گردش «هر» نامه‌ای را بخواند — از جمله
+        // نامه‌های Mahramanegi=3 (سرّی).
+        //
+        // قاعدهٔ دسترسی دقیقاً هم‌راستا با ErjaService.GetGardeshTreeAsync است تا
+        // «جزئیات نامه» و «درخت گردش» یک سطح محافظت داشته باشند:
+        //   سازندهٔ نامه  |  حاضر در گردش (ارجاع/هامش)  |  مدیر
+        //
+        // نکته: این بررسی باید «پیش از» هر اثر جانبی انجام شود؛ وگرنه کاربر
+        // غیرمجاز هم نامه را برای خودش خوانده‌شده علامت می‌زد.
+        var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
+        var inFlow = myErjas.Count > 0;
+        if (!inFlow && letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("شما در گردش این نامه نیستید و اجازهٔ مشاهدهٔ آن را ندارید.");
+
         // علامت‌گذاری «رویت شد» برای ارجاع‌های همین کاربر
         // (باگ قبلی: شرط ذخیره پس از تغییر IsRead بررسی می‌شد و هرگز درست نبود)
-        var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
         var hadUnread = false;
         foreach (var e in myErjas)
         {
@@ -323,7 +369,7 @@ public class IncomingLetterService : IIncomingLetterService
 
         var curErja = allErjas.LastOrDefault(e => e.ReciverUserId == userId);
 
-        return new IncomingLetterDetailDto
+        var dto = new IncomingLetterDetailDto
         {
             LetterId = letter.Id,
             SourceId = letter.Id,
@@ -345,17 +391,112 @@ public class IncomingLetterService : IIncomingLetterService
             IsNeshan = letter.IsNeshan,
             IsMine = letter.CreateUserId == userId,
             CurrentErja = curErja,
-            Erjas = allErjas
+            Erjas = allErjas,
+
+            // ---------- باگ B11: این پنج فیلد تا پیش از این «هرگز» پر نمی‌شدند ----------
+            // (فیلد ششم، ErjaHistory، فقط نام مستعار Erjas است و همان را برمی‌گرداند.)
+            //
+            // «ارجاعی که کاربر جاری باید به آن پاسخ دهد». دکمهٔ «ثبت پاسخ» در UI فقط وقتی
+            // ActiveErjaId.HasValue باشد رندر می‌شود، پس تا الان هرگز دیده نمی‌شد.
+            // قرارداد «هنوز پاسخ داده نشده» در کل کدبیس e.Answer == "" است
+            // (ErjaService:179 هنگام ثبت پاسخ آن را پر می‌کند؛ AiDigestService:193 و
+            // AiBriefingService:104 هم با همین شرط می‌شمارند).
+            ActiveErjaId = myErjas
+                .Where(e => string.IsNullOrEmpty(e.Answer))
+                .OrderBy(e => e.Date)
+                .LastOrDefault()?.ErjaId,
+
+            // قابل ویرایش: ثبت‌کننده (یا مدیر) و هنوز هیچ گیرنده‌ای نامه را نخوانده باشد —
+            // دقیقاً همان قاعدهٔ InnerLetterService:476 تا رفتار دو ماژول یکی باشد.
+            CanEdit = (letter.CreateUserId == userId || isAdmin) && !allErjas.Any(e => e.IsRead),
+
+            // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
+            // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
+            IsBayegani = myErjas.Any(e => e.IsBayegani == true)
         };
+
+        // پیوست‌های نامه — بدون این، بخش «پیوست‌های نامه» در پانل خواننده همیشه خالی بود.
+        // حجم فایل باید «پس از» materialize شدن حساب شود چون _store.Size یک متد سمت کلاینت
+        // است و در projection ترجمه‌پذیر به SQL نیست. همان الگوی endpoint پیوست‌ها در
+        // IncomingLettersController، تا عدد حجم در دو جا یکسان بماند.
+        var attRows = await _db.AppAttachments.AsNoTracking()
+            .Where(a => a.Module == "IncomingLetters" && a.RefId == letterId)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
+            .ToListAsync();
+
+        dto.Attachments = attRows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
+
+        // نامه‌های مرتبط (عطف/پیرو) — هم‌راستا با InnerLetterService:492
+        dto.RelatedLetters = await _db.RelatedLetters.AsNoTracking()
+            .Where(r => r.LetterId == letterId && !r.IsDelete)
+            .Select(r => new RelatedLetterDto
+            {
+                Id = r.Id,
+                Related = r.Related,
+                RelateLetterId = r.RelateLetterId,
+                RelateLetterNumber = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber : "",
+                RelateLetterTitle = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title : ""
+            })
+            .ToListAsync();
+
+        return dto;
     }
 
     public async Task<int> AddAsync(AddIncomingLetterDto dto, int userId)
     {
         var pc = new PersianCalendar();
-        var currentYear = pc.GetYear(DateTime.Now);
 
-        var startOfYear = new DateTime(currentYear, 1, 1, new PersianCalendar());
-        var endOfYear = new DateTime(currentYear + 1, 1, 1, new PersianCalendar());
+        // مبنای سال، «تاریخ ورود/ثبت نامه» است نه امروز — وگرنه نامه‌ای که با تاریخ
+        // سال قبل ثبت می‌شود شمارهٔ ترتیبی و جزء سالِ امسال را می‌گیرد.
+        var entryDate = dto.DateErsal == default ? DateTime.Now : dto.DateErsal;
+        var currentYear = pc.GetYear(entryDate);
+
+        // تقریب شروع/پایان سال شمسی به میلادی — برای فیلتر در SQL.
+        // مثل InnerLetterService.NextNumberAsync با try/catch تا تاریخ نامعتبر استارتاپ را نخواباند.
+        DateTime startOfYear, endOfYear;
+        try
+        {
+            startOfYear = new DateTime(currentYear, 1, 1, pc);
+            endOfYear = new DateTime(currentYear + 1, 1, 1, pc);
+        }
+        catch
+        {
+            startOfYear = entryDate.AddDays(-400);
+            endOfYear = entryDate.AddDays(400);
+        }
+
+        // ==================== باگ B4 (بند ۲): اتمیکیتی ====================
+        // تراکنش عمداً «پیش از» خواندن‌های شماره‌گذاری شروع می‌شود، نه پیش از درج.
+        // اگر بعد از آن‌ها شروع می‌شد، سطح Serializable هیچ اثری نداشت چون خواندن‌های
+        // MAX() بیرون از تراکنش و بدون قفل انجام می‌شدند و دو درخواست همزمان باز هم
+        // عدد یکسانی می‌خواندند.
+        //
+        // Serializable همان الگویی است که خودِ پروژه برای تخصیص شماره در جاهای
+        // race‌پذیر به کار می‌برد (WorkOrdersController:180/314/798 و
+        // DocEvolutionController:48) — پس رفتار و ریسک deadlock با بقیهٔ کدبیس یکی است.
+        //
+        // همچنین این متد «دو» بار SaveChanges می‌کند (اولی برای گرفتن source.Id، چون
+        // IncomingLetter کلید مشترک با LetterSource دارد؛ دومی برای نامه و ارجاع‌ها).
+        // یک باگ گزارش‌نشده: اگر دومی شکست می‌خورد، رکورد LetterSource «یتیم» در
+        // دیتابیس می‌ماند. با تراکنش، هر دو یا با هم ثبت می‌شوند یا هیچ‌کدام.
+        //
+        // try/catch و تورفتگی دوبارهٔ بدنه لازم نیست: Dispose شدن تراکنشِ commit‌نشده
+        // خودش rollback می‌کند، پس `await using` به‌تنهایی کافی است (همان HrDemoPurger:33).
+        //
+        // آوردن BuildLetterNumberAsync داخل تراکنش امن است: TotalNumberAsync فقط می‌خواند
+        // (نه تراکنش جدا دارد نه SaveChanges) و AppDbContext هم Scoped است، پس همان
+        // نمونهٔ مشترک در کل درخواست به کار می‌رود و تراکنش تودرتو ساخته نمی‌شود.
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
         var maxNumber = await _db.IncomingLetters
             .Where(l => l.DateErsal >= startOfYear && l.DateErsal < endOfYear)
@@ -367,16 +508,39 @@ public class IncomingLetterService : IIncomingLetterService
         if (dto.NumberSabt is > 0)
         {
             numberSabt = dto.NumberSabt.Value;
-            var res = await _db.LetterNumberReservations.FirstOrDefaultAsync(r => r.TypeForm == 3 && r.NumberSabt == numberSabt && !r.IsUsed);
+
+            // باگ B4 (بند ۳): مصرف رزرو دو شرط نداشت.
+            //   !r.IsDelete  → رزروِ نرم‌حذف‌شده هم مصرف می‌شد
+            //   r.UserId == userId → هر کاربری می‌توانست شمارهٔ رزروشدهٔ کاربر دیگر را بسوزاند
+            var res = await _db.LetterNumberReservations.FirstOrDefaultAsync(r =>
+                r.TypeForm == 3 && r.NumberSabt == numberSabt
+                && !r.IsUsed && !r.IsDelete && r.UserId == userId);
             if (res != null) res.IsUsed = true;
         }
         else
         {
+            // باگ B4 (بند ۱): این مسیر «فقط» جدول نامه‌ها را می‌دید و
+            // LetterNumberReservations را نادیده می‌گرفت، در حالی که ReserveNumberAsync
+            // هر دو را می‌بیند (Math.Max(lastUsedSabt, lastResSabt)). نتیجه: شماره‌ای که
+            // کاربر A رزرو کرده ولی هنوز مصرف نشده بود، خودکار به نامهٔ کاربر B می‌رسید
+            // و شمارهٔ اندیکاتور تکراری تولید می‌شد. حالا هر دو مسیر یک منطق دارند.
             var maxSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0;
-            numberSabt = maxSabt + 1;
+            var maxReserved = await _db.LetterNumberReservations
+                .Where(r => r.TypeForm == 3 && !r.IsDelete)
+                .MaxAsync(r => (int?)r.NumberSabt) ?? 0;
+            numberSabt = Math.Max(maxSabt, maxReserved) + 1;
         }
 
-        var letterNumber = $"{currentYear}/V/{numberSabt}";
+        // باگ B4 (بند ۲): تا اینجا همه‌چیز «MAX()+1» بدون تراکنش، بدون lock و بدون
+        // محدودیت یکتایی بود. محافظت اصلی، ایندکس یکتای فیلترشده‌ای است که در
+        // IncomingLetterSchemaV1 ساخته می‌شود؛ این بررسی صریح هم برای آن است که در
+        // مسیر «شمارهٔ دستی» به‌جای خطای خامِ نقض یکتایی از دیتابیس، پیام فارسی
+        // خوانا برگردانده شود (ApiExceptionFilter آن را به 400 تبدیل می‌کند).
+        if (await _db.IncomingLetters.AnyAsync(l => l.NumberSabt == numberSabt && !l.IsDelete))
+            throw new Exception($"شمارهٔ اندیکاتور {numberSabt} پیش‌تر برای نامهٔ واردهٔ دیگری ثبت شده است. لطفاً شمارهٔ دیگری وارد کنید یا فیلد شماره را خالی بگذارید تا خودکار تخصیص یابد.");
+
+        // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
+        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate);
 
         var source = new LetterSource
         {
@@ -433,6 +597,8 @@ public class IncomingLetterService : IIncomingLetterService
         }
 
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
         await _notify.BroadcastChangedAsync("incoming-letters");
         return letter.Id;
     }
@@ -584,6 +750,28 @@ public class IncomingLetterService : IIncomingLetterService
         }
 
         await _db.SaveChangesAsync();
-        return await GetReservationsAsync(userId, typeForm);
+
+        // باگ B4 (بند ۴): لیست `created` ساخته و پر می‌شد ولی «هرگز» استفاده نمی‌شد —
+        // کد مرده. متد در عوض GetReservationsAsync را صدا می‌زد که کل رزروهای
+        // مصرف‌نشدهٔ «همهٔ کاربران» را (با سقف ۵۰) برمی‌گرداند، پس UI پس از رزرو
+        // لیست غلطی را به‌عنوان نتیجه نشان می‌داد. حالا همان شماره‌هایی برمی‌گردند
+        // که در این فراخوان رزرو شده‌اند.
+        //
+        // UserName یک بار گرفته می‌شود چون همهٔ رزروهای این فراخوان متعلق به یک کاربرند.
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var myName = me == null
+            ? "سیستم"
+            : (string.IsNullOrEmpty(me.FirstName + me.LastName) ? me.Username : $"{me.FirstName} {me.LastName}".Trim());
+
+        return created.Select(r => new LetterNumberReservationDto
+        {
+            Id = r.Id,
+            TypeForm = r.TypeForm,
+            NumberSabt = r.NumberSabt,
+            DateRezerv = r.DateRezerv,
+            UserId = r.UserId,
+            UserName = myName,
+            IsUsed = r.IsUsed
+        }).ToList();
     }
 }

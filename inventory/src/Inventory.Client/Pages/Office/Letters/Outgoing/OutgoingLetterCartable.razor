@@ -929,11 +929,36 @@
         StateHasChanged();
     }
 
-    private void CopyLetter()
+    /// <summary>
+    /// کپی نامه صادره — فرم نامهٔ جدید با عنوان، متن و سازمان گیرندهٔ نامهٔ جاری
+    /// باز می‌شود و «همهٔ افرادِ در گردش» نیز از پیش انتخاب می‌شوند، هرکس در همان
+    /// نقشی که در گردش نامهٔ مبدأ داشته (گیرنده / ارجاع / هامش).
+    /// امضاکنندگان کپی نمی‌شوند چون نامهٔ کپی‌شده شماره و امضای مستقل خود را می‌گیرد.
+    /// </summary>
+    private async Task CopyLetter()
     {
         if (selected == null) return;
-        compose?.Open($"کپی - {selected.Title}", selected.Text, prefReceiverOrg: selected.ReceiverOrganization);
-        Toast.Success("فرم ثبت نامه صادره با اطلاعات نامه اصلی باز شد؛ اطلاعات گیرنده و امضا را بررسی کنید.");
+        var recivers = await CollectGardeshRecipientsAsync(selected.LetterId);
+        compose?.Open($"کپی - {selected.Title}", selected.Text,
+                      prefReceiverOrg: selected.ReceiverOrganization, prefRecivers: recivers);
+        Toast.Success(recivers is { IsEmpty: false }
+            ? $"فرم ثبت نامهٔ صادره با اطلاعات نامهٔ اصلی باز شد و {recivers.Total.FaDigits()} نفر از افراد در گردش از پیش انتخاب شدند؛ اطلاعات گیرنده و امضا را بررسی کنید."
+            : "فرم ثبت نامهٔ صادره با اطلاعات نامهٔ اصلی باز شد؛ اطلاعات گیرنده و امضا را بررسی کنید.");
+    }
+
+    /// <summary>
+    /// خواندن درخت گردش نامه و سطل‌بندی افراد بر اساس نقش‌شان.
+    /// کاربر جاری حذف می‌شود چون کمبوی گیرندگان او را فهرست نمی‌کند (u.Id != MyUserId).
+    /// شکست در دریافت گردش نباید جلوی باز شدن فرم کپی را بگیرد.
+    /// </summary>
+    private async Task<LetterCopyRecipients?> CollectGardeshRecipientsAsync(int letterId)
+    {
+        try
+        {
+            var tree = await OutgoingSvc.GetGardeshAsync(letterId);
+            return tree.CollectRecipients(Auth.UserId);
+        }
+        catch { return null; }
     }
 
     private async Task EditLetter(int letterId)

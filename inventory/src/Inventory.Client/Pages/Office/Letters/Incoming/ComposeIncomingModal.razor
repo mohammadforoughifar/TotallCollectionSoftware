@@ -315,6 +315,49 @@
         StateHasChanged();
     }
 
+    /// <summary>
+    /// باز کردن فرم «کپی نامه وارده» از روی یک نامهٔ واردهٔ موجود.
+    /// اطلاعات هویتی نامه (عنوان، فرستنده، شمارهٔ مبدأ، تاریخ‌ها، روش ارسال،
+    /// محرمانگی، فوریت و توضیحات) منتقل می‌شود و «همهٔ افرادِ در گردش» نیز
+    /// از پیش انتخاب می‌شوند.
+    ///
+    /// آنچه عمداً کپی «نمی‌شود»:
+    ///   • NumberSabt و شمارهٔ رزروشده — نامهٔ کپی‌شده یک نامهٔ جدید است و
+    ///     باید شمارهٔ اندیکاتور مستقل بگیرد؛ کپی‌کردن شمارهٔ قبلی باعث
+    ///     مصرف دوبارهٔ همان شماره و تداخل اندیکاتور می‌شود.
+    ///   • پیوست‌ها — فایل‌های نامهٔ مبدأ باید دوباره بارگذاری/اسکن شوند.
+    /// </summary>
+    public async Task OpenCopy(IncomingLetterDetailDto letter, LetterCopyRecipients? recivers = null)
+    {
+        // OpenCreate همه‌چیز را ریست می‌کند و lookupها (کاربران/گروه‌ها/رزروها) را می‌خواند
+        await OpenCreate();
+
+        title = letter.Title;
+        ferestande = letter.Ferestande;
+        numberLetterVarede = letter.NumberLetterVarede;
+        shamsiDate = letter.Date.ToFa();
+        shamsiDateErsal = letter.DateErsal.ToFa();
+        sourceDate = letter.Date;
+        entryDate = letter.DateErsal;
+        typeErsal = string.IsNullOrWhiteSpace(letter.TypeErsal) ? "دستی / پیک" : letter.TypeErsal;
+        deliveryName = letter.DeliveryName;
+        mahramanegi = letter.Mahramanegi;
+        foriat = letter.Foriat;
+        description = letter.Description ?? "";
+
+        // فرم ثبت نامهٔ وارده تنها «یک» کمبوی گیرنده دارد («گیرندگان ارجاع اولیه»)؛
+        // بنابراین هر سه نقشِ گردش در همان یک سطل ادغام می‌شوند. نقش‌ها در
+        // نامهٔ داخلی/صادره به تفکیک گیرنده/ارجاع/هامش نگه داشته می‌شوند.
+        if (recivers is { IsEmpty: false })
+        {
+            foreach (var id in recivers.Girande) selUsers.Add(id);
+            foreach (var id in recivers.Erja) selUsers.Add(id);
+            foreach (var id in recivers.Hamesh) selUsers.Add(id);
+        }
+
+        StateHasChanged();
+    }
+
     private async Task LoadLookups()
     {
         try
