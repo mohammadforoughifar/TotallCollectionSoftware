@@ -431,7 +431,19 @@ namespace Inventory.Api.Services.Moadian
                             var response = TaxApiService.Instance.TaxApis.SendInvoices(
                           invoiceList,
                           null);
-                            var packetResponse = response.Body.Result.First();
+                            var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                             var uid = packetResponse.Uid;
                             var referenceId = packetResponse.ReferenceNumber;
                             //string referenceId = string.Empty;
@@ -561,7 +573,19 @@ namespace Inventory.Api.Services.Moadian
                             var response = TaxApiService.Instance.TaxApis.SendInvoices(
                       invoiceList,
                       null);
-                            var packetResponse = response.Body.Result.First();
+                            var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                             var uid = packetResponse.Uid;
                             var referenceId = packetResponse.ReferenceNumber;
 
@@ -710,77 +734,6 @@ namespace Inventory.Api.Services.Moadian
                     $"شناسهٔ حافظه: {shenaseyekta} | آدرس سرویس: {WebServiceAddress}");
             }
 
-            // ---------- ابزارهای استخراج جزئیات خطا ----------
-            static string ExceptionDetails(Exception ex)
-            {
-                var sb = new System.Text.StringBuilder();
-                var cur = ex;
-                var depth = 0;
-                while (cur != null && depth < 5)
-                {
-                    if (depth == 0) sb.Append(cur.GetType().Name).Append(": ").Append(cur.Message);
-                    else sb.Append(" ← ").Append(cur.GetType().Name).Append(": ").Append(cur.Message);
-                    cur = cur.InnerException;
-                    depth++;
-                }
-                return sb.ToString();
-            }
-
-            // بعضی استثناهای SDK خودشان مدل خطای سامانه را در Data/Property نگه می‌دارند
-            static string ExtractSdkErrorsFromException(Exception ex)
-            {
-                if (ex is null) return string.Empty;
-                var parts = new List<string>();
-                if (ex.Data != null && ex.Data.Count > 0)
-                    foreach (System.Collections.DictionaryEntry d in ex.Data) parts.Add($"{d.Key}={d.Value}");
-                var nested = ExtractSdkErrors(ex);
-                if (!string.IsNullOrEmpty(nested)) parts.Add(nested);
-                return string.Join(" | ", parts.Distinct());
-            }
-
-            // مدل پاسخ SDK (ApiResultPack/TokenModel و…) به‌صورت بازتابی پویش می‌شود؛ اگر فهرست خطا دارد نمایش داده می‌شود.
-            static string ExtractSdkErrors(object? sdkResult)
-            {
-                if (sdkResult is null) return string.Empty;
-                var parts = new List<string>();
-                foreach (var name in new[] { "Errors", "ErrorList", "Error", "ErrorsAndWarnings", "ErrorMessage", "Message", "Description", "ExceptionMessage", "MessageError" })
-                {
-                    var p = sdkResult.GetType().GetProperty(name);
-                    if (p is null) continue;
-                    object? val;
-                    try { val = p.GetValue(sdkResult); } catch { continue; }
-                    if (val is null) continue;
-                    if (val is string s)
-                    {
-                        if (!string.IsNullOrWhiteSpace(s)) parts.Add(s);
-                        continue;
-                    }
-                    if (val is System.Collections.IEnumerable coll)
-                    {
-                        var i = 0;
-                        foreach (var item in coll)
-                        {
-                            if (item is null) continue;
-                            parts.Add(DescribeSdkError(item));
-                            if (++i >= 10) break;
-                        }
-                        continue;
-                    }
-                    parts.Add(DescribeSdkError(val));
-                }
-                return string.Join(" | ", parts.Distinct());
-            }
-
-            static string DescribeSdkError(object e)
-            {
-                var t = e.GetType();
-                var code = t.GetProperty("Code")?.GetValue(e)?.ToString();
-                var msg = (t.GetProperty("Message")?.GetValue(e)?.ToString()
-                           ?? t.GetProperty("Detail")?.GetValue(e)?.ToString()
-                           ?? t.GetProperty("Description")?.GetValue(e)?.ToString());
-                if (string.IsNullOrWhiteSpace(msg)) return e.ToString() ?? string.Empty;
-                return string.IsNullOrWhiteSpace(code) ? msg : $"{code}: {msg}";
-            }
         }
 
         /// <summary>تست اتصالِ ثبت‌شدهٔ یک شرکت — کلید را از wwwroot/uploads/{نام شرکت} می‌خواند و احراز هویت واقعی انجام می‌دهد.</summary>
@@ -1121,11 +1074,15 @@ context.Customers.Any(x =>
         private async Task<bool> IsConnectApi(int CpinfoId)
         {
             var conection = ConnectInfo(CpinfoId);
+            if (conection is null || string.IsNullOrEmpty(conection.PrivateKeyPath))
+                return false;
 
-            string uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/File/Moadian");
-            string filePath = Path.Combine(uploadDir, conection.PrivateKeyPath);
-            // اگر از SDK رسمی استفاده می‌کنید، امضای بسته به این شکل است
-            //var signedPackage = TaxApiService.Instance.SignPackage(invoices, privateKey);
+            // مسیر کلید — اول wwwroot/uploads/{نام شرکت}، سپس مسیر قدیمی File/Moadian
+            string filePath = await ResolveExistingKeyPathAsync(CpinfoId, conection.PrivateKeyPath);
+            if (!System.IO.File.Exists(filePath))
+                return false;
+
+            // Init + احراز هویت واقعی (با جزئیات مرحله‌ای خطا)
             var isconnect = await IsConnectAsync(conection.TaxMemoryID, filePath, conection.WebServiceAddress);
             if (isconnect.Success)
             {
@@ -1133,8 +1090,6 @@ context.Customers.Any(x =>
             }
 
             return false;
-
-
         }
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM)
         {
@@ -1269,7 +1224,19 @@ context.Customers.Any(x =>
                             var response = TaxApiService.Instance.TaxApis.SendInvoices(
                           invoiceList,
                           null);
-                            var packetResponse = response.Body.Result.First();
+                            var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                             var uid = packetResponse.Uid;
                             var referenceId = packetResponse.ReferenceNumber;
                             //string referenceId = string.Empty;
@@ -1413,7 +1380,19 @@ context.Customers.Any(x =>
                         var response = TaxApiService.Instance.TaxApis.SendInvoices(
                   invoiceList,
                   null);
-                        var packetResponse = response.Body.Result.First();
+                        var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                         var uid = packetResponse.Uid;
                         var referenceId = packetResponse.ReferenceNumber;
 
@@ -1443,11 +1422,9 @@ context.Customers.Any(x =>
 
                 }
                 model.Data = null;
-                model.Status = 400;
-                model.Message = MessageCode.StatusCode.TryGetValue(400, out string messager) == true
-                    ? model.Message = messager
-                    : model.Message = "کد وضعیت نامعتبر است.";
+                model.Status = 502;
                 model.Success = false;
+                model.Message = "ارسال به سامانهٔ مودیان انجام نشد — احراز هویت برقرار نیست یا موضوع عملیات نامعتبر است. ابتدا در تب «اتصال»، «تست اتصال» را بزنید تا دلیل دقیق عدم احراز هویت (کلید/شناسهٔ حافظه/آدرس سرویس) مشخص شود.";
                 return model;
             }
             catch (Exception ex)
@@ -2012,6 +1989,78 @@ context.Customers.Any(x =>
             }
         }
 
+        // ---------- ابزارهای استخراج جزئیات خطای SDK سامانه (بازتابی — بدون وابستگی به ساختار دقیق نسخهٔ SDK) ----------
+        private static string ExceptionDetails(Exception ex)
+        {
+            var sb = new System.Text.StringBuilder();
+            var cur = ex;
+            var depth = 0;
+            while (cur != null && depth < 5)
+            {
+                if (depth == 0) sb.Append(cur.GetType().Name).Append(": ").Append(cur.Message);
+                else sb.Append(" ← ").Append(cur.GetType().Name).Append(": ").Append(cur.Message);
+                cur = cur.InnerException;
+                depth++;
+            }
+            return sb.ToString();
+        }
+
+        // بعضی استثناهای SDK خودشان مدل خطای سامانه را در Data/Property نگه می‌دارند
+        private static string ExtractSdkErrorsFromException(Exception ex)
+        {
+            if (ex is null) return string.Empty;
+            var parts = new List<string>();
+            if (ex.Data != null && ex.Data.Count > 0)
+                foreach (System.Collections.DictionaryEntry d in ex.Data) parts.Add($"{d.Key}={d.Value}");
+            var nested = ExtractSdkErrors(ex);
+            if (!string.IsNullOrEmpty(nested)) parts.Add(nested);
+            return string.Join(" | ", parts.Distinct());
+        }
+
+        // مدل پاسخ SDK (ApiResultPack/TokenModel/PacketResponse و…) به‌صورت بازتابی پویش می‌شود؛ اگر فهرست خطا دارد نمایش داده می‌شود.
+        private static string ExtractSdkErrors(object? sdkResult)
+        {
+            if (sdkResult is null) return string.Empty;
+            var parts = new List<string>();
+            foreach (var name in new[] { "Errors", "ErrorList", "Error", "ErrorsAndWarnings", "ErrorMessage", "Message", "Description", "ExceptionMessage", "MessageError" })
+            {
+                var p = sdkResult.GetType().GetProperty(name);
+                if (p is null) continue;
+                object? val;
+                try { val = p.GetValue(sdkResult); } catch { continue; }
+                if (val is null) continue;
+                if (val is string s)
+                {
+                    if (!string.IsNullOrWhiteSpace(s)) parts.Add(s);
+                    continue;
+                }
+                if (val is System.Collections.IEnumerable coll)
+                {
+                    var i = 0;
+                    foreach (var item in coll)
+                    {
+                        if (item is null) continue;
+                        parts.Add(DescribeSdkError(item));
+                        if (++i >= 10) break;
+                    }
+                    continue;
+                }
+                parts.Add(DescribeSdkError(val));
+            }
+            return string.Join(" | ", parts.Distinct());
+        }
+
+        private static string DescribeSdkError(object e)
+        {
+            var t = e.GetType();
+            var code = t.GetProperty("Code")?.GetValue(e)?.ToString();
+            var msg = (t.GetProperty("Message")?.GetValue(e)?.ToString()
+                       ?? t.GetProperty("Detail")?.GetValue(e)?.ToString()
+                       ?? t.GetProperty("Description")?.GetValue(e)?.ToString());
+            if (string.IsNullOrWhiteSpace(msg)) return e.ToString() ?? string.Empty;
+            return string.IsNullOrWhiteSpace(code) ? msg : $"{code}: {msg}";
+        }
+
         #region Private Methods
 
         /// <summary>نام امن برای پوشهٔ شرکت روی دیسک (بدون کاراکترهای namaجاز مسیر).</summary>
@@ -2488,7 +2537,19 @@ context.Customers.Any(x =>
                         var response = TaxApiService.Instance.TaxApis.SendInvoices(
                       invoiceList,
                       null);
-                        var packetResponse = response.Body.Result.First();
+                        var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                         var uid = packetResponse.Uid;
                         var referenceId = packetResponse.ReferenceNumber;
 
@@ -2695,7 +2756,19 @@ context.Customers.Any(x =>
                         var response = TaxApiService.Instance.TaxApis.SendInvoices(
                       invoiceList,
                       null);
-                        var packetResponse = response.Body.Result.First();
+                        var packetResponse = response?.Body?.Result?.FirstOrDefault();
+                        if (packetResponse is null)
+                        {
+                            var sendErr = ExtractSdkErrors(response);
+                            return new ApiModel
+                            {
+                                Data = null,
+                                Status = 500,
+                                Success = false,
+                                Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                            };
+                        }
                         var uid = packetResponse.Uid;
                         var referenceId = packetResponse.ReferenceNumber;
 
