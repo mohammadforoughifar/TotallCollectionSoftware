@@ -184,13 +184,26 @@ else
         InvokeAsync(() => _ = LoadAsync());
     }
 
-    private void OnFile(InputFileChangeEventArgs e)
+    private async Task OnFile(InputFileChangeEventArgs e)
     {
         keyName = e.File.Name;
         keyBytes = null;
-        using var ms = new MemoryStream();
-        e.File.OpenReadStream(5 * 1024 * 1024).CopyTo(ms);
-        keyBytes = ms.ToArray();
+        try
+        {
+            // داخل Blazor WebAssembly خواندن هم‌زمان (sync) از BrowserFileStream پشتیبانی نمی‌شود:
+            // CopyTo هم‌زمان → NotSupportedException «Synchronous reads are not supported.»
+            // و رویداد OnChange بدون await شکست می‌خورد و دکمه‌ها غیرفعال می‌مانند. پس async می‌خوانیم.
+            using var ms = new MemoryStream();
+            await using var stream = e.File.OpenReadStream(5L * 1024 * 1024);
+            await stream.CopyToAsync(ms);
+            keyBytes = ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            keyName = null;
+            Toast.Error($"خواندن فایل کلید ناموفق بود: {ex.Message}");
+        }
+        StateHasChanged();
     }
 
     private async Task SaveCompany()
