@@ -56,7 +56,8 @@ try {
 Write-Host "`n[۱] ثبت/ویرایش/خواندن شرکت"
 try {
     $r = Invoke-Moadian -Method POST -Path "SaveCpInfo" -Body @{
-        cpinfoid = 0; persianName = "شرکت تست دود $runId"; nationalid = $nid; economicNumber = "12345678"; type = "حقوقی"
+        cpinfoid = 0; persianName = "شرکت تست دود $runId"; nationalid = $nid; economicNumber = "12345678"; type = "حقوقی";
+        englishName = "Smoke Test Co $runId"; postalCode = "1314747474"
     }
     Check "SaveCpInfo (ثبت جدید)" ($r.success -eq $true) ($r.message)
     $cpid = $r.data.cpinfoid
@@ -68,7 +69,8 @@ try {
     Check "رد شناسهٔ ملی تکراری (400)" ($r2.success -eq $false -and $r2.status -eq 400) ($r2.message)
 
     $r3 = Invoke-Moadian -Method POST -Path "SaveCpInfo" -Body @{
-        cpinfoid = $cpid; persianName = "شرکت تست دود $runId (ویرایش)"; nationalid = $nid; economicNumber = "87654321"; type = "حقیقی"
+        cpinfoid = $cpid; persianName = "شرکت تست دود $runId (ویرایش)"; nationalid = $nid; economicNumber = "87654321"; type = "حقیقی";
+        englishName = "Edited Co"; postalCode = "1511919191"
     }
     Check "SaveCpInfo (ویرایش)" ($r3.success -eq $true) ($r3.message)
 
@@ -76,6 +78,8 @@ try {
     $found = $r4.data | Where-Object { $_.cpinfoid -eq $cpid }
     Check "GetCpInfos شامل شرکت جدید" ($null -ne $found)
     Check "نوع حقیقی/حقوقی ذخیره می‌شود" ($found.type -eq "حقیقی") ("type=$($found.type)")
+    Check "EnglishName در ویرایش ذخیره می‌شود" ($found.englishName -eq "Edited Co") ("englishName=$($found.englishName)")
+    Check "PostalCode در ویرایش ذخیره می‌شود" ($found.postalCode -eq "1511919191") ("postalCode=$($found.postalCode)")
 
     $r5 = Invoke-Moadian -Method POST -Path "SaveCpInfo" -Body @{ cpinfoid = 0; persianName = ""; nationalid = "x" }
     Check "رد نام خالی (400)" ($r5.success -eq $false -and $r5.status -eq 400)
@@ -85,12 +89,15 @@ try {
 Write-Host "`n[۲] سال مالی"
 try {
     $r = Invoke-Moadian -Method POST -Path "SaveFiscalYear" -Body @{
-        cpInfoId = $cpid; startDate = "2026-01-01T00:00:00"; endDate = "2026-12-29T00:00:00"
+        cpInfoId = $cpid; title = "سال تست $runId"; startDate = "2026-01-01T00:00:00"; endDate = "2026-12-29T00:00:00"; isActive = $true
     }
     Check "SaveFiscalYear" ($r.success -eq $true) ($r.message)
 
     $r2 = Invoke-Moadian -Method GET -Path "GetFiscalYears/$cpid"
     Check "GetFiscalYears برگردان لیست" ($r2.success -eq $true -and $r2.data.Count -ge 1) ($r2.message)
+    $fy = $r2.data[0]
+    Check "عنوان سال مالی ذخیره می‌شود" ($fy.title -eq "سال تست $runId") ("title=$($fy.title)")
+    Check "وضعیت فعال ذخیره می‌شود" ($fy.isActive -eq $true) ("isActive=$($fy.isActive)")
 
     $r3 = Invoke-Moadian -Method POST -Path "SaveFiscalYear" -Body @{
         cpInfoId = $cpid; startDate = "2026-12-29T00:00:00"; endDate = "2026-01-01T00:00:00"

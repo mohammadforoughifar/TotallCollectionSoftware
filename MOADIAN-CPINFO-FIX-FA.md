@@ -107,3 +107,43 @@ Transcript روی ChatMessages و…)، روی دیتابیس‌هایی که ا
 همهٔ ثبت‌ها/ویرایش‌ها را با دادهٔ تصادفی یکتا روی API زنده چک می‌کند (شرکت، سال مالی،
 واحد، کالا با و بدون واحد، مشتری، صورتحساب و گارد کلید) و در پایان PASS/FAIL می‌دهد.
 
+---
+
+## هم‌ترازی کامل جدول‌ها با پروژهٔ مبدأ (2026-10-12)
+
+موجودیت‌های ۹ جدول مبدأ (`DataLayerApp.Entities`: CPInfo، ConnectInfo، Customer،
+FiscalYear، GoodsOrService، Invoice، InvoiceItem، InvoicePayment، UnitOfMeasurement)
+عدد به عدد با پرت ما مقایسه و همهٔ اختلاف‌ها بسته شد:
+
+### ستون‌های جدید در پرت
+| جدول | ستون‌های افزوده‌شده (در مبدأ بود، در پرت نبود) |
+|---|---|
+| CPInfos | `CompanyId` (int?)، `EnglishName`، `PostalCode`، `IsDelete` |
+| ConnectInfos | `CertificatePath` |
+| Customers | `IsDelete` |
+| FiscalYears | `Title`، `CreatedDate`، `IsActive`، `IsDelete` |
+| GoodsOrServices | `IsDelete` |
+| Invoices | `TaxMemoryID` + ناوبری `invoicePayment` |
+| InvoiceItems | `PriceNaghd`، `PriceNesye` (decimal?) |
+| **InvoicePayments** | **جدول از پایه افزوده شد** (TaxNumber، Amount int، PaymentDate string، PaymentMethod، TerminalNumber، ReferenceNumber، IsDelete + FK به Invoices با حذف آبشاری) |
+
+ستون‌های `SematId`/`UserId` مبدأ عمداً پرت نشدند (اختصاصی سیستم مبدأ است).
+`CpInfo.Type` («حقیقی/حقوقی») و `CpInfo` داخل FiscalYear به‌عنوان بهبودِ پرت حفظ شدند.
+
+### پوشش اسکیما (هر سه مسیر، idempotent روی دیتابیس موجود)
+- `MoadianSchemaV1.EnsureAsync` — CREATE کامل + ۱۵ ALTER خودترمیم (SQL Server و SQLite)؛
+- `inventory/sql/moadian-repair.sql` — همان ALTERها + ساخت InvoicePayments (تأیید نهایی حالا ۹ جدول است)؛
+- مایگریشن `20261011080837_AddMoadianV1` — CreateTableها کامل شدند + CreateTable و Index برای InvoicePayments (و DropTable متناظر در Down).
+
+### رفتار سرویس
+- ثبت/ویرایش شرکت `EnglishName` و `PostalCode` را ذخیره و برمی‌گرداند؛ `GetAllCpInfosAsync` و کوئری‌های سال مالی/کالا/مشتری رکوردهای `IsDelete` را فیلتر می‌کنند.
+- `SaveFiscalYearAsync` اکنون `Title`/`IsActive` را ذخیره و `CreatedDate=DateTime.Now` را خودکار می‌زند.
+- ⚠️ جدول `InvoicePayments` فعلاً فقط اسکیما/موجودیت دارد — هیچ endpoint ثبت/خواندی برای ردیف‌های پرداخت هنوز وجود ندارد (کلاینت هم چیزی نمی‌فرستد).
+
+### رابط کاربری
+- فرم «ثبت شرکت جدید» فیلدهای **نام لاتین** و **کد پستی شرکت** گرفت.
+- صفحهٔ اتصال حالا کارت **«سال‌های مالی»** دارد: لیست سال‌های تعریف‌شده (با عنوان، بازهٔ شمسی، نشان فعال/غیرفعال) + فرم تعریف سال مالی (عنوان، تاریخ شروع/پایان با DatePicker شمسی، چک‌باکس فعال). پیش از این `SaveFiscalYearAsync` هیچ رابط کاربری‌ای نداشت و صورتحساب نیازمند سال مالی بود.
+- در فرم صورتحساب، دراپ‌داون سال مالی عنوان (`Title`) را هم کنار بازهٔ شمسی نشان می‌دهد.
+
+تست دود هم با سناریوهای فیلدهای جدید (round-trip نام لاتین/کد پستی در ویرایش شرکت، عنوان و وضعیت فعال سال مالی) تمدید شد.
+

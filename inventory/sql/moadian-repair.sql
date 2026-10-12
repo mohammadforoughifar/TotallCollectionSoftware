@@ -1,10 +1,14 @@
 -- ============================================================
--- تعمیر فوری جدول‌های سامانه مودیان (نسخه 0.0.27) — SQL Server
+-- تعمیر فوری جدول‌های سامانه مودیان (نسخه 0.0.27 به بعد) — SQL Server
 -- چرا؟ مایگریشن 20261011080837_AddMoadianV1 روی دیتابیس‌هایی که
 -- ستونی مثل Users.Email را از قبل داشتند با خطای duplicate شکست
 -- خورد و به‌صورت ناخواسته «اعمال‌شده» علامت خورد؛ در نتیجه جدول‌های
 -- مودیان ساخته نشدند و API خطا می‌گیرد:
 --     خطا در سرور: Invalid object name 'CPInfos'
+-- این نسخه علاوه بر ساخت جدول‌ها، همهٔ ستون‌های جدیدِ هم‌تراز با
+-- پروژهٔ مبدأ (CompanyId/EnglishName/PostalCode/IsDelete، CertificatePath،
+-- Title/CreatedDate/IsActive، TaxMemoryID، PriceNaghd/PriceNesye) و
+-- جدول تازهٔ InvoicePayments را هم idempotent اضافه می‌کند.
 -- اجرا: در SQL Server Management Studio روی دیتابیس InventoryDb
 -- (یا هر دیتابیسِ تنظیم‌شده در ConnectionStrings:Default) اجرا کنید.
 -- اسکریپت idempotent است؛ اجرای تکراری ضرری ندارد.
@@ -17,18 +21,33 @@ IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[CPInfos](
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
-        [PersianName] nvarchar(max) NULL,
-        [Nationalid] nvarchar(max) NULL,
+        [CompanyId] int NULL,
+        [Type] nvarchar(20) NULL,
         [EconomicNumber] nvarchar(max) NULL,
-        [Type] nvarchar(20) NULL
+        [PersianName] nvarchar(max) NULL,
+        [EnglishName] nvarchar(max) NULL,
+        [Nationalid] nvarchar(max) NULL,
+        [PostalCode] nvarchar(max) NULL,
+        [IsDelete] bit NOT NULL DEFAULT(0)
     );
 END
 GO
 
--- ستون «حقیقی/حقوقی» برای دیتابیس‌هایی که CPInfos قبلاً داشتند
-IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL
-AND COL_LENGTH(N'dbo.CPInfos', N'Type') IS NULL
+-- ستون‌های CPInfos برای دیتابیس‌هایی که جدول را قبلاً داشتند
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CPInfos', N'Type') IS NULL
     ALTER TABLE [dbo].[CPInfos] ADD [Type] nvarchar(20) NULL;
+GO
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CPInfos', N'EnglishName') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [EnglishName] nvarchar(max) NULL;
+GO
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CPInfos', N'PostalCode') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [PostalCode] nvarchar(max) NULL;
+GO
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CPInfos', N'CompanyId') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [CompanyId] int NULL;
+GO
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CPInfos', N'IsDelete') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [IsDelete] bit NOT NULL DEFAULT(0);
 GO
 
 IF OBJECT_ID(N'dbo.ConnectInfos', N'U') IS NULL
@@ -38,10 +57,15 @@ BEGIN
         [CpInfo] int NOT NULL,
         [TaxMemoryID] nvarchar(max) NULL,
         [PrivateKeyPath] nvarchar(max) NULL,
+        [CertificatePath] nvarchar(max) NULL,
         [WebServiceAddress] nvarchar(max) NULL,
         [IsDelete] bit NOT NULL DEFAULT(0)
     );
 END
+GO
+
+IF OBJECT_ID(N'dbo.ConnectInfos', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.ConnectInfos', N'CertificatePath') IS NULL
+    ALTER TABLE [dbo].[ConnectInfos] ADD [CertificatePath] nvarchar(max) NULL;
 GO
 
 IF OBJECT_ID(N'dbo.Customers', N'U') IS NULL
@@ -49,15 +73,20 @@ BEGIN
     CREATE TABLE [dbo].[Customers](
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
         [CpInfoId] int NULL,
-        [Name] nvarchar(max) NULL,
-        [PostalCode] nvarchar(max) NULL,
-        [Phone] nvarchar(max) NULL,
-        [NationalID] nvarchar(max) NULL,
         [Type] nvarchar(max) NULL,
+        [Name] nvarchar(max) NULL,
+        [NationalID] nvarchar(max) NULL,
         [EconomicNumber] nvarchar(max) NULL,
-        [Address] nvarchar(max) NULL
+        [Phone] nvarchar(max) NULL,
+        [PostalCode] nvarchar(max) NULL,
+        [Address] nvarchar(max) NULL,
+        [IsDelete] bit NOT NULL DEFAULT(0)
     );
 END
+GO
+
+IF OBJECT_ID(N'dbo.Customers', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Customers', N'IsDelete') IS NULL
+    ALTER TABLE [dbo].[Customers] ADD [IsDelete] bit NOT NULL DEFAULT(0);
 GO
 
 IF OBJECT_ID(N'dbo.UnitOfMeasurements', N'U') IS NULL
@@ -80,9 +109,14 @@ BEGIN
         [UniqueIdentifier] nvarchar(max) NULL,
         [UnitOfMeasurement] nvarchar(max) NULL,
         [ValueAddedPercentage] tinyint NOT NULL DEFAULT(0),
-        [Price] decimal(18,2) NOT NULL DEFAULT(0)
+        [Price] decimal(18,2) NOT NULL DEFAULT(0),
+        [IsDelete] bit NOT NULL DEFAULT(0)
     );
 END
+GO
+
+IF OBJECT_ID(N'dbo.GoodsOrServices', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.GoodsOrServices', N'IsDelete') IS NULL
+    ALTER TABLE [dbo].[GoodsOrServices] ADD [IsDelete] bit NOT NULL DEFAULT(0);
 GO
 
 IF OBJECT_ID(N'dbo.FiscalYears', N'U') IS NULL
@@ -90,10 +124,27 @@ BEGIN
     CREATE TABLE [dbo].[FiscalYears](
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
         [CpInfo] int NULL,
+        [Title] nvarchar(max) NULL,
         [StartDate] datetime2 NOT NULL,
-        [EndDate] datetime2 NOT NULL
+        [EndDate] datetime2 NOT NULL,
+        [CreatedDate] datetime2 NOT NULL DEFAULT(SYSDATETIME()),
+        [IsActive] bit NOT NULL DEFAULT(1),
+        [IsDelete] bit NOT NULL DEFAULT(0)
     );
 END
+GO
+
+IF OBJECT_ID(N'dbo.FiscalYears', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FiscalYears', N'Title') IS NULL
+    ALTER TABLE [dbo].[FiscalYears] ADD [Title] nvarchar(max) NULL;
+GO
+IF OBJECT_ID(N'dbo.FiscalYears', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FiscalYears', N'CreatedDate') IS NULL
+    ALTER TABLE [dbo].[FiscalYears] ADD [CreatedDate] datetime2 NOT NULL DEFAULT(SYSDATETIME());
+GO
+IF OBJECT_ID(N'dbo.FiscalYears', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FiscalYears', N'IsActive') IS NULL
+    ALTER TABLE [dbo].[FiscalYears] ADD [IsActive] bit NOT NULL DEFAULT(1);
+GO
+IF OBJECT_ID(N'dbo.FiscalYears', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FiscalYears', N'IsDelete') IS NULL
+    ALTER TABLE [dbo].[FiscalYears] ADD [IsDelete] bit NOT NULL DEFAULT(0);
 GO
 
 IF OBJECT_ID(N'dbo.Invoices', N'U') IS NULL
@@ -113,6 +164,7 @@ BEGIN
         [StatusSentToSystem] nvarchar(max) NULL,
         [ShowButtons] bit NOT NULL DEFAULT(0),
         [TaxNumber] nvarchar(max) NULL,
+        [TaxMemoryID] nvarchar(max) NULL,
         [NewTaxNumber] nvarchar(max) NULL,
         [ReferenceId] nvarchar(max) NULL,
         [Subject] nvarchar(max) NULL,
@@ -125,6 +177,10 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.Invoices', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Invoices', N'TaxMemoryID') IS NULL
+    ALTER TABLE [dbo].[Invoices] ADD [TaxMemoryID] nvarchar(max) NULL;
+GO
+
 IF OBJECT_ID(N'dbo.InvoiceItems', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[InvoiceItems](
@@ -134,6 +190,8 @@ BEGIN
         [UniqueIdentifier] nvarchar(max) NULL,
         [Count] decimal(18,2) NOT NULL DEFAULT(0),
         [PriceUnit] decimal(18,2) NOT NULL DEFAULT(0),
+        [PriceNaghd] decimal(18,2) NULL,
+        [PriceNesye] decimal(18,2) NULL,
         [ValueAddedPercentage] int NOT NULL DEFAULT(0),
         [Discount] decimal(18,2) NOT NULL DEFAULT(0),
         [GoodsOrServicesDescripton] nvarchar(max) NULL,
@@ -145,10 +203,37 @@ BEGIN
 END
 GO
 
--- تأیید نهایی: باید ۸ سطر برگردانده شود
+IF OBJECT_ID(N'dbo.InvoiceItems', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.InvoiceItems', N'PriceNaghd') IS NULL
+    ALTER TABLE [dbo].[InvoiceItems] ADD [PriceNaghd] decimal(18,2) NULL;
+GO
+IF OBJECT_ID(N'dbo.InvoiceItems', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.InvoiceItems', N'PriceNesye') IS NULL
+    ALTER TABLE [dbo].[InvoiceItems] ADD [PriceNesye] decimal(18,2) NULL;
+GO
+
+-- جدول پرداخت‌های صورتحساب (معادل جدول مبدأ) — شناسهٔ مالیاتی، مبلغ، روش و مرجع
+IF OBJECT_ID(N'dbo.InvoicePayments', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[InvoicePayments](
+        [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+        [InvoiceId] int NOT NULL,
+        [TaxNumber] nvarchar(max) NULL,
+        [Amount] int NOT NULL DEFAULT(0),
+        [PaymentDate] nvarchar(max) NULL,
+        [PaymentMethod] nvarchar(max) NULL,
+        [TerminalNumber] nvarchar(max) NULL,
+        [ReferenceNumber] nvarchar(max) NULL,
+        [IsDelete] bit NOT NULL DEFAULT(0)
+    );
+    CREATE INDEX [IX_InvoicePayments_InvoiceId] ON [dbo].[InvoicePayments] ([InvoiceId]);
+    ALTER TABLE [dbo].[InvoicePayments] ADD CONSTRAINT [FK_InvoicePayments_Invoices_InvoiceId]
+        FOREIGN KEY ([InvoiceId]) REFERENCES [dbo].[Invoices] ([Id]) ON DELETE CASCADE;
+END
+GO
+
+-- تأیید نهایی: باید ۹ سطر برگردانده شود
 SELECT name FROM sys.tables WHERE name IN
     (N'CPInfos', N'ConnectInfos', N'Customers', N'UnitOfMeasurements',
-     N'GoodsOrServices', N'FiscalYears', N'Invoices', N'InvoiceItems')
+     N'GoodsOrServices', N'FiscalYears', N'Invoices', N'InvoiceItems', N'InvoicePayments')
 ORDER BY name;
 GO
 

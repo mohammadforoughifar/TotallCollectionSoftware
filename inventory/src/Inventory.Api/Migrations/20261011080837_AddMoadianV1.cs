@@ -111,6 +111,7 @@ namespace Inventory.Api.Migrations
                     CpInfo = table.Column<int>(type: "int", nullable: false),
                     TaxMemoryID = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     PrivateKeyPath = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CertificatePath = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     WebServiceAddress = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     IsDelete = table.Column<bool>(type: "bit", nullable: false)
                 },
@@ -129,7 +130,12 @@ namespace Inventory.Api.Migrations
                     Nationalid = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     EconomicNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     // «حقیقی/حقوقی» — برای دیتابیس‌هایی با CPInfos موجود، MoadianSchemaV1 آن را idempotent اضافه می‌کند
-                    Type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true)
+                    Type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    // هم‌ترازی با جدول مبدأ — MoadianSchemaV1 برای دیتابیس‌های موجود idempotent اضافه می‌کند
+                    CompanyId = table.Column<int>(type: "int", nullable: true),
+                    EnglishName = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    PostalCode = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDelete = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -149,7 +155,8 @@ namespace Inventory.Api.Migrations
                     NationalID = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Type = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     EconomicNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDelete = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -224,8 +231,12 @@ namespace Inventory.Api.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     CpInfo = table.Column<int>(type: "int", nullable: true),
+                    Title = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatedDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    IsDelete = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -243,7 +254,8 @@ namespace Inventory.Api.Migrations
                     UniqueIdentifier = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     UnitOfMeasurement = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ValueAddedPercentage = table.Column<byte>(type: "tinyint", nullable: false),
-                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    IsDelete = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -398,6 +410,7 @@ namespace Inventory.Api.Migrations
                     StatusSentToSystem = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ShowButtons = table.Column<bool>(type: "bit", nullable: false),
                     TaxNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TaxMemoryID = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     NewTaxNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ReferenceId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Subject = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -425,6 +438,8 @@ namespace Inventory.Api.Migrations
                     UniqueIdentifier = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Count = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     PriceUnit = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    PriceNaghd = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
+                    PriceNesye = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
                     ValueAddedPercentage = table.Column<int>(type: "int", nullable: false),
                     Discount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     GoodsOrServicesDescripton = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -440,6 +455,37 @@ namespace Inventory.Api.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.CreateTable(
+                name: "InvoicePayments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    InvoiceId = table.Column<int>(type: "int", nullable: false),
+                    TaxNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Amount = table.Column<int>(type: "int", nullable: false),
+                    PaymentDate = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    PaymentMethod = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TerminalNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ReferenceNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDelete = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvoicePayments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InvoicePayments_Invoices_InvoiceId",
+                        column: x => x.InvoiceId,
+                        principalTable: "Invoices",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvoicePayments_InvoiceId",
+                table: "InvoicePayments",
+                column: "InvoiceId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ItRequests_SourceCompanyId",
@@ -497,6 +543,9 @@ namespace Inventory.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "GoodsOrServices");
+
+            migrationBuilder.DropTable(
+                name: "InvoicePayments");
 
             migrationBuilder.DropTable(
                 name: "InvoiceItems");

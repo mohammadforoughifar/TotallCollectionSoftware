@@ -393,6 +393,7 @@ public class AppDbContext : DbContext
     public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
+    public DbSet<InvoicePayment> InvoicePayments => Set<InvoicePayment>();
     public DbSet<ConnectInfo> ConnectInfos => Set<ConnectInfo>();
 
     // ---------- ماژول خزانه‌داری ----------

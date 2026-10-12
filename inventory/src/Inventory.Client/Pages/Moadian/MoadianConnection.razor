@@ -69,6 +69,16 @@ else
                             <input class="form-control num" dir="ltr" value="@newCp.EconomicNumber" @oninput="e => newCp.EconomicNumber = e.Value?.ToString()" />
                         </div>
                     </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-6">
+                            <label class="form-label">نام لاتین شرکت</label>
+                            <input class="form-control num" dir="ltr" value="@newCp.EnglishName" @oninput="e => newCp.EnglishName = e.Value?.ToString()" placeholder="Aria Sample Co." />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">کد پستی شرکت</label>
+                            <input class="form-control num" dir="ltr" value="@newCp.PostalCode" @oninput="e => newCp.PostalCode = e.Value?.ToString()" />
+                        </div>
+                    </div>
                     <button class="btn btn-success mt-3" @onclick="SaveCompany" disabled="@savingCp">
                         @if (savingCp) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-plus-lg"></i> }
                         ثبت شرکت
@@ -151,16 +161,99 @@ else
             </div>
         </div>
     </div>
+
+    @* ---------- سال‌های مالی ---------- *@
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header"><i class="bi bi-calendar-range text-primary"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span></div>
+                <div class="card-body">
+                    @if (Ctx.CpInfoId <= 0)
+                    {
+                        <div class="alert alert-warning py-2 small">ابتدا یک شرکت انتخاب یا ثبت کنید.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-3">
+                            <div class="col-lg-5">
+                                <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-calendar-plus text-success"></i> تعریف سال مالی جدید</span>
+                                <div class="mb-2">
+                                    <label class="form-label">عنوان</label>
+                                    <input class="form-control" value="@newFy.Title" @oninput="e => newFy.Title = e.Value?.ToString()" placeholder="مثلاً: سال ۱۴۰۵" />
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label">تاریخ شروع <span class="text-danger">*</span></label>
+                                        <DatePicker Value="newFy.StartDatePicker" ValueChanged="v => newFy.StartDatePicker = v" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">تاریخ پایان <span class="text-danger">*</span></label>
+                                        <DatePicker Value="newFy.EndDatePicker" ValueChanged="v => newFy.EndDatePicker = v" />
+                                    </div>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="fyActive" checked="@newFy.IsActive" @onchange="e => newFy.IsActive = (bool)(e.Value ?? false)" />
+                                    <label class="form-check-label" for="fyActive">سال مالی فعال است</label>
+                                </div>
+                                <button class="btn btn-success mt-3" @onclick="SaveFiscalYear" disabled="@savingFy">
+                                    @if (savingFy) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-plus-lg"></i> }
+                                    ثبت سال مالی
+                                </button>
+                            </div>
+                            <div class="col-lg-7">
+                                <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-list-ul"></i> سال‌های تعریف‌شده</span>
+                                @if (FiscalYears.Count == 0)
+                                {
+                                    <div class="text-muted small">هنوز سال مالی‌ای ثبت نشده است.</div>
+                                }
+                                else
+                                {
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead>
+                                                <tr><th>عنوان</th><th>بازه</th><th class="text-nowrap">وضعیت</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var fy in FiscalYears)
+                                                {
+                                                    <tr>
+                                                        <td>@(string.IsNullOrWhiteSpace(fy.Title) ? "—" : fy.Title)</td>
+                                                        <td class="text-nowrap">@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</td>
+                                                        <td><span class="badge @(fy.IsActive ? "badge-soft-success" : "badge-soft-muted")">@(fy.IsActive ? "فعال" : "غیرفعال")</span></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @code {
     private VMShowCpinfoByCompany newCp = new() { Type = "حقیقی" };
     private VMConnection conn = new();
     private List<VMShowCpinfoByCompany> CpInfos = new();
+    private List<VMFiscalYear> FiscalYears = new();
+    private FiscalYearForm newFy = new();
     private VMConnection? connection;
     private byte[]? keyBytes;
     private string? keyName;
-    private bool loading = true, savingCp, savingConn, testing, lastTest;
+    private bool loading = true, savingCp, savingConn, savingFy, testing, lastTest;
+
+    /// <summary>فرم تعریف سال مالی — DatePicker ها DateTime? برمی‌دارند؛ هنگام ذخیره به VM تبدیل می‌شود.</summary>
+    private sealed class FiscalYearForm
+    {
+        public string? Title { get; set; }
+        public DateTime? StartDatePicker { get; set; }
+        public DateTime? EndDatePicker { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
 
     private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
 
@@ -188,8 +281,13 @@ else
                     conn.TaxMemoryID = connection.TaxMemoryID;
                     conn.WebServiceAddress = connection.WebServiceAddress;
                 }
+                FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
             }
-            else connection = null;
+            else
+            {
+                connection = null;
+                FiscalYears = new();
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
@@ -254,6 +352,37 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { savingCp = false; }
+    }
+
+    private async Task SaveFiscalYear()
+    {
+        if (Ctx.CpInfoId <= 0) { Toast.Error("ابتدا یک شرکت انتخاب کنید."); return; }
+        if (newFy.StartDatePicker is null) { Toast.Error("تاریخ شروع سال مالی را وارد کنید."); return; }
+        if (newFy.EndDatePicker is null) { Toast.Error("تاریخ پایان سال مالی را وارد کنید."); return; }
+        if (newFy.EndDatePicker < newFy.StartDatePicker) { Toast.Error("تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد."); return; }
+
+        savingFy = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.SaveFiscalYearAsync(new VMFiscalYear
+            {
+                CpInfoId = Ctx.CpInfoId,
+                Title = newFy.Title,
+                StartDate = newFy.StartDatePicker.Value,
+                EndDate = newFy.EndDatePicker.Value,
+                IsActive = newFy.IsActive
+            });
+            if (r.Success)
+            {
+                Toast.Success("سال مالی ثبت شد.");
+                newFy = new();
+                FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
+            }
+            else Toast.Error(r.Message ?? "خطا در ثبت سال مالی.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingFy = false; StateHasChanged(); }
     }
 
     private async Task SaveConnection()

@@ -46,7 +46,7 @@ namespace Inventory.Api.Services.Moadian
             try
             {
 
-                var query = context.GoodsOrServices.Where(c => c.CpInfo == cpinfoId).AsQueryable();
+                var query = context.GoodsOrServices.Where(c => c.CpInfo == cpinfoId && !c.IsDelete).AsQueryable();
 
 
 
@@ -1247,7 +1247,7 @@ context.Customers.Any(x =>
         public async Task<ApiModel> GetGoodOrServiceForComboAsync(int cpinfoid)
         {
             ApiModel model = new ApiModel();
-            var result = await context.GoodsOrServices.Where(c => c.CpInfo == cpinfoid).OrderBy(c => c.Name).Select(c => new VMGoodsOrServicesList
+            var result = await context.GoodsOrServices.Where(c => c.CpInfo == cpinfoid && !c.IsDelete).OrderBy(c => c.Name).Select(c => new VMGoodsOrServicesList
             {
                 Name = c.Name,
                 GoodsOrServicesId = c.Id,
@@ -1284,7 +1284,7 @@ context.Customers.Any(x =>
         public async Task<ApiModel> GetCustomerForComboAsync(int cpinfoid)
         {
             ApiModel model = new ApiModel();
-            var result = await context.Customers.Where(c => c.CpInfoId == cpinfoid).OrderBy(c => c.Name).Select(c => new VMCustomerList
+            var result = await context.Customers.Where(c => c.CpInfoId == cpinfoid && !c.IsDelete).OrderBy(c => c.Name).Select(c => new VMCustomerList
             {
                 Name = c.Name,
                 CustomerId = c.Id,
@@ -3201,14 +3201,16 @@ context.Customers.Any(x =>
             ApiModel model = new();
             try
             {
-                var list = await context.CPInfos.ToListAsync();
+                var list = await context.CPInfos.Where(c => !c.IsDelete).ToListAsync();
                 model.Data = list.Select(c => new VMShowCpinfoByCompany
                 {
                     cpinfoid = c.Id,
                     PersianName = c.PersianName,
                     Nationalid = c.Nationalid,
                     EconomicNumber = c.EconomicNumber,
-                    Type = string.IsNullOrEmpty(c.Type) ? "حقیقی" : c.Type
+                    Type = string.IsNullOrEmpty(c.Type) ? "حقیقی" : c.Type,
+                    EnglishName = c.EnglishName,
+                    PostalCode = c.PostalCode
                 }).ToList();
                 model.Status = 200;
                 model.Success = true;
@@ -3248,6 +3250,9 @@ context.Customers.Any(x =>
                     exist.Nationalid = modeldata.Nationalid;
                     exist.EconomicNumber = modeldata.EconomicNumber;
                     exist.Type = type;
+                    exist.EnglishName = modeldata.EnglishName;
+                    exist.PostalCode = modeldata.PostalCode;
+                    exist.IsDelete = false;
                     await context.SaveChangesAsync();
                 }
                 else
@@ -3257,7 +3262,10 @@ context.Customers.Any(x =>
                         PersianName = modeldata.PersianName,
                         Nationalid = modeldata.Nationalid,
                         EconomicNumber = modeldata.EconomicNumber,
-                        Type = type
+                        Type = type,
+                        EnglishName = modeldata.EnglishName,
+                        PostalCode = modeldata.PostalCode,
+                        IsDelete = false
                     };
                     context.CPInfos.Add(cp);
                     await context.SaveChangesAsync();
@@ -3281,15 +3289,17 @@ context.Customers.Any(x =>
             try
             {
                 var list = await context.FiscalYears
-                    .Where(f => f.CpInfo == cpinfoId)
+                    .Where(f => f.CpInfo == cpinfoId && !f.IsDelete)
                     .OrderByDescending(f => f.StartDate)
                     .ToListAsync();
                 model.Data = list.Select(f => new VMFiscalYear
                 {
                     Id = f.Id,
                     CpInfoId = cpinfoId,
+                    Title = f.Title,
                     StartDate = f.StartDate,
-                    EndDate = f.EndDate
+                    EndDate = f.EndDate,
+                    IsActive = f.IsActive
                 }).ToList();
                 model.Status = 200;
                 model.Success = true;
@@ -3313,8 +3323,12 @@ context.Customers.Any(x =>
                 var fy = new FiscalYear
                 {
                     CpInfo = modeldata.CpInfoId,
+                    Title = modeldata.Title,
                     StartDate = modeldata.StartDate,
-                    EndDate = modeldata.EndDate
+                    EndDate = modeldata.EndDate,
+                    CreatedDate = DateTime.Now,
+                    IsActive = modeldata.IsActive,
+                    IsDelete = false
                 };
                 context.FiscalYears.Add(fy);
                 await context.SaveChangesAsync();

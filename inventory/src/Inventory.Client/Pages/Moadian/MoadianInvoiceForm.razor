@@ -78,7 +78,7 @@ else
                         <option value="">— انتخاب —</option>
                         @foreach (var fy in FiscalYears)
                         {
-                            <option value="@fy.Id">@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</option>
+                            <option value="@fy.Id">@(string.IsNullOrWhiteSpace(fy.Title) ? "" : fy.Title + " — ")@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</option>
                         }
                     </select>
                 </div>

@@ -137,6 +137,10 @@ public class VMShowCpinfoByCompany
     public string? EconomicNumber { get; set; }
     /// <summary>نوع شرکت: «حقیقی» یا «حقوقی».</summary>
     public string? Type { get; set; }
+    /// <summary>نام لاتین شرکت — معادل EnglishName جدول مبدأ.</summary>
+    public string? EnglishName { get; set; }
+    /// <summary>کد پستی شرکت — معادل PostalCode جدول مبدأ.</summary>
+    public string? PostalCode { get; set; }
 }
 
 /// <summary>سال مالی صورتحساب (رابط کاربری مودیان).</summary>
@@ -144,8 +148,12 @@ public class VMFiscalYear
 {
     public int Id { get; set; }
     public int CpInfoId { get; set; }
+    /// <summary>عنوان سال مالی — معادل Title جدول مبدأ.</summary>
+    public string? Title { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
+    /// <summary>فعال‌بودن سال مالی — معادل IsActive جدول مبدأ.</summary>
+    public bool IsActive { get; set; }
 }
 
 /// <summary>فرم ثبت/ویرایش کالا یا خدمت.</summary>
