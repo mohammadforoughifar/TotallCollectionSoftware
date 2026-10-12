@@ -103,6 +103,14 @@
                             تست اتصال ثبت‌شده
                         </button>
                     </div>
+
+                    @if (!string.IsNullOrEmpty(testDetail))
+                    {
+                        <div class="alert alert-danger small mt-3 mb-0" style="white-space:pre-wrap;line-height:1.9">
+                            <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle"></i> جزئیات دلیل ناموفق‌بودن تست اتصال</div>
+                            @testDetail
+                        </div>
+                    }
                 }
             </div>
         </div>
@@ -115,6 +123,7 @@
     private VMConnection? connection;
     private byte[]? keyBytes;
     private string? keyName;
+    private string? testDetail;
     private bool loading = true, savingConn, testing, lastTest;
 
     private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
@@ -140,7 +149,7 @@
 
     private async Task LoadConnection()
     {
-        lastTest = false;
+        lastTest = false; testDetail = null;
         if (Ctx.CpInfoId > 0)
         {
             connection = await Moadian.GetConnectionAsync(Ctx.CpInfoId);
@@ -235,7 +244,7 @@
     private async Task TestConnection()
     {
         if (connection is null) return;
-        testing = true; lastTest = false;
+        testing = true; lastTest = false; testDetail = null;
         StateHasChanged();
         try
         {
@@ -243,10 +252,23 @@
             // سپس با SDK سامانه مودیان احراز هویت می‌کند (اطلاعات سرور + دریافت توکن).
             var r = await Moadian.IsConnectAsync(new VMConnection { cpinfoid = Ctx.CpInfoId });
             lastTest = r.Success;
-            if (r.Success) Toast.Success("اتصال برقرار و احراز هویت در سامانهٔ مودیان انجام شد.");
-            else Toast.Error($"تست اتصال ناموفق: {r.Message}");
+            if (r.Success)
+            {
+                testDetail = null;
+                Toast.Success("اتصال برقرار و احراز هویت در سامانهٔ مودیان انجام شد.");
+            }
+            else
+            {
+                // فهرست خطای سامانه با جزئیات کامل در کادر پایین فرم نمایش داده می‌شود
+                testDetail = r.Message ?? "تست اتصال ناموفق بود.";
+                Toast.Error("تست اتصال ناموفق — جزئیات در کادر قرمز پایین فرم آمده است.");
+            }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            testDetail = "خطا در ارتباط با API: " + ex.Message;
+            Toast.Error(ex.Message);
+        }
         finally { testing = false; StateHasChanged(); }
     }
 

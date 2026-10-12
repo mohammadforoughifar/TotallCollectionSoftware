@@ -622,82 +622,165 @@ namespace Inventory.Api.Services.Moadian
 
         public async Task<ApiModel> IsConnectAsync(string shenaseyekta, string privatekey, string WebServiceAddress)
         {
-            ///C:\Users\ForoughAria\Desktop\key\
             ApiModel model = new ApiModel();
             if (string.IsNullOrEmpty(privatekey) || string.IsNullOrEmpty(shenaseyekta))
             {
-                return new ApiModel();
+                return Fail(model, "شناسهٔ حافظه یا مسیر فایل کلید خصوصی ارسال نشده است.");
             }
-            else
+
+            static ApiModel Fail(ApiModel m, string msg)
             {
-                try
-                {
-
-                    //             TaxApiService.Instance.Init(
-                    //"A2ZRHM",
-                    //new Pkcs8SignatoryConfig(
-                    //    @"C:\Users\ForoughAria\Desktop\CSR-M\KELID\Private.key",
-                    //    null),
-                    //new NormalProperties(ClientType.SELF_TSP),//Tsp(شرکت معتمد)
-                    //                                          //Self Tsp(خود مودی
-                    //"https://tp.tax.gov.ir/req/api/");
-
-
-
-
-                    TaxApiService.Instance.Init(
-shenaseyekta,
-new Pkcs8SignatoryConfig(
-   privatekey,
-    null),
-new NormalProperties(ClientType.SELF_TSP),//Tsp(شرکت معتمد)
-                                          //Self Tsp(خود مودی
-WebServiceAddress);
-
-                    // تست ارتباط با سرور
-                    var serverInfo = TaxApiService.Instance.TaxApis.GetServerInformation();
-
-                    if (serverInfo == null)
-                    {
-
-                        model.Data = false;
-                        model.Status = 500;
-                        model.Message = "ارتباط با سرور برقرار نشد";
-                        model.Success = false;
-                        return model;
-                    }
-                    var ro = serverInfo.PublicKeys.FirstOrDefault();
-                    // تست دریافت توکن
-                    var token = TaxApiService.Instance.TaxApis.RequestToken();
-                    if (string.IsNullOrEmpty(token.Token))
-                    {
-
-                        model.Data = false;
-                        model.Status = 500;
-                        model.Message = "دریافت توکن ناموفق بود";
-                        model.Success = false;
-                        return model;
-                    }
-
-
-                    model.Data = true;
-                    model.Status = 201;
-                    model.Message = " ارتباط با سامانه مودیان با موفقیت برقرار شد";
-                    model.Success = true;
-                    return model;
-                }
-                catch (Exception ex)
-                {
-                    model.Data = false;
-                    model.Message = MessageCode.StatusCode.TryGetValue(500, out string messager) == true
-                        ? model.Message = messager
-                        : model.Message = "کد وضعیت نامعتبر است.";
-                    model.Status = 500;
-                    model.Success = false;
-                    return model;
-                }
+                m.Data = false;
+                m.Status = 500;
+                m.Message = msg;
+                m.Success = false;
+                return m;
             }
 
+            // ---------- مرحلهٔ ۱: مقداردهی اولیهٔ SDK با شناسهٔ حافظه و کلید ----------
+            try
+            {
+                TaxApiService.Instance.Init(
+                    shenaseyekta,
+                    new Pkcs8SignatoryConfig(privatekey, null),
+                    new NormalProperties(ClientType.SELF_TSP), // Self Tsp (خود مودی)
+                    WebServiceAddress);
+            }
+            catch (Exception ex)
+            {
+                return Fail(model,
+                    $"تست اتصال ناموفق — مقداردهی اولیهٔ SDK.\n" +
+                    $"فهرست خطای سامانه: {ExtractSdkErrorsFromException(ex)}\n" +
+                    $"جزئیات فنی: {ExceptionDetails(ex)}\n" +
+                    $"بررسی کنید: مسیر فایل کلید درست باشد («{privatekey}») و فرمت کلید PKCS#8 معتبر باشد.");
+            }
+
+            // ---------- مرحلهٔ ۲: دریافت اطلاعات سرور (دسترس‌پذیری سامانه + کلیدهای عمومی) ----------
+            try
+            {
+                var serverInfo = TaxApiService.Instance.TaxApis.GetServerInformation();
+                if (serverInfo == null)
+                {
+                    return Fail(model,
+                        $"تست اتصال ناموفق — سامانهٔ مودیان در دسترس نیست یا پاسخ معتبری نداد.\n" +
+                        $"آدرس سرویس: {WebServiceAddress}\n" +
+                        $"شناسهٔ حافظه: {shenaseyekta}\n" +
+                        "بررسی کنید: اتصال سرور به اینترنت، حروف بزرگ/کوچک و اسلش انتهای آدرس سرویس (مثل https://tp.tax.gov.ir/req/api/) و عدم‌استفاده از آدرس محیط تست به‌جای آدرس اصلی (یا بالعکس).");
+                }
+                _ = serverInfo.PublicKeys.FirstOrDefault(); // خواندن کلیدهای عمومی سرور (آماده‌سازی امضا)
+            }
+            catch (Exception ex)
+            {
+                return Fail(model,
+                    $"تست اتصال ناموفق — خطا در دریافت اطلاعات سرور سامانهٔ مودیان.\n" +
+                    $"فهرست خطای سامانه: {ExtractSdkErrorsFromException(ex)}\n" +
+                    $"جزئیات فنی: {ExceptionDetails(ex)}\n" +
+                    $"آدرس سرویس: {WebServiceAddress}");
+            }
+
+            // ---------- مرحلهٔ ۳: دریافت توکن (احراز هویت واقعی مؤدی/خدمات‌دهنده) ----------
+            try
+            {
+                var token = TaxApiService.Instance.TaxApis.RequestToken();
+                if (token is null || string.IsNullOrEmpty(token.Token))
+                {
+                    var sdkErr = ExtractSdkErrors(token);
+                    var msg = "تست اتصال ناموفق — احراز هویت در سامانهٔ مودیان انجام نشد و توکنی صادر نشد.";
+                    if (!string.IsNullOrEmpty(sdkErr))
+                        msg += $"\nفهرست خطای برگشتی سامانه: {sdkErr}";
+                    else
+                        msg += "\nسامانه خطای متنی برنگرداند.";
+                    msg += $"\nشناسهٔ حافظه: {shenaseyekta}\nآدرس سرویس: {WebServiceAddress}\n" +
+                           "بررسی کنید: شناسهٔ حافظه دقیقاً مطابق کارپوشهٔ مالیاتی باشد؛ کلید خصوصی با همان شناسهٔ حافظه (CSR آن) صادر شده باشد؛ گواهی در بازهٔ اعتبار زمانی باشد.";
+                    return Fail(model, msg);
+                }
+
+                model.Data = true;
+                model.Status = 201;
+                model.Message = "اتصال برقرار و احراز هویت انجام شد — توکن با موفقیت صادر شد.";
+                model.Success = true;
+                return model;
+            }
+            catch (Exception ex)
+            {
+                return Fail(model,
+                    $"تست اتصال ناموفق — خطا هنگام دریافت توکن از سامانهٔ مودیان.\n" +
+                    $"فهرست خطای سامانه: {ExtractSdkErrorsFromException(ex)}\n" +
+                    $"جزئیات فنی: {ExceptionDetails(ex)}\n" +
+                    $"شناسهٔ حافظه: {shenaseyekta} | آدرس سرویس: {WebServiceAddress}");
+            }
+
+            // ---------- ابزارهای استخراج جزئیات خطا ----------
+            static string ExceptionDetails(Exception ex)
+            {
+                var sb = new System.Text.StringBuilder();
+                var cur = ex;
+                var depth = 0;
+                while (cur != null && depth < 5)
+                {
+                    if (depth == 0) sb.Append(cur.GetType().Name).Append(": ").Append(cur.Message);
+                    else sb.Append(" ← ").Append(cur.GetType().Name).Append(": ").Append(cur.Message);
+                    cur = cur.InnerException;
+                    depth++;
+                }
+                return sb.ToString();
+            }
+
+            // بعضی استثناهای SDK خودشان مدل خطای سامانه را در Data/Property نگه می‌دارند
+            static string ExtractSdkErrorsFromException(Exception ex)
+            {
+                if (ex is null) return string.Empty;
+                var parts = new List<string>();
+                if (ex.Data != null && ex.Data.Count > 0)
+                    foreach (System.Collections.DictionaryEntry d in ex.Data) parts.Add($"{d.Key}={d.Value}");
+                var nested = ExtractSdkErrors(ex);
+                if (!string.IsNullOrEmpty(nested)) parts.Add(nested);
+                return string.Join(" | ", parts.Distinct());
+            }
+
+            // مدل پاسخ SDK (ApiResultPack/TokenModel و…) به‌صورت بازتابی پویش می‌شود؛ اگر فهرست خطا دارد نمایش داده می‌شود.
+            static string ExtractSdkErrors(object? sdkResult)
+            {
+                if (sdkResult is null) return string.Empty;
+                var parts = new List<string>();
+                foreach (var name in new[] { "Errors", "ErrorList", "Error", "ErrorsAndWarnings", "ErrorMessage", "Message", "Description", "ExceptionMessage", "MessageError" })
+                {
+                    var p = sdkResult.GetType().GetProperty(name);
+                    if (p is null) continue;
+                    object? val;
+                    try { val = p.GetValue(sdkResult); } catch { continue; }
+                    if (val is null) continue;
+                    if (val is string s)
+                    {
+                        if (!string.IsNullOrWhiteSpace(s)) parts.Add(s);
+                        continue;
+                    }
+                    if (val is System.Collections.IEnumerable coll)
+                    {
+                        var i = 0;
+                        foreach (var item in coll)
+                        {
+                            if (item is null) continue;
+                            parts.Add(DescribeSdkError(item));
+                            if (++i >= 10) break;
+                        }
+                        continue;
+                    }
+                    parts.Add(DescribeSdkError(val));
+                }
+                return string.Join(" | ", parts.Distinct());
+            }
+
+            static string DescribeSdkError(object e)
+            {
+                var t = e.GetType();
+                var code = t.GetProperty("Code")?.GetValue(e)?.ToString();
+                var msg = (t.GetProperty("Message")?.GetValue(e)?.ToString()
+                           ?? t.GetProperty("Detail")?.GetValue(e)?.ToString()
+                           ?? t.GetProperty("Description")?.GetValue(e)?.ToString());
+                if (string.IsNullOrWhiteSpace(msg)) return e.ToString() ?? string.Empty;
+                return string.IsNullOrWhiteSpace(code) ? msg : $"{code}: {msg}";
+            }
         }
 
         /// <summary>تست اتصالِ ثبت‌شدهٔ یک شرکت — کلید را از wwwroot/uploads/{نام شرکت} می‌خواند و احراز هویت واقعی انجام می‌دهد.</summary>
