@@ -475,6 +475,29 @@ public class IncomingLetterService : IIncomingLetterService
             endOfYear = entryDate.AddDays(400);
         }
 
+        // ==================== باگ B4 (بند ۲): اتمیکیتی ====================
+        // تراکنش عمداً «پیش از» خواندن‌های شماره‌گذاری شروع می‌شود، نه پیش از درج.
+        // اگر بعد از آن‌ها شروع می‌شد، سطح Serializable هیچ اثری نداشت چون خواندن‌های
+        // MAX() بیرون از تراکنش و بدون قفل انجام می‌شدند و دو درخواست همزمان باز هم
+        // عدد یکسانی می‌خواندند.
+        //
+        // Serializable همان الگویی است که خودِ پروژه برای تخصیص شماره در جاهای
+        // race‌پذیر به کار می‌برد (WorkOrdersController:180/314/798 و
+        // DocEvolutionController:48) — پس رفتار و ریسک deadlock با بقیهٔ کدبیس یکی است.
+        //
+        // همچنین این متد «دو» بار SaveChanges می‌کند (اولی برای گرفتن source.Id، چون
+        // IncomingLetter کلید مشترک با LetterSource دارد؛ دومی برای نامه و ارجاع‌ها).
+        // یک باگ گزارش‌نشده: اگر دومی شکست می‌خورد، رکورد LetterSource «یتیم» در
+        // دیتابیس می‌ماند. با تراکنش، هر دو یا با هم ثبت می‌شوند یا هیچ‌کدام.
+        //
+        // try/catch و تورفتگی دوبارهٔ بدنه لازم نیست: Dispose شدن تراکنشِ commit‌نشده
+        // خودش rollback می‌کند، پس `await using` به‌تنهایی کافی است (همان HrDemoPurger:33).
+        //
+        // آوردن BuildLetterNumberAsync داخل تراکنش امن است: TotalNumberAsync فقط می‌خواند
+        // (نه تراکنش جدا دارد نه SaveChanges) و AppDbContext هم Scoped است، پس همان
+        // نمونهٔ مشترک در کل درخواست به کار می‌رود و تراکنش تودرتو ساخته نمی‌شود.
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
         var maxNumber = await _db.IncomingLetters
             .Where(l => l.DateErsal >= startOfYear && l.DateErsal < endOfYear)
             .MaxAsync(l => (int?)l.Number) ?? 0;
@@ -485,14 +508,36 @@ public class IncomingLetterService : IIncomingLetterService
         if (dto.NumberSabt is > 0)
         {
             numberSabt = dto.NumberSabt.Value;
-            var res = await _db.LetterNumberReservations.FirstOrDefaultAsync(r => r.TypeForm == 3 && r.NumberSabt == numberSabt && !r.IsUsed);
+
+            // باگ B4 (بند ۳): مصرف رزرو دو شرط نداشت.
+            //   !r.IsDelete  → رزروِ نرم‌حذف‌شده هم مصرف می‌شد
+            //   r.UserId == userId → هر کاربری می‌توانست شمارهٔ رزروشدهٔ کاربر دیگر را بسوزاند
+            var res = await _db.LetterNumberReservations.FirstOrDefaultAsync(r =>
+                r.TypeForm == 3 && r.NumberSabt == numberSabt
+                && !r.IsUsed && !r.IsDelete && r.UserId == userId);
             if (res != null) res.IsUsed = true;
         }
         else
         {
+            // باگ B4 (بند ۱): این مسیر «فقط» جدول نامه‌ها را می‌دید و
+            // LetterNumberReservations را نادیده می‌گرفت، در حالی که ReserveNumberAsync
+            // هر دو را می‌بیند (Math.Max(lastUsedSabt, lastResSabt)). نتیجه: شماره‌ای که
+            // کاربر A رزرو کرده ولی هنوز مصرف نشده بود، خودکار به نامهٔ کاربر B می‌رسید
+            // و شمارهٔ اندیکاتور تکراری تولید می‌شد. حالا هر دو مسیر یک منطق دارند.
             var maxSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0;
-            numberSabt = maxSabt + 1;
+            var maxReserved = await _db.LetterNumberReservations
+                .Where(r => r.TypeForm == 3 && !r.IsDelete)
+                .MaxAsync(r => (int?)r.NumberSabt) ?? 0;
+            numberSabt = Math.Max(maxSabt, maxReserved) + 1;
         }
+
+        // باگ B4 (بند ۲): تا اینجا همه‌چیز «MAX()+1» بدون تراکنش، بدون lock و بدون
+        // محدودیت یکتایی بود. محافظت اصلی، ایندکس یکتای فیلترشده‌ای است که در
+        // IncomingLetterSchemaV1 ساخته می‌شود؛ این بررسی صریح هم برای آن است که در
+        // مسیر «شمارهٔ دستی» به‌جای خطای خامِ نقض یکتایی از دیتابیس، پیام فارسی
+        // خوانا برگردانده شود (ApiExceptionFilter آن را به 400 تبدیل می‌کند).
+        if (await _db.IncomingLetters.AnyAsync(l => l.NumberSabt == numberSabt && !l.IsDelete))
+            throw new Exception($"شمارهٔ اندیکاتور {numberSabt} پیش‌تر برای نامهٔ واردهٔ دیگری ثبت شده است. لطفاً شمارهٔ دیگری وارد کنید یا فیلد شماره را خالی بگذارید تا خودکار تخصیص یابد.");
 
         // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
         var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate);
@@ -552,6 +597,8 @@ public class IncomingLetterService : IIncomingLetterService
         }
 
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
         await _notify.BroadcastChangedAsync("incoming-letters");
         return letter.Id;
     }
@@ -703,6 +750,28 @@ public class IncomingLetterService : IIncomingLetterService
         }
 
         await _db.SaveChangesAsync();
-        return await GetReservationsAsync(userId, typeForm);
+
+        // باگ B4 (بند ۴): لیست `created` ساخته و پر می‌شد ولی «هرگز» استفاده نمی‌شد —
+        // کد مرده. متد در عوض GetReservationsAsync را صدا می‌زد که کل رزروهای
+        // مصرف‌نشدهٔ «همهٔ کاربران» را (با سقف ۵۰) برمی‌گرداند، پس UI پس از رزرو
+        // لیست غلطی را به‌عنوان نتیجه نشان می‌داد. حالا همان شماره‌هایی برمی‌گردند
+        // که در این فراخوان رزرو شده‌اند.
+        //
+        // UserName یک بار گرفته می‌شود چون همهٔ رزروهای این فراخوان متعلق به یک کاربرند.
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var myName = me == null
+            ? "سیستم"
+            : (string.IsNullOrEmpty(me.FirstName + me.LastName) ? me.Username : $"{me.FirstName} {me.LastName}".Trim());
+
+        return created.Select(r => new LetterNumberReservationDto
+        {
+            Id = r.Id,
+            TypeForm = r.TypeForm,
+            NumberSabt = r.NumberSabt,
+            DateRezerv = r.DateRezerv,
+            UserId = r.UserId,
+            UserName = myName,
+            IsUsed = r.IsUsed
+        }).ToList();
     }
 }
