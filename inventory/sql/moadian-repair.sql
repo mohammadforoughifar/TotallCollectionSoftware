@@ -19,9 +19,16 @@ BEGIN
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
         [PersianName] nvarchar(max) NULL,
         [Nationalid] nvarchar(max) NULL,
-        [EconomicNumber] nvarchar(max) NULL
+        [EconomicNumber] nvarchar(max) NULL,
+        [Type] nvarchar(20) NULL
     );
 END
+GO
+
+-- ستون «حقیقی/حقوقی» برای دیتابیس‌هایی که CPInfos قبلاً داشتند
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL
+AND COL_LENGTH(N'dbo.CPInfos', N'Type') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [Type] nvarchar(20) NULL;
 GO
 
 IF OBJECT_ID(N'dbo.ConnectInfos', N'U') IS NULL

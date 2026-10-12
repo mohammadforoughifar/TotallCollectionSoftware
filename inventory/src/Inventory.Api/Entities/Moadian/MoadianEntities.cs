@@ -12,6 +12,8 @@ public class CpInfo
     public string? PersianName { get; set; }
     public string? Nationalid { get; set; }
     public string? EconomicNumber { get; set; }
+    /// <summary>نوع ذی‌نفع: «حقیقی» یا «حقوقی» (با MoadianSchemaV1 روی دیتابیس‌های موجود هم اضافه می‌شود).</summary>
+    public string? Type { get; set; }
 }
 
 /// <summary>مشتری صورتحساب مودیان (حقیقی/حقوقی).</summary>

@@ -135,6 +135,8 @@ public class VMShowCpinfoByCompany
     public string? PersianName { get; set; }
     public string? Nationalid { get; set; }
     public string? EconomicNumber { get; set; }
+    /// <summary>نوع شرکت: «حقیقی» یا «حقوقی».</summary>
+    public string? Type { get; set; }
 }
 
 /// <summary>سال مالی صورتحساب (رابط کاربری مودیان).</summary>

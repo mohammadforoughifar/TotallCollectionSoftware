@@ -24,7 +24,11 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpPost("GetIsConnectToMoadian")]
         public async Task<ApiModel> GetConnect(VMConnection vMConnection)
         {
-            var filePath = Path.Combine(_env.WebRootPath, "File", "Moadian", vMConnection.FilePrivatekey.FileName);
+            // FilePrivatekey می‌تواند null/بدون نام باشد (اتصالی که کلیدش قبلاً ذخیره نشده) — بدون گارد 500 می‌شدیم.
+            var fileName = vMConnection?.FilePrivatekey?.FileName;
+            if (string.IsNullOrEmpty(fileName))
+                return new ApiModel { Success = false, Status = 400, Message = "فایل کلید خصوصی یافت نشد — ابتدا اتصال را ذخیره کنید." };
+            var filePath = Path.Combine(_env.WebRootPath, "File", "Moadian", fileName);
             var result =await  connectService.IsConnectAsync(vMConnection.TaxMemoryID, filePath, vMConnection.WebServiceAddress);
             return result;
         }

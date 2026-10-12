@@ -131,9 +131,7 @@ namespace Inventory.Api.Services.Moadian
             {
                 model.Data = null;
                 model.Status = 400;
-                model.Message = MessageCode.StatusCode.TryGetValue(400, out string messager) == true
-                    ? model.Message = messager
-                    : model.Message = "کد وضعیت نامعتبر است.";
+                model.Message = "نام کالا، شناسهٔ CPC و قیمت واحد (بیشتر از صفر) الزامی است.";
                 model.Success = false;
                 return model;
             }
@@ -141,13 +139,17 @@ namespace Inventory.Api.Services.Moadian
             {
                 try
                 {
-                    var unit = context.UnitOfMeasurements.FirstOrDefault(c => c.Id == modeldata.UnitOfMeasurementId).Name;
+                    // واحد سنجش اختیاری است (فرم «— انتخاب —» با مقدار 0 می‌فرستد):
+                    // FirstOrDefault(...).Name بدون نال‌چک → NullReferenceException → 500؛ اینجا ایمن می‌گیریم.
+                    var unit = modeldata.UnitOfMeasurementId > 0
+                        ? context.UnitOfMeasurements.FirstOrDefault(c => c.Id == modeldata.UnitOfMeasurementId)?.Name ?? modeldata.UnitOfMeasurement
+                        : modeldata.UnitOfMeasurement;
                     var result = new GoodsOrService()
                     {
                         UnitOfMeasurement = unit,
                         Name = modeldata.Name,
                         UniqueIdentifier = modeldata.UniqueIdentifier,
-                        ValueAddedPercentage = Convert.ToByte(modeldata.ValueAddedPercentage),
+                        ValueAddedPercentage = Convert.ToByte(Math.Clamp(modeldata.ValueAddedPercentage ?? 0, 0, 100)),
                         Price = modeldata.Price,
                         CpInfo = (int)modeldata.CpInfoId,
                     };
@@ -1360,9 +1362,7 @@ context.Customers.Any(x =>
             {
                 model.Data = null;
                 model.Status = 400;
-                model.Message = MessageCode.StatusCode.TryGetValue(400, out string messager) == true
-                    ? model.Message = messager
-                    : model.Message = "کد وضعیت نامعتبر است.";
+                model.Message = "نام کالا، شناسهٔ CPC و قیمت واحد (بیشتر از صفر) الزامی است.";
                 model.Success = false;
                 return model;
             }
@@ -1371,14 +1371,18 @@ context.Customers.Any(x =>
                 try
                 {
                     var data = await context.GoodsOrServices.FindAsync(modeldata.GoodsOrServicesId);
-                    var unit = context.UnitOfMeasurements.FirstOrDefault(c => c.Id == modeldata.UnitOfMeasurementId).Name;
+                    // 🔴 باگ قبلی: نال‌چک نبود (واحد 0 → 500) و پس از یافتن، در ستون UnitOfMeasurement ذخیره نمی‌شد؛
+                    var unit = modeldata.UnitOfMeasurementId > 0
+                        ? context.UnitOfMeasurements.FirstOrDefault(c => c.Id == modeldata.UnitOfMeasurementId)?.Name ?? modeldata.UnitOfMeasurement
+                        : modeldata.UnitOfMeasurement;
                     if (data is not null)
                     {
                         data.Price = modeldata.Price;
                         data.Name = modeldata.Name;
                         data.CpInfo = modeldata.CpInfoId;
                         data.UniqueIdentifier = modeldata.UniqueIdentifier;
-                        data.ValueAddedPercentage = Convert.ToByte(modeldata.ValueAddedPercentage);
+                        if (!string.IsNullOrEmpty(unit)) data.UnitOfMeasurement = unit;
+                        data.ValueAddedPercentage = Convert.ToByte(Math.Clamp(modeldata.ValueAddedPercentage ?? 0, 0, 100));
                         await context.SaveChangesAsync();
                         model.Data = data;
                         model.Status = 201;
@@ -3203,7 +3207,8 @@ context.Customers.Any(x =>
                     cpinfoid = c.Id,
                     PersianName = c.PersianName,
                     Nationalid = c.Nationalid,
-                    EconomicNumber = c.EconomicNumber
+                    EconomicNumber = c.EconomicNumber,
+                    Type = string.IsNullOrEmpty(c.Type) ? "حقیقی" : c.Type
                 }).ToList();
                 model.Status = 200;
                 model.Success = true;
@@ -3228,6 +3233,10 @@ context.Customers.Any(x =>
                 if (await context.CPInfos.AnyAsync(c => c.Nationalid == modeldata.Nationalid && c.Id != modeldata.cpinfoid))
                     return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکتی با این شناسهٔ ملی قبلاً ثبت شده است." };
 
+                // نوع شرکت — فقط دو مقدار معتبر؛ خالی = «حقیقی» (فرم هم همین را پیشنهاد می‌دهد)
+                var type = modeldata.Type == "حقوقی" ? "حقوقی" : "حقیقی";
+                modeldata.Type = type;
+
                 // cpinfoid=0 ← ثبت جدید | cpinfoid>0 ← ویرایش رکورد موجود
                 if (modeldata.cpinfoid > 0)
                 {
@@ -3238,6 +3247,7 @@ context.Customers.Any(x =>
                     exist.PersianName = modeldata.PersianName;
                     exist.Nationalid = modeldata.Nationalid;
                     exist.EconomicNumber = modeldata.EconomicNumber;
+                    exist.Type = type;
                     await context.SaveChangesAsync();
                 }
                 else
@@ -3246,7 +3256,8 @@ context.Customers.Any(x =>
                     {
                         PersianName = modeldata.PersianName,
                         Nationalid = modeldata.Nationalid,
-                        EconomicNumber = modeldata.EconomicNumber
+                        EconomicNumber = modeldata.EconomicNumber,
+                        Type = type
                     };
                     context.CPInfos.Add(cp);
                     await context.SaveChangesAsync();

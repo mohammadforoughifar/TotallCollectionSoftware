@@ -29,9 +29,16 @@ BEGIN
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
         [PersianName] nvarchar(max) NULL,
         [Nationalid] nvarchar(max) NULL,
-        [EconomicNumber] nvarchar(max) NULL
+        [EconomicNumber] nvarchar(max) NULL,
+        [Type] nvarchar(20) NULL
     );
 END");
+
+        // ستون «حقیقی/حقوقی» (Type) روی دیتابیس‌های موجود که CPInfos قبلاً داشته‌اند
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.CPInfos', N'U') IS NOT NULL
+AND COL_LENGTH(N'dbo.CPInfos', N'Type') IS NULL
+    ALTER TABLE [dbo].[CPInfos] ADD [Type] nvarchar(20) NULL;");
 
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.ConnectInfos', N'U') IS NULL
@@ -148,7 +155,7 @@ BEGIN
 END");
     }
 
-    // ==================== SQLite ====================
+        // ==================== SQLite ====================
     private static async Task EnsureSqliteAsync(AppDbContext db)
     {
         // EnsureCreated روی دیتابیس تازه همهٔ جدول‌ها را از مدل می‌سازد؛ این
@@ -164,6 +171,10 @@ END");
         }
         catch { /* EnsureCreated خودش جدول را ساخته است */ }
 
+        // ستون «حقیقی/حقوقی» (Type) روی SQLite قدیمی که جدول را قبلاً داشته:
+        // باید پیش از return اجرا شود؛ خطای «ستون تکراری» نادیده گرفته می‌شود.
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE CPInfos ADD COLUMN Type TEXT NULL;"); } catch { }
+
         if (hasTable) return;
 
         await SafeAsync(db, @"
@@ -171,7 +182,8 @@ CREATE TABLE IF NOT EXISTS CPInfos (
     Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     PersianName TEXT NULL,
     Nationalid TEXT NULL,
-    EconomicNumber TEXT NULL
+    EconomicNumber TEXT NULL,
+    Type TEXT NULL
 );");
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS ConnectInfos (

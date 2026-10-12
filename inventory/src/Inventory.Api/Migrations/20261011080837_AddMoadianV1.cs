@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -127,7 +127,9 @@ namespace Inventory.Api.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     PersianName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Nationalid = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    EconomicNumber = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    EconomicNumber = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    // «حقیقی/حقوقی» — برای دیتابیس‌هایی با CPInfos موجود، MoadianSchemaV1 آن را idempotent اضافه می‌کند
+                    Type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true)
                 },
                 constraints: table =>
                 {

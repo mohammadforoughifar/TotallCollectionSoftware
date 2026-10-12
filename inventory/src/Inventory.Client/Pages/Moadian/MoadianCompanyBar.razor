@@ -30,6 +30,12 @@ else
                     <option value="@c.cpinfoid">@c.PersianName</option>
                 }
             </select>
+            @if (!string.IsNullOrEmpty(CurrentType))
+            {
+                <span class="badge @(CurrentType == "حقوقی" ? "badge-soft-primary" : "badge-soft-success")" title="نوع شرکت">
+                    <i class="bi @(CurrentType == "حقوقی" ? "bi-bank" : "bi-person")"></i> @CurrentType
+                </span>
+            }
             @if (Ctx.CpInfoId > 0 && CurrentEcon != null)
             {
                 <span class="badge badge-soft-primary num" title="شماره اقتصادی">
@@ -47,6 +53,7 @@ else
     private List<VMShowCpinfoByCompany> CpInfos = new();
     private bool ready;
     private string? CurrentEcon => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.EconomicNumber;
+    private string? CurrentType => Ctx.CpInfoId > 0 ? CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.Type : null;
 
     protected override async Task OnInitializedAsync()
     {

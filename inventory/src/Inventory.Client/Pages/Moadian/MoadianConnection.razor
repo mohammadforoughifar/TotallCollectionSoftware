@@ -52,11 +52,20 @@ else
                     </div>
                     <div class="row g-2">
                         <div class="col-6">
-                            <label class="form-label">کد ملی / ثبت</label>
-                            <input class="form-control num" dir="ltr" value="@newCp.Nationalid" @oninput="e => newCp.Nationalid = e.Value?.ToString()" />
+                            <label class="form-label">کد ملی / ثبت <span class="text-danger">*</span></label>
+                            <input class="form-control num" dir="ltr" value="@newCp.Nationalid" @oninput="OnNewCpNationalId" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label">شماره اقتصادی</label>
+                            <label class="form-label">نوع شرکت <span class="text-danger">*</span></label>
+                            <select class="form-select" value="@newCp.Type" @onchange="e => newCp.Type = e.Value?.ToString()">
+                                <option value="حقیقی">حقیقی</option>
+                                <option value="حقوقی">حقوقی</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-12">
+                            <label class="form-label">شماره اقتصادی @(newCp.Type == "حقوقی" ? "(اختیاری)" : "")</label>
                             <input class="form-control num" dir="ltr" value="@newCp.EconomicNumber" @oninput="e => newCp.EconomicNumber = e.Value?.ToString()" />
                         </div>
                     </div>
@@ -71,8 +80,14 @@ else
         @* ---------- اتصال ---------- *@
         <div class="col-lg-7">
             <div class="card h-100">
-                <div class="card-header d-flex align-items-center gap-2">
+                <div class="card-header d-flex align-items-center gap-2 flex-wrap">
                     <i class="bi bi-key text-primary"></i> اتصال شرکت «@(Current?.PersianName ?? "—")» به سامانه
+                    @if (!string.IsNullOrEmpty(Current?.Type))
+                    {
+                        <span class="badge @(Current.Type == "حقوقی" ? "badge-soft-primary" : "badge-soft-success")">
+                            <i class="bi @(Current.Type == "حقوقی" ? "bi-bank" : "bi-person")"></i> @Current.Type
+                        </span>
+                    }
                 </div>
                 <div class="card-body">
                     @if (Ctx.CpInfoId <= 0)
@@ -139,7 +154,7 @@ else
 }
 
 @code {
-    private VMShowCpinfoByCompany newCp = new();
+    private VMShowCpinfoByCompany newCp = new() { Type = "حقیقی" };
     private VMConnection conn = new();
     private List<VMShowCpinfoByCompany> CpInfos = new();
     private VMConnection? connection;
@@ -208,9 +223,20 @@ else
         StateHasChanged();
     }
 
+    private void OnNewCpNationalId(ChangeEventArgs e)
+    {
+        // پیشنهاد خودکار نوع از روی طول شناسه: ۱۱ رقم → حقوقی | ۱۰ رقم → حقیقی
+        newCp.Nationalid = e.Value?.ToString();
+        var digits = new string(newCp.Nationalid?.Where(char.IsDigit).ToArray()) ?? "";
+        if (digits.Length == 11) newCp.Type = "حقوقی";
+        else if (digits.Length == 10) newCp.Type = "حقیقی";
+    }
+
     private async Task SaveCompany()
     {
         if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(newCp.Nationalid)) { Toast.Error("کد ملی / شناسهٔ ثبت شرکت الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(newCp.Type)) newCp.Type = "حقیقی";
         savingCp = true;
         StateHasChanged();
         try
@@ -219,7 +245,7 @@ else
             if (r.Success)
             {
                 Toast.Success("شرکت ثبت شد.");
-                newCp = new();
+                newCp = new() { Type = "حقیقی" };
                 var saved = MoadianService.As<VMShowCpinfoByCompany>(r);
                 CpInfos = await Moadian.GetCpInfosAsync();
                 if (saved?.cpinfoid > 0) Ctx.SetCpInfoId(saved.cpinfoid);
