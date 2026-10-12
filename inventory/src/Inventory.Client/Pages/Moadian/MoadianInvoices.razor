@@ -82,6 +82,13 @@ else
             <span><i class="bi bi-receipt text-primary"></i> @(MoadianUi.StatusLabel(fOp == "همه" ? null : fOp) == "—" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
             <span class="badge badge-soft-primary num ms-auto">@(data?.TotalCount ?? 0).Num() مورد</span>
         </div>
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
+                <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست صورتحساب‌ها ناموفق بود:
+                @loadError
+            </div>
+        }
         <div class="card-body p-0">
             @if (loading)
             {
@@ -198,6 +205,7 @@ else
     private int pno = 1;
     private const int PageSize = 10;
     private bool loading;
+    private string? loadError;
     private System.Timers.Timer? searchTimer;
 
     [Inject] private IJSRuntime JS { get; set; }
@@ -254,6 +262,7 @@ else
         StateHasChanged();
         try
         {
+            loadError = null;
             var model = await Moadian.GetAllInvoicesAsync(fOp, Ctx.CpInfoId, fFrom, fTo, search, p, PageSize);
             var resp = MoadianService.As<InvoiceResponse>(model);
             data = resp?.Invoices;
@@ -262,6 +271,7 @@ else
         }
         catch (Exception ex)
         {
+            loadError = ex.Message;
             Toast.Error(ex.Message);
         }
         finally

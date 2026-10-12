@@ -42,6 +42,13 @@ namespace Inventory.Api.Controllers.Moadian
         {
             return await connectService.DeleteCpInfoAsync(id);
         }
+
+        [HttpGet("Diagnose")]
+        public async Task<ApiModel> Diagnose()
+        {
+            // گزارش کامل اسکیمای مودیان (وجود جدول‌ها/ستون‌ها + شمار ردیف‌ها) — برای وقتی لیست‌ها خالی می‌آیند
+            return await connectService.DiagnoseAsync();
+        }
         [HttpGet("GetConnectForCpInfo/{cpinfoId:int}")]
         public async Task<ApiModel> GetConnectForCpInfo(int cpinfoId)
         {

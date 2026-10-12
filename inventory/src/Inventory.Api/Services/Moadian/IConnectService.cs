@@ -13,6 +13,7 @@ namespace Inventory.Api.Services.Moadian
     {
         Task<ApiModel> IsConnectAsync(string shenaseyekta,string privatekey,string WebServiceAddress);
         Task<ApiModel> IsConnectStoredAsync(int cpinfoId);//تست اتصال با کلید ذخیره‌شده روی سرور (wwwroot/uploads/{نام شرکت})
+        Task<ApiModel> DiagnoseAsync();//تشخیص: وجود جدول‌ها/ستون‌های مودیان و شمار ردیف‌ها — برای وقتی لیست‌ها خالی می‌آیند
         Task<ApiModel> DeleteCpInfoAsync(int id);//حذف نرم شرکت (و اتصال‌هایش)
         Task<ApiModel> ConnectionApiAsync(VMConnection connection,IFormFile formFile);///اتصال به سامانه
         Task<ApiModel> GetConnectionApiAsync(int cpinfoId);

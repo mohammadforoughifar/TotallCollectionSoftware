@@ -24,6 +24,13 @@ else
                 <i class="bi bi-plus-lg"></i> کالا/خدمت جدید
             </button>
         </div>
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
+                <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست کالاها ناموفق بود:
+                @loadError
+            </div>
+        }
         <div class="card-body p-0">
             @if (loading)
             {
@@ -136,6 +143,7 @@ else
     private List<VMGoodsOrService>? items;
     private List<VMUnitOfMeasurement> Units = new();
     private bool loading = true;
+    private string? loadError;
     private int pno = 1;
     private const int PageSize = 10;
 
@@ -171,13 +179,14 @@ else
         loading = true; StateHasChanged();
         try
         {
+            loadError = null;
             var model = await Moadian.GetGoodsAsync(Ctx.CpInfoId, null, p, PageSize);
             var paged = MoadianService.As<PagedList<VMGoodsOrService>>(model);
             data = paged;
             items = paged?.Items?.ToList();
             pno = p;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { loadError = ex.Message; Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
 

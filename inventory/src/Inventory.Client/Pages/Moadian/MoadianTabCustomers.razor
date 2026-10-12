@@ -28,6 +28,13 @@ else
                 <i class="bi bi-person-plus"></i> مشتری جدید
             </button>
         </div>
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
+                <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست مشتریان ناموفق بود:
+                @loadError
+            </div>
+        }
         <div class="card-body p-0">
             @if (Customers is null || Customers.Count == 0)
             {
@@ -135,6 +142,7 @@ else
 @code {
     private List<VMCustomerList>? Customers;
     private bool loading = true;
+    private string? loadError;
 
     private bool showForm;
     private VMCustomerList form = new() { Type = "حقیقی" };
@@ -153,8 +161,9 @@ else
     {
         if (Ctx.CpInfoId <= 0) { loading = false; StateHasChanged(); return; }
         loading = true; StateHasChanged();
+        loadError = null;
         try { Customers = await Moadian.GetCustomersAsync(Ctx.CpInfoId); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { loadError = ex.Message; Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
 

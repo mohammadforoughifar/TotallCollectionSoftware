@@ -799,6 +799,120 @@ namespace Inventory.Api.Services.Moadian
             return await IsConnectAsync(connect.TaxMemoryID, filePath, connect.WebServiceAddress);
         }
 
+        /// <summary>تشخیص سلامت اسکیمای مودیان: وجود هر جدول، ستون‌های درون‌ظرف، تعداد ردیف‌ها — برای مواقعی که لیست‌ها خالی می‌آیند.</summary>
+        public async Task<ApiModel> DiagnoseAsync()
+        {
+            var provider = context.Database.ProviderName ?? "";
+            var sqlite = provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+            string[] tables = { "CPInfos", "ConnectInfos", "Customers", "UnitOfMeasurements", "GoodsOrServices", "FiscalYears", "Invoices", "InvoiceItems", "InvoicePayments" };
+            var expected = new Dictionary<string, string[]>
+            {
+                ["CPInfos"] = new[] { "CompanyId", "Type", "EnglishName", "PostalCode", "Nationalid", "EconomicNumber", "PersianName", "IsDelete" },
+                ["ConnectInfos"] = new[] { "CpInfo", "TaxMemoryID", "PrivateKeyPath", "CertificatePath", "WebServiceAddress", "IsDelete" },
+                ["Customers"] = new[] { "CpInfoId", "Name", "IsDelete" },
+                ["UnitOfMeasurements"] = new[] { "Name", "Code", "IsDelete" },
+                ["GoodsOrServices"] = new[] { "CpInfo", "Name", "UniqueIdentifier", "UnitOfMeasurement", "ValueAddedPercentage", "Price", "IsDelete" },
+                ["FiscalYears"] = new[] { "CpInfo", "Title", "StartDate", "EndDate", "CreatedDate", "IsActive", "IsDelete" },
+                ["Invoices"] = new[] { "CustomerId", "CpInfo", "FiscalYearId", "TaxMemoryID", "IsDelete" },
+                ["InvoiceItems"] = new[] { "InvoiceId", "GoodsOrServicesId", "PriceUnit", "PriceNaghd", "PriceNesye", "IsDelete" },
+                ["InvoicePayments"] = new[] { "InvoiceId", "TaxNumber", "Amount", "PaymentDate", "PaymentMethod", "TerminalNumber", "ReferenceNumber", "IsDelete" },
+            };
+
+            var report = new List<object>();
+            var conn = context.Database.GetDbConnection();
+            var openedHere = false;
+            try
+            {
+                if (conn.State != System.Data.ConnectionState.Open) { await conn.OpenAsync(); openedHere = true; }
+
+                static async Task<List<string>> ListColumnsAsync(System.Data.Common.DbConnection c, string table, bool isSqlite)
+                {
+                    var names = new List<string>();
+                    if (isSqlite)
+                    {
+                        await using var cmd = c.CreateCommand();
+                        cmd.CommandText = $"PRAGMA table_info({table})";
+                        await using var r = await cmd.ExecuteReaderAsync();
+                        while (await r.ReadAsync()) names.Add(r.GetString(1));
+                    }
+                    else
+                    {
+                        await using var cmd = c.CreateCommand();
+                        cmd.CommandText = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @t";
+                        var p = cmd.CreateParameter();
+                        p.ParameterName = "@t";
+                        p.Value = table;
+                        cmd.Parameters.Add(p);
+                        await using var r = await cmd.ExecuteReaderAsync();
+                        while (await r.ReadAsync()) names.Add(r.GetString(0));
+                    }
+                    return names;
+                }
+
+                foreach (var t in tables)
+                {
+                    bool exists;
+                    await using (var cmd = conn.CreateCommand())
+                    {
+                        if (sqlite)
+                        {
+                            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=" + "'" + t + "'";
+                        }
+                        else
+                        {
+                            cmd.CommandText = "SELECT CASE WHEN OBJECT_ID(N'dbo." + t + "', N'U') IS NULL THEN 0 ELSE 1 END";
+                        }
+                        exists = Convert.ToInt64(await cmd.ExecuteScalarAsync() ?? 0) > 0;
+                    }
+
+                    var columns = new List<string>();
+                    long? totalRows = null;
+                    string? error = null;
+                    if (exists)
+                    {
+                        try { columns = await ListColumnsAsync(conn, t, sqlite); }
+                        catch (Exception colEx) { error = colEx.Message; }
+                        try
+                        {
+                            await using var c2 = conn.CreateCommand();
+                            c2.CommandText = sqlite ? $"SELECT COUNT(*) FROM {t}" : $"SELECT COUNT(*) FROM [dbo].[{t}]";
+                            totalRows = Convert.ToInt64(await c2.ExecuteScalarAsync() ?? 0);
+                        }
+                        catch (Exception cntEx) { error = (error is null ? null : error + " | ") + cntEx.Message; }
+                    }
+                    var missing = expected.ContainsKey(t)
+                        ? expected[t].Where(c => !columns.Any(x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase))).ToList()
+                        : new List<string>();
+
+                    report.Add(new
+                    {
+                        table = t,
+                        exists,
+                        columns = columns.Count,
+                        missing,
+                        totalRows,
+                        error
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Status = 500, Success = false, Message = "تشخیص اسکیما ناموفق: " + ex.Message };
+            }
+            finally
+            {
+                if (openedHere) await conn.CloseAsync();
+            }
+
+            return new ApiModel
+            {
+                Data = new { provider, tables = report },
+                Status = 200,
+                Success = true,
+                Message = MessageCode.StatusCode.TryGetValue(200, out string m) ? m : "کد وضعیت نامعتبر است."
+            };
+        }
+
         /// <summary>حذف نرم شرکت (و اتصال‌هایش) — صورتحساب‌ها و سوابق حفظ می‌شوند.</summary>
         public async Task<ApiModel> DeleteCpInfoAsync(int id)
         {

@@ -2,6 +2,8 @@
 @page "/moadian/basic-info/{Tab}"
 @using Inventory.Shared.Dtos.Moadian
 @inject NavigationManager Nav
+@inject IMoadianService Moadian
+@inject IToastService Toast
 
 <PageTitle>سامانه مودیان — اطلاعات پایه</PageTitle>
 
@@ -10,7 +12,48 @@
         <h1><i class="bi bi-archive text-primary"></i> اطلاعات پایهٔ سامانهٔ مودیان</h1>
         <p class="lead">شرکت (خدمات دهنده)، اتصال به سامانه، واحدهای سنجش، کالاها و مشتریان</p>
     </div>
+    <div class="ms-auto">
+        <button class="btn btn-outline-secondary" @onclick="Diagnose" disabled="@diagnosing"
+                title="بررسی سلامت اسکیمای مودیان — برای وقتی لیست‌ها خالی می‌آیند">
+            @if (diagnosing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-heart-pulse"></i> }
+            تشخیص اسکیما
+        </button>
+    </div>
 </div>
+
+@if (diag is not null)
+{
+    <div class="card mb-3 @(diag.Tables.Any(t => !t.Exists || t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) ? "border-danger" : "border-success")">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-heart-pulse"></i> نتیجهٔ تشخیص اسکیما
+            <span class="text-muted small" dir="ltr">@diag.Provider</span>
+            <button class="btn btn-sm btn-link ms-auto" @onclick="() => diag = null"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead><tr><th>جدول</th><th>وضعیت</th><th>ردیف‌ها</th><th>ستون‌های جاافتاده</th><th>خطا</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in diag.Tables)
+                        {
+                            <tr>
+                                <td class="fw-semibold" dir="ltr">@t.Table</td>
+                                <td>
+                                    @if (!t.Exists) { <span class="badge badge-soft-danger">جدول نیست</span> }
+                                    else if (t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) { <span class="badge badge-soft-danger">نقص دارد</span> }
+                                    else { <span class="badge badge-soft-success">سالم</span> }
+                                </td>
+                                <td class="num">@(t.TotalRows?.ToString() ?? "—")</td>
+                                <td class="small" dir="ltr">@(t.Missing.Count > 0 ? string.Join(", ", t.Missing) : "—")</td>
+                                <td class="small">@(t.Error ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
 
 <MoadianCompanyBar />
 
@@ -66,4 +109,43 @@ else if (ActiveTab == "customers")
     private string ActiveTab => TabsList.Any(t => t.Key == Tab) ? Tab! : "company";
 
     private void Go(string key) => Nav.NavigateTo($"/moadian/basic-info/{key}", forceLoad: false);
+
+    // ---------- تشخیص اسکیمای مودیان ----------
+    private bool diagnosing;
+    private DiagnoseResult? diag;
+
+    private sealed class DiagnoseResult
+    {
+        public string? Provider { get; set; }
+        public List<TableDiag> Tables { get; set; } = new();
+    }
+
+    private sealed class TableDiag
+    {
+        public string? Table { get; set; }
+        public bool Exists { get; set; }
+        public int Columns { get; set; }
+        public List<string> Missing { get; set; } = new();
+        public long? TotalRows { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private async Task Diagnose()
+    {
+        diagnosing = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.DiagnoseAsync();
+            if (r.Success)
+            {
+                diag = MoadianService.As<DiagnoseResult>(r) ?? new DiagnoseResult();
+                if (diag.Tables.Count > 0 && diag.Tables.All(t => t.Exists && t.Missing.Count == 0 && string.IsNullOrEmpty(t.Error)))
+                    Toast.Success("اسکیمای مودیان کامل است — اگر لیستی خالی است، علت آن داده/شرکت است نه اسکیما.");
+            }
+            else Toast.Error(r.Message ?? "تشخیص ناموفق.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { diagnosing = false; StateHasChanged(); }
+    }
 }

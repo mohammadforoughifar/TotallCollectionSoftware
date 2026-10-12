@@ -14,6 +14,7 @@ public interface IMoadianService
     Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync();
     Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm);
     Task<ApiModel> DeleteCpInfoAsync(int id);
+    Task<ApiModel> DiagnoseAsync(); // گزارش اسکیمای مودیان (جدول/ستون/ردیف)
     Task<List<VMFiscalYear>> GetFiscalYearsAsync(int cpinfoId);
     Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear vm);
     Task<List<VMCustomerList>> GetCustomersAsync(int cpinfoId);
@@ -89,6 +90,9 @@ public class MoadianService : IMoadianService
 
     public Task<ApiModel> DeleteCpInfoAsync(int id)
         => _api.DeleteAsync<ApiModel>($"Moadian/DeleteCpInfo/{id}");
+
+    public Task<ApiModel> DiagnoseAsync()
+        => _api.GetAsync<ApiModel>("Moadian/Diagnose");
 
     public async Task<List<VMFiscalYear>> GetFiscalYearsAsync(int cpinfoId)
         => Must<List<VMFiscalYear>>(await _api.GetAsync<ApiModel>($"Moadian/GetFiscalYears/{cpinfoId}")) ?? new();

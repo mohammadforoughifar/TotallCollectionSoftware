@@ -11,6 +11,13 @@
             <i class="bi bi-plus-lg"></i> واحد جدید
         </button>
     </div>
+    @if (!string.IsNullOrEmpty(loadError))
+    {
+        <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
+            <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست واحدها ناموفق بود:
+            @loadError
+        </div>
+    }
     <div class="card-body p-0">
         @if (loading)
         {
@@ -92,6 +99,7 @@
     private PagedList<VMUnitOfMeasurement>? data;
     private List<VMUnitOfMeasurement>? items;
     private bool loading = true;
+    private string? loadError;
     private int pno = 1;
     private const int PageSize = 10;
 
@@ -107,13 +115,14 @@
         loading = true; StateHasChanged();
         try
         {
+            loadError = null;
             var model = await Moadian.GetUnitsAsync(null, p, PageSize);
             var paged = MoadianService.As<PagedList<VMUnitOfMeasurement>>(model);
             data = paged;
             items = paged?.Items?.ToList();
             pno = p;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { loadError = ex.Message; Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
 
