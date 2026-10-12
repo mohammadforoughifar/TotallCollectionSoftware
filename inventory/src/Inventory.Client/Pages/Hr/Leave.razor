@@ -157,11 +157,11 @@
                     {
                         <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت شروع <span class="text-danger">*</span></label>
-                            <input type="time" class="form-control form-control-sm" dir="ltr" value="@formStartTime" @onchange='e => formStartTime = e.Value?.ToString()' />
+                            <TimeTextInput @bind-Value="formStartTime" Default="08:00" />
                         </div>
                         <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت پایان <span class="text-danger">*</span></label>
-                            <input type="time" class="form-control form-control-sm" dir="ltr" value="@formEndTime" @onchange='e => formEndTime = e.Value?.ToString()' />
+                            <TimeTextInput @bind-Value="formEndTime" Default="09:00" />
                         </div>
                     }
                     @if (formType == "Mission" || formType == "HourlyMission")

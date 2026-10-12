@@ -323,11 +323,11 @@
         {
             <div class="col-4 col-md-3">
                 <label class="form-label small fw-800">ساعت شروع</label>
-                <input type="time" class="form-control form-control-sm" dir="ltr" value="@obStartTime" @onchange='e => obStartTime = e.Value?.ToString()' />
+                <TimeTextInput @bind-Value="obStartTime" Default="08:00" />
             </div>
             <div class="col-4 col-md-3">
                 <label class="form-label small fw-800">ساعت پایان</label>
-                <input type="time" class="form-control form-control-sm" dir="ltr" value="@obEndTime" @onchange='e => obEndTime = e.Value?.ToString()' />
+                <TimeTextInput @bind-Value="obEndTime" Default="10:00" />
             </div>
         }
         @if (obType == "HourlyMission")

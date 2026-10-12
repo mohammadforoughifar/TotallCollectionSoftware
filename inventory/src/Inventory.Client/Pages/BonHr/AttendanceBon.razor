@@ -238,8 +238,8 @@
             <div class="col-md-4"><label class="form-label">تاریخ</label><BonHrDate @bind-Value="_leave.Date" /></div>
             @if (_leave.Type.Contains("ساعتی"))
             {
-                <div class="col-md-4"><label class="form-label">از ساعت</label><input class="form-control" required type="time" value="@_leave.From" @onchange="e => _leave.From = Text(e)" /></div>
-                <div class="col-md-4"><label class="form-label">تا ساعت</label><input class="form-control" required type="time" value="@_leave.To" @onchange="e => _leave.To = Text(e)" /></div>
+                <div class="col-md-4"><label class="form-label">از ساعت</label><TimeTextInput Value="@_leave.From" ValueChanged="v => _leave.From = v ?? string.Empty" Default="08:00" /></div>
+                <div class="col-md-4"><label class="form-label">تا ساعت</label><TimeTextInput Value="@_leave.To" ValueChanged="v => _leave.To = v ?? string.Empty" Default="10:00" /></div>
             }
         </div>
         <p class="small mt-2">@_leaveMessage</p>
