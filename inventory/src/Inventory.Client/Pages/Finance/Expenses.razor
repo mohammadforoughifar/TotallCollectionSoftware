@@ -1,6 +1,7 @@
 @namespace Inventory.Client.Pages
 @page "/expenses"
 @inject IExpenseService ExpenseSvc
+@inject ITrsAccountService AccountSvc
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -83,7 +84,7 @@
                                 <td class="num fs-8">@e.Date.ToFa()</td>
                                 <td><span class="badge badge-soft-warning">@e.CategoryName</span></td>
                                 <td>@(e.Payee ?? "—")</td>
-                                <td>@PayTypeBadge(e.PayType)</td>
+                                <td>@PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" ({e.TrsAccountName})")</td>
                                 <td class="text-start num fw-700 text-danger">@e.Amount.Money()</td>
                                 <td class="text-muted fs-8">@(string.IsNullOrWhiteSpace(e.Description) ? "—" : e.Description)</td>
                                 <td class="text-end text-nowrap">
@@ -117,7 +118,7 @@
                             <div class="text-end">
                                 <div class="fs-8 text-muted">مبلغ</div>
                                 <div class="num fw-800 text-danger">@e.Amount.Money()</div>
-                                <div class="mt-1">@PayTypeBadge(e.PayType)</div>
+                                <div class="mt-1">@PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" — {e.TrsAccountName}")</div>
                             </div>
                         </div>
                         <div class="m-card-actions">
@@ -180,6 +181,22 @@
                 </div>
             </div>
             <div class="col-md-6">
+                <label class="form-label">صندوق / بانک پرداخت</label>
+                <div class="input-group">
+                    <select class="form-select" value="@(form.TrsAccountId ?? 0)" @onchange="OnBankChanged">
+                        <option value="0">— انتخاب @(form.PayType == CashType.Cash ? "صندوق" : "بانک") —</option>
+                        @foreach (var a in AccountsForPayType())
+                        {
+                            <option value="@a.Id">@a.DisplayName</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                            @onclick="() => OpenQuickBank(form.PayType == CashType.Cash ? TreasuryAccountKind.Cash : (form.PayType == CashType.CardReader ? TreasuryAccountKind.Pos : TreasuryAccountKind.Bank))">
+                        <i class="bi bi-plus-lg ms-1"></i> تعریف بانک
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
                 <label class="form-label">دریافت‌کننده / طرف هزینه</label>
                 <input class="form-control" @bind="form.Payee" placeholder="مثلاً موجر، اداره برق…" />
             </div>
@@ -197,6 +214,10 @@
         </button>
     </Footer>
 </Modal>
+
+<QuickBankModal @bind-Visible="showQuickBank"
+                DefaultKind="quickBankKind"
+                OnAccountCreated="OnQuickBankCreated" />
 
 @* ---------------- مدیریت انواع هزینه ---------------- *@
 <Modal Visible="showCats" Title="انواع هزینه" Size="modal-lg" OnClose="() => showCats = false">
@@ -278,11 +299,44 @@
     private string catIdStr = "0", fAmount = "";
     private DateTime? expDate;
 
+    // ---------- بانک / صندوق نحوهٔ پرداخت ----------
+    private List<TrsAccount> bankAccounts = new();
+    private bool showQuickBank;
+    private TreasuryAccountKind quickBankKind = TreasuryAccountKind.Cash;
+
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("هزینه‌ها");
         await LoadCats();
+        try { bankAccounts = await AccountSvc.GetAllAsync(true); } catch { }
         await Load();
+    }
+
+    private List<TrsAccount> AccountsForPayType() => form.PayType switch
+    {
+        CashType.Cash => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash).ToList(),
+        CashType.CardReader => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank).ToList(),
+        _ => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos).ToList(),
+    };
+
+    private void OnBankChanged(ChangeEventArgs e)
+    {
+        var id = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        form.TrsAccountId = id == 0 ? null : id;
+        form.TrsAccountName = bankAccounts.FirstOrDefault(a => a.Id == id)?.DisplayName;
+    }
+
+    private void OpenQuickBank(TreasuryAccountKind kind)
+    {
+        quickBankKind = kind;
+        showQuickBank = true;
+    }
+
+    private async Task OnQuickBankCreated(TrsAccount acc)
+    {
+        try { bankAccounts = await AccountSvc.GetAllAsync(true); } catch { }
+        form.TrsAccountId = acc.Id;
+        form.TrsAccountName = acc.DisplayName;
     }
 
     private async Task LoadCats()
@@ -343,7 +397,8 @@
         form = new ExpenseDto
         {
             Id = e.Id, Number = e.Number, CategoryId = e.CategoryId, Amount = e.Amount,
-            Date = e.Date, PayType = e.PayType, Payee = e.Payee, Description = e.Description
+            Date = e.Date, PayType = e.PayType, TrsAccountId = e.TrsAccountId, TrsAccountName = e.TrsAccountName,
+            Payee = e.Payee, Description = e.Description
         };
         catIdStr = e.CategoryId.ToString();
         fAmount = Fa.FormatTyping(e.Amount.ToString("0"));

@@ -672,10 +672,9 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
         // جلوگیری از کش‌شدن نسخه‌ی قدیمی کلاینت (service worker مرورگر)
         OnPrepareResponse = ctx =>
         {
-            var path = ctx.Context.Request.Path.Value ?? "";
-            if (path.StartsWith("/_framework/", StringComparison.OrdinalIgnoreCase))
-                ctx.Context.Response.Headers.CacheControl = "public, max-age=86400";
-            else
+                // نام فایل‌های _framework هش ندارد؛ max-age بلند یعنی مرورگرِ کاربر بعد از هر
+                // استقرار جدید همچنان wasm قدیمی را از کش خودش می‌خواند و نسخهٔ جدید را «نمی‌بیند».
+                // با no-cache هر بار با سرور اعتبارسنجی می‌شود و نسخهٔ تازه بلافاصله می‌رسد.
                 ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         }
     });

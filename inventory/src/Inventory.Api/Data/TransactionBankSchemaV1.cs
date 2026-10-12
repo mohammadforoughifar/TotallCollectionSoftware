@@ -22,6 +22,18 @@ public static class TransactionBankSchemaV1
                 await db.Database.ExecuteSqlRawAsync("ALTER TABLE Cheques ADD COLUMN TrsAccountId INTEGER NULL;");
             }
             catch { /* ستون وجود دارد */ }
+
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE Expenses ADD COLUMN TrsAccountId INTEGER NULL;");
+            }
+            catch { /* ستون وجود دارد */ }
+
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE Expenses ADD COLUMN TrsAccountName TEXT NULL;");
+            }
+            catch { /* ستون وجود دارد */ }
         }
         else
         {
@@ -38,6 +50,18 @@ IF OBJECT_ID(N'dbo.Cheques', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.Cheques', N'TrsAccountId') IS NULL
 BEGIN
     ALTER TABLE [dbo].[Cheques] ADD [TrsAccountId] int NULL;
+END;
+
+IF OBJECT_ID(N'dbo.Expenses', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.Expenses', N'TrsAccountId') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Expenses] ADD [TrsAccountId] int NULL;
+END;
+
+IF OBJECT_ID(N'dbo.Expenses', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.Expenses', N'TrsAccountName') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[Expenses] ADD [TrsAccountName] nvarchar(200) NULL;
 END;
 ");
             }

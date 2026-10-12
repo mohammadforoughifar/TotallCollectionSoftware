@@ -112,6 +112,8 @@ public class ExpenseService : IExpenseService
                 Amount = e.Amount,
                 Date = e.Date,
                 PayType = e.PayType,
+                TrsAccountId = e.TrsAccountId,
+                TrsAccountName = e.TrsAccountName,
                 Payee = e.Payee,
                 Description = e.Description,
                 CreatedAt = e.CreatedAt
@@ -146,9 +148,15 @@ public class ExpenseService : IExpenseService
         entity.Amount = dto.Amount;
         entity.Date = dto.Date == default ? DateTime.Now : dto.Date;
         entity.PayType = dto.PayType;
+        entity.TrsAccountId = dto.TrsAccountId;
+        entity.TrsAccountName = dto.TrsAccountId is int accId
+            ? (await _db.TrsAccounts.FindAsync(accId))?.Name
+            : null;
         entity.Payee = string.IsNullOrWhiteSpace(dto.Payee) ? null : dto.Payee.Trim();
         entity.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
         await _db.SaveChangesAsync();
+        dto.TrsAccountId = entity.TrsAccountId;
+        dto.TrsAccountName = entity.TrsAccountName;
 
         var cat = await _db.ExpenseCategories.FindAsync(entity.CategoryId);
         dto.Id = entity.Id;

@@ -345,6 +345,10 @@ public class ExpenseDto
     /// <summary>نحوه پرداخت (نقد/کارت‌خوان/کارت به کارت)</summary>
     public CashType PayType { get; set; } = CashType.Cash;
 
+    /// <summary>بانک / حساب خزانهٔ انتخابی برای نحوهٔ پرداخت</summary>
+    public int? TrsAccountId { get; set; }
+    public string? TrsAccountName { get; set; }
+
     /// <summary>دریافت‌کننده / طرف هزینه</summary>
     public string? Payee { get; set; }
 

@@ -9,6 +9,10 @@ public class Expense
     public decimal Amount { get; set; }
     public DateTime Date { get; set; }
     public CashType PayType { get; set; } = CashType.Cash;
+
+    /// <summary>بانک / حساب خزانهٔ انتخابی برای نحوهٔ پرداخت</summary>
+    public int? TrsAccountId { get; set; }
+    [MaxLength(200)] public string? TrsAccountName { get; set; }
     [MaxLength(150)] public string? Payee { get; set; }
     [MaxLength(500)] public string? Description { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
