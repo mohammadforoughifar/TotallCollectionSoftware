@@ -5,7 +5,8 @@ public class DocImportOptions
 {
     public const string SectionName = "DocArchiveImport";
 
-    /// <summary>به‌طور پیش‌فرض روشن است؛ با Enabled=false در پیکربندی خاموش می‌شود.</summary>
+    /// <summary>همیشه پیش‌فرض روشن. مقدار Enabled در appsettings نادیده گرفته می‌شود؛
+    /// تنها راه خاموش کردن: متغیر محیطی DocArchiveImport__Enabled=false</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>سقف حجم هر فایل؛ همان سقف آپلود دستی.</summary>

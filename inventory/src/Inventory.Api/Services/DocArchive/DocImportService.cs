@@ -55,7 +55,7 @@ public class DocImportService(
     public async Task<DocImportBatchDto> CreateBatchAsync(DocImportBatchCreateDto dto, int userId, string userName)
     {
         if (!_opt.Enabled)
-            throw new InvalidOperationException("ورود انبوه در پیکربندی سرور فعال نیست (DocArchiveImport:Enabled).");
+            throw new InvalidOperationException("ورود انبوه روی سرور خاموش است (متغیر محیطی DocArchiveImport__Enabled=false). آن را حذف کنید تا روشن شود.");
 
         if (dto.RootFolderId is int rootFolderId &&
             !await db.DocFolders.AnyAsync(f => f.Id == rootFolderId && f.IsActive))

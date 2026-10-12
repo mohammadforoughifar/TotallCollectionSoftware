@@ -9,7 +9,7 @@ public class DocImportConfigDto
 
     /// <summary>اگر ورود خاموش است، توضیح فارسی آن.</summary>
     public string? ProblemFa => Enabled ? null
-        : "ورود انبوه روی سرور خاموش است. مدیر سیستم باید مقدار DocArchiveImport:Enabled را true کند.";
+        : "ورود انبوه روی سرور خاموش است؛ چون متغیر محیطی DocArchiveImport__Enabled=false تنظیم شده. آن را حذف کنید تا دوباره روشن شود.";
 }
 
 public class DocImportBatchCreateDto
