@@ -102,11 +102,13 @@ else
                         </div>
 
                         <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-primary" @onclick="SaveConnection" disabled="@savingConn || Ctx.CpInfoId <= 0">
+                            <button class="btn btn-primary" @onclick="SaveConnection" disabled="@savingConn || Ctx.CpInfoId <= 0"
+                                    title="@(Ctx.CpInfoId <= 0 ? "ابتدا در ستون سمت چپ یک شرکت ثبت/انتخاب کنید" : null)">
                                 @if (savingConn) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
                                 ذخیرهٔ اتصال
                             </button>
-                            <button class="btn btn-outline-primary" @onclick="TestConnection" disabled="@testing || connection is null">
+                            <button class="btn btn-outline-primary" @onclick="TestConnection" disabled="@testing || connection is null"
+                                    title="@(connection is null ? "ابتدا «ذخیرهٔ اتصال» را بزنید — تست به فایل کلید ذخیره‌شده روی سرور نیاز دارد (SDK از مسیر فایل ترانه‌ای می‌خواند)" : "تست اتصال ثبت‌شدهٔ همین شرکت به سامانه")">
                                 @if (testing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-lightning"></i> }
                                 تست اتصال ثبت‌شده
                             </button>
