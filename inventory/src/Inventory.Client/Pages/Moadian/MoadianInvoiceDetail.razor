@@ -38,13 +38,14 @@ else
             </h1>
             <p class="lead num">تاریخ: @MoadianUi.Shamsi(vm.DateOrder) — مشتری: @vm.CustomerName</p>
         </div>
-        <div class="ms-auto d-flex gap-2">
+        <div class="ms-auto d-flex gap-2 no-print">
+            <button class="btn btn-outline-primary" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
             <NavLink class="btn btn-outline-secondary" href="moadian/invoices"><i class="bi bi-arrow-right"></i> فهرست</NavLink>
         </div>
     </div>
 
     @* ---------- عملیات ---------- *@
-    <div class="card mb-3">
+    <div class="card mb-3 no-print">
         <div class="card-header"><i class="bi bi-lightning-charge text-primary"></i> عملیات</div>
         <div class="card-body d-flex gap-2 flex-wrap">
             @if (vm.ShowButtons && vm.StatusSentToSystemInt == "0")
@@ -92,7 +93,7 @@ else
     @* ---------- نتیجه استعلام / خطا ---------- *@
     @if (ActionResult != null)
     {
-        <div class="alert @(ActionIsError ? "alert-danger" : "alert-info") d-flex align-items-start gap-2">
+        <div class="alert no-print @(ActionIsError ? "alert-danger" : "alert-info") d-flex align-items-start gap-2">
             <i class="bi @(ActionIsError ? "bi-exclamation-triangle" : "bi-info-circle")"></i>
             <div>
                 <div class="fw-semibold">@(ActionIsError ? "جزئیات خطای صورتحساب" : "نتیجهٔ استعلام")</div>
@@ -228,6 +229,21 @@ else
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
+
+    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // چاپ خودکار هنگام ورود با ?print=1 (مثلاً از دکمهٔ چاپ لیست)
+        if (firstRender) return;
+        if (!_printHandled && !loading && vm is not null && Nav.Uri.Contains("print=1", StringComparison.OrdinalIgnoreCase))
+        {
+            _printHandled = true;
+            await JS.InvokeVoidAsync("window.print");
+        }
+    }
+
+    private bool _printHandled;
 
     private async Task Send()
     {

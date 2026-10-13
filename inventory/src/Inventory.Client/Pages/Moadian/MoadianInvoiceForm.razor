@@ -1,6 +1,7 @@
 @page "/moadian/invoices/new"
 @page "/moadian/invoices/{Id:int}/edit"
 @page "/moadian/invoices/{Id:int}/eslahi"
+@page "/moadian/invoices/{Id:int}/copy"
 @using Inventory.Shared.Dtos.Moadian
 @using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
 @using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
@@ -20,6 +21,7 @@
             {
                 case FormMode.New: <span>صدور صورتحساب جدید با ردیف‌های کالا/خدمت</span> break;
                 case FormMode.Edit: <span>ویرایش صورتحساب #@(Id)</span> break;
+                case FormMode.Copy: <span>کپی صورتحساب #@(Id) — به‌عنوان صورتحساب جدید ذخیره می‌شود</span> break;
                 default: <span>صدور صورتحساب اصلاحی بر پایهٔ #@(Id)</span> break;
             }
         </p>
@@ -51,8 +53,8 @@ else
                 <div class="col-md-3">
                     <label class="form-label">شمارهٔ فاکتور</label>
                     <input class="form-control num fw-bold text-primary" readonly
-                           value="@(Mode == FormMode.New ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.Num()) : (vm.NumberInvoice?.Num() ?? "—"))" />
-                    <div class="form-text">@((Mode == FormMode.New) ? "پیش‌نمایش — شمارهٔ نهایی هنگام ثبت تخصیص می‌یابد." : "")</div>
+                           value="@(IsNewLike ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.Num()) : (vm.NumberInvoice?.Num() ?? "—"))" />
+                    <div class="form-text">@(IsNewLike ? "پیش‌نمایش — شمارهٔ نهایی هنگام ثبت تخصیص می‌یابد." : "")</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">موضوع</label>
@@ -61,7 +63,7 @@ else
                 <div class="col-md-3">
                     <label class="form-label">وضعیت</label>
                     <div class="pt-1">
-                        @if (Mode == FormMode.New)
+                        @if (IsNewLike)
                         {
                             <span class="badge bg-secondary">ارسال نشده</span>
                         }
@@ -263,7 +265,7 @@ else
 }
 
 @code {
-    private enum FormMode { New, Edit, Eslahi }
+    private enum FormMode { New, Edit, Eslahi, Copy }
 
     [Parameter] public int? Id { get; set; }
     private FormMode Mode;
@@ -271,8 +273,12 @@ else
     {
         FormMode.Edit => "ویرایش صورتحساب",
         FormMode.Eslahi => "صورتحساب اصلاحی",
+        FormMode.Copy => "کپی صورتحساب",
         _ => "صورتحساب جدید"
     };
+
+    /// <summary>حالت‌های جدید/کپی از نظر نمایش (پیش‌نمایش شماره) و ذخیره (IsNew) یکسان‌اند.</summary>
+    private bool IsNewLike => Mode is FormMode.New or FormMode.Copy;
 
     private InvoiceVM vm = new();
     private List<VMGoodsOrServicesList> Goods = new();
@@ -286,11 +292,12 @@ else
         var path = Nav.ToBaseRelativePath(Nav.Uri);
         if (path.EndsWith("/edit")) Mode = FormMode.Edit;
         else if (path.EndsWith("/eslahi")) Mode = FormMode.Eslahi;
+        else if (path.EndsWith("/copy")) Mode = FormMode.Copy;
         else Mode = FormMode.New;
         vm = new InvoiceVM
         {
             CPInfoId = Ctx.CpInfoId,
-            IsNew = Mode == FormMode.New,
+            IsNew = IsNewLike,
             DateOrderPicker = DateTime.Today,
             PaymentType = "نقدی",
             TypePattern = "نوع اول",
@@ -311,23 +318,43 @@ else
                 Customers = await Moadian.GetCustomersAsync(Ctx.CpInfoId);
                 FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
             }
-            if (Mode == FormMode.New && Ctx.CpInfoId > 0)
+            if (IsNewLike && Ctx.CpInfoId > 0)
             {
                 var rn = await Moadian.NextInvoiceNumberAsync(Ctx.CpInfoId);
                 if (rn.Success) nextInvoiceNo = MoadianService.As<int?>(rn);
             }
-            if (Mode != FormMode.New && Id is > 0)
+            if (!IsNewLike || Mode == FormMode.Copy)
             {
-                var loaded = await Moadian.GetInvoiceAsync(Id!.Value);
-                if (loaded is null)
+                if (!IsNewLike && Id is not > 0) return;
+                InvoiceVM? loaded = null;
+                if (Id is > 0) loaded = await Moadian.GetInvoiceAsync(Id.Value);
+                if (Mode != FormMode.New && loaded is null)
                 {
                     Toast.Error("صورتحساب یافت نشد.");
                     Nav.NavigateTo("moadian/invoices");
                     return;
                 }
-                vm = loaded;
-                if (vm.InvoiceItems.Count == 0) vm.InvoiceItems = new ObservableCollection<VmInvoiceItems>();
-                foreach (var it in vm.InvoiceItems) Calc(it);
+                if (loaded is not null)
+                {
+                    vm = loaded;
+                    if (Mode == FormMode.Copy)
+                    {
+                        // شناسهٔ نسخهٔ کپی باید تازه باشد: شماره، وضعیت، مرجع و شماره مالیاتی پاک می‌شود
+                        vm.Id = 0;
+                        vm.IsNew = true;
+                        vm.NumberInvoice = null;
+                        vm.ReferenceId = null;
+                        vm.TaxNumber = null;
+                        vm.NewTaxNumber = null;
+                        vm.StatusSentToSystem = "0";
+                        vm.StatusSentToSystemInt = "0";
+                        vm.Subject = "اصلی";
+                        vm.ShowButtons = true;
+                        vm.DateOrderPicker = DateTime.Today;
+                    }
+                    if (vm.InvoiceItems.Count == 0) vm.InvoiceItems = new ObservableCollection<VmInvoiceItems>();
+                    foreach (var it in vm.InvoiceItems) Calc(it);
+                }
             }
             else if (FiscalYears.Count > 0)
             {
@@ -417,7 +444,7 @@ else
 
         vm.TotallMoney = GrandTotal;
         if (vm.PaymentType == "نقدی") vm.PriceNaghd = GrandTotal; else vm.PriceNesye = GrandTotal;
-        if (Mode == FormMode.New) vm.IsNew = true;
+        if (IsNewLike) vm.IsNew = true;
 
         saving = true;
         StateHasChanged();

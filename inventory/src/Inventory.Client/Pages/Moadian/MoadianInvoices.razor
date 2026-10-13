@@ -117,7 +117,7 @@ else
                                 <th style="width:80px">نوع پرداخت</th>
                                 <th style="width:80px">الگوی صورتحساب</th>
                                 <th style="width:150px">وضعیت</th>
-                                <th class="text-end" style="width:110px">عملیات</th>
+                                <th class="text-end" style="min-width:320px">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -142,35 +142,59 @@ else
                                     </td>
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <NavLink class="btn btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده و جزئیات">
+                                            @* a) جزئیات *@
+                                            <NavLink class="btn btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="جزئیات صورتحساب">
                                                 <i class="bi bi-eye"></i>
                                             </NavLink>
+                                            @* d) ویرایش *@
                                             @if (inv.StatusSentToSystemInt == "0")
                                             {
-                                                <button type="button" class="btn btn-outline-success" title="a) ارسال به سامانه مودیان"
+                                                <NavLink class="btn btn-outline-success" href="@($"moadian/invoices/{inv.Id}/edit")" title="ویرایش صورتحساب">
+                                                    <i class="bi bi-pencil"></i>
+                                                </NavLink>
+                                            }
+                                            @* e) کپی *@
+                                            <NavLink class="btn btn-outline-secondary" href="@($"moadian/invoices/{inv.Id}/copy")" title="کپی صورتحساب">
+                                                <i class="bi bi-copy"></i>
+                                            </NavLink>
+                                            @* b) چاپ *@
+                                            <NavLink class="btn btn-outline-dark" href="@($"moadian/invoices/{inv.Id}?print=1")" title="چاپ صورتحساب">
+                                                <i class="bi bi-printer"></i>
+                                            </NavLink>
+                                            @* ارسال *@
+                                            @if (inv.ShowButtons && inv.StatusSentToSystemInt == "0")
+                                            {
+                                                <button type="button" class="btn btn-outline-success" title="ارسال به سامانه مودیان"
                                                         disabled="@acting" @onclick="() => SendToMoadian(inv)">
                                                     <i class="bi bi-send"></i>
                                                 </button>
                                             }
                                             @if (!string.IsNullOrEmpty(inv.ReferenceId))
                                             {
-                                                <button type="button" class="btn btn-outline-info" title="b) استعلام صورتحساب از سامانه مودیان"
+                                                <button type="button" class="btn btn-outline-info" title="استعلام صورتحساب از سامانه مودیان"
                                                         disabled="@acting" @onclick="() => EstelamRow(inv)">
                                                     <i class="bi bi-arrow-repeat"></i>
                                                 </button>
-                                                <button type="button" class="btn btn-outline-danger" title="c) نمایش خطاهای صورتحساب"
+                                                <button type="button" class="btn btn-outline-danger" title="نمایش خطاهای صورتحساب"
                                                         disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
                                                     <i class="bi bi-bug"></i>
                                                 </button>
-                                                <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی">
-                                                    <i class="bi bi-pencil-square"></i>
-                                                </NavLink>
-                                                <button type="button" class="btn btn-outline-dark" title="ابطال صورتحساب در سامانه مودیان"
-                                                        disabled="@acting" @onclick="() => EbtalRow(inv)">
-                                                    <i class="bi bi-x-octagon"></i>
-                                                </button>
+                                                @if (inv.ShowButtons)
+                                                {
+                                                    <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </NavLink>
+                                                    <button type="button" class="btn btn-outline-primary" title="صدور برگشت از فروش"
+                                                            disabled="@acting" @onclick="() => SalesReturnRow(inv)">
+                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-dark" title="ابطال صورتحساب در سامانه مودیان"
+                                                            disabled="@acting" @onclick="() => EbtalRow(inv)">
+                                                        <i class="bi bi-x-octagon"></i>
+                                                    </button>
+                                                }
                                             }
-                                            @if (inv.StatusSentToSystemInt == "0")
+                                            @if (inv.ShowButtons && inv.StatusSentToSystemInt == "0")
                                             {
                                                 <button type="button" class="btn btn-outline-secondary" title="حذف صورتحساب (فقط ارسال‌نشده)"
                                                         disabled="@acting" @onclick="() => DeleteRow(inv)">
@@ -359,6 +383,31 @@ else
                 await LoadAsync(pno);
             }
             else Toast.Error(r.Message ?? "خطا در ارسال به سامانه.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>برگشت از فروش — یک صورتحساب «برگشت از فروش» (Ins=4) بر اساس صورتحساب اصلی به سامانه ارسال می‌شود.</summary>
+    private async Task SalesReturnRow(InvoiceVM inv)
+    {
+        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("برگشت از فروش فقط برای صورتحساب‌های ارسال‌شده ممکن است."); return; }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"برای صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} یک صورتحساب «برگشت از فروش» صادر و به سامانه ارسال می‌شود. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای برگشت از فروش یافت نشد."); return; }
+            full.Subject = "برگشت از فروش";
+            var r = await Moadian.SendInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"برگشت از فروش صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} ارسال شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ارسال برگشت از فروش.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { acting = false; StateHasChanged(); }
