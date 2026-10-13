@@ -141,9 +141,29 @@ else
                                         <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)">@inv.StatusSentToSystem</span>
                                     </td>
                                     <td class="text-end">
-                                        <NavLink class="btn btn-sm btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده، ارسال و عملیات">
-                                            <i class="bi bi-eye"></i> مشاهده
-                                        </NavLink>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <NavLink class="btn btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده و جزئیات">
+                                                <i class="bi bi-eye"></i>
+                                            </NavLink>
+                                            @if (inv.StatusSentToSystemInt == "0")
+                                            {
+                                                <button type="button" class="btn btn-outline-success" title="a) ارسال به سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => SendToMoadian(inv)">
+                                                    <i class="bi bi-send"></i>
+                                                </button>
+                                            }
+                                            @if (!string.IsNullOrEmpty(inv.ReferenceId))
+                                            {
+                                                <button type="button" class="btn btn-outline-info" title="b) استعلام صورتحساب از سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => EstelamRow(inv)">
+                                                    <i class="bi bi-arrow-repeat"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-outline-danger" title="c) نمایش خطاهای صورتحساب"
+                                                        disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
+                                                    <i class="bi bi-bug"></i>
+                                                </button>
+                                            }
+                                        </div>
                                     </td>
                                 </tr>
                             }
@@ -176,6 +196,27 @@ else
     </div>
 }
 
+@* ---------- پنجرهٔ نتیجهٔ استعلام / خطاها ---------- *@
+@if (modalOpen)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.45)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clipboard2-pulse text-primary"></i> @modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="() => modalOpen = false" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <pre class="mb-0 small" dir="rtl" style="white-space:pre-wrap;max-height:50vh;overflow:auto">@modalBody</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => modalOpen = false">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private static readonly (string Code, string Title, string Icon)[] Tabs =
     {
@@ -198,6 +239,12 @@ else
     private bool loading;
     private string? loadError;
     private System.Timers.Timer? searchTimer;
+
+    // ---------- عملیات ردیف‌ها: ارسال / استعلام / خطاها ----------
+    private bool acting;
+    private bool modalOpen;
+    private string modalTitle = "";
+    private string modalBody = "";
 
     [Inject] private IJSRuntime JS { get; set; }
 
@@ -281,6 +328,67 @@ else
             InvokeAsync(() => Toast.Info("شمارهٔ مالیاتی کپی شد."));
         }
         catch { InvokeAsync(() => Toast.Error("کپی ممکن نبود.")); }
+    }
+
+    /// <summary>a) ارسال ردیف به سامانهٔ مودیان — ابتدا جزئیات کامل صورتحساب واکشی، سپس همان فلوی صفحهٔ جزئیات ارسال می‌شود.</summary>
+    private async Task SendToMoadian(InvoiceVM inv)
+    {
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای ارسال یافت نشد."); return; }
+            var r = await Moadian.SendInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} به سامانهٔ مودیان ارسال شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ارسال به سامانه.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>b) استعلام وضعیت صورتحساب از سامانهٔ مودیان (با شمارهٔ مرجع) — نتیجه در پنجره نمایش داده و وضعیت ردیف به‌روزرسانی می‌شود.</summary>
+    private async Task EstelamRow(InvoiceVM inv)
+    {
+        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("برای استعلام، ابتدا صورتحساب باید ارسال شده باشد."); return; }
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.EstelamInvoiceAsync(inv.ReferenceId!, inv.Id,
+                (inv.DateOrder ?? DateOnly.FromDateTime(DateTime.Today)).ToString("yyyy-MM-dd"));
+            modalTitle = $"استعلام صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"}";
+            modalBody = r.Data?.ToString() ?? r.Message ?? "پاسخی از سامانه دریافت نشد.";
+            modalOpen = true;
+            if (r.Success) Toast.Success("وضعیت صورتحساب به‌روزرسانی شد.");
+            else Toast.Error(r.Message ?? "استعلام ناموفق بود.");
+            await LoadAsync(pno);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>c) نمایش خطاهای صورتحساب — کد، پیام و شرح خطاها/هشدارها از سامانهٔ مودیان.</summary>
+    private async Task ShowErrorsRow(InvoiceVM inv)
+    {
+        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("این صورتحساب هنوز به سامانه ارسال نشده است."); return; }
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.ErrorInvoiceAsync(inv.ReferenceId!);
+            var err = MoadianService.As<ErroreMesage>(r);
+            modalTitle = $"خطاهای صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"}";
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrWhiteSpace(err?.code)) sb.AppendLine($"کد: {err!.code}");
+            if (!string.IsNullOrWhiteSpace(err?.message)) sb.AppendLine($"پیام: {err!.message}");
+            if (!string.IsNullOrWhiteSpace(err?.errorsAndWarnings)) sb.AppendLine($"خطاها و هشدارها: {err!.errorsAndWarnings}");
+            modalBody = sb.Length == 0 ? (r.Success ? "خطایی برای این صورتحساب ثبت نشده است." : (r.Message ?? "دریافت خطاها ناموفق بود.")) : sb.ToString();
+            modalOpen = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
     }
 
     public void Dispose()
