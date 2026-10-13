@@ -38,7 +38,7 @@ public interface IDocImportService
 public class DocImportService(
     AppDbContext db,
     IOptions<DocImportOptions> options,
-    IWebHostEnvironment env,
+    FileStore fileStore,
     ILogger<DocImportService> log) : IDocImportService
 {
     private readonly DocImportOptions _opt = options.Value;
@@ -382,6 +382,16 @@ public class DocImportService(
 
         var outcome = await ImportOneAsync(batch, row, folderId.Value, title, code, content, userId, userName, autoAssign);
 
+        // مسیر خطا در ImportOneAsync با ChangeTracker.Clear() نمونه‌های batch و row را جدا می‌کند؛ بدون بارگذاری دوباره
+        // شمارش «ناموفق» نوبت ذخیره نمی‌شد و پاسخ به مرورگر وضعیت «Pending» با پیام خالی داشت («وارد نشد» بدون دلیل).
+        if (db.Entry(batch).State == EntityState.Detached)
+            batch = await db.DocImportBatches.FirstAsync(b => b.Id == batchId);
+        if (db.Entry(row).State == EntityState.Detached)
+        {
+            var rowId = row.Id;
+            row = await db.DocImportResults.FirstAsync(r => r.Id == rowId);
+        }
+
         if (outcome.Imported)
         {
             batch.ImportedCount++;
@@ -417,6 +427,8 @@ public class DocImportService(
             return (false, row.MessageFa);
         }
 
+        // مسیر فایلی که روی دیسک سرور نوشته شد؛ اگر تراکنش برگردد، فایل یتیم نباید بماند
+        string? savedRelPath = null;
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync();
@@ -469,7 +481,10 @@ public class DocImportService(
             db.DocumentVersions.Add(version);
             await db.SaveChangesAsync();
 
-            var relPath = await new FileStore(env).SaveAsync("DocVersion", version.Id, content, row.FileName);
+            // همان FileStore سراسری (DI) — تا ورود انبوه دقیقاً در همان پوشه‌ای بنشیند که آپلود دستی
+            // و دانلود/پیش‌نمایش از آن می‌خوانند (از جمله DocArchive:StorageRoot روی سرور IIS)
+            var relPath = await fileStore.SaveAsync(FileStore.DocArchiveModule, version.Id, content, row.FileName);
+            savedRelPath = relPath;
 
             db.AppAttachments.Add(new AppAttachment
             {
@@ -509,6 +524,12 @@ public class DocImportService(
         {
             log.LogWarning(ex, "ورود فایل {File} در نوبت {Batch} ناموفق بود", row.FileName, batch.Id);
 
+            // تراکنش برگشت خورد؛ فایلی که روی دیسک نوشته شده بود را هم پاک کن تا فضای سرور با فایل بی‌صاحب پر نشود
+            if (savedRelPath is not null) fileStore.Delete(savedRelPath);
+            if (ex is UnauthorizedAccessException or IOException)
+                log.LogError(ex, "نوشتن فایل مدرک روی دیسک سرور ناموفق بود. پوشه: {Dir} — روی IIS به هویت Application Pool اجازهٔ Modify بدهید.",
+                    fileStore.DocArchiveRootPath);
+
             // اگر تغییرات نیمه‌کاره در change tracker مانده باشد، ثبت خطا هم شکست می‌خورد
             db.ChangeTracker.Clear();
 
@@ -529,7 +550,9 @@ public class DocImportService(
                     tracked.Status = DocImportResultStatus.Failed;
                     tracked.ErrorCode = DocImportErrorCodes.WriteFailed;
                     // پیام خام EF/SQL به کاربر نشان داده نمی‌شود
-                    tracked.MessageFa = DocImportErrorCodes.MessageFa(DocImportErrorCodes.WriteFailed);
+                    tracked.MessageFa = ex is UnauthorizedAccessException or IOException
+                        ? "ذخیرهٔ فایل روی دیسک سرور ناموفق بود؛ مدیر سیستم دسترسی نوشتن پوشهٔ ذخیرهٔ آرشیو را بررسی کند."
+                        : DocImportErrorCodes.MessageFa(DocImportErrorCodes.WriteFailed);
                 }
                 tracked.ProcessedAtUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync();

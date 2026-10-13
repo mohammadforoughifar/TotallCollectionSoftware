@@ -229,16 +229,22 @@
                 if (h.indexOf('.e2b.app') !== -1) {
                     return window.location.protocol + '//' + h.replace(/^[0-9]+-/, '5100-');
                 }
-                // استقرار تک‌سروره: UI و API هم‌مبدأ هستند؛ پورت قابل تنظیم است (مثلاً 8181).
-                // برای هر IP/دامنهٔ سرور از مبدأ جاری استفاده کن، نه localhost کاربر.
+                // مسیر پایهٔ برنامه از base href — روی IIS اگر برنامه زیر یک Application/Virtual Directory
+                // نصب شود (مثلاً http://server/erp/) سرور base href را «/erp/» می‌کند و API هم زیر همان مسیر است.
+                var basePath = '';
+                try { basePath = new URL(document.baseURI).pathname.replace(/\/+$/, ''); } catch (e) { }
+                var sameOrigin = window.location.origin + basePath;
                 var port = window.location.port;
-                if (port === '5100' || port === '8181') return window.location.origin;
                 if (h.indexOf('localhost') === 0 || h.indexOf('127.0.0.1') === 0) {
-                    if (port === '') return window.location.origin;
+                    // روی خود سرور: انتشار تک‌سروره (IIS روی 80/443 یا پورت 5100/8181) هم‌مبدأ است؛
+                    // فقط dev server کلاینت (پورت دیگر) باید به API روی 5100 برود.
+                    if (port === '' || port === '5100' || port === '8181') return sameOrigin;
                     return fallback || 'http://localhost:5100';
                 }
-                // میزبان غیرمحلی: در انتشار تک‌سروره درخواست‌ها به همان میزبان و پورت می‌روند.
-                if (port) return window.location.origin;
+                // هر میزبان دیگر (آی‌پی یا دامنه، با پورت یا بدون پورت — مثل IIS روی 80/443):
+                // UI و API هم‌مبدأ هستند. قبلاً حالت «بدون پورت» به http://localhost:5100 مرورگر کاربر می‌رفت
+                // و روی IIS با binding پیش‌فرض هیچ درخواستی (از جمله ارسال مدارک) به سرور نمی‌رسید.
+                return sameOrigin;
             } catch (e) { }
             return fallback || 'http://localhost:5100';
         };

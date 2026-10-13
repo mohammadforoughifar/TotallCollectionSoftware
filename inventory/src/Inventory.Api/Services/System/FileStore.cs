@@ -6,24 +6,82 @@ namespace Inventory.Api.Services;
 /// ذخیره‌سازی یکپارچه فایل‌ها روی دیسک — همه‌ی فایل‌ها بر اساس ماژول در پوشه‌ی wwwroot/uploads/{module}/ قرار می‌گیرند.
 /// در دیتابیس فقط مسیر نسبی (اطلاعات) ثبت می‌شود.
 /// ساختار: wwwroot/uploads/{module}/{refId}/{guid}_{نام-اصلی}
+///
+/// آرشیو اسناد (ماژول DocVersion): اگر «DocArchive:StorageRoot» در appsettings پر شده باشد، فایل‌های مدارک
+/// (آپلود دستی + ورود انبوه) در همان پوشه‌ی بیرون از برنامه ذخیره می‌شوند، مثلاً D:\InventoryData\DocArchive.
+/// این کار روی IIS حیاتی است: پوشه‌ی برنامه با هر انتشار جدید جایگزین می‌شود و wwwroot/uploads همراهش پاک می‌شود.
+/// مسیر نسبی ثبت‌شده در دیتابیس عوض نمی‌شود («DocVersion/{versionId}/{guid}_{نام}»)، پس فایل‌های قبلی
+/// که هنوز در wwwroot/uploads/DocVersion هستند همچنان پیدا می‌شوند.
 /// </summary>
 public class FileStore
 {
+    /// <summary>نام ماژول پیوست‌های نسخه‌ی مدارک آرشیو.</summary>
+    public const string DocArchiveModule = "DocVersion";
+
+    /// <summary>کلید تنظیمات پوشه‌ی ذخیره‌ی مدارک آرشیو (خالی = همان wwwroot/uploads).</summary>
+    public const string DocArchiveStorageRootKey = "DocArchive:StorageRoot";
+
     private readonly string _root;
     private readonly string _webRoot;
     private readonly string _contentRoot;
+    private readonly string? _docArchiveRoot;
 
-    public FileStore(IWebHostEnvironment env)
+    public FileStore(IWebHostEnvironment env) : this(env, null) { }
+
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
+    public FileStore(IWebHostEnvironment env, IConfiguration? configuration)
     {
         _contentRoot = env.ContentRootPath;
         _webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
         _root = Path.Combine(_webRoot, "uploads");
         Directory.CreateDirectory(_root);
+
+        _docArchiveRoot = ResolveDocArchiveRoot(configuration?[DocArchiveStorageRootKey], _contentRoot);
+        if (_docArchiveRoot is not null) Directory.CreateDirectory(_docArchiveRoot);
     }
 
     public string RootPath => _root;
     public string WebRootPath => _webRoot;
     public string ContentRootPath => _contentRoot;
+
+    /// <summary>پوشه‌ی واقعی ذخیره‌ی مدارک آرشیو روی دیسک سرور.</summary>
+    public string DocArchiveRootPath => _docArchiveRoot ?? Path.Combine(_root, DocArchiveModule);
+
+    /// <summary>آیا مدارک آرشیو بیرون از پوشه‌ی برنامه (مسیر پیکربندی‌شده) ذخیره می‌شوند؟</summary>
+    public bool HasExternalDocArchiveRoot => _docArchiveRoot is not null;
+
+    /// <summary>
+    /// مسیر پیکربندی‌شده را مطلق می‌کند. مسیر نسبی نسبت به پوشه‌ی برنامه حل می‌شود؛
+    /// متغیرهای محیطی ویندوز (مثل %ProgramData%) هم پشتیبانی می‌شوند.
+    /// </summary>
+    internal static string? ResolveDocArchiveRoot(string? configured, string contentRoot)
+    {
+        if (string.IsNullOrWhiteSpace(configured)) return null;
+        var expanded = Environment.ExpandEnvironmentVariables(configured.Trim().Trim('"'));
+        var full = Path.IsPathRooted(expanded) ? expanded : Path.Combine(contentRoot, expanded);
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(full));
+    }
+
+    /// <summary>
+    /// تست نوشتن روی پوشه‌ی مدارک آرشیو — برای لاگ راه‌اندازی. روی IIS اگر هویت Application Pool
+    /// اجازه‌ی Modify روی این پوشه را نداشته باشد، همین‌جا مشخص می‌شود نه وقتی کاربر اولین فایل را می‌فرستد.
+    /// </summary>
+    public (bool Ok, string Path, string? Error) ProbeDocArchiveWrite()
+    {
+        var dir = DocArchiveRootPath;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var probe = Path.Combine(dir, $".write-probe-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(probe, "ok");
+            File.Delete(probe);
+            return (true, dir, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, dir, ex.Message);
+        }
+    }
 
     /// <summary>
     /// ساخت امن مسیر ماژول با حفظ ساختار زيرپوشه‌ها (مانند office/innerletter یا hr/employee/documents)
@@ -45,14 +103,37 @@ public class FileStore
         return cleanParts.Count > 0 ? string.Join('/', cleanParts) : "misc";
     }
 
-    private static string SanitizeName(string name)
+    /// <summary>
+    /// کاراکترهایی که ویندوز در نام فایل نمی‌پذیرد. عمداً مستقل از سیستم‌عامل است تا فایلی که روی
+    /// لینوکس/محیط توسعه ذخیره شده، بعد از انتقال پوشه به سرور ویندوز/IIS هم قابل باز شدن باشد.
+    /// </summary>
+    private static readonly HashSet<char> InvalidNameChars =
+        new(Path.GetInvalidFileNameChars().Concat(new[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*' }));
+
+    public static string SanitizeName(string? name)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sb = new System.Text.StringBuilder();
-        foreach (var ch in Path.GetFileName(name ?? "file"))
-            sb.Append(invalid.Contains(ch) ? '_' : ch);
-        var s = sb.ToString();
-        return s.Length > 80 ? s[..80] : s;
+        var raw = (name ?? "").Replace('\\', '/');
+        raw = raw[(raw.LastIndexOf('/') + 1)..];
+
+        var sb = new System.Text.StringBuilder(raw.Length);
+        foreach (var ch in raw)
+            sb.Append(InvalidNameChars.Contains(ch) || char.IsControl(ch) ? '_' : ch);
+
+        // ویندوز نقطه/فاصله‌ی انتهای نام را بی‌صدا حذف می‌کند → مسیر ثبت‌شده با فایل واقعی یکی نمی‌ماند
+        var s = sb.ToString().Trim().TrimEnd('.', ' ');
+        // «..» در نام فایل مجاز است ولی مسیرخوان آن را نشانه‌ی Path Traversal می‌داند؛ یکی‌اش می‌کنیم
+        while (s.Contains("..", StringComparison.Ordinal)) s = s.Replace("..", ".", StringComparison.Ordinal);
+        if (s.Length == 0 || s == ".") s = "file";
+
+        // کوتاه‌سازی بدون از دست دادن پسوند (پیش‌نمایش/نوع فایل به پسوند وابسته است)
+        const int max = 80;
+        if (s.Length > max)
+        {
+            var ext = Path.GetExtension(s);
+            if (ext.Length is 0 or > 16) s = s[..max];
+            else s = s[..(max - ext.Length)].TrimEnd('.', ' ') + ext;
+        }
+        return s;
     }
 
     private static string StorageModule(string module)
@@ -69,9 +150,15 @@ public class FileStore
         };
     }
 
+    private bool IsDocArchive(string module) =>
+        _docArchiveRoot is not null && string.Equals(SafeModule(StorageModule(module)), DocArchiveModule, StringComparison.OrdinalIgnoreCase);
+
     private string BuildDirectory(string module, int refId, string? subFolder = null)
     {
-        var parts = new List<string> { _root, SafeModule(StorageModule(module)) };
+        // مدارک آرشیو: {StorageRoot}/{versionId}/… — مسیر نسبی همچنان «DocVersion/{versionId}/…» ثبت می‌شود
+        var parts = IsDocArchive(module)
+            ? new List<string> { _docArchiveRoot! }
+            : new List<string> { _root, SafeModule(StorageModule(module)) };
         if (!string.IsNullOrWhiteSpace(subFolder))
             parts.Add(SafeModule(subFolder));
         parts.Add(refId.ToString());
@@ -87,9 +174,22 @@ public class FileStore
         var dir = BuildDirectory(module, refId, subFolder);
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, $"{Guid.NewGuid():N}_{safe}");
-        await using (var fs = File.Create(file))
+        // نوشتن اتمیک: اول فایل موقت، بعد تغییر نام. اگر ارتباط وسط آپلود (مثلاً ورود انبوه) قطع شود
+        // یا دیسک پر باشد، فایل نیمه‌کاره با نام نهایی روی سرور نمی‌ماند.
+        var temp = file + ".part";
+        try
         {
-            await stream.CopyToAsync(fs);
+            await using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                await stream.CopyToAsync(fs);
+                await fs.FlushAsync();
+            }
+            File.Move(temp, file);
+        }
+        catch
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            throw;
         }
         return ToRelative(file);
     }
@@ -99,7 +199,9 @@ public class FileStore
     /// </summary>
     public async Task<string> SaveRawAsync(string module, byte[] data, string ext, int? ownerId = null)
     {
-        var dir = Path.Combine(_root, SafeModule(StorageModule(module)), ownerId?.ToString() ?? "common");
+        var dir = IsDocArchive(module)
+            ? Path.Combine(_docArchiveRoot!, ownerId?.ToString() ?? "common")
+            : Path.Combine(_root, SafeModule(StorageModule(module)), ownerId?.ToString() ?? "common");
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, $"{Guid.NewGuid():N}{(ext.StartsWith('.') ? ext : "." + ext)}");
         await File.WriteAllBytesAsync(file, data);
@@ -162,7 +264,8 @@ public class FileStore
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
+        // فقط بخش «..» (بالا رفتن از پوشه) ممنوع است؛ نامی مثل «نامه..pdf» مجاز است
+        if (clean.Split('/').Any(seg => seg == "..")) return null;
 
         // نرمال‌سازی prefix uploads/
         var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
@@ -218,25 +321,54 @@ public class FileStore
         var webRootFull = Path.GetFullPath(_webRoot);
         var contentFull = Path.GetFullPath(_contentRoot);
 
+        // مدارک آرشیو: اول پوشه‌ی پیکربندی‌شده‌ی بیرون از برنامه، بعد مسیرهای قدیمی (سازگاری با فایل‌های قبلی)
+        string? docDefault = null;
+        var docPrefix = DocArchiveModule + "/";
+        if (_docArchiveRoot is not null && uploadClean.StartsWith(docPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var p0 = Path.GetFullPath(Path.Combine(_docArchiveRoot, uploadClean[docPrefix.Length..]));
+            if (IsUnder(p0, _docArchiveRoot))
+            {
+                if (File.Exists(p0)) return p0;
+                docDefault = p0;
+            }
+        }
+
         foreach (var candidate in aliases.Distinct())
         {
             var p1 = Path.GetFullPath(Path.Combine(_root, candidate));
-            if (p1.StartsWith(rootFull, StringComparison.Ordinal) && File.Exists(p1)) return p1;
+            if (IsUnder(p1, rootFull) && File.Exists(p1)) return p1;
 
             var p2 = Path.GetFullPath(Path.Combine(_webRoot, candidate));
-            if (p2.StartsWith(webRootFull, StringComparison.Ordinal) && File.Exists(p2)) return p2;
+            if (IsUnder(p2, webRootFull) && File.Exists(p2)) return p2;
 
             var p3 = Path.GetFullPath(Path.Combine(_contentRoot, candidate));
-            if (p3.StartsWith(contentFull, StringComparison.Ordinal) && File.Exists(p3)) return p3;
+            if (IsUnder(p3, contentFull) && File.Exists(p3)) return p3;
         }
+
+        if (docDefault is not null) return docDefault;
 
         // در صورت نبود فیزیکی، مسیر پیش‌فرض در uploads بازگردانده می‌شود
         var defaultPath = Path.GetFullPath(Path.Combine(_root, uploadClean));
-        return defaultPath.StartsWith(rootFull, StringComparison.Ordinal) ? defaultPath : null;
+        return IsUnder(defaultPath, rootFull) ? defaultPath : null;
+    }
+
+    /// <summary>
+    /// آیا path داخل root است؟ مقایسه با جداکننده‌ی انتهایی (تا «uploads2» داخل «uploads» حساب نشود)
+    /// و روی ویندوز بدون حساسیت به حروف کوچک/بزرگ (NTFS این‌طور است).
+    /// </summary>
+    private static bool IsUnder(string path, string root)
+    {
+        var cmp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var r = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        return path.Equals(r, cmp) || path.StartsWith(r + Path.DirectorySeparatorChar, cmp);
     }
 
     public string ToRelative(string fullPath)
     {
+        // فایل‌های مدارک در پوشه‌ی بیرونی هم با همان قالب قدیمی «DocVersion/…» در دیتابیس ثبت می‌شوند
+        if (_docArchiveRoot is not null && IsUnder(Path.GetFullPath(fullPath), _docArchiveRoot))
+            return DocArchiveModule + "/" + Path.GetRelativePath(_docArchiveRoot, fullPath).Replace('\\', '/');
         return Path.GetRelativePath(_root, fullPath).Replace('\\', '/');
     }
 

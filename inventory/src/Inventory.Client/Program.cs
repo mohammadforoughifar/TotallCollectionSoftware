@@ -13,9 +13,13 @@ builder.Services.AddScoped(sp =>
 {
     var opts = sp.GetRequiredService<ApiOptions>();
     var baseUrl = string.IsNullOrWhiteSpace(opts.BaseUrl) ? "http://localhost:5100" : opts.BaseUrl;
-    return new HttpClient
+    var baseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    // PathBaseHandler: اگر برنامه روی IIS زیر یک Application/Virtual Directory نصب شود (مثلاً /erp/)،
+    // درخواست‌هایی که با «/api/...» (اسلش اول) نوشته شده‌اند از ریشهٔ سایت خوانده می‌شدند و 404 می‌گرفتند.
+    // روی ریشهٔ سایت هیچ اثری ندارد.
+    return new HttpClient(new PathBaseHandler(baseAddress) { InnerHandler = new HttpClientHandler() })
     {
-        BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
+        BaseAddress = baseAddress,
         // سقف پشتیبان؛ سقف واقعی هر فراخوانی در ApiClient (۱۰۰ ثانیه معمولی، ۱۰ دقیقه برای AI) اعمال می‌شود
         Timeout = TimeSpan.FromMinutes(15),
     };

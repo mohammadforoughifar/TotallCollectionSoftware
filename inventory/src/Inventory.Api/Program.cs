@@ -15,6 +15,19 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ================== تشخیص میزبانی پشت IIS ==================
+// ماژول ASP.NET Core در IIS (ANCM) این متغیرها را برای پروسهٔ برنامه تنظیم می‌کند. پشت IIS آدرس/پورت شنود را
+// خود IIS تعیین می‌کند (در حالت OutOfProcess پورت تصادفی ASPNETCORE_PORT روی 127.0.0.1)؛ اگر برنامه خودش
+// app.Run("http://0.0.0.0:5100") کند، IIS به پروسه وصل نمی‌شود و همهٔ درخواست‌ها (از جمله آپلود مدارک) خطای 502 می‌گیرند.
+var runningUnderIis =
+    !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH")) ||
+    !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APP_POOL_ID")) ||
+    (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_PORT")) &&
+     !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_TOKEN")));
+if (runningUnderIis)
+    Console.WriteLine("[IIS] برنامه پشت IIS اجرا می‌شود؛ آدرس، پورت و HTTPS توسط bindingهای سایت IIS تعیین می‌شوند.");
+
 builder.Services.AddHttpContextAccessor();
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
@@ -33,10 +46,14 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestLineSize = 64 * 1024;
     options.Limits.MaxRequestHeadersTotalSize = 128 * 1024;
+    // بدون محدودیت سراسری حجم بدنه (مثل قبل). قبلاً فقط داخل بلوک HTTPS تنظیم می‌شد؛ پشت IIS (OutOfProcess،
+    // Kestrel پشت ANCM) آن بلوک اجرا نمی‌شود و سقف پیش‌فرض ۳۰ مگابایت Kestrel آپلودها را می‌برید.
+    // سقف هر endpoint همچنان با [RequestSizeLimit]/[DisableRequestSizeLimit] خودش اعمال می‌شود.
+    options.Limits.MaxRequestBodySize = null;
 });
 var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration);
 foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {message}");
-if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
+if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
     var httpPortForKestrel = Environment.GetEnvironmentVariable("PORT") ?? "5100";
     builder.WebHost.ConfigureKestrel(options =>
@@ -473,6 +490,21 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+
+// ================== محل ذخیرهٔ فایل مدارک آرشیو ==================
+// همین ابتدای کار مسیر واقعی روی دیسک سرور و امکان نوشتن روی آن بررسی و لاگ می‌شود
+// (هشدارها روی ویندوز در Event Viewer هم دیده می‌شوند)، نه وقتی کاربر اولین مدرک را می‌فرستد.
+{
+    var store = app.Services.GetRequiredService<FileStore>();
+    var probe = store.ProbeDocArchiveWrite();
+    Console.WriteLine($"[Storage] پوشهٔ فایل مدارک آرشیو: {probe.Path}");
+    if (!probe.Ok)
+        app.Logger.LogError("[Storage] نوشتن در پوشهٔ مدارک آرشیو ممکن نیست: {Path} — {Error}. روی IIS به هویت Application Pool (IIS AppPool\\<نام>) دسترسی Modify بدهید.",
+            probe.Path, probe.Error);
+    if (runningUnderIis && !store.HasExternalDocArchiveRoot)
+        app.Logger.LogWarning("[Storage] مدارک آرشیو داخل پوشهٔ برنامه ({Path}) ذخیره می‌شوند. با هر انتشار جدید روی IIS این پوشه در خطر پاک شدن است؛ مقدار {Key} را در appsettings روی یک مسیر ثابت بیرون از پوشهٔ برنامه بگذارید (مثلاً D:\\InventoryData\\DocArchive).",
+            probe.Path, FileStore.DocArchiveStorageRootKey);
+}
 // کلیدهای اعلان گوشی/مرورگر (VAPID): اگر مدیر آن‌ها را از داخل «تنظیمات» ساخته باشد، همین‌جا زنده اعمال می‌شوند
 // تا پس از ساخت کلید نیازی به ویرایش appsettings.json یا ری‌استارت سرویس نباشد.
 app.Services.GetRequiredService<Inventory.Api.Services.PushKeyStore>()
@@ -534,7 +566,8 @@ app.UseSwaggerUI(o =>
 // فقط صفحه‌ها (GET/HEAD) هدایت می‌شوند؛ API و هاب‌ها دست نمی‌خورند تا نسخه‌های قدیمی/اپ‌ها نشکنند.
 // /https-setup و /ca.crt همیشه روی HTTP می‌مانند تا دستگاهِ بدون گواهی بتواند گواهی را نصب کند.
 // هدایت فقط وقتی انجام می‌شود که برای آن نام/آی‌پی واقعاً گواهی داریم (وگرنه کاربر پشت خطای گواهی گیر می‌کند).
-if (httpsCerts.Enabled && httpsCerts.RedirectHttp)
+// پشت IIS، HTTPS و هدایت آن با binding و URL Rewrite خود IIS انجام می‌شود (پورت 5443 داخلی آنجا گوش نمی‌دهد).
+if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.RedirectHttp)
 {
     app.Use(async (ctx, next) =>
     {
@@ -661,6 +694,20 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
         }
         await next();
     });
+    // نصب زیر Application/Virtual Directory در IIS (مثلاً http://server/erp/): base href پوستهٔ Blazor باید
+    // مسیر پایه را داشته باشد، وگرنه _framework و همهٔ آدرس‌های نسبی از ریشهٔ سایت خوانده می‌شوند و برنامه باز نمی‌شود.
+    // روی ریشهٔ سایت (PathBase خالی) هیچ تغییری در رفتار قبلی ایجاد نمی‌شود.
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.PathBase.HasValue
+            && (HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method))
+            && (ctx.Request.Path == "/" || ctx.Request.Path.Equals("/index.html", StringComparison.OrdinalIgnoreCase)))
+        {
+            await ServeSpaIndexAsync(ctx, clientRoot);
+            return;
+        }
+        await next();
+    });
     app.UseDefaultFiles();
     var previewContentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
     previewContentTypes.Mappings[".bcmap"] = "application/octet-stream";
@@ -683,11 +730,16 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     // بعد از پابلیش خودِ index.html و همهٔ فایل‌های WASM خطای 401 می‌گیرند و برنامه اصلاً باز نمی‌شود
     // (در حالت سورس، کلاینت با dev server جدا سرو می‌شود و مشکل دیده نمی‌شود).
     // APIها همچنان با همان FallbackPolicy محافظت می‌شوند؛ فقط پوستهٔ SPA عمومی می‌ماند (مثل صفحهٔ ورود).
-    app.MapFallbackToFile("index.html").AllowAnonymous();
+    app.MapFallback("{*path:nonfile}", ctx => ServeSpaIndexAsync(ctx, clientRoot)).AllowAnonymous();
 }
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5100";
-if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
+if (runningUnderIis)
+{
+    // آدرس را IIS می‌دهد؛ هیچ URL/پورتی اینجا تحمیل نشود
+    app.Run();
+}
+else if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
     Console.WriteLine($"[HTTPS] سامانه روی http://0.0.0.0:{port} و {string.Join(" و ", httpsCerts.AllPorts.Select(p => $"https://0.0.0.0:{p}"))} در دسترس است.");
     Console.WriteLine($"[HTTPS] راهنمای نصب گواهی روی گوشی:  http://<آی‌پی-سرور>:{port}/https-setup");
@@ -713,4 +765,23 @@ static string Mask(string cs)
         }
     }
     return cs;
+}
+
+// ================== سرو پوستهٔ SPA با base href درست ==================
+// اگر برنامه زیر یک مسیر پایه (PathBase، مثلاً Application «erp» در IIS) اجرا شود، <base href="/"> با
+// «{PathBase}/» جایگزین می‌شود تا Blazor فایل‌ها و APIها را از همان مسیر بخواند. روی ریشهٔ سایت فایل دست‌نخورده است.
+static async Task ServeSpaIndexAsync(HttpContext ctx, string clientRoot)
+{
+    var html = await File.ReadAllTextAsync(Path.Combine(clientRoot, "index.html"));
+    var pathBase = ctx.Request.PathBase.Value?.TrimEnd('/') ?? "";
+    if (pathBase.Length > 0)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(pathBase);
+        html = html.Replace("<base href=\"/\" />", $"<base href=\"{encoded}/\" />")
+                   .Replace("<base href=\"/\">", $"<base href=\"{encoded}/\">");
+    }
+    ctx.Response.ContentType = "text/html; charset=utf-8";
+    ctx.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+    if (HttpMethods.IsHead(ctx.Request.Method)) return;
+    await ctx.Response.WriteAsync(html);
 }

@@ -1045,6 +1045,18 @@ public class DocumentsController : RbacControllerBase
         Db.Documents.Remove(doc);
 
         await Db.SaveChangesAsync();
+
+        // حذف قطعی یعنی فایل فیزیکی روی دیسک سرور هم پاک شود (وگرنه پوشهٔ ذخیره با فایل بی‌صاحب پر می‌شود).
+        // فقط بعد از ثبت موفق دیتابیس، و فقط فایلی که هیچ پیوست دیگری به آن اشاره نمی‌کند.
+        var store = HttpContext?.RequestServices?.GetService<FileStore>();
+        if (store is not null)
+        {
+            var paths = attaches.Select(a => a.FilePath).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
+            var stillUsed = paths.Count == 0 ? new List<string?>() :
+                await Db.AppAttachments.Where(a => paths.Contains(a.FilePath)).Select(a => a.FilePath).Distinct().ToListAsync();
+            foreach (var path in paths.Except(stillUsed)) store.Delete(path);
+        }
+
         return Ok(new { message = $"مدرک {doc.Code} برای همیشه حذف شد." });
     }
 

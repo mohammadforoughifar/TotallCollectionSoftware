@@ -13,7 +13,9 @@ if ($LASTEXITCODE -ne 0) { throw "Inventory client publish failed" }
 Write-Host "==> [2/3] Copying static files into src/Inventory.Api/wwwroot ..." -ForegroundColor Cyan
 $dest = Join-Path $PSScriptRoot "src/Inventory.Api/wwwroot"
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
-Get-ChildItem $dest -Force | Where-Object { $_.Name -ne 'README.md' } | Remove-Item -Recurse -Force
+# uploads و SecureFiles فایل‌های واقعی کاربران‌اند (مدارک آرشیو، پیوست‌ها)، نه خروجی بیلد؛ نباید پاک شوند.
+$keep = @('README.md', 'uploads', 'SecureFiles')
+Get-ChildItem $dest -Force | Where-Object { $keep -notcontains $_.Name } | Remove-Item -Recurse -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "publish/client/wwwroot/*") -Destination $dest -Recurse -Force
 
 Write-Host "==> [3/3] Publishing slim API ($Rid, framework-dependent) ..." -ForegroundColor Cyan
