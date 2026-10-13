@@ -109,6 +109,7 @@ public class AppDbContext : DbContext
     public DbSet<ManagedServer> ManagedServers => Set<ManagedServer>();
     public DbSet<ServerHealthSnapshot> ServerHealthSnapshots => Set<ServerHealthSnapshot>();
     public DbSet<ServerOperationLog> ServerOperationLogs => Set<ServerOperationLog>();
+    public DbSet<ServerAlert> ServerAlerts => Set<ServerAlert>();
     // مدیریت آی‌پی (IPAM) — جدول‌ها با IpamSchemaV1.EnsureAsync ساخته می‌شوند
     public DbSet<IpSubnet> IpSubnets => Set<IpSubnet>();
     public DbSet<IpAddressEntry> IpAddressEntries => Set<IpAddressEntry>();
@@ -435,6 +436,7 @@ public class AppDbContext : DbContext
         AiSchemaV1.Configure(mb);
         ItVaultSchemaV1.Configure(mb);
         ServerManagementSchemaV1.Configure(mb);
+        ServerMonitoringSchemaV2.Configure(mb);
         IpamSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();

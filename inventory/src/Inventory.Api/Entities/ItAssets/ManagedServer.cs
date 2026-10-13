@@ -45,6 +45,12 @@ public sealed class ManagedServer
     [MaxLength(1000)] public string? LastConnectionError { get; set; }
     public DateTime? LastInventoryAt { get; set; }
 
+    /// <summary>اگر فعال باشد، Worker پس‌زمینه با فاصلهٔ تعیین‌شده Health را از Redfish می‌خواند.</summary>
+    public bool MonitoringEnabled { get; set; }
+    /// <summary>فاصلهٔ پایش برحسب دقیقه؛ مقدار معتبر ۵ تا ۱۴۴۰ است.</summary>
+    public int MonitoringIntervalMinutes { get; set; } = 15;
+    public DateTime? LastAutomaticPollAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public int? CreatedByUserId { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -76,11 +82,35 @@ public sealed class ServerOperationLog
     public int ManagedServerId { get; set; }
     public int? UserId { get; set; }
     [MaxLength(200)] public string? UserName { get; set; }
-    /// <summary>Create | Update | Delete | TestConnection | CollectInventory</summary>
+    /// <summary>Create | Update | Delete | TestConnection | CollectInventory | AutoCollect | AlertAcknowledge | AlertResolve</summary>
     [MaxLength(40)] public string Action { get; set; } = "";
     /// <summary>Success | Failed</summary>
     [MaxLength(20)] public string Result { get; set; } = "Success";
     [MaxLength(1000)] public string? Details { get; set; }
     [MaxLength(64)] public string? ClientIp { get; set; }
     public DateTime At { get; set; } = DateTime.Now;
+}
+
+/// <summary>
+/// هشدار پایش سرور. برای هر سرور و هر دسته تنها یک هشدار باز/تأییدشده نگه‌داری می‌شود
+/// و پس از سالم‌شدن پاسخ Redfish خودکار Resolve خواهد شد.
+/// </summary>
+[Table("ServerAlerts")]
+public sealed class ServerAlert
+{
+    public long Id { get; set; }
+    public int ManagedServerId { get; set; }
+    /// <summary>Connection | Health</summary>
+    [MaxLength(40)] public string Category { get; set; } = "";
+    /// <summary>Warning | Critical</summary>
+    [MaxLength(20)] public string Severity { get; set; } = "Warning";
+    [MaxLength(1000)] public string Message { get; set; } = "";
+    /// <summary>Open | Acknowledged | Resolved</summary>
+    [MaxLength(20)] public string Status { get; set; } = "Open";
+    public DateTime OpenedAt { get; set; } = DateTime.Now;
+    public DateTime LastSeenAt { get; set; } = DateTime.Now;
+    public DateTime? AcknowledgedAt { get; set; }
+    public int? AcknowledgedByUserId { get; set; }
+    [MaxLength(200)] public string? AcknowledgedByName { get; set; }
+    public DateTime? ResolvedAt { get; set; }
 }

@@ -47,6 +47,7 @@ else
         <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">وضعیت سالم</div><div class="fs-4 fw-800 text-success num">@rows.Count(x => IsHealthy(x.LastHealthStatus)).Num()</div></div></div></div>
         <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">نیازمند بررسی</div><div class="fs-4 fw-800 text-danger num">@rows.Count(x => IsProblem(x.LastHealthStatus)).Num()</div></div></div></div>
         <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">بدون بررسی</div><div class="fs-4 fw-800 text-muted num">@rows.Count(x => x.LastHealthCheckAt is null).Num()</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">هشدار باز</div><div class="fs-4 fw-800 text-danger num">@alerts.Count.Num()</div></div></div></div>
     </div>
 
     <div class="card">
@@ -90,6 +91,7 @@ else
                                     <td>
                                         <div class="fw-700">@s.Name</div>
                                         <div class="fs-8 text-muted">@s.Manufacturer · @CriticalityTitle(s.Criticality) · @StatusTitle(s.Status)</div>
+                                        <div class="fs-8 mt-1">@if (s.MonitoringEnabled) { <span class="text-success"><i class="bi bi-broadcast"></i> پایش هر @s.MonitoringIntervalMinutes.Num() دقیقه</span> } else { <span class="text-muted">پایش خودکار خاموش</span> } @if (s.OpenAlertCount > 0) { <span class="badge bg-danger ms-1">@s.OpenAlertCount.Num() هشدار</span> }</div>
                                     </td>
                                     <td>
                                         <div>@(s.Model ?? "—")</div>
@@ -143,10 +145,39 @@ else
         </div>
     </div>
 
+    @if (alerts.Count > 0)
+    {
+        <div class="card mt-3 border-danger-subtle">
+            <div class="card-header d-flex align-items-center gap-2"><i class="bi bi-exclamation-triangle-fill text-danger"></i><b>هشدارهای باز سرورها</b><span class="badge bg-danger ms-auto">@alerts.Count.Num()</span></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead><tr><th>سرور</th><th>نوع</th><th>پیام</th><th>زمان</th><th>وضعیت</th><th class="text-end">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var a in alerts)
+                            {
+                                <tr>
+                                    <td class="fw-700">@a.ServerName</td>
+                                    <td><span class="badge @(a.Severity == "Critical" ? "bg-danger" : "bg-warning text-dark")">@(a.Category == "Connection" ? "ارتباط iLO" : "سلامت سخت‌افزار")</span></td>
+                                    <td>@a.Message</td><td class="small text-muted">@DateText(a.LastSeenAt)</td>
+                                    <td>@(a.Status == "Acknowledged" ? $"تأیید: {a.AcknowledgedByName}" : "باز")</td>
+                                    <td class="text-end">
+                                        @if (canUpdate && a.Status == "Open") { <button class="btn btn-sm btn-outline-warning" @onclick="() => Acknowledge(a)"><i class="bi bi-check2"></i> تأیید</button> }
+                                        @if (canUpdate) { <button class="btn btn-sm btn-outline-success ms-1" @onclick="() => Resolve(a)"><i class="bi bi-check2-all"></i> رفع</button> }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
     <div class="alert alert-light border mt-3 mb-0 small">
         <i class="bi bi-shield-check text-success"></i>
         ارتباط iLO فقط با HTTPS انجام می‌شود. رمز عبور از گاوصندوق در سمت سرور خوانده می‌شود و هرگز به مرورگر یا لاگ عملیات ارسال نمی‌شود.
-        نسخهٔ فعلی فقط اطلاعات سلامت و Inventory را می‌خواند و هیچ عملیات Power یا Firmware اجرا نمی‌کند.
+پایش خودکار فقط برای سرورهایی اجرا می‌شود که در فرم خود سرور فعال شده باشد؛ هیچ عملیات Power یا Firmware اجرا نمی‌شود.
     </div>
 }
 
@@ -184,6 +215,8 @@ else
             <div class="col-md-3"><label class="form-label">پایان گارانتی</label><input type="date" class="form-control" @bind="form.WarrantyEndDate" @bind:format="yyyy-MM-dd" /></div>
             <div class="col-md-4"><label class="form-label">Asset Tag</label><input class="form-control" @bind="form.AssetTag" dir="ltr" /></div>
             <div class="col-md-8"><label class="form-label">توضیحات</label><input class="form-control" @bind="form.Notes" placeholder="مالک، قرارداد پشتیبانی یا توضیحات نگهداری…" /></div>
+
+            <div class="col-12"><div class="border rounded p-3 bg-light-subtle"><div class="row align-items-end g-2"><div class="col-md-7"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="serverMonitoring" @bind="form.MonitoringEnabled" /><label class="form-check-label fw-700" for="serverMonitoring">فعال‌سازی پایش خودکار Redfish</label></div><div class="form-text">فقط Health و Inventory خوانده می‌شود؛ هیچ فرمان Power یا Firmware ارسال نخواهد شد.</div></div><div class="col-md-3"><label class="form-label">فاصلهٔ پایش (دقیقه)</label><input type="number" min="5" max="1440" class="form-control num" @bind="form.MonitoringIntervalMinutes" disabled="@(!form.MonitoringEnabled)" /></div><div class="col-md-2 text-muted small">حداقل ۵ دقیقه</div></div></div></div>
         </div>
     </ChildContent>
     <Footer>
@@ -199,6 +232,7 @@ else
     private string search = "";
     private List<CompanyRow> companies = new();
     private List<ServerRow> rows = new();
+    private List<ServerAlertRow> alerts = new();
     private List<CredentialRow> credentials = new();
     private ServerForm form = new();
 
@@ -244,11 +278,12 @@ else
 
     private async Task Load()
     {
-        if (companyId <= 0) { rows = new(); return; }
+        if (companyId <= 0) { rows = new(); alerts = new(); return; }
         loading = true;
         try
         {
             rows = await Api.GetAsync<List<ServerRow>>($"api/servers?companyId={companyId}&q={Uri.EscapeDataString(search)}") ?? new();
+            alerts = await Api.GetAsync<List<ServerAlertRow>>($"api/servers/alerts?companyId={companyId}") ?? new();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -261,7 +296,7 @@ else
 
     private void OpenCreate()
     {
-        form = new ServerForm { CompanyId = companyId, Manufacturer = "HPE", IloPort = 443, Criticality = "Normal", Status = "Active" };
+        form = new ServerForm { CompanyId = companyId, Manufacturer = "HPE", IloPort = 443, Criticality = "Normal", Status = "Active", MonitoringIntervalMinutes = 15 };
         showForm = true;
     }
 
@@ -273,7 +308,8 @@ else
             SerialNumber = s.SerialNumber, AssetTag = s.AssetTag, IloAddress = s.IloAddress, IloPort = s.IloPort,
             CredentialId = s.CredentialId, Role = s.Role, Environment = s.Environment, Criticality = s.Criticality,
             Status = s.Status, Rack = s.Rack, RackUnit = s.RackUnit, OperatingSystem = s.OperatingSystem,
-            WarrantyEndDate = s.WarrantyEndDate, Notes = s.Notes
+            WarrantyEndDate = s.WarrantyEndDate, Notes = s.Notes, MonitoringEnabled = s.MonitoringEnabled,
+            MonitoringIntervalMinutes = s.MonitoringIntervalMinutes
         };
         showForm = true;
     }
@@ -321,9 +357,32 @@ else
         finally { actingId = 0; }
     }
 
+    private async Task Acknowledge(ServerAlertRow alert)
+    {
+        try
+        {
+            await Api.PostAsync<object>($"api/servers/alerts/{alert.Id}/acknowledge");
+            Toast.Success("هشدار تأیید شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Resolve(ServerAlertRow alert)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "هشدار به‌صورت دستی رفع شود؟")) return;
+        try
+        {
+            await Api.PostAsync<object>($"api/servers/alerts/{alert.Id}/resolve");
+            Toast.Success("هشدار رفع شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
     private async Task Delete(ServerRow s)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"شناسنامهٔ سرور «{s.Name}» و تاریخچهٔ سلامت آن حذف شود؟")) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"شناسنامهٔ سرور «{s.Name}» و تمام تاریخچهٔ سلامت، هشدارها و لاگ‌های آن حذف شود؟")) return;
         try
         {
             await Api.DeleteAsync($"api/servers/{s.Id}");
@@ -352,13 +411,16 @@ else
         public string IloAddress { get; set; } = ""; public int IloPort { get; set; } = 443; public int? CredentialId { get; set; }
         public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
         public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
+        public bool MonitoringEnabled { get; set; } public int MonitoringIntervalMinutes { get; set; } = 15; public DateTime? LastAutomaticPollAt { get; set; } public int OpenAlertCount { get; set; }
         public DateTime? LastHealthCheckAt { get; set; } public string? LastHealthStatus { get; set; } public string? LastPowerState { get; set; }
     }
+    private sealed class ServerAlertRow { public long Id { get; set; } public int ManagedServerId { get; set; } public string ServerName { get; set; } = ""; public string Category { get; set; } = ""; public string Severity { get; set; } = ""; public string Message { get; set; } = ""; public string Status { get; set; } = ""; public DateTime LastSeenAt { get; set; } public string? AcknowledgedByName { get; set; } }
     private sealed class ServerForm
     {
         public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; } = "HPE";
         public string? Model { get; set; } public string? SerialNumber { get; set; } public string? AssetTag { get; set; } public string IloAddress { get; set; } = ""; public int IloPort { get; set; } = 443;
         public int? CredentialId { get; set; } public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
         public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
+        public bool MonitoringEnabled { get; set; } public int MonitoringIntervalMinutes { get; set; } = 15;
     }
 }

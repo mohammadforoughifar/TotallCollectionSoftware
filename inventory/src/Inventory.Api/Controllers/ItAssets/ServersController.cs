@@ -168,8 +168,10 @@ public sealed class ServersController : ControllerBase
             s.Id, s.CompanyId, s.Name, s.Manufacturer, s.Model, s.SerialNumber, s.AssetTag,
             s.IloAddress, s.IloPort, s.CredentialId, s.IloVersion, s.Role, s.Environment,
             s.Criticality, s.Status, s.Rack, s.RackUnit, s.OperatingSystem, s.WarrantyEndDate, s.Notes,
+            s.MonitoringEnabled, s.MonitoringIntervalMinutes, s.LastAutomaticPollAt,
             s.LastHealthCheckAt, s.LastHealthStatus, s.LastPowerState, s.LastHealthMessage,
-            s.LastConnectionError, s.LastInventoryAt, s.CreatedAt, s.UpdatedAt, s.UpdatedByName
+            s.LastConnectionError, s.LastInventoryAt, s.CreatedAt, s.UpdatedAt, s.UpdatedByName,
+            OpenAlertCount = _db.ServerAlerts.Count(a => a.ManagedServerId == s.Id && a.Status != "Resolved")
         }).ToListAsync();
         return Ok(rows);
     }
@@ -186,6 +188,70 @@ public sealed class ServersController : ControllerBase
         var logs = await _db.ServerOperationLogs.AsNoTracking()
             .Where(x => x.ManagedServerId == id).OrderByDescending(x => x.At).Take(50).ToListAsync();
         return Ok(new { server, snapshots, logs });
+    }
+
+    // ================================================================ هشدارها
+
+    [HttpGet("alerts")]
+    public async Task<IActionResult> Alerts([FromQuery] int companyId, [FromQuery] bool includeResolved = false, [FromQuery] int take = 100)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        if (!(await AllowedCompanyIdsAsync()).Contains(companyId))
+            return BadRequest(new { message = "به این شرکت دسترسی ندارید یا شرکت انتخاب نشده است." });
+        take = Math.Clamp(take, 1, 500);
+
+        var query = from alert in _db.ServerAlerts.AsNoTracking()
+                    join server in _db.ManagedServers.AsNoTracking() on alert.ManagedServerId equals server.Id
+                    where server.CompanyId == companyId && (includeResolved || alert.Status != "Resolved")
+                    orderby alert.Severity == "Critical" descending, alert.LastSeenAt descending
+                    select new
+                    {
+                        alert.Id, alert.ManagedServerId, ServerName = server.Name, server.Model,
+                        alert.Category, alert.Severity, alert.Message, alert.Status,
+                        alert.OpenedAt, alert.LastSeenAt, alert.AcknowledgedAt, alert.AcknowledgedByName, alert.ResolvedAt
+                    };
+        return Ok(await query.Take(take).ToListAsync());
+    }
+
+    private async Task<(ServerAlert? Alert, ManagedServer? Server)> FindAllowedAlertAsync(long alertId)
+    {
+        var alert = await _db.ServerAlerts.FirstOrDefaultAsync(a => a.Id == alertId);
+        if (alert is null) return (null, null);
+        var server = await FindAllowedAsync(alert.ManagedServerId);
+        return server is null ? (null, null) : (alert, server);
+    }
+
+    [HttpPost("alerts/{id:long}/acknowledge")]
+    public async Task<IActionResult> AcknowledgeAlert(long id)
+    {
+        if (!await HasAsync("Update")) return Forbid();
+        var (alert, server) = await FindAllowedAlertAsync(id);
+        if (alert is null || server is null) return NotFound(new { message = "هشدار پیدا نشد." });
+        if (alert.Status == "Resolved") return BadRequest(new { message = "این هشدار قبلاً رفع شده است." });
+
+        alert.Status = "Acknowledged";
+        alert.AcknowledgedAt = DateTime.Now;
+        alert.AcknowledgedByUserId = UserId > 0 ? UserId : null;
+        alert.AcknowledgedByName = await MyNameAsync();
+        await WriteLogAsync(server, "AlertAcknowledge", "Success", $"{alert.Category}: {alert.Message}");
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("alerts/{id:long}/resolve")]
+    public async Task<IActionResult> ResolveAlert(long id)
+    {
+        if (!await HasAsync("Update")) return Forbid();
+        var (alert, server) = await FindAllowedAlertAsync(id);
+        if (alert is null || server is null) return NotFound(new { message = "هشدار پیدا نشد." });
+        if (alert.Status == "Resolved") return Ok(new { ok = true });
+
+        alert.Status = "Resolved";
+        alert.ResolvedAt = DateTime.Now;
+        alert.LastSeenAt = alert.ResolvedAt.Value;
+        await WriteLogAsync(server, "AlertResolve", "Success", $"{alert.Category}: {alert.Message}");
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     public sealed class SaveDto
@@ -208,6 +274,8 @@ public sealed class ServersController : ControllerBase
         public string? OperatingSystem { get; set; }
         public DateTime? WarrantyEndDate { get; set; }
         public string? Notes { get; set; }
+        public bool MonitoringEnabled { get; set; }
+        public int MonitoringIntervalMinutes { get; set; } = 15;
     }
 
     private async Task<string?> ValidateAsync(SaveDto d, int? currentId)
@@ -220,6 +288,8 @@ public sealed class ServersController : ControllerBase
         if (!Criticalities.Contains(d.Criticality)) return "درجهٔ اهمیت نامعتبر است.";
         if (!Statuses.Contains(d.Status)) return "وضعیت چرخهٔ عمر نامعتبر است.";
         if (d.RackUnit is < 1 or > 100) return "شمارهٔ U رک باید بین ۱ تا ۱۰۰ باشد.";
+        if (d.MonitoringIntervalMinutes is < 5 or > 1440) return "فاصلهٔ پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.";
+        if (d.MonitoringEnabled && d.CredentialId is not > 0) return "برای فعال‌سازی پایش خودکار، Credential iLO را انتخاب کنید.";
         if (!(await AllowedCompanyIdsAsync()).Contains(d.CompanyId)) return "به شرکت انتخاب‌شده دسترسی ندارید.";
 
         if (d.CredentialId is > 0)
@@ -251,6 +321,8 @@ public sealed class ServersController : ControllerBase
         target.OperatingSystem = Clean(d.OperatingSystem, 200);
         target.WarrantyEndDate = d.WarrantyEndDate?.Date;
         target.Notes = Clean(d.Notes, 2000);
+        target.MonitoringEnabled = d.MonitoringEnabled;
+        target.MonitoringIntervalMinutes = Math.Clamp(d.MonitoringIntervalMinutes, 5, 1440);
     }
 
     [HttpPost]
@@ -304,8 +376,11 @@ public sealed class ServersController : ControllerBase
         var server = await FindAllowedAsync(id);
         if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
 
-        await WriteLogAsync(server, "Delete", "Success", "حذف شناسنامه سرور");
+        // همهٔ تاریخچهٔ وابسته همراه شناسنامه پاک می‌شود؛ ثبت لاگ Delete روی رکوردی که پاک می‌شود
+        // باعث ایجاد لاگ یتیم خواهد شد، بنابراین این عملیات در لاگ سرور نگه‌داری نمی‌شود.
         _db.ServerHealthSnapshots.RemoveRange(await _db.ServerHealthSnapshots.Where(x => x.ManagedServerId == id).ToListAsync());
+        _db.ServerAlerts.RemoveRange(await _db.ServerAlerts.Where(x => x.ManagedServerId == id).ToListAsync());
+        _db.ServerOperationLogs.RemoveRange(await _db.ServerOperationLogs.Where(x => x.ManagedServerId == id).ToListAsync());
         _db.ManagedServers.Remove(server);
         await _db.SaveChangesAsync();
         return Ok(new { ok = true });
@@ -333,6 +408,19 @@ public sealed class ServersController : ControllerBase
         }
     }
 
+    private static async Task ReconcileAlertsAsync(AppDbContext db, ManagedServer server, RedfishSnapshot snapshot, DateTime now, CancellationToken ct = default)
+    {
+        await ServerAlertRules.ResolveAsync(db, server.Id, "Connection", now, ct);
+        if (string.Equals(snapshot.Health, "OK", StringComparison.OrdinalIgnoreCase))
+        {
+            await ServerAlertRules.ResolveAsync(db, server.Id, "Health", now, ct);
+            return;
+        }
+        var severity = string.Equals(snapshot.Health, "Critical", StringComparison.OrdinalIgnoreCase) ? "Critical" : "Warning";
+        await ServerAlertRules.RaiseAsync(db, server, "Health", severity,
+            $"وضعیت سلامت سخت‌افزار Redfish: {snapshot.Health}", now, ct);
+    }
+
     [HttpPost("{id:int}/test")]
     public async Task<IActionResult> TestConnection(int id)
     {
@@ -342,6 +430,7 @@ public sealed class ServersController : ControllerBase
         var (credentials, credentialError) = await LoadCredentialsAsync(server);
         if (credentials is null)
         {
+            await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", credentialError ?? "Credential iLO در دسترس نیست.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "TestConnection", "Failed", credentialError);
             await _db.SaveChangesAsync();
             return BadRequest(new { message = credentialError });
@@ -354,6 +443,7 @@ public sealed class ServersController : ControllerBase
         if (!snapshot.Success)
         {
             server.LastConnectionError = Clean(snapshot.Error, 1000);
+            await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", snapshot.Error ?? "اتصال iLO برقرار نشد.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "TestConnection", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
             return BadRequest(new { message = snapshot.Error });
@@ -363,6 +453,7 @@ public sealed class ServersController : ControllerBase
         server.LastPowerState = Clean(snapshot.PowerState, 30);
         server.LastHealthMessage = "ارتباط Redfish برقرار است.";
         server.LastConnectionError = null;
+        await ReconcileAlertsAsync(_db, server, snapshot, DateTime.Now, HttpContext.RequestAborted);
         await WriteLogAsync(server, "TestConnection", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}");
         await _db.SaveChangesAsync();
         return Ok(new { ok = true, snapshot });
@@ -377,6 +468,7 @@ public sealed class ServersController : ControllerBase
         var (credentials, credentialError) = await LoadCredentialsAsync(server);
         if (credentials is null)
         {
+            await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", credentialError ?? "Credential iLO در دسترس نیست.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "CollectInventory", "Failed", credentialError);
             await _db.SaveChangesAsync();
             return BadRequest(new { message = credentialError });
@@ -390,6 +482,7 @@ public sealed class ServersController : ControllerBase
         if (!snapshot.Success)
         {
             server.LastConnectionError = Clean(snapshot.Error, 1000);
+            await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", snapshot.Error ?? "اتصال iLO برقرار نشد.", now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "CollectInventory", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
             return BadRequest(new { message = snapshot.Error });
@@ -404,6 +497,7 @@ public sealed class ServersController : ControllerBase
         server.LastPowerState = Clean(snapshot.PowerState, 30);
         server.LastHealthMessage = "Inventory و وضعیت سلامت از Redfish خوانده شد.";
         server.LastConnectionError = null;
+        await ReconcileAlertsAsync(_db, server, snapshot, now, HttpContext.RequestAborted);
         server.LastInventoryAt = now;
         server.UpdatedAt = now;
         server.UpdatedByUserId = UserId > 0 ? UserId : null;
