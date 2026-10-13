@@ -354,6 +354,15 @@
                                         </div>
                                     }
 
+                                    @* نشان فوروارد — نام فرستندهٔ اصلی *@
+                                    @if (!string.IsNullOrWhiteSpace(msg.ForwardFromSenderName))
+                                    {
+                                        <div class="bubble-forward-label" dir="rtl">
+                                            <i class="bi bi-forward-fill"></i>
+                                            <span>فوروارد شده از </span><b>@msg.ForwardFromSenderName</b>
+                                        </div>
+                                    }
+
                                     @* پیش‌نمایش و دانلود همیشه از endpoint دارای کنترل عضویت در API *@
                                     @if (!string.IsNullOrWhiteSpace(msg.FileUrl))
                                     {
@@ -507,6 +516,18 @@
                                         <button class="action-btn" title="پاسخ (Reply)" @onclick="() => StartReply(msg)">
                                             <i class="bi bi-reply-fill"></i>
                                         </button>
+                                        @if (!string.IsNullOrWhiteSpace(msg.Text) && !msg.IsDeleted)
+                                        {
+                                            <button class="action-btn" title="کپی متن" @onclick="() => CopyMessageText(msg.Text!)">
+                                                <i class="bi bi-clipboard"></i>
+                                            </button>
+                                        }
+                                        @if (!msg.IsDeleted)
+                                        {
+                                            <button class="action-btn" title="فوروارد" @onclick="() => OpenForward(msg)">
+                                                <i class="bi bi-forward-fill"></i>
+                                            </button>
+                                        }
                                         <button class="action-btn" title="واکنش 👍" @onclick='() => ToggleReaction(msg.Id, "👍")'>
                                             👍
                                         </button>
@@ -610,6 +631,23 @@
                     </div>
                 }
 
+                @* پنل کامل ایموجی/استیکر — دسته‌بندی‌شده و قابل اسکرول *@
+                @if (showEmojiPanel)
+                {
+                    <div class="emoji-panel" data-testid="emoji-panel">
+                        @foreach (var g in EmojiGroups)
+                        {
+                            <div class="emoji-group-title">@g.Key</div>
+                            <div class="emoji-grid">
+                                @foreach (var e in g.Value)
+                                {
+                                    <button type="button" class="btn-emoji" title="@e" @onclick="() => AppendEmoji(e)">@e</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
                 <div class="input-row">
                     @if (isRecording)
                     {
@@ -642,6 +680,13 @@
                             <i class="bi bi-paperclip fs-5"></i>
                             <InputFile @key="fileInputVersion" OnChange="OnFileSelected" class="d-none" disabled="@(isSending || isUploading || editingMsg != null)" />
                         </label>
+
+                        @* دکمهٔ پنل کامل ایموجی *@
+                        <button type="button" class="btn btn-icon btn-emoji-toggle @(showEmojiPanel ? "active" : "")"
+                                title="ایموجی و استیکر" aria-label="ایموجی و استیکر" aria-expanded="@showEmojiPanel"
+                                disabled="@isSending" @onclick="ToggleEmojiPanel">
+                            😀
+                        </button>
 
                         @* منوی سریع ایموجی *@
                         <div class="emoji-quick-bar d-none d-sm-flex">
@@ -753,6 +798,55 @@
                                     }
                                 </button>
                             }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========================== مدال: فوروارد پیام ========================== *@
+@if (forwardingMsg != null)
+{
+    <div class="modal fade show d-block chat-modal-backdrop" tabindex="-1" @onclick="CloseForward">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content shadow-lg border-0 rounded-4">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold fs-6">فوروارد پیام به…</h5>
+                    <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseForward"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control form-control-sm" placeholder="جستجوی گفتگو…" aria-label="جستجوی گفتگو"
+                               @bind="forwardSearch" @bind:event="oninput" />
+                    </div>
+                    <div class="users-picker-list" role="listbox">
+                        @if (ForwardCandidates().Count == 0)
+                        {
+                            <div class="text-center py-4 text-muted fs-8">گفتگویی یافت نشد.</div>
+                        }
+                        @foreach (var c in ForwardCandidates())
+                        {
+                            <button type="button" @key="c.Id" class="user-picker-item w-100 border-0 bg-transparent" style="text-align: start;"
+                                    disabled="@forwarding" @onclick="() => DoForward(c.Id)">
+                                <div class="dialog-avatar direct-avatar sm">
+                                    <i class="bi @(c.Type == ChatTypeDto.Group ? "bi-people" : "bi-person")"></i>
+                                </div>
+                                <div class="flex-grow-1 min-w-0 ms-2">
+                                    <div class="fw-bold fs-8">@c.Title</div>
+                                    <div class="fs-9 text-muted text-truncate">@c.LastMessageSnippet</div>
+                                </div>
+                                @if (forwardTargetDone == c.Id)
+                                {
+                                    <i class="bi bi-check2 text-success fs-5"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-forward-fill text-muted"></i>
+                                }
+                            </button>
                         }
                     </div>
                 </div>
@@ -968,6 +1062,13 @@
     // ریپلای و ادیت
     private ChatMessageDto? replyingTo;
     private ChatMessageDto? editingMsg;
+    // فوروارد پیام
+    private ChatMessageDto? forwardingMsg;
+    private string forwardSearch = "";
+    private bool forwarding;
+    private int forwardTargetDone;
+    // پنل کامل ایموجی
+    private bool showEmojiPanel;
     private ChatMessageDto? previewMsg;
     private ChatUploadResultDto? uploadingFile;
 
@@ -1223,7 +1324,7 @@
             {
                 // ?v= کش‌شکن: بعد از هر انتشار، مرورگر/PWA نسخهٔ قدیمی ماژول را لود نکند
                 // (خطای «Could not find 'isMobileView'» از کش‌شدن نسخهٔ قدیمی همین فایل بود).
-                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=4");
+                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=5");
                 if (disposed) { await chatJs.DisposeAsync(); return; }
                 chatSelf = DotNetObjectReference.Create(this);
                 interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
@@ -1348,6 +1449,10 @@
             replyingTo = null;
             RemovePendingAttachment();
             messageInput = "";
+            if (chatJs != null)
+            {
+                try { await chatJs.InvokeVoidAsync("resetComposer", interopId); } catch { }
+            }
             scrollAfterRender = true;
             await Chat.SendTypingHubAsync(conversationId, false);
             lastTypingSent = DateTime.MinValue;
@@ -1440,12 +1545,23 @@
         replyingTo = null;
         editingMsg = msg;
         messageInput = msg.Text ?? "";
+        _ = GrowComposerAsync();
     }
 
     private void CancelEdit()
     {
         editingMsg = null;
         messageInput = "";
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(30);
+                if (!disposed && chatJs != null)
+                    await chatJs.InvokeVoidAsync("resetComposer", interopId);
+            }
+            catch { }
+        });
     }
 
     private async Task DeleteMsg(int id)
@@ -1671,6 +1787,83 @@
         }
     }
 
+    /// <summary>کپی متن خود پیام — برای هر پیام متنی (ورودی یا خروجی).</summary>
+    private async Task CopyMessageText(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toast.Success("متن پیام کپی شد.");
+        }
+        catch
+        {
+            Toast.Info(text);
+        }
+    }
+
+    /// <summary>فوروارد: بازکردن انتخاب‌گر گفتگوی مقصد.</summary>
+    private void OpenForward(ChatMessageDto msg)
+    {
+        forwardingMsg = msg;
+        forwardSearch = "";
+        forwardTargetDone = 0;
+    }
+
+    private void CloseForward()
+    {
+        forwardingMsg = null;
+        forwardTargetDone = 0;
+    }
+
+    private List<ChatConversationDto> ForwardCandidates()
+    {
+        var q = (forwardSearch ?? "").Trim();
+        return conversations
+            .Where(c => q.Length == 0 || c.Title.Contains(q, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    /// <summary>فوروارد پیام انتخاب‌شده به گفتگوی مقصد — بعد از موفقیت مودال بسته می‌شود.</summary>
+    private async Task DoForward(int conversationId)
+    {
+        if (forwardingMsg == null || forwarding) return;
+        forwarding = true;
+        try
+        {
+            var saved = await Chat.ForwardAsync(forwardingMsg.Id, conversationId);
+            forwardTargetDone = conversationId;
+            if (activeConv?.Id == conversationId)
+            {
+                UpsertMessage(saved);
+                scrollAfterRender = true;
+            }
+            Toast.Success("پیام فوروارد شد.");
+            await LoadConversations();
+            CloseForward();
+        }
+        catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
+        finally
+        {
+            forwarding = false;
+            if (!disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ToggleEmojiPanel() => showEmojiPanel = !showEmojiPanel;
+
+    /// <summary>پک ایموجی دسته‌بندی‌شده — علاوه بر منوی سریع، با دکمهٔ 😀 باز می‌شود.</summary>
+    private static readonly (string Key, string[] Value)[] EmojiGroups =
+    {
+        ("چهره‌ها", new[] { "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😙","😚","😋","😛","😜","🤪","😝","🤑","🤗","🤔","🤫","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","🥱","😵","🤐","🥴","🤢","🤮","🤧","😷","🤒","🤕","🧐","😎","🤓" }),
+        ("قلب و اشاره", new[] { "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","💕","💞","💓","💗","💖","💘","💝","💟","👍","👎","👏","🙌","🤝","🙏","✌️","🤞","🤟","🤘","👌","🤌","👈","👉","👆","👇","✋","🖐","👋","💪","🤳","✍️" }),
+        ("حیوانات", new[] { "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🦆","🦅","🦉","🦄","🐝","🦋","🐢","🐙","🦑" }),
+        ("طبیعت", new[] { "🌸","🌼","🌻","🌹","🌷","🍀","🌵","🌲","🌴","🌊","🌙","⭐","🌟","✨","☀️","⛅","🌈","❄️","☃️","🔥","💧","🌍" }),
+        ("خوراکی", new[] { "🍎","🍊","🍋","🍉","🍇","🍓","🍒","🍑","🥭","🍍","🥝","🍅","🥑","🥕","🌽","🍞","🧀","🍕","🍔","🍟","🍿","🍩","🍪","🎂","🧁","☕","🍵","🥤" }),
+        ("جشن و تفریح", new[] { "🎉","🎊","🎈","🎁","🏆","🥇","⚽","🏀","🏐","🎾","🎯","🎮","🎲","🎵","🎶","🎤","🎸","🎬","📸","🎄","🎆","🧨","🎭","🎪" }),
+        ("اشیا", new[] { "💡","🔑","🔒","🔧","🔨","💰","💎","📱","💻","⌚","📷","📚","✏️","🖊","📌","📎","🔍","🚗","✈️","🚀","⏰","🎧","📺","🕯" }),
+        ("علامت‌ها", new[] { "✅","✔️","❌","➕","➖","❓","❗","⚠️","💯","🆗","🆒","🆕","🔝","♻️","💤","🔔","🚩","📢","🔗","⭐" }),
+    };
+
     private async Task CancelVoiceRecording()
     {
         isRecording = false;
@@ -1733,7 +1926,21 @@
 
     private void AppendEmoji(string emoji)
     {
-        if (!isSending) messageInput += emoji;
+        if (isSending) return;
+        messageInput += emoji;
+        _ = GrowComposerAsync();
+    }
+
+    /// <summary>هم‌اندازه‌کردن ارتفاع کادر متن بعد از تغییر برنامه‌ای متن (ایموجی/ویرایش).</summary>
+    private async Task GrowComposerAsync()
+    {
+        try
+        {
+            await Task.WhenAny(Task.Delay(30), Task.Delay(1000));
+            if (!disposed && chatJs != null)
+                await chatJs.InvokeVoidAsync("growComposer", interopId);
+        }
+        catch { }
     }
 
     private async Task ChangeTab(string tab)

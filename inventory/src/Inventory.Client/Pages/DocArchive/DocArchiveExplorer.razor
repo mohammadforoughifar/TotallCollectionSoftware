@@ -1085,6 +1085,10 @@
 
 @code {
     private List<DocFolderDto> folders = new();
+    /// <summary>پوشه‌های بازشده در درخت — پیش‌فرض همه بسته‌اند؛ با کلیک روی پوشه یا فلش، باز می‌شوند.</summary>
+    private readonly HashSet<int> expandedFolders = new();
+    /// <summary>شناسهٔ پوشه‌هایی که زیرپوشه دارند (برای نمایش فلش جمع‌وباز).</summary>
+    private HashSet<int> foldersWithChildren = new();
     private List<DocumentListDto> documents = new();
     private List<DocTagDto> availableTags = new();
     private DocArchiveLookups lookups = new();
@@ -1329,9 +1333,37 @@
     private async Task LoadFolders()
     {
         loadingFolders = true;
-        try { folders = await Svc.GetFoldersAsync(); }
+        try
+        {
+            folders = await Svc.GetFoldersAsync();
+            foldersWithChildren = folders.Where(f => f.ParentId.HasValue)
+                .Select(f => f.ParentId!.Value).ToHashSet();
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loadingFolders = false; }
+    }
+
+    /// <summary>
+    /// مسیر اجداد پوشه را باز می‌کند تا گره در درخت دیده شود.
+    /// با includeSelf خودش هم (اگر زیرپوشه داشته باشد) باز می‌شود — همان «کلیک = باز شدن».
+    /// </summary>
+    private void ExpandFolderPath(int folderId, bool includeSelf)
+    {
+        if (includeSelf && foldersWithChildren.Contains(folderId))
+            expandedFolders.Add(folderId);
+        var seen = new HashSet<int>();
+        int? current = folders.FirstOrDefault(f => f.Id == folderId)?.ParentId;
+        while (current is int pid && seen.Add(pid))
+        {
+            expandedFolders.Add(pid);
+            current = folders.FirstOrDefault(f => f.Id == pid)?.ParentId;
+        }
+    }
+
+    /// <summary>فقط باز/بسته کردن زیرپوشه — بدون تغییر انتخاب و بدون بارگیری مدارک.</summary>
+    private void ToggleFolderExpand(int folderId)
+    {
+        if (!expandedFolders.Remove(folderId)) expandedFolders.Add(folderId);
     }
 
     private int currentPage = 1, pageSize = 25, totalDocuments;
@@ -1406,6 +1438,7 @@
     private async Task SelectFolder(int? id)
     {
         selectedFolderId = id;
+        if (id is int fid) ExpandFolderPath(fid, includeSelf: true);
         if (statusFilter == "inactive") statusFilter = "active";
         expiryFilter = null;
         await LoadDocs();
@@ -1770,11 +1803,32 @@
         foreach (var f in folders.Where(x => x.ParentId == parentId).OrderBy(x => x.Name))
         {
             var current = f;
+            var hasChildren = foldersWithChildren.Contains(current.Id);
+            var open = hasChildren && expandedFolders.Contains(current.Id);
+
             builder.OpenElement(seq++, "div");
             builder.AddAttribute(seq++, "class", "ftree-item " + (selectedFolderId == current.Id ? "active" : ""));
             builder.AddAttribute(seq++, "style", $"padding-right:{depth * 14 + 8}px");
             builder.AddAttribute(seq++, "onclick",
                 Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => SelectFolder(current.Id)));
+            builder.AddAttribute(seq++, "aria-expanded", open ? "true" : "false");
+
+            // فلش جمع‌وباز — کلیک روی آن فقط باز/بسته می‌کند، انتخابِ پوشه را عوض نمی‌کند
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class",
+                "ftree-caret " + (hasChildren ? (open ? "" : "collapsed") : "empty"));
+            builder.AddAttribute(seq++, "title", open ? "بستن زیرپوشه‌ها" : "باز کردن زیرپوشه‌ها");
+            builder.AddAttribute(seq++, "role", "button");
+            if (hasChildren)
+            {
+                builder.AddAttribute(seq++, "onclick",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleFolderExpand(current.Id)));
+                builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+            }
+            builder.OpenElement(seq++, "i");
+            if (hasChildren) builder.AddAttribute(seq++, "class", "bi bi-chevron-down");
+            builder.CloseElement();
+            builder.CloseElement();
 
             builder.OpenElement(seq++, "i");
             builder.AddAttribute(seq++, "class", current.IsPublic ? "bi bi-folder-fill text-info" : "bi bi-folder-fill text-warning");
@@ -1802,7 +1856,9 @@
 
             builder.CloseElement();
 
-            builder.AddContent(seq++, RenderTree(current.Id, depth + 1));
+            // زیرپوشه‌ها فقط وقتی رندر می‌شوند که پوشه باز باشد (پیش‌فرض: بسته)
+            if (open)
+                builder.AddContent(seq++, RenderTree(current.Id, depth + 1));
         }
     };
 
@@ -1864,6 +1920,8 @@
             Toast.Success("پوشه ذخیره شد.");
             showFolder = false;
             await LoadFolders();
+            // پوشهٔ تازه ساخته/ویرایش‌شده در درخت پنهان نماند
+            ExpandFolderPath(id, includeSelf: true);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }

@@ -19,6 +19,8 @@
             <div class="text-muted fs-8">
                 یک پوشه از کامپیوتر خودتان انتخاب کنید. ساختار پوشه‌ها در آرشیو ساخته می‌شود
                 و هر فایل با نام «عنوان+شماره» یک سند می‌شود. نام هیچ فایلی عوض نمی‌شود.
+                فایل‌هایی که این الگو را ندارند هم وارد می‌شوند و به‌جای خطا،
+                شمارهٔ مدرکشان به‌صورت خودکار تخصیص می‌یابد.
             </div>
         </div>
     </div>
@@ -280,8 +282,9 @@
         try
         {
             selfRef ??= DotNetObjectReference.Create(this);
+            // پوشهٔ مقصدِ انتخاب‌شده در dropdown هم به سرور می‌رود تا فایل‌ها زیر همان بروند
             await JS.InvokeVoidAsync("importPickFolder", selfRef, "OnImportProgress",
-                Import.ApiBase, Auth.Token ?? "");
+                Import.ApiBase, Auth.Token ?? "", rootFolderId);
         }
         catch (Exception ex)
         {

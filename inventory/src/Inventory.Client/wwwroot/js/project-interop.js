@@ -239,7 +239,7 @@
      * ورود انبوه آرشیو — مرحلهٔ ۱: انتخاب پوشه و بررسی نام فایل‌ها.
      * هیچ فایلی در این مرحله آپلود نمی‌شود؛ فقط فهرست مسیرها و حجم‌ها به سرور می‌رود.
      */
-    window.importPickFolder = async function (dotNetRef, callbackName, apiBase, token) {
+    window.importPickFolder = async function (dotNetRef, callbackName, apiBase, token, rootFolderId) {
         var report = function (obj) {
             if (dotNetRef && callbackName) {
                 try { dotNetRef.invokeMethodAsync(callbackName, obj); } catch (e) { console.error(e); }
@@ -285,10 +285,11 @@
             try {
                 report({ stage: 'picked', total: entries.length });
 
+                // پوشهٔ مقصدِ انتخاب‌شده هم به سرور می‌رود؛ وگرنه فایل‌ها به ریشهٔ آرشیو می‌رفتند
                 var resp = await fetch(apiBase + '/batches', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ createMissingFolders: true })
+                    body: JSON.stringify({ createMissingFolders: true, rootFolderId: (rootFolderId || null) })
                 });
                 if (!resp.ok) {
                     var m = '';

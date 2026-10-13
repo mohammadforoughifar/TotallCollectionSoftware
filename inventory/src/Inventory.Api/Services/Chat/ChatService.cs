@@ -25,6 +25,7 @@ public interface IChatService
     Task<ChatConversationDto> CreateGroupConversationAsync(int currentUserId, string currentUserName, CreateGroupChatRequest request);
     Task<List<ChatMessageDto>> GetMessagesAsync(int currentUserId, int conversationId, int? beforeMessageId = null, int pageSize = 50, string? search = null, int skip = 0);
     Task<ChatMessageDto> SendMessageAsync(int currentUserId, string currentUserName, string? currentUserAvatar, SendChatMessageRequest request);
+    Task<ChatMessageDto> ForwardMessageAsync(int currentUserId, string currentUserName, string? currentUserAvatar, int messageId, int targetConversationId);
     Task<ChatMessageDto> EditMessageAsync(int currentUserId, int messageId, string newText);
     Task DeleteMessageAsync(int currentUserId, int messageId);
     Task<Dictionary<string, List<ChatReactionUserDto>>> ToggleReactionAsync(int currentUserId, string currentUserName, int messageId, string emoji);
@@ -481,6 +482,66 @@ public class ChatService : IChatService
                 : reply.Text.Length > 50 ? reply.Text[..50] + "..." : reply.Text;
         }
 
+        var dto = await CommitAndBroadcastAsync(currentUserId, msg, myMem);
+        // اگر گفتگوی مستقیم با «فروغ آریا»ست، پاسخ دستیار در صف پس‌زمینه می‌رود.
+        try { await _aiQueue.EnqueueIfAiChatAsync(_db, currentUserId, request.ConversationId, request.Text); }
+        catch (Exception ex) { _logger.LogWarning(ex, "AI reply enqueue failed for message {MessageId}.", msg.Id); }
+        return dto;
+    }
+
+    /// <summary>
+    /// فوروارد پیام به گفتگوی دیگر: متن و پیوست (ارجاع به همان فایل روی سرور) کپی می‌شود
+    /// و «فورواردشده از» به فرستندهٔ اصلی رجوع می‌کند. عضویت در هر دو گفتگو الزامی است.
+    /// </summary>
+    public async Task<ChatMessageDto> ForwardMessageAsync(
+        int currentUserId, string currentUserName, string? currentUserAvatar, int messageId, int targetConversationId)
+    {
+        if (messageId <= 0) throw new ArgumentException("پیام برای فوروارد معتبر نیست.");
+        if (targetConversationId <= 0) throw new ArgumentException("گفتگوی مقصد معتبر نیست.");
+        if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == currentUserId && u.IsActive))
+            throw new UnauthorizedAccessException("حساب کاربری فعال نیست.");
+
+        var src = await _db.ChatMessages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == messageId && !m.IsDeleted)
+                  ?? throw new KeyNotFoundException("پیام برای فوروارد یافت نشد.");
+
+        var inSource = await _db.ChatMembers.AsNoTracking()
+            .AnyAsync(m => m.ConversationId == src.ConversationId && m.UserId == currentUserId);
+        if (!inSource) throw new UnauthorizedAccessException("شما عضو گفتگوی مبدأ نیستید.");
+
+        var myMem = await _db.ChatMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ConversationId == targetConversationId && m.UserId == currentUserId)
+            ?? throw new UnauthorizedAccessException("شما عضو گفتگوی مقصد نیستید.");
+
+        var msg = new ChatMessage
+        {
+            ConversationId = targetConversationId, SenderUserId = currentUserId,
+            SenderName = string.IsNullOrWhiteSpace(myMem.UserDisplayName) ? currentUserName : myMem.UserDisplayName,
+            SenderAvatarUrl = currentUserAvatar ?? myMem.UserAvatarUrl,
+            Text = src.Text,
+            MessageType = src.MessageType,
+            FileUrl = src.FileUrl, FileName = src.FileName,
+            FileSizeBytes = src.FileSizeBytes, FileContentType = src.FileContentType,
+            Transcript = src.Transcript, TranscribedAt = src.TranscribedAt,
+            ForwardFromMessageId = src.Id,
+            ForwardFromSenderName = src.SenderName,
+            ErpModule = src.ErpModule, ErpEntityId = src.ErpEntityId,
+            ErpEntityTitle = src.ErpEntityTitle, ErpEntitySummary = src.ErpEntitySummary,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        if (string.IsNullOrWhiteSpace(msg.Text) && msg.FileUrl == null && string.IsNullOrWhiteSpace(msg.ErpModule))
+            throw new ArgumentException("پیام انتخاب‌شده محتوایی برای فوروارد ندارد.");
+
+        return await CommitAndBroadcastAsync(currentUserId, msg, myMem);
+    }
+
+    /// <summary>
+    /// نوشتن پیام در پایگاه‌داده (اسنیپت گفتگو، شمارندهٔ نخوانده، نشانگر خواندن، صف پوش)
+    /// در یک تراکنش + پخش بلادرنگ — مشترک میان «ارسال» و «فوروارد».
+    /// </summary>
+    private async Task<ChatMessageDto> CommitAndBroadcastAsync(int currentUserId, ChatMessage msg, ChatMember myMem)
+    {
+        var now = msg.CreatedAt;
         var snippet = !string.IsNullOrWhiteSpace(msg.Text)
             ? (msg.Text.Length > 60 ? msg.Text[..60] + "..." : msg.Text)
             : msg.FileName ?? msg.ErpEntityTitle ?? "پیام رسانه‌ای";
@@ -490,30 +551,27 @@ public class ChatService : IChatService
         {
             _db.ChatMessages.Add(msg);
             await _db.SaveChangesAsync();
-            await _db.ChatConversations.Where(c => c.Id == request.ConversationId && c.LastMessageAt <= now)
+            await _db.ChatConversations.Where(c => c.Id == msg.ConversationId && c.LastMessageAt <= now)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.LastMessageAt, now).SetProperty(c => c.LastMessageSnippet, snippet)
                     .SetProperty(c => c.LastMessageSenderId, currentUserId).SetProperty(c => c.LastMessageSenderName, msg.SenderName));
-            await _db.ChatMembers.Where(m => m.ConversationId == request.ConversationId && m.UserId != currentUserId)
+            await _db.ChatMembers.Where(m => m.ConversationId == msg.ConversationId && m.UserId != currentUserId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.UnreadCount, m => m.UnreadCount + 1));
             await _db.ChatMembers.Where(m => m.Id == myMem.Id)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(m => m.LastReadMessageId, m => m.LastReadMessageId < msg.Id ? msg.Id : m.LastReadMessageId)
                     .SetProperty(m => m.UnreadCount, 0));
-            var pushUsers = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == request.ConversationId && m.UserId != currentUserId && !m.IsMuted && !m.IsArchived).Select(m => m.UserId).ToListAsync();
-            await Inventory.Api.Services.PushQueue.StageAsync(_db, pushUsers, "پیام جدید از " + msg.SenderName, "برای مشاهده پیام، گفتگو را باز کنید.", "/chat/" + request.ConversationId);
+            var pushUsers = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == msg.ConversationId && m.UserId != currentUserId && !m.IsMuted && !m.IsArchived).Select(m => m.UserId).ToListAsync();
+            await Inventory.Api.Services.PushQueue.StageAsync(_db, pushUsers, "پیام جدید از " + msg.SenderName, "برای مشاهده پیام، گفتگو را باز کنید.", "/chat/" + msg.ConversationId);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
 
-        var recipients = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == request.ConversationId)
+        var recipients = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == msg.ConversationId)
             .Select(m => m.UserId).ToListAsync();
         var dto = MapToMessageDto(msg, currentUserId, 0);
-        try { await _notifier.NotifyMessageReceivedAsync(request.ConversationId, recipients, dto); }
+        try { await _notifier.NotifyMessageReceivedAsync(msg.ConversationId, recipients, dto); }
         catch (Exception ex) { _logger.LogWarning(ex, "Message {MessageId} saved, but realtime delivery failed.", msg.Id); }
-        // اگر گفتگوی مستقیم با «فروغ آریا»ست، پاسخ دستیار در صف پس‌زمینه می‌رود.
-        try { await _aiQueue.EnqueueIfAiChatAsync(_db, currentUserId, request.ConversationId, request.Text); }
-        catch (Exception ex) { _logger.LogWarning(ex, "AI reply enqueue failed for message {MessageId}.", msg.Id); }
         return dto;
     }
 

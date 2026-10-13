@@ -83,6 +83,14 @@ public class ChatController : ControllerBase
         return Ok(msg);
     }
 
+    /// <summary>فوروارد پیام (متن/فایل/رکورد) به گفتگویی که کاربر عضو آن است</summary>
+    [HttpPost("messages/{id}/forward")]
+    public async Task<ActionResult<ChatMessageDto>> ForwardMessage(int id, [FromBody] ForwardChatMessageRequest req)
+    {
+        var msg = await _chatService.ForwardMessageAsync(CurrentUserId, CurrentUserName, null, id, req.ConversationId);
+        return Ok(msg);
+    }
+
     /// <summary>ویرایش پیام</summary>
     [HttpPut("messages/{id}")]
     public async Task<ActionResult<ChatMessageDto>> EditMessage(int id, [FromBody] EditChatMessageRequest req)

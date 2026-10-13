@@ -19,7 +19,10 @@ export function initialize(dotnet) {
 export function attachComposer(id, element) {
     const state = instances.get(id);
     if (!state || !element || state.element === element) return;
-    if (state.element) state.element.removeEventListener('keydown', state.keydown);
+    if (state.element) {
+        state.element.removeEventListener('keydown', state.keydown);
+        if (state.input) state.element.removeEventListener('input', state.input);
+    }
     state.element = element;
     state.keydown = event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !event.repeat) {
@@ -28,6 +31,33 @@ export function attachComposer(id, element) {
         }
     };
     element.addEventListener('keydown', state.keydown);
+    // رشد خودکار کادر متن با هر خط جدید (اینتر/متن چندخطی) تا سقف CSS max-height
+    state.input = () => growElement(element);
+    element.addEventListener('input', state.input);
+    growElement(element);
+}
+
+function growElement(element) {
+    if (!element) return;
+    element.style.height = 'auto';
+    const min = parseInt(getComputedStyle(element).minHeight, 10) || 54;
+    const max = parseInt(getComputedStyle(element).maxHeight, 10) || 220;
+    element.style.height = Math.max(min, Math.min(element.scrollHeight, max)) + 'px';
+}
+
+/** بزرگ کردن کادر متن — بعد از ویرایش پیام که متن از بیرون پر می‌شود. */
+export function growComposer(id) {
+    const state = instances.get(id);
+    if (state && state.element) growElement(state.element);
+}
+
+/** برگشت به اندازهٔ اول — بعد از ارسال موفق که متن پاک می‌شود. */
+export function resetComposer(id) {
+    const state = instances.get(id);
+    if (state && state.element) {
+        state.element.style.height = 'auto';
+        growElement(state.element);
+    }
 }
 
 export function scrollToBottom() {

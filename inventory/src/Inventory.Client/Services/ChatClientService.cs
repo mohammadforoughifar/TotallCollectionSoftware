@@ -20,6 +20,7 @@ public interface IChatClientService
     Task<ChatConversationDto> CreateGroupAsync(CreateGroupChatRequest req);
     Task<List<ChatMessageDto>> GetMessagesAsync(int conversationId, int? beforeId = null, int pageSize = 50, string? search = null);
     Task<ChatMessageDto> SendMessageAsync(int conversationId, SendChatMessageRequest req);
+    Task<ChatMessageDto> ForwardAsync(int messageId, int conversationId);
     Task<ChatMessageDto> EditMessageAsync(int messageId, string newText);
     Task DeleteMessageAsync(int messageId);
     Task<Dictionary<string, List<ChatReactionUserDto>>> ReactAsync(int messageId, string emoji);
@@ -136,6 +137,12 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     public async Task<ChatMessageDto> SendMessageAsync(int conversationId, SendChatMessageRequest req)
     {
         return await _api.PostAsync<ChatMessageDto>($"api/chat/conversations/{conversationId}/messages", req);
+    }
+
+    public async Task<ChatMessageDto> ForwardAsync(int messageId, int conversationId)
+    {
+        return await _api.PostAsync<ChatMessageDto>($"api/chat/messages/{messageId}/forward",
+            new ForwardChatMessageRequest { ConversationId = conversationId });
     }
 
     public async Task<ChatMessageDto> EditMessageAsync(int messageId, string newText)

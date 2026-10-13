@@ -179,6 +179,12 @@ public class SendChatMessageRequest
     public string? ErpEntitySummary { get; set; }
 }
 
+/// <summary>درخواست فوروارد پیام به گفتگویی که کاربر عضو آن است</summary>
+public class ForwardChatMessageRequest
+{
+    public int ConversationId { get; set; }
+}
+
 /// <summary>درخواست شروع گفتگوی خصوصی</summary>
 public class CreateDirectChatRequest
 {

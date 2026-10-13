@@ -2521,8 +2521,40 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 }
 .btn-emoji:hover { background: #f1f5f9; }
 .chat-textarea {
-    resize: none; border-radius: 20px; padding: 0.45rem 1rem; border: 1px solid #cbd5e1; max-height: 120px;
+    resize: none; border-radius: 18px; padding: 0.7rem 1rem; border: 1px solid #cbd5e1;
+    min-height: 54px; max-height: 220px; font-size: 1rem; line-height: 1.75;
 }
+.btn-emoji-toggle {
+    font-size: 1.15rem; color: #64748b; border: none; background: transparent;
+    padding: 0.35rem 0.5rem; border-radius: 50%; line-height: 1; flex-shrink: 0;
+}
+.btn-emoji-toggle:hover, .btn-emoji-toggle.active { background: #f1f5f9; color: #0284c7; }
+
+/* پنل کامل ایموجی/استیکر */
+.emoji-panel {
+    max-height: 290px; overflow-y: auto; overflow-x: hidden;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
+    padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; box-shadow: 0 8px 24px #0f172a12;
+}
+.emoji-group-title {
+    font-size: 0.78rem; font-weight: 700; color: #64748b;
+    margin: 0.45rem 0 0.15rem; position: sticky; top: -8px; background: #fff;
+    padding: 0.1rem 0; z-index: 1;
+}
+.emoji-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 1px;
+}
+.emoji-grid .btn-emoji {
+    font-size: 1.25rem; padding: 3px; border-radius: 8px; line-height: 1.35;
+}
+/* نشان «فوروارد شده از» بالای حباب */
+.bubble-forward-label {
+    display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+    font-size: 0.78rem; color: #64748b; font-style: italic;
+    margin-bottom: 0.3rem; padding-bottom: 0.3rem;
+    border-bottom: 1px dashed #e2e8f066;
+}
+.bubble-forward-label .bi { font-size: 0.85rem; }
 .btn-send {
     border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; background: #0284c7; border-color: #0284c7;

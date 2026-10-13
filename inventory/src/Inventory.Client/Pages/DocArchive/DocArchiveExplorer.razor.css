@@ -23,6 +23,13 @@
 .da-explorer ::deep .ftree-item { display:flex; align-items:center; gap:.5rem; padding:.6rem .65rem; border-radius:8px; cursor:pointer; margin-bottom:3px; font-size:.95rem; font-weight:500; }
 .da-explorer ::deep .ftree-item:hover { background:#f4f6fa; }
 .da-explorer ::deep .ftree-item.active { background:#edf2ff; color:#2f55a8; font-weight:600; }
+
+/* فلش جمع‌وباز زیرپوشه‌ها */
+.da-explorer ::deep .ftree-caret { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; flex-shrink:0; border-radius:5px; color:#68788f; font-size:.72rem; line-height:1; transition:transform .16s ease, color .16s ease, background .16s ease; }
+.da-explorer ::deep .ftree-caret.collapsed { transform:rotate(90deg); } /* RTL: حالت بسته = اشاره به چپ */
+.da-explorer ::deep .ftree-caret:hover { color:#2f55a8; background:#e3eafb; }
+.da-explorer ::deep .ftree-caret.empty { visibility:hidden; } /* جای فلش برای پوشه‌های بدون زیرپوشه — تراز ردیف‌ها حفظ شود */
+.da-explorer ::deep .ftree-item.active .ftree-caret { color:#2f55a8; }
 .da-explorer ::deep .btn-xs { padding:.15rem .45rem; font-size:.75rem; }
 .da-toolbar { display:flex; align-items:center; gap:.6rem; }
 .da-search { position:relative; flex:1; min-width:120px; }

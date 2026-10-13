@@ -53,7 +53,7 @@ public class DocumentService : IDocumentService
         if (string.IsNullOrWhiteSpace(code))
         {
             // اگر کد خالی بماند و شماره‌گذار خودکار فعال باشد، کد به‌صورت اتمیک تخصیص می‌یابد
-            code = await AllocateNextCodeAsync() ?? throw new Exception("کد مدرک اجباری است.");
+            code = await DocAutoCode.AllocateNextCodeAsync(_db) ?? throw new Exception("کد مدرک اجباری است.");
         }
         if (await _db.Documents.AnyAsync(d => d.Code == code))
             throw new Exception($"کد مدرک «{code}» قبلاً ثبت شده است. کد باید یکتا باشد.");
@@ -262,33 +262,7 @@ public class DocumentService : IDocumentService
         await _db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// تخصیص اتمیک کد بعدی از شماره‌گذار خودکار (تنظیمات تک‌ردیف DocCodeSettings)؛
-    /// اگر شماره‌گذار غیرفعال باشد null برمی‌گرداند. هم‌زمانی با UPDATE شرطی (NextNumber قبلی) کنترل می‌شود.
-    /// </summary>
-    private async Task<string?> AllocateNextCodeAsync()
-    {
-        for (var attempt = 0; attempt < 6; attempt++)
-        {
-            var st = await _db.DocCodeSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1);
-            if (st is null || !st.Enabled) return null;
-
-            var prefix = (st.Prefix ?? "").Trim();
-            var pad = Math.Clamp(st.Padding, 3, 12);
-            var n = st.NextNumber;
-
-            // پرش از روی کدهایی که قبلاً (مثلاً به‌صورت دستی) با همین الگو ثبت شده‌اند
-            while (await _db.Documents.AnyAsync(d => d.Code == prefix + n.ToString().PadLeft(pad, '0')))
-                n++;
-
-            var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE DocCodeSettings SET NextNumber = {n + 1} WHERE Id = 1 AND NextNumber = {st.NextNumber}");
-            if (affected == 1)
-                return prefix + n.ToString().PadLeft(pad, '0');
-            // هم‌زمان دیگری شماره را برداشت — دوباره تلاش کن
-        }
-        throw new Exception("تخصیص خودکار کد مدرک به‌خاطر تداخل هم‌زمانی ناموفق بود؛ دوباره تلاش کنید.");
-    }
+    // تخصیص اتمیک کد بعدی به DocAutoCode منتقل شد تا ورود انبوه هم از همان استفاده کند.
 
     /// <summary>
     /// ذخیره دسترسی‌های اختصاصی مدرک.

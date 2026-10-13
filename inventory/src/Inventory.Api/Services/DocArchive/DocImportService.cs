@@ -102,6 +102,11 @@ public class DocImportService(
             .ToListAsync();
         var codeTaken = new HashSet<string>(existingCodes, StringComparer.Ordinal);
 
+        // ورود انبوه به سوییچ کلی شماره‌گذار گره نمی‌خورد: فایلِ بدون شماره یا با
+        // شمارهٔ ناسازگار با الگو هرگز ناموفق نمی‌شود و هنگام ورود شمارهٔ خودکار می‌گیرد.
+        // (ردیف Id=1 هنگام استارتاپ همیشه وجود دارد؛ اگر نباشد، مسیر قدیمیِ خطا حفظ می‌شود.)
+        var autoSettings = await DocAutoCode.RowAsync(db);
+
         var seenInFolder = new Dictionary<string, string>(StringComparer.Ordinal);
 
         var ready = 0; var failed = 0; var skipped = 0; var duplicate = 0;
@@ -123,7 +128,7 @@ public class DocImportService(
                 continue;
             }
 
-            var row = Classify(item.RelativePath, item.SizeBytes, codeTaken, seenInFolder, newFolders);
+            var row = Classify(item.RelativePath, item.SizeBytes, codeTaken, seenInFolder, newFolders, autoSettings);
             // Classify فقط محتوای ردیف را می‌سازد؛ اینکه ردیف به کدام نوبت تعلق دارد
             // وظیفهٔ اینجاست. بدون این، BatchId صفر می‌ماند و کلید یکتای
             // (BatchId, RelativePath) پیش‌نمایش دوم را می‌شکند.
@@ -197,7 +202,8 @@ public class DocImportService(
         string relativePath, long sizeBytes,
         HashSet<string> codeTaken,
         Dictionary<string, string> seenInFolder,
-        HashSet<string> newFolders)
+        HashSet<string> newFolders,
+        DocCodeSettings? autoSettings)
     {
         var row = new DocImportResult
         {
@@ -223,17 +229,63 @@ public class DocImportService(
         row.ParsedTitle = title.Length > 250 ? title[..250] : title;
         row.ParsedCode = code.Length > 80 ? code[..80] : code;
 
-        switch (nameStatus)
+        // وقتی شماره‌گذار خودکار فعال است: شمارهٔ ناموجود/ناسازگار با الگو مانع ورود نمی‌شود.
+        // ردیف «در انتظار» می‌ماند (ParsedCode خالی) و شماره هنگام ورود تخصیص می‌یابد.
+        // چون شماره هنوز معلوم نیست، در رزرو شماره‌ها (codeTaken/seenInFolder) ثبت نمی‌شود.
+        DocImportResult AutoAssign(string docTitle)
         {
-            case "NO_SEPARATOR": return Fail(row, DocImportErrorCodes.NameNoSeparator);
-            case "MULTI_SEPARATOR": return Fail(row, DocImportErrorCodes.NameMultiSeparator);
-            case "EMPTY_PART":
-                return Fail(row, title.Length == 0
-                    ? DocImportErrorCodes.TitleEmpty
-                    : DocImportErrorCodes.CodeEmpty);
+            if (docTitle.Length == 0) return Fail(row, DocImportErrorCodes.TitleEmpty);
+            if (docTitle.Length > DocImportNameParser.MaxTitleLength) return Fail(row, DocImportErrorCodes.TitleLong);
+            if (sizeBytes == 0) return Fail(row, DocImportErrorCodes.FileEmpty);
+            if (sizeBytes > _opt.MaxFileBytes) return Fail(row, DocImportErrorCodes.FileTooLarge);
+
+            row.ParsedTitle = Trim(docTitle, 250);
+            row.ParsedCode = null;
+            row.Status = DocImportResultStatus.Pending;
+            row.ErrorCode = DocImportErrorCodes.AutoCode;
+            row.MessageFa = DocImportErrorCodes.MessageFa(DocImportErrorCodes.AutoCode);
+
+            var folder = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "";
+            if (folder.Length > 0) newFolders.Add(folder);
+            return row;
+        }
+
+        // عنوان قابل حدس زدن نیست — این یکی حتی با شماره‌گذار خودکار هم ناموفق می‌ماند
+        if (nameStatus == "EMPTY_PART" && title.Length == 0)
+            return Fail(row, DocImportErrorCodes.TitleEmpty);
+
+        if (autoSettings != null)
+        {
+            switch (nameStatus)
+            {
+                // جداکننده ندارد یا بیش از یکی دارد: کل نام فایل عنوان می‌شود و شماره خودکار می‌گیرد
+                case "NO_SEPARATOR":
+                case "MULTI_SEPARATOR":
+                    return AutoAssign(DocImportNameParser.NormalizeTitle(baseName));
+                // عنوان دارد ولی شماره ندارد: شماره خودکار می‌گیرد، ورود متوقف نمی‌شود
+                case "EMPTY_PART":
+                    return AutoAssign(title);
+            }
+        }
+        else
+        {
+            switch (nameStatus)
+            {
+                case "NO_SEPARATOR": return Fail(row, DocImportErrorCodes.NameNoSeparator);
+                case "MULTI_SEPARATOR": return Fail(row, DocImportErrorCodes.NameMultiSeparator);
+                case "EMPTY_PART": return Fail(row, DocImportErrorCodes.CodeEmpty);
+            }
         }
 
         if (title.Length > DocImportNameParser.MaxTitleLength) return Fail(row, DocImportErrorCodes.TitleLong);
+
+        // شمارهٔ نامعتبر (خیلی بلند/حروف غیرمجاز) یا سازگارنیامده با الگوی شماره‌گذار:
+        // به‌جای توقف ورود، شمارهٔ خودکار می‌گیرد.
+        var codeInvalid = code.Length > DocImportNameParser.MaxCodeLength
+                          || DocImportNameParser.CodeCharsError(code) != null;
+        if (autoSettings != null && (codeInvalid || !DocAutoCode.MatchesFormula(code, autoSettings.Prefix)))
+            return AutoAssign(title);
+
         if (code.Length > DocImportNameParser.MaxCodeLength) return Fail(row, DocImportErrorCodes.CodeLong);
         if (DocImportNameParser.CodeCharsError(code) is { } charsError) return Fail(row, charsError);
         if (sizeBytes == 0) return Fail(row, DocImportErrorCodes.FileEmpty);
@@ -286,7 +338,8 @@ public class DocImportService(
             // فایلی که پیش‌نمایش نشده (مثلاً بعد از پیش‌نمایش اضافه شده) — همان‌جا بررسی می‌شود
             var existing = await db.Documents.Where(d => d.Code != null).Select(d => d.Code!).ToListAsync();
             row = Classify(cleaned, length, new HashSet<string>(existing, StringComparer.Ordinal),
-                new Dictionary<string, string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal));
+                new Dictionary<string, string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal),
+                await DocAutoCode.RowAsync(db));
             row.BatchId = batchId;
             db.DocImportResults.Add(row);
             await db.SaveChangesAsync();
@@ -308,9 +361,15 @@ public class DocImportService(
 
         var title = (row.ParsedTitle ?? "").Trim();
         var code = (row.ParsedCode ?? "").Trim();
-        if (title.Length == 0 || code.Length == 0)
-            throw new InvalidOperationException(DocImportErrorCodes.MessageFa(
-                title.Length == 0 ? DocImportErrorCodes.TitleEmpty : DocImportErrorCodes.CodeEmpty));
+        if (title.Length == 0)
+            throw new InvalidOperationException(DocImportErrorCodes.MessageFa(DocImportErrorCodes.TitleEmpty));
+
+        // ردیف «شمارهٔ خودکار»: شماره در تراکنش ورود از شماره‌گذار تخصیص می‌یابد.
+        // ورود انبوه از سوییچ Enabled تبعیت نمی‌کند؛ فقط وجود ردیف تنظیمات (که خودتعمیر اسکیما
+        // همیشه می‌سازد) کافی است. نبود ردیف یعنی اسکیما خیلی قدیمی است — همان خطای قبلی.
+        var autoAssign = code.Length == 0;
+        if (autoAssign && !await db.DocCodeSettings.AsNoTracking().AnyAsync(s => s.Id == 1))
+            throw new InvalidOperationException(DocImportErrorCodes.MessageFa(DocImportErrorCodes.CodeEmpty));
 
         var mapper = new DocImportFolderMapper(db);
         var folder = Path.GetDirectoryName(cleaned)?.Replace('\\', '/') ?? "";
@@ -321,7 +380,7 @@ public class DocImportService(
                 folderError ?? DocImportErrorCodes.FolderNotFound));
         await db.SaveChangesAsync();
 
-        var outcome = await ImportOneAsync(batch, row, folderId.Value, title, code, content, userId, userName);
+        var outcome = await ImportOneAsync(batch, row, folderId.Value, title, code, content, userId, userName, autoAssign);
 
         if (outcome.Imported)
         {
@@ -346,9 +405,10 @@ public class DocImportService(
     /// <summary>ساخت سند کامل در یک تراکنش. خطا فقط همین فایل را ناموفق می‌کند.</summary>
     private async Task<(bool Imported, string? Message)> ImportOneAsync(
         DocImportBatch batch, DocImportResult row, int folderId, string title, string code,
-        Stream content, int userId, string userName)
+        Stream content, int userId, string userName, bool autoAssign)
     {
-        if (await db.Documents.AnyAsync(d => d.Code == code))
+        // شمارهٔ خودکار به لحاظ ساختاری یکتاست (از شماره‌گذار اتمیک می‌آید) و نیازی به بررسی تکراری ندارد
+        if (!autoAssign && await db.Documents.AnyAsync(d => d.Code == code))
         {
             row.Status = DocImportResultStatus.Duplicate;
             row.ErrorCode = DocImportErrorCodes.CodeDupDb;
@@ -360,6 +420,12 @@ public class DocImportService(
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync();
+
+            // تخصیص داخل تراکنش است تا اگر ورود همین فایل ناموفق شود، شماره سوزانده نشود.
+            // به سوییچ کلی شماره‌گذار هم وابسته نیست — ورود انبوه هرگز سرِ شماره نمی‌ایستد.
+            if (autoAssign)
+                code = (await DocAutoCode.AllocateNextCodeAsync(db, allowWhenDisabled: true))
+                       ?? throw new InvalidOperationException(DocImportErrorCodes.MessageFa(DocImportErrorCodes.CodeEmpty));
 
             var doc = new ArchiveDocument
             {
@@ -430,7 +496,9 @@ public class DocImportService(
             row.Status = DocImportResultStatus.Imported;
             row.DocumentId = doc.Id;
             row.ErrorCode = null;
-            row.MessageFa = null;
+            // برای ردیف‌های خودکار، شمارهٔ تخصیص‌یافته در گزارش دیده می‌شود
+            row.ParsedCode = autoAssign ? Trim(code, 80) : row.ParsedCode;
+            row.MessageFa = autoAssign ? $"شماره مدرک به‌صورت خودکار «{code}» تخصیص یافت." : null;
             row.ProcessedAtUtc = DateTime.UtcNow;
 
             await db.SaveChangesAsync();
