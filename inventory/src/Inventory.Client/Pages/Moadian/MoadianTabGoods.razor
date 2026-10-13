@@ -19,7 +19,7 @@ else
     <div class="card">
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-box-seam text-success"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
-            <span class="badge badge-soft-primary num">@(data?.TotalCount ?? 0).Num() کالا</span>
+            <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) کالا</span>
             <button class="btn btn-primary btn-sm ms-auto" @onclick="() => OpenForm(null)">
                 <i class="bi bi-plus-lg"></i> کالا/خدمت جدید
             </button>
@@ -65,7 +65,7 @@ else
                                     <td class="fw-semibold">@g.Name</td>
                                     <td><code class="num" dir="ltr">@g.UniqueIdentifier</code></td>
                                     <td class="num">@g.UnitOfMeasurement</td>
-                                    <td class="text-center num">@(g.ValueAddedPercentage ?? 0).Num()٪</td>
+                                    <td class="text-center num">@(((decimal)(g.ValueAddedPercentage ?? 0)).Qty())٪</td>
                                     <td class="text-center num">@MoadianUi.Money(g.Price)</td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-outline-primary" title="ویرایش" @onclick="() => OpenForm(g)">
@@ -80,7 +80,7 @@ else
                 @if ((data?.TotalPages ?? 0) > 1)
                 {
                     <div class="card-footer d-flex align-items-center gap-2">
-                        <span class="text-muted small num">صفحهٔ @pno.Num() از @(data?.TotalPages).Num()</span>
+                        <span class="text-muted small num">صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
                         <div class="ms-auto d-flex gap-1">
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)"><i class="bi bi-chevron-right"></i></button>
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)"><i class="bi bi-chevron-left"></i></button>

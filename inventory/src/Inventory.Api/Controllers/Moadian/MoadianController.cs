@@ -129,6 +129,12 @@ namespace Inventory.Api.Controllers.Moadian
             return Results.Ok(model);
         }
 
+        [HttpGet("NextInvoiceNumber")]
+        public async Task<ApiModel> NextInvoiceNumber(int cpinfoId)
+        {
+            return await connectService.NextInvoiceNumberAsync(cpinfoId);
+        }
+
         [HttpPost("AddInvoice")]
         public async Task<ApiModel> AddInvoice(VmInvoiceItems.InvoiceVM model)
         {

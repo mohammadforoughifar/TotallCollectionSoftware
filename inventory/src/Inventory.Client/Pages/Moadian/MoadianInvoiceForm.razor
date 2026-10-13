@@ -48,6 +48,33 @@ else
         <div class="card-header"><i class="bi bi-info-circle text-primary"></i> مشخصات صورتحساب</div>
         <div class="card-body">
             <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">شمارهٔ فاکتور</label>
+                    <input class="form-control num fw-bold text-primary" readonly
+                           value="@(Mode == FormMode.New ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.Num()) : (vm.NumberInvoice?.Num() ?? "—"))" />
+                    <div class="form-text">@((Mode == FormMode.New) ? "پیش‌نمایش — شمارهٔ نهایی هنگام ثبت تخصیص می‌یابد." : "")</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">موضوع</label>
+                    <input class="form-control" readonly value="@(vm.Subject ?? "اصلی")" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">وضعیت</label>
+                    <div class="pt-1">
+                        @if (Mode == FormMode.New)
+                        {
+                            <span class="badge bg-secondary">ارسال نشده</span>
+                        }
+                        else
+                        {
+                            <span class="badge @MoadianUi.StatusBadge(vm.StatusSentToSystemInt)">@vm.StatusSentToSystem</span>
+                        }
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">تاریخ فاکتور <span class="text-danger">*</span></label>
+                    <DatePicker Value="vm.DateOrderPicker" ValueChanged="OnDate" />
+                </div>
                 <div class="col-md-6">
                     <label class="form-label">مشتری <span class="text-danger">*</span></label>
                     @if (Customers.Count == 0)
@@ -67,10 +94,6 @@ else
                             }
                         </select>
                     }
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">تاریخ صورتحساب <span class="text-danger">*</span></label>
-                    <DatePicker Value="vm.DateOrderPicker" ValueChanged="OnDate" />
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">سال مالی <span class="text-danger">*</span></label>
@@ -97,8 +120,8 @@ else
                         <option value="نوع سوم">نوع سوم</option>
                     </select>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">شرح / توضیح</label>
+                <div class="col-md-9">
+                    <label class="form-label">توضیحات</label>
                     <input class="form-control" value="@vm.Description" @oninput="e => vm.Description = e.Value?.ToString()" placeholder="مثلاً: فاکتور فروش" />
                 </div>
             </div>
@@ -128,13 +151,16 @@ else
                     <table class="table align-middle">
                         <thead>
                             <tr>
-                                <th style="min-width:220px">کالا / خدمت</th>
-                                <th style="width:90px">واحد</th>
+                                <th style="min-width:200px">نام کالا / خدمت</th>
+                                <th style="width:80px">واحد</th>
                                 <th style="width:90px">تعداد</th>
-                                <th style="width:130px">نرخ واحد</th>
-                                <th style="width:80px">ارزش افزوده %</th>
-                                <th style="width:120px">تخفیف</th>
-                                <th style="width:130px">مبلغ ردیف</th>
+                                <th style="width:120px">فی کالا</th>
+                                <th style="width:125px">مبلغ قبل تخفیف</th>
+                                <th style="width:110px">تخفیف</th>
+                                <th style="width:125px">مبلغ بعد تخفیف</th>
+                                <th style="width:75px">ارزش افزوده %</th>
+                                <th style="width:120px">مبلغ ارزش افزوده</th>
+                                <th style="width:125px">مبلغ کل ردیف</th>
                                 <th style="width:46px"></th>
                             </tr>
                         </thead>
@@ -159,24 +185,27 @@ else
                                             </select>
                                         }
                                     </td>
-                                    <td class="small num">@row.UnitOfMeasurement</td>
+                                    <td class="small">@(string.IsNullOrWhiteSpace(row.UnitOfMeasurement) ? "—" : row.UnitOfMeasurement)</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.Count" @onchange="e => OnNum(e, v => row.Count = v)" />
+                                               value="@row.Count" @onchange="e => { row.Count = Dec(e); Calc(row); }" />
                                     </td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
                                                value="@row.PriceUnit" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }" />
                                     </td>
-                                    <td>
-                                        <input type="number" min="0" max="100" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }" />
-                                    </td>
+                                    <td class="num text-end">@MoadianUi.Money(RowGross(row))</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
                                                value="@row.Discount" @onchange="e => { row.Discount = Dec(e); Calc(row); }" />
                                     </td>
-                                    <td class="num fw-semibold text-end">@MoadianUi.Money(row.CalculatedPay)</td>
+                                    <td class="num text-end">@MoadianUi.Money(RowNet(row))</td>
+                                    <td>
+                                        <input type="number" min="0" max="100" step="any" class="form-control form-control-sm num text-end"
+                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }" />
+                                    </td>
+                                    <td class="num text-end text-info">@MoadianUi.Money(RowVat(row))</td>
+                                    <td class="num fw-semibold text-end">@MoadianUi.Money(RowTotal(row))</td>
                                     <td class="text-center">
                                         <button class="btn btn-sm btn-outline-danger" title="حذف ردیف" @onclick="() => RemoveRow(row)">
                                             <i class="bi bi-trash"></i>
@@ -194,7 +223,7 @@ else
             <div class="card-footer">
                 <div class="row text-center g-2">
                     <div class="col-6 col-md-2">
-                        <div class="text-muted small">جمع کل</div>
+                        <div class="text-muted small">مبلغ قبل تخفیف</div>
                         <div class="num fw-semibold">@MoadianUi.Money(TotalGross)</div>
                     </div>
                     <div class="col-6 col-md-2">
@@ -202,20 +231,20 @@ else
                         <div class="num text-danger">@MoadianUi.Money(TotalDiscount)</div>
                     </div>
                     <div class="col-6 col-md-2">
-                        <div class="text-muted small">پایهٔ معاف/مشمول</div>
-                        <div class="num">@MoadianUi.Money(TotalGross - TotalDiscount)</div>
+                        <div class="text-muted small">مبلغ بعد تخفیف</div>
+                        <div class="num">@MoadianUi.Money(TotalNet)</div>
                     </div>
                     <div class="col-6 col-md-2">
                         <div class="text-muted small">ارزش افزوده</div>
                         <div class="num text-info">@MoadianUi.Money(TotalVat)</div>
                     </div>
                     <div class="col-6 col-md-2">
-                        <div class="text-muted small">مبلغ نهایی</div>
+                        <div class="text-muted small">مبلغ کل صورتحساب</div>
                         <div class="num fw-bold text-primary fs-5">@MoadianUi.Money(GrandTotal)</div>
                     </div>
                     <div class="col-6 col-md-2">
-                        <div class="text-muted small">نوع پرداخت</div>
-                        <div class="fw-semibold">@vm.PaymentType</div>
+                        <div class="text-muted small">تعداد ردیف</div>
+                        <div class="num fw-semibold">@(vm.InvoiceItems.Count.Num())</div>
                     </div>
                 </div>
             </div>
@@ -250,6 +279,7 @@ else
     private List<VMCustomerList> Customers = new();
     private List<VMFiscalYear> FiscalYears = new();
     private bool loading = true, saving;
+    private int? nextInvoiceNo; // پیش‌نمایش شمارهٔ صورتحساب جدید
 
     protected override async Task OnInitializedAsync()
     {
@@ -281,6 +311,11 @@ else
                 Customers = await Moadian.GetCustomersAsync(Ctx.CpInfoId);
                 FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
             }
+            if (Mode == FormMode.New && Ctx.CpInfoId > 0)
+            {
+                var rn = await Moadian.NextInvoiceNumberAsync(Ctx.CpInfoId);
+                if (rn.Success) nextInvoiceNo = MoadianService.As<int?>(rn);
+            }
             if (Mode != FormMode.New && Id is > 0)
             {
                 var loaded = await Moadian.GetInvoiceAsync(Id!.Value);
@@ -309,20 +344,30 @@ else
 
     private void OnNum(ChangeEventArgs e, Action<decimal?> set) { set(Dec(e)); StateHasChanged(); }
 
+    // فرمول‌های ردیف — هم‌سو با محاسبات سامانهٔ مودیان:
+    // ج) مبلغ قبل تخفیف = تعداد × فی   ل) مبلغ بعد تخفیف = ج − تخفیف
+    // ن) ارزش افزوده = Math.Truncate(ل × درصد / 100)   ع) مبلغ کل ردیف = Truncate(ل) + ن
+    private static decimal RowGross(VmInvoiceItems r) => (r.PriceUnit ?? 0) * (r.Count ?? 0);
+    private static decimal RowNet(VmInvoiceItems r)
+    {
+        var net = RowGross(r) - (r.Discount ?? 0);
+        return net < 0 ? 0 : net;
+    }
+    private static decimal RowVat(VmInvoiceItems r)
+        => Math.Truncate(RowNet(r) * (decimal)(r.ValueAddedPercentage ?? 0) / 100m);
+    private static decimal RowTotal(VmInvoiceItems r) => Math.Truncate(RowNet(r)) + RowVat(r);
+
     private void Calc(VmInvoiceItems row)
     {
-        decimal count = row.Count ?? 0;
-        decimal price = row.PriceUnit ?? 0;
-        decimal dis = row.Discount ?? 0;
-        decimal vat = (decimal)(row.ValueAddedPercentage ?? 0) / 100m;
-        row.TotalPrice = (price * count - dis) * (1 + vat);
-        row.CalculatedPay = row.TotalPrice;
+        row.TotalPrice = RowTotal(row);
+        row.CalculatedPay = RowTotal(row);
     }
 
-    private decimal TotalGross => vm.InvoiceItems.Sum(i => (i.PriceUnit ?? 0) * (i.Count ?? 0));
+    private decimal TotalGross => vm.InvoiceItems.Sum(RowGross);
     private decimal TotalDiscount => vm.InvoiceItems.Sum(i => i.Discount ?? 0);
-    private decimal TotalVat => vm.InvoiceItems.Sum(i => ((i.PriceUnit ?? 0) * (i.Count ?? 0) - (i.Discount ?? 0)) * ((decimal)(i.ValueAddedPercentage ?? 0) / 100m));
-    private decimal GrandTotal => vm.InvoiceItems.Sum(i => i.CalculatedPay ?? 0);
+    private decimal TotalNet => vm.InvoiceItems.Sum(RowNet);
+    private decimal TotalVat => vm.InvoiceItems.Sum(RowVat);
+    private decimal GrandTotal => vm.InvoiceItems.Sum(RowTotal);
 
     // ---------- رویدادها ----------
     private void OnCustomer(ChangeEventArgs e)
@@ -356,7 +401,7 @@ else
         row.UniqueIdentifier = g.UniqueIdentifier;
         row.PriceUnit = g.Price;
         row.ValueAddedPercentage = g.ValueAddedPercentage;
-        row.UnitOfMeasurement = ""; // نام واحد از سرور در زمان ارسال استفاده می‌شود
+        row.UnitOfMeasurement = g.UnitOfMeasurement ?? "";
         Calc(row);
         StateHasChanged();
     }
@@ -386,7 +431,7 @@ else
                 var saved = MoadianService.As<InvoiceVM>(r);
                 Toast.Success(Mode == FormMode.Eslahi
                     ? "صورتحساب اصلاحی ثبت شد."
-                    : "صورتحساب ثبت شد — برای ارسال به سامانه از صفحهٔ جزئیات استفاده کنید.");
+                    : $"صورتحساب شمارهٔ {(saved?.NumberInvoice)?.Num() ?? "—"} ثبت شد — برای ارسال به سامانه از صفحهٔ جزئیات استفاده کنید.");
                 Nav.NavigateTo(saved?.Id > 0 ? $"moadian/invoices/{saved!.Id}" : "moadian/invoices");
             }
             else Toast.Error(r.Message ?? "خطا در ثبت صورتحساب.");

@@ -23,7 +23,7 @@ else
     <div class="card">
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-people text-warning"></i> فهرست مشتریان <span class="text-muted small">— صورتحساب به نام آن‌ها صادر می‌شود</span></span>
-            <span class="badge badge-soft-primary num">@(Customers?.Count ?? 0).Num() مشتری</span>
+            <span class="badge badge-soft-primary num">@((Customers?.Count ?? 0).Num()) مشتری</span>
             <button class="btn btn-primary btn-sm ms-auto" @onclick="() => OpenForm(null)">
                 <i class="bi bi-person-plus"></i> مشتری جدید
             </button>
