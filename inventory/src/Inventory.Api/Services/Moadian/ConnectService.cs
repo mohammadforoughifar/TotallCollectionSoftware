@@ -981,6 +981,98 @@ namespace Inventory.Api.Services.Moadian
             };
         }
 
+        /// <summary>تشخیص عمیق: دیتابیسِ واقعیِ متصل + شناسهٔ شرکتِ ارسالی کلاینت + نتیجهٔ دقیقِ همان کوئری‌های لیست با EF — برای «ردیف هست ولی لیست خالی است».</summary>
+        public async Task<ApiModel> DiagnoseListsAsync(int cpinfoId)
+        {
+            try
+            {
+                var conn = context.Database.GetDbConnection();
+                var activeCpIds = await context.CPInfos.Where(c => !c.IsDelete).OrderBy(c => c.Id).Select(c => c.Id).ToListAsync();
+                var allCp = await context.CPInfos.OrderBy(c => c.Id).Select(c => new { c.Id, c.IsDelete, c.PersianName }).ToListAsync();
+
+                object units;
+                try
+                {
+                    var items = await context.UnitOfMeasurements.OrderBy(x => x.Id)
+                        .Select(x => new { x.Id, x.Name, x.Code, x.IsDelete }).ToListAsync();
+                    units = new
+                    {
+                        efCountSameQueryAsList = items.Count,
+                        rows = items.Select(x => $"{x.Id}·{x.Name}{(x.IsDelete ? "(حذف)" : "")}").ToList()
+                    };
+                }
+                catch (Exception ex) { units = new { error = ex.GetType().Name + ": " + ex.Message }; }
+
+                object goods;
+                try
+                {
+                    var rows = await context.GoodsOrServices.OrderBy(x => x.Id)
+                        .Select(x => new { x.Id, x.CpInfo, x.IsDelete, x.Name }).ToListAsync();
+                    goods = new
+                    {
+                        efCountSameFilterAsList = rows.Count(x => x.CpInfo == cpinfoId && !x.IsDelete),
+                        rows = rows.Select(x => $"{x.Id}→cp{x.CpInfo}{(x.IsDelete ? "(حذف)" : "")} {x.Name}").ToList()
+                    };
+                }
+                catch (Exception ex) { goods = new { error = ex.GetType().Name + ": " + ex.Message }; }
+
+                object customers;
+                try
+                {
+                    var rows = await context.Customers.OrderBy(x => x.Id)
+                        .Select(x => new { x.Id, x.CpInfoId, x.IsDelete, x.Name }).ToListAsync();
+                    customers = new
+                    {
+                        efCountSameFilterAsList = rows.Count(x => x.CpInfoId == cpinfoId && !x.IsDelete),
+                        rows = rows.Select(x => $"{x.Id}→cp{(x.CpInfoId.HasValue ? x.CpInfoId.ToString() : "null")}{(x.IsDelete ? "(حذف)" : "")} {x.Name}").ToList()
+                    };
+                }
+                catch (Exception ex) { customers = new { error = ex.GetType().Name + ": " + ex.Message }; }
+
+                object invoices;
+                try
+                {
+                    var rows = await context.Invoices.OrderBy(x => x.Id)
+                        .Select(x => new { x.Id, x.CpInfo, x.IsDelete, x.StatusSentToSystem }).ToListAsync();
+                    var svc = await GetAllInvoiceAsync("همه", cpinfoId, new GetResultQuery(Page: 1, PageSize: 10));
+                    string? svcTotal = null;
+                    if (svc.Data is InvoiceResponse ir && ir.Invoices is not null)
+                        svcTotal = ir.Invoices.TotalCount.ToString();
+                    invoices = new
+                    {
+                        efCountSameFilterAsList = rows.Count(x => x.CpInfo == cpinfoId && !x.IsDelete),
+                        rows = rows.Select(x => $"{x.Id}→cp{(x.CpInfo.HasValue ? x.CpInfo.ToString() : "null")}{(x.IsDelete ? "(حذف)" : "")} st={x.StatusSentToSystem}").ToList(),
+                        listServiceCall = new { svc.Success, svc.Status, svc.Message, totalCount = svcTotal }
+                    };
+                }
+                catch (Exception ex) { invoices = new { error = ex.GetType().Name + ": " + ex.Message }; }
+
+                var result = new
+                {
+                    db = new { provider = context.Database.ProviderName, dataSource = conn.DataSource, database = conn.Database },
+                    cpinfoIdFromClient = cpinfoId,
+                    activeCpInfoIds = activeCpIds,
+                    cpInfoTable = allCp.Select(c => $"{c.Id}·{c.PersianName}{(c.IsDelete ? "(حذف)" : "")}").ToList(),
+                    units,
+                    goods,
+                    customers,
+                    invoices
+                };
+
+                return new ApiModel
+                {
+                    Data = result,
+                    Status = 200,
+                    Success = true,
+                    Message = MessageCode.StatusCode.TryGetValue(200, out string m) ? m : "کد وضعیت نامعتبر است."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiModel { Status = 500, Success = false, Message = "تشخیص عمیق ناموفق: " + ex.Message };
+            }
+        }
+
         /// <summary>حذف نرم شرکت (و اتصال‌هایش) — صورتحساب‌ها و سوابق حفظ می‌شوند.</summary>
         public async Task<ApiModel> DeleteCpInfoAsync(int id)
         {

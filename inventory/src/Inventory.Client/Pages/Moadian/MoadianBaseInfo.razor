@@ -4,6 +4,7 @@
 @inject NavigationManager Nav
 @inject IMoadianService Moadian
 @inject IToastService Toast
+@inject MoadianCompanyContext Ctx
 
 <PageTitle>سامانه مودیان — اطلاعات پایه</PageTitle>
 
@@ -12,14 +13,32 @@
         <h1><i class="bi bi-archive text-primary"></i> اطلاعات پایهٔ سامانهٔ مودیان</h1>
         <p class="lead">شرکت (خدمات دهنده)، اتصال به سامانه، واحدهای سنجش، کالاها و مشتریان</p>
     </div>
-    <div class="ms-auto">
+    <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick="Diagnose" disabled="@diagnosing"
                 title="بررسی سلامت اسکیمای مودیان — برای وقتی لیست‌ها خالی می‌آیند">
             @if (diagnosing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-heart-pulse"></i> }
             تشخیص اسکیما
         </button>
+        <button class="btn btn-outline-warning" @onclick="DiagnoseLists" disabled="@deepDiagnosing"
+                title="چرا ردیف‌ها در جدول هستند ولی لیست‌ها خالی‌اند؟ (همان کوئری‌های لیست را در سرور اجرا می‌کند)">
+            @if (deepDiagnosing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-binoculars"></i> }
+            تشخیص عمیق لیست‌ها
+        </button>
     </div>
 </div>
+
+@if (deepDiag is not null)
+{
+    <div class="card mb-3 border-warning">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-binoculars"></i> نتیجهٔ تشخیص عمیق — <span class="text-danger">همهٔ متن زیر را کپی و برای پشتیبانی بفرستید</span>
+            <button class="btn btn-sm btn-link ms-auto" @onclick="() => deepDiag = null"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="card-body p-2">
+            <pre class="small mb-0" dir="ltr" style="white-space:pre-wrap;text-align:left;max-height:420px;overflow:auto">@deepDiag</pre>
+        </div>
+    </div>
+}
 
 @if (diag is not null)
 {
@@ -140,6 +159,30 @@ else if (ActiveTab == "customers")
         /// <summary>هشدار داده‌ای (ردیف یتیم به شرکت دیگر/حذف‌شده — علت شایع خالی‌بودن لیست‌ها).</summary>
         public string? Warning { get; set; }
         public string? Error { get; set; }
+    }
+
+    private bool deepDiagnosing;
+    private string? deepDiag;
+
+    private async Task DiagnoseLists()
+    {
+        deepDiagnosing = true;
+        deepDiag = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.DiagnoseListsAsync(Ctx.CpInfoId);
+            var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+            deepDiag = r.Data switch
+            {
+                System.Text.Json.JsonElement el => System.Text.Json.JsonSerializer.Serialize(el, opts),
+                not null => System.Text.Json.JsonSerializer.Serialize(r.Data, opts),
+                _ => "Success=" + r.Success + " Status=" + r.Status + " Message=" + r.Message
+            };
+            if (!r.Success) deepDiag = "خطا: " + r.Message + "\n" + deepDiag;
+        }
+        catch (Exception ex) { deepDiag = "خطا در اجرای تشخیص عمیق: " + ex.Message; }
+        finally { deepDiagnosing = false; StateHasChanged(); }
     }
 
     private async Task Diagnose()

@@ -47,6 +47,12 @@ namespace Inventory.Api.Controllers.Moadian
             // گزارش کامل اسکیمای مودیان (وجود جدول‌ها/ستون‌ها + شمار ردیف‌ها) — برای وقتی لیست‌ها خالی می‌آیند
             return await connectService.DiagnoseAsync();
         }
+        [HttpGet("DiagnoseLists")]
+        public async Task<ApiModel> DiagnoseLists(int cpinfoId)
+        {
+            // تشخیص عمیق: چرا ردیف در جدول هست ولی لیست‌ها خالی‌اند (دیتابیس متصل + همان کوئری‌های EF)
+            return await connectService.DiagnoseListsAsync(cpinfoId);
+        }
         [HttpGet("GetConnectForCpInfo/{cpinfoId:int}")]
         public async Task<ApiModel> GetConnectForCpInfo(int cpinfoId)
         {
