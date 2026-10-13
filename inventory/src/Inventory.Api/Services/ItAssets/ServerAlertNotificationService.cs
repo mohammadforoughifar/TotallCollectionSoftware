@@ -52,7 +52,8 @@ public sealed class ServerAlertNotificationService
             if (!isDue) continue;
 
             var category = string.Equals(alert.Category, "Connection", StringComparison.OrdinalIgnoreCase)
-                ? "ارتباط iLO" : "سلامت سخت‌افزار";
+                ? "ارتباط iLO"
+                : string.Equals(alert.Category, "HardwareEvent", StringComparison.OrdinalIgnoreCase) ? "رخداد iLO" : "سلامت سخت‌افزار";
             var title = critical ? $"هشدار بحرانی سرور: {server.Name}" : $"هشدار سرور: {server.Name}";
             var reminder = alert.NotificationCount > 0 ? " (یادآوری)" : "";
             var body = $"{category}{reminder} — {Trim(alert.Message, 380)}";

@@ -39,6 +39,8 @@ public sealed class ManagedServer
     [MaxLength(2000)] public string? Notes { get; set; }
 
     public DateTime? LastHealthCheckAt { get; set; }
+    /// <summary>آخرین زمان دریافت جزئیات قطعات/رخدادهای Redfish؛ مستقل از Health سبک دوره‌ای.</summary>
+    public DateTime? LastHardwareDetailsAt { get; set; }
     [MaxLength(20)] public string? LastHealthStatus { get; set; }
     [MaxLength(30)] public string? LastPowerState { get; set; }
     [MaxLength(500)] public string? LastHealthMessage { get; set; }
@@ -82,6 +84,41 @@ public sealed class ServerHealthSnapshot
     [MaxLength(500)] public string? Message { get; set; }
 }
 
+/// <summary>نمونهٔ ساخت‌یافته از وضعیت قطعات سخت‌افزاری Redfish؛ پاسخ خام iLO یا دادهٔ محرمانه ذخیره نمی‌شود.</summary>
+[Table("ServerHardwareComponentSnapshots")]
+public sealed class ServerHardwareComponentSnapshot
+{
+    public long Id { get; set; }
+    public int ManagedServerId { get; set; }
+    public DateTime CapturedAt { get; set; } = DateTime.Now;
+    /// <summary>Chassis | PowerSupply | Fan | Temperature | Memory | Processor | Storage | Disk</summary>
+    [MaxLength(40)] public string ComponentType { get; set; } = "";
+    /// <summary>شناسهٔ پایدار Redfish در محدودهٔ نوع قطعه.</summary>
+    [MaxLength(200)] public string ComponentKey { get; set; } = "";
+    [MaxLength(200)] public string Name { get; set; } = "";
+    [MaxLength(20)] public string Health { get; set; } = "Unknown";
+    [MaxLength(40)] public string? State { get; set; }
+    [MaxLength(100)] public string? Reading { get; set; }
+    [MaxLength(150)] public string? Model { get; set; }
+    [MaxLength(100)] public string? SerialNumber { get; set; }
+    [MaxLength(500)] public string? Message { get; set; }
+}
+
+/// <summary>رخدادهای غیرمحرمانهٔ Event Log در Redfish/iLO؛ برای نمایش و روند رخدادها نگه‌داری می‌شوند.</summary>
+[Table("ServerHardwareEvents")]
+public sealed class ServerHardwareEvent
+{
+    public long Id { get; set; }
+    public int ManagedServerId { get; set; }
+    [MaxLength(200)] public string EventKey { get; set; } = "";
+    [MaxLength(30)] public string Severity { get; set; } = "Unknown";
+    [MaxLength(2000)] public string Message { get; set; } = "";
+    [MaxLength(500)] public string? Origin { get; set; }
+    public DateTime? OccurredAt { get; set; }
+    public DateTime FirstSeenAt { get; set; } = DateTime.Now;
+    public DateTime LastSeenAt { get; set; } = DateTime.Now;
+}
+
 /// <summary>لاگ عملیات ماژول سرورها؛ رمز، هدر احراز هویت و پاسخ خام Redfish در آن نوشته نمی‌شود.</summary>
 [Table("ServerOperationLogs")]
 public sealed class ServerOperationLog
@@ -108,7 +145,7 @@ public sealed class ServerAlert
 {
     public long Id { get; set; }
     public int ManagedServerId { get; set; }
-    /// <summary>Connection | Health</summary>
+    /// <summary>Connection | Health | HardwareEvent</summary>
     [MaxLength(40)] public string Category { get; set; } = "";
     /// <summary>Warning | Critical</summary>
     [MaxLength(20)] public string Severity { get; set; } = "Warning";

@@ -240,6 +240,25 @@ public sealed class ServersController : ControllerBase
         return Ok(new { server, snapshots, logs });
     }
 
+    /// <summary>آخرین وضعیت ساخت‌یافتهٔ قطعات و رخدادهای Redfish؛ پاسخ خام iLO هرگز برگردانده نمی‌شود.</summary>
+    [HttpGet("{id:int}/hardware")]
+    public async Task<IActionResult> Hardware(int id)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var server = await FindAllowedAsync(id);
+        if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
+
+        var recentComponents = await _db.ServerHardwareComponentSnapshots.AsNoTracking()
+            .Where(x => x.ManagedServerId == id).OrderByDescending(x => x.CapturedAt).Take(256).ToListAsync();
+        var capturedAt = recentComponents.FirstOrDefault()?.CapturedAt;
+        var components = capturedAt is null ? new List<ServerHardwareComponentSnapshot>()
+            : recentComponents.Where(x => x.CapturedAt == capturedAt.Value)
+                .OrderBy(x => x.ComponentType).ThenBy(x => x.Name).ToList();
+        var events = await _db.ServerHardwareEvents.AsNoTracking().Where(x => x.ManagedServerId == id)
+            .OrderByDescending(x => x.OccurredAt ?? x.LastSeenAt).Take(50).ToListAsync();
+        return Ok(new { capturedAt, components, events });
+    }
+
     // ================================================================ هشدارها
 
     [HttpGet("alerts")]
@@ -510,6 +529,8 @@ public sealed class ServersController : ControllerBase
         // همهٔ تاریخچهٔ وابسته همراه شناسنامه پاک می‌شود؛ ثبت لاگ Delete روی رکوردی که پاک می‌شود
         // باعث ایجاد لاگ یتیم خواهد شد، بنابراین این عملیات در لاگ سرور نگه‌داری نمی‌شود.
         _db.ServerHealthSnapshots.RemoveRange(await _db.ServerHealthSnapshots.Where(x => x.ManagedServerId == id).ToListAsync());
+        _db.ServerHardwareComponentSnapshots.RemoveRange(await _db.ServerHardwareComponentSnapshots.Where(x => x.ManagedServerId == id).ToListAsync());
+        _db.ServerHardwareEvents.RemoveRange(await _db.ServerHardwareEvents.Where(x => x.ManagedServerId == id).ToListAsync());
         _db.ServerAlerts.RemoveRange(await _db.ServerAlerts.Where(x => x.ManagedServerId == id).ToListAsync());
         _db.ServerOperationLogs.RemoveRange(await _db.ServerOperationLogs.Where(x => x.ManagedServerId == id).ToListAsync());
         _db.ManagedServers.Remove(server);
@@ -542,14 +563,13 @@ public sealed class ServersController : ControllerBase
     private static async Task ReconcileAlertsAsync(AppDbContext db, ManagedServer server, RedfishSnapshot snapshot, DateTime now, CancellationToken ct = default)
     {
         await ServerAlertRules.ResolveAsync(db, server.Id, "Connection", now, ct);
-        if (string.Equals(snapshot.Health, "OK", StringComparison.OrdinalIgnoreCase))
+        var healthIssue = ServerHardwareRecorder.DescribeHealthIssue(snapshot);
+        if (healthIssue.Severity is null)
         {
             await ServerAlertRules.ResolveAsync(db, server.Id, "Health", now, ct);
             return;
         }
-        var severity = string.Equals(snapshot.Health, "Critical", StringComparison.OrdinalIgnoreCase) ? "Critical" : "Warning";
-        await ServerAlertRules.RaiseAsync(db, server, "Health", severity,
-            $"وضعیت سلامت سخت‌افزار Redfish: {snapshot.Health}", now, ct);
+        await ServerAlertRules.RaiseAsync(db, server, "Health", healthIssue.Severity, healthIssue.Message!, now, ct);
     }
 
     private async Task NotifyAlertsSafelyAsync(ManagedServer server)
@@ -617,7 +637,7 @@ public sealed class ServersController : ControllerBase
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token);
+        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token, includeHardwareDetails: true);
         var now = DateTime.Now;
         server.LastHealthCheckAt = now;
         if (!snapshot.Success)
@@ -640,6 +660,7 @@ public sealed class ServersController : ControllerBase
         server.LastHealthMessage = "Inventory و وضعیت سلامت از Redfish خوانده شد.";
         server.LastConnectionError = null;
         await ReconcileAlertsAsync(_db, server, snapshot, now, HttpContext.RequestAborted);
+        server.LastHardwareDetailsAt = now;
         server.LastInventoryAt = now;
         server.UpdatedAt = now;
         server.UpdatedByUserId = UserId > 0 ? UserId : null;
@@ -657,7 +678,11 @@ public sealed class ServersController : ControllerBase
             SerialNumber = Clean(snapshot.SerialNumber, 100),
             Message = "دریافت دستی از Redfish"
         });
-        await WriteLogAsync(server, "CollectInventory", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}");
+        var hardwareRecord = await ServerHardwareRecorder.RecordAsync(_db, server, snapshot, now, HttpContext.RequestAborted);
+        var eventIssue = ServerHardwareRecorder.DescribeImportantEvents(hardwareRecord.NewEvents);
+        if (eventIssue.Severity is not null)
+            await ServerAlertRules.RaiseAsync(_db, server, "HardwareEvent", eventIssue.Severity, eventIssue.Message!, now, HttpContext.RequestAborted);
+        await WriteLogAsync(server, "CollectInventory", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}; Components: {snapshot.Components.Count}");
         await _db.SaveChangesAsync();
         await NotifyAlertsSafelyAsync(server);
         return Ok(new { ok = true, snapshot });

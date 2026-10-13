@@ -12,6 +12,7 @@ namespace Inventory.Api.Services.ItAssets;
 /// تنظیمات اختیاری:
 /// ServerMonitoring:Enabled = true|false (پیش‌فرض true؛ ولی هر سرور پیش‌فرض غیرفعال است)
 /// ServerMonitoring:SchedulerCheckSeconds = 60 (حداقل 15)
+/// ServerMonitoring:HardwareDetailIntervalMinutes = 60 (حداقل 15)
 /// </summary>
 public sealed class ServerMonitoringWorker : BackgroundService
 {
@@ -29,6 +30,8 @@ public sealed class ServerMonitoringWorker : BackgroundService
 
     private bool Enabled => _config.GetValue<bool?>("ServerMonitoring:Enabled") ?? true;
     private int CheckSeconds => Math.Clamp(_config.GetValue<int?>("ServerMonitoring:SchedulerCheckSeconds") ?? 60, 15, 3600);
+    // دریافت جزئیات قطعات از Health اصلی سنگین‌تر است؛ به‌صورت پیش‌فرض هر ساعت انجام می‌شود.
+    private int HardwareDetailMinutes => Math.Clamp(_config.GetValue<int?>("ServerMonitoring:HardwareDetailIntervalMinutes") ?? 60, 15, 1440);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -80,7 +83,9 @@ public sealed class ServerMonitoringWorker : BackgroundService
             ct.ThrowIfCancellationRequested();
             try
             {
-                await CollectOneAsync(db, crypto, redfish, server, now, ct);
+                var includeHardwareDetails = server.LastHardwareDetailsAt is null
+                    || now - server.LastHardwareDetailsAt.Value >= TimeSpan.FromMinutes(HardwareDetailMinutes);
+                await CollectOneAsync(db, crypto, redfish, server, now, includeHardwareDetails, ct);
                 await db.SaveChangesAsync(ct);
                 await NotifySafelyAsync(alertNotifications, server, now, ct);
                 completed++;
@@ -116,7 +121,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
     private static int NormalizeInterval(int minutes) => Math.Clamp(minutes, 5, 1440);
 
     private static async Task CollectOneAsync(AppDbContext db, CredentialVaultCrypto crypto, HpeRedfishClient redfish,
-        ManagedServer server, DateTime now, CancellationToken ct)
+        ManagedServer server, DateTime now, bool includeHardwareDetails, CancellationToken ct)
     {
         var credential = await db.ItCredentials.AsNoTracking().FirstOrDefaultAsync(c => c.Id == server.CredentialId
             && c.CompanyId == server.CompanyId && c.Category == "Server" && c.IsActive, ct);
@@ -133,7 +138,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
                 snapshot = string.IsNullOrEmpty(password)
                     ? new RedfishSnapshot { Error = "رمز Credential پایش قابل خواندن نیست." }
                     : await redfish.GetSnapshotAsync(server.IloAddress, server.IloPort,
-                        new RedfishCredentials(credential.Username, password), ct);
+                        new RedfishCredentials(credential.Username, password), ct, includeHardwareDetails);
             }
             catch
             {
@@ -166,6 +171,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
         server.LastPowerState = Limit(snapshot.PowerState, 30);
         server.LastHealthMessage = "پایش خودکار Redfish انجام شد.";
         server.LastConnectionError = null;
+        if (includeHardwareDetails) server.LastHardwareDetailsAt = now;
         server.LastInventoryAt = now;
         server.UpdatedAt = now;
         server.UpdatedByName = SystemActor;
@@ -177,17 +183,21 @@ public sealed class ServerMonitoringWorker : BackgroundService
             BiosVersion = Limit(snapshot.BiosVersion, 100), Model = Limit(snapshot.Model, 150),
             SerialNumber = Limit(snapshot.SerialNumber, 100), Message = "دریافت خودکار از Redfish"
         });
-        db.ServerOperationLogs.Add(Log(server, "AutoCollect", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}"));
+        var hardwareRecord = await ServerHardwareRecorder.RecordAsync(db, server, snapshot, now, ct);
+        db.ServerOperationLogs.Add(Log(server, "AutoCollect", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}; Components: {snapshot.Components.Count}"));
 
         await ServerAlertRules.ResolveAsync(db, server.Id, "Connection", now, ct);
-        if (string.Equals(snapshot.Health, "OK", StringComparison.OrdinalIgnoreCase))
+        var healthIssue = ServerHardwareRecorder.DescribeHealthIssue(snapshot);
+        if (healthIssue.Severity is null)
             await ServerAlertRules.ResolveAsync(db, server.Id, "Health", now, ct);
         else
-        {
-            var severity = string.Equals(snapshot.Health, "Critical", StringComparison.OrdinalIgnoreCase) ? "Critical" : "Warning";
-            await ServerAlertRules.RaiseAsync(db, server, "Health", severity,
-                $"وضعیت سلامت سخت‌افزار Redfish: {snapshot.Health}", now, ct);
-        }
+            await ServerAlertRules.RaiseAsync(db, server, "Health", healthIssue.Severity, healthIssue.Message!, now, ct);
+
+        // رخدادهای تازهٔ Critical/Warning به‌صورت مستقل ثبت می‌شوند و خودکار رفع نمی‌شوند؛
+        // زیرا Event Log معمولاً تاریخچه است و رفع واقعی باید توسط مسئول تأیید یا Resolve شود.
+        var eventIssue = ServerHardwareRecorder.DescribeImportantEvents(hardwareRecord.NewEvents);
+        if (eventIssue.Severity is not null)
+            await ServerAlertRules.RaiseAsync(db, server, "HardwareEvent", eventIssue.Severity, eventIssue.Message!, now, ct);
     }
 
     private static ServerOperationLog Log(ManagedServer server, string action, string result, string? details) => new()
@@ -228,7 +238,9 @@ public static class ServerAlertRules
         alert.Message = Limit(message, 1000) ?? "";
         alert.LastSeenAt = now;
         // تأیید هشدار Warning نباید باعث بی‌صدا شدن رخداد Critical بعدی شود.
-        if (escalated)
+        var newHardwareEventAfterAcknowledgement = string.Equals(category, "HardwareEvent", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(alert.Status, "Acknowledged", StringComparison.OrdinalIgnoreCase);
+        if (escalated || newHardwareEventAfterAcknowledgement)
         {
             alert.Status = "Open";
             alert.AcknowledgedAt = null;

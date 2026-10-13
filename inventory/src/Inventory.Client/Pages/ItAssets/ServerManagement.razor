@@ -109,6 +109,7 @@ else
                                     <td><span class="badge @HealthClass(s.LastHealthStatus)">@HealthTitle(s.LastHealthStatus)</span><div class="fs-8 text-muted mt-1">@(s.LastPowerState ?? "")</div></td>
                                     <td class="fs-8 text-muted">@DateText(s.LastHealthCheckAt)</td>
                                     <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-light" title="جزئیات سخت‌افزار و رخدادهای Redfish" @onclick="() => OpenHardware(s)"><i class="bi bi-motherboard text-primary"></i></button>
                                         @if (canCollect && s.CredentialId is > 0)
                                         {
                                             <button class="btn btn-sm btn-light" title="تست اتصال امن Redfish" disabled="@IsBusy(s.Id)" @onclick="() => Test(s)"><i class="bi bi-plug text-primary"></i></button>
@@ -136,6 +137,7 @@ else
                             </div>
                             <div class="m-card-body"><div class="m-card-row"><span>آخرین بررسی</span><span>@DateText(s.LastHealthCheckAt)</span></div><div class="m-card-row"><span>رک / نقش</span><span>@RackTitle(s) · @(s.Role ?? "—")</span></div></div>
                             <div class="m-card-actions">
+                                <button class="btn btn-light text-primary" @onclick="() => OpenHardware(s)"><i class="bi bi-motherboard"></i> جزئیات</button>
                                 @if (canCollect && s.CredentialId is > 0) { <button class="btn btn-light text-primary" disabled="@IsBusy(s.Id)" @onclick="() => Collect(s)"><i class="bi bi-arrow-repeat"></i> بررسی Redfish</button> }
                                 @if (canUpdate) { <button class="btn btn-light text-primary" @onclick="() => OpenEdit(s)"><i class="bi bi-pencil"></i> ویرایش</button> }
                             </div>
@@ -159,7 +161,7 @@ else
                             {
                                 <tr>
                                     <td class="fw-700">@a.ServerName</td>
-                                    <td><span class="badge @(a.Severity == "Critical" ? "bg-danger" : "bg-warning text-dark")">@(a.Category == "Connection" ? "ارتباط iLO" : "سلامت سخت‌افزار")</span></td>
+                                    <td><span class="badge @(a.Severity == "Critical" ? "bg-danger" : "bg-warning text-dark")">@AlertCategoryTitle(a.Category)</span></td>
                                     <td>@a.Message</td><td class="small text-muted">@DateText(a.LastSeenAt)</td>
                                     <td>@(a.Status == "Acknowledged" ? $"تأیید: {a.AcknowledgedByName}" : "باز")</td>
                                     <td class="text-end">
@@ -230,11 +232,41 @@ else
     </Footer>
 </Modal>
 
+<Modal Visible="showHardware" Title="@hardwareTitle" Size="modal-xl" OnClose="CloseHardware">
+    <ChildContent>
+        @if (hardwareLoading)
+        {
+            <div class="text-center py-5"><span class="spinner-border text-primary"></span><div class="mt-2 text-muted">در حال دریافت تاریخچهٔ سخت‌افزار…</div></div>
+        }
+        else if (hardware is null || (hardware.Components.Count == 0 && hardware.Events.Count == 0))
+        {
+            <div class="empty-state py-4"><i class="bi bi-motherboard"></i><h6>جزئیات سخت‌افزار هنوز دریافت نشده است</h6><p class="text-muted mb-0">برای ثبت قطعات و رخدادها، از دکمهٔ «بررسی Redfish» استفاده کنید یا پایش خودکار را فعال کنید.</p></div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center flex-wrap gap-2 mb-3"><span class="badge bg-light text-dark border">آخرین دریافت: @DateText(hardware.CapturedAt)</span><span class="badge bg-success">@hardware.Components.Count(x => string.Equals(x.Health, "OK", StringComparison.OrdinalIgnoreCase)).Num() سالم</span><span class="badge bg-warning text-dark">@hardware.Components.Count(x => string.Equals(x.Health, "Warning", StringComparison.OrdinalIgnoreCase)).Num() هشدار</span><span class="badge bg-danger">@hardware.Components.Count(x => string.Equals(x.Health, "Critical", StringComparison.OrdinalIgnoreCase)).Num() بحرانی</span></div>
+            <h6 class="border-bottom pb-2"><i class="bi bi-cpu"></i> آخرین وضعیت قطعات</h6>
+            <div class="table-responsive mb-4"><table class="table table-sm table-hover align-middle"><thead><tr><th>نوع</th><th>قطعه</th><th>سلامت</th><th>وضعیت / مقدار</th><th>مدل / سریال</th></tr></thead><tbody>@foreach (var c in hardware.Components) { <tr><td>@ComponentTypeTitle(c.ComponentType)</td><td class="fw-700">@c.Name</td><td><span class="badge @HealthClass(c.Health)">@HealthTitle(c.Health)</span></td><td>@(c.Reading ?? c.State ?? "—")</td><td class="small text-muted">@(c.Model ?? "—") @if (!string.IsNullOrWhiteSpace(c.SerialNumber)) { <span class="num">· @c.SerialNumber</span> }</td></tr> }</tbody></table></div>
+            <h6 class="border-bottom pb-2"><i class="bi bi-journal-text"></i> رخدادهای اخیر iLO / Redfish</h6>
+            @if (hardware.Events.Count == 0)
+            {
+                <div class="text-muted small py-2">رخدادی از Log Service قابل خواندن نیست یا هنوز ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="table-responsive"><table class="table table-sm table-hover align-middle"><thead><tr><th>زمان</th><th>شدت</th><th>پیام</th><th>مبدأ</th></tr></thead><tbody>@foreach (var e in hardware.Events) { <tr><td class="small text-muted">@DateText(e.OccurredAt ?? e.LastSeenAt)</td><td><span class="badge @HealthClass(e.Severity)">@e.Severity</span></td><td>@e.Message</td><td class="small text-muted" dir="ltr">@(e.Origin ?? "—")</td></tr> }</tbody></table></div>
+            }
+        }
+    </ChildContent>
+    <Footer><button class="btn btn-light" @onclick="CloseHardware"><i class="bi bi-x-lg"></i> بستن</button></Footer>
+</Modal>
+
 @code {
     private bool canView, canCreate, canUpdate, canDelete, canCollect, canUseCredentials, canCreateWorkOrders;
-    private bool loading = true, showForm, saving;
+    private bool loading = true, showForm, saving, showHardware, hardwareLoading;
     private int companyId, actingId;
-    private string search = "";
+    private string search = "", hardwareTitle = "جزئیات سخت‌افزار";
+    private HardwareDetails? hardware;
     private List<CompanyRow> companies = new();
     private List<ServerRow> rows = new();
     private List<ServerAlertRow> alerts = new();
@@ -372,6 +404,23 @@ else
         finally { actingId = 0; }
     }
 
+    private async Task OpenHardware(ServerRow server)
+    {
+        hardwareTitle = $"جزئیات سخت‌افزار — {server.Name}";
+        hardware = null;
+        hardwareLoading = true;
+        showHardware = true;
+        try { hardware = await Api.GetAsync<HardwareDetails>($"api/servers/{server.Id}/hardware"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { hardwareLoading = false; }
+    }
+
+    private void CloseHardware()
+    {
+        showHardware = false;
+        hardware = null;
+    }
+
     private async Task CreateWorkOrder(ServerAlertRow alert)
     {
         if (!await JS.InvokeAsync<bool>("confirm", "برای این هشدار یک دستور کار به مسئول سرور ایجاد شود؟ ایجاد خودکار انجام نمی‌شود.")) return;
@@ -424,6 +473,8 @@ else
     private static bool IsProblem(string? status) => string.Equals(status, "Warning", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "Critical", StringComparison.OrdinalIgnoreCase);
     private static string HealthClass(string? status) => IsHealthy(status) ? "bg-success" : IsProblem(status) ? "bg-danger" : string.Equals(status, "Unknown", StringComparison.OrdinalIgnoreCase) || status is null ? "bg-secondary" : "bg-warning text-dark";
     private static string HealthTitle(string? status) => status?.ToUpperInvariant() switch { "OK" => "سالم", "WARNING" => "هشدار", "CRITICAL" => "بحرانی", _ => "بررسی نشده" };
+    private static string ComponentTypeTitle(string? value) => value switch { "PowerSupply" => "پاور", "Fan" => "فن", "Temperature" => "دما", "Memory" => "حافظه", "Processor" => "پردازنده", "Storage" => "کنترلر ذخیره‌سازی", "Disk" => "دیسک", "Chassis" => "شاسی", _ => value ?? "قطعه" };
+    private static string AlertCategoryTitle(string? value) => value switch { "Connection" => "ارتباط iLO", "HardwareEvent" => "رخداد iLO", _ => "سلامت سخت‌افزار" };
     private static string CriticalityTitle(string? value) => value switch { "Low" => "کم", "High" => "زیاد", "Critical" => "بحرانی", _ => "عادی" };
     private static string StatusTitle(string? value) => value switch { "Maintenance" => "تعمیرات", "Standby" => "رزرو", "Retired" => "بازنشسته", _ => "فعال" };
     private static string RackTitle(ServerRow s) => string.IsNullOrWhiteSpace(s.Rack) ? "بدون رک" : $"{s.Rack}{(s.RackUnit is > 0 ? $" / U{s.RackUnit}" : "")}";
@@ -445,6 +496,9 @@ else
     }
     private sealed class ServerAlertRow { public long Id { get; set; } public int ManagedServerId { get; set; } public string ServerName { get; set; } = ""; public string Category { get; set; } = ""; public string Severity { get; set; } = ""; public string Message { get; set; } = ""; public string Status { get; set; } = ""; public int? WorkOrderId { get; set; } public DateTime LastSeenAt { get; set; } public string? AcknowledgedByName { get; set; } }
     private sealed class WorkOrderCreated { public int Id { get; set; } public string? Number { get; set; } public bool Existing { get; set; } }
+    private sealed class HardwareDetails { public DateTime? CapturedAt { get; set; } public List<HardwareComponentRow> Components { get; set; } = new(); public List<HardwareEventRow> Events { get; set; } = new(); }
+    private sealed class HardwareComponentRow { public string ComponentType { get; set; } = ""; public string Name { get; set; } = ""; public string Health { get; set; } = "Unknown"; public string? State { get; set; } public string? Reading { get; set; } public string? Model { get; set; } public string? SerialNumber { get; set; } }
+    private sealed class HardwareEventRow { public string Severity { get; set; } = "Unknown"; public string Message { get; set; } = ""; public string? Origin { get; set; } public DateTime? OccurredAt { get; set; } public DateTime LastSeenAt { get; set; } }
     private sealed class ServerForm
     {
         public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; } = "HPE";

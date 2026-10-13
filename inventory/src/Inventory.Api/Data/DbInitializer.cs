@@ -122,6 +122,7 @@ public static class DbInitializer
                 await ServerManagementSchemaV1.EnsureAsync(db);
                 await ServerMonitoringSchemaV2.EnsureAsync(db);
                 await ServerAlertWorkflowSchemaV3.EnsureAsync(db);
+                await ServerHardwareDetailsSchemaV4.EnsureAsync(db);
                 await IpamSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
