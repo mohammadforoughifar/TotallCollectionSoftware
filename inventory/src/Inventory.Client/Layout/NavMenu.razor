@@ -581,6 +581,18 @@
                         }
                     </NavLink>
                 }
+                @if (Auth.CanSee("ItVault"))
+                {
+                    <NavLink class="nav-link" href="it-vault" @onclick="NotifyClose">
+                        <i class="bi bi-shield-lock-fill"></i><span>گاوصندوق رمزها</span>
+                    </NavLink>
+                }
+                @if (Auth.CanSee("Ipam"))
+                {
+                    <NavLink class="nav-link" href="ip-management" @onclick="NotifyClose">
+                        <i class="bi bi-diagram-2-fill"></i><span>مدیریت آی‌پی</span>
+                    </NavLink>
+                }
                 @if (Auth.CanSee("CctvCameras"))
                 {
                     <NavLink class="nav-link" href="cctv-cameras" @onclick="NotifyClose">
@@ -776,7 +788,7 @@
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
     private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
-    private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
+    private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Ipam");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «عملیات» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",

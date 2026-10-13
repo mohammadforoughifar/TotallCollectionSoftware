@@ -116,6 +116,9 @@ public static class DbInitializer
                 await AppSettingsSchemaV1.EnsureAsync(db);
                 await CompanyAccessSchemaV1.EnsureAsync(db);
                 await AiSchemaV1.EnsureAsync(db);
+                // گاوصندوق رمزهای تجهیزات (سرور، سوییچ، میکروتیک، فایروال، سامانه‌ها) — به تفکیک شرکت
+                await ItVaultSchemaV1.EnsureAsync(db);
+                await IpamSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.

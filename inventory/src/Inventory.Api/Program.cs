@@ -162,6 +162,11 @@ builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsExecutor, Inve
 builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsAccessService, Inventory.Api.Services.ReportStudio.RsAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsRowSecurity, Inventory.Api.Services.ReportStudio.RsRowSecurity>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+// گاوصندوق رمزهای تجهیزات — رمزنگاری AES-256-GCM با کلید اصلی خارج از دیتابیس
+builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.CredentialVaultCrypto>();
+// مدیریت آی‌پی — اسکنر رنج‌ها (Singleton) + اسکن خودکار زمان‌بندی‌شده (HostedService)
+builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.IpamScanner>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.ItAssets.IpamScanner>());
 builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<HrTimeService>(); // ماژول زمان‌بندی
 builder.Services.AddScoped<HrPayService>(); // ماژول حقوق

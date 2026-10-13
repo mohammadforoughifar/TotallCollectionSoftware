@@ -20,6 +20,8 @@ public class AuditLogFilter : IAsyncActionFilter
         "password", "oldpassword", "newpassword", "confirmpassword",
         "passwordhash", "token", "secret", "balechatchid", "eitaachatchid",
         "code", "otp", "destination", "email", "mobile", "newemail", "newmobile",
+        // گاوصندوق رمزهای تجهیزات
+        "extrasecret",
     };
 
     /// <summary>کنترلرهایی که خودشان ثبت نمی‌شوند (خودِ صفحه‌ی لاگ)</summary>

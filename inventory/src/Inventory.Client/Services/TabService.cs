@@ -112,6 +112,8 @@ public sealed class TabService
         ("office-machines",             "ماشین‌های اداری",      "bi-printer-fill"),
         ("cctv-cameras",                "دوربین‌ها",            "bi-camera-video-fill"),
         ("cctv-nvrs",                   "دستگاه‌های NVR",       "bi-hdd-stack-fill"),
+        ("it-vault",                    "گاوصندوق رمزها",       "bi-shield-lock-fill"),
+        ("ip-management",               "مدیریت آی‌پی",         "bi-diagram-2-fill"),
         ("it-requests",                 "درخواست خدمت IT",      "bi-headset"),
         ("warehouses",                  "انبارها",              "bi-buildings"),
         ("categories",                  "گروه‌های کالا",        "bi-tags"),

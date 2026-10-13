@@ -102,6 +102,12 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CctvCamera> CctvCameras => Set<CctvCamera>();
     public DbSet<CctvNvr> CctvNvrs => Set<CctvNvr>();
+    // گاوصندوق رمزهای تجهیزات (مدیریت سخت‌افزار) — جدول‌ها با ItVaultSchemaV1.EnsureAsync ساخته می‌شوند
+    public DbSet<ItCredential> ItCredentials => Set<ItCredential>();
+    public DbSet<ItCredentialLog> ItCredentialLogs => Set<ItCredentialLog>();
+    // مدیریت آی‌پی (IPAM) — جدول‌ها با IpamSchemaV1.EnsureAsync ساخته می‌شوند
+    public DbSet<IpSubnet> IpSubnets => Set<IpSubnet>();
+    public DbSet<IpAddressEntry> IpAddressEntries => Set<IpAddressEntry>();
     public DbSet<OfficeMachine> OfficeMachines => Set<OfficeMachine>();
     public DbSet<OfficeMachineRepair> OfficeMachineRepairs => Set<OfficeMachineRepair>();
 
@@ -423,6 +429,8 @@ public class AppDbContext : DbContext
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
         AiSchemaV1.Configure(mb);
+        ItVaultSchemaV1.Configure(mb);
+        IpamSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
         mb.Entity<UserContactOtpChallenge>().HasIndex(c => new { c.UserId, c.Purpose }).IsUnique();

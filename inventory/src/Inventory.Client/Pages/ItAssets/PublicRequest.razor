@@ -213,7 +213,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try { serverUrl = await JS.InvokeAsync<string?>("localStorage.getItem", "apiBaseUrl") ?? ""; } catch { }
+        try { serverUrl = await JS.InvokeAsync<string?>("localStorage.getItem", "itCentralServerUrl") ?? ""; } catch { }
         if (string.IsNullOrWhiteSpace(serverUrl)) showConfig = false;
     }
 
@@ -222,9 +222,9 @@
         try
         {
             if (string.IsNullOrWhiteSpace(serverUrl))
-                await JS.InvokeVoidAsync("localStorage.removeItem", "apiBaseUrl");
+                await JS.InvokeVoidAsync("localStorage.removeItem", "itCentralServerUrl");
             else
-                await JS.InvokeVoidAsync("localStorage.setItem", "apiBaseUrl", serverUrl.TrimEnd('/'));
+                await JS.InvokeVoidAsync("localStorage.setItem", "itCentralServerUrl", serverUrl.TrimEnd('/'));
             testResult = "آدرس سرور ذخیره شد ✅"; testOk = true;
         }
         catch { testResult = "خطا در ذخیره"; testOk = false; }

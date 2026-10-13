@@ -21,6 +21,10 @@ public static class RbacSeeder
         ["Repairs"] = CrudActions,
         ["CctvCameras"] = CrudActions,
         ["CctvNvrs"] = CrudActions,
+        // گاوصندوق رمزهای تجهیزات — Reveal: نمایش/کپی رمز (با تأیید دوبارهٔ رمز ورود) | ViewLog: لاگ دسترسی‌ها
+        ["ItVault"] = new[] { "View", "Create", "Update", "Delete", "Reveal", "ViewLog" },
+        // مدیریت آی‌پی (IPAM) — Scan: اسکن رنج و پینگ آی‌پی | Update: ویرایش رنج و رزرو آی‌پی
+        ["Ipam"] = new[] { "View", "Create", "Update", "Delete", "Scan" },
         ["Parties"] = CrudActions,
         ["Expenses"] = CrudActions,
         ["Reports"] = CrudActions,

@@ -537,7 +537,7 @@
         }
         catch (Exception ex)
         {
-            formError = "ارتباط با API برقرار نشد. مطمئن شوید API روی http://localhost:5100 در حال اجراست. (" + ex.Message + ")";
+            formError = "ارتباط با API برقرار نشد. مطمئن شوید سرور (start.bat) در حال اجراست. (" + ex.Message + ")";
         }
         finally { busy = false; }
     }
