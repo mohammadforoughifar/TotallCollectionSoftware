@@ -218,10 +218,35 @@
             } catch (e) { console.error(e); }
         };
 
+        // ================== آدرس سرور API (مهم برای ورود موفق) ==================
+        // آدرس پیش‌فرض این استقرار: اگر هیچ نشانهٔ دیگری نبود، از همین استفاده می‌شود.
+        window.DEFAULT_API_BASE = 'http://192.168.30.104:8181';
+        // مسیر بررسی سلامت سرور — برای آزمایش واقعی «آیا API در دسترس است؟»
+        window.API_HEALTH_PATH = '/api/health';
+
+        // آیا نشانیِ ذخیره‌شده در مرورگر قابل اعتماد است؟
+        // ⚠️ ریشهٔ خطای «پس از زدن رمز، ارتباط با سرور برقرار نشد»:
+        // اگر روی خود سرور یک‌بار برنامه باز شده باشد، مقدار «http://localhost:5100» در localStorage
+        // ذخیره می‌شد و بعداً روی کامپیوتر کاربران همان نشانی محلی استفاده می‌شد؛ یعنی درخواست‌ها به
+        // کامپیوتر خودِ کاربر می‌رفت، نه به سرور. اینجا نشانی محلی روی دستگاه غیرمحلی نامعتبر اعلام می‌شود.
+        window.apiBaseIsSane = function (url) {
+            if (!url) return false;
+            try {
+                var u = new URL(url, window.location.href);
+                if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+                var pageHost = window.location.hostname;
+                var pageIsLocal = (pageHost === 'localhost' || pageHost === '127.0.0.1');
+                var urlIsLocal = (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+                if (urlIsLocal && !pageIsLocal) return false;
+                return true;
+            } catch (e) { return false; }
+        };
+
         window.inventoryApiBase = function (fallback) {
+            var dflt = window.DEFAULT_API_BASE || fallback || 'http://localhost:5100';
             try {
                 var stored = localStorage.getItem('apiBaseUrl');
-                if (stored) return stored;
+                if (window.apiBaseIsSane(stored)) return stored;
             } catch (e) { }
             try {
                 var h = window.location.host;
@@ -235,18 +260,60 @@
                 try { basePath = new URL(document.baseURI).pathname.replace(/\/+$/, ''); } catch (e) { }
                 var sameOrigin = window.location.origin + basePath;
                 var port = window.location.port;
-                if (h.indexOf('localhost') === 0 || h.indexOf('127.0.0.1') === 0) {
+                var host = window.location.hostname;
+                if (host === 'localhost' || host === '127.0.0.1') {
                     // روی خود سرور: انتشار تک‌سروره (IIS روی 80/443 یا پورت 5100/8181) هم‌مبدأ است؛
                     // فقط dev server کلاینت (پورت دیگر) باید به API روی 5100 برود.
                     if (port === '' || port === '5100' || port === '8181') return sameOrigin;
-                    return fallback || 'http://localhost:5100';
+                    return dflt;
                 }
-                // هر میزبان دیگر (آی‌پی یا دامنه، با پورت یا بدون پورت — مثل IIS روی 80/443):
+                // هر میزبان دیگر (آی‌پی یا دامنه، با پورت یا بدون پورت — مثل IIS روی 80/443 یا سرور روی 8181):
                 // UI و API هم‌مبدأ هستند. قبلاً حالت «بدون پورت» به http://localhost:5100 مرورگر کاربر می‌رفت
-                // و روی IIS با binding پیش‌فرض هیچ درخواستی (از جمله ارسال مدارک) به سرور نمی‌رسید.
+                // و روی IIS با binding پیش‌فرض هیچ درخواستی (از جمله ورود) به سرور نمی‌رسید.
                 return sameOrigin;
             } catch (e) { }
-            return fallback || 'http://localhost:5100';
+            return dflt;
+        };
+
+        // آزمایش واقعی در دسترس بودن یک آدرس API (اگر سرور پاسخ ندهد، false برمی‌گردد)
+        window.apiBaseIsReachable = async function (base) {
+            try {
+                var url = String(base).replace(/\/+$/, '') + (window.API_HEALTH_PATH || '/api/health');
+                var ctrl = ('AbortController' in window) ? new AbortController() : null;
+                var timer = setTimeout(function () { try { ctrl && ctrl.abort(); } catch (e) { } }, 3000);
+                var res = await fetch(url, { method: 'GET', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
+                clearTimeout(timer);
+                if (!res || !res.ok) return false;
+                var ct = res.headers.get('content-type') || '';
+                return ct.indexOf('application/json') !== -1;
+            } catch (e) { return false; }
+        };
+
+        // انتخاب آدرس API با «آزمایش موازی» همهٔ گزینه‌ها:
+        //   ۱) تشخیص خودکار (هم‌مبدأ)   ۲) نشانی ذخیره‌شده   ۳) آدرس پیش‌فرض سرور
+        // اگر گزینهٔ اول جواب نداد، خودکار گزینهٔ بعدی انتخاب می‌شود و در مرورگر ذخیره می‌گردد.
+        window.inventoryResolveApiBase = async function (fallback) {
+            var candidates = [];
+            function push(u) {
+                if (!u) return;
+                u = String(u).trim().replace(/\/+$/, '');
+                if (u && candidates.indexOf(u) === -1) candidates.push(u);
+            }
+            push(window.inventoryApiBase(fallback));
+            try { push(localStorage.getItem('apiBaseUrl')); } catch (e) { }
+            push(window.DEFAULT_API_BASE);
+            push(fallback);
+            push('http://localhost:5100');
+
+            var results = await Promise.all(candidates.map(function (c) { return window.apiBaseIsReachable(c); }));
+            for (var i = 0; i < candidates.length; i++) {
+                if (results[i]) {
+                    try { localStorage.setItem('apiBaseUrl', candidates[i]); } catch (e) { }
+                    return candidates[i];
+                }
+            }
+            // هیچ‌کدام پاسخ ندادند: حدس اول را نگه می‌داریم (پیام خطای دقیق‌تر به کاربر نشان داده می‌شود)
+            return candidates[0] || window.DEFAULT_API_BASE || fallback || '';
         };
 
         // تشخیص صفحه کوچک‌تر از ~۱۲ اینچ (حالت موبایل/اندروید)

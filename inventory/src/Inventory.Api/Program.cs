@@ -53,14 +53,61 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration);
 foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {message}");
+// ================== تعیین آدرس/پورت HTTP از تنظیمات اجرا ==================
+// آدرس از ASPNETCORE_URLS (مثل http://192.168.30.104:8181) یا سوئیچ --urls خوانده می‌شود.
+// ⚠️ قبلاً پورتِ ثابت 5100 به Kestrel داده می‌شد (فقط متغیر PORT تأثیر داشت) و مقدار
+// ASPNETCORE_URLS=http://192.168.30.104:8181 که start.bat/run-server.bat ست می‌کنند نادیده می‌ماند؛
+// نتیجه: مرورگر روی آدرس/پورت معرفی‌شده هیچ سرویسی پیدا نمی‌کرد و صفحهٔ ورود «ارتباط با سرور برقرار نشد» می‌داد.
+static (string Bind, int Port, string Display) ResolveHttpEndpoint()
+{
+    string? urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS")
+                ?? Environment.GetEnvironmentVariable("DOTNET_URLS");
+    var commandLine = Environment.GetCommandLineArgs();
+    for (var i = 0; i < commandLine.Length; i++)
+    {
+        if (commandLine[i].StartsWith("--urls=", StringComparison.OrdinalIgnoreCase))
+            urls = commandLine[i]["--urls=".Length..];
+        else if (string.Equals(commandLine[i], "--urls", StringComparison.OrdinalIgnoreCase) && i + 1 < commandLine.Length)
+            urls = commandLine[i + 1];
+    }
+
+    if (!string.IsNullOrWhiteSpace(urls))
+    {
+        foreach (var raw in urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) continue;
+            if (!uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)) continue;
+            var host = uri.Host.Trim('[', ']');
+            if (host is "" or "*" or "+" or "0.0.0.0" or "any")
+                return ("0.0.0.0", uri.Port, $"http://0.0.0.0:{uri.Port}");
+            if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                return ("127.0.0.1", uri.Port, $"http://localhost:{uri.Port}");
+            if (System.Net.IPAddress.TryParse(host, out var ip))
+                // بایندینگ روی همهٔ کارت‌های شبکه انجام می‌شود (اگر کارتی با آن آی‌پی بالا نیامده باشد،
+                // بایندینگ دقیق به همان آی‌پی باعث خطای راه‌اندازی سرور می‌شود)؛ آدرس نمایشی = همان آدرس تنظیم‌شده.
+                return ("0.0.0.0", uri.Port, ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                    ? $"http://[{ip}]:{uri.Port}" : $"http://{ip}:{uri.Port}");
+            // نام میزبان (مثل نام سرور در شبکه): روی همهٔ کارت‌های شبکه گوش می‌دهد تا با نام و آی‌پی هر دو در دسترس باشیم
+            return ("0.0.0.0", uri.Port, $"http://0.0.0.0:{uri.Port}");
+        }
+    }
+
+    var portEnv = Environment.GetEnvironmentVariable("PORT");
+    var fallbackPort = int.TryParse(portEnv, out var parsedPort) && parsedPort is > 0 and < 65536 ? parsedPort : 5100;
+    return ("0.0.0.0", fallbackPort, $"http://0.0.0.0:{fallbackPort}");
+}
+
+var httpEndpoint = ResolveHttpEndpoint();
+Console.WriteLine($"[HTTP] آدرس سرویس‌دهی: {httpEndpoint.Display}");
+
 if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
-    var httpPortForKestrel = Environment.GetEnvironmentVariable("PORT") ?? "5100";
     builder.WebHost.ConfigureKestrel(options =>
     {
         // بدون محدودیت حجم بدنهٔ درخواست — آپلود/پیوست فایل با هر حجمی مجاز است
         options.Limits.MaxRequestBodySize = null;
-        options.ListenAnyIP(int.Parse(httpPortForKestrel));                       // همان HTTP فعلی (دست‌نخورده)
+        // HTTP روی همان پورتی که ASPNETCORE_URLS تعیین کرده است (پیش‌فرض قبلی: 5100)
+        options.ListenAnyIP(httpEndpoint.Port);
         // HTTPS: پورت اصلی (پیش‌فرض 5443) + پورت‌های اضافه (Https:ExtraPorts، مثلاً 443).
         // گواهی بر اساس نام درخواستی انتخاب می‌شود: دامنهٔ واقعی ← گواهی عمومی (Let's Encrypt)، آی‌پی/نام داخلی ← گواهی داخلی.
         foreach (var httpsPort in httpsCerts.AllPorts)
@@ -625,6 +672,22 @@ app.Use(async (ctx, next) =>
 app.MapControllers();
 app.MapGet("/radis-hr", () => Results.Redirect("/bon-hr"));
 
+// ---- بررسی سلامت سرور (عمومی/بدون احراز هویت) ----
+// کاربرد: تست سریع «آیا مرورگر به API وصل می‌شود؟» — http://192.168.30.104:8181/api/health
+// کلاینت Blazor هم در زمان بالا آمدن همین مسیر را آزمایش می‌کند و آدرس درست API را انتخاب می‌کند
+// (اگر آدرس اشتباهی ذخیره شده باشد، خودکار به آدرس درست برمی‌گردد).
+app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
+{
+    ok = true,
+    app = "TotallCollectionSoftware",
+    server = $"{ctx.Request.Scheme}://{ctx.Request.Host}",
+    environment = app.Environment.EnvironmentName,
+    database = provider,
+    httpAddress = httpEndpoint.Display,
+    httpsPorts = httpsCerts.AllPorts.ToArray(),
+    serverTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+})).AllowAnonymous();
+
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
@@ -733,7 +796,6 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     app.MapFallback("{*path:nonfile}", ctx => ServeSpaIndexAsync(ctx, clientRoot)).AllowAnonymous();
 }
 
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5100";
 if (runningUnderIis)
 {
     // آدرس را IIS می‌دهد؛ هیچ URL/پورتی اینجا تحمیل نشود
@@ -741,13 +803,13 @@ if (runningUnderIis)
 }
 else if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
-    Console.WriteLine($"[HTTPS] سامانه روی http://0.0.0.0:{port} و {string.Join(" و ", httpsCerts.AllPorts.Select(p => $"https://0.0.0.0:{p}"))} در دسترس است.");
-    Console.WriteLine($"[HTTPS] راهنمای نصب گواهی روی گوشی:  http://<آی‌پی-سرور>:{port}/https-setup");
+    Console.WriteLine($"[HTTPS] سامانه روی {httpEndpoint.Display} و {string.Join(" و ", httpsCerts.AllPorts.Select(p => $"https://0.0.0.0:{p}"))} در دسترس است.");
+    Console.WriteLine($"[HTTPS] راهنمای نصب گواهی روی گوشی:  {httpEndpoint.Display}/https-setup");
     app.Run(); // بایندینگ‌ها در ConfigureKestrel تعیین شده‌اند (HTTP + HTTPS)
 }
 else
 {
-    app.Run($"http://0.0.0.0:{port}");
+    app.Run(httpEndpoint.Display);
 }
 
 // پوشاندن رمز عبور در لاگ رشته اتصال

@@ -126,7 +126,19 @@ var host = builder.Build();
 // تعیین آدرس API در زمان اجرا (پشتیبانی از پیش‌نمایش ابری و localhost)
 var js = host.Services.GetRequiredService<Microsoft.JSInterop.IJSRuntime>();
 var options = host.Services.GetRequiredService<ApiOptions>();
-options.BaseUrl = await js.InvokeAsync<string>("inventoryApiBase", new object[] { "http://localhost:5100" });
+// ابتدا گزینه‌های ممکنِ آدرس API با یک درخواست واقعی آزمایش می‌شوند (هم‌مبدأ ← آدرس ذخیره‌شده ← آدرس پیش‌فرض سرور)
+// تا اگر مرورگر به آدرس اول دسترسی نداشت، خودکار سراغ آدرس درست برود و صفحهٔ ورود «ارتباط برقرار نشد» ندهد.
+try
+{
+    options.BaseUrl = await js.InvokeAsync<string>("inventoryResolveApiBase",
+        new object[] { "http://192.168.30.104:8181" });
+}
+catch
+{
+    options.BaseUrl = await js.InvokeAsync<string>("inventoryApiBase",
+        new object[] { "http://192.168.30.104:8181" });
+}
+if (string.IsNullOrWhiteSpace(options.BaseUrl) || options.BaseUrl.StartsWith("__")) options.BaseUrl = "http://192.168.30.104:8181";
 
 // بازیابی نشست ورود از localStorage
 await host.Services.GetRequiredService<IAuthState>().InitializeAsync();

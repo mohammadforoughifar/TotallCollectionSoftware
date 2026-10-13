@@ -12,6 +12,7 @@ packages/
 # استثنای بستهٔ مودیان: برای بیلد بدون فید داخلی باید در مخزن باشد
 !inventory/packages/
 !inventory/packages/TaxCollectData.Library.0.0.34.nupkg
+!inventory/packages/TaxCollectData.Library.0.0.27.nupkg
 
 # IDE
 .vs/
