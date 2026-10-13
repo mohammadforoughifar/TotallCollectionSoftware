@@ -59,6 +59,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var crypto = scope.ServiceProvider.GetRequiredService<CredentialVaultCrypto>();
         var redfish = scope.ServiceProvider.GetRequiredService<HpeRedfishClient>();
+        var alertNotifications = scope.ServiceProvider.GetRequiredService<ServerAlertNotificationService>();
         var now = DateTime.Now;
 
         // فقط metadata سرورهای فعال خوانده می‌شود؛ سپس موعد هر سرور مستقل از فاصلهٔ خودش محاسبه می‌گردد.
@@ -81,6 +82,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
             {
                 await CollectOneAsync(db, crypto, redfish, server, now, ct);
                 await db.SaveChangesAsync(ct);
+                await NotifySafelyAsync(alertNotifications, server, now, ct);
                 completed++;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -95,9 +97,20 @@ public sealed class ServerMonitoringWorker : BackgroundService
                 db.ServerOperationLogs.Add(Log(server, "AutoCollect", "Failed", server.LastConnectionError));
                 await ServerAlertRules.RaiseAsync(db, server, "Connection", "Critical", server.LastConnectionError, now, ct);
                 await db.SaveChangesAsync(ct);
+                await NotifySafelyAsync(alertNotifications, server, now, ct);
             }
         }
         return completed;
+    }
+
+    private async Task NotifySafelyAsync(ServerAlertNotificationService notifications, ManagedServer server, DateTime now, CancellationToken ct)
+    {
+        try { await notifications.NotifyDueAsync(server, now, ct); }
+        catch (Exception ex)
+        {
+            // اعلان کانال جانبی است؛ نباید باعث تولید هشدار اتصالِ کاذب یا توقف پایش شود.
+            _log.LogWarning(ex, "ارزیابی/ارسال اعلان هشدار سرور {ServerId} ناموفق بود.", server.Id);
+        }
     }
 
     private static int NormalizeInterval(int minutes) => Math.Clamp(minutes, 5, 1440);
@@ -209,9 +222,21 @@ public static class ServerAlertRules
             return;
         }
 
+        var escalated = !string.Equals(alert.Severity, "Critical", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(severity, "Critical", StringComparison.OrdinalIgnoreCase);
         alert.Severity = severity;
         alert.Message = Limit(message, 1000) ?? "";
         alert.LastSeenAt = now;
+        // تأیید هشدار Warning نباید باعث بی‌صدا شدن رخداد Critical بعدی شود.
+        if (escalated)
+        {
+            alert.Status = "Open";
+            alert.AcknowledgedAt = null;
+            alert.AcknowledgedByUserId = null;
+            alert.AcknowledgedByName = null;
+            alert.LastNotifiedAt = null;
+            alert.NotificationCount = 0;
+        }
     }
 
     public static async Task ResolveAsync(AppDbContext db, int serverId, string category, DateTime now, CancellationToken ct = default)

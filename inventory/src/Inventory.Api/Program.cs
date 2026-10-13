@@ -168,6 +168,7 @@ builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.CredentialVaultCry
 builder.Services.AddHttpClient("HpeRedfish", client => client.Timeout = TimeSpan.FromSeconds(20))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<Inventory.Api.Services.ItAssets.HpeRedfishClient>();
+builder.Services.AddScoped<Inventory.Api.Services.ItAssets.ServerAlertNotificationService>();
 // پایش خودکار iLO/Redfish — فقط برای سرورهایی که MonitoringEnabled دارند.
 builder.Services.AddHostedService<Inventory.Api.Services.ItAssets.ServerMonitoringWorker>();
 // مدیریت آی‌پی — اسکنر رنج‌ها (Singleton) + اسکن خودکار زمان‌بندی‌شده (HostedService)

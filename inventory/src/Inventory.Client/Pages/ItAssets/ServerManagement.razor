@@ -92,6 +92,7 @@ else
                                         <div class="fw-700">@s.Name</div>
                                         <div class="fs-8 text-muted">@s.Manufacturer · @CriticalityTitle(s.Criticality) · @StatusTitle(s.Status)</div>
                                         <div class="fs-8 mt-1">@if (s.MonitoringEnabled) { <span class="text-success"><i class="bi bi-broadcast"></i> پایش هر @s.MonitoringIntervalMinutes.Num() دقیقه</span> } else { <span class="text-muted">پایش خودکار خاموش</span> } @if (s.OpenAlertCount > 0) { <span class="badge bg-danger ms-1">@s.OpenAlertCount.Num() هشدار</span> }</div>
+                                        <div class="fs-8 mt-1">@if (!string.IsNullOrWhiteSpace(s.ResponsibleName)) { <span class="text-muted"><i class="bi bi-person-check"></i> @s.ResponsibleName @(s.AlertNotificationsEnabled ? "· اعلان فعال" : "· اعلان خاموش")</span> } @if (s.MaintenanceUntil.HasValue && s.MaintenanceUntil.Value > DateTime.Now) { <span class="badge bg-info text-dark ms-1"><i class="bi bi-tools"></i> تعمیرات تا @DateText(s.MaintenanceUntil)</span> }</div>
                                     </td>
                                     <td>
                                         <div>@(s.Model ?? "—")</div>
@@ -162,7 +163,9 @@ else
                                     <td>@a.Message</td><td class="small text-muted">@DateText(a.LastSeenAt)</td>
                                     <td>@(a.Status == "Acknowledged" ? $"تأیید: {a.AcknowledgedByName}" : "باز")</td>
                                     <td class="text-end">
-                                        @if (canUpdate && a.Status == "Open") { <button class="btn btn-sm btn-outline-warning" @onclick="() => Acknowledge(a)"><i class="bi bi-check2"></i> تأیید</button> }
+                                        @if (a.WorkOrderId is > 0) { <a class="btn btn-sm btn-outline-primary" href="@($"/work-orders?open={a.WorkOrderId}")"><i class="bi bi-clipboard-check"></i> دستور کار</a> }
+                                        else if (canUpdate && canCreateWorkOrders) { <button class="btn btn-sm btn-outline-primary" @onclick="() => CreateWorkOrder(a)"><i class="bi bi-clipboard-plus"></i> دستور کار</button> }
+                                        @if (canUpdate && a.Status == "Open") { <button class="btn btn-sm btn-outline-warning ms-1" @onclick="() => Acknowledge(a)"><i class="bi bi-check2"></i> تأیید</button> }
                                         @if (canUpdate) { <button class="btn btn-sm btn-outline-success ms-1" @onclick="() => Resolve(a)"><i class="bi bi-check2-all"></i> رفع</button> }
                                     </td>
                                 </tr>
@@ -217,6 +220,8 @@ else
             <div class="col-md-8"><label class="form-label">توضیحات</label><input class="form-control" @bind="form.Notes" placeholder="مالک، قرارداد پشتیبانی یا توضیحات نگهداری…" /></div>
 
             <div class="col-12"><div class="border rounded p-3 bg-light-subtle"><div class="row align-items-end g-2"><div class="col-md-7"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="serverMonitoring" @bind="form.MonitoringEnabled" /><label class="form-check-label fw-700" for="serverMonitoring">فعال‌سازی پایش خودکار Redfish</label></div><div class="form-text">فقط Health و Inventory خوانده می‌شود؛ هیچ فرمان Power یا Firmware ارسال نخواهد شد.</div></div><div class="col-md-3"><label class="form-label">فاصلهٔ پایش (دقیقه)</label><input type="number" min="5" max="1440" class="form-control num" @bind="form.MonitoringIntervalMinutes" disabled="@(!form.MonitoringEnabled)" /></div><div class="col-md-2 text-muted small">حداقل ۵ دقیقه</div></div></div></div>
+
+            <div class="col-12"><div class="border rounded p-3"><div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-person-exclamation text-primary"></i><b>مسئولیت و گردش‌کار هشدار</b></div><div class="row g-2 align-items-end"><div class="col-md-5"><label class="form-label">مسئول سرور</label><select class="form-select" @bind="form.ResponsibleUserId"><option value="">— مسئول انتخاب نشده —</option>@foreach (var u in responsibles) { <option value="@u.Id">@u.Name (@u.Username)</option> }</select><div class="form-text">فقط کاربران فعال و مجاز همین شرکت نمایش داده می‌شوند.</div></div><div class="col-md-4"><div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" role="switch" id="serverAlertNotifications" @bind="form.AlertNotificationsEnabled" disabled="@(!form.ResponsibleUserId.HasValue)" /><label class="form-check-label fw-700" for="serverAlertNotifications">ارسال اعلان هشدار به مسئول</label></div><div class="form-text">Warning یک‌بار؛ Critical با فاصلهٔ کنترل‌شده یادآوری می‌شود.</div></div><div class="col-md-3"><label class="form-label">تا پایان تعمیرات</label><input type="datetime-local" class="form-control num" @bind="form.MaintenanceUntil" @bind:format="yyyy-MM-ddTHH:mm" /></div><div class="col-md-12"><label class="form-label">توضیح تعمیرات (اختیاری)</label><input class="form-control" maxlength="500" @bind="form.MaintenanceNote" placeholder="مثلاً: تعویض دیسک RAID یا به‌روزرسانی برنامه‌ریزی‌شده" /><div class="form-text">در بازهٔ تعمیرات، پایش و ثبت هشدار ادامه دارد اما اعلان برای مسئول ارسال نمی‌شود.</div></div></div></div></div>
         </div>
     </ChildContent>
     <Footer>
@@ -226,7 +231,7 @@ else
 </Modal>
 
 @code {
-    private bool canView, canCreate, canUpdate, canDelete, canCollect, canUseCredentials;
+    private bool canView, canCreate, canUpdate, canDelete, canCollect, canUseCredentials, canCreateWorkOrders;
     private bool loading = true, showForm, saving;
     private int companyId, actingId;
     private string search = "";
@@ -234,6 +239,7 @@ else
     private List<ServerRow> rows = new();
     private List<ServerAlertRow> alerts = new();
     private List<CredentialRow> credentials = new();
+    private List<ResponsibleUserRow> responsibles = new();
     private ServerForm form = new();
 
     protected override async Task OnInitializedAsync()
@@ -243,6 +249,7 @@ else
         canUpdate = Auth.Has("Servers.Update");
         canDelete = Auth.Has("Servers.Delete");
         canCollect = Auth.Has("Servers.Collect");
+        canCreateWorkOrders = Auth.Has("WorkOrders.Create");
         canUseCredentials = Auth.Has("ItVault.View") && (canCreate || canUpdate);
         if (!canView) { loading = false; return; }
         await LoadCompanies();
@@ -255,7 +262,7 @@ else
         {
             companies = await Api.GetAsync<List<CompanyRow>>("api/servers/companies") ?? new();
             companyId = companies.FirstOrDefault()?.Id ?? 0;
-            await LoadCredentials();
+            await Task.WhenAll(LoadCredentials(), LoadResponsibles());
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -265,7 +272,7 @@ else
     private async Task OnCompanyChanged(ChangeEventArgs e)
     {
         if (!int.TryParse(e.Value?.ToString(), out companyId)) companyId = 0;
-        await LoadCredentials();
+        await Task.WhenAll(LoadCredentials(), LoadResponsibles());
         await Load();
     }
 
@@ -273,6 +280,13 @@ else
     {
         credentials = canUseCredentials && companyId > 0
             ? await Api.GetAsync<List<CredentialRow>>($"api/servers/credentials?companyId={companyId}") ?? new()
+            : new();
+    }
+
+    private async Task LoadResponsibles()
+    {
+        responsibles = (canCreate || canUpdate) && companyId > 0
+            ? await Api.GetAsync<List<ResponsibleUserRow>>($"api/servers/responsibles?companyId={companyId}") ?? new()
             : new();
     }
 
@@ -309,7 +323,8 @@ else
             CredentialId = s.CredentialId, Role = s.Role, Environment = s.Environment, Criticality = s.Criticality,
             Status = s.Status, Rack = s.Rack, RackUnit = s.RackUnit, OperatingSystem = s.OperatingSystem,
             WarrantyEndDate = s.WarrantyEndDate, Notes = s.Notes, MonitoringEnabled = s.MonitoringEnabled,
-            MonitoringIntervalMinutes = s.MonitoringIntervalMinutes
+            MonitoringIntervalMinutes = s.MonitoringIntervalMinutes, ResponsibleUserId = s.ResponsibleUserId,
+            AlertNotificationsEnabled = s.AlertNotificationsEnabled, MaintenanceUntil = s.MaintenanceUntil, MaintenanceNote = s.MaintenanceNote
         };
         showForm = true;
     }
@@ -355,6 +370,18 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { actingId = 0; }
+    }
+
+    private async Task CreateWorkOrder(ServerAlertRow alert)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "برای این هشدار یک دستور کار به مسئول سرور ایجاد شود؟ ایجاد خودکار انجام نمی‌شود.")) return;
+        try
+        {
+            var result = await Api.PostAsync<WorkOrderCreated>($"api/servers/alerts/{alert.Id}/work-order");
+            Toast.Success(result?.Existing == true ? "دستور کار قبلی این هشدار باز شد." : $"دستور کار {result?.Number ?? ""} ایجاد شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private async Task Acknowledge(ServerAlertRow alert)
@@ -404,6 +431,7 @@ else
 
     private sealed class CompanyRow { public int Id { get; set; } public string Name { get; set; } = ""; public int Count { get; set; } }
     private sealed class CredentialRow { public int Id { get; set; } public string Title { get; set; } = ""; public string? Username { get; set; } public bool HasPassword { get; set; } }
+    private sealed class ResponsibleUserRow { public int Id { get; set; } public string Name { get; set; } = ""; public string Username { get; set; } = ""; }
     private sealed class ServerRow
     {
         public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; }
@@ -412,9 +440,11 @@ else
         public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
         public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
         public bool MonitoringEnabled { get; set; } public int MonitoringIntervalMinutes { get; set; } = 15; public DateTime? LastAutomaticPollAt { get; set; } public int OpenAlertCount { get; set; }
+        public int? ResponsibleUserId { get; set; } public string? ResponsibleName { get; set; } public bool AlertNotificationsEnabled { get; set; } public DateTime? MaintenanceUntil { get; set; } public string? MaintenanceNote { get; set; }
         public DateTime? LastHealthCheckAt { get; set; } public string? LastHealthStatus { get; set; } public string? LastPowerState { get; set; }
     }
-    private sealed class ServerAlertRow { public long Id { get; set; } public int ManagedServerId { get; set; } public string ServerName { get; set; } = ""; public string Category { get; set; } = ""; public string Severity { get; set; } = ""; public string Message { get; set; } = ""; public string Status { get; set; } = ""; public DateTime LastSeenAt { get; set; } public string? AcknowledgedByName { get; set; } }
+    private sealed class ServerAlertRow { public long Id { get; set; } public int ManagedServerId { get; set; } public string ServerName { get; set; } = ""; public string Category { get; set; } = ""; public string Severity { get; set; } = ""; public string Message { get; set; } = ""; public string Status { get; set; } = ""; public int? WorkOrderId { get; set; } public DateTime LastSeenAt { get; set; } public string? AcknowledgedByName { get; set; } }
+    private sealed class WorkOrderCreated { public int Id { get; set; } public string? Number { get; set; } public bool Existing { get; set; } }
     private sealed class ServerForm
     {
         public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; } = "HPE";
@@ -422,5 +452,7 @@ else
         public int? CredentialId { get; set; } public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
         public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
         public bool MonitoringEnabled { get; set; } public int MonitoringIntervalMinutes { get; set; } = 15;
+        public int? ResponsibleUserId { get; set; } public bool AlertNotificationsEnabled { get; set; }
+        public DateTime? MaintenanceUntil { get; set; } public string? MaintenanceNote { get; set; }
     }
 }

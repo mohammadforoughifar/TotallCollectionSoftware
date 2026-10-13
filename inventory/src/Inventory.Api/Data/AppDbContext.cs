@@ -437,6 +437,7 @@ public class AppDbContext : DbContext
         ItVaultSchemaV1.Configure(mb);
         ServerManagementSchemaV1.Configure(mb);
         ServerMonitoringSchemaV2.Configure(mb);
+        ServerAlertWorkflowSchemaV3.Configure(mb);
         IpamSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();

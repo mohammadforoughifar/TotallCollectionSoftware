@@ -51,6 +51,14 @@ public sealed class ManagedServer
     public int MonitoringIntervalMinutes { get; set; } = 15;
     public DateTime? LastAutomaticPollAt { get; set; }
 
+    /// <summary>مسئول عملیاتی سرور؛ مقصد اعلان هشدارها و مبنای واگذاری امن گردش‌کارهای بعدی.</summary>
+    public int? ResponsibleUserId { get; set; }
+    /// <summary>فقط در صورت انتخاب مسئول، اعلان درون‌برنامه‌ای/Push برای هشدارها ارسال می‌شود.</summary>
+    public bool AlertNotificationsEnabled { get; set; }
+    /// <summary>تا پایان این بازه، پایش ادامه دارد اما اعلان هشدار به مسئول ارسال نمی‌شود.</summary>
+    public DateTime? MaintenanceUntil { get; set; }
+    [MaxLength(500)] public string? MaintenanceNote { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public int? CreatedByUserId { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -82,7 +90,7 @@ public sealed class ServerOperationLog
     public int ManagedServerId { get; set; }
     public int? UserId { get; set; }
     [MaxLength(200)] public string? UserName { get; set; }
-    /// <summary>Create | Update | Delete | TestConnection | CollectInventory | AutoCollect | AlertAcknowledge | AlertResolve</summary>
+    /// <summary>Create | Update | Delete | TestConnection | CollectInventory | AutoCollect | AlertAcknowledge | AlertResolve | AlertWorkOrder</summary>
     [MaxLength(40)] public string Action { get; set; } = "";
     /// <summary>Success | Failed</summary>
     [MaxLength(20)] public string Result { get; set; } = "Success";
@@ -112,5 +120,10 @@ public sealed class ServerAlert
     public DateTime? AcknowledgedAt { get; set; }
     public int? AcknowledgedByUserId { get; set; }
     [MaxLength(200)] public string? AcknowledgedByName { get; set; }
+    /// <summary>زمان آخرین اعلان به مسئول؛ هشدار Critical پس از فاصلهٔ کنترل‌شده قابل یادآوری است.</summary>
+    public DateTime? LastNotifiedAt { get; set; }
+    public int NotificationCount { get; set; }
+    /// <summary>دستور کار دستیِ ایجادشده از این هشدار؛ ایجاد خودکار عمداً انجام نمی‌شود.</summary>
+    public int? WorkOrderId { get; set; }
     public DateTime? ResolvedAt { get; set; }
 }

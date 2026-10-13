@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Security.Claims;
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.ItAssets;
@@ -26,13 +28,18 @@ public sealed class ServersController : ControllerBase
     private readonly IEffectivePermissions _perms;
     private readonly CredentialVaultCrypto _crypto;
     private readonly HpeRedfishClient _redfish;
+    private readonly ServerAlertNotificationService _alertNotifications;
+    private readonly INotifyService _notify;
 
-    public ServersController(AppDbContext db, IEffectivePermissions perms, CredentialVaultCrypto crypto, HpeRedfishClient redfish)
+    public ServersController(AppDbContext db, IEffectivePermissions perms, CredentialVaultCrypto crypto,
+        HpeRedfishClient redfish, ServerAlertNotificationService alertNotifications, INotifyService notify)
     {
         _db = db;
         _perms = perms;
         _crypto = crypto;
         _redfish = redfish;
+        _alertNotifications = alertNotifications;
+        _notify = notify;
     }
 
     private int UserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : 0;
@@ -50,6 +57,25 @@ public sealed class ServersController : ControllerBase
     {
         _permCache ??= await _perms.GetAsync(User);
         return _permCache.Contains("ItVault.View");
+    }
+
+    private async Task<bool> HasWorkOrderAsync(string action)
+    {
+        _permCache ??= await _perms.GetAsync(User);
+        return _permCache.Contains("WorkOrders." + action);
+    }
+
+    private async Task<bool> CanUserViewWorkOrdersAsync(User user)
+    {
+        var hasRbacRole = await _db.UserRoles.AnyAsync(ur => ur.UserId == user.Id
+            && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
+        if (!hasRbacRole)
+            return string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(user.Role, "Operator", StringComparison.OrdinalIgnoreCase);
+        return await _db.UserRoles.Where(ur => ur.UserId == user.Id && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .AnyAsync(p => p.Module == "WorkOrders" && p.Action == "View");
     }
 
     private async Task<List<int>> AllowedCompanyIdsAsync()
@@ -143,6 +169,27 @@ public sealed class ServersController : ControllerBase
         return Ok(rows);
     }
 
+    /// <summary>کاربران فعال و مجاز همان شرکت برای مسئولیت‌پذیری هشدار سرور.</summary>
+    [HttpGet("responsibles")]
+    public async Task<IActionResult> Responsibles([FromQuery] int companyId)
+    {
+        if (!await HasAsync("Create") && !await HasAsync("Update")) return Forbid();
+        if (!(await AllowedCompanyIdsAsync()).Contains(companyId))
+            return BadRequest(new { message = "به این شرکت دسترسی ندارید یا شرکت انتخاب نشده است." });
+
+        var users = await EligibleResponsibleUsersQuery(companyId).OrderBy(u => u.Username).ToListAsync();
+        return Ok(users.Select(u => new
+        {
+            u.Id,
+            Name = string.IsNullOrWhiteSpace((u.FirstName + " " + u.LastName).Trim()) ? u.Username : (u.FirstName + " " + u.LastName).Trim(),
+            u.Username
+        }));
+    }
+
+    private IQueryable<User> EligibleResponsibleUsersQuery(int companyId) => _db.Users.AsNoTracking().Where(u => u.IsActive &&
+        (_db.UserCompanyAccesses.Any(a => a.UserId == u.Id && a.CompanyId == companyId)
+         || _db.SystemUsers.Any(s => s.Username == u.Username && s.IsActive && s.CompanyId == companyId)));
+
     // ================================================================ CRUD
 
     [HttpGet]
@@ -169,6 +216,9 @@ public sealed class ServersController : ControllerBase
             s.IloAddress, s.IloPort, s.CredentialId, s.IloVersion, s.Role, s.Environment,
             s.Criticality, s.Status, s.Rack, s.RackUnit, s.OperatingSystem, s.WarrantyEndDate, s.Notes,
             s.MonitoringEnabled, s.MonitoringIntervalMinutes, s.LastAutomaticPollAt,
+            s.ResponsibleUserId, s.AlertNotificationsEnabled, s.MaintenanceUntil, s.MaintenanceNote,
+            ResponsibleName = _db.Users.Where(u => u.Id == s.ResponsibleUserId)
+                .Select(u => (u.FirstName ?? "") + " " + (u.LastName ?? "")).FirstOrDefault(),
             s.LastHealthCheckAt, s.LastHealthStatus, s.LastPowerState, s.LastHealthMessage,
             s.LastConnectionError, s.LastInventoryAt, s.CreatedAt, s.UpdatedAt, s.UpdatedByName,
             OpenAlertCount = _db.ServerAlerts.Count(a => a.ManagedServerId == s.Id && a.Status != "Resolved")
@@ -203,11 +253,11 @@ public sealed class ServersController : ControllerBase
         var query = from alert in _db.ServerAlerts.AsNoTracking()
                     join server in _db.ManagedServers.AsNoTracking() on alert.ManagedServerId equals server.Id
                     where server.CompanyId == companyId && (includeResolved || alert.Status != "Resolved")
-                    orderby alert.Severity == "Critical" descending, alert.LastSeenAt descending
+                    orderby (alert.Severity == "Critical" ? 0 : 1), alert.LastSeenAt descending
                     select new
                     {
                         alert.Id, alert.ManagedServerId, ServerName = server.Name, server.Model,
-                        alert.Category, alert.Severity, alert.Message, alert.Status,
+                        alert.Category, alert.Severity, alert.Message, alert.Status, alert.WorkOrderId,
                         alert.OpenedAt, alert.LastSeenAt, alert.AcknowledgedAt, alert.AcknowledgedByName, alert.ResolvedAt
                     };
         return Ok(await query.Take(take).ToListAsync());
@@ -254,6 +304,72 @@ public sealed class ServersController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>ایجاد دستی دستور کار برای هشدار؛ ایجاد خودکار عمداً وجود ندارد.</summary>
+    [HttpPost("alerts/{id:long}/work-order")]
+    public async Task<IActionResult> CreateWorkOrderFromAlert(long id)
+    {
+        if (!await HasAsync("Update") || !await HasWorkOrderAsync("Create")) return Forbid();
+        var (alert, server) = await FindAllowedAlertAsync(id);
+        if (alert is null || server is null) return NotFound(new { message = "هشدار پیدا نشد." });
+        if (alert.Status == "Resolved") return BadRequest(new { message = "برای هشدار رفع‌شده دستور کار جدید ایجاد نمی‌شود." });
+        if (alert.WorkOrderId is > 0) return Ok(new { id = alert.WorkOrderId, existing = true });
+        if (server.ResponsibleUserId is not > 0)
+            return BadRequest(new { message = "ابتدا مسئول سرور را مشخص کنید تا دستور کار به شخص مناسبی واگذار شود." });
+        if (server.ResponsibleUserId != UserId && !await HasWorkOrderAsync("AssignOthers"))
+            return BadRequest(new { message = "برای واگذاری دستور کار به مسئول سرور، مجوز واگذاری به دیگران لازم است." });
+
+        var assignee = await _db.Users.FirstOrDefaultAsync(u => u.Id == server.ResponsibleUserId && u.IsActive);
+        if (assignee is null) return BadRequest(new { message = "مسئول سرور فعال نیست؛ ابتدا مسئول را اصلاح کنید." });
+        if (!await CanUserViewWorkOrdersAsync(assignee))
+            return BadRequest(new { message = "مسئول سرور مجوز مشاهدهٔ دستورکارها را ندارد؛ مسئول یا دسترسی او را اصلاح کنید." });
+
+        var now = DateTime.Now;
+        var urgent = string.Equals(alert.Severity, "Critical", StringComparison.OrdinalIgnoreCase);
+        var category = string.Equals(alert.Category, "Connection", StringComparison.OrdinalIgnoreCase) ? "ارتباط iLO" : "سلامت سخت‌افزار";
+        var ownerName = await MyNameAsync();
+        var title = $"رسیدگی به هشدار {category}: {server.Name}";
+        var wo = new WorkOrder
+        {
+            CompanyId = server.CompanyId,
+            Title = title.Length <= 200 ? title : title[..200],
+            Description = $"هشدار سرور: {server.Name}\nنوع: {category}\nشدت: {alert.Severity}\n\n{alert.Message}",
+            OwnerUserId = UserId,
+            OwnerName = ownerName,
+            DueAt = now.AddHours(urgent ? 4 : 24),
+            Priority = urgent ? WorkOrderPriority.Urgent : WorkOrderPriority.High,
+            SourceModule = "ServerAlert",
+            SourceId = server.Id,
+            SourceRefId = alert.Id <= int.MaxValue ? (int)alert.Id : null,
+            Tags = ",سرور,هشدار,"
+        };
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        // در Transaction دوباره بررسی می‌شود تا از دستورکار تکراری در درخواست‌های همزمان جلوگیری شود.
+        var lockedAlert = await _db.ServerAlerts.FirstOrDefaultAsync(a => a.Id == alert.Id);
+        if (lockedAlert is null) return NotFound(new { message = "هشدار پیدا نشد." });
+        if (lockedAlert.WorkOrderId is > 0) return Ok(new { id = lockedAlert.WorkOrderId, existing = true });
+
+        _db.WorkOrders.Add(wo);
+        await _db.SaveChangesAsync();
+        wo.Number = $"WO/{new PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
+        _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = assignee.Id, Name = UserDisplay.Name(assignee) });
+        _db.WorkOrderLogs.Add(new WorkOrderLog
+        {
+            OrderId = wo.Id, ActorName = ownerName, Action = "Created",
+            Text = $"دستور کار از هشدار سرور «{server.Name}» ایجاد شد. هشدار #{alert.Id}"
+        });
+        lockedAlert.WorkOrderId = wo.Id;
+        await WriteLogAsync(server, "AlertWorkOrder", "Success", $"دستور کار {wo.Number} برای هشدار #{alert.Id} ایجاد شد.");
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        if (assignee.Id != UserId)
+            await _notify.SendAsync(assignee.Id, urgent ? "دستور کار فوری سرور 🔴" : "دستور کار جدید سرور 📋",
+                $"{wo.Number} — «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm}", ownerName, "دستور کار", $"/work-orders?open={wo.Id}");
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { id = wo.Id, number = wo.Number, dueAt = wo.DueAt });
+    }
+
     public sealed class SaveDto
     {
         public int CompanyId { get; set; }
@@ -276,6 +392,10 @@ public sealed class ServersController : ControllerBase
         public string? Notes { get; set; }
         public bool MonitoringEnabled { get; set; }
         public int MonitoringIntervalMinutes { get; set; } = 15;
+        public int? ResponsibleUserId { get; set; }
+        public bool AlertNotificationsEnabled { get; set; }
+        public DateTime? MaintenanceUntil { get; set; }
+        public string? MaintenanceNote { get; set; }
     }
 
     private async Task<string?> ValidateAsync(SaveDto d, int? currentId)
@@ -298,6 +418,11 @@ public sealed class ServersController : ControllerBase
                 && c.CompanyId == d.CompanyId && c.Category == "Server" && c.IsActive);
             if (!credentialOk) return "Credential انتخاب‌شده معتبر نیست یا به همین شرکت تعلق ندارد.";
         }
+        if (d.AlertNotificationsEnabled && d.ResponsibleUserId is not > 0)
+            return "برای فعال‌سازی اعلان هشدار، مسئول سرور را انتخاب کنید.";
+        if (d.ResponsibleUserId is > 0 && !await EligibleResponsibleUsersQuery(d.CompanyId).AnyAsync(u => u.Id == d.ResponsibleUserId))
+            return "مسئول انتخاب‌شده فعال نیست یا به شرکت سرور دسترسی ندارد.";
+        if (d.MaintenanceNote is { Length: > 500 }) return "توضیح تعمیرات حداکثر ۵۰۰ کاراکتر است.";
         return null;
     }
 
@@ -323,6 +448,10 @@ public sealed class ServersController : ControllerBase
         target.Notes = Clean(d.Notes, 2000);
         target.MonitoringEnabled = d.MonitoringEnabled;
         target.MonitoringIntervalMinutes = Math.Clamp(d.MonitoringIntervalMinutes, 5, 1440);
+        target.ResponsibleUserId = d.ResponsibleUserId is > 0 ? d.ResponsibleUserId : null;
+        target.AlertNotificationsEnabled = d.AlertNotificationsEnabled;
+        target.MaintenanceUntil = d.MaintenanceUntil;
+        target.MaintenanceNote = Clean(d.MaintenanceNote, 500);
     }
 
     [HttpPost]
@@ -366,6 +495,8 @@ public sealed class ServersController : ControllerBase
         server.UpdatedByName = await MyNameAsync();
         await WriteLogAsync(server, "Update", "Success", "ویرایش شناسنامه سرور");
         await _db.SaveChangesAsync();
+        // اگر مسئول/اعلان پس از ایجاد هشدار پیکربندی شده باشد، هشدار باز بدون انتظار تا poll بعدی اطلاع‌رسانی می‌شود.
+        await NotifyAlertsSafelyAsync(server);
         return Ok(new { ok = true });
     }
 
@@ -421,6 +552,12 @@ public sealed class ServersController : ControllerBase
             $"وضعیت سلامت سخت‌افزار Redfish: {snapshot.Health}", now, ct);
     }
 
+    private async Task NotifyAlertsSafelyAsync(ManagedServer server)
+    {
+        try { await _alertNotifications.NotifyDueAsync(server, DateTime.Now, HttpContext.RequestAborted); }
+        catch { /* هشدار در دیتابیس ثبت شده است؛ خرابی کانال اعلان نباید پاسخ عملیات Redfish را تغییر دهد. */ }
+    }
+
     [HttpPost("{id:int}/test")]
     public async Task<IActionResult> TestConnection(int id)
     {
@@ -433,6 +570,7 @@ public sealed class ServersController : ControllerBase
             await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", credentialError ?? "Credential iLO در دسترس نیست.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "TestConnection", "Failed", credentialError);
             await _db.SaveChangesAsync();
+            await NotifyAlertsSafelyAsync(server);
             return BadRequest(new { message = credentialError });
         }
 
@@ -446,6 +584,7 @@ public sealed class ServersController : ControllerBase
             await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", snapshot.Error ?? "اتصال iLO برقرار نشد.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "TestConnection", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
+            await NotifyAlertsSafelyAsync(server);
             return BadRequest(new { message = snapshot.Error });
         }
 
@@ -456,6 +595,7 @@ public sealed class ServersController : ControllerBase
         await ReconcileAlertsAsync(_db, server, snapshot, DateTime.Now, HttpContext.RequestAborted);
         await WriteLogAsync(server, "TestConnection", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}");
         await _db.SaveChangesAsync();
+        await NotifyAlertsSafelyAsync(server);
         return Ok(new { ok = true, snapshot });
     }
 
@@ -471,6 +611,7 @@ public sealed class ServersController : ControllerBase
             await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", credentialError ?? "Credential iLO در دسترس نیست.", DateTime.Now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "CollectInventory", "Failed", credentialError);
             await _db.SaveChangesAsync();
+            await NotifyAlertsSafelyAsync(server);
             return BadRequest(new { message = credentialError });
         }
 
@@ -485,6 +626,7 @@ public sealed class ServersController : ControllerBase
             await ServerAlertRules.RaiseAsync(_db, server, "Connection", "Critical", snapshot.Error ?? "اتصال iLO برقرار نشد.", now, HttpContext.RequestAborted);
             await WriteLogAsync(server, "CollectInventory", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
+            await NotifyAlertsSafelyAsync(server);
             return BadRequest(new { message = snapshot.Error });
         }
 
@@ -517,6 +659,7 @@ public sealed class ServersController : ControllerBase
         });
         await WriteLogAsync(server, "CollectInventory", "Success", $"Health: {snapshot.Health}; Power: {snapshot.PowerState ?? "Unknown"}");
         await _db.SaveChangesAsync();
+        await NotifyAlertsSafelyAsync(server);
         return Ok(new { ok = true, snapshot });
     }
 }

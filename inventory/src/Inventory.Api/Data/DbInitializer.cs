@@ -121,6 +121,7 @@ public static class DbInitializer
                 // شناسنامه و پایش سرورهای HPE/iLO (رمز اتصال همچنان فقط در گاوصندوق است)
                 await ServerManagementSchemaV1.EnsureAsync(db);
                 await ServerMonitoringSchemaV2.EnsureAsync(db);
+                await ServerAlertWorkflowSchemaV3.EnsureAsync(db);
                 await IpamSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
