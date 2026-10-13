@@ -1656,6 +1656,35 @@ context.Customers.Any(x =>
             return await UpdateInvoiceAsync(modeldata);
         }
 
+        /// <summary>محاسبهٔ داخلیٔ شمارهٔ صورتحساب بعدی یک شرکت (حداکثر + ۱).</summary>
+        private async Task<int> NextInvoiceNoCoreAsync(int? cpinfo)
+        {
+            int? max = await context.Invoices
+                .Where(i => i.CpInfo == cpinfo)
+                .MaxAsync(i => (int?)i.InvoiceNumber);
+            return (max ?? 0) + 1;
+        }
+
+        /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (برای نمایش در فرم ثبت).</summary>
+        public async Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId)
+        {
+            ApiModel model = new ApiModel();
+            try
+            {
+                model.Data = await NextInvoiceNoCoreAsync(cpinfoId);
+                model.Status = 200;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string messager)
+                    ? messager : "کد وضعیت نامعتبر است.";
+                model.Success = true;
+                return model;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error in NextInvoiceNumberAsync: {e.Message}");
+                return CreateErrorResponse(500);
+            }
+        }
+
         public async Task<ApiModel> GetGoodOrServiceForComboAsync(int cpinfoid)
         {
             ApiModel model = new ApiModel();
@@ -1665,7 +1694,8 @@ context.Customers.Any(x =>
                 GoodsOrServicesId = c.Id,
                 Price = c.Price,
                 UniqueIdentifier = c.UniqueIdentifier,
-                ValueAddedPercentage = c.ValueAddedPercentage
+                ValueAddedPercentage = c.ValueAddedPercentage,
+                UnitOfMeasurement = c.UnitOfMeasurement
 
             }).ToListAsync();
 
@@ -3441,12 +3471,15 @@ context.Customers.Any(x =>
 
                 try
                 {
-                    // ایجاد فاکتور
+                    // ایجاد فاکتور — اگر شماره ارسال نشده، شمارهٔ بعدیِ همان شرکت تخصیص می‌یابد
+                    int nextNumber = modeldata.NumberInvoice is > 0
+                        ? modeldata.NumberInvoice.Value
+                        : await NextInvoiceNoCoreAsync(modeldata.CPInfoId);
                     var invoice = new Invoice()
                     {
                         CustomerId = (int)modeldata.CustomerId,
                         CpInfo = modeldata.CPInfoId,
-                        InvoiceNumber = modeldata.NumberInvoice,
+                        InvoiceNumber = nextNumber,
                         FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
                         DateOrder = (DateOnly)modeldata.DateOrder,
                         TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.TypePattern == "نوع دوم" ? 2 : 3,
@@ -3477,6 +3510,15 @@ context.Customers.Any(x =>
 
                     await context.InvoiceItems.AddRangeAsync(invoiceItems);
                     await context.SaveChangesAsync();
+
+                    // پاسخ غنی‌شده: Id و شمارهٔ واقعی صورتحساب برای ناوبری کلاینت
+                    modeldata.Id = invoice.Id;
+                    modeldata.NumberInvoice = invoice.InvoiceNumber;
+                    modeldata.DateOrder = invoice.DateOrder;
+                    modeldata.Subject = invoice.Subject;
+                    modeldata.StatusSentToSystem = invoice.StatusSentToSystem;
+                    modeldata.StatusSentToSystemInt = invoice.StatusSentToSystem;
+                    modeldata.ShowButtons = true;
 
                     model.Data = modeldata;
                     model.Status = 201;

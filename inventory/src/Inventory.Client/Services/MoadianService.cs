@@ -16,6 +16,8 @@ public interface IMoadianService
     Task<ApiModel> DeleteCpInfoAsync(int id);
     Task<ApiModel> DiagnoseAsync(); // گزارش اسکیمای مودیان (جدول/ستون/ردیف)
     Task<ApiModel> DiagnoseListsAsync(int cpinfoId); // تشخیص عمیق: چرا لیست‌ها با وجود ردیف خالی‌اند
+    /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (حداکثر شمارهٔ شرکت + ۱).</summary>
+    Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId);
     Task<List<VMFiscalYear>> GetFiscalYearsAsync(int cpinfoId);
     Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear vm);
     Task<List<VMCustomerList>> GetCustomersAsync(int cpinfoId);
@@ -110,6 +112,9 @@ public class MoadianService : IMoadianService
 
     public Task<ApiModel> DiagnoseAsync()
         => _api.GetAsync<ApiModel>("Moadian/Diagnose");
+
+    public Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId)
+        => _api.GetAsync<ApiModel>($"Moadian/NextInvoiceNumber?cpinfoId={cpinfoId}");
 
     public Task<ApiModel> DiagnoseListsAsync(int cpinfoId)
         => _api.GetAsync<ApiModel>($"Moadian/DiagnoseLists?cpinfoId={cpinfoId}");

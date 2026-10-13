@@ -180,6 +180,8 @@ public class VMGoodsOrServicesList
     public decimal Price { get; set; }
     public string? UniqueIdentifier { get; set; }
     public byte ValueAddedPercentage { get; set; }
+    /// <summary>نام واحد سنجش کالا (برای ستون «واحد» در ردیف صورتحساب).</summary>
+    public string? UnitOfMeasurement { get; set; }
 }
 
 /// <summary>ردیف مشتری برای combo/لیست.</summary>

@@ -41,7 +41,7 @@ else
                 <i class="bi @icon"></i> @title
                 @if (labels is not null)
                 {
-                    <span class="badge badge-soft-primary num ms-1">@CountOf(code).Num()</span>
+                    <span class="badge badge-soft-primary num ms-1">@(CountOf(code).Num())</span>
                 }
             </button>
         }
@@ -80,7 +80,7 @@ else
     <div class="card">
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-receipt text-primary"></i> @(MoadianUi.StatusLabel(fOp == "همه" ? null : fOp) == "—" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
-            <span class="badge badge-soft-primary num ms-auto">@(data?.TotalCount ?? 0).Num() مورد</span>
+            <span class="badge badge-soft-primary num ms-auto">@((data?.TotalCount ?? 0).Num()) مورد</span>
         </div>
         @if (!string.IsNullOrEmpty(loadError))
         {
@@ -108,50 +108,41 @@ else
                     <table class="table table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>شماره</th>
-                                <th>تاریخ</th>
-                                <th>مشتری</th>
+                                <th style="width:56px">ردیف</th>
                                 <th>موضوع</th>
-                                <th>الگو</th>
-                                <th>وضعیت</th>
-                                <th class="text-center">مبلغ کل</th>
-                                <th>شمارهٔ مالیاتی</th>
-                                <th class="text-end">عملیات</th>
+                                <th style="width:90px">شماره صورتحساب</th>
+                                <th style="width:105px">تاریخ صدور</th>
+                                <th>نام مشتری</th>
+                                <th class="text-center" style="width:140px">مجموع صورتحساب</th>
+                                <th style="width:80px">نوع پرداخت</th>
+                                <th style="width:80px">الگوی صورتحساب</th>
+                                <th style="width:150px">وضعیت</th>
+                                <th class="text-end" style="width:110px">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var inv in items)
+                            @for (int ix = 0; ix < items.Count; ix++)
                             {
+                                var inv = items[ix];
                                 <tr>
-                                    <td class="num fw-semibold">@inv.NumberInvoice</td>
-                                    <td class="num">@MoadianUi.Shamsi(inv.DateOrder)</td>
-                                    <td>@inv.CustomerName</td>
+                                    <td class="num text-muted">@(((pno - 1) * PageSize + ix + 1).Num())</td>
                                     <td>
                                         <span class="badge @(inv.Subject == "اصلی" ? "badge-soft-primary" : inv.Subject == "اصلاحی" ? "badge-soft-warning" : "badge-soft-danger")">
                                             @inv.Subject
                                         </span>
                                     </td>
+                                    <td class="num fw-semibold">@((inv.NumberInvoice ?? 0).Num())</td>
+                                    <td class="num">@MoadianUi.Shamsi(inv.DateOrder)</td>
+                                    <td>@inv.CustomerName</td>
+                                    <td class="text-center num">@MoadianUi.Money(inv.TotallMoney)</td>
+                                    <td>@inv.PaymentType</td>
                                     <td class="small">@inv.TypePattern</td>
                                     <td>
                                         <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)">@inv.StatusSentToSystem</span>
                                     </td>
-                                    <td class="text-center num">@MoadianUi.Money(inv.TotallMoney)</td>
-                                    <td>
-                                        @if (!string.IsNullOrEmpty(inv.NewTaxNumber))
-                                        {
-                                            <code class="small" dir="ltr" title="کلیک برای کپی" style="cursor:pointer"
-                                                   @onclick="() => CopyText(inv.NewTaxNumber!)">@inv.NewTaxNumber</code>
-                                        }
-                                        else if (!string.IsNullOrEmpty(inv.TaxNumber))
-                                        {
-                                            <code class="small" dir="ltr" title="کلیک برای کپی" style="cursor:pointer"
-                                                   @onclick="() => CopyText(inv.TaxNumber!)">@inv.TaxNumber</code>
-                                        }
-                                        else { <span class="text-muted">—</span> }
-                                    </td>
                                     <td class="text-end">
-                                        <NavLink class="btn btn-sm btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده و عملیات">
-                                            <i class="bi bi-eye"></i>
+                                        <NavLink class="btn btn-sm btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="مشاهده، ارسال و عملیات">
+                                            <i class="bi bi-eye"></i> مشاهده
                                         </NavLink>
                                     </td>
                                 </tr>
@@ -164,7 +155,7 @@ else
                 @if ((data?.TotalPages ?? 0) > 1)
                 {
                     <div class="card-footer d-flex align-items-center gap-2">
-                        <span class="text-muted small num">صفحهٔ @pno.Num() از @(data?.TotalPages).Num()</span>
+                        <span class="text-muted small num">صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
                         <div class="ms-auto d-flex gap-1">
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
                                 <i class="bi bi-chevron-right"></i>
@@ -172,7 +163,7 @@ else
                             @for (int p = 1; p <= (data?.TotalPages ?? 1); p++)
                             {
                                 int pp = p;
-                                <button class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" @onclick="() => GoPage(pp)">@pp.Num()</button>
+                                <button class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" @onclick="() => GoPage(pp)">@(pp.Num())</button>
                             }
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
                                 <i class="bi bi-chevron-left"></i>
