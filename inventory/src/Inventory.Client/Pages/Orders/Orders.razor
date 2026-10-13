@@ -6,6 +6,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject ICompanyProfileService ProfileSvc
 
 <PageTitle>@(isPurchase ? "خرید" : "فروش")</PageTitle>
 
@@ -99,9 +100,16 @@
                                 }
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
-                                    @if (!isPurchase)
-                                    {
-                                    }
+                                    <button class="btn btn-sm btn-light" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")" @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                        @if (printingId == o.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm text-primary"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-printer text-primary"></i>
+                                        }
+                                    </button>
                                     <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
                                     <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
                                 </td>
@@ -144,9 +152,17 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
-                            @if (!isPurchase)
-                            {
-                            }
+                            <button class="btn btn-light text-primary" @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                @if (printingId == o.Id)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-printer"></i>
+                                }
+                                چاپ
+                            </button>
                             <button class="btn btn-light text-primary" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil"></i> ویرایش</button>
                             <button class="btn btn-light text-danger" @onclick="() => Delete(o)"><i class="bi bi-trash"></i></button>
                         </div>
@@ -321,6 +337,16 @@
             </div>
         }
     </ChildContent>
+    <Footer>
+        <button class="btn btn-outline-primary" @onclick="() => Print(viewing!)" disabled="@(viewing is null || printingId == viewing.Id)">
+            @if (viewing is not null && printingId == viewing.Id)
+            {
+                <span class="spinner-border spinner-border-sm ms-1"></span>
+            }
+            <i class="bi bi-printer"></i> چاپ @(viewing?.IsSale == true ? "فاکتور فروش" : "رسید خرید")
+        </button>
+        <button class="btn btn-light" @onclick="() => viewing = null"><i class="bi bi-x-lg"></i> بستن</button>
+    </Footer>
 </Modal>
 
 
@@ -389,6 +415,38 @@
     }
 
     private Order? editingOrder;
+    /// <summary>شناسهٔ سندی که همین حالا در حال آماده‌سازی چاپ است (برای نمایش اسپینر و جلوگیری از کلیک دوباره).</summary>
+    private int printingId;
+    /// <summary>تنظیمات چاپ/سربرگ شرکت — یک‌بار خوانده و نگه داشته می‌شود.</summary>
+    private CompanyProfileDto? companyProfile;
+
+    /// <summary>
+    /// چاپ سند فروش/خرید در قالب مستقل (A4 یا A5 بر اساس «تعریف شرکت»)؛
+    /// سند کامل همراه اقلام از سرور خوانده می‌شود و همان سازندهٔ چاپِ فاکتور فروش
+    /// (SaleInvoicePrint) که در تبدیل تعمیرات به فاکتور هم استفاده می‌شود، خروجی را می‌سازد.
+    /// چاپ در iframe مستقل انجام می‌شود تا استایل‌های @media printِ خود برنامه روی فاکتور اثر نگذارد.
+    /// </summary>
+    private async Task Print(Order o)
+    {
+        if (printingId != 0) return;   // از کلیک‌های پشت‌سرهم جلوگیری می‌کند
+        printingId = o.Id;
+        try
+        {
+            companyProfile ??= await ProfileSvc.GetAsync();
+            var order = await OrderSvc.GetAsync(o.Id) ?? o;   // سند کامل (اقلام/چک‌ها)
+            if (order.Lines.Count == 0)
+                Toast.Error("این سند قلمی ندارد؛ چاپ انجام نشد.");
+            else
+            {
+                var html = SaleInvoicePrint.Build(order, companyProfile);
+                var opened = await JS.InvokeAsync<bool>("giPrint", html);
+                if (!opened)
+                    Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printingId = 0; }
+    }
 
     private void OpenNew()
     {

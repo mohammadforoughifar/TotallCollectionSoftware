@@ -4,6 +4,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject ICompanyProfileService ProfileSvc
 
 <PageTitle>فاکتورها</PageTitle>
 
@@ -155,6 +156,16 @@
                                     <a class="btn btn-sm btn-light" title="مشاهده / ویرایش" href="@($"/fac/invoices/edit/{f.Id}")"><i class="bi bi-pencil text-primary"></i></a>
                                     @if (f.Status == InvoiceStatus.Confirmed && (f.Kind == InvoiceKind.Sale || f.Kind == InvoiceKind.SaleReturn))
                                     {
+                                        <button class="btn btn-sm btn-light" title="چاپ فاکتور" @onclick="() => Print(f)" disabled="@(printingId == f.Id)">
+                                            @if (printingId == f.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-primary"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-printer text-primary"></i>
+                                            }
+                                        </button>
                                     }
                                     @if (f.Status == InvoiceStatus.Draft)
                                     {
@@ -208,6 +219,17 @@
                             <a class="btn btn-light text-primary" href="@($"/fac/invoices/edit/{f.Id}")"><i class="bi bi-pencil"></i> مشاهده</a>
                             @if (f.Status == InvoiceStatus.Confirmed && (f.Kind == InvoiceKind.Sale || f.Kind == InvoiceKind.SaleReturn))
                             {
+                                <button class="btn btn-light text-primary" @onclick="() => Print(f)" disabled="@(printingId == f.Id)">
+                                    @if (printingId == f.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-printer"></i>
+                                    }
+                                    چاپ
+                                </button>
                             }
                             @if (f.Status == InvoiceStatus.Draft)
                             {
@@ -363,6 +385,38 @@
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---------- چاپ فاکتور ----------
+    /// <summary>شناسهٔ فاکتوری که همین حالا در حال آماده‌سازی چاپ است (اسپینر + جلوگیری از کلیک دوباره).</summary>
+    private int printingId;
+    private CompanyProfileDto? companyProfile;
+
+    /// <summary>
+    /// چاپ فاکتور در قالب مستقل (A4/A5 بر اساس «تعریف شرکت»).
+    /// فاکتور کامل همراه اقلام از سرور خوانده می‌شود (ردیف‌های لیست ممکن است فقط خلاصه باشند)
+    /// و سند در iframe جداگانه چاپ می‌شود؛ پس قواعد @media print پوستهٔ برنامه روی آن اثر نمی‌گذارد.
+    /// </summary>
+    private async Task Print(FacInvoice f)
+    {
+        if (printingId != 0) return;
+        printingId = f.Id;
+        try
+        {
+            companyProfile ??= await ProfileSvc.GetAsync();
+            var full = await InvoiceSvc.GetAsync(f.Id);
+            if (full is null || full.Lines.Count == 0)
+            {
+                Toast.Error("برای این فاکتور قلمی یافت نشد؛ چاپ انجام نشد.");
+                return;
+            }
+            var html = FacInvoicePrint.Build(full, companyProfile);
+            var opened = await JS.InvokeAsync<bool>("giPrint", html);
+            if (!opened)
+                Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printingId = 0; }
     }
 
     // ---------- کمکی‌های نمایش ----------

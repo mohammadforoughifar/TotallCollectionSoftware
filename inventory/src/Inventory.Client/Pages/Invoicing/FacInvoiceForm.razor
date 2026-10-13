@@ -9,6 +9,7 @@
 @inject IAuthState Auth
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject ICompanyProfileService ProfileSvc
 
 <PageTitle>@doc.KindTitle</PageTitle>
 
@@ -64,7 +65,10 @@
             {
                 <span class="btn btn-outline-success disabled"><i class="bi bi-cash"></i> نقدی تسویه شده</span>
             }
-            <button class="btn btn-outline-secondary" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
+            <button class="btn btn-outline-secondary" @onclick="Print" disabled="@printing">
+                @if (printing) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-printer"></i> چاپ
+            </button>
             <button class="btn btn-outline-warning" @onclick="Unconfirm"><i class="bi bi-arrow-counterclockwise"></i> برگشت از قطعی</button>
         }
     </div>
@@ -552,7 +556,37 @@ else
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+    /// <summary>
+    /// چاپ فاکتور در قالب مستقلِ فاکتور (نه چاپِ صفحهٔ برنامه).
+    /// قبلاً اینجا <c>window.print()</c> صدا زده می‌شد؛ یعنی سایدبار/نوار بالا/فیلدهای فرم هم چاپ
+    /// می‌شدند و به‌خاطر قواعد <c>@media print</c> پوسته، خروجی ناخوانا بود. الان سند خودبسنده
+    /// (FacInvoicePrint) در iframe جداگانه چاپ می‌شود و سربرگ/پاورقی از «تعریف شرکت» می‌آید.
+    /// </summary>
+    private async Task Print()
+    {
+        if (printing) return;
+        printing = true;
+        try
+        {
+            // آخرین نسخهٔ فاکتور از سرور (اقلام و مبالغ محاسبه‌شدهٔ سرور)
+            var full = doc.Id > 0 ? await InvoiceSvc.GetAsync(doc.Id) : doc;
+            if (full is null || full.Lines.Count == 0)
+            {
+                Toast.Error("برای این فاکتور قلمی یافت نشد؛ چاپ انجام نشد.");
+                return;
+            }
+            companyProfile ??= await ProfileSvc.GetAsync();
+            var html = FacInvoicePrint.Build(full, companyProfile);
+            var opened = await JS.InvokeAsync<bool>("giPrint", html);
+            if (!opened)
+                Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printing = false; }
+    }
+
+    private bool printing;
+    private CompanyProfileDto? companyProfile;
 
     private static string StatusBadge(InvoiceStatus s) => s switch
     {

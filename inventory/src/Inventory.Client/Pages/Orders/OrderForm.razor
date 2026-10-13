@@ -6,6 +6,9 @@
 @inject IReferrerService ReferrerSvc
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
+@inject ICompanyProfileService ProfileSvc
+@inject IJSRuntime JS
+@using Inventory.Client.Pages.Orders
 
 <Modal Visible="true" Title="@FormTitle" Size="modal-xl" OnClose="Cancel">
 
@@ -453,6 +456,10 @@
 
     <Footer>
         <button class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
+        <button class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ")
+        </button>
         <button class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : "ثبت فاکتور — خرید/فروش (F1)")
@@ -1176,7 +1183,37 @@
 
     private async Task Cancel() => await OnCancel.InvokeAsync();
 
-    private async Task Save()
+    private Task Save() => SaveInternal(printAfterSave: false);
+
+    /// <summary>ثبت/ذخیره و سپس چاپ فاکتور (دکمهٔ «ثبت و چاپ» در پایین فرم).</summary>
+    private Task SaveAndPrint() => SaveInternal(printAfterSave: true);
+
+    /// <summary>
+    /// چاپ فاکتور فروش/رسید خرید با قالب مستقل (همان SaleInvoicePrint که در چاپ فاکتورِ
+    /// تبدیل‌شدهٔ تعمیرات هم استفاده می‌شود). چاپ در iframe جدا انجام می‌شود.
+    /// </summary>
+    private async Task PrintOrderAsync(int orderId)
+    {
+        try
+        {
+            companyProfile ??= await ProfileSvc.GetAsync();
+            var order = await OrderSvc.GetAsync(orderId);
+            if (order is null || order.Lines.Count == 0)
+            {
+                Toast.Error("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
+                return;
+            }
+            var html = SaleInvoicePrint.Build(order, companyProfile);
+            var opened = await JS.InvokeAsync<bool>("giPrint", html);
+            if (!opened)
+                Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+        }
+        catch (Exception ex) { Toast.Error("چاپ انجام نشد: " + ex.Message); }
+    }
+
+    private CompanyProfileDto? companyProfile;
+
+    private async Task SaveInternal(bool printAfterSave)
     {
         if (warehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return; }
         if (partyId == 0) { Toast.Error("طرف حساب را انتخاب کنید."); return; }
@@ -1256,16 +1293,18 @@
         saving = true;
         try
         {
+            Order saved;
             if (IsEdit)
             {
-                await OrderSvc.UpdateAsync(EditOrder!.Id, cmd);
+                saved = await OrderSvc.UpdateAsync(EditOrder!.Id, cmd);
                 Toast.Success(Type == TransactionType.Sale ? "فاکتور فروش ویرایش شد." : "فاکتور خرید ویرایش شد.");
             }
             else
             {
-                await OrderSvc.CreateAsync(cmd);
+                saved = await OrderSvc.CreateAsync(cmd);
                 Toast.Success(Type == TransactionType.Sale ? "فاکتور فروش ثبت شد." : "فاکتور خرید ثبت شد.");
             }
+            if (printAfterSave) await PrintOrderAsync(saved.Id);
             await OnSaved.InvokeAsync();
         }
         catch (Exception ex)
