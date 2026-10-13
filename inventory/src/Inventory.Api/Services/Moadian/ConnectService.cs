@@ -840,7 +840,7 @@ namespace Inventory.Api.Services.Moadian
 
                 foreach (var t in tables)
                 {
-                    var row = new Row { Table = t };
+                    var row = new DiagnoseRow { Table = t };
                     await using (var cmd = conn.CreateCommand())
                     {
                         if (sqlite)

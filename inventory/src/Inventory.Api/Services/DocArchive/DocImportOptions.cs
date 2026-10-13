@@ -40,6 +40,8 @@ public static class DocImportErrorCodes
     public const string PathInvalid = "ERR_PATH_INVALID";
     public const string WriteFailed = "ERR_WRITE_FAILED";
     public const string InfoSystemFile = "INFO_SYSTEM_FILE";
+    /// <summary>فایل شماره ندارد و هنگام ورود انبوه، شمارهٔ مدرک به‌صورت خودکار تخصیص می‌یابد (اطلاعاتی، نه خطا).</summary>
+    public const string AutoCode = "INFO_AUTO_CODE";
 
     public static string MessageFa(string code) => code switch
     {
@@ -61,6 +63,7 @@ public static class DocImportErrorCodes
         PathInvalid => "مسیر فایل معتبر نیست.",
         WriteFailed => "ذخیرهٔ فایل یا ساخت سند ناموفق بود.",
         InfoSystemFile => "فایل سیستمی است و نادیده گرفته شد.",
+        AutoCode => "شمارهٔ مدرک در نام فایل نیست؛ هنگام ورود، به‌صورت خودکار شماره‌گذاری می‌شود.",
         _ => "خطای نامشخص."
     };
 }
