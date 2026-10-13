@@ -2,6 +2,11 @@
 @using Inventory.Shared.Dtos.Moadian
 @using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
 @using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
+@* ErroreMesage یک کلاس تودرتو داخل VmInvoiceItems است (MoadianVms.cs:390)، نه یک نوع
+   سطح‌بالا در namespace. به همین دلیل «@using Inventory.Shared.Dtos.Moadian» در خط بالا
+   آن را در دسترس نمی‌گذارد و خط ۴۹۰ با CS0246 شکست می‌خورد. alias لازم است — همان
+   الگویی که دو خط بالا برای InvoiceVM و InvoiceResponse (که آن‌ها هم تودرتو هستند) دارند. *@
+@using ErroreMesage = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.ErroreMesage
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject MoadianCompanyContext Ctx
