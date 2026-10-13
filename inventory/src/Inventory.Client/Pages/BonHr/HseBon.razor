@@ -95,6 +95,13 @@
                     </tbody>
                 </table>
             </div>
+            @if (_incPg.Total > 0)
+            {
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                    <span class="text-muted small">ردیف @BonFa.N(_incPg.From) تا @BonFa.N(_incPg.To) از @BonFa.N(_incPg.Total)</span>
+                    <Pager Page="@_incPg.Page" PageCount="@_incPg.Count" OnPageChanged="p => GoIncidentPage(p)" />
+                </div>
+            }
             @if (_incidents.Count == 0) { <p class="text-muted text-center py-4">حادثه‌ای ثبت نشده است.</p> }
         </div>
     }
@@ -215,6 +222,13 @@
                     </tbody>
                 </table>
             </div>
+            @if (_ppePg.Total > 0)
+            {
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                    <span class="text-muted small">ردیف @BonFa.N(_ppePg.From) تا @BonFa.N(_ppePg.To) از @BonFa.N(_ppePg.Total)</span>
+                    <Pager Page="@_ppePg.Page" PageCount="@_ppePg.Count" OnPageChanged="p => GoPpePage(p)" />
+                </div>
+            }
             @if (_deliveries.Count == 0) { <p class="text-muted text-center py-4">تحویلی ثبت نشده است.</p> }
         </div>
     }
@@ -300,6 +314,13 @@
                     </tbody>
                 </table>
             </div>
+            @if (_extPg.Total > 0)
+            {
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                    <span class="text-muted small">ردیف @BonFa.N(_extPg.From) تا @BonFa.N(_extPg.To) از @BonFa.N(_extPg.Total)</span>
+                    <Pager Page="@_extPg.Page" PageCount="@_extPg.Count" OnPageChanged="p => GoExtPage(p)" />
+                </div>
+            }
             @if (_extinguishers.Count == 0) { <p class="text-muted text-center py-4">کپسولی ثبت نشده است.</p> }
         </div>
     }
@@ -521,6 +542,22 @@
     private List<Incident> _incidents = new();
     private List<PpeDelivery> _deliveries = new();
     private List<Extinguisher> _extinguishers = new();
+
+    // هر سه فهرست بالا بی‌نهایت رشد می‌کنند (حادثه، تحویل تجهیز، کپسول) و
+    // اندپوینت‌هایشان در سرور Paging.ResultAsync دارند، پس صفحه‌بندی در SQL
+    // اعمال می‌شود. هر فهرست شمارهٔ صفحهٔ مستقل خودش را دارد.
+    private readonly BonPagerState _incPg = new();
+    private readonly BonPagerState _ppePg = new();
+    private readonly BonPagerState _extPg = new();
+
+    /// <summary>
+    /// تحویل‌های **همان پرسنلی که در فرم PPE انتخاب شده**. پیش از این، «آخرین تحویل»
+    /// و «تشخیص تعویض زودهنگام» از روی کل _deliveries جست‌وجو می‌کردند؛ حالا که آن
+    /// فهرست صفحه‌بندی شده، جست‌وجو در صفحهٔ جاری نتیجهٔ اشتباه می‌داد. این فهرست
+    /// جدا و با فیلتر code= از سرور خوانده می‌شود (برای یک نفر کوچک است) و صفحه‌بندی
+    /// فهرست اصلی را بی‌اثر می‌کند.
+    /// </summary>
+    private List<PpeDelivery> _myDeliveries = new();
     private List<HseNotification> _notifications = new();
     private List<PpeAuthorization> _authorizations = new();
     private List<Employee> _employees = new();
@@ -584,9 +621,9 @@
     private async Task ReloadAsync()
     {
         _definitions = await Api.GetAsync<HseDefinitionsDto>("api/hse/definitions") ?? new HseDefinitionsDto();
-        _incidents = await Api.ListAsync<Incident>("api/hse/incidents");
-        _deliveries = await Api.ListAsync<PpeDelivery>("api/hse/ppe");
-        _extinguishers = await Api.ListAsync<Extinguisher>("api/hse/extinguishers");
+        await LoadIncidentsAsync();
+        await LoadDeliveriesAsync();
+        await LoadExtinguishersAsync();
         _notifications = await Api.ListAsync<HseNotification>("api/hse/notifications");
         _authorizations = await Api.ListAsync<PpeAuthorization>("api/hse/ppe-authorizations");
         _reports = await Api.GetAsync<HseReportsDto>($"api/hse/reports?year={_reportYear}") ?? new HseReportsDto();
@@ -602,6 +639,22 @@
         if (string.IsNullOrEmpty(_extinguisher.Type)) _extinguisher.Type = _definitions.ExtinguisherTypes.FirstOrDefault() ?? "";
     }
 
+    private async Task LoadIncidentsAsync()
+        => _incidents = _incPg.Take(await Api.ListPagedAsync<Incident>(
+            "api/hse/incidents", _incPg.Page, _incPg.Size));
+
+    private async Task LoadDeliveriesAsync()
+        => _deliveries = _ppePg.Take(await Api.ListPagedAsync<PpeDelivery>(
+            "api/hse/ppe", _ppePg.Page, _ppePg.Size));
+
+    private async Task LoadExtinguishersAsync()
+        => _extinguishers = _extPg.Take(await Api.ListPagedAsync<Extinguisher>(
+            "api/hse/extinguishers", _extPg.Page, _extPg.Size));
+
+    private void GoIncidentPage(int p) { _incPg.Go(p); _ = LoadIncidentsAsync(); }
+    private void GoPpePage(int p)      { _ppePg.Go(p); _ = LoadDeliveriesAsync(); }
+    private void GoExtPage(int p)      { _extPg.Go(p); _ = LoadExtinguishersAsync(); }
+
     private string NameOf(string code)
     {
         var employee = _employees.FirstOrDefault(e => e.Code == code);
@@ -609,7 +662,7 @@
     }
 
     private string LastDeliveryOf(string code) =>
-        _deliveries.Where(d => d.EmployeeCode == code)
+        _myDeliveries.Where(d => d.EmployeeCode == code)
             .OrderByDescending(d => d.DeliveryDate).FirstOrDefault()?.DeliveryDate ?? "—";
 
     // ───────── حوادث ─────────
@@ -644,7 +697,9 @@
 
         var id = _openIncident.Id;
         await ReloadAsync();
-        _openIncident = _incidents.FirstOrDefault(i => i.Id == id);
+        // صفحهٔ جاری هنگام ReloadAsync حفظ می‌شود، پس ردیف معمولاً در همین صفحه است؛
+        // اگر نبود، مودال را با همان دادهٔ قبلی باز نگه می‌داریم تا بی‌دلیل بسته نشود.
+        _openIncident = _incidents.FirstOrDefault(i => i.Id == id) ?? _openIncident;
         _action = new CorrectiveAction();
     }
 
@@ -671,16 +726,28 @@
         if (!ok) return;
         var id = _openIncident.Id;
         await ReloadAsync();
-        _openIncident = _incidents.FirstOrDefault(i => i.Id == id);
+        // صفحهٔ جاری هنگام ReloadAsync حفظ می‌شود، پس ردیف معمولاً در همین صفحه است؛
+        // اگر نبود، مودال را با همان دادهٔ قبلی باز نگه می‌داریم تا بی‌دلیل بسته نشود.
+        _openIncident = _incidents.FirstOrDefault(i => i.Id == id) ?? _openIncident;
     }
 
     // ───────── PPE ─────────
-    private void OnPpeEmployeeChanged(ChangeEventArgs args)
+    private async Task OnPpeEmployeeChanged(ChangeEventArgs args)
     {
         _ppe.EmployeeCode = Text(args);
         _ppe.EquipmentType = "";
+        await LoadMyDeliveriesAsync();
         RecomputeEarlyReplacement();
     }
+
+    /// <summary>
+    /// خواندن تحویل‌های یک پرسنل با فیلتر سمت سرور. صفحه‌بندی نمی‌خواهد چون
+    /// برای یک نفر محدود است؛ اگر code خالی باشد فهرست خالی می‌شود.
+    /// </summary>
+    private async Task LoadMyDeliveriesAsync()
+        => _myDeliveries = string.IsNullOrEmpty(_ppe.EmployeeCode)
+            ? new List<PpeDelivery>()
+            : await Api.ListAsync<PpeDelivery>($"api/hse/ppe?code={Uri.EscapeDataString(_ppe.EmployeeCode)}");
 
     private void OnEquipmentChanged(ChangeEventArgs args)
     {
@@ -698,8 +765,8 @@
     /// <summary>تشخیص تحویل زودهنگام: فاصلهٔ تحویل قبلی کمتر از دورهٔ مجاز باشد</summary>
     private void RecomputeEarlyReplacement()
     {
-        var previous = _deliveries
-            .Where(d => d.EmployeeCode == _ppe.EmployeeCode && d.EquipmentType == _ppe.EquipmentType)
+        var previous = _myDeliveries
+            .Where(d => d.EquipmentType == _ppe.EquipmentType)
             .OrderByDescending(d => d.DeliveryDate).FirstOrDefault();
 
         if (previous == null || string.IsNullOrEmpty(_ppe.DeliveryDate))
@@ -835,7 +902,10 @@
         csv.AppendLine();
 
         csv.AppendLine("شماره پرونده,تاریخ,واحد,شیفت,نوع,شدت,پرسنل,محل,وضعیت,روز از دست رفته,علت ریشه‌ای");
-        foreach (var incident in _incidents)
+        // خروجی گزارش باید کامل باشد نه فقط صفحهٔ جاری — پس یک خواندن بدون
+        // skip/take انجام می‌دهیم؛ در آن حالت سرور آرایهٔ کامل را برمی‌گرداند.
+        var allIncidents = await Api.ListAsync<Incident>("api/hse/incidents");
+        foreach (var incident in allIncidents)
             csv.AppendLine($"{incident.CaseNo},{incident.Date},{incident.Unit},{incident.Shift},{incident.Type},{incident.Severity},{NameOf(incident.EmployeeCode)},{incident.Location},{incident.Status},{incident.LostDays},{incident.RootCause}");
 
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();

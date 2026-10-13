@@ -133,6 +133,13 @@
                 </tbody>
             </table>
         </div>
+        @if (_payPg.Total > 0)
+        {
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                <span class="text-muted small">ردیف @BonFa.N(_payPg.From) تا @BonFa.N(_payPg.To) از @BonFa.N(_payPg.Total)</span>
+                <Pager Page="@_payPg.Page" PageCount="@_payPg.Count" OnPageChanged="p => GoPaymentPage(p)" />
+            </div>
+        }
         @if (_payments.Count == 0) { <p class="text-muted text-center py-4">پرداختی ثبت نشده است.</p> }
     </article>
 
@@ -148,6 +155,8 @@
     private string _message = "";
     private bool _showForm;
     private string _paymentMonth = "";
+    /// <summary>وضعیت صفحه‌بندی فهرست پرداخت‌ها.</summary>
+    private readonly BonPagerState _payPg = new();
 
     private List<Advance> SelectedOpenAdvances =>
         _advances.Where(a => a.EmployeeCode == _advance.EmployeeCode && a.Balance > 0).ToList();
@@ -161,10 +170,26 @@
 
     private async Task ReloadAsync()
     {
+        // _advances عمداً صفحه‌بندی ندارد: بج «ماندهٔ کل» در بالای صفحه از
+        // Sum(a => a.Balance) روی همهٔ مساعده‌ها ساخته می‌شود و SelectedOpenAdvances
+        // هم مساعده‌های بازِ یک پرسنل را از همان فهرست می‌گیرد؛ صفحه‌بندی‌اش هر دو را
+        // غلط می‌کرد. برای درست شدنش باید «جمع مانده» سمت سرور محاسبه شود.
         _advances = await Api.ListAsync<Advance>("api/workflows/advances");
-        var url = string.IsNullOrEmpty(_paymentMonth) ? "api/workflows/payments" : $"api/workflows/payments?month={_paymentMonth}";
-        _payments = await Api.ListAsync<PayrollPayment>(url);
+        await LoadPaymentsAsync();
     }
+
+    /// <summary>
+    /// فهرست پرداخت‌ها یک ردیف به‌ازای هر پرسنل در هر ماه دارد، پس با گذشت زمان رشد
+    /// می‌کند. سرور این اندپوینت را با Paging.QueryAsync(…, defaultCap: 2000) و ترتیب
+    /// نزولی CreatedAt صفحه‌بندی می‌کند، پس skip/take در SQL اعمال می‌شود.
+    /// </summary>
+    private async Task LoadPaymentsAsync()
+    {
+        var url = string.IsNullOrEmpty(_paymentMonth) ? "api/workflows/payments" : $"api/workflows/payments?month={_paymentMonth}";
+        _payments = _payPg.Take(await Api.ListPagedAsync<PayrollPayment>(url, _payPg.Page, _payPg.Size));
+    }
+
+    private void GoPaymentPage(int p) { _payPg.Go(p); _ = LoadPaymentsAsync(); }
 
     private string NameOf(string code)
     {
@@ -178,6 +203,8 @@
     private async Task OnPaymentMonthChanged(ChangeEventArgs args)
     {
         _paymentMonth = args.Value?.ToString() ?? "";
+        // فیلتر عوض شده، پس صفحهٔ جاری معنای خودش را از دست می‌دهد.
+        _payPg.Reset();
         await ReloadAsync();
     }
 

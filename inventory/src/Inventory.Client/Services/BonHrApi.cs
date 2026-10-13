@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Inventory.Shared.Dtos;
 using Microsoft.JSInterop;
 
 namespace Inventory.Client.Services;
@@ -28,34 +29,76 @@ public sealed class BonHrApi
 
     private static string P(string path) => "radis-hr/" + path.TrimStart('/');
 
+    /// <summary>
+    /// آخرین خطایی که بلعیده شده است. همهٔ متدهای این کلاس استثنا را می‌گیرند و مقدار
+    /// پیش‌فرض برمی‌گردانند (فهرست خالی، null، false)؛ بدون این، صفحه فقط «خالی» می‌بیند
+    /// و کاربر نمی‌تواند «داده‌ای نیست» را از «سرور خطا داد» تشخیص دهد.
+    /// صفحه‌ها می‌توانند این را نمایش دهند؛ با هر فراخوانی موفق پاک می‌شود.
+    /// </summary>
+    public string? LastError { get; private set; }
+
+    private T Fail<T>(Exception ex, T fallback)
+    {
+        LastError = ex.Message;
+        return fallback;
+    }
+
+    private void ClearError() => LastError = null;
+
     public async Task<List<T>> ListAsync<T>(string path)
     {
-        try { return await _api.GetAsync<List<T>>(P(path)) ?? new(); }
-        catch { return new(); }
+        try { var r = await _api.GetAsync<List<T>>(P(path)) ?? new(); ClearError(); return r; }
+        catch (Exception ex) { return Fail<List<T>>(ex, new()); }
+    }
+
+    /// <summary>
+    /// نسخهٔ صفحه‌دارِ <see cref="ListAsync{T}"/> — skip/take را به سرور می‌فرستد تا فقط
+    /// ردیف‌های همان صفحه از دیتابیس خوانده شود (اندپوینت‌های بن‌سازه همگی
+    /// Paging.ResultAsync/QueryAsync دارند و صفحه‌بندی را در SQL اعمال می‌کنند).
+    ///
+    /// چرا ListAsync کافی نیست: به‌محض فرستادن skip/take، شکل پاسخ سرور از «آرایه»
+    /// به «{ total, items }» تغییر می‌کند و دی‌سریالایزِ مستقیم به List&lt;T&gt; استثنا
+    /// می‌دهد. ListOrPaged هر دو شکل را می‌فهمد و TotalCount را هم برمی‌گرداند.
+    /// </summary>
+    /// <param name="path">مسیر نسبت به radis-hr — ممکن است از قبل ?filter=… داشته باشد.</param>
+    /// <param name="page">شمارهٔ صفحه، از ۱.</param>
+    /// <param name="pageSize">اندازهٔ صفحه؛ باید مثبت باشد.</param>
+    public async Task<PagedResult<T>> ListPagedAsync<T>(string path, int page, int pageSize)
+    {
+        var size = pageSize > 0 ? pageSize : 25;
+        var skip = (Math.Max(1, page) - 1) * size;
+        var sep = path.Contains('?') ? "&" : "?";
+        try
+        {
+            var res = await ListOrPaged.GetPagedAsync<T>(_api, P($"{path}{sep}skip={skip}&take={size}"));
+            ClearError();
+            return res;
+        }
+        catch (Exception ex) { return Fail<PagedResult<T>>(ex, new PagedResult<T>()); }
     }
 
     public async Task<T?> GetAsync<T>(string path)
     {
-        try { return await _api.GetAsync<T>(P(path)); }
-        catch { return default; }
+        try { var r = await _api.GetAsync<T>(P(path)); ClearError(); return r; }
+        catch (Exception ex) { return Fail<T?>(ex, default); }
     }
 
     public async Task<T?> PostAsync<T>(string path, object? body = null)
     {
-        try { return await _api.PostAsync<T>(P(path), body); }
-        catch { return default; }
+        try { var r = await _api.PostAsync<T>(P(path), body); ClearError(); return r; }
+        catch (Exception ex) { return Fail<T?>(ex, default); }
     }
 
     public async Task<T?> PutAsync<T>(string path, object? body = null)
     {
-        try { return await _api.PutAsync<T>(P(path), body); }
-        catch { return default; }
+        try { var r = await _api.PutAsync<T>(P(path), body); ClearError(); return r; }
+        catch (Exception ex) { return Fail<T?>(ex, default); }
     }
 
     public async Task<bool> DeleteAsync(string path)
     {
-        try { await _api.DeleteAsync(P(path)); return true; }
-        catch { return false; }
+        try { await _api.DeleteAsync(P(path)); ClearError(); return true; }
+        catch (Exception ex) { Fail<bool>(ex, false); return false; }
     }
 
     public async Task<bool> SendAsync(HttpMethod method, string path, object? body = null)
@@ -67,7 +110,7 @@ public sealed class BonHrApi
             if (method == HttpMethod.Delete) { await _api.DeleteAsync(P(path)); return true; }
             return false;
         }
-        catch { return false; }
+        catch (Exception ex) { Fail<bool>(ex, false); return false; }
     }
 
     public Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName)

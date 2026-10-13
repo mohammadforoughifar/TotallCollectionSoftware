@@ -173,7 +173,7 @@
     <article class="card card-body mt-3 review-panel">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
             <div><p class="text-muted small mb-0">سوابق اصلاحیه</p><h3>درخواست‌های ثبت دستی تردد</h3></div>
-            <span class="badge badge-soft-primary">@BonFa.N(_punches.Count) رکورد</span>
+            <span class="badge badge-soft-primary">@BonFa.N(_punPg.Total) رکورد</span>
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
@@ -206,6 +206,13 @@
                 </tbody>
             </table>
         </div>
+        @if (_punPg.Total > 0)
+        {
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                <span class="text-muted small">ردیف @BonFa.N(_punPg.From) تا @BonFa.N(_punPg.To) از @BonFa.N(_punPg.Total)</span>
+                <Pager Page="@_punPg.Page" PageCount="@_punPg.Count" OnPageChanged="p => GoPunchPage(p)" />
+            </div>
+        }
         @if (_punches.Count == 0)
         {
             <p class="text-muted text-center py-4">هنوز اصلاحیه دستی ثبت نشده است.</p>
@@ -255,7 +262,7 @@
         <article class="card card-body mt-3 review-panel">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                 <div><p class="text-muted small mb-0">کنترل ثبت دستی</p><h3>مرخصی‌ها و مأموریت‌های ثبت‌شده</h3></div>
-                <span class="badge badge-soft-primary">@BonFa.N(_leaves.Count) رکورد</span>
+                <span class="badge badge-soft-primary">@BonFa.N(_leaPg.Total) رکورد</span>
             </div>
             <p class="text-muted">هر ثبت بلافاصله اینجا نمایش داده می‌شود. در صورت اشتباه از دکمه حذف استفاده کنید.</p>
             <div class="table-responsive">
@@ -278,6 +285,13 @@
                     </tbody>
                 </table>
             </div>
+            @if (_leaPg.Total > 0)
+            {
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                    <span class="text-muted small">ردیف @BonFa.N(_leaPg.From) تا @BonFa.N(_leaPg.To) از @BonFa.N(_leaPg.Total)</span>
+                    <Pager Page="@_leaPg.Page" PageCount="@_leaPg.Count" OnPageChanged="p => GoLeavePage(p)" />
+                </div>
+            }
             @if (_leaves.Count == 0)
             {
                 <p class="text-muted text-center py-4">هنوز مرخصی یا مأموریتی ثبت نشده است.</p>
@@ -369,6 +383,14 @@
     private List<AttendanceDay> _days = new();
     private List<LeaveMission> _leaves = new();
     private List<ManualPunch> _punches = new();
+
+    // فهرست «اصلاحیه دستی» بدون فیلتر خوانده می‌شود و بی‌نهایت رشد می‌کند، و
+    // «مرخصی و مأموریت» هم در یک ماه شلوغ به صدها ردیف می‌رسد. هر دو فهرست
+    // وضعیت صفحهٔ مستقل خودشان را دارند تا روی هم اثر نگذارند.
+    // (فهرست _days عمداً صفحه‌بندی ندارد: با code=یک پرسنل و month فیلتر می‌شود،
+    //  پس حداکثر ~۳۱ ردیف است.)
+    private readonly BonPagerState _punPg = new();
+    private readonly BonPagerState _leaPg = new();
     private List<GuardCycle> _cycles = new();
     private List<RosterDay> _roster = new();
 
@@ -432,9 +454,22 @@
 
     private async Task LoadReviewAsync()
     {
-        _punches = await Api.ListAsync<ManualPunch>("api/attendance/punches");
-        _leaves = await Api.ListAsync<LeaveMission>($"api/attendance/leaves?month={_month}");
+        await LoadPunchesAsync();
+        await LoadLeavesAsync();
     }
+
+    /// <summary>صفحهٔ جاری اصلاحیه‌های دستی — سرور با سقف ۱۰۰۰ و ترتیب نزولی CreatedAt می‌دهد.</summary>
+    private async Task LoadPunchesAsync()
+        => _punches = _punPg.Take(await Api.ListPagedAsync<ManualPunch>(
+            "api/attendance/punches", _punPg.Page, _punPg.Size));
+
+    /// <summary>صفحهٔ جاری مرخصی/مأموریت‌های ماه انتخاب‌شده.</summary>
+    private async Task LoadLeavesAsync()
+        => _leaves = _leaPg.Take(await Api.ListPagedAsync<LeaveMission>(
+            $"api/attendance/leaves?month={_month}", _leaPg.Page, _leaPg.Size));
+
+    private void GoPunchPage(int p) { _punPg.Go(p); _ = LoadPunchesAsync(); }
+    private void GoLeavePage(int p) { _leaPg.Go(p); _ = LoadLeavesAsync(); }
 
     private void OnWorkbookSelected(InputFileChangeEventArgs args) => _file = args.File;
 

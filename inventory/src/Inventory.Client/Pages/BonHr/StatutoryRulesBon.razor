@@ -150,6 +150,13 @@
                 </tbody>
             </table>
         </div>
+        @if (_audPg.Total > 0)
+        {
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                <span class="text-muted small">ردیف @BonFa.N(_audPg.From) تا @BonFa.N(_audPg.To) از @BonFa.N(_audPg.Total)</span>
+                <Pager Page="@_audPg.Page" PageCount="@_audPg.Count" OnPageChanged="p => GoAuditPage(p)" />
+            </div>
+        }
         @if (_audits.Count == 0)
         {
             <p class="text-muted text-center py-4">هنوز تغییری در الزامات ثبت نشده است.</p>
@@ -163,6 +170,8 @@
 
     private StatutoryRules _rules = new();
     private List<StatutoryRuleAudit> _audits = new();
+    /// <summary>وضعیت صفحه‌بندی فهرست «گزارش‌های ارسال‌شده» — این فهرست با هر تغییر الزامات رشد می‌کند.</summary>
+    private readonly BonPagerState _audPg = new();
 
     /// <summary>
     /// همیشه دقیقاً ۵ پله دارد. Blazor یک‌بار پیش از تکمیل OnInitializedAsync رندر می‌کند،
@@ -180,8 +189,19 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadYearAsync();
-        _audits = await Api.ListAsync<StatutoryRuleAudit>("api/statutory-rules/audits");
+        await LoadAuditsAsync();
     }
+
+    /// <summary>
+    /// خواندن صفحهٔ جاریِ سوابق کنترل تغییر. سرور این اندپوینت را با
+    /// Paging.QueryAsync(…, defaultCap: 500) صفحه‌بندی می‌کند، پس skip/take
+    /// در SQL اعمال می‌شود و فقط ردیف‌های همین صفحه منتقل می‌شوند.
+    /// </summary>
+    private async Task LoadAuditsAsync()
+        => _audits = _audPg.Take(await Api.ListPagedAsync<StatutoryRuleAudit>(
+            "api/statutory-rules/audits", _audPg.Page, _audPg.Size));
+
+    private void GoAuditPage(int p) { _audPg.Go(p); _ = LoadAuditsAsync(); }
 
     private async Task LoadYearAsync()
     {
@@ -226,7 +246,8 @@
 
         if (ok)
         {
-            _audits = await Api.ListAsync<StatutoryRuleAudit>("api/statutory-rules/audits");
+            // صفحهٔ جاری حفظ می‌شود تا کاربر از جایی که بود ادامه دهد.
+            await LoadAuditsAsync();
             await LoadYearAsync();
         }
     }
