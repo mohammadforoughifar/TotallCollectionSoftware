@@ -1034,7 +1034,7 @@ namespace Inventory.Api.Services.Moadian
                 {
                     var rows = await context.Invoices.OrderBy(x => x.Id)
                         .Select(x => new { x.Id, x.CpInfo, x.IsDelete, x.StatusSentToSystem }).ToListAsync();
-                    var svc = await GetAllInvoiceAsync("همه", cpinfoId, new GetResultQuery(Page: 1, PageSize: 10));
+                    var svc = await GetAllInvoiceAsync("همه", cpinfoId, new GetResultQuery { Page = 1, PageSize = 10 });
                     string? svcTotal = null;
                     if (svc.Data is InvoiceResponse ir && ir.Invoices is not null)
                         svcTotal = ir.Invoices.TotalCount.ToString();
