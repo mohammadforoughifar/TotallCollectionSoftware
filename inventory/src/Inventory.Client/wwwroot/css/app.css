@@ -3183,3 +3183,13 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     .mic-help-actions { flex-direction: row; width: 100%; }
     .mic-help-actions .btn { flex: 1 1 auto; }
 }
+
+/* ---------- چاپ صورتحساب ---------- */
+@media print {
+    .app-sidebar, .sidebar-backdrop, .app-topbar, .tabbar, .no-print, .toast-container, .modal { display: none !important; }
+    .app-shell { display: block !important; }
+    .app-main, .app-content { margin: 0 !important; padding: 0 !important; }
+    .card { box-shadow: none !important; border: 1px solid #aaa !important; }
+    body { background: #fff !important; }
+    a { text-decoration: none !important; color: inherit !important; }
+}
