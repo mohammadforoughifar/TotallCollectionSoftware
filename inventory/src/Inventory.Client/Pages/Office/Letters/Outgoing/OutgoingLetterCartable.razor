@@ -836,7 +836,28 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f) { filter = f; page = 1; _ = ReloadAsync(); }
+    private void SetFilter(string f)
+    {
+        // فیلترهای نشان‌شده / پیوست‌دار / امضایی / خوانده‌نشده سمت کلاینت روی دادهٔ
+        // همین صفحه اعمال می‌شوند (نگاه کنید به Filtered و BaseItems)، پس درخواست
+        // دوبارهٔ سرور بی‌فایده است.
+        //
+        // مهم‌تر: آن درخواست از یک هندلرِ void به‌صورت fire-and-forget صدا زده می‌شد
+        // («_ = ReloadAsync()»). ReloadAsync پیش از اولین await به‌طور هم‌زمان
+        // loading=true می‌گذاشت، Blazor اسپینر را رندر می‌کرد، و بعد ادامهٔ کار
+        // بیرون از چرخهٔ رندر تمام می‌شد: finally مقدار loading=false را ست می‌کرد
+        // ولی هیچ re-render زمان‌بندی نمی‌شد. نتیجه: صفحه برای همیشه روی «در حال
+        // بارگذاری» می‌ماند، با اینکه داده در حافظه آمده بود.
+        //
+        // الگو از LetterCartable.razor:909 گرفته شده که همین مشکل را داشت و رفع شده
+        // («درخواست دوباره باعث loading طولانی و هم‌پوشانی درخواست‌ها می‌شد»).
+        // GoPage در همین فایل هم از راه‌حل معادل استفاده می‌کند:
+        // InvokeAsync(...) + StateHasChanged().
+        filter = f;
+        page = 1;
+        loading = false;
+        StateHasChanged();
+    }
     private void ToggleMenu(int id) => openMenuId = openMenuId == id ? 0 : id;
     private void CloseMenus() => openMenuId = 0;
 
