@@ -117,7 +117,7 @@
         {
             loadError = null;
             var model = await Moadian.GetUnitsAsync(null, p, PageSize);
-            var paged = MoadianService.As<PagedList<VMUnitOfMeasurement>>(model);
+            var paged = MoadianService.AsStrict<PagedList<VMUnitOfMeasurement>>(model, "دریافت فهرست واحدها");
             data = paged;
             items = paged?.Items?.ToList();
             pno = p;

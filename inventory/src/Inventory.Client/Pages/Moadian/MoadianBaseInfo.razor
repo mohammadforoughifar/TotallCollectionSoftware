@@ -32,11 +32,11 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-sm mb-0 align-middle">
-                    <thead><tr><th>جدول</th><th>وضعیت</th><th>ردیف‌ها</th><th>ستون‌های جاافتاده</th><th>خطا</th></tr></thead>
+                    <thead><tr><th>جدول</th><th>وضعیت</th><th>ردیف‌ها</th><th>فعال (حذف‌نشده)</th><th>شناسه → شرکت</th><th>ستون‌های جاافتاده</th><th>خطا</th></tr></thead>
                     <tbody>
                         @foreach (var t in diag.Tables)
                         {
-                            <tr>
+                            <tr class="@(!string.IsNullOrEmpty(t.Warning) ? "table-warning" : "")">
                                 <td class="fw-semibold" dir="ltr">@t.Table</td>
                                 <td>
                                     @if (!t.Exists) { <span class="badge badge-soft-danger">جدول نیست</span> }
@@ -44,9 +44,15 @@
                                     else { <span class="badge badge-soft-success">سالم</span> }
                                 </td>
                                 <td class="num">@(t.TotalRows?.ToString() ?? "—")</td>
+                                <td class="num">@(t.ActiveRows?.ToString() ?? "—")</td>
+                                <td class="small" dir="ltr">@(string.IsNullOrEmpty(t.Linkage) ? "—" : t.Linkage)</td>
                                 <td class="small" dir="ltr">@(t.Missing.Count > 0 ? string.Join(", ", t.Missing) : "—")</td>
                                 <td class="small">@(t.Error ?? "—")</td>
                             </tr>
+                            @if (!string.IsNullOrEmpty(t.Warning))
+                            {
+                                <tr class="table-warning"><td colspan="7" class="small text-danger">⚠ @t.Warning</td></tr>
+                            }
                         }
                     </tbody>
                 </table>
@@ -127,6 +133,12 @@ else if (ActiveTab == "customers")
         public int Columns { get; set; }
         public List<string> Missing { get; set; } = new();
         public long? TotalRows { get; set; }
+        /// <summary>ردیف‌های IsDelete=0 (عدم‌نمایش در لیست یعنی «حذف‌نرم»).</summary>
+        public long? ActiveRows { get; set; }
+        /// <summary>نمونهٔ «شناسهٔ ردیف → شناسهٔ شرکت» برای مشاهدهٔ پیوند داده‌ها به شرکت.</summary>
+        public string? Linkage { get; set; }
+        /// <summary>هشدار داده‌ای (ردیف یتیم به شرکت دیگر/حذف‌شده — علت شایع خالی‌بودن لیست‌ها).</summary>
+        public string? Warning { get; set; }
         public string? Error { get; set; }
     }
 
@@ -140,8 +152,11 @@ else if (ActiveTab == "customers")
             if (r.Success)
             {
                 diag = MoadianService.As<DiagnoseResult>(r) ?? new DiagnoseResult();
-                if (diag.Tables.Count > 0 && diag.Tables.All(t => t.Exists && t.Missing.Count == 0 && string.IsNullOrEmpty(t.Error)))
+                var hasWarn = diag.Tables.Any(t => !string.IsNullOrEmpty(t.Warning));
+                if (diag.Tables.Count > 0 && diag.Tables.All(t => t.Exists && t.Missing.Count == 0 && string.IsNullOrEmpty(t.Error)) && !hasWarn)
                     Toast.Success("اسکیمای مودیان کامل است — اگر لیستی خالی است، علت آن داده/شرکت است نه اسکیما.");
+                else if (hasWarn)
+                    Toast.Error("اسکیما سالم است ولی ردیف‌هایی به شرکتِ ناموجود/حذف‌شده لینک‌اند یا حذف‌نرم شده‌اند — ردیف‌های زرد جدول را ببینید.");
             }
             else Toast.Error(r.Message ?? "تشخیص ناموفق.");
         }

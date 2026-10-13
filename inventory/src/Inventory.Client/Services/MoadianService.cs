@@ -75,10 +75,26 @@ public class MoadianService : IMoadianService
 
     /// <summary>برای فراخوانی‌هایی که باید داده برگردانند: خطای کسب‌وکار سرور را با پیام فارسی به‌صورت exception می‌رساند.</summary>
     private static T? Must<T>(ApiModel? m) where T : class
+        => AsStrict<T>(m, "دریافت داده از سرور");
+
+    /// <summary>مثل As ولی تشخیصی: هیچ شکستی را قورت نمی‌دهد — علت و پاسخ خام را در پیام خطا می‌آورد
+    /// (تا لحظه‌ای که لیست «به‌سکوت خالی» شود، کادر قرمز علت دقیق را نشان بدهد).</summary>
+    public static T? AsStrict<T>(ApiModel? m, string what)
     {
-        if (m is null) return null;
-        if (!m.Success) throw new Exception(m.Message ?? "خطای سرور در سامانه مودیان.");
-        return As<T>(m);
+        if (m is null) throw new Exception(what + ": هیچ پاسخی از سرور دریافت نشد. (آیا API در دسترس است؟)");
+        if (!m.Success) throw new Exception(what + ": " + (m.Message ?? "خطای نامشخص سرور") + " (کد " + m.Status + ")");
+        var raw = m.Data switch
+        {
+            null => "null",
+            JsonElement el => el.GetRawText(),
+            var v => JsonSerializer.Serialize(v)
+        };
+        if (m.Data is null || (m.Data is JsonElement je && je.ValueKind == JsonValueKind.Null))
+            throw new Exception(what + ": بدنهٔ دادهٔ پاسخ خالی است. (کد " + m.Status + " — " + (m.Message ?? "-") + ")");
+        var value = As<T>(m);
+        if (value is null)
+            throw new Exception(what + ": ساختار پاسخ سرور قابل خواندن نیست. پاسخ خام: " + (raw.Length > 400 ? raw[..400] + "…" : raw));
+        return value;
     }
 
     // ---------- شرکت / سال مالی / مشتری ----------

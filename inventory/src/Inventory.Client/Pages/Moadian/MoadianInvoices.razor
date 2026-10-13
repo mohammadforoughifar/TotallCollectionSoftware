@@ -264,7 +264,7 @@ else
         {
             loadError = null;
             var model = await Moadian.GetAllInvoicesAsync(fOp, Ctx.CpInfoId, fFrom, fTo, search, p, PageSize);
-            var resp = MoadianService.As<InvoiceResponse>(model);
+            var resp = MoadianService.AsStrict<InvoiceResponse>(model, "دریافت فهرست صورتحساب‌ها");
             data = resp?.Invoices;
             items = resp?.Invoices?.Items?.ToList();
             labels = resp?.Labels;

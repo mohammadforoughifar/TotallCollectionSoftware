@@ -753,6 +753,20 @@ namespace Inventory.Api.Services.Moadian
         }
 
         /// <summary>تشخیص سلامت اسکیمای مودیان: وجود هر جدول، ستون‌های درون‌ظرف، تعداد ردیف‌ها — برای مواقعی که لیست‌ها خالی می‌آیند.</summary>
+        /// <summary>یک ردیف از گزارش تشخیص اسکیما/دادهٔ مودیان (خروجی Diagnose).</summary>
+        private sealed class DiagnoseRow
+        {
+            public string Table = "";
+            public bool Exists;
+            public int Columns;
+            public List<string> Missing = new();
+            public long? TotalRows;
+            public long? ActiveRows;
+            public string? Linkage;
+            public string? Warning;
+            public string? Error;
+        }
+
         public async Task<ApiModel> DiagnoseAsync()
         {
             var provider = context.Database.ProviderName ?? "";
@@ -770,8 +784,16 @@ namespace Inventory.Api.Services.Moadian
                 ["InvoiceItems"] = new[] { "InvoiceId", "GoodsOrServicesId", "PriceUnit", "PriceNaghd", "PriceNesye", "IsDelete" },
                 ["InvoicePayments"] = new[] { "InvoiceId", "TaxNumber", "Amount", "PaymentDate", "PaymentMethod", "TerminalNumber", "ReferenceNumber", "IsDelete" },
             };
+            // جدول‌هایی که به شرکت (CPInfos.Id) لینک‌اند: ستون پیوند برای تشخیص یتیمی/عدم‌نمایش در لیست
+            var linkColumn = new Dictionary<string, string>
+            {
+                ["Customers"] = "CpInfoId",
+                ["GoodsOrServices"] = "CpInfo",
+                ["FiscalYears"] = "CpInfo",
+                ["Invoices"] = "CpInfo",
+            };
 
-            var report = new List<object>();
+            var rows = new List<DiagnoseRow>();
             var conn = context.Database.GetDbConnection();
             var openedHere = false;
             try
@@ -802,9 +824,23 @@ namespace Inventory.Api.Services.Moadian
                     return names;
                 }
 
+                async Task<long?> TryScalarAsync(string sql)
+                {
+                    try
+                    {
+                        await using var c = conn.CreateCommand();
+                        c.CommandText = sql;
+                        var v = await c.ExecuteScalarAsync();
+                        return v is null or DBNull ? null : Convert.ToInt64(v);
+                    }
+                    catch { return null; }
+                }
+
+                string Tbl(string t) => sqlite ? t : $"[dbo].[{t}]";
+
                 foreach (var t in tables)
                 {
-                    bool exists;
+                    var row = new Row { Table = t };
                     await using (var cmd = conn.CreateCommand())
                     {
                         if (sqlite)
@@ -815,38 +851,104 @@ namespace Inventory.Api.Services.Moadian
                         {
                             cmd.CommandText = "SELECT CASE WHEN OBJECT_ID(N'dbo." + t + "', N'U') IS NULL THEN 0 ELSE 1 END";
                         }
-                        exists = Convert.ToInt64(await cmd.ExecuteScalarAsync() ?? 0) > 0;
+                        row.Exists = Convert.ToInt64(await cmd.ExecuteScalarAsync() ?? 0) > 0;
                     }
 
-                    var columns = new List<string>();
-                    long? totalRows = null;
-                    string? error = null;
-                    if (exists)
+                    if (row.Exists)
                     {
+                        List<string> columns = new();
                         try { columns = await ListColumnsAsync(conn, t, sqlite); }
-                        catch (Exception colEx) { error = colEx.Message; }
+                        catch (Exception colEx) { row.Error = colEx.Message; }
+                        row.Columns = columns.Count;
+                        row.Missing = expected.ContainsKey(t)
+                            ? expected[t].Where(c => !columns.Any(x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase))).ToList()
+                            : new List<string>();
+
+                        var total = await TryScalarAsync($"SELECT COUNT(*) FROM {Tbl(t)}");
+                        row.TotalRows = total;
+
+                        bool hasIsDelete = columns.Any(x => string.Equals(x, "IsDelete", StringComparison.OrdinalIgnoreCase));
+                        if (hasIsDelete)
+                            row.ActiveRows = await TryScalarAsync($"SELECT COUNT(*) FROM {Tbl(t)} WHERE IsDelete = 0");
+
+                        // نمونهٔ کلید/پیوند (۱۰ ردیف اول) — برای دیدنِ اینکه ردیف‌ها به کدام شرکت وصل‌اند
+                        if (linkColumn.TryGetValue(t, out var linkCol) && columns.Any(x => string.Equals(x, linkCol, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            try
+                            {
+                                await using var c = conn.CreateCommand();
+                                c.CommandText = sqlite
+                                    ? $"SELECT Id, {linkCol} FROM {t} ORDER BY Id LIMIT 10"
+                                    : $"SELECT TOP 10 Id, {linkCol} FROM {Tbl(t)} ORDER BY Id";
+                                var samples = new List<string>();
+                                await using var r = await c.ExecuteReaderAsync();
+                                while (await r.ReadAsync())
+                                {
+                                    var link = r.IsDBNull(1) ? "—" : Convert.ToString(r.GetValue(1));
+                                    samples.Add($"{Convert.ToString(r.GetValue(0))}→{link}");
+                                }
+                                row.Linkage = string.Join("، ", samples);
+                            }
+                            catch { /* نمونه‌گیری اختیاری است */ }
+                        }
+                        else if (t == "CPInfos")
+                        {
+                            try
+                            {
+                                await using var c = conn.CreateCommand();
+                                c.CommandText = sqlite
+                                    ? $"SELECT Id, PersianName, IsDelete FROM {t} ORDER BY Id LIMIT 10"
+                                    : $"SELECT TOP 10 Id, PersianName, IsDelete FROM {Tbl(t)} ORDER BY Id";
+                                var samples = new List<string>();
+                                await using var r = await c.ExecuteReaderAsync();
+                                while (await r.ReadAsync())
+                                {
+                                    var del = !r.IsDBNull(2) && Convert.ToInt64(r.GetValue(2)) != 0 ? " (حذف‌شده)" : "";
+                                    samples.Add($"{Convert.ToString(r.GetValue(0))}·{Convert.ToString(r.GetValue(1))}{del}");
+                                }
+                                row.Linkage = string.Join("، ", samples);
+                            }
+                            catch { /* نمونه‌گیری اختیاری است */ }
+                        }
+                    }
+                    rows.Add(row);
+                }
+
+                // ---------- هشدارهای داده‌ای: علت رایج «ذخیره می‌شود ولی تو لیست نیست» ----------
+                bool TableExistsHere(string t) => rows.Any(r => r.Table == t && r.Exists);
+                if (TableExistsHere("CPInfos"))
+                {
+                    var activeCp = await TryScalarAsync($"SELECT COUNT(*) FROM {Tbl("CPInfos")} WHERE IsDelete = 0");
+                    foreach (var (t, linkCol) in linkColumn)
+                    {
+                        if (!TableExistsHere(t)) continue;
+                        var row = rows.First(r => r.Table == t);
+                        long? orphans = null;
                         try
                         {
-                            await using var c2 = conn.CreateCommand();
-                            c2.CommandText = sqlite ? $"SELECT COUNT(*) FROM {t}" : $"SELECT COUNT(*) FROM [dbo].[{t}]";
-                            totalRows = Convert.ToInt64(await c2.ExecuteScalarAsync() ?? 0);
+                            await using var c = conn.CreateCommand();
+                            c.CommandText =
+                                $"SELECT COUNT(*) FROM {Tbl(t)} x WHERE x.IsDelete = 0 AND " +
+                                $"(x.{linkCol} IS NULL OR NOT EXISTS (SELECT 1 FROM {Tbl("CPInfos")} p WHERE p.Id = x.{linkCol} AND p.IsDelete = 0))";
+                            orphans = Convert.ToInt64(await c.ExecuteScalarAsync() ?? 0);
                         }
-                        catch (Exception cntEx) { error = (error is null ? null : error + " | ") + cntEx.Message; }
+                        catch { /* ستون ممکن است قدیمی باشد */ }
+                        if (orphans > 0)
+                            row.Warning = $"⚠ {orphans} ردیف فعال به شرکتِ ناموجود یا حذف‌شده لینک است — با شرکت انتخابی فعلی در لیست دیده نمی‌شود.";
+                        else if (row.TotalRows > 0 && row.ActiveRows == 0)
+                            row.Warning = "⚠ همهٔ ردیف‌ها حذف‌شده (IsDelete=1) هستند — در لیست دیده نمی‌شوند.";
                     }
-                    var missing = expected.ContainsKey(t)
-                        ? expected[t].Where(c => !columns.Any(x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase))).ToList()
-                        : new List<string>();
-
-                    report.Add(new
-                    {
-                        table = t,
-                        exists,
-                        columns = columns.Count,
-                        missing,
-                        totalRows,
-                        error
-                    });
+                    var cpRow = rows.First(r => r.Table == "CPInfos");
+                    if (cpRow.TotalRows > 0 && cpRow.ActiveRows == 0)
+                        cpRow.Warning = "⚠ همهٔ شرکت‌ها حذف‌شده‌اند (IsDelete=1) — نوار انتخاب شرکت خالی می‌ماند.";
+                    if ((activeCp ?? 0) == 0 && cpRow.TotalRows > 0 && cpRow.Warning is null)
+                        cpRow.Warning = "⚠ شرکتی فعال نیست.";
                 }
+
+                foreach (var row in rows)
+                    row.Warning ??= (row.TotalRows > 0 && row.ActiveRows == 0 && row.Exists
+                        ? "⚠ همهٔ ردیف‌ها حذف‌شده (IsDelete=1) هستند — در لیست دیده نمی‌شوند."
+                        : null);
             }
             catch (Exception ex)
             {
@@ -856,6 +958,19 @@ namespace Inventory.Api.Services.Moadian
             {
                 if (openedHere) await conn.CloseAsync();
             }
+
+            var report = rows.Select(r => new
+            {
+                table = r.Table,
+                exists = r.Exists,
+                columns = r.Columns,
+                missing = r.Missing,
+                totalRows = r.TotalRows,
+                activeRows = r.ActiveRows,
+                linkage = r.Linkage,
+                warning = r.Warning,
+                error = r.Error
+            }).ToList<object>();
 
             return new ApiModel
             {

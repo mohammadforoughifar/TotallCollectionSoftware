@@ -181,7 +181,7 @@ else
         {
             loadError = null;
             var model = await Moadian.GetGoodsAsync(Ctx.CpInfoId, null, p, PageSize);
-            var paged = MoadianService.As<PagedList<VMGoodsOrService>>(model);
+            var paged = MoadianService.AsStrict<PagedList<VMGoodsOrService>>(model, "دریافت فهرست کالاها/خدمات");
             data = paged;
             items = paged?.Items?.ToList();
             pno = p;
