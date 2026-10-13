@@ -1,0 +1,364 @@
+@page "/servers"
+@inject IApiClient Api
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>مدیریت سرورها</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-hdd-rack-fill text-primary"></i> مدیریت سرورها</h1>
+        <p class="lead">شناسنامه، سلامت سخت‌افزار و دریافت Inventory امن از HPE iLO / Redfish</p>
+    </div>
+    <div class="ms-auto d-flex gap-2 flex-wrap">
+        @if (companies.Count > 1)
+        {
+            <select class="form-select" style="min-width:210px" value="@companyId" @onchange="OnCompanyChanged">
+                @foreach (var c in companies)
+                {
+                    <option value="@c.Id">@c.Name (@c.Count.Num())</option>
+                }
+            </select>
+        }
+        @if (canCreate && companyId > 0)
+        {
+            <button class="btn btn-primary" @onclick="OpenCreate"><i class="bi bi-plus-lg"></i> ثبت سرور</button>
+        }
+    </div>
+</div>
+
+@if (!canView)
+{
+    <div class="alert alert-warning">شما مجوز مشاهدهٔ مدیریت سرورها را ندارید.</div>
+}
+else if (loading && companies.Count == 0)
+{
+    <div class="text-center py-5"><span class="spinner-border text-primary"></span></div>
+}
+else if (companies.Count == 0)
+{
+    <div class="alert alert-info">شرکتی برای شما تعریف نشده است. ابتدا شرکت و دسترسی شرکت را در بخش کاربران تعریف کنید.</div>
+}
+else
+{
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">کل سرورها</div><div class="fs-4 fw-800 num">@rows.Count.Num()</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">وضعیت سالم</div><div class="fs-4 fw-800 text-success num">@rows.Count(x => IsHealthy(x.LastHealthStatus)).Num()</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">نیازمند بررسی</div><div class="fs-4 fw-800 text-danger num">@rows.Count(x => IsProblem(x.LastHealthStatus)).Num()</div></div></div></div>
+        <div class="col-6 col-md-3"><div class="card h-100 border-0 shadow-sm"><div class="card-body py-3"><div class="text-muted fs-8">بدون بررسی</div><div class="fs-4 fw-800 text-muted num">@rows.Count(x => x.LastHealthCheckAt is null).Num()</div></div></div></div>
+    </div>
+
+    <div class="card">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-700"><i class="bi bi-server text-primary"></i> فهرست سرورها</span>
+            <div class="ms-auto d-flex gap-2">
+                <div class="input-group input-group-sm" style="min-width:250px">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input class="form-control" placeholder="نام، مدل، سریال یا iLO…" @bind="search" @bind:event="oninput" @onkeyup="SearchKey" />
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" title="بازخوانی" @onclick="Load"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            @if (loading)
+            {
+                <div class="text-center py-5"><span class="spinner-border spinner-border-sm text-primary"></span> در حال بارگذاری…</div>
+            }
+            else if (rows.Count == 0)
+            {
+                <div class="empty-state">
+                    <i class="bi bi-hdd-rack"></i>
+                    <h5>سروری ثبت نشده است</h5>
+                    <p class="text-muted">برای شروع، نام سرور، آدرس iLO و Credential ذخیره‌شده در گاوصندوق را وارد کنید.</p>
+                    @if (canCreate) { <button class="btn btn-primary" @onclick="OpenCreate"><i class="bi bi-plus-lg"></i> ثبت اولین سرور</button> }
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive grid-desktop">
+                    <table class="table table-hover align-middle mb-0 server-table">
+                        <thead>
+                            <tr>
+                                <th>سرور</th><th>مدل / سریال</th><th>iLO</th><th>مکان و نقش</th><th>سلامت</th><th>آخرین بررسی</th><th class="text-end">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in rows)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-700">@s.Name</div>
+                                        <div class="fs-8 text-muted">@s.Manufacturer · @CriticalityTitle(s.Criticality) · @StatusTitle(s.Status)</div>
+                                    </td>
+                                    <td>
+                                        <div>@(s.Model ?? "—")</div>
+                                        <div class="fs-8 text-muted num">@(s.SerialNumber ?? "بدون سریال")</div>
+                                    </td>
+                                    <td dir="ltr" class="text-start">
+                                        <code>@($"{s.IloAddress}:{s.IloPort}")</code>
+                                        @if (s.CredentialId is > 0) { <div class="fs-8 text-muted" dir="rtl"><i class="bi bi-shield-lock"></i> Credential امن متصل است</div> }
+                                    </td>
+                                    <td>
+                                        <div>@(s.Role ?? "—")</div>
+                                        <div class="fs-8 text-muted">@RackTitle(s)</div>
+                                    </td>
+                                    <td><span class="badge @HealthClass(s.LastHealthStatus)">@HealthTitle(s.LastHealthStatus)</span><div class="fs-8 text-muted mt-1">@(s.LastPowerState ?? "")</div></td>
+                                    <td class="fs-8 text-muted">@DateText(s.LastHealthCheckAt)</td>
+                                    <td class="text-end text-nowrap">
+                                        @if (canCollect && s.CredentialId is > 0)
+                                        {
+                                            <button class="btn btn-sm btn-light" title="تست اتصال امن Redfish" disabled="@IsBusy(s.Id)" @onclick="() => Test(s)"><i class="bi bi-plug text-primary"></i></button>
+                                            <button class="btn btn-sm btn-light" title="دریافت Inventory و سلامت از iLO" disabled="@IsBusy(s.Id)" @onclick="() => Collect(s)">
+                                                @if (IsBusy(s.Id)) { <span class="spinner-border spinner-border-sm text-primary"></span> } else { <i class="bi bi-arrow-repeat text-primary"></i> }
+                                            </button>
+                                        }
+                                        @if (canUpdate) { <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(s)"><i class="bi bi-pencil text-primary"></i></button> }
+                                        @if (canDelete) { <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(s)"><i class="bi bi-trash text-danger"></i></button> }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="cards-mobile p-2">
+                    @foreach (var s in rows)
+                    {
+                        <div class="m-card">
+                            <div class="m-card-head">
+                                <div class="m-card-icon"><i class="bi bi-hdd-rack"></i></div>
+                                <div class="flex-grow-1 min-w-0"><b class="d-block text-truncate">@s.Name</b><div class="fs-8 text-muted text-truncate">@(s.Model ?? "—") · @s.IloAddress</div></div>
+                                <span class="badge @HealthClass(s.LastHealthStatus)">@HealthTitle(s.LastHealthStatus)</span>
+                            </div>
+                            <div class="m-card-body"><div class="m-card-row"><span>آخرین بررسی</span><span>@DateText(s.LastHealthCheckAt)</span></div><div class="m-card-row"><span>رک / نقش</span><span>@RackTitle(s) · @(s.Role ?? "—")</span></div></div>
+                            <div class="m-card-actions">
+                                @if (canCollect && s.CredentialId is > 0) { <button class="btn btn-light text-primary" disabled="@IsBusy(s.Id)" @onclick="() => Collect(s)"><i class="bi bi-arrow-repeat"></i> بررسی Redfish</button> }
+                                @if (canUpdate) { <button class="btn btn-light text-primary" @onclick="() => OpenEdit(s)"><i class="bi bi-pencil"></i> ویرایش</button> }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="alert alert-light border mt-3 mb-0 small">
+        <i class="bi bi-shield-check text-success"></i>
+        ارتباط iLO فقط با HTTPS انجام می‌شود. رمز عبور از گاوصندوق در سمت سرور خوانده می‌شود و هرگز به مرورگر یا لاگ عملیات ارسال نمی‌شود.
+        نسخهٔ فعلی فقط اطلاعات سلامت و Inventory را می‌خواند و هیچ عملیات Power یا Firmware اجرا نمی‌کند.
+    </div>
+}
+
+<Modal Visible="showForm" Title="@(form.Id == 0 ? "ثبت سرور" : "ویرایش سرور")" Size="modal-xl" OnClose="CloseForm">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">نام سرور <span class="text-danger">*</span></label><input class="form-control" @bind="form.Name" placeholder="مثلاً: ESXi-01" /></div>
+            <div class="col-md-2"><label class="form-label">سازنده</label><input class="form-control" @bind="form.Manufacturer" placeholder="HPE" /></div>
+            <div class="col-md-3"><label class="form-label">مدل</label><input class="form-control" @bind="form.Model" placeholder="DL380 Gen10" /></div>
+            <div class="col-md-3"><label class="form-label">سریال</label><input class="form-control" @bind="form.SerialNumber" dir="ltr" /></div>
+
+            <div class="col-md-5"><label class="form-label">آدرس iLO <span class="text-danger">*</span></label><input class="form-control" @bind="form.IloAddress" dir="ltr" placeholder="192.168.30.20 یا ilo-server.local" /><div class="form-text">فقط HTTPS استفاده می‌شود؛ مسیر Redfish خودکار افزوده می‌شود.</div></div>
+            <div class="col-md-2"><label class="form-label">پورت iLO</label><input type="number" min="1" max="65535" class="form-control num" @bind="form.IloPort" /></div>
+            <div class="col-md-5">
+                <label class="form-label">Credential iLO از گاوصندوق</label>
+                @if (canUseCredentials)
+                {
+                    <select class="form-select" @bind="form.CredentialId"><option value="">— انتخاب نشده —</option>@foreach (var c in credentials) { <option value="@c.Id">@c.Title (@c.Username)@(c.HasPassword ? "" : " — بدون رمز")</option> }</select>
+                }
+                else
+                {
+                    <input class="form-control" disabled value="@(form.CredentialId is > 0 ? "Credential امن متصل است" : "— انتخاب نشده —")" />
+                    <div class="form-text">برای انتخاب یا تغییر Credential، مجوز مشاهدهٔ گاوصندوق رمزها لازم است.</div>
+                }
+            </div>
+
+            <div class="col-md-3"><label class="form-label">نقش سرور</label><input class="form-control" @bind="form.Role" placeholder="File / DB / Hypervisor…" /></div>
+            <div class="col-md-3"><label class="form-label">محیط</label><input class="form-control" @bind="form.Environment" placeholder="Production / Test" /></div>
+            <div class="col-md-3"><label class="form-label">اهمیت</label><select class="form-select" @bind="form.Criticality"><option value="Low">کم</option><option value="Normal">عادی</option><option value="High">زیاد</option><option value="Critical">بحرانی</option></select></div>
+            <div class="col-md-3"><label class="form-label">چرخهٔ عمر</label><select class="form-select" @bind="form.Status"><option value="Active">فعال</option><option value="Maintenance">در تعمیرات</option><option value="Standby">رزرو</option><option value="Retired">بازنشسته</option></select></div>
+
+            <div class="col-md-3"><label class="form-label">رک / محل</label><input class="form-control" @bind="form.Rack" placeholder="Rack-A" /></div>
+            <div class="col-md-2"><label class="form-label">شماره U</label><input type="number" min="1" max="100" class="form-control num" @bind="form.RackUnit" /></div>
+            <div class="col-md-4"><label class="form-label">سیستم‌عامل / Hypervisor</label><input class="form-control" @bind="form.OperatingSystem" placeholder="VMware ESXi / Windows Server…" /></div>
+            <div class="col-md-3"><label class="form-label">پایان گارانتی</label><input type="date" class="form-control" @bind="form.WarrantyEndDate" @bind:format="yyyy-MM-dd" /></div>
+            <div class="col-md-4"><label class="form-label">Asset Tag</label><input class="form-control" @bind="form.AssetTag" dir="ltr" /></div>
+            <div class="col-md-8"><label class="form-label">توضیحات</label><input class="form-control" @bind="form.Notes" placeholder="مالک، قرارداد پشتیبانی یا توضیحات نگهداری…" /></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" disabled="@saving" @onclick="Save">@if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }<i class="bi bi-check2"></i> ذخیره</button>
+        <button class="btn btn-light" @onclick="CloseForm"><i class="bi bi-x-lg"></i> انصراف</button>
+    </Footer>
+</Modal>
+
+@code {
+    private bool canView, canCreate, canUpdate, canDelete, canCollect, canUseCredentials;
+    private bool loading = true, showForm, saving;
+    private int companyId, actingId;
+    private string search = "";
+    private List<CompanyRow> companies = new();
+    private List<ServerRow> rows = new();
+    private List<CredentialRow> credentials = new();
+    private ServerForm form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        canView = Auth.Has("Servers.View");
+        canCreate = Auth.Has("Servers.Create");
+        canUpdate = Auth.Has("Servers.Update");
+        canDelete = Auth.Has("Servers.Delete");
+        canCollect = Auth.Has("Servers.Collect");
+        canUseCredentials = Auth.Has("ItVault.View") && (canCreate || canUpdate);
+        if (!canView) { loading = false; return; }
+        await LoadCompanies();
+    }
+
+    private async Task LoadCompanies()
+    {
+        loading = true;
+        try
+        {
+            companies = await Api.GetAsync<List<CompanyRow>>("api/servers/companies") ?? new();
+            companyId = companies.FirstOrDefault()?.Id ?? 0;
+            await LoadCredentials();
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task OnCompanyChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out companyId)) companyId = 0;
+        await LoadCredentials();
+        await Load();
+    }
+
+    private async Task LoadCredentials()
+    {
+        credentials = canUseCredentials && companyId > 0
+            ? await Api.GetAsync<List<CredentialRow>>($"api/servers/credentials?companyId={companyId}") ?? new()
+            : new();
+    }
+
+    private async Task Load()
+    {
+        if (companyId <= 0) { rows = new(); return; }
+        loading = true;
+        try
+        {
+            rows = await Api.GetAsync<List<ServerRow>>($"api/servers?companyId={companyId}&q={Uri.EscapeDataString(search)}") ?? new();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task SearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Load();
+    }
+
+    private void OpenCreate()
+    {
+        form = new ServerForm { CompanyId = companyId, Manufacturer = "HPE", IloPort = 443, Criticality = "Normal", Status = "Active" };
+        showForm = true;
+    }
+
+    private void OpenEdit(ServerRow s)
+    {
+        form = new ServerForm
+        {
+            Id = s.Id, CompanyId = s.CompanyId, Name = s.Name, Manufacturer = s.Manufacturer ?? "HPE", Model = s.Model,
+            SerialNumber = s.SerialNumber, AssetTag = s.AssetTag, IloAddress = s.IloAddress, IloPort = s.IloPort,
+            CredentialId = s.CredentialId, Role = s.Role, Environment = s.Environment, Criticality = s.Criticality,
+            Status = s.Status, Rack = s.Rack, RackUnit = s.RackUnit, OperatingSystem = s.OperatingSystem,
+            WarrantyEndDate = s.WarrantyEndDate, Notes = s.Notes
+        };
+        showForm = true;
+    }
+
+    private void CloseForm() => showForm = false;
+
+    private async Task Save()
+    {
+        saving = true;
+        try
+        {
+            if (form.Id == 0) await Api.PostAsync<object>("api/servers", form);
+            else await Api.PutAsync<object>($"api/servers/{form.Id}", form);
+            Toast.Success(form.Id == 0 ? "سرور ثبت شد." : "اطلاعات سرور ذخیره شد.");
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Test(ServerRow s)
+    {
+        actingId = s.Id;
+        try
+        {
+            await Api.PostAsync<object>($"api/servers/{s.Id}/test");
+            Toast.Success($"اتصال امن Redfish به «{s.Name}» برقرار است.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { actingId = 0; }
+    }
+
+    private async Task Collect(ServerRow s)
+    {
+        actingId = s.Id;
+        try
+        {
+            await Api.PostAsync<object>($"api/servers/{s.Id}/collect");
+            Toast.Success($"Inventory و سلامت «{s.Name}» دریافت شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { actingId = 0; }
+    }
+
+    private async Task Delete(ServerRow s)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"شناسنامهٔ سرور «{s.Name}» و تاریخچهٔ سلامت آن حذف شود؟")) return;
+        try
+        {
+            await Api.DeleteAsync($"api/servers/{s.Id}");
+            Toast.Success("سرور حذف شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private bool IsBusy(int id) => actingId == id;
+    private static bool IsHealthy(string? status) => string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase);
+    private static bool IsProblem(string? status) => string.Equals(status, "Warning", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "Critical", StringComparison.OrdinalIgnoreCase);
+    private static string HealthClass(string? status) => IsHealthy(status) ? "bg-success" : IsProblem(status) ? "bg-danger" : string.Equals(status, "Unknown", StringComparison.OrdinalIgnoreCase) || status is null ? "bg-secondary" : "bg-warning text-dark";
+    private static string HealthTitle(string? status) => status?.ToUpperInvariant() switch { "OK" => "سالم", "WARNING" => "هشدار", "CRITICAL" => "بحرانی", _ => "بررسی نشده" };
+    private static string CriticalityTitle(string? value) => value switch { "Low" => "کم", "High" => "زیاد", "Critical" => "بحرانی", _ => "عادی" };
+    private static string StatusTitle(string? value) => value switch { "Maintenance" => "تعمیرات", "Standby" => "رزرو", "Retired" => "بازنشسته", _ => "فعال" };
+    private static string RackTitle(ServerRow s) => string.IsNullOrWhiteSpace(s.Rack) ? "بدون رک" : $"{s.Rack}{(s.RackUnit is > 0 ? $" / U{s.RackUnit}" : "")}";
+    private static string DateText(DateTime? date) => date.HasValue ? date.Value.ToString("yyyy/MM/dd HH:mm") : "—";
+
+    private sealed class CompanyRow { public int Id { get; set; } public string Name { get; set; } = ""; public int Count { get; set; } }
+    private sealed class CredentialRow { public int Id { get; set; } public string Title { get; set; } = ""; public string? Username { get; set; } public bool HasPassword { get; set; } }
+    private sealed class ServerRow
+    {
+        public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; }
+        public string? Model { get; set; } public string? SerialNumber { get; set; } public string? AssetTag { get; set; }
+        public string IloAddress { get; set; } = ""; public int IloPort { get; set; } = 443; public int? CredentialId { get; set; }
+        public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
+        public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
+        public DateTime? LastHealthCheckAt { get; set; } public string? LastHealthStatus { get; set; } public string? LastPowerState { get; set; }
+    }
+    private sealed class ServerForm
+    {
+        public int Id { get; set; } public int CompanyId { get; set; } public string Name { get; set; } = ""; public string? Manufacturer { get; set; } = "HPE";
+        public string? Model { get; set; } public string? SerialNumber { get; set; } public string? AssetTag { get; set; } public string IloAddress { get; set; } = ""; public int IloPort { get; set; } = 443;
+        public int? CredentialId { get; set; } public string? Role { get; set; } public string? Environment { get; set; } public string Criticality { get; set; } = "Normal"; public string Status { get; set; } = "Active";
+        public string? Rack { get; set; } public int? RackUnit { get; set; } public string? OperatingSystem { get; set; } public DateTime? WarrantyEndDate { get; set; } public string? Notes { get; set; }
+    }
+}

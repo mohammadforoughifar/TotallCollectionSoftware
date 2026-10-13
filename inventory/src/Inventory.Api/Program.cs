@@ -164,6 +164,10 @@ builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsRowSecurity, I
 builder.Services.AddScoped<IAuthService, AuthService>();
 // گاوصندوق رمزهای تجهیزات — رمزنگاری AES-256-GCM با کلید اصلی خارج از دیتابیس
 builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.CredentialVaultCrypto>();
+// Redfish/iLO: فقط HTTPS، بدون redirect (از انتقال ناخواستهٔ اعتبارنامه به مقصد دیگر جلوگیری می‌کند).
+builder.Services.AddHttpClient("HpeRedfish", client => client.Timeout = TimeSpan.FromSeconds(20))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Inventory.Api.Services.ItAssets.HpeRedfishClient>();
 // مدیریت آی‌پی — اسکنر رنج‌ها (Singleton) + اسکن خودکار زمان‌بندی‌شده (HostedService)
 builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.IpamScanner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.ItAssets.IpamScanner>());

@@ -105,6 +105,10 @@ public class AppDbContext : DbContext
     // گاوصندوق رمزهای تجهیزات (مدیریت سخت‌افزار) — جدول‌ها با ItVaultSchemaV1.EnsureAsync ساخته می‌شوند
     public DbSet<ItCredential> ItCredentials => Set<ItCredential>();
     public DbSet<ItCredentialLog> ItCredentialLogs => Set<ItCredentialLog>();
+    // مدیریت سرورهای HPE/iLO و تاریخچهٔ سلامت — رمز اتصال فقط در ItCredentials نگه‌داری می‌شود
+    public DbSet<ManagedServer> ManagedServers => Set<ManagedServer>();
+    public DbSet<ServerHealthSnapshot> ServerHealthSnapshots => Set<ServerHealthSnapshot>();
+    public DbSet<ServerOperationLog> ServerOperationLogs => Set<ServerOperationLog>();
     // مدیریت آی‌پی (IPAM) — جدول‌ها با IpamSchemaV1.EnsureAsync ساخته می‌شوند
     public DbSet<IpSubnet> IpSubnets => Set<IpSubnet>();
     public DbSet<IpAddressEntry> IpAddressEntries => Set<IpAddressEntry>();
@@ -430,6 +434,7 @@ public class AppDbContext : DbContext
         PushDeliverySchema.Configure(mb);
         AiSchemaV1.Configure(mb);
         ItVaultSchemaV1.Configure(mb);
+        ServerManagementSchemaV1.Configure(mb);
         IpamSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();

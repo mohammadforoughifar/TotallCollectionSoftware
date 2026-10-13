@@ -118,6 +118,8 @@ public static class DbInitializer
                 await AiSchemaV1.EnsureAsync(db);
                 // گاوصندوق رمزهای تجهیزات (سرور، سوییچ، میکروتیک، فایروال، سامانه‌ها) — به تفکیک شرکت
                 await ItVaultSchemaV1.EnsureAsync(db);
+                // شناسنامه و پایش سرورهای HPE/iLO (رمز اتصال همچنان فقط در گاوصندوق است)
+                await ServerManagementSchemaV1.EnsureAsync(db);
                 await IpamSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt

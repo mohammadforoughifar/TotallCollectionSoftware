@@ -25,6 +25,8 @@ public static class RbacSeeder
         ["ItVault"] = new[] { "View", "Create", "Update", "Delete", "Reveal", "ViewLog" },
         // مدیریت آی‌پی (IPAM) — Scan: اسکن رنج و پینگ آی‌پی | Update: ویرایش رنج و رزرو آی‌پی
         ["Ipam"] = new[] { "View", "Create", "Update", "Delete", "Scan" },
+        // سرورهای HPE/iLO — Collect فقط خواندنی است (Health/Inventory از Redfish) و عملیات پاور ندارد.
+        ["Servers"] = new[] { "View", "Create", "Update", "Delete", "Collect" },
         ["Parties"] = CrudActions,
         ["Expenses"] = CrudActions,
         ["Reports"] = CrudActions,

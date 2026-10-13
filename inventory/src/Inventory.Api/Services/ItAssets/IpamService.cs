@@ -222,6 +222,24 @@ public static class IpamRegistry
         }
         catch { }
 
+        // ---- سرورهای مدیریت‌شده (آدرس مدیریتی iLO) ----
+        // Credential ممکن است DNS داشته باشد؛ شناسنامهٔ سرور مرجع قطعی IP مدیریتی است.
+        try
+        {
+            var servers = await db.ManagedServers.AsNoTracking()
+                .Where(s => s.CompanyId == companyId && s.Status != "Retired" && s.IloAddress != "")
+                .Select(s => new { s.Id, s.Name, s.Model, s.IloAddress, s.Rack, s.LastHealthStatus }).ToListAsync(ct);
+            foreach (var s in servers)
+                foreach (var ip in IpamTools.ExtractIps(s.IloAddress))
+                    Add(ip, new IpOwner
+                    {
+                        Source = "ManagedServer", SourceTitle = "سرور مدیریت‌شده", RefId = s.Id, Title = s.Name,
+                        Detail = string.Join(" — ", new[] { s.Model, s.Rack, s.LastHealthStatus }.Where(x => !string.IsNullOrWhiteSpace(x))),
+                        Link = "servers"
+                    });
+        }
+        catch { /* امکان دارد جدول ماژول سرورها هنوز در دیتابیس قدیمی ساخته نشده باشد */ }
+
         // ---- رزرو دستی داخل همین بخش ----
         try
         {
