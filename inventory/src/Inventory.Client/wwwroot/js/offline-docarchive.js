@@ -99,7 +99,9 @@
               if(sess){ const j=JSON.parse(sess); token=j.Token||j.token||''; }
             }catch{}
             if(!token) token=localStorage.getItem('authToken')|| sessionStorage.getItem('authToken') || '';
-            const res=await fetch('/api/doc-archive/documents/approval',{
+            // آدرس API از همان تابع سراسری index.html (پشتیبانی از IIS با مسیر پایه مثل /erp/ و dev server جدا)
+            const apiRoot=(typeof window.inventoryApiBase==='function' ? (window.inventoryApiBase(window.location.origin)||'') : '').replace(/\/+$/,'');
+            const res=await fetch(apiRoot+'/api/doc-archive/documents/approval',{
               method:'POST',
               headers:{'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{})},
               body: JSON.stringify(item.payload)

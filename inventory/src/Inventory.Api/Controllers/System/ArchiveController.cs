@@ -302,18 +302,40 @@ public class AttachmentsController : ControllerBase
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         ms.Position = 0;
-        var relPath = await _store.SaveAsync(module, refId, ms, file.FileName);
+        string relPath;
+        try
+        {
+            relPath = await _store.SaveAsync(module, refId, ms, file.FileName);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // روی IIS معمولاً یعنی هویت Application Pool اجازهٔ نوشتن روی پوشهٔ ذخیره را ندارد
+            HttpContext?.RequestServices?.GetService<ILogger<AttachmentsController>>()?.LogError(ex,
+                "ذخیرهٔ پیوست روی دیسک سرور ناموفق بود (ماژول {Module}، رکورد {RefId}).", module, refId);
+            return StatusCode(500, new { message = "ذخیرهٔ فایل روی سرور ناموفق بود؛ مدیر سیستم دسترسی نوشتن پوشهٔ ذخیره را بررسی کند." });
+        }
+
         var att = new AppAttachment
         {
             Module = module, RefId = refId,
-            FileName = Path.GetFileName(file.FileName),
+            // نام اصلی فایل (حتی اگر مرورگر مسیر ویندوزی مثل C:\fakepath\a.pdf بفرستد)
+            FileName = OriginalFileName(file.FileName),
             ContentType = file.ContentType ?? "application/octet-stream",
             FilePath = relPath,
             Data = Array.Empty<byte>(),
             UploaderName = MyUsername, UploaderUserId = MyUserId
         };
         _db.AppAttachments.Add(att);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // رکورد ثبت نشد → فایل بی‌صاحب روی دیسک سرور نماند
+            _store.Delete(relPath);
+            throw;
+        }
 
         if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
         {
@@ -321,6 +343,20 @@ public class AttachmentsController : ControllerBase
         }
 
         return Ok();
+    }
+
+    /// <summary>
+    /// نام اصلی فایل برای ستون FileName (حداکثر ۲۵۵ کاراکتر): مسیر ویندوزی مرورگر (C:\fakepath\…) حذف
+    /// و در صورت نیاز کوتاه می‌شود بدون اینکه پسوند از دست برود (پیش‌نمایش به پسوند وابسته است).
+    /// </summary>
+    private static string OriginalFileName(string? raw)
+    {
+        var name = (raw ?? "").Replace('\\', '/');
+        name = name[(name.LastIndexOf('/') + 1)..].Trim();
+        if (name.Length == 0) name = "file";
+        if (name.Length <= 255) return name;
+        var ext = Path.GetExtension(name);
+        return ext.Length is > 0 and <= 16 ? name[..(255 - ext.Length)] + ext : name[..255];
     }
 
     /// <summary>دانلود پیوست — نیازمند احراز هویت و دسترسی دانلود روی رکورد صاحبِ پیوست.</summary>

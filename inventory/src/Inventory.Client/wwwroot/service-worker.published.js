@@ -14,7 +14,8 @@ const offlineAssetsInclude = [ /\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, 
 const offlineAssetsExclude = [ /^service-worker\.js$/ ];
 
 // Replace with your base path if you are hosting on a subfolder. Ensure there is a trailing '/'.
-const base = "/";
+// مسیر پایه از scope خود سرویس‌ورکر خوانده می‌شود تا نصب زیر Application/Virtual Directory در IIS (مثلاً /erp/) هم درست کار کند.
+const base = self.registration ? new URL(self.registration.scope).pathname : "/";
 const baseUrl = new URL(base, self.origin);
 const manifestUrlList = self.assetsManifest.assets.map(asset => new URL(asset.url, baseUrl).href);
 
@@ -59,7 +60,13 @@ async function onActivate(event) {
 }
 
 const docArchiveApiCache='doc-archive-api-v1';
-const docArchiveCacheableGet = (url)=> url.pathname.startsWith('/api/doc-archive/') && (
+// مسیر نسبت به محدودهٔ (scope) سرویس‌ورکر: اگر برنامه روی IIS زیر مسیر پایه نصب شود (مثلاً /erp/)،
+// «/erp/api/…» هم باید مسیر API شناخته شود؛ وگرنه دانلود/پیش‌نمایش پیوست با index.html جواب داده می‌شود.
+// روی ریشهٔ سایت (scope = «/») همان pathname قبلی برمی‌گردد.
+const appScopePath = new URL(self.registration ? self.registration.scope : self.location.href).pathname;
+const appPath = (url)=> url.pathname.startsWith(appScopePath) ? '/' + url.pathname.slice(appScopePath.length) : url.pathname;
+
+const docArchiveCacheableGet = (url)=> appPath(url).startsWith('/api/doc-archive/') && (
   url.pathname.includes('/folders') || url.pathname.includes('/documents') || url.pathname.includes('/cartable') ||
   url.pathname.includes('/favorites') || url.pathname.includes('/recently-viewed') || url.pathname.includes('/search') ||
   url.pathname.includes('/tags') || url.pathname.includes('/lookups') || url.pathname.includes('/stats') || url.pathname.includes('/expiry-summary')
@@ -111,9 +118,10 @@ async function onFetch(event) {
     // از کش سرو یا با index.html پاسخ داده شوند: درخواست دانلود/پیش‌نمایش پیوست چت
     // وقتی در تب جدید (یا نوار آدرس) باز می‌شود باید مستقیم به سرور برسد؛ وگرنه
     // PWA صفحهٔ برنامه را نشان می‌دهد و دانلود فقط بعد از Ctrl+Shift+R انجام می‌شود.
-    const isDataUrl = requestUrl.pathname.startsWith('/api/')
-        || requestUrl.pathname.startsWith('/hubs/')
-        || requestUrl.pathname.startsWith('/signalr/')
+    const requestPath = appPath(requestUrl);
+    const isDataUrl = requestPath.startsWith('/api/')
+        || requestPath.startsWith('/hubs/')
+        || requestPath.startsWith('/signalr/')
         || requestUrl.searchParams.has('access_token')
         || requestUrl.searchParams.has('ft');   // توکن کوتاه فایل‌های چت
     if (isDataUrl) {
@@ -128,7 +136,7 @@ async function onFetch(event) {
         const shouldServeIndexHtml = event.request.mode === 'navigate'
             && requestUrl.origin === self.location.origin
             // RADIS-HR یک SPA مستقل زیر همین Origin است؛ index اصلی نباید جای آن برگردد.
-            && !new URL(event.request.url).pathname.startsWith('/radis-hr/')
+            && !requestPath.startsWith('/radis-hr/')
             && !manifestUrlList.some(url => url === event.request.url);
 
         // Cache-busting query strings must still resolve to this published version's static asset.
