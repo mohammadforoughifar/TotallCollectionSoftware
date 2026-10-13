@@ -229,17 +229,16 @@
                 if (h.indexOf('.e2b.app') !== -1) {
                     return window.location.protocol + '//' + h.replace(/^[0-9]+-/, '5100-');
                 }
-                // استقرار تک‌سرورهٔ منتشرشده: اگر صفحه روی همان پورت API (5100) سرو می‌شود —
-                // چه از localhost و چه از IP/دامنهٔ سرور (مثلاً http://192.168.1.50:5100) —
-                // از همان مبدا استفاده کن. (قبلاً فقط localhost پوشش داده می‌شد و در انتشار،
-                // مرورگرِ کاربرِ راه‌دور به localhost خودش هدایت می‌شد و هیچ داده‌ای نمی‌آمد.)
+                // استقرار تک‌سروره: UI و API هم‌مبدأ هستند؛ پورت قابل تنظیم است (مثلاً 8181).
+                // برای هر IP/دامنهٔ سرور از مبدأ جاری استفاده کن، نه localhost کاربر.
                 var port = window.location.port;
-                if (port === '5100') return window.location.origin;
-                // روی localhost با پورت دیگر (مثلاً کلاینت توسعه روی 5210) → به پورت پیش‌فرض API (5100) برو
+                if (port === '5100' || port === '8181') return window.location.origin;
                 if (h.indexOf('localhost') === 0 || h.indexOf('127.0.0.1') === 0) {
                     if (port === '') return window.location.origin;
                     return fallback || 'http://localhost:5100';
                 }
+                // میزبان غیرمحلی: در انتشار تک‌سروره درخواست‌ها به همان میزبان و پورت می‌روند.
+                if (port) return window.location.origin;
             } catch (e) { }
             return fallback || 'http://localhost:5100';
         };
