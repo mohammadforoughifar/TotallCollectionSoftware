@@ -162,6 +162,20 @@ else
                                                         disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
                                                     <i class="bi bi-bug"></i>
                                                 </button>
+                                                <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </NavLink>
+                                                <button type="button" class="btn btn-outline-dark" title="ابطال صورتحساب در سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => EbtalRow(inv)">
+                                                    <i class="bi bi-x-octagon"></i>
+                                                </button>
+                                            }
+                                            @if (inv.StatusSentToSystemInt == "0")
+                                            {
+                                                <button type="button" class="btn btn-outline-secondary" title="حذف صورتحساب (فقط ارسال‌نشده)"
+                                                        disabled="@acting" @onclick="() => DeleteRow(inv)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
                                             }
                                         </div>
                                     </td>
@@ -345,6 +359,52 @@ else
                 await LoadAsync(pno);
             }
             else Toast.Error(r.Message ?? "خطا در ارسال به سامانه.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>ابطال صورتحساب در سامانهٔ مودیان — با تایید کاربر؛ صورتحساب ابطالی جدید (الگوی ابطال) ثبت می‌شود.</summary>
+    private async Task EbtalRow(InvoiceVM inv)
+    {
+        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("فقط صورتحساب‌های ارسال‌شده قابل ابطال‌اند."); return; }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} در سامانه مودیان ابطال می‌شود. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای ابطال یافت نشد."); return; }
+            var r = await Moadian.EbtalInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"ابطال صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} ثبت شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ابطال صورتحساب.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>حذف صورتحساب ارسال‌نشده از دیتابیس محلی — با تایید کاربر.</summary>
+    private async Task DeleteRow(InvoiceVM inv)
+    {
+        if (inv.StatusSentToSystemInt != "0") { Toast.Info("فقط صورتحساب‌های ارسال‌نشده قابل حذف‌اند."); return; }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} حذف می‌شود؛ این کار قابل بازگشت نیست. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.DeleteInvoiceAsync(inv.Id);
+            if (r.Success)
+            {
+                Toast.Success("صورتحساب حذف شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در حذف صورتحساب.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { acting = false; StateHasChanged(); }
