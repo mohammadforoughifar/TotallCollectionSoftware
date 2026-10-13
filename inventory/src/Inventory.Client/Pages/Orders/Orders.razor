@@ -100,16 +100,35 @@
                                 }
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
-                                    <button class="btn btn-sm btn-light" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")" @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
-                                        @if (printingId == o.Id)
-                                        {
-                                            <span class="spinner-border spinner-border-sm text-primary"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-printer text-primary"></i>
-                                        }
-                                    </button>
+                                    @if (!isPurchase)
+                                    {
+                                        <button class="btn btn-sm btn-light text-primary" title="چاپ فاکتور فروش" aria-label="چاپ فاکتور فروش"
+                                                @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                            @if (printingId == o.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-printer"></i>
+                                            }
+                                            <span class="d-none d-xxl-inline ms-1">چاپ فاکتور فروش</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-light" title="چاپ رسید خرید" aria-label="چاپ رسید خرید"
+                                                @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                            @if (printingId == o.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-primary"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-printer text-primary"></i>
+                                            }
+                                        </button>
+                                    }
                                     <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
                                     <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
                                 </td>
@@ -152,7 +171,9 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
-                            <button class="btn btn-light text-primary" @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                            <button class="btn btn-light text-primary" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
+                                    aria-label="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
+                                    @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
                                 @if (printingId == o.Id)
                                 {
                                     <span class="spinner-border spinner-border-sm"></span>
@@ -161,7 +182,7 @@
                                 {
                                     <i class="bi bi-printer"></i>
                                 }
-                                چاپ
+                                @(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")
                             </button>
                             <button class="btn btn-light text-primary" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil"></i> ویرایش</button>
                             <button class="btn btn-light text-danger" @onclick="() => Delete(o)"><i class="bi bi-trash"></i></button>
