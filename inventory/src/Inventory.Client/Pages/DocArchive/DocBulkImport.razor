@@ -47,13 +47,8 @@
             <div class="row g-3 align-items-end">
                 <div class="col-md-5">
                     <label class="form-label fw-600">مقصد در آرشیو</label>
-                    <select class="form-select" @bind="rootFolderId" disabled="@busy">
-                        <option value="">ریشهٔ آرشیو</option>
-                        @foreach (var f in folders)
-                        {
-                            <option value="@f.Id">@f.Name</option>
-                        }
-                    </select>
+                    <DocFolderTreeSelect Folders="folders" @bind-Value="rootFolderId" Disabled="@busy"
+                                         Placeholder="ریشهٔ آرشیو (جستجو یا انتخاب پوشه…)" RootTitle="ریشهٔ آرشیو" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fw-600">سقف حجم هر فایل</label>

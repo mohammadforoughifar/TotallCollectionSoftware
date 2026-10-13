@@ -167,7 +167,7 @@ namespace Inventory.Api.Services.Moadian
                     return model;
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -630,7 +630,7 @@ namespace Inventory.Api.Services.Moadian
 
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -1723,7 +1723,7 @@ context.Customers.Any(x =>
                     return model;
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -2704,7 +2704,7 @@ context.Customers.Any(x =>
 
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -2918,7 +2918,7 @@ context.Customers.Any(x =>
 
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -2971,7 +2971,7 @@ context.Customers.Any(x =>
                     return model;
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -3021,7 +3021,7 @@ context.Customers.Any(x =>
                     return model;
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = null;
                     model.Status = 500;
@@ -3205,7 +3205,7 @@ context.Customers.Any(x =>
                     return model;
 
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     model.Data = false;
                     model.Status = 500;
@@ -3404,7 +3404,7 @@ context.Customers.Any(x =>
                     return CreateErrorResponse(500);
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
 
                 throw;

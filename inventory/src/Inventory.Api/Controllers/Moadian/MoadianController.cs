@@ -1,7 +1,5 @@
 using Inventory.Api.Services.Moadian;
 
-using Inventory.Api.Services.Moadian;
-
 using Inventory.Shared.Dtos.Moadian;
 
 using Microsoft.AspNetCore.Authorization;
@@ -92,7 +90,7 @@ namespace Inventory.Api.Controllers.Moadian
         public async Task<IResult> GetAllInvoice(DateTime? firstDate, DateTime? endDate, string operation, int CpinfoId, string? searchTerm, string? filterColumn, string? filterValue, string? sortColumn, string? sortOrder, int page, int pageSize)
         {
 
-            var getPageQuery = new GetResultQuery(Page: page, PageSize: pageSize, SearchTerm: searchTerm, FilterColumn: filterColumn, FilterValue: filterValue, SortColumn: sortColumn, SortOrder: sortOrder, firstDate: firstDate, endDate: endDate, extra: null, extraId: Guid.Empty);
+            var getPageQuery = new GetResultQuery(page: page, pageSize: pageSize, searchTerm: searchTerm, filterColumn: filterColumn, filterValue: filterValue, sortColumn: sortColumn, sortOrder: sortOrder, firstDate: firstDate, endDate: endDate, extra: null, extraId: Guid.Empty);
             var model = await connectService.GetAllInvoiceAsync(operation, CpinfoId, getPageQuery);
             if (model.Success && model.Data is PagedList<UCInvoiceInfo> resultList)
             {
@@ -229,7 +227,7 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpGet("GetGoodOrService")]
         public async Task<IResult> GetGoodOrService(int cpinfoId, string? searchTerm, string? filterColumn, string? filterValue, string? sortColumn, string? sortOrder, int page, int pageSize)
         {
-            var getPageQuery = new GetResultQuery(Page: page, PageSize: pageSize, SearchTerm: searchTerm, FilterColumn: filterColumn, FilterValue: filterValue, SortColumn: sortColumn, SortOrder: sortOrder, firstDate: null, endDate: null, extra: null, extraId: Guid.Empty);
+            var getPageQuery = new GetResultQuery(page: page, pageSize: pageSize, searchTerm: searchTerm, filterColumn: filterColumn, filterValue: filterValue, sortColumn: sortColumn, sortOrder: sortOrder, firstDate: null, endDate: null, extra: null, extraId: Guid.Empty);
 
             var model = await connectService.GetAllGoodOrServiceAsync(cpinfoId,getPageQuery);
             if (model.Success && model.Data is PagedList<VMGoodsOrService> resultList)
@@ -352,7 +350,7 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpGet("GetAllUnitOfMeasurementAsync")]
         public async Task<IResult> GetAllUnitOfMeasurementAsync(string? searchTerm, string? filterColumn, string? filterValue, string? sortColumn, string? sortOrder, int page, int pageSize)
         {
-            var getPageQuery = new GetResultQuery(Page: page, PageSize: pageSize, SearchTerm: searchTerm, FilterColumn: filterColumn, FilterValue: filterValue, SortColumn: sortColumn, SortOrder: sortOrder, firstDate: null, endDate: null, extra: null, extraId: Guid.Empty);
+            var getPageQuery = new GetResultQuery(page: page, pageSize: pageSize, searchTerm: searchTerm, filterColumn: filterColumn, filterValue: filterValue, sortColumn: sortColumn, sortOrder: sortOrder, firstDate: null, endDate: null, extra: null, extraId: Guid.Empty);
 
             var model = await connectService.GetAllUnitOfMeasurementAsync(getPageQuery);
             if (model.Success && model.Data is PagedList<VMUnitOfMeasurement> resultList)

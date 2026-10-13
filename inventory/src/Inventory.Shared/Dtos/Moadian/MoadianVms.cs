@@ -44,34 +44,36 @@ public class Links
 /// <summary>پارامترهای صفحه‌بندی/جستجو/فیلتر (مطابق فراخوانی‌های کنترلر).</summary>
 public class GetResultQuery
 {
+    public GetResultQuery() { }
+
     public GetResultQuery(
-        int Page = 1,
-        int PageSize = 10,
-        string? SearchTerm = null,
-        string? FilterColumn = null,
-        string? FilterValue = null,
-        string? SortColumn = null,
-        string? SortOrder = null,
+        int page = 1,
+        int pageSize = 10,
+        string? searchTerm = null,
+        string? filterColumn = null,
+        string? filterValue = null,
+        string? sortColumn = null,
+        string? sortOrder = null,
         DateTime? firstDate = null,
         DateTime? endDate = null,
         object? extra = null,
         Guid? extraId = null)
     {
-        Page = Page;
-        PageSize = PageSize;
-        SearchTerm = SearchTerm;
-        FilterColumn = FilterColumn;
-        FilterValue = FilterValue;
-        SortColumn = SortColumn;
-        SortOrder = SortOrder;
-        FirstDate = firstDate;
-        EndDate = endDate;
-        Extra = extra;
-        ExtraId = extraId ?? Guid.Empty;
+        this.Page = page;
+        this.PageSize = pageSize;
+        this.SearchTerm = searchTerm;
+        this.FilterColumn = filterColumn;
+        this.FilterValue = filterValue;
+        this.SortColumn = sortColumn;
+        this.SortOrder = sortOrder;
+        this.FirstDate = firstDate;
+        this.EndDate = endDate;
+        this.Extra = extra;
+        this.ExtraId = extraId ?? Guid.Empty;
     }
 
-    public int Page { get; set; }
-    public int PageSize { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
     public string? SearchTerm { get; set; }
     public string? FilterColumn { get; set; }
     public string? FilterValue { get; set; }
