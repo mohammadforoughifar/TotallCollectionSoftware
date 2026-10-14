@@ -396,8 +396,17 @@ else
                         }
                     </div>
                     <div class="fs-8 text-muted mt-1">
-                        سطح ورود کاربر (مدیر / اپراتور / معرف) به‌صورت خودکار از نقش‌های انتخابی تعیین می‌شود.
+                        سطح ورود کاربر (مدیر / اپراتور / معرف) به‌صورت خودکار از نقش‌های انتخابی تعیین می‌شود؛
+                        «مدیر کل» فقط با انتخاب نقش دقیقاً <b dir="ltr">Admin</b> داده می‌شود (نام‌هایی مثل «مدیر فروش» سطح اپراتور می‌دهند).
                     </div>
+                    @if (WillLoseAdminLevel)
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0 fs-8">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            با این انتخاب، سطح این کاربر از «مدیر کل» به «اپراتور» تغییر می‌کند و <b>دسترسی کامل از او گرفته می‌شود</b>.
+                            اگر می‌خواهید مدیر بماند، نقش <b dir="ltr">Admin</b> را هم انتخاب کنید.
+                        </div>
+                    }
                 }
             </div>
             @if (IsReferrerSelected)
@@ -589,6 +598,17 @@ else
     private static bool IsAdminRole(string n) =>
         n.Equals("Admin", StringComparison.OrdinalIgnoreCase) || n.Contains("مدیر") || n.Contains("ادمین");
 
+    /// <summary>سطح «مدیر کل» فقط با نقش دقیقاً Admin داده می‌شود (هم‌راستا با AuthService.DeriveLegacyRole).</summary>
+    private static bool IsAdminRoleExact(string n) => n.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>آیا نقش دقیقاً «Admin» انتخاب شده است؟</summary>
+    private bool SelectedIncludesAdminRole =>
+        allRoles.Any(r => selectedRoleIds.Contains(r.Id) && IsAdminRoleExact(r.Name));
+
+    /// <summary>هشدار: کاربری که الان مدیر کل است با این ذخیره به اپراتور تبدیل می‌شود.</summary>
+    private bool WillLoseAdminLevel =>
+        editing && form.Role == "Admin" && selectedRoleIds.Count > 0 && !SelectedIncludesAdminRole;
+
     private static bool IsReferrerRole(string n) =>
         n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف");
 
@@ -678,7 +698,9 @@ else
 
     private void OpenNew()
     {
-        form = new UserDto { Role = Auth.IsAdmin ? "Admin" : "Operator", IsActive = true };
+        // سطح قدیمی (Admin/Operator/Referrer) هنگام ذخیره از روی نقش‌های RBAC انتخاب‌شده تعیین می‌شود؛
+        // پس اینجا هرگز «Admin» پیش‌فرض نمی‌گذاریم (اگر فهرست نقش‌ها لود نشده باشد، کاربر بی‌نقش = مدیر کل می‌شد).
+        form = new UserDto { Role = "Operator", IsActive = true };
         referrerIdStr = "0";
         selectedRoleIds = new();
         selectedCompanyIds = new();
@@ -738,7 +760,11 @@ else
         if (string.IsNullOrWhiteSpace(form.LastName))
         { saveError = "نام خانوادگی کاربر را وارد کنید."; return; }
 
-        if (allRoles.Count > 0 && selectedRoleIds.Count == 0)
+        // بدون نقش، کاربر «هیچ محدودیت واقعی» ندارد (سرور هم ثبتِ کاربر جدید بدون نقش را رد می‌کند)
+        if (allRoles.Count == 0)
+        { saveError = "فهرست نقش‌ها در دسترس نیست (اتصال به سرور یا تنظیمات نقش‌ها را بررسی کنید) — بدون نقش، کاربر ثبت نمی‌شود."; return; }
+
+        if (selectedRoleIds.Count == 0)
         { saveError = "حداقل یک نقش برای کاربر انتخاب کنید."; return; }
 
         form.RoleIds = selectedRoleIds.ToList();
