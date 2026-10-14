@@ -33,6 +33,7 @@ public interface IMoadianService
     Task<ApiModel> GetAllInvoicesAsync(string operation, int cpinfoId, DateTime? firstDate, DateTime? endDate, string? search, int page, int pageSize);
     Task<ApiModel> AddInvoiceAsync(InvoiceVM vm);
     Task<ApiModel> SendInvoiceAsync(InvoiceVM vm);
+    Task<ApiModel> PreviewSendInvoiceAsync(InvoiceVM vm);
     Task<ApiModel> EslahiInvoiceAsync(InvoiceVM vm);
     Task<ApiModel> EbtalInvoiceAsync(InvoiceVM vm);
     Task<ApiModel> EstelamInvoiceAsync(string referenceId, int invoiceId, string dateOrder);
@@ -155,6 +156,7 @@ public class MoadianService : IMoadianService
 
     public Task<ApiModel> AddInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/AddInvoice", vm);
     public Task<ApiModel> SendInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/SendInvoiceAsync", vm);
+    public Task<ApiModel> PreviewSendInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/PreviewSendInvoiceAsync", vm);
     public Task<ApiModel> EslahiInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/EslahiInvoiceAsync", vm);
     public Task<ApiModel> EbtalInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/EbtalInvoiceAsync", vm);
 

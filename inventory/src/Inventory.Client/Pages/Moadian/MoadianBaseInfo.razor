@@ -123,11 +123,11 @@ else if (ActiveTab == "customers")
     private record TabInfo(string Key, string Title, string Icon);
     private static readonly TabInfo[] TabsList =
     {
-        new("company", "شرکت", "bi-building"),
-        new("connection", "اتصال", "bi-plug"),
-        new("units", "واحد سنجش", "bi-rulers"),
-        new("goods", "کالا / خدمات", "bi-box"),
-        new("customers", "مشتریان", "bi-people"),
+        new("company", "اطلاعات شرکت", "bi-building"),
+        new("connection", "اطلاعات اتصال", "bi-plug"),
+        new("units", "واحدهای سنجش", "bi-rulers"),
+        new("goods", "کالاها و خدمات", "bi-box"),
+        new("customers", "اطلاعات مشتریان", "bi-people"),
     };
     private IEnumerable<TabInfo> Tabs => TabsList;
 

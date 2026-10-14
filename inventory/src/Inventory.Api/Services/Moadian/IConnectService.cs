@@ -47,7 +47,7 @@ namespace Inventory.Api.Services.Moadian
         Task<ApiModel> EslahiInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata);///ارسال صورتحساب اصلاحی
         Task<ApiModel> EbtalInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata);///ارسال صورتحساب اصلاحی
         Task<ApiModel> GetAllInvoiceAsync(string operation,int CpinfoId, GetResultQuery request);///نمایش همه صورتحسا بها
-        Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM);//ارسال و عملیات در کارپوشه از فرم همه صورتحسابها
+        Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM, bool previewOnly = false);//ارسال یا پیش‌نمایش JSON بدون تماس سامانه
         Task<ApiModel> EstelamInvoiceAsync(string ReferenceId, int InvoiceId,string dateorder);//استعلام صورتحساب
         Task<ApiModel> ErrorInvoiceAsync(string ReferenceId);//لیست خطاهای صورتحساب
         Task<ApiModel> UpdateStatusInvoiceAsync(int InvoiceId);//تغییر وضعیت صورتحساب به مشااهده شده در کارپوشه(ارسال)  صورتحساب

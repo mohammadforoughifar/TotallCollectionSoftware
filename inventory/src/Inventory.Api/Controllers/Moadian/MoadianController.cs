@@ -161,13 +161,13 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpPost("SendInvoiceAsync")]
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {
-          //  var result = await connectService.InsertInvoiceAsync(model);
-            var result = await connectService.SendInvoiceAsync( model);
-            if (result.Success && result.Data is InvoiceVM resultData)
-            {
-            
-            }
-            return result;
+            return await connectService.SendInvoiceAsync(model);
+        }
+
+        [HttpPost("PreviewSendInvoiceAsync")]
+        public async Task<ApiModel> PreviewSendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
+        {
+            return await connectService.SendInvoiceAsync(model, previewOnly: true);
         }
 
         [HttpPost("EslahiInvoiceAsync")]

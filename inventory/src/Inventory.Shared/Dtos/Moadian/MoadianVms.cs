@@ -18,6 +18,10 @@ public class ApiModel
     public string? Message { get; set; }
     public bool Success { get; set; }
     public int SematId { get; set; }
+    /// <summary>نسخهٔ خوانای InvoiceDtoها پیش از بسته‌بندی/امضا/رمزگذاری SDK؛ فقط برای عیب‌یابی مجاز.</summary>
+    public string? RequestJson { get; set; }
+    /// <summary>بدنهٔ پاسخ SDK پس از ارسال؛ بدون هدرهای احراز هویت.</summary>
+    public string? ResponseJson { get; set; }
 }
 
 /// <summary>پیام‌های فارسی کدهای وضعیت (مطابق مصرف در ConnectService).</summary>

@@ -25,6 +25,7 @@ else if (vm is null)
 }
 else
 {
+    <div class="invoice-screen">
     <div class="page-head">
         <div>
             <h1>
@@ -50,6 +51,9 @@ else
         <div class="card-body d-flex gap-2 flex-wrap">
             @if (vm.ShowButtons && vm.StatusSentToSystemInt == "0")
             {
+                <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
+                    <i class="bi bi-braces"></i> پیش‌نمایش JSON
+                </button>
                 <button class="btn btn-primary" @onclick="Send" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-send"></i> }
                     ارسال به سامانه
@@ -104,6 +108,43 @@ else
                 }
             </div>
             <button type="button" class="btn-close ms-auto" @onclick="() => { ActionResult = null; ErrorItem_ = null; }"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(PreviewRequestJson) || !string.IsNullOrWhiteSpace(ActualRequestJson) || !string.IsNullOrWhiteSpace(SdkResponseJson))
+    {
+        <div class="card mb-3 no-print">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-braces text-primary"></i> JSON صورتحساب
+                <span class="small text-muted ms-auto">نمایش DTO پیش از بسته‌بندی/امضا/رمزگذاری SDK</span>
+            </div>
+            <div class="card-body">
+                @if (!string.IsNullOrWhiteSpace(PreviewRequestJson))
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <strong>پیش از ارسال — پیش‌نمایش</strong>
+                        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(PreviewRequestJson)"><i class="bi bi-clipboard"></i> کپی</button>
+                    </div>
+                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@PreviewRequestJson</pre>
+                }
+                @if (!string.IsNullOrWhiteSpace(ActualRequestJson))
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2 mt-3">
+                        <strong>پس از ارسال — درخواست واقعی ساخته‌شده</strong>
+                        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(ActualRequestJson)"><i class="bi bi-clipboard"></i> کپی</button>
+                    </div>
+                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@ActualRequestJson</pre>
+                }
+                @if (!string.IsNullOrWhiteSpace(SdkResponseJson))
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2 mt-3">
+                        <strong>پاسخ SDK/سامانه</strong>
+                        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(SdkResponseJson)"><i class="bi bi-clipboard"></i> کپی</button>
+                    </div>
+                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@SdkResponseJson</pre>
+                }
+                <div class="alert alert-warning small mb-0">این JSON حاوی شناسه‌های مالیاتی و اطلاعات خریدار/فروشنده است؛ آن را عمومی منتشر نکنید. زمان/TaxID در پیش‌نمایش ممکن است با درخواست واقعیِ بعدی متفاوت باشد.</div>
+            </div>
         </div>
     }
 
@@ -204,13 +245,134 @@ else
             </div>
         </div>
     </div>
+    </div>
+
+    <div class="moadian-print" lang="fa" dir="rtl">
+        <table class="moadian-print-table">
+            <colgroup>
+                <col style="width:4%" /><col style="width:22%" /><col style="width:14%" /><col style="width:6%" />
+                <col style="width:6%" /><col style="width:11%" /><col style="width:10%" /><col style="width:7%" />
+                <col style="width:10%" /><col style="width:10%" />
+            </colgroup>
+            <thead>
+                <tr><th colspan="10">
+                    <div class="mprint-brand">@(seller?.PersianName ?? "صورتحساب الکترونیکی")</div>
+                    <div class="mprint-subtitle">صورتحساب فروش کالا / خدمت</div>
+                    <div class="mprint-seller">
+                        @if (!string.IsNullOrWhiteSpace(seller?.Nationalid)) { <span>شناسهٔ ملی فروشنده: <b dir="ltr">@seller!.Nationalid</b></span> }
+                        @if (!string.IsNullOrWhiteSpace(seller?.EconomicNumber)) { <span>شمارهٔ اقتصادی: <b dir="ltr">@seller!.EconomicNumber</b></span> }
+                        @if (!string.IsNullOrWhiteSpace(vm.TaxMemoryID)) { <span>شناسهٔ حافظهٔ مالیاتی: <b dir="ltr">@vm.TaxMemoryID</b></span> }
+                    </div>
+                    <div class="mprint-meta">
+                        <div><span>شمارهٔ صورتحساب</span><b class="num">@(vm.NumberInvoice?.Num() ?? "—")</b></div>
+                        <div><span>شناسهٔ داخلی</span><b class="num">@vm.Id.Num()</b></div>
+                        <div><span>تاریخ صدور</span><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></div>
+                        <div><span>موضوع</span><b>@(vm.Subject ?? "—")</b></div>
+                        <div><span>وضعیت</span><b>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</b></div>
+                        <div><span>الگو</span><b>@(vm.TypePattern ?? "—")</b></div>
+                        <div><span>مشتری</span><b>@(vm.CustomerName ?? "—")</b></div>
+                        <div><span>روش پرداخت</span><b>@(vm.PaymentType ?? "—")</b></div>
+                        @if (!string.IsNullOrWhiteSpace(vm.NewTaxNumber ?? vm.TaxNumber))
+                        {
+                            <div class="mprint-wide"><span>شمارهٔ مالیاتی</span><b dir="ltr">@(vm.NewTaxNumber ?? vm.TaxNumber)</b></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vm.ReferenceId))
+                        {
+                            <div class="mprint-wide"><span>شمارهٔ مرجع</span><b dir="ltr">@vm.ReferenceId</b></div>
+                        }
+                    </div>
+                </th></tr>
+                <tr class="mprint-columns">
+                    <th class="mprint-no">ردیف</th>
+                    <th>شرح کالا / خدمت</th>
+                    <th>شناسهٔ کالا</th>
+                    <th>واحد</th>
+                    <th>تعداد</th>
+                    <th>مبلغ واحد (ریال)</th>
+                    <th>تخفیف (ریال)</th>
+                    <th>نرخ مالیات</th>
+                    <th>مالیات (ریال)</th>
+                    <th>جمع ردیف (ریال)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < vm.InvoiceItems.Count; i++)
+                {
+                    var item = vm.InvoiceItems[i];
+                    <tr>
+                        <td class="num">@((i + 1).Num())</td>
+                        <td>@(item.Name ?? item.DescriptionKala ?? "—")</td>
+                        <td class="num" dir="ltr">@(item.UniqueIdentifier ?? "—")</td>
+                        <td>@(item.UnitOfMeasurement ?? "—")</td>
+                        <td class="num">@((item.Count ?? 0).Qty())</td>
+                        <td class="num">@MoadianUi.Money(item.PriceUnit)</td>
+                        <td class="num">@MoadianUi.Money(item.Discount)</td>
+                        <td class="num">@(((decimal)(item.ValueAddedPercentage ?? 0)).Qty())٪</td>
+                        <td class="num">@MoadianUi.Money(item.ValueAddedAmount)</td>
+                        <td class="num fw-bold">@MoadianUi.Money(item.CalculatedPay)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="mprint-summary">
+            @if (!string.IsNullOrWhiteSpace(vm.Description))
+            {
+                <div class="mprint-description"><b>توضیحات:</b> @vm.Description</div>
+            }
+            <div class="mprint-total"><span>جمع کل صورتحساب</span><strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong></div>
+        </div>
+        <div class="mprint-footer">نسخهٔ چاپی صورتحساب — شناسهٔ رکورد: <span class="num">@vm.Id.Num()</span></div>
+    </div>
 }
+
+<style>
+    .moadian-print { display:none; }
+    @@page { size: A4 landscape; margin: 8mm; }
+    @@media print {
+        body:has(.moadian-print) * { visibility:hidden !important; }
+        body:has(.moadian-print) .moadian-print,
+        body:has(.moadian-print) .moadian-print * { visibility:visible !important; }
+        body:has(.moadian-print) .invoice-screen { display:none !important; }
+        body:has(.moadian-print) .moadian-print {
+            display:block !important; position:static !important; inset:auto !important;
+            width:100% !important; color:#111827 !important; background:#fff !important;
+            font-family:Tahoma,Arial,sans-serif; font-size:9pt; direction:rtl;
+        }
+        .moadian-print-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+        .moadian-print-table thead { display:table-header-group; }
+        .moadian-print-table tr { break-inside:avoid; page-break-inside:avoid; }
+        .moadian-print-table th, .moadian-print-table td { border:1px solid #64748b; padding:4px 5px; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
+        .moadian-print-table thead tr:first-child th { border:0; padding:0 0 6px; }
+        .mprint-brand { font-size:17pt; font-weight:800; text-align:center; margin:0 0 2px; }
+        .mprint-subtitle { font-size:12pt; font-weight:700; text-align:center; margin-bottom:5px; }
+        .mprint-seller { display:flex; flex-wrap:wrap; justify-content:center; gap:4px 18px; font-size:8pt; margin-bottom:6px; }
+        .mprint-meta { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid #64748b; text-align:right; }
+        .mprint-meta > div { display:flex; gap:5px; padding:4px 6px; border-left:1px solid #cbd5e1; border-bottom:1px solid #cbd5e1; min-width:0; }
+        .mprint-meta span { color:#475569; white-space:nowrap; }
+        .mprint-meta b { overflow-wrap:anywhere; }
+        .mprint-meta .mprint-wide { grid-column:span 2; }
+        .mprint-columns th { background:#e2e8f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-size:8pt; }
+        .moadian-print-table tbody td { font-size:8pt; }
+        .mprint-no { width:5%; }
+        .mprint-summary { margin-top:7px; break-inside:avoid; page-break-inside:avoid; }
+        .mprint-description { border:1px solid #94a3b8; padding:6px; margin-bottom:6px; min-height:24px; }
+        .mprint-total { display:flex; justify-content:space-between; align-items:center; border:2px solid #334155; padding:7px 10px; font-size:11pt; font-weight:700; }
+        .mprint-total strong { font-size:13pt; }
+        .mprint-total small { font-size:8pt; }
+        .mprint-footer { margin-top:6px; padding-top:4px; border-top:1px solid #94a3b8; text-align:center; font-size:7pt; color:#475569; }
+        .num { font-variant-numeric:tabular-nums; }
+    }
+</style>
 
 @code {
     [Parameter] public int Id { get; set; }
     private InvoiceVM? vm;
+    private VMShowCpinfoByCompany? seller;
     private bool loading = true, acting;
     private string? ActionResult;
+    private string? PreviewRequestJson;
+    private string? ActualRequestJson;
+    private string? SdkResponseJson;
     private bool ActionIsError;
     private ErroreMesage? ErrorItem_;
 
@@ -225,7 +387,23 @@ else
     {
         loading = true;
         StateHasChanged();
-        try { vm = await Moadian.GetInvoiceAsync(Id); }
+        try
+        {
+            vm = await Moadian.GetInvoiceAsync(Id);
+            if (vm is not null && vm.CPInfoId.HasValue)
+            {
+                try
+                {
+                    var companies = await Moadian.GetCpInfosAsync();
+                    seller = companies.FirstOrDefault(c => c.cpinfoid == vm.CPInfoId.Value);
+                }
+                catch
+                {
+                    // اطلاعات فروشنده تکمیلی است؛ شکست دریافت آن نباید جزئیات یا چاپ صورتحساب را مختل کند.
+                    seller = null;
+                }
+            }
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
@@ -245,13 +423,37 @@ else
 
     private bool _printHandled;
 
+    private async Task PreviewPayload()
+    {
+        if (vm is null) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            vm.Subject = "ارسال به سامانه";
+            var r = await Moadian.PreviewSendInvoiceAsync(vm);
+            if (r.Success)
+            {
+                PreviewRequestJson = r.RequestJson;
+                Toast.Success("پیش‌نمایش JSON آماده شد؛ هیچ صورتحسابی ارسال نشد.");
+            }
+            else Toast.Error(r.Message ?? "ساخت پیش‌نمایش ناموفق بود.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
     private async Task Send()
     {
         if (vm is null) return;
         acting = true; StateHasChanged();
         try
         {
+            // Subject برگشتی از جزئیات عنوان رکورد («اصلی») است، نه فرمان عملیات.
+            // فرمان ارسال عادی را صریح می‌فرستیم تا با برگشت از فروش اشتباه نشود.
+            vm.Subject = "ارسال به سامانه";
             var r = await Moadian.SendInvoiceAsync(vm);
+            ActualRequestJson = r.RequestJson;
+            SdkResponseJson = r.ResponseJson;
             if (r.Success) { Toast.Success("صورتحساب به سامانه مودیان ارسال شد."); await LoadAsync(); }
             else Toast.Error(r.Message ?? "خطا در ارسال.");
         }

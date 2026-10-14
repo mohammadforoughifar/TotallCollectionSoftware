@@ -30,9 +30,17 @@ public static class MoadianUi
         "5" => "دارای خطا",
         "6" => "بدون نیاز به واکنش",
         "7" => "تأیید شده",
-        null or "" => "—",
-        _ => code
+        null or "" => "وضعیت نامشخص",
+        _ => $"وضعیت نامعتبر ({code})"
     };
+
+    /// <summary>شرط‌های صرفاً نمایشی عملیات ردیف؛ هیچ فراخوانی یا قاعدهٔ ارسال در این helper نیست.</summary>
+    public static bool CanEdit(string? code) => code == "0";
+    public static bool CanSend(string? code, bool showButtons) => showButtons && code == "0";
+    public static bool CanDelete(string? code, bool showButtons) => showButtons && code == "0";
+    public static bool HasReference(string? referenceId) => !string.IsNullOrWhiteSpace(referenceId);
+    public static bool CanUseReferenceActions(string? referenceId, bool showButtons)
+        => HasReference(referenceId) && showButtons;
 
     /// <summary>کد وضعیت → کلاس رنگی برچسب.</summary>
     public static string StatusBadge(string? code) => code switch

@@ -1298,25 +1298,63 @@ context.Customers.Any(x =>
 
             return false;
         }
-        public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM)
+        public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM, bool previewOnly = false)
         {
             ApiModel model = new ApiModel();
+            string? requestJsonSnapshot = null;
+            string? responseJsonSnapshot = null;
             try
             {
+                // اعتبارسنجی ورودی قبل از cast/اتصال: DTO ناقص نباید با Id=0 وارد فلو شود.
+                if (modelInvoiceVM is null || modelInvoiceVM.Id <= 0)
+                    return new ApiModel { Data = null, Status = 400, Success = false,
+                        Message = "شناسهٔ صورتحساب نامعتبر است؛ جزئیات صورتحساب را دوباره بارگذاری و ارسال کنید." };
 
-                var conection = ConnectInfo((int)modelInvoiceVM.CPInfoId);
-                if (await IsConnectApi((int)modelInvoiceVM.CPInfoId) == true)
-                {
+                var invoiceForEdit = await context.Invoices.FirstOrDefaultAsync(c => c.Id == modelInvoiceVM.Id);
+                if (invoiceForEdit is null)
+                    return new ApiModel { Data = null, Status = 404, Success = false,
+                        Message = "صورتحساب برای ارسال یافت نشد." };
 
-                    var invoiceForEdit = context.Invoices.Where(c => c.Id == modelInvoiceVM.Id).FirstOrDefault();
-                    DateTimeOffset now = new DateTimeOffset(DateTime.Now);
-                    string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
-                    conection.TaxMemoryID,
-                    modelInvoiceVM.Id, now.DateTime);
-                    string inno = modelInvoiceVM.Id.ToString("X").PadLeft(10, '0');
-                    long indatim = now.ToUnixTimeMilliseconds();//تاریخ وو زمان صدور صورتحساب
-                    //Math.Truncate(price);
-                    if (modelInvoiceVM.Subject == "ارسال به سامانه")
+                // شرکت مرجع از رکورد ذخیره‌شده گرفته می‌شود؛ CPInfoId ارسالی کلاینت قابل اتکا نیست.
+                if (!invoiceForEdit.CpInfo.HasValue || invoiceForEdit.CpInfo.Value <= 0)
+                    return new ApiModel { Data = null, Status = 400, Success = false,
+                        Message = "شرکت مرتبط با این صورتحساب مشخص نیست." };
+                var cpInfoId = invoiceForEdit.CpInfo.Value;
+                var conection = ConnectInfo(cpInfoId);
+                // پیش‌نمایش فقط از داده‌های محلی ساخته می‌شود و هیچ اتصال/درخواستی به سامانه نمی‌زند.
+                if (conection is null || (!previewOnly && !await IsConnectApi(cpInfoId)))
+                    return new ApiModel { Data = null, Status = 502, Success = false,
+                        Message = "اتصال معتبر به سامانهٔ مودیان یافت نشد. ابتدا اطلاعات اتصال شرکت را بررسی کنید." };
+
+                // Subject در رکورد معمولاً «اصلی» است؛ Subject درخواست، نوع عملیات را مشخص می‌کند.
+                // برای سازگاری با کلاینت‌های قدیمی، درخواست خالی/«اصلی» هم ارسال عادی محسوب می‌شود.
+                var operationSubject = modelInvoiceVM.Subject?.Trim();
+                var isSalesReturn = operationSubject == "برگشت از فروش";
+                var isNormalSend = operationSubject == "ارسال به سامانه"
+                    || string.IsNullOrEmpty(operationSubject) || operationSubject == "اصلی";
+                if (!isNormalSend && !isSalesReturn)
+                    return new ApiModel { Data = null, Status = 400, Success = false,
+                        Message = $"نوع عملیات ارسال معتبر نیست: «{operationSubject}»." };
+                if (previewOnly && !isNormalSend)
+                    return new ApiModel { Data = null, Status = 400, Success = false,
+                        Message = "پیش‌نمایش JSON فقط برای صورتحساب اصلی/ارسال عادی فعال است." };
+                if (isNormalSend && invoiceForEdit.StatusSentToSystem is not ("0" or "5"))
+                    return new ApiModel { Data = null, Status = 409, Success = false,
+                        Message = "فقط صورتحسابِ ارسال‌نشده یا دارای خطای قطعی قابل ارسال مجدد است." };
+
+                // TaxID و Indatim باید دقیقاً از یک لحظه ساخته شوند؛ UTC از اختلاف timezone/Kind
+                // بین سرور و SDK جلوگیری می‌کند و سریال Inno نیز باید با ورودی Generator یکی باشد.
+                var issueTime = DateTimeOffset.UtcNow;
+                var invoiceSerial = invoiceForEdit.Id;
+                var fiscalId = conection.TaxMemoryID?.Trim();
+                if (string.IsNullOrWhiteSpace(fiscalId))
+                    return new ApiModel { Data = null, Status = 400, Success = false,
+                        Message = "شناسهٔ یکتای حافظهٔ مالیاتی برای شرکت تنظیم نشده است." };
+                string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
+                    fiscalId, invoiceSerial, issueTime.UtcDateTime);
+                string inno = invoiceSerial.ToString("X").PadLeft(10, '0');
+                long indatim = issueTime.ToUnixTimeMilliseconds(); // همان لحظهٔ استفاده‌شده برای TaxID
+                if (isNormalSend)
                     {
 
                         try
@@ -1342,7 +1380,15 @@ context.Customers.Any(x =>
                                                    um.Code
                                                }).ToList();
 
-                            int pamentType = invoiceForEdit.PaymentType == "نقدی" ? 1 : invoiceForEdit.PaymentType == "نسیه" ? 2 : 3;
+                            int pamentType = invoiceForEdit.PaymentType switch
+                            {
+                                "نقدی" => 1,
+                                "نسیه" => 2,
+                                _ => 0
+                            };
+                            if (pamentType == 0)
+                                return new ApiModel { Data = null, Status = 400, Success = false,
+                                    Message = "نوع پرداخت صورتحساب نامعتبر است؛ فقط «نقدی» یا «نسیه» قابل ارسال است." };
 
 
                             var customer = context.Customers.Where(c => c.Id == invoiceForEdit.CustomerId).FirstOrDefault();
@@ -1395,9 +1441,9 @@ context.Customers.Any(x =>
                                 Taxid = taxId,
                                 Inno = inno,
                                 Indatim = indatim,
-                                //Indati2m = indatim,
+                                Indati2m = indatim,
                                 Inty = 1,//invoiceType
-                                Inp = 1, //invoiceForEdit.TypePattern,///نوع صورتحساب invoicePattern
+                                Inp = invoiceForEdit.TypePattern, // الگوی انتخاب‌شده در فرم (1/2/3)
                                 Ins = 1,///invoiceSubject
                                 Tins = cpInfo.EconomicNumber,
                                 Tinb = customer.EconomicNumber,
@@ -1411,8 +1457,9 @@ context.Customers.Any(x =>
                                 Todam = 0,
                                 Tbill = bodyItems.Sum(x => x.Tsstam),///کل صورتحساب
                                 Setm = pamentType, ///نوع پرداخت
-                                //Cap = pamentType == 3 ? bodyItems.Sum(c => c.Cop) : 0,//مقدار نقدی   cashPayment
-                                //Insp = pamentType == 3 ? (bodyItems.Sum(x => x.Tsstam) - bodyItems.Sum(c => c.Cop)) : 0////تست شود مقدار نسیه  installmentPayment
+                                // PDF SDK این‌ها را سهم نقدی/نسیهٔ سربرگ تعریف می‌کند؛ فرم همین مقادیر را ذخیره می‌کند.
+                                Cap = invoiceForEdit.PriceNaghd,
+                                Insp = invoiceForEdit.PriceNesye,
 
 
                             };
@@ -1427,10 +1474,24 @@ context.Customers.Any(x =>
                             List<InvoiceDto> invoiceList = new List<InvoiceDto>();
                             invoiceList.Add(invoice2);
 
+                            // Snapshot از DTO؛ پیش‌نمایش مسیر ارسال SDK/شبکه را اجرا نمی‌کند.
+                            requestJsonSnapshot = JsonConvert.SerializeObject(invoiceList, Formatting.Indented);
+                            if (previewOnly)
+                            {
+                                return new ApiModel
+                                {
+                                    Data = null,
+                                    Status = 200,
+                                    Success = true,
+                                    Message = "پیش‌نمایش ساخته شد؛ هیچ صورتحسابی ارسال نشده است.",
+                                    RequestJson = requestJsonSnapshot
+                                };
+                            }
 
                             var response = TaxApiService.Instance.TaxApis.SendInvoices(
-                          invoiceList,
-                          null);
+                                invoiceList,
+                                null);
+                            responseJsonSnapshot = JsonConvert.SerializeObject(response?.Body, Formatting.Indented);
                             var packetResponse = response?.Body?.Result?.FirstOrDefault();
                         if (packetResponse is null)
                         {
@@ -1441,7 +1502,9 @@ context.Customers.Any(x =>
                                 Status = 500,
                                 Success = false,
                                 Message = "ارسال صورتحساب به سامانهٔ مودیان ناموفق بود و آن را «ارسال شده» علامت نزنیم." +
-                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}")
+                                    (string.IsNullOrEmpty(sendErr) ? " پاسخی از سامانه برنگشت." : $"\nفهرست خطای برگشتی سامانه: {sendErr}"),
+                                RequestJson = requestJsonSnapshot,
+                                ResponseJson = responseJsonSnapshot
                             };
                         }
                             var uid = packetResponse.Uid;
@@ -1459,6 +1522,8 @@ context.Customers.Any(x =>
 
                             context.SaveChanges();
                             model.Data = modelInvoiceVM;
+                            model.RequestJson = requestJsonSnapshot;
+                            model.ResponseJson = responseJsonSnapshot;
                             model.Status = 201;
                             model.Success = true;
                             model.Message = MessageCode.StatusCode.TryGetValue(201, out string messagerr) == true
@@ -1470,6 +1535,8 @@ context.Customers.Any(x =>
                         {
 
                             model.Data = null;
+                            model.RequestJson = requestJsonSnapshot;
+                            model.ResponseJson = responseJsonSnapshot;
                             model.Message = MessageCode.StatusCode.TryGetValue(500, out string messagerss) == true
                                 ? model.Message = messagerss
                                 : model.Message = ex.Message;
@@ -1479,7 +1546,7 @@ context.Customers.Any(x =>
                         }
 
                     }
-                    else if (modelInvoiceVM.Subject == "برگشت از فروش")
+                    else if (isSalesReturn)
                     {
                         var invoice = new Invoice()
                         {
@@ -1498,12 +1565,12 @@ context.Customers.Any(x =>
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                        DateTimeOffset now1 = new DateTimeOffset(DateTime.Now);
+                        var returnIssueTime = DateTimeOffset.UtcNow;
                         string taxId1 = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
-                        conection.TaxMemoryID,
-                        invoice.Id, now1.DateTime);
-                        string inno1 = invoiceForEdit.Id.ToString("X").PadLeft(10, '0');
-                        long indatim1 = now.ToUnixTimeMilliseconds();
+                            fiscalId, invoice.Id, returnIssueTime.UtcDateTime);
+                        // TaxID و Inno باید از یک سریال داخلی ساخته شوند.
+                        string inno1 = invoice.Id.ToString("X").PadLeft(10, '0');
+                        long indatim1 = returnIssueTime.ToUnixTimeMilliseconds();
 
 
 
@@ -1526,7 +1593,15 @@ context.Customers.Any(x =>
                                                um.Code
                                            }).ToList();
 
-                        int pamentType = invoiceForEdit.PaymentType == "نقدی" ? 1 : invoiceForEdit.PaymentType == "نسیه" ? 2 : 3;
+                        int pamentType = invoiceForEdit.PaymentType switch
+                        {
+                            "نقدی" => 1,
+                            "نسیه" => 2,
+                            _ => 0
+                        };
+                        if (pamentType == 0)
+                            return new ApiModel { Data = null, Status = 400, Success = false,
+                                Message = "نوع پرداخت صورتحساب نامعتبر است؛ فقط «نقدی» یا «نسیه» قابل ارسال است." };
 
                         var customer = context.Customers.Where(c => c.Id == invoiceForEdit.CustomerId).FirstOrDefault();
                         var cpInfo = context.CPInfos.Where(c => c.Id == invoice.CpInfo).FirstOrDefault();
@@ -1627,12 +1702,9 @@ context.Customers.Any(x =>
                         return model;
                     }
 
-                }
-                model.Data = null;
-                model.Status = 502;
-                model.Success = false;
-                model.Message = "ارسال به سامانهٔ مودیان انجام نشد — احراز هویت برقرار نیست یا موضوع عملیات نامعتبر است. ابتدا در تب «اتصال»، «تست اتصال» را بزنید تا دلیل دقیق عدم احراز هویت (کلید/شناسهٔ حافظه/آدرس سرویس) مشخص شود.";
-                return model;
+                // محافظت از مسیرهای بازگشت؛ اگر نوع عملیات در آینده توسعه یافت نیز خروجی ApiModel تضمین شود.
+                return new ApiModel { Data = null, Status = 400, Success = false,
+                    Message = "نوع عملیات صورتحساب پشتیبانی نمی‌شود." };
             }
             catch (Exception ex)
             {
@@ -1912,6 +1984,9 @@ context.Customers.Any(x =>
                 if (InvoiceId is not 0)
                 {
                     var invoice = await context.Invoices.Include(c => c.fiscalYear).FirstOrDefaultAsync(c => c.Id == InvoiceId);
+                    if (invoice is null)
+                        return new ApiModel { Data = null, Status = 404, Success = false, Message = "صورتحساب یافت نشد." };
+
                     //// در Controller یا ViewModel
                     ///var fiscal = await context.FiscalYears.FindAsync(invoice.FiscalYearId);
 
@@ -1928,8 +2003,9 @@ context.Customers.Any(x =>
                         //Model.FiscalYearDisplay = $"{shamsiYear} ({Model.StartDateShamsi} تا {Model.EndDateShamsi})";
                     }
 
-                    if (invoice == null)
-                        return new ApiModel();
+                    // شناسهٔ رکورد باید در DTO برگردد؛ بدون آن کلاینت مقدار پیش‌فرض ۰ می‌فرستد
+                    // و SendInvoiceAsync نه فاکتور را پیدا می‌کند و نه می‌تواند TaxId/Inno بسازد.
+                    invoiceInfo.Id = invoice.Id;
                     invoiceInfo.CustomerId = invoice.CustomerId;
                     invoiceInfo.TaxNumber = invoice.TaxNumber;
                     invoiceInfo.PaymentType = invoice.PaymentType;
@@ -2071,6 +2147,7 @@ context.Customers.Any(x =>
 
                         case "FAILED":
                             currentInvoice.StatusSentToSystem = "5";
+                            currentInvoice.ShowButtons = true; // اجازهٔ اصلاح/ارسال مجدد پس از خطای قطعی
                             model.Data = "دارای خطا";
                             break;
 

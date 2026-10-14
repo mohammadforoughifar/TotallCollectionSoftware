@@ -100,8 +100,8 @@ else
     </div>
     <div class="row g-2">
         <div class="col-7">
-            <label class="form-label">شناسهٔ CPC (۱۱ رقم) <span class="text-danger">*</span></label>
-            <input class="form-control num" dir="ltr" maxlength="11" value="@form.UniqueIdentifier" @oninput="e => form.UniqueIdentifier = e.Value?.ToString()" placeholder="01010101010" />
+            <label class="form-label">شناسهٔ CPC <span class="text-danger">*</span></label>
+            <input class="form-control num" dir="ltr" value="@form.UniqueIdentifier" @oninput="e => form.UniqueIdentifier = e.Value?.ToString()" placeholder="شناسهٔ CPC" />
         </div>
         <div class="col-5">
             <label class="form-label">واحد سنجش</label>
@@ -227,8 +227,6 @@ else
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام کالا الزامی است."; return; }
         if (string.IsNullOrWhiteSpace(form.UniqueIdentifier)) { formError = "شناسهٔ CPC الزامی است."; return; }
-        if (!string.IsNullOrEmpty(form.UniqueIdentifier) && form.UniqueIdentifier.Length != 11)
-        { formError = "شناسهٔ CPC باید ۱۱ رقم باشد."; return; }
         if (form.Price <= 0) { formError = "قیمت واحد باید بیشتر از صفر باشد."; return; }
 
         saving = true; StateHasChanged();

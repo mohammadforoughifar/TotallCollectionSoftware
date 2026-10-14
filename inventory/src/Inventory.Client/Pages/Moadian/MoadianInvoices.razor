@@ -42,11 +42,11 @@ else
     <div class="mtabs mb-3">
         @foreach (var (code, title, icon) in Tabs)
         {
-            <button class="mtab @(fOp == code ? "active" : "")" @onclick="() => SetOp(code)">
-                <i class="bi @icon"></i> @title
+            <button type="button" class="mtab @(fOp == code ? "active" : "")" aria-pressed="@(fOp == code)" @onclick="() => SetOp(code)">
+                <i class="bi @icon" aria-hidden="true"></i> @title
                 @if (labels is not null)
                 {
-                    <span class="badge badge-soft-primary num ms-1">@(CountOf(code).Num())</span>
+                    <span class="badge badge-soft-primary num ms-1">@CountText(code)</span>
                 }
             </button>
         }
@@ -57,10 +57,10 @@ else
         <div class="card-body py-3">
             <div class="row g-2 align-items-end">
                 <div class="col-12 col-md-4">
-                    <label class="form-label">جستجو</label>
+                    <label class="form-label" for="invoice-search">جستجو</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
+                        <input id="invoice-search" class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
                                value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" />
                     </div>
                 </div>
@@ -74,17 +74,21 @@ else
                 </div>
                 <div class="col-12 col-md-2">
                     <button class="btn btn-outline-secondary w-100" @onclick="() => ResetFilters()">
-                        <i class="bi bi-arrow-counterclockwise"></i> حذف فیلترها
+                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> حذف فیلترها
                     </button>
                 </div>
             </div>
+            @if (!string.IsNullOrEmpty(dateFilterError))
+            {
+                <div class="alert alert-warning py-2 mt-2 mb-0 small" role="status">@dateFilterError</div>
+            }
         </div>
     </div>
 
     @* ---------- جدول ---------- *@
     <div class="card">
         <div class="card-header d-flex align-items-center gap-2">
-            <span><i class="bi bi-receipt text-primary"></i> @(MoadianUi.StatusLabel(fOp == "همه" ? null : fOp) == "—" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
+            <span><i class="bi bi-receipt text-primary"></i> @(fOp == "همه" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
             <span class="badge badge-soft-primary num ms-auto">@((data?.TotalCount ?? 0).Num()) مورد</span>
         </div>
         @if (!string.IsNullOrEmpty(loadError))
@@ -143,67 +147,67 @@ else
                                     <td>@inv.PaymentType</td>
                                     <td class="small">@inv.TypePattern</td>
                                     <td>
-                                        <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)">@inv.StatusSentToSystem</span>
+                                        <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)" title="@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)" aria-label="وضعیت: @MoadianUi.StatusLabel(inv.StatusSentToSystemInt)">@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)</span>
                                     </td>
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm" role="group">
                                             @* a) جزئیات *@
-                                            <NavLink class="btn btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="جزئیات صورتحساب">
-                                                <i class="bi bi-eye"></i>
+                                            <NavLink class="btn btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" title="جزئیات صورتحساب" aria-label="جزئیات صورتحساب">
+                                                <i class="bi bi-eye" aria-hidden="true"></i>
                                             </NavLink>
                                             @* d) ویرایش *@
-                                            @if (inv.StatusSentToSystemInt == "0")
+                                            @if (MoadianUi.CanEdit(inv.StatusSentToSystemInt))
                                             {
-                                                <NavLink class="btn btn-outline-success" href="@($"moadian/invoices/{inv.Id}/edit")" title="ویرایش صورتحساب">
-                                                    <i class="bi bi-pencil"></i>
+                                                <NavLink class="btn btn-outline-success" href="@($"moadian/invoices/{inv.Id}/edit")" title="ویرایش صورتحساب" aria-label="ویرایش صورتحساب">
+                                                    <i class="bi bi-pencil" aria-hidden="true"></i>
                                                 </NavLink>
                                             }
                                             @* e) کپی *@
-                                            <NavLink class="btn btn-outline-secondary" href="@($"moadian/invoices/{inv.Id}/copy")" title="کپی صورتحساب">
-                                                <i class="bi bi-copy"></i>
+                                            <NavLink class="btn btn-outline-secondary" href="@($"moadian/invoices/{inv.Id}/copy")" title="کپی صورتحساب" aria-label="کپی صورتحساب">
+                                                <i class="bi bi-copy" aria-hidden="true"></i>
                                             </NavLink>
                                             @* b) چاپ *@
-                                            <NavLink class="btn btn-outline-dark" href="@($"moadian/invoices/{inv.Id}?print=1")" title="چاپ صورتحساب">
-                                                <i class="bi bi-printer"></i>
+                                            <NavLink class="btn btn-outline-dark" href="@($"moadian/invoices/{inv.Id}?print=1")" title="چاپ صورتحساب" aria-label="چاپ صورتحساب">
+                                                <i class="bi bi-printer" aria-hidden="true"></i>
                                             </NavLink>
                                             @* ارسال *@
-                                            @if (inv.ShowButtons && inv.StatusSentToSystemInt == "0")
+                                            @if (MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
                                             {
-                                                <button type="button" class="btn btn-outline-success" title="ارسال به سامانه مودیان"
+                                                <button type="button" class="btn btn-outline-success" title="ارسال / ارسال مجدد به سامانه مودیان" aria-label="ارسال / ارسال مجدد به سامانه مودیان"
                                                         disabled="@acting" @onclick="() => SendToMoadian(inv)">
-                                                    <i class="bi bi-send"></i>
+                                                    <i class="bi bi-send" aria-hidden="true"></i>
                                                 </button>
                                             }
-                                            @if (!string.IsNullOrEmpty(inv.ReferenceId))
+                                            @if (MoadianUi.HasReference(inv.ReferenceId))
                                             {
-                                                <button type="button" class="btn btn-outline-info" title="استعلام صورتحساب از سامانه مودیان"
+                                                <button type="button" class="btn btn-outline-info" title="استعلام صورتحساب از سامانه مودیان" aria-label="استعلام صورتحساب از سامانه مودیان"
                                                         disabled="@acting" @onclick="() => EstelamRow(inv)">
-                                                    <i class="bi bi-arrow-repeat"></i>
+                                                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
                                                 </button>
-                                                <button type="button" class="btn btn-outline-danger" title="نمایش خطاهای صورتحساب"
+                                                <button type="button" class="btn btn-outline-danger" title="نمایش خطاهای صورتحساب" aria-label="نمایش خطاهای صورتحساب"
                                                         disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
-                                                    <i class="bi bi-bug"></i>
+                                                    <i class="bi bi-bug" aria-hidden="true"></i>
                                                 </button>
-                                                @if (inv.ShowButtons)
+                                                @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
                                                 {
-                                                    <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی">
-                                                        <i class="bi bi-pencil-square"></i>
+                                                    <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
+                                                        <i class="bi bi-pencil-square" aria-hidden="true"></i>
                                                     </NavLink>
-                                                    <button type="button" class="btn btn-outline-primary" title="صدور برگشت از فروش"
+                                                    <button type="button" class="btn btn-outline-primary" title="صدور برگشت از فروش" aria-label="صدور برگشت از فروش"
                                                             disabled="@acting" @onclick="() => SalesReturnRow(inv)">
-                                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
                                                     </button>
-                                                    <button type="button" class="btn btn-outline-dark" title="ابطال صورتحساب در سامانه مودیان"
+                                                    <button type="button" class="btn btn-outline-dark" title="ابطال صورتحساب در سامانه مودیان" aria-label="ابطال صورتحساب در سامانه مودیان"
                                                             disabled="@acting" @onclick="() => EbtalRow(inv)">
-                                                        <i class="bi bi-x-octagon"></i>
+                                                        <i class="bi bi-x-octagon" aria-hidden="true"></i>
                                                     </button>
                                                 }
                                             }
-                                            @if (inv.ShowButtons && inv.StatusSentToSystemInt == "0")
+                                            @if (MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
                                             {
-                                                <button type="button" class="btn btn-outline-secondary" title="حذف صورتحساب (فقط ارسال‌نشده)"
+                                                <button type="button" class="btn btn-outline-secondary" title="حذف صورتحساب (فقط ارسال‌نشده)" aria-label="حذف صورتحساب (فقط ارسال‌نشده)"
                                                         disabled="@acting" @onclick="() => DeleteRow(inv)">
-                                                    <i class="bi bi-trash"></i>
+                                                    <i class="bi bi-trash" aria-hidden="true"></i>
                                                 </button>
                                             }
                                         </div>
@@ -212,6 +216,59 @@ else
                             }
                         </tbody>
                     </table>
+                </div>
+
+                <div class="cards-mobile px-2 py-2">
+                    @foreach (var inv in items)
+                    {
+                        <article class="card mb-2" aria-label="صورتحساب شمارهٔ @(inv.NumberInvoice?.Num() ?? "نامشخص")">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div>
+                                        <div class="fw-semibold">صورتحساب شمارهٔ <span class="num">@(inv.NumberInvoice?.Num() ?? "—")</span></div>
+                                        <div class="small text-muted">@MoadianUi.Shamsi(inv.DateOrder) · @inv.CustomerName</div>
+                                    </div>
+                                    <span class="badge @MoadianUi.StatusBadge(inv.StatusSentToSystemInt)" aria-label="وضعیت: @MoadianUi.StatusLabel(inv.StatusSentToSystemInt)">@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)</span>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 align-items-center mt-2 small">
+                                    <span class="badge @(inv.Subject == "اصلی" ? "badge-soft-primary" : inv.Subject == "اصلاحی" ? "badge-soft-warning" : "badge-soft-danger")">@inv.Subject</span>
+                                    <span>مبلغ: <strong class="num">@MoadianUi.Money(inv.TotallMoney)</strong></span>
+                                    @if (!string.IsNullOrWhiteSpace(inv.TaxNumber))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-link p-0" aria-label="کپی شمارهٔ مالیاتی" @onclick="() => CopyText(inv.TaxNumber!)">کپی شمارهٔ مالیاتی</button>
+                                    }
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 mt-3" role="group" aria-label="عملیات صورتحساب">
+                                    <NavLink class="btn btn-sm btn-outline-primary" href="@($"moadian/invoices/{inv.Id}")" aria-label="جزئیات صورتحساب"><i class="bi bi-eye" aria-hidden="true"></i> جزئیات</NavLink>
+                                    <NavLink class="btn btn-sm btn-outline-dark" href="@($"moadian/invoices/{inv.Id}?print=1")" aria-label="چاپ صورتحساب"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</NavLink>
+                                    @if (MoadianUi.CanEdit(inv.StatusSentToSystemInt))
+                                    {
+                                        <NavLink class="btn btn-sm btn-outline-success" href="@($"moadian/invoices/{inv.Id}/edit")" aria-label="ویرایش صورتحساب"><i class="bi bi-pencil" aria-hidden="true"></i> ویرایش</NavLink>
+                                    }
+                                    <NavLink class="btn btn-sm btn-outline-secondary" href="@($"moadian/invoices/{inv.Id}/copy")" aria-label="کپی صورتحساب"><i class="bi bi-copy" aria-hidden="true"></i> کپی</NavLink>
+                                    @if (MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-success" disabled="@acting" aria-label="ارسال صورتحساب به سامانهٔ مودیان" @onclick="() => SendToMoadian(inv)"><i class="bi bi-send" aria-hidden="true"></i> ارسال</button>
+                                    }
+                                    @if (MoadianUi.HasReference(inv.ReferenceId))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-info" disabled="@acting" aria-label="استعلام صورتحساب" @onclick="() => EstelamRow(inv)"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> استعلام</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled="@acting" aria-label="نمایش خطاهای صورتحساب" @onclick="() => ShowErrorsRow(inv)"><i class="bi bi-bug" aria-hidden="true"></i> خطاها</button>
+                                        @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
+                                        {
+                                            <NavLink class="btn btn-sm btn-outline-warning" href="@($"moadian/invoices/{inv.Id}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@acting" aria-label="صدور برگشت از فروش" @onclick="() => SalesReturnRow(inv)"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> برگشت از فروش</button>
+                                            <button type="button" class="btn btn-sm btn-outline-dark" disabled="@acting" aria-label="ابطال صورتحساب در سامانهٔ مودیان" @onclick="() => EbtalRow(inv)"><i class="bi bi-x-octagon" aria-hidden="true"></i> ابطال</button>
+                                        }
+                                    }
+                                    @if (MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@acting" aria-label="حذف صورتحساب ارسال‌نشده" @onclick="() => DeleteRow(inv)"><i class="bi bi-trash" aria-hidden="true"></i> حذف</button>
+                                    }
+                                </div>
+                            </div>
+                        </article>
+                    }
                 </div>
 
                 @* ---------- صفحه‌بندی ---------- *@
@@ -223,10 +280,16 @@ else
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
                                 <i class="bi bi-chevron-right"></i>
                             </button>
-                            @for (int p = 1; p <= (data?.TotalPages ?? 1); p++)
+                            @foreach (var pp in VisiblePages)
                             {
-                                int pp = p;
-                                <button class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" @onclick="() => GoPage(pp)">@(pp.Num())</button>
+                                if (pp < 0)
+                                {
+                                    <span class="btn btn-sm btn-outline-secondary disabled" aria-hidden="true">…</span>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" aria-current="@(pp == pno ? "page" : null)" @onclick="() => GoPage(pp)">@(pp.Num())</button>
+                                }
                             }
                             <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
                                 <i class="bi bi-chevron-left"></i>
@@ -265,10 +328,13 @@ else
     {
         ("همه", "همه", "bi-collection"),
         ("0", "ارسال نشده", "bi-inbox"),
-        ("4", "در انتظار واکنش", "bi-hourglass-split"),
+        ("1", "در انتظار استعلام", "bi-arrow-repeat"),
         ("2", "در انتظار بررسی", "bi-search"),
+        ("3", "ارسال شده", "bi-send-check"),
+        ("4", "در انتظار واکنش", "bi-hourglass-split"),
         ("5", "دارای خطا", "bi-exclamation-triangle"),
         ("6", "بدون نیاز به واکنش", "bi-archive"),
+        ("7", "تأیید شده", "bi-check-circle"),
     };
 
     private PagedList<InvoiceVM>? data;
@@ -280,7 +346,23 @@ else
     private int pno = 1;
     private const int PageSize = 10;
     private bool loading;
+    private int loadVersion;
     private string? loadError;
+    private string? dateFilterError;
+    private IEnumerable<int> VisiblePages
+    {
+        get
+        {
+            var total = data?.TotalPages ?? 1;
+            var start = Math.Max(1, pno - 2);
+            var end = Math.Min(total, pno + 2);
+            if (start > 1) yield return 1;
+            if (start > 2) yield return -1;
+            for (var page = start; page <= end; page++) yield return page;
+            if (end < total - 1) yield return -1;
+            if (end < total) yield return total;
+        }
+    }
     private System.Timers.Timer? searchTimer;
 
     // ---------- عملیات ردیف‌ها: ارسال / استعلام / خطاها ----------
@@ -303,16 +385,20 @@ else
 
     private void OnCtxChanged() => _ = LoadAsync(1);
 
-    private int CountOf(string code) => (code, labels) switch
+    // شمارنده‌ها فقط در API برای وضعیت‌های مشخص فراهم‌اند؛ وضعیت فاقد شمارنده را با صفر جعل نمی‌کنیم.
+    private int? CountOf(string code) => (code, labels) switch
     {
-        ("همه", var l) => l?.lblAll ?? 0,
-        ("0", var l) => l?.lblNotSentToSystem ?? 0,
-        ("4", var l) => l?.lblSentToSystem ?? 0,
-        ("2", var l) => l?.lblLackOfResponsiveness ?? 0,
-        ("5", var l) => l?.lblError ?? 0,
-        ("6", _) => 0,
-        _ => 0
+        ("همه", var l) => l?.lblAll,
+        ("0", var l) => l?.lblNotSentToSystem,
+        ("4", var l) => l?.lblSentToSystem,
+        ("2", var l) => l?.lblLackOfResponsiveness,
+        ("5", var l) => l?.lblError,
+        ("7", var l) => l?.lblInquiry,
+        _ => null
     };
+
+    private string CountText(string code)
+        => CountOf(code) is int count ? count.Num() : "—";
 
     private void SetOp(string code)
     {
@@ -330,7 +416,7 @@ else
 
     private void ResetFilters()
     {
-        search = ""; fFrom = null; fTo = null; fOp = "همه";
+        search = ""; fFrom = null; fTo = null; fOp = "همه"; dateFilterError = null;
         _ = LoadAsync(1);
     }
 
@@ -339,12 +425,27 @@ else
     private async Task LoadAsync(int p)
     {
         if (Ctx.CpInfoId <= 0) return;
+        var requestVersion = Interlocked.Increment(ref loadVersion);
+        if (fFrom.HasValue != fTo.HasValue)
+        {
+            dateFilterError = "برای جلوگیری از خطای فهرست، بازهٔ تاریخ را با هر دو تاریخ «از» و «تا» کامل کنید یا هر دو را پاک کنید.";
+            loading = false;
+            StateHasChanged();
+            return;
+        }
+        dateFilterError = null;
+        var cpInfoId = Ctx.CpInfoId;
+        var operation = fOp;
+        var from = fFrom;
+        var to = fTo;
+        var query = search;
         loading = true;
         StateHasChanged();
         try
         {
             loadError = null;
-            var model = await Moadian.GetAllInvoicesAsync(fOp, Ctx.CpInfoId, fFrom, fTo, search, p, PageSize);
+            var model = await Moadian.GetAllInvoicesAsync(operation, cpInfoId, from, to, query, p, PageSize);
+            if (requestVersion != Volatile.Read(ref loadVersion)) return;
             var resp = MoadianService.AsStrict<InvoiceResponse>(model, "دریافت فهرست صورتحساب‌ها");
             data = resp?.Invoices;
             items = resp?.Invoices?.Items?.ToList();
@@ -352,14 +453,20 @@ else
         }
         catch (Exception ex)
         {
-            loadError = ex.Message;
-            Toast.Error(ex.Message);
+            if (requestVersion == Volatile.Read(ref loadVersion))
+            {
+                loadError = ex.Message;
+                Toast.Error(ex.Message);
+            }
         }
         finally
         {
-            pno = p;
-            loading = false;
-            StateHasChanged();
+            if (requestVersion == Volatile.Read(ref loadVersion))
+            {
+                pno = p;
+                loading = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -376,11 +483,17 @@ else
     /// <summary>a) ارسال ردیف به سامانهٔ مودیان — ابتدا جزئیات کامل صورتحساب واکشی، سپس همان فلوی صفحهٔ جزئیات ارسال می‌شود.</summary>
     private async Task SendToMoadian(InvoiceVM inv)
     {
+        if (!MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
+        {
+            Toast.Info("ارسال برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
         acting = true; StateHasChanged();
         try
         {
             var full = await Moadian.GetInvoiceAsync(inv.Id);
             if (full is null) { Toast.Error("جزئیات صورتحساب برای ارسال یافت نشد."); return; }
+            full.Subject = "ارسال به سامانه";
             var r = await Moadian.SendInvoiceAsync(full);
             if (r.Success)
             {
@@ -396,7 +509,11 @@ else
     /// <summary>برگشت از فروش — یک صورتحساب «برگشت از فروش» (Ins=4) بر اساس صورتحساب اصلی به سامانه ارسال می‌شود.</summary>
     private async Task SalesReturnRow(InvoiceVM inv)
     {
-        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("برگشت از فروش فقط برای صورتحساب‌های ارسال‌شده ممکن است."); return; }
+        if (!MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
+        {
+            Toast.Info("برگشت از فروش برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
         var ok = await JS.InvokeAsync<bool>("confirm",
             $"برای صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} یک صورتحساب «برگشت از فروش» صادر و به سامانه ارسال می‌شود. ادامه می‌دهید؟");
         if (!ok) return;
@@ -421,7 +538,11 @@ else
     /// <summary>ابطال صورتحساب در سامانهٔ مودیان — با تایید کاربر؛ صورتحساب ابطالی جدید (الگوی ابطال) ثبت می‌شود.</summary>
     private async Task EbtalRow(InvoiceVM inv)
     {
-        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("فقط صورتحساب‌های ارسال‌شده قابل ابطال‌اند."); return; }
+        if (!MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
+        {
+            Toast.Info("ابطال برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
         var ok = await JS.InvokeAsync<bool>("confirm",
             $"صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} در سامانه مودیان ابطال می‌شود. ادامه می‌دهید؟");
         if (!ok) return;
@@ -445,7 +566,7 @@ else
     /// <summary>حذف صورتحساب ارسال‌نشده از دیتابیس محلی — با تایید کاربر.</summary>
     private async Task DeleteRow(InvoiceVM inv)
     {
-        if (inv.StatusSentToSystemInt != "0") { Toast.Info("فقط صورتحساب‌های ارسال‌نشده قابل حذف‌اند."); return; }
+        if (!MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons)) { Toast.Info("فقط صورتحساب‌های مجاز و ارسال‌نشده قابل حذف‌اند."); return; }
         var ok = await JS.InvokeAsync<bool>("confirm",
             $"صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"} حذف می‌شود؛ این کار قابل بازگشت نیست. ادامه می‌دهید؟");
         if (!ok) return;
@@ -467,7 +588,7 @@ else
     /// <summary>b) استعلام وضعیت صورتحساب از سامانهٔ مودیان (با شمارهٔ مرجع) — نتیجه در پنجره نمایش داده و وضعیت ردیف به‌روزرسانی می‌شود.</summary>
     private async Task EstelamRow(InvoiceVM inv)
     {
-        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("برای استعلام، ابتدا صورتحساب باید ارسال شده باشد."); return; }
+        if (!MoadianUi.HasReference(inv.ReferenceId)) { Toast.Info("برای استعلام، ابتدا صورتحساب باید ارسال شده باشد."); return; }
         acting = true; StateHasChanged();
         try
         {
@@ -487,7 +608,7 @@ else
     /// <summary>c) نمایش خطاهای صورتحساب — کد، پیام و شرح خطاها/هشدارها از سامانهٔ مودیان.</summary>
     private async Task ShowErrorsRow(InvoiceVM inv)
     {
-        if (string.IsNullOrEmpty(inv.ReferenceId)) { Toast.Info("این صورتحساب هنوز به سامانه ارسال نشده است."); return; }
+        if (!MoadianUi.HasReference(inv.ReferenceId)) { Toast.Info("این صورتحساب هنوز به سامانه ارسال نشده است."); return; }
         acting = true; StateHasChanged();
         try
         {
