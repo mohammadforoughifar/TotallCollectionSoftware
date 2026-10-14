@@ -57,6 +57,19 @@ public class AuthService : IAuthService
         if (user is null || !VerifyPassword(request.Password ?? "", user.PasswordHash))
             return null;
 
+        // ================== نقش‌های RBAC کاربر (فقط نقش‌های فعال) ==================
+        var roleIds = await _db.UserRoles.Where(ur => ur.UserId == user.Id)
+            .Select(ur => ur.RoleId).ToListAsync();
+
+        var roleNames = await _db.Roles
+            .Where(r => roleIds.Contains(r.Id) && r.IsActive)
+            .Select(r => r.Name).ToListAsync();
+
+        // ================== خودترمیمی سطح دسترسی قدیمی (ستون Users.Role) ==================
+        // کاربرانی که با نام نقش (مثل «مدیر فروش») اشتباهاً «مدیر کل» شده بودند، همین‌جا
+        // به سطح درست برمی‌گردند تا با «دسترسی کامل» وارد نشوند. توضیح کامل در XML-doc متد.
+        await SelfHealLegacyRoleAsync(user, roleNames);
+
         // ================== اتصال خودکار معرف ==================
         // کاربر با نقش معرف که هنوز معرفی به او متصل نشده: یک معرف هم‌نام ساخته و متصل می‌شود
         // تا پنل معرف بدون خطا کار کند. مدیر می‌تواند بعداً از ویرایش کاربر، معرف دیگری متصل کند.
@@ -79,13 +92,6 @@ public class AuthService : IAuthService
         }
 
         // ================== دسترسی‌های مؤثر کاربر (RBAC) ==================
-        var roleIds = await _db.UserRoles.Where(ur => ur.UserId == user.Id)
-            .Select(ur => ur.RoleId).ToListAsync();
-
-        var roleNames = await _db.Roles
-            .Where(r => roleIds.Contains(r.Id) && r.IsActive)
-            .Select(r => r.Name).ToListAsync();
-
         List<string> permissions;
         if (roleIds.Count > 0)
         {
@@ -220,15 +226,65 @@ public class AuthService : IAuthService
     }
 
     /// <summary>نگاشت نقش‌های RBAC به نقش قدیمی (برای احراز هویت/JWT).</summary>
+    /// <remarks>
+    /// ⚠️ فقط «نام دقیق» نقش‌های استاندارد معیار است. پیش‌تر هر نقشی که در نامش «مدیر»/«ادمین»
+    /// بود کاربر را «مدیر کل» می‌کرد؛ یعنی نقش‌هایی مثل «مدیر فروش» یا «مدیر انبار» (حتی با
+    /// دو-سه دسترسی محدود) کاربر را صاحب «دسترسی کامل» می‌کردند، چون ده‌ها نقطهٔ برنامه
+    /// با <c>User.IsInRole("Admin")</c> تصمیم می‌گیرند. حالا برای سطح مدیر، نقش «Admin»
+    /// باید حتماً انتخاب شود.
+    /// توجه: نام‌های فارسیِ «معرف…» همچنان سطح Referrer می‌دهند؛ این انتخاب عمدی است چون
+    /// نتیجه‌اش در بدترین حالت «کاهش» دسترسی است، نه اعطای دسترسی اضافه.
+    /// </remarks>
     private static string DeriveLegacyRole(List<string> rbacRoleNames, string fallback)
     {
-        if (rbacRoleNames.Any(n => n.Equals("Admin", StringComparison.OrdinalIgnoreCase) || n.Contains("مدیر") || n.Contains("ادمین")))
+        if (rbacRoleNames.Count == 0) return fallback;
+
+        if (rbacRoleNames.Any(n => n.Equals("Admin", StringComparison.OrdinalIgnoreCase)))
             return "Admin";
-        if (rbacRoleNames.Any(n => n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف")))
+        if (rbacRoleNames.Any(n => n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف", StringComparison.Ordinal)))
             return "Referrer";
-        if (rbacRoleNames.Count > 0)
-            return "Operator"; // سایر نقش‌ها (اپراتور، حسابدار و...) در سطح ورود، اپراتور محسوب می‌شوند
-        return fallback;
+        // سایر نقش‌ها (اپراتور، حسابدار، «مدیر فروش» و…) در سطح ورود، اپراتور محسوب می‌شوند
+        return "Operator";
+    }
+
+    /// <summary>
+    /// خودترمیمی «سطح دسترسی قدیمی» (ستون <c>Users.Role</c>) بر اساس نقش‌های RBAC فعال کاربر.
+    /// کاربرانی که با نسخهٔ قبلیِ DeriveLegacyRole به‌خاطر نام نقش (مثل «مدیر فروش») «مدیر کل»
+    /// شده بودند، هنگام ورود به سطح درست برمی‌گردند تا «دسترسی کامل» ناخواسته باقی نماند.
+    /// تغییر در «لاگ عملیات» (تنظیمات ← لاگ عملیات) ثبت می‌شود.
+    /// </summary>
+    private async Task SelfHealLegacyRoleAsync(Db.User user, List<string> activeRoleNames)
+    {
+        // کاربران قدیمی بدون نقش RBAC (و نقش‌های حذف‌شده) دست‌نخورده می‌مانند
+        if (activeRoleNames.Count == 0) return;
+
+        var derived = DeriveLegacyRole(activeRoleNames, user.Role);
+        if (string.Equals(derived, user.Role, StringComparison.Ordinal)) return;
+
+        // آخرین مدیر فعال سیستم هرگز خودکار پایین آورده نمی‌شود (جلوگیری از قفل‌شدن مدیریت)
+        if (user.Role == "Admin" && user.IsActive
+            && !await _db.Users.AnyAsync(u => u.Id != user.Id && u.IsActive && u.Role == "Admin"))
+        {
+            Console.WriteLine($"[Auth] کاربر «{user.Username}» تنها مدیر فعال است؛ تصحیح خودکار سطح دسترسی انجام نشد.");
+            return;
+        }
+
+        var from = user.Role;
+        user.Role = derived;
+        _db.AuditLogs.Add(new Db.AuditLog
+        {
+            At = DateTime.Now,
+            UserId = user.Id,
+            Username = user.Username.Length > 100 ? user.Username[..100] : user.Username,
+            Module = "Auth",
+            Action = "SelfHealRole",
+            HttpMethod = "SYSTEM",
+            Path = "login",
+            Summary = $"اصلاح خودکار سطح دسترسی: «{from}» ← «{derived}» (بر اساس نقش‌های RBAC)",
+            StatusCode = 200
+        });
+        await _db.SaveChangesAsync();
+        Console.WriteLine($"[Auth] سطح دسترسی کاربر «{user.Username}» از «{from}» به «{derived}» اصلاح شد (بر اساس نقش‌های RBAC).");
     }
 
     public async Task<UserDto> SaveUserAsync(UserDto dto, int currentUserId, bool callerIsAdmin = true)
@@ -241,10 +297,31 @@ public class AuthService : IAuthService
         // ================== نقش‌های RBAC (انتخاب از بخش نقش‌ها و دسترسی‌ها) ==================
         // نقش قدیمی (Admin/Operator/Referrer) به‌صورت خودکار از نقش‌های انتخابی مشتق می‌شود
         List<string>? rbacNames = null;
+        List<int>? validRoleIds = null;
         if (dto.RoleIds is { Count: > 0 } rids)
         {
-            rbacNames = await _db.Roles.Where(r => rids.Contains(r.Id)).Select(r => r.Name).ToListAsync();
+            var selectedRoles = await _db.Roles.Where(r => rids.Contains(r.Id))
+                .Select(r => new { r.Id, r.Name }).ToListAsync();
+            if (selectedRoles.Count == 0)
+                throw new InvalidOperationException("نقش‌های انتخاب‌شده معتبر نیستند؛ نقش را دوباره انتخاب کنید.");
+            rbacNames = selectedRoles.Select(r => r.Name).ToList();
+            validRoleIds = selectedRoles.Select(r => r.Id).ToList(); // فقط نقش‌های موجود ذخیره شوند (بدون رکورد یتیم)
             dto.Role = DeriveLegacyRole(rbacNames, dto.Role);
+        }
+        else if (dto.Id == 0)
+        {
+            // ⚠️ کاربر جدیدِ بدون نقش RBAC: هیچ محدودیت واقعی ندارد و پیش‌فرض فرم «مدیر» بود ⇒
+            // چنین کاربری با «دسترسی کامل» وارد می‌شد. پس ثبتش ممنوع است.
+            throw new InvalidOperationException(await _db.Roles.AnyAsync(r => r.IsActive)
+                ? "حداقل یک نقش برای کاربر جدید انتخاب کنید."
+                : "هیچ نقش فعالی تعریف نشده است؛ ابتدا از «تنظیمات ← نقش‌ها و دسترسی‌ها» یک نقش بسازید.");
+        }
+        else if (dto.RoleIds is { Count: 0 } && await _db.UserRoles.AnyAsync(ur => ur.UserId == dto.Id))
+        {
+            // پاک‌کردن همهٔ نقش‌های RBAC یک کاربر موجود ⇒ او به «سطح قدیمی» برمی‌گردد که برای
+            // Admin/Operator معادل دسترسی گسترده است (همان باگ «دسترسی کامل»). برای قطع دسترسی،
+            // کاربر باید «غیرفعال» شود.
+            throw new InvalidOperationException("حداقل یک نقش برای کاربر لازم است؛ برای قطع دسترسی، وضعیت کاربر را «غیرفعال» کنید.");
         }
 
         if (dto.Role is not ("Admin" or "Operator" or "Referrer"))
@@ -328,7 +405,7 @@ public class AuthService : IAuthService
         {
             var oldRoles = await _db.UserRoles.Where(ur => ur.UserId == entity.Id).ToListAsync();
             _db.UserRoles.RemoveRange(oldRoles);
-            foreach (var rid in dto.RoleIds.Distinct())
+            foreach (var rid in (validRoleIds ?? dto.RoleIds).Distinct())
                 _db.UserRoles.Add(new UserRole { UserId = entity.Id, RoleId = rid });
             await _db.SaveChangesAsync();
         }
