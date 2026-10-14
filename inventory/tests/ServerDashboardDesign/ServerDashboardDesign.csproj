@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Inventory.Client</RootNamespace><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <RazorComponent Include="../../src/Inventory.Client/Shared/ServerDashboard.razor" Link="Shared/ServerDashboard.razor" />
+    <Compile Include="../../src/Inventory.Client/Services/ServerUi.cs" Link="Services/ServerUi.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/ServerOverviewDtos.cs" Link="ServerOverviewDtos.cs" />
+  </ItemGroup>
+</Project>

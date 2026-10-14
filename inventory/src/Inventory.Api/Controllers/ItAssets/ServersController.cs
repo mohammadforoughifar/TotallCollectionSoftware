@@ -7,6 +7,7 @@ using Inventory.Api.Services.Core;
 using Inventory.Api.Services.ItAssets;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Shared.Dtos;
 
 namespace Inventory.Api.Controllers;
 
@@ -226,18 +227,54 @@ public sealed class ServersController : ControllerBase
         return Ok(rows);
     }
 
+    /// <summary>آمار کل شرکت؛ مستقل از جست‌وجوی فهرست و محدودیت تعداد هشدارهای دریافتی.</summary>
+    [HttpGet("summary")]
+    public async Task<IActionResult> Summary([FromQuery] int companyId)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        if (!(await AllowedCompanyIdsAsync()).Contains(companyId)) return Forbid();
+        return Ok(await ServerOverviewReader.DashboardAsync(_db, companyId, HttpContext.RequestAborted));
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
         if (!await HasAsync("View")) return Forbid();
         var server = await FindAllowedAsync(id);
-        if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
+        if (server is null) return NotFound(new { message = "سرور پیدا نشد یا به آن دسترسی ندارید." });
+        var ct = HttpContext.RequestAborted;
+        var snapshotsQuery = _db.ServerHealthSnapshots.AsNoTracking().Where(x => x.ManagedServerId == id);
+        var logsQuery = _db.ServerOperationLogs.AsNoTracking().Where(x => x.ManagedServerId == id);
+        var snapshotCount = await snapshotsQuery.CountAsync(ct);
+        var logCount = await logsQuery.CountAsync(ct);
+        var snapshots = await snapshotsQuery.OrderByDescending(x => x.CapturedAt).ThenByDescending(x => x.Id).Take(60).ToListAsync(ct);
+        var logs = await logsQuery.OrderByDescending(x => x.At).ThenByDescending(x => x.Id).Take(100).ToListAsync(ct);
+        var companyName = await _db.SystemCompanies.Where(c => c.Id == server.CompanyId).Select(c => c.Name).FirstOrDefaultAsync(ct);
+        var responsible = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == server.ResponsibleUserId, ct);
+        var responsibleName = responsible is null ? null : UserDisplay.Name(responsible);
+        var inputs = await ServerOverviewReader.ReadInputsAsync(_db, server.CompanyId, id, ct);
+        if (inputs.Count == 0) return NotFound(new { message = "سرور پیدا نشد." });
+        var generatedAt = DateTime.Now;
+        var status = ServerStatusPolicy.Evaluate(inputs[0], generatedAt);
+        return Ok(new { server, snapshots, logs, snapshotCount, logCount, companyName, responsibleName, status, generatedAt });
+    }
 
-        var snapshots = await _db.ServerHealthSnapshots.AsNoTracking()
-            .Where(x => x.ManagedServerId == id).OrderByDescending(x => x.CapturedAt).Take(30).ToListAsync();
-        var logs = await _db.ServerOperationLogs.AsNoTracking()
-            .Where(x => x.ManagedServerId == id).OrderByDescending(x => x.At).Take(50).ToListAsync();
-        return Ok(new { server, snapshots, logs });
+    /// <summary>هشدارهای یک سرور با صفحه‌بندی و شمارش کامل؛ کنترل دسترسی قبل از خواندن هر تاریخچه.</summary>
+    [HttpGet("{id:int}/alerts")]
+    public async Task<IActionResult> ServerAlerts(int id, [FromQuery] bool includeResolved = false,
+        [FromQuery] int skip = 0, [FromQuery] int take = 30)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        if (await FindAllowedAsync(id) is null) return NotFound(new { message = "سرور پیدا نشد یا به آن دسترسی ندارید." });
+        var ct = HttpContext.RequestAborted;
+        var all = _db.ServerAlerts.AsNoTracking().Where(a => a.ManagedServerId == id);
+        var openCount = await all.CountAsync(a => a.Status != "Resolved", ct);
+        var query = all.Where(a => includeResolved || a.Status != "Resolved");
+        var total = await query.CountAsync(ct);
+        var items = await query.OrderBy(a => a.Status == "Resolved" ? 1 : 0)
+            .ThenBy(a => a.Severity == "Critical" ? 0 : 1).ThenByDescending(a => a.LastSeenAt).ThenByDescending(a => a.Id)
+            .Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, 100)).ToListAsync(ct);
+        return Ok(new { total, openCount, items });
     }
 
     /// <summary>آخرین وضعیت ساخت‌یافتهٔ قطعات و رخدادهای Redfish؛ پاسخ خام iLO هرگز برگردانده نمی‌شود.</summary>

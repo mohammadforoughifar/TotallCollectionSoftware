@@ -1,0 +1,360 @@
+@page "/servers/{Id:int}"
+@implements IDisposable
+@inject IApiClient Api
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>@(details is null ? "جزئیات سرور" : $"{details.Server.Name} — جزئیات سرور")</PageTitle>
+
+<div class="server-detail-page">
+    <nav class="detail-breadcrumb" aria-label="مسیر صفحه">
+        <a href="@BackUrl">مدیریت سرورها</a><i class="bi bi-chevron-left" aria-hidden="true"></i><span>جزئیات سرور</span>
+    </nav>
+    @if (!canView)
+    {
+        <div class="alert alert-warning" role="alert">شما مجوز مشاهدهٔ مدیریت سرورها را ندارید.</div>
+    }
+    else if (details is null && loading)
+    {
+        <div class="detail-empty" role="status"><span class="spinner-border text-primary"></span><p>در حال دریافت اطلاعات سرور…</p></div>
+    }
+    else if (details is null)
+    {
+        <div class="alert alert-danger" role="alert">@(loadError ?? "سرور پیدا نشد یا به آن دسترسی ندارید.")</div>
+        <button class="btn btn-outline-primary" @onclick="Reload">تلاش دوباره</button>
+        <a class="btn btn-light ms-2" href="/servers">بازگشت به فهرست</a>
+    }
+    else
+    {
+        var s = details.Server;
+        <header class="detail-hero">
+            <div class="detail-identity">
+                <div class="detail-server-icon"><i class="bi bi-hdd-rack" aria-hidden="true"></i></div>
+                <div>
+                    <div class="detail-eyebrow">@details.CompanyName · @ServerUi.Text(s.Environment)</div>
+                    <h1>@s.Name</h1>
+                    <div class="detail-subtitle">@ServerUi.Text(s.Manufacturer) · @ServerUi.Text(s.Model) <span class="mx-2">/</span> @ServerUi.Text(s.Role)</div>
+                </div>
+            </div>
+            <div class="detail-actions">
+                <span class="badge @ServerUi.StateClass(details.Status.State)">@ServerUi.StateTitle(details.Status.State)</span>
+                <button class="btn btn-sm btn-outline-primary" disabled="@(loading || actionBusy)" @onclick="Reload"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> بازخوانی</button>
+                @if (canUpdate)
+                {
+                    <a class="btn btn-sm btn-light" href="@($"/servers?companyId={s.CompanyId}&edit={s.Id}")"><i class="bi bi-pencil" aria-hidden="true"></i> ویرایش شناسنامه</a>
+                }
+            </div>
+        </header>
+        <div class="detail-toolbar">
+            <span><i class="bi bi-shield-lock" aria-hidden="true"></i> مشاهدهٔ امن؛ بدون نمایش رمز iLO</span>
+            <label class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" @bind="autoRefresh" /> بازخوانی هر ۶۰ ثانیه</label>
+            <span class="ms-auto">@(loading ? "در حال بازخوانی…" : $"به‌روزرسانی: {ServerUi.Date(details.GeneratedAt)}")</span>
+        </div>
+        <div class="detail-status-grid">
+            <section class="detail-status-card"><span>ارتباط مدیریتی</span><strong>@ServerUi.ConnectionTitle(details.Status.Connection)</strong><small>آخرین تلاش: @ServerUi.Date(s.LastHealthCheckAt)</small></section>
+            <section class="detail-status-card"><span>آخرین سلامت ثبت‌شده</span><strong><span class="badge @ServerUi.HealthClass(s.LastHealthStatus)">@ServerUi.HealthTitle(s.LastHealthStatus)</span></strong><small>این مقدار به‌تنهایی سلامت فعلی را تضمین نمی‌کند.</small></section>
+            <section class="detail-status-card"><span>تازگی اطلاعات</span><strong>@ServerUi.FreshnessTitle(details.Status.Freshness)</strong><small>آستانهٔ کهنگی: @details.Status.StaleAfterMinutes.Num() دقیقه</small></section>
+            <section class="detail-status-card"><span>هشدار حل‌نشده</span><strong class="num">@(alertPage is null ? "—" : alertPage.OpenCount.Num())</strong><small>مسئول: @ServerUi.Text(details.ResponsibleName)</small></section>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(s.LastConnectionError))
+        {
+            <div class="alert alert-danger mt-3 detail-wrap" role="alert"><i class="bi bi-plug" aria-hidden="true"></i> <b>آخرین خطای اتصال:</b> @s.LastConnectionError</div>
+        }
+        else if (details.Status.State == "Disconnected")
+        {
+            <div class="alert alert-warning mt-3">هشدار ارتباط حل‌نشده وجود دارد؛ جزئیات را در تب هشدارها بررسی کنید.</div>
+        }
+        @if (details.Status.Freshness == "Stale")
+        {
+            <div class="alert alert-warning mt-3">اطلاعات این سرور قدیمی است یا زمان بررسی آن با ساعت سرور سازگار نیست. برای تأیید وضعیت فعلی، بررسی جدید انجام دهید.</div>
+        }
+        @if (details.Status.InMaintenance)
+        {
+            <div class="alert alert-info mt-3"><i class="bi bi-tools" aria-hidden="true"></i> @(s.Status == "Maintenance" ? "چرخهٔ عمر: تعمیرات؛ پایش خودکار در این وضعیت اجرا نمی‌شود." : $"سکوت اعلان تا {ServerUi.Date(s.MaintenanceUntil)}؛ پایش ادامه دارد.") @s.MaintenanceNote</div>
+        }
+
+        <div class="detail-tabs" role="tablist" aria-label="بخش‌های جزئیات سرور">
+            @foreach (var tab in Tabs)
+            {
+                <button type="button" id="@($"tab-{tab.Key}")" role="tab" aria-selected="@(activeTab == tab.Key ? "true" : "false")"
+                        aria-controls="detail-panel" class="@(activeTab == tab.Key ? "active" : "")" @onclick="() => activeTab = tab.Key">
+                    <i class="bi @tab.Icon" aria-hidden="true"></i> @tab.Title
+                </button>
+            }
+        </div>
+        <section class="detail-panel" id="detail-panel" role="tabpanel" aria-labelledby="@($"tab-{activeTab}")" tabindex="0">
+            @if (activeTab == "overview")
+            {
+                <div class="detail-section-head"><div><h2>شناسنامهٔ سرور</h2><p>مشخصات دارایی، اتصال و مسئولیت نگهداری</p></div><span class="badge bg-light text-dark border">@ServerUi.LifecycleTitle(s.Status)</span></div>
+                <div class="detail-two-columns">
+                    <section class="detail-info-box">
+                        <h3><i class="bi bi-server" aria-hidden="true"></i> مشخصات و محل استقرار</h3>
+                        <dl class="detail-fields">
+                            <dt>سریال</dt><dd><bdi>@ServerUi.Text(s.SerialNumber)</bdi></dd>
+                            <dt>کد دارایی</dt><dd><bdi>@ServerUi.Text(s.AssetTag)</bdi></dd>
+                            <dt>رک / واحد</dt><dd>@ServerUi.Text(s.Rack) @(s.RackUnit.HasValue ? $"/ U{s.RackUnit}" : "")</dd>
+                            <dt>سیستم‌عامل</dt><dd>@ServerUi.Text(s.OperatingSystem)</dd>
+                            <dt>درجهٔ اهمیت</dt><dd>@ServerUi.CriticalityTitle(s.Criticality)</dd>
+                            <dt>پایان گارانتی</dt><dd>@(s.WarrantyEndDate.HasValue ? ServerUi.Date(s.WarrantyEndDate).Split('·')[0] : "—")</dd>
+                            <dt>وضعیت برق</dt><dd>@ServerUi.PowerTitle(s.LastPowerState)</dd>
+                        </dl>
+                    </section>
+                    <section class="detail-info-box">
+                        <h3><i class="bi bi-shield-check" aria-hidden="true"></i> اتصال و پایش</h3>
+                        <dl class="detail-fields">
+                            <dt>آدرس iLO</dt><dd><bdi>@s.IloAddress</bdi></dd>
+                            <dt>پورت HTTPS</dt><dd>@s.IloPort</dd>
+                            <dt>نسخهٔ iLO</dt><dd><bdi>@ServerUi.Text(s.IloVersion)</bdi></dd>
+                            <dt>Credential</dt><dd>@(s.CredentialId is > 0 ? "متصل به گاوصندوق؛ رمز نمایش داده نمی‌شود" : "انتخاب نشده")</dd>
+                            <dt>پایش خودکار</dt><dd>@(s.MonitoringEnabled ? $"تنظیم‌شده: هر {s.MonitoringIntervalMinutes} دقیقه" : "غیرفعال")</dd>
+                            <dt>آخرین پایش خودکار</dt><dd>@ServerUi.Date(s.LastAutomaticPollAt)</dd>
+                            <dt>آخرین Inventory موفق</dt><dd>@ServerUi.Date(s.LastInventoryAt)</dd>
+                            <dt>اعلان مسئول</dt><dd>@(s.AlertNotificationsEnabled ? "فعال" : "غیرفعال")</dd>
+                        </dl>
+                    </section>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(s.Notes))
+                {
+                    <section class="detail-notes"><h3>یادداشت نگهداری</h3><p>@s.Notes</p></section>
+                }
+                <div class="detail-bottom-actions">
+                    @if (canCollect && s.CredentialId is > 0)
+                    {
+                        <button class="btn btn-primary" disabled="@(actionBusy || loading)" @onclick='() => Poll("collect")'><i class="bi bi-arrow-repeat" aria-hidden="true"></i> دریافت Inventory و سلامت</button>
+                        <button class="btn btn-outline-primary" disabled="@(actionBusy || loading)" @onclick='() => Poll("test")'><i class="bi bi-plug" aria-hidden="true"></i> تست اتصال</button>
+                    }
+                    @if (actionBusy) { <span class="small" role="status"><span class="spinner-border spinner-border-sm"></span> در حال انجام عملیات…</span> }
+                </div>
+                <p class="detail-caption">ثبت: @ServerUi.Date(s.CreatedAt) · آخرین تغییر: @ServerUi.Date(s.UpdatedAt) · @ServerUi.Text(s.UpdatedByName)</p>
+            }
+            else if (activeTab == "hardware")
+            {
+                <div class="detail-section-head"><div><h2>قطعات سخت‌افزاری</h2><p>آخرین نمونهٔ ذخیره‌شده: @ServerUi.Date(hardware?.CapturedAt)</p></div><span class="badge bg-light text-dark border">@((hardware?.Components.Count ?? 0).Num()) قطعه</span></div>
+                @if (hardwareError is not null) { <div class="alert alert-danger" role="alert">@hardwareError <button class="btn btn-sm btn-outline-danger" @onclick="Reload">تلاش دوباره</button></div> }
+                else if (hardware is null || hardware.Components.Count == 0) { <div class="detail-empty"><i class="bi bi-motherboard" aria-hidden="true"></i><h3>هنوز اطلاعات قطعات ثبت نشده است</h3><p>دریافت Inventory را اجرا کنید یا منتظر پایش خودکار بمانید.</p></div> }
+                else
+                {
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <label class="small d-flex align-items-center gap-2">نوع قطعه
+                            <select class="form-select form-select-sm" @bind="componentType"><option value="">همهٔ قطعات</option>@foreach (var type in hardware.Components.Select(c => c.ComponentType).Distinct().OrderBy(t => t)) { <option value="@type">@ServerUi.ComponentTitle(type)</option> }</select>
+                        </label>
+                    </div>
+                    <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>نوع / قطعه</th><th>سلامت</th><th>مقدار / وضعیت</th><th>مدل</th><th>سریال</th></tr></thead><tbody>
+                        @foreach (var c in hardware.Components.Where(c => componentType == "" || c.ComponentType == componentType))
+                        {
+                            <tr @key="c.Id"><td><strong>@c.Name</strong><small class="d-block text-muted">@ServerUi.ComponentTitle(c.ComponentType)</small></td><td><span class="badge @ServerUi.HealthClass(c.Health)">@ServerUi.HealthTitle(c.Health)</span></td><td><bdi>@ServerUi.Text(c.Reading ?? c.State)</bdi></td><td>@ServerUi.Text(c.Model)</td><td><bdi>@ServerUi.Text(c.SerialNumber)</bdi></td></tr>
+                        }
+                    </tbody></table></div>
+                    <p class="detail-caption">این فهرست فقط قطعات خوانده‌شده توسط جمع‌آورندهٔ فعلی است؛ نبود قطعه در فهرست به‌معنی سالم بودن یا نبودن آن نیست.</p>
+                }
+            }
+            else if (activeTab == "health")
+            {
+                <div class="detail-section-head"><div><h2>تاریخچهٔ سلامت</h2><p>نمایش @details.Snapshots.Count.Num() نمونهٔ آخر از @details.SnapshotCount.Num() نمونهٔ ثبت‌شده</p></div></div>
+                @if (details.Snapshots.Count == 0) { <div class="detail-empty"><i class="bi bi-activity" aria-hidden="true"></i><h3>تاریخچه‌ای ثبت نشده است</h3><p>پس از اولین دریافت Inventory یا پایش خودکار، نمونه‌ها اینجا نمایش داده می‌شوند.</p></div> }
+                else
+                {
+                    <div class="health-timeline" aria-label="روند نمونه‌های ثبت‌شده، از قدیمی به جدید" dir="ltr">
+                        @foreach (var point in details.Snapshots.OrderBy(x => x.CapturedAt).ThenBy(x => x.Id))
+                        {
+                            <span class="health-sample @ServerUi.HealthClass(point.OverallHealth)" title="@($"{ServerUi.Date(point.CapturedAt)} — {ServerUi.HealthTitle(point.OverallHealth)}")"><span class="visually-hidden">@ServerUi.HealthTitle(point.OverallHealth)</span></span>
+                        }
+                    </div>
+                    <div class="d-flex gap-3 flex-wrap small text-muted mb-3"><span>سبز: سالم</span><span>زرد: هشدار</span><span>قرمز: بحرانی</span><span>خاکستری: نامشخص</span><span class="ms-auto">هر خانه یک نمونه است، نه مدت‌زمان یا درصد دسترس‌پذیری.</span></div>
+                    <div class="table-responsive"><table class="table table-hover"><thead><tr><th>زمان دریافت</th><th>سلامت</th><th>برق</th><th>BIOS / Firmware</th><th>توضیح</th></tr></thead><tbody>
+                        @foreach (var point in details.Snapshots)
+                        {
+                            <tr @key="point.Id"><td class="text-nowrap">@ServerUi.Date(point.CapturedAt)</td><td><span class="badge @ServerUi.HealthClass(point.OverallHealth)">@ServerUi.HealthTitle(point.OverallHealth)</span></td><td>@ServerUi.PowerTitle(point.PowerState)</td><td><bdi>@ServerUi.Text(point.BiosVersion) / @ServerUi.Text(point.FirmwareVersion)</bdi></td><td class="detail-wrap">@ServerUi.Text(point.Message)</td></tr>
+                        }
+                    </tbody></table></div>
+                    <p class="detail-caption">نمودار دما و توان در این نسخه اضافه نشده است؛ دادهٔ عددی زمان‌دار و کامل برای آن در API فعلی موجود نیست.</p>
+                }
+            }
+            else if (activeTab == "alerts")
+            {
+                <div class="detail-section-head"><div><h2>هشدارها و دستورکار</h2><p>تأیید مسئولیت، پیگیری و سابقهٔ رفع هشدار</p></div><label class="form-check"><input class="form-check-input" type="checkbox" checked="@includeResolved" disabled="@(loading || actionBusy)" @onchange="ChangeResolved" /> نمایش رفع‌شده‌ها</label></div>
+                @if (alertsError is not null) { <div class="alert alert-danger" role="alert">@alertsError <button class="btn btn-sm btn-outline-danger" @onclick="Reload">تلاش دوباره</button></div> }
+                else if (alertPage is null || alertPage.Items.Count == 0) { <div class="detail-empty"><i class="bi bi-check2-circle" aria-hidden="true"></i><h3>هشداری در این فیلتر وجود ندارد</h3><p>نبود هشدار به‌تنهایی به‌معنی سلامت یا فعال بودن پایش نیست.</p></div> }
+                else
+                {
+                    <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>نوع / شدت</th><th>پیام</th><th>زمان / وضعیت</th><th>رسیدگی</th></tr></thead><tbody>
+                        @foreach (var alert in alertPage.Items)
+                        {
+                            <tr @key="alert.Id">
+                                <td><span class="badge @ServerUi.HealthClass(alert.Severity)">@ServerUi.HealthTitle(alert.Severity)</span><small class="d-block mt-1">@ServerUi.CategoryTitle(alert.Category)</small></td>
+                                <td class="detail-wrap">@alert.Message<small class="d-block text-muted">شروع: @ServerUi.Date(alert.OpenedAt)</small></td>
+                                <td class="small">@ServerUi.Date(alert.LastSeenAt)<strong class="d-block mt-1">@(alert.Status == "Resolved" ? "رفع‌شده" : alert.Status == "Acknowledged" ? "تأییدشده" : "باز")</strong>@if (alert.AcknowledgedAt.HasValue) { <small class="d-block">@ServerUi.Text(alert.AcknowledgedByName) · @ServerUi.Date(alert.AcknowledgedAt)</small> }@if (alert.ResolvedAt.HasValue) { <small class="d-block">رفع: @ServerUi.Date(alert.ResolvedAt)</small> }</td>
+                                <td><div class="detail-alert-actions">
+                                    @if (alert.WorkOrderId is > 0)
+                                    {
+                                        @if (canViewWorkOrders) { <a class="btn btn-sm btn-outline-primary" href="@($"/work-orders?open={alert.WorkOrderId}")">دستورکار #@alert.WorkOrderId</a> }
+                                        else { <span class="small text-muted">دستورکار مرتبط ثبت شده است.</span> }
+                                    }
+                                    else if (canUpdate && canCreateWorkOrders && alert.Status != "Resolved") { <button class="btn btn-sm btn-outline-primary" disabled="@(actionBusy || loading)" @onclick='() => ActOnAlert(alert, "work-order")'>ساخت دستورکار</button> }
+                                    @if (canUpdate && alert.Status == "Open") { <button class="btn btn-sm btn-outline-warning" disabled="@(actionBusy || loading)" @onclick='() => ActOnAlert(alert, "acknowledge")'>تأیید</button> }
+                                    @if (canUpdate && alert.Status != "Resolved") { <button class="btn btn-sm btn-outline-success" disabled="@(actionBusy || loading)" @onclick='() => ActOnAlert(alert, "resolve")'>رفع</button> }
+                                </div></td>
+                            </tr>
+                        }
+                    </tbody></table></div>
+                }
+                @if (alertPage is not null && alertPage.Total > 0)
+                {
+                    <div class="detail-pagination"><span class="small text-muted">@((alertSkip + 1).Num()) تا @Math.Min(alertSkip + PageSize, alertPage.Total).Num() از @alertPage.Total.Num() هشدار</span><button class="btn btn-sm btn-outline-secondary" disabled="@(alertSkip == 0 || loading || actionBusy)" @onclick="PreviousAlerts">قبلی</button><button class="btn btn-sm btn-outline-secondary" disabled="@(alertSkip + PageSize >= alertPage.Total || loading || actionBusy)" @onclick="NextAlerts">بعدی</button></div>
+                }
+            }
+            else if (activeTab == "events")
+            {
+                <div class="detail-section-head"><div><h2>رخدادهای iLO / Redfish</h2><p>حداکثر ۵۰ رخداد آخر ذخیره‌شده؛ رخداد تاریخی الزاماً خطای فعال نیست.</p></div></div>
+                @if (hardwareError is not null) { <div class="alert alert-danger">@hardwareError</div> }
+                else if (hardware is null || hardware.Events.Count == 0) { <div class="detail-empty"><i class="bi bi-journal-text" aria-hidden="true"></i><h3>رخدادی دریافت نشده است</h3><p>ممکن است LogService دستگاه در دسترس نباشد یا هنوز جمع‌آوری انجام نشده باشد.</p></div> }
+                else
+                {
+                    <div class="table-responsive"><table class="table table-hover"><thead><tr><th>زمان</th><th>شدت</th><th>پیام</th><th>مبدأ</th></tr></thead><tbody>
+                        @foreach (var ev in hardware.Events)
+                        {
+                            <tr @key="ev.Id"><td class="text-nowrap">@ServerUi.Date(ev.OccurredAt ?? ev.LastSeenAt)<small class="d-block text-muted">@(ev.OccurredAt.HasValue ? "زمان رخداد" : "زمان مشاهده در برنامه")</small></td><td><span class="badge @ServerUi.HealthClass(ev.Severity)">@ev.Severity</span></td><td class="detail-wrap">@ev.Message</td><td class="detail-wrap"><bdi>@ServerUi.Text(ev.Origin)</bdi></td></tr>
+                        }
+                    </tbody></table></div>
+                }
+            }
+            else if (activeTab == "activity")
+            {
+                <div class="detail-section-head"><div><h2>لاگ عملیات</h2><p>نمایش @details.Logs.Count.Num() عملیات آخر از @details.LogCount.Num() رکورد</p></div></div>
+                @if (details.Logs.Count == 0) { <div class="detail-empty"><i class="bi bi-clock-history" aria-hidden="true"></i><h3>عملیاتی ثبت نشده است</h3></div> }
+                else
+                {
+                    <div class="table-responsive"><table class="table table-hover"><thead><tr><th>زمان</th><th>عامل</th><th>عملیات</th><th>نتیجه</th><th>توضیحات</th></tr></thead><tbody>
+                        @foreach (var log in details.Logs)
+                        {
+                            <tr @key="log.Id"><td class="text-nowrap">@ServerUi.Date(log.At)</td><td>@ServerUi.Text(log.UserName)</td><td>@ServerUi.ActionTitle(log.Action)</td><td><span class="badge @(log.Result == "Success" ? "bg-success" : "bg-danger")">@(log.Result == "Success" ? "موفق" : "ناموفق")</span></td><td class="detail-wrap">@ServerUi.Text(log.Details)</td></tr>
+                        }
+                    </tbody></table></div>
+                }
+            }
+        </section>
+        <footer class="detail-footnote"><i class="bi bi-info-circle" aria-hidden="true"></i> تاریخ‌ها شمسی و زمان‌ها مطابق دادهٔ ثبت‌شدهٔ سرور برنامه هستند. بازخوانی صفحه فقط داده‌های ذخیره‌شده را می‌خواند؛ عملیات دریافت از iLO جداست.</footer>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private bool canView, canUpdate, canCollect, canCreateWorkOrders, canViewWorkOrders;
+    private bool loading, actionBusy, disposed, autoRefresh = true, includeResolved;
+    private int version, loadedId, alertSkip;
+    private const int PageSize = 30;
+    private string activeTab = "overview", componentType = "";
+    private string? loadError, hardwareError, alertsError;
+    private ServerDetailsDto? details;
+    private ServerHardwareDto? hardware;
+    private ServerAlertPageDto? alertPage;
+    private readonly CancellationTokenSource refreshCancellation = new();
+    private string BackUrl => details is null ? "/servers" : $"/servers?companyId={details.Server.CompanyId}";
+    private static readonly (string Key, string Title, string Icon)[] Tabs =
+    {
+        ("overview", "شناسنامه", "bi-server"), ("hardware", "قطعات", "bi-motherboard"),
+        ("health", "روند سلامت", "bi-activity"), ("alerts", "هشدار و دستورکار", "bi-exclamation-triangle"),
+        ("events", "رخدادهای iLO", "bi-journal-text"), ("activity", "لاگ عملیات", "bi-clock-history")
+    };
+
+    protected override void OnInitialized()
+    {
+        canView = Auth.Has("Servers.View"); canUpdate = Auth.Has("Servers.Update");
+        canCollect = Auth.Has("Servers.Collect"); canCreateWorkOrders = Auth.Has("WorkOrders.Create");
+        canViewWorkOrders = Auth.Has("WorkOrders.View");
+        if (canView) _ = RefreshLoopAsync();
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedId == Id) return;
+        loadedId = Id; details = null; hardware = null; alertPage = null;
+        activeTab = "overview"; componentType = ""; alertSkip = 0; includeResolved = false;
+        if (canView) await Reload();
+    }
+    private static async Task<(T? Value, string? Error)> Capture<T>(Task<T> task) where T : class
+    {
+        try { return (await task, null); }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+    private async Task Reload()
+    {
+        if (!canView || disposed) return;
+        var requestVersion = ++version;
+        var serverId = Id;
+        loading = true;
+        try
+        {
+            var detailTask = Capture(Api.GetAsync<ServerDetailsDto>($"api/servers/{serverId}"));
+            var hardwareTask = Capture(Api.GetAsync<ServerHardwareDto>($"api/servers/{serverId}/hardware"));
+            var alertTask = Capture(Api.GetAsync<ServerAlertPageDto>($"api/servers/{serverId}/alerts?includeResolved={includeResolved}&skip={alertSkip}&take={PageSize}"));
+            await Task.WhenAll(detailTask, hardwareTask, alertTask);
+            if (disposed || requestVersion != version || serverId != Id) return;
+            var main = await detailTask; var parts = await hardwareTask; var alerts = await alertTask;
+            details = main.Value; loadError = main.Error;
+            hardware = details is null ? null : parts.Value;
+            alertPage = details is null ? null : alerts.Value;
+            hardwareError = parts.Error; alertsError = alerts.Error;
+            if (hardware is not null && !hardware.Components.Any(c => c.ComponentType == componentType)) componentType = "";
+            if (alertPage is not null && alertSkip > 0 && alertSkip >= alertPage.Total)
+            {
+                alertSkip = alertPage.Total == 0 ? 0 : ((alertPage.Total - 1) / PageSize) * PageSize;
+                await Reload();
+            }
+        }
+        finally { if (!disposed && requestVersion == version) loading = false; }
+    }
+    private async Task RefreshLoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(refreshCancellation.Token))
+                await InvokeAsync(async () =>
+                {
+                    if (disposed || !autoRefresh || loading || actionBusy) return;
+                    await Reload();
+                    if (!disposed) StateHasChanged();
+                });
+        }
+        catch (OperationCanceledException) { }
+    }
+    private async Task Poll(string action)
+    {
+        if (!canCollect || actionBusy || loading || details is null || details.Server.CredentialId is not > 0) return;
+        var serverId = Id;
+        actionBusy = true;
+        try
+        {
+            await Api.PostAsync<object>($"api/servers/{serverId}/{action}");
+            if (!disposed && serverId == Id) Toast.Success(action == "test" ? "تست اتصال انجام شد." : "دریافت Inventory انجام شد.");
+        }
+        catch (Exception ex) { if (!disposed && serverId == Id) Toast.Error(ex.Message); }
+        finally { actionBusy = false; if (!disposed && serverId == Id) await Reload(); }
+    }
+    private async Task ActOnAlert(ServerAlertDto alert, string action)
+    {
+        if (!canUpdate || actionBusy || loading || (action == "work-order" && !canCreateWorkOrders)) return;
+        var serverId = Id;
+        actionBusy = true;
+        try
+        {
+            if (action != "acknowledge" && !await JS.InvokeAsync<bool>("confirm", action == "resolve"
+                ? "این هشدار به‌صورت دستی رفع شود؟ این کار به‌معنی تأیید سلامت واقعی دستگاه نیست."
+                : "برای این هشدار به مسئول سرور دستورکار واگذار شود؟")) return;
+            if (disposed || serverId != Id) return;
+            await Api.PostAsync<object>($"api/servers/alerts/{alert.Id}/{action}");
+            if (!disposed && serverId == Id) Toast.Success("عملیات هشدار انجام شد.");
+        }
+        catch (Exception ex) { if (!disposed && serverId == Id) Toast.Error(ex.Message); }
+        finally { actionBusy = false; if (!disposed && serverId == Id) await Reload(); }
+    }
+    private async Task ChangeResolved(ChangeEventArgs e) { includeResolved = e.Value is true; alertSkip = 0; await Reload(); }
+    private async Task PreviousAlerts() { alertSkip = Math.Max(0, alertSkip - PageSize); await Reload(); }
+    private async Task NextAlerts() { alertSkip += PageSize; await Reload(); }
+    public void Dispose()
+    {
+        disposed = true; version++;
+        refreshCancellation.Cancel(); refreshCancellation.Dispose();
+    }
+}

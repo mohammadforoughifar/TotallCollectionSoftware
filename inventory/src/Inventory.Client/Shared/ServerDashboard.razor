@@ -1,0 +1,107 @@
+@using Inventory.Shared.Dtos
+
+<section class="infra-panel" aria-label="داشبورد وضعیت سرورهای شرکت" aria-busy="@(Refreshing ? "true" : "false")" dir="rtl">
+    <header class="infra-header">
+        <div class="infra-title-group">
+            <span class="infra-header-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="2" /><rect x="4" y="14" width="16" height="7" rx="2" /><path d="M8 6.5h.01M8 17.5h.01M12 6.5h4M12 17.5h4" /></svg>
+            </span>
+            <div>
+                <span class="infra-eyebrow">نمای کلی زیرساخت</span>
+                <h2>وضعیت سرورهای شرکت</h2>
+            </div>
+        </div>
+        <div class="infra-header-tools">
+            <span class="infra-data-label"><span aria-hidden="true"></span> داده‌های ثبت‌شده</span>
+            <button type="button" class="infra-refresh @(Refreshing ? "is-refreshing" : "")" disabled="@Refreshing"
+                    aria-label="بازخوانی داشبورد" title="بازخوانی اطلاعات ذخیره‌شده" @onclick="OnRefresh">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8.3 8.3 0 0 1 20 12M4 12a8.3 8.3 0 0 0 13.9 5.9" /></svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="infra-metrics">
+        @foreach (var metric in Metrics)
+        {
+            <button type="button" class="infra-metric @metric.Tone @(metric.Key == "All" ? "infra-total" : "") @(Filter == metric.Key ? "is-selected" : "")"
+                    aria-pressed="@(Filter == metric.Key ? "true" : "false")"
+                    aria-label="@($"{metric.Title}: {metric.Count.Num()}؛ فیلتر فهرست")"
+                    @onclick="() => Select(metric.Key)">
+                <span class="infra-card-top">
+                    <span class="infra-metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="@metric.Path" /></svg></span>
+                    <span class="infra-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 7H7v10M7 7l10 10" /></svg></span>
+                </span>
+                <span class="infra-card-main"><span class="infra-value">@metric.Count.Num()</span><span class="infra-metric-title">@metric.Title</span></span>
+                <span class="infra-card-caption">@metric.Description</span>
+            </button>
+        }
+    </div>
+
+    @if (Summary.Total == 0)
+    {
+        <div class="infra-empty-hint">
+            <span class="infra-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /></svg></span>
+            <div><strong>زیرساخت شما از اینجا شروع می‌شود</strong><p>@(CanCreate ? "با ثبت اولین سرور، وضعیت سلامت و هشدارهای آن را یک‌جا ببینید." : "هنوز سروری برای این شرکت ثبت نشده است؛ پس از ثبت، اطلاعات این بخش نمایش داده می‌شود.")</p></div>
+            @if (CanCreate)
+            {
+                <button type="button" class="infra-create" @onclick="OnCreate"><span aria-hidden="true">+</span> ثبت اولین سرور</button>
+            }
+        </div>
+    }
+
+    <div class="infra-bottom">
+        <div class="infra-summary">
+            <span class="infra-summary-item @(Summary.OpenAlertCount > 0 ? "has-alerts" : "")">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+                <b>@Summary.OpenAlertCount.Num()</b><span>هشدار حل‌نشده</span>
+            </span>
+            <span class="infra-summary-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h5l3-7 4 14 3-7h5" /></svg>
+                <span>پایش فعال</span><b>@Summary.MonitoringEnabledCount.Num()</b><span>سرور</span>
+            </span>
+        </div>
+        <label class="infra-auto-refresh">
+            <input type="checkbox" checked="@AutoRefresh" @onchange="ChangeAutoRefresh" aria-label="به‌روزرسانی خودکار هر ۶۰ ثانیه" />
+            <span class="infra-switch" aria-hidden="true"></span>
+            <span>به‌روزرسانی خودکار <small>هر ۶۰ ثانیه</small></span>
+        </label>
+    </div>
+
+    <footer class="infra-footer">
+        <span class="infra-updated" aria-live="polite">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            <span>@(Refreshing ? "در حال بازخوانی…" : "آخرین دریافت")</span>
+            @if (!Refreshing) { <bdi>@ServerUi.Date(Summary.GeneratedAt)</bdi> }
+        </span>
+        <details class="infra-explainer">
+            <summary><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6m0-10h.01" /></svg> دربارهٔ این آمار</summary>
+            <p>آمار مربوط به کل شرکت و مستقل از جست‌وجو است. تعمیرات با وضعیت سلامت هم‌پوشانی دارد. بازخوانی فقط اطلاعات ذخیره‌شده را می‌خواند و اتصال جدیدی به iLO ایجاد نمی‌کند. زمان نمایش‌داده‌شده، زمان دریافت اطلاعات داشبورد است؛ زمان بررسی هر سرور در فهرست آن مشخص است.</p>
+        </details>
+    </footer>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ServerDashboardDto Summary { get; set; } = new();
+    [Parameter] public string Filter { get; set; } = "All";
+    [Parameter] public EventCallback<string> FilterChanged { get; set; }
+    [Parameter] public bool AutoRefresh { get; set; } = true;
+    [Parameter] public EventCallback<bool> AutoRefreshChanged { get; set; }
+    [Parameter] public bool Refreshing { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public bool CanCreate { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
+
+    private IEnumerable<(string Key, string Title, int Count, string Path, string Tone, string Description)> Metrics => new[]
+    {
+        ("All", "کل سرورها", Summary.Total, "M5 3h14v7H5zM5 14h14v7H5zM8 6.5h.01M8 17.5h.01M12 6.5h4M12 17.5h4", "infra-blue", "نمای یکپارچهٔ سرورهای شرکت"),
+        ("Healthy", "سالم و تازه", Summary.Healthy, "M20 11.5V12a8 8 0 1 1-4.7-7.3M8 11l4 4 9-10", "infra-green", "آخرین وضعیت معتبر و سالم"),
+        ("Warning", "هشدار", Summary.Warning, "m10.3 3.5-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.7-2.5l-8-14a2 2 0 0 0-3.4 0M12 9v4m0 3h.01", "infra-amber", "نیازمند بررسی و رسیدگی"),
+        ("Critical", "بحرانی", Summary.Critical, "M8 2h8l6 6v8l-6 6H8l-6-6V8zM12 7v6m0 4h.01", "infra-red", "در اولویت رسیدگی قرار دهید"),
+        ("Disconnected", "عدم دسترسی", Summary.Disconnected, "M8 2v5m8-5v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5M3 3l18 18", "infra-slate", "خطا در ارتباط مدیریتی"),
+        ("Stale", "اطلاعات قدیمی", Summary.Stale, "M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7m2-4v5l3 2", "infra-violet", "زمان بررسی دوباره رسیده است"),
+        ("Unknown", "نامشخص", Summary.Unknown, "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4m0 3h.01", "infra-gray", "بررسی‌نشده یا بدون دادهٔ کافی"),
+        ("Maintenance", "تعمیرات", Summary.Maintenance, "M14.5 6.5 18 3a6 6 0 0 0-7.3 7.3l-7.8 7.8a2.1 2.1 0 0 0 3 3l7.8-7.8A6 6 0 0 0 21 6l-3.5 3.5z", "infra-cyan", "تعمیرات یا سکوت موقت اعلان")
+    };
+    private Task Select(string key) => FilterChanged.InvokeAsync(Filter == key ? "All" : key);
+    private Task ChangeAutoRefresh(ChangeEventArgs e) => AutoRefreshChanged.InvokeAsync(e.Value is true);
+}

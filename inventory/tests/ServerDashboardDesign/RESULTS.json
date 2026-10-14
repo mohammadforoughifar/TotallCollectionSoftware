@@ -1,0 +1,17 @@
+{
+  "razor_render_assertions": 8,
+  "browser_checks": [
+    "Eight empty-state cards",
+    "Sample data view",
+    "Selected filter visible",
+    "Integrated toggle works via label",
+    "Toggle is keyboard accessible",
+    "Explanation expands accessibly",
+    "No document overflow at 320px",
+    "No document overflow at 390px",
+    "No document overflow at 768px",
+    "No document overflow at 1024px",
+    "No JavaScript errors"
+  ],
+  "browser_test_scope": "Standalone HTML rendered from production Razor component; preview-only interaction handlers, not live API."
+}

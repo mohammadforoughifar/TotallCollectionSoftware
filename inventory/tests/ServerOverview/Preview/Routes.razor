@@ -1,0 +1,4 @@
+<Router AppAssembly="typeof(App).Assembly" AdditionalAssemblies="new[] { typeof(Inventory.Client.Pages.ItAssets.ServerDetails).Assembly }">
+    <Found Context="routeData"><RouteView RouteData="routeData" DefaultLayout="typeof(PreviewLayout)" /><FocusOnNavigate RouteData="routeData" Selector="h1" /></Found>
+    <NotFound><LayoutView Layout="typeof(PreviewLayout)"><a href="/servers">رفتن به مدیریت سرورها</a></LayoutView></NotFound>
+</Router>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Render the real production components, not a separately copied UI. -->
+    <ProjectReference Include="../../../src/Inventory.Client/Inventory.Client.csproj" />
+  </ItemGroup>
+</Project>

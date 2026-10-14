@@ -1,0 +1,7 @@
+@inherits LayoutComponentBase
+<header class="preview-header"><a href="/servers"><i class="bi bi-grid-1x2-fill"></i> سامانهٔ مدیریت یکپارچه <span class="opacity-50 mx-2">/</span> زیرساخت و سرورها</a><span class="preview-label">پیش‌نمایش تعاملی</span></header>
+<div class="preview-note">داده‌های این پیش‌نمایش آزمایشی هستند. هیچ ارتباطی با سرورها، رمزها یا دیتابیس واقعی برقرار نمی‌شود.</div>
+<main class="preview-main" data-preview-ready="@(ready ? "true" : "false")">@Body</main>
+<Inventory.Client.Layout.ToastHost />
+
+@code { private bool ready; protected override void OnAfterRender(bool firstRender) { if (firstRender) { ready = true; StateHasChanged(); } } }
