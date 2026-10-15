@@ -35,13 +35,13 @@ public sealed class CompanyContextController : ControllerBase
             var allQuery = _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
                 .OrderBy(c => c.Name).ThenBy(c => c.Id);
             // مدیر هم باید در اولین ورود یک زمینهٔ معتبر بگیرد؛ null قبلی باعث انتخاب‌گر خالی می‌شد.
-            var active = requested is > 0 && await allQuery.AnyAsync(c => c.Id == requested)
+            var adminActiveCompanyId = requested is > 0 && await allQuery.AnyAsync(c => c.Id == requested)
                 ? requested
                 : await allQuery.Select(c => (int?)c.Id).FirstOrDefaultAsync();
             var allCompanies = await allQuery.ToPageListAsync(pagination);
             if (pagination.IsPaged)
-                return Ok(new { activeCompanyId = active, total = pagination.Total, companies = allCompanies });
-            return Ok(new { activeCompanyId = active, companies = allCompanies });
+                return Ok(new { activeCompanyId = adminActiveCompanyId, total = pagination.Total, companies = allCompanies });
+            return Ok(new { activeCompanyId = adminActiveCompanyId, companies = allCompanies });
         }
 
         // IsDefault همان شرکت فعال ثبت‌شده برای کاربر است؛ فقط در نبود آن، ترتیب نام شرکت fallback است.
