@@ -404,6 +404,9 @@
       <Report isRef="0" />
       <Watermark Ref="27" type="Stimulsoft.Report.Components.StiWatermark" isKey="true">
         <Font>Vazirmatn,100</Font>
+        <Enabled>True</Enabled>
+        <ImageBehind>True</ImageBehind>
+        <ImageTransparency>0</ImageTransparency>
         <ImageBytes>/9j/4AAQSkZJRgABAQEBLAEsAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgICAgUEBAMEBgUGBgYF
 BgYGBwkIBgcJBwYGCAsICQoKCgoKBggLDAsKDAkKCgr/2wBDAQICAgICAgUDAwUKBwYHCgoKCgoK
 CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgr/wAARCA20CbEDAREA

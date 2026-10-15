@@ -43,9 +43,21 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private const int HomepaCompanyId = 1003;
     private static readonly string[] HomepaLetterheadRelativePaths =
     {
+        // Prefer the 300-dpi raster for PDFsharp's background layer; it avoids PDF-form import quirks.
+        "uploads/letterheads/homepa_company1003_letterhead.png",
+        "uploads/letterheads/homepa_company1003_letterhead.jpg",
         "uploads/letterheads/homepa_company1003_letterhead.pdf",
         // Legacy filename is retained for existing deployments and DB values.
+        "uploads/letterheads/homepa_company3_letterhead.png",
+        "uploads/letterheads/homepa_company3_letterhead.jpg",
         "uploads/letterheads/homepa_company3_letterhead.pdf"
+    };
+    private static readonly string[] HomepaLetterheadImageRelativePaths =
+    {
+        "uploads/letterheads/homepa_company1003_letterhead.png",
+        "uploads/letterheads/homepa_company1003_letterhead.jpg",
+        "uploads/letterheads/homepa_company3_letterhead.png",
+        "uploads/letterheads/homepa_company3_letterhead.jpg"
     };
 
     private static bool _fontsRegistered;
@@ -153,6 +165,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             return ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
 
         return null;
+    }
+
+    private byte[]? ResolveHomepaLetterheadImageBytes()
+    {
+        var imagePath = HomepaLetterheadImageRelativePaths
+            .Select(ResolveLetterheadPath)
+            .FirstOrDefault(path => path != null);
+        return imagePath == null ? null : File.ReadAllBytes(imagePath);
     }
 
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
@@ -325,7 +345,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return path == null ? null : File.ReadAllBytes(path);
     }
 
-    /// <summary>ساخت PDF متن نامه (بدون پس‌زمینه) — راست‌به‌چپ با فونت وزیرمتن</summary>
+    /// <summary>ساخت PDF نامه با فونت وزیرمتن؛ برای هومپا پس‌زمینهٔ سربرگ هم در همین مرحله درج می‌شود.</summary>
     /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
     private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
     {
@@ -338,6 +358,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var text = HtmlToPlainText(letter.Text);
         var number = string.IsNullOrWhiteSpace(letter.SadereNumber) ? (letter.LetterNumber ?? "—") : letter.SadereNumber;
         var date = FaDate(letter.DateSadere ?? letter.DateSabt);
+        var homepaBackground = letter.CompanyId == HomepaCompanyId
+            ? ResolveHomepaLetterheadImageBytes()
+            : null;
+        if (letter.CompanyId == HomepaCompanyId && homepaBackground is not { Length: > 0 })
+            _logger.LogError("تصویر سربرگ هومپا برای PDF نامه {LetterId} پیدا نشد. WebRoot={WebRoot}, ContentRoot={ContentRoot}", letter.Id, _env.WebRootPath, _env.ContentRootPath);
 
         static string FullName(User? u) =>
             u == null ? "" :
@@ -348,6 +373,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                if (homepaBackground is { Length: > 0 })
+                    page.Background().Image(homepaBackground).FitArea();
 
                 // حاشیه‌ها طوری انتخاب شده که سربرگ (بالای صفحه) و پاصفحه سربرگ آزاد بماند
                 page.MarginTop(isA5 ? 88 : 130);
