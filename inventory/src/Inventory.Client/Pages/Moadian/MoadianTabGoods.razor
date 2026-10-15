@@ -100,9 +100,7 @@ else
                                     <td class="text-center num">@(((decimal)(g.ValueAddedPercentage ?? 0)).Qty())٪</td>
                                     <td class="text-end num mi-money">@MoadianUi.Money(g.Price)</td>
                                     <td class="text-end">
-                                        <button class="btn btn-sm btn-outline-primary" title="ویرایش" @onclick="() => OpenForm(g)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
+                                        <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => OpenForm(g)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
                                     </td>
                                 </tr>
                             }

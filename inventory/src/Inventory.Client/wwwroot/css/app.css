@@ -2271,6 +2271,33 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 /* دکمهٔ اصلی کپسولی */
 .btn-pill { border-radius: 999px; font-weight: 700; padding: .55rem 1.4rem; }
 
+/* ---------- مودیان: دکمه‌های عملیاتِ کوچک (mpa) — نسخهٔ جیبیِ mpill برای ستون عملیات ---------- */
+.mpa-group { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; justify-content: flex-end; }
+.mpa {
+    display: inline-flex; align-items: center; justify-content: center; gap: .32rem;
+    border: 1.5px solid var(--border); background: #fff; color: var(--text);
+    border-radius: 999px; padding: .24rem .7rem; font-size: .8rem; font-weight: 700;
+    line-height: 1.1; cursor: pointer; white-space: nowrap; text-decoration: none;
+    transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.mpa i { font-size: .92rem; }
+.mpa-ic { padding: .26rem .55rem; min-width: 31px; }
+.mpa:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 10px -4px rgba(15, 23, 42, .3); }
+.mpa:disabled { opacity: .45; cursor: not-allowed; }
+.mpa-blue   { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }  .mpa-blue:hover:not(:disabled)   { background: #dbeafe; }
+.mpa-green  { border-color: #059669; background: #ecfdf5; color: #047857; }  .mpa-green:hover:not(:disabled)  { background: #d1fae5; }
+.mpa-gray   { border-color: #64748b; background: #f8fafc; color: #475569; }  .mpa-gray:hover:not(:disabled)   { background: #e2e8f0; }
+.mpa-slate  { border-color: #94a3b8; background: #f1f5f9; color: #475569; }  .mpa-slate:hover:not(:disabled)  { background: #e2e8f0; }
+.mpa-sky    { border-color: #0284c7; background: #f0f9ff; color: #075985; }  .mpa-sky:hover:not(:disabled)    { background: #e0f2fe; }
+.mpa-red    { border-color: #dc2626; background: #fef2f2; color: #b91c1c; }  .mpa-red:hover:not(:disabled)    { background: #fee2e2; }
+.mpa-amber  { border-color: #d97706; background: #fffbeb; color: #92400e; }  .mpa-amber:hover:not(:disabled)  { background: #fef3c7; }
+.mpa-indigo { border-color: #4f46e5; background: #eef2ff; color: #4338ca; }  .mpa-indigo:hover:not(:disabled) { background: #e0e7ff; }
+.mpa-dark   { border-color: #334155; background: #f1f5f9; color: #1e293b; }  .mpa-dark:hover:not(:disabled)   { background: #e2e8f0; }
+@media (prefers-reduced-motion: reduce) {
+    .mpa { transition: none; }
+    .mpa:hover { transform: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .mpill, .mpill-card { transition: none; }
     .mpill:hover, .mpill-card:hover { transform: none; }
