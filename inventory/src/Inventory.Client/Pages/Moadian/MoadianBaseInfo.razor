@@ -88,11 +88,11 @@
 <MoadianCompanyBar />
 
 @* ---------- نوار تب ---------- *@
-<div class="mtabs mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
+<div class="mpills mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
     @foreach (var t in Tabs)
     {
-        <button type="button" role="tab" class="mtab @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
-            <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+        <button type="button" role="tab" class="mpill mpill-@t.Color @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
+            <span class="mpill-ic"><i class="bi @t.Icon" aria-hidden="true"></i></span> @t.Title
         </button>
     }
 </div>
@@ -122,14 +122,14 @@ else if (ActiveTab == "customers")
 @code {
     [Parameter] public string? Tab { get; set; }
 
-    private record TabInfo(string Key, string Title, string Icon);
+    private record TabInfo(string Key, string Title, string Icon, string Color);
     private static readonly TabInfo[] TabsList =
     {
-        new("company", "اطلاعات شرکت", "bi-building"),
-        new("connection", "اطلاعات اتصال", "bi-plug"),
-        new("units", "واحدهای سنجش", "bi-rulers"),
-        new("goods", "کالاها و خدمات", "bi-box"),
-        new("customers", "اطلاعات مشتریان", "bi-people"),
+        new("company", "اطلاعات شرکت", "bi-building", "blue"),
+        new("connection", "اطلاعات اتصال", "bi-plug", "green"),
+        new("units", "واحدهای سنجش", "bi-rulers", "purple"),
+        new("goods", "کالاها و خدمات", "bi-box", "orange"),
+        new("customers", "اطلاعات مشتریان", "bi-people", "indigo"),
     };
     private IEnumerable<TabInfo> Tabs => TabsList;
 

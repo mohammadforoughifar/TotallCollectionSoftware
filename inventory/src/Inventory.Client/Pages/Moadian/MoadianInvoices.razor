@@ -39,18 +39,14 @@
 else
 {
     @* ---------- تب‌های وضعیت ---------- *@
-    <div class="mtabs mb-3">
-        @foreach (var (code, title, icon) in Tabs)
+    <div class="mpills mb-3">
+        @foreach (var t in Tabs)
         {
-            <button type="button" class="mtab @(fOp == code ? "active" : "")" aria-pressed="@(fOp == code)" @onclick="() => SetOp(code)">
-                @if (code != "همه")
-                {
-                    <span class="mi-dot @("mi-dot-" + code)" aria-hidden="true"></span>
-                }
-                <i class="bi @icon" aria-hidden="true"></i> @title
+            <button type="button" class="mpill mpill-@t.Color @(fOp == t.Code ? "active" : "")" aria-pressed="@(fOp == t.Code)" @onclick="() => SetOp(t.Code)">
+                <span class="mpill-ic"><i class="bi @t.Icon" aria-hidden="true"></i></span> @t.Title
                 @if (labels is not null)
                 {
-                    <span class="badge badge-soft-primary num ms-1">@CountText(code)</span>
+                    <span class="mpill-count num">@CountText(t.Code)</span>
                 }
             </button>
         }
@@ -364,17 +360,17 @@ else
 }
 
 @code {
-    private static readonly (string Code, string Title, string Icon)[] Tabs =
+    private static readonly (string Code, string Title, string Icon, string Color)[] Tabs =
     {
-        ("همه", "همه", "bi-collection"),
-        ("0", "ارسال نشده", "bi-inbox"),
-        ("1", "در انتظار استعلام", "bi-arrow-repeat"),
-        ("2", "در انتظار بررسی", "bi-search"),
-        ("3", "ارسال شده", "bi-send-check"),
-        ("4", "در انتظار واکنش", "bi-hourglass-split"),
-        ("5", "دارای خطا", "bi-exclamation-triangle"),
-        ("6", "بدون نیاز به واکنش", "bi-archive"),
-        ("7", "تأیید شده", "bi-check-circle"),
+        ("همه", "همه", "bi-collection", "gray"),
+        ("0", "ارسال نشده", "bi-inbox", "slate"),
+        ("1", "در انتظار استعلام", "bi-arrow-repeat", "sky"),
+        ("2", "در انتظار بررسی", "bi-search", "amber"),
+        ("3", "ارسال شده", "bi-send-check", "indigo"),
+        ("4", "در انتظار واکنش", "bi-hourglass-split", "orange"),
+        ("5", "دارای خطا", "bi-exclamation-triangle", "red"),
+        ("6", "بدون نیاز به واکنش", "bi-archive", "stone"),
+        ("7", "تأیید شده", "bi-check-circle", "green"),
     };
 
     private PagedList<InvoiceVM>? data;
