@@ -215,6 +215,13 @@ else
                                                         disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
                                                     <i class="bi bi-bug" aria-hidden="true"></i>
                                                 </button>
+                                                @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                                {
+                                                    <a class="mpa mpa-cyan mpa-ic" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener"
+                                                       title="مشاهدهٔ صورتحساب در کارپوشهٔ سامانهٔ مودیان (در پنجرهٔ جدید باز می‌شود)" aria-label="مشاهده در کارپوشه">
+                                                        <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                                    </a>
+                                                }
                                                 @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
                                                 {
                                                     <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
@@ -286,6 +293,10 @@ else
                                     {
                                         <button type="button" class="mpa mpa-sky" disabled="@acting" aria-label="استعلام صورتحساب" @onclick="() => EstelamRow(inv)"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> استعلام</button>
                                         <button type="button" class="mpa mpa-red" disabled="@acting" aria-label="نمایش خطاهای صورتحساب" @onclick="() => ShowErrorsRow(inv)"><i class="bi bi-bug" aria-hidden="true"></i> خطاها</button>
+                                        @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                        {
+                                            <a class="mpa mpa-cyan" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener" aria-label="مشاهده در کارپوشه"><i class="bi bi-folder2-open" aria-hidden="true"></i> کارپوشه</a>
+                                        }
                                         @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
                                         {
                                             <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{inv.Id}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>

@@ -42,6 +42,13 @@ public static class MoadianUi
     public static bool CanUseReferenceActions(string? referenceId, bool showButtons)
         => HasReference(referenceId) && showButtons;
 
+    /// <summary>آدرس رسمی درگاه ملی خدمات مالیاتی (ورودی کارپوشهٔ سامانهٔ مودیان) — نیازمند تأیید از سوی کارفرما.</summary>
+    public const string WorkFolderUrl = "https://my.tax.gov.ir";
+
+    /// <summary>کارپوشه برای صورتحساب‌هایی قابل مشاهده است که در سامانه ثبت شده‌اند (در حال بررسی / در انتظار واکنش / تأیید شده).</summary>
+    public static bool CanViewWorkFolder(string? code, string? referenceId)
+        => HasReference(referenceId) && code is "2" or "4" or "7";
+
     /// <summary>کد وضعیت → کلاس رنگی برچسب.</summary>
     public static string StatusBadge(string? code) => code switch
     {

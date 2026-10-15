@@ -74,6 +74,12 @@ else
                     مشاهده خطاها
                 </button>
             }
+            @if (MoadianUi.CanViewWorkFolder(vm.StatusSentToSystemInt, vm.ReferenceId))
+            {
+                <a class="btn btn-outline-info" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener">
+                    <i class="bi bi-folder2-open" aria-hidden="true"></i> مشاهده در کارپوشه
+                </a>
+            }
             @if (vm.ShowButtons && (vm.StatusSentToSystemInt == "4" || vm.StatusSentToSystemInt == "5"))
             {
                 <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{vm.Id}/eslahi")"><i class="bi bi-pencil"></i> اصلاحی</NavLink>

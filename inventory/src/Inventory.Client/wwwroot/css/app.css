@@ -2293,6 +2293,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mpa-amber  { border-color: #d97706; background: #fffbeb; color: #92400e; }  .mpa-amber:hover:not(:disabled)  { background: #fef3c7; }
 .mpa-indigo { border-color: #4f46e5; background: #eef2ff; color: #4338ca; }  .mpa-indigo:hover:not(:disabled) { background: #e0e7ff; }
 .mpa-dark   { border-color: #334155; background: #f1f5f9; color: #1e293b; }  .mpa-dark:hover:not(:disabled)   { background: #e2e8f0; }
+.mpa-cyan   { border-color: #0891b2; background: #ecfeff; color: #0e7490; }  .mpa-cyan:hover:not(:disabled)   { background: #cffafe; }
 @media (prefers-reduced-motion: reduce) {
     .mpa { transition: none; }
     .mpa:hover { transform: none; }
