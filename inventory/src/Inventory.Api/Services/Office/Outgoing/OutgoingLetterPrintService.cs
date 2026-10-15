@@ -39,26 +39,8 @@ public interface IOutgoingLetterPrintService
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
-    // Homepa's current SystemCompanies ID is 1003. Keep the ID mapping centralized.
+    // Used only to prevent Homepa from ever falling back to Forough's letterhead.
     private const int HomepaCompanyId = 1003;
-    private static readonly string[] HomepaLetterheadRelativePaths =
-    {
-        // Prefer the 300-dpi raster for PDFsharp's background layer; it avoids PDF-form import quirks.
-        "uploads/letterheads/homepa_company1003_letterhead.png",
-        "uploads/letterheads/homepa_company1003_letterhead.jpg",
-        "uploads/letterheads/homepa_company1003_letterhead.pdf",
-        // Legacy filename is retained for existing deployments and DB values.
-        "uploads/letterheads/homepa_company3_letterhead.png",
-        "uploads/letterheads/homepa_company3_letterhead.jpg",
-        "uploads/letterheads/homepa_company3_letterhead.pdf"
-    };
-    private static readonly string[] HomepaLetterheadImageRelativePaths =
-    {
-        "uploads/letterheads/homepa_company1003_letterhead.png",
-        "uploads/letterheads/homepa_company1003_letterhead.jpg",
-        "uploads/letterheads/homepa_company3_letterhead.png",
-        "uploads/letterheads/homepa_company3_letterhead.jpg"
-    };
 
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
@@ -134,31 +116,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    /// <summary>
-    /// Resolve a company's actual PDF letterhead. Homepa must never fall back to
-    /// Forough's header; use its bundled PDF even when the DB field is blank or stale.
-    /// </summary>
+    /// <summary>Use the exact letterhead path saved on the selected SystemCompany.</summary>
     private string? ResolveCompanyLetterheadPath(SystemCompany? company)
     {
-        if (company != null && company.Id == HomepaCompanyId)
-        {
-            var homepaPath = HomepaLetterheadRelativePaths
-                .Select(ResolveLetterheadPath)
-                .FirstOrDefault(path => path != null);
-            if (homepaPath != null) return homepaPath;
-
-            // Accept a configured Homepa filename if deployment uses another path/name.
-            var configuredHomepaPath = ResolveLetterheadPath(company.LetterheadFileName);
-            if (configuredHomepaPath != null && Path.GetFileName(configuredHomepaPath)
-                    .StartsWith("homepa_", StringComparison.OrdinalIgnoreCase))
-                return configuredHomepaPath;
-
-            return null;
-        }
-
         var configuredFileName = company?.LetterheadFileName;
         var configuredPath = ResolveLetterheadPath(configuredFileName);
         if (configuredPath != null) return configuredPath;
+
+        // Homepa must never silently receive another company's letterhead.
+        if (company?.Id == HomepaCompanyId) return null;
 
         if (string.IsNullOrWhiteSpace(configuredFileName)
             || configuredFileName.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase))
@@ -167,12 +133,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return null;
     }
 
-    private byte[]? ResolveHomepaLetterheadImageBytes()
+    /// <summary>If PDFsharp cannot import the configured PDF, try its same-name raster derivative.</summary>
+    private static string? ResolveRasterSibling(string resolvedLetterheadPath)
     {
-        var imagePath = HomepaLetterheadImageRelativePaths
-            .Select(ResolveLetterheadPath)
-            .FirstOrDefault(path => path != null);
-        return imagePath == null ? null : File.ReadAllBytes(imagePath);
+        if (!resolvedLetterheadPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return null;
+
+        foreach (var extension in new[] { ".png", ".jpg", ".jpeg" })
+        {
+            var candidate = Path.ChangeExtension(resolvedLetterheadPath, extension);
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        return null;
     }
 
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
@@ -209,49 +181,98 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// </summary>
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
     {
+        // Resolve the letter, its company record and the registered letterhead first.
+        // The MRT renderer then loads the matching Companies/{CompanyId} template.
+        var letter = await _db.OutgoingLetters.AsNoTracking()
+            .Include(l => l.Creator)
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) return null;
+
+        var letterCompanyId = letter.CompanyId;
+        var hasCompanyId = letterCompanyId is > 0;
+        SystemCompany? company;
+        if (hasCompanyId)
+        {
+            company = await _db.SystemCompanies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == letterCompanyId);
+        }
+        else
+        {
+            // If an old letter has no company, retain the existing default selection.
+            company = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => c.IsActive && c.LetterheadFileName != null && c.LetterheadFileName != "")
+                .OrderBy(c => c.Id)
+                .FirstOrDefaultAsync();
+        }
+
+        var isHomepaLetter = letterCompanyId == HomepaCompanyId || company?.Id == HomepaCompanyId;
+        var companyRecordMissing = hasCompanyId && company == null;
+        var letterheadPath = companyRecordMissing ? null : ResolveCompanyLetterheadPath(company);
+        if (letterheadPath == null && !isHomepaLetter && !companyRecordMissing)
+        {
+            var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
+                .Select(c => c.LogoPath)
+                .FirstOrDefaultAsync();
+            letterheadPath = ResolveLetterheadPath(hrLogoPath);
+        }
+
+        _logger.LogInformation(
+            "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
+            letterId, company?.Id ?? letterCompanyId, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
+
         // متن‌های کوتاه با قالب MRT چاپ می‌شوند؛ متن‌های طولانی مستقیماً به
         // QuestPDF می‌روند تا امکان صفحه‌های بعدی با سربرگ تکرارشونده وجود داشته باشد.
-        var preview = await _db.OutgoingLetters.AsNoTracking()
-            .Where(x => x.Id == letterId && !x.IsDelete)
-            .Select(x => x.Text)
-            .FirstOrDefaultAsync();
-        var isLongLetter = HtmlToPlainText(preview).Length > 2500;
+        var isLongLetter = HtmlToPlainText(letter.Text).Length > 2500;
         var stimulsoftPdf = isLongLetter
             ? null
             : await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
         if (stimulsoftPdf is { Length: > 0 })
         {
-            // خروجی MRT شامل متن/امضاست، اما سربرگ شرکت باید مانند مسیر QuestPDF
-            // روی تک‌تک صفحات آن overlay شود.
-            var mrtLetter = await _db.OutgoingLetters.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == letterId && !x.IsDelete);
-            var mrtCompany = mrtLetter?.CompanyId is > 0
-                ? await _db.SystemCompanies.AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.Id == mrtLetter.CompanyId && x.IsActive)
-                : null;
-            var mrtLetterhead = ResolveCompanyLetterheadPath(mrtCompany);
-            if (mrtLetterhead != null)
+            if (letterheadPath == null)
             {
-                _logger.LogInformation(
-                    "اعمال سربرگ روی خروجی MRT. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
-                    letterId, mrtCompany?.Id, mrtLetterhead);
-                return OverlayOnLetterhead(stimulsoftPdf, mrtLetterhead);
+                _logger.LogError(
+                    "سربرگ خروجی MRT پیدا نشد؛ PDF بدون overlay برگردانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}",
+                    letterId, company?.Id ?? letterCompanyId, company?.LetterheadFileName);
+                return stimulsoftPdf;
             }
 
-            _logger.LogError(
-                "سربرگ خروجی MRT پیدا نشد؛ PDF بدون overlay برگردانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
-                letterId, mrtCompany?.Id, mrtCompany?.LetterheadFileName, _env.WebRootPath, _env.ContentRootPath);
-            return stimulsoftPdf;
+            try
+            {
+                _logger.LogInformation(
+                    "اعمال مسیر سربرگ ثبت‌شده روی خروجی MRT. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
+                    letterId, company?.Id ?? letterCompanyId, letterheadPath);
+                return OverlayOnLetterhead(stimulsoftPdf, letterheadPath);
+            }
+            catch (Exception ex)
+            {
+                var rasterFallback = ResolveRasterSibling(letterheadPath);
+                if (rasterFallback != null)
+                {
+                    try
+                    {
+                        _logger.LogWarning(ex,
+                            "ورود PDF سربرگ ناموفق بود؛ از مشتق تصویری همان مسیر استفاده می‌شود. LetterId={LetterId}, Path={RasterPath}",
+                            letterId, rasterFallback);
+                        return OverlayOnLetterhead(stimulsoftPdf, rasterFallback);
+                    }
+                    catch (Exception rasterException)
+                    {
+                        _logger.LogError(rasterException,
+                            "اعمال مشتق تصویری سربرگ نیز ناموفق بود. LetterId={LetterId}, Path={RasterPath}",
+                            letterId, rasterFallback);
+                    }
+                }
+
+                _logger.LogError(ex,
+                    "قرار دادن سربرگ ثبت‌شده روی خروجی MRT ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
+                    letterId, company?.Id ?? letterCompanyId, letterheadPath);
+                return stimulsoftPdf;
+            }
         }
 
         _logger.LogWarning(
             "چاپ نامه {LetterId} با MRT انجام نشد؛ QuestPDF به‌عنوان fallback استفاده می‌شود.",
             letterId);
-
-        var letter = await _db.OutgoingLetters.AsNoTracking()
-            .Include(l => l.Creator)
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
-        if (letter == null) return null;
 
         var signers = await _db.OutgoingLetterSigners.AsNoTracking()
             .Include(s => s.User)
@@ -269,41 +290,17 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var hasAttachment = await _db.AppAttachments.AsNoTracking()
             .AnyAsync(a => a.Module == "OutgoingLetters" && a.RefId == letterId);
 
-        SystemCompany? company = null;
-        if (letter.CompanyId is > 0)
-            company = await _db.SystemCompanies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == letter.CompanyId);
-
-        // اگر نامه شرکت ندارد، اولین شرکت فعالِ دارای سربرگ به‌عنوان پیش‌فرض
-        company ??= await _db.SystemCompanies.AsNoTracking()
-            .Where(c => c.IsActive && c.LetterheadFileName != null && c.LetterheadFileName != "")
-            .OrderBy(c => c.Id)
-            .FirstOrDefaultAsync();
-
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
         var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos);
 
-        // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
-        // سربرگ باید فقط از شرکت انتخاب‌شدهٔ همین نامه دریافت شود.
-        // SystemCompany فیلدی به نام LogoPath ندارد و استفاده از لوگوی ماژول HR
-        // یا پوشهٔ ثابت شرکت 1 می‌تواند باعث چاپ سربرگ شرکت اشتباه شود.
-        var letterheadPath = ResolveCompanyLetterheadPath(company);
-        if (letterheadPath == null && company?.Id != HomepaCompanyId)
-        {
-            // HR logo remains a legacy fallback for other companies only. Homepa
-            // must never accidentally print another company's branding.
-            var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
-                .Select(c => c.LogoPath)
-                .FirstOrDefaultAsync();
-            letterheadPath = ResolveLetterheadPath(hrLogoPath);
-        }
-
+        // Use the company record and registered letterhead path resolved before MRT rendering.
         if (letterheadPath == null)
         {
             _logger.LogWarning(
                 "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
                 letterId,
-                company?.Id,
+                company?.Id ?? letterCompanyId,
                 company?.Name,
                 company?.LetterheadFileName,
                 _env.ContentRootPath,
@@ -316,15 +313,32 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             _logger.LogInformation(
                 "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}",
-                letterId, company?.Id, size, letterheadPath);
+                letterId, company?.Id ?? letterCompanyId, size, letterheadPath);
             return OverlayOnLetterhead(contentPdf, letterheadPath);
         }
         catch (Exception ex)
         {
-            // خطا قبلاً بی‌صدا نادیده گرفته می‌شد و تشخیص نبودن سربرگ ممکن نبود.
+            var rasterFallback = ResolveRasterSibling(letterheadPath);
+            if (rasterFallback != null)
+            {
+                try
+                {
+                    _logger.LogWarning(ex,
+                        "ورود PDF سربرگ ناموفق بود؛ از مشتق تصویری همان مسیر استفاده می‌شود. LetterId={LetterId}, Path={RasterPath}",
+                        letterId, rasterFallback);
+                    return OverlayOnLetterhead(contentPdf, rasterFallback);
+                }
+                catch (Exception rasterException)
+                {
+                    _logger.LogError(rasterException,
+                        "اعمال مشتق تصویری سربرگ نیز ناموفق بود. LetterId={LetterId}, Path={RasterPath}",
+                        letterId, rasterFallback);
+                }
+            }
+
             _logger.LogError(ex,
-                "قرار دادن نامه روی سربرگ ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
-                letterId, company?.Id, letterheadPath);
+                "قرار دادن سربرگ ثبت‌شده روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
+                letterId, company?.Id ?? letterCompanyId, letterheadPath);
             return contentPdf;
         }
     }
@@ -345,7 +359,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return path == null ? null : File.ReadAllBytes(path);
     }
 
-    /// <summary>ساخت PDF نامه با فونت وزیرمتن؛ برای هومپا پس‌زمینهٔ سربرگ هم در همین مرحله درج می‌شود.</summary>
+    /// <summary>ساخت محتوای PDF نامه با فونت وزیرمتن؛ سربرگ ثبت‌شده بعداً به‌صورت overlay درج می‌شود.</summary>
     /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
     private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
     {
@@ -358,11 +372,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var text = HtmlToPlainText(letter.Text);
         var number = string.IsNullOrWhiteSpace(letter.SadereNumber) ? (letter.LetterNumber ?? "—") : letter.SadereNumber;
         var date = FaDate(letter.DateSadere ?? letter.DateSabt);
-        var homepaBackground = letter.CompanyId == HomepaCompanyId
-            ? ResolveHomepaLetterheadImageBytes()
-            : null;
-        if (letter.CompanyId == HomepaCompanyId && homepaBackground is not { Length: > 0 })
-            _logger.LogError("تصویر سربرگ هومپا برای PDF نامه {LetterId} پیدا نشد. WebRoot={WebRoot}, ContentRoot={ContentRoot}", letter.Id, _env.WebRootPath, _env.ContentRootPath);
 
         static string FullName(User? u) =>
             u == null ? "" :
@@ -373,8 +382,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
-                if (homepaBackground is { Length: > 0 })
-                    page.Background().Image(homepaBackground).FitArea();
 
                 // حاشیه‌ها طوری انتخاب شده که سربرگ (بالای صفحه) و پاصفحه سربرگ آزاد بماند
                 page.MarginTop(isA5 ? 88 : 130);
