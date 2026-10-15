@@ -32,15 +32,24 @@ public sealed class CompanyContextController : ControllerBase
         var pagination = new Paging.Request(skip, take);
         if (IsAdmin && !await access.AnyAsync())
         {
-            var allCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
-                .OrderBy(c => c.Name).ThenBy(c => c.Id).ToPageListAsync(pagination);
+            var allQuery = _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
+                .OrderBy(c => c.Name).ThenBy(c => c.Id);
+            // مدیر هم باید در اولین ورود یک زمینهٔ معتبر بگیرد؛ null قبلی باعث انتخاب‌گر خالی می‌شد.
+            var active = requested is > 0 && await allQuery.AnyAsync(c => c.Id == requested)
+                ? requested
+                : await allQuery.Select(c => (int?)c.Id).FirstOrDefaultAsync();
+            var allCompanies = await allQuery.ToPageListAsync(pagination);
             if (pagination.IsPaged)
-                return Ok(new { activeCompanyId = requested, total = pagination.Total, companies = allCompanies });
-            return Ok(new { activeCompanyId = requested, companies = allCompanies });
+                return Ok(new { activeCompanyId = active, total = pagination.Total, companies = allCompanies });
+            return Ok(new { activeCompanyId = active, companies = allCompanies });
         }
-        var query = access.OrderBy(x => x.Company.Name).ThenBy(x => x.CompanyId).Select(x => x.Company);
-        var active = requested is > 0 && await query.AnyAsync(c => c.Id == requested)
-            ? requested : await query.Select(c => (int?)c.Id).FirstOrDefaultAsync();
+
+        // IsDefault همان شرکت فعال ثبت‌شده برای کاربر است؛ فقط در نبود آن، ترتیب نام شرکت fallback است.
+        var orderedAccess = access.OrderByDescending(x => x.IsDefault).ThenBy(x => x.Company.Name).ThenBy(x => x.CompanyId);
+        var active = requested is > 0 && await access.AnyAsync(x => x.CompanyId == requested)
+            ? requested
+            : await orderedAccess.Select(x => (int?)x.CompanyId).FirstOrDefaultAsync();
+        var query = orderedAccess.Select(x => x.Company);
         var companies = await query.ToPageListAsync(pagination);
         if (pagination.IsPaged)
             return Ok(new { activeCompanyId = active, total = pagination.Total, companies });
@@ -58,7 +67,8 @@ public sealed class CompanyContextController : ControllerBase
         if (valid.Count != ids.Count) return BadRequest(new { message = "یکی از شرکت‌های انتخاب‌شده معتبر یا فعال نیست." });
         var old = await _db.UserCompanyAccesses.Where(x => x.UserId == userId).ToListAsync();
         _db.UserCompanyAccesses.RemoveRange(old);
-        _db.UserCompanyAccesses.AddRange(valid.Select((id, i) => new UserCompanyAccess { UserId = userId, CompanyId = id, IsDefault = i == 0 }));
+        // ترتیب انتخاب ارسالی، شرکت پیش‌فرض/فعال را مشخص می‌کند؛ ترتیب SQL برای IN تضمین‌شده نیست.
+        _db.UserCompanyAccesses.AddRange(ids.Select((id, i) => new UserCompanyAccess { UserId = userId, CompanyId = id, IsDefault = i == 0 }));
         await _db.SaveChangesAsync();
         return Ok(new { count = valid.Count });
     }

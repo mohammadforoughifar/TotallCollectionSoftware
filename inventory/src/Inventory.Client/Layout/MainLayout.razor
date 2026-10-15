@@ -586,36 +586,83 @@ else
     private int newSystemsCount;
     private int? activeCompanyId;
     private List<CompanyOption> companyOptions = new();
+    private int companyContextVersion;
     private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
 
+    /// <summary>
+    /// بارگذاری زمینهٔ شرکت فقط پس از آماده‌شدن نشست انجام می‌شود. نسخهٔ قبلی این متد
+    /// هم‌زمان با ورود، پیش از قراردادن Bearer Token اجرا می‌شد؛ پاسخ 401 در catch پنهان
+    /// می‌شد و انتخاب‌گر شرکت تا یک کلیک تصادفی دوباره ظاهر نمی‌شد.
+    /// </summary>
     private async Task LoadCompanyContextAsync()
     {
+        var version = ++companyContextVersion;
+        if (!Auth.IsLoggedIn)
+        {
+            ClearCompanyContext();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        SetAuthHeader();
+        Http.DefaultRequestHeaders.Remove("X-Company-Id");
         try
         {
             var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
-            if (int.TryParse(saved, out var id) && id > 0)
-                Http.DefaultRequestHeaders.Remove("X-Company-Id");
-            if (id > 0) Http.DefaultRequestHeaders.Add("X-Company-Id", id.ToString());
-            var context = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context");
+            if (int.TryParse(saved, out var savedId) && savedId > 0)
+                Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", savedId.ToString());
+
+            // یک retry محدود برای شروع هم‌زمان برنامه/شبکه؛ هرگز با نشستِ بدون Token درخواست نمی‌زنیم.
+            CompanyContextResponse? context = null;
+            for (var attempt = 0; attempt < 2 && context is null; attempt++)
+            {
+                try { context = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context"); }
+                catch when (attempt == 0)
+                {
+                    await Task.Delay(150);
+                }
+            }
+            if (version != companyContextVersion || !Auth.IsLoggedIn) return;
+
             companyOptions = context?.Companies ?? new();
-            activeCompanyId = context?.ActiveCompanyId;
+            var returnedId = context?.ActiveCompanyId;
+            activeCompanyId = returnedId is > 0 && companyOptions.Any(c => c.Id == returnedId.Value)
+                ? returnedId
+                : companyOptions.FirstOrDefault()?.Id;
+
+            Http.DefaultRequestHeaders.Remove("X-Company-Id");
             if (activeCompanyId is > 0)
             {
-                Http.DefaultRequestHeaders.Remove("X-Company-Id");
-                Http.DefaultRequestHeaders.Add("X-Company-Id", activeCompanyId.Value.ToString());
+                Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", activeCompanyId.Value.ToString());
                 await JS.InvokeVoidAsync("localStorage.setItem", "activeCompanyId", activeCompanyId.Value.ToString());
             }
+            else
+            {
+                await JS.InvokeVoidAsync("localStorage.removeItem", "activeCompanyId");
+            }
         }
-        catch { companyOptions = new(); }
+        catch
+        {
+            if (version != companyContextVersion) return;
+            ClearCompanyContext();
+        }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearCompanyContext()
+    {
+        ++companyContextVersion;
+        activeCompanyId = null;
+        companyOptions = new();
+        Http.DefaultRequestHeaders.Remove("X-Company-Id");
     }
 
     private async Task SwitchCompany(ChangeEventArgs e)
     {
-        if (!int.TryParse(e.Value?.ToString(), out var id) || id <= 0) return;
+        if (!int.TryParse(e.Value?.ToString(), out var id) || id <= 0 || !companyOptions.Any(c => c.Id == id)) return;
         activeCompanyId = id;
         Http.DefaultRequestHeaders.Remove("X-Company-Id");
-        Http.DefaultRequestHeaders.Add("X-Company-Id", id.ToString());
+        Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", id.ToString());
         await JS.InvokeVoidAsync("localStorage.setItem", "activeCompanyId", id.ToString());
         Nav.NavigateTo(Nav.Uri, forceLoad: true);
     }
@@ -647,14 +694,14 @@ else
         Chat.OnMessagesRead += OnChatRead;
         Chat.OnConversationChanged += OnChatConversation;
         Chat.OnSyncRequested += OnChatSync;
-        _ = LoadCompanyContextAsync();
-
     }
 
     private async void OnAuthChanged()
     {
         if (!Auth.IsLoggedIn)
         {
+            ClearCompanyContext();
+            try { await JS.InvokeVoidAsync("localStorage.removeItem", "activeCompanyId"); } catch { }
             ntfList.Clear();
             liveToasts.Clear();
             unreadCount = 0;
@@ -667,6 +714,10 @@ else
             ntfList.Clear();
             liveToasts.Clear();
             unreadCount = 0;
+
+            // زمینهٔ شرکت باید قبل از هر درخواست/اتصال پس از ورود آماده باشد.
+            // این ترتیب، نمایش انتخاب‌گر و X-Company-Id را مستقل از کلیک روی پیام‌رسان می‌کند.
+            await LoadCompanyContextAsync();
             await InitNotificationsAsync();
         }
         await InvokeAsync(StateHasChanged);
@@ -960,9 +1011,10 @@ else
 
     private void SetAuthHeader()
     {
-        if (!string.IsNullOrWhiteSpace(Auth.Token))
-            Http.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+        // HttpClient در WASM در طول نشست مشترک است؛ هنگام خروج نباید Bearer نشست قبلی روی آن بماند.
+        Http.DefaultRequestHeaders.Authorization = string.IsNullOrWhiteSpace(Auth.Token)
+            ? null
+            : new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
     }
 
     private async Task InitNotificationsAsync()
@@ -1152,9 +1204,13 @@ else
     {
         Nav.LocationChanged += OnLocationChanged;
 
-        // توست خوش‌آمد بعد از ورود موفق
+        // در بازیابی نشست از storage، رویداد Auth.Changed ممکن است پیش از ساخته‌شدن Layout رخ داده باشد.
+        // بنابراین در نخستین renderِ نشستِ معتبر نیز صریح و با Bearer Token زمینهٔ شرکت را می‌گیریم.
         if (Auth.IsLoggedIn)
         {
+            await LoadCompanyContextAsync();
+
+            // توست خوش‌آمد بعد از ورود موفق
             try
             {
                 var justIn = await JS.InvokeAsync<string?>("sessionStorage.getItem", "justLoggedIn");
@@ -1258,6 +1314,10 @@ else
         await Rt.StopAsync();
         try { await Tabs.CloseAllAsync(); } catch { }
         await Auth.SignOutAsync();
+        // مستقل از زمان‌بندی رویداد Auth.Changed، نشست و زمینهٔ قبلی را فوراً از HttpClient پاک کن.
+        ClearCompanyContext();
+        SetAuthHeader();
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", "activeCompanyId"); } catch { }
         Nav.NavigateTo("/", forceLoad: true);
     }
 
