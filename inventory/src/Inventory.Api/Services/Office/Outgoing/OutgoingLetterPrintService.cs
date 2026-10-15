@@ -47,18 +47,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
-    private readonly IStimulsoftOutgoingLetterPrintService _stimulsoft;
     private readonly ILogger<OutgoingLetterPrintService> _logger;
 
     public OutgoingLetterPrintService(
         AppDbContext db,
         IWebHostEnvironment env,
-        IStimulsoftOutgoingLetterPrintService stimulsoft,
         ILogger<OutgoingLetterPrintService> logger)
     {
         _db = db;
         _env = env;
-        _stimulsoft = stimulsoft;
         _logger = logger;
         QuestPDF.Settings.License = LicenseType.Community;
     }
@@ -133,66 +130,48 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return null;
     }
 
-    /// <summary>If PDFsharp cannot import the configured PDF, try its same-name raster derivative.</summary>
-    private static string? ResolveRasterSibling(string resolvedLetterheadPath)
-    {
-        if (!resolvedLetterheadPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return null;
-
-        foreach (var extension in new[] { ".png", ".jpg", ".jpeg" })
-        {
-            var candidate = Path.ChangeExtension(resolvedLetterheadPath, extension);
-            if (File.Exists(candidate)) return candidate;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// QuestPDF needs raster bytes for a page background. Start from the path
-    /// registered on SystemCompany, using only its same-name raster derivative
-    /// when that registered file is a PDF.
-    /// </summary>
-    private static byte[]? ResolveLetterheadBackgroundBytes(string? registeredLetterheadPath)
-    {
-        if (string.IsNullOrWhiteSpace(registeredLetterheadPath)) return null;
-
-        var extension = Path.GetExtension(registeredLetterheadPath);
-        string? imagePath;
-        if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
-            imagePath = ResolveRasterSibling(registeredLetterheadPath);
-        else if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
-                 || string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
-                 || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase))
-            imagePath = registeredLetterheadPath;
-        else
-            imagePath = null;
-
-        return imagePath != null && File.Exists(imagePath) ? File.ReadAllBytes(imagePath) : null;
-    }
-
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
 
     /// <summary>متن نامه در ادیتور غنی HTML است — برای PDF به متن ساده با حفظ پاراگراف‌ها تبدیل می‌شود</summary>
     private static string HtmlToPlainText(string? html)
     {
-        if (string.IsNullOrWhiteSpace(html)) return "";
-        var s = html;
-        s = Regex.Replace(s, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, @"</\s*(p|div|li|h[1-6]|tr)\s*>", "\n", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, @"<\s*li[^>]*>", "• ", RegexOptions.IgnoreCase);
-        s = Regex.Replace(s, "<[^>]+>", "");
-        s = WebUtility.HtmlDecode(s);
-        s = Regex.Replace(s, @"[ \t]+\n", "\n");
-        s = Regex.Replace(s, @"\n{3,}", "\n\n");
-        return s.Trim();
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
+        var text = html;
+        text = Regex.Replace(text, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</\s*(p|div|li|h[1-6]|tr)\s*>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<\s*li[^>]*>", "• ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, "<[^>]+>", string.Empty);
+        text = WebUtility.HtmlDecode(text);
+        text = text.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\u00a0', ' ')
+            .Replace("\u00ad", string.Empty).Replace("\u200b", string.Empty);
+        text = Regex.Replace(text, @"[ \t]+\n", "\n");
+        text = Regex.Replace(text, @"\n{3,}", "\n\n");
+        // Keep U+200C (ZWNJ) intact for Persian half-spaces; convert all digits for output.
+        return ToPersianDigits(text.Trim());
     }
 
-    private static string FaDate(DateTime? d)
+    private static string ToPersianDigits(string? value)
     {
-        if (d is null) return "—";
-        var pc = new PersianCalendar();
-        var v = d.Value;
-        return $"{pc.GetYear(v)}/{pc.GetMonth(v):00}/{pc.GetDayOfMonth(v):00}";
+        if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
+
+        var chars = value.ToCharArray();
+        for (var index = 0; index < chars.Length; index++)
+        {
+            if (chars[index] is >= '0' and <= '9')
+                chars[index] = (char)('\u06F0' + (chars[index] - '0'));
+            else if (chars[index] is >= '\u0660' and <= '\u0669')
+                chars[index] = (char)('\u06F0' + (chars[index] - '\u0660'));
+        }
+
+        return new string(chars);
+    }
+
+    private static string FaDate(DateTime? date)
+    {
+        if (date is null) return "—";
+        var calendar = new PersianCalendar();
+        var value = date.Value;
+        return ToPersianDigits($"{calendar.GetYear(value)}/{calendar.GetMonth(value):00}/{calendar.GetDayOfMonth(value):00}");
     }
 
     // ==================== تولید PDF ====================
@@ -204,8 +183,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// </summary>
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
     {
-        // Resolve the letter, its company record and the registered letterhead first.
-        // The MRT renderer then loads the matching Companies/{CompanyId} template.
+        // Resolve the letter and its company-registered letterhead before rendering.
         var letter = await _db.OutgoingLetters.AsNoTracking()
             .Include(l => l.Creator)
             .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
@@ -248,65 +226,26 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
             letterId, letterCompanyId, company?.Id, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
 
-        // متن‌های کوتاه با قالب MRT چاپ می‌شوند؛ متن‌های طولانی مستقیماً به
-        // QuestPDF می‌روند تا امکان صفحه‌های بعدی با سربرگ تکرارشونده وجود داشته باشد.
-        var isLongLetter = HtmlToPlainText(letter.Text).Length > 2500;
-        var stimulsoftPdf = isLongLetter
-            ? null
-            : await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
-        if (stimulsoftPdf is { Length: > 0 })
-        {
-            if (letterheadPath == null)
-            {
-                _logger.LogError(
-                    "سربرگ خروجی MRT پیدا نشد؛ PDF بدون overlay برگردانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}",
-                    letterId, company?.Id ?? letterCompanyId, company?.LetterheadFileName);
-                return stimulsoftPdf;
-            }
-
-            try
-            {
-                _logger.LogInformation(
-                    "اعمال مسیر سربرگ ثبت‌شده روی خروجی MRT. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
-                    letterId, company?.Id ?? letterCompanyId, letterheadPath);
-                return OverlayOnLetterhead(stimulsoftPdf, letterheadPath);
-            }
-            catch (Exception ex)
-            {
-                var rasterFallback = ResolveRasterSibling(letterheadPath);
-                if (rasterFallback != null)
-                {
-                    try
-                    {
-                        _logger.LogWarning(ex,
-                            "ورود PDF سربرگ ناموفق بود؛ از مشتق تصویری همان مسیر استفاده می‌شود. LetterId={LetterId}, Path={RasterPath}",
-                            letterId, rasterFallback);
-                        return OverlayOnLetterhead(stimulsoftPdf, rasterFallback);
-                    }
-                    catch (Exception rasterException)
-                    {
-                        _logger.LogError(rasterException,
-                            "اعمال مشتق تصویری سربرگ نیز ناموفق بود. LetterId={LetterId}, Path={RasterPath}",
-                            letterId, rasterFallback);
-                    }
-                }
-
-                _logger.LogError(ex,
-                    "قرار دادن سربرگ ثبت‌شده روی خروجی MRT ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
-                    letterId, company?.Id ?? letterCompanyId, letterheadPath);
-                return stimulsoftPdf;
-            }
-        }
-
-        _logger.LogWarning(
-            "چاپ نامه {LetterId} با MRT انجام نشد؛ QuestPDF به‌عنوان fallback استفاده می‌شود.",
-            letterId);
-
+        // Outgoing letters always use QuestPDF. This avoids Stimulsoft trial marks
+        // and keeps all Persian shaping/layout on one rendering path.
         var signers = await _db.OutgoingLetterSigners.AsNoTracking()
             .Include(s => s.User)
             .Where(s => s.SourceId == letterId && !s.IsDelete)
             .OrderBy(s => s.Order).ThenBy(s => s.Id)
             .ToListAsync();
+
+        var sematIds = signers.Where(s => s.SematId.HasValue)
+            .Select(s => s.SematId!.Value)
+            .Distinct()
+            .ToList();
+        var sematTitles = sematIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.Semats.AsNoTracking()
+                .Where(s => sematIds.Contains(s.SematId) && !s.IsDelete)
+                .ToDictionaryAsync(
+                    s => s.SematId,
+                    s => string.IsNullOrWhiteSpace(s.OnvanMokatebati) ? s.Title : s.OnvanMokatebati!,
+                    cancellationToken: default);
 
         // رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای چاپ «با رونوشت».
         // برای نامه‌های قدیمی که ردیفی در این جدول ندارند، ستون متنی CopyTo به کار می‌رود.
@@ -320,17 +259,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        // QuestPDF needs a raster page background. Derive it from the already-resolved
-        // company record path; never choose a bundled Homepa image independently.
-        var letterheadBackground = ResolveLetterheadBackgroundBytes(letterheadPath);
-        if (letterheadPath != null && letterheadBackground == null)
-            _logger.LogWarning(
-                "مشتق تصویری برای پس‌زمینهٔ QuestPDF از سربرگ ثبت‌شده پیدا نشد؛ overlay مستقیم امتحان می‌شود. LetterId={LetterId}, Path={LetterheadPath}",
-                letterId, letterheadPath);
+        // Keep the content PDF transparent; the exact company-registered file is
+        // placed underneath it by OverlayOnLetterhead below.
+        var contentPdf = BuildContentPdf(letter, signers, sematTitles, hasAttachment, isA5, withCopy, copyTos, letterheadPath != null);
 
-        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos, letterheadBackground);
-
-        // Use the company record and registered letterhead path resolved before MRT rendering.
+        // Use the same company record and letterhead path for all rendered pages.
         if (letterheadPath == null)
         {
             _logger.LogWarning(
@@ -354,24 +287,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
         catch (Exception ex)
         {
-            var rasterFallback = ResolveRasterSibling(letterheadPath);
-            if (rasterFallback != null)
-            {
-                try
-                {
-                    _logger.LogWarning(ex,
-                        "ورود PDF سربرگ ناموفق بود؛ از مشتق تصویری همان مسیر استفاده می‌شود. LetterId={LetterId}, Path={RasterPath}",
-                        letterId, rasterFallback);
-                    return OverlayOnLetterhead(contentPdf, rasterFallback);
-                }
-                catch (Exception rasterException)
-                {
-                    _logger.LogError(rasterException,
-                        "اعمال مشتق تصویری سربرگ نیز ناموفق بود. LetterId={LetterId}, Path={RasterPath}",
-                        letterId, rasterFallback);
-                }
-            }
-
             _logger.LogError(ex,
                 "قرار دادن سربرگ ثبت‌شده روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
                 letterId, company?.Id ?? letterCompanyId, letterheadPath);
@@ -395,175 +310,284 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return path == null ? null : File.ReadAllBytes(path);
     }
 
-    /// <summary>ساخت محتوای PDF نامه با فونت وزیرمتن؛ سربرگ ثبت‌شده بعداً به‌صورت overlay درج می‌شود.</summary>
-    /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
-    private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null, byte[]? letterheadBackground = null)
+    /// <summary>ساخت محتوای نامه با RTL صریح، فونت وزیرمتن و سربرگ ثبت‌شده.</summary>
+    private byte[] BuildContentPdf(
+        OutgoingLetter letter,
+        List<OutgoingLetterSigner> signers,
+        IReadOnlyDictionary<int, string> sematTitles,
+        bool hasAttachment,
+        bool isA5,
+        bool withCopy,
+        List<OutgoingLetterCopyTo>? copyTos,
+        bool hasLetterhead)
     {
         EnsureFonts();
 
-        float fs = isA5 ? 8f : 10.5f;      // اندازه فونت متن
-        float fsTitle = isA5 ? 9.5f : 12f; // اندازه فونت موضوع
-        float fsSmall = isA5 ? 7f : 9f;
+        var fontSize = isA5 ? 8f : 10.5f;
+        var titleFontSize = isA5 ? 9.5f : 12f;
+        var smallFontSize = isA5 ? 7f : 9f;
+        var lineHeight = isA5 ? 1.5f : 1.55f;
 
-        var text = HtmlToPlainText(letter.Text);
-        var number = string.IsNullOrWhiteSpace(letter.SadereNumber) ? (letter.LetterNumber ?? "—") : letter.SadereNumber;
+        var plainText = HtmlToPlainText(letter.Text);
+        var closingMatch = Regex.Match(
+            plainText,
+            @"(?:^|\n)[ \t]*(?<closing>با\s*تشکر[^\n]*)\s*$",
+            RegexOptions.Multiline);
+        var bodyText = closingMatch.Success
+            ? plainText[..closingMatch.Index].TrimEnd()
+            : plainText;
+        var closingText = closingMatch.Success
+            ? ToPersianDigits(closingMatch.Groups["closing"].Value.Trim())
+            : "با تشکر";
+
+        var number = ToPersianDigits(
+            string.IsNullOrWhiteSpace(letter.SadereNumber)
+                ? letter.LetterNumber ?? "—"
+                : letter.SadereNumber);
         var date = FaDate(letter.DateSadere ?? letter.DateSabt);
+        var receiverOrganization = ToPersianDigits(letter.ReceiverOrganization);
+        var receiverLine = receiverOrganization;
+        if (!string.IsNullOrWhiteSpace(letter.ReceiverName))
+        {
+            var receiverTitle = string.IsNullOrWhiteSpace(letter.ReceiverTitle)
+                ? string.Empty
+                : ToPersianDigits(letter.ReceiverTitle) + " ";
+            receiverLine += $" — {receiverTitle}{ToPersianDigits(letter.ReceiverName)}";
+        }
+        else if (!string.IsNullOrWhiteSpace(letter.ReceiverTitle))
+        {
+            receiverLine += $" — {ToPersianDigits(letter.ReceiverTitle)}";
+        }
 
-        static string FullName(User? u) =>
-            u == null ? "" :
-            string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim();
+        var title = ToPersianDigits(letter.Title);
+        var externalReference = ToPersianDigits(letter.ExternalRefNumber);
+        var signerCards = signers.Select(s =>
+        {
+            var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
+                ? sematTitle
+                : "سمت ثبت نشده";
+            return (
+                Name: ToPersianDigits(FullName(s.User)),
+                Role: ToPersianDigits(role),
+                Signature: s.IsSigned ? TryReadSignature(s.User?.SignaturePath) : null);
+        }).ToList();
+        var signerRows = signerCards.Chunk(3).ToList();
+        var signerCardWidth = isA5 ? 98f : 143f;
+        var signatureHeight = isA5 ? 30f : 44f;
+        var stampHeight = isA5 ? 24f : 32f;
 
-        var doc = Document.Create(container =>
+        void AddSignerRow(IContainer container, (string Name, string Role, byte[]? Signature)[] rowSigners)
+        {
+            container.ShowEntire().Row(row =>
+            {
+                foreach (var signer in rowSigners)
+                {
+                    row.ConstantItem(signerCardWidth).PaddingHorizontal(isA5 ? 2 : 4).Column(card =>
+                    {
+                        if (signer.Signature is { Length: > 0 })
+                        {
+                            card.Item().Height(signatureHeight).Padding(2).AlignCenter()
+                                .Image(signer.Signature).FitArea();
+                        }
+                        else
+                        {
+                            card.Item().Height(signatureHeight).BorderBottom(0.7f).BorderColor("#9ca3af");
+                        }
+
+                        card.Item().PaddingTop(3).AlignCenter()
+                            .Text(signer.Name).FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                            .LineHeight(1.25f).DirectionFromRightToLeft();
+                        card.Item().AlignCenter()
+                            .Text(signer.Role).FontFamily("Vazirmatn").FontSize(smallFontSize)
+                            .LineHeight(1.25f).DirectionFromRightToLeft();
+                        card.Item().PaddingTop(5).Height(stampHeight)
+                            .Border(0.5f).BorderColor("#9ca3af").AlignCenter().AlignMiddle()
+                            .Text("مهر").FontFamily("Vazirmatn").FontSize(smallFontSize)
+                            .DirectionFromRightToLeft();
+                    });
+                }
+
+                // Keep a partial final row aligned to the right on RTL pages.
+                row.RelativeItem();
+            });
+        }
+
+        var document = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
-                if (letterheadBackground is { Length: > 0 })
-                    page.Background().Image(letterheadBackground).FitArea();
-
-                // حاشیه‌ها طوری انتخاب شده که سربرگ (بالای صفحه) و پاصفحه سربرگ آزاد بماند
-                page.MarginTop(isA5 ? 88 : 130);
-                page.MarginBottom(isA5 ? 42 : 60);
-                page.MarginHorizontal(isA5 ? 30 : 46);
+                page.MarginTop(0);
+                // Reserve the printed company footer area on every page.
+                page.MarginBottom(isA5 ? 52 : 90);
+                page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
-                page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(fs).LineHeight(1.7f));
+                page.DefaultTextStyle(style => style
+                    .FontFamily("Vazirmatn")
+                    .FontSize(fontSize)
+                    .LineHeight(lineHeight)
+                    .DirectionFromRightToLeft());
 
-                page.Header().Column(col =>
+                // The Homepa letterhead already prints these three labels in its
+                // blue header. Place values only in the matching blank field to
+                // the left of each label; do not overprint duplicate captions.
+                if (hasLetterhead)
                 {
-                    // بلوک شماره / تاریخ / پیوست — سمت چپ سربرگ‌های رسمی ایرانی
-                    col.Item().AlignLeft().Column(meta =>
-                    {
-                        meta.Item().Text(t =>
+                    page.Header()
+                        .Height(isA5 ? 150 : 160)
+                        .PaddingTop(isA5 ? 40 : 60)
+                        .PaddingLeft(isA5 ? 7 : 14)
+                        .Column(meta =>
                         {
-                            t.Span("شماره: ").FontSize(fsSmall);
-                            t.Span(number).FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
+                            meta.Spacing(isA5 ? 4 : 6);
+                            meta.Item().Width(isA5 ? 59 : 82).Text(number)
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.White).LineHeight(1.3f)
+                                .AlignRight().DirectionFromRightToLeft();
+                            meta.Item().Width(isA5 ? 59 : 82).Text(date)
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.White).LineHeight(1.3f)
+                                .AlignRight().DirectionFromRightToLeft();
+                            meta.Item().Width(isA5 ? 59 : 82).Text(hasAttachment ? "دارد" : "ندارد")
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.White).LineHeight(1.3f)
+                                .AlignRight().DirectionFromRightToLeft();
                         });
-                        meta.Item().Text(t =>
-                        {
-                            t.Span("تاریخ: ").FontSize(fsSmall);
-                            t.Span(date).FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
-                        });
-                        meta.Item().Text(t =>
-                        {
-                            t.Span("پیوست: ").FontSize(fsSmall);
-                            t.Span(hasAttachment ? "دارد" : "ندارد").FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
-                        });
-                    });
-
-                    col.Item().PaddingTop(isA5 ? 4 : 8);
-                });
-
-                page.Content().Column(col =>
+                }
+                else
                 {
-                    // گیرنده
-                    col.Item().Text(t =>
-                    {
-                        t.Span("به: ").FontFamily("Vazirmatn-Bold");
-                        var to = letter.ReceiverOrganization;
-                        if (!string.IsNullOrWhiteSpace(letter.ReceiverName))
-                            to += $" — {(string.IsNullOrWhiteSpace(letter.ReceiverTitle) ? "" : letter.ReceiverTitle + " ")}{letter.ReceiverName}";
-                        else if (!string.IsNullOrWhiteSpace(letter.ReceiverTitle))
-                            to += $" — {letter.ReceiverTitle}";
-                        t.Span(to);
-                    });
-
-                    // موضوع
-                    col.Item().PaddingTop(2).Text(t =>
-                    {
-                        t.Span("موضوع: ").FontFamily("Vazirmatn-Bold").FontSize(fsTitle);
-                        t.Span(letter.Title).FontFamily("Vazirmatn-Bold").FontSize(fsTitle);
-                    });
-
-                    // عطف به شماره طرف مقابل
-                    if (!string.IsNullOrWhiteSpace(letter.ExternalRefNumber))
-                        col.Item().PaddingTop(2).Text($"عطف به شماره: {letter.ExternalRefNumber}").FontSize(fsSmall);
-
-                    col.Item().PaddingVertical(isA5 ? 4 : 7).LineHorizontal(0.7f).LineColor("#999999");
-
-                    // با سلام و احترام + متن نامه
-                    if (!string.IsNullOrWhiteSpace(text))
-                        col.Item().Text(text).FontSize(fs);
-
-                    // امضا کنندگان — پایین متن، سمت چپ
-                    if (signers.Count > 0)
-                    {
-                        col.Item().PaddingTop(isA5 ? 14 : 24).AlignLeft().Row(row =>
+                    page.Header()
+                        .Height(isA5 ? 150 : 160)
+                        .PaddingTop(isA5 ? 40 : 60)
+                        .PaddingHorizontal(isA5 ? 48 : 68)
+                        .Column(meta =>
                         {
-                            foreach (var s in signers)
-                            {
-                                row.AutoItem().PaddingRight(isA5 ? 12 : 22).Column(sc =>
-                                {
-                                var signatureBytes = TryReadSignature(s.User?.SignaturePath);
-                                if (signatureBytes != null)
-                                    sc.Item().Height(isA5 ? 28 : 42).AlignCenter().Image(signatureBytes).FitHeight();
-                                sc.Item().AlignCenter().Text(FullName(s.User)).FontFamily("Vazirmatn-Bold").FontSize(fs);
-                                sc.Item().AlignCenter().Text(s.IsSigned ? $"امضا شده — {FaDate(s.DateSigned)}" : "")
-                                        .FontSize(fsSmall).FontColor("#444444");
-                                });
-                            }
+                            meta.Spacing(isA5 ? 4 : 6);
+                            meta.Item().AlignRight().Text($"شماره: {number}")
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.Black).LineHeight(1.3f)
+                                .DirectionFromRightToLeft();
+                            meta.Item().AlignRight().Text($"تاریخ: {date}")
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.Black).LineHeight(1.3f)
+                                .DirectionFromRightToLeft();
+                            meta.Item().AlignRight().Text($"پیوست: {(hasAttachment ? "دارد" : "ندارد")}")
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .FontColor(Colors.Black).LineHeight(1.3f)
+                                .DirectionFromRightToLeft();
                         });
+                }
+
+                // One shared padded body column keeps receiver, subject, paragraphs,
+                // closing and signature block on identical left/right margins.
+                page.Content().PaddingTop(isA5 ? 40 : 30)
+                    .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
+                {
+                    col.Spacing(isA5 ? 4 : 6);
+
+                    col.Item().Text(text =>
+                    {
+                        text.Span("به: ").FontFamily("Vazirmatn-Bold");
+                        text.Span(receiverLine).FontFamily("Vazirmatn");
+                    })
+                    .FontSize(fontSize).LineHeight(lineHeight)
+                    .AlignRight().DirectionFromRightToLeft();
+
+                    col.Item().Text(text =>
+                    {
+                        text.Span("موضوع: ").FontFamily("Vazirmatn-Bold");
+                        text.Span(title).FontFamily("Vazirmatn-Bold");
+                    })
+                    .FontSize(titleFontSize).LineHeight(lineHeight)
+                    .AlignRight().DirectionFromRightToLeft();
+
+                    if (!string.IsNullOrWhiteSpace(externalReference))
+                    {
+                        col.Item().Text($"عطف به شماره: {externalReference}")
+                            .FontSize(smallFontSize).LineHeight(lineHeight)
+                            .AlignRight().DirectionFromRightToLeft();
                     }
 
-                    // رونوشت — فقط در نسخهٔ «با رونوشت» چاپ می‌شود.
-                    // نسخهٔ «بدون رونوشت» مخصوص تحویل به سازمان مقصد است و
-                    // اطلاعِ رونوشت‌گیرندگان داخلی در آن درج نمی‌شود.
-                    var hasCopyRows = copyTos != null && copyTos.Count > 0;
-                    if (withCopy && (hasCopyRows || !string.IsNullOrWhiteSpace(letter.CopyTo)))
+                    col.Item().PaddingVertical(isA5 ? 3 : 5)
+                        .LineHorizontal(0.7f).LineColor("#999999");
+
+                    if (!string.IsNullOrWhiteSpace(bodyText))
                     {
-                        col.Item().PaddingTop(isA5 ? 8 : 14).LineHorizontal(0.5f).LineColor("#cbd5e1");
-                        col.Item().PaddingTop(isA5 ? 4 : 6).Text(t =>
+                        // Right-align; never justify. Newlines and ZWNJ are preserved,
+                        // and normal word wrapping avoids clipping/splitting words.
+                        col.Item().Text(bodyText)
+                            .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
+                            .AlignRight().DirectionFromRightToLeft();
+                    }
+
+                    if (signerRows.Count == 0)
+                    {
+                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire()
+                            .Text(closingText).FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+                    }
+                    else
+                    {
+                        // Keep the closing and the first signer row together; later rows
+                        // also move intact if there is not enough room above the footer.
+                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Column(signOff =>
                         {
-                            t.Span("رونوشت: ").FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
+                            signOff.Item().Text(closingText)
+                                .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                                .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+                            signOff.Item().PaddingTop(isA5 ? 8 : 12)
+                                .Text("امضاکنندگان")
+                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                .AlignRight().DirectionFromRightToLeft();
+                            AddSignerRow(signOff.Item().PaddingTop(isA5 ? 4 : 6), signerRows[0]);
                         });
 
-                        if (hasCopyRows)
-                        {
-                            // هر رونوشت‌گیرنده در یک سطر جداگانه — خواناتر از یک رشتهٔ خام
-                            foreach (var ct in copyTos)
-                            {
-                                var parts = new[] { ct.Desc, ct.RefNo }
-                                    .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
-                                var extra = parts.Length == 0 ? "" : string.Join(" — ", parts);
+                        for (var rowIndex = 1; rowIndex < signerRows.Count; rowIndex++)
+                            AddSignerRow(col.Item().PaddingTop(isA5 ? 8 : 12), signerRows[rowIndex]);
+                    }
 
-                                col.Item().PaddingTop(2).Text(t =>
-                                {
-                                    t.Span("• ").FontSize(fsSmall);
-                                    t.Span(ct.Name).FontSize(fsSmall);
-                                    if (extra != "")
-                                        t.Span($"  ({extra})").FontSize(fsSmall).FontColor("#555555");
-                                });
+                    if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
+                    {
+                        col.Item().PaddingTop(isA5 ? 8 : 12)
+                            .LineHorizontal(0.5f).LineColor("#cbd5e1");
+                        col.Item().Text("رونوشت:")
+                            .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+
+                        if (copyTos is { Count: > 0 })
+                        {
+                            foreach (var copyTo in copyTos)
+                            {
+                                var details = new[] { copyTo.Desc, copyTo.RefNo }
+                                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                                    .Select(ToPersianDigits)
+                                    .ToArray();
+                                var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
+                                col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
+                                    .FontSize(smallFontSize).LineHeight(lineHeight)
+                                    .AlignRight().DirectionFromRightToLeft();
                             }
                         }
                         else
                         {
-                            // نامهٔ قدیمی: هنوز ردیفی در جدول ندارد — متن آزادِ ستون CopyTo
-                            col.Item().PaddingTop(2).Text(t =>
-                            {
-                                t.Span(letter.CopyTo!).FontSize(fsSmall);
-                            });
+                            col.Item().Text(ToPersianDigits(letter.CopyTo))
+                                .FontSize(smallFontSize).LineHeight(lineHeight)
+                                .AlignRight().DirectionFromRightToLeft();
                         }
                     }
-                });
-
-                page.Footer().Column(f =>
-                {
-                    // نشانهٔ نسخهٔ چاپ — دبیرخانه باید بتواند دو نسخه را از هم تشخیص دهد
-                    f.Item().AlignLeft().Text(withCopy ? "نسخه: با رونوشت" : "نسخه: بدون رونوشت")
-                        .FontSize(fsSmall - 2).FontColor("#9ca3af");
-
-                    f.Item().AlignCenter().Text(t =>
-                    {
-                        t.Span($"شماره صادره: {number}   ").FontSize(fsSmall - 1).FontColor("#777777");
-                        t.CurrentPageNumber().FontSize(fsSmall - 1).FontColor("#777777");
-                        t.Span(" از ").FontSize(fsSmall - 1).FontColor("#777777");
-                        t.TotalPages().FontSize(fsSmall - 1).FontColor("#777777");
-                    });
                 });
             });
         });
 
-        return doc.GeneratePdf();
+        return document.GeneratePdf();
+    }
+
+    private static string FullName(User? user)
+    {
+        if (user == null) return string.Empty;
+        var value = $"{user.FirstName} {user.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(value) ? user.Username : value;
     }
 
     /// <summary>قرار دادن صفحات نامه روی سربرگ یا لوگوی شرکت (PDF یا تصویر)</summary>
