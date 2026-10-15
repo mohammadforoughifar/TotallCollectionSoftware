@@ -147,6 +147,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return null;
     }
 
+    /// <summary>
+    /// QuestPDF needs raster bytes for a page background. Start from the path
+    /// registered on SystemCompany, using only its same-name raster derivative
+    /// when that registered file is a PDF.
+    /// </summary>
+    private static byte[]? ResolveLetterheadBackgroundBytes(string? registeredLetterheadPath)
+    {
+        if (string.IsNullOrWhiteSpace(registeredLetterheadPath)) return null;
+
+        var extension = Path.GetExtension(registeredLetterheadPath);
+        string? imagePath;
+        if (string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+            imagePath = ResolveRasterSibling(registeredLetterheadPath);
+        else if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase))
+            imagePath = registeredLetterheadPath;
+        else
+            imagePath = null;
+
+        return imagePath != null && File.Exists(imagePath) ? File.ReadAllBytes(imagePath) : null;
+    }
+
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
 
     /// <summary>متن نامه در ادیتور غنی HTML است — برای PDF به متن ساده با حفظ پاراگراف‌ها تبدیل می‌شود</summary>
@@ -205,6 +228,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 .FirstOrDefaultAsync();
         }
 
+        if (!hasCompanyId)
+            _logger.LogWarning(
+                "نامه {LetterId} CompanyId ندارد؛ برای چاپ از شرکت پیش‌فرض {SelectedCompanyId} استفاده می‌شود.",
+                letterId, company?.Id);
+
         var isHomepaLetter = letterCompanyId == HomepaCompanyId || company?.Id == HomepaCompanyId;
         var companyRecordMissing = hasCompanyId && company == null;
         var letterheadPath = companyRecordMissing ? null : ResolveCompanyLetterheadPath(company);
@@ -217,8 +245,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
 
         _logger.LogInformation(
-            "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
-            letterId, company?.Id ?? letterCompanyId, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
+            "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
+            letterId, letterCompanyId, company?.Id, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
 
         // متن‌های کوتاه با قالب MRT چاپ می‌شوند؛ متن‌های طولانی مستقیماً به
         // QuestPDF می‌روند تا امکان صفحه‌های بعدی با سربرگ تکرارشونده وجود داشته باشد.
@@ -292,7 +320,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos);
+        // QuestPDF needs a raster page background. Derive it from the already-resolved
+        // company record path; never choose a bundled Homepa image independently.
+        var letterheadBackground = ResolveLetterheadBackgroundBytes(letterheadPath);
+        if (letterheadPath != null && letterheadBackground == null)
+            _logger.LogWarning(
+                "مشتق تصویری برای پس‌زمینهٔ QuestPDF از سربرگ ثبت‌شده پیدا نشد؛ overlay مستقیم امتحان می‌شود. LetterId={LetterId}, Path={LetterheadPath}",
+                letterId, letterheadPath);
+
+        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos, letterheadBackground);
 
         // Use the company record and registered letterhead path resolved before MRT rendering.
         if (letterheadPath == null)
@@ -361,7 +397,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     /// <summary>ساخت محتوای PDF نامه با فونت وزیرمتن؛ سربرگ ثبت‌شده بعداً به‌صورت overlay درج می‌شود.</summary>
     /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
-    private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
+    private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null, byte[]? letterheadBackground = null)
     {
         EnsureFonts();
 
@@ -382,6 +418,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                if (letterheadBackground is { Length: > 0 })
+                    page.Background().Image(letterheadBackground).FitArea();
 
                 // حاشیه‌ها طوری انتخاب شده که سربرگ (بالای صفحه) و پاصفحه سربرگ آزاد بماند
                 page.MarginTop(isA5 ? 88 : 130);
