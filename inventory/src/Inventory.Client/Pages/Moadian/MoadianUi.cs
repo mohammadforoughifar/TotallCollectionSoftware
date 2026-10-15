@@ -55,4 +55,30 @@ public static class MoadianUi
         "7" => "badge-soft-success",
         _ => "badge-soft-muted"
     };
+
+    /// <summary>موضوع صورتحساب → کلاس برچسب موضوع (نسخهٔ متمرکز سه‌تایی قبل).</summary>
+    public static string SubjectBadge(string? subject) => subject switch
+    {
+        "اصلی" => "badge-soft-primary",
+        "اصلاحی" => "badge-soft-warning",
+        _ => "badge-soft-danger"
+    };
+
+    /// <summary>کد وضعیت → کلاس رنگی پیل وضعیت (صفحه‌های لیست و جزئیات).</summary>
+    public static string StatusPillClass(string? code) => code switch
+    {
+        "0" => "mi-s0",
+        "1" => "mi-s1",
+        "2" => "mi-s2",
+        "3" => "mi-s3",
+        "4" => "mi-s4",
+        "5" => "mi-s5",
+        "6" => "mi-s6",
+        "7" => "mi-s7",
+        _ => "mi-s0"
+    };
+
+    /// <summary>کد وضعیت → کلاس رنگِ تأکیدی کارت موبایل.</summary>
+    public static string StatusAccent(string? code)
+        => StatusPillClass(code).Replace("mi-s", "mi-acc");
 }

@@ -26,29 +26,30 @@ else if (vm is null)
 else
 {
     <div class="invoice-screen">
-    <div class="page-head">
-        <div>
-            <h1>
-                <i class="bi bi-receipt text-primary"></i> صورتحساب #@(vm.Id)
-                <span class="badge @MoadianUi.StatusBadge(vm.StatusSentToSystemInt) fs-6 align-middle ms-2">
-                    @MoadianUi.StatusLabel(vm.StatusSentToSystemInt)
-                </span>
-                <span class="badge @(vm.Subject == "اصلی" ? "badge-soft-primary" : vm.Subject == "اصلاحی" ? "badge-soft-warning" : "badge-soft-danger") fs-6 align-middle ms-1">
-                    @vm.Subject
-                </span>
-            </h1>
-            <p class="lead num">تاریخ: @MoadianUi.Shamsi(vm.DateOrder) — مشتری: @vm.CustomerName</p>
-        </div>
-        <div class="ms-auto d-flex gap-2 no-print">
-            <button class="btn btn-outline-primary" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
-            <NavLink class="btn btn-outline-secondary" href="moadian/invoices"><i class="bi bi-arrow-right"></i> فهرست</NavLink>
-        </div>
-    </div>
-
-    @* ---------- عملیات ---------- *@
-    <div class="card mb-3 no-print">
-        <div class="card-header"><i class="bi bi-lightning-charge text-primary"></i> عملیات</div>
-        <div class="card-body d-flex gap-2 flex-wrap">
+    @* ---------- سربرگ صورتحساب (اطلاعات + عملیات در یک کارت) ---------- *@
+    <div class="card mi-hero mb-3 no-print">
+        <div class="card-body">
+            <div class="d-flex align-items-start gap-3 flex-wrap">
+                <div class="mi-hero-icon" aria-hidden="true"><i class="bi bi-receipt"></i></div>
+                <div class="mi-hero-main">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="mi-hero-title">صورتحساب #@(vm.Id.Num())</span>
+                        <span class="mi-status @MoadianUi.StatusPillClass(vm.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</span>
+                        <span class="badge @MoadianUi.SubjectBadge(vm.Subject)">@vm.Subject</span>
+                    </div>
+                    <div class="mi-meta mt-2">
+                        <span><i class="bi bi-calendar3" aria-hidden="true"></i>تاریخ: <b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
+                        <span><i class="bi bi-person" aria-hidden="true"></i>مشتری: <b>@vm.CustomerName</b></span>
+                        <span><i class="bi bi-cash-coin" aria-hidden="true"></i>پرداخت: <b>@vm.PaymentType</b></span>
+                        <span><i class="bi bi-wallet2" aria-hidden="true"></i>مجموع: <b class="num">@MoadianUi.Money(GrandTotal)</b></span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 ms-auto flex-wrap">
+                    <NavLink class="btn btn-outline-secondary" href="moadian/invoices"><i class="bi bi-arrow-right" aria-hidden="true"></i> فهرست</NavLink>
+                    <button type="button" class="btn btn-outline-primary" @onclick="Print"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</button>
+                </div>
+            </div>
+            <div class="mi-hero-bar d-flex gap-2 flex-wrap align-items-center">
             @if (vm.ShowButtons && vm.StatusSentToSystemInt == "0")
             {
                 <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
@@ -91,8 +92,25 @@ else
             {
                 <span class="text-muted small align-self-center">این صورتحساب (مثلاً ابطالی) قابل ویرایش و عملیات نیست.</span>
             }
+            </div>
         </div>
     </div>
+
+    @* ---------- بنر وضعیت زمینه‌ای ---------- *@
+    @if (vm.StatusSentToSystemInt == "5" && !string.IsNullOrEmpty(vm.ReferenceId))
+    {
+        <div class="alert alert-danger mi-banner d-flex align-items-center gap-2 no-print" role="status">
+            <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+            <div>این صورتحساب دارای خطا از سمت سامانهٔ مالیاتی است؛ می‌توانید جزئیات خطا را مشاهده یا صورتحساب اصلاحی صادر کنید.</div>
+        </div>
+    }
+    else if (vm.ShowButtons && (vm.StatusSentToSystemInt == "1" || vm.StatusSentToSystemInt == "4"))
+    {
+        <div class="alert alert-info mi-banner d-flex align-items-center gap-2 no-print" role="status">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+            <div>صورتحساب در جریان بررسی در سامانهٔ مالیاتی است؛ برای دیدن آخرین وضعیت، دکمهٔ «استعلام وضعیت» در بخش عملیات را بزنید.</div>
+        </div>
+    }
 
     @* ---------- نتیجه استعلام / خطا ---------- *@
     @if (ActionResult != null)
@@ -125,7 +143,7 @@ else
                         <strong>پیش از ارسال — پیش‌نمایش</strong>
                         <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(PreviewRequestJson)"><i class="bi bi-clipboard"></i> کپی</button>
                     </div>
-                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@PreviewRequestJson</pre>
+                    <pre class="mi-code" dir="ltr">@PreviewRequestJson</pre>
                 }
                 @if (!string.IsNullOrWhiteSpace(ActualRequestJson))
                 {
@@ -133,7 +151,7 @@ else
                         <strong>پس از ارسال — درخواست واقعی ساخته‌شده</strong>
                         <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(ActualRequestJson)"><i class="bi bi-clipboard"></i> کپی</button>
                     </div>
-                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@ActualRequestJson</pre>
+                    <pre class="mi-code" dir="ltr">@ActualRequestJson</pre>
                 }
                 @if (!string.IsNullOrWhiteSpace(SdkResponseJson))
                 {
@@ -141,7 +159,7 @@ else
                         <strong>پاسخ SDK/سامانه</strong>
                         <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => CopyText(SdkResponseJson)"><i class="bi bi-clipboard"></i> کپی</button>
                     </div>
-                    <pre class="border rounded bg-light p-3 small" dir="ltr" style="max-height:360px; overflow:auto; white-space:pre-wrap">@SdkResponseJson</pre>
+                    <pre class="mi-code" dir="ltr">@SdkResponseJson</pre>
                 }
                 <div class="alert alert-warning small mb-0">این JSON حاوی شناسه‌های مالیاتی و اطلاعات خریدار/فروشنده است؛ آن را عمومی منتشر نکنید. زمان/TaxID در پیش‌نمایش ممکن است با درخواست واقعیِ بعدی متفاوت باشد.</div>
             </div>
@@ -207,6 +225,7 @@ else
                         <table class="table align-middle mb-0">
                             <thead>
                                 <tr>
+                                    <th style="width:52px">ردیف</th>
                                     <th>کالا / خدمت</th>
                                     <th>واحد</th>
                                     <th class="text-center">تعداد</th>
@@ -217,9 +236,11 @@ else
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var it in vm.InvoiceItems)
+                                @for (int ii = 0; ii < vm.InvoiceItems.Count; ii++)
                                 {
+                                    var it = vm.InvoiceItems[ii];
                                     <tr>
+                                        <td class="num text-muted">@(ii + 1).Num()</td>
                                         <td>
                                             @it.Name
                                             @if (!string.IsNullOrEmpty(it.UniqueIdentifier))
@@ -238,8 +259,9 @@ else
                             </tbody>
                         </table>
                     </div>
-                    <div class="card-footer num">
-                        <span class="text-muted">جمع: @MoadianUi.Money(GrandTotal)</span>
+                    <div class="mi-total-banner num">
+                        <span class="text-muted">مجموع صورتحساب</span>
+                        <span class="v">@MoadianUi.Money(GrandTotal) <small>ریال</small></span>
                     </div>
                 </div>
             </div>

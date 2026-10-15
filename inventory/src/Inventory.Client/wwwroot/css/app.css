@@ -2144,6 +2144,72 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 }
 .mtab.active .mtab-num { background: rgba(255, 255, 255, .25); color: #fff; }
 
+/* ---------- مودیان: صورتحساب‌ها (لیست، جزئیات، وضعیت) ---------- */
+.mi-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; background: currentColor; }
+.mtab .mi-dot-0 { color: #94a3b8; } .mtab .mi-dot-1 { color: #0ea5e9; }
+.mtab .mi-dot-2 { color: #f59e0b; } .mtab .mi-dot-3 { color: #818cf8; }
+.mtab .mi-dot-4 { color: #f97316; } .mtab .mi-dot-5 { color: #ef4444; }
+.mtab .mi-dot-6 { color: #94a3b8; } .mtab .mi-dot-7 { color: #10b981; }
+.mtab.active .mi-dot-0 { color: #cbd5e1; }
+.mtab.active .mi-dot-3 { color: #c7d2fe; }
+
+.mi-status { display: inline-flex; align-items: center; gap: .45rem; padding: .26rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
+.mi-status .mi-dot { width: 8px; height: 8px; }
+.mi-s0 { background: #f1f5f9; color: #475569; }
+.mi-s1 { background: #e0f2fe; color: #075985; }
+.mi-s2 { background: #fef3c7; color: #92400e; }
+.mi-s3 { background: #eef2ff; color: #4338ca; }
+.mi-s4 { background: #ffedd5; color: #9a3412; }
+.mi-s5 { background: #fee2e2; color: #991b1b; }
+.mi-s6 { background: #f1f5f9; color: #475569; }
+.mi-s7 { background: #d1fae5; color: #065f46; }
+
+.mi-toolbar { padding: .95rem 1.15rem 1rem; }
+.mi-error { display: flex; gap: .75rem; align-items: flex-start; margin: 1rem 1rem 0; padding: .8rem 1rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; color: #991b1b; }
+.mi-error > i { font-size: 1.15rem; margin-top: .15rem; flex: none; }
+.mi-error .mi-error-text { min-width: 0; }
+.mi-error .btn { flex: none; }
+.mi-money { font-weight: 700; white-space: nowrap; }
+.mi-sep { width: 1px; height: 1.15rem; background: var(--border); margin: 0 .3rem; align-self: center; flex: none; }
+.mi-pager { padding: .8rem 1.15rem; border-top: 1px solid var(--border); }
+.mi-ellipsis { display: inline-flex; align-items: center; justify-content: center; width: 2rem; color: var(--text-soft); }
+
+.mi-skeleton { padding: 1.1rem 1.15rem; display: flex; flex-direction: column; gap: .9rem; }
+.mi-sk-row { display: flex; gap: 12px; align-items: center; }
+.mi-sk { height: 14px; border-radius: 7px; background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 40%, #f1f5f9 60%); background-size: 300% 100%; animation: mi-shimmer 1.3s ease-in-out infinite; }
+@keyframes mi-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+.mi-empty-icon { width: 76px; height: 76px; margin: 0 auto 1rem; border-radius: 50%; background: var(--primary-50); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.9rem; }
+.mi-empty-icon i { font-size: 1.9rem; color: inherit; }
+
+.mi-card { border-right-width: 4px; }
+.mi-acc0 { border-right-color: #cbd5e1; } .mi-acc1 { border-right-color: #0ea5e9; }
+.mi-acc2 { border-right-color: #f59e0b; } .mi-acc3 { border-right-color: #6366f1; }
+.mi-acc4 { border-right-color: #f97316; } .mi-acc5 { border-right-color: #ef4444; }
+.mi-acc6 { border-right-color: #cbd5e1; } .mi-acc7 { border-right-color: #10b981; }
+.mi-card-amount { font-size: 1.05rem; font-weight: 800; color: var(--text); }
+.mi-card-amount small { font-size: .68rem; font-weight: 600; color: var(--text-muted); }
+.mi-card-hr { margin: .85rem 0 .15rem; border-color: var(--border); }
+
+.mi-hero { border-top: 3px solid var(--primary); }
+.mi-hero-icon { width: 48px; height: 48px; flex: none; border-radius: 14px; background: var(--primary-50); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 1.45rem; }
+.mi-hero-title { font-size: 1.12rem; font-weight: 800; color: var(--text); }
+.mi-meta { display: flex; flex-wrap: wrap; gap: .35rem 1.1rem; color: var(--text-muted); font-size: .8rem; }
+.mi-meta b { color: var(--text); font-weight: 700; margin-inline-start: .2rem; }
+.mi-meta i { margin-inline-end: .2rem; font-size: .85rem; }
+.mi-hero-bar { margin-top: .95rem; padding-top: .9rem; border-top: 1px dashed var(--border); }
+.mi-banner { border-radius: 12px; font-size: .85rem; }
+
+.mi-code { direction: ltr; text-align: left; background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: .9rem 1rem; font-size: .76rem; line-height: 1.55; max-height: 380px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+.mi-total-banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1rem 1.15rem 1.15rem; padding: .75rem 1rem; background: var(--primary-50); border: 1px solid var(--primary-100); border-radius: 12px; font-size: .9rem; }
+.mi-total-banner .v { font-size: 1.08rem; font-weight: 800; color: var(--primary-600); white-space: nowrap; }
+.mi-total-banner .v small { font-size: .68rem; font-weight: 600; color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+    .mi-sk { animation: none; }
+}
+
 /* ---------- نوار مرحله‌ای (Wizard) ---------- */
 .wiz-bar { display: flex; align-items: center; gap: .25rem; margin-bottom: 1rem; }
 .wiz-dot {
