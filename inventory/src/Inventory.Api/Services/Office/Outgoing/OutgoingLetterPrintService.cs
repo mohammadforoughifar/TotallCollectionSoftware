@@ -486,21 +486,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 {
                     col.Spacing(isA5 ? 4 : 6);
 
-                    col.Item().Text(text =>
-                    {
-                        text.Span("به: ").FontFamily("Vazirmatn-Bold");
-                        text.Span(receiverLine).FontFamily("Vazirmatn");
-                    })
-                    .FontSize(fontSize).LineHeight(lineHeight)
-                    .AlignRight().DirectionFromRightToLeft();
+                    col.Item().Text($"به: {receiverLine}")
+                        .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
+                        .AlignRight().DirectionFromRightToLeft();
 
-                    col.Item().Text(text =>
-                    {
-                        text.Span("موضوع: ").FontFamily("Vazirmatn-Bold");
-                        text.Span(title).FontFamily("Vazirmatn-Bold");
-                    })
-                    .FontSize(titleFontSize).LineHeight(lineHeight)
-                    .AlignRight().DirectionFromRightToLeft();
+                    col.Item().Text($"موضوع: {title}")
+                        .FontFamily("Vazirmatn-Bold").FontSize(titleFontSize).LineHeight(lineHeight)
+                        .AlignRight().DirectionFromRightToLeft();
 
                     if (!string.IsNullOrWhiteSpace(externalReference))
                     {
