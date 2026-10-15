@@ -5,6 +5,7 @@
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject MoadianCompanyContext Ctx
+@inject IJSRuntime JS
 
 <PageTitle>سامانه مودیان — اطلاعات پایه</PageTitle>
 
@@ -30,12 +31,16 @@
 @if (deepDiag is not null)
 {
     <div class="card mb-3 border-warning">
-        <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-binoculars"></i> نتیجهٔ تشخیص عمیق — <span class="text-danger">همهٔ متن زیر را کپی و برای پشتیبانی بفرستید</span>
-            <button class="btn btn-sm btn-link ms-auto" @onclick="() => deepDiag = null"><i class="bi bi-x-lg"></i></button>
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <i class="bi bi-binoculars" aria-hidden="true"></i> نتیجهٔ تشخیص عمیق
+            <span class="text-danger small">متن زیر را برای پشتیبانی بفرستید</span>
+            <span class="ms-auto d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyDeepDiag"><i class="bi bi-clipboard" aria-hidden="true"></i> کپی</button>
+                <button type="button" class="btn btn-sm btn-link" @onclick="() => deepDiag = null" aria-label="بستن"><i class="bi bi-x-lg"></i></button>
+            </span>
         </div>
         <div class="card-body p-2">
-            <pre class="small mb-0" dir="ltr" style="white-space:pre-wrap;text-align:left;max-height:420px;overflow:auto">@deepDiag</pre>
+            <pre class="mi-code mb-0" dir="ltr" style="max-height:420px">@deepDiag</pre>
         </div>
     </div>
 }
@@ -83,16 +88,13 @@
 <MoadianCompanyBar />
 
 @* ---------- نوار تب ---------- *@
-<div class="card mb-3">
-    <div class="card-body py-2 d-flex gap-2 flex-wrap">
-        @foreach (var t in Tabs)
-        {
-            <button class="btn @(ActiveTab == t.Key ? "btn-primary" : "btn-outline-secondary")"
-                    @onclick="() => Go(t.Key)">
-                <i class="bi @t.Icon"></i> @t.Title
-            </button>
-        }
-    </div>
+<div class="mtabs mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
+    @foreach (var t in Tabs)
+    {
+        <button type="button" role="tab" class="mtab @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
+            <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+        </button>
+    }
 </div>
 
 @* فقط تب فعال رندر می‌شود؛ بارگذاری هر تب هنگام باز شدن انجام می‌شود *@
@@ -163,6 +165,13 @@ else if (ActiveTab == "customers")
 
     private bool deepDiagnosing;
     private string? deepDiag;
+
+    private async Task CopyDeepDiag()
+    {
+        if (string.IsNullOrEmpty(deepDiag)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", deepDiag); Toast.Info("نتیجهٔ تشخیص عمیق کپی شد."); }
+        catch { Toast.Error("کپی ممکن نبود."); }
+    }
 
     private async Task DiagnoseLists()
     {

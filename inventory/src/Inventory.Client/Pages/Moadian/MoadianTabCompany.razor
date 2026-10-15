@@ -16,12 +16,22 @@
             <div class="card-body p-0">
                 @if (loading)
                 {
-                    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+                    <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری شرکت‌ها">
+                        @for (int si = 0; si < 3; si++)
+                        {
+                            <div class="mi-sk-row">
+                                <div class="mi-sk" style="width:34%"></div>
+                                <div class="mi-sk" style="width:22%"></div>
+                                <div class="mi-sk" style="width:18%"></div>
+                                <div class="mi-sk" style="width:12%"></div>
+                            </div>
+                        }
+                    </div>
                 }
                 else if (CpInfos.Count == 0)
                 {
                     <div class="empty-state">
-                        <i class="bi bi-building-add"></i>
+                        <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-building-add"></i></div>
                         <h5>شرکتی تعریف نشده است</h5>
                         <p class="text-muted">از فرم سمت چپ نخستین شرکت را ثبت کنید.</p>
                     </div>

@@ -14,34 +14,67 @@
         </div>
     </div></div>
 }
-else if (loading)
-{
-    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
-}
 else
 {
     <div class="card">
-        <div class="card-header d-flex align-items-center gap-2">
-            <span><i class="bi bi-people text-warning"></i> فهرست مشتریان <span class="text-muted small">— صورتحساب به نام آن‌ها صادر می‌شود</span></span>
-            <span class="badge badge-soft-primary num">@((Customers?.Count ?? 0).Num()) مشتری</span>
-            <button class="btn btn-primary btn-sm ms-auto" @onclick="() => OpenForm(null)">
-                <i class="bi bi-person-plus"></i> مشتری جدید
-            </button>
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span><i class="bi bi-people text-warning" aria-hidden="true"></i> فهرست مشتریان <span class="text-muted small">— صورتحساب به نام آن‌ها صادر می‌شود</span></span>
+            <span class="badge badge-soft-primary num">@(FilteredCustomers.Count.Num()) مشتری</span>
+            <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+                <div class="input-group input-group-sm" style="min-width:220px">
+                    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                    <input class="form-control" placeholder="جستجو در نام، کد ملی/ثبت، شمارهٔ اقتصادی، تلفن" value="@search" @oninput="OnSearch" aria-label="جستجو در مشتریان" />
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
+                    <i class="bi bi-person-plus" aria-hidden="true"></i> مشتری جدید
+                </button>
+            </div>
         </div>
         @if (!string.IsNullOrEmpty(loadError))
         {
-            <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
-                <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست مشتریان ناموفق بود:
-                @loadError
+            <div class="mi-error" role="alert">
+                <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+                <div class="mi-error-text">
+                    <div class="fw-bold">بارگذاری فهرست مشتریان ناموفق بود</div>
+                    <div class="small" style="white-space:pre-wrap">@loadError</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync()">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+                </button>
             </div>
         }
         <div class="card-body p-0">
-            @if (Customers is null || Customers.Count == 0)
+            @if (loading)
+            {
+                <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری مشتریان">
+                    @for (int si = 0; si < 4; si++)
+                    {
+                        <div class="mi-sk-row">
+                            <div class="mi-sk" style="width:26%"></div>
+                            <div class="mi-sk" style="width:12%"></div>
+                            <div class="mi-sk" style="width:18%"></div>
+                            <div class="mi-sk" style="width:16%"></div>
+                            <div class="mi-sk" style="width:10%"></div>
+                            <div class="mi-sk" style="width:12%"></div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (FilteredCustomers.Count == 0)
             {
                 <div class="empty-state">
-                    <i class="bi bi-people"></i>
-                    <h5>مشتری‌ای تعریف نشده است</h5>
-                    <p class="text-muted">برای صدور صورتحساب، ابتدا مشتریان خود را ثبت کنید.</p>
+                    <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-people"></i></div>
+                    <h5>@(string.IsNullOrWhiteSpace(search) ? "مشتری‌ای تعریف نشده است" : $"مشتری‌ای با «{search}» یافت نشد")</h5>
+                    <p class="text-muted mb-3">@(string.IsNullOrWhiteSpace(search)
+                        ? "برای صدور صورتحساب، ابتدا مشتریان خود را ثبت کنید."
+                        : "عبارت جستجو را تغییر دهید یا آن را پاک کنید.")</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        @if (!string.IsNullOrWhiteSpace(search))
+                        {
+                            <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x-lg" aria-hidden="true"></i> پاک‌کردن جستجو</button>
+                        }
+                        <button type="button" class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-person-plus" aria-hidden="true"></i> مشتری جدید</button>
+                    </div>
                 </div>
             }
             else
@@ -60,7 +93,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var c in Customers)
+                            @foreach (var c in FilteredCustomers)
                             {
                                 <tr>
                                     <td class="fw-semibold">@c.Name</td>
@@ -143,6 +176,26 @@ else
     private List<VMCustomerList>? Customers;
     private bool loading = true;
     private string? loadError;
+    private string search = "";
+
+    /// <summary>جستجوی سمت کلاینت — API فهرست مشتریان پارامتر جستجو ندارد.</summary>
+    private List<VMCustomerList> FilteredCustomers
+    {
+        get
+        {
+            var all = Customers ?? new List<VMCustomerList>();
+            if (string.IsNullOrWhiteSpace(search)) return all;
+            var q = search.Trim();
+            return all.Where(c =>
+                (c.Name?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (c.NationalID?.Contains(q, StringComparison.Ordinal) ?? false)
+                || (c.EconomicNumber?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (c.Phone?.Contains(q, StringComparison.Ordinal) ?? false)).ToList();
+        }
+    }
+
+    private void OnSearch(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; }
+    private void ClearSearch() { search = ""; }
 
     private bool showForm;
     private VMCustomerList form = new() { Type = "حقیقی" };

@@ -2206,6 +2206,8 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mi-total-banner .v { font-size: 1.08rem; font-weight: 800; color: var(--primary-600); white-space: nowrap; }
 .mi-total-banner .v small { font-size: .68rem; font-weight: 600; color: var(--text-muted); }
 
+.mi-form-summary { background: #f8faff; }
+
 @media (prefers-reduced-motion: reduce) {
     .mi-sk { animation: none; }
 }

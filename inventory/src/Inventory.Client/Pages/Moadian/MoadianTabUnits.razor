@@ -2,33 +2,64 @@
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject IJSRuntime JS
+@implements IDisposable
 
 <div class="card">
-    <div class="card-header d-flex align-items-center gap-2">
-        <span><i class="bi bi-rulers text-danger"></i> فهرست واحدهای سنجش معتبر سامانهٔ مودیان <span class="text-muted small">— مشترک بین شرکت‌ها</span></span>
+    <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <span><i class="bi bi-rulers text-danger" aria-hidden="true"></i> فهرست واحدهای سنجش معتبر سامانهٔ مودیان <span class="text-muted small">— مشترک بین شرکت‌ها</span></span>
         <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) واحد</span>
-        <button class="btn btn-primary btn-sm ms-auto" @onclick="() => OpenForm(null)">
-            <i class="bi bi-plus-lg"></i> واحد جدید
-        </button>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+            <div class="input-group input-group-sm" style="min-width:220px">
+                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <input class="form-control" placeholder="جستجو در نام یا کد" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در واحدها" />
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> واحد جدید
+            </button>
+        </div>
     </div>
     @if (!string.IsNullOrEmpty(loadError))
     {
-        <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
-            <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست واحدها ناموفق بود:
-            @loadError
+        <div class="mi-error" role="alert">
+            <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+            <div class="mi-error-text">
+                <div class="fw-bold">بارگذاری فهرست واحدها ناموفق بود</div>
+                <div class="small" style="white-space:pre-wrap">@loadError</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync(pno)">
+                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+            </button>
         </div>
     }
     <div class="card-body p-0">
         @if (loading)
         {
-            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+            <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری واحدها">
+                @for (int si = 0; si < 4; si++)
+                {
+                    <div class="mi-sk-row">
+                        <div class="mi-sk" style="width:40%"></div>
+                        <div class="mi-sk" style="width:20%"></div>
+                        <div class="mi-sk" style="width:14%"></div>
+                    </div>
+                }
+            </div>
         }
         else if (items is null || items.Count == 0)
         {
             <div class="empty-state">
-                <i class="bi bi-rulers"></i>
-                <h5>واحدی تعریف نشده است</h5>
-                <p class="text-muted">واحدهای سنجش معتبر (مانند عدد، کیلوگرم، متر و…) را ثبت کنید.</p>
+                <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-rulers"></i></div>
+                <h5>@(string.IsNullOrWhiteSpace(search) ? "واحدی تعریف نشده است" : $"واحدی با «{search}» یافت نشد")</h5>
+                <p class="text-muted mb-3">@(string.IsNullOrWhiteSpace(search)
+                    ? "واحدهای سنجش معتبر (مانند عدد، کیلوگرم، متر و…) را ثبت کنید."
+                    : "عبارت جستجو را تغییر دهید یا آن را پاک کنید.")</p>
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    @if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x-lg" aria-hidden="true"></i> پاک‌کردن جستجو</button>
+                    }
+                    <button type="button" class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-plus-lg" aria-hidden="true"></i> واحد جدید</button>
+                </div>
             </div>
         }
         else
@@ -59,11 +90,11 @@
             </div>
             @if ((data?.TotalPages ?? 0) > 1)
             {
-                <div class="card-footer d-flex align-items-center gap-2">
-                    <span class="text-muted small num">صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                <div class="mi-pager d-flex align-items-center gap-2">
+                    <span class="text-muted small num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) واحد — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
                     <div class="ms-auto d-flex gap-1">
-                        <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)"><i class="bi bi-chevron-right"></i></button>
-                        <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)"><i class="bi bi-chevron-left"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)" aria-label="صفحهٔ قبل"><i class="bi bi-chevron-right"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)" aria-label="صفحهٔ بعد"><i class="bi bi-chevron-left"></i></button>
                     </div>
                 </div>
             }
@@ -102,13 +133,24 @@
     private string? loadError;
     private int pno = 1;
     private const int PageSize = 10;
+    private string search = "";
+    private System.Timers.Timer? searchTimer;
 
     private bool showForm;
     private VMUnitOfMeasurement form = new();
     private string? formError;
     private bool saving;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync(1);
+    protected override void OnInitialized()
+    {
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
+        _ = LoadAsync(1);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); } }
+    private void ClearSearch() { search = ""; _ = LoadAsync(1); }
 
     private async Task LoadAsync(int p)
     {
@@ -116,7 +158,7 @@
         try
         {
             loadError = null;
-            var model = await Moadian.GetUnitsAsync(null, p, PageSize);
+            var model = await Moadian.GetUnitsAsync(string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
             var paged = MoadianService.AsStrict<PagedList<VMUnitOfMeasurement>>(model, "دریافت فهرست واحدها");
             data = paged;
             items = paged?.Items?.ToList();
@@ -169,4 +211,6 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
+
+    public void Dispose() => searchTimer?.Dispose();
 }

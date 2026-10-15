@@ -17,31 +17,63 @@
 else
 {
     <div class="card">
-        <div class="card-header d-flex align-items-center gap-2">
-            <span><i class="bi bi-box-seam text-success"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span><i class="bi bi-box-seam text-success" aria-hidden="true"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
             <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) کالا</span>
-            <button class="btn btn-primary btn-sm ms-auto" @onclick="() => OpenForm(null)">
-                <i class="bi bi-plus-lg"></i> کالا/خدمت جدید
-            </button>
+            <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+                <div class="input-group input-group-sm" style="min-width:220px">
+                    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                    <input class="form-control" placeholder="جستجو در نام یا شناسهٔ CPC" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در کالاها" />
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i> کالا/خدمت جدید
+                </button>
+            </div>
         </div>
         @if (!string.IsNullOrEmpty(loadError))
         {
-            <div class="alert alert-danger small m-3 mb-0" style="white-space:pre-wrap">
-                <i class="bi bi-exclamation-triangle"></i> بارگذاری فهرست کالاها ناموفق بود:
-                @loadError
+            <div class="mi-error" role="alert">
+                <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+                <div class="mi-error-text">
+                    <div class="fw-bold">بارگذاری فهرست کالاها ناموفق بود</div>
+                    <div class="small" style="white-space:pre-wrap">@loadError</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync(pno)">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+                </button>
             </div>
         }
         <div class="card-body p-0">
             @if (loading)
             {
-                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+                <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری کالاها">
+                    @for (int si = 0; si < 4; si++)
+                    {
+                        <div class="mi-sk-row">
+                            <div class="mi-sk" style="width:30%"></div>
+                            <div class="mi-sk" style="width:20%"></div>
+                            <div class="mi-sk" style="width:14%"></div>
+                            <div class="mi-sk" style="width:10%"></div>
+                            <div class="mi-sk" style="width:16%"></div>
+                        </div>
+                    }
+                </div>
             }
             else if (items is null || items.Count == 0)
             {
                 <div class="empty-state">
-                    <i class="bi bi-box-seam"></i>
-                    <h5>کالایی تعریف نشده است</h5>
-                    <p class="text-muted">برای صدور صورتحساب، ابتدا کالا/خدمات خود را با شناسهٔ CPC ثبت کنید.</p>
+                    <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+                    <h5>@(string.IsNullOrWhiteSpace(search) ? "کالایی تعریف نشده است" : $"کالایی با «{search}» یافت نشد")</h5>
+                    <p class="text-muted mb-3">@(string.IsNullOrWhiteSpace(search)
+                        ? "برای صدور صورتحساب، ابتدا کالا/خدمات خود را با شناسهٔ CPC ثبت کنید."
+                        : "عبارت جستجو را تغییر دهید یا آن را پاک کنید.")</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        @if (!string.IsNullOrWhiteSpace(search))
+                        {
+                            <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x-lg" aria-hidden="true"></i> پاک‌کردن جستجو</button>
+                        }
+                        <button type="button" class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-plus-lg" aria-hidden="true"></i> کالا/خدمت جدید</button>
+                    </div>
                 </div>
             }
             else
@@ -54,7 +86,7 @@ else
                                 <th>شناسهٔ CPC</th>
                                 <th>واحد سنجش</th>
                                 <th class="text-center">ارزش افزوده</th>
-                                <th class="text-center">قیمت</th>
+                                <th class="text-end" style="min-width:120px">قیمت</th>
                                 <th class="text-end">عملیات</th>
                             </tr>
                         </thead>
@@ -66,7 +98,7 @@ else
                                     <td><code class="num" dir="ltr">@g.UniqueIdentifier</code></td>
                                     <td class="num">@g.UnitOfMeasurement</td>
                                     <td class="text-center num">@(((decimal)(g.ValueAddedPercentage ?? 0)).Qty())٪</td>
-                                    <td class="text-center num">@MoadianUi.Money(g.Price)</td>
+                                    <td class="text-end num mi-money">@MoadianUi.Money(g.Price)</td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-outline-primary" title="ویرایش" @onclick="() => OpenForm(g)">
                                             <i class="bi bi-pencil"></i>
@@ -79,11 +111,11 @@ else
                 </div>
                 @if ((data?.TotalPages ?? 0) > 1)
                 {
-                    <div class="card-footer d-flex align-items-center gap-2">
-                        <span class="text-muted small num">صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                    <div class="mi-pager d-flex align-items-center gap-2">
+                        <span class="text-muted small num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) کالا — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
                         <div class="ms-auto d-flex gap-1">
-                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)"><i class="bi bi-chevron-right"></i></button>
-                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)"><i class="bi bi-chevron-left"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)" aria-label="صفحهٔ قبل"><i class="bi bi-chevron-right"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)" aria-label="صفحهٔ بعد"><i class="bi bi-chevron-left"></i></button>
                         </div>
                     </div>
                 }
@@ -146,6 +178,8 @@ else
     private string? loadError;
     private int pno = 1;
     private const int PageSize = 10;
+    private string search = "";
+    private System.Timers.Timer? searchTimer;
 
     private bool showForm;
     private VMGoodsOrService form = new();
@@ -155,10 +189,16 @@ else
     protected override void OnInitialized()
     {
         Ctx.Changed += OnCtxChanged;
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
         _ = InitAsync();
     }
 
-    private void OnCtxChanged() => _ = InitAsync();
+    private void OnCtxChanged() { search = ""; _ = InitAsync(); }
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); } }
+    private void ClearSearch() { search = ""; _ = LoadAsync(1); }
 
     private async Task InitAsync()
     {
@@ -180,7 +220,7 @@ else
         try
         {
             loadError = null;
-            var model = await Moadian.GetGoodsAsync(Ctx.CpInfoId, null, p, PageSize);
+            var model = await Moadian.GetGoodsAsync(Ctx.CpInfoId, string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
             var paged = MoadianService.AsStrict<PagedList<VMGoodsOrService>>(model, "دریافت فهرست کالاها/خدمات");
             data = paged;
             items = paged?.Items?.ToList();
@@ -247,5 +287,5 @@ else
         finally { saving = false; StateHasChanged(); }
     }
 
-    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+    public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }
 }
