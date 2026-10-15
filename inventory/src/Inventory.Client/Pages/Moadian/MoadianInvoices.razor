@@ -179,22 +179,22 @@ else
                                     <td class="text-end">
                                         <div class="mpa-group">
                                             @* a) جزئیات *@
-                                            <NavLink class="mpa mpa-blue mpa-ic" href="@($"moadian/invoices/{inv.Id}")" title="جزئیات صورتحساب" aria-label="جزئیات صورتحساب">
+                                            <NavLink class="mpa mpa-blue mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}")" title="جزئیات صورتحساب" aria-label="جزئیات صورتحساب">
                                                 <i class="bi bi-eye" aria-hidden="true"></i>
                                             </NavLink>
                                             @* d) ویرایش *@
                                             @if (MoadianUi.CanEdit(inv.StatusSentToSystemInt))
                                             {
-                                                <NavLink class="mpa mpa-green mpa-ic" href="@($"moadian/invoices/{inv.Id}/edit")" title="ویرایش صورتحساب" aria-label="ویرایش صورتحساب">
+                                                <NavLink class="mpa mpa-green mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/edit")" title="ویرایش صورتحساب" aria-label="ویرایش صورتحساب">
                                                     <i class="bi bi-pencil" aria-hidden="true"></i>
                                                 </NavLink>
                                             }
                                             @* e) کپی *@
-                                            <NavLink class="mpa mpa-gray mpa-ic" href="@($"moadian/invoices/{inv.Id}/copy")" title="کپی صورتحساب" aria-label="کپی صورتحساب">
+                                            <NavLink class="mpa mpa-gray mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/copy")" title="کپی صورتحساب" aria-label="کپی صورتحساب">
                                                 <i class="bi bi-copy" aria-hidden="true"></i>
                                             </NavLink>
                                             @* b) چاپ *@
-                                            <NavLink class="mpa mpa-dark mpa-ic" href="@($"moadian/invoices/{inv.Id}?print=1")" title="چاپ صورتحساب" aria-label="چاپ صورتحساب">
+                                            <NavLink class="mpa mpa-dark mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}?print=1")" title="چاپ صورتحساب" aria-label="چاپ صورتحساب">
                                                 <i class="bi bi-printer" aria-hidden="true"></i>
                                             </NavLink>
                                             @* ارسال *@
@@ -228,7 +228,7 @@ else
                                             }
                                             @if (MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
                                             {
-                                                <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
+                                                <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
                                                     <i class="bi bi-pencil-square" aria-hidden="true"></i>
                                                 </NavLink>
                                                 <button type="button" class="mpa mpa-indigo mpa-ic" title="صدور برگشت از فروش" aria-label="صدور برگشت از فروش"
@@ -284,13 +284,13 @@ else
                                 </div>
                                 <hr class="mi-card-hr" />
                                 <div class="d-flex flex-wrap gap-2 mt-2" role="group" aria-label="عملیات صورتحساب">
-                                    <NavLink class="mpa mpa-blue" href="@($"moadian/invoices/{inv.Id}")" aria-label="جزئیات صورتحساب"><i class="bi bi-eye" aria-hidden="true"></i> جزئیات</NavLink>
-                                    <NavLink class="mpa mpa-dark" href="@($"moadian/invoices/{inv.Id}?print=1")" aria-label="چاپ صورتحساب"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</NavLink>
+                                    <NavLink class="mpa mpa-blue" href="@($"moadian/invoices/{InvoiceId(inv)}")" aria-label="جزئیات صورتحساب"><i class="bi bi-eye" aria-hidden="true"></i> جزئیات</NavLink>
+                                    <NavLink class="mpa mpa-dark" href="@($"moadian/invoices/{InvoiceId(inv)}?print=1")" aria-label="چاپ صورتحساب"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</NavLink>
                                     @if (MoadianUi.CanEdit(inv.StatusSentToSystemInt))
                                     {
-                                        <NavLink class="mpa mpa-green" href="@($"moadian/invoices/{inv.Id}/edit")" aria-label="ویرایش صورتحساب"><i class="bi bi-pencil" aria-hidden="true"></i> ویرایش</NavLink>
+                                        <NavLink class="mpa mpa-green" href="@($"moadian/invoices/{InvoiceId(inv)}/edit")" aria-label="ویرایش صورتحساب"><i class="bi bi-pencil" aria-hidden="true"></i> ویرایش</NavLink>
                                     }
-                                    <NavLink class="mpa mpa-gray" href="@($"moadian/invoices/{inv.Id}/copy")" aria-label="کپی صورتحساب"><i class="bi bi-copy" aria-hidden="true"></i> کپی</NavLink>
+                                    <NavLink class="mpa mpa-gray" href="@($"moadian/invoices/{InvoiceId(inv)}/copy")" aria-label="کپی صورتحساب"><i class="bi bi-copy" aria-hidden="true"></i> کپی</NavLink>
                                     @if (MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
                                     {
                                         <button type="button" class="mpa mpa-green" disabled="@acting" aria-label="ارسال صورتحساب به سامانهٔ مودیان" @onclick="() => SendToMoadian(inv)"><i class="bi bi-send" aria-hidden="true"></i> ارسال</button>
@@ -309,7 +309,7 @@ else
                                     }
                                     @if (MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
                                     {
-                                        <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{inv.Id}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
+                                        <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{InvoiceId(inv)}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
                                         <button type="button" class="mpa mpa-indigo" disabled="@acting" aria-label="صدور برگشت از فروش" @onclick="() => SalesReturnRow(inv)"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> برگشت از فروش</button>
                                     }
                                     @if (MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
@@ -433,6 +433,13 @@ else
 
     private List<InvoiceVM> Items => items ?? new();
 
+    // پاسخ‌های قدیمیِ API در بعضی نصب‌ها شناسه را فقط در Name (به‌صورت رشته) داشتند.
+    // Id معتبر همیشه اولویت دارد؛ fallback فقط جلوی مسیر /invoices/0 و خطای کاذب «یافت نشد» را می‌گیرد.
+    private static int InvoiceId(InvoiceVM invoice)
+        => invoice.Id > 0
+            ? invoice.Id
+            : int.TryParse(invoice.Name, out var legacyId) && legacyId > 0 ? legacyId : 0;
+
     protected override void OnInitialized()
     {
         Ctx.Changed += OnCtxChanged;
@@ -549,7 +556,7 @@ else
         acting = true; StateHasChanged();
         try
         {
-            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
             if (full is null) { Toast.Error("جزئیات صورتحساب برای ارسال یافت نشد."); return; }
             full.Subject = "ارسال به سامانه";
             var r = await Moadian.SendInvoiceAsync(full);
@@ -578,7 +585,7 @@ else
         acting = true; StateHasChanged();
         try
         {
-            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
             if (full is null) { Toast.Error("جزئیات صورتحساب برای برگشت از فروش یافت نشد."); return; }
             full.Subject = "برگشت از فروش";
             var r = await Moadian.SendInvoiceAsync(full);
@@ -607,7 +614,7 @@ else
         acting = true; StateHasChanged();
         try
         {
-            var full = await Moadian.GetInvoiceAsync(inv.Id);
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
             if (full is null) { Toast.Error("جزئیات صورتحساب برای ابطال یافت نشد."); return; }
             var r = await Moadian.EbtalInvoiceAsync(full);
             if (r.Success)
@@ -631,7 +638,7 @@ else
         acting = true; StateHasChanged();
         try
         {
-            var r = await Moadian.DeleteInvoiceAsync(inv.Id);
+            var r = await Moadian.DeleteInvoiceAsync(InvoiceId(inv));
             if (r.Success)
             {
                 Toast.Success("صورتحساب حذف شد.");
@@ -650,7 +657,7 @@ else
         acting = true; StateHasChanged();
         try
         {
-            var r = await Moadian.EstelamInvoiceAsync(inv.ReferenceId!, inv.Id,
+            var r = await Moadian.EstelamInvoiceAsync(inv.ReferenceId!, InvoiceId(inv),
                 (inv.DateOrder ?? DateOnly.FromDateTime(DateTime.Today)).ToString("yyyy-MM-dd"));
             modalTitle = $"استعلام صورتحساب شمارهٔ {inv.NumberInvoice?.Num() ?? "—"}";
             modalBody = r.Data?.ToString() ?? r.Message ?? "پاسخی از سامانه دریافت نشد.";

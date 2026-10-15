@@ -18,7 +18,16 @@ else if (vm is null)
     <div class="card"><div class="card-body">
         <div class="empty-state">
             <i class="bi bi-question-circle"></i>
-            <h5>صورتحساب یافت نشد</h5>
+            <h5>جزئیات صورتحساب بارگذاری نشد</h5>
+            <p class="text-muted mb-3">شناسهٔ درخواستی: <b class="num">@Id</b></p>
+            @if (!string.IsNullOrWhiteSpace(loadError))
+            {
+                <div class="alert alert-warning text-start" dir="rtl">@loadError</div>
+            }
+            else
+            {
+                <p class="text-muted">صورتحساب با این شناسه یافت نشد.</p>
+            }
             <NavLink class="btn btn-primary" href="moadian/invoices">بازگشت به فهرست</NavLink>
         </div>
     </div></div>
@@ -403,6 +412,7 @@ else
     private InvoiceVM? vm;
     private VMShowCpinfoByCompany? seller;
     private bool loading = true, acting;
+    private string? loadError;
     private string? ActionResult;
     private string? PreviewRequestJson;
     private string? ActualRequestJson;
@@ -423,6 +433,7 @@ else
         StateHasChanged();
         try
         {
+            loadError = null;
             vm = await Moadian.GetInvoiceAsync(Id);
             if (vm is not null && vm.CPInfoId.HasValue)
             {
@@ -438,7 +449,11 @@ else
                 }
             }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+            Toast.Error(ex.Message);
+        }
         finally { loading = false; StateHasChanged(); }
     }
 
