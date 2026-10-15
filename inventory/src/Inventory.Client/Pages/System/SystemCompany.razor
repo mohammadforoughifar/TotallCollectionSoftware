@@ -95,8 +95,8 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
-                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: letterhead-forough.pdf" />
-                    <small class="text-muted">نام فایل PDF سربرگ که در <b>مسیر روت API</b> (کنار فایل اجرایی برنامه سرور) قرار داده‌اید. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
+                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: uploads/letterheads/letterhead.pdf" />
+                    <small class="text-muted">مسیر فایل PDF نسبت به <b>wwwroot</b>؛ مثلاً uploads/letterheads/letterhead.pdf. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch mt-1">

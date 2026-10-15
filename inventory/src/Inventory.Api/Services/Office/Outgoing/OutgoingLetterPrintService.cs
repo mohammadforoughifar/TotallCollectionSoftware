@@ -15,8 +15,8 @@ namespace Inventory.Api.Services.Office.Outgoing;
 
 // ============================================================
 //  چاپ نامه صادره روی سربرگ شرکت — سایز A4 و A5
-//  • سربرگ: فایل PDF که نامش در جدول کمپانی (SystemCompanies.LetterheadFileName)
-//    ثبت شده و خود فایل در «مسیر روت API» قرار دارد.
+//  • سربرگ: فایل PDF ثبت‌شده در SystemCompanies.LetterheadFileName که
+//    نسبت به wwwroot مسیر‌دهی می‌شود (مثلاً uploads/letterheads/header.pdf).
 //  • متن نامه با QuestPDF (فونت فارسی وزیرمتن، راست‌به‌چپ) تولید و سپس
 //    با PDFsharp روی صفحه سربرگ قرار می‌گیرد (Overlay).
 //  • اگر شرکت/سربرگ نداشته باشد، نامه بدون پس‌زمینه چاپ می‌شود.
@@ -39,6 +39,11 @@ public interface IOutgoingLetterPrintService
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
+    // Company 3 is Homepa in the current system data. Keep the dedicated fallback
+    // centralized here so an ID change requires only one code update.
+    private const int HomepaCompanyId = 3;
+    private const string HomepaLetterheadRelativePath = "uploads/letterheads/homepa_company3_letterhead.pdf";
+
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
 
@@ -80,7 +85,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     // ==================== سربرگ (PDF از مسیر روت API) ====================
 
-    /// <summary>یافتن فایل سربرگ یا لوگوی شرکت از مسیر wwwroot/uploads/ یا روت API</summary>
+    /// <summary>یافتن سربرگ نسبت به wwwroot، با پشتیبانی از نام فایل‌های قدیمی</summary>
     private string? ResolveLetterheadPath(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;
@@ -93,17 +98,57 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             ? clean["uploads/".Length..]
             : clean;
 
+        var uploadFileName = Path.GetFileName(uploadClean);
         var candidates = new[]
         {
+            // Supports canonical values such as uploads/letterheads/name.pdf.
             Path.Combine(webRoot, "uploads", uploadClean),
+            // Older company records may store only the filename. Letterheads live
+            // in this subfolder, not directly under wwwroot/uploads.
+            Path.Combine(webRoot, "uploads", "letterheads", uploadFileName),
             Path.Combine(webRoot, clean),
+            Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "letterheads", uploadFileName),
             Path.Combine(_env.ContentRootPath, clean),
             Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
+            Path.Combine(AppContext.BaseDirectory, "wwwroot", "uploads", "letterheads", uploadFileName),
             Path.Combine(AppContext.BaseDirectory, clean),
             Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
         };
 
         return candidates.FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>
+    /// Resolve a company's actual PDF letterhead. Homepa must never fall back to
+    /// Forough's header; use its bundled PDF even when the DB field is blank or stale.
+    /// </summary>
+    private string? ResolveCompanyLetterheadPath(SystemCompany? company)
+    {
+        if (company != null && company.Id == HomepaCompanyId)
+        {
+            var homepaPath = ResolveLetterheadPath(HomepaLetterheadRelativePath);
+            if (homepaPath != null) return homepaPath;
+
+            // Allow a deployment-specific location only if it still names Homepa's PDF.
+            var configuredHomepaPath = ResolveLetterheadPath(company.LetterheadFileName);
+            if (configuredHomepaPath != null && string.Equals(
+                    Path.GetFileName(configuredHomepaPath),
+                    Path.GetFileName(HomepaLetterheadRelativePath),
+                    StringComparison.OrdinalIgnoreCase))
+                return configuredHomepaPath;
+
+            return null;
+        }
+
+        var configuredFileName = company?.LetterheadFileName;
+        var configuredPath = ResolveLetterheadPath(configuredFileName);
+        if (configuredPath != null) return configuredPath;
+
+        if (string.IsNullOrWhiteSpace(configuredFileName)
+            || configuredFileName.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase))
+            return ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+
+        return null;
     }
 
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
@@ -160,13 +205,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 ? await _db.SystemCompanies.AsNoTracking()
                     .FirstOrDefaultAsync(x => x.Id == mrtLetter.CompanyId && x.IsActive)
                 : null;
-            var mrtLetterhead = ResolveLetterheadPath(mrtCompany?.LetterheadFileName);
-            if (mrtLetterhead == null && (string.IsNullOrWhiteSpace(mrtCompany?.LetterheadFileName) || mrtCompany!.LetterheadFileName!.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
-                mrtLetterhead = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+            var mrtLetterhead = ResolveCompanyLetterheadPath(mrtCompany);
             if (mrtLetterhead != null)
+            {
+                _logger.LogInformation(
+                    "اعمال سربرگ روی خروجی MRT. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
+                    letterId, mrtCompany?.Id, mrtLetterhead);
                 return OverlayOnLetterhead(stimulsoftPdf, mrtLetterhead);
+            }
 
-            _logger.LogWarning("سربرگ شرکت برای خروجی MRT نامه {LetterId} پیدا نشد؛ PDF بدون overlay برگردانده شد.", letterId);
+            _logger.LogError(
+                "سربرگ خروجی MRT پیدا نشد؛ PDF بدون overlay برگردانده شد. LetterId={LetterId}, CompanyId={CompanyId}, ConfiguredPath={ConfiguredPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
+                letterId, mrtCompany?.Id, mrtCompany?.LetterheadFileName, _env.WebRootPath, _env.ContentRootPath);
             return stimulsoftPdf;
         }
 
@@ -213,12 +263,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // سربرگ باید فقط از شرکت انتخاب‌شدهٔ همین نامه دریافت شود.
         // SystemCompany فیلدی به نام LogoPath ندارد و استفاده از لوگوی ماژول HR
         // یا پوشهٔ ثابت شرکت 1 می‌تواند باعث چاپ سربرگ شرکت اشتباه شود.
-        var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
-        if (letterheadPath == null && (string.IsNullOrWhiteSpace(company?.LetterheadFileName) || company!.LetterheadFileName!.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
-            letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
-        if (letterheadPath == null)
+        var letterheadPath = ResolveCompanyLetterheadPath(company);
+        if (letterheadPath == null && company?.Id != HomepaCompanyId)
         {
-            // fallback نسخه فعلی مخزن: لوگوی سازمان اصلی HR
+            // HR logo remains a legacy fallback for other companies only. Homepa
+            // must never accidentally print another company's branding.
             var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
                 .Select(c => c.LogoPath)
                 .FirstOrDefaultAsync();
