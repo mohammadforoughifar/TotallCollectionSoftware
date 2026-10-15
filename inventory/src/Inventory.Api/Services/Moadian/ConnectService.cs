@@ -454,7 +454,7 @@ namespace Inventory.Api.Services.Moadian
 
                             var newInvoiceForEdit = context.Invoices.Where(c => c.Id == invoice.Id).FirstOrDefault();
                             newInvoiceForEdit.TaxNumber = taxId;
-                            newInvoiceForEdit.StatusSentToSystem = "درانتظار واکنش";
+                            newInvoiceForEdit.StatusSentToSystem = "4";
                             newInvoiceForEdit.ReferenceId = referenceId;
 
                             context.SaveChanges();
@@ -1129,7 +1129,8 @@ namespace Inventory.Api.Services.Moadian
      (c.StatusSentToSystem == "4" && "ارسال شده در انتظار واکنش".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "5" && "دارای خطا".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "6" && "بدون نیاز به واکنش".Contains(request.SearchTerm)) ||
-     (c.StatusSentToSystem == "7" && "تائید شده".Contains(request.SearchTerm))
+     (c.StatusSentToSystem == "7" && "تائید شده".Contains(request.SearchTerm)) ||
+     (c.StatusSentToSystem == "8" && "رد شده".Contains(request.SearchTerm))
      ||
      (c.TypePattern == 1 && "نوع اول".Contains(request.SearchTerm)) ||
         (c.TypePattern == 2 && "نوع دوم".Contains(request.SearchTerm)) ||
@@ -1234,7 +1235,10 @@ context.Customers.Any(x =>
                         i.StatusSentToSystem == "2" ? "در انتظار بررسی کارپوشه" :
                         i.StatusSentToSystem == "3" ? "ارسال شده" :
                         i.StatusSentToSystem == "4" ? "ارسال شده در انتظار واکنش" :
-                        i.StatusSentToSystem == "5" ? "دارای خطا" : "بدون نیاز به واکنش",
+                        i.StatusSentToSystem == "5" ? "دارای خطا" :
+                        i.StatusSentToSystem == "6" ? "بدون نیاز به واکنش" :
+                        i.StatusSentToSystem == "7" ? "تأیید شده" :
+                        i.StatusSentToSystem == "8" ? "رد شده" : "وضعیت نامشخص",
                     TaxNumber = i.TaxNumber,
                     NewTaxNumber = i.NewTaxNumber,
                     ReferenceId = i.ReferenceId,
@@ -2034,7 +2038,10 @@ context.Customers.Any(x =>
             invoice.StatusSentToSystem == "2" ? "در انتظار بررسی کارپوشه" :
             invoice.StatusSentToSystem == "3" ? "ارسال شده" :
             invoice.StatusSentToSystem == "4" ? "ارسال شده در انتظار واکنش" :
-           invoice.StatusSentToSystem == "5" ? "دارای خطا" : "بدون نیاز به واکنش";
+           invoice.StatusSentToSystem == "5" ? "دارای خطا" :
+           invoice.StatusSentToSystem == "6" ? "بدون نیاز به واکنش" :
+           invoice.StatusSentToSystem == "7" ? "تأیید شده" :
+           invoice.StatusSentToSystem == "8" ? "رد شده" : "وضعیت نامشخص";
                     invoiceInfo.StatusSentToSystemInt = invoice.StatusSentToSystem;
 
                     invoiceInfo.InvoiceItems = new ObservableCollection<VmInvoiceItems>(
@@ -2143,6 +2150,27 @@ context.Customers.Any(x =>
                         case "IN_PROGRESS":
                             currentInvoice.StatusSentToSystem = "2";
                             model.Data = "عدم پاسخگویی سامانه";
+                            break;
+
+                        case "PENDING":
+                            // در کارپوشه درج شده و در انتظار واکنش خریدار
+                            currentInvoice.StatusSentToSystem = "4";
+                            model.Data = "در انتظار واکنش";
+                            break;
+
+                        case "RECEIVE_INVOICE_CONFIRM":
+                        case "SYSTEM_CONFIRM":
+                            // تأیید دستی خریدار یا تأیید سیستمی (پایان مهلت ۳۰ روزه)
+                            currentInvoice.StatusSentToSystem = "7";
+                            currentInvoice.ShowButtons = true;
+                            model.Data = "تأیید شده";
+                            break;
+
+                        case "REJECT":
+                            // رد توسط خریدار — فروشنده باید ابطال یا اصلاحی صادر کند
+                            currentInvoice.StatusSentToSystem = "8";
+                            currentInvoice.ShowButtons = true;
+                            model.Data = "رد شده";
                             break;
 
                         case "FAILED":

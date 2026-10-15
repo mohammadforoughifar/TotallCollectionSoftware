@@ -30,24 +30,40 @@ public static class MoadianUi
         "5" => "دارای خطا",
         "6" => "بدون نیاز به واکنش",
         "7" => "تأیید شده",
+        "8" => "رد شده",
         null or "" => "وضعیت نامشخص",
         _ => $"وضعیت نامعتبر ({code})"
     };
 
-    /// <summary>شرط‌های صرفاً نمایشی عملیات ردیف؛ هیچ فراخوانی یا قاعدهٔ ارسال در این helper نیست.</summary>
-    public static bool CanEdit(string? code) => code == "0";
-    public static bool CanSend(string? code, bool showButtons) => showButtons && code == "0";
+    // ---------- ماتریس «هر دکمه چه‌وقتی» — مطابق گزارش R&D (MOADIAN-STATUS-BUTTONS-RD.md) ----------
+    /// <summary>ویرایش: ارسال‌نشده (0) + دارای خطا (5) — بعد از خطای قطعی، رفع خطا و ارسال مجدد.</summary>
+    public static bool CanEdit(string? code) => code == "0" || code == "5";
+    /// <summary>ارسال: ارسال اولیه (0) + ارسال مجدد پس از رفع خطا (5). وضعیت 1 ممنوع — مرجع دارد و در سامانه است
+    /// (ارسال مجدد = ریسک ثبت دوتایی؛ ابتدا «استعلام» زده شود). ShowButtons گیت سمت سرور است.</summary>
+    public static bool CanSend(string? code, bool showButtons)
+        => showButtons && (code == "0" || code == "5");
+    /// <summary>حذف: فقط ردیف ارسال‌نشده (بعد از ارسال، حذف قانوناً ممکن نیست).</summary>
     public static bool CanDelete(string? code, bool showButtons) => showButtons && code == "0";
     public static bool HasReference(string? referenceId) => !string.IsNullOrWhiteSpace(referenceId);
-    public static bool CanUseReferenceActions(string? referenceId, bool showButtons)
-        => HasReference(referenceId) && showButtons;
+    /// <summary>استعلام: هر وضعیتی که مرجع دارد (پیگیری تا قطعی). استعلام خواندنی است — ShowButtons شرط نیست.</summary>
+    public static bool CanInquiry(string? code, string? referenceId)
+        => HasReference(referenceId) && code is "1" or "2" or "3" or "4" or "5" or "7" or "8";
+    /// <summary>خطاها: فقط خطای قطعی (5) — فهرست خطا از دادهٔ FAILED استعلام می‌آید.</summary>
+    public static bool CanShowErrors(string? code) => code == "5";
+    /// <summary>اصلاحی/برگشت: مرجع باید در کارپوشه ثبت‌شده و غیرباطل باشد.
+    /// ShowButtons شرط نیست — سرور بلافاصله بعد از ارسال آن را false می‌کند و عملیات سامانه‌ای را می‌بست.</summary>
+    public static bool CanReference(string? code, string? referenceId)
+        => HasReference(referenceId) && code is "3" or "4" or "7" or "8";
+    /// <summary>ابطال: قاعدهٔ رسمی «هر وضعیتی غیر از باطل‌شده» (ثبت‌شده در سامانه).</summary>
+    public static bool CanEbtal(string? code, string? referenceId)
+        => HasReference(referenceId) && code is "2" or "3" or "4" or "7" or "8";
 
     /// <summary>آدرس رسمی درگاه ملی خدمات مالیاتی (ورودی کارپوشهٔ سامانهٔ مودیان) — نیازمند تأیید از سوی کارفرما.</summary>
     public const string WorkFolderUrl = "https://my.tax.gov.ir";
 
     /// <summary>کارپوشه برای صورتحساب‌هایی قابل مشاهده است که در سامانه ثبت شده‌اند (در حال بررسی / در انتظار واکنش / تأیید شده).</summary>
     public static bool CanViewWorkFolder(string? code, string? referenceId)
-        => HasReference(referenceId) && code is "2" or "4" or "7";
+        => HasReference(referenceId) && code is "2" or "4" or "7" or "8";
 
     /// <summary>کد وضعیت → کلاس رنگی برچسب.</summary>
     public static string StatusBadge(string? code) => code switch
@@ -60,6 +76,7 @@ public static class MoadianUi
         "5" => "badge-soft-danger",
         "6" => "badge-soft-muted",
         "7" => "badge-soft-success",
+        "8" => "badge-soft-danger",
         _ => "badge-soft-muted"
     };
 
@@ -82,6 +99,7 @@ public static class MoadianUi
         "5" => "mi-s5",
         "6" => "mi-s6",
         "7" => "mi-s7",
+        "8" => "mi-s8",
         _ => "mi-s0"
     };
 

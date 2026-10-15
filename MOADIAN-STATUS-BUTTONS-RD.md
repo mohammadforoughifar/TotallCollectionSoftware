@@ -114,7 +114,7 @@
 
 ## ۵. برنامهٔ عملیاتی
 
-### 5.1 سمت کلاینت (`MoadianUi`) — امن، بدون تغییر بک‌اند
+### 5.1 سمت کلاینت (`MoadianUi`) — پیاده‌سازی‌شده ✅
 ```csharp
 public static bool CanEdit(string? code) => code == "0" || code == "5";
 public static bool CanSend(string? code, bool showButtons)
@@ -122,12 +122,17 @@ public static bool CanSend(string? code, bool showButtons)
 public static bool CanInquiry(string? code, string? referenceId)
     => HasReference(referenceId) && code is "1" or "2" or "3" or "4" or "5" or "7" or "8";
 public static bool CanShowErrors(string? code) => code == "5";
-public static bool CanReference(string? code, string? referenceId, bool showButtons)
-    => showButtons && HasReference(referenceId) && code is "3" or "4" or "7" or "8";
-public static bool CanEbtal(string? code, string? referenceId, bool showButtons)
-    => showButtons && HasReference(referenceId) && code is "2" or "3" or "4" or "7" or "8";
+public static bool CanReference(string? code, string? referenceId)
+    => HasReference(referenceId) && code is "3" or "4" or "7" or "8";
+public static bool CanEbtal(string? code, string? referenceId)
+    => HasReference(referenceId) && code is "2" or "3" or "4" or "7" or "8";
 public static bool CanDelete(string? code, bool showButtons) => showButtons && code == "0";
 ```
+نکتهٔ عملیاتی: `CanReference`/`CanEbtal`/`CanInquiry` عمداً `showButtons` را شرط **نمی‌کنند**؛
+سرور بلافاصله بعد از ارسال `ShowButtons=false` می‌کند و در غیر این‌صورت عملیات سامانه‌ای
+(اصلاحی/برگشت/ابطال) برای وضعیت‌های ۴/۷/۸ هرگز فعال نمی‌شدند. `ShowButtons` فقط گیتِ
+«ارسال» و «حذف» (عملیات روی دادهٔ خود ما) باقی می‌ماند.
+
 تغییرات مارک‌آپ: دکمهٔ استعلام از `HasReference` جدا شود (`CanInquiry`)؛ دکمهٔ خطاها
 → `CanShowErrors`؛ سه دکمهٔ ارجاعی به‌جای `CanUseReferenceActions` از `CanReference`/`CanEbtal`
 استفاده کنند. (همین تغییر در جدول دسکتاپ + کارت موبایل.)
@@ -139,7 +144,7 @@ public static bool CanDelete(string? code, bool showButtons) => showButtons && c
 `HasReference && status ∈ {2,4,7}`. آدرس: `MoadianUi.WorkFolderUrl = "https://my.tax.gov.ir"`
 (درگاه رسمی ملی خدمات مالیاتی — **نیازمند تأیید کارفرما**؛ به‌راحتی از یک کانتست تغییر می‌کند).
 
-### 5.2 سمت سرور (`ConnectService.EstelamInvoiceAsync`) — نیاز به تأیید شما (تغییر سرویس پورت‌شده)
+### 5.2 سمت سرور (`ConnectService.EstelamInvoiceAsync`) — پیاده‌سازی‌شده ✅ (با تأیید کارفرما)
 ```
 case "RECEIVE_INVOICE_CONFIRM": status = "7"; ShowButtons = true;  // تأیید خریدار
 case "SYSTEM_CONFIRM":          status = "7"; ShowButtons = true;  // تأیید سیستمی

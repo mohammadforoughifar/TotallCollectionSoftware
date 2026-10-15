@@ -205,37 +205,43 @@ else
                                                     <i class="bi bi-send" aria-hidden="true"></i>
                                                 </button>
                                             }
-                                            @if (MoadianUi.HasReference(inv.ReferenceId))
+@if (MoadianUi.CanInquiry(inv.StatusSentToSystemInt, inv.ReferenceId))
                                             {
-                                                                                                <button type="button" class="mpa mpa-sky mpa-ic" title="استعلام صورتحساب از سامانه مودیان" aria-label="استعلام صورتحساب از سامانه مودیان"
+                                                <button type="button" class="mpa mpa-sky mpa-ic" title="استعلام صورتحساب از سامانه مودیان" aria-label="استعلام صورتحساب از سامانه مودیان"
                                                         disabled="@acting" @onclick="() => EstelamRow(inv)">
                                                     <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
                                                 </button>
+                                            }
+                                            @if (MoadianUi.CanShowErrors(inv.StatusSentToSystemInt))
+                                            {
                                                 <button type="button" class="mpa mpa-red mpa-ic" title="نمایش خطاهای صورتحساب" aria-label="نمایش خطاهای صورتحساب"
                                                         disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
                                                     <i class="bi bi-bug" aria-hidden="true"></i>
                                                 </button>
-                                                @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
-                                                {
-                                                    <a class="mpa mpa-cyan mpa-ic" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener"
-                                                       title="مشاهدهٔ صورتحساب در کارپوشهٔ سامانهٔ مودیان (در پنجرهٔ جدید باز می‌شود)" aria-label="مشاهده در کارپوشه">
-                                                        <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                                                    </a>
-                                                }
-                                                @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
-                                                {
-                                                    <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
-                                                        <i class="bi bi-pencil-square" aria-hidden="true"></i>
-                                                    </NavLink>
-                                                    <button type="button" class="mpa mpa-indigo mpa-ic" title="صدور برگشت از فروش" aria-label="صدور برگشت از فروش"
-                                                            disabled="@acting" @onclick="() => SalesReturnRow(inv)">
-                                                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
-                                                    </button>
-                                                    <button type="button" class="mpa mpa-dark mpa-ic" title="ابطال صورتحساب در سامانه مودیان" aria-label="ابطال صورتحساب در سامانه مودیان"
-                                                            disabled="@acting" @onclick="() => EbtalRow(inv)">
-                                                        <i class="bi bi-x-octagon" aria-hidden="true"></i>
-                                                    </button>
-                                                }
+                                            }
+                                            @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <a class="mpa mpa-cyan mpa-ic" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener"
+                                                   title="مشاهدهٔ صورتحساب در کارپوشهٔ سامانه مودیان (در پنجرهٔ جدید باز می‌شود)" aria-label="مشاهده در کارپوشه">
+                                                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                                </a>
+                                            }
+                                            @if (MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{inv.Id}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
+                                                    <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                                                </NavLink>
+                                                <button type="button" class="mpa mpa-indigo mpa-ic" title="صدور برگشت از فروش" aria-label="صدور برگشت از فروش"
+                                                        disabled="@acting" @onclick="() => SalesReturnRow(inv)">
+                                                    <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                            @if (MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <button type="button" class="mpa mpa-dark mpa-ic" title="ابطال صورتحساب در سامانه مودیان" aria-label="ابطال صورتحساب در سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => EbtalRow(inv)">
+                                                    <i class="bi bi-x-octagon" aria-hidden="true"></i>
+                                                </button>
                                             }
                                             @if (MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
                                             {
@@ -289,20 +295,26 @@ else
                                     {
                                         <button type="button" class="mpa mpa-green" disabled="@acting" aria-label="ارسال صورتحساب به سامانهٔ مودیان" @onclick="() => SendToMoadian(inv)"><i class="bi bi-send" aria-hidden="true"></i> ارسال</button>
                                     }
-                                    @if (MoadianUi.HasReference(inv.ReferenceId))
+@if (MoadianUi.CanInquiry(inv.StatusSentToSystemInt, inv.ReferenceId))
                                     {
                                         <button type="button" class="mpa mpa-sky" disabled="@acting" aria-label="استعلام صورتحساب" @onclick="() => EstelamRow(inv)"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> استعلام</button>
+                                    }
+                                    @if (MoadianUi.CanShowErrors(inv.StatusSentToSystemInt))
+                                    {
                                         <button type="button" class="mpa mpa-red" disabled="@acting" aria-label="نمایش خطاهای صورتحساب" @onclick="() => ShowErrorsRow(inv)"><i class="bi bi-bug" aria-hidden="true"></i> خطاها</button>
-                                        @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
-                                        {
-                                            <a class="mpa mpa-cyan" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener" aria-label="مشاهده در کارپوشه"><i class="bi bi-folder2-open" aria-hidden="true"></i> کارپوشه</a>
-                                        }
-                                        @if (MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
-                                        {
-                                            <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{inv.Id}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
-                                            <button type="button" class="mpa mpa-indigo" disabled="@acting" aria-label="صدور برگشت از فروش" @onclick="() => SalesReturnRow(inv)"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> برگشت از فروش</button>
-                                            <button type="button" class="mpa mpa-dark" disabled="@acting" aria-label="ابطال صورتحساب در سامانهٔ مودیان" @onclick="() => EbtalRow(inv)"><i class="bi bi-x-octagon" aria-hidden="true"></i> ابطال</button>
-                                        }
+                                    }
+                                    @if (MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <a class="mpa mpa-cyan" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener" aria-label="مشاهده در کارپوشه"><i class="bi bi-folder2-open" aria-hidden="true"></i> کارپوشه</a>
+                                    }
+                                    @if (MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{inv.Id}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
+                                        <button type="button" class="mpa mpa-indigo" disabled="@acting" aria-label="صدور برگشت از فروش" @onclick="() => SalesReturnRow(inv)"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> برگشت از فروش</button>
+                                    }
+                                    @if (MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <button type="button" class="mpa mpa-dark" disabled="@acting" aria-label="ابطال صورتحساب در سامانه مودیان" @onclick="() => EbtalRow(inv)"><i class="bi bi-x-octagon" aria-hidden="true"></i> ابطال</button>
                                     }
                                     @if (MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
                                     {
@@ -379,6 +391,7 @@ else
         ("5", "دارای خطا", "bi-exclamation-triangle", "red"),
         ("6", "بدون نیاز به واکنش", "bi-archive", "stone"),
         ("7", "تأیید شده", "bi-check-circle", "green"),
+        ("8", "رد شده", "bi-x-diamond", "crimson"),
     };
 
     private PagedList<InvoiceVM>? data;
@@ -554,7 +567,7 @@ else
     /// <summary>برگشت از فروش — یک صورتحساب «برگشت از فروش» (Ins=4) بر اساس صورتحساب اصلی به سامانه ارسال می‌شود.</summary>
     private async Task SalesReturnRow(InvoiceVM inv)
     {
-        if (!MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
+        if (!MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
         {
             Toast.Info("برگشت از فروش برای وضعیت فعلی این صورتحساب در دسترس نیست.");
             return;
@@ -583,7 +596,7 @@ else
     /// <summary>ابطال صورتحساب در سامانهٔ مودیان — با تایید کاربر؛ صورتحساب ابطالی جدید (الگوی ابطال) ثبت می‌شود.</summary>
     private async Task EbtalRow(InvoiceVM inv)
     {
-        if (!MoadianUi.CanUseReferenceActions(inv.ReferenceId, inv.ShowButtons))
+        if (!MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
         {
             Toast.Info("ابطال برای وضعیت فعلی این صورتحساب در دسترس نیست.");
             return;

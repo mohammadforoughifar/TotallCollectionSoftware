@@ -2163,6 +2163,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mi-s5 { background: #fee2e2; color: #991b1b; }
 .mi-s6 { background: #f1f5f9; color: #475569; }
 .mi-s7 { background: #d1fae5; color: #065f46; }
+.mi-s8 { background: #fff1f2; color: #9f1239; }
 
 .mi-toolbar { padding: .95rem 1.15rem 1rem; }
 .mi-error { display: flex; gap: .75rem; align-items: flex-start; margin: 1rem 1rem 0; padding: .8rem 1rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; color: #991b1b; }
@@ -2187,6 +2188,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mi-acc2 { border-right-color: #f59e0b; } .mi-acc3 { border-right-color: #6366f1; }
 .mi-acc4 { border-right-color: #f97316; } .mi-acc5 { border-right-color: #ef4444; }
 .mi-acc6 { border-right-color: #cbd5e1; } .mi-acc7 { border-right-color: #10b981; }
+.mi-acc8 { border-right-color: #e11d48; }
 .mi-card-amount { font-size: 1.05rem; font-weight: 800; color: var(--text); }
 .mi-card-amount small { font-size: .68rem; font-weight: 600; color: var(--text-muted); }
 .mi-card-hr { margin: .85rem 0 .15rem; border-color: var(--border); }
@@ -2254,6 +2256,8 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mpill-red.active    { background: #dc2626; border-color: #dc2626; }
 .mpill-slate.active  { background: #64748b; border-color: #64748b; }
 .mpill-stone.active  { background: #78716c; border-color: #78716c; }
+.mpill-crimson { border-color: #be123c; background: #fff1f2; color: #9f1239; }  .mpill-crimson .mpill-ic { background: #ffe4e6; color: #be123c; }
+.mpill-crimson.active { background: #be123c; border-color: #be123c; }
 
 /* واریانت کارت — دسترسی سریع داشبورد */
 .mpill-card {

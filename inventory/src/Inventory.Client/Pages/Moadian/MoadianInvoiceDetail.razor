@@ -50,24 +50,27 @@ else
                 </div>
             </div>
             <div class="mi-hero-bar d-flex gap-2 flex-wrap align-items-center">
-            @if (vm.ShowButtons && vm.StatusSentToSystemInt == "0")
+            @if (MoadianUi.CanSend(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
-                <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
-                    <i class="bi bi-braces"></i> پیش‌نمایش JSON
-                </button>
+                @if (vm.StatusSentToSystemInt == "0")
+                {
+                    <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
+                        <i class="bi bi-braces"></i> پیش‌نمایش JSON
+                    </button>
+                }
                 <button class="btn btn-primary" @onclick="Send" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-send"></i> }
-                    ارسال به سامانه
+                    @(vm.StatusSentToSystemInt == "5" ? "ارسال مجدد به سامانه" : "ارسال به سامانه")
                 </button>
             }
-            @if (vm.ShowButtons && (vm.StatusSentToSystemInt == "1" || vm.StatusSentToSystemInt == "4"))
+            @if (MoadianUi.CanInquiry(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <button class="btn btn-outline-primary" @onclick="Estelam" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-search"></i> }
                     استعلام وضعیت
                 </button>
             }
-            @if (vm.StatusSentToSystemInt == "5" && !string.IsNullOrEmpty(vm.ReferenceId))
+            @if (MoadianUi.CanShowErrors(vm.StatusSentToSystemInt))
             {
                 <button class="btn btn-outline-danger" @onclick="ShowError" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-exclamation-octagon"></i> }
@@ -80,15 +83,18 @@ else
                     <i class="bi bi-folder2-open" aria-hidden="true"></i> مشاهده در کارپوشه
                 </a>
             }
-            @if (vm.ShowButtons && (vm.StatusSentToSystemInt == "4" || vm.StatusSentToSystemInt == "5"))
+            @if (MoadianUi.CanReference(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{vm.Id}/eslahi")"><i class="bi bi-pencil"></i> اصلاحی</NavLink>
+            }
+            @if (MoadianUi.CanEbtal(vm.StatusSentToSystemInt, vm.ReferenceId))
+            {
                 <button class="btn btn-outline-danger" @onclick="Ebtal" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-x-octagon"></i> }
                     ابطال
                 </button>
             }
-            @if (vm.ShowButtons && vm.StatusSentToSystemInt == "0")
+            @if (MoadianUi.CanDelete(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
                 <button class="btn btn-outline-secondary ms-auto" @onclick="Delete" disabled="@acting">
                     <i class="bi bi-trash"></i> حذف
