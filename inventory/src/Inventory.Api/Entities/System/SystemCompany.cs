@@ -13,7 +13,7 @@ public class SystemCompany
 
     /// <summary>
     /// مسیر فایل PDF سربرگ نسبت به wwwroot (مثال:
-    /// «uploads/letterheads/homepa_company3_letterhead.pdf»).
+    /// «uploads/letterheads/company-letterhead.pdf»).
     /// هنگام چاپ نامه صادره، متن نامه روی همین سربرگ قرار می‌گیرد.
     /// </summary>
     [MaxLength(200)] public string? LetterheadFileName { get; set; }

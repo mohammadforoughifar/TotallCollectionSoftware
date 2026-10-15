@@ -39,10 +39,14 @@ public interface IOutgoingLetterPrintService
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
-    // Company 3 is Homepa in the current system data. Keep the dedicated fallback
-    // centralized here so an ID change requires only one code update.
-    private const int HomepaCompanyId = 3;
-    private const string HomepaLetterheadRelativePath = "uploads/letterheads/homepa_company3_letterhead.pdf";
+    // Homepa's current SystemCompanies ID is 1003. Keep the ID mapping centralized.
+    private const int HomepaCompanyId = 1003;
+    private static readonly string[] HomepaLetterheadRelativePaths =
+    {
+        "uploads/letterheads/homepa_company1003_letterhead.pdf",
+        // Legacy filename is retained for existing deployments and DB values.
+        "uploads/letterheads/homepa_company3_letterhead.pdf"
+    };
 
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
@@ -126,15 +130,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     {
         if (company != null && company.Id == HomepaCompanyId)
         {
-            var homepaPath = ResolveLetterheadPath(HomepaLetterheadRelativePath);
+            var homepaPath = HomepaLetterheadRelativePaths
+                .Select(ResolveLetterheadPath)
+                .FirstOrDefault(path => path != null);
             if (homepaPath != null) return homepaPath;
 
-            // Allow a deployment-specific location only if it still names Homepa's PDF.
+            // Accept a configured Homepa filename if deployment uses another path/name.
             var configuredHomepaPath = ResolveLetterheadPath(company.LetterheadFileName);
-            if (configuredHomepaPath != null && string.Equals(
-                    Path.GetFileName(configuredHomepaPath),
-                    Path.GetFileName(HomepaLetterheadRelativePath),
-                    StringComparison.OrdinalIgnoreCase))
+            if (configuredHomepaPath != null && Path.GetFileName(configuredHomepaPath)
+                    .StartsWith("homepa_", StringComparison.OrdinalIgnoreCase))
                 return configuredHomepaPath;
 
             return null;
