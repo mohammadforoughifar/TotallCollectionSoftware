@@ -12,8 +12,8 @@ public class SystemCompany
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     /// <summary>
-    /// نام فایل PDF سربرگ شرکت — فایل باید در مسیر روت API قرار داشته باشد
-    /// (مثال: «letterhead-forough.pdf» در کنار فایل اجرایی/روت پروژه API).
+    /// مسیر فایل PDF سربرگ نسبت به wwwroot (مثال:
+    /// «uploads/letterheads/company-letterhead.pdf»).
     /// هنگام چاپ نامه صادره، متن نامه روی همین سربرگ قرار می‌گیرد.
     /// </summary>
     [MaxLength(200)] public string? LetterheadFileName { get; set; }

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homepa | Company 3 outgoing letter previews</title>
+  <style id="paperStyles">
+    @font-face {
+      font-family: "Vazirmatn";
+      src: url("assets/Vazirmatn-Regular.ttf") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Vazirmatn";
+      src: url("assets/Vazirmatn-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    :root {
+      color-scheme: light;
+      font-family: "Vazirmatn", Tahoma, sans-serif;
+      background: #edf2f7;
+      color: #17212b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(25, 84, 153, .10), transparent 34rem),
+        #edf2f7;
+      font-family: "Vazirmatn", Tahoma, sans-serif;
+    }
+    .app-shell { max-width: 1320px; margin: 0 auto; padding: 28px 24px 42px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      padding: 20px 24px; border-radius: 18px; color: white;
+      background: linear-gradient(115deg, #124f98, #2676bc 62%, #4196ce);
+      box-shadow: 0 12px 30px rgba(24, 64, 111, .18);
+    }
+    .brand { display: flex; align-items: center; gap: 15px; min-width: 0; }
+    .brand-mark {
+      width: 48px; height: 48px; display: grid; place-items: center; flex: 0 0 auto;
+      border: 1px solid rgba(255,255,255,.28); border-radius: 14px;
+      background: rgba(255,255,255,.14); font-size: 25px; font-weight: 700;
+    }
+    h1 { margin: 0; font-size: clamp(19px, 3vw, 26px); line-height: 1.35; }
+    .subtitle { margin: 3px 0 0; color: rgba(255,255,255,.83); font-size: 14px; }
+    .rtl-badge {
+      padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3);
+      background: rgba(255,255,255,.12); white-space: nowrap; font-size: 13px;
+    }
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin: 22px 0 16px; flex-wrap: wrap;
+    }
+    .size-switch { display: flex; gap: 8px; padding: 5px; background: #dce5ef; border-radius: 13px; }
+    .size-switch button, .pdf-link {
+      border: 0; border-radius: 9px; padding: 10px 18px; font: inherit; font-size: 14px;
+      cursor: pointer; text-decoration: none; transition: .16s ease;
+    }
+    .size-switch button { color: #35516d; background: transparent; }
+    .size-switch button[aria-pressed="true"] {
+      color: #fff; background: #175d9f; box-shadow: 0 3px 9px rgba(23,93,159,.25);
+    }
+    .downloads { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pdf-link { color: #175d9f; background: #fff; border: 1px solid #d4e0ec; }
+    .pdf-link:hover { background: #f6fbff; border-color: #9ebbd7; }
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+    .preview-card, .info-card {
+      border: 1px solid #d9e2ec; border-radius: 17px; background: rgba(255,255,255,.78);
+      box-shadow: 0 9px 25px rgba(43, 68, 96, .07);
+    }
+    .preview-card { padding: 18px; min-width: 0; }
+    .preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 2px 14px; }
+    .preview-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    .preview-head span { color: #66798e; font-size: 12px; }
+    #paper-host {
+      position: relative; display: flex; justify-content: center; align-items: flex-start;
+      width: 100%; min-height: 180px; overflow: hidden; border-radius: 12px;
+      background: linear-gradient(145deg, #dfe7ef, #f6f8fb);
+      padding: 14px 0;
+    }
+    .paper-stage { position: relative; flex: 0 0 auto; transform-origin: top center; }
+    .paper {
+      position: relative; overflow: hidden; flex: 0 0 auto;
+      background: #fff url("assets/homepa_company3_letterhead.png") center / 100% 100% no-repeat;
+      color: #101820; font-family: "Vazirmatn", Tahoma, sans-serif;
+      box-shadow: 0 9px 28px rgba(14, 34, 56, .22);
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    }
+    .paper.a5 { width: 5.83in; height: 8.27in; }
+    .paper.a4 { width: 8.27in; height: 11.69in; }
+    .field {
+      position: absolute; margin: 0; overflow: hidden; box-sizing: border-box;
+      direction: rtl; unicode-bidi: plaintext; text-align: right;
+      font-weight: 400; color: #101820;
+    }
+    .meta {
+      color: #fff; font-size: 10pt; line-height: 1.18; white-space: nowrap;
+      text-align: right; direction: ltr; unicode-bidi: isolate;
+    }
+    .meta-attach { font-size: 12pt; direction: rtl; unicode-bidi: plaintext; }
+    .receiver, .title { direction: rtl; unicode-bidi: plaintext; text-align: right; white-space: nowrap; }
+    .receiver-label, .title-label { direction: rtl; unicode-bidi: plaintext; text-align: left; white-space: nowrap; }
+    .body-copy { white-space: normal; line-height: 1.48; }
+    .copy-to { white-space: pre-line; line-height: 1.45; }
+    .signature { position: absolute; overflow: visible; }
+    .signature path { fill: none; stroke: #174b8e; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+    .sign-role, .sign-name { text-align: center; direction: rtl; unicode-bidi: plaintext; white-space: nowrap; }
+    .sign-role { font-weight: 400; }
+    .sign-name { font-weight: 700; }
+    .info-card { padding: 19px; }
+    .info-card h3 { margin: 0 0 11px; font-size: 15px; }
+    .info-card p { margin: 0 0 12px; color: #5b6e82; font-size: 13px; line-height: 1.8; }
+    .info-card ul { padding: 0 18px 0 0; margin: 6px 0 0; color: #5b6e82; font-size: 12px; line-height: 2; }
+    .status { display: inline-flex; align-items: center; gap: 7px; margin-top: 5px; padding: 6px 9px; border-radius: 8px; background: #edf8f1; color: #276743; font-size: 12px; }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #38a169; }
+    .footer-note { margin: 14px 4px 0; color: #718196; font-size: 12px; text-align: center; }
+    @media (max-width: 980px) {
+      .content-grid { grid-template-columns: minmax(0,1fr); }
+      .info-card { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 18px; }
+      .info-card h3 { grid-column: 1 / -1; }
+      .info-card ul { margin-top: 0; }
+    }
+    @media (max-width: 600px) {
+      .app-shell { padding: 14px 10px 28px; }
+      .topbar { align-items: flex-start; padding: 15px; }
+      .rtl-badge { display: none; }
+      .toolbar { margin-top: 15px; }
+      .size-switch button { padding: 9px 14px; }
+      .downloads { width: 100%; }
+      .pdf-link { flex: 1; text-align: center; padding: 9px 8px; font-size: 12px; }
+      .preview-card { padding: 10px; }
+      .info-card { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">هـ</div>
+        <div>
+          <h1>نامهٔ صادره | هومپا</h1>
+          <p class="subtitle">قالب‌های شرکت ۳ — پیش‌نمایش نمونهٔ A5 و A4</p>
+        </div>
+      </div>
+      <div class="rtl-badge">متن فارسی با جهت راست‌به‌چپ</div>
+    </header>
+
+    <section class="toolbar" aria-label="Preview controls">
+      <div class="size-switch" role="group" aria-label="انتخاب اندازه صفحه">
+        <button type="button" data-size="A5" aria-pressed="true">A5 · ۵٫۸۳ × ۸٫۲۷ اینچ</button>
+        <button type="button" data-size="A4" aria-pressed="false">A4 · ۸٫۲۷ × ۱۱٫۶۹ اینچ</button>
+      </div>
+      <nav class="downloads" aria-label="دانلود پیش‌نمایش PDF">
+        <a class="pdf-link" href="Report_A5_OutgoingLetter_Preview.pdf" download>PDF پیش‌نمایش A5</a>
+        <a class="pdf-link" href="Report_A4_OutgoingLetter_Preview.pdf" download>PDF پیش‌نمایش A4</a>
+        <a class="pdf-link" href="Preview_OutgoingLetter_Company3_A5_A4.pdf" download>PDF هر دو اندازه</a>
+      </nav>
+    </section>
+
+    <section class="content-grid">
+      <article class="preview-card">
+        <div class="preview-head">
+          <h2 id="preview-title">نمونهٔ A5</h2>
+          <span>داده‌ها و امضاها نمایشی هستند</span>
+        </div>
+        <div id="paper-host" aria-live="polite"></div>
+        <p class="footer-note">فونت و سربرگ هومپا استفاده شده‌اند؛ متن با پشتیبانی واقعی مرورگر از فارسی و RTL نمایش داده می‌شود.</p>
+      </article>
+      <aside class="info-card">
+        <h3>مشخصات پیش‌نمایش</h3>
+        <p>این نما برای بررسی جهت نوشتار فارسی، چینش سربرگ و فضای متن نامه ساخته شده است.</p>
+        <ul>
+          <li>سربرگ تمام‌صفحهٔ هومپا</li>
+          <li>قلم Vazirmatn</li>
+          <li>سه گروه امضا</li>
+          <li>فضای نوشتاری بزرگ‌تر در A4</li>
+        </ul>
+        <div class="status">RTL بررسی‌شده</div>
+      </aside>
+    </section>
+  </main>
+
+  <template id="tpl-A5">
+    <div class="paper a5" data-width="5.83" data-height="8.27" aria-label="پیش‌نمایش نامهٔ A5">
+      <div class="field meta" style="left:.10in;top:.57in;width:.82in;height:.18in"><bdi dir="ltr">۱۴۰۵۰۳۰۱۸</bdi></div>
+      <div class="field meta" style="left:.10in;top:.73in;width:.82in;height:.18in"><bdi dir="ltr">۱۴۰۵/۰۷/۲۲</bdi></div>
+      <div class="field meta meta-attach" style="left:.10in;top:.89in;width:.82in;height:.18in">دارد</div>
+
+      <div class="field receiver" style="left:0;top:1.75in;width:4.08in;height:.22in;font-size:14pt;line-height:1.2">مدیرعامل محترم شرکت نمونه</div>
+      <div class="field receiver-label" style="left:4.20in;top:1.75in;width:1in;height:.22in;font-size:9pt;line-height:1.2">گیرنده نامه:</div>
+      <div class="field title" style="left:0;top:2.05in;width:4.08in;height:.22in;font-size:12pt;line-height:1.2">ارسال برنامهٔ اجرایی پروژه</div>
+      <div class="field title-label" style="left:4.20in;top:2.05in;width:1in;height:.22in;font-size:9pt;line-height:1.2">عنوان نامه:</div>
+
+      <div class="field body-copy" style="left:.10in;top:2.35in;width:4.80in;height:3.08in;font-size:12pt">
+        با سلام و احترام،<br>
+        پیرو جلسهٔ مورخ <bdi dir="ltr">۱۴۰۵/۰۷/۲۰</bdi> و هماهنگی‌های انجام‌شده، برنامهٔ اجرایی پروژه جهت بررسی و اقدام ارسال می‌شود.<br>
+        خواهشمند است ضمن بررسی زمان‌بندی، مسئولیت‌ها و منابع مورد نیاز، نظر نهایی خود را تا پایان هفته اعلام فرمایید.<br>
+        در صورت تأیید، تیم اجرایی مطابق برنامهٔ پیوست کار را آغاز خواهد کرد.<br>
+        پیشاپیش از توجه و همکاری ارزشمند جنابعالی سپاسگزاریم.<br>
+        با احترام
+      </div>
+      <div class="field copy-to" style="left:3.10in;top:5.55in;width:1.90in;height:1.38in;font-size:12pt">نسخه: بایگانی<br>جهت اطلاع</div>
+
+      <svg class="signature" style="left:.10in;top:5.55in;width:.90in;height:.72in" viewBox="0 0 100 72" aria-hidden="true"><path d="M4 42 C12 18 15 10 20 60 C26 45 32 22 39 31 C44 38 43 58 50 52 C57 45 58 19 64 27 C71 35 71 60 78 47 C85 34 89 36 96 43 M27 55 C43 67 68 58 92 52"/></svg>
+      <svg class="signature" style="left:1.10in;top:5.55in;width:1.00in;height:.72in" viewBox="0 0 100 72" aria-hidden="true"><path d="M4 40 C13 49 14 19 21 17 C27 15 29 64 36 56 C42 49 41 30 48 30 C57 30 57 53 64 47 C71 41 69 20 77 23 C86 27 84 47 96 44 M20 57 C40 64 69 58 92 52"/></svg>
+      <svg class="signature" style="left:2.20in;top:5.55in;width:.80in;height:.72in" viewBox="0 0 100 72" aria-hidden="true"><path d="M3 43 C13 24 17 20 21 54 C27 56 30 26 37 25 C44 25 45 53 51 53 C59 53 60 23 66 24 C72 25 73 50 80 47 C86 44 89 38 97 42 M28 58 C47 63 69 57 91 51"/></svg>
+      <div class="field sign-role" style="left:.10in;top:6.35in;width:1in;height:.20in;font-size:12pt">مدیرعامل</div>
+      <div class="field sign-role" style="left:1.10in;top:6.35in;width:1in;height:.20in;font-size:12pt">مدیر پروژه</div>
+      <div class="field sign-role" style="left:2.20in;top:6.35in;width:.90in;height:.20in;font-size:12pt">مدیر مالی</div>
+      <div class="field sign-name" style="left:.10in;top:6.55in;width:1in;height:.20in;font-size:12pt">مهدی رضایی</div>
+      <div class="field sign-name" style="left:1.10in;top:6.55in;width:1in;height:.20in;font-size:12pt">سارا احمدی</div>
+      <div class="field sign-name" style="left:2.20in;top:6.55in;width:.90in;height:.20in;font-size:12pt">علی مرادی</div>
+    </div>
+  </template>
+
+  <template id="tpl-A4">
+    <div class="paper a4" data-width="8.27" data-height="11.69" aria-label="پیش‌نمایش نامهٔ A4">
+      <div class="field meta" style="left:.20in;top:.84in;width:1.14in;height:.20in"><bdi dir="ltr">۱۴۰۵۰۳۰۱۸</bdi></div>
+      <div class="field meta" style="left:.20in;top:1.07in;width:1.14in;height:.20in"><bdi dir="ltr">۱۴۰۵/۰۷/۲۲</bdi></div>
+      <div class="field meta meta-attach" style="left:.20in;top:1.30in;width:1.14in;height:.20in">دارد</div>
+
+      <div class="field receiver" style="left:.35in;top:2.42in;width:6in;height:.28in;font-size:14pt;line-height:1.25">مدیرعامل محترم شرکت نمونه</div>
+      <div class="field receiver-label" style="left:6.45in;top:2.42in;width:1.35in;height:.28in;font-size:12pt;line-height:1.25;font-weight:700">گیرنده نامه:</div>
+      <div class="field title" style="left:.35in;top:2.80in;width:6in;height:.30in;font-size:14pt;line-height:1.25">ارسال برنامهٔ اجرایی پروژه</div>
+      <div class="field title-label" style="left:6.45in;top:2.80in;width:1.35in;height:.30in;font-size:12pt;line-height:1.25;font-weight:700">عنوان نامه:</div>
+
+      <div class="field body-copy" style="left:.40in;top:3.17in;width:7.35in;height:4.22in;font-size:14pt;line-height:1.52">
+        با سلام و احترام،<br>
+        پیرو جلسهٔ مورخ <bdi dir="ltr">۱۴۰۵/۰۷/۲۰</bdi> و هماهنگی‌های انجام‌شده، برنامهٔ اجرایی پروژه جهت بررسی و اقدام ارسال می‌شود.<br>
+        خواهشمند است ضمن بررسی زمان‌بندی، مسئولیت‌ها و منابع مورد نیاز، نظر نهایی خود را تا پایان هفته اعلام فرمایید.<br>
+        در صورت تأیید، تیم اجرایی مطابق برنامهٔ پیوست کار را آغاز خواهد کرد.<br>
+        پیشاپیش از توجه و همکاری ارزشمند جنابعالی سپاسگزاریم.<br>
+        با احترام
+      </div>
+      <div class="field copy-to" style="left:5.25in;top:7.55in;width:2.50in;height:1.45in;font-size:14pt">نسخه: بایگانی<br>جهت اطلاع</div>
+
+      <svg class="signature" style="left:.30in;top:8.05in;width:1.45in;height:1.05in" viewBox="0 0 100 72" aria-hidden="true"><path d="M4 42 C12 18 15 10 20 60 C26 45 32 22 39 31 C44 38 43 58 50 52 C57 45 58 19 64 27 C71 35 71 60 78 47 C85 34 89 36 96 43 M27 55 C43 67 68 58 92 52"/></svg>
+      <svg class="signature" style="left:1.95in;top:8.05in;width:1.45in;height:1.05in" viewBox="0 0 100 72" aria-hidden="true"><path d="M4 40 C13 49 14 19 21 17 C27 15 29 64 36 56 C42 49 41 30 48 30 C57 30 57 53 64 47 C71 41 69 20 77 23 C86 27 84 47 96 44 M20 57 C40 64 69 58 92 52"/></svg>
+      <svg class="signature" style="left:3.60in;top:8.05in;width:1.45in;height:1.05in" viewBox="0 0 100 72" aria-hidden="true"><path d="M3 43 C13 24 17 20 21 54 C27 56 30 26 37 25 C44 25 45 53 51 53 C59 53 60 23 66 24 C72 25 73 50 80 47 C86 44 89 38 97 42 M28 58 C47 63 69 57 91 51"/></svg>
+      <div class="field sign-role" style="left:.30in;top:9.18in;width:1.45in;height:.22in;font-size:14pt">مدیرعامل</div>
+      <div class="field sign-role" style="left:1.95in;top:9.18in;width:1.45in;height:.22in;font-size:14pt">مدیر پروژه</div>
+      <div class="field sign-role" style="left:3.60in;top:9.18in;width:1.45in;height:.22in;font-size:14pt">مدیر مالی</div>
+      <div class="field sign-name" style="left:.30in;top:9.43in;width:1.45in;height:.24in;font-size:14pt">مهدی رضایی</div>
+      <div class="field sign-name" style="left:1.95in;top:9.43in;width:1.45in;height:.24in;font-size:14pt">سارا احمدی</div>
+      <div class="field sign-name" style="left:3.60in;top:9.43in;width:1.45in;height:.24in;font-size:14pt">علی مرادی</div>
+    </div>
+  </template>
+
+  <script>
+    const host = document.getElementById('paper-host');
+    const title = document.getElementById('preview-title');
+    let activeSize = 'A5';
+    function showPage(size) {
+      activeSize = size;
+      host.replaceChildren(document.getElementById(`tpl-${size}`).content.cloneNode(true));
+      title.textContent = `نمونهٔ ${size}`;
+      document.querySelectorAll('.size-switch button').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.size === size));
+      });
+      fitPage();
+    }
+    function fitPage() {
+      const paper = host.querySelector('.paper');
+      if (!paper) return;
+      const scale = Math.min(1, Math.max(.25, (host.clientWidth - 20) / paper.offsetWidth));
+      paper.style.transform = `scale(${scale})`;
+      host.style.height = `${paper.offsetHeight * scale + 28}px`;
+    }
+    document.querySelectorAll('.size-switch button').forEach(button => {
+      button.addEventListener('click', () => showPage(button.dataset.size));
+    });
+    new ResizeObserver(fitPage).observe(host);
+    document.fonts.ready.then(fitPage);
+    showPage(activeSize);
+  </script>
+</body>
+</html>

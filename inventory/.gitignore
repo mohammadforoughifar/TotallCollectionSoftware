@@ -38,3 +38,13 @@ src/Inventory.Api/wwwroot/*
 
 ## Legacy Aria dumps are kept compressed (see sql/legacy-aria.README.md)
 sql/legacy-aria/
+
+# Versioned Homepa letterhead assets used by company 1003's outgoing MRT templates.
+!src/Inventory.Api/wwwroot/uploads/
+!src/Inventory.Api/wwwroot/uploads/letterheads/
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company3_letterhead.pdf
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company3_letterhead.png
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company3_letterhead.jpg
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.pdf
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.png
+!src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.jpg
