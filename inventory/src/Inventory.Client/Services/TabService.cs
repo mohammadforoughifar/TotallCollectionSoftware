@@ -76,6 +76,11 @@ public sealed class TabService
     /// <summary>نگاشتِ مسیر به (عنوان، آیکون) — برگرفته از آیتم‌های منوی برنامه</summary>
     private static readonly (string Prefix, string Title, string Icon)[] Known =
     {
+        // سامانه مودیان — ترتیب مهم است: خاص قبل از عمومی
+        ("moadian/basic-info",          "سامانه مودیان — اطلاعات پایه", "bi-archive"),
+        ("moadian/invoices/new",        "سامانه مودیان — صورتحساب جدید", "bi-journal-plus"),
+        ("moadian/invoices",            "سامانه مودیان — صورتحساب‌ها",   "bi-journal-text"),
+        ("moadian",                     "سامانه مودیان — نمای کلی",     "bi-speedometer2"),
         ("reports/kardex",              "کاردکس کالا",          "bi-bar-chart-line"),
         ("reports/reorder",             "نقطه سفارش",           "bi-exclamation-triangle"),
         ("outgoing-letters/dabirkhane", "دبیرخانه نامه صادره",  "bi-mailbox"),
