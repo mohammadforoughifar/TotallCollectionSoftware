@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>تنظیمات برنامه (روش قیمت‌گذاری و موجودی منفی).</summary>
 [Route("api/settings")]
+[Inventory.Api.Infrastructure.ModulePermission("Settings")]
 public class SettingsController : ApiControllerBase
 {
     private readonly IInventoryService _service;
@@ -26,6 +27,7 @@ public class SettingsController : ApiControllerBase
 
 /// <summary>مدیریت معرف‌ها (بازاریاب‌ها).</summary>
 [Route("api/referrers")]
+[Inventory.Api.Infrastructure.ModulePermission("Referrers")]
 public class ReferrersController : ApiControllerBase
 {
     private readonly IInventoryService _service;

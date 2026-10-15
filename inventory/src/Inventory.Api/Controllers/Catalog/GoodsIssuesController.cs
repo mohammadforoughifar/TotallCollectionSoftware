@@ -11,6 +11,7 @@ namespace Inventory.Api.Controllers;
 /// </para>
 /// </summary>
 [Route("api/goods-issues")]
+[Inventory.Api.Infrastructure.ModulePermission("GoodsIssues")]
 public class GoodsIssuesController : ApiControllerBase
 {
     private readonly IGoodsIssueService _service;

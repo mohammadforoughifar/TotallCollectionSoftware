@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>مدیریت واحدهای شمارش کالا.</summary>
 [Route("api/units")]
+[Inventory.Api.Infrastructure.ModulePermission("Products")]
 public class UnitsController : ApiControllerBase
 {
     private readonly IInventoryService _service;

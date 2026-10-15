@@ -7,6 +7,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>اسناد خرید و فروش.</summary>
 [Route("api/orders")]
+[Inventory.Api.Infrastructure.ModulePermission("Orders")]
 public class OrdersController : ApiControllerBase
 {
     private readonly IInventoryService _service;

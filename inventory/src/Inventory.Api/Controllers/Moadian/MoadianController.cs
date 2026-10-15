@@ -16,6 +16,7 @@ namespace Inventory.Api.Controllers.Moadian
     // روی مسیر خام خودشان مپ می‌شدند و کلاینت 404 با بدنهٔ خالی می‌گرفت.
     [ApiController]
     [Route("Moadian")]
+    [MoadianPermission]
     public class MoadianController(IConnectService connectService, IWebHostEnvironment _env) : BaseApiController
     {
     

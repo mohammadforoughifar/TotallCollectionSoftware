@@ -468,7 +468,7 @@
     }
 
     @* ============ سامانه مودیان (صورتحساب الکترونیکی) ============ *@
-    @if (Auth.IsAdmin)
+    @if (Auth.CanSee("Moadian"))
     {
         <div class="nav-group group-moadian">
             <button type="button" class="nav-section-title nav-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">

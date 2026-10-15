@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>مدیریت انبارها.</summary>
 [Route("api/warehouses")]
+[Inventory.Api.Infrastructure.ModulePermission("Warehouses")]
 public class WarehousesController : ApiControllerBase
 {
     private readonly IInventoryService _service;

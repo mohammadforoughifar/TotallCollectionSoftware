@@ -362,9 +362,7 @@
         (fNature is null ? items : items.Where(t => t.Nature == fNature))
         .OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Name).ToList();
 
-    private bool CanSeeCode => Auth.Has("InvDocTypes.ViewCode") ||
-                               Auth.Has("InvDocTypes.Code") ||
-                               Auth.IsAdmin;
+    private bool CanSeeCode => Auth.Has("InvDocTypes.ViewCode") || Auth.IsAdmin;
 
     private void ShowTemplateNotice(InvDocType t)
     {

@@ -7,6 +7,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>مدیریت طرف حساب‌ها (مشتری/تأمین‌کننده).</summary>
 [Route("api/parties")]
+[Inventory.Api.Infrastructure.ModulePermission("Parties")]
 public class PartiesController : ApiControllerBase
 {
     private readonly IInventoryService _service;

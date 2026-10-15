@@ -7,6 +7,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>پذیرش و مدیریت تعمیرات.</summary>
 [Route("api/repairs")]
+[Inventory.Api.Infrastructure.ModulePermission("Repairs")]
 public class RepairsController : ApiControllerBase
 {
     private readonly IRepairService _svc;
@@ -54,6 +55,7 @@ public class RepairsController : ApiControllerBase
 
 /// <summary>مدیریت تعمیرکارها.</summary>
 [Route("api/technicians")]
+[Inventory.Api.Infrastructure.ModulePermission("Repairs")]
 public class TechniciansController : ApiControllerBase
 {
     private readonly IRepairService _svc;

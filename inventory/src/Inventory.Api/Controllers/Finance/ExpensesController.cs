@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>اسناد هزینه.</summary>
 [Route("api/expenses")]
+[Inventory.Api.Infrastructure.ModulePermission("Expenses")]
 public class ExpensesController : ApiControllerBase
 {
     private readonly IExpenseService _svc;
@@ -36,6 +37,7 @@ public class ExpensesController : ApiControllerBase
 
 /// <summary>دسته‌های هزینه (قابل مدیریت).</summary>
 [Route("api/expense-categories")]
+[Inventory.Api.Infrastructure.ModulePermission("Expenses")]
 public class ExpenseCategoriesController : ApiControllerBase
 {
     private readonly IExpenseService _svc;

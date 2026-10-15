@@ -45,7 +45,8 @@ public static class RbacSeeder
         // View: منو و مشاهده | Create: تسک/مشکل/changelog | Update: ویرایش و جابجایی وضعیت
         // Delete: حذف | Manage: تنظیم وضعیت‌ها/ماژول‌ها/اسپرینت | Assign: تخصیص به دیگران
         ["DevTeam"] = new[] { "View", "Create", "Update", "Delete", "Manage", "Assign" },
-        ["Settings"] = CrudActions,
+        // Manage: عملیات امنیتی/زیرساختی تنظیمات (مانند کلیدهای Push) که نباید صرفاً با Update عمومی مجاز شوند.
+        ["Settings"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Manage" },
         // تنظیمات شخصی کاربر: مشاهده صفحه، تغییر رمز و مدیریت گروه‌های شخصی گیرندگان نامه
         ["PersonalSettings"] = new[] { "Read", "ChangePassword", "ManageLetterGroups" },
         ["Warehouses"] = CrudActions,
@@ -75,6 +76,11 @@ public static class RbacSeeder
         ["TrsVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
         // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
         ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // ================== سامانه مودیان (صورتحساب الکترونیکی) ==================
+        // View: مشاهدهٔ فهرست‌ها و جزئیات | Configure: اتصال، کلید/حافظه مالیاتی، شرکت و دوره مالی
+        // MasterData: کالا، واحد و مشتری | Create/Update/Delete: چرخهٔ صورتحساب
+        // Send: ارسال/پیش‌نمایش/استعلام و بروزرسانی وضعیت کارپوشه | Diagnose: گزارش عیب‌یابی فنی
+        ["Moadian"] = new[] { "View", "Configure", "MasterData", "Create", "Update", "Delete", "Send", "Diagnose" },
         // ================== ماژول انبارگردانی و بارکد ==================
         // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
         ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },

@@ -116,6 +116,7 @@ public class AuthController : ControllerBase
 /// <summary>مدیریت کاربران — مدیر: کامل؛ اپراتور: بدون هیچ عملیاتی روی نقش/کاربر ادمین.</summary>
 [Route("api/users")]
 [Authorize(Roles = "Admin,Operator")]
+[Inventory.Api.Infrastructure.ModulePermission("SystemUsers")]
 public class UsersController : ApiControllerBase
 {
     private readonly IAuthService _auth;

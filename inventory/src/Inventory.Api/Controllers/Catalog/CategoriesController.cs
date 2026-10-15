@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>مدیریت گروه‌های کالا.</summary>
 [Route("api/categories")]
+[Inventory.Api.Infrastructure.ModulePermission("Products")]
 public class CategoriesController : ApiControllerBase
 {
     private readonly IInventoryService _service;

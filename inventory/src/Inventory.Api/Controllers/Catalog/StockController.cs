@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>موجودی انبار و اصلاح موجودی.</summary>
 [Route("api/stock")]
+[Inventory.Api.Infrastructure.ModulePermission("Stock")]
 public class StockController : ApiControllerBase
 {
     private readonly IInventoryService _service;

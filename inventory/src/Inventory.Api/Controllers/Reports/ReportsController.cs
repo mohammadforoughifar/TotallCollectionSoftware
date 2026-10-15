@@ -6,6 +6,7 @@ namespace Inventory.Api.Controllers;
 
 /// <summary>گزارش کاردکس کالا.</summary>
 [Route("api/kardex")]
+[Inventory.Api.Infrastructure.ModulePermission("ReportPages", "Kardex")]
 public class KardexController : ApiControllerBase
 {
     private readonly IInventoryService _service;
@@ -22,6 +23,7 @@ public class KardexController : ApiControllerBase
 
 /// <summary>گزارش نقطه سفارش.</summary>
 [Route("api/reorder")]
+[Inventory.Api.Infrastructure.ModulePermission("ReportPages", "Reorder")]
 public class ReorderController : ApiControllerBase
 {
     private readonly IInventoryService _service;
