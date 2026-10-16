@@ -147,6 +147,12 @@ public class WorkOrdersController : ControllerBase
         /// می‌تواند بخشی از کار را به‌صورت زیر-دستور به نفر بعدی ارجاع دهد.
         /// </summary>
         public int? ParentOrderId { get; set; }
+
+        /// <summary>پروژه کاری متصل (اختیاری) — باید باز و متعلق به شرکت فعال باشد.</summary>
+        public int? ProjectId { get; set; }
+
+        /// <summary>وزن دستور در پیشرفت پروژه: ۰ تا ۱۰ (۰ = مستثنی از محاسبه)؛ پیش‌فرض ۱.</summary>
+        public int Weight { get; set; } = 1;
     }
 
     /// <summary>
@@ -246,6 +252,19 @@ public class WorkOrdersController : ControllerBase
             dto.SourceId = null;
         }
 
+        // اتصال به پروژه کاری (اختیاری) — پروژه باید باز و متعلق به شرکت فعال باشد
+        WorkProject? project = null;
+        if (dto.ProjectId is > 0)
+        {
+            project = await _db.WorkProjects.FirstOrDefaultAsync(p => p.Id == dto.ProjectId.Value);
+            if (project is null || project.CompanyId != companyId.Value)
+                return BadRequest(new { message = "پروژه انتخابی معتبر نیست." });
+            if (project.Status != WorkProjectStatus.Open)
+                return BadRequest(new { message = "فقط به پروژه باز می‌توان دستور کار وصل کرد." });
+        }
+        if (dto.Weight is < 0 or > 10)
+            return BadRequest(new { message = "وزن دستور باید بین ۰ تا ۱۰ باشد." });
+
         var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id) && u.IsActive).ToListAsync();
         if (users.Count != dto.AssigneeUserIds.Distinct().Count())
             return BadRequest(new { message = "برخی گیرندگان وجود ندارند یا غیرفعال‌اند." });
@@ -262,7 +281,8 @@ public class WorkOrdersController : ControllerBase
             CompanyId = companyId.Value,
             OwnerUserId = MyUserId, OwnerName = await MyDisplayNameAsync(), DueAt = dto.DueAt,
             Priority = dto.Priority, Recurrence = dto.Recurrence, SourceModule = dto.SourceModule,
-            SourceId = dto.SourceId, SourceRefId = dto.SourceRefId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id
+            SourceId = dto.SourceId, SourceRefId = dto.SourceRefId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id,
+            ProjectId = project?.Id, Weight = dto.Weight
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
@@ -280,6 +300,8 @@ public class WorkOrdersController : ControllerBase
             Log(wo.Id, "Chained", $"زیر-دستورِ {parent.Number} «{parent.Title}»");
             Log(parent.Id, "Chained", $"زیر-دستور {wo.Number} «{wo.Title}» توسط {wo.OwnerName} ساخته شد");
         }
+        if (project != null)
+            _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = project.Id, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
@@ -303,6 +325,7 @@ public class WorkOrdersController : ControllerBase
             : null;
 
         await _notify.BroadcastChangedAsync("workorders");
+        if (project != null) await _notify.BroadcastChangedAsync("workprojects");
         return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult });
     }
 
@@ -330,6 +353,19 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
         if (!WorkOrderRecurrence.IsValid(dto.Recurrence))
             return BadRequest(new { message = "الگوی تکرار نامعتبر است." });
+
+        // اتصال به پروژه کاری — اگر عوض شده، پروژه جدید باید باز و هم‌شرکت دستور باشد
+        WorkProject? newProject = null;
+        if (dto.ProjectId is > 0)
+        {
+            newProject = await _db.WorkProjects.FirstOrDefaultAsync(p => p.Id == dto.ProjectId.Value);
+            if (newProject is null || (wo.CompanyId != null && newProject.CompanyId != wo.CompanyId.Value))
+                return BadRequest(new { message = "پروژه انتخابی معتبر نیست." });
+            if (newProject.Id != wo.ProjectId && newProject.Status != WorkProjectStatus.Open)
+                return BadRequest(new { message = "فقط به پروژه باز می‌توان دستور کار وصل کرد." });
+        }
+        if (dto.Weight is < 0 or > 10)
+            return BadRequest(new { message = "وزن دستور باید بین ۰ تا ۱۰ باشد." });
 
         if (wo.RecurrenceSeriesId != null && dto.Recurrence != wo.Recurrence)
             return BadRequest(new { message = "الگوی سری ثبت‌شده قابل تغییر از ویرایش یک نوبت نیست؛ ویرایش فقط روی همین نوبت اعمال می‌شود." });
@@ -388,6 +424,10 @@ public class WorkOrdersController : ControllerBase
         wo.Tags = NormalizeTags(dto.Tags);
         wo.OwnerName = await MyDisplayNameAsync();
 
+        var oldProjectId = wo.ProjectId;
+        wo.ProjectId = newProject?.Id;
+        wo.Weight = dto.Weight;
+
         // همگام‌سازی چک‌لیست: آیتم‌های تیک‌خورده حفظ می‌شوند (تطبیق بر اساس متن)، بقیه بازنویسی
         var oldItems = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id).ToListAsync();
         var newTexts = dto.ChecklistItems.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Take(50).ToList();
@@ -400,7 +440,19 @@ public class WorkOrdersController : ControllerBase
             else _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem { OrderId = id, Text = text, SortOrder = clSort++ });
         }
 
-        Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
+        var projectNote = "";
+        if (oldProjectId != wo.ProjectId)
+        {
+            if (oldProjectId is > 0)
+                _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = oldProjectId.Value, ActorName = MyUsername, Action = "OrderRemoved", Text = $"دستور {wo.Number} «{wo.Title}» از پروژه جدا شد." });
+            if (wo.ProjectId is > 0)
+            {
+                _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = wo.ProjectId.Value, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
+                projectNote = $" — پروژه: {newProject!.Number}";
+            }
+            else projectNote = " — جدا شدن از پروژه";
+        }
+        Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}{projectNote}");
         await _db.SaveChangesAsync();
         foreach (var uid in addedUserIds)
             await _notify.SendAsync(uid, "به دستور کار اضافه شدید", $"شما به دستور کار «{wo.Title}» ({wo.Number}) اضافه شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
@@ -409,6 +461,7 @@ public class WorkOrdersController : ControllerBase
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
+        if (oldProjectId != wo.ProjectId) await _notify.BroadcastChangedAsync("workprojects");
         return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1 });
     }
 
@@ -442,6 +495,9 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>فیلتر برچسب — تطبیق دقیق یک برچسب.</summary>
         public string? Tag { get; set; }
+
+        /// <summary>فیلتر پروژه کاری — فقط دستورهای متصل به این پروژه.</summary>
+        public int? ProjectId { get; set; }
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
@@ -468,6 +524,8 @@ public class WorkOrdersController : ControllerBase
             var uidOrders = _db.WorkOrderAssignees.Where(a => a.UserId == uid).Select(a => a.OrderId);
             q = q.Where(w => w.OwnerUserId == uid || uidOrders.Contains(w.Id));
         }
+        if (f.ProjectId is > 0)
+            q = q.Where(w => w.ProjectId == f.ProjectId);
         return q;
     }
 
@@ -494,12 +552,32 @@ public class WorkOrdersController : ControllerBase
             .Select(w => new { w.Id, ParentId = w.ParentOrderId!.Value, w.Number, w.Title, w.Status, w.OwnerName })
             .ToListAsync();
 
+        // پروژه کاری متصل — پروژه حذف‌شده هم با پسوند «(حذف‌شده)» نمایش داده می‌شود تا تاریخچه حفظ شود
+        var projIds = orders.Where(w => w.ProjectId is > 0).Select(w => w.ProjectId!.Value).Distinct().ToList();
+        var projDict = new Dictionary<int, (string Number, string Title, bool Deleted)>();
+        if (projIds.Count > 0)
+        {
+            var prows = await _db.WorkProjects.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => projIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.Number, p.Title, p.DeletedAt }).ToListAsync();
+            projDict = prows.ToDictionary(p => p.Id, p => (p.Number, p.Title, p.DeletedAt != null));
+        }
+        string? ProjCode(int? id) => id != null && projDict.TryGetValue(id.Value, out var a) ? a.Number : null;
+        string? ProjName(int? id) => id != null && projDict.TryGetValue(id.Value, out var b)
+            ? (b.Deleted ? b.Title + " (حذف‌شده)" : b.Title) : null;
+
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
             w.SourceModule, w.SourceId, w.SourceRefId,
+            w.ProjectId, w.Weight,
+            ProjectCode = ProjCode(w.ProjectId),
+            ProjectName = ProjName(w.ProjectId),
+            OrderProgress = WorkProjectProgress.OrderProgress(w.Status == "Closed",
+                clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
+                clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0),
             Tags = TagsToList(w.Tags),
             ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
             ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,
@@ -590,6 +668,23 @@ public class WorkOrdersController : ControllerBase
             .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
             .ToPageListAsync(pagination);
         return Ok(pagination.Result(list));
+    }
+
+    /// <summary>دستورهای کارِ یک پروژه کاری — خوراک تب «دستورها» در جزئیات پروژه.</summary>
+    [HttpGet("by-project/{projectId:int}")]
+    public async Task<IActionResult> ByProject(int projectId, [FromQuery] string? status, [FromQuery] int? take)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var exists = await _db.WorkProjects.AsNoTracking()
+            .AnyAsync(p => p.Id == projectId && p.CompanyId == companyId.Value);
+        if (!exists) return NotFound(new { message = "پروژه پیدا نشد." });
+        var q = _db.WorkOrders.Where(w => w.CompanyId == companyId.Value && w.ProjectId == projectId);
+        if (status == "open") q = q.Where(w => w.Status == "Open");
+        else if (status == "closed") q = q.Where(w => w.Status == "Closed");
+        var n = Math.Clamp(take is > 0 ? take.Value : 200, 1, 500);
+        return Ok(await BuildList(q.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).Take(n)));
     }
 
     /// <summary>جزئیات یک دستور کار به‌صورت مستقیم — برای لینک عمیق (مثلاً از نشان «دستورکار شده» نامه).</summary>
@@ -778,6 +873,8 @@ public class WorkOrdersController : ControllerBase
         wo.CloseNote = dto.Note?.Trim();
 
         Log(id, "Closed", $"دستور کار توسط {MyUsername} نهایی و بسته شد{(string.IsNullOrWhiteSpace(dto.Note) ? "" : " — " + dto.Note)}");
+        if (wo.ProjectId is > 0)
+            _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = wo.ProjectId.Value, ActorName = MyUsername, Action = "OrderClosed", Text = $"دستور {wo.Number} «{wo.Title}» بسته شد." });
         await _db.SaveChangesAsync();
 
         var asgs = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).ToListAsync();
@@ -786,6 +883,7 @@ public class WorkOrdersController : ControllerBase
                 $"{wo.Number} — «{wo.Title}»", MyUsername, "دستور کار", $"/work-orders?open={id}");
 
         await _notify.BroadcastChangedAsync("workorders");
+        if (wo.ProjectId is > 0) await _notify.BroadcastChangedAsync("workprojects");
         return Ok();
     }
 
@@ -807,9 +905,12 @@ public class WorkOrdersController : ControllerBase
         wo.DeletedAt = DateTime.Now;
         wo.DeletedByUserId = MyUserId;
         Log(id, "Deleted", $"حذف نوبت {wo.Number} توسط {await MyDisplayNameAsync()} (شناسه کاربر {MyUserId})؛ سوابق محفوظ است.");
+        if (wo.ProjectId is > 0)
+            _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = wo.ProjectId.Value, ActorName = MyUsername, Action = "OrderRemoved", Text = $"دستور {wo.Number} حذف شد و از محاسبه پروژه خارج شد." });
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
+        if (wo.ProjectId is > 0) await _notify.BroadcastChangedAsync("workprojects");
         return NoContent();
     }
 
@@ -826,6 +927,7 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(new { message = "برخی دستورهای انتخاب‌شده یافت نشدند." });
         if (orders.Any(w => w.OwnerUserId != MyUserId))
             return Forbid();
+        var archiving = dto.Action == "archive" ? orders.Where(w => w.Status == "Open").ToList() : new List<WorkOrder>();
         if (dto.Action == "delete")
         {
             foreach (var wo in orders)
@@ -843,8 +945,20 @@ public class WorkOrdersController : ControllerBase
             { wo.Status = "Closed"; wo.ClosedAt = DateTime.Now; Log(wo.Id, "Closed", "بایگانی گروهی دستور کار"); }
         }
         else return BadRequest(new { message = "نوع عملیات گروهی نامعتبر است." });
+        // لاگ خلاصه در پروژه‌ها (یک رکورد به‌ازای هر پروژه، نه هر دستور)
+        var touched = (dto.Action == "delete" ? orders : archiving).Where(w => w.ProjectId is > 0).ToList();
+        foreach (var g in touched.GroupBy(w => w.ProjectId!.Value))
+            _db.WorkProjectLogs.Add(new WorkProjectLog
+            {
+                ProjectId = g.Key, ActorName = MyUsername,
+                Action = dto.Action == "delete" ? "OrderRemoved" : "OrderClosed",
+                Text = dto.Action == "delete"
+                    ? $"{g.Count()} دستور با حذف گروهی از محاسبه پروژه خارج شد."
+                    : $"{g.Count()} دستور با بایگانی گروهی بسته شد."
+            });
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("workorders");
+        if (touched.Count > 0) await _notify.BroadcastChangedAsync("workprojects");
         return Ok();
     }
 

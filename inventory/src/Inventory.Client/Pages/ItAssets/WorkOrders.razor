@@ -74,6 +74,11 @@
                         @onclick="() => SetPriorityFilter(v2)">@fa</button>
             }
         </div>
+        <div class="wo-flt-project" style="min-width:210px">
+            <SearchSelect Items="fltProjectOpts" Value="fltProject" ValueChanged="(int v) => SetProjectFilter(v)"
+                          SearchChanged="OnFltProjectSearch" RemoteSearch="true"
+                          Placeholder="🏗 فیلتر پروژه…" CssClass="form-select-sm" />
+        </div>
         @if (AllTabTags.Any())
         {
             <div class="d-flex gap-1 flex-wrap align-items-center">
@@ -86,7 +91,7 @@
                 }
             </div>
         }
-        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null)
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0)
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
@@ -519,7 +524,7 @@ else
                                 </td>
                                 <td class="num fw-700 text-primary">@w.Number</td>
                                 <td class="fw-600">
-                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId)
+                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId) @ProjectBadge(w)
                                     @if (w.Recurrence > 0)
                                     {
                                         <i class="bi bi-arrow-repeat text-info" title="تکرار @RecurrenceFa(w.Recurrence)"></i>
@@ -636,7 +641,7 @@ else
                     <div class="fw-700">@PriorityBadge(w.Priority) @w.Title</div>
                     @ToneBadge(w, tone)
                 </div>
-                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId)</div>
+                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId) @ProjectBadge(w)</div>
                 @if (HasRelatedOrders(w)) { <div class="wo-mobile-related">@RelatedOrderLinks(w)</div> }
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
@@ -812,6 +817,28 @@ else
                                     </div>
                                 }
                             </div>
+                        </div>
+
+                        <div class="col-12 col-md-8">
+                            <label class="form-label">🏗 پروژه کاری <span class="text-muted fs-9">(اختیاری)</span></label>
+                            <SearchSelect Items="formProjectOpts" Value="newProjectId" ValueChanged="(int v) => OnFormProjectSelected(v)"
+                                          SearchChanged="OnFormProjectSearch" RemoteSearch="true"
+                                          Placeholder="جستجوی پروژه…" />
+                            @if (newProjectId > 0 && selProjectDueAt != null && newDueDate != null && newDueDate.Value.Date > selProjectDueAt.Value.Date)
+                            {
+                                <div class="alert alert-warning py-1 px-2 mt-1 fs-8">⚠ مهلت دستور بعد از مهلت پروژه (@selProjectDueAt.Value.ToFa()) است.</div>
+                            }
+                            @if (newProjectId > 0 && selProjectMemberIds.Count > 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-link p-0 fs-8" @onclick="AddProjectMembersToTargets">
+                                    <i class="bi bi-people"></i> افزودن اعضای پروژه به گیرندگان
+                                </button>
+                            }
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">وزن در پروژه</label>
+                            <input type="number" class="form-control num" min="0" max="10" @bind="newWeight" disabled="@(newProjectId <= 0)" />
+                            <div class="fs-9 text-muted">۰ تا ۱۰ (۰ = در پیشرفت حساب نشود)</div>
                         </div>
 
                         <div class="col-12">
@@ -1066,6 +1093,15 @@ else
                                         {
                                             <span class="text-muted fs-9">@docRef.Code — @docRef.Title</span>
                                         }
+                                    </span>
+                                </div>
+                            }
+                            @if (detail.ProjectId is > 0)
+                            {
+                                <div>
+                                    <span class="wo-lbl">پروژه</span><span class="d-inline-flex align-items-center flex-wrap gap-1">
+                                        @ProjectBadge(detail)
+                                        <span class="text-muted fs-9">@detail.ProjectName — وزن @detail.Weight — پیشرفت @detail.OrderProgress٪</span>
                                     </span>
                                 </div>
                             }
@@ -2116,6 +2152,7 @@ else
             }
             if (fltPriority >= 0) it = it.Where(w => w.Priority == fltPriority);
             if (fltTag != null) it = it.Where(w => w.Tags.Contains(fltTag));
+            if (fltProject > 0) it = it.Where(w => w.ProjectId == fltProject);
             return it.ToList();
         }
     }
@@ -2126,6 +2163,78 @@ else
     private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
     private void ClearSearch() { fltQ = ""; page = 1; _ = LoadAll(); }
     private void SetPriorityFilter(int p) { fltPriority = p; page = 1; _ = LoadAll(); }
+    private void SetProjectFilter(int id)
+    {
+        fltProject = id;
+        fltProjectName = id <= 0 ? "" : (fltProjectOpts.FirstOrDefault(x => x.Id == id)?.Name ?? fltProjectName);
+        page = 1; _ = LoadAll();
+    }
+
+    private async Task SearchProjectsAsync(string q, List<LookupItem> sink, int keepId, string keepName)
+    {
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<WorkProjectLookupDto>>(
+                $"/api/workprojects/lookup?q={Uri.EscapeDataString(q ?? "")}&take=20") ?? new();
+            foreach (var p in list)
+                if (!projectOpts.Any(x => x.Id == p.Id)) projectOpts.Add(p);
+            sink.Clear();
+            sink.AddRange(list.Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }));
+            if (keepId > 0 && sink.All(x => x.Id != keepId) && !string.IsNullOrWhiteSpace(keepName))
+                sink.Insert(0, new LookupItem { Id = keepId, Name = keepName });
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private Task OnFltProjectSearch(string q) => SearchProjectsAsync(q, fltProjectOpts, fltProject, fltProjectName);
+
+    private Task OnFormProjectSearch(string q)
+    {
+        var sel = projectOpts.FirstOrDefault(p => p.Id == newProjectId);
+        var keepName = sel == null ? "" : $"{sel.Code} — {sel.Name}";
+        return SearchProjectsAsync(q, formProjectOpts, newProjectId, keepName);
+    }
+
+    /// <summary>انتخاب پروژه در فرم — مهلت برای هشدار نرم + اعضا برای پیشنهاد گیرندگان.</summary>
+    private async Task OnFormProjectSelected(int id)
+    {
+        newProjectId = id;
+        selProjectDueAt = null;
+        selProjectMemberIds = new();
+        if (id > 0)
+        {
+            var known = projectOpts.FirstOrDefault(p => p.Id == id);
+            if (known != null) selProjectDueAt = known.DueAt;
+            try
+            {
+                var d = await Http.GetFromJsonAsync<WorkProjectDetailDto>($"/api/workprojects/{id}");
+                if (d != null)
+                {
+                    selProjectDueAt = d.DueAt;
+                    selProjectMemberIds = d.Members.Select(m => m.UserId).ToList();
+                    if (!projectOpts.Any(p => p.Id == id))
+                        projectOpts.Add(new WorkProjectLookupDto { Id = d.Id, Code = d.Number, Name = d.Title, DueAt = d.DueAt });
+                }
+            }
+            catch { }
+        }
+        StateHasChanged();
+    }
+
+    private void AddProjectMembersToTargets()
+    {
+        var known = targets.Select(t => t.Id).ToHashSet();
+        var added = 0; var skipped = 0;
+        foreach (var uid in selProjectMemberIds)
+        {
+            if (selTargets.Contains(uid)) continue;
+            if (!known.Contains(uid)) { skipped++; continue; }
+            selTargets.Add(uid); added++;
+        }
+        if (skipped > 0) Toast.Info($"{skipped} عضو پروژه در لیست مجاز شما نیست و اضافه نشد.");
+        else if (added == 0) Toast.Info("همه اعضای پروژه از قبل در گیرندگان هستند.");
+    }
 
     // ---- برچسب/دسته‌بندی ----
     private List<string> newTags = new();   // فرم ایجاد/ویرایش
@@ -2255,6 +2364,7 @@ else
             if (!string.IsNullOrWhiteSpace(fltQ)) url += $"&q={Uri.EscapeDataString(fltQ.Trim())}";
             if (fltPriority >= 0) url += $"&priority={fltPriority}";
             if (fltTag != null) url += $"&tag={Uri.EscapeDataString(fltTag)}";
+            if (fltProject > 0) url += $"&projectId={fltProject}";
 
             var resp = await Http.GetAsync(url);
             if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
@@ -2406,6 +2516,17 @@ else
     private DateTime? newDueDate;
     private TimeOnly newDueTime = new(14, 0);
     private HashSet<int> selTargets = new();
+    // پروژه کاری متصل (فرم ایجاد/ویرایش) + فیلتر پروژه در لیست
+    private int newProjectId;
+    private int newWeight = 1;
+    private List<WorkProjectLookupDto> projectOpts = new();
+    private List<LookupItem> formProjectOpts = new();
+    private DateTime? selProjectDueAt;
+    private List<int> selProjectMemberIds = new();
+    private bool projectPrefilled;
+    private int fltProject;
+    private string fltProjectName = "";
+    private List<LookupItem> fltProjectOpts = new();
     private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> newFiles = new();
 
     // اتصال به مبدأ (سورس) — نامه داخلی یا مدرک آرشیو اسناد
@@ -2515,6 +2636,14 @@ else
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
 
+        // باز کردن فرم «دستور کار جدید» برای یک پروژه کاری (از صفحه پروژه‌ها)
+        if (int.TryParse(qs["projectId"], out var preProjectId) && preProjectId > 0 && !_sourceHandled)
+        {
+            _sourceHandled = true;
+            await OpenNewForProjectAsync(preProjectId);
+            return;
+        }
+
         // باز کردن فرم «دستور کار جدید» از یک مبدأ (سورس) — مثلاً تبدیل نامه به دستور کار
         var srcModule = qs["sourceModule"];
         if (!string.IsNullOrWhiteSpace(srcModule) && int.TryParse(qs["sourceId"], out var srcId) && srcId > 0 && !_sourceHandled)
@@ -2554,6 +2683,7 @@ else
         if (!string.IsNullOrWhiteSpace(fltQ)) qs += $"&Q={Uri.EscapeDataString(fltQ.Trim())}";
         if (fltPriority >= 0) qs += $"&Priority={fltPriority}";
         if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
+        if (fltProject > 0) qs += $"&ProjectId={fltProject}";
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
@@ -2575,7 +2705,7 @@ else
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
 
-            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null)
+            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0)
             {
                 mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
             }
@@ -2842,6 +2972,16 @@ else
     }
 
     /// <summary>لینک به رکورد مبدأ (سورس) — نامه داخلی یا مدرک آرشیو — برای اتصال برگشتی.</summary>
+    private RenderFragment? ProjectBadge(WoItem w)
+    {
+        if (w.ProjectId is not > 0) return null;
+        var label = string.IsNullOrWhiteSpace(w.ProjectCode) ? "پروژه" : w.ProjectCode;
+        var title = string.IsNullOrWhiteSpace(w.ProjectName) ? "رفتن به پروژه کاری" : $"رفتن به پروژه: {w.ProjectName}";
+        return @<a class="wo-att" href="@($"/work-projects?open={w.ProjectId}")" target="_blank" title="@title">
+            <i class="bi bi-briefcase"></i> @label
+        </a>;
+    }
+
     private RenderFragment? SourceLink(string? module, int? sourceId, int? sourceRefId = null)
     {
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0) return null;
@@ -2879,6 +3019,23 @@ else
         editingId = 0;
         _sourceModule = null; _sourceId = null; _sourceRefId = null; _sourceLabel = ""; _sourceDocTitle = "";
         await ShowNewFormAsync("", "");
+    }
+
+    /// <summary>فرم دستور جدید با پروژه ازپیش‌انتخاب‌شده + اعضای پروژه در گیرندگان (از صفحه پروژه‌ها).</summary>
+    private async Task OpenNewForProjectAsync(int projectId)
+    {
+        _sourceModule = null; _sourceId = null; _sourceRefId = null; _sourceLabel = ""; _sourceDocTitle = "";
+        editingId = 0;
+        await ShowNewFormAsync("", "");
+        projectPrefilled = true;
+        await OnFormProjectSelected(projectId);
+        if (selTargets.Count == 0)
+        {
+            var known = targets.Select(t => t.Id).ToHashSet();
+            foreach (var uid in selProjectMemberIds.Where(known.Contains))
+                selTargets.Add(uid);
+        }
+        StateHasChanged();
     }
 
     private static bool HasRelatedOrders(WoItem w) =>
@@ -2948,6 +3105,10 @@ else
         var rec = detail.Recurrence;
         var hasSeries = detail.RecurrenceSeriesId != null;
         var detailId = detail.Id;
+        var prjId = detail.ProjectId ?? 0;
+        var prjWeight = detail.Weight;
+        var prjCode = detail.ProjectCode ?? "";
+        var prjName = detail.ProjectName ?? "";
         var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
         var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
         var tags = detail.Tags.ToList();
@@ -2970,6 +3131,14 @@ else
         foreach (var t in extra)
             if (!targets.Any(x => x.Id == t.Id))
                 targets.Add(t);
+        newProjectId = prjId;
+        newWeight = prjWeight;
+        if (prjId > 0)
+        {
+            projectOpts = new() { new WorkProjectLookupDto { Id = prjId, Code = prjCode, Name = prjName, DueAt = DateTime.MaxValue.Date } };
+            formProjectOpts = new() { new LookupItem { Id = prjId, Name = $"{prjCode} — {prjName}" } };
+            _ = OnFormProjectSelected(prjId).ContinueWith(_ => InvokeAsync(StateHasChanged));
+        }
         StateHasChanged();
     }
 
@@ -3097,6 +3266,8 @@ else
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
         newTags = new(); newTagText = "";
+        newProjectId = 0; newWeight = 1; formProjectOpts = new();
+        selProjectDueAt = null; selProjectMemberIds = new(); projectPrefilled = false;
         tplSaveOpen = false; tplBusy = false; tplName = ""; appliedTplId = 0;
         if (!keepChainParent) chainParent = null;
         keepChainParent = false;
@@ -3161,6 +3332,8 @@ else
         var dueCheck = newDueDate.Value.Date.Add(newDueTime.ToTimeSpan());
         if (dueCheck <= DateTime.Now)
         { formError = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان ثبت باشد."; return; }
+        if (newProjectId > 0 && (newWeight < 0 || newWeight > 10))
+        { formError = "وزن دستور باید بین ۰ تا ۱۰ باشد."; return; }
 
         busy = true;
         try
@@ -3178,6 +3351,8 @@ else
                 tags = newTags,
                 sourceModule = _sourceModule, sourceId = _sourceId, sourceRefId = _sourceRefId,
                 parentOrderId = chainParent?.Id,
+                projectId = newProjectId > 0 ? (int?)newProjectId : null,
+                weight = newWeight,
                 sendSms = sendSms && editingId <= 0
             };
             var resp = editingId > 0
@@ -3207,6 +3382,12 @@ else
             if (!string.IsNullOrWhiteSpace(_sourceModule))
             {
                 _sourceModule = null; _sourceId = null; _sourceRefId = null; _sourceLabel = ""; _sourceDocTitle = "";
+                Nav.NavigateTo("/work-orders");
+            }
+            if (projectPrefilled)
+            {
+                projectPrefilled = false;
+                newProjectId = 0;
                 Nav.NavigateTo("/work-orders");
             }
         }
@@ -3435,6 +3616,8 @@ else
         public string? ParentTitle { get; set; }
         public List<ChildItem> Children { get; set; } = new();
         public string? SourceModule { get; set; } public int? SourceId { get; set; } public int? SourceRefId { get; set; }
+        public int? ProjectId { get; set; } public string? ProjectCode { get; set; } public string? ProjectName { get; set; }
+        public int Weight { get; set; } = 1; public int OrderProgress { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }
 }

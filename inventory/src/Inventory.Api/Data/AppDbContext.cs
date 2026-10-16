@@ -88,6 +88,11 @@ public class AppDbContext : DbContext
     public DbSet<WorkOrderComment> WorkOrderComments => Set<WorkOrderComment>();
     public DbSet<WorkOrderTemplate> WorkOrderTemplates => Set<WorkOrderTemplate>();
 
+    // ================== پروژه کاری (داخل دستور کار) ==================
+    public DbSet<WorkProject> WorkProjects => Set<WorkProject>();
+    public DbSet<WorkProjectMember> WorkProjectMembers => Set<WorkProjectMember>();
+    public DbSet<WorkProjectLog> WorkProjectLogs => Set<WorkProjectLog>();
+
     // ================== بایگانی و پیوست جامع (عمومی) ==================
     public DbSet<ArchiveFolder> ArchiveFolders => Set<ArchiveFolder>();
     public DbSet<ArchiveItem> ArchiveItems => Set<ArchiveItem>();
@@ -864,6 +869,20 @@ public class AppDbContext : DbContext
             .IsUnique();                                                    // هر آستانه فقط یک‌بار به‌ازای هر مهلت
         mb.Entity<WorkOrderChecklistItem>().HasIndex(c => c.OrderId);       // چک‌لیست زیرکار
         mb.Entity<WorkOrderTemplate>().HasIndex(t => t.OwnerUserId);        // قالب‌های آماده — فهرست هر کاربر
+
+        // ---------- پروژه کاری (داخل دستور کار) ----------
+        mb.Entity<WorkProject>().HasQueryFilter(p => p.DeletedAt == null);
+        mb.Entity<WorkProject>().HasIndex(p => new { p.CompanyId, p.Status });
+        mb.Entity<WorkProject>().HasIndex(p => new { p.CompanyId, p.DueAt });
+        mb.Entity<WorkProjectMember>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
+        mb.Entity<WorkProjectMember>().HasOne(m => m.Project).WithMany(p => p.Members)
+            .HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WorkProjectLog>().HasIndex(l => l.ProjectId);
+        mb.Entity<WorkProjectLog>().HasOne(l => l.Project).WithMany(p => p.Logs)
+            .HasForeignKey(l => l.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WorkOrder>().HasIndex(w => w.ProjectId);
+        mb.Entity<WorkOrder>().HasOne(w => w.Project).WithMany(p => p.WorkOrders)
+            .HasForeignKey(w => w.ProjectId).OnDelete(DeleteBehavior.NoAction);
 
         // ==================== ماژول انبارداری ====================
 

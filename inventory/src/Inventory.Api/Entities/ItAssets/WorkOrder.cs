@@ -124,6 +124,17 @@ public class WorkOrder
     /// تا زیر-دستورهای باز بسته نشوند، والد قابل بستن نیست.
     /// </summary>
     public int? ParentOrderId { get; set; }
+
+    /// <summary>پروژه کاری متصل (اختیاری) — null یعنی بدون پروژه.</summary>
+    public int? ProjectId { get; set; }
+
+    /// <summary>
+    /// وزن دستور در پیشرفت پروژه: ۰ تا ۱۰ (۰ = در محاسبهٔ پیشرفت حساب نشود)؛ پیش‌فرض ۱.
+    /// فقط وقتی پروژه انتخاب شده باشد معنا دارد.
+    /// </summary>
+    public int Weight { get; set; } = 1;
+
+    public WorkProject? Project { get; set; }
 }
 
 /// <summary>

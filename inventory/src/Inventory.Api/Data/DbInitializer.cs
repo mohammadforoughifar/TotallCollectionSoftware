@@ -136,6 +136,9 @@ public static class DbInitializer
                 // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
                 await MeetingMinutesSchemaV1.EnsureAsync(db);
 
+                // پروژه کاری سبک داخل دستور کار (جدول‌های WorkProject* + ستون‌های WorkOrders)
+                await WorkProjectSchemaV1.EnsureAsync(db);
+
                 // میز کار توسعه — مدیریت تیم نرم‌افزار (تسک/مشکل/changelog/گیت)
                 await DevTeamSchemaV1.EnsureAsync(db);
                 await DevTeamSchemaV2.EnsureAsync(db);

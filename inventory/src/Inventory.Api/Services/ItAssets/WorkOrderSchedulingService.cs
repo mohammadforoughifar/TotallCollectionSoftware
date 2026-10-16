@@ -30,7 +30,8 @@ public sealed class WorkOrderSchedulingService(AppDbContext db)
             OwnerName = first.OwnerName, DueAt = d, Priority = first.Priority, Recurrence = first.Recurrence,
             RecurrenceSeriesId = first.RecurrenceSeriesId, RecurrenceScheduledAt = d,
             RecurrenceParentId = first.Id, SourceModule = first.SourceModule, SourceId = first.SourceId,
-            Tags = first.Tags, ParentOrderId = first.ParentOrderId
+            Tags = first.Tags, ParentOrderId = first.ParentOrderId,
+            ProjectId = first.ProjectId, Weight = first.Weight
         }).ToList();
         db.WorkOrders.AddRange(orders);
         await db.SaveChangesAsync();

@@ -129,7 +129,7 @@
     }
 
     @* ============ دستور کار (ماژول مستقل — فقط با مجوز مشاهده) ============ *@
-    @if (Auth.CanSee("WorkOrders"))
+    @if (Auth.CanSee("WorkOrders") || Auth.CanSee("WorkProjects"))
     {
         <div class="nav-group group-wo">
             <button type="button" class="nav-section-title nav-toggle @(gWo ? "open" : "")" @onclick="() => gWo = !gWo">
@@ -145,6 +145,12 @@
                     <NavLink class="nav-link" href="work-orders?tab=calendar" @onclick="NotifyClose">
                         <i class="bi bi-calendar-week-fill"></i><span>تقویم دستور کار</span>
                     </NavLink>
+                    @if (Auth.CanSee("WorkProjects"))
+                    {
+                        <NavLink class="nav-link" href="work-projects" @onclick="NotifyClose">
+                            <i class="bi bi-briefcase"></i><span>پروژه‌های کاری</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>
@@ -814,7 +820,7 @@
 
         gChat = p.StartsWith("chat");
         gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
-        gWo = p.StartsWith("work-orders");
+        gWo = p.StartsWith("work-orders") || p.StartsWith("work-projects");
         gDevTeam = p.StartsWith("dev-team");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gFaHr = ForoughAryaHrNavigation.IsWorkspace(p);
