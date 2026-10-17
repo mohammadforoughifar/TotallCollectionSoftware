@@ -1,5 +1,6 @@
 @inject ILetterService LetterSvc
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 @* ============================================================
    فرم واحد ارجاع / هامش — مطابق طرح مصوب:
@@ -105,6 +106,7 @@
 
     private bool visible;
     private bool busy;
+    private bool allowDuplicateRecipients;
 
     private int letterId;
     private int? parentErjaId;
@@ -201,7 +203,8 @@
                 ParentErjaId = parentErjaId,
                 TextErja = matn,
                 AmalgarId = IsErja ? amalgarId!.Value : 1, // هامش = «جهت اطلاع»
-                DeadlineAnswer = IsErja && deadlineOn ? deadline : null
+                DeadlineAnswer = IsErja && deadlineOn ? deadline : null,
+                AllowDuplicateRecipients = allowDuplicateRecipients
             };
             if (IsErja)
             {
@@ -219,7 +222,15 @@
             visible = false;
             await OnSubmitted.InvokeAsync();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            if (!allowDuplicateRecipients && ex.Message.Contains("قبلاً در گردش"))
+            {
+                allowDuplicateRecipients = await JS.InvokeAsync<bool>("confirm", "برخی گیرندگان قبلاً در گردش این نامه هستند. آیا ارسال تکراری برای آن‌ها انجام شود؟");
+                if (allowDuplicateRecipients) { await Submit(); return; }
+            }
+            Toast.Error(ex.Message);
+        }
         finally { busy = false; }
     }
 }

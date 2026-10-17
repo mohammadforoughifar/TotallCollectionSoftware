@@ -1,5 +1,6 @@
 @inject IOutgoingLetterService OutgoingSvc
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 @if (visible)
 {
@@ -91,6 +92,7 @@
 
     private bool visible;
     private bool busy;
+    private bool allowDuplicateRecipients;
     private int letterId;
     private int? parentErjaId;
     private string letterNumber = "";
@@ -159,7 +161,8 @@
                 ParentErjaId = parentErjaId,
                 TextErja = matn,
                 AmalgarId = IsErja ? amalgarId!.Value : 1,
-                DeadlineAnswer = IsErja && deadlineOn ? deadline : null
+                DeadlineAnswer = IsErja && deadlineOn ? deadline : null,
+                AllowDuplicateRecipients = allowDuplicateRecipients
             };
             if (IsErja) { dto.ReciversGirandegan = selUsers.ToList(); dto.GroupsGirandegan = selGroups.ToList(); }
             else { dto.ReciversHamesh = selUsers.ToList(); dto.GroupsHamesh = selGroups.ToList(); }
@@ -169,7 +172,15 @@
             visible = false;
             await OnSubmitted.InvokeAsync();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { busy = false; }
+        catch (Exception ex)
+            {
+                if (!allowDuplicateRecipients && ex.Message.Contains("قبلاً در گردش"))
+                {
+                    allowDuplicateRecipients = await JS.InvokeAsync<bool>("confirm", "برخی گیرندگان قبلاً در گردش این نامه هستند. آیا ارسال تکراری انجام شود؟");
+                    if (allowDuplicateRecipients) { await Submit(); return; }
+                }
+                Toast.Error(ex.Message);
+            }
+            finally { busy = false; }
     }
 }

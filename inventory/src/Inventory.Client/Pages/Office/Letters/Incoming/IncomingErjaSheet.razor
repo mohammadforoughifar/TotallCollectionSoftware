@@ -1,5 +1,6 @@
 @inject IIncomingLetterService IncomingSvc
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 @* ============================================================
    شیت ارجاع و پاسخ به نامه وارده
@@ -81,6 +82,7 @@
 
     private bool visible = false;
     private bool saving = false;
+    private bool allowDuplicateRecipients;
     private bool isAnswer = false;
 
     private int letterId = 0;
@@ -176,7 +178,8 @@
                     GroupsGirandegan = selGroups.ToList(),
                     AmalgarId = amalgarId,
                     MatnErja = matn.Trim(),
-                    MohlatPasokh = mohlatPasokh
+                    MohlatPasokh = mohlatPasokh,
+                    AllowDuplicateRecipients = allowDuplicateRecipients
                 };
                 await IncomingSvc.AddErjaAsync(dto);
                 Toast.Success("نامه وارده با موفقیت ارجاع گردید.");
@@ -185,6 +188,11 @@
             }
             catch (Exception ex)
             {
+                if (!allowDuplicateRecipients && ex.Message.Contains("قبلاً در گردش"))
+                {
+                    allowDuplicateRecipients = await JS.InvokeAsync<bool>("confirm", "برخی گیرندگان قبلاً در گردش این نامه هستند. آیا ارسال تکراری انجام شود؟");
+                    if (allowDuplicateRecipients) { await SubmitAsync(); return; }
+                }
                 Toast.Error(ex.Message);
             }
             finally
