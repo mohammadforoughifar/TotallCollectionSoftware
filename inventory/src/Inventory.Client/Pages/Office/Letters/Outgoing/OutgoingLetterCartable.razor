@@ -429,7 +429,7 @@
                         {
                             <div class="alert alert-success mt-2 text-start"><b>گزارش دستورکارهای نامه</b>
                                 @foreach (var wo in workOrders)
-                                { <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br /><small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small> <button class="btn btn-link btn-sm" @onclick="() => Nav.NavigateTo($"/work-orders?open={wo.Id}")">مشاهده</button></div> }
+                                { <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br /><small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small> <button class="btn btn-link btn-sm" @onclick="() => OpenWorkOrderReport(wo.Id)">مشاهده</button></div> }
                             </div>
                         }
                     </div>
@@ -934,6 +934,7 @@
     }
 
     private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=OutgoingLetter&sourceId={letterId}");
+    private void OpenWorkOrderReport(int id) => Nav.NavigateTo($"/work-orders?open={id}");
 
     private async Task LoadDetailAsync(int letterId)
     {

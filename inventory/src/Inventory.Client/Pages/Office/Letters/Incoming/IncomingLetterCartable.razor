@@ -262,7 +262,7 @@
                                 {
                                     <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br />
                                         <small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small>
-                                        <button class="btn btn-link btn-sm p-0 ms-2" @onclick="() => Nav.NavigateTo($"/work-orders?open={wo.Id}")">مشاهده</button>
+                                        <button class="btn btn-link btn-sm p-0 ms-2" @onclick="() => OpenWorkOrderReport(wo.Id)">مشاهده</button>
                                     </div>
                                 }
                             </div>
@@ -328,6 +328,7 @@
     }
 
     private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=IncomingLetter&sourceId={letterId}");
+    private void OpenWorkOrderReport(int id) => Nav.NavigateTo($"/work-orders?open={id}");
 
     private ComposeIncomingModal? composeModal;
     private IncomingLetterViewModal? viewModal;

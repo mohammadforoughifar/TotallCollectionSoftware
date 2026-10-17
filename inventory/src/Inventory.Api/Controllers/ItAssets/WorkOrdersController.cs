@@ -725,8 +725,8 @@ public class WorkOrdersController : ControllerBase
             .Select(w => new
             {
                 w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId,
-                Assignees = w.Assignees.Select(a => a.Name).ToList(),
-                AssigneeCount = w.Assignees.Count()
+                Assignees = _db.WorkOrderAssignees.Where(a => a.OrderId == w.Id).Select(a => a.Name).ToList(),
+                AssigneeCount = _db.WorkOrderAssignees.Count(a => a.OrderId == w.Id)
             })
             .ToPageListAsync(pagination);
         return Ok(pagination.Result(list));
