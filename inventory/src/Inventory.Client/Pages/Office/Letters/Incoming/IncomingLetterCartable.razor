@@ -245,6 +245,9 @@
                         <button class="btn btn-sm btn-success" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
                             <i class="bi bi-send-fill"></i> ارجاع
                         </button>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
+                            <i class="bi bi-list-task"></i> دستورکار
+                        </button>
                         @if (workOrders.Count > 0)
                         {
                             <button class="btn btn-sm btn-outline-success" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
@@ -323,6 +326,8 @@
         workOrders = await Api.GetAsync<List<LetterWorkOrderSummary>>($"api/workorders/for-source?module=IncomingLetter&sourceId={letterId}") ?? new();
         showWorkOrderReport = false;
     }
+
+    private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=IncomingLetter&sourceId={letterId}");
 
     private ComposeIncomingModal? composeModal;
     private IncomingLetterViewModal? viewModal;

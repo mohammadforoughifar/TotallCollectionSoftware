@@ -283,6 +283,10 @@
                     {
                         <button class="lbtn pri" @onclick="OpenErjaSheet"><i class="bi bi-arrow-left-circle"></i> ارجاع / هامش</button>
                     }
+                    @if (selected.IsMine || selected.MyErja != null || selected.IsSigner)
+                    {
+                        <button class="lbtn ghost" @onclick="() => OpenWorkOrder(selected.LetterId)"><i class="bi bi-list-task"></i> دستورکار</button>
+                    }
                 }
             </div>
             <div class="rd-scroll">
@@ -928,6 +932,8 @@
         await LoadDetailAsync(letterId);
         readerOpen = true;
     }
+
+    private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=OutgoingLetter&sourceId={letterId}");
 
     private async Task LoadDetailAsync(int letterId)
     {
