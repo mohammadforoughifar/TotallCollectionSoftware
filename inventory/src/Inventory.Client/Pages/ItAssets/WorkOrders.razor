@@ -74,6 +74,15 @@
                         @onclick="() => SetPriorityFilter(v2)">@fa</button>
             }
         </div>
+        <select class="form-select form-select-sm" style="width:170px" value="@fltSource" @onchange="OnSourceFilterChanged">
+            <option value="">همه منابع</option>
+            <option value="letters">همه نامه‌ها</option>
+            <option value="InnerLetter">نامه داخلی</option>
+            <option value="IncomingLetter">نامه وارده</option>
+            <option value="OutgoingLetter">نامه صادره</option>
+            <option value="Document">آرشیو اسناد</option>
+            <option value="MeetingMinutes">صورتجلسه</option>
+        </select>
         <div class="wo-flt-project" style="min-width:210px">
             <SearchSelect Items="fltProjectOpts" Value="fltProject" ValueChanged="(int v) => SetProjectFilter(v)"
                           SearchChanged="OnFltProjectSearch" RemoteSearch="true"
@@ -91,7 +100,7 @@
                 }
             </div>
         }
-        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0)
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0 || !string.IsNullOrWhiteSpace(fltSource))
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
@@ -2524,6 +2533,9 @@ else
     private DateTime? selProjectDueAt;
     private List<int> selProjectMemberIds = new();
     private bool projectPrefilled;
+    private string fltSource = "";
+    private void OnSourceFilterChanged(ChangeEventArgs e) { fltSource = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
+
     private int fltProject;
     private string fltProjectName = "";
     private List<LookupItem> fltProjectOpts = new();
@@ -2684,6 +2696,7 @@ else
         if (fltPriority >= 0) qs += $"&Priority={fltPriority}";
         if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
         if (fltProject > 0) qs += $"&ProjectId={fltProject}";
+        if (!string.IsNullOrWhiteSpace(fltSource)) qs += $"&SourceModule={Uri.EscapeDataString(fltSource)}";
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
@@ -2705,7 +2718,7 @@ else
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
 
-            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0)
+            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0 && string.IsNullOrWhiteSpace(fltSource))
             {
                 mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
             }

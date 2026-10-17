@@ -545,6 +545,9 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>فیلتر پروژه کاری — فقط دستورهای متصل به این پروژه.</summary>
         public int? ProjectId { get; set; }
+
+        /// <summary>نوع ماژول مبدأ: InnerLetter، IncomingLetter، OutgoingLetter یا سایر ماژول‌ها.</summary>
+        public string? SourceModule { get; set; }
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
@@ -573,6 +576,13 @@ public class WorkOrdersController : ControllerBase
         }
         if (f.ProjectId is > 0)
             q = q.Where(w => w.ProjectId == f.ProjectId);
+        if (!string.IsNullOrWhiteSpace(f.SourceModule))
+        {
+            var source = f.SourceModule.Trim();
+            q = source.Equals("letters", StringComparison.OrdinalIgnoreCase)
+                ? q.Where(w => w.SourceModule == "InnerLetter" || w.SourceModule == "IncomingLetter" || w.SourceModule == "OutgoingLetter")
+                : q.Where(w => w.SourceModule == source);
+        }
         return q;
     }
 
