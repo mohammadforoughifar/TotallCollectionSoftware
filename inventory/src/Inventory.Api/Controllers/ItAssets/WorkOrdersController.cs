@@ -712,7 +712,12 @@ public class WorkOrdersController : ControllerBase
         var list = await _db.WorkOrders
             .Where(w => w.CompanyId == companyId.Value && w.SourceModule == module && w.SourceId == sourceId)
             .OrderByDescending(w => w.Id)
-            .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
+            .Select(w => new
+            {
+                w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId,
+                Assignees = w.Assignees.Select(a => a.Name).ToList(),
+                AssigneeCount = w.Assignees.Count()
+            })
             .ToPageListAsync(pagination);
         return Ok(pagination.Result(list));
     }
