@@ -126,6 +126,7 @@
                                 <div class="mail-r1">
                                     <span class="who">@l.Ferestande</span>
                                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0 fs-7"># @l.NumberSabt.FaDigits()</span>
+                                    @if (workOrderLetterIds.Contains(l.LetterId)) { <span class="text-success ms-1" title="این نامه دستورکار دارد"><i class="bi bi-list-task"></i></span> }
                                 </div>
                                 <div class="mail-tt">@l.Title</div>
                                 <div class="mail-pv">
@@ -315,6 +316,7 @@
     private IncomingLetterDetailDto? activeDetail;
 
     private List<IncomingLetterListItemDto> letters = new();
+    private HashSet<int> workOrderLetterIds = new();
     private IncomingLetterCartableStatsDto stats = new();
     private bool CanDabirkhane => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     private List<int> selectedErjaIds = new();
@@ -421,6 +423,7 @@
             }
 
             letters = result.Items;
+            try { workOrderLetterIds = (await Api.GetAsync<List<int>>("api/workorders/source-ids?module=IncomingLetter") ?? new()).ToHashSet(); } catch { workOrderLetterIds.Clear(); }
             totalItems = result.TotalCount;
             totalPages = result.TotalPages > 0 ? result.TotalPages : 1;
         }

@@ -722,6 +722,17 @@ public class WorkOrdersController : ControllerBase
             w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter, companyId.Value);
     }
 
+    /// <summary>شناسه منابعی که حداقل یک دستورکار دارند؛ برای نشان‌گذاری لیست نامه‌ها.</summary>
+    [HttpGet("source-ids")]
+    public async Task<IActionResult> SourceIds([FromQuery] string? module)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var q = _db.WorkOrders.Where(w => w.CompanyId == companyId.Value && w.SourceId != null);
+        if (!string.IsNullOrWhiteSpace(module)) q = q.Where(w => w.SourceModule == module);
+        return Ok(await q.Select(w => w.SourceId!.Value).Distinct().ToListAsync());
+    }
+
     /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
     /// <remarks>فقط متادیتای سبک برمی‌گرداند (بدون شرح/گیرندگان) تا به‌عنوان نشان در کارتابل نامه استفاده شود.</remarks>
     [HttpGet("for-source")]

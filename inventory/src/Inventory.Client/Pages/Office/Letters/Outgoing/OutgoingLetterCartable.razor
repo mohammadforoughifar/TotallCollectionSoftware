@@ -157,6 +157,7 @@
                                 </div>
                                 <div class="mail-tt">
                                     @ll.Title
+                                    @if (workOrderLetterIds.Contains(ll.LetterId)) { <span class="text-success ms-1" title="این نامه دستورکار دارد"><i class="bi bi-list-task"></i></span> }
                                     @if (ll.IsSigner)
                                     {
                                         <span class="tg @(ll.IsSigned ? "green" : "amber")" style="margin-inline-start:6px">
@@ -648,6 +649,7 @@
     private OutgoingLetterDetailDto? selected;
     private OutgoingLetterListItemDto? selectedItem;
     private List<LetterWorkOrderSummary> workOrders = new();
+    private HashSet<int> workOrderLetterIds = new();
     private bool showWorkOrderReport;
     private async Task LoadWorkOrdersAsync(int letterId)
     {
@@ -835,6 +837,7 @@
                         break;
                 }
                 items = res.Items;
+                try { workOrderLetterIds = (await Api.GetAsync<List<int>>("api/workorders/source-ids?module=OutgoingLetter") ?? new()).ToHashSet(); } catch { workOrderLetterIds.Clear(); }
                 totalServerCount = res.TotalCount;
             }
             stats = await OutgoingSvc.GetStatsAsync();
