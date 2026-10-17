@@ -61,6 +61,50 @@ public class WorkOrdersController : ControllerBase
     private void Log(int orderId, string action, string? text) =>
         _db.WorkOrderLogs.Add(new WorkOrderLog { OrderId = orderId, ActorName = MyUsername, Action = action, Text = text });
 
+    /// <summary>
+    /// افراد جدید دستورکار را به گردش واقعی نامه اضافه می‌کند. این کار عمداً در API
+    /// انجام می‌شود تا ایجاد دستورکار از هر کلاینتی، دسترسی ناقص به نامه نسازد.
+    /// </summary>
+    private async Task AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order)
+    {
+        if (dto.SourceId is not > 0 || string.IsNullOrWhiteSpace(dto.SourceModule)) return;
+        var sourceType = dto.SourceModule.Trim() switch
+        {
+            "InnerLetter" or "InnerLetters" => 1,
+            "OutgoingLetter" or "OutgoingLetters" => 2,
+            "IncomingLetter" or "IncomingLetters" => 3,
+            _ => 0
+        };
+        if (sourceType == 0) return;
+
+        var source = await _db.LetterSources.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == dto.SourceId.Value && !x.IsDelete && x.SourceType == sourceType);
+        if (source == null) throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
+
+        var targets = dto.AssigneeUserIds.Where(x => x > 0 && x != MyUserId).Distinct().ToList();
+        var existing = await _db.Erjas
+            .Where(x => x.SourceId == source.Id && !x.IsDelete && targets.Contains(x.ReciverUserId))
+            .Select(x => x.ReciverUserId).Distinct().ToListAsync();
+        var newTargets = targets.Except(existing).ToList();
+        if (newTargets.Count == 0) return;
+
+        var text = $"دسترسی به نامه از طریق دستورکار «{order.Title}» ({order.Number}) ایجاد شد.";
+        foreach (var userId in newTargets)
+        {
+            _db.Erjas.Add(new Erja
+            {
+                SourceId = source.Id,
+                SenderUserId = MyUserId,
+                ReciverUserId = userId,
+                Date = DateTime.Now,
+                Type = "ارجاع",
+                MatnErja = text,
+                AmalgarId = 1,
+                ShowMassage = true
+            });
+        }
+    }
+
     // ================== دسترسی‌ها و لیست افراد مجاز ==================
     [HttpGet("my-access")]
     public async Task<IActionResult> MyAccess() => Ok(new
@@ -302,6 +346,9 @@ public class WorkOrdersController : ControllerBase
         }
         if (project != null)
             _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = project.Id, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
+        // اگر دستورکار از روی نامه ساخته شده باشد، افراد جدید باید در گردش واقعی
+        // همان نامه نیز قرار بگیرند؛ صرفاً لینک‌کردن دستورکار به نامه کافی نیست.
+        await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo);
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
