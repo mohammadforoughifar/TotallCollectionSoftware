@@ -9,6 +9,7 @@
 @inject RealtimeService Rt
 @inject IJSRuntime JS
 @inject IApiClient Api
+@inject IApiClient Api
 @implements IDisposable
 
 <PageTitle>کارتابل نامه صادره</PageTitle>
@@ -416,6 +417,17 @@
                                 }
                             }
                         </div>
+                        @if (workOrders.Count > 0)
+                        {
+                            <button class="lbtn grn" @onclick="() => showWorkOrderReport = !showWorkOrderReport"><i class="bi bi-list-task"></i> دستورکار (@workOrders.Count)</button>
+                        }
+                        @if (showWorkOrderReport)
+                        {
+                            <div class="alert alert-success mt-2 text-start"><b>گزارش دستورکارهای نامه</b>
+                                @foreach (var wo in workOrders)
+                                { <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br /><small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small> <button class="btn btn-link btn-sm" @onclick="() => Nav.NavigateTo($"/work-orders?open={wo.Id}")">مشاهده</button></div> }
+                            </div>
+                        }
                     </div>
 
                     <aside class="side">
@@ -631,6 +643,13 @@
 
     private OutgoingLetterDetailDto? selected;
     private OutgoingLetterListItemDto? selectedItem;
+    private List<LetterWorkOrderSummary> workOrders = new();
+    private bool showWorkOrderReport;
+    private async Task LoadWorkOrdersAsync(int letterId)
+    {
+        workOrders = await Api.GetAsync<List<LetterWorkOrderSummary>>($"api/workorders/for-source?module=OutgoingLetter&sourceId={letterId}") ?? new();
+        showWorkOrderReport = false;
+    }
     private List<LetterAttachmentDto> attachments = new();
 
     private bool replyOpen;
@@ -915,6 +934,7 @@
         try
         {
             selected = await OutgoingSvc.GetDetailAsync(letterId);
+            await LoadWorkOrdersAsync(letterId);
             attachments = new();
             try { attachments = await OutgoingSvc.GetAttachmentsAsync(letterId); } catch { }
             if (selected?.MyErja is { IsRead: false } my)
@@ -1185,4 +1205,13 @@
     }
 
     public void Dispose() => Rt.DataChanged -= OnDataChanged;
+
+    private sealed class LetterWorkOrderSummary
+    {
+        public int Id { get; set; }
+        public string Number { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int AssigneeCount { get; set; }
+        public List<string> Assignees { get; set; } = new();
+    }
 }

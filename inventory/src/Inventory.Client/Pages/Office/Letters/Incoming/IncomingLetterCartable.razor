@@ -6,6 +6,7 @@
 @inject IAuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IApiClient Api
 
 @* ============================================================
    کارتابل نامه وارده — طرح اتوماسیون اداری (هم‌طراز با نامه داخلی)
@@ -244,6 +245,25 @@
                         <button class="btn btn-sm btn-success" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
                             <i class="bi bi-send-fill"></i> ارجاع
                         </button>
+                        @if (workOrders.Count > 0)
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
+                                <i class="bi bi-list-task"></i> دستورکار (@workOrders.Count)
+                            </button>
+                        }
+                        @if (showWorkOrderReport)
+                        {
+                            <div class="alert alert-success mt-2 text-start">
+                                <b><i class="bi bi-list-task"></i> گزارش دستورکارهای نامه</b>
+                                @foreach (var wo in workOrders)
+                                {
+                                    <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br />
+                                        <small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small>
+                                        <button class="btn btn-link btn-sm p-0 ms-2" @onclick="() => Nav.NavigateTo($"/work-orders?open={wo.Id}")">مشاهده</button>
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
             </aside>
@@ -295,6 +315,14 @@
     private IncomingLetterCartableStatsDto stats = new();
     private bool CanDabirkhane => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     private List<int> selectedErjaIds = new();
+    private List<LetterWorkOrderSummary> workOrders = new();
+    private bool showWorkOrderReport;
+
+    private async Task LoadWorkOrdersAsync(int letterId)
+    {
+        workOrders = await Api.GetAsync<List<LetterWorkOrderSummary>>($"api/workorders/for-source?module=IncomingLetter&sourceId={letterId}") ?? new();
+        showWorkOrderReport = false;
+    }
 
     private ComposeIncomingModal? composeModal;
     private IncomingLetterViewModal? viewModal;
@@ -408,6 +436,7 @@
         try
         {
             activeDetail = await IncomingSvc.GetDetailAsync(l.LetterId);
+            await LoadWorkOrdersAsync(l.LetterId);
         }
         catch (Exception ex)
         {
@@ -576,5 +605,14 @@
                 await (gardeshModal?.Open(d.LetterId, d.Title, d.Ferestande, d.NumberSabt, d.DateErsal) ?? Task.CompletedTask);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private sealed class LetterWorkOrderSummary
+    {
+        public int Id { get; set; }
+        public string Number { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int AssigneeCount { get; set; }
+        public List<string> Assignees { get; set; } = new();
     }
 }
