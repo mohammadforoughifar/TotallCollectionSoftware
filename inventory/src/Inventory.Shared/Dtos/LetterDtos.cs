@@ -195,6 +195,9 @@ public class AddErjaDto
     public int AmalgarId { get; set; } = 1;
     public DateTime? DeadlineAnswer { get; set; }
 
+    /// <summary>ارسال مجدد برای گیرنده‌ای که قبلاً در گردش نامه است، فقط با تأیید صریح کاربر.</summary>
+    public bool AllowDuplicateRecipients { get; set; }
+
     /// <summary>گیرندگان (انفرادی) — اعتبارسنجی «حداقل یک گیرنده» بعد از باز شدن گروه‌ها در سرور انجام می‌شود</summary>
     public List<int> ReciversGirandegan { get; set; } = new();
 

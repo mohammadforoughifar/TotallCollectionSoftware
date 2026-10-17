@@ -103,6 +103,18 @@ public class ErjaService : IErjaService
         if (allIds.Except(validUsers).Any())
             throw new Exception("برخی از گیرندگان معتبر یا فعال نیستند.");
 
+        // گیرنده تکراری باید قبل از ایجاد گردش به کاربر اعلام شود؛ ثبت تکراری
+        // فقط با AllowDuplicateRecipients که از تأیید صریح فرم می‌آید مجاز است.
+        var duplicateIds = await _db.Erjas
+            .Where(e => e.SourceId == dto.LetterId && !e.IsDelete && allIds.Contains(e.ReciverUserId))
+            .Select(e => e.ReciverUserId).Distinct().ToListAsync();
+        if (duplicateIds.Count > 0 && !dto.AllowDuplicateRecipients)
+        {
+            var duplicateNames = await _db.Users.Where(u => duplicateIds.Contains(u.Id))
+                .Select(u => (u.FirstName + " " + u.LastName).Trim()).ToListAsync();
+            throw new InvalidOperationException($"این گیرندگان قبلاً در گردش نامه هستند: {string.Join("، ", duplicateNames)}. برای ارسال مجدد باید گزینه ارسال تکراری را تأیید کنید.");
+        }
+
         var now = DateTime.Now;
         var seen = new HashSet<int>();
         foreach (var uid in girandegan.Where(seen.Add))
