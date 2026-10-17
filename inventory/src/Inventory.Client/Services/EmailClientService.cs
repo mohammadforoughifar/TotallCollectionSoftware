@@ -136,13 +136,13 @@ public class EmailClientService : IEmailClientService
         _api.PostAsync<EmailSyncResultDto>($"api/email/accounts/{emailId}/sync");
 
     public Task<EmailSyncResultDto> SyncInboxAsync() =>
-        _api.PostAsync<EmailSyncResultDto>("api/email/sync-inbox");
+        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-inbox");
 
     public Task<EmailSyncResultDto> SyncSentAsync() =>
-        _api.PostAsync<EmailSyncResultDto>("api/email/sync-sent");
+        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-sent");
 
     public Task<EmailSyncResultDto> SyncJunkAsync() =>
-        _api.PostAsync<EmailSyncResultDto>("api/email/sync-junk");
+        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-junk");
 
     public Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
         int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false)

@@ -612,7 +612,16 @@ public class EmailService : IEmailService
             ?? throw new Exception("حساب ایمیل پیدا نشد یا به شما تعلق ندارد.");
         if (!acc.IsActive) throw new Exception("حساب ایمیل غیرفعال است.");
 
-        var (added, total) = await SyncAccountFolderAsync(acc, "Inbox");
+        var added = 0;
+        var total = 0;
+        var more = true;
+        while (more)
+        {
+            var batch = await SyncAccountFolderAsync(acc, "Inbox");
+            added += batch.Added;
+            total = batch.Total;
+            more = batch.HasMore;
+        }
         return new EmailSyncResultDto
         {
             NewCount = added,
@@ -644,9 +653,14 @@ public class EmailService : IEmailService
         {
             try
             {
-                var (added, total) = await SyncAccountFolderAsync(acc, box, tolerateMissing);
-                result.NewCount += added;
-                result.TotalCount += total;
+                var more = true;
+                while (more)
+                {
+                    var batch = await SyncAccountFolderAsync(acc, box, tolerateMissing);
+                    result.NewCount += batch.Added;
+                    result.TotalCount = batch.Total;
+                    more = batch.HasMore;
+                }
                 result.AccountCount++;
             }
             catch (Exception ex)
@@ -674,7 +688,7 @@ public class EmailService : IEmailService
     /// هسته‌ی همگام‌سازیِ یک حساب و یک صندوق. خروجی: (تعدادِ جدید ذخیره‌شده، تعدادِ کلِ پیام‌های صندوق)
     /// box: Inbox | Sent | Junk (هرزنامه — در جدولِ دریافتی با نشانِ Is_Spam ذخیره می‌شود)
     /// </summary>
-    private async Task<(int Added, int Total)> SyncAccountFolderAsync(OtoEmail acc, string box, bool tolerateMissing = false)
+    private async Task<(int Added, int Total, bool HasMore)> SyncAccountFolderAsync(OtoEmail acc, string box, bool tolerateMissing = false)
     {
         if (string.IsNullOrWhiteSpace(acc.Imap))
             throw new Exception("سرور IMAP این حساب تنظیم نشده است — از تنظیمات ایمیل تکمیل کنید.");
@@ -687,7 +701,7 @@ public class EmailService : IEmailService
         var folder = OpenFolder(client, box);
         if (folder == null)
         {
-            if (tolerateMissing) { await client.DisconnectAsync(true); return (0, 0); }
+            if (tolerateMissing) { await client.DisconnectAsync(true); return (0, 0, false); }
             throw new Exception($"پوشه‌ی {BoxTitle(box)} در این حساب یافت نشد.");
         }
         await folder.OpenAsync(FolderAccess.ReadOnly);
@@ -820,7 +834,7 @@ public class EmailService : IEmailService
         else acc.LastInboxUid = maxUid;
         await _db.SaveChangesAsync();
 
-        return (added, total);
+        return (added, total, pending.Count == MaxMessagesPerAccountPerSync);
     }
 
     /// <summary>عنوان فارسیِ صندوق — برای پیام‌های خطا</summary>
