@@ -527,7 +527,7 @@
                 </div>
                 <div class="gm-f">
                     <button class="lbtn ghost" @onclick="() => replyOpen = false">انصراف</button>
-                    <button class="lbtn pri" disabled="@busy" @onclick="() => SubmitReply(0)"><i class="bi bi-send"></i> ثبت پاسخ</button>
+                    <button class="lbtn pri" disabled="@busy" @onclick="() => SubmitReply(pendingAnswerType)"><i class="bi bi-send"></i> @(pendingAnswerType == 1 ? "تایید و ثبت پاسخ" : pendingAnswerType == 2 ? "رد و ثبت پاسخ" : "ثبت پاسخ")</button>
                 </div>
             </div>
         </div>
@@ -632,6 +632,7 @@
     private bool replyOpen;
     private string replyText = "";
     private bool replyPrivate;
+    private int pendingAnswerType; // 0=پاسخ عادی، 1=تایید، 2=رد
 
     private ComposeLetterModal? compose;
     private ErjaSheet? erjaSheet;
@@ -1379,18 +1380,18 @@
         if (selected?.MyErja == null) { Toast.Error("شما گیرنده این نامه نیستید."); return; }
         replyText = selected.MyErja.Answer ?? "";
         replyPrivate = !selected.MyErja.ShowForAll && !string.IsNullOrEmpty(selected.MyErja.Answer);
+        pendingAnswerType = 0;
         replyOpen = true;
     }
 
-    private async Task QuickAnswer(int typeTaeed)
+    private void QuickAnswer(int typeTaeed)
     {
         if (selected?.MyErja is not { } my) return;
         replyText = "";
         replyPrivate = false;
+        pendingAnswerType = typeTaeed;
+        // ابتدا متن پاسخ از کاربر گرفته می‌شود؛ ثبت فقط بعد از زدن دکمه تأیید مودال انجام می‌شود.
         replyOpen = true;
-        // برای تایید/رد، مودال با نوع از پیش تعیین‌شده باز نمی‌شود؛ مستقیم ثبت می‌کنیم اگر متن لازم نیست
-        replyOpen = false;
-        await SubmitAnswerCore(typeTaeed == 1 ? "تایید می‌شود." : "رد می‌شود.", false, typeTaeed);
     }
 
     private async Task SubmitReply(int typeTaeed)
