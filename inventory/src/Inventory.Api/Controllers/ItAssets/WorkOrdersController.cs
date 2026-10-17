@@ -548,6 +548,9 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>نوع ماژول مبدأ: InnerLetter، IncomingLetter، OutgoingLetter یا سایر ماژول‌ها.</summary>
         public string? SourceModule { get; set; }
+
+        /// <summary>نوع نامه مبدأ: 1=داخلی، 2=صادره، 3=وارده.</summary>
+        public int? SourceType { get; set; }
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
@@ -576,7 +579,17 @@ public class WorkOrdersController : ControllerBase
         }
         if (f.ProjectId is > 0)
             q = q.Where(w => w.ProjectId == f.ProjectId);
-        if (!string.IsNullOrWhiteSpace(f.SourceModule))
+        if (f.SourceType is >= 1 and <= 3)
+        {
+            q = f.SourceType.Value switch
+            {
+                1 => q.Where(w => w.SourceModule == "InnerLetter" || w.SourceModule == "InnerLetters"),
+                2 => q.Where(w => w.SourceModule == "OutgoingLetter" || w.SourceModule == "OutgoingLetters"),
+                3 => q.Where(w => w.SourceModule == "IncomingLetter" || w.SourceModule == "IncomingLetters"),
+                _ => q
+            };
+        }
+        else if (!string.IsNullOrWhiteSpace(f.SourceModule))
         {
             var source = f.SourceModule.Trim();
             q = source.Equals("letters", StringComparison.OrdinalIgnoreCase)
