@@ -274,7 +274,7 @@
 /* ---------- مودال عمومی ---------- */
 .ltx .gov { position:fixed; inset:0; background:rgba(15,23,42,.5); backdrop-filter:blur(3px); z-index:1055;
             display:flex; align-items:center; justify-content:center; padding:18px; }
-.ltx .gmodal { width:min(720px,96vw); max-height:88vh; background:#fff; border-radius:20px; display:flex; flex-direction:column;
+.ltx .gmodal { width:min(1100px,96vw); max-height:92vh; background:#fff; border-radius:20px; display:flex; flex-direction:column;
                overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.3); direction:rtl; animation:ltxpop .18s ease; }
 @keyframes ltxpop { from { transform:scale(.96); opacity:0; } }
 .ltx .gm-h { display:flex; align-items:center; gap:11px; padding:15px 18px; border-bottom:1px solid var(--line); }
