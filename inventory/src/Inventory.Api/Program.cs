@@ -171,6 +171,10 @@ builder.Services.AddScoped<Inventory.Api.Services.ItAssets.HpeRedfishClient>();
 builder.Services.AddScoped<Inventory.Api.Services.ItAssets.ServerAlertNotificationService>();
 // پایش خودکار iLO/Redfish — فقط برای سرورهایی که MonitoringEnabled دارند.
 builder.Services.AddHostedService<Inventory.Api.Services.ItAssets.ServerMonitoringWorker>();
+// پایش SNMP ماشین‌های اداری (پرینتر/MFP/فتوکپی) — فقط‌خواندنی
+builder.Services.AddScoped<Inventory.Api.Services.Office.OfficeMachineMonitor>();
+builder.Services.AddSingleton<Inventory.Api.Services.Office.OfficeMachineMonitorWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.Office.OfficeMachineMonitorWorker>());
 // مدیریت آی‌پی — اسکنر رنج‌ها (Singleton) + اسکن خودکار زمان‌بندی‌شده (HostedService)
 builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.IpamScanner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.ItAssets.IpamScanner>());

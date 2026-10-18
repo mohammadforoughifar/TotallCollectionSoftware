@@ -32,7 +32,8 @@ public class SystemInfoController : ControllerBase
     /// </summary>
     private bool AgentKeyOk()
     {
-        var expected = (_cfg["Agent:Key"] ?? Environment.GetEnvironmentVariable("AGENT_KEY") ?? "").Trim();
+        // مقدار خالی در appsettings نباید متغیر محیطی AGENT_KEY را بی‌اثر کند
+        var expected = (string.IsNullOrWhiteSpace(_cfg["Agent:Key"]) ? Environment.GetEnvironmentVariable("AGENT_KEY") ?? "" : _cfg["Agent:Key"]!).Trim();
         if (expected.Length == 0) return true;
         var got = (Request.Headers["X-Agent-Key"].FirstOrDefault() ?? "").Trim();
         return got.Length == expected.Length &&

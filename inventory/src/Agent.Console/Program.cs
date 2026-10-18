@@ -13,6 +13,7 @@ namespace InventoryAgent;
 //   InventoryAgent watch                   حالت نگهبان: تکرار دوره‌ای (پیش‌فرض هر ۶۰ دقیقه)
 //   InventoryAgent dry-run                 فقط جمع‌آوری و نمایش JSON (بدون ارسال به سرور)
 //   InventoryAgent commands                فقط دریافت و اجرای دستورهای در انتظار
+//   InventoryAgent printers                فقط ارسال وضعیت چاپگرهای محلی (سبک — مناسب زمان‌بندی هر ۵ دقیقه)
 //   InventoryAgent init                    ساخت فایل نمونه‌ی تنظیمات agent.json
 //
 // سوییچ‌ها (روی همه‌ی دستورها):
@@ -48,6 +49,7 @@ internal static class Program
                 "watch" => await WatchAsync(opts),
                 "dry-run" => DryRun(opts),
                 "commands" => await CommandsOnlyAsync(opts),
+                "printers" => await PrintersOnlyAsync(opts),
                 "init" => InitConfig(opts),
                 "version" => ShowVersion(),
                 "help" => ShowHelp(),
@@ -108,8 +110,45 @@ internal static class Program
         Console.WriteLine(ok ? $"[ارسال] {msg}" : $"[خطای ارسال] {msg}");
         if (!ok) return 1;
 
+        if (config.MonitorPrinters) await SendPrintersAsync(api, config, agentId, collector.OsName, verbose, ct);
         await PollAndExecuteAsync(api, agentId, ct);
         return 0;
+    }
+
+    // ================= چاپگرها =================
+
+    private static AgentPrinterReport BuildPrinterReport(AgentConfig config, string agentId, string osName)
+    {
+        var (printers, logEnabled) = PrinterCollector.Collect(config.EnablePrintLog);
+        return new AgentPrinterReport
+        {
+            AgentId = agentId, MachineName = Environment.MachineName, AgentVersion = AgentVersion, OsName = osName,
+            CollectedAt = DateTime.UtcNow.ToString("o"), PageLogEnabled = logEnabled, Printers = printers
+        };
+    }
+
+    private static async Task<bool> SendPrintersAsync(ApiClient api, AgentConfig config, string agentId, string osName, bool verbose, CancellationToken ct)
+    {
+        var report = BuildPrinterReport(config, agentId, osName);
+        if (verbose)
+        {
+            var real = report.Printers.Where(p => p.Kind is not ("Virtual" or "Connection")).ToList();
+            Console.WriteLine($"[چاپگر] {real.Count} چاپگر فیزیکی ({report.Printers.Count} صف) — " +
+                              string.Join("، ", real.Select(p => $"{p.Name} [{p.Kind}/{p.Status}]")));
+        }
+        var (ok, msg) = await api.SendPrinterReportAsync(report, ct);
+        Console.WriteLine(ok ? "[چاپگر] وضعیت چاپگرها ارسال شد." : $"[چاپگر] ارسال ناموفق: {msg}");
+        return ok;
+    }
+
+    private static async Task<int> PrintersOnlyAsync(CliOptions opts)
+    {
+        var config = LoadConfig(opts);
+        var agentId = AgentIdentity.Resolve(string.IsNullOrWhiteSpace(opts.AgentId) ? config.AgentId : opts.AgentId);
+        var osName = OperatingSystem.IsWindows() || OperatingSystem.IsLinux() ? CollectorFactory.Create().OsName : Environment.OSVersion.ToString();
+        using var api = new ApiClient(config.Server, config.Insecure, agentKey: config.Key);
+        await EnsureAuthAsync(api, config);
+        return await SendPrintersAsync(api, config, agentId, osName, verbose: true, CancellationToken.None) ? 0 : 1;
     }
 
     // ================= دستور watch: حلقه‌ی دوره‌ای =================
@@ -117,27 +156,37 @@ internal static class Program
     private static async Task<int> WatchAsync(CliOptions opts)
     {
         var config = LoadConfig(opts);
-        Console.WriteLine($"حالت نگهبان — هر {config.IntervalMinutes} دقیقه (توقف: Ctrl+C)");
+        var printerEvery = config.MonitorPrinters ? Math.Min(config.PrinterIntervalMinutes, config.IntervalMinutes) : config.IntervalMinutes;
+        Console.WriteLine($"حالت نگهبان — گزارش سخت‌افزار هر {config.IntervalMinutes} دقیقه" +
+                          (config.MonitorPrinters ? $"، وضعیت چاپگرها هر {printerEvery} دقیقه" : "") + " (توقف: Ctrl+C)");
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-        var first = true;
+        var lastFull = DateTime.MinValue;
         while (!cts.Token.IsCancellationRequested)
         {
             try
             {
-                if (!first)
+                if (DateTime.Now - lastFull >= TimeSpan.FromMinutes(config.IntervalMinutes))
                 {
-                    Console.WriteLine($"--- {DateTime.Now:HH:mm:ss} ---");
-                    await Task.Delay(TimeSpan.FromMinutes(config.IntervalMinutes), cts.Token);
+                    lastFull = DateTime.Now;
+                    await RunOnceAsync(opts, verbose: true, cts.Token);   // شامل ارسال چاپگرها هم هست
                 }
-                first = false;
-                await RunOnceAsync(opts, verbose: true, cts.Token);
+                else if (config.MonitorPrinters)
+                {
+                    var agentId = AgentIdentity.Resolve(string.IsNullOrWhiteSpace(opts.AgentId) ? config.AgentId : opts.AgentId);
+                    using var api = new ApiClient(config.Server, config.Insecure, agentKey: config.Key);
+                    await EnsureAuthAsync(api, config, cts.Token);
+                    await SendPrintersAsync(api, config, agentId, CollectorFactory.Create().OsName, verbose: false, cts.Token);
+                }
+                Console.WriteLine($"--- {DateTime.Now:HH:mm:ss} ---");
+                await Task.Delay(TimeSpan.FromMinutes(printerEvery), cts.Token);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
                 Console.WriteLine($"[خطا] {ex.Message} — تلاش مجدد در دوره‌ی بعد.");
+                try { await Task.Delay(TimeSpan.FromMinutes(printerEvery), cts.Token); } catch (OperationCanceledException) { break; }
             }
         }
         Console.WriteLine("ایجنت متوقف شد.");
@@ -235,6 +284,16 @@ internal static class Program
         var json = JsonSerializer.Serialize(preview, AgentJson.PrettyOptions);
         Console.WriteLine(json);
 
+        // چاپگرها (گزارش جداگانه)
+        var dryConfig = LoadConfig(opts);
+        if (dryConfig.MonitorPrinters)
+        {
+            Console.WriteLine(new string('-', 60));
+            Console.WriteLine("چاپگرها (POST api/OfficeMachines/agent/printers):");
+            var pr = BuildPrinterReport(dryConfig, agentId, collector.OsName);
+            Console.WriteLine(JsonSerializer.Serialize(pr, AgentJson.PrettyOptions));
+        }
+
         if (!string.IsNullOrWhiteSpace(opts.OutFile))
         {
             File.WriteAllText(opts.OutFile, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -289,6 +348,7 @@ internal static class Program
               watch          حالت نگهبان: تکرار دوره‌ای (Ctrl+C برای توقف)
               dry-run        فقط نمایش JSON جمع‌آوری‌شده، بدون ارسال
               commands       فقط دریافت و اجرای دستورهای در انتظار
+              printers       فقط ارسال وضعیت چاپگرهای محلی (USB) به ماژول ماشین‌های اداری
               init           ساخت فایل تنظیمات agent.json
               version        نمایش نسخه
 
@@ -350,7 +410,7 @@ internal static class Program
     {
         var o = new CliOptions();
         var commands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "run", "watch", "dry-run", "dryrun", "commands", "init", "version", "help" };
+            { "run", "watch", "dry-run", "dryrun", "commands", "printers", "init", "version", "help" };
 
         string? Next(ref int i)
         {

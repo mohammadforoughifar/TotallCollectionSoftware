@@ -124,6 +124,9 @@ public static class DbInitializer
                 await ServerAlertWorkflowSchemaV3.EnsureAsync(db);
                 await ServerHardwareDetailsSchemaV4.EnsureAsync(db);
                 await IpamSchemaV1.EnsureAsync(db);
+                // ماشین‌های اداری: شناسنامهٔ کامل، پایش SNMP، مواد مصرفی، سینی‌ها، شمارنده و رویدادها
+                await OfficeMachineSchemaV2.EnsureAsync(db);
+                await OfficeMachineSchemaV3.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.

@@ -15,6 +15,8 @@
   <ItemGroup>
     <!-- دسترسی به WMI ویندوز (فقط روی ویندوز استفاده می‌شود؛ روی لینوکس فراخوانی نمی‌شود) -->
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <!-- خواندن لاگ چاپ ویندوز (رویداد 307) برای شمارش صفحات چاپگرهای USB -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

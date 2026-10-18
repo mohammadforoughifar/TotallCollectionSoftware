@@ -7,7 +7,7 @@ rem  استفاده:
 rem     agent.bat            ارسال یک باره به سرور
 rem     agent.bat watch      هر ۶۰ دقیقه یک بار تکرار
 rem     agent.bat dry        فقط نمایش داده، بدون ارسال
-rem     agent.bat install    نصب اجرای خودکار - هنگام روشن شدن + هر ساعت
+rem     agent.bat install    نصب اجرای خودکار - هنگام روشن شدن + هر ساعت + وضعیت چاپگرها هر ۵ دقیقه
 rem ============================================================
 chcp 65001 >nul
 setlocal EnableExtensions
@@ -91,13 +91,15 @@ exit /b 1
 
 rem ---------- نصب اجرای خودکار ----------
 :install
-echo در حال ساخت دو تسک زمان بندی شده ...
+echo در حال ساخت سه تسک زمان بندی شده ...
 echo.
 schtasks /create /tn "InventoryAgent-Boot" /tr "\"%EXE%\" run -s %SERVER% %AGENTKEY%" /sc onstart /ru SYSTEM /rl highest /f
 schtasks /create /tn "InventoryAgent-Hourly" /tr "\"%EXE%\" run -s %SERVER% %AGENTKEY%" /sc hourly /mo 1 /ru SYSTEM /rl highest /f
+schtasks /create /tn "InventoryAgent-Printers" /tr "\"%EXE%\" printers -s %SERVER% %AGENTKEY%" /sc minute /mo 5 /ru SYSTEM /rl highest /f
 echo.
 schtasks /query /tn "InventoryAgent-Boot" >nul 2>&1 && echo [OK] تسک هنگام روشن شدن سیستم نصب شد.
 schtasks /query /tn "InventoryAgent-Hourly" >nul 2>&1 && echo [OK] تسک هر ساعت نصب شد.
+schtasks /query /tn "InventoryAgent-Printers" >nul 2>&1 && echo [OK] تسک وضعیت چاپگرها - هر ۵ دقیقه - نصب شد.
 echo.
 schtasks /query /tn "InventoryAgent-Boot" >nul 2>&1 || echo [هشدار] نصب تسک اول ناموفق بود - این فایل را با دسترسی Administrator اجرا کنید.
 echo.

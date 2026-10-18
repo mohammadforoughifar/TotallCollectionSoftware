@@ -74,8 +74,9 @@ InventoryAgent.exe run -s http://192.168.30.104:8181 --agent-id PC-101   # شن�
 
 ## اجرای خودکار همیشگی
 
-**ویندوز:** `agent.bat install` (یا `INSTALL-AUTORUN.bat` با دسترسی Administrator) → دو تسک می‌سازد:
-«هنگام روشن‌شدن» + «هر ساعت». حذف: `UNINSTALL-AUTORUN.bat`.
+**ویندوز:** `agent.bat install` (یا `INSTALL-AUTORUN.bat` با دسترسی Administrator) → سه تسک می‌سازد:
+«هنگام روشن‌شدن» + «هر ساعت» (مشخصات سخت‌افزار) + «هر ۵ دقیقه» (وضعیت چاپگرهای USB برای ماژول ماشین‌های اداری).
+حذف: `UNINSTALL-AUTORUN.bat`.
 
 **لینوکس (systemd):**
 ```ini

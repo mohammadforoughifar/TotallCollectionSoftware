@@ -131,6 +131,11 @@ public class AppDbContext : DbContext
     public DbSet<AttendanceAlert> AttendanceAlerts => Set<AttendanceAlert>();
     public DbSet<AttendanceAreaSetting> AttendanceAreaSettings => Set<AttendanceAreaSetting>();
     public DbSet<OfficeMachineCost> OfficeMachineCosts => Set<OfficeMachineCost>();
+    public DbSet<OfficeMachineSupply> OfficeMachineSupplies => Set<OfficeMachineSupply>();
+    public DbSet<OfficeMachineTray> OfficeMachineTrays => Set<OfficeMachineTray>();
+    public DbSet<OfficeMachineCounter> OfficeMachineCounters => Set<OfficeMachineCounter>();
+    public DbSet<OfficeMachineEvent> OfficeMachineEvents => Set<OfficeMachineEvent>();
+    public DbSet<OfficeAgentPrinter> OfficeAgentPrinters => Set<OfficeAgentPrinter>();
     // ---- جدول‌های قطعات کامپیوتر ----
     public DbSet<SystemCpu> SystemCpus => Set<SystemCpu>();
     public DbSet<SystemBoard> SystemBoards => Set<SystemBoard>();
@@ -447,6 +452,8 @@ public class AppDbContext : DbContext
         ServerAlertWorkflowSchemaV3.Configure(mb);
         ServerHardwareDetailsSchemaV4.Configure(mb);
         IpamSchemaV1.Configure(mb);
+        OfficeMachineSchemaV2.Configure(mb);
+        OfficeMachineSchemaV3.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
         mb.Entity<UserContactOtpChallenge>().HasIndex(c => new { c.UserId, c.Purpose }).IsUnique();

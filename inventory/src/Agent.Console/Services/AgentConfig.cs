@@ -14,6 +14,15 @@ public sealed class AgentConfig
     /// <summary>فاصله‌ی ارسال دوره‌ای در حالت watch (دقیقه)</summary>
     public int IntervalMinutes { get; set; } = 60;
 
+    /// <summary>پایش چاپگرهای محلی (USB) و ارسال وضعیت به ماژول «ماشین‌های اداری»</summary>
+    public bool MonitorPrinters { get; set; } = true;
+
+    /// <summary>فاصله‌ی ارسال وضعیت چاپگرها در حالت watch (دقیقه) — سبک است و جدا از گزارش سخت‌افزار</summary>
+    public int PrinterIntervalMinutes { get; set; } = 5;
+
+    /// <summary>در صورت خاموش بودن، لاگ چاپ ویندوز (PrintService/Operational) برای شمارش صفحات فعال شود</summary>
+    public bool EnablePrintLog { get; set; } = true;
+
     /// <summary>شناسه‌ی ثابت سیستم — اگر خالی باشد خودکار ساخته و ذخیره می‌شود</summary>
     public string AgentId { get; set; } = "";
 
@@ -70,6 +79,7 @@ public sealed class AgentConfig
         Server = (Server ?? "").Trim().TrimEnd('/');
         if (Server.Length == 0) Server = "http://localhost:5000";
         if (IntervalMinutes <= 0) IntervalMinutes = 60;
+        PrinterIntervalMinutes = Math.Clamp(PrinterIntervalMinutes <= 0 ? 5 : PrinterIntervalMinutes, 1, 1440);
         AgentId = (AgentId ?? "").Trim();
         Token = (Token ?? "").Trim();
         Key = (Key ?? "").Trim();

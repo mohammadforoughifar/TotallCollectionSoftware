@@ -117,6 +117,28 @@ public sealed class ApiClient : IDisposable
         return (false, $"ارسال ناموفق بعد از ۳ تلاش: {last?.Message}");
     }
 
+    /// <summary>ارسال وضعیت چاپگرهای محلی — POST api/OfficeMachines/agent/printers</summary>
+    public async Task<(bool ok, string message)> SendPrinterReportAsync(AgentPrinterReport report, CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync($"{BaseUrl}/api/OfficeMachines/agent/printers", report, AgentJson.Options, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (resp.IsSuccessStatusCode) return (true, body.Length > 300 ? body[..300] : body);
+            var hint = (int)resp.StatusCode switch
+            {
+                404 => " — این نسخهٔ سرور پایش چاپگر از طریق ایجنت را ندارد (سرور را به‌روزرسانی کنید).",
+                401 or 403 => " — کلید ایجنت (X-Agent-Key) نادرست است.",
+                _ => ""
+            };
+            return (false, $"HTTP {(int)resp.StatusCode}{hint}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     /// <summary>دریافت دستورهای در انتظار — GET api/SystemInfo/agent-commands?agentId=</summary>
     public async Task<List<RemoteCommand>> GetPendingCommandsAsync(string agentId, CancellationToken ct = default)
     {
