@@ -151,6 +151,7 @@ else
                                 <th class="text-end" style="min-width:130px">مجموع صورتحساب</th>
                                 <th style="width:80px">نوع پرداخت</th>
                                 <th style="width:80px">نوع صورتحساب</th>
+                                <th style="min-width:210px">شماره مالیاتی</th>
                                 <th style="width:150px">وضعیت</th>
                                 <th class="text-end" style="min-width:430px">عملیات</th>
                             </tr>
@@ -172,6 +173,36 @@ else
                                     <td class="text-end num mi-money">@MoadianUi.Money(inv.TotallMoney)</td>
                                     <td>@inv.PaymentType</td>
                                     <td class="small">@inv.TypePattern</td>
+                                    <td>
+                                        @{
+                                            var taxPrimary = GetTaxPrimary(inv);
+                                            var taxRef = GetTaxReference(inv);
+                                        }
+                                        @if (string.IsNullOrWhiteSpace(taxPrimary) && string.IsNullOrWhiteSpace(taxRef))
+                                        {
+                                            <span class="text-muted small">—</span>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex flex-column gap-1">
+                                                @if (!string.IsNullOrWhiteSpace(taxPrimary))
+                                                {
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <span class="num small" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.82rem; letter-spacing:0.3px;">@taxPrimary</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مالیاتی" aria-label="کپی شماره مالیاتی @taxPrimary" @onclick="() => CopyText(taxPrimary)"><i class="bi bi-clipboard" style="font-size:0.85rem;"></i></button>
+                                                    </div>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(taxRef))
+                                                {
+                                                    <div class="d-flex align-items-center gap-1 small text-muted">
+                                                        <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
+                                                        <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.78rem; letter-spacing:0.3px;">@taxRef</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @taxRef" @onclick="() => CopyText(taxRef)"><i class="bi bi-clipboard" style="font-size:0.85rem;"></i></button>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
                                     <td>
                                         <span class="mi-status @MoadianUi.StatusPillClass(inv.StatusSentToSystemInt)" title="@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)" aria-label="وضعیت: @MoadianUi.StatusLabel(inv.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)</span>
                                     </td>
@@ -276,11 +307,32 @@ else
                                 <div class="mi-card-amount num mt-2">@MoadianUi.Money(inv.TotallMoney) <small>ریال</small></div>
                                 <div class="d-flex flex-wrap gap-2 align-items-center mt-1 small">
                                     <span class="badge @MoadianUi.SubjectBadge(inv.Subject)">@inv.Subject</span>
-                                    @if (!string.IsNullOrWhiteSpace(inv.TaxNumber))
-                                    {
-                                        <button type="button" class="btn btn-sm btn-link p-0" aria-label="کپی شمارهٔ مالیاتی" @onclick="() => CopyText(inv.TaxNumber!)"><i class="bi bi-clipboard" aria-hidden="true"></i> کپی شمارهٔ مالیاتی</button>
-                                    }
                                 </div>
+                                @{
+                                    var mobileTaxPrimary = GetTaxPrimary(inv);
+                                    var mobileTaxReference = GetTaxReference(inv);
+                                }
+                                @if (!string.IsNullOrWhiteSpace(mobileTaxPrimary) || !string.IsNullOrWhiteSpace(mobileTaxReference))
+                                {
+                                    <div class="d-flex flex-column gap-1 mt-2 small">
+                                        @if (!string.IsNullOrWhiteSpace(mobileTaxPrimary))
+                                        {
+                                            <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                <span class="text-muted">شماره مالیاتی:</span>
+                                                <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.8rem;">@mobileTaxPrimary</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مالیاتی" aria-label="کپی شماره مالیاتی @mobileTaxPrimary" @onclick="() => CopyText(mobileTaxPrimary)"><i class="bi bi-clipboard" aria-hidden="true"></i></button>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(mobileTaxReference))
+                                        {
+                                            <div class="d-flex align-items-center gap-1 flex-wrap text-muted">
+                                                <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
+                                                <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.78rem;">@mobileTaxReference</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @mobileTaxReference" @onclick="() => CopyText(mobileTaxReference)"><i class="bi bi-clipboard" aria-hidden="true"></i></button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                                 <hr class="mi-card-hr" />
                                 <div class="d-flex flex-wrap gap-2 mt-2" role="group" aria-label="عملیات صورتحساب">
                                     <NavLink class="mpa mpa-blue" href="@($"moadian/invoices/{InvoiceId(inv)}")" aria-label="جزئیات صورتحساب"><i class="bi bi-eye" aria-hidden="true"></i> جزئیات</NavLink>
@@ -438,6 +490,40 @@ else
         => invoice.Id > 0
             ? invoice.Id
             : int.TryParse(invoice.Name, out var legacyId) && legacyId > 0 ? legacyId : 0;
+
+    // در رکوردهای اصلاحی/ابطالی/برگشت از فروش، TaxNumber «شمارهٔ مالیاتی مرجع» (Irtaxid)
+    // و NewTaxNumber شمارهٔ مالیاتی خودِ همین صورتحساب است. در صورتحساب اصلی، شمارهٔ
+    // مالیاتی در TaxNumber (و گاهی NewTaxNumber) قرار می‌گیرد.
+    private static bool IsReferenceSubject(InvoiceVM invoice)
+    {
+        var subject = invoice.Subject?.Trim() ?? string.Empty;
+        return subject.Contains("اصلاحی", StringComparison.Ordinal)
+            || subject.Contains("ابطالی", StringComparison.Ordinal)
+            || subject.Contains("برگشت از فروش", StringComparison.Ordinal);
+    }
+
+    private static string GetTaxPrimary(InvoiceVM invoice)
+    {
+        if (!string.IsNullOrWhiteSpace(invoice.NewTaxNumber))
+            return invoice.NewTaxNumber.Trim();
+
+        // برای اسناد ارجاعی، TaxNumber به‌تنهایی شمارهٔ مرجع است، نه شمارهٔ خود سند.
+        if (IsReferenceSubject(invoice))
+            return string.Empty;
+
+        return invoice.TaxNumber?.Trim() ?? string.Empty;
+    }
+
+    private static string GetTaxReference(InvoiceVM invoice)
+    {
+        if (!IsReferenceSubject(invoice) || string.IsNullOrWhiteSpace(invoice.TaxNumber))
+            return string.Empty;
+
+        var reference = invoice.TaxNumber.Trim();
+        return string.Equals(reference, GetTaxPrimary(invoice), StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : reference;
+    }
 
     protected override void OnInitialized()
     {
