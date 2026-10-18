@@ -1771,8 +1771,15 @@ context.Customers.Any(x =>
             return null;
         }
 
-        /// <summary>تبدیل رشتهٔ «نوع اول/دوم/سوم» فرم به کد عددی؛ خالی/نامشخص -> ۱ (نوع اول).</summary>
-        private static int TypePatternToCode(string? typePattern) => typePattern == "نوع دوم" ? 2 : typePattern == "نوع سوم" ? 3 : 1;
+        /// <summary>تبدیل رشتهٔ «نوع اول/دوم/سوم» فرم به کد عددی؛ خالی/نامشخص -> ۱ (نوع اول).
+        /// نرمال‌سازی می‌شود تا فاصله/نیم‌فاصله یا ارسال کد عددی («2»/«3») هم درست تشخیص داده شود.</summary>
+        private static int TypePatternToCode(string? typePattern)
+        {
+            var t = (typePattern ?? string.Empty).Trim().Replace('\u200c', ' ').Replace("  ", " ");
+            if (t == "2" || t.Contains("دوم")) return 2;
+            if (t == "3" || t.Contains("سوم")) return 3;
+            return 1;
+        }
 
         /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (برای نمایش در فرم ثبت).</summary>
         public async Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId)
