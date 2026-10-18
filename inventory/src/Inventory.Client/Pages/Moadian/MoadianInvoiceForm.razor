@@ -6,10 +6,12 @@
 @using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
 @using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
 @using System.Collections.ObjectModel
+@implements IDisposable
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject MoadianCompanyContext Ctx
+@inject TabService Tabs
 
 <PageTitle>سامانه مودیان — @(ModeTitle)</PageTitle>
 
@@ -289,7 +291,27 @@ else
     private bool loading = true, saving;
     private int? nextInvoiceNo; // پیش‌نمایش شمارهٔ صورتحساب جدید
 
+    // سیستمِ تب‌ها صفحه را زنده نگه می‌دارد (display:none)؛ پس اگر بعد از ثبت موفق دوباره
+    // به همین تب برگردیم، فرم باید از نو آماده شود — وگرنه داده‌های همان صورتحسابِ ثبت‌شده
+    // در فرم «جدید» باقی می‌ماند. پیش‌نویسِ نیمه‌پر (بدون ثبت) عمداً حفظ می‌شود.
+    private string? _myTabKey;
+    private bool _tabWasActive;
+    private bool _justSaved;
+
+    protected override void OnInitialized()
+    {
+        _myTabKey = TabService.KeyOf(Nav.ToBaseRelativePath(Nav.Uri));
+        _tabWasActive = Tabs.Active is { } a && a.Key == _myTabKey;
+        Tabs.Changed += OnTabsChanged;
+    }
+
     protected override async Task OnInitializedAsync()
+    {
+        await InitAsync();
+    }
+
+    /// <summary>آماده‌سازی کامل فرم — هم در اولین باز شدن، هم هنگام بازگشت پس از ثبت موفق.</summary>
+    private async Task InitAsync()
     {
         var path = Nav.ToBaseRelativePath(Nav.Uri);
         if (path.EndsWith("/edit")) Mode = FormMode.Edit;
@@ -306,8 +328,36 @@ else
             Subject = Mode == FormMode.Eslahi ? "اصلاحی" : "اصلی",
             ShowButtons = true
         };
+        nextInvoiceNo = null;
         await LoadAsync();
     }
+
+    private void OnTabsChanged()
+    {
+        var active = Tabs.Active is { } a && a.Key == _myTabKey;
+        if (active)
+        {
+            if (!_tabWasActive && _justSaved && IsNewLike)
+            {
+                // بازگشت به این تب بعد از ثبت موفق — فرم باید کاملاً تازه باشد.
+                _justSaved = false;
+                _tabWasActive = true;
+                _ = InvokeAsync(async () =>
+                {
+                    await InitAsync();
+                    StateHasChanged();
+                });
+                return;
+            }
+            _tabWasActive = true;
+        }
+        else
+        {
+            _tabWasActive = false;
+        }
+    }
+
+    public void Dispose() => Tabs.Changed -= OnTabsChanged;
 
     private async Task LoadAsync()
     {
@@ -470,6 +520,7 @@ else
                 : await Moadian.AddInvoiceAsync(vm);
             if (r.Success)
             {
+                _justSaved = true; // در بازگشت به این تب، فرم از نو آماده می‌شود
                 var saved = MoadianService.As<InvoiceVM>(r);
                 Toast.Success(Mode == FormMode.Eslahi
                     ? "صورتحساب اصلاحی ثبت شد."
