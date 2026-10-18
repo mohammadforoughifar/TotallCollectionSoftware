@@ -358,12 +358,6 @@
                         <i class="bi bi-box-seam"></i><span>بیجک</span>
                     </NavLink>
                 }
-                @if (Auth.CanSee("Stock"))
-                {
-                    <NavLink class="nav-link" href="stock" @onclick="NotifyClose">
-                        <i class="bi bi-boxes"></i><span>موجودی انبار</span>
-                    </NavLink>
-                }
                 @if (Auth.CanSee("Repairs"))
                 {
                     <NavLink class="nav-link" href="repairs" @onclick="NotifyClose">

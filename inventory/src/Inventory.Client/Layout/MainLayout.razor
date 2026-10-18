@@ -1256,7 +1256,9 @@ else
     {
         if (isMobile == mobile) return;
         isMobile = mobile;
-        if (!mobile) mobileOpen = false;
+        // هنگام چرخش/تغییر اندازه، منوی موبایل نباید در دسکتاپ ناخواسته روی محتوا بیفتد.
+        mobileOpen = false;
+        if (!mobile) collapsed = true;
         InvokeAsync(StateHasChanged);
     }
 

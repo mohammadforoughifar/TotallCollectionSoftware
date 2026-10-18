@@ -143,13 +143,18 @@
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">نوع هزینه <span class="text-danger">*</span></label>
-                <select class="form-select" @bind="catIdStr">
-                    <option value="0">— انتخاب کنید —</option>
-                    @foreach (var c in categories.Where(x => x.IsActive || x.Id == form.CategoryId))
-                    {
-                        <option value="@c.Id">@c.Name</option>
-                    }
-                </select>
+                <div class="input-group">
+                    <select class="form-select" @bind="catIdStr">
+                        <option value="0">— انتخاب کنید —</option>
+                        @foreach (var c in categories.Where(x => x.IsActive || x.Id == form.CategoryId))
+                        {
+                            <option value="@c.Id">@c.Name</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-outline-primary" title="افزودن نوع هزینه جدید" aria-label="افزودن نوع هزینه جدید" @onclick="OpenCats">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">مبلغ (ریال) <span class="text-danger">*</span></label>
@@ -451,12 +456,16 @@
     {
         if (string.IsNullOrWhiteSpace(catForm.Name)) { Toast.Error("نام نوع هزینه را وارد کنید."); return; }
         saving = true;
+        var savedName = catForm.Name.Trim();
         try
         {
             await ExpenseSvc.SaveCategoryAsync(catForm);
             Toast.Success("نوع هزینه ذخیره شد.");
             catForm = new ExpenseCategoryDto();
             await LoadCats();
+            // اگر از داخل فرم هزینه نوع تازه‌ای ساخته شد، همان را در فرم انتخاب کن.
+            var savedCategory = categories.FirstOrDefault(x => x.Name == savedName && x.IsActive);
+            if (savedCategory is not null) catIdStr = savedCategory.Id.ToString();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }
