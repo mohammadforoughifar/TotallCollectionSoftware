@@ -63,12 +63,19 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             .FirstOrDefaultAsync(ct) ?? "";
         var hasAttachment = await _db.AppAttachments.AnyAsync(x => x.Module == "InnerLetters" && x.RefId == letterId, ct);
         var companyId = await ActiveCompanyIdAsync(userId, ct);
-        var header = companyId is int cid
-            ? await _db.SystemCompanies.AsNoTracking().Where(x => x.Id == cid && x.IsActive).Select(x => x.LetterheadFileName).FirstOrDefaultAsync(ct)
+        var company = companyId is int cid
+            ? await _db.SystemCompanies.AsNoTracking().Where(x => x.Id == cid && x.IsActive)
+                .Select(x => new { x.Id, x.Code, x.LetterheadFileName }).FirstOrDefaultAsync(ct)
             : null;
+        var header = company?.LetterheadFileName;
+        var isAria1005 = company?.Id == 1005 || string.Equals(company?.Code?.Trim(), "1005", StringComparison.OrdinalIgnoreCase);
 
         var content = BuildContent(letter, receivers, creator, hasAttachment, size == "A5");
         var headerPath = ResolveLetterheadPath(header);
+        // سربرگ اختصاصی شرکت آریا با کد 1005: فایل PDF به‌عنوان لایهٔ پس‌زمینه
+        // روی صفحهٔ A4 قرار می‌گیرد و محتوای نامه با حاشیهٔ امن روی آن رندر می‌شود.
+        if (headerPath == null && isAria1005)
+            headerPath = ResolveLetterheadPath("uploads/letterheads/aria-1005-letterhead.pdf");
         if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
             headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
         if (headerPath == null)
