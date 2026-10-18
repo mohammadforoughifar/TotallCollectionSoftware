@@ -242,12 +242,27 @@
             } catch (e) { return false; }
         };
 
+        // پورت‌های اجرای مستقیم پروژهٔ Blazor در Visual Studio. در این حالت رابط و API
+        // دو process مستقل هستند و UI نباید به‌علت یک مقدار قدیمی در localStorage به API
+        // سرور/نسخهٔ قبلی وصل شود؛ در غیر این صورت با F5 فقط Client بالا می‌آید و نتیجهٔ
+        // تغییرات جدید API دیده نمی‌شود.
+        window.inventoryIsLocalDevelopmentClient = function () {
+            var host = window.location.hostname;
+            var port = window.location.port;
+            return (host === 'localhost' || host === '127.0.0.1') &&
+                (port === '5210' || port === '7232');
+        };
+
         window.inventoryApiBase = function (fallback) {
             var dflt = window.DEFAULT_API_BASE || fallback || 'http://localhost:5100';
-            try {
-                var stored = localStorage.getItem('apiBaseUrl');
-                if (window.apiBaseIsSane(stored)) return stored;
-            } catch (e) { }
+            // ذخیرهٔ API فقط برای نصب‌های معمولی معتبر است. در Client توسعه، API محلیِ
+            // متناظر باید قطعی انتخاب شود تا اجرای start.bat یا پاک‌سازی دستی مرورگر لازم نباشد.
+            if (!window.inventoryIsLocalDevelopmentClient()) {
+                try {
+                    var stored = localStorage.getItem('apiBaseUrl');
+                    if (window.apiBaseIsSane(stored)) return stored;
+                } catch (e) { }
+            }
             try {
                 var h = window.location.host;
                 // محیط پیش‌نمایش ابری: تبدیل پورت جاری به پورت API (5100)
@@ -296,7 +311,8 @@
 
         // انتخاب آدرس API با «آزمایش موازی» همهٔ گزینه‌ها:
         //   ۱) تشخیص خودکار (هم‌مبدأ)   ۲) نشانی ذخیره‌شده   ۳) آدرس پیش‌فرض سرور
-        // اگر گزینهٔ اول جواب نداد، خودکار گزینهٔ بعدی انتخاب می‌شود و در مرورگر ذخیره می‌گردد.
+        // در اجرای توسعهٔ Client (5210/7232) فقط API محلی آزمایش می‌شود؛ fallback به
+        // 192.168... باعث می‌شد بدون اجرای API جدید، رابط بی‌صدا به نسخهٔ قدیمی سرور متصل شود.
         window.inventoryResolveApiBase = async function (fallback) {
             var candidates = [];
             function push(u) {
@@ -304,11 +320,14 @@
                 u = String(u).trim().replace(/\/+$/, '');
                 if (u && candidates.indexOf(u) === -1) candidates.push(u);
             }
+            var localDevelopment = window.inventoryIsLocalDevelopmentClient();
             push(window.inventoryApiBase(fallback));
-            try { push(localStorage.getItem('apiBaseUrl')); } catch (e) { }
-            push(window.DEFAULT_API_BASE);
-            push(fallback);
-            push('http://localhost:5100');
+            if (!localDevelopment) {
+                try { push(localStorage.getItem('apiBaseUrl')); } catch (e) { }
+                push(window.DEFAULT_API_BASE);
+                push(fallback);
+                push('http://localhost:5100');
+            }
 
             var results = await Promise.all(candidates.map(function (c) { return window.apiBaseIsReachable(c); }));
             for (var i = 0; i < candidates.length; i++) {
