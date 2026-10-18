@@ -5,6 +5,7 @@
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject RealtimeService Rt
+@inject IJSRuntime JS
 
 <PageTitle>پروژه‌های کاری</PageTitle>
 
@@ -22,12 +23,18 @@ else
 {
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <h4 class="mb-0"><i class="bi bi-briefcase ms-1"></i> پروژه‌های کاری</h4>
-        @if (access.CanCreate)
-        {
-            <button class="btn btn-primary btn-sm" @onclick="OpenCreate">
-                <i class="bi bi-plus-lg"></i> پروژه جدید
-            </button>
-        }
+        <div class="d-flex align-items-center gap-2">
+            <div class="btn-group btn-group-sm wp-view" role="group" aria-label="نوع نمایش">
+                <button type="button" class="btn @(view == "cards" ? "active" : "")" title="کارت" aria-pressed="@(view == "cards")" @onclick='() => SetView("cards")'><i class="bi bi-grid-3x2-gap"></i></button>
+                <button type="button" class="btn @(view == "table" ? "active" : "")" title="جدول" aria-pressed="@(view == "table")" @onclick='() => SetView("table")'><i class="bi bi-list-ul"></i></button>
+            </div>
+            @if (access.CanCreate)
+            {
+                <button class="btn btn-primary btn-sm" @onclick="OpenCreate">
+                    <i class="bi bi-plus-lg"></i> پروژه جدید
+                </button>
+            }
+        </div>
     </div>
 
     @* ================== فیلترها ================== *@
@@ -82,6 +89,102 @@ else
     else if (items.Count == 0)
     {
         <div class="alert alert-light border text-center">پروژه‌ای یافت نشد.</div>
+    }
+    else if (view == "cards")
+    {
+        <div class="wp-grid">
+            @foreach (var p in items)
+            {
+                var tone = CardTone(p);
+                var pct = p.Progress ?? 0;
+                <div class="wp-card wp-tone-@tone" @onclick="() => OpenDetail(p.Id)">
+                    <div class="wp-top">
+                        <span class="wp-num num">@p.Number</span>
+                        <div class="wp-tags">
+                            @WpPriority(p.Priority)
+                            @if (p.Status == "Closed") { <span class="wp-tag wp-tag-mute">بسته</span> }
+                            else if (p.IsOverdue) { <span class="wp-tag wp-tag-red">گذشته از مهلت</span> }
+                        </div>
+                    </div>
+
+                    <div class="wp-title" title="@p.Title">@p.Title</div>
+
+                    <div class="wp-due num">
+                        <i class="bi bi-calendar3"></i>
+                        <span>@p.DueAt.ToFa()</span>
+                        @if (p.Status == "Open") { <span class="wp-days wp-days-@DaysTone(p.DaysLeft)">@DaysText(p.DaysLeft)</span> }
+                    </div>
+
+                    <div class="wp-prog">
+                        <div class="wp-ring @(p.Progress == 100 ? "is-done" : "")">
+                            <svg viewBox="0 0 36 36" aria-hidden="true">
+                                <circle class="wp-ring-bg" cx="18" cy="18" r="15.915" />
+                                <circle class="wp-ring-fg" cx="18" cy="18" r="15.915" stroke-dasharray="@pct 100" />
+                            </svg>
+                            <span class="num">@(p.Progress == null ? "—" : $"{pct.Num()}٪")</span>
+                        </div>
+                        <div class="wp-prog-txt">
+                            @if (p.Progress == null)
+                            {
+                                <div class="wp-prog-main">هنوز دستوری ثبت نشده</div>
+                            }
+                            else
+                            {
+                                <div class="wp-prog-main num">@p.ClosedOrderCount.Num() از @p.OrderCount.Num() دستور انجام شده</div>
+                                <div class="wp-chips num">
+                                    @if (p.OpenOrderCount > 0) { <span>@p.OpenOrderCount.Num() باز</span> }
+                                    @if (p.OverdueOrderCount > 0) { <span class="is-late">@p.OverdueOrderCount.Num() دیرکرد</span> }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="wp-people">
+                        <div class="wp-owner">
+                            <UserAvatar LoginUserId="p.OwnerUserId" Size="30" CssClass="wp-owner-img" />
+                            <div class="min-w-0">
+                                <div class="wp-owner-name">@p.OwnerName</div>
+                                <div class="wp-owner-role">مدیر پروژه</div>
+                            </div>
+                        </div>
+                        @if (p.MemberNames.Count > 0)
+                        {
+                            <div class="wp-stack" title="@string.Join("، ", p.MemberNames)">
+                                @foreach (var m in p.MemberNames.Take(3))
+                                {
+                                    <span>@Initial(m)</span>
+                                }
+                                @if (p.MemberCount > 3) { <span class="wp-stack-more num">+@((p.MemberCount - 3).Num())</span> }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="wp-foot">
+                        <span class="wp-activity" title="@p.LastActivityText"><i class="bi bi-clock-history"></i> @(p.LastActivityAt != null ? $"{p.LastActivityText} · {p.LastActivityAt.Value.ToFa()}" : "بدون فعالیت")</span>
+                        <div class="wp-actions" @onclick:stopPropagation="true">
+                            @if (p.Status == "Open" && (p.IsMine || access.CanUpdate))
+                            {
+                                <button type="button" title="تمدید مهلت" @onclick="() => OpenExtend(p)"><i class="bi bi-hourglass-split"></i></button>
+                                <button type="button" title="ویرایش" @onclick="() => OpenEdit(p.Id)"><i class="bi bi-pencil"></i></button>
+                                <button type="button" title="بستن پروژه" @onclick="() => OpenClose(p)"><i class="bi bi-lock"></i></button>
+                            }
+                            @if (p.Status == "Closed" && (p.IsMine || access.CanUpdate))
+                            {
+                                <button type="button" title="بازگشایی" @onclick="() => DoReopen(p.Id)"><i class="bi bi-unlock"></i></button>
+                            }
+                            @if (access.CanDelete)
+                            {
+                                <button type="button" class="is-danger" title="حذف" @onclick="() => delId = p.Id"><i class="bi bi-trash"></i></button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+            <span class="fs-8 text-muted num">@totalCount.Num() پروژه</span>
+            <Pager Page="page" PageCount="pageCount" OnPageChanged="GoToPage" />
+        </div>
     }
     else
     {
@@ -600,6 +703,78 @@ else
     </Footer>
 </Modal>
 
+<style>
+    .wp-view .btn { border: 1px solid #dbe2ea; background: #fff; color: #64748b; }
+    .wp-view .btn.active { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+
+    .wp-grid { --wp-font: 'Vazirmatn', Tahoma, sans-serif; font-family: var(--wp-font); display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 1.1rem; }
+    .wp-card { position: relative; background: #fff; border: 1px solid #e6eaf0; border-radius: 16px; padding: 1.1rem 1.2rem 0; display: flex; flex-direction: column; cursor: pointer; overflow: hidden; min-width: 0; transition: box-shadow .18s, transform .18s, border-color .18s; }
+    .wp-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--wp-accent, #6366f1); }
+    .wp-card:hover { border-color: #d5dbe5; box-shadow: 0 10px 28px -12px rgba(15, 23, 42, .18); transform: translateY(-2px); }
+    .wp-tone-normal { --wp-accent: #6366f1; }
+    .wp-tone-late { --wp-accent: #ef4444; }
+    .wp-tone-soon { --wp-accent: #f59e0b; }
+    .wp-tone-done { --wp-accent: #10b981; }
+    .wp-tone-closed { --wp-accent: #cbd5e1; background: #fbfcfd; }
+    .wp-tone-closed .wp-title { color: #64748b; }
+
+    .wp-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; min-height: 22px; }
+    .wp-num { font-size: .72rem; font-weight: 500; color: #64748b; background: #f1f5f9; border-radius: 6px; padding: .1rem .5rem; letter-spacing: .02em; }
+    .wp-tags { display: flex; gap: .3rem; flex-shrink: 0; }
+    .wp-tag { font-size: .7rem; font-weight: 600; border-radius: 999px; padding: .12rem .6rem; }
+    .wp-tag-red { color: #b91c1c; background: #fee2e2; }
+    .wp-tag-amber { color: #a16207; background: #fef3c7; }
+    .wp-tag-mute { color: #64748b; background: #eef1f5; }
+
+    .wp-title { margin: .7rem 0 .35rem; font-size: 1.04rem; font-weight: 700; line-height: 1.7; color: #0f172a; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 3.4em; }
+    .wp-due { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: #475569; }
+    .wp-due .bi { color: #94a3b8; }
+    .wp-days { font-size: .7rem; font-weight: 600; border-radius: 999px; padding: .08rem .5rem; margin-inline-start: auto; }
+    .wp-days-late { color: #b91c1c; background: #fee2e2; }
+    .wp-days-soon { color: #a16207; background: #fef3c7; }
+    .wp-days-ok { color: #475569; background: #f1f5f9; }
+
+    .wp-prog { display: flex; align-items: center; gap: .9rem; margin-top: .9rem; padding: .75rem .85rem; background: #f8fafc; border-radius: 12px; }
+    .wp-ring { position: relative; width: 54px; height: 54px; flex-shrink: 0; }
+    .wp-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .wp-ring circle { fill: none; stroke-width: 3.4; }
+    .wp-ring-bg { stroke: #e2e8f0; }
+    .wp-ring-fg { stroke: var(--wp-accent, #6366f1); stroke-linecap: round; transition: stroke-dasharray .4s; }
+    .wp-ring.is-done .wp-ring-fg { stroke: #10b981; }
+    .wp-ring > span { position: absolute; inset: 0; display: grid; place-items: center; font-size: .8rem; font-weight: 800; color: #1e293b; }
+    .wp-prog-txt { min-width: 0; }
+    .wp-prog-main { font-size: .82rem; font-weight: 500; color: #334155; }
+    .wp-chips { display: flex; gap: .35rem; margin-top: .35rem; flex-wrap: wrap; }
+    .wp-chips:empty { display: none; }
+    .wp-chips span { font-size: .7rem; color: #475569; background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: .05rem .5rem; }
+    .wp-chips span.is-late { color: #b91c1c; border-color: #fecaca; background: #fff5f5; }
+
+    .wp-people { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin: .95rem 0; min-width: 0; }
+    .wp-owner { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+    .wp-owner .min-w-0 { min-width: 0; }
+    .wp-owner-img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e2e8f0; }
+    .wp-owner-name { font-size: .84rem; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wp-owner-role { font-size: .7rem; color: #94a3b8; }
+    .wp-stack { display: flex; flex-direction: row-reverse; flex-shrink: 0; }
+    .wp-stack span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 700; color: #3730a3; background: #e0e7ff; border: 2px solid #fff; margin-inline-start: -7px; }
+    .wp-stack span:nth-child(2) { background: #dcfce7; color: #166534; }
+    .wp-stack span:nth-child(3) { background: #fde68a; color: #92400e; }
+    .wp-stack span.wp-stack-more { background: #f1f5f9; color: #475569; font-size: .66rem; }
+
+    .wp-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: auto -1.2rem 0; padding: .55rem 1.2rem; border-top: 1px solid #eef1f5; min-height: 46px; min-width: 0; }
+    .wp-activity { font-size: .72rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .wp-actions { display: flex; gap: .2rem; flex-shrink: 0; }
+    .wp-actions button { width: 30px; height: 30px; border: 0; background: transparent; color: #64748b; border-radius: 8px; display: inline-grid; place-items: center; transition: background .15s, color .15s; }
+    .wp-actions button:hover { background: #eef2ff; color: #4338ca; }
+    .wp-actions button.is-danger:hover { background: #fee2e2; color: #b91c1c; }
+    .wp-actions button:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+    @@media (hover: hover) and (min-width: 768px) {
+        .wp-actions { opacity: .55; transition: opacity .15s; }
+        .wp-card:hover .wp-actions, .wp-actions:focus-within { opacity: 1; }
+    }
+    @@media (max-width: 576px) { .wp-grid { grid-template-columns: 1fr; } }
+</style>
+
 @code {
     private class Access
     {
@@ -633,6 +808,8 @@ else
 
     private string fltQ = "", fltStatus = "", fltMine = "", fltSort = "due";
     private bool fltOverdue;
+    private string view = "cards";
+    private const string ViewKey = "workprojects.view";
     private System.Threading.CancellationTokenSource? searchCts;
 
     private List<LookupItem> users = new();
@@ -681,6 +858,12 @@ else
         catch { }
         accessLoaded = true;
         if (!access.CanView) return;
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", ViewKey);
+            if (saved is "cards" or "table") view = saved;
+        }
+        catch { }
         await LoadList();
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (int.TryParse(qs["open"], out var openId) && openId > 0)
@@ -1086,6 +1269,31 @@ else
                 </div>
                 <span class="fs-8 num fw-bold">@progress.Value.Num()٪</span>
             </div>;
+
+    private async Task SetView(string v)
+    {
+        view = v;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ViewKey, v); } catch { }
+    }
+
+    /// <summary>رنگ حاشیهٔ کارت: بسته، تمام‌شده، گذشته از مهلت، نزدیک مهلت (۳ روز) یا عادی.</summary>
+    private static string CardTone(WorkProjectListItemDto p) =>
+        p.Status == "Closed" ? "closed"
+        : p.IsOverdue ? "late"
+        : p.Progress == 100 ? "done"
+        : p.DaysLeft <= 3 ? "soon"
+        : "normal";
+
+    private static string DaysTone(int days) => days < 0 ? "late" : days <= 3 ? "soon" : "ok";
+    private static string Initial(string name) { var t = (name ?? "").Trim(); return t.Length == 0 ? "؟" : t[..1]; }
+
+    private RenderFragment WpPriority(int p) => p switch
+    {
+        0 => @<span class="wp-tag wp-tag-mute">کم</span>,
+        2 => @<span class="wp-tag wp-tag-amber">بالا</span>,
+        3 => @<span class="wp-tag wp-tag-red">فوری</span>,
+        _ => @<span></span>
+    };
 
     private static string DaysClass(int days) => days < 0 ? "text-danger" : days == 0 ? "text-warning fw-bold" : days <= 3 ? "text-warning" : "text-muted";
     private static string DaysText(int days) => days < 0 ? $"{(-days).Num()} روز گذشته" : days == 0 ? "امروز" : $"{days.Num()} روز مانده";
