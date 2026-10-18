@@ -1095,7 +1095,7 @@ namespace Inventory.Api.Services.Moadian
             try
             {
 
-                var query = context.Invoices.Where(c => c.CpInfo == CpinfoId).AsQueryable();
+                var query = context.Invoices.Where(c => c.CpInfo == CpinfoId && !c.IsDelete).AsQueryable();
 
 
 
@@ -2020,7 +2020,7 @@ context.Customers.Any(x =>
                 InvoiceVM invoiceInfo = new InvoiceVM();
                 if (InvoiceId is not 0)
                 {
-                    var invoice = await context.Invoices.Include(c => c.fiscalYear).FirstOrDefaultAsync(c => c.Id == InvoiceId);
+                    var invoice = await context.Invoices.Include(c => c.fiscalYear).FirstOrDefaultAsync(c => c.Id == InvoiceId && !c.IsDelete);
                     if (invoice is null)
                         return new ApiModel { Data = null, Status = 404, Success = false, Message = "صورتحساب یافت نشد." };
 
@@ -3840,11 +3840,22 @@ context.Customers.Any(x =>
         public async Task<ApiModel> DeleteInvoiceByIdAsync(int InvoiceId)
         {
             ApiModel model = new ApiModel();
-            var result = await context.Invoices.Include(i => i.invoiceItem).FirstOrDefaultAsync(c => c.Id == InvoiceId);
+            var result = await context.Invoices.Include(i => i.invoiceItem).FirstOrDefaultAsync(c => c.Id == InvoiceId && !c.IsDelete);
 
             if (result is not null)
 
             {
+                if (result.StatusSentToSystem != "0" || !result.ShowButtons)
+                {
+                    return new ApiModel
+                    {
+                        Data = false,
+                        Status = 400,
+                        Success = false,
+                        Message = "فقط صورتحساب ارسال‌نشده قابل حذف است."
+                    };
+                }
+
                 result.IsDelete = true;
                 foreach (var item in result.invoiceItem)
                 {
@@ -3862,10 +3873,8 @@ context.Customers.Any(x =>
                 return model;
             }
             model.Data = false;
-            model.Status = 500;
-            model.Message = MessageCode.StatusCode.TryGetValue(500, out string messager) == true
-                ? model.Message = messager
-                : model.Message = "کد وضعیت نامعتبر است.";
+            model.Status = 404;
+            model.Message = "صورتحساب یافت نشد یا قبلاً حذف شده است.";
             model.Success = false;
             return model;
 
