@@ -56,7 +56,6 @@ else
                     <label class="form-label">شمارهٔ فاکتور</label>
                     <input class="form-control num fw-bold text-primary" readonly
                            value="@(IsNewLike ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.Num()) : (vm.NumberInvoice?.Num() ?? "—"))" />
-                    <div class="form-text">@(IsNewLike ? "پیش‌نمایش — شمارهٔ نهایی هنگام ثبت تخصیص می‌یابد." : "")</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">موضوع</label>
@@ -105,7 +104,7 @@ else
                         <option value="">— انتخاب —</option>
                         @foreach (var fy in FiscalYears)
                         {
-                            <option value="@fy.Id">@(string.IsNullOrWhiteSpace(fy.Title) ? "" : fy.Title + " — ")@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</option>
+                            <option value="@fy.Id">@MoadianUi.Shamsi(fy.StartDate).Split('/')[0]</option>
                         }
                     </select>
                 </div>
@@ -118,13 +117,11 @@ else
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">نوع صورتحساب</label>
-                    <select class="form-select" @bind="vm.TypePattern" @bind:after="OnTypePatternChanged"
-                        title="نوع اول: خریدار فعال اقتصادی (با کد اقتصادی) — در کارپوشهٔ خریدار قابل واکنش است | نوع دوم: مصرف‌کنندهٔ نهایی / بدون کد اقتصادی — بدون افشای اطلاعات خریدار و فقط با تسویهٔ نقدی">
+                    <select class="form-select" @bind="vm.TypePattern" @bind:after="OnTypePatternChanged">
                         <option value="نوع اول">نوع اول — با اطلاعات خریدار</option>
                         <option value="نوع دوم">نوع دوم — بدون اطلاعات خریدار</option>
                         <option value="نوع سوم">نوع سوم</option>
                     </select>
-                    <small class="text-muted d-block mt-1">نوع دوم برای خریدار مصرف‌کننده — فقط «نقدی»</small>
                 </div>
                 <div class="col-md-9">
                     <label class="form-label">توضیحات</label>
