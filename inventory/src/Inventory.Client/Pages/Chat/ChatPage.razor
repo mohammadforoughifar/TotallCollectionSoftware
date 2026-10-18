@@ -334,8 +334,12 @@
                         else
                         {
                             <div @key="msg.Id" class="message-row @(msg.IsOutgoing ? "outgoing" : "incoming")" id="msg-@msg.Id">
-                                <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in") @(tappedActionsMsgId == msg.Id ? "actions-open" : "")"
+                                <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in") @(tappedActionsMsgId == msg.Id ? "actions-open" : "") @BubbleFx(msg)"
                                      @onclick="() => ToggleBubbleActions(msg.Id)">
+                                    @if (copiedMsgId == msg.Id)
+                                    {
+                                        <span class="bubble-copied-chip" role="status"><i class="bi bi-check2"></i> کپی شد</span>
+                                    }
                                     @* نام فرستنده در گروه‌ها برای پیام‌های دریافتی *@
                                     @if (!msg.IsOutgoing && activeConv.Type == ChatTypeDto.Group)
                                     {
@@ -512,13 +516,13 @@
                                     }
 
                                     @* منوی سریع روی حباب پیام (Hover Actions) *@
-                                    <div class="bubble-actions-overlay">
+                                    <div class="bubble-actions-overlay" @onmousedown:preventDefault="true">
                                         <button class="action-btn" title="پاسخ (Reply)" @onclick="() => StartReply(msg)">
                                             <i class="bi bi-reply-fill"></i>
                                         </button>
                                         @if (!string.IsNullOrWhiteSpace(msg.Text) && !msg.IsDeleted)
                                         {
-                                            <button class="action-btn" title="کپی متن" @onclick="() => CopyMessageText(msg.Text!)">
+                                            <button class="action-btn" title="کپی متن" @onclick="() => CopyMessageText(msg)">
                                                 <i class="bi bi-clipboard"></i>
                                             </button>
                                         }
@@ -573,26 +577,24 @@
                 @* بنر ریپلای یا ادیت *@
                 @if (replyingTo != null)
                 {
-                    <div class="input-banner reply-banner">
-                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                            <i class="bi bi-reply-fill text-primary"></i>
-                            <div class="text-truncate fs-8">
-                                <span class="fw-bold">پاسخ به @replyingTo.SenderName:</span> @(replyingTo.Text ?? replyingTo.FileName)
-                            </div>
+                    <div class="composer-banner is-reply" @key="@($"r{replyingTo.Id}")">
+                        <div class="cb-icon"><i class="bi bi-reply-fill"></i></div>
+                        <div class="cb-body" title="رفتن به پیام" @onclick="() => ScrollToMessage(replyingTo.Id)">
+                            <div class="cb-title">پاسخ به @replyingTo.SenderName</div>
+                            <div class="cb-text">@MsgSnippet(replyingTo)</div>
                         </div>
-                        <button class="btn-close btn-close-sm" @onclick="CancelReply"></button>
+                        <button type="button" class="cb-close" title="لغو (Esc)" aria-label="لغو پاسخ" @onclick="CancelReply"><i class="bi bi-x-lg"></i></button>
                     </div>
                 }
                 else if (editingMsg != null)
                 {
-                    <div class="input-banner edit-banner">
-                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-                            <i class="bi bi-pencil-fill text-warning"></i>
-                            <div class="text-truncate fs-8">
-                                <span class="fw-bold">ویرایش پیام:</span> @editingMsg.Text
-                            </div>
+                    <div class="composer-banner is-edit" @key="@($"e{editingMsg.Id}")">
+                        <div class="cb-icon"><i class="bi bi-pencil-fill"></i></div>
+                        <div class="cb-body" title="رفتن به پیام" @onclick="() => ScrollToMessage(editingMsg.Id)">
+                            <div class="cb-title">ویرایش پیام</div>
+                            <div class="cb-text">@MsgSnippet(editingMsg)</div>
                         </div>
-                        <button class="btn-close btn-close-sm" @onclick="CancelEdit"></button>
+                        <button type="button" class="cb-close" title="لغو (Esc)" aria-label="لغو ویرایش" @onclick="CancelEdit"><i class="bi bi-x-lg"></i></button>
                     </div>
                 }
 
@@ -699,9 +701,9 @@
 
                         @* کادر متنی پیام *@
                         <textarea class="form-control chat-textarea"
-                                  placeholder="پیام خود را بنویسید..."
+                                  placeholder="@(editingMsg != null ? "متن جدید پیام…" : "پیام خود را بنویسید...")"
                                   rows="1"
-                                  @ref="composerElement" disabled="@isSending"
+                                  @ref="composerElement" readonly="@isSending" aria-busy="@isSending"
                                   @bind="messageInput" @bind:event="oninput" @bind:after="OnMessageInputChanged"></textarea>
 
                         @* گفتار به نوشتار: وقتی متنی در کادر نوشته شده *@
@@ -810,45 +812,57 @@
 @if (forwardingMsg != null)
 {
     <div class="modal fade show d-block chat-modal-backdrop" tabindex="-1" @onclick="CloseForward">
-        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
-            <div class="modal-content shadow-lg border-0 rounded-4">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold fs-6">فوروارد پیام به…</h5>
-                    <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseForward"></button>
+        <div class="modal-dialog modal-dialog-centered cf-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content cf-modal" role="dialog" aria-modal="true" aria-label="فوروارد پیام">
+                <div class="cf-head">
+                    <div class="cf-head-icon"><i class="bi bi-forward-fill"></i></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="cf-title">فوروارد پیام</div>
+                        <div class="cf-sub">به کدام گفتگو بفرستم؟</div>
+                    </div>
+                    <button type="button" class="cf-close" aria-label="بستن" @onclick="CloseForward"><i class="bi bi-x-lg"></i></button>
                 </div>
-                <div class="modal-body">
-                    <div class="input-group mb-3">
-                        <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control form-control-sm" placeholder="جستجوی گفتگو…" aria-label="جستجوی گفتگو"
-                               @bind="forwardSearch" @bind:event="oninput" />
+
+                <div class="cf-preview">
+                    <div class="cf-preview-bar"></div>
+                    <div class="min-w-0">
+                        <div class="cf-preview-sender">@forwardingMsg.SenderName</div>
+                        <div class="cf-preview-text">@MsgSnippet(forwardingMsg)</div>
                     </div>
-                    <div class="users-picker-list" role="listbox">
-                        @if (ForwardCandidates().Count == 0)
-                        {
-                            <div class="text-center py-4 text-muted fs-8">گفتگویی یافت نشد.</div>
-                        }
-                        @foreach (var c in ForwardCandidates())
-                        {
-                            <button type="button" @key="c.Id" class="user-picker-item w-100 border-0 bg-transparent" style="text-align: start;"
-                                    disabled="@forwarding" @onclick="() => DoForward(c.Id)">
-                                <div class="dialog-avatar direct-avatar sm">
-                                    <i class="bi @(c.Type == ChatTypeDto.Group ? "bi-people" : "bi-person")"></i>
-                                </div>
-                                <div class="flex-grow-1 min-w-0 ms-2">
-                                    <div class="fw-bold fs-8">@c.Title</div>
-                                    <div class="fs-9 text-muted text-truncate">@c.LastMessageSnippet</div>
-                                </div>
-                                @if (forwardTargetDone == c.Id)
-                                {
-                                    <i class="bi bi-check2 text-success fs-5"></i>
-                                }
-                                else
-                                {
-                                    <i class="bi bi-forward-fill text-muted"></i>
-                                }
-                            </button>
-                        }
-                    </div>
+                </div>
+
+                <div class="cf-search">
+                    <i class="bi bi-search"></i>
+                    <input type="text" placeholder="جستجوی گفتگو…" aria-label="جستجوی گفتگو" @ref="forwardSearchEl"
+                           @bind="forwardSearch" @bind:event="oninput" />
+                </div>
+
+                <div class="cf-list" role="listbox">
+                    @{ var candidates = ForwardCandidates(); }
+                    @if (candidates.Count == 0)
+                    {
+                        <div class="cf-empty"><i class="bi bi-chat-square-dots"></i><span>گفتگویی پیدا نشد</span></div>
+                    }
+                    @foreach (var c in candidates)
+                    {
+                        var isGroup = c.Type == ChatTypeDto.Group;
+                        var state = forwardTargetDone == c.Id ? "is-done" : forwardingTo == c.Id ? "is-busy" : "";
+                        <button type="button" @key="c.Id" class="cf-item @state" role="option"
+                                disabled="@(forwarding || forwardTargetDone != 0)" @onclick="() => DoForward(c.Id)">
+                            <span class="cf-av @(isGroup ? "is-group" : "")" style="--h:@AvatarHue(c.Title)">
+                                @if (isGroup) { <i class="bi bi-people-fill"></i> } else { @Initial(c.Title) }
+                            </span>
+                            <span class="cf-item-body">
+                                <span class="cf-item-name">@c.Title</span>
+                                <span class="cf-item-last">@(string.IsNullOrWhiteSpace(c.LastMessageSnippet) ? (isGroup ? "گروه" : "گفتگوی دونفره") : c.LastMessageSnippet)</span>
+                            </span>
+                            <span class="cf-item-act">
+                                @if (forwardTargetDone == c.Id) { <i class="bi bi-check-lg"></i> }
+                                else if (forwardingTo == c.Id) { <span class="spinner-border spinner-border-sm"></span> }
+                                else { <span class="cf-send">ارسال <i class="bi bi-arrow-left-short"></i></span> }
+                            </span>
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -1064,6 +1078,18 @@
     private ChatMessageDto? editingMsg;
     // فوروارد پیام
     private ChatMessageDto? forwardingMsg;
+    private int forwardingTo;
+    private ElementReference forwardSearchEl;
+    private bool focusForwardSearch;
+
+    // فوکوس کادر متن بعد از رندر (ارسال، ویرایش، پاسخ، کپی، فوروارد)
+    private bool focusAfterRender;
+    private bool focusForce;
+    private bool focusToEnd;
+
+    // افکت‌های کوتاه روی حباب پیام
+    private int copiedMsgId, justSentId, editedFlashId, fxSeq;
+    private readonly Dictionary<int, int> fxLatest = new();
     private string forwardSearch = "";
     private bool forwarding;
     private int forwardTargetDone;
@@ -1324,7 +1350,7 @@
             {
                 // ?v= کش‌شکن: بعد از هر انتشار، مرورگر/PWA نسخهٔ قدیمی ماژول را لود نکند
                 // (خطای «Could not find 'isMobileView'» از کش‌شدن نسخهٔ قدیمی همین فایل بود).
-                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=5");
+                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=7");
                 if (disposed) { await chatJs.DisposeAsync(); return; }
                 chatSelf = DotNetObjectReference.Create(this);
                 interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
@@ -1342,6 +1368,17 @@
         }
         // هنگام ضبط، textarea از DOM حذف می‌شود؛ نباید composer با المان حذف‌شده attach شود.
         if (activeConv != null && !isRecording) await chatJs.InvokeVoidAsync("attachComposer", interopId, composerElement);
+        if (focusForwardSearch && forwardingMsg != null)
+        {
+            focusForwardSearch = false;
+            try { await forwardSearchEl.FocusAsync(); } catch { }
+        }
+        else if (focusAfterRender && activeConv != null && !isRecording && forwardingMsg == null)
+        {
+            focusAfterRender = false;
+            try { await chatJs.InvokeVoidAsync("focusComposer", interopId, focusToEnd, focusForce); } catch (JSException) { }
+            focusToEnd = focusForce = false;
+        }
         if (scrollAfterRender)
         {
             scrollAfterRender = false;
@@ -1445,6 +1482,8 @@
             if (disposed || activeConv?.Id != conversationId) return;
             // پاسخ موفق HTTP هم بلافاصله نمایش داده می‌شود؛ حتی اگر SignalR قطع باشد.
             UpsertMessage(saved);
+            if (editingMsg != null) Flash(() => editedFlashId = saved.Id, () => editedFlashId = 0, 1200);
+            else Flash(() => justSentId = saved.Id, () => justSentId = 0, 600);
             editingMsg = null;
             replyingTo = null;
             RemovePendingAttachment();
@@ -1462,6 +1501,7 @@
         finally
         {
             isSending = false;
+            if (activeConv?.Id == conversationId) RequestComposerFocus();
             if (!disposed) await InvokeAsync(StateHasChanged);
         }
     }
@@ -1531,11 +1571,16 @@
 
     private void StartReply(ChatMessageDto msg)
     {
-        editingMsg = null;
+        if (editingMsg != null) { editingMsg = null; messageInput = ""; _ = GrowComposerAsync(); }
         replyingTo = msg;
+        RequestComposerFocus(force: true);
     }
 
-    private void CancelReply() => replyingTo = null;
+    private void CancelReply()
+    {
+        replyingTo = null;
+        RequestComposerFocus(force: true);
+    }
 
     private void OpenImagePreview(ChatMessageDto msg) => previewMsg = msg;
     private void CloseImagePreview() => previewMsg = null;
@@ -1545,6 +1590,7 @@
         replyingTo = null;
         editingMsg = msg;
         messageInput = msg.Text ?? "";
+        RequestComposerFocus(force: true, toEnd: true);
         _ = GrowComposerAsync();
     }
 
@@ -1552,6 +1598,7 @@
     {
         editingMsg = null;
         messageInput = "";
+        RequestComposerFocus(force: true);
         _ = Task.Run(async () =>
         {
             try
@@ -1788,17 +1835,19 @@
     }
 
     /// <summary>کپی متن خود پیام — برای هر پیام متنی (ورودی یا خروجی).</summary>
-    private async Task CopyMessageText(string text)
+    private async Task CopyMessageText(ChatMessageDto msg)
     {
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            Toast.Success("متن پیام کپی شد.");
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", msg.Text ?? "");
+            Flash(() => copiedMsgId = msg.Id, () => copiedMsgId = 0, 1600);
         }
         catch
         {
-            Toast.Info(text);
+            Toast.Info(msg.Text ?? "");
         }
+        // در موبایل فوکوس = باز شدن کیبورد؛ آنجا فقط بعد از ارسال/پاسخ/ویرایش فوکوس می‌دهیم.
+        if (!isMobileView) RequestComposerFocus(force: true);
     }
 
     /// <summary>فوروارد: بازکردن انتخاب‌گر گفتگوی مقصد.</summary>
@@ -1807,12 +1856,17 @@
         forwardingMsg = msg;
         forwardSearch = "";
         forwardTargetDone = 0;
+        forwardingTo = 0;
+        focusForwardSearch = !isMobileView;
     }
 
     private void CloseForward()
     {
+        if (forwarding) return;
         forwardingMsg = null;
         forwardTargetDone = 0;
+        forwardingTo = 0;
+        if (!isMobileView) RequestComposerFocus(force: true);
     }
 
     private List<ChatConversationDto> ForwardCandidates()
@@ -1826,8 +1880,10 @@
     /// <summary>فوروارد پیام انتخاب‌شده به گفتگوی مقصد — بعد از موفقیت مودال بسته می‌شود.</summary>
     private async Task DoForward(int conversationId)
     {
-        if (forwardingMsg == null || forwarding) return;
+        if (forwardingMsg == null || forwarding || forwardTargetDone != 0) return;
         forwarding = true;
+        forwardingTo = conversationId;
+        var done = false;
         try
         {
             var saved = await Chat.ForwardAsync(forwardingMsg.Id, conversationId);
@@ -1836,17 +1892,24 @@
             {
                 UpsertMessage(saved);
                 scrollAfterRender = true;
+                Flash(() => justSentId = saved.Id, () => justSentId = 0, 600);
             }
-            Toast.Success("پیام فوروارد شد.");
-            await LoadConversations();
-            CloseForward();
+            done = true;
         }
         catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
         finally
         {
             forwarding = false;
+            forwardingTo = 0;
             if (!disposed) await InvokeAsync(StateHasChanged);
         }
+        if (!done || disposed) return;
+        // تیک سبز را یک لحظه نشان بده، بعد مودال را ببند.
+        await Task.Delay(650);
+        if (disposed) return;
+        CloseForward();
+        await InvokeAsync(StateHasChanged);
+        try { await LoadConversations(); } catch { }
     }
 
     private void ToggleEmojiPanel() => showEmojiPanel = !showEmojiPanel;
@@ -1922,6 +1985,65 @@
     {
         sttListening = false;
         if (!disposed) await InvokeAsync(StateHasChanged);
+    }
+
+    private void RequestComposerFocus(bool force = false, bool toEnd = false)
+    {
+        focusAfterRender = true;
+        focusForce |= force;
+        focusToEnd |= toEnd;
+    }
+
+    /// <summary>کلید Esc داخل کادر متن: لغو ویرایش یا پاسخ.</summary>
+    [JSInvokable]
+    public Task CancelFromComposer() => InvokeAsync(() =>
+    {
+        if (editingMsg != null) CancelEdit();
+        else if (replyingTo != null) CancelReply();
+        else return;
+        if (!disposed) StateHasChanged();
+    });
+
+    /// <summary>یک افکت کوتاه روی حباب (کپی شد / ارسال شد / ویرایش شد) که خودش بعد از چند لحظه پاک می‌شود.</summary>
+    private void Flash(Action set, Action clear, int ms, [System.Runtime.CompilerServices.CallerLineNumber] int kind = 0)
+    {
+        var seq = ++fxSeq;
+        fxLatest[kind] = seq;
+        set();
+        _ = ClearFxLaterAsync(clear, ms, kind, seq);
+    }
+
+    private async Task ClearFxLaterAsync(Action clear, int ms, int kind, int seq)
+    {
+        await Task.Delay(ms);
+        // اگر همین افکت دوباره شروع شده، پاک‌کردن به عهدهٔ تایمر جدید است.
+        if (disposed || fxLatest.GetValueOrDefault(kind) != seq) return;
+        clear();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string BubbleFx(ChatMessageDto m) =>
+        (editingMsg?.Id == m.Id ? "is-editing " : "") +
+        (copiedMsgId == m.Id ? "is-copied " : "") +
+        (justSentId == m.Id ? "just-sent " : "") +
+        (editedFlashId == m.Id ? "just-edited" : "");
+
+    private static string MsgSnippet(ChatMessageDto m) =>
+        !string.IsNullOrWhiteSpace(m.Text) ? m.Text!
+        : !string.IsNullOrWhiteSpace(m.FileName) ? $"📎 {m.FileName}"
+        : "پیوست";
+
+    private static string Initial(string? name)
+    {
+        var t = (name ?? "").Trim();
+        return t.Length == 0 ? "؟" : t[..1];
+    }
+
+    private static int AvatarHue(string? name)
+    {
+        var h = 0;
+        foreach (var ch in name ?? "") h = (h * 31 + ch) % 360;
+        return h;
     }
 
     private void AppendEmoji(string emoji)

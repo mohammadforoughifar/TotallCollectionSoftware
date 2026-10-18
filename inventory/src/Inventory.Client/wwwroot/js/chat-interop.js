@@ -11,9 +11,28 @@ export function initialize(dotnet) {
     document.addEventListener('visibilitychange', state.visibility);
     window.addEventListener('focus', state.visibility);
     window.addEventListener('blur', state.visibility);
+    // جای نوار عملیات پیام: کنار حباب؛ اگر جا نبود بالای حباب؛ اگر آنجا هم نبود داخل حباب.
+    state.placeActions = event => placeBubbleActions(event);
+    document.addEventListener('mouseover', state.placeActions);
     instances.set(id, state);
     state.visibility();
     return id;
+}
+
+function placeBubbleActions(event) {
+    const bubble = event.target && event.target.closest ? event.target.closest('.message-bubble') : null;
+    if (!bubble) return;
+    if (event.relatedTarget && bubble.contains(event.relatedTarget)) return;
+    const bar = bubble.querySelector('.bubble-actions-overlay');
+    const box = document.getElementById('chatMessagesScroll');
+    if (!bar || !box) return;
+    bubble.classList.remove('act-top', 'act-in');
+    const b = bubble.getBoundingClientRect();
+    const c = box.getBoundingClientRect();
+    const width = bar.offsetWidth || 280;
+    const room = bubble.classList.contains('bubble-out') ? b.left - c.left : c.right - b.right;
+    if (room >= width + 16) return;
+    bubble.classList.add(b.top - c.top >= 46 ? 'act-top' : 'act-in');
 }
 
 export function attachComposer(id, element) {
@@ -28,6 +47,8 @@ export function attachComposer(id, element) {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !event.repeat) {
             event.preventDefault();
             state.dotnet.invokeMethodAsync('SendFromComposer', element.value).catch(() => {});
+        } else if (event.key === 'Escape' && !event.isComposing) {
+            state.dotnet.invokeMethodAsync('CancelFromComposer').catch(() => {});
         }
     };
     element.addEventListener('keydown', state.keydown);
@@ -57,6 +78,26 @@ export function resetComposer(id) {
     if (state && state.element) {
         state.element.style.height = 'auto';
         growElement(state.element);
+    }
+}
+
+/** برگرداندن فوکوس به کادر متن (بعد از ارسال، ویرایش، پاسخ، کپی و فوروارد).
+ *  toEnd: مکان‌نما به آخر متن برود — برای ویرایش که متن پیام داخل کادر گذاشته می‌شود.
+ *  force: برای کارهای مستقیم کاربر (پاسخ/ویرایش/کپی/فوروارد) حتی اگر فیلد دیگری فوکوس دارد. */
+export function focusComposer(id, toEnd, force) {
+    const state = instances.get(id);
+    let element = state && state.element;
+    if (!element || !element.isConnected) element = document.querySelector('.chat-textarea');
+    if (!element || element.disabled) return;
+    // اگر کاربر در همین لحظه داخل یک فیلد دیگر (جستجو، مودال) تایپ می‌کند، فوکوس را از او نگیر.
+    const active = document.activeElement;
+    if (!force && active && active !== element && active !== document.body &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+    element.focus({ preventScroll: true });
+    if (toEnd) {
+        const end = element.value.length;
+        try { element.setSelectionRange(end, end); } catch (e) { /* نادیده */ }
+        element.scrollTop = element.scrollHeight;
     }
 }
 
@@ -266,6 +307,7 @@ export function dispose(id) {
     document.removeEventListener('visibilitychange', state.visibility);
     window.removeEventListener('focus', state.visibility);
     window.removeEventListener('blur', state.visibility);
+    if (state.placeActions) document.removeEventListener('mouseover', state.placeActions);
     if (state.mobileWatch && state.mobileQuery) {
         if (state.mobileQuery.removeEventListener) state.mobileQuery.removeEventListener('change', state.mobileWatch);
         else state.mobileQuery.removeListener(state.mobileWatch);
