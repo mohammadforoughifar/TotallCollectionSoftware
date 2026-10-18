@@ -4077,7 +4077,7 @@ context.Customers.Any(x =>
                 // فقط خدمات‌دهنده‌های شرکت فعال کاربر (حتی برای Admin) — تفکیک کامل بین شرکت‌ها
                 var allowed = await AllowedCpInfoIdsAsync();
                 var list = await context.CPInfos.Where(c => !c.IsDelete && allowed.Contains(c.Id)).ToListAsync();
-                Console.WriteLine($"[Moadian] GetCpInfos user={CurrentUserId} activeCompany={await ResolveActiveCompanyIdAsync()} providers={list.Count}");
+                Console.WriteLine($"[Moadian] GetCpInfos user={CurrentUserId} header={httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault() ?? "-"} activeCompany={await ResolveActiveCompanyIdAsync()} providers={list.Count} ids=[{string.Join(",", list.Select(c => c.Id))}]");
                 var companyNames = await context.SystemCompanies.AsNoTracking()
                     .ToDictionaryAsync(c => c.Id, c => c.Name);
                 model.Data = list.Select(c => new VMShowCpinfoByCompany

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Inventory.Shared.Dtos.Moadian;
+using Microsoft.JSInterop;
 using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM;
 
 namespace Inventory.Client.Services;
@@ -58,7 +59,8 @@ public class MoadianService : IMoadianService
 {
     private static readonly JsonSerializerOptions Opts = new() { PropertyNameCaseInsensitive = true };
     private readonly IApiClient _api;
-    public MoadianService(IApiClient api) => _api = api;
+    private readonly IJSRuntime _js;
+    public MoadianService(IApiClient api, IJSRuntime js) { _api = api; _js = js; }
 
     /// <summary>مبدل Data خامِ ApiModel به نوع مجرّد (JsonElement → T) — هرگز exception نمی‌دهد؛
     /// پاسخ‌های خطا با Data=false می‌آیند و در آن صورت default برمی‌گردد (پیام خطا از m.Message).</summary>
@@ -103,7 +105,21 @@ public class MoadianService : IMoadianService
 
     // ---------- شرکت / سال مالی / مشتری ----------
     public async Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync()
-        => Must<List<VMShowCpinfoByCompany>>(await _api.GetAsync<ApiModel>("Moadian/GetCpInfos")) ?? new();
+    {
+        var list = Must<List<VMShowCpinfoByCompany>>(await _api.GetAsync<ApiModel>("Moadian/GetCpInfos")) ?? new();
+        // فیلتر قطعی سمت کلاینت: سرور هم فهرست را بر اساس «شرکت فعال» فیلتر می‌کند، اما اگر
+        // هدر X-Company-Id به هر دلیلی به API نرسد، این فیلتر دوم تضمین می‌کند کاربر در هر
+        // شرکت فعال فقط خدمات‌دهنده‌های همان شرکت را ببیند. مبنا: شرکت ذخیره‌شده در localStorage
+        // (همان مقداری که نوار بالای سیستم هنگام تعویض شرکت ثبت می‌کند) در برابر CompanyId هر رکورد.
+        try
+        {
+            var saved = await _js.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+            if (int.TryParse(saved, out var activeId) && activeId > 0 && list.Any(c => c.CompanyId is > 0))
+                list = list.Where(c => c.CompanyId == activeId).ToList();
+        }
+        catch { /* خارج از مرورگر یا خطای JS: فهرست سرور بدون تغییر برمی‌گردد */ }
+        return list;
+    }
 
     public Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm)
         => _api.PostAsync<ApiModel>("Moadian/SaveCpInfo", vm);
