@@ -274,6 +274,8 @@
 /* ---------- مودال عمومی ---------- */
 .ltx .gov { position:fixed; inset:0; background:rgba(15,23,42,.5); backdrop-filter:blur(3px); z-index:1055;
             display:flex; align-items:center; justify-content:center; padding:18px; }
+.ltx .workorder-mark { display:inline-flex; align-items:center; vertical-align:middle; line-height:1; }
+.ltx .workorder-mark svg { display:block; flex:none; }
 .ltx .gmodal { width:min(1100px,96vw); max-height:92vh; background:#fff; border-radius:20px; display:flex; flex-direction:column;
                overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.3); direction:rtl; animation:ltxpop .18s ease; }
 @keyframes ltxpop { from { transform:scale(.96); opacity:0; } }
