@@ -36,6 +36,10 @@ else
                     <i class="bi @(CurrentType == "حقوقی" ? "bi-bank" : "bi-person")"></i> @CurrentType
                 </span>
             }
+            @if (!string.IsNullOrEmpty(CurrentCompanyName))
+            {
+                <span class="badge badge-soft-primary" title="شرکت سیستم (کمپانی)"><i class="bi bi-diagram-3"></i> @CurrentCompanyName</span>
+            }
             @if (Ctx.CpInfoId > 0 && CurrentEcon != null)
             {
                 <span class="badge badge-soft-primary num" title="شماره اقتصادی">
@@ -54,6 +58,7 @@ else
     private bool ready;
     private string? CurrentEcon => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.EconomicNumber;
     private string? CurrentType => Ctx.CpInfoId > 0 ? CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.Type : null;
+    private string? CurrentCompanyName => Ctx.CpInfoId > 0 ? CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.CompanyName : null;
 
     protected override async Task OnInitializedAsync()
     {

@@ -108,6 +108,8 @@ public static class DbInitializer
                 // «stamp و رد» شده باشد، جدول‌ها (CPInfos و...) هرگز ساخته نمی‌شوند —
                 // نتیجه: Invalid object name 'CPInfos' در ثبت شرکت. اینجا idempotent می‌سازیم.
                 await MoadianSchemaV1.EnsureAsync(db);
+                // خدمات‌دهنده‌های مودیانِ بدون شرکت داخلی → وصل به شرکت پیش‌فرض سیستم (قابل اصلاح از فرم شرکت)
+                await MoadianCompanyAssignment.EnsureAsync(db);
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);

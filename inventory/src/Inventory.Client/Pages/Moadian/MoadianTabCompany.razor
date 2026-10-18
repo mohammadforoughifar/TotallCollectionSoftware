@@ -2,6 +2,7 @@
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject IJSRuntime JS
+@inject HttpClient Http
 @inject MoadianCompanyContext Ctx
 @implements IDisposable
 
@@ -72,6 +73,10 @@
                                             {
                                                 <div class="text-muted small" dir="ltr">@c.EnglishName</div>
                                             }
+                                            @if (!string.IsNullOrEmpty(c.CompanyName))
+                                            {
+                                                <div class="text-muted small"><i class="bi bi-diagram-3"></i> شرکت سیستم: @c.CompanyName</div>
+                                            }
                                         </td>
                                         <td class="num">@c.Nationalid</td>
                                         <td class="num">@c.EconomicNumber</td>
@@ -101,6 +106,21 @@
                 }
             </div>
             <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label">شرکت سیستم (کمپانی) <span class="text-danger">*</span></label>
+                    <select class="form-select" value="@(newCp.CompanyId?.ToString() ?? "")" @onchange="OnSystemCompanyChanged">
+                        <option value="">— انتخاب شرکت سیستم —</option>
+                        @foreach (var sc in SystemCompanies)
+                        {
+                            <option value="@sc.Id">@sc.Name@(ActiveSystemCompanyId == sc.Id ? " (شرکت فعال)" : "")</option>
+                        }
+                    </select>
+                    <div class="form-text">این خدمات‌دهنده فقط برای کاربرانی دیده می‌شود که همین شرکت، «شرکت فعال» آن‌هاست.</div>
+                    @if (SystemCompanies.Count == 0)
+                    {
+                        <div class="alert alert-warning py-1 px-2 mt-2 small mb-0">برای شما شرکتی در سیستم تعریف نشده است؛ از مدیر بخواهید در «تعریف کاربر» شرکت فعال برایتان انتخاب کند.</div>
+                    }
+                </div>
                 <div class="mb-2">
                     <label class="form-label">نام شرکت <span class="text-danger">*</span></label>
                     <input class="form-control" value="@newCp.PersianName" @oninput="e => newCp.PersianName = e.Value?.ToString()" placeholder="مثلاً: شرکت نمونه آریا" />
@@ -222,6 +242,15 @@
     private FiscalYearForm newFy = new();
     private bool loading = true, savingCp, savingFy;
 
+    // شرکت‌های داخلی سیستم که کاربر به آن‌ها دسترسی دارد (از company-context) + شرکت فعال
+    private sealed class SystemCompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
+    private sealed class CompanyContextResponse { public int? ActiveCompanyId { get; set; } public List<SystemCompanyOption> Companies { get; set; } = new(); }
+    private List<SystemCompanyOption> SystemCompanies = new();
+    private int? ActiveSystemCompanyId;
+
+    private void OnSystemCompanyChanged(ChangeEventArgs e)
+        => newCp.CompanyId = int.TryParse(e.Value?.ToString(), out var id) && id > 0 ? id : null;
+
     private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
 
     /// <summary>فرم تعریف سال مالی — DatePicker ها DateTime? برمی‌دارند؛ هنگام ذخیره به VM تبدیل می‌شود.</summary>
@@ -249,6 +278,15 @@
         {
             if (!fyOnly)
             {
+                try
+                {
+                    var ctxResp = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context");
+                    SystemCompanies = ctxResp?.Companies ?? new();
+                    ActiveSystemCompanyId = ctxResp?.ActiveCompanyId;
+                    if (newCp.cpinfoid == 0 && newCp.CompanyId is null && ActiveSystemCompanyId is > 0)
+                        newCp.CompanyId = ActiveSystemCompanyId;
+                }
+                catch { SystemCompanies = new(); }
                 CpInfos = await Moadian.GetCpInfosAsync();
                 if (Ctx.CpInfoId == 0 && CpInfos.Count > 0) Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
             }
@@ -265,6 +303,7 @@
         newCp = new VMShowCpinfoByCompany
         {
             cpinfoid = c.cpinfoid,
+            CompanyId = c.CompanyId,
             PersianName = c.PersianName,
             Nationalid = c.Nationalid,
             EconomicNumber = c.EconomicNumber,
@@ -274,7 +313,7 @@
         };
     }
 
-    private void ResetForm() => newCp = new() { Type = "حقیقی" };
+    private void ResetForm() => newCp = new() { Type = "حقیقی", CompanyId = ActiveSystemCompanyId };
 
     private async Task DeleteCompany(VMShowCpinfoByCompany c)
     {
@@ -305,6 +344,7 @@
 
     private async Task SaveCompany()
     {
+        if (SystemCompanies.Count > 0 && newCp.CompanyId is null or <= 0) { Toast.Error("شرکت سیستم (کمپانی) را انتخاب کنید."); return; }
         if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
         if (string.IsNullOrWhiteSpace(newCp.Nationalid)) { Toast.Error("کد ملی / شناسهٔ ثبت شرکت الزامی است."); return; }
         if (string.IsNullOrWhiteSpace(newCp.Type)) newCp.Type = "حقیقی";

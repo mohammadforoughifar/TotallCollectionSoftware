@@ -19,6 +19,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -37,10 +38,106 @@ using static Inventory.Shared.Dtos.Moadian.VmInvoiceItems;
 
 namespace Inventory.Api.Services.Moadian
 {
-    public class ConnectService(AppDbContext context) : IConnectService
+    public class ConnectService(AppDbContext context, IHttpContextAccessor httpContextAccessor) : IConnectService
     {
+        // ================== تفکیک بر اساس شرکت فعال کاربر ==================
+        // هر خدمات‌دهندهٔ مودیان (CpInfo) به یک شرکت داخلی سیستم (SystemCompany) وصل است.
+        // کاربر — حتی Admin — فقط خدمات‌دهنده‌های «شرکت فعال» خودش را می‌بیند و مدیریت می‌کند.
+        private int CurrentUserId
+        {
+            get
+            {
+                var v = httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+                return int.TryParse(v, out var id) ? id : 0;
+            }
+        }
+
+        private string CurrentUsername => httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.Name) ?? "";
+
+        private bool IsAdminUser => httpContextAccessor.HttpContext?.User?.IsInRole("Admin") == true;
+
+        /// <summary>شرکت فعال کاربر — همان منطق CompanyContextController: هدر X-Company-Id اگر در
+        /// دسترسی‌های کاربر باشد، وگرنه شرکت پیش‌فرض (IsDefault) و در نبود آن اولین شرکت مجاز.
+        /// برای Admin بدون ردیف دسترسی، همهٔ شرکت‌های فعال مجازند (فعال = انتخاب‌شده در نوار بالا).</summary>
+        private async Task<int?> ResolveActiveCompanyIdAsync()
+        {
+            var userId = CurrentUserId;
+            int? requested = null;
+            var header = httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault();
+            if (int.TryParse(header, out var h) && h > 0) requested = h;
+
+            var access = await context.UserCompanyAccesses.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Company.IsActive)
+                .OrderByDescending(x => x.IsDefault).ThenBy(x => x.Company.Name).ThenBy(x => x.CompanyId)
+                .Select(x => x.CompanyId).ToListAsync();
+            if (access.Count > 0)
+                return requested is > 0 && access.Contains(requested.Value) ? requested : access[0];
+
+            // سازگاری قدیمی: شرکت روی خود کاربر (SystemUsers.CompanyId)
+            var legacy = await context.SystemUsers.AsNoTracking()
+                .Where(u => u.Username == CurrentUsername && u.CompanyId != null)
+                .Select(u => u.CompanyId).FirstOrDefaultAsync();
+            if (legacy is > 0) return legacy;
+
+            if (IsAdminUser)
+            {
+                var companies = await context.SystemCompanies.AsNoTracking()
+                    .Where(c => c.IsActive).OrderBy(c => c.Name).ThenBy(c => c.Id)
+                    .Select(c => c.Id).ToListAsync();
+                if (companies.Count > 0)
+                    return requested is > 0 && companies.Contains(requested.Value) ? requested : companies[0];
+            }
+            return null;
+        }
+
+        /// <summary>شرکت‌هایی که کاربر می‌تواند برای خدمات‌دهنده انتخاب کند (دسترسی‌هایش؛ Admin بدون دسترسی = همه).</summary>
+        private async Task<List<int>> AccessibleCompanyIdsAsync()
+        {
+            var userId = CurrentUserId;
+            var access = await context.UserCompanyAccesses.AsNoTracking()
+                .Where(x => x.UserId == userId && x.Company.IsActive)
+                .Select(x => x.CompanyId).ToListAsync();
+            if (access.Count > 0) return access;
+
+            var legacy = await context.SystemUsers.AsNoTracking()
+                .Where(u => u.Username == CurrentUsername && u.CompanyId != null)
+                .Select(u => u.CompanyId).FirstOrDefaultAsync();
+            if (legacy is > 0) return new List<int> { legacy.Value };
+
+            if (IsAdminUser)
+                return await context.SystemCompanies.AsNoTracking().Where(c => c.IsActive).Select(c => c.Id).ToListAsync();
+            return new List<int>();
+        }
+
+        /// <summary>شناسهٔ خدمات‌دهنده‌هایی که کاربر در شرکت فعالش مجاز به دیدن/مدیریت آن‌هاست.</summary>
+        private async Task<HashSet<int>> AllowedCpInfoIdsAsync()
+        {
+            var active = await ResolveActiveCompanyIdAsync();
+            if (active is null) return new HashSet<int>();
+            var ids = await context.CPInfos.AsNoTracking()
+                .Where(c => !c.IsDelete && c.CompanyId == active.Value)
+                .Select(c => c.Id).ToListAsync();
+            return ids.ToHashSet();
+        }
+
+        /// <summary>اگر خدمات‌دهنده برای شرکت فعال کاربر مجاز نباشد، پاسخ خطای آماده برمی‌گردد؛ وگرنه null.</summary>
+        private async Task<ApiModel?> GuardCpInfoAsync(int cpInfoId)
+        {
+            if (cpInfoId <= 0) return null;
+            var allowed = await AllowedCpInfoIdsAsync();
+            if (allowed.Contains(cpInfoId)) return null;
+            return new ApiModel
+            {
+                Data = null,
+                Status = 403,
+                Success = false,
+                Message = "این خدمات‌دهنده مربوط به شرکت فعال شما نیست؛ ابتدا شرکت فعال را از نوار بالای سیستم تغییر دهید یا از مدیر بخواهید این خدمات‌دهنده را به شرکت شما وصل کند."
+            };
+        }
+
         public async Task<ApiModel> GetAllGoodOrServiceAsync(int cpinfoId, GetResultQuery request)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
 
             try
@@ -125,6 +222,7 @@ namespace Inventory.Api.Services.Moadian
 
         public async Task<ApiModel> InsertGoodOrServiceAsync(VMGoodsOrService modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
             if (modeldata.UniqueIdentifier == "" || modeldata.Price == 0 ||
             modeldata.Name == "")
@@ -739,6 +837,7 @@ namespace Inventory.Api.Services.Moadian
         /// <summary>تست اتصالِ ثبت‌شدهٔ یک شرکت — کلید را از wwwroot/uploads/{نام شرکت} می‌خواند و احراز هویت واقعی انجام می‌دهد.</summary>
         public async Task<ApiModel> IsConnectStoredAsync(int cpinfoId)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             var connect = await context.ConnectInfos.FirstOrDefaultAsync(c => c.CpInfo == cpinfoId && !c.IsDelete);
             if (connect is null)
                 return new ApiModel { Data = false, Status = 400, Success = false, Message = "برای این شرکت اتصالی ثبت نشده است." };
@@ -984,6 +1083,7 @@ namespace Inventory.Api.Services.Moadian
         /// <summary>تشخیص عمیق: دیتابیسِ واقعیِ متصل + شناسهٔ شرکتِ ارسالی کلاینت + نتیجهٔ دقیقِ همان کوئری‌های لیست با EF — برای «ردیف هست ولی لیست خالی است».</summary>
         public async Task<ApiModel> DiagnoseListsAsync(int cpinfoId)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             try
             {
                 var conn = context.Database.GetDbConnection();
@@ -1076,6 +1176,7 @@ namespace Inventory.Api.Services.Moadian
         /// <summary>حذف نرم شرکت (و اتصال‌هایش) — صورتحساب‌ها و سوابق حفظ می‌شوند.</summary>
         public async Task<ApiModel> DeleteCpInfoAsync(int id)
         {
+            if (await GuardCpInfoAsync(id) is { } guard) return guard;
             var cp = await context.CPInfos.FindAsync(id);
             if (cp is null)
                 return new ApiModel { Data = null, Status = 404, Success = false, Message = "شرکت مورد نظر یافت نشد." };
@@ -1090,6 +1191,7 @@ namespace Inventory.Api.Services.Moadian
 
         public async Task<ApiModel> GetAllInvoiceAsync(string operation, int CpinfoId, GetResultQuery request)
         {
+            if (await GuardCpInfoAsync(CpinfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
 
             try
@@ -1304,6 +1406,7 @@ context.Customers.Any(x =>
         }
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM modelInvoiceVM, bool previewOnly = false)
         {
+            if (await GuardCpInfoAsync(modelInvoiceVM.CPInfoId ?? 0) is { } guard) return guard;
             ApiModel model = new ApiModel();
             string? requestJsonSnapshot = null;
             string? responseJsonSnapshot = null;
@@ -1738,6 +1841,7 @@ context.Customers.Any(x =>
         }
         public async Task<ApiModel> SabtInvoiceAsync(InvoiceVM modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CPInfoId ?? 0) is { } guard) return guard;
             if (modeldata.IsNew)
                 return await CreateInvoiceAsync(modeldata);
 
@@ -1784,6 +1888,7 @@ context.Customers.Any(x =>
         /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (برای نمایش در فرم ثبت).</summary>
         public async Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
             try
             {
@@ -1803,6 +1908,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> GetGoodOrServiceForComboAsync(int cpinfoid)
         {
+            if (await GuardCpInfoAsync(cpinfoid) is { } guard) return guard;
             ApiModel model = new ApiModel();
             var result = await context.GoodsOrServices.Where(c => c.CpInfo == cpinfoid && !c.IsDelete).OrderBy(c => c.Name).Select(c => new VMGoodsOrServicesList
             {
@@ -1841,6 +1947,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> GetCustomerForComboAsync(int cpinfoid)
         {
+            if (await GuardCpInfoAsync(cpinfoid) is { } guard) return guard;
             ApiModel model = new ApiModel();
             var result = await context.Customers.Where(c => c.CpInfoId == cpinfoid && !c.IsDelete).OrderBy(c => c.Name).Select(c => new VMCustomerList
             {
@@ -1914,6 +2021,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> UpdateGoodOrServiceAsync(VMGoodsOrService modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
             if (modeldata.UniqueIdentifier == "" || modeldata.Price == 0 ||
             modeldata.Name == "" || modeldata.GoodsOrServicesId == 0)
@@ -2029,6 +2137,9 @@ context.Customers.Any(x =>
                 {
                     var invoice = await context.Invoices.Include(c => c.fiscalYear).FirstOrDefaultAsync(c => c.Id == InvoiceId && !c.IsDelete);
                     if (invoice is null)
+                        return new ApiModel { Data = null, Status = 404, Success = false, Message = "صورتحساب یافت نشد." };
+                    // صورتحساب خدمات‌دهندهٔ شرکت دیگر برای این کاربر «یافت‌شده» محسوب نمی‌شود.
+                    if (await GuardCpInfoAsync(invoice.CpInfo ?? 0) is not null)
                         return new ApiModel { Data = null, Status = 404, Success = false, Message = "صورتحساب یافت نشد." };
 
                     //// در Controller یا ViewModel
@@ -2160,6 +2271,7 @@ context.Customers.Any(x =>
             {
                 List<string> referenceNumbers = new List<string> { ReferenceId };
                 var invoice = context.Invoices.FirstOrDefault(c => c.Id == InvoiceId);
+                if (invoice is not null && await GuardCpInfoAsync(invoice.CpInfo ?? 0) is { } guard) return guard;
                 if (await IsConnectApi((int)invoice.CpInfo)) // استفاده از await به جای .Result
                 {
                     var inquiryResultModel = TaxApiService.Instance.TaxApis
@@ -2343,6 +2455,7 @@ context.Customers.Any(x =>
         }
         public async Task<ApiModel> ConnectionApiAsync(VMConnection connection, IFormFile formFile)
         {
+            if (await GuardCpInfoAsync(connection.cpinfoid) is { } guard) return guard;
             // اعتبارسنجی اولیه
             if (formFile == null || string.IsNullOrEmpty(connection.TaxMemoryID))
             {
@@ -2669,6 +2782,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> GetConnectionApiAsync(int cpinfoId)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
             try
             {
@@ -2738,6 +2852,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> EslahiInvoiceAsync(InvoiceVM modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CPInfoId ?? 0) is { } guard) return guard;
             ApiModel model = new ApiModel();
             if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
@@ -2991,6 +3106,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> EbtalInvoiceAsync(InvoiceVM modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CPInfoId ?? 0) is { } guard) return guard;
             ApiModel model = new ApiModel();
             if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
@@ -3862,6 +3978,7 @@ context.Customers.Any(x =>
                         Message = "فقط صورتحساب ارسال‌نشده قابل حذف است."
                     };
                 }
+                if (await GuardCpInfoAsync(result.CpInfo ?? 0) is { } guard) return guard;
 
                 result.IsDelete = true;
                 foreach (var item in result.invoiceItem)
@@ -3904,6 +4021,7 @@ context.Customers.Any(x =>
             var data = await context.Invoices.FindAsync(InvoiceId);
             if (data != null)
             {
+                if (await GuardCpInfoAsync(data.CpInfo ?? 0) is { } guard) return guard;
 
                 data.StatusSentToSystem = "4";
 
@@ -3943,10 +4061,16 @@ context.Customers.Any(x =>
             ApiModel model = new();
             try
             {
-                var list = await context.CPInfos.Where(c => !c.IsDelete).ToListAsync();
+                // فقط خدمات‌دهنده‌های شرکت فعال کاربر (حتی برای Admin) — تفکیک کامل بین شرکت‌ها
+                var allowed = await AllowedCpInfoIdsAsync();
+                var list = await context.CPInfos.Where(c => !c.IsDelete && allowed.Contains(c.Id)).ToListAsync();
+                var companyNames = await context.SystemCompanies.AsNoTracking()
+                    .ToDictionaryAsync(c => c.Id, c => c.Name);
                 model.Data = list.Select(c => new VMShowCpinfoByCompany
                 {
                     cpinfoid = c.Id,
+                    CompanyId = c.CompanyId,
+                    CompanyName = c.CompanyId is > 0 && companyNames.TryGetValue(c.CompanyId.Value, out var n) ? n : null,
                     PersianName = c.PersianName,
                     Nationalid = c.Nationalid,
                     EconomicNumber = c.EconomicNumber,
@@ -3981,12 +4105,23 @@ context.Customers.Any(x =>
                 var type = modeldata.Type == "حقوقی" ? "حقوقی" : "حقیقی";
                 modeldata.Type = type;
 
+                // شرکت داخلی سیستم: اگر انتخاب نشده، شرکت فعال کاربر؛ باید جزو شرکت‌های مجاز او باشد.
+                var accessibleCompanies = await AccessibleCompanyIdsAsync();
+                var targetCompanyId = modeldata.CompanyId is > 0
+                    ? modeldata.CompanyId.Value
+                    : await ResolveActiveCompanyIdAsync();
+                if (targetCompanyId is null || !accessibleCompanies.Contains(targetCompanyId.Value))
+                    return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکت سیستم را از میان شرکت‌هایی که به آن‌ها دسترسی دارید انتخاب کنید." };
+                modeldata.CompanyId = targetCompanyId;
+
                 // cpinfoid=0 ← ثبت جدید | cpinfoid>0 ← ویرایش رکورد موجود
                 if (modeldata.cpinfoid > 0)
                 {
                     var exist = await context.CPInfos.FindAsync(modeldata.cpinfoid);
                     if (exist is null)
                         return new ApiModel { Data = null, Status = 404, Success = false, Message = "شرکت مورد نظر یافت نشد." };
+                    if (exist.CompanyId is > 0 && !accessibleCompanies.Contains(exist.CompanyId.Value))
+                        return new ApiModel { Data = null, Status = 403, Success = false, Message = "این خدمات‌دهنده مربوط به شرکتی است که شما به آن دسترسی ندارید." };
 
                     exist.PersianName = modeldata.PersianName;
                     exist.Nationalid = modeldata.Nationalid;
@@ -3994,6 +4129,7 @@ context.Customers.Any(x =>
                     exist.Type = type;
                     exist.EnglishName = modeldata.EnglishName;
                     exist.PostalCode = modeldata.PostalCode;
+                    exist.CompanyId = targetCompanyId;
                     exist.IsDelete = false;
                     await context.SaveChangesAsync();
                 }
@@ -4011,6 +4147,7 @@ context.Customers.Any(x =>
                         softDeleted.Type = type;
                         softDeleted.EnglishName = modeldata.EnglishName;
                         softDeleted.PostalCode = modeldata.PostalCode;
+                        softDeleted.CompanyId = targetCompanyId;
                         foreach (var cc in context.ConnectInfos.Where(x => x.CpInfo == softDeleted.Id && x.IsDelete))
                             cc.IsDelete = false;
                         await context.SaveChangesAsync();
@@ -4026,6 +4163,7 @@ context.Customers.Any(x =>
                             Type = type,
                             EnglishName = modeldata.EnglishName,
                             PostalCode = modeldata.PostalCode,
+                            CompanyId = targetCompanyId,
                             IsDelete = false
                         };
                         context.CPInfos.Add(cp);
@@ -4047,6 +4185,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> GetAllFiscalYearsAsync(int cpinfoId)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             ApiModel model = new();
             try
             {
@@ -4076,6 +4215,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new();
             try
             {
@@ -4109,6 +4249,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> InsertCustomerAsync(VMCustomerList modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new();
             try
             {
@@ -4143,6 +4284,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> UpdateCustomerAsync(VMCustomerList modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new();
             try
             {

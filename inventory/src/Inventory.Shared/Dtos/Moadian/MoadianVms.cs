@@ -138,6 +138,10 @@ public class VMConnection
 public class VMShowCpinfoByCompany
 {
     public int cpinfoid { get; set; }
+    /// <summary>شرکت داخلی سیستم (کمپانی) که این خدمات‌دهندهٔ مودیان به آن تعلق دارد — مبنای تفکیک دسترسی کاربران بر اساس شرکت فعال.</summary>
+    public int? CompanyId { get; set; }
+    /// <summary>نام شرکت داخلی سیستم (برای نمایش؛ فقط خروجی).</summary>
+    public string? CompanyName { get; set; }
     public string? PersianName { get; set; }
     public string? Nationalid { get; set; }
     public string? EconomicNumber { get; set; }
