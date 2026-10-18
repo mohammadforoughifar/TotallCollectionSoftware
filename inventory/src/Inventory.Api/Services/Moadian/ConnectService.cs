@@ -2490,7 +2490,7 @@ context.Customers.Any(x =>
             {
                 // لاگ خطا (بهتر است از ILogger استفاده شود)
                 Console.WriteLine($"Error in ConnectionApiAsync: {ex.Message}");
-                return CreateErrorResponse(500);
+                return new ApiModel { Data = false, Status = 500, Success = false, Message = "خطا در سرور: " + ex.Message };
             }
         }
 
@@ -2846,14 +2846,12 @@ context.Customers.Any(x =>
                 return model;
 
             }
-            catch (Exception)
+            catch (Exception ex)
             {
 
                 model.Data = null;
                 model.Status = 500;
-                model.Message = MessageCode.StatusCode.TryGetValue(500, out string messager) == true
-                    ? model.Message = messager
-                    : model.Message = "کد وضعیت نامعتبر است.";
+                model.Message = "خطا در سرور: " + ex.Message;
                 model.Success = false;
 
                 return model;

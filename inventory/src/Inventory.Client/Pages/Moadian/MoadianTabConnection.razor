@@ -178,7 +178,17 @@
         try
         {
             CpInfos = await Moadian.GetCpInfosAsync();
-            if (Ctx.CpInfoId == 0 && CpInfos.Count > 0) Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+            // تطبیق قطعی شرکت انتخاب‌شده با فهرست همین کمپانی: اگر انتخاب قبلی متعلق به
+            // کمپانی دیگری است، دراپ‌داون ظاهراً شرکت اول را نشان می‌داد ولی اطلاعات/ذخیره
+            // روی شرکت قبلی انجام می‌شد. اینجا انتخاب به اولین شرکت همین فهرست اصلاح می‌شود.
+            if (CpInfos.Count == 0)
+            {
+                if (Ctx.CpInfoId != 0) Ctx.SetCpInfoId(0);
+            }
+            else if (Ctx.CpInfoId == 0 || CpInfos.All(c => c.cpinfoid != Ctx.CpInfoId))
+            {
+                Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+            }
             await LoadConnection();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
