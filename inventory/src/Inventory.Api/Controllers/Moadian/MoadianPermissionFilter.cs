@@ -38,59 +38,71 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
 
     /// <summary>
     /// همهٔ سطوح مجوز ماژول مودیان (هم‌راستا با RbacSeeder). «دسترسی کامل مودیان»
-    /// یعنی داشتن هر ۸ یکی از این سطوح برای کاربر.
+    /// یعنی داشتن هر ۱۵ سطح جدید برای کاربر.
     /// </summary>
     private static readonly string[] AllLevels =
-        { "View", "Configure", "MasterData", "Create", "Update", "Delete", "Send", "Diagnose" };
+        { "View", "Company", "FiscalYear", "Connection", "Goods", "Units", "Customers", "InvoiceCreate", "InvoiceUpdate", "InvoiceDelete", "InvoiceSend", "InvoicePreview", "InvoiceStatus", "InvoiceInquiry", "Diagnose" };
 
     // کلیدها نام متدهای C# هستند، نه نام route. این نگاشت در صورت اضافه‌شدن endpoint جدید
     // به‌صورت پیش‌فرض اجازه نمی‌دهد و توسعه‌دهنده را مجبور به انتخاب سطح دسترسی می‌کند.
     private static readonly IReadOnlyDictionary<string, string> RequiredActions =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            // مشاهدهٔ فهرست‌ها و جزئیات غیرحساس
+            // مشاهدهٔ صورتحساب
             ["GetAllInvoice"] = "View",
-            ["NextInvoiceNumber"] = "View",
-            ["GetGoodOrService"] = "View",
-            ["GetAllCostomer"] = "View",
-            ["GetUnitOfMeasurementForComboAsync"] = "View",
-            ["GetGoodOrServiceForComboAsync"] = "View",
-            ["GetGoodOrServiceByIdAsync"] = "View",
             ["GetInvoiceByIdAsync"] = "View",
-            ["GetUnitOfMeasurementByIdAsync"] = "View",
-            ["GetAllUnitOfMeasurementAsync"] = "View",
-            ["GetCpInfos"] = "View",
-            ["GetFiscalYears"] = "View",
+            ["NextInvoiceNumber"] = "View",
 
-            // اتصال، اطلاعات شرکت، دوره مالی و عیب‌یابی؛ شامل کلید خصوصی/تنظیمات حساس است.
-            ["GetConnect"] = "Configure",
-            ["DeleteCpInfo"] = "Configure",
+            // شرکت
+            ["GetCpInfos"] = "Company",
+            ["SaveCpInfo"] = "Company",
+            ["DeleteCpInfo"] = "Company",
+            ["GetConnectForCpInfo"] = "Company",
+
+            // دوره مالی
+            ["GetFiscalYears"] = "FiscalYear",
+            ["SaveFiscalYear"] = "FiscalYear",
+
+            // اتصال و حافظه مالیاتی
+            ["GetConnect"] = "Connection",
+            ["ConnectionApiAsync"] = "Connection",
+
+            // کالا/خدمت
+            ["GetGoodOrService"] = "Goods",
+            ["GetGoodOrServiceForComboAsync"] = "Goods",
+            ["GetGoodOrServiceByIdAsync"] = "Goods",
+            ["InsertGoodOrServiceAsync"] = "Goods",
+            ["UpdateGoodOrServiceAsync"] = "Goods",
+
+            // واحد اندازه‌گیری
+            ["GetUnitOfMeasurementForComboAsync"] = "Units",
+            ["GetUnitOfMeasurementByIdAsync"] = "Units",
+            ["GetAllUnitOfMeasurementAsync"] = "Units",
+            ["InsertUnitOfMeasurementAsync"] = "Units",
+            ["UpdateUnitOfMeasurementAsync"] = "Units",
+            ["DeleteUnitOfMeasurementByIdAsync"] = "Units",
+
+            // مشتری
+            ["GetAllCostomer"] = "Customers",
+            ["InsertCustomer"] = "Customers",
+            ["UpdateCustomer"] = "Customers",
+
+            // چرخهٔ صورتحساب — ایجاد/اصلاح/ابطال/حذف
+            ["AddInvoice"] = "InvoiceCreate",
+            ["EslahiInvoiceAsync"] = "InvoiceUpdate",
+            ["EbtalInvoiceAsync"] = "InvoiceUpdate",
+            ["DeleteInvoiceByIdAsync"] = "InvoiceDelete",
+
+            // ارسال و استعلام
+            ["SendInvoiceAsync"] = "InvoiceSend",
+            ["PreviewSendInvoiceAsync"] = "InvoicePreview",
+            ["UpdateStatusInvoice"] = "InvoiceStatus",
+            ["EstelamInvoiceAsync"] = "InvoiceInquiry",
+            ["ErrorInvoiceAsync"] = "InvoiceInquiry",
+
+            // عیب‌یابی
             ["Diagnose"] = "Diagnose",
             ["DiagnoseLists"] = "Diagnose",
-            ["GetConnectForCpInfo"] = "Configure",
-            ["ConnectionApiAsync"] = "Configure",
-            ["SaveCpInfo"] = "Configure",
-            ["SaveFiscalYear"] = "Configure",
-
-            // کالا، واحد و مشتری (اطلاعات پایهٔ مودیان)
-            ["InsertGoodOrServiceAsync"] = "MasterData",
-            ["UpdateGoodOrServiceAsync"] = "MasterData",
-            ["UpdateUnitOfMeasurementAsync"] = "MasterData",
-            ["InsertUnitOfMeasurementAsync"] = "MasterData",
-            ["DeleteUnitOfMeasurementByIdAsync"] = "MasterData",
-            ["InsertCustomer"] = "MasterData",
-            ["UpdateCustomer"] = "MasterData",
-
-            // چرخهٔ صورتحساب
-            ["AddInvoice"] = "Create",
-            ["EslahiInvoiceAsync"] = "Update",
-            ["EbtalInvoiceAsync"] = "Update",
-            ["DeleteInvoiceByIdAsync"] = "Delete",
-            ["SendInvoiceAsync"] = "Send",
-            ["PreviewSendInvoiceAsync"] = "Send",
-            ["UpdateStatusInvoice"] = "Send",
-            ["EstelamInvoiceAsync"] = "Send",
-            ["ErrorInvoiceAsync"] = "Send"
         };
 
     // خودبررسی نگاشت فقط یک‌بار اجرا می‌شود و هشدار تکراری برای هر اکشن پیشگیری می‌شود.

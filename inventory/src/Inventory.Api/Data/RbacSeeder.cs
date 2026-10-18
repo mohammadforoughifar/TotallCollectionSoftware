@@ -81,10 +81,10 @@ public static class RbacSeeder
         // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
         ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
         // ================== سامانه مودیان (صورتحساب الکترونیکی) ==================
-        // View: مشاهدهٔ فهرست‌ها و جزئیات | Configure: اتصال، کلید/حافظه مالیاتی، شرکت و دوره مالی
-        // MasterData: کالا، واحد و مشتری | Create/Update/Delete: چرخهٔ صورتحساب
-        // Send: ارسال/پیش‌نمایش/استعلام و بروزرسانی وضعیت کارپوشه | Diagnose: گزارش عیب‌یابی فنی
-        ["Moadian"] = new[] { "View", "Configure", "MasterData", "Create", "Update", "Delete", "Send", "Diagnose" },
+        // View: مشاهدهٔ فهرست/جزئیات صورتحساب | Company: شرکت‌های مودیان | FiscalYear: دوره مالی
+        // Connection: اتصال/حافظه مالیاتی/کلید | Goods: کالا/خدمت | Units: واحد | Customers: مشتری
+        // InvoiceCreate/Update/Delete/Send/Preview/Status/Inquiry: چرخهٔ صورتحساب | Diagnose: عیب‌یابی
+        ["Moadian"] = new[] { "View", "Company", "FiscalYear", "Connection", "Goods", "Units", "Customers", "InvoiceCreate", "InvoiceUpdate", "InvoiceDelete", "InvoiceSend", "InvoicePreview", "InvoiceStatus", "InvoiceInquiry", "Diagnose" },
         // ================== ماژول انبارگردانی و بارکد ==================
         // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
         ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },
@@ -255,6 +255,45 @@ public static class RbacSeeder
             }
 
             Console.WriteLine($"[RBAC] {newPermissions.Count} پرمیشن جدید اضافه شد (داشبوردها/گزارش‌ها/معرف).");
+        }
+
+        // ================== مهاجرت مودیان: تفکیک مجوزهای قدیمی به جدید ==================
+        // نگاشت قدیم → جدید (برای DBهای موجود که قبلاً با ۸ مجوز مودیان کار می‌کردند)
+        var moadianMigrationMap = new Dictionary<string, string[]>
+        {
+            ["MasterData"] = new[] { "Goods", "Units", "Customers" },
+            ["Configure"]  = new[] { "Company", "FiscalYear", "Connection" },
+            ["Create"]     = new[] { "InvoiceCreate" },
+            ["Update"]     = new[] { "InvoiceUpdate" },
+            ["Delete"]     = new[] { "InvoiceDelete" },
+            ["Send"]       = new[] { "InvoiceSend", "InvoicePreview", "InvoiceStatus", "InvoiceInquiry" },
+            // View و Diagnose بدون تغییر می‌مانند
+        };
+        var oldMoadianPerms = await db.Permissions.Where(p => p.Module == "Moadian" && moadianMigrationMap.Keys.Contains(p.Action)).ToListAsync();
+        if (oldMoadianPerms.Count > 0)
+        {
+            var allMoadianPerms = await db.Permissions.Where(p => p.Module == "Moadian").ToListAsync();
+            var permByAction = allMoadianPerms.ToDictionary(p => p.Action, p => p);
+            var rolePerms = await db.RolePermissions.Include(rp => rp.Permission).Where(rp => rp.Permission.Module == "Moadian").ToListAsync();
+            var rolePermSet = rolePerms.Select(rp => (rp.RoleId, rp.Permission.Action)).ToHashSet();
+            var toAdd = new List<RolePermission>();
+            foreach (var rp in rolePerms)
+            {
+                if (!moadianMigrationMap.TryGetValue(rp.Permission.Action, out var newActions)) continue;
+                foreach (var newAction in newActions)
+                {
+                    if (!permByAction.TryGetValue(newAction, out var newPerm)) continue;
+                    if (rolePermSet.Contains((rp.RoleId, newAction))) continue;
+                    toAdd.Add(new RolePermission { RoleId = rp.RoleId, PermissionId = newPerm.Id });
+                    rolePermSet.Add((rp.RoleId, newAction));
+                }
+            }
+            if (toAdd.Count > 0)
+            {
+                await db.RolePermissions.AddRangeAsync(toAdd);
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[RBAC] مهاجرت مودیان: {toAdd.Count} دسترسی جدید از نگاشت قدیمی→جدید به نقش‌ها اعطا شد.");
+            }
         }
 
         // ================== نقش «معرف» (Referrer) — برای کاربران لاگین معرف ==================
