@@ -78,8 +78,19 @@ public class WorkOrdersController : ControllerBase
         if (sourceType == 0) return;
 
         var source = await _db.LetterSources.AsNoTracking()
+            .Include(x => x.InnerLetter)
+            .Include(x => x.OutgoingLetter)
+            .Include(x => x.IncomingLetter)
             .FirstOrDefaultAsync(x => x.Id == dto.SourceId.Value && !x.IsDelete && x.SourceType == sourceType);
         if (source == null) throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
+
+        var creatorId = sourceType == 1 ? source.InnerLetter?.CreatorUserId
+                     : sourceType == 2 ? source.OutgoingLetter?.CreatorUserId
+                     : source.IncomingLetter?.CreateUserId;
+        var mayUseLetter = creatorId == MyUserId || await _db.Erjas.AnyAsync(e =>
+            e.SourceId == source.Id && e.ReciverUserId == MyUserId && !e.IsDelete);
+        if (!mayUseLetter && !IsLegacyAdmin)
+            throw new InvalidOperationException("فقط ایجادکننده یا گیرندهٔ حاضر در گردش نامه می‌تواند از این نامه دستورکار بسازد.");
 
         // مقدار کاننیکال را از نوع واقعی LetterSource تعیین می‌کنیم تا اشتباه
         // کلاینت یا داده‌های قدیمی باعث جابه‌جایی فیلتر نوع نامه نشود.

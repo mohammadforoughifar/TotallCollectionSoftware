@@ -680,7 +680,7 @@
 
     // تبدیل نامه به دستور کار: فقط فرستنده یا مدیر، و داشتن مجوز ایجاد دستور کار
     private bool CanConvertToWorkOrder =>
-        (selected?.IsMine == true || Auth.IsAdmin) && Auth.Has("WorkOrders.Create");
+        (selected?.IsMine == true || selected?.MyErja != null || Auth.IsAdmin) && Auth.Has("WorkOrders.Create");
     private bool IsConverted => letterWorkOrders.Count > 0;
 
     /// <summary>لینک منبع نامه در صفحه دستور کار — برای نمایش در لیست دستور کارها</summary>
