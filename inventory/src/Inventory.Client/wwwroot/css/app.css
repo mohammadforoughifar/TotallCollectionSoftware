@@ -2210,6 +2210,141 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 
 .mi-form-summary { background: #f8faff; }
 
+/* ============================================================
+   مودیان v2 — زبان طراحی الهام‌گرفته از ماژول «دستور کار»
+   (تب‌های شمارنده‌دار، نوار فیلتر، بلوک‌های بخش، KPI، رنگ‌بندی ردیف)
+   ============================================================ */
+
+/* ---------- تب‌ها (وضعیت صورتحساب + بخش‌های اطلاعات پایه) ---------- */
+.mi-tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
+.mi-tab {
+    border: 1px solid #e2e8f0; background: #fff; border-radius: 12px;
+    padding: .48rem 1rem; font-size: .88rem; font-weight: 600; color: #475569;
+    display: inline-flex; align-items: center; gap: .45rem; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.mi-tab i { font-size: 1rem; }
+.mi-tab:hover { border-color: #c7d2fe; background: var(--primary-50); color: var(--primary); }
+.mi-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 5px 14px -4px rgba(79, 70, 229, .5); }
+.mi-tab-badge { background: rgba(15, 23, 42, .07); border-radius: 999px; padding: .02rem .55rem; font-size: .74rem; font-weight: 800; }
+.mi-tab:hover .mi-tab-badge { background: rgba(79, 70, 229, .14); color: var(--primary); }
+.mi-tab.active .mi-tab-badge { background: rgba(255, 255, 255, .25); color: #fff; }
+
+/* ---------- نوار فیلتر (لیست صورتحساب) ---------- */
+.mi-filterbar { display: flex; align-items: flex-end; gap: .75rem; flex-wrap: wrap; padding: .95rem 1.15rem 1rem; border-bottom: 1px solid #eef2f7; }
+.mi-flt-search { position: relative; flex: 1 1 240px; max-width: 400px; }
+.mi-flt-search > .bi-search { position: absolute; right: .65rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: .85rem; pointer-events: none; }
+.mi-flt-search input { padding-right: 2.1rem; border-radius: 10px; }
+.mi-flt-clear { position: absolute; left: .35rem; top: 50%; transform: translateY(-50%); border: 0; background: none; color: #94a3b8; padding: .1rem .35rem; line-height: 1; display: inline-flex; }
+.mi-flt-clear:hover { color: #ef4444; }
+.mi-flt-field { display: flex; flex-direction: column; gap: .3rem; }
+.mi-flt-field > span { font-size: .72rem; font-weight: 700; color: #94a3b8; }
+.mi-flt-date { min-width: 170px; }
+
+/* ---------- بلوک‌های بخش (کارت‌های موجود با کلاس mi-blocked) ---------- */
+.card.mi-blocked { border-radius: 14px; border-color: #e8edf3; overflow: hidden; }
+.card.mi-blocked > .card-header { background: #f8fafc; border-bottom: 1px solid #eef2f7; padding: .65rem 1.05rem; font-size: .87rem; font-weight: 700; color: #334155; }
+.card.mi-blocked > .card-header > i,
+.card.mi-blocked > .card-header > span > i { color: var(--primary); }
+
+/* ---------- جدول‌های فهرست مودیان ---------- */
+.mi-table thead th {
+    background: #f8fafc; color: #64748b; font-size: .74rem; font-weight: 700;
+    white-space: nowrap; border-bottom: 1px solid #e2e8f0; padding: .65rem .75rem;
+}
+.mi-table tbody td { padding: .62rem .75rem; font-size: .875rem; border-color: #f1f5f9; }
+
+/* ---------- رنگ‌بندی ردیف بر اساس وضعیت (الهام از wo-tone) ---------- */
+.mi-rt > td:first-child { border-right: 4px solid transparent; }
+.mi-rt-0 > td:first-child { border-right-color: #cbd5e1; }
+.mi-rt-1 > td:first-child { border-right-color: #0ea5e9; }
+.mi-rt-2 > td:first-child { border-right-color: #f59e0b; }
+.mi-rt-3 > td:first-child { border-right-color: #6366f1; }
+.mi-rt-4 > td:first-child { border-right-color: #f97316; }
+.mi-rt-5 > td:first-child { border-right-color: #ef4444; }
+.mi-rt-6 > td:first-child { border-right-color: #d6d3d1; }
+.mi-rt-7 > td:first-child { border-right-color: #10b981; }
+.mi-rt-8 > td:first-child { border-right-color: #e11d48; }
+tr.mi-rt-5 { background: #fef7f7; }
+tr.mi-rt-7 { background: #f6fdf9; }
+tr.mi-rt-8 { background: #fef6f8; }
+.mi-table tbody tr.mi-rt-5:hover > td { background-color: #fdecec; }
+.mi-table tbody tr.mi-rt-7:hover > td { background-color: #edfaf2; }
+.mi-table tbody tr.mi-rt-8:hover > td { background-color: #fdedf1; }
+
+/* ---------- کارت‌های KPI (داشبورد) ---------- */
+.mi-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+.mi-kpi {
+    background: #fff; border: 1px solid #e8edf3; border-radius: 14px;
+    padding: .95rem 1.05rem; display: flex; align-items: center; gap: .8rem;
+    box-shadow: var(--shadow-sm);
+}
+.mi-kpi-icon { width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem; flex: none; }
+.mi-kpi-num { font-size: 1.55rem; font-weight: 800; line-height: 1.15; }
+.mi-kpi-lbl { font-size: .75rem; color: #64748b; margin-top: .1rem; }
+.mi-kpi-all .mi-kpi-icon { background: var(--primary-50); color: var(--primary); } .mi-kpi-all .mi-kpi-num { color: var(--primary); }
+.mi-kpi-0 .mi-kpi-icon { background: #f1f5f9; color: #64748b; } .mi-kpi-0 .mi-kpi-num { color: #334155; }
+.mi-kpi-1 .mi-kpi-icon { background: #e0f2fe; color: #0284c7; } .mi-kpi-1 .mi-kpi-num { color: #0284c7; }
+.mi-kpi-2 .mi-kpi-icon { background: #fef3c7; color: #d97706; } .mi-kpi-2 .mi-kpi-num { color: #d97706; }
+.mi-kpi-3 .mi-kpi-icon { background: #eef2ff; color: #4f46e5; } .mi-kpi-3 .mi-kpi-num { color: #4f46e5; }
+.mi-kpi-4 .mi-kpi-icon { background: #ffedd5; color: #ea580c; } .mi-kpi-4 .mi-kpi-num { color: #ea580c; }
+.mi-kpi-5 .mi-kpi-icon { background: #fee2e2; color: #dc2626; } .mi-kpi-5 .mi-kpi-num { color: #dc2626; }
+.mi-kpi-7 .mi-kpi-icon { background: #d1fae5; color: #059669; } .mi-kpi-7 .mi-kpi-num { color: #059669; }
+
+/* ---------- سلول‌های اطلاعات (جزئیات) ---------- */
+.mi-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; }
+.mi-info-cell { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px; padding: .55rem .8rem; display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.mi-info-lbl { font-size: .72rem; color: #94a3b8; font-weight: 600; display: inline-flex; align-items: center; gap: .3rem; }
+.mi-info-val { font-size: .88rem; font-weight: 700; color: #1e293b; overflow-wrap: anywhere; }
+
+/* ---------- چیپ کد قابل کپی (TaxID / ReferenceID) ---------- */
+.mi-codechip {
+    display: flex; align-items: center; gap: .55rem; direction: ltr; text-align: left;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: .45rem .7rem; font-size: .78rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-all; cursor: pointer; width: 100%; text-align: left;
+    transition: border-color .15s ease, background .15s ease;
+}
+.mi-codechip:hover { border-color: var(--primary); background: var(--primary-50); }
+.mi-codechip .bi { color: #94a3b8; flex: none; font-size: .85rem; }
+.mi-codechip:hover .bi { color: var(--primary); }
+.mi-codechip span { overflow-wrap: anywhere; }
+
+/* ---------- صفحه‌بندی ---------- */
+.mi-pager2 { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .85rem 1.15rem; border-top: 1px solid #eef2f7; }
+.mi-pg-info { font-size: .8rem; color: #64748b; }
+.mi-pg-btn {
+    min-width: 34px; height: 34px; border-radius: 10px; border: 1px solid #e2e8f0;
+    background: #fff; color: #475569; font-size: .85rem; font-weight: 700; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; padding: 0 .6rem;
+    transition: border-color .13s ease, background .13s ease, color .13s ease;
+}
+.mi-pg-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+.mi-pg-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.mi-pg-btn:disabled { opacity: .4; cursor: not-allowed; }
+.mi-pg-ellipsis { color: #94a3b8; padding: 0 .25rem; }
+
+/* ---------- مودال‌ها ---------- */
+.mi-modal .modal-content { border: 0; border-radius: 18px; box-shadow: 0 20px 60px -15px rgba(15, 23, 42, .4); }
+.mi-modal .modal-header { border-bottom: 1px solid #eef2f7; padding: .9rem 1.15rem; }
+.mi-modal .modal-footer { border-top: 1px solid #eef2f7; padding: .8rem 1.15rem; }
+
+/* ---------- نوار انتخاب شرکت ---------- */
+.mi-bar { border-radius: 14px; border-color: #e8edf3; }
+.mi-bar-ic { width: 34px; height: 34px; border-radius: 10px; background: var(--primary-50); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; flex: none; }
+.mi-bar .form-select { border-radius: 10px; }
+
+/* ---------- لمسات کلی (کارت‌های موبایل، هیرو، دسترسی سریع) ---------- */
+.mi-card { border-radius: 14px; }
+.mpill-card { border-radius: 14px; }
+.mi-hero { border-radius: 16px; border-color: #e8edf3; }
+
+@media (prefers-reduced-motion: reduce) {
+    .mi-tab, .mi-pg-btn, .mi-codechip { transition: none; }
+}
+
 /* ---------- مودیان: دکمه‌های رنگی کپسولی (mpill) — آیکون-چیپ + پس‌زمینهٔ نرم + حاشیهٔ رنگی ---------- */
 .mpills { display: flex; gap: .65rem; flex-wrap: wrap; }
 .mpill {

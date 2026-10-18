@@ -19,9 +19,9 @@ else if (CpInfos.Count == 0)
 }
 else
 {
-    <div class="card mb-3">
+    <div class="card mi-bar mb-3">
         <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
-            <i class="bi bi-building text-primary"></i>
+            <span class="mi-bar-ic"><i class="bi bi-building"></i></span>
             <label class="form-label mb-0 fw-semibold">شرکت مودیان:</label>
             <select class="form-select form-select-sm" style="max-width:340px"
                     value="@Ctx.CpInfoId" @onchange="OnCompany">

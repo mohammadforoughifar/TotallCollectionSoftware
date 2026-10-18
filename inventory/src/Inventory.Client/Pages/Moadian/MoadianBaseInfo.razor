@@ -30,7 +30,7 @@
 
 @if (deepDiag is not null)
 {
-    <div class="card mb-3 border-warning">
+    <div class="card mi-blocked mb-3 border-warning">
         <div class="card-header d-flex align-items-center gap-2 flex-wrap">
             <i class="bi bi-binoculars" aria-hidden="true"></i> نتیجهٔ تشخیص عمیق
             <span class="text-danger small">متن زیر را برای پشتیبانی بفرستید</span>
@@ -47,7 +47,7 @@
 
 @if (diag is not null)
 {
-    <div class="card mb-3 @(diag.Tables.Any(t => !t.Exists || t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) ? "border-danger" : "border-success")">
+    <div class="card mi-blocked mb-3 @(diag.Tables.Any(t => !t.Exists || t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) ? "border-danger" : "border-success")">
         <div class="card-header d-flex align-items-center gap-2">
             <i class="bi bi-heart-pulse"></i> نتیجهٔ تشخیص اسکیما
             <span class="text-muted small" dir="ltr">@diag.Provider</span>
@@ -87,12 +87,12 @@
 
 <MoadianCompanyBar />
 
-@* ---------- نوار تب ---------- *@
-<div class="mpills mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
+@* ---------- نوار تب (سبک ماژول دستور کار) ---------- *@
+<div class="mi-tabs mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
     @foreach (var t in Tabs)
     {
-        <button type="button" role="tab" class="mpill mpill-@t.Color @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
-            <span class="mpill-ic"><i class="bi @t.Icon" aria-hidden="true"></i></span> @t.Title
+        <button type="button" role="tab" class="mi-tab @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
+            <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
         </button>
     }
 </div>

@@ -38,22 +38,23 @@
 }
 else
 {
-    @* ---------- تب‌های وضعیت ---------- *@
-    <div class="mpills mb-3">
+    @* ---------- تب‌های وضعیت (سبک ماژول دستور کار: شمارنده + آیکون) ---------- *@
+    <div class="mi-tabs mb-3" role="tablist" aria-label="وضعیت صورتحساب">
         @foreach (var t in Tabs)
         {
-            <button type="button" class="mpill mpill-@t.Color @(fOp == t.Code ? "active" : "")" aria-pressed="@(fOp == t.Code)" @onclick="() => SetOp(t.Code)">
-                <span class="mpill-ic"><i class="bi @t.Icon" aria-hidden="true"></i></span> @t.Title
-                @if (labels is not null)
+            var tabCount = CountOf(t.Code);
+            <button type="button" class="mi-tab @(fOp == t.Code ? "active" : "")" aria-pressed="@(fOp == t.Code)" @onclick="() => SetOp(t.Code)">
+                <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+                @if (tabCount is not null)
                 {
-                    <span class="mpill-count num">@CountText(t.Code)</span>
+                    <span class="mi-tab-badge num">@tabCount.Value.Num()</span>
                 }
             </button>
         }
     </div>
 
     @* ---------- کارت فهرست صورتحساب (سربرگ + نوار ابزار + فهرست) ---------- *@
-    <div class="card mi-list">
+    <div class="card mi-list mi-blocked">
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-receipt" aria-hidden="true"></i> @(fOp == "همه" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
             @if (data is not null)
@@ -61,33 +62,31 @@ else
                 <span class="badge badge-soft-primary num">@(data.TotalCount.Num()) مورد</span>
             }
         </div>
-        <div class="mi-toolbar">
-            <div class="row g-2 align-items-end">
-                <div class="col-12 col-md-4">
-                    <label class="form-label" for="invoice-search">جستجو</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
-                        <input id="invoice-search" class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
-                               value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" />
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label class="form-label">از تاریخ</label>
-                    <DatePicker Value="fFrom" ValueChanged="OnFrom" AllowClear="true" />
-                </div>
-                <div class="col-6 col-md-3">
-                    <label class="form-label">تا تاریخ</label>
-                    <DatePicker Value="fTo" ValueChanged="OnTo" AllowClear="true" />
-                </div>
-                <div class="col-12 col-md-2">
-                    <button type="button" class="btn btn-outline-secondary w-100" @onclick="() => ResetFilters()">
-                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> حذف فیلترها
-                    </button>
-                </div>
+        <div class="mi-filterbar">
+            <div class="mi-flt-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input id="invoice-search" class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
+                       value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در صورتحساب‌ها" />
+                @if (!string.IsNullOrEmpty(search))
+                {
+                    <button type="button" class="mi-flt-clear" title="پاک‌کردن جستجو" aria-label="پاک‌کردن جستجو"
+                            @onclick="ClearSearchBox"><i class="bi bi-x-lg"></i></button>
+                }
             </div>
+            <div class="mi-flt-field mi-flt-date">
+                <span>از تاریخ</span>
+                <DatePicker Value="fFrom" ValueChanged="OnFrom" AllowClear="true" />
+            </div>
+            <div class="mi-flt-field mi-flt-date">
+                <span>تا تاریخ</span>
+                <DatePicker Value="fTo" ValueChanged="OnTo" AllowClear="true" />
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => ResetFilters()">
+                <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> حذف فیلترها
+            </button>
             @if (!string.IsNullOrEmpty(dateFilterError))
             {
-                <div class="alert alert-warning py-2 mt-2 mb-0 small" role="status"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> @dateFilterError</div>
+                <div class="alert alert-warning py-1 px-2 mb-0 small" role="status" style="align-self:center"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> @dateFilterError</div>
             }
         </div>
         <div class="mi-body p-0">
@@ -140,8 +139,8 @@ else
             }
             else
             {
-                <div class="table-responsive grid-desktop">
-                    <table class="table table-hover align-middle">
+                <div class="table-responsive grid-desktop mi-table">
+                    <table class="table table-hover align-middle mb-0">
                         <thead>
                             <tr>
                                 <th style="width:56px">ردیف</th>
@@ -160,7 +159,7 @@ else
                             @for (int ix = 0; ix < items.Count; ix++)
                             {
                                 var inv = items[ix];
-                                <tr>
+                                <tr class="mi-rt mi-rt-@inv.StatusSentToSystemInt">
                                     <td class="num text-muted">@(((pno - 1) * PageSize + ix + 1).Num())</td>
                                     <td>
                                         <span class="badge @MoadianUi.SubjectBadge(inv.Subject)">
@@ -326,27 +325,27 @@ else
                     }
                 </div>
 
-                @* ---------- صفحه‌بندی ---------- *@
+                @* ---------- صفحه‌بندی (سبک ماژول دستور کار) ---------- *@
                 @if ((data?.TotalPages ?? 0) > 1)
                 {
-                    <div class="mi-pager d-flex align-items-center gap-2 flex-wrap">
-                        <span class="text-muted small num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) مورد — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
-                        <div class="ms-auto d-flex gap-1">
-                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
+                    <div class="mi-pager2">
+                        <span class="mi-pg-info num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) مورد — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                        <div class="ms-auto d-flex gap-1 align-items-center">
+                            <button type="button" class="mi-pg-btn" title="صفحهٔ قبل" aria-label="صفحهٔ قبل" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
                                 <i class="bi bi-chevron-right"></i>
                             </button>
                             @foreach (var pp in VisiblePages)
                             {
                                 if (pp < 0)
                                 {
-                                    <span class="mi-ellipsis" aria-hidden="true">…</span>
+                                    <span class="mi-pg-ellipsis" aria-hidden="true">…</span>
                                 }
                                 else
                                 {
-                                    <button type="button" class="btn btn-sm @(pp == pno ? "btn-primary" : "btn-outline-secondary") num" aria-current="@(pp == pno ? "page" : null)" @onclick="() => GoPage(pp)">@(pp.Num())</button>
+                                    <button type="button" class="mi-pg-btn num @(pp == pno ? "active" : "")" aria-current="@(pp == pno ? "page" : null)" @onclick="() => GoPage(pp)">@(pp.Num())</button>
                                 }
                             }
-                            <button class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
+                            <button type="button" class="mi-pg-btn" title="صفحهٔ بعد" aria-label="صفحهٔ بعد" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
                                 <i class="bi bi-chevron-left"></i>
                             </button>
                         </div>
@@ -360,7 +359,7 @@ else
 @* ---------- پنجرهٔ نتیجهٔ استعلام / خطاها ---------- *@
 @if (modalOpen)
 {
-    <div class="modal d-block" tabindex="-1" style="background:rgba(15,23,42,.45)">
+    <div class="modal d-block mi-modal" tabindex="-1" style="background:rgba(15,23,42,.45)">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
@@ -462,9 +461,6 @@ else
         _ => null
     };
 
-    private string CountText(string code)
-        => CountOf(code) is int count ? count.Num() : "—";
-
     private void SetOp(string code)
     {
         fOp = code;
@@ -472,6 +468,7 @@ else
     }
 
     private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void ClearSearchBox() { search = ""; searchTimer?.Stop(); _ = LoadAsync(1); }
     private void OnSearchKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); }

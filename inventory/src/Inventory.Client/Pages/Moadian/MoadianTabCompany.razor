@@ -8,9 +8,9 @@
 <div class="row g-3">
     @* ---------- فهرست شرکت‌ها ---------- *@
     <div class="col-lg-7">
-        <div class="card h-100">
+        <div class="card mi-blocked h-100">
             <div class="card-header d-flex align-items-center gap-2">
-                <span><i class="bi bi-building text-primary"></i> فهرست شرکت‌ها</span>
+                <span><i class="bi bi-building"></i> فهرست شرکت‌ها</span>
                 <span class="badge badge-soft-primary num ms-auto">@(CpInfos.Count.Num()) شرکت</span>
             </div>
             <div class="card-body p-0">
@@ -38,7 +38,7 @@
                 }
                 else
                 {
-                    <div class="table-responsive grid-desktop">
+                    <div class="table-responsive grid-desktop mi-table">
                         <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
@@ -91,9 +91,9 @@
 
     @* ---------- ثبت / ویرایش شرکت ---------- *@
     <div class="col-lg-5">
-        <div class="card h-100">
+        <div class="card mi-blocked h-100">
             <div class="card-header d-flex align-items-center gap-2">
-                <i class="bi @(newCp.cpinfoid > 0 ? "bi-pencil-square" : "bi-building-add") text-success"></i>
+                <i class="bi @(newCp.cpinfoid > 0 ? "bi-pencil-square" : "bi-building-add")"></i>
                 <span>@((newCp.cpinfoid > 0) ? "ویرایش شرکت" : "ثبت شرکت جدید")</span>
                 @if (newCp.cpinfoid > 0)
                 {
@@ -146,8 +146,8 @@
 @* ---------- سال‌های مالی ---------- *@
 <div class="row g-3 mt-1">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header"><i class="bi bi-calendar-range text-primary"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span></div>
+        <div class="card mi-blocked">
+            <div class="card-header"><i class="bi bi-calendar-range"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span></div>
             <div class="card-body">
                 @if (Ctx.CpInfoId <= 0)
                 {
@@ -189,7 +189,7 @@
                             }
                             else
                             {
-                                <div class="table-responsive">
+                                <div class="table-responsive mi-table">
                                     <table class="table table-sm align-middle mb-0">
                                         <thead>
                                             <tr><th>عنوان</th><th>بازه</th><th class="text-nowrap">وضعیت</th></tr>

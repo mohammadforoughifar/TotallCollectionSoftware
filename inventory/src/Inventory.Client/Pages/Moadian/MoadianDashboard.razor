@@ -28,68 +28,56 @@
 }
 else if (Ctx.CpInfoId > 0)
 {
-    @* ---------- کارت‌های وضعیت صورتحساب ---------- *@
-    <div class="row g-3 mb-3">
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-primary"><i class="bi bi-receipt text-primary"></i></div>
-                <div>
-                    <div class="stat-label">همهٔ صورتحساب‌ها</div>
-                    <div class="stat-value num text-primary">@((labels?.lblAll ?? 0).Num())</div>
-                </div>
+    @* ---------- کارت‌های وضعیت صورتحساب (KPI — سبک ماژول دستور کار) ---------- *@
+    <div class="mi-kpis">
+        <div class="mi-kpi mi-kpi-all">
+            <div class="mi-kpi-icon"><i class="bi bi-receipt"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblAll ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">همهٔ صورتحساب‌ها</div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-muted"><i class="bi bi-inbox text-secondary"></i></div>
-                <div>
-                    <div class="stat-label">ارسال نشده</div>
-                    <div class="stat-value num">@((labels?.lblNotSentToSystem ?? 0).Num())</div>
-                </div>
+        <div class="mi-kpi mi-kpi-0">
+            <div class="mi-kpi-icon"><i class="bi bi-inbox"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblNotSentToSystem ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">ارسال نشده</div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-warning"><i class="bi bi-hourglass-split text-warning"></i></div>
-                <div>
-                    <div class="stat-label">در انتظار واکنش</div>
-                    <div class="stat-value num text-warning">@((labels?.lblSentToSystem ?? 0).Num())</div>
-                </div>
+        <div class="mi-kpi mi-kpi-2">
+            <div class="mi-kpi-icon"><i class="bi bi-search"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblLackOfResponsiveness ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">در انتظار بررسی</div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-warning"><i class="bi bi-search text-warning"></i></div>
-                <div>
-                    <div class="stat-label">در انتظار بررسی</div>
-                    <div class="stat-value num text-warning">@((labels?.lblLackOfResponsiveness ?? 0).Num())</div>
-                </div>
+        <div class="mi-kpi mi-kpi-4">
+            <div class="mi-kpi-icon"><i class="bi bi-hourglass-split"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblSentToSystem ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">در انتظار واکنش</div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-danger"><i class="bi bi-exclamation-triangle text-danger"></i></div>
-                <div>
-                    <div class="stat-label">دارای خطا</div>
-                    <div class="stat-value num text-danger">@((labels?.lblError ?? 0).Num())</div>
-                </div>
+        <div class="mi-kpi mi-kpi-5">
+            <div class="mi-kpi-icon"><i class="bi bi-exclamation-triangle"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblError ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">دارای خطا</div>
             </div>
         </div>
-        <div class="col-6 col-lg-2">
-            <div class="stat-card">
-                <div class="stat-icon bg-soft-success"><i class="bi bi-check-circle text-success"></i></div>
-                <div>
-                    <div class="stat-label">تأیید شده</div>
-                    <div class="stat-value num text-success">@((labels?.lblInquiry ?? 0).Num())</div>
-                </div>
+        <div class="mi-kpi mi-kpi-7">
+            <div class="mi-kpi-icon"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="mi-kpi-num num">@((labels?.lblInquiry ?? 0).Num())</div>
+                <div class="mi-kpi-lbl">تأیید شده</div>
             </div>
         </div>
     </div>
 
     @* ---------- وضعیت اتصال ---------- *@
-    <div class="card mb-3">
+    <div class="card mi-blocked mb-3">
         <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-plug text-primary"></i> وضعیت اتصال به سامانه
+            <i class="bi bi-plug"></i> وضعیت اتصال به سامانه
             <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="TestConnection" disabled="@testing">
                 @if (testing) { <span class="spinner-border spinner-border-sm"></span> }
                 else { <i class="bi bi-lightning"></i> } تست اتصال
@@ -107,18 +95,18 @@ else if (Ctx.CpInfoId > 0)
             }
             else
             {
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="text-muted small">آدرس سرویس</label>
-                        <div class="num" dir="ltr">@connection.WebServiceAddress</div>
+                <div class="mi-info">
+                    <div class="mi-info-cell">
+                        <span class="mi-info-lbl"><i class="bi bi-globe2"></i> آدرس سرویس</span>
+                        <span class="mi-info-val num" dir="ltr">@connection.WebServiceAddress</span>
                     </div>
-                    <div class="col-md-4">
-                        <label class="text-muted small">شناسهٔ حافظه (TaxMemoryID)</label>
-                        <div class="num" dir="ltr">@connection.TaxMemoryID</div>
+                    <div class="mi-info-cell">
+                        <span class="mi-info-lbl"><i class="bi bi-fingerprint"></i> شناسهٔ حافظه (TaxMemoryID)</span>
+                        <span class="mi-info-val num" dir="ltr">@connection.TaxMemoryID</span>
                     </div>
-                    <div class="col-md-4">
-                        <label class="text-muted small">کلید خصوصی</label>
-                        <div><i class="bi bi-key text-success"></i> @connection.FilePrivatekey?.DisplayName ?? "—"</div>
+                    <div class="mi-info-cell">
+                        <span class="mi-info-lbl"><i class="bi bi-key"></i> کلید خصوصی</span>
+                        <span class="mi-info-val num" dir="ltr">@connection.FilePrivatekey?.DisplayName ?? "—"</span>
                     </div>
                 </div>
             }

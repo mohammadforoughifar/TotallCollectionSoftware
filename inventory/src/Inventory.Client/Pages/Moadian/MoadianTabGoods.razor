@@ -16,13 +16,13 @@
 }
 else
 {
-    <div class="card">
+    <div class="card mi-blocked">
         <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-            <span><i class="bi bi-box-seam text-success" aria-hidden="true"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
+            <span><i class="bi bi-box-seam" aria-hidden="true"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
             <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) کالا</span>
             <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
-                <div class="input-group input-group-sm" style="min-width:220px">
-                    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                <div class="mi-flt-search" style="max-width:none;min-width:230px">
+                    <i class="bi bi-search" aria-hidden="true"></i>
                     <input class="form-control" placeholder="جستجو در نام یا شناسهٔ CPC" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در کالاها" />
                 </div>
                 <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
@@ -78,7 +78,7 @@ else
             }
             else
             {
-                <div class="table-responsive grid-desktop">
+                <div class="table-responsive grid-desktop mi-table">
                     <table class="table table-hover align-middle">
                         <thead>
                             <tr>
