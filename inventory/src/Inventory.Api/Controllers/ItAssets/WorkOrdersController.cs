@@ -579,21 +579,21 @@ public class WorkOrdersController : ControllerBase
         }
         if (f.ProjectId is > 0)
             q = q.Where(w => w.ProjectId == f.ProjectId);
+        // نوع نامه از LetterSource خوانده می‌شود، نه از نام رشته‌ای SourceModule.
+        // این کار داده‌های قدیمی و دستورکارهایی را که با نام ماژول متفاوت ذخیره شده‌اند
+        // نیز درست دسته‌بندی می‌کند.
         if (f.SourceType is >= 1 and <= 3)
         {
-            q = f.SourceType.Value switch
-            {
-                1 => q.Where(w => w.SourceModule == "InnerLetter" || w.SourceModule == "InnerLetters"),
-                2 => q.Where(w => w.SourceModule == "OutgoingLetter" || w.SourceModule == "OutgoingLetters"),
-                3 => q.Where(w => w.SourceModule == "IncomingLetter" || w.SourceModule == "IncomingLetters"),
-                _ => q
-            };
+            var letterType = f.SourceType.Value;
+            q = q.Where(w => w.SourceId != null && _db.LetterSources
+                .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType == letterType));
         }
         else if (!string.IsNullOrWhiteSpace(f.SourceModule))
         {
             var source = f.SourceModule.Trim();
             q = source.Equals("letters", StringComparison.OrdinalIgnoreCase)
-                ? q.Where(w => w.SourceModule == "InnerLetter" || w.SourceModule == "IncomingLetter" || w.SourceModule == "OutgoingLetter")
+                ? q.Where(w => w.SourceId != null && _db.LetterSources
+                    .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType >= 1 && s.SourceType <= 3))
                 : q.Where(w => w.SourceModule == source);
         }
         return q;
