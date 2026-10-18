@@ -515,14 +515,19 @@
 {
     <div class="menu-overlay" @onclick="CloseMenu"></div>
     <div class="row-menu floating" style="@MenuStyle" @onclick:stopPropagation>
-        @if (Auth.Has("Projects.Update"))
+        @if (Auth.Has("Projects.Update") || Auth.Has("Projects.UpdateExitDate"))
         {
+            @if (Auth.Has("Projects.Update"))
+            {
             <button class="row-menu-item" @onclick="() => OpenEdit(menuProject)">
                 <i class="bi bi-pencil text-primary"></i> ویرایش اطلاعات
             </button>
             <button class="row-menu-item" @onclick="() => OpenFactor(menuProject)">
                 <i class="bi bi-receipt text-success"></i> ثبت/ویرایش فاکتور
             </button>
+            }
+            @if (Auth.Has("Projects.Update") || Auth.Has("Projects.UpdateExitDate"))
+            {
             <button class="row-menu-item" @onclick="() => OpenDates(menuProject)">
                 <i class="bi bi-calendar2-check text-primary"></i> ثبت/ویرایش تاریخ‌ها
                 @if (DateFilledCount(menuProject) > 0)
@@ -530,6 +535,7 @@
                     <span class="date-count-chip">@DateFilledCount(menuProject).FaDigits()/۵</span>
                 }
             </button>
+            }
             @if (menuProject.FlowStatus == 2)
             {
                 <button class="row-menu-item" @onclick="() => OpenResubmit(menuProject)">
