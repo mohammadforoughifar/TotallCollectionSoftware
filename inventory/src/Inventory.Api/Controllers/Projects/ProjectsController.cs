@@ -896,10 +896,21 @@ public class ProjectsController : RbacControllerBase
     [HttpPut("{id:int}/dates")]
     public async Task<IActionResult> UpdateDates(int id, [FromBody] ProjectDatesDto dto, [FromServices] Hubs.INotifyService notify)
     {
-        if (await ForbiddenUnlessAsync(Module, "Update") is { } forbid) return forbid;
+        var canUpdateAllDates = await HasAsync(Module, "Update");
+        var canUpdateExitDate = await HasAsync(Module, "UpdateExitDate");
+        if (!canUpdateAllDates && !canUpdateExitDate)
+            return StatusCode(403, new { message = "مجوز ثبت تاریخ‌های پروژه را ندارید." });
 
         var entity = await Db.ProjectEntryExits.FirstOrDefaultAsync(p => p.Id == id && !p.IsDelete);
         if (entity is null) return NotFound(new { message = "پروژه پیدا نشد." });
+
+        // کاربر دارای UpdateExitDate فقط مجاز به تغییر/پاک‌کردن تاریخ خروج است.
+        if (!canUpdateAllDates &&
+            (dto.TemporaryExitDate != entity.TemporaryExitDate ||
+             dto.CustomerRequiredDate != entity.CustomerRequiredDate ||
+             dto.DeliveryDate != entity.DeliveryDate ||
+             dto.FileDate != entity.FileDate))
+            return StatusCode(403, new { message = "این کاربر فقط مجاز به ثبت تاریخ خروج است." });
 
         // ---------- اعتبارسنجی منطقی ترتیب تاریخ‌ها (پیام‌های فارسی) ----------
         var entry = entity.EntryDate;

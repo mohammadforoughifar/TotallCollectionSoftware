@@ -111,7 +111,7 @@ public static class RbacSeeder
         ["ReportPages"] = new[] { "Kardex", "Reorder" },
         // ================== مدیریت پروژه‌ها ==================
         // ViewFactor: رویت ستون‌های شماره/نوع فاکتور در لیست و جزئیات و اکسل (حساس مالی)
-        ["Projects"] = new[] { "Create", "Read", "Update", "Delete", "Export", "ViewFactor" }, // ورود و خروج پروژه‌ها
+        ["Projects"] = new[] { "Create", "Read", "Update", "UpdateExitDate", "Delete", "Export", "ViewFactor" }, // ورود و خروج پروژه‌ها؛ UpdateExitDate برای ثبت مستقل تاریخ خروج
         ["ReportWorks"] = CrudActions,                         // گزارش‌های کار
         ["Karfarmas"] = CrudActions,                           // کارفرماها
         ["TypeFactors"] = CrudActions,                         // انواع فاکتور
