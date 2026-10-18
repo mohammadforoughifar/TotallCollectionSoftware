@@ -75,7 +75,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         // سربرگ اختصاصی شرکت آریا با کد 1005: فایل PDF به‌عنوان لایهٔ پس‌زمینه
         // روی صفحهٔ A4 قرار می‌گیرد و محتوای نامه با حاشیهٔ امن روی آن رندر می‌شود.
         if (headerPath == null && isAria1005)
-            headerPath = ResolveLetterheadPath("uploads/letterheads/aria-1005-letterhead.pdf");
+            headerPath = ResolveLetterheadPath("uploads/letterheads/aria-1005-letterhead.pdf")
+                         ?? ResolveLetterheadPath("Reports/InnerLetters/Companies/1005/letterhead-final.pdf");
         if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
             headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
         if (headerPath == null)
