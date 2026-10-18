@@ -81,6 +81,16 @@ public class WorkOrdersController : ControllerBase
             .FirstOrDefaultAsync(x => x.Id == dto.SourceId.Value && !x.IsDelete && x.SourceType == sourceType);
         if (source == null) throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
 
+        // مقدار کاننیکال را از نوع واقعی LetterSource تعیین می‌کنیم تا اشتباه
+        // کلاینت یا داده‌های قدیمی باعث جابه‌جایی فیلتر نوع نامه نشود.
+        order.SourceModule = sourceType switch
+        {
+            1 => "InnerLetter",
+            2 => "OutgoingLetter",
+            3 => "IncomingLetter",
+            _ => order.SourceModule
+        };
+
         var targets = dto.AssigneeUserIds.Where(x => x > 0 && x != MyUserId).Distinct().ToList();
         var existing = await _db.Erjas
             .Where(x => x.SourceId == source.Id && !x.IsDelete && targets.Contains(x.ReciverUserId))
@@ -585,8 +595,16 @@ public class WorkOrdersController : ControllerBase
         if (f.SourceType is >= 1 and <= 3)
         {
             var letterType = f.SourceType.Value;
-            q = q.Where(w => w.SourceId != null && _db.LetterSources
-                .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType == letterType));
+            var moduleNames = letterType switch
+            {
+                1 => new[] { "InnerLetter", "InnerLetters" },
+                2 => new[] { "OutgoingLetter", "OutgoingLetters" },
+                3 => new[] { "IncomingLetter", "IncomingLetters" },
+                _ => Array.Empty<string>()
+            };
+            q = q.Where(w => moduleNames.Contains(w.SourceModule!) ||
+                (w.SourceId != null && _db.LetterSources
+                    .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType == letterType)));
         }
         else if (!string.IsNullOrWhiteSpace(f.SourceModule))
         {
