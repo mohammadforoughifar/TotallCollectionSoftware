@@ -1570,7 +1570,7 @@ context.Customers.Any(x =>
                             ShowButtons = false,
                             Subject = "ابطالی"
                         };
-
+                        invoice.FiscalYearId = invoiceForEdit.FiscalYearId;
                         await context.AddAsync(invoice);
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
@@ -2050,14 +2050,14 @@ context.Customers.Any(x =>
                     invoiceInfo.IsNew = false;
                     invoiceInfo.NumberInvoice = invoice.InvoiceNumber;
                     invoiceInfo.FiscalYearId = date;
-                    invoiceInfo.DateEndFiscalYear = invoice.fiscalYear.EndDate;
-                    invoiceInfo.DatestartFiscalYear = invoice.fiscalYear.StartDate;
+                    invoiceInfo.DateEndFiscalYear = invoice.fiscalYear?.EndDate;
+                    invoiceInfo.DatestartFiscalYear = invoice.fiscalYear?.StartDate;
 
                     invoiceInfo.DateOrder = invoice.DateOrder;
                     invoiceInfo.TypePattern = invoice.TypePattern == 1 ? "نوع اول" : invoice.TypePattern == 2 ? "نوع دوم" : "نوع سوم";
                     invoiceInfo.Description = invoice.Description;
                     invoiceInfo.Name = invoice.Subject;
-                    invoiceInfo.TaxMemoryID = context.ConnectInfos.FirstOrDefault(c => c.CpInfo == invoice.CpInfo).TaxMemoryID;
+                    invoiceInfo.TaxMemoryID = context.ConnectInfos.FirstOrDefault(c => c.CpInfo == invoice.CpInfo)?.TaxMemoryID;
                     invoiceInfo.NewTaxNumber = invoice.NewTaxNumber;
 
                     // ابتدا مقدار NewTaxNumber رو بررسی کن، اگر خالی بود از TaxNumber استفاده کن
@@ -2775,7 +2775,8 @@ context.Customers.Any(x =>
                             CpInfo = modeldata.CPInfoId,
                             Subject = "اصلاحی"
                         };
-
+                        // اصلاحی باید به همان سال مالی صورتحساب اصلی وابسته باشد؛ وگرنه بارگذاری جزئیات (GetInvoiceByIdAsync) با خطای ۵۰۰ شکست می‌خورد
+                        invoice.FiscalYearId = context.Invoices.AsNoTracking().FirstOrDefault(c => c.Id == modeldata.Id)?.FiscalYearId;
                         await context.AddAsync(invoice);
                         await context.SaveChangesAsync();
 
@@ -3021,7 +3022,8 @@ context.Customers.Any(x =>
                             ShowButtons = false,
                             Subject = "ابطالی"
                         };
-
+                        // ابطالی به سال مالی صورتحساب مرجع وابسته باشد تا جزئیات آن بعداً خطای ۵۰۰ ندهد
+                        invoice.FiscalYearId = context.Invoices.AsNoTracking().FirstOrDefault(c => c.Id == modeldata.Id)?.FiscalYearId;
                         await context.AddAsync(invoice);
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
@@ -3101,7 +3103,7 @@ context.Customers.Any(x =>
 
                         var header = new InvoiceHeaderDto
                         {
-                            Irtaxid = modeldata.TaxNumber,
+                            Irtaxid = string.IsNullOrWhiteSpace(modeldata.NewTaxNumber) ? modeldata.TaxNumber : modeldata.NewTaxNumber,
                             Taxid = taxId,
                             Inno = inno,
                             Indatim = indatim,
