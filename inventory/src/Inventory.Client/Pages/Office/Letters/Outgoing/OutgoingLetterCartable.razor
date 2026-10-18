@@ -331,19 +331,25 @@
                                 }
                             </div>
                             <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
-                            @if (attachments.Count > 0)
-                            {
-                                <div class="paper-foot">
-                                    @foreach (var a in attachments)
-                                    {
-                                        var aa = a;
-                                        <a class="att" href="@OutgoingSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
-                                            <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
-                                            <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
-                                        </a>
-                                    }
-                                </div>
-                            }
+                            <div class="paper-foot" style="display:flex;flex-wrap:wrap;gap:8px">
+                                @foreach (var a in attachments)
+                                {
+                                    var aa = a;
+                                    <a class="att" href="@OutgoingSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
+                                        <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
+                                        <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
+                                    </a>
+                                }
+                                <label class="att att-add" title="افزودن پیوست جدید">
+                                    <div class="ic"><i class="bi @(outgoingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
+                                    <div>@(outgoingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
+                                    <InputFile OnChange="OnOutgoingAttachmentSelected" multiple disabled="@outgoingAttachmentUploading" style="display:none" />
+                                </label>
+                                @if (attachments.Count == 0)
+                                {
+                                    <span class="text-muted small align-self-center">این نامه هنوز پیوستی ندارد.</span>
+                                }
+                            </div>
                         </div>
 
                         @* امضا کنندگان *@
@@ -658,6 +664,7 @@
         showWorkOrderReport = false;
     }
     private List<LetterAttachmentDto> attachments = new();
+    private bool outgoingAttachmentUploading;
 
     private bool replyOpen;
     private string replyText = "";
@@ -936,6 +943,29 @@
         selectedItem = items.FirstOrDefault(x => x.LetterId == letterId);
         await LoadDetailAsync(letterId);
         readerOpen = true;
+    }
+
+    private async Task OnOutgoingAttachmentSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (selected == null || outgoingAttachmentUploading) return;
+        outgoingAttachmentUploading = true;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(int.MaxValue))
+            {
+                if (file.Size <= 0 || file.Size > 20 * 1024 * 1024)
+                {
+                    Toast.Error($"حجم فایل «{file.Name}» نامعتبر است؛ حداکثر ۲۰ مگابایت مجاز است.");
+                    continue;
+                }
+                await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+                await OutgoingSvc.UploadAttachmentAsync(selected.LetterId, stream, file.Name, file.ContentType);
+            }
+            attachments = await OutgoingSvc.GetAttachmentsAsync(selected.LetterId);
+            Toast.Success("پیوست با موفقیت اضافه شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { outgoingAttachmentUploading = false; }
     }
 
     private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=OutgoingLetter&sourceId={letterId}");
