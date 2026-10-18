@@ -74,12 +74,6 @@
                         @onclick="() => SetPriorityFilter(v2)">@fa</button>
             }
         </div>
-        <select class="form-select form-select-sm" style="width:180px" value="@fltSourceType" @onchange="OnSourceTypeFilterChanged">
-            <option value="0">همه منابع</option>
-            <option value="1">نامه داخلی</option>
-            <option value="2">نامه صادره</option>
-            <option value="3">نامه وارده</option>
-        </select>
         <div class="wo-flt-project" style="min-width:210px">
             <SearchSelect Items="fltProjectOpts" Value="fltProject" ValueChanged="(int v) => SetProjectFilter(v)"
                           SearchChanged="OnFltProjectSearch" RemoteSearch="true"
@@ -97,7 +91,7 @@
                 }
             </div>
         }
-        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0 || fltSourceType > 0)
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0)
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
@@ -2530,14 +2524,6 @@ else
     private DateTime? selProjectDueAt;
     private List<int> selProjectMemberIds = new();
     private bool projectPrefilled;
-    private int fltSourceType;
-    private void OnSourceTypeFilterChanged(ChangeEventArgs e)
-    {
-        _ = int.TryParse(e.Value?.ToString(), out fltSourceType);
-        page = 1;
-        _ = LoadAll();
-    }
-
     private int fltProject;
     private string fltProjectName = "";
     private List<LookupItem> fltProjectOpts = new();
@@ -2698,7 +2684,6 @@ else
         if (fltPriority >= 0) qs += $"&Priority={fltPriority}";
         if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
         if (fltProject > 0) qs += $"&ProjectId={fltProject}";
-        if (fltSourceType > 0) qs += $"&SourceType={fltSourceType}";
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
@@ -2720,7 +2705,7 @@ else
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
 
-            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0 && fltSourceType <= 0)
+            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0)
             {
                 mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
             }
