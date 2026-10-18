@@ -1472,10 +1472,19 @@ context.Customers.Any(x =>
 
                         try
                         {
+                            // واحدهای سنجش از زمان تفکیک به‌ازای هر CpInfo تکرار نام دارند.
+                            // join قبلی فقط بر اساس «نام واحد» بود و هر InvoiceItem را به تمام
+                            // واحدهای هم‌نامِ شرکت‌های دیگر وصل می‌کرد؛ در نتیجه یک ردیف کالا چندبار
+                            // داخل Body می‌رفت و جمع سربرگ به همان نسبت ضرب می‌شد.
+                            // این lookup دقیقاً یک کد واحد از خودِ CpInfo صورتحساب برمی‌دارد.
                             var invoiceItem = (from ii in context.InvoiceItems
                                                join g in context.GoodsOrServices on ii.GoodsOrServicesId equals g.Id
-                                               join um in context.UnitOfMeasurements on g.UnitOfMeasurement equals um.Name
-                                               where ii.InvoiceId == modelInvoiceVM.Id
+                                               let unitCode = context.UnitOfMeasurements
+                                                   .Where(um => !um.IsDelete && um.CpInfo == cpInfoId && um.Name == g.UnitOfMeasurement)
+                                                   .OrderBy(um => um.Id)
+                                                   .Select(um => um.Code)
+                                                   .FirstOrDefault()
+                                               where ii.InvoiceId == modelInvoiceVM.Id && !ii.IsDelete && !g.IsDelete
                                                select new
                                                {
                                                    ii.InvoiceId,
@@ -1487,11 +1496,16 @@ context.Customers.Any(x =>
                                                    ii.GoodsOrServicesDescripton,
                                                    ii.ValueAddedPercentage,
                                                    g.Name,
-                                                   //ii.PriceNaghd,
-                                                   //ii.PriceNesye,
                                                    g.UnitOfMeasurement,
-                                                   um.Code
+                                                   Code = unitCode
                                                }).ToList();
+
+                            if (invoiceItem.Count == 0)
+                                return new ApiModel { Data = null, Status = 400, Success = false,
+                                    Message = "برای این صورتحساب هیچ ردیف کالای فعال پیدا نشد." };
+                            if (invoiceItem.Any(i => string.IsNullOrWhiteSpace(i.Code)))
+                                return new ApiModel { Data = null, Status = 400, Success = false,
+                                    Message = "کد واحد سنجش یکی از کالاها برای شرکت مودیانِ این صورتحساب تعریف نشده است." };
 
                             int pamentType = invoiceForEdit.PaymentType switch
                             {
@@ -1695,8 +1709,12 @@ context.Customers.Any(x =>
 
                         var invoiceItem = (from ii in context.InvoiceItems
                                            join g in context.GoodsOrServices on ii.GoodsOrServicesId equals g.Id
-                                           join um in context.UnitOfMeasurements on g.UnitOfMeasurement equals um.Name
-                                           where ii.InvoiceId == modelInvoiceVM.Id
+                                           let unitCode = context.UnitOfMeasurements
+                                               .Where(um => !um.IsDelete && um.CpInfo == cpInfoId && um.Name == g.UnitOfMeasurement)
+                                               .OrderBy(um => um.Id)
+                                               .Select(um => um.Code)
+                                               .FirstOrDefault()
+                                           where ii.InvoiceId == modelInvoiceVM.Id && !ii.IsDelete && !g.IsDelete
                                            select new
                                            {
                                                ii.InvoiceId,
@@ -1709,8 +1727,12 @@ context.Customers.Any(x =>
                                                ii.ValueAddedPercentage,
                                                g.Name,
                                                g.UnitOfMeasurement,
-                                               um.Code
+                                               Code = unitCode
                                            }).ToList();
+
+                        if (invoiceItem.Count == 0 || invoiceItem.Any(i => string.IsNullOrWhiteSpace(i.Code)))
+                            return new ApiModel { Data = null, Status = 400, Success = false,
+                                Message = "ردیف کالا یا کد واحد سنجش معتبر برای شرکت مودیان این صورتحساب یافت نشد." };
 
                         int pamentType = invoiceForEdit.PaymentType switch
                         {
@@ -2950,8 +2972,12 @@ context.Customers.Any(x =>
 
                         var invoiceItem = (from ii in context.InvoiceItems
                                            join g in context.GoodsOrServices on ii.GoodsOrServicesId equals g.Id
-                                           join um in context.UnitOfMeasurements on g.UnitOfMeasurement equals um.Name
-                                           where ii.InvoiceId == invoice.Id
+                                           let unitCode = context.UnitOfMeasurements
+                                               .Where(um => !um.IsDelete && um.CpInfo == invoice.CpInfo && um.Name == g.UnitOfMeasurement)
+                                               .OrderBy(um => um.Id)
+                                               .Select(um => um.Code)
+                                               .FirstOrDefault()
+                                           where ii.InvoiceId == invoice.Id && !ii.IsDelete && !g.IsDelete
                                            select new
                                            {
                                                ii.InvoiceId,
@@ -2964,8 +2990,12 @@ context.Customers.Any(x =>
                                                ii.ValueAddedPercentage,
                                                g.Name,
                                                g.UnitOfMeasurement,
-                                               um.Code
+                                               Code = unitCode
                                            }).ToList();
+
+                        if (invoiceItem.Count == 0 || invoiceItem.Any(i => string.IsNullOrWhiteSpace(i.Code)))
+                            return new ApiModel { Data = null, Status = 400, Success = false,
+                                Message = "ردیف کالا یا کد واحد سنجش معتبر برای شرکت مودیان این صورتحساب یافت نشد." };
 
                         int pamentType = modeldata.PaymentType == "نقدی" ? 1 : modeldata.PaymentType == "نسیه" ? 2 : 3;
                         var typeSettleErr = ValidateSettlementForType(invoice.TypePattern, pamentType);
@@ -3174,8 +3204,12 @@ context.Customers.Any(x =>
 
                         var invoiceItem = (from ii in context.InvoiceItems
                                            join g in context.GoodsOrServices on ii.GoodsOrServicesId equals g.Id
-                                           join um in context.UnitOfMeasurements on g.UnitOfMeasurement equals um.Name
-                                           where ii.InvoiceId == modeldata.Id
+                                           let unitCode = context.UnitOfMeasurements
+                                               .Where(um => !um.IsDelete && um.CpInfo == modeldata.CPInfoId && um.Name == g.UnitOfMeasurement)
+                                               .OrderBy(um => um.Id)
+                                               .Select(um => um.Code)
+                                               .FirstOrDefault()
+                                           where ii.InvoiceId == modeldata.Id && !ii.IsDelete && !g.IsDelete
                                            select new
                                            {
                                                ii.InvoiceId,
@@ -3188,8 +3222,12 @@ context.Customers.Any(x =>
                                                ii.ValueAddedPercentage,
                                                g.Name,
                                                g.UnitOfMeasurement,
-                                               um.Code
+                                               Code = unitCode
                                            }).ToList();
+
+                        if (invoiceItem.Count == 0 || invoiceItem.Any(i => string.IsNullOrWhiteSpace(i.Code)))
+                            return new ApiModel { Data = null, Status = 400, Success = false,
+                                Message = "ردیف کالا یا کد واحد سنجش معتبر برای شرکت مودیان این صورتحساب یافت نشد." };
 
                         int pamentType = modeldata.PaymentType == "نقدی" ? 1 : modeldata.PaymentType == "نسیه" ? 2 : 3;
                         var typeSettleErr = ValidateSettlementForType(invoice.TypePattern, pamentType);
