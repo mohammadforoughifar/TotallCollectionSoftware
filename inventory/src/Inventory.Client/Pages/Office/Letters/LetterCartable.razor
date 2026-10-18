@@ -341,7 +341,7 @@
                                             }
                                         </button>
                                     }
-                                    @if (selected.IsMine)
+                                    @if (selected.IsMine || selected.MyErja != null)
                                     {
                                         <label class="att att-add" title="افزودن پیوست جدید">
                                             <div class="ic"><i class="bi @(attUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
@@ -1333,7 +1333,7 @@
 
     private bool attUploading;
 
-    /// <summary>افزودن پیوست جدید به نامه باز در ریدر (فقط فرستنده)</summary>
+    /// <summary>افزودن پیوست جدید به نامه باز در ریدر — فرستنده یا گیرنده حاضر در گردش</summary>
     private async Task OnReaderFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
         if (selected == null || attUploading) return;

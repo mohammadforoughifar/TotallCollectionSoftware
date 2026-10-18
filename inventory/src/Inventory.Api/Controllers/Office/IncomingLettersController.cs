@@ -338,7 +338,7 @@ public class IncomingLettersController : RbacControllerBase
     [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
-        if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "افزودن پیوست نامه وارده فقط از طریق دبیرخانه مجاز است." });
+        if (!await CanAccessLetterAsync(id)) return StatusCode(403, new { message = "فقط افراد حاضر در گردش نامه می‌توانند پیوست اضافه کنند." });
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است." });
         if (file.Length > 20 * 1024 * 1024)

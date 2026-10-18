@@ -479,8 +479,7 @@ public class InnerLettersController : RbacControllerBase
     /// </summary>
     private async Task<bool> CanAttachAsync(int letterId)
     {
-        return await Db.InnerLetters.AsNoTracking()
-            .AnyAsync(l => l.Id == letterId && !l.IsDelete && l.CreatorUserId == MyUserId);
+        return await InFlowAsync(letterId);
     }
 
     /// <summary>
