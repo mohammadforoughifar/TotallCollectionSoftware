@@ -1934,12 +1934,14 @@ context.Customers.Any(x =>
 
             else
             {
-                model.Data = null;
-                model.Message = MessageCode.StatusCode.TryGetValue(404, out string messager) == true
+                // لیست خالی خطا نیست: مثلاً شرکت مودیانی که هنوز کالا/مشتری/واحدی ندارد.
+                // قبلاً اینجا 404 برمی‌گشت و کلاینت «مورد درخواستی یافت نشد» نشان می‌داد.
+                model.Data = result;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string messager) == true
                     ? model.Message = messager
                     : model.Message = "کد وضعیت نامعتبر است.";
-                model.Status = 404;
-                model.Success = false;
+                model.Status = 200;
+                model.Success = true;
 
                 return model;
             }
@@ -1975,12 +1977,14 @@ context.Customers.Any(x =>
 
             else
             {
-                model.Data = null;
-                model.Message = MessageCode.StatusCode.TryGetValue(404, out string messager) == true
+                // لیست خالی خطا نیست: مثلاً شرکت مودیانی که هنوز کالا/مشتری/واحدی ندارد.
+                // قبلاً اینجا 404 برمی‌گشت و کلاینت «مورد درخواستی یافت نشد» نشان می‌داد.
+                model.Data = result;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string messager) == true
                     ? model.Message = messager
                     : model.Message = "کد وضعیت نامعتبر است.";
-                model.Status = 404;
-                model.Success = false;
+                model.Status = 200;
+                model.Success = true;
 
                 return model;
             }
@@ -2012,12 +2016,14 @@ context.Customers.Any(x =>
 
             else
             {
-                model.Data = null;
-                model.Message = MessageCode.StatusCode.TryGetValue(404, out string messager) == true
+                // لیست خالی خطا نیست: مثلاً شرکت مودیانی که هنوز کالا/مشتری/واحدی ندارد.
+                // قبلاً اینجا 404 برمی‌گشت و کلاینت «مورد درخواستی یافت نشد» نشان می‌داد.
+                model.Data = result;
+                model.Message = MessageCode.StatusCode.TryGetValue(200, out string messager) == true
                     ? model.Message = messager
                     : model.Message = "کد وضعیت نامعتبر است.";
-                model.Status = 404;
-                model.Success = false;
+                model.Status = 200;
+                model.Success = true;
 
                 return model;
             }
@@ -3710,6 +3716,13 @@ context.Customers.Any(x =>
         private async Task<ApiModel> CreateInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
         {
             ApiModel model = new ApiModel();
+
+            // نرمال‌سازی نوع صورتحساب در ورودی: هر مقداری که از کلاینت برسد («نوع دوم»، «2»، با نیم‌فاصله و…)
+            // به یکی از سه مقدار قطعی تبدیل می‌شود تا همهٔ تصمیم‌های بعدی (از جمله رد/قبول مشتری) یکی باشند.
+            var rawType = modeldata.TypePattern;
+            var typeCode = TypePatternToCode(rawType);
+            modeldata.TypePattern = typeCode == 3 ? "نوع سوم" : typeCode == 2 ? "نوع دوم" : "نوع اول";
+            Console.WriteLine($"[Moadian] CreateInvoice typePattern='{rawType}' code={typeCode} customerId={modeldata.CustomerId} cpinfo={modeldata.CPInfoId}");
 
             // Validation اولیه
             if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
