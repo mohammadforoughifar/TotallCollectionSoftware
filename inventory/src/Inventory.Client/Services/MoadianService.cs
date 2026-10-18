@@ -156,7 +156,15 @@ public class MoadianService : IMoadianService
         => _api.PostAsync<ApiModel>("Moadian/GetIsConnectToMoadian", vm);
 
     public async Task<VMConnection?> GetConnectionAsync(int cpinfoId)
-        => Must<VMConnection>(await _api.GetAsync<ApiModel>($"Moadian/GetConnectForCpInfo/{cpinfoId}"));
+    {
+        // «اتصال ثبت نشده» پاسخ موفق با Data خالی است، نه خطا — Must روی آن exception می‌داد
+        // و فرم اتصال، اطلاعات شرکت قبلی را روی صفحه نگه می‌داشت. خطای واقعی سرور همچنان پرتاب می‌شود.
+        var r = await _api.GetAsync<ApiModel>($"Moadian/GetConnectForCpInfo/{cpinfoId}");
+        if (r is null) return null;
+        if (!r.Success)
+            throw new Exception("دریافت داده از سرور: " + (r.Message ?? "خطای نامشخص سرور") + " (کد " + r.Status + ")");
+        return As<VMConnection>(r);
+    }
 
     public Task<ApiModel> SaveConnectionAsync(VMConnection vm)
         => _api.PostAsync<ApiModel>("Moadian/ConnectionApiAsync", vm);
