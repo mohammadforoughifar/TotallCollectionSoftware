@@ -196,7 +196,7 @@ else
                     <table class="table table-sm align-middle mb-0">
                         <tr><td class="text-muted">مبلغ نهایی</td><td class="num fw-bold text-end text-primary">@MoadianUi.Money(GrandTotal)</td></tr>
                         <tr><td class="text-muted">نوع پرداخت</td><td class="text-end">@vm.PaymentType</td></tr>
-                        <tr><td class="text-muted">الگو</td><td class="text-end">@vm.TypePattern</td></tr>
+                        <tr><td class="text-muted">نوع صورتحساب</td><td class="text-end">@vm.TypePattern</td></tr>
                         @if (!string.IsNullOrEmpty(vm.Description))
                         {
                             <tr><td class="text-muted">شرح</td><td class="text-end">@vm.Description</td></tr>
@@ -312,7 +312,7 @@ else
                         <div><span>تاریخ صدور</span><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></div>
                         <div><span>موضوع</span><b>@(vm.Subject ?? "—")</b></div>
                         <div><span>وضعیت</span><b>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</b></div>
-                        <div><span>الگو</span><b>@(vm.TypePattern ?? "—")</b></div>
+                        <div><span>نوع صورتحساب</span><b>@(vm.TypePattern ?? "—")</b></div>
                         <div><span>مشتری</span><b>@(vm.CustomerName ?? "—")</b></div>
                         <div><span>روش پرداخت</span><b>@(vm.PaymentType ?? "—")</b></div>
                         @if (!string.IsNullOrWhiteSpace(vm.NewTaxNumber ?? vm.TaxNumber))

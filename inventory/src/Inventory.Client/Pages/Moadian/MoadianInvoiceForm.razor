@@ -111,16 +111,18 @@ else
                     <label class="form-label">نوع پرداخت</label>
                     <select class="form-select" @bind="vm.PaymentType">
                         <option value="نقدی">نقدی</option>
-                        <option value="نسیه">نسیه</option>
+                        <option value="نسیه" disabled="@IsNoBuyerType">نسیه</option>
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">الگوی صورتحساب</label>
-                    <select class="form-select" @bind="vm.TypePattern">
-                        <option value="نوع اول">نوع اول</option>
-                        <option value="نوع دوم">نوع دوم</option>
+                    <label class="form-label">نوع صورتحساب</label>
+                    <select class="form-select" @bind="vm.TypePattern" @bind:after="OnTypePatternChanged"
+                        title="نوع اول: خریدار فعال اقتصادی (با کد اقتصادی) — در کارپوشهٔ خریدار قابل واکنش است | نوع دوم: مصرف‌کنندهٔ نهایی / بدون کد اقتصادی — بدون افشای اطلاعات خریدار و فقط با تسویهٔ نقدی">
+                        <option value="نوع اول">نوع اول — با اطلاعات خریدار</option>
+                        <option value="نوع دوم">نوع دوم — بدون اطلاعات خریدار</option>
                         <option value="نوع سوم">نوع سوم</option>
                     </select>
+                    <small class="text-muted d-block mt-1">نوع دوم برای خریدار مصرف‌کننده — فقط «نقدی»</small>
                 </div>
                 <div class="col-md-9">
                     <label class="form-label">توضیحات</label>
@@ -433,6 +435,18 @@ else
         StateHasChanged();
     }
 
+    /// <summary>نوع ۲/۳ (بدون افشای اطلاعات خریدار) فقط تسویهٔ نقدی می‌پذیرد.</summary>
+    private bool IsNoBuyerType => vm.TypePattern is "نوع دوم" or "نوع سوم";
+
+    private void OnTypePatternChanged()
+    {
+        if (IsNoBuyerType && vm.PaymentType != "نقدی")
+        {
+            vm.PaymentType = "نقدی";
+            StateHasChanged();
+        }
+    }
+
     private async Task Save()
     {
         if (vm.CustomerId is null or <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
@@ -443,6 +457,7 @@ else
         { Toast.Error("در هر ردیف باید کالا انتخاب شده باشد."); return; }
 
         vm.TotallMoney = GrandTotal;
+        if (IsNoBuyerType) vm.PaymentType = "نقدی";
         if (vm.PaymentType == "نقدی") vm.PriceNaghd = GrandTotal; else vm.PriceNesye = GrandTotal;
         if (IsNewLike) vm.IsNew = true;
 

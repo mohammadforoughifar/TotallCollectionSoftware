@@ -399,8 +399,8 @@ namespace Inventory.Api.Services.Moadian
                                 Taxid = taxId,
                                 Inno = inno,
                                 Indatim = indatim,
-                                Inty = 1,
-                                Inp = invoice.TypePattern,///نوع صورتحساب invoicePattern
+                                Inty = SafeInvoiceType(invoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                                Inp = 1, // الگوی فروش عادی
                                 Ins = 1,
                                 Tins = cpInfo.EconomicNumber,
                                 Tinb = customer.EconomicNumber,
@@ -545,8 +545,8 @@ namespace Inventory.Api.Services.Moadian
                                 Taxid = taxId,
                                 Inno = inno,
                                 Indatim = indatim,
-                                Inty = 1,
-                                Inp = newInvoice.TypePattern,///نوع صورتحساب invoicePattern
+                                Inty = SafeInvoiceType(newInvoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                                Inp = 1, // الگوی فروش عادی
                                 Ins = 4,
                                 Tins = cpInfo.EconomicNumber,
                                 Tinb = customer.EconomicNumber,
@@ -1394,6 +1394,12 @@ context.Customers.Any(x =>
                                 return new ApiModel { Data = null, Status = 400, Success = false,
                                     Message = "نوع پرداخت صورتحساب نامعتبر است؛ فقط «نقدی» یا «نسیه» قابل ارسال است." };
 
+                            var typeSettleErr = ValidateSettlementForType(invoiceForEdit.TypePattern, pamentType);
+
+                            if (typeSettleErr is not null)
+
+                                return new ApiModel { Data = null, Status = 400, Success = false, Message = typeSettleErr };
+
 
                             var customer = context.Customers.Where(c => c.Id == invoiceForEdit.CustomerId).FirstOrDefault();
                             var cpInfo = context.CPInfos.Where(c => c.Id == invoiceForEdit.CpInfo).FirstOrDefault();
@@ -1446,8 +1452,8 @@ context.Customers.Any(x =>
                                 Inno = inno,
                                 Indatim = indatim,
                                 Indati2m = indatim,
-                                Inty = 1,//invoiceType
-                                Inp = invoiceForEdit.TypePattern, // الگوی انتخاب‌شده در فرم (1/2/3)
+                                Inty = SafeInvoiceType(invoiceForEdit.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                                Inp = 1, // الگوی فروش عادی
                                 Ins = 1,///invoiceSubject
                                 Tins = cpInfo.EconomicNumber,
                                 Tinb = customer.EconomicNumber,
@@ -1462,8 +1468,8 @@ context.Customers.Any(x =>
                                 Tbill = bodyItems.Sum(x => x.Tsstam),///کل صورتحساب
                                 Setm = pamentType, ///نوع پرداخت
                                 // PDF SDK این‌ها را سهم نقدی/نسیهٔ سربرگ تعریف می‌کند؛ فرم همین مقادیر را ذخیره می‌کند.
-                                Cap = invoiceForEdit.PriceNaghd,
-                                Insp = invoiceForEdit.PriceNesye,
+                                Cap = IsNoBuyerDisclosureType(SafeInvoiceType(invoiceForEdit.TypePattern)) ? bodyItems.Sum(x => x.Tsstam) : invoiceForEdit.PriceNaghd,
+                                Insp = IsNoBuyerDisclosureType(SafeInvoiceType(invoiceForEdit.TypePattern)) ? 0 : invoiceForEdit.PriceNesye,
 
 
                             };
@@ -1607,6 +1613,12 @@ context.Customers.Any(x =>
                             return new ApiModel { Data = null, Status = 400, Success = false,
                                 Message = "نوع پرداخت صورتحساب نامعتبر است؛ فقط «نقدی» یا «نسیه» قابل ارسال است." };
 
+                        var typeSettleErr = ValidateSettlementForType(invoiceForEdit.TypePattern, pamentType);
+
+                        if (typeSettleErr is not null)
+
+                            return new ApiModel { Data = null, Status = 400, Success = false, Message = typeSettleErr };
+
                         var customer = context.Customers.Where(c => c.Id == invoiceForEdit.CustomerId).FirstOrDefault();
                         var cpInfo = context.CPInfos.Where(c => c.Id == invoice.CpInfo).FirstOrDefault();
 
@@ -1638,8 +1650,8 @@ context.Customers.Any(x =>
                             Taxid = taxId1,
                             Inno = inno1,
                             Indatim = indatim1,
-                            Inty = 1,
-                            Inp = invoiceForEdit.TypePattern,///نوع صورتحساب invoicePattern
+                            Inty = SafeInvoiceType(invoiceForEdit.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                            Inp = 1, // الگوی فروش عادی
                             Ins = 4,
                             Tins = cpInfo.EconomicNumber,
                             Tinb = customer.EconomicNumber,
@@ -1740,6 +1752,27 @@ context.Customers.Any(x =>
                 .MaxAsync(i => (int?)i.InvoiceNumber);
             return (max ?? 0) + 1;
         }
+
+        /// <summary>
+        /// نوع صورتحساب (نوع ۱/۲/۳) — طبق مشخصهٔ رسمی سرادم به فیلد `inty` سرفرستاده می‌شود:
+        /// ۱ = با افشای اطلاعات خریدار | ۲ و ۳ = بدون افشای اطلاعات خریدار.
+        /// مقدار صفر/نامعتبر (رکوردهای قدیمی) به‌عنوان نوع ۱ در نظر گرفته می‌شود.
+        /// </summary>
+        private static int SafeInvoiceType(int typePattern) => typePattern is 2 or 3 ? typePattern : 1;
+
+        /// <summary>نوع ۲/۳ افشای اطلاعات خریدار ندارند و تسویهٔ آن‌ها همیشه نقدی است.</summary>
+        private static bool IsNoBuyerDisclosureType(int type) => type is 2 or 3;
+
+        /// <summary>اعتبارسنجی قبل از ارسال: صورتحساب نوع ۲/۳ فقط با تسویهٔ نقدی قابل ارسال است.</summary>
+        private static string? ValidateSettlementForType(int typePattern, int pamentType)
+        {
+            if (IsNoBuyerDisclosureType(SafeInvoiceType(typePattern)) && pamentType != 1)
+                return "صورتحساب نوع دوم/سوم (بدون افشای اطلاعات خریدار) فقط با نوع پرداخت «نقدی» قابل ارسال است؛ نوع پرداخت را «نقدی» کنید.";
+            return null;
+        }
+
+        /// <summary>تبدیل رشتهٔ «نوع اول/دوم/سوم» فرم به کد عددی؛ خالی/نامشخص -> ۱ (نوع اول).</summary>
+        private static int TypePatternToCode(string? typePattern) => typePattern == "نوع دوم" ? 2 : typePattern == "نوع سوم" ? 3 : 1;
 
         /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (برای نمایش در فرم ثبت).</summary>
         public async Task<ApiModel> NextInvoiceNumberAsync(int cpinfoId)
@@ -2732,7 +2765,7 @@ context.Customers.Any(x =>
                             CustomerId = (int)modeldata.CustomerId,
                             // DateOrder = DateTime.Now.ToString(),
                             DateOrder = (DateOnly)modeldata.DateOrder,
-                            TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.TypePattern == "نوع دوم" ? 2 : 3,
+                            TypePattern = TypePatternToCode(modeldata.TypePattern),
                             PaymentType = modeldata.PaymentType,
                             PriceNaghd=modeldata.PriceNaghd,
                             PriceNesye=modeldata.PriceNesye,
@@ -2798,6 +2831,9 @@ context.Customers.Any(x =>
                                            }).ToList();
 
                         int pamentType = modeldata.PaymentType == "نقدی" ? 1 : modeldata.PaymentType == "نسیه" ? 2 : 3;
+                        var typeSettleErr = ValidateSettlementForType(invoice.TypePattern, pamentType);
+                        if (typeSettleErr is not null)
+                            return new ApiModel { Data = null, Status = 400, Success = false, Message = typeSettleErr };
 
                         var customer = context.Customers.Where(c => c.Id == invoice.CustomerId).FirstOrDefault();
                         var cpInfo = context.CPInfos.Where(c => c.Id == invoice.CpInfo).FirstOrDefault();
@@ -2847,8 +2883,8 @@ context.Customers.Any(x =>
                             Taxid = taxId,
                             Inno = inno,
                             Indatim = indatim,
-                            Inty = 1,
-                            Inp = invoice.TypePattern,///نوع صورتحساب invoicePattern
+                            Inty = SafeInvoiceType(invoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                            Inp = 1, // الگوی فروش عادی
                             Ins = 2,
                             Tins = cpInfo.EconomicNumber,
                             Tinb = customer.EconomicNumber,
@@ -2980,7 +3016,7 @@ context.Customers.Any(x =>
                             PaymentType = modeldata.PaymentType,
                             Description = modeldata.Description,
                             CpInfo = modeldata.CPInfoId,
-                            TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.PaymentType == "نوع دوم" ? 2 : 3,
+                            TypePattern = TypePatternToCode(modeldata.TypePattern),
                             StatusSentToSystem = "6",//عدم نیاز به واکنش
                             ShowButtons = false,
                             Subject = "ابطالی"
@@ -3017,6 +3053,9 @@ context.Customers.Any(x =>
                                            }).ToList();
 
                         int pamentType = modeldata.PaymentType == "نقدی" ? 1 : modeldata.PaymentType == "نسیه" ? 2 : 3;
+                        var typeSettleErr = ValidateSettlementForType(invoice.TypePattern, pamentType);
+                        if (typeSettleErr is not null)
+                            return new ApiModel { Data = null, Status = 400, Success = false, Message = typeSettleErr };
 
                         var customer = context.Customers.Where(c => c.Id == invoice.CustomerId).FirstOrDefault();
                         var cpInfo = context.CPInfos.Where(c => c.Id == invoice.CpInfo).FirstOrDefault();
@@ -3066,8 +3105,8 @@ context.Customers.Any(x =>
                             Taxid = taxId,
                             Inno = inno,
                             Indatim = indatim,
-                            Inty = 1,
-                            Inp = invoice.TypePattern,///نوع صورتحساب invoicePattern
+                            Inty = SafeInvoiceType(invoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
+                            Inp = 1, // الگوی فروش عادی
                             Ins = 3,
                             Tins = cpInfo.EconomicNumber,
                             Tinb = customer.EconomicNumber,
@@ -3483,7 +3522,7 @@ context.Customers.Any(x =>
                 invoiceForEdit.PriceNaghd = modeldata.PriceNaghd;
             }
          
-            invoiceForEdit.TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.TypePattern == "نوع دوم" ? 2 : 3;
+            invoiceForEdit.TypePattern = TypePatternToCode(modeldata.TypePattern);
 
             context.InvoiceItems.RemoveRange(context.InvoiceItems.Where(x => x.InvoiceId == modeldata.Id));
 
@@ -3587,7 +3626,7 @@ context.Customers.Any(x =>
                         InvoiceNumber = nextNumber,
                         FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
                         DateOrder = (DateOnly)modeldata.DateOrder,
-                        TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.TypePattern == "نوع دوم" ? 2 : 3,
+                        TypePattern = TypePatternToCode(modeldata.TypePattern),
                         PaymentType = modeldata.PaymentType,
                         PriceNaghd = modeldata.PriceNaghd,
                         PriceNesye = modeldata.PriceNesye,
@@ -3728,7 +3767,7 @@ context.Customers.Any(x =>
         //                    InvoiceNumber = modeldata.NumberInvoice,
         //                    FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
         //                    DateOrder = (DateOnly)modeldata.DateOrder,
-        //                    TypePattern = modeldata.TypePattern == "نوع اول" ? 1 : modeldata.TypePattern == "نوع دوم" ? 2 : 3,
+        //                    TypePattern = TypePatternToCode(modeldata.TypePattern),
         //                    PaymentType = modeldata.PaymentType,
         //                    PriceNaghd = modeldata.PriceNaghd,
         //                    PriceNesye = modeldata.PriceNesye,
