@@ -188,7 +188,7 @@ namespace Inventory.Api.Services.Moadian
         public async Task<ApiModel> InsertInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
         {
             ApiModel model = new ApiModel();
-            if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
             {
                 model.Data = null;
@@ -209,7 +209,7 @@ namespace Inventory.Api.Services.Moadian
                     {
                         var invoice = new Invoice()
                         {
-                            CustomerId = (int)modeldata.CustomerId,
+                            CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                             DateOrder = DateOnly.FromDateTime(DateTime.Now),
                             CpInfo = modeldata.CPInfoId,
                             PaymentType = modeldata.PaymentType,
@@ -259,7 +259,7 @@ namespace Inventory.Api.Services.Moadian
                         var invoice = await context.Invoices.FindAsync(modeldata.Id);
                         if (invoice is not null)
                         {
-                            invoice.CustomerId = (int)modeldata.CustomerId;
+                            invoice.CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId;
 
                             invoice.PaymentType = modeldata.PaymentType;
                             invoice.Description = modeldata.Description;
@@ -307,7 +307,7 @@ namespace Inventory.Api.Services.Moadian
                         {
                             var invoice = new Invoice()
                             {
-                                CustomerId = (int)modeldata.CustomerId,
+                                CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                                 DateOrder = DateOnly.FromDateTime(DateTime.Now),
                                 CpInfo = modeldata.CPInfoId,
                                 PaymentType = modeldata.PaymentType,
@@ -463,7 +463,7 @@ namespace Inventory.Api.Services.Moadian
                         {
                             Invoice newInvoice = new Invoice()
                             {
-                                CustomerId = (int)modeldata.CustomerId,
+                                CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                                 //  DateOrder = GetDate(DateTime.Now),
                                 DateOrder = DateOnly.FromDateTime(DateTime.Now),
                                 PaymentType = modeldata.PaymentType,
@@ -1242,8 +1242,8 @@ context.Customers.Any(x =>
                     TaxNumber = i.TaxNumber,
                     NewTaxNumber = i.NewTaxNumber,
                     ReferenceId = i.ReferenceId,
-                    CustomerName = context.Customers.FirstOrDefault(c => c.Id == i.CustomerId).Name,
-                    CustomerId = context.Customers.FirstOrDefault(c => c.Id == i.CustomerId).Id,
+                    CustomerName = context.Customers.Where(c => c.Id == i.CustomerId).Select(c => c.Name).FirstOrDefault(),
+                    CustomerId = i.CustomerId,
 
                     TotallMoney = context.InvoiceItems
         .Where(x => x.InvoiceId == i.Id)
@@ -1560,7 +1560,7 @@ context.Customers.Any(x =>
                     {
                         var invoice = new Invoice()
                         {
-                            CustomerId = (int)invoiceForEdit.CustomerId,
+                            CustomerId = invoiceForEdit.CustomerId,
                             DateOrder = DateOnly.FromDateTime(DateTime.Now),
                             PaymentType = invoiceForEdit.PaymentType,
                             Description = invoiceForEdit.Description,
@@ -2732,7 +2732,7 @@ context.Customers.Any(x =>
         public async Task<ApiModel> EslahiInvoiceAsync(InvoiceVM modeldata)
         {
             ApiModel model = new ApiModel();
-            if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
             {
                 model.Data = null;
@@ -2762,7 +2762,7 @@ context.Customers.Any(x =>
 
                         var invoice = new Invoice()
                         {
-                            CustomerId = (int)modeldata.CustomerId,
+                            CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                             // DateOrder = DateTime.Now.ToString(),
                             DateOrder = (DateOnly)modeldata.DateOrder,
                             TypePattern = TypePatternToCode(modeldata.TypePattern),
@@ -2985,7 +2985,7 @@ context.Customers.Any(x =>
         public async Task<ApiModel> EbtalInvoiceAsync(InvoiceVM modeldata)
         {
             ApiModel model = new ApiModel();
-            if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
             {
                 model.Data = null;
@@ -3012,7 +3012,7 @@ context.Customers.Any(x =>
 
                         var invoice = new Invoice()
                         {
-                            CustomerId = (int)modeldata.CustomerId,
+                            CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                             DateOrder = DateOnly.FromDateTime(DateTime.Now),
                             PaymentType = modeldata.PaymentType,
                             Description = modeldata.Description,
@@ -3490,7 +3490,7 @@ context.Customers.Any(x =>
         {
             ApiModel model = new ApiModel();
             
-            if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
             modeldata.InvoiceItems == null)
             {
                 model.Data = null;
@@ -3505,7 +3505,7 @@ context.Customers.Any(x =>
             ////ویرایش صورت حساب ارسال نشده
             var invoiceForEdit = context.Invoices.Where(c => c.Id == modeldata.Id).FirstOrDefault();
             invoiceForEdit.DateOrder = (DateOnly)modeldata.DateOrder;
-            invoiceForEdit.CustomerId = (int)modeldata.CustomerId;
+            invoiceForEdit.CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId;
             invoiceForEdit.PaymentType = modeldata.PaymentType;
             invoiceForEdit.Description = modeldata.Description;
             if (invoiceForEdit.PaymentType == "نقدی")
@@ -3576,7 +3576,7 @@ context.Customers.Any(x =>
             ApiModel model = new ApiModel();
 
             // Validation اولیه
-            if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
                 modeldata.InvoiceItems == null || !modeldata.InvoiceItems.Any())
             {
                 return CreateErrorResponse(400);
@@ -3605,14 +3605,17 @@ context.Customers.Any(x =>
                     model.Message = $"کالا(های) با شناسه {string.Join(", ", missingIds)} در سیستم یافت نشد.";
                     return model;
                 }
-                // چک مشتری
-                var customerExists = await context.Customers.AnyAsync(c => c.Id == modeldata.CustomerId);
-                if (!customerExists)
+                // چک مشتری — برای نوع ۲/۳ (بدون خریدار) نیازی به مشتری نیست
+                if (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))))
                 {
-                    model.Success = false;
-                    model.Status = 400;
-                    model.Message = "مشتری موردنظر یافت نشد.";
-                    return model;
+                    var customerExists = await context.Customers.AnyAsync(c => c.Id == modeldata.CustomerId);
+                    if (!customerExists)
+                    {
+                        model.Success = false;
+                        model.Status = 400;
+                        model.Message = "مشتری موردنظر یافت نشد.";
+                        return model;
+                    }
                 }
 
                 try
@@ -3623,7 +3626,7 @@ context.Customers.Any(x =>
                         : await NextInvoiceNoCoreAsync(modeldata.CPInfoId);
                     var invoice = new Invoice()
                     {
-                        CustomerId = (int)modeldata.CustomerId,
+                        CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
                         CpInfo = modeldata.CPInfoId,
                         InvoiceNumber = nextNumber,
                         FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
@@ -3701,7 +3704,7 @@ context.Customers.Any(x =>
         //    private async Task<ApiModel> CreateInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
         //    {
         //        ApiModel model = new ApiModel();
-        //        if (modeldata.PaymentType == "" || modeldata.CustomerId == 0 || modeldata.StatusSentToSystem == "" ||
+        //        if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
         //        modeldata.InvoiceItems == null)
         //        {
         //            model.Data = null;
@@ -3764,7 +3767,7 @@ context.Customers.Any(x =>
 
         //                var invoice = new Invoice()
         //                {
-        //                    CustomerId = (int)modeldata.CustomerId,
+        //                    CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
         //                    CpInfo = modeldata.CPInfoId,
         //                    InvoiceNumber = modeldata.NumberInvoice,
         //                    FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),

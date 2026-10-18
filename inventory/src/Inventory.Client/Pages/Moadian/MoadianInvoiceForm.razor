@@ -78,26 +78,29 @@ else
                     <label class="form-label">تاریخ فاکتور <span class="text-danger">*</span></label>
                     <DatePicker Value="vm.DateOrderPicker" ValueChanged="OnDate" />
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">مشتری <span class="text-danger">*</span></label>
-                    @if (Customers.Count == 0)
-                    {
-                        <div class="alert alert-warning py-2 small">
-                            مشتری‌ای برای این شرکت تعریف نشده —
-                            <NavLink href="moadian/basic-info/customers">ثبت مشتری</NavLink>
-                        </div>
-                    }
-                    else
-                    {
-                        <select class="form-select" value="@vm.CustomerId" @onchange="OnCustomer">
-                            <option value="">— انتخاب مشتری —</option>
-                            @foreach (var c in Customers)
-                            {
-                                <option value="@c.CustomerId">@c.Name @if (!string.IsNullOrEmpty(c.Type)) { <span class="text-muted">(@c.Type)</span> }</option>
-                            }
-                        </select>
-                    }
-                </div>
+                @if (!IsNoBuyerType)
+                {
+                    <div class="col-md-6">
+                        <label class="form-label">مشتری <span class="text-danger">*</span></label>
+                        @if (Customers.Count == 0)
+                        {
+                            <div class="alert alert-warning py-2 small">
+                                مشتری‌ای برای این شرکت تعریف نشده —
+                                <NavLink href="moadian/basic-info/customers">ثبت مشتری</NavLink>
+                            </div>
+                        }
+                        else
+                        {
+                            <select class="form-select" value="@vm.CustomerId" @onchange="OnCustomer">
+                                <option value="">— انتخاب مشتری —</option>
+                                @foreach (var c in Customers)
+                                {
+                                    <option value="@c.CustomerId">@c.Name @if (!string.IsNullOrEmpty(c.Type)) { <span class="text-muted">(@c.Type)</span> }</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                }
                 <div class="col-md-3">
                     <label class="form-label">سال مالی <span class="text-danger">*</span></label>
                     <select class="form-select" value="@vm.FiscalYearId" @onchange="OnFiscalYear">
@@ -487,16 +490,17 @@ else
 
     private void OnTypePatternChanged()
     {
-        if (IsNoBuyerType && vm.PaymentType != "نقدی")
+        if (IsNoBuyerType)
         {
-            vm.PaymentType = "نقدی";
+            vm.CustomerId = null;
+            if (vm.PaymentType != "نقدی") vm.PaymentType = "نقدی";
             StateHasChanged();
         }
     }
 
     private async Task Save()
     {
-        if (vm.CustomerId is null or <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
+        if (!IsNoBuyerType && vm.CustomerId is null or <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
         if (vm.DateOrderPicker is null) { Toast.Error("تاریخ صورتحساب را وارد کنید."); return; }
         if (string.IsNullOrWhiteSpace(vm.FiscalYearId)) { Toast.Error("سال مالی را انتخاب کنید."); return; }
         if (vm.InvoiceItems.Count == 0) { Toast.Error("حداقل یک ردیف کالا/خدمت لازم است."); return; }
@@ -504,7 +508,7 @@ else
         { Toast.Error("در هر ردیف باید کالا انتخاب شده باشد."); return; }
 
         vm.TotallMoney = GrandTotal;
-        if (IsNoBuyerType) vm.PaymentType = "نقدی";
+        if (IsNoBuyerType) { vm.CustomerId = null; vm.PaymentType = "نقدی"; }
         if (vm.PaymentType == "نقدی") vm.PriceNaghd = GrandTotal; else vm.PriceNesye = GrandTotal;
         if (IsNewLike) vm.IsNew = true;
 
