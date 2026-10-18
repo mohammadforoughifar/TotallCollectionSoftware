@@ -379,13 +379,13 @@ else
             }
             <div class="mprint-total"><span>جمع کل صورتحساب</span><strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong></div>
         </div>
-        <div class="mprint-footer">نسخهٔ چاپی صورتحساب — شناسهٔ رکورد: <span class="num">@vm.Id.Num()</span></div>
     </div>
 }
 
 <style>
     .moadian-print { display:none; }
-    @@page { size: A4 landscape; margin: 8mm; }
+    /* margin:0 یعنی مرورگر سربرگ/پابرگ خودکار (عنوان صفحه، تاریخ/ساعت، آدرس URL و شمارهٔ صفحه) چاپ نمی‌کند؛ فاصلهٔ داخلی با padding خود برگه جبران می‌شود. */
+    @@page { size: A4 landscape; margin: 0; }
     @@media print {
         body:has(.moadian-print) * { visibility:hidden !important; }
         body:has(.moadian-print) .moadian-print,
@@ -395,6 +395,7 @@ else
             display:block !important; position:static !important; inset:auto !important;
             width:100% !important; color:#111827 !important; background:#fff !important;
             font-family:Tahoma,Arial,sans-serif; font-size:9pt; direction:rtl;
+            padding:8mm; box-sizing:border-box;
         }
         .moadian-print-table { width:100%; border-collapse:collapse; table-layout:fixed; }
         .moadian-print-table thead { display:table-header-group; }
@@ -417,7 +418,6 @@ else
         .mprint-total { display:flex; justify-content:space-between; align-items:center; border:2px solid #334155; padding:7px 10px; font-size:11pt; font-weight:700; }
         .mprint-total strong { font-size:13pt; }
         .mprint-total small { font-size:8pt; }
-        .mprint-footer { margin-top:6px; padding-top:4px; border-top:1px solid #94a3b8; text-align:center; font-size:7pt; color:#475569; }
         .num { font-variant-numeric:tabular-nums; }
     }
 </style>
