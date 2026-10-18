@@ -52,10 +52,12 @@ public class GoodsOrService
     public bool IsDelete { get; set; }
 }
 
-/// <summary>واحد سنجش معتبر سامانه مودیان (نام + کد).</summary>
+/// <summary>واحد سنجش معتبر سامانه مودیان (نام + کد) — به‌ازای هر خدمات‌دهنده (CpInfo).</summary>
 public class UnitOfMeasurement
 {
     public int Id { get; set; }
+    /// <summary>خدمات‌دهندهٔ مودیانِ مالک این واحد؛ null = رکورد قدیمیِ مشترک (قالب) پیش از تفکیک.</summary>
+    public int? CpInfo { get; set; }
     public string? Name { get; set; }
     public string? Code { get; set; }
     public bool IsDelete { get; set; }

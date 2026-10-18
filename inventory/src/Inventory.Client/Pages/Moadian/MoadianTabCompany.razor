@@ -364,14 +364,23 @@
         try
         {
             var wasEdit = newCp.cpinfoid > 0;
+            var savedNationalId = newCp.Nationalid;
             var r = await Moadian.SaveCpInfoAsync(newCp);
             if (r.Success)
             {
-                Toast.Success(wasEdit ? "تغییرات شرکت ذخیره شد." : "شرکت ثبت شد.");
+                Toast.Success(wasEdit ? "تغییرات شرکت ذخیره شد." : "شرکت ثبت شد و فعال شد.");
                 var saved = MoadianService.As<VMShowCpinfoByCompany>(r);
                 ResetForm();
                 await LoadAsync();
-                if (!wasEdit && saved?.cpinfoid > 0) Ctx.SetCpInfoId(saved.cpinfoid);
+                if (!wasEdit)
+                {
+                    // شرکت تازه‌تعریف‌شده به‌صورت پیش‌فرض «فعال» می‌شود تا بقیهٔ بخش‌ها
+                    // (سال مالی، کالا، مشتری، صورتحساب) بی‌درنگ روی همان کار کنند.
+                    var newId = saved?.cpinfoid > 0
+                        ? saved.cpinfoid
+                        : CpInfos.FirstOrDefault(c => c.Nationalid == savedNationalId)?.cpinfoid ?? 0;
+                    if (newId > 0 && CpInfos.Any(c => c.cpinfoid == newId)) Ctx.SetCpInfoId(newId);
+                }
             }
             else Toast.Error(r.Message ?? "خطا در ثبت شرکت.");
         }

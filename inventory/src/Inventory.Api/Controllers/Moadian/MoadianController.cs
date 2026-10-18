@@ -293,9 +293,9 @@ namespace Inventory.Api.Controllers.Moadian
 
         }
         [HttpGet("GetUnitOfMeasurementForComboAsync")]
-        public async Task<ApiModel> GetUnitOfMeasurementForComboAsync()
+        public async Task<ApiModel> GetUnitOfMeasurementForComboAsync(int cpinfoid)
         {
-            return await connectService.GetUnitOfMeasurementForComboAsync();
+            return await connectService.GetUnitOfMeasurementForComboAsync(cpinfoid);
 
         }
         [HttpGet("GetGoodOrServiceForComboAsync")]
@@ -361,11 +361,11 @@ namespace Inventory.Api.Controllers.Moadian
 
         }
         [HttpGet("GetAllUnitOfMeasurementAsync")]
-        public async Task<IResult> GetAllUnitOfMeasurementAsync(string? searchTerm, string? filterColumn, string? filterValue, string? sortColumn, string? sortOrder, int page, int pageSize)
+        public async Task<IResult> GetAllUnitOfMeasurementAsync(string? searchTerm, string? filterColumn, string? filterValue, string? sortColumn, string? sortOrder, int page, int pageSize, int cpinfoid)
         {
             var getPageQuery = new GetResultQuery(page: page, pageSize: pageSize, searchTerm: searchTerm, filterColumn: filterColumn, filterValue: filterValue, sortColumn: sortColumn, sortOrder: sortOrder, firstDate: null, endDate: null, extra: null, extraId: Guid.Empty);
 
-            var model = await connectService.GetAllUnitOfMeasurementAsync(getPageQuery);
+            var model = await connectService.GetAllUnitOfMeasurementAsync(cpinfoid, getPageQuery);
             if (model.Success && model.Data is PagedList<VMUnitOfMeasurement> resultList)
             {
                 foreach (var item in resultList.Items)

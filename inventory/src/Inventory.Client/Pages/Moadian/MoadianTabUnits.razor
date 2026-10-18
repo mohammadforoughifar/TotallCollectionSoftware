@@ -2,11 +2,21 @@
 @inject IMoadianService Moadian
 @inject IToastService Toast
 @inject IJSRuntime JS
+@inject MoadianCompanyContext Ctx
 @implements IDisposable
 
+@if (Ctx.CpInfoId <= 0)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-building-add"></i>
+        <span>ابتدا از نوار بالای صفحه یک شرکت مودیان انتخاب کنید؛ واحدها به‌ازای هر خدمات‌دهنده جدا هستند.</span>
+    </div>
+}
+else
+{
 <div class="card mi-blocked">
     <div class="card-header d-flex align-items-center gap-2 flex-wrap">
-        <span><i class="bi bi-rulers" aria-hidden="true"></i> فهرست واحدهای سنجش معتبر سامانهٔ مودیان <span class="text-muted small">— مشترک بین شرکت‌ها</span></span>
+        <span><i class="bi bi-rulers" aria-hidden="true"></i> فهرست واحدهای سنجش معتبر سامانهٔ مودیان <span class="text-muted small">— مخصوص خدمات‌دهندهٔ انتخاب‌شده</span></span>
         <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) واحد</span>
         <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
             <div class="mi-flt-search" style="max-width:none;min-width:230px">
@@ -101,6 +111,7 @@
         }
     </div>
 </div>
+}
 
 <Modal Visible="showForm" Title="@(form.UnitOfMeasurementId > 0 ? "ویرایش واحد" : "واحد جدید")" OnClose="CloseForm">
         <ChildContent>
@@ -143,10 +154,13 @@
 
     protected override void OnInitialized()
     {
+        Ctx.Changed += OnCtxChanged;
         searchTimer = new System.Timers.Timer(350) { AutoReset = false };
         searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
         _ = LoadAsync(1);
     }
+
+    private void OnCtxChanged() => _ = LoadAsync(1);
 
     private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
     private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); } }
@@ -154,11 +168,12 @@
 
     private async Task LoadAsync(int p)
     {
+        if (Ctx.CpInfoId <= 0) { loading = false; StateHasChanged(); return; }
         loading = true; StateHasChanged();
         try
         {
             loadError = null;
-            var model = await Moadian.GetUnitsAsync(string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
+            var model = await Moadian.GetUnitsAsync(Ctx.CpInfoId, string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
             var paged = MoadianService.AsStrict<PagedList<VMUnitOfMeasurement>>(model, "دریافت فهرست واحدها");
             data = paged;
             items = paged?.Items?.ToList();
@@ -170,7 +185,9 @@
 
     private void OpenForm(VMUnitOfMeasurement? u)
     {
-        form = u is null ? new VMUnitOfMeasurement() : new VMUnitOfMeasurement { UnitOfMeasurementId = u.UnitOfMeasurementId, Name = u.Name, Code = u.Code };
+        form = u is null
+            ? new VMUnitOfMeasurement { CpInfoId = Ctx.CpInfoId }
+            : new VMUnitOfMeasurement { UnitOfMeasurementId = u.UnitOfMeasurementId, CpInfoId = u.CpInfoId, Name = u.Name, Code = u.Code };
         formError = null;
         showForm = true;
     }
@@ -181,6 +198,7 @@
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام واحد الزامی است."; return; }
         if (string.IsNullOrWhiteSpace(form.Code)) { formError = "کد واحد الزامی است."; return; }
+        if (form.CpInfoId <= 0) form.CpInfoId = Ctx.CpInfoId;
         saving = true; StateHasChanged();
         try
         {
@@ -212,5 +230,5 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    public void Dispose() => searchTimer?.Dispose();
+    public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }
 }

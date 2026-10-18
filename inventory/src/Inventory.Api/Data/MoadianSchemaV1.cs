@@ -78,6 +78,7 @@ IF OBJECT_ID(N'dbo.UnitOfMeasurements', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[UnitOfMeasurements](
         [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+        [CpInfo] int NULL,
         [Name] nvarchar(max) NULL,
         [Code] nvarchar(max) NULL,
         [IsDelete] bit NOT NULL DEFAULT(0)
@@ -198,6 +199,8 @@ END");
         await AddSqlServerBitIfMissing(db, "Customers", "IsDelete", "0");
         // GoodsOrServices: IsDelete
         await AddSqlServerBitIfMissing(db, "GoodsOrServices", "IsDelete", "0");
+        // UnitOfMeasurements: CpInfo (تفکیک واحدها به‌ازای هر خدمات‌دهنده)
+        await AddSqlServerColumnIfMissing(db, "UnitOfMeasurements", "CpInfo", "int", "NULL");
         // FiscalYears: Title/CreatedDate/IsActive/IsDelete
         await AddSqlServerColumnIfMissing(db, "FiscalYears", "Title", "nvarchar(max)", "NULL");
         await AddSqlServerColumnIfMissing(db, "FiscalYears", "CreatedDate", "datetime2", "NOT NULL DEFAULT(SYSDATETIME())");
@@ -250,6 +253,7 @@ AND COL_LENGTH(N'dbo.{table}', N'{column}') IS NULL
             "ALTER TABLE ConnectInfos ADD COLUMN CertificatePath TEXT NULL;",
             "ALTER TABLE Customers ADD COLUMN IsDelete INTEGER NOT NULL DEFAULT 0;",
             "ALTER TABLE GoodsOrServices ADD COLUMN IsDelete INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE UnitOfMeasurements ADD COLUMN CpInfo INTEGER NULL;",
             "ALTER TABLE FiscalYears ADD COLUMN Title TEXT NULL;",
             "ALTER TABLE FiscalYears ADD COLUMN CreatedDate TEXT NULL;",
             "ALTER TABLE FiscalYears ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1;",
@@ -303,6 +307,7 @@ CREATE TABLE IF NOT EXISTS Customers (
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS UnitOfMeasurements (
     Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    CpInfo INTEGER NULL,
     Name TEXT NULL,
     Code TEXT NULL,
     IsDelete INTEGER NOT NULL DEFAULT(0)

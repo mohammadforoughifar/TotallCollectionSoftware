@@ -1986,13 +1986,17 @@ context.Customers.Any(x =>
             }
         }
 
-        public async Task<ApiModel> GetUnitOfMeasurementForComboAsync()
+        public async Task<ApiModel> GetUnitOfMeasurementForComboAsync(int cpinfoid)
         {
+            if (await GuardCpInfoAsync(cpinfoid) is { } guard) return guard;
             ApiModel model = new ApiModel();
-            var result = await context.UnitOfMeasurements.OrderBy(c => c.Name).Select(c => new VMUnitOfMeasurement
+            var result = await context.UnitOfMeasurements
+                .Where(c => c.CpInfo == cpinfoid && !c.IsDelete)
+                .OrderBy(c => c.Name).Select(c => new VMUnitOfMeasurement
             {
                 Name = c.Name,
-                UnitOfMeasurementId = c.Id
+                UnitOfMeasurementId = c.Id,
+                CpInfoId = cpinfoid
             }).ToListAsync();
 
             if (result.Any())
@@ -3325,6 +3329,7 @@ context.Customers.Any(x =>
 
         public async Task<ApiModel> InsertUnitOfMeasurementAsync(VMUnitOfMeasurement modeldata)
         {
+            if (await GuardCpInfoAsync(modeldata.CpInfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
             if (string.IsNullOrEmpty(modeldata.Name) || string.IsNullOrEmpty(modeldata.Code)
             )
@@ -3346,6 +3351,7 @@ context.Customers.Any(x =>
                     {
                         Code = modeldata.Code,
                         Name = modeldata.Name,
+                        CpInfo = modeldata.CpInfoId,
 
                     };
 
@@ -3397,6 +3403,8 @@ context.Customers.Any(x =>
 
                     if (data is not null)
                     {
+                        // واحد بین خدمات‌دهنده‌ها جابه‌جا نمی‌شود؛ مالکِ ثبت‌شده ملاک دسترسی است.
+                        if (await GuardCpInfoAsync(data.CpInfo ?? 0) is { } guard) return guard;
                         data.Name = modeldata.Name;
                         data.Code = modeldata.Code;
 
@@ -3426,14 +3434,15 @@ context.Customers.Any(x =>
             }
         }
 
-        public async Task<ApiModel> GetAllUnitOfMeasurementAsync(GetResultQuery request)
+        public async Task<ApiModel> GetAllUnitOfMeasurementAsync(int cpinfoId, GetResultQuery request)
         {
+            if (await GuardCpInfoAsync(cpinfoId) is { } guard) return guard;
             ApiModel model = new ApiModel();
 
             try
             {
 
-                var query = context.UnitOfMeasurements.AsQueryable();
+                var query = context.UnitOfMeasurements.Where(c => c.CpInfo == cpinfoId && !c.IsDelete).AsQueryable();
 
 
                 // جستجو مدارک بر اساس نام، شماره یکتا  
@@ -3476,6 +3485,7 @@ context.Customers.Any(x =>
                 var result = query.Select(c => new VMUnitOfMeasurement()
                 {
                     UnitOfMeasurementId = c.Id,
+                    CpInfoId = cpinfoId,
                     Name = c.Name,
                     Code = c.Code,
 
@@ -3511,10 +3521,12 @@ context.Customers.Any(x =>
 
             if (result is not null)
             {
+                if (await GuardCpInfoAsync(result.CpInfo ?? 0) is { } guard) return guard;
                 var respose = new VMUnitOfMeasurement
                 {
                     Name = result.Name,
                     Code = result.Code,
+                    CpInfoId = result.CpInfo ?? 0,
 
                 };
                 model.Data = respose;
@@ -3561,6 +3573,7 @@ context.Customers.Any(x =>
                 try
                 {
                     var data = await context.UnitOfMeasurements.FirstOrDefaultAsync(c => c.Id == Id);
+                    if (data is not null && await GuardCpInfoAsync(data.CpInfo ?? 0) is { } guard) return guard;
                     var isuse = context.GoodsOrServices.Any(c => c.Id == Id);
                     if (isuse)
                     {

@@ -47,11 +47,11 @@ public interface IMoadianService
     Task<ApiModel> InsertGoodAsync(VMGoodsOrService vm);
     Task<ApiModel> UpdateGoodAsync(VMGoodsOrService vm);
     Task<List<VMGoodsOrServicesList>> GetGoodsComboAsync(int cpinfoId);
-    Task<ApiModel> GetUnitsAsync(string? search, int page, int pageSize);
+    Task<ApiModel> GetUnitsAsync(int cpinfoId, string? search, int page, int pageSize);
     Task<ApiModel> InsertUnitAsync(VMUnitOfMeasurement vm);
     Task<ApiModel> UpdateUnitAsync(VMUnitOfMeasurement vm);
     Task<ApiModel> DeleteUnitAsync(int id);
-    Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync();
+    Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync(int cpinfoId);
 }
 
 public class MoadianService : IMoadianService
@@ -184,12 +184,12 @@ public class MoadianService : IMoadianService
     public async Task<List<VMGoodsOrServicesList>> GetGoodsComboAsync(int cpinfoId)
         => Must<List<VMGoodsOrServicesList>>(await _api.GetAsync<ApiModel>($"Moadian/GetGoodOrServiceForComboAsync?cpinfoid={cpinfoId}")) ?? new();
 
-    public Task<ApiModel> GetUnitsAsync(string? search, int page, int pageSize)
-        => _api.GetAsync<ApiModel>($"Moadian/GetAllUnitOfMeasurementAsync?searchTerm={Uri.EscapeDataString(search ?? "")}&page={page}&pageSize={pageSize}");
+    public Task<ApiModel> GetUnitsAsync(int cpinfoId, string? search, int page, int pageSize)
+        => _api.GetAsync<ApiModel>($"Moadian/GetAllUnitOfMeasurementAsync?cpinfoid={cpinfoId}&searchTerm={Uri.EscapeDataString(search ?? "")}&page={page}&pageSize={pageSize}");
 
     public Task<ApiModel> InsertUnitAsync(VMUnitOfMeasurement vm) => _api.PostAsync<ApiModel>("Moadian/InsertUnitOfMeasurementAsync", vm);
     public Task<ApiModel> UpdateUnitAsync(VMUnitOfMeasurement vm) => _api.PutAsync<ApiModel>("Moadian/UpdateUnitOfMeasurementAsync", vm);
     public Task<ApiModel> DeleteUnitAsync(int id) => _api.DeleteAsync<ApiModel>($"Moadian/{id}");
-    public async Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync()
-        => Must<List<VMUnitOfMeasurement>>(await _api.GetAsync<ApiModel>("Moadian/GetUnitOfMeasurementForComboAsync")) ?? new();
+    public async Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync(int cpinfoId)
+        => Must<List<VMUnitOfMeasurement>>(await _api.GetAsync<ApiModel>($"Moadian/GetUnitOfMeasurementForComboAsync?cpinfoid={cpinfoId}")) ?? new();
 }

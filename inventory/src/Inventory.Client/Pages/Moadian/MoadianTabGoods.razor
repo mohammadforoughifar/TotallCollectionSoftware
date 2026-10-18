@@ -204,7 +204,7 @@ else
         loading = true; StateHasChanged();
         try
         {
-            Units = await Moadian.GetUnitsComboAsync();
+            Units = await Moadian.GetUnitsComboAsync(Ctx.CpInfoId);
             await LoadAsync(1);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

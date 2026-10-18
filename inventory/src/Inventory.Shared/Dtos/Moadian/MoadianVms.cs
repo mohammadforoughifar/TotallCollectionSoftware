@@ -210,6 +210,8 @@ public class VMCustomerList
 public class VMUnitOfMeasurement
 {
     public int UnitOfMeasurementId { get; set; }
+    /// <summary>خدمات‌دهندهٔ مودیانِ مالک واحد (تفکیک به‌ازای هر شرکت مودیان).</summary>
+    public int CpInfoId { get; set; }
     public string? Name { get; set; }
     public string? Code { get; set; }
     public IEnumerable<Links>? Links { get; set; }

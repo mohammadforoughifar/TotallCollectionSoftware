@@ -110,6 +110,8 @@ public static class DbInitializer
                 await MoadianSchemaV1.EnsureAsync(db);
                 // خدمات‌دهنده‌های مودیانِ بدون شرکت داخلی → وصل به شرکت پیش‌فرض سیستم (قابل اصلاح از فرم شرکت)
                 await MoadianCompanyAssignment.EnsureAsync(db);
+                // واحدهای قدیمیِ مشترک → کپی برای هر خدمات‌دهنده (تفکیک واحدها به‌ازای هر شرکت مودیان)
+                await MoadianCompanyAssignment.EnsureUnitsPerProviderAsync(db);
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);

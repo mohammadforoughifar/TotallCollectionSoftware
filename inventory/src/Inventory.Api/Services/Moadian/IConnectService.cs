@@ -27,12 +27,12 @@ namespace Inventory.Api.Services.Moadian
         Task<ApiModel> GetAllGoodOrServiceAsync(int cpinfoId, GetResultQuery request);
         Task<ApiModel> GetGoodOrServiceForComboAsync(int cpinfoid);
         Task<ApiModel> GetCustomerForComboAsync(int cpinfoid);
-        Task<ApiModel> GetUnitOfMeasurementForComboAsync();
+        Task<ApiModel> GetUnitOfMeasurementForComboAsync(int cpinfoid);
         Task<ApiModel> InsertUnitOfMeasurementAsync(VMUnitOfMeasurement modeldata);
         Task<ApiModel> UpdateUnitOfMeasurementAsync(VMUnitOfMeasurement modeldata);
      
         Task<ApiModel> GetUnitOfMeasurementByIdAsync(int Id);
-        Task<ApiModel> GetAllUnitOfMeasurementAsync(GetResultQuery request);
+        Task<ApiModel> GetAllUnitOfMeasurementAsync(int cpinfoId, GetResultQuery request);
         Task<ApiModel> DeleteUnitOfMeasurementByIdAsync(int Id);
 
 
