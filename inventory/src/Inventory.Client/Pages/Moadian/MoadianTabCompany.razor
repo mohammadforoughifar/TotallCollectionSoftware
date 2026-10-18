@@ -26,9 +26,10 @@
                         @for (int si = 0; si < 3; si++)
                         {
                             <div class="mi-sk-row">
-                                <div class="mi-sk" style="width:34%"></div>
-                                <div class="mi-sk" style="width:22%"></div>
-                                <div class="mi-sk" style="width:18%"></div>
+                                <div class="mi-sk" style="width:26%"></div>
+                                <div class="mi-sk" style="width:20%"></div>
+                                <div class="mi-sk" style="width:20%"></div>
+                                <div class="mi-sk" style="width:16%"></div>
                                 <div class="mi-sk" style="width:12%"></div>
                             </div>
                         }
@@ -49,6 +50,7 @@
                             <thead>
                                 <tr>
                                     <th>شرکت</th>
+                                    <th>شرکت سیستم (کمپانی)</th>
                                     <th>شناسهٔ ملی / ثبت</th>
                                     <th>شماره اقتصادی</th>
                                     <th class="text-end">عملیات</th>
@@ -78,9 +80,15 @@
                                             {
                                                 <div class="text-muted small" dir="ltr">@c.EnglishName</div>
                                             }
+                                        </td>
+                                        <td>
                                             @if (!string.IsNullOrEmpty(c.CompanyName))
                                             {
-                                                <div class="text-muted small"><i class="bi bi-diagram-3"></i> شرکت سیستم: @c.CompanyName</div>
+                                                <span class="badge badge-soft-primary"><i class="bi bi-diagram-3"></i> @c.CompanyName</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
                                             }
                                         </td>
                                         <td class="num">@c.Nationalid</td>
