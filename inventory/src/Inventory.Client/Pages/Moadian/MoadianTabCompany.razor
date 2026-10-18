@@ -6,6 +6,11 @@
 @inject MoadianCompanyContext Ctx
 @implements IDisposable
 
+<div class="alert alert-info d-flex align-items-center gap-2 py-2">
+    <i class="bi bi-diagram-3"></i>
+    <span>شرکت فعال سیستم: <b>@(ActiveSystemCompanyName ?? "—")</b> — فقط خدمات‌دهنده‌های همین شرکت نمایش داده می‌شوند (@(CpInfos.Count.Num()) مورد). برای دیدن خدمات‌دهنده‌های شرکت دیگر، شرکت فعال را از نوار بالای سیستم تغییر دهید.</span>
+</div>
+
 <div class="row g-3">
     @* ---------- فهرست شرکت‌ها ---------- *@
     <div class="col-lg-7">
@@ -247,6 +252,9 @@
     private sealed class CompanyContextResponse { public int? ActiveCompanyId { get; set; } public List<SystemCompanyOption> Companies { get; set; } = new(); }
     private List<SystemCompanyOption> SystemCompanies = new();
     private int? ActiveSystemCompanyId;
+    private string? ActiveSystemCompanyName => ActiveSystemCompanyId is > 0
+        ? SystemCompanies.FirstOrDefault(c => c.Id == ActiveSystemCompanyId.Value)?.Name
+        : null;
 
     private void OnSystemCompanyChanged(ChangeEventArgs e)
         => newCp.CompanyId = int.TryParse(e.Value?.ToString(), out var id) && id > 0 ? id : null;
@@ -299,7 +307,15 @@
                 }
                 catch { SystemCompanies = new(); }
                 CpInfos = await Moadian.GetCpInfosAsync();
-                if (Ctx.CpInfoId == 0 && CpInfos.Count > 0) Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+                // تطبیق فعال: اگر خدمات‌دهندهٔ انتخاب‌شده در فهرست این شرکت نیست، اولین مورد فعال شود.
+                if (CpInfos.Count == 0)
+                {
+                    if (Ctx.CpInfoId != 0) Ctx.SetCpInfoId(0);
+                }
+                else if (Ctx.CpInfoId == 0 || CpInfos.All(c => c.cpinfoid != Ctx.CpInfoId))
+                {
+                    Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+                }
             }
             FiscalYears = Ctx.CpInfoId > 0 ? await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId) : new();
         }

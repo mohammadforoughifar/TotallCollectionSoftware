@@ -4077,6 +4077,7 @@ context.Customers.Any(x =>
                 // فقط خدمات‌دهنده‌های شرکت فعال کاربر (حتی برای Admin) — تفکیک کامل بین شرکت‌ها
                 var allowed = await AllowedCpInfoIdsAsync();
                 var list = await context.CPInfos.Where(c => !c.IsDelete && allowed.Contains(c.Id)).ToListAsync();
+                Console.WriteLine($"[Moadian] GetCpInfos user={CurrentUserId} activeCompany={await ResolveActiveCompanyIdAsync()} providers={list.Count}");
                 var companyNames = await context.SystemCompanies.AsNoTracking()
                     .ToDictionaryAsync(c => c.Id, c => c.Name);
                 model.Data = list.Select(c => new VMShowCpinfoByCompany
@@ -4123,6 +4124,7 @@ context.Customers.Any(x =>
                 var targetCompanyId = modeldata.CompanyId is > 0
                     ? modeldata.CompanyId.Value
                     : await ResolveActiveCompanyIdAsync();
+                Console.WriteLine($"[Moadian] SaveCpInfo user={CurrentUserId} cpinfoid={modeldata.cpinfoid} requestedCompany={modeldata.CompanyId} targetCompany={targetCompanyId} accessible=[{string.Join(",", accessibleCompanies)}]");
                 if (targetCompanyId is null || !accessibleCompanies.Contains(targetCompanyId.Value))
                     return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکت سیستم را از میان شرکت‌هایی که به آن‌ها دسترسی دارید انتخاب کنید." };
                 modeldata.CompanyId = targetCompanyId;

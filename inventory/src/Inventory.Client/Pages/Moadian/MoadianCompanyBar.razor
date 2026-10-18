@@ -79,8 +79,16 @@ else
             CpInfos = await Moadian.GetCpInfosAsync();
         }
         catch { CpInfos = new(); }
-        if (Ctx.CpInfoId == 0 && CpInfos.Count > 0)
+        // تطبیق خدمات‌دهندهٔ فعال با فهرست همین شرکت فعال: اگر انتخاب قبلی متعلق به
+        // شرکت دیگری است (یا فهرست خالی شده)، اصلاح می‌شود تا هیچ‌جا وضعیت «همه غیرفعال» نماند.
+        if (CpInfos.Count == 0)
+        {
+            if (Ctx.CpInfoId != 0) Ctx.SetCpInfoId(0);
+        }
+        else if (Ctx.CpInfoId == 0 || CpInfos.All(c => c.cpinfoid != Ctx.CpInfoId))
+        {
             Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+        }
         ready = true;
     }
 
