@@ -276,6 +276,17 @@
         StateHasChanged();
         try
         {
+            // هدر شرکت فعال را پیش از واکشی ست می‌کنیم تا فهرست فقط خدمات‌دهنده‌های شرکت فعال باشد.
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var cid) && cid > 0)
+                {
+                    Http.DefaultRequestHeaders.Remove("X-Company-Id");
+                    Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", cid.ToString());
+                }
+            }
+            catch { }
             if (!fyOnly)
             {
                 try

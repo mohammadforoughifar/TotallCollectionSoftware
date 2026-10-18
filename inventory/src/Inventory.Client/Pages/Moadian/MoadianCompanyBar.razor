@@ -1,6 +1,8 @@
 @using Inventory.Shared.Dtos.Moadian
 @inject IMoadianService Moadian
 @inject MoadianCompanyContext Ctx
+@inject IJSRuntime JS
+@inject HttpClient Http
 @implements IDisposable
 
 @if (!ready)
@@ -65,6 +67,18 @@ else
         Ctx.Changed += OnCtxChanged;
         try
         {
+            // جلوگیری از مسابقه با MainLayout: هدر شرکت فعال را خودمان از localStorage ست می‌کنیم
+            // تا فهرست خدمات‌دهنده‌ها دقیقاً برای شرکت فعالِ انتخاب‌شده برگردد، نه شرکت پیش‌فرض.
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var cid) && cid > 0)
+                {
+                    Http.DefaultRequestHeaders.Remove("X-Company-Id");
+                    Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", cid.ToString());
+                }
+            }
+            catch { }
             CpInfos = await Moadian.GetCpInfosAsync();
         }
         catch { CpInfos = new(); }
