@@ -35,6 +35,10 @@
     <Content Include="Resources/reports/**/*"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <!-- سربرگ شرکت آریا باید در خروجی لوکال و Publish نیز حتماً کپی شود. -->
+    <Content Update="wwwroot/uploads/letterheads/aria-1005-letterhead.pdf"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="Always" />
     <!-- appsettings.Development فقط برای توسعه است؛ در انتشار منتشر نشود -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
