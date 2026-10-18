@@ -365,8 +365,20 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (Tab is "inbox" or "sent" or "starred" or "archive") folder = Tab;
         await ReloadDataAsync();
+        if (int.TryParse(qs["open"], out var openId) && openId > 0)
+        {
+            try
+            {
+                activeDetail = await IncomingSvc.GetDetailAsync(openId);
+                await LoadWorkOrdersAsync(openId);
+                activeLetter = letters.FirstOrDefault(x => x.LetterId == openId);
+                readerOpen = true;
+            }
+            catch (Exception ex) { Toast.Error(ex.Message); }
+        }
     }
 
     private async Task SetFolder(string f)
