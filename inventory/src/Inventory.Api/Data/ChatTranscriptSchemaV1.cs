@@ -11,31 +11,54 @@ namespace Inventory.Api.Data;
 /// </summary>
 public static class ChatTranscriptSchemaV1
 {
-    /// <summary>ستون‌ها به تفکیک دیتابیس (SQL Server نحو ADD بدون COLUMN دارد).</summary>
-    private static readonly string[] SqliteColumns =
-    {
-        "ALTER TABLE ChatMessages ADD COLUMN Transcript TEXT NULL;",
-        "ALTER TABLE ChatMessages ADD COLUMN TranscribedAt TEXT NULL;"
-    };
-
-    private static readonly string[] SqlServerColumns =
-    {
-        "ALTER TABLE ChatMessages ADD Transcript nvarchar(max) NULL;",
-        "ALTER TABLE ChatMessages ADD TranscribedAt datetime2 NULL;"
-    };
-
-    public static Task EnsureSqliteAsync(AppDbContext db) =>
-        db.Database.IsSqlite() ? EnsureAsync(db, SqliteColumns) : Task.CompletedTask;
-
+    /// <summary>
+    /// SQL Server: شرط COL_LENGTH باعث می‌شود اجرای مجددِ برنامه دستور ALTER نامعتبر نزند.
+    /// نسخهٔ قبلی خطای «ستون از قبل وجود دارد» را catch می‌کرد، اما EF پیش از catch آن را با
+    /// سطح fail در لاگ ثبت می‌کرد و تشخیص خطاهای واقعی را دشوار می‌ساخت.
+    /// </summary>
     public static Task EnsureSqlServerAsync(AppDbContext db) =>
-        db.Database.IsSqlite() ? Task.CompletedTask : EnsureAsync(db, SqlServerColumns);
+        db.Database.IsSqlite()
+            ? Task.CompletedTask
+            : db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'dbo.ChatMessages', N'U') IS NOT NULL
+AND COL_LENGTH(N'dbo.ChatMessages', N'Transcript') IS NULL
+    ALTER TABLE [dbo].[ChatMessages] ADD [Transcript] nvarchar(max) NULL;
+IF OBJECT_ID(N'dbo.ChatMessages', N'U') IS NOT NULL
+AND COL_LENGTH(N'dbo.ChatMessages', N'TranscribedAt') IS NULL
+    ALTER TABLE [dbo].[ChatMessages] ADD [TranscribedAt] datetime2 NULL;");
 
-    private static async Task EnsureAsync(AppDbContext db, string[] statements)
+    /// <summary>SQLite معادل idempotent — فقط ستون‌های واقعاً جاافتاده را اضافه می‌کند.</summary>
+    public static async Task EnsureSqliteAsync(AppDbContext db)
     {
-        foreach (var sql in statements)
+        if (!db.Database.IsSqlite()) return;
+        var connection = db.Database.GetDbConnection();
+        var closeWhenDone = connection.State != System.Data.ConnectionState.Open;
+        if (closeWhenDone) await connection.OpenAsync();
+        try
         {
-            // ستون ممکن است از قبل وجود داشته باشد (دیتابیس تازه‌ساخته با EnsureCreated) — خطا نادیده گرفته می‌شود.
-            try { await db.Database.ExecuteSqlRawAsync(sql); } catch { }
+            await using var table = connection.CreateCommand();
+            table.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ChatMessages';";
+            if (Convert.ToInt64(await table.ExecuteScalarAsync() ?? 0L) == 0) return;
+
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using (var info = connection.CreateCommand())
+            {
+                info.CommandText = "PRAGMA table_info('ChatMessages');";
+                await using var reader = await info.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
+            }
+
+            foreach (var (name, type) in new[] { ("Transcript", "TEXT"), ("TranscribedAt", "TEXT") })
+            {
+                if (columns.Contains(name)) continue;
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = $"ALTER TABLE ChatMessages ADD COLUMN {name} {type} NULL;";
+                await alter.ExecuteNonQueryAsync();
+            }
+        }
+        finally
+        {
+            if (closeWhenDone) await connection.CloseAsync();
         }
     }
 }

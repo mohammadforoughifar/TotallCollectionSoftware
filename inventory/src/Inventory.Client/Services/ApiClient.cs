@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.JSInterop;
 
 namespace Inventory.Client.Services;
 
@@ -31,18 +32,41 @@ public class ApiClient : IApiClient
     private static readonly TimeSpan LongCallTimeout = TimeSpan.FromMinutes(10);
 
     private readonly IAuthState _auth;
+    private readonly IJSRuntime _js;
 
-    public ApiClient(HttpClient http, ApiOptions opts, IAuthState auth)
+    public ApiClient(HttpClient http, ApiOptions opts, IAuthState auth, IJSRuntime js)
     {
         _http = http;
         _opts = opts;
         _auth = auth;
+        _js = js;
     }
 
     private void AddAuth(HttpRequestMessage req)
     {
         if (!string.IsNullOrEmpty(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+    }
+
+    /// <summary>
+    /// زمینهٔ شرکت فعال را روی خودِ درخواست می‌گذارد، نه فقط روی DefaultRequestHeaders.
+    /// ApiClient برای درخواست‌های مودیان و فرم‌های دیگر ساخته می‌شود و ممکن است قبل/بعد از
+    /// MainLayout اجرا شود؛ بنابراین تکیه بر هدر سراسری باعث می‌شد API شرکت پیش‌فرض را بخواند
+    /// و داده‌های CompanyId انتخاب‌شده در کمبوی بالای برنامه نمایش داده نشوند.
+    /// </summary>
+    private async Task AddActiveCompanyHeaderAsync(HttpRequestMessage req)
+    {
+        if (req.Headers.Contains("X-Company-Id")) return;
+        try
+        {
+            var saved = await _js.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+            if (int.TryParse(saved, out var companyId) && companyId > 0)
+                req.Headers.TryAddWithoutValidation("X-Company-Id", companyId.ToString());
+        }
+        catch
+        {
+            // درخواست‌های ورود/شروع برنامه ممکن است پیش از دسترس‌بودن JS اجرا شوند.
+        }
     }
 
     private string Url(string path) => $"{_opts.BaseUrl.TrimEnd('/')}/{path.TrimStart('/')}";
@@ -57,6 +81,7 @@ public class ApiClient : IApiClient
     {
         var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
         AddAuth(req);
+        await AddActiveCompanyHeaderAsync(req);
 
         HttpResponseMessage resp;
         try
@@ -107,6 +132,7 @@ public class ApiClient : IApiClient
 
         using var fileReq = new HttpRequestMessage(HttpMethod.Post, Url(path)) { Content = content };
         AddAuth(fileReq);
+        await AddActiveCompanyHeaderAsync(fileReq);
 
         HttpResponseMessage resp;
         try
@@ -154,6 +180,7 @@ public class ApiClient : IApiClient
     {
         var req = new HttpRequestMessage(method, Url(path));
         AddAuth(req);
+        await AddActiveCompanyHeaderAsync(req);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: JsonOpts);
 

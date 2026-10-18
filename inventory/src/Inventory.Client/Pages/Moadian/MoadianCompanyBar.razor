@@ -64,19 +64,21 @@ else
         Ctx.Changed += OnCtxChanged;
         try
         {
-            // جلوگیری از مسابقه با MainLayout: هدر شرکت فعال را خودمان از localStorage ست می‌کنیم
-            // تا فهرست خدمات‌دهنده‌ها دقیقاً برای شرکت فعالِ انتخاب‌شده برگردد، نه شرکت پیش‌فرض.
+            // شناسهٔ کمبوی بالای نرم‌افزار را صریحاً به سرویس مودیان می‌دهیم. هدر فقط برای
+            // دیگر درخواست‌های وابسته به شرکت نگه داشته می‌شود؛ خود فهرست با CompanyId فیلتر می‌شود.
+            int? activeSystemCompanyId = null;
             try
             {
                 var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
                 if (int.TryParse(saved, out var cid) && cid > 0)
                 {
+                    activeSystemCompanyId = cid;
                     Http.DefaultRequestHeaders.Remove("X-Company-Id");
                     Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", cid.ToString());
                 }
             }
             catch { }
-            CpInfos = await Moadian.GetCpInfosAsync();
+            CpInfos = await Moadian.GetCpInfosAsync(activeSystemCompanyId);
         }
         catch { CpInfos = new(); }
         // تطبیق خدمات‌دهندهٔ فعال با فهرست همین شرکت فعال: اگر انتخاب قبلی متعلق به

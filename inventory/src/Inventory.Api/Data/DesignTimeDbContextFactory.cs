@@ -13,7 +13,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
     public AppDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer("Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False")
+            .UseSqlServer("Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=Mohammad011700;Persist Security Info=True;TrustServerCertificate=True;Encrypt=False")
             .Options;
         return new AppDbContext(options);
     }

@@ -550,6 +550,7 @@ public class AppDbContext : DbContext
         mb.Entity<Stock>().Property(s => s.AvgCost).HasPrecision(18, 4);
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);

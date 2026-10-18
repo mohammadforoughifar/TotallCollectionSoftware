@@ -59,12 +59,18 @@ namespace Inventory.Api.Services.Moadian
         /// <summary>شرکت فعال کاربر — همان منطق CompanyContextController: هدر X-Company-Id اگر در
         /// دسترسی‌های کاربر باشد، وگرنه شرکت پیش‌فرض (IsDefault) و در نبود آن اولین شرکت مجاز.
         /// برای Admin بدون ردیف دسترسی، همهٔ شرکت‌های فعال مجازند (فعال = انتخاب‌شده در نوار بالا).</summary>
-        private async Task<int?> ResolveActiveCompanyIdAsync()
+        private async Task<int?> ResolveActiveCompanyIdAsync(int? requestedCompanyId = null)
         {
             var userId = CurrentUserId;
-            int? requested = null;
-            var header = httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault();
-            if (int.TryParse(header, out var h) && h > 0) requested = h;
+            // برای فهرست خدمات‌دهندگان، شناسهٔ شرکت فعال از کمبوی بالای نرم‌افزار
+            // به‌صورت query هم فرستاده می‌شود. مقدار صریحِ معتبر بر هدر مقدم است تا
+            // فیلتر CompanyId به یک HttpClient یا ترتیب بارگذاری هدر وابسته نباشد.
+            int? requested = requestedCompanyId is > 0 ? requestedCompanyId : null;
+            if (requested is null)
+            {
+                var header = httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault();
+                if (int.TryParse(header, out var h) && h > 0) requested = h;
+            }
 
             var access = await context.UserCompanyAccesses.AsNoTracking()
                 .Where(x => x.UserId == userId && x.Company.IsActive)
@@ -4080,15 +4086,22 @@ context.Customers.Any(x =>
 
         #region مکمل رابط کاربری (شرکت / سال مالی / مشتری)
 
-        public async Task<ApiModel> GetAllCpInfosAsync()
+        public async Task<ApiModel> GetAllCpInfosAsync(int? companyId = null)
         {
             ApiModel model = new();
             try
             {
-                // فقط خدمات‌دهنده‌های شرکت فعال کاربر (حتی برای Admin) — تفکیک کامل بین شرکت‌ها
-                var allowed = await AllowedCpInfoIdsAsync();
-                var list = await context.CPInfos.Where(c => !c.IsDelete && allowed.Contains(c.Id)).ToListAsync();
-                Console.WriteLine($"[Moadian] GetCpInfos user={CurrentUserId} header={httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault() ?? "-"} activeCompany={await ResolveActiveCompanyIdAsync()} providers={list.Count} ids=[{string.Join(",", list.Select(c => c.Id))}]");
+                // فیلتر اصلی و غیرقابل‌دورزدن: فقط CpInfoهایی که CompanyId آن‌ها برابر
+                // شرکت انتخاب‌شده در کمبوی بالای برنامه است برگردند. اگر شرکت فعالی پیدا
+                // نشد، فهرست خالی است؛ هرگز «همهٔ شرکت‌های مودیان» را برنمی‌گردانیم.
+                var activeCompanyId = await ResolveActiveCompanyIdAsync(companyId);
+                var list = activeCompanyId is > 0
+                    ? await context.CPInfos.AsNoTracking()
+                        .Where(c => !c.IsDelete && c.CompanyId == activeCompanyId.Value)
+                        .OrderBy(c => c.PersianName).ThenBy(c => c.Id)
+                        .ToListAsync()
+                    : new List<CpInfo>();
+                Console.WriteLine($"[Moadian] GetCpInfos user={CurrentUserId} header={httpContextAccessor.HttpContext?.Request?.Headers["X-Company-Id"].FirstOrDefault() ?? "-"} requestedCompany={companyId?.ToString() ?? "-"} activeCompany={activeCompanyId?.ToString() ?? "-"} providers={list.Count} ids=[{string.Join(",", list.Select(c => c.Id))}]");
                 var companyNames = await context.SystemCompanies.AsNoTracking()
                     .ToDictionaryAsync(c => c.Id, c => c.Name);
                 model.Data = list.Select(c => new VMShowCpinfoByCompany
@@ -4114,6 +4127,30 @@ context.Customers.Any(x =>
             return model;
         }
 
+        /// <summary>
+        /// پیوند CompanyId را پس از SaveChanges با خودِ جدول CPInfos اعمال و دوباره از دیتابیس
+        /// می‌خواند. این کنترل از ثبت «موفق» با CompanyId=NULL جلوگیری می‌کند؛ حتی اگر یک
+        /// Trigger/اسکیما در دیتابیس عملیاتی رفتار غیرمنتظره‌ای داشته باشد.
+        /// </summary>
+        private async Task<string?> EnsureCpInfoCompanyIdAsync(int cpInfoId, int companyId)
+        {
+            if (cpInfoId <= 0 || companyId <= 0)
+                return "شناسهٔ شرکت مودیان یا کمپانی معتبر نیست.";
+
+            var affected = await context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE CPInfos SET CompanyId = {companyId} WHERE Id = {cpInfoId}");
+            if (affected != 1)
+                return "پیوند کمپانی برای شرکت مودیان در دیتابیس ذخیره نشد.";
+
+            var persistedCompanyId = await context.CPInfos.AsNoTracking()
+                .Where(c => c.Id == cpInfoId)
+                .Select(c => c.CompanyId)
+                .SingleOrDefaultAsync();
+            return persistedCompanyId == companyId
+                ? null
+                : "دیتابیس مقدار CompanyId را پس از ثبت نگه نداشت؛ Trigger یا ساختار جدول CPInfos را بررسی کنید.";
+        }
+
         public async Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany modeldata)
         {
             ApiModel model = new();
@@ -4130,15 +4167,18 @@ context.Customers.Any(x =>
                 var type = modeldata.Type == "حقوقی" ? "حقوقی" : "حقیقی";
                 modeldata.Type = type;
 
-                // شرکت داخلی سیستم: اگر انتخاب نشده، شرکت فعال کاربر؛ باید جزو شرکت‌های مجاز او باشد.
+                // CompanyId باید صریحاً در payload ثبت باشد. fallback به شرکت پیش‌فرض باعث
+                // می‌شد در نسخه‌های قدیمی/در شروع برنامه، ثبت موفق اعلام شود ولی رکورد زیر
+                // شرکت نادرست یا بدون پیوند قابل‌مشاهده بماند. از اینجا به بعد ثبت بدون
+                // CompanyId موفق نمی‌شود.
+                if (modeldata.CompanyId is not > 0)
+                    return new ApiModel { Data = null, Status = 400, Success = false, Message = "شناسهٔ شرکت فعال دریافت نشد؛ صفحه را تازه کنید و شرکت فعال را از کمبوی بالای برنامه انتخاب کنید." };
+
                 var accessibleCompanies = await AccessibleCompanyIdsAsync();
-                var targetCompanyId = modeldata.CompanyId is > 0
-                    ? modeldata.CompanyId.Value
-                    : await ResolveActiveCompanyIdAsync();
+                var targetCompanyId = modeldata.CompanyId.Value;
                 Console.WriteLine($"[Moadian] SaveCpInfo user={CurrentUserId} cpinfoid={modeldata.cpinfoid} requestedCompany={modeldata.CompanyId} targetCompany={targetCompanyId} accessible=[{string.Join(",", accessibleCompanies)}]");
-                if (targetCompanyId is null || !accessibleCompanies.Contains(targetCompanyId.Value))
-                    return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکت سیستم را از میان شرکت‌هایی که به آن‌ها دسترسی دارید انتخاب کنید." };
-                modeldata.CompanyId = targetCompanyId;
+                if (!accessibleCompanies.Contains(targetCompanyId))
+                    return new ApiModel { Data = null, Status = 400, Success = false, Message = "شرکت سیستم انتخاب‌شده جزو شرکت‌های مجاز شما نیست." };
 
                 // cpinfoid=0 ← ثبت جدید | cpinfoid>0 ← ویرایش رکورد موجود
                 if (modeldata.cpinfoid > 0)
@@ -4197,6 +4237,14 @@ context.Customers.Any(x =>
                         modeldata.cpinfoid = cp.Id;
                     }
                 }
+
+                // تضمین و راستی‌آزمایی نهایی از خود SQL Server: پاسخ موفق فقط زمانی برگردد
+                // که CompanyId واقعاً در همان ردیف CPInfos ذخیره شده باشد.
+                var linkError = await EnsureCpInfoCompanyIdAsync(modeldata.cpinfoid, targetCompanyId);
+                if (linkError is not null)
+                    return new ApiModel { Data = null, Status = 500, Success = false, Message = linkError };
+                modeldata.CompanyId = targetCompanyId;
+
                 model.Data = modeldata;
                 model.Status = 201;
                 model.Success = true;

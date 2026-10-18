@@ -12,7 +12,8 @@ namespace Inventory.Client.Services;
 public interface IMoadianService
 {
     // ---------- شرکت / سال مالی / مشتری ----------
-    Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync();
+    /// <summary>فقط خدمات‌دهنده‌های مودیان متعلق به شرکت فعال (CompanyId) را می‌خواند.</summary>
+    Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync(int? companyId = null);
     Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm);
     Task<ApiModel> DeleteCpInfoAsync(int id);
     Task<ApiModel> DiagnoseAsync(); // گزارش اسکیمای مودیان (جدول/ستون/ردیف)
@@ -104,25 +105,54 @@ public class MoadianService : IMoadianService
     }
 
     // ---------- شرکت / سال مالی / مشتری ----------
-    public async Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync()
+    public async Task<List<VMShowCpinfoByCompany>> GetCpInfosAsync(int? companyId = null)
     {
-        var list = Must<List<VMShowCpinfoByCompany>>(await _api.GetAsync<ApiModel>("Moadian/GetCpInfos")) ?? new();
-        // فیلتر قطعی سمت کلاینت: سرور هم فهرست را بر اساس «شرکت فعال» فیلتر می‌کند، اما اگر
-        // هدر X-Company-Id به هر دلیلی به API نرسد، این فیلتر دوم تضمین می‌کند کاربر در هر
-        // شرکت فعال فقط خدمات‌دهنده‌های همان شرکت را ببیند. مبنا: شرکت ذخیره‌شده در localStorage
-        // (همان مقداری که نوار بالای سیستم هنگام تعویض شرکت ثبت می‌کند) در برابر CompanyId هر رکورد.
-        try
+        // شناسهٔ شرکت را صریحاً به API می‌فرستیم؛ بنابراین فیلتر فرم اطلاعات مودیان
+        // به وجود/ترتیب اعمال DefaultRequestHeaders وابسته نیست.
+        var activeCompanyId = companyId;
+        if (activeCompanyId is not > 0)
         {
-            var saved = await _js.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
-            if (int.TryParse(saved, out var activeId) && activeId > 0 && list.Any(c => c.CompanyId is > 0))
-                list = list.Where(c => c.CompanyId == activeId).ToList();
+            try
+            {
+                var saved = await _js.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var id) && id > 0) activeCompanyId = id;
+            }
+            catch { }
         }
-        catch { /* خارج از مرورگر یا خطای JS: فهرست سرور بدون تغییر برمی‌گردد */ }
+
+        // اگر در نخستین رندر هنوز localStorage/CompanyContext آماده نباشد، درخواست را بدون
+        // query می‌فرستیم تا API از هدر یا شرکت پیش‌فرضِ مجاز کاربر استفاده کند. API در هر دو
+        // حالت فقط CompanyId واحد را برمی‌گرداند و هرگز لیست همهٔ خدمات‌دهندگان را نمی‌دهد.
+        var path = activeCompanyId is > 0
+            ? $"Moadian/GetCpInfos?companyId={activeCompanyId.Value}"
+            : "Moadian/GetCpInfos";
+        var list = Must<List<VMShowCpinfoByCompany>>(await _api.GetAsync<ApiModel>(path)) ?? new();
+
+        // فیلتر منبع حقیقت، سمت سرور است: ApiClient روی همین درخواست X-Company-Id
+        // می‌گذارد و API فقط رکوردهای همان CompanyId را برمی‌گرداند. اینجا دوباره فیلتر
+        // نمی‌کنیم تا در صورت پاسخِ یک نسخهٔ قدیمی‌تر API که فیلد CompanyId را ارسال نکرده
+        // بود، رکوردهای معتبر به‌اشتباه از رابط کاربری حذف نشوند.
         return list;
     }
 
-    public Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm)
-        => _api.PostAsync<ApiModel>("Moadian/SaveCpInfo", vm);
+    public async Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany vm)
+    {
+        // در فرم ثبت شرکت مودیان، CompanyId باید همواره همراه payload باشد؛ تکیه‌کردن
+        // صرف به DefaultRequestHeaders باعث می‌شد در شروع برنامه بعضی رکوردهای تازه زیر
+        // شرکت پیش‌فرض ذخیره شوند و در شرکت انتخاب‌شده دیده نشوند.
+        if (vm.CompanyId is not > 0)
+        {
+            try
+            {
+                var saved = await _js.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var activeCompanyId) && activeCompanyId > 0)
+                    vm.CompanyId = activeCompanyId;
+            }
+            catch { }
+        }
+
+        return await _api.PostAsync<ApiModel>("Moadian/SaveCpInfo", vm);
+    }
 
     public Task<ApiModel> DeleteCpInfoAsync(int id)
         => _api.DeleteAsync<ApiModel>($"Moadian/DeleteCpInfo/{id}");

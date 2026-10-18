@@ -121,14 +121,14 @@
             <div class="card-body">
                 <div class="mb-2">
                     <label class="form-label">شرکت سیستم (کمپانی) <span class="text-danger">*</span></label>
-                    <select class="form-select" value="@(newCp.CompanyId?.ToString() ?? "")" @onchange="OnSystemCompanyChanged">
+                    <select class="form-select" value="@(newCp.CompanyId?.ToString() ?? "")" @onchange="OnSystemCompanyChanged" disabled="@(newCp.cpinfoid == 0)">
                         <option value="">— انتخاب شرکت سیستم —</option>
-                        @foreach (var sc in SystemCompanies)
+                        @foreach (var sc in SystemCompanies.Where(sc => newCp.cpinfoid > 0 || sc.Id == ActiveSystemCompanyId))
                         {
                             <option value="@sc.Id">@sc.Name@(ActiveSystemCompanyId == sc.Id ? " (شرکت فعال)" : "")</option>
                         }
                     </select>
-                    <div class="form-text">این خدمات‌دهنده فقط برای کاربرانی دیده می‌شود که همین شرکت، «شرکت فعال» آن‌هاست.</div>
+                    <div class="form-text">برای ثبت شرکت جدید، مقدار نهایی از «شرکت فعال» در کمبوی بالای برنامه گرفته می‌شود؛ بنابراین شرکت تازه بلافاصله در همین فهرست دیده خواهد شد.</div>
                     @if (SystemCompanies.Count == 0)
                     {
                         <div class="alert alert-warning py-1 px-2 mt-2 small mb-0">برای شما شرکتی در سیستم تعریف نشده است؛ از مدیر بخواهید در «تعریف کاربر» شرکت فعال برایتان انتخاب کند.</div>
@@ -314,7 +314,9 @@
                         newCp.CompanyId = ActiveSystemCompanyId;
                 }
                 catch { SystemCompanies = new(); }
-                CpInfos = await Moadian.GetCpInfosAsync();
+                // فهرست خدمات‌دهندگان باید دقیقاً با CompanyId انتخاب‌شده در کمبوی بالای برنامه
+                // واکشی شود؛ هیچ شرکت مودیان متعلق به کمپانی دیگر در این فرم نمایش داده نمی‌شود.
+                CpInfos = await Moadian.GetCpInfosAsync(ActiveSystemCompanyId);
                 // تطبیق فعال: اگر خدمات‌دهندهٔ انتخاب‌شده در فهرست این شرکت نیست، اولین مورد فعال شود.
                 if (CpInfos.Count == 0)
                 {
@@ -379,6 +381,29 @@
 
     private async Task SaveCompany()
     {
+        // شرکت مودیانِ تازه باید دقیقاً به همان کمپانیِ انتخاب‌شده در کمبوی بالای برنامه
+        // وصل شود؛ در غیر این صورت پس از ثبت، به‌دلیل فیلتر CompanyId در این صفحه دیده نمی‌شود.
+        if (newCp.cpinfoid == 0)
+        {
+            var activeCompanyId = ActiveSystemCompanyId;
+            if (activeCompanyId is not > 0)
+            {
+                try
+                {
+                    var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                    if (int.TryParse(saved, out var id) && id > 0) activeCompanyId = id;
+                }
+                catch { }
+            }
+
+            if (activeCompanyId is not > 0)
+            {
+                Toast.Error("ابتدا شرکت فعال را از کمبوی بالای برنامه انتخاب کنید.");
+                return;
+            }
+            newCp.CompanyId = activeCompanyId;
+        }
+
         if (SystemCompanies.Count > 0 && newCp.CompanyId is null or <= 0) { Toast.Error("شرکت سیستم (کمپانی) را انتخاب کنید."); return; }
         if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
         if (string.IsNullOrWhiteSpace(newCp.Nationalid)) { Toast.Error("کد ملی / شناسهٔ ثبت شرکت الزامی است."); return; }

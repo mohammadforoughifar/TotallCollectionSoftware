@@ -54,7 +54,8 @@ namespace Inventory.Api.Services.Moadian
         #endregion
 
         #region مکمل رابط کاربری (شرکت / سال مالی / مشتری)
-        Task<ApiModel> GetAllCpInfosAsync();//فهرست شرکت‌های تعریف‌شده در مودیان
+        /// <summary>فهرست خدمات‌دهنده‌های مودیانِ یک شرکت داخلی مشخص. اگر شناسه ارسال نشود، شرکت فعال درخواست استفاده می‌شود.</summary>
+        Task<ApiModel> GetAllCpInfosAsync(int? companyId = null);
         Task<ApiModel> SaveCpInfoAsync(VMShowCpinfoByCompany model);//ثبت شرکت جدید
         Task<ApiModel> GetAllFiscalYearsAsync(int cpinfoId);//فهرست سال‌های مالی شرکت
         Task<ApiModel> SaveFiscalYearAsync(VMFiscalYear model);//ثبت سال مالی جدید

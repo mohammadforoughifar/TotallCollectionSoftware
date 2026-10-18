@@ -18,7 +18,7 @@ REM --- آدرس و پورت سرویس‌دهی (همین مقدار در سم�
 set "ASPNETCORE_URLS=http://192.168.30.104:8181"
 
 REM --- رشتهٔ اتصال SQL Server ---
-set "ConnectionStrings__Default=Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=Mohammad011700;Persist Security Info=True;TrustServerCertificate=True;Encrypt=False;MultipleActiveResultSets=True"
+set "ConnectionStrings__Default=Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=Mohammad011700;Persist Security Info=True;TrustServerCertificate=True;Encrypt=False"
 
 REM --- محیط اجرا ---
 set "ASPNETCORE_ENVIRONMENT=Production"
@@ -28,7 +28,8 @@ if not exist "logs" mkdir "logs"
 
 if exist "totall.pid" (
   for /f %%P in (totall.pid) do tasklist /FI "PID eq %%P" 2>nul | find "%%P" >nul && (
-    echo Server is already running ^(PID %%P^). Use stop.bat to stop it.
+echo Server is already running ^(PID %%P^). Use stop.bat to stop it.
+    pause
     exit /b 0
   )
   del "totall.pid" >nul 2>nul
@@ -48,4 +49,7 @@ echo Server started.  Log file: logs\server.log
 echo Health check : http://192.168.30.104:8181/api/health
 echo If the page does not open, make sure Windows Firewall allows inbound TCP 8181
 echo   netsh advfirewall firewall add rule name="Totall 8181" dir=in action=allow protocol=TCP localport=8181
+echo.
+echo API in background started. Press any key to close this window.
+pause >nul
 endlocal

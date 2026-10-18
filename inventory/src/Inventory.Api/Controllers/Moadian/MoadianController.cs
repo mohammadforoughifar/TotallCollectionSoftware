@@ -413,9 +413,12 @@ namespace Inventory.Api.Controllers.Moadian
         // ==================== مکمل رابط کاربری (شرکت / سال مالی / مشتری) ====================
 
         [HttpGet("GetCpInfos")]
-        public async Task<ApiModel> GetCpInfos()
+        public async Task<ApiModel> GetCpInfos([FromQuery] int? companyId)
         {
-            return await connectService.GetAllCpInfosAsync();
+            // شناسهٔ شرکت فعال از کمبوی نوار بالا صریحاً ارسال می‌شود تا فرم «اطلاعات
+            // سامانهٔ مودیان» حتی اگر هدر در لایه‌ای از کلاینت حذف شد، فقط داده‌های همان
+            // CompanyId را دریافت کند. سرویس، دسترسی کاربر به شناسه را نیز اعتبارسنجی می‌کند.
+            return await connectService.GetAllCpInfosAsync(companyId);
         }
 
         [HttpPost("SaveCpInfo")]
