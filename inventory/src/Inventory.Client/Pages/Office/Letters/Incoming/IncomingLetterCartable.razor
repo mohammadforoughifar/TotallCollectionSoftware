@@ -81,6 +81,7 @@
                     }
                     <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                     <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
+                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
 
                     @if (selectedErjaIds.Count > 0 && folder == "inbox")
                     {
@@ -358,6 +359,7 @@
         // می‌داد. دو کارتابل خواهر درست عمل می‌کنند و از HasAttachment استفاده می‌کنند
         // (LetterCartable:678 و OutgoingLetterCartable:674)؛ این هم هم‌راستا شد.
         "attach" => letters.Where(l => l.HasAttachment),
+        "workorder" => letters.Where(l => workOrderLetterIds.Contains(l.LetterId)),
         _ => letters
     };
 

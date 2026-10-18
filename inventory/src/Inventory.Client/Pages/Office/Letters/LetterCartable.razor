@@ -84,6 +84,7 @@
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "deadline" ? "on" : "")" @onclick='() => SetFilter("deadline")'><i class="bi bi-clock" style="font-size:10px"></i> مهلت‌دار</button>
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
+                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
                         @if (selectedErjaIds.Count > 0)
                         {
                             <button class="chip on" style="background:#f59e0b;color:#fff;border-color:#d97706;" @onclick="OpenBatchBayeganiModal">
@@ -178,6 +179,7 @@
                                     @if (ll.Foriat != "عادی") { <span class="tg red">! @ll.Foriat</span> }
                                     @if (ll.Mahramanegi != "عادی") { <span class="tg dark"><i class="bi bi-lock-fill"></i> @ll.Mahramanegi</span> }
                                     @if (ll.HasAttachment) { <span class="tg gray"><i class="bi bi-paperclip"></i></span> }
+                                    @if (workOrderLetterIds.Contains(ll.LetterId)) { <span class="tg green" title="دستورکارشده"><i class="bi bi-list-task"></i></span> }
                                     @if (ll.MohlatPasokh is { } mp) { <span class="tg amber"><i class="bi bi-clock"></i> مهلت: @mp.ToFa()</span> }
                                     @if (ll.TypeTaeed == 1) { <span class="tg green"><i class="bi bi-check2-all"></i> تایید شد</span> }
                                     else if (ll.TypeTaeed == 2) { <span class="tg red"><i class="bi bi-x-lg"></i> رد شد</span> }
@@ -644,6 +646,7 @@
     private int openMenuId;
 
     private List<InnerLetterListItemDto> items = new();
+    private HashSet<int> workOrderLetterIds = new();
     private List<PishnevisDto> drafts = new();
     private LetterCartableStatsDto stats = new();
 
@@ -703,6 +706,7 @@
                 "starred" => arr.Where(l => l.IsNeshan).ToList(),
                 "deadline" => arr.Where(l => l.MohlatPasokh != null).ToList(),
                 "attach" => arr.Where(l => l.HasAttachment).ToList(),
+                "workorder" => arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList(),
                 _ => arr
             };
             return arr;
@@ -874,6 +878,7 @@
                         break;
                 }
                 items = res.Items;
+                try { workOrderLetterIds = (await Http.GetFromJsonAsync<List<int>>("/api/workorders/source-ids?module=InnerLetter") ?? new()).ToHashSet(); } catch { workOrderLetterIds.Clear(); }
                 totalServerCount = res.TotalCount;
                 ApplySort();
             }

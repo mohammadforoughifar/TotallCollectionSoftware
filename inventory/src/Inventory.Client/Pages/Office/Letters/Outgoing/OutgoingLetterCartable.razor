@@ -75,6 +75,7 @@
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
+                        <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
                         @if (selectedLetterIds.Count > 0)
                         {
                             <button class="chip on" style="background:#f59e0b;color:#fff;border-color:#d97706;" @onclick="OpenBatchBayeganiModal">
@@ -697,6 +698,7 @@
                 "sign" => arr.Where(l => l.IsSigner).ToList(),
                 "starred" => arr.Where(l => l.IsNeshan).ToList(),
                 "attach" => arr.Where(l => l.HasAttachment).ToList(),
+                "workorder" => arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList(),
                 _ => arr
             };
             return arr;
