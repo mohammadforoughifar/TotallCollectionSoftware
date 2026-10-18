@@ -214,6 +214,7 @@ public sealed class ServersController : ControllerBase
         {
             s.Id, s.CompanyId, s.Name, s.Manufacturer, s.Model, s.SerialNumber, s.AssetTag,
             s.IloAddress, s.IloPort, s.CredentialId, s.IloVersion, s.Role, s.Environment,
+            CertPinned = s.IloCertThumbprint != null, s.IloCertThumbprint, s.IloCertNotAfter, s.IloCertTrustedAt, s.IloCertTrustedByName,
             s.Criticality, s.Status, s.Rack, s.RackUnit, s.OperatingSystem, s.WarrantyEndDate, s.Notes,
             s.MonitoringEnabled, s.MonitoringIntervalMinutes, s.LastAutomaticPollAt,
             s.ResponsibleUserId, s.AlertNotificationsEnabled, s.MaintenanceUntil, s.MaintenanceNote,
@@ -508,6 +509,14 @@ public sealed class ServersController : ControllerBase
         var error = await ValidateAsync(d, id);
         if (error is not null) return BadRequest(new { message = error });
 
+        // گواهی تأییدشده به همان مقصد تعلق دارد؛ با تغییر آدرس یا پورت باید دوباره تأیید شود.
+        var targetChanged = !string.Equals(requestedAddress, server.IloAddress, StringComparison.OrdinalIgnoreCase) || d.IloPort != server.IloPort;
+        if (targetChanged && server.IloCertThumbprint is not null)
+        {
+            ClearCertificate(server);
+            await WriteLogAsync(server, "UntrustCertificate", "Success", "تغییر آدرس/پورت iLO؛ تأیید گواهی قبلی برداشته شد.");
+        }
+
         Apply(server, d);
         server.UpdatedAt = DateTime.Now;
         server.UpdatedByUserId = UserId > 0 ? UserId : null;
@@ -596,7 +605,7 @@ public sealed class ServersController : ControllerBase
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token);
+        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token, pinnedThumbprint: server.IloCertThumbprint);
         server.LastHealthCheckAt = DateTime.Now;
         if (!snapshot.Success)
         {
@@ -605,7 +614,7 @@ public sealed class ServersController : ControllerBase
             await WriteLogAsync(server, "TestConnection", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
             await NotifyAlertsSafelyAsync(server);
-            return BadRequest(new { message = snapshot.Error });
+            return BadRequest(new { message = snapshot.Error, code = snapshot.ErrorCode, certificate = snapshot.Certificate });
         }
 
         server.LastHealthStatus = snapshot.Health;
@@ -637,7 +646,7 @@ public sealed class ServersController : ControllerBase
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token, includeHardwareDetails: true);
+        var snapshot = await _redfish.GetSnapshotAsync(server.IloAddress, server.IloPort, credentials, timeout.Token, includeHardwareDetails: true, pinnedThumbprint: server.IloCertThumbprint);
         var now = DateTime.Now;
         server.LastHealthCheckAt = now;
         if (!snapshot.Success)
@@ -647,7 +656,7 @@ public sealed class ServersController : ControllerBase
             await WriteLogAsync(server, "CollectInventory", "Failed", snapshot.Error);
             await _db.SaveChangesAsync();
             await NotifyAlertsSafelyAsync(server);
-            return BadRequest(new { message = snapshot.Error });
+            return BadRequest(new { message = snapshot.Error, code = snapshot.ErrorCode, certificate = snapshot.Certificate });
         }
 
         server.Manufacturer = Clean(snapshot.Manufacturer, 50) ?? server.Manufacturer;
@@ -686,5 +695,91 @@ public sealed class ServersController : ControllerBase
         await _db.SaveChangesAsync();
         await NotifyAlertsSafelyAsync(server);
         return Ok(new { ok = true, snapshot });
+    }
+
+    // ================================================================ گواهی TLS iLO (تأیید با اثر انگشت)
+
+    private static void ClearCertificate(ManagedServer server)
+    {
+        server.IloCertThumbprint = null;
+        server.IloCertSubject = null;
+        server.IloCertNotAfter = null;
+        server.IloCertTrustedAt = null;
+        server.IloCertTrustedByName = null;
+    }
+
+    /// <summary>
+    /// گواهی فعلی iLO را فقط با دست‌دهی TLS می‌خواند (هیچ اعتبارنامه‌ای ارسال نمی‌شود) و با گواهی تأییدشده مقایسه می‌کند.
+    /// </summary>
+    [HttpGet("{id:int}/certificate")]
+    public async Task<IActionResult> GetCertificate(int id)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var server = await FindAllowedAsync(id);
+        if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
+
+        var (certificate, error) = await _redfish.ProbeCertificateAsync(server.IloAddress, server.IloPort, HttpContext.RequestAborted);
+        var pinned = server.IloCertThumbprint is null ? null : new
+        {
+            thumbprint = server.IloCertThumbprint, subject = server.IloCertSubject, notAfter = server.IloCertNotAfter,
+            trustedAt = server.IloCertTrustedAt, trustedByName = server.IloCertTrustedByName
+        };
+        return Ok(new
+        {
+            certificate,
+            error,
+            pinned,
+            matchesPin = certificate is not null && server.IloCertThumbprint is not null
+                         && string.Equals(certificate.Thumbprint, server.IloCertThumbprint, StringComparison.Ordinal),
+            canTrust = await HasAsync("Update") && (server.CredentialId is not > 0 || await HasVaultViewAsync())
+        });
+    }
+
+    public sealed class TrustCertificateDto { public string Thumbprint { get; set; } = ""; }
+
+    /// <summary>
+    /// گواهی‌ای را که کاربر دیده تأیید می‌کند. سرور دوباره گواهی را می‌خواند و فقط اگر همان باشد ذخیره می‌کند،
+    /// تا گواهی‌ای غیر از آنچه کاربر دیده هرگز تأیید نشود.
+    /// </summary>
+    [HttpPost("{id:int}/certificate/trust")]
+    public async Task<IActionResult> TrustCertificate(int id, [FromBody] TrustCertificateDto d)
+    {
+        if (!await HasAsync("Update")) return Forbid();
+        var server = await FindAllowedAsync(id);
+        if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
+        // تأیید گواهی تعیین می‌کند رمز iLO به کجا فرستاده شود؛ همان سطح دسترسیِ تغییر مقصد لازم است.
+        if (server.CredentialId is > 0 && !await HasVaultViewAsync())
+            return BadRequest(new { message = "برای تأیید گواهی سروری که Credential دارد، مجوز مشاهدهٔ گاوصندوق لازم است." });
+
+        var expected = HpeRedfishClient.NormalizeThumbprint(d.Thumbprint);
+        if (expected is null) return BadRequest(new { message = "اثر انگشت گواهی نامعتبر است." });
+
+        var (certificate, error) = await _redfish.ProbeCertificateAsync(server.IloAddress, server.IloPort, HttpContext.RequestAborted);
+        if (certificate is null) return BadRequest(new { message = error ?? "گواهی iLO خوانده نشد." });
+        if (!string.Equals(certificate.Thumbprint, expected, StringComparison.Ordinal))
+            return Conflict(new { message = "گواهی iLO از زمان نمایش تغییر کرده است. دوباره بررسی کنید.", certificate });
+
+        server.IloCertThumbprint = certificate.Thumbprint;
+        server.IloCertSubject = Clean(certificate.Subject, 400);
+        server.IloCertNotAfter = certificate.NotAfter;
+        server.IloCertTrustedAt = DateTime.Now;
+        server.IloCertTrustedByName = Clean(await MyNameAsync(), 200);
+        await WriteLogAsync(server, "TrustCertificate", "Success", $"SHA-256: {certificate.Thumbprint}");
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    [HttpDelete("{id:int}/certificate")]
+    public async Task<IActionResult> UntrustCertificate(int id)
+    {
+        if (!await HasAsync("Update")) return Forbid();
+        var server = await FindAllowedAsync(id);
+        if (server is null) return NotFound(new { message = "سرور پیدا نشد." });
+        if (server.IloCertThumbprint is null) return Ok(new { ok = true });
+        var old = server.IloCertThumbprint;
+        ClearCertificate(server);
+        await WriteLogAsync(server, "UntrustCertificate", "Success", $"SHA-256: {old}");
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 }

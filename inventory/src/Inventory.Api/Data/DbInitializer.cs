@@ -123,6 +123,7 @@ public static class DbInitializer
                 await ServerMonitoringSchemaV2.EnsureAsync(db);
                 await ServerAlertWorkflowSchemaV3.EnsureAsync(db);
                 await ServerHardwareDetailsSchemaV4.EnsureAsync(db);
+                await ServerIloCertSchemaV5.EnsureAsync(db);
                 await IpamSchemaV1.EnsureAsync(db);
                 // ماشین‌های اداری: شناسنامهٔ کامل، پایش SNMP، مواد مصرفی، سینی‌ها، شمارنده و رویدادها
                 await OfficeMachineSchemaV2.EnsureAsync(db);

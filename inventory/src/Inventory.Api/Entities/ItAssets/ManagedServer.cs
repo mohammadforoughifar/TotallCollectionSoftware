@@ -22,6 +22,12 @@ public sealed class ManagedServer
     /// <summary>نام یا IP کنترلر مدیریتی iLO. فقط HTTPS پشتیبانی می‌شود.</summary>
     [MaxLength(250)] public string IloAddress { get; set; } = "";
     public int IloPort { get; set; } = 443;
+    /// <summary>اثر انگشت SHA-256 گواهی TLS که کاربر برای این iLO تأیید کرده است (هگز بزرگ، ۶۴ کاراکتر).</summary>
+    [MaxLength(64)] public string? IloCertThumbprint { get; set; }
+    [MaxLength(400)] public string? IloCertSubject { get; set; }
+    public DateTime? IloCertNotAfter { get; set; }
+    public DateTime? IloCertTrustedAt { get; set; }
+    [MaxLength(200)] public string? IloCertTrustedByName { get; set; }
     /// <summary>ارجاع اختیاری به ItCredentials؛ رمز هرگز به کلاینت برگردانده نمی‌شود.</summary>
     public int? CredentialId { get; set; }
     [MaxLength(80)] public string? IloVersion { get; set; }

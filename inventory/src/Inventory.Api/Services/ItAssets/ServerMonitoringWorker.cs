@@ -138,7 +138,7 @@ public sealed class ServerMonitoringWorker : BackgroundService
                 snapshot = string.IsNullOrEmpty(password)
                     ? new RedfishSnapshot { Error = "رمز Credential پایش قابل خواندن نیست." }
                     : await redfish.GetSnapshotAsync(server.IloAddress, server.IloPort,
-                        new RedfishCredentials(credential.Username, password), ct, includeHardwareDetails);
+                        new RedfishCredentials(credential.Username, password), ct, includeHardwareDetails, server.IloCertThumbprint);
             }
             catch
             {

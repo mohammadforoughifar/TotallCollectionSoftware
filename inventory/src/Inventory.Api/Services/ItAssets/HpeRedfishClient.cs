@@ -1,4 +1,9 @@
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +18,10 @@ public sealed class RedfishSnapshot
 {
     public bool Success { get; init; }
     public string? Error { get; init; }
+    /// <summary>CertUntrusted | CertChanged | Auth | Network | Timeout | Protocol — برای تصمیم UI؛ متن خطا همچنان در Error است.</summary>
+    public string? ErrorCode { get; init; }
+    /// <summary>گواهی‌ای که iLO ارائه داد (فقط وقتی اتصال به‌خاطر گواهی رد شده باشد).</summary>
+    public IloCertificateInfo? Certificate { get; init; }
     public string Health { get; init; } = "Unknown";
     public string? PowerState { get; init; }
     public string? Manufacturer { get; init; }
@@ -49,31 +58,153 @@ public sealed class RedfishHardwareEvent
     public DateTime? OccurredAt { get; init; }
 }
 
+/// <summary>مشخصات غیرمحرمانهٔ گواهی TLS ارائه‌شده توسط iLO.</summary>
+public sealed class IloCertificateInfo
+{
+    /// <summary>SHA-256 کل گواهی (DER) به‌صورت هگز بزرگ، بدون جداکننده.</summary>
+    public string Thumbprint { get; init; } = "";
+    public string Subject { get; init; } = "";
+    public string Issuer { get; init; } = "";
+    public DateTime NotBefore { get; init; }
+    public DateTime NotAfter { get; init; }
+    /// <summary>زنجیرهٔ گواهی و نام میزبان از نظر سیستم‌عامل سرور برنامه معتبر است.</summary>
+    public bool SystemTrusted { get; init; }
+    public bool SelfSigned { get; init; }
+}
+
 /// <summary>
 /// کلاینت فقط-خواندنی Redfish برای HPE iLO. درخواست‌ها فقط روی HTTPS، بدون دنبال‌کردن redirect
 /// و فقط به همان origin ثبت‌شده ارسال می‌شوند تا اعتبارنامه به مقصد دیگری نرود.
 /// </summary>
 public sealed class HpeRedfishClient
 {
-    private const string ClientName = "HpeRedfish";
-    private readonly IHttpClientFactory _clients;
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
 
-    public HpeRedfishClient(IHttpClientFactory clients) => _clients = clients;
+    // IHttpClientFactory فقط برای سازگاری DI نگه داشته شده است؛ هر فراخوانی handler خودش را دارد
+    // تا بررسی گواهی بتواند به اثر انگشت تأییدشدهٔ همان سرور مقید شود.
+    public HpeRedfishClient(IHttpClientFactory clients) { _ = clients; }
+
+    /// <summary>اعتبارنامه + HttpClient مقید به گواهی همان iLO برای یک بار خواندن.</summary>
+    private sealed record Session(RedfishCredentials Credentials, HttpClient Http);
+
+    /// <summary>
+    /// تصمیم دربارهٔ گواهی iLO: معتبر از نظر سیستم‌عامل ← قبول؛ در غیر این صورت فقط اگر
+    /// SHA-256 آن با اثر انگشت تأییدشدهٔ کاربر برابر باشد. گواهی دیده‌شده برای نمایش نگه داشته می‌شود.
+    /// </summary>
+    private sealed class CertificateGate
+    {
+        private readonly string? _pinned;
+        public CertificateGate(string? pinned) => _pinned = NormalizeThumbprint(pinned);
+        public IloCertificateInfo? Seen { get; private set; }
+        public string? Rejected { get; private set; }
+
+        public bool Validate(X509Certificate? cert, SslPolicyErrors errors)
+        {
+            if (cert is null) { Rejected = "CertUntrusted"; return false; }
+            Seen = Describe(cert, errors);
+            if (errors == SslPolicyErrors.None) return true;
+            if (_pinned is not null && string.Equals(_pinned, Seen.Thumbprint, StringComparison.Ordinal)) return true;
+            Rejected = _pinned is null ? "CertUntrusted" : "CertChanged";
+            return false;
+        }
+    }
+
+    public static string? NormalizeThumbprint(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var hex = new string(value.Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+        return hex.Length == 64 ? hex : null;
+    }
+
+    private static IloCertificateInfo Describe(X509Certificate cert, SslPolicyErrors errors)
+    {
+        using var x = new X509Certificate2(cert);
+        return new IloCertificateInfo
+        {
+            Thumbprint = Convert.ToHexString(SHA256.HashData(x.RawData)),
+            Subject = x.Subject,
+            Issuer = x.Issuer,
+            NotBefore = x.NotBefore,
+            NotAfter = x.NotAfter,
+            SystemTrusted = errors == SslPolicyErrors.None,
+            SelfSigned = string.Equals(x.Subject, x.Issuer, StringComparison.Ordinal)
+        };
+    }
+
+    private static (HttpClient Client, SocketsHttpHandler Handler) CreateHttp(CertificateGate gate)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            ConnectTimeout = ConnectTimeout,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(1),
+            UseProxy = false
+        };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, cert, _, errors) => gate.Validate(cert, errors);
+        return (new HttpClient(handler, disposeHandler: false) { Timeout = RequestTimeout }, handler);
+    }
+
+    /// <summary>
+    /// فقط دست‌دهی TLS با iLO را انجام می‌دهد و گواهی را برمی‌گرداند. هیچ درخواست HTTP و هیچ اعتبارنامه‌ای ارسال نمی‌شود.
+    /// </summary>
+    public async Task<(IloCertificateInfo? Certificate, string? Error)> ProbeCertificateAsync(string address, int port, CancellationToken ct = default)
+    {
+        Uri baseUri;
+        try { baseUri = BuildBaseUri(address, port); }
+        catch (InvalidOperationException ex) { return (null, ex.Message); }
+
+        IloCertificateInfo? seen = null;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(ConnectTimeout + TimeSpan.FromSeconds(5));
+        try
+        {
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync(baseUri.IdnHost, baseUri.Port, timeout.Token);
+            await using var ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false);
+            await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = baseUri.IdnHost,
+                RemoteCertificateValidationCallback = (_, cert, _, errors) =>
+                {
+                    if (cert is not null) seen = Describe(cert, errors);
+                    return cert is not null; // فقط برای خواندن گواهی؛ بلافاصله بسته می‌شود.
+                }
+            }, timeout.Token);
+            return seen is null ? (null, "iLO گواهی TLS ارائه نکرد.") : (seen, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (null, TimeoutMessage);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException or AuthenticationException)
+        {
+            return (seen, seen is null ? ClassifyTransport(ex) : null);
+        }
+    }
+
+    private const string TimeoutMessage = "از iLO پاسخی نیامد. دسترسی شبکه از سرور برنامه به iLO (پورت و فایروال) را بررسی کنید.";
 
     /// <param name="includeHardwareDetails">خواندن محدود قطعات/رخدادها؛ برای پایش و دریافت Inventory استفاده شود، نه تست سریع اتصال.</param>
+    /// <param name="pinnedThumbprint">اثر انگشت SHA-256 گواهی تأییدشده برای این iLO (اختیاری).</param>
     public async Task<RedfishSnapshot> GetSnapshotAsync(string address, int port, RedfishCredentials credentials, CancellationToken ct = default,
-        bool includeHardwareDetails = false)
+        bool includeHardwareDetails = false, string? pinnedThumbprint = null)
     {
+        var gate = new CertificateGate(pinnedThumbprint);
+        var (http, handler) = CreateHttp(gate);
+        using var handlerScope = handler;
+        using var httpScope = http;
+        var session = new Session(credentials, http);
         try
         {
             var baseUri = BuildBaseUri(address, port);
-            using var root = await GetJsonAsync(baseUri, new Uri(baseUri, "redfish/v1/"), credentials, ct);
+            using var root = await GetJsonAsync(baseUri, new Uri(baseUri, "redfish/v1/"), session, ct);
             var systemsLink = GetOdataLink(root.RootElement, "Systems", baseUri)
                 ?? throw new InvalidOperationException("منبع Systems در پاسخ Redfish پیدا نشد.");
-            using var systems = await GetJsonAsync(baseUri, systemsLink, credentials, ct);
+            using var systems = await GetJsonAsync(baseUri, systemsLink, session, ct);
             var systemLink = GetFirstMemberLink(systems.RootElement, baseUri)
                 ?? throw new InvalidOperationException("هیچ System قابل مدیریتی در Redfish پیدا نشد.");
-            using var system = await GetJsonAsync(baseUri, systemLink, credentials, ct);
+            using var system = await GetJsonAsync(baseUri, systemLink, session, ct);
 
             string? firmware = null;
             var managersLink = GetOdataLink(root.RootElement, "Managers", baseUri);
@@ -81,11 +212,11 @@ public sealed class HpeRedfishClient
             {
                 try
                 {
-                    using var managers = await GetJsonAsync(baseUri, managersLink, credentials, ct);
+                    using var managers = await GetJsonAsync(baseUri, managersLink, session, ct);
                     var managerLink = GetFirstMemberLink(managers.RootElement, baseUri);
                     if (managerLink is not null)
                     {
-                        using var manager = await GetJsonAsync(baseUri, managerLink, credentials, ct);
+                        using var manager = await GetJsonAsync(baseUri, managerLink, session, ct);
                         firmware = ReadString(manager.RootElement, "FirmwareVersion");
                     }
                 }
@@ -102,10 +233,10 @@ public sealed class HpeRedfishClient
             if (includeHardwareDetails)
             {
                 // جزئیات اختیاری‌اند: نبودن یک resource در نسل‌های مختلف iLO نباید Health اصلی را ناموفق کند.
-                try { components = await ReadHardwareComponentsAsync(baseUri, root.RootElement, systemNode, credentials, ct); }
+                try { components = await ReadHardwareComponentsAsync(baseUri, root.RootElement, systemNode, session, ct); }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
                 catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException) { }
-                try { events = await ReadRecentEventsAsync(baseUri, root.RootElement, credentials, ct); }
+                try { events = await ReadRecentEventsAsync(baseUri, root.RootElement, session, ct); }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
                 catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException) { }
             }
@@ -129,17 +260,21 @@ public sealed class HpeRedfishClient
                 Events = events
             };
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new RedfishSnapshot { Error = TimeoutMessage, ErrorCode = "Timeout" };
+        }
         catch (OperationCanceledException)
         {
-            return new RedfishSnapshot { Error = "عملیات به‌دلیل پایان مهلت یا لغو درخواست متوقف شد." };
+            return new RedfishSnapshot { Error = "درخواست لغو شد.", ErrorCode = "Timeout" };
         }
         catch (HttpRequestException ex)
         {
-            return new RedfishSnapshot { Error = ToSafeError(ex) };
+            return ToSafeError(ex, gate);
         }
         catch (JsonException)
         {
-            return new RedfishSnapshot { Error = "پاسخ iLO معتبر نیست یا Redfish در این آدرس فعال نیست." };
+            return new RedfishSnapshot { Error = "پاسخ iLO معتبر نیست یا Redfish در این آدرس فعال نیست.", ErrorCode = "Protocol" };
         }
         catch (Exception ex) when (ex is UriFormatException or InvalidOperationException)
         {
@@ -148,7 +283,7 @@ public sealed class HpeRedfishClient
     }
 
     private async Task<IReadOnlyList<RedfishHardwareComponent>> ReadHardwareComponentsAsync(Uri origin, JsonElement root,
-        JsonElement system, RedfishCredentials credentials, CancellationToken ct)
+        JsonElement system, Session credentials, CancellationToken ct)
     {
         var components = new List<RedfishHardwareComponent>();
 
@@ -181,7 +316,7 @@ public sealed class HpeRedfishClient
         return components.Take(128).ToList();
     }
 
-    private async Task ReadPowerAndThermalAsync(Uri origin, JsonElement chassis, RedfishCredentials credentials,
+    private async Task ReadPowerAndThermalAsync(Uri origin, JsonElement chassis, Session credentials,
         List<RedfishHardwareComponent> components, CancellationToken ct)
     {
         var powerLink = GetOdataLink(chassis, "Power", origin);
@@ -213,7 +348,7 @@ public sealed class HpeRedfishClient
     }
 
     private async Task ReadSystemResourceComponentsAsync(Uri origin, JsonElement system, string property, string type,
-        int max, RedfishCredentials credentials, List<RedfishHardwareComponent> components, CancellationToken ct)
+        int max, Session credentials, List<RedfishHardwareComponent> components, CancellationToken ct)
     {
         var collectionLink = GetOdataLink(system, property, origin);
         if (collectionLink is null) return;
@@ -227,7 +362,7 @@ public sealed class HpeRedfishClient
         }
     }
 
-    private async Task ReadStorageComponentsAsync(Uri origin, JsonElement system, RedfishCredentials credentials,
+    private async Task ReadStorageComponentsAsync(Uri origin, JsonElement system, Session credentials,
         List<RedfishHardwareComponent> components, CancellationToken ct)
     {
         var storageCollection = GetOdataLink(system, "Storage", origin);
@@ -250,7 +385,7 @@ public sealed class HpeRedfishClient
     }
 
     private async Task<IReadOnlyList<RedfishHardwareEvent>> ReadRecentEventsAsync(Uri origin, JsonElement root,
-        RedfishCredentials credentials, CancellationToken ct)
+        Session credentials, CancellationToken ct)
     {
         var managerCollection = GetOdataLink(root, "Managers", origin);
         if (managerCollection is null) return Array.Empty<RedfishHardwareEvent>();
@@ -350,17 +485,16 @@ public sealed class HpeRedfishClient
         return value.Length <= max ? value : value[..max];
     }
 
-    private async Task<JsonDocument> GetJsonAsync(Uri origin, Uri endpoint, RedfishCredentials credentials, CancellationToken ct)
+    private async Task<JsonDocument> GetJsonAsync(Uri origin, Uri endpoint, Session credentials, CancellationToken ct)
     {
         EnsureSameOrigin(origin, endpoint);
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("OData-Version", "4.0");
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{credentials.Username}:{credentials.Password}"));
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{credentials.Credentials.Username}:{credentials.Credentials.Password}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
 
-        var client = _clients.CreateClient(ClientName);
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await credentials.Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
             var status = (int)response.StatusCode;
@@ -447,11 +581,47 @@ public sealed class HpeRedfishClient
             ? ReadString(child, valueProperty)
             : null;
 
-    private static string ToSafeError(HttpRequestException ex)
+    private static RedfishSnapshot ToSafeError(HttpRequestException ex, CertificateGate gate)
     {
+        if (gate.Rejected == "CertUntrusted")
+            return new RedfishSnapshot
+            {
+                ErrorCode = "CertUntrusted", Certificate = gate.Seen,
+                Error = "گواهی TLS این iLO هنوز تأیید نشده است. گواهی را بررسی و تأیید کنید."
+            };
+        if (gate.Rejected == "CertChanged")
+            return new RedfishSnapshot
+            {
+                ErrorCode = "CertChanged", Certificate = gate.Seen,
+                Error = "گواهی TLS این iLO با گواهی تأییدشده فرق دارد. اگر گواهی iLO را عوض نکرده‌اید، اتصال را بررسی کنید."
+            };
         if (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            return "نام کاربری یا رمز iLO معتبر نیست، یا این حساب دسترسی Redfish ندارد.";
-        if (ex.StatusCode == HttpStatusCode.NotFound) return "Redfish روی iLO پیدا نشد.";
-        return "ارتباط امن با iLO برقرار نشد. آدرس، پورت، شبکه، گواهی TLS و فعال بودن Redfish را بررسی کنید.";
+            return new RedfishSnapshot { ErrorCode = "Auth", Error = "نام کاربری یا رمز iLO معتبر نیست، یا این حساب دسترسی Redfish ندارد." };
+        if (ex.StatusCode == HttpStatusCode.NotFound)
+            return new RedfishSnapshot { ErrorCode = "Protocol", Error = "Redfish روی iLO پیدا نشد. نسخهٔ iLO (حداقل iLO 4 v2.30) را بررسی کنید." };
+        if (ex.StatusCode is not null)
+            return new RedfishSnapshot { ErrorCode = "Protocol", Error = ex.Message };
+        return new RedfishSnapshot { ErrorCode = "Network", Error = ClassifyTransport(ex) };
+    }
+
+    /// <summary>دلیل واقعی خطای شبکه/TLS را از زنجیرهٔ InnerException بیرون می‌کشد.</summary>
+    private static string ClassifyTransport(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is SocketException se)
+                return se.SocketErrorCode switch
+                {
+                    SocketError.ConnectionRefused => "iLO اتصال را رد کرد. پورت iLO را بررسی کنید.",
+                    SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain => "نام iLO پیدا نشد. آدرس یا DNS را بررسی کنید.",
+                    SocketError.TimedOut => TimeoutMessage,
+                    SocketError.NetworkUnreachable or SocketError.HostUnreachable => "مسیر شبکه از سرور برنامه تا iLO وجود ندارد.",
+                    SocketError.ConnectionReset or SocketError.ConnectionAborted => "iLO اتصال را قطع کرد.",
+                    _ => $"اتصال شبکه به iLO برقرار نشد ({se.SocketErrorCode})."
+                };
+            if (e is TimeoutException) return TimeoutMessage;
+            if (e is AuthenticationException) return "دست‌دهی TLS با iLO ناموفق بود. نسخهٔ TLS یا تنظیمات امنیتی iLO را بررسی کنید.";
+        }
+        return "اتصال به iLO برقرار نشد.";
     }
 }
