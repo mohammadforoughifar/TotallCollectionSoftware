@@ -1457,7 +1457,9 @@ context.Customers.Any(x =>
 
                 // TaxID و Indatim باید دقیقاً از یک لحظه ساخته شوند؛ UTC از اختلاف timezone/Kind
                 // بین سرور و SDK جلوگیری می‌کند و سریال Inno نیز باید با ورودی Generator یکی باشد.
-                var issueTime = DateTimeOffset.UtcNow;
+                // حاشیهٔ ۶۰ ثانیه: سامانهٔ مودیان زمان صدورِ «در آینده» را با خطای ۰۲۰۰۲۰۱ رد می‌کند
+                // و ساعت سرورها عملاً چند ثانیه جلو/عقب دریفت دارند؛ صدورِ چندثانیه‌درگذشته معتبر است.
+                var issueTime = DateTimeOffset.UtcNow.AddSeconds(-60);
                 var invoiceSerial = invoiceForEdit.Id;
                 var fiscalId = conection.TaxMemoryID?.Trim();
                 if (string.IsNullOrWhiteSpace(fiscalId))
@@ -1698,7 +1700,7 @@ context.Customers.Any(x =>
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                        var returnIssueTime = DateTimeOffset.UtcNow;
+                        var returnIssueTime = DateTimeOffset.UtcNow.AddSeconds(-60); // همان حاشیهٔ امن ۰۲۰۰۲۰۱ — زمان صدور نباید آینده باشد
                         string taxId1 = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                             fiscalId, invoice.Id, returnIssueTime.UtcDateTime);
                         // TaxID و Inno باید از یک سریال داخلی ساخته شوند.
