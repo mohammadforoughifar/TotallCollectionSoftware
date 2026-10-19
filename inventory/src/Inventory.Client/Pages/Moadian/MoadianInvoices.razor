@@ -468,8 +468,8 @@ else
         ("4", "در انتظار واکنش", "bi-hourglass-split", "orange"),
         ("5", "دارای خطا", "bi-exclamation-triangle", "red"),
         ("6", "بدون نیاز به واکنش", "bi-archive", "stone"),
-        ("7", "تأیید شده", "bi-check-circle", "green"),
-        ("8", "رد شده", "bi-x-diamond", "crimson"),
+        // فیلترهای «تأیید شده» (۷) و «رد شده» (۸) طبق درخواست حذف شدند؛
+        // این صورتحساب‌ها همچنان در تب «همه» و از طریق جستجو دیده می‌شوند.
     };
 
     private PagedList<InvoiceVM>? data;
@@ -570,7 +570,6 @@ else
         ("4", var l) => l?.lblSentToSystem,
         ("2", var l) => l?.lblLackOfResponsiveness,
         ("5", var l) => l?.lblError,
-        ("7", var l) => l?.lblInquiry,
         _ => null
     };
 
