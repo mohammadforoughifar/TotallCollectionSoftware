@@ -4,6 +4,7 @@
 @using ErroreMesage = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.ErroreMesage
 @inject IMoadianService Moadian
 @inject IToastService Toast
+@inject IAuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -61,49 +62,52 @@ else
             <div class="mi-hero-bar d-flex gap-2 flex-wrap align-items-center">
             @if (MoadianUi.CanSend(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
-                @if (vm.StatusSentToSystemInt == "0")
+                @if (CanPreview && vm.StatusSentToSystemInt == "0")
                 {
                     <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
                         <i class="bi bi-braces"></i> پیش‌نمایش JSON
                     </button>
                 }
-                <button class="btn btn-primary" @onclick="Send" disabled="@acting">
-                    @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-send"></i> }
-                    @(vm.StatusSentToSystemInt == "5" ? "ارسال مجدد به سامانه" : "ارسال به سامانه")
-                </button>
+                @if (CanSend)
+                {
+                    <button class="btn btn-primary" @onclick="Send" disabled="@acting">
+                        @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-send"></i> }
+                        @(vm.StatusSentToSystemInt == "5" ? "ارسال مجدد به سامانه" : "ارسال به سامانه")
+                    </button>
+                }
             }
-            @if (MoadianUi.CanInquiry(vm.StatusSentToSystemInt, vm.ReferenceId))
+            @if (CanInquiry && MoadianUi.CanInquiry(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <button class="btn btn-outline-primary" @onclick="Estelam" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-search"></i> }
                     استعلام وضعیت
                 </button>
             }
-            @if (MoadianUi.CanShowErrors(vm.StatusSentToSystemInt))
+            @if (CanInquiry && MoadianUi.CanShowErrors(vm.StatusSentToSystemInt))
             {
                 <button class="btn btn-outline-danger" @onclick="ShowError" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-exclamation-octagon"></i> }
                     مشاهده خطاها
                 </button>
             }
-            @if (MoadianUi.CanViewWorkFolder(vm.StatusSentToSystemInt, vm.ReferenceId))
+            @if (CanInquiry && MoadianUi.CanViewWorkFolder(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <a class="btn btn-outline-info" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener">
                     <i class="bi bi-folder2-open" aria-hidden="true"></i> مشاهده در کارپوشه
                 </a>
             }
-            @if (MoadianUi.CanReference(vm.StatusSentToSystemInt, vm.ReferenceId))
+            @if (CanUpdate && MoadianUi.CanReference(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <NavLink class="btn btn-outline-warning" href="@($"moadian/invoices/{vm.Id}/eslahi")"><i class="bi bi-pencil"></i> اصلاحی</NavLink>
             }
-            @if (MoadianUi.CanEbtal(vm.StatusSentToSystemInt, vm.ReferenceId))
+            @if (CanUpdate && MoadianUi.CanEbtal(vm.StatusSentToSystemInt, vm.ReferenceId))
             {
                 <button class="btn btn-outline-danger" @onclick="Ebtal" disabled="@acting">
                     @if (acting) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-x-octagon"></i> }
                     ابطال
                 </button>
             }
-            @if (MoadianUi.CanDelete(vm.StatusSentToSystemInt, vm.ShowButtons))
+            @if (CanDelete && MoadianUi.CanDelete(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
                 <button class="btn btn-outline-secondary ms-auto" @onclick="Delete" disabled="@acting">
                     <i class="bi bi-trash"></i> حذف
@@ -428,6 +432,13 @@ else
     private VMShowCpinfoByCompany? seller;
     private bool loading = true, acting;
     private string? loadError;
+
+    private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+    private bool CanPreview => Can("Moadian.InvoicePreview");
+    private bool CanSend => Can("Moadian.InvoiceSend");
+    private bool CanInquiry => Can("Moadian.InvoiceInquiry");
+    private bool CanUpdate => Can("Moadian.InvoiceUpdate");
+    private bool CanDelete => Can("Moadian.InvoiceDelete");
     private string? ActionResult;
     private string? PreviewRequestJson;
     private string? ActualRequestJson;

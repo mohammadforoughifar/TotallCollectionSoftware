@@ -4,6 +4,7 @@
 @using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
 @inject IMoadianService Moadian
 @inject IToastService Toast
+@inject IAuthState Auth
 @inject MoadianCompanyContext Ctx
 @implements IDisposable
 
@@ -15,8 +16,14 @@
         <p class="lead">صورتحساب الکترونیکی مطابق الزامات مالیاتی — اتصال، صدور، ارسال و پیگیری وضعیت در کارپوشه</p>
     </div>
     <div class="ms-auto d-flex gap-2">
-        <NavLink class="btn btn-primary btn-pill" href="moadian/invoices/new"><i class="bi bi-plus-lg" aria-hidden="true"></i> صورتحساب جدید</NavLink>
-        <NavLink class="btn btn-outline-secondary" href="moadian/basic-info/connection"><i class="bi bi-plug"></i> تنظیمات اتصال</NavLink>
+        @if (CanCreateInvoice)
+        {
+            <NavLink class="btn btn-primary btn-pill" href="moadian/invoices/new"><i class="bi bi-plus-lg" aria-hidden="true"></i> صورتحساب جدید</NavLink>
+        }
+        @if (CanManageConnection)
+        {
+            <NavLink class="btn btn-outline-secondary" href="moadian/basic-info/connection"><i class="bi bi-plug"></i> تنظیمات اتصال</NavLink>
+        }
     </div>
 </div>
 
@@ -74,7 +81,9 @@ else if (Ctx.CpInfoId > 0)
         </div>
     </div>
 
-    @* ---------- وضعیت اتصال ---------- *@
+    @* ---------- وضعیت اتصال (فقط مسئول اتصال) ---------- *@
+    @if (CanManageConnection)
+    {
     <div class="card mi-blocked mb-3">
         <div class="card-header d-flex align-items-center gap-2">
             <i class="bi bi-plug"></i> وضعیت اتصال به سامانه
@@ -112,53 +121,30 @@ else if (Ctx.CpInfoId > 0)
             }
         </div>
     </div>
+    }
 
-    @* ---------- دسترسی سریع ---------- *@
+    @* ---------- دسترسی سریع: هر کارت فقط با مجوز متناظر دیده می‌شود ---------- *@
     <div class="row g-3">
         <div class="col-6 col-lg-3">
             <NavLink class="mpill-card mpill-blue text-decoration-none h-100" href="moadian/invoices">
                 <div class="card-body d-flex align-items-center gap-3">
                     <div class="stat-icon"><i class="bi bi-journal-text"></i></div>
-                    <div>
-                        <div class="fw-bold">صورتحساب‌ها</div>
-                        <div class="small text-muted">فهرست، صدور و پیگیری</div>
-                    </div>
+                    <div><div class="fw-bold">صورتحساب‌ها</div><div class="small text-muted">فهرست و پیگیری</div></div>
                 </div>
             </NavLink>
         </div>
-        <div class="col-6 col-lg-3">
-            <NavLink class="mpill-card mpill-orange text-decoration-none h-100" href="moadian/basic-info/goods">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon"><i class="bi bi-box"></i></div>
-                    <div>
-                        <div class="fw-bold">کالاهای من</div>
-                        <div class="small text-muted">کالا/خدمت با شناسهٔ CPC</div>
-                    </div>
-                </div>
-            </NavLink>
-        </div>
-        <div class="col-6 col-lg-3">
-            <NavLink class="mpill-card mpill-indigo text-decoration-none h-100" href="moadian/basic-info/customers">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon"><i class="bi bi-people"></i></div>
-                    <div>
-                        <div class="fw-bold">مشتریان</div>
-                        <div class="small text-muted">حقیقی و حقوقی</div>
-                    </div>
-                </div>
-            </NavLink>
-        </div>
-        <div class="col-6 col-lg-3">
-            <NavLink class="mpill-card mpill-purple text-decoration-none h-100" href="moadian/basic-info/units">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon"><i class="bi bi-rulers"></i></div>
-                    <div>
-                        <div class="fw-bold">واحدهای سنجش</div>
-                        <div class="small text-muted">واحدهای معتبر سامانه</div>
-                    </div>
-                </div>
-            </NavLink>
-        </div>
+        @if (CanGoods)
+        {
+            <div class="col-6 col-lg-3"><NavLink class="mpill-card mpill-orange text-decoration-none h-100" href="moadian/basic-info/goods"><div class="card-body d-flex align-items-center gap-3"><div class="stat-icon"><i class="bi bi-box"></i></div><div><div class="fw-bold">کالاهای من</div><div class="small text-muted">کالا/خدمت با شناسهٔ CPC</div></div></div></NavLink></div>
+        }
+        @if (CanCustomers)
+        {
+            <div class="col-6 col-lg-3"><NavLink class="mpill-card mpill-indigo text-decoration-none h-100" href="moadian/basic-info/customers"><div class="card-body d-flex align-items-center gap-3"><div class="stat-icon"><i class="bi bi-people"></i></div><div><div class="fw-bold">مشتریان</div><div class="small text-muted">حقیقی و حقوقی</div></div></div></NavLink></div>
+        }
+        @if (CanUnits)
+        {
+            <div class="col-6 col-lg-3"><NavLink class="mpill-card mpill-purple text-decoration-none h-100" href="moadian/basic-info/units"><div class="card-body d-flex align-items-center gap-3"><div class="stat-icon"><i class="bi bi-rulers"></i></div><div><div class="fw-bold">واحدهای سنجش</div><div class="small text-muted">واحدهای معتبر سامانه</div></div></div></NavLink></div>
+        }
     </div>
 }
 
@@ -166,6 +152,13 @@ else if (Ctx.CpInfoId > 0)
     private InvoiceVM? labels;
     private VMConnection? connection;
     private bool loading = true, testing;
+
+    private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+    private bool CanCreateInvoice => Can("Moadian.InvoiceCreate");
+    private bool CanManageConnection => Can("Moadian.Connection");
+    private bool CanGoods => Can("Moadian.Goods");
+    private bool CanUnits => Can("Moadian.Units");
+    private bool CanCustomers => Can("Moadian.Customers");
 
     protected override void OnInitialized()
     {
@@ -185,7 +178,10 @@ else if (Ctx.CpInfoId > 0)
             var model = await Moadian.GetAllInvoicesAsync("همه", Ctx.CpInfoId, null, null, null, 1, 1);
             var resp = MoadianService.As<InvoiceResponse>(model);
             labels = resp?.Labels;
-            connection = await Moadian.GetConnectionAsync(Ctx.CpInfoId);
+            // کاربر ثبت فاکتور نباید آدرس سرویس، TaxMemoryID یا نام فایل کلید را بخواند.
+            connection = CanManageConnection
+                ? await Moadian.GetConnectionAsync(Ctx.CpInfoId)
+                : null;
         }
         catch (Exception ex)
         {

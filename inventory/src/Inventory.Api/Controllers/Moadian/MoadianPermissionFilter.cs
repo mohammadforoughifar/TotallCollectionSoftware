@@ -53,14 +53,17 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
             ["GetInvoiceByIdAsync"] = "View",
             ["NextInvoiceNumber"] = "View",
 
-            // شرکت
-            ["GetCpInfos"] = "Company",
+            // شرکت: فهرست صرفاً خواندنی و بر اساس CompanyIdهای مجاز کاربر فیلتر می‌شود؛
+            // اپراتور صدور فاکتور برای انتخاب شرکت نباید مجوز تغییر/حذف شرکت مودیان بگیرد.
+            ["GetCpInfos"] = "View",
             ["SaveCpInfo"] = "Company",
             ["DeleteCpInfo"] = "Company",
-            ["GetConnectForCpInfo"] = "Company",
 
-            // دوره مالی
-            ["GetFiscalYears"] = "FiscalYear",
+            // اتصال: خواندن/ویرایش کلید و حافظهٔ مالیاتی فقط برای مسئول اتصال است.
+            ["GetConnectForCpInfo"] = "Connection",
+
+            // دوره مالی: خواندن برای تکمیل فرم صورتحساب لازم است، اما ایجاد/ویرایش آن مستقل است.
+            ["GetFiscalYears"] = "View",
             ["SaveFiscalYear"] = "FiscalYear",
 
             // اتصال و حافظه مالیاتی
@@ -135,7 +138,14 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
             return;
         }
 
-        if (!RequiredActions.TryGetValue(descriptor.ActionName, out var requiredAction))
+        // ActionName در ASP.NET Core به‌طور پیش‌فرض پسوند Async را حذف می‌کند؛ مثلاً
+        // متد GetGoodOrServiceForComboAsync با ActionName برابر GetGoodOrServiceForCombo
+        // دیده می‌شود. نگاشت ما عمداً نام متدهای C# را دارد تا با Routeها یکی نشود؛ بنابراین
+        // ابتدا MethodInfo.Name را ملاک می‌گیریم و فقط برای سازگاری با اکشن‌های نام‌گذاری‌شده
+        // یا endpointهای آتی، ActionName را fallback قرار می‌دهیم.
+        var operationName = descriptor.MethodInfo.Name;
+        if (!RequiredActions.TryGetValue(operationName, out var requiredAction)
+            && !RequiredActions.TryGetValue(descriptor.ActionName, out requiredAction))
         {
             // اکشن در نگاشت سطح نیست (drift). دسترسی کامل مودیان / مدیر قدیمی عبور می‌کنند؛
             // بقیه با پیامی که نام اکشن را هم دارد مسدود می‌مانند.
@@ -145,13 +155,13 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
 
             if (hasFullMoadianAccess || isLegacyAdmin)
             {
-                WarnDriftOnce(descriptor.ActionName, hasFullMoadianAccess ? "کاربر دارای دسترسی کامل مودیان" : "مدیر قدیمی");
+                WarnDriftOnce(operationName, hasFullMoadianAccess ? "کاربر دارای دسترسی کامل مودیان" : "مدیر قدیمی");
                 await next();
                 return;
             }
 
             context.Result = Forbidden(
-                $"برای این عملیات مودیان (اکشن: {descriptor.ActionName}) سطح دسترسی تعریف نشده است؛ عملیات تا زمان پیکربندی مجوز مسدود است.");
+                $"برای این عملیات مودیان (اکشن: {operationName}) سطح دسترسی تعریف نشده است؛ عملیات تا زمان پیکربندی مجوز مسدود است.");
             return;
         }
 

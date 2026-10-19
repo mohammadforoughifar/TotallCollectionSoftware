@@ -479,7 +479,7 @@
 
     private static readonly List<PermCategory> ModuleCategories = new()
     {
-        new() { Title = "عملیات — فروش و مالی", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties" } },
+        new() { Title = "عملیات — فروش، مالی و مودیان", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties", "Moadian" } },
         new() { Title = "معرف‌ها و پنل معرف", Icon = "bi-person-badge", Modules = new[] { "Referrers", "ReferrerWallets", "ReferrerPanel" } },
         new() { Title = "اطلاعات پایه و انبار", Icon = "bi-box-seam", Modules = new[] { "Products", "Stock", "Warehouses", "SystemCompanies", "SystemDepartments" } },
         new() { Title = "ERP — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
@@ -513,6 +513,7 @@
         ["Ipam"] = "مدیریت آی‌پی (رنج‌ها، آی‌پی خالی/اشغال، رزرو) 🌐",
         ["Servers"] = "مدیریت سرورهای HPE / iLO 🖥",
         ["Parties"] = "طرف حساب",
+        ["Moadian"] = "سامانه مودیان (صورتحساب الکترونیکی)",
         ["Expenses"] = "هزینه‌ها",
         ["Reports"] = "گزارشات (عمومی)",
         ["SystemUsers"] = "کاربران",
@@ -650,6 +651,20 @@
         ["Moadian.Delete"] = "حذف صورتحساب",
         ["Moadian.Send"] = "ارسال، پیش‌نمایش و استعلام وضعیت صورتحساب",
         ["Moadian.Diagnose"] = "عیب‌یابی فنی اتصال و اسکیمای مودیان",
+        // سطح‌های تفکیکی جدید مودیان — برای ساخت نقش محدودِ اپراتور فاکتور
+        ["Moadian.Company"] = "مدیریت شرکت مودیان",
+        ["Moadian.FiscalYear"] = "مدیریت سال مالی مودیان",
+        ["Moadian.Connection"] = "مدیریت اتصال، حافظه و کلید مودیان 🔑",
+        ["Moadian.Goods"] = "مدیریت کالا و خدمت مودیان",
+        ["Moadian.Units"] = "مدیریت واحدهای سنجش مودیان",
+        ["Moadian.Customers"] = "مدیریت مشتریان مودیان",
+        ["Moadian.InvoiceCreate"] = "ثبت صورتحساب جدید",
+        ["Moadian.InvoiceUpdate"] = "ویرایش، اصلاحی و ابطال صورتحساب",
+        ["Moadian.InvoiceDelete"] = "حذف صورتحساب ارسال‌نشده",
+        ["Moadian.InvoicePreview"] = "پیش‌نمایش JSON پیش از ارسال",
+        ["Moadian.InvoiceSend"] = "ارسال صورتحساب به سامانه مودیان",
+        ["Moadian.InvoiceStatus"] = "به‌روزرسانی وضعیت ارسال",
+        ["Moadian.InvoiceInquiry"] = "استعلام وضعیت و مشاهده خطاها",
         ["ItRequests.Manage"] = "مدیر IT (ارجاع و تایید)",
         ["ProjectCartable.Expert"] = "اتمام کارشناسی (تکمیل پروژه)",
         ["DocArchive.Manage"] = "مدیریت آرشیو (حذف و تغییر دسترسی‌ها)",
