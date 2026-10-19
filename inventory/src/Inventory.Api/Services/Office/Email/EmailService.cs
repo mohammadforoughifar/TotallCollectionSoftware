@@ -542,38 +542,61 @@ public class EmailService : IEmailService
         return sent.SentId;
     }
 
+    /// <summary>
+    /// ریشه‌های محتمل wwwroot — در استقرار ویندوز سرور ممکن است «ریشهٔ محتوا» بین
+    /// اجراها عوض شود (اجرا از پوشهٔ publish، Task Scheduler با CWD متفاوت، سرویس ویندوز)،
+    /// در حالی که پیوست‌ها در ریشهٔ قبلی ذخیره شده‌اند. برای اینکه دانلود پیوست‌های
+    /// قبلی با «پیوست پیدا نشد» شکست نخورد، همه ریشه‌های محتمل را — به ترتیب — می‌آزماییم.
+    /// فقط ریشه‌های موجود و بدون تکرار برمی‌گردد.
+    /// </summary>
+    private IEnumerable<string> WwwrootCandidates()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var raw = new List<string?>
+        {
+            _env.WebRootPath,
+            Path.Combine(_env.ContentRootPath, "wwwroot"),
+            Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+            Path.Combine(Directory.GetCurrentDirectory(), "wwwroot")
+        };
+        foreach (var r in raw)
+        {
+            if (string.IsNullOrWhiteSpace(r)) continue;
+            var full = Path.GetFullPath(r);
+            if (seen.Add(full) && Directory.Exists(full))
+                yield return full;
+        }
+    }
+
     private string? ResolveDiskPath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..")) return null;
 
-        var wwwroot = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
+        // انواع مسیر نسبی: خود مسیر + تبدیل دوطرفهٔ پوشهٔ قدیمی («فایل های ایمیل») و جدید
+        const string legacyPrefix = "فایل های ایمیل/";
+        const string modernPrefix = "uploads/office/email/";
+        var variants = new List<string> { clean };
+        if (clean.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
+            variants.Add(modernPrefix + clean[legacyPrefix.Length..]);
+        if (clean.StartsWith(modernPrefix, StringComparison.OrdinalIgnoreCase))
+            variants.Add(legacyPrefix + clean[modernPrefix.Length..]);
 
-        // 1. Direct path from wwwroot
-        var full = Path.GetFullPath(Path.Combine(wwwroot, clean));
-        if (full.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(full))
-            return full;
-
-        // 2. Legacy conversion: "فایل های ایمیل/..." -> "uploads/office/email/..."
-        if (clean.StartsWith("فایل های ایمیل/", StringComparison.OrdinalIgnoreCase))
+        // ۱) جستجوی مستقیم در «همهٔ» ریشه‌های محتمل و همهٔ انواع مسیر
+        foreach (var root in WwwrootCandidates())
+        foreach (var v in variants)
         {
-            var converted = "uploads/office/email/" + clean["فایل های ایمیل/".Length..];
-            var altFull = Path.GetFullPath(Path.Combine(wwwroot, converted));
-            if (altFull.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(altFull))
-                return altFull;
+            var full = Path.GetFullPath(Path.Combine(root, v));
+            if (full.StartsWith(root, StringComparison.Ordinal) && File.Exists(full))
+                return full;
         }
 
-        // 3. Reverse legacy conversion: "uploads/office/email/..." -> "فایل های ایمیل/..."
-        if (clean.StartsWith("uploads/office/email/", StringComparison.OrdinalIgnoreCase))
-        {
-            var converted = "فایل های ایمیل/" + clean["uploads/office/email/".Length..];
-            var altFull = Path.GetFullPath(Path.Combine(wwwroot, converted));
-            if (altFull.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(altFull))
-                return altFull;
-        }
-
-        return full.StartsWith(wwwroot, StringComparison.Ordinal) ? full : null;
+        // ۲) مسیر مجاز پیش‌فرض زیر ریشهٔ اصلی (قرارداد قبلی: حتی اگر فایل نباشد مسیر برگردد)
+        var primary = WwwrootCandidates().FirstOrDefault()
+                      ?? Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
+        var fallback = Path.GetFullPath(Path.Combine(primary, clean));
+        return fallback.StartsWith(primary, StringComparison.Ordinal) ? fallback : null;
     }
 
     private byte[]? ReadDiskFile(string? relativePath)
@@ -1363,12 +1386,21 @@ public class EmailService : IEmailService
             }
         }
         // در نسخه‌های قدیمی ممکن است FilePath یا نام پوشه با حروف متفاوت ذخیره شده باشد؛
-        // فقط داخل ریشهٔ امن پیوست‌ها جستجو می‌کنیم.
-        if ((full is null || !File.Exists(full)) && !string.IsNullOrWhiteSpace(a.AttachmentSavedName)
-            && Directory.Exists(AttachmentRoot))
+        // جستجوی بازگشتی — این‌بار در «همهٔ» ریشه‌های محتمل wwwroot و هر دو پوشهٔ
+        // قدیمی («فایل های ایمیل») و جدید، چون در استقرار ویندوز ریشه ممکن است جابه‌جا شده باشد.
+        if ((full is null || !File.Exists(full)) && !string.IsNullOrWhiteSpace(a.AttachmentSavedName))
         {
             var safe = SafeName(a.AttachmentSavedName);
-            full = Directory.EnumerateFiles(AttachmentRoot, safe, SearchOption.AllDirectories).FirstOrDefault();
+            var searchRoots = WwwrootCandidates()
+                .SelectMany(root => new[] { Path.Combine(root, AttachmentFolder), Path.Combine(root, "فایل های ایمیل") })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(Directory.Exists)
+                .ToList();
+            foreach (var dir in searchRoots)
+            {
+                full = Directory.EnumerateFiles(dir, safe, SearchOption.AllDirectories).FirstOrDefault();
+                if (full is not null) break;
+            }
         }
         if (full is null || !File.Exists(full)) return null;
         return await File.ReadAllBytesAsync(full);
