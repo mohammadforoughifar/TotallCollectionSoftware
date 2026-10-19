@@ -1,6 +1,7 @@
 @* اسکنر هوشمند موبایل — Camera + Crop + Enhance — 2025-10-09 *@
 @inject IJSRuntime JS
 @inject IToastService Toast
+@implements IAsyncDisposable
 
 <div class="doc-scanner" dir="rtl">
   <div class="d-flex justify-content-between align-items-center mb-2">
@@ -66,13 +67,15 @@
   private string mode = "auto";
   private string fileName = $"scan-{DateTime.Now:yyyyMMdd-HHmmss}.jpg";
   private DotNetObjectReference<DocSmartScanner>? selfRef;
+  private bool disposed;
 
   private async Task StartCamera()
   {
     isScanning = true;
     try
     {
-      selfRef = DotNetObjectReference.Create(this);
+      // یک مرجع برای همهٔ دورهای اسکن؛ ساخت مرجع تازه در هر شروع، مرجع قبلی را بی‌صاحب می‌کرد.
+      selfRef ??= DotNetObjectReference.Create(this);
       await JS.InvokeVoidAsync("smartScanner.start", videoId, overlayId, selfRef);
     }
     catch (Exception ex) { Toast.Error(ex.Message); isScanning = false; }
@@ -134,5 +137,12 @@
     await StopCamera();
     await OnClose.InvokeAsync();
   }
-  public async void Dispose() { try { await JS.InvokeVoidAsync("smartScanner.stop", videoId); } catch {} selfRef?.Dispose(); }
+  public async ValueTask DisposeAsync()
+  {
+      if (disposed) return;
+      disposed = true;
+      try { await JS.InvokeVoidAsync("smartScanner.stop", videoId); } catch { }
+      try { selfRef?.Dispose(); } catch { }
+      selfRef = null;
+  }
 }

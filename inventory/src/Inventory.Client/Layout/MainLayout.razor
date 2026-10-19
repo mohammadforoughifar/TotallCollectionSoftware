@@ -1381,7 +1381,10 @@ else
         Nav.LocationChanged -= OnLocationChanged;
         Rt.NotifyReceived -= OnRtNotify;
         Rt.DataChanged -= OnRtDataChanged;
-        selfRef?.Dispose();
+        // ابتدا شنوندهٔ تغییر اندازه در JS جدا می‌شود تا دیگر به مرجعِ در حال آزادشدن فراخوانی نکند.
+        try { _ = JS.InvokeVoidAsync("appShell.unwatch"); } catch { }
+        try { selfRef?.Dispose(); } catch { }
+        selfRef = null;
     }
 
     // ================== گارد مرکزی مسیرها بر اساس دسترسی‌های RBAC ==================

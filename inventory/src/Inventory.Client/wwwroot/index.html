@@ -11,7 +11,7 @@
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="stylesheet" href="css/bootstrap.min.css" />
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
-    <link rel="stylesheet" href="css/app.css?v=13" />
+    <link rel="stylesheet" href="css/app.css?v=14" />
     <link rel="stylesheet" href="css/letters.css?v=4" />
     <link rel="stylesheet" href="Inventory.Client.styles.css" />
     <link href="manifest.webmanifest" rel="manifest" />
@@ -345,13 +345,30 @@
             isMobile: function () {
                 return window.matchMedia('(max-width: 1279.98px)').matches;
             },
+            _watching: [],
             watch: function (ref) {
                 var mq = window.matchMedia('(max-width: 1279.98px)');
                 var handler = function () {
-                    try { ref.invokeMethodAsync('OnScreenChanged', mq.matches); } catch (e) { }
+                    // پس از Dispose، مرجع .NET آزاد شده و فراخوانی آن خطای
+                    // «no tracked object with id» در کنسول می‌دهد؛ پس با پرچم متوقف می‌شود.
+                    if (handler.stopped) return;
+                    try { ref.invokeMethodAsync('OnScreenChanged', mq.matches); } catch (e) { handler.stopped = true; }
                 };
                 if (mq.addEventListener) mq.addEventListener('change', handler);
                 else mq.addListener(handler);
+                window.appShell._watching.push({ mq: mq, handler: handler });
+            },
+            unwatch: function () {
+                var list = window.appShell._watching || [];
+                for (var i = 0; i < list.length; i++) {
+                    var w = list[i];
+                    w.handler.stopped = true;
+                    try {
+                        if (w.mq.removeEventListener) w.mq.removeEventListener('change', w.handler);
+                        else w.mq.removeListener(w.handler);
+                    } catch (e) { }
+                }
+                window.appShell._watching = [];
             }
         };
     </script>
@@ -615,13 +632,13 @@
     <script src="js/ui.js?v=10"></script>
     <script src="js/signature-pad.js"></script>
     <script src="js/smart-scanner.js"></script>
-    <script src="js/offline-docarchive.js?v=1"></script>
+    <script src="js/offline-docarchive.js?v=2"></script>
     <script src="js/project-interop.js?v=8"></script>
     <script src="js/push-notifications.js?v=4"></script>
     <script src="js/stocktaking.js"></script>
     <script src="js/file-preview.js?v=5"></script>
     <script src="js/dashboard.js?v=2"></script>
-    <script src="js/ai-voice.js?v=1"></script>
+    <script src="js/ai-voice.js?v=2"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
         // ثبت سرویس‌ورکر + به‌روزرسانی خودکار بعد از هر پابلیش:

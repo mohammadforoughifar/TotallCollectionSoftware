@@ -489,7 +489,11 @@
 
     public void Dispose()
     {
-        try { dotNetRef?.Dispose(); } catch { }
+        // ابتدا میکروفون و شنونده‌های گفتار جدا می‌شوند؛ وگرنه callback دیررسِ
+        // onend/onresult روی مرجع آزادشده اجرا می‌شود («no tracked object with id»).
+        try { _ = JS.InvokeVoidAsync("aiVoice.detach"); } catch { }
         try { _ = JS.InvokeVoidAsync("aiVoice.stopSpeak"); } catch { }
+        try { dotNetRef?.Dispose(); } catch { }
+        dotNetRef = null;
     }
 }

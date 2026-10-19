@@ -260,11 +260,15 @@ public class RepairService : IRepairService
         foreach (var i in dto.Items)
         {
             string? productName = null;
+            var cost = i.Cost;
             if (i.ProductId is > 0)
             {
                 var p = await _db.Products.FindAsync(i.ProductId)
                     ?? throw new InvalidOperationException("کالای مصرفی یافت نشد.");
                 productName = p.Name;
+                // اگر هزینهٔ قطعه خالی مانده باشد، بهای خرید کالا مبنا می‌شود تا
+                // گزارش «سود تعمیرات» هزینهٔ صفر و سودِ کاذب نشان ندهد.
+                if (cost <= 0 && p.PurchasePrice > 0) cost = p.PurchasePrice;
             }
 
             entity.Items.Add(new Db.RepairItem
@@ -272,7 +276,7 @@ public class RepairService : IRepairService
                 Description = string.IsNullOrWhiteSpace(i.Description) ? (productName ?? "") : i.Description.Trim(),
                 ProductId = i.ProductId is > 0 ? i.ProductId : null,
                 Quantity = i.Quantity,
-                Cost = i.Cost,
+                Cost = cost,
                 Price = i.Price,
                 CreatedAt = DateTime.Now
             });

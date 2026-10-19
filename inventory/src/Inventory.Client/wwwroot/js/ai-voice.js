@@ -49,6 +49,18 @@ window.aiVoice = (function () {
             try { if (rec && listening) rec.stop(); } catch (err) { }
             listening = false;
         },
+        // جداسازی کامل: پس از آزادشدن DotNetObjectReference (بستن/تغییر صفحه)
+        // رویدادهای onresult/onend دیگر نباید به .NET فراخوانی بزنند؛
+        // در غیر این صورت خطای «There is no tracked object with id …» ثبت می‌شود.
+        detach: function () {
+            listening = false;
+            if (!rec) return;
+            try { rec.abort(); } catch (err) { }
+            rec.onresult = null;
+            rec.onerror = null;
+            rec.onend = null;
+            rec = null;
+        },
         speak: function (text) {
             try {
                 if (!('speechSynthesis' in window)) return false;

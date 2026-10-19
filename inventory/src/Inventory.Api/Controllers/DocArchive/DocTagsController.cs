@@ -17,8 +17,14 @@ public class DocTagsController : RbacControllerBase
     private const string Mod = "DocArchive";
     private readonly IDocAccessService _access;
 
+    // ⚠️ دلیل خطای 500 روی GET api/doc-archive/tags: وجود دو سازندهٔ عمومی،
+    // ActivatorUtilities را با «Multiple constructors accepting all given argument types»
+    // متوقف می‌کرد و پاسخ 500 (بدون عبور از فیلتر خطای MVC) برمی‌گشت.
+    // با [ActivatorUtilitiesConstructor] سازندهٔ کامل صریحاً انتخاب می‌شود.
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public DocTagsController(AppDbContext db, IDocAccessService access) : base(db) { _access = access; }
-    // سازگاری با تست‌های قدیمی که فقط DbContext می‌دهند
+
+    /// <summary>سازگاری با تست‌های قدیمی که فقط DbContext می‌دهند (توسط DI استفاده نمی‌شود).</summary>
     public DocTagsController(AppDbContext db) : base(db) { _access = new Inventory.Api.Services.DocArchive.DocAccessService(db); }
 
     [HttpGet]

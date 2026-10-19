@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject IJSRuntime JS
 @inject IToastService Toast
 @inject IDocArchiveService Svc
@@ -36,31 +37,51 @@
         await Refresh();
     }
 
+    private bool disposed;
+    private readonly CancellationTokenSource pollCts = new();
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // وضعیت آنلاین/آفلاین و شمارندهٔ صف فقط برای همین نشانگر خوانده می‌شود؛
+            // شنونده‌های window حذف نمی‌شدند و بعد از بسته‌شدن صفحه هم اجرا می‌شدند.
             selfRef = DotNetObjectReference.Create(this);
-            try { await JS.InvokeVoidAsync("eval", "window.addEventListener('online', ()=> DotNet.invokeMethodAsync('Inventory.Client','DocOfflineStatus_OnlineChanged', true)); window.addEventListener('offline', ()=> DotNet.invokeMethodAsync('Inventory.Client','DocOfflineStatus_OnlineChanged', false)); window.addEventListener('doc-archive-queue-changed', e=> DotNet.invokeMethodAsync('Inventory.Client','DocOfflineStatus_QueueChanged', e.detail.count));"); } catch {}
-            // poll online status
-            Poll();
+            try { await JS.InvokeVoidAsync("docOfflineStatus.attach"); } catch { }
+            _ = PollAsync(pollCts.Token);
         }
     }
 
-    private async void Poll()
+    private async Task PollAsync(CancellationToken token)
     {
-        while (true)
+        try
         {
-            await Task.Delay(4000);
-            await Refresh();
+            while (!token.IsCancellationRequested && !disposed)
+            {
+                await Task.Delay(4000, token);
+                if (disposed || token.IsCancellationRequested) break;
+                await Refresh();
+            }
         }
+        catch (OperationCanceledException) { /* بستن صفحه */ }
     }
 
     private async Task Refresh()
     {
-        try { isOnline = await JS.InvokeAsync<bool>("eval", "navigator.onLine"); } catch {}
+        if (disposed) return;
+        try { isOnline = await JS.InvokeAsync<bool>("eval", "navigator.onLine"); } catch { }
         try { queueCount = await JS.InvokeAsync<int>("docArchiveQueueCount"); } catch { queueCount = 0; }
+        if (disposed) return;
         await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        try { pollCts.Cancel(); } catch { }
+        try { _ = JS.InvokeVoidAsync("docOfflineStatus.detach"); } catch { }
+        try { selfRef?.Dispose(); } catch { }
+        selfRef = null;
     }
 
     private async Task SyncNow()

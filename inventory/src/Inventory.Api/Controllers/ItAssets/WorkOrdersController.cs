@@ -29,10 +29,22 @@ public class WorkOrdersController : ControllerBase
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsLegacyAdmin => User.IsInRole("Admin");
 
+    // کلید زمینهٔ شرکت در HttpContext — همان کلیدی که میان‌افزار شرکت فعال (در صورت فعال بودن) پر می‌کند.
+    private const string CompanyItemKey = "ActiveCompanyId";
+    private const string CompanyHeaderName = "X-Company-Id";
+
+    /// <summary>
+    /// شناسهٔ شرکت فعال — ابتدا نتیجهٔ میان‌افزار شرکت فعال (که هدر درخواستی را با دسترسی‌های
+    /// کاربر اعتبارسنجی می‌کند) و در نبود آن، بررسی صریح هدر؛ مدیر قدیمی بدون ردیف دسترسی هم پذیرفته می‌شود.
+    /// </summary>
     private async Task<int?> ActiveCompanyIdAsync()
     {
-        if (!int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var id) || id <= 0) return null;
-        return await _db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id) ? id : null;
+        if (HttpContext.Items[CompanyItemKey] is int resolved)
+            return resolved > 0 ? resolved : null;
+
+        if (!int.TryParse(Request.Headers[CompanyHeaderName].FirstOrDefault(), out var id) || id <= 0)
+            return null;
+        return await _db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id) || IsLegacyAdmin ? id : null;
     }
 
     private async Task<string> MyDisplayNameAsync()
@@ -1186,19 +1198,30 @@ public class WorkOrdersController : ControllerBase
     // ================== داشبورد آماری ==================
 
     /// <summary>
-    /// آمار دستورهای کار مرتبط با کاربر جاری (دستوردهنده یا گیرنده).
-    /// کارت‌های KPI + توزیع اولویت + عملکرد گیرندگان + روند ۶ ماه اخیر (شمسی).
+    /// داشبورد آماری دستور کار — همیشه محدود به «شرکت فعال» است.
+    /// اگر کاربر مجوز «View» داشته باشد آمار کل دستورهای شرکت را می‌بیند؛
+    /// در غیر این صورت فقط دستورهایی که خودش صادر کرده یا به او محول شده است.
+    /// خروجی: کارت‌های KPI + توزیع وضعیت و اولویت + عملکرد گیرندگان + روند ۶ ماه شمسی.
     /// </summary>
     [HttpGet("stats")]
     public async Task<IActionResult> Stats()
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null)
+            return BadRequest(new { message = "شرکت فعال انتخاب نشده است. از منوی بالای صفحه یک شرکت انتخاب کنید." });
+
+        var canViewAll = await HasAsync("View");
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        var orders = await _db.WorkOrders.AsNoTracking()
-            .Where(w => w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))
-            .ToListAsync();
+
+        var query = _db.WorkOrders.AsNoTracking().Where(w => w.CompanyId == companyId.Value);
+        if (!canViewAll)
+            query = query.Where(w => w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id));
+
+        var orders = await query.ToListAsync();
         var ids = orders.Select(o => o.Id).ToList();
-        var asgs = await _db.WorkOrderAssignees.AsNoTracking()
-            .Where(a => ids.Contains(a.OrderId)).ToListAsync();
+        var asgs = ids.Count == 0
+            ? new List<WorkOrderAssignee>()
+            : await _db.WorkOrderAssignees.AsNoTracking().Where(a => ids.Contains(a.OrderId)).ToListAsync();
 
         var now = DateTime.Now;
 
@@ -1225,6 +1248,7 @@ public class WorkOrdersController : ControllerBase
         var doneOnTime = orders.Count(o => tones[o.Id] == "ontime");
         var doneLate = orders.Count(o => tones[o.Id] == "latedone");
         var closedNoDone = orders.Count(o => tones[o.Id] == "closednodone");
+        var pendingReply = asgs.Count(a => a.RepliedAt == null);
 
         // توزیع اولویت دستورهای باز
         var byPriority = orders.Where(o => o.Status == "Open")
@@ -1232,10 +1256,12 @@ public class WorkOrdersController : ControllerBase
             .Select(g => new { Priority = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Priority).ToList();
 
-        // عملکرد گیرندگان — فقط دستورهایی که «من» داده‌ام (برای مدیر معنا دارد)
-        var mineIds = orders.Where(o => o.OwnerUserId == MyUserId).Select(o => o.Id).ToHashSet();
-        var dueMap = orders.Where(o => mineIds.Contains(o.Id)).ToDictionary(o => o.Id, o => o.DueAt);
-        var perAssignee = asgs.Where(a => mineIds.Contains(a.OrderId) && a.UserId != MyUserId)
+        // عملکرد گیرندگان
+        // • مدیر (View): همهٔ گیرندگان دستورهای شرکت
+        // • کاربر عادی: فقط دستورهایی که خودش صادر کرده است
+        var scopeIds = (canViewAll ? orders : orders.Where(o => o.OwnerUserId == MyUserId)).Select(o => o.Id).ToHashSet();
+        var dueMap = orders.Where(o => scopeIds.Contains(o.Id)).ToDictionary(o => o.Id, o => o.DueAt);
+        var perAssignee = asgs.Where(a => scopeIds.Contains(a.OrderId))
             .GroupBy(a => new { a.UserId, a.Name })
             .Select(g => new
             {
@@ -1249,7 +1275,7 @@ public class WorkOrdersController : ControllerBase
             })
             .OrderByDescending(x => x.Total).Take(15).ToList();
 
-        // روند ۶ ماه اخیر شمسی — تعداد ایجادشده / انجام به‌موقع / انجام با تاخیر
+        // روند ۶ ماه اخیر شمسی — ایجادشده / انجام به‌موقع / انجام با تاخیر / بستهٔ بی‌نتیجه
         var pc = new PersianCalendar();
         var months = new List<object>();
         for (var i = 5; i >= 0; i--)
@@ -1264,14 +1290,35 @@ public class WorkOrdersController : ControllerBase
                 Created = monthOrders.Count,
                 OnTime = monthOrders.Count(o => tones[o.Id] == "ontime"),
                 Late = monthOrders.Count(o => tones[o.Id] == "latedone"),
-                NotDone = monthOrders.Count(o => tones[o.Id] is "late" or "closednodone")
+                NotDone = monthOrders.Count(o => tones[o.Id] == "closednodone"),
+                Open = monthOrders.Count(o => tones[o.Id] is "open" or "late")
             });
         }
 
         return Ok(new
         {
-            Cards = new { Total = orders.Count, Open = open, Overdue = overdue, DueToday = dueToday, DoneOnTime = doneOnTime, DoneLate = doneLate, ClosedNoDone = closedNoDone },
+            Scope = canViewAll ? "company" : "personal",
+            CompanyId = companyId.Value,
+            Cards = new
+            {
+                Total = orders.Count,
+                Open = open,
+                Overdue = overdue,
+                DueToday = dueToday,
+                DoneOnTime = doneOnTime,
+                DoneLate = doneLate,
+                ClosedNoDone = closedNoDone,
+                PendingReply = pendingReply
+            },
             ByPriority = byPriority,
+            ByStatus = new
+            {
+                Open = open,
+                OverdueOpen = overdue,
+                OnTime = doneOnTime,
+                LateDone = doneLate,
+                ClosedNoDone = closedNoDone
+            },
             PerAssignee = perAssignee,
             Months = months
         });

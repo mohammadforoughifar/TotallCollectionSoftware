@@ -33,239 +33,252 @@
 
 @if (showRepairReports)
 {
-    <section class="card mb-3">
-        <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-clipboard-data text-primary"></i>
-            <span class="card-title">گزارش تعمیرات</span>
+    <section class="card rr-panel mb-3">
+        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+            <i class="bi bi-graph-up-arrow text-primary"></i>
+            <span class="card-title mb-0">گزارش تعمیرات</span>
+            @if (repairReport is not null)
+            {
+                <span class="badge bg-soft-primary text-primary rr-range-chip">
+                    <i class="bi bi-calendar3"></i> @ReportRangeLabel()
+                </span>
+            }
             <button class="btn btn-sm btn-light me-auto" @onclick="ToggleRepairReports" title="بستن گزارش">
                 <i class="bi bi-x-lg"></i>
             </button>
         </div>
         <div class="card-body">
-            <div class="row g-2 align-items-end mb-3">
-                <div class="col-6 col-lg-3">
+            <div class="rr-filters">
+                <div class="rr-filter">
                     <label class="form-label">از تاریخ</label>
                     <DatePicker @bind-Value="reportFrom" AllowClear="true" />
                 </div>
-                <div class="col-6 col-lg-3">
+                <div class="rr-filter">
                     <label class="form-label">تا تاریخ</label>
                     <DatePicker @bind-Value="reportTo" AllowClear="true" />
                 </div>
-                <div class="col-12 col-lg-3">
-                    <button class="btn btn-primary w-100" @onclick="LoadRepairReport" disabled="@reportLoading">
-                        @if (reportLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                        <i class="bi bi-arrow-repeat"></i> بروزرسانی گزارش
-                    </button>
+                <div class="rr-presets btn-group btn-group-sm" role="group" aria-label="بازه‌های آماده">
+                    <button class="btn btn-outline-secondary" @onclick="() => SetReportPreset(7)">۷ روز</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => SetReportPreset(30)">۳۰ روز</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => SetReportPreset(90)">۹۰ روز</button>
+                    <button class="btn btn-outline-secondary" @onclick="() => SetReportPreset(0)">ماه جاری</button>
                 </div>
+                <button class="btn btn-primary rr-refresh" @onclick="LoadRepairReport" disabled="@reportLoading">
+                    @if (reportLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                    <i class="bi bi-arrow-repeat"></i> بروزرسانی گزارش
+                </button>
             </div>
 
             @if (reportLoading && repairReport is null)
             {
-                <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div>
+                    <div class="text-muted fs-8 mt-2">در حال محاسبهٔ گزارش…</div></div>
             }
             else if (repairReport is null)
             {
-                <div class="empty-state py-3"><i class="bi bi-exclamation-circle"></i><h5>گزارش بارگذاری نشد</h5></div>
+                <div class="empty-state py-4"><i class="bi bi-exclamation-circle"></i><h5>گزارش بارگذاری نشد</h5>
+                    <button class="btn btn-sm btn-outline-primary mt-2" @onclick="LoadRepairReport">تلاش دوباره</button></div>
             }
             else
             {
-                <div class="row g-3 mb-3">
-                    <div class="col-6 col-xl-3">
-                        <div class="stat-card">
-                            <div class="stat-icon bg-soft-info"><i class="bi bi-tools text-info"></i></div>
-                            <div><div class="stat-label">کل پذیرش‌های بازه</div><div class="stat-value num">@repairReport.RepairCount.Num()</div></div>
+                @* ---------- شاخص‌های کلیدی ---------- *@
+                <div class="rr-kpis">
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon rr-ic-blue"><i class="bi bi-inbox"></i></span>
+                        <div><div class="rr-kpi-num num">@repairReport.RepairCount.Num()</div><div class="rr-kpi-lbl">پذیرش در بازه</div></div>
+                    </div>
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon rr-ic-green"><i class="bi bi-box-seam"></i></span>
+                        <div><div class="rr-kpi-num num">@repairReport.DeliveredRepairCount.Num()</div><div class="rr-kpi-lbl">تحویل در بازه</div></div>
+                    </div>
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon rr-ic-amber"><i class="bi bi-hourglass-split"></i></span>
+                        <div><div class="rr-kpi-num num">@repairReport.OpenRepairCount.Num()</div><div class="rr-kpi-lbl">باز در حال حاضر</div></div>
+                    </div>
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon rr-ic-red"><i class="bi bi-x-octagon"></i></span>
+                        <div><div class="rr-kpi-num num">@repairReport.CancelledRepairCount.Num()</div><div class="rr-kpi-lbl">انصراف در بازه</div></div>
+                    </div>
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon rr-ic-cyan"><i class="bi bi-stopwatch"></i></span>
+                        <div>
+                            <div class="rr-kpi-num num">
+                                @if (repairReport.AverageRepairTurnaroundDays is decimal avgDays) { @avgDays.Qty()<span class="rr-unit">روز</span> }
+                                else { <span>—</span> }
+                            </div>
+                            <div class="rr-kpi-lbl">میانگین زمان تحویل</div>
                         </div>
                     </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="stat-card">
-                            <div class="stat-icon bg-soft-warning"><i class="bi bi-hourglass-split text-warning"></i></div>
-                            <div><div class="stat-label">کارهای باز فعلی</div><div class="stat-value num">@repairReport.OpenRepairCount.Num()</div></div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="stat-card">
-                            <div class="stat-icon bg-soft-success"><i class="bi bi-check2-circle text-success"></i></div>
-                            <div><div class="stat-label">تحویل‌شده در بازه</div><div class="stat-value num">@repairReport.DeliveredRepairCount.Num()</div></div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="stat-card">
-                            <div class="stat-icon bg-soft-danger"><i class="bi bi-x-circle text-danger"></i></div>
-                            <div><div class="stat-label">انصرافی‌های بازه</div><div class="stat-value num">@repairReport.CancelledRepairCount.Num()</div></div>
+                    <div class="rr-kpi">
+                        <span class="rr-kpi-icon @(repairReport.RepairProfit >= 0 ? "rr-ic-green" : "rr-ic-red")"><i class="bi bi-cash-coin"></i></span>
+                        <div>
+                            <div class="rr-kpi-num num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</div>
+                            <div class="rr-kpi-lbl">سود تعمیرات تحویل‌شده</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="d-flex flex-column gap-3">
-                    <section class="card">
-                        <div class="card-header d-flex align-items-center gap-2">
-                            <i class="bi bi-wrench-adjustable text-warning"></i>
-                            <span class="card-title">وضعیت کارهای باز</span>
-                            <span class="badge bg-primary me-auto">@repairReport.OpenRepairCount.Num() باز</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-info"><i class="bi bi-inbox text-info"></i></div>
-                                        <div><div class="stat-label">پذیرش‌شده</div><div class="stat-value num">@repairReport.OpenReceivedCount.Num()</div></div>
-                                    </div>
-                                </div>
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-warning"><i class="bi bi-tools text-warning"></i></div>
-                                        <div><div class="stat-label">در حال تعمیر</div><div class="stat-value num">@repairReport.OpenInProgressCount.Num()</div></div>
-                                    </div>
-                                </div>
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-success"><i class="bi bi-box-seam text-success"></i></div>
-                                        <div><div class="stat-label">آمادهٔ تحویل</div><div class="stat-value num">@repairReport.OpenReadyCount.Num()</div></div>
-                                    </div>
-                                </div>
+                <div class="row g-3">
+                    @* ---------- وضعیت کارهای باز ---------- *@
+                    <div class="col-12 col-xl-4">
+                        <div class="card h-100 rr-card">
+                            <div class="card-header">
+                                <i class="bi bi-wrench-adjustable text-warning"></i>
+                                <span class="card-title">وضعیت کارهای باز</span>
+                                <span class="badge bg-soft-warning text-warning me-auto">@repairReport.OpenRepairCount.Num() مورد</span>
                             </div>
-                            <hr class="my-3" />
-                            <div class="small text-muted mb-2">سن پذیرش‌های باز فعلی</div>
-                            <div class="row g-3">
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-info"><i class="bi bi-clock text-info"></i></div>
-                                        <div><div class="stat-label">۰ تا ۳ روز</div><div class="stat-value num">@repairReport.OpenAge0To3DaysCount.Num()</div></div>
-                                    </div>
-                                </div>
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-warning"><i class="bi bi-clock-history text-warning"></i></div>
-                                        <div><div class="stat-label">۴ تا ۷ روز</div><div class="stat-value num">@repairReport.OpenAge4To7DaysCount.Num()</div></div>
-                                    </div>
-                                </div>
-                                <div class="col-6 col-lg-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-danger"><i class="bi bi-exclamation-triangle text-danger"></i></div>
-                                        <div><div class="stat-label">بیش از ۷ روز</div><div class="stat-value num text-danger">@repairReport.OpenAgeOver7DaysCount.Num()</div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="card">
-                        <div class="card-header">
-                            <i class="bi bi-speedometer2 text-info"></i>
-                            <span class="card-title">سرعت تحویل</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3 align-items-center">
-                                <div class="col-12 col-md-4">
-                                    <div class="stat-card">
-                                        <div class="stat-icon bg-soft-info"><i class="bi bi-calendar2-check text-info"></i></div>
-                                        <div>
-                                            <div class="stat-label">میانگین زمان از پذیرش تا تحویل</div>
-                                            @if (repairReport.AverageRepairTurnaroundDays is decimal averageDays)
-                                            {
-                                                <div class="stat-value num">@averageDays.Qty() روز</div>
-                                            }
-                                            else
-                                            {
-                                                <div class="stat-value">—</div>
-                                            }
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-12 col-md-8">
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="card">
-                        <div class="card-header">
-                            <i class="bi bi-graph-up-arrow text-warning"></i>
-                            <span class="card-title">روند دوره‌ای درآمد، هزینه و سود تعمیرات</span>
-                        </div>
-                        <div class="card-body">
-                            @{ var repairTrend = repairReport.Trend.Where(p => p.RepairRevenue != 0 || p.RepairCost != 0).ToList(); }
-                            @if (repairTrend.Count == 0)
-                            {
-                                <div class="empty-state py-3"><i class="bi bi-bar-chart"></i><h5>در این بازه اطلاعات مالی تحویل ثبت نشده است</h5></div>
-                            }
-                            else
-                            {
-                                var maxRepairFinance = repairTrend.SelectMany(p => new[] { p.RepairRevenue, p.RepairCost, Math.Abs(p.RepairProfit) }).DefaultIfEmpty(0m).Max();
-                                <div class="d-flex flex-column gap-3">
-                                    @foreach (var point in repairTrend)
-                                    {
-                                        <div class="border rounded p-3">
-                                            <div class="d-flex justify-content-between gap-2 mb-2">
-                                                <strong>@point.Label</strong>
-                                                <span class="small @(point.RepairProfit >= 0 ? "text-success" : "text-danger")">سود: <b class="num">@point.RepairProfit.Money()</b></span>
-                                            </div>
-                                            <div class="d-flex flex-column gap-2">
-                                                <div>
-                                                    <div class="d-flex justify-content-between mb-1"><span class="small">درآمد</span><b class="small num">@point.RepairRevenue.Money()</b></div>
-                                                    <div class="progress" style="height:7px"><div class="progress-bar bg-primary" role="progressbar" style="@RepairReportBar(point.RepairRevenue, maxRepairFinance)"></div></div>
-                                                </div>
-                                                <div>
-                                                    <div class="d-flex justify-content-between mb-1"><span class="small">هزینهٔ کل</span><b class="small num">@point.RepairCost.Money()</b></div>
-                                                    <div class="progress" style="height:7px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(point.RepairCost, maxRepairFinance)"></div></div>
-                                                </div>
-                                                <div>
-                                                    <div class="d-flex justify-content-between mb-1"><span class="small">سود</span><b class="small num @(point.RepairProfit >= 0 ? "text-success" : "text-danger")">@point.RepairProfit.Money()</b></div>
-                                                    <div class="progress" style="height:7px"><div class="progress-bar @(point.RepairProfit >= 0 ? "bg-success" : "bg-danger")" role="progressbar" style="@RepairReportBar(Math.Abs(point.RepairProfit), maxRepairFinance)"></div></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    </section>
-
-                    <section class="card">
-                        <div class="card-header">
-                            <i class="bi bi-cash-coin text-primary"></i>
-                            <span class="card-title">جزئیات درآمد، هزینه و سود تعمیرات تحویل‌شده</span>
-                        </div>
-                        <div class="card-body">
-                            @{
-                                var financeMax = new[]
+                            <div class="card-body">
+                                @if (repairReport.OpenRepairCount == 0)
                                 {
-                                    repairReport.RepairRevenue,
-                                    repairReport.RepairPartsCost,
-                                    repairReport.RepairLaborCost,
-                                    repairReport.RepairCost,
-                                    Math.Abs(repairReport.RepairProfit)
-                                }.Max();
-                            }
-                            <div class="repair-finance-chart" role="img" aria-label="نمودار عمودی درآمد، هزینه و سود تعمیرات تحویل‌شده">
-                                <div class="repair-finance-col">
-                                    <div class="repair-finance-value num text-primary">@repairReport.RepairRevenue.Money()</div>
-                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-primary" style="@RepairReportBarHeight(repairReport.RepairRevenue, financeMax)"></div></div>
-                                    <div class="repair-finance-label">درآمد از مشتری</div>
-                                </div>
-                                <div class="repair-finance-col">
-                                    <div class="repair-finance-value num text-danger">@repairReport.RepairPartsCost.Money()</div>
-                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairPartsCost, financeMax)"></div></div>
-                                    <div class="repair-finance-label">هزینهٔ قطعات</div>
-                                </div>
-                                <div class="repair-finance-col">
-                                    <div class="repair-finance-value num text-danger">@repairReport.RepairLaborCost.Money()</div>
-                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairLaborCost, financeMax)"></div></div>
-                                    <div class="repair-finance-label">هزینهٔ دستمزد/خدمات</div>
-                                </div>
-                                <div class="repair-finance-col">
-                                    <div class="repair-finance-value num text-danger">@repairReport.RepairCost.Money()</div>
-                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairCost, financeMax)"></div></div>
-                                    <div class="repair-finance-label">جمع هزینه‌ها</div>
-                                </div>
-                                <div class="repair-finance-col">
-                                    <div class="repair-finance-value num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</div>
-                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar @(repairReport.RepairProfit >= 0 ? "bg-success" : "bg-danger")" style="@RepairReportBarHeight(Math.Abs(repairReport.RepairProfit), financeMax)"></div></div>
-                                    <div class="repair-finance-label">سود خالص تعمیر</div>
-                                </div>
+                                    <div class="text-muted fs-8 text-center py-4">در حال حاضر کار بازی وجود ندارد</div>
+                                }
+                                else
+                                {
+                                    <div class="d-flex align-items-center gap-4 flex-wrap">
+                                        <div class="rr-donut" style="@OpenRepairDonutStyle()" role="img" aria-label="نمودار وضعیت کارهای باز">
+                                            <div class="rr-donut-hole">
+                                                <div class="rr-donut-num num">@repairReport.OpenRepairCount.Num()</div>
+                                                <div class="rr-donut-cap">باز</div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-grow-1 d-flex flex-column gap-2">
+                                            <div class="rr-legend"><i class="rr-dot" style="background:#3b82f6"></i> پذیرش‌شده
+                                                <span class="ms-auto num fw-700">@repairReport.OpenReceivedCount.Num()</span></div>
+                                            <div class="rr-legend"><i class="rr-dot" style="background:#f59e0b"></i> در حال تعمیر
+                                                <span class="ms-auto num fw-700">@repairReport.OpenInProgressCount.Num()</span></div>
+                                            <div class="rr-legend"><i class="rr-dot" style="background:#22c55e"></i> آمادهٔ تحویل
+                                                <span class="ms-auto num fw-700">@repairReport.OpenReadyCount.Num()</span></div>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         </div>
-                    </section>
+                    </div>
+
+                    @* ---------- سن کارهای باز ---------- *@
+                    <div class="col-12 col-xl-4">
+                        <div class="card h-100 rr-card">
+                            <div class="card-header">
+                                <i class="bi bi-clock-history text-info"></i>
+                                <span class="card-title">سن پذیرش‌های باز</span>
+                            </div>
+                            <div class="card-body">
+                                @{ var openTotal = Math.Max(1, repairReport.OpenRepairCount); }
+                                @foreach (var bucket in new[]
+                                {
+                                    (Label: "۰ تا ۳ روز", Count: repairReport.OpenAge0To3DaysCount, Color: "#22c55e"),
+                                    (Label: "۴ تا ۷ روز", Count: repairReport.OpenAge4To7DaysCount, Color: "#f59e0b"),
+                                    (Label: "بیش از ۷ روز", Count: repairReport.OpenAgeOver7DaysCount, Color: "#ef4444")
+                                })
+                                {
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <span class="fs-8">@bucket.Label</span>
+                                            <span class="fs-8 num"><b>@bucket.Count.Num()</b> <span class="text-muted">(@((bucket.Count * 100 / openTotal)).Num()٪)</span></span>
+                                        </div>
+                                        <div class="rr-track">
+                                            <div class="rr-track-fill" style="width:@RrPct(bucket.Count, openTotal)%;background:@bucket.Color"></div>
+                                        </div>
+                                    </div>
+                                }
+                                <div class="rr-note mt-2"><i class="bi bi-info-circle"></i> این بخش مستقل از بازهٔ تاریخ است و کارهای معوق قدیمی را هم نشان می‌دهد.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- جمع‌بندی مالی ---------- *@
+                    <div class="col-12 col-xl-4">
+                        <div class="card h-100 rr-card">
+                            <div class="card-header">
+                                <i class="bi bi-cash-stack text-success"></i>
+                                <span class="card-title">جمع‌بندی مالی بازه</span>
+                            </div>
+                            <div class="card-body">
+                                @{
+                                    var finMax = new[] { repairReport.RepairRevenue, repairReport.RepairPartsCost, repairReport.RepairLaborCost, repairReport.RepairCost, Math.Abs(repairReport.RepairProfit) }.Max();
+                                    if (finMax <= 0) { finMax = 1; }
+                                    var margin = repairReport.RepairRevenue <= 0 ? 0d : (double)(repairReport.RepairProfit / repairReport.RepairRevenue) * 100d;
+                                }
+                                <div class="repair-finance-chart" role="img" aria-label="نمودار جمع درآمد، هزینهٔ قطعات، دستمزد، جمع هزینه‌ها و سود">
+                                    <div class="repair-finance-col">
+                                        <div class="repair-finance-value num text-primary">@repairReport.RepairRevenue.Money()</div>
+                                        <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-primary" style="@RepairReportBarHeight(repairReport.RepairRevenue, finMax)"></div></div>
+                                        <div class="repair-finance-label">درآمد</div>
+                                    </div>
+                                    <div class="repair-finance-col">
+                                        <div class="repair-finance-value num text-danger">@repairReport.RepairPartsCost.Money()</div>
+                                        <div class="repair-finance-bar-wrap"><div class="repair-finance-bar" style="background:#f97316;@RepairReportBarHeight(repairReport.RepairPartsCost, finMax)"></div></div>
+                                        <div class="repair-finance-label">قطعات</div>
+                                    </div>
+                                    <div class="repair-finance-col">
+                                        <div class="repair-finance-value num text-danger">@repairReport.RepairLaborCost.Money()</div>
+                                        <div class="repair-finance-bar-wrap"><div class="repair-finance-bar" style="background:#eab308;@RepairReportBarHeight(repairReport.RepairLaborCost, finMax)"></div></div>
+                                        <div class="repair-finance-label">دستمزد</div>
+                                    </div>
+                                    <div class="repair-finance-col">
+                                        <div class="repair-finance-value num text-danger">@repairReport.RepairCost.Money()</div>
+                                        <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairCost, finMax)"></div></div>
+                                        <div class="repair-finance-label">جمع هزینه</div>
+                                    </div>
+                                    <div class="repair-finance-col">
+                                        <div class="repair-finance-value num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</div>
+                                        <div class="repair-finance-bar-wrap"><div class="repair-finance-bar @(repairReport.RepairProfit >= 0 ? "bg-success" : "bg-danger")" style="@RepairReportBarHeight(Math.Abs(repairReport.RepairProfit), finMax)"></div></div>
+                                        <div class="repair-finance-label">سود</div>
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                                    <span class="fs-8 text-muted">حاشیهٔ سود</span>
+                                    <span class="fw-800 num @(margin >= 0 ? "text-success" : "text-danger")">@margin.ToString("N1")٪</span>
+                                </div>
+                                <div class="rr-note mt-2"><i class="bi bi-info-circle"></i> مبنا: فقط تعمیرات <b>تحویل‌شده</b> در بازه؛ هزینه بر اساس بهای ثبت‌شدهٔ اقلام هنگام پذیرش است.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- روند دوره‌ای ---------- *@
+                    <div class="col-12">
+                        <div class="card rr-card">
+                            <div class="card-header">
+                                <i class="bi bi-bar-chart-line text-primary"></i>
+                                <span class="card-title">روند درآمد، هزینه و سود</span>
+                                @{ var repairTrend = repairReport.Trend.Where(p => p.RepairRevenue != 0 || p.RepairCost != 0).ToList(); }
+                                <span class="badge bg-light text-muted me-auto">@repairTrend.Count.Num() دوره</span>
+                            </div>
+                            <div class="card-body">
+                                @if (repairTrend.Count == 0)
+                                {
+                                    <div class="empty-state py-4"><i class="bi bi-bar-chart"></i><h5>در این بازه تعمیر تحویل‌شده‌ای ثبت نشده است</h5>
+                                        <div class="text-muted fs-8">برای مشاهدهٔ نمودار، بازهٔ تاریخ را گسترده‌تر کنید.</div></div>
+                                }
+                                else
+                                {
+                                    var trendMax = repairTrend.SelectMany(p => new[] { p.RepairRevenue, p.RepairCost, Math.Abs(p.RepairProfit) }).DefaultIfEmpty(0m).Max();
+                                    if (trendMax <= 0) { trendMax = 1; }
+                                    var step = repairTrend.Count > 18 ? 5 : repairTrend.Count > 10 ? 3 : 1;
+                                    <div class="rr-trend" role="img" aria-label="نمودار روند درآمد، هزینه و سود تعمیرات">
+                                        @for (var i = 0; i < repairTrend.Count; i++)
+                                        {
+                                            var point = repairTrend[i];
+                                            var showLabel = i % step == 0 || i == repairTrend.Count - 1;
+                                            <div class="rr-trend-col" title="@point.Label — درآمد: @point.RepairRevenue.Money() | هزینه: @point.RepairCost.Money() | سود: @point.RepairProfit.Money()">
+                                                <div class="rr-trend-bars">
+                                                    <div class="rr-tb rr-tb-rev" style="@RepairReportBarHeight(point.RepairRevenue, trendMax)"></div>
+                                                    <div class="rr-tb rr-tb-cost" style="@RepairReportBarHeight(point.RepairCost, trendMax)"></div>
+                                                    <div class="rr-tb @(point.RepairProfit >= 0 ? "rr-tb-profit" : "rr-tb-loss")" style="@RepairReportBarHeight(Math.Abs(point.RepairProfit), trendMax)"></div>
+                                                </div>
+                                                <div class="rr-trend-x">@(showLabel ? point.Label : "")</div>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="rr-legend-row">
+                                        <span><i class="rr-dot" style="background:#3b82f6"></i> درآمد</span>
+                                        <span><i class="rr-dot" style="background:#ef4444"></i> هزینه</span>
+                                        <span><i class="rr-dot" style="background:#22c55e"></i> سود</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
                 </div>
             }
         </div>
@@ -956,9 +969,9 @@
     </Footer>
 </Modal>
 
-<QuickBankModal Visible="showQuickBank"
-                OnClose="() => showQuickBank = false"
-                OnCreated="OnQuickBankCreated" />
+<QuickBankModal @bind-Visible="showQuickBank"
+                DefaultKind="quickBankDefaultKind"
+                OnAccountCreated="OnQuickBankCreated" />
 
 @* ---------------- تعریف سریع مشتری ---------------- *@
 <Modal Visible="showNewCustomer" Title="مشتری جدید" OnClose="() => showNewCustomer = false">
@@ -1084,6 +1097,8 @@
     }
 
     private bool loading = true, saving, showForm, showTechs;
+    /// <summary>نوع پیش‌فرض حساب در فرم تعریف سریع بانک (این صفحه همیشه بانک/کارت‌خوان لازم دارد)</summary>
+    private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
     private bool showRepairReports, reportLoading;
     private OperationsDashboardDto? repairReport;
     private DateTime? reportFrom = DateTime.Today.AddDays(-30);
@@ -1150,6 +1165,62 @@
     {
         var pct = max <= 0m ? 0d : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
         return $"height:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    /// <summary>عرض نوار افقی (درصد) برای نوارهای سن/توزیع.</summary>
+    private static int RrPct(int value, int max)
+        => max <= 0 || value <= 0 ? 0 : (int)Math.Round(Math.Min(100, value * 100.0 / max));
+
+    /// <summary>برچسب بازهٔ گزارش (شمسی) برای نمایش در هدر.</summary>
+    private string ReportRangeLabel()
+    {
+        var from = reportFrom is { } f ? PersianDate.ToShortFa(f) : "ابتدا";
+        var to = reportTo is { } t ? PersianDate.ToShortFa(t) : "امروز";
+        return $"{from} تا {to}";
+    }
+
+    /// <summary>تعیین سریع بازهٔ گزارش؛ ۰ یعنی «ماه جاری میلادی/شمسی از اول ماه».</summary>
+    private async Task SetReportPreset(int days)
+    {
+        if (days <= 0)
+        {
+            var today = DateTime.Today;
+            var pc = new System.Globalization.PersianCalendar();
+            var start = pc.ToDateTime(pc.GetYear(today), pc.GetMonth(today), 1, 0, 0, 0, 0);
+            reportFrom = start;
+            reportTo = today;
+        }
+        else
+        {
+            reportTo = DateTime.Today;
+            reportFrom = DateTime.Today.AddDays(-days);
+        }
+        await LoadRepairReport();
+    }
+
+    /// <summary>گرادیان مخروطی دونات وضعیت کارهای باز.</summary>
+    private string OpenRepairDonutStyle()
+    {
+        if (repairReport is null) return "background:#e2e8f0";
+        var parts = new (int Value, string Color)[]
+        {
+            (repairReport.OpenReceivedCount, "#3b82f6"),
+            (repairReport.OpenInProgressCount, "#f59e0b"),
+            (repairReport.OpenReadyCount, "#22c55e")
+        };
+        var total = parts.Sum(p => p.Value);
+        if (total <= 0) return "background:#e2e8f0";
+        var sb = new System.Text.StringBuilder("background:conic-gradient(");
+        double acc = 0;
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var from = acc;
+            acc += parts[i].Value * 100.0 / total;
+            sb.Append(FormattableString.Invariant($"{parts[i].Color} {from:0.##}% {acc:0.##}%"));
+            if (i < parts.Length - 1) sb.Append(',');
+        }
+        sb.Append(')');
+        return sb.ToString();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
