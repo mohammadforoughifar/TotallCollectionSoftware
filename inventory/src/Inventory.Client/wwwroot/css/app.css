@@ -3781,3 +3781,39 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     .mi-detail .mi-push-end { margin-inline-start: 0; }
     .mi-detail .mi-moneyfoot { flex-direction: column; align-items: flex-start; gap: .25rem; }
 }
+
+/* ---------- مودیان: کارت مشتری در صفحهٔ جزئیات ---------- */
+.mi-detail .mi-customer { display: flex; flex-direction: column; }
+.mi-detail .mi-customer-id {
+    display: flex; align-items: center; gap: .7rem;
+    padding: .85rem 1.15rem; border-bottom: 1px solid #f4f7fb;
+}
+.mi-detail .mi-avatar {
+    width: 38px; height: 38px; flex: none; border-radius: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--primary-50); color: var(--primary); font-size: 1.05rem;
+}
+.mi-detail .mi-customer-main { min-width: 0; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.mi-detail .mi-customer-name {
+    font-size: .93rem; font-weight: 700; color: #1e293b; overflow-wrap: anywhere;
+}
+.mi-detail .mi-type-badge {
+    font-size: .68rem; font-weight: 700; border-radius: 999px; padding: .1rem .55rem;
+    border: 1px solid transparent; white-space: nowrap;
+}
+.mi-detail .mi-type-badge.real { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
+.mi-detail .mi-type-badge.legal { background: var(--primary-50); color: var(--primary-600); border-color: var(--primary-100); }
+/* کارت مشتری به‌صورت فهرست «برچسب — مقدار» در یک خط (کوتاه‌تر و خواناتر) */
+.mi-detail .mi-kv-tight .mi-kv-row {
+    flex-direction: row; align-items: center; justify-content: space-between;
+    gap: .75rem; padding: .4rem 1.15rem; min-height: 34px;
+}
+.mi-detail .mi-kv-tight .mi-kv-row > .mi-kv-lbl { flex: none; white-space: nowrap; }
+.mi-detail .mi-kv-tight .mi-kv-val { font-size: .85rem; text-align: end; min-width: 0; }
+.mi-detail .mi-kv-tight .mi-kv-row > .mi-codechip {
+    width: auto; max-width: 65%; padding: .2rem .5rem; font-size: .74rem; gap: .35rem;
+}
+.mi-detail .mi-kv-tight .mi-kv-row.wrap-row { flex-wrap: wrap; }
+.mi-detail .mi-kv-tight .mi-kv-row.wrap-row .mi-kv-val { flex: 1 1 100%; text-align: start; }
+.mi-detail .mi-link { color: var(--primary-600); text-decoration: none; unicode-bidi: plaintext; }
+.mi-detail .mi-link:hover { text-decoration: underline; }

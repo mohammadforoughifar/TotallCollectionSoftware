@@ -245,8 +245,69 @@ else
             </section>
         </div>
 
-        @* ---------- اطلاعات و شناسه‌ها ---------- *@
-        <div class="col-lg-4">
+        @* ---------- ستون کناری: مشتری + اطلاعات صورتحساب ---------- *@
+        <div class="col-lg-4 d-flex flex-column gap-3">
+
+            @* اطلاعات کامل مشتری (نام، نوع، شناسهٔ ملی/ثبت، شمارهٔ اقتصادی، تماس، نشانی) *@
+            <section class="mi-panel">
+                <div class="mi-panel-head"><i class="bi bi-person-vcard" aria-hidden="true"></i> اطلاعات مشتری</div>
+                <div class="mi-customer">
+                    <div class="mi-customer-id">
+                        <div class="mi-avatar" aria-hidden="true"><i class="bi bi-person"></i></div>
+                        <div class="mi-customer-main">
+                            <div class="mi-customer-name">@(string.IsNullOrWhiteSpace(vm.CustomerName) ? "مشتری ثبت نشده" : vm.CustomerName)</div>
+                            @if (!string.IsNullOrWhiteSpace(vm.CustomerType))
+                            {
+                                <span class="mi-type-badge @(vm.CustomerType == "حقوقی" ? "legal" : "real")">@vm.CustomerType</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="mi-kv mi-kv-tight">
+                        @if (!string.IsNullOrWhiteSpace(vm.CustomerNationalId))
+                        {
+                            <div class="mi-kv-row">
+                                <span class="mi-kv-lbl"><i class="bi bi-person-badge" aria-hidden="true"></i> @(vm.CustomerType == "حقوقی" ? "شمارهٔ ثبت" : "کد ملی")</span>
+                                <div class="mi-codechip" title="کپی" @onclick="() => CopyText(vm.CustomerNationalId!)">
+                                    <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.CustomerNationalId</span>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vm.CustomerEconomicNumber))
+                        {
+                            <div class="mi-kv-row">
+                                <span class="mi-kv-lbl"><i class="bi bi-hash" aria-hidden="true"></i> شمارهٔ اقتصادی</span>
+                                <div class="mi-codechip" title="کپی" @onclick="() => CopyText(vm.CustomerEconomicNumber!)">
+                                    <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.CustomerEconomicNumber</span>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vm.CustomerPhone))
+                        {
+                            <div class="mi-kv-row">
+                                <span class="mi-kv-lbl"><i class="bi bi-telephone" aria-hidden="true"></i> تلفن</span>
+                                <a class="mi-kv-val mi-link num" href="tel:@vm.CustomerPhone" dir="ltr">@vm.CustomerPhone</a>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vm.CustomerPostalCode))
+                        {
+                            <div class="mi-kv-row">
+                                <span class="mi-kv-lbl"><i class="bi bi-mailbox" aria-hidden="true"></i> کد پستی</span>
+                                <span class="mi-kv-val num" dir="ltr">@vm.CustomerPostalCode</span>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(vm.CustomerAddress))
+                        {
+                            <div class="mi-kv-row wrap-row">
+                                <span class="mi-kv-lbl"><i class="bi bi-geo-alt" aria-hidden="true"></i> نشانی</span>
+                                <span class="mi-kv-val soft">@vm.CustomerAddress</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            @* اطلاعات صورتحساب — فقط موارد لازم برای عملیات؛ شمارهٔ مالیاتی و شناسهٔ حافظه عمداً نمایش داده نمی‌شوند. *@
             <section class="mi-panel">
                 <div class="mi-panel-head"><i class="bi bi-info-circle" aria-hidden="true"></i> اطلاعات صورتحساب</div>
                 <div class="mi-kv">
@@ -265,19 +326,6 @@ else
                             <span class="mi-kv-val soft">@vm.Description</span>
                         </div>
                     }
-                    <div class="mi-kv-row">
-                        <span class="mi-kv-lbl"><i class="bi bi-upc-scan" aria-hidden="true"></i> شمارهٔ مالیاتی (TaxID)</span>
-                        @if (!string.IsNullOrEmpty(vm.NewTaxNumber))
-                        {
-                            <div class="mi-codechip" title="کپی شمارهٔ مالیاتی" @onclick="() => CopyText(vm.NewTaxNumber!)">
-                                <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.NewTaxNumber</span>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="mi-codechip" style="cursor:default"><i class="bi bi-hourglass" aria-hidden="true"></i><span style="color:#94a3b8">هنوز صادر نشده (پس از ارسال)</span></div>
-                        }
-                    </div>
                     @if (!string.IsNullOrEmpty(vm.ReferenceId))
                     {
                         <div class="mi-kv-row">
@@ -285,13 +333,6 @@ else
                             <div class="mi-codechip" title="کپی شمارهٔ مرجع" @onclick="() => CopyText(vm.ReferenceId!)">
                                 <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.ReferenceId</span>
                             </div>
-                        </div>
-                    }
-                    @if (!string.IsNullOrEmpty(vm.TaxMemoryID))
-                    {
-                        <div class="mi-kv-row">
-                            <span class="mi-kv-lbl"><i class="bi bi-hdd" aria-hidden="true"></i> شناسهٔ حافظه</span>
-                            <div class="mi-codechip" style="cursor:default"><i class="bi bi-hdd" aria-hidden="true"></i><span>@vm.TaxMemoryID</span></div>
                         </div>
                     }
                 </div>
