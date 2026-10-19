@@ -187,14 +187,14 @@
                                     var catGroups = FilterPermissionGroups(allPermissions.Where(p => cat.Modules.Contains(p.Module)).GroupBy(p => p.Module));
                                     if (!catGroups.Any()) continue;
                                     <details class="perm-tree-category" open="@IsTreeOpen(cat.Title)">
-                                        <summary><span class="tree-title"><i class="bi @cat.Icon"></i> @cat.Title</span><span class="tree-count">@catGroups.Sum(g => g.Count()) مجوز</span></summary>
+                                        <summary><span class="tree-title"><i class="bi @cat.Icon"></i> @cat.Title</span><span class="tree-count">@catGroups.Sum(g => g.Count(PermissionMatches)) مجوز</span></summary>
                                         <div class="perm-tree-children">
                                             @foreach (var group in catGroups.OrderBy(g => Array.IndexOf(cat.Modules, g.Key)))
                                             {
                                                 <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count()</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
                                                     <div class="perm-leaf-list">
-                                                        @foreach (var perm in group.OrderBy(p => p.Action))
+                                                        @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
                                                             <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
                                                         }
@@ -212,9 +212,9 @@
                                             @foreach (var group in VisibleOtherPermissionGroups)
                                             {
                                                 <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count()</span><input type="checkbox" checked="@group.All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
                                                     <div class="perm-leaf-list">
-                                                        @foreach (var perm in group.OrderBy(p => p.Action))
+                                                        @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
                                                             <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
                                                         }
@@ -325,12 +325,27 @@
         allPermissions.Where(p => !ModuleCategories.SelectMany(c => c.Modules).Contains(p.Module) && PermissionMatches(p))
             .GroupBy(p => p.Module);
 
+    // دیتابیس‌های قدیمی ممکن است سطح‌های منسوخ Moadian مانند ProviderInvoices، Read،
+    // MasterData یا Configure را نگه داشته باشند. API جدید فقط مجموعهٔ تفکیکی زیر را
+    // مبنای کنترل قرار می‌دهد؛ نمایش گزینه‌های قدیمی باعث می‌شد مدیر نقش اشتباه بسازد.
+    private static readonly HashSet<string> CurrentMoadianActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "View", "Company", "FiscalYear", "Connection", "Goods", "Units", "Customers",
+        "InvoiceCreate", "InvoiceUpdate", "InvoiceDelete", "InvoiceSend", "InvoicePreview",
+        "InvoiceStatus", "InvoiceInquiry", "Diagnose"
+    };
+
+    private static bool IsVisiblePermission(PermissionDto p) =>
+        !string.Equals(p.Module, "Moadian", StringComparison.OrdinalIgnoreCase)
+        || CurrentMoadianActions.Contains(p.Action);
+
     private bool PermissionMatches(PermissionDto p) =>
-        string.IsNullOrWhiteSpace(permissionSearch)
-        || p.Module.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
-        || ModuleNames.GetValueOrDefault(p.Module, "").Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
-        || p.Action.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
-        || GetActionLabel(p.Module, p.Action).Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+        IsVisiblePermission(p)
+        && (string.IsNullOrWhiteSpace(permissionSearch)
+            || p.Module.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+            || ModuleNames.GetValueOrDefault(p.Module, "").Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+            || p.Action.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+            || GetActionLabel(p.Module, p.Action).Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private bool IsTreeOpen(string _) => expandPermissionTree || !string.IsNullOrWhiteSpace(permissionSearch);
     private void ExpandAllPermissionTrees() => expandPermissionTree = true;
@@ -387,7 +402,7 @@
 
     private void ToggleModuleAll(string module, bool isChecked)
     {
-        var modulePerms = allPermissions.Where(p => p.Module == module).Select(p => p.Id);
+        var modulePerms = allPermissions.Where(p => p.Module == module && IsVisiblePermission(p)).Select(p => p.Id);
         if (isChecked)
         {
             foreach (var id in modulePerms)
