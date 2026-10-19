@@ -13,21 +13,4 @@
           SkipUnchangedFiles="true"
           Condition="!Exists('$(_RefDll)')" />
   </Target>
-
-  <!--
-    هشدار زودهنگام MAX_PATH: پیش از شروع بیلد، طول مسیر مخزن بررسی می‌شود.
-    مسیرهای عمیق obj در ویندوز به سقف ۲۶۰ کاراکتر می‌خورند و خطاهایی مثل
-    MSB4018 (GenerateStaticWebAssetsPropsFile) یا شکست تبدیل webcil می‌دهند.
-    این هشدار فقط نمایشی است و بیلد را متوقف نمی‌کند.
-  -->
-  <PropertyGroup>
-    <_TcsRepoPathLength>$([System.String]::Copy('$(MSBuildThisFileDirectory)').Length)</_TcsRepoPathLength>
-  </PropertyGroup>
-
-  <Target Name="TcsWarnLongRepoPath"
-          BeforeTargets="PrepareForBuild"
-          Condition="'$(TCS_BUILD_ROOT)' == '' and $(_TcsRepoPathLength) &gt; 130">
-    <Message Importance="high"
-             Text="⚠ هشدار MAX_PATH: مسیر مخزن $(_TcsRepoPathLength) کاراکتر است ($(MSBuildThisFileDirectory)). در ویندوز مسیرهای obj ممکن است از ۲۶۰ کاراکتر عبور کنند و بیلد با MSB4018/DirectoryNotFoundException شکست بخورد. راه‌حل: متغیر محیطی TCS_BUILD_ROOT را روی یک مسیر کوتاه تنظیم کنید یا مسیر مخزن را کوتاه کنید — WINDOWS-LONG-PATH-FIX-FA.md" />
-  </Target>
 </Project>

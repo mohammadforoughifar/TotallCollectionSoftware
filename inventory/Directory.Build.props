@@ -12,32 +12,6 @@
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
-
-  <!--
-    ============================================================
-    رفع شکست بیلد در ویندوز به‌خاطر محدودیت MAX_PATH (۲۶۰ کاراکتر)
-    ============================================================
-    اگر مخزن در مسیری با نام بلند باشد (مثلاً نام پوشهٔ شاخه + نام مخزن
-    تودرتو)، این مسیرها از ۲۶۰ کاراکتر عبور می‌کنند و بیلد با
-    MSB4018 / DirectoryNotFoundException شکست می‌خورد:
-      obj\Debug\net8.0\staticwebassets\msbuild.Inventory.Api.Microsoft.AspNetCore.StaticWebAssets.props
-      obj\Debug\net8.0\tmp-webcil\*.wasm
-
-    با تنظیم متغیر محیطی TCS_BUILD_ROOT روی یک مسیر کوتاه، پوشه‌های
-    obj/bin هر پروژه زیر همان مسیر ساخته می‌شوند:
-      setx TCS_BUILD_ROOT D:\tcs-build
-
-    (پس از setx، Visual Studio و ترمینال را یک‌بار ببندید و باز کنید.)
-
-    بدون این متغیر، رفتار بیلد دقیقاً مثل قبل و در همان obj/bin محلی است.
-    راهنمای کامل: WINDOWS-LONG-PATH-FIX-FA.md در ریشهٔ مخزن
-  -->
-  <PropertyGroup Condition="'$(TCS_BUILD_ROOT)' != ''">
-    <!-- نام پروژه در مسیر می‌آید تا پروژه‌ها روی هم نیفتند. -->
-    <BaseIntermediateOutputPath>$(TCS_BUILD_ROOT)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
-    <BaseOutputPath>$(TCS_BUILD_ROOT)\bin\$(MSBuildProjectName)\</BaseOutputPath>
-  </PropertyGroup>
-
   <!-- کاهش حجم خروجی: در Release فایل PDB تولید نشود (بیلد Debug دست‌نخورده) -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
