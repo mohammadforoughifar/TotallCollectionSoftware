@@ -20,12 +20,13 @@
         <h1><i class="bi bi-journal-text text-primary"></i> صورتحساب‌های الکترونیکی</h1>
         <p class="lead">فهرست، صدور و پیگیری وضعیت صورتحساب در کارپوشهٔ مالیاتی</p>
     </div>
-    @if (CanCreate)
-    {
-        <div class="ms-auto d-flex gap-2">
+    <div class="ms-auto d-flex gap-2">
+        @if (CanCreate)
+        {
             <NavLink class="btn btn-primary" href="moadian/invoices/new"><i class="bi bi-plus-lg"></i> صورتحساب جدید</NavLink>
-        </div>
-    }
+        }
+        <NavLink class="btn btn-outline-secondary" href="moadian/guide"><i class="bi bi-journal-check"></i> راهنما</NavLink>
+    </div>
 </div>
 
 <MoadianCompanyBar />
