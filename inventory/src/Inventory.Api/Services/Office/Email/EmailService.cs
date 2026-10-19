@@ -1274,7 +1274,11 @@ public class EmailService : IEmailService
         {
             AttachmentId = a.AttachmentId,
             RealName = a.AttachmentRealName,
-            Size = DiskFileSize(a.FilePath)
+            Size = DiskFileSize(a.FilePath),
+            // جدول پیوست ستون ContentType ندارد؛ نوع از پسوند فایل استنباط می‌شود
+            // (همان نگاشتی که هنگام ارسال ایمیل به کار می‌رود) تا کلاینت در تبدیل
+            // «ایمیل → نامه وارده» نوع درست را همراه فایل بارگذاری کند.
+            ContentType = MimeToExtensionType(a.AttachmentRealName, "")
         }).ToList();
     }
 

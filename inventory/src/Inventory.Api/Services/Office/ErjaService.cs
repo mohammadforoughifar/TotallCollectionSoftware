@@ -167,7 +167,13 @@ public class ErjaService : IErjaService
                 ? ("outgoing-letters", "ارجاع نامه صادره", "outgoing-letters")
                 : ("incoming-letters", "ارجاع نامه وارده", "incoming-letters");
 
-        var link = $"{routeBase}/view/{dto.LetterId}";
+        // نامهٔ وارده در کلاینت Route به شکل /incoming-letters/view/{id} ندارد؛
+        // کارتابل وارده پارامتر ?open={id} را می‌خواند و همان نامه را در Reader
+        // باز می‌کند (IncomingLetterCartable:OnInitializedAsync). نامهٔ داخلی و
+        // صادره Route مخصوص view خودشان را دارند و دست نمی‌خورند.
+        var link = isIncoming
+            ? $"incoming-letters?open={dto.LetterId}"
+            : $"{routeBase}/view/{dto.LetterId}";
         await _notify.SendManyAsync(seen,
             $"ارجاع نامه: {letterTitle}",
             string.IsNullOrWhiteSpace(dto.TextErja) ? $"شماره {letterNumber}" : dto.TextErja,
@@ -210,7 +216,10 @@ public class ErjaService : IErjaService
             : isIncoming
                 ? ("incoming-letters", "نامه وارده")
                 : ("letters", "نامه داخلی");
-        var link = $"{answerRoute}/view/{erja.SourceId}";
+        // برای وارده Route به شکل /incoming-letters/view/{id} وجود ندارد — ?open=
+        var link = isIncoming
+            ? $"incoming-letters?open={erja.SourceId}"
+            : $"{answerRoute}/view/{erja.SourceId}";
         await _notify.SendAsync(erja.SenderUserId,
             $"پاسخ به ارجاع {answerModule}: {title}{taeedText}",
             erja.Answer,

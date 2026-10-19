@@ -131,6 +131,13 @@ public class EmailAttachmentDto
     public int AttachmentId { get; set; }
     public string RealName { get; set; } = "";
     public long Size { get; set; }
+
+    /// <summary>
+    /// نوع MIME پیوست (مثل application/pdf). جدول Oto_TBL_EmailAttachments ستونی
+    /// برای ContentType ندارد (و اسکیما تغییر نمی‌کند)، پس سرور آن را از پسوند فایل
+    /// استنباط می‌کند تا کلاینت دیگر ناچار نباشد همه‌جا application/octet-stream بفرستد.
+    /// </summary>
+    public string ContentType { get; set; } = "application/octet-stream";
 }
 
 /// <summary>ارسال ایمیل جدید</summary>

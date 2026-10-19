@@ -10,6 +10,12 @@ public interface IIncomingLetterService
     Task<IncomingLetterCartableStatsDto> GetStatsAsync();
     Task<IncomingLetterDetailDto> GetDetailAsync(int letterId);
     Task<int> AddAsync(AddIncomingLetterDto dto);
+
+    /// <summary>
+    /// نهایی‌سازی نامه وارده بعد از آپلود موفق «همهٔ» پیوست‌ها — اعلان گیرندگان
+    /// اولیه فقط از این مسیر و فقط یک‌بار ارسال می‌شود. خروجی: تعداد اعلان‌های ارسال‌شده.
+    /// </summary>
+    Task<int> FinalizeAsync(int letterId);
     Task EditAsync(int letterId, EditIncomingLetterDto dto);
     Task DeleteAsync(int letterId);
     Task<bool> ToggleLetterNeshanAsync(int letterId);
@@ -56,6 +62,7 @@ public class IncomingLetterService : IIncomingLetterService
     private class NeshanResponse { public bool IsNeshan { get; set; } }
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
     private class BatchBayeganiRes { public int Count { get; set; } }
+    private class FinalizeResponse { public int Notified { get; set; } }
 
     public Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null)
     {
@@ -88,6 +95,9 @@ public class IncomingLetterService : IIncomingLetterService
 
     public async Task<int> AddAsync(AddIncomingLetterDto dto) =>
         (await _api.PostAsync<IdResponse>("api/incoming-letters", dto)).Id;
+
+    public async Task<int> FinalizeAsync(int letterId) =>
+        (await _api.PostAsync<FinalizeResponse>($"api/incoming-letters/{letterId}/finalize")).Notified;
 
     public Task EditAsync(int letterId, EditIncomingLetterDto dto) =>
         _api.PutAsync<object>($"api/incoming-letters/{letterId}", dto);

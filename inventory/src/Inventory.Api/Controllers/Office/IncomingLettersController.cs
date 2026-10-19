@@ -145,6 +145,37 @@ public class IncomingLettersController : RbacControllerBase
         }
     }
 
+    /// <summary>
+    /// نهایی‌سازی نامهٔ وارده پس از اتمام آپلود پیوست‌ها و ارسال اعلان گیرندگان اولیه.
+    /// کلاینت این endpoint را فقط وقتی صدا می‌زند که ثبت نامه و «همهٔ» آپلودها موفق
+    /// شده باشند؛ اگر یک آپلود خطا بدهد، Finalize و اعلان انجام نمی‌شود.
+    /// فراخوان دوبارهٔ آن idempotent است (اعلان تکراری ساخته نمی‌شود).
+    /// </summary>
+    [HttpPost("{id:int}/finalize")]
+    public async Task<IActionResult> Finalize(int id)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        try
+        {
+            var notified = await _letters.FinalizeAsync(id, MyUserId, await IsAdminAsync());
+            return Ok(new
+            {
+                notified,
+                message = notified > 0
+                    ? $"نامه نهایی شد و اعلان برای {notified} گیرنده ارسال شد."
+                    : "اعلان تازه‌ای ارسال نشد (قبلاً ارسال شده یا گیرندهٔ اولیه‌ای وجود ندارد)."
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Edit(int id, [FromBody] EditIncomingLetterDto dto)
     {
@@ -343,6 +374,15 @@ public class IncomingLettersController : RbacControllerBase
             return BadRequest(new { message = "فایل خالی است." });
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
+
+        // سقف مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت — با احتساب پیوست‌های قبلیِ همین نامه
+        var existingSize = (await Db.AppAttachments.AsNoTracking()
+                .Where(a => a.Module == Module && a.RefId == id)
+                .Select(a => new { a.FilePath, a.Data })
+                .ToListAsync())
+            .Sum(a => a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length);
+        if (existingSize + file.Length > 100L * 1024 * 1024)
+            return BadRequest(new { message = "حداکثر حجم مجموع پیوست‌های هر نامه ۱۰۰ مگابایت است." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);

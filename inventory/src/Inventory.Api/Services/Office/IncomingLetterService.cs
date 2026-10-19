@@ -17,6 +17,7 @@ public interface IIncomingLetterService
     Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<int> AddAsync(AddIncomingLetterDto dto, int userId);
+    Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
@@ -601,6 +602,77 @@ public class IncomingLetterService : IIncomingLetterService
 
         await _notify.BroadcastChangedAsync("incoming-letters");
         return letter.Id;
+    }
+
+    /// <summary>
+    /// نهایی‌سازی نامهٔ وارده و ارسال اعلان به «گیرندگان اولیه».
+    ///
+    /// ترتیب صحیح در مسیر «تبدیل ایمیل به نامه وارده» این است:
+    ///   ثبت نامه (AddAsync، با Commit تراکنش)  →  ایجاد ارجاع‌ها (همان AddAsync)
+    ///   →  آپلود کامل «همهٔ» پیوست‌ها  →  Finalize  →  اعلان گیرندگان
+    /// پس وقتی این متد صدا زده می‌شود، نامه و ارجاع‌هایش از پیش Commit شده‌اند و
+    /// اعلان هیچ‌گاه برای نامهٔ ناتمام (بدون پیوست) ارسال نمی‌شود.
+    ///
+    /// قواعد:
+    ///   • فقط ثبت‌کننده یا مدیر؛
+    ///   • گیرندگان اولیه = ارجاع‌های Type=«گیرنده» که هنگام ثبت ساخته شده‌اند؛
+    ///   • خودِ ثبت‌کننده اعلان نمی‌گیرد؛
+    ///   • جلوگیری از اعلان تکراری: به‌ازای هر گیرنده، اگر اعلان «نامه وارده» با
+    ///     همین لینک از قبل وجود دارد، دوباره ساخته نمی‌شود (Finalize idempotent است)؛
+    ///   • لینک اعلان «incoming-letters?open={id}» است چون در کلاینت Route‌ای به
+    ///     شکل /incoming-letters/view/{id} وجود ندارد و کارتابل با ?open= همان نامه
+    ///     را در Reader باز می‌کند.
+    ///
+    /// خروجی: تعداد گیرندگانِی که در «این فراخوان» اعلان گرفتند.
+    /// </summary>
+    public async Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin)
+    {
+        var letter = await _db.IncomingLetters.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new InvalidOperationException("نامه وارده یافت نشد.");
+
+        if (letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("فقط ثبت‌کننده یا مدیر می‌تواند نامه وارده را نهایی‌سازی کند.");
+
+        // استخراج گیرندگان اولیه (به‌جز ثبت‌کننده)
+        var targetIds = await _db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letterId && !e.IsDelete
+                        && e.Type == "گیرنده" && e.SenderUserId == letter.CreateUserId
+                        && e.ReciverUserId != letter.CreateUserId)
+            .Select(e => e.ReciverUserId)
+            .Distinct()
+            .ToListAsync();
+        if (targetIds.Count == 0) return 0;
+
+        var link = $"incoming-letters?open={letterId}";
+
+        // جلوگیری از اعلان تکراری — فراخوان دوبارهٔ Finalize (یا هر مسیر موازی)
+        // نباید برای کاربری که قبلاً اعلان همین نامه را گرفته، اعلان تازه بسازد.
+        var alreadyNotified = await _db.AppNotifications.AsNoTracking()
+            .Where(n => targetIds.Contains(n.UserId)
+                        && n.FormName == "نامه وارده" && n.Link == link)
+            .Select(n => n.UserId)
+            .Distinct()
+            .ToListAsync();
+        var pendingIds = targetIds.Except(alreadyNotified).ToList();
+        if (pendingIds.Count == 0) return 0;
+
+        var creator = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == letter.CreateUserId)
+            .Select(u => new { u.FirstName, u.LastName, u.Username })
+            .FirstOrDefaultAsync();
+        var fromName = creator == null
+            ? "سیستم"
+            : (string.IsNullOrWhiteSpace((creator.FirstName ?? "") + (creator.LastName ?? ""))
+                ? creator.Username
+                : $"{creator.FirstName} {creator.LastName}".Trim());
+
+        await _notify.SendManyAsync(pendingIds,
+            $"نامه وارده جدید: {letter.Title}",
+            $"شماره {letter.LetterNumber}",
+            fromName, "نامه وارده", link);
+        await _notify.BroadcastChangedAsync("incoming-letters");
+        return pendingIds.Count;
     }
 
     public async Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin)

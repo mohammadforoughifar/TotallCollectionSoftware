@@ -145,7 +145,7 @@
             @* ---------- پنل پیشرفته پیوست‌ها (اسکن + سیستم) ---------- *@
             <div class="fcard" style="margin-top:8px">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-                    <label><i class="bi bi-paperclip"></i> پیوست‌های نامه وارده <span class="opt">بدون محدودیت حجم</span></label>
+                    <label><i class="bi bi-paperclip"></i> پیوست‌های نامه وارده <span class="opt">هر فایل حداکثر ۲۰ مگابایت / مجموع ۱۰۰ مگابایت</span></label>
                     <div style="display:flex; gap:6px">
                         <button class="btn btn-sm btn-outline-primary" type="button" @onclick="TriggerScanModal">
                             <i class="bi bi-camera-fill me-1"></i> اسکن از اسکنر / دوربین سیستم
@@ -220,6 +220,11 @@
 
 @code {
     [Parameter] public EventCallback OnSaved { get; set; }
+
+    /// <summary>سقف حجم هر فایل پیوست: ۲۰ مگابایت</summary>
+    private const long MaxFileBytes = 20L * 1024 * 1024;
+    /// <summary>سقف حجم مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت</summary>
+    private const long MaxTotalBytes = 100L * 1024 * 1024;
 
     private bool visible = false;
     private bool saving = false;
@@ -315,13 +320,36 @@
                     + (email.Body ?? "") + "</blockquote>";
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
+        // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
+        // یک‌بار با طول واقعی «پس از دانلود». ContentType هم از DTO می‌آید (سمت سرور
+        // از پسوند فایل استنباط شده) تا همهٔ فایل‌ها application/octet-stream نباشند.
         pendingFiles.Clear();
+        long totalAttBytes = 0;
+        var skippedAtt = 0;
         foreach (var attachment in email.Attachments)
         {
+            // ۱) کنترل پیش از دانلود پیوست از ایمیل
+            if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
+            {
+                skippedAtt++;
+                continue;
+            }
+
             var (data, name) = await EmailSvc.DownloadAttachmentAsync(attachment.AttachmentId);
-            if (data is { Length: > 0 })
-                pendingFiles.Add(new MemoryBrowserFile(name, "application/octet-stream", data));
+            if (data is not { Length: > 0 }) continue;
+
+            // ۲) کنترل پس از دانلود واقعی فایل (Size اعلامی ممکن است دقیق نباشد)
+            if (data.Length > MaxFileBytes || totalAttBytes + data.Length > MaxTotalBytes)
+            {
+                skippedAtt++;
+                continue;
+            }
+
+            totalAttBytes += data.Length;
+            pendingFiles.Add(new MemoryBrowserFile(name, attachment.ContentType, data));
         }
+        if (skippedAtt > 0)
+            Toast.Error($"{skippedAtt} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد.");
         StateHasChanged();
     }
 
@@ -386,9 +414,14 @@
         showScanModal = false;
         foreach (var file in e.GetMultipleFiles(int.MaxValue))
         {
-            if (file.Size > 20 * 1024 * 1024)
+            if (file.Size > MaxFileBytes)
             {
-                Toast.Error($"فایل {file.Name} بیش از ۲۰ مگابایت است.");
+                Toast.Error($"حجم فایل «{file.Name}» ({FmtSize(file.Size)}) بیش از ۲۰ مگابایت است و افزوده نشد.");
+                continue;
+            }
+            if (pendingFiles.Sum(f => f.Size) + file.Size > MaxTotalBytes)
+            {
+                Toast.Error($"مجموع حجم پیوست‌ها از ۱۰۰ مگابایت عبور می‌کند؛ «{file.Name}» افزوده نشد.");
                 continue;
             }
             pendingFiles.Add(file);
@@ -408,6 +441,14 @@
         var dateErsalVal = entryDate;
         if (dateVal is null) { Toast.Error("تاریخ نامه مبدأ معتبر نیست (نمونه: 1403/06/15)."); return; }
         if (dateErsalVal is null) { Toast.Error("تاریخ ورود / ثبت معتبر نیست (نمونه: 1403/06/15)."); return; }
+
+        // کنترل نهایی حجم پیوست‌ها «قبل از هر تماس با سرور» — اگر فایل یا مجموع
+        // فایل‌ها بیش از سقف بود: نامه ثبت نشود، Finalize و اعلان هم انجام نشود.
+        if (pendingFiles.Any(f => f.Size > MaxFileBytes) || pendingFiles.Sum(f => f.Size) > MaxTotalBytes)
+        {
+            Toast.Error("حجم پیوست‌ها از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) بیشتر است؛ نامه ثبت نشد.");
+            return;
+        }
 
         saving = true;
         try
@@ -439,7 +480,27 @@
                     InitialMatnErja = initialMatnErja
                 };
                 letterId = await IncomingSvc.AddAsync(dto);
-                Toast.Success("نامه وارده با موفقیت ثبت شد.");
+
+                // ترتیب الزامی: ثبت نامه ← ایجاد ارجاع‌ها (داخل AddAsync)
+                // ← آپلود کامل «همهٔ» پیوست‌ها ← Finalize ← اعلان گیرندگان.
+                // اگر حتی یک آپلود خطا بدهد، Finalize و اعلان انجام نمی‌شود.
+                foreach (var f in pendingFiles)
+                {
+                    try
+                    {
+                        using var stream = f.OpenReadStream(long.MaxValue);
+                        await IncomingSvc.UploadAttachmentAsync(letterId, stream, f.Name, f.ContentType);
+                    }
+                    catch (Exception upEx)
+                    {
+                        throw new Exception($"نامه ثبت شد، اما بارگذاری پیوست «{f.Name}» ناموفق بود؛ بنابراین اعلان گیرندگان ارسال نشد. پیوست را از مسیر ویرایش نامه دوباره بارگذاری کنید. (خطا: {upEx.Message})");
+                    }
+                }
+
+                var notified = await IncomingSvc.FinalizeAsync(letterId);
+                Toast.Success(notified > 0
+                    ? $"نامه وارده ثبت و اعلان برای {notified} گیرنده ارسال شد."
+                    : "نامه وارده با موفقیت ثبت شد.");
             }
             else
             {
@@ -457,17 +518,15 @@
                     Description = description
                 };
                 await IncomingSvc.EditAsync(editLetterId, dto);
-                Toast.Success("تغییرات نامه وارده ذخیره شد.");
-            }
 
-            // آپلود پیوست‌ها
-            if (pendingFiles.Count > 0 && letterId > 0)
-            {
+                // در ویرایش فقط پیوست‌های تازه بارگذاری می‌شوند؛ اعلان دوباره
+                // ارسال نمی‌شود و Finalize صدا زده نمی‌شود (اعلانِ ثبت یک‌بار است).
                 foreach (var f in pendingFiles)
                 {
                     using var stream = f.OpenReadStream(long.MaxValue);
-                    await IncomingSvc.UploadAttachmentAsync(letterId, stream, f.Name, f.ContentType);
+                    await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
                 }
+                Toast.Success("تغییرات نامه وارده ذخیره شد.");
             }
 
             visible = false;
