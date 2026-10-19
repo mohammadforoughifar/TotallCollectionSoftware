@@ -82,9 +82,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
     }
 
-    // ==================== سربرگ (PDF از مسیر روت API) ====================
+    // ==================== سربرگ PDF (مسیر ثبت‌شده یا پوشه اختصاصی شرکت) ====================
 
-    /// <summary>یافتن سربرگ نسبت به wwwroot، با پشتیبانی از نام فایل‌های قدیمی</summary>
+    /// <summary>یافتن سربرگ از مسیر ثبت‌شده، Reports شرکت یا محل‌های آپلود قدیمی</summary>
     private string? ResolveLetterheadPath(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;
@@ -100,17 +100,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var uploadFileName = Path.GetFileName(uploadClean);
         var candidates = new[]
         {
+            // Honor an explicitly registered relative path first (including Reports/... paths).
+            Path.Combine(webRoot, clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(AppContext.BaseDirectory, clean),
             // Supports canonical values such as uploads/letterheads/name.pdf.
             Path.Combine(webRoot, "uploads", uploadClean),
             // Older company records may store only the filename. Letterheads live
             // in this subfolder, not directly under wwwroot/uploads.
             Path.Combine(webRoot, "uploads", "letterheads", uploadFileName),
-            Path.Combine(webRoot, clean),
             Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "letterheads", uploadFileName),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
             Path.Combine(AppContext.BaseDirectory, "wwwroot", "uploads", "letterheads", uploadFileName),
-            Path.Combine(AppContext.BaseDirectory, clean),
+            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
             Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
         };
 
@@ -121,6 +122,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private string? ResolveCompanyLetterheadPath(SystemCompany? company)
     {
         var configuredFileName = company?.LetterheadFileName;
+        var configuredClean = configuredFileName?.Replace('\\', '/').Trim().TrimStart('/');
+
+        // If the company record stores only a filename, check its company-specific
+        // Reports folder before the legacy uploads/letterheads location.
+        if (company?.Id is int companyId
+            && !string.IsNullOrWhiteSpace(configuredClean)
+            && !configuredClean.Contains('/')
+            && !configuredClean.Contains("..", StringComparison.Ordinal))
+        {
+            var companyReportLetterhead = Path.Combine(
+                "Reports", "OutgoingLetters", "Companies",
+                companyId.ToString(CultureInfo.InvariantCulture), configuredClean);
+            var reportPath = ResolveLetterheadPath(companyReportLetterhead);
+            if (reportPath != null) return reportPath;
+        }
+
         var configuredPath = ResolveLetterheadPath(configuredFileName);
         if (configuredPath != null) return configuredPath;
 
