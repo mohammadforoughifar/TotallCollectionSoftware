@@ -39,8 +39,12 @@ public interface IOutgoingLetterPrintService
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
-    // Used only to prevent Homepa from ever falling back to Forough's letterhead.
+    // These companies must use their own registered letterheads; never substitute Forough's.
     private const int HomepaCompanyId = 1003;
+    private const int AriaCompanyId = 1005;
+
+    private static bool RequiresRegisteredCompanyLetterhead(int? companyId)
+        => companyId is HomepaCompanyId or AriaCompanyId;
 
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
@@ -120,8 +124,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var configuredPath = ResolveLetterheadPath(configuredFileName);
         if (configuredPath != null) return configuredPath;
 
-        // Homepa must never silently receive another company's letterhead.
-        if (company?.Id == HomepaCompanyId) return null;
+        // Homepa and Aria must never silently receive another company's letterhead.
+        if (RequiresRegisteredCompanyLetterhead(company?.Id)) return null;
 
         if (string.IsNullOrWhiteSpace(configuredFileName)
             || configuredFileName.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase))
@@ -211,10 +215,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 "نامه {LetterId} CompanyId ندارد؛ برای چاپ از شرکت پیش‌فرض {SelectedCompanyId} استفاده می‌شود.",
                 letterId, company?.Id);
 
-        var isHomepaLetter = letterCompanyId == HomepaCompanyId || company?.Id == HomepaCompanyId;
+        var selectedCompanyId = company?.Id ?? letterCompanyId;
+        var requiresRegisteredLetterhead = RequiresRegisteredCompanyLetterhead(selectedCompanyId);
         var companyRecordMissing = hasCompanyId && company == null;
         var letterheadPath = companyRecordMissing ? null : ResolveCompanyLetterheadPath(company);
-        if (letterheadPath == null && !isHomepaLetter && !companyRecordMissing)
+        if (letterheadPath == null && !requiresRegisteredLetterhead && !companyRecordMissing)
         {
             var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
                 .Select(c => c.LogoPath)
@@ -224,7 +229,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         _logger.LogInformation(
             "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
-            letterId, letterCompanyId, company?.Id, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
+            letterId, letterCompanyId, selectedCompanyId, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
 
         // Outgoing letters always use QuestPDF. This avoids Stimulsoft trial marks
         // and keeps all Persian shaping/layout on one rendering path.
@@ -261,7 +266,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         // Keep the content PDF transparent; the exact company-registered file is
         // placed underneath it by OverlayOnLetterhead below.
-        var contentPdf = BuildContentPdf(letter, signers, sematTitles, hasAttachment, isA5, withCopy, copyTos, letterheadPath != null);
+        var contentPdf = BuildContentPdf(
+            letter, signers, sematTitles, hasAttachment, isA5, withCopy, copyTos,
+            hasLetterhead: letterheadPath != null,
+            letterheadCompanyId: selectedCompanyId);
 
         // Use the same company record and letterhead path for all rendered pages.
         if (letterheadPath == null)
@@ -319,7 +327,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         bool isA5,
         bool withCopy,
         List<OutgoingLetterCopyTo>? copyTos,
-        bool hasLetterhead)
+        bool hasLetterhead,
+        int? letterheadCompanyId)
     {
         EnsureFonts();
 
@@ -429,11 +438,49 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .LineHeight(lineHeight)
                     .DirectionFromRightToLeft());
 
-                // The Homepa letterhead already prints these three labels in its
-                // blue header. Place values only in the matching blank field to
-                // the left of each label; do not overprint duplicate captions.
-                if (hasLetterhead)
+                var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
+                var contentTopPadding = isAriaLetterhead
+                    ? (isA5 ? 26f : 36f)
+                    : (isA5 ? 40f : 30f);
+
+                if (isAriaLetterhead)
                 {
+                    // Aria's registered PDF has its labels printed in one gray row.
+                    // Fill the existing dotted fields (date, number, attachment) without
+                    // repeating labels, keeping the logo and company details untouched.
+                    var fieldScale = isA5 ? 0.704f : 1f;
+                    var fieldWidth = 90f * fieldScale;
+                    var dateFieldInset = 13f * fieldScale;
+                    var numberFieldInset = 27f * fieldScale;
+                    var attachmentFieldInset = 21f * fieldScale;
+                    page.Header()
+                        .Height(isA5 ? 94 : 134)
+                        .PaddingTop(isA5 ? 64 : 90)
+                        .AlignLeft()
+                        .Width(fieldWidth * 3)
+                        .Row(fields =>
+                        {
+                            fields.ConstantItem(fieldWidth).PaddingRight(dateFieldInset)
+                                .AlignRight().Text(date)
+                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
+                                .FontColor("#666666").LineHeight(1.2f)
+                                .DirectionFromRightToLeft();
+                            fields.ConstantItem(fieldWidth).PaddingRight(numberFieldInset)
+                                .AlignRight().Text(number)
+                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
+                                .FontColor("#666666").LineHeight(1.2f)
+                                .DirectionFromRightToLeft();
+                            fields.ConstantItem(fieldWidth).PaddingRight(attachmentFieldInset)
+                                .AlignRight().Text(hasAttachment ? "دارد" : "ندارد")
+                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
+                                .FontColor("#666666").LineHeight(1.2f)
+                                .DirectionFromRightToLeft();
+                        });
+                }
+                else if (hasLetterhead)
+                {
+                    // Homepa prints these labels vertically in its blue header; place
+                    // only the values beside them, without duplicating the captions.
                     page.Header()
                         .Height(isA5 ? 150 : 160)
                         .PaddingTop(isA5 ? 40 : 60)
@@ -481,7 +528,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                 // One shared padded body column keeps receiver, subject, paragraphs,
                 // closing and signature block on identical left/right margins.
-                page.Content().PaddingTop(isA5 ? 40 : 30)
+                page.Content().PaddingTop(contentTopPadding)
                     .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
                 {
                     col.Spacing(isA5 ? 4 : 6);
