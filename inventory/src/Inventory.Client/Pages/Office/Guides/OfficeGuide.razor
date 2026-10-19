@@ -3,7 +3,7 @@
 <div class="inner-letter-guide" dir="rtl" @ref="guideRoot">
     <header class="guide-hero">
         <div class="guide-hero-copy">
-            <div class="guide-eyebrow"><i class="bi bi-stars"></i> اتوماسیون اداری / راهنمای کاربری</div>
+            <div class="guide-eyebrow"><i class="bi bi-stars"></i> @Eyebrow</div>
             <h1>@Title</h1>
             <p>@Description</p>
             <div class="guide-actions no-print">
@@ -71,6 +71,8 @@
 @code {
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter, EditorRequired] public string Description { get; set; } = "";
+    /// <summary>برچسب بالای عنوان در هدر راهنما؛ برای راهنماهای ماژول‌های دیگر بازنویسی می‌شود.</summary>
+    [Parameter] public string Eyebrow { get; set; } = "اتوماسیون اداری / راهنمای کاربری";
     [Parameter] public string Icon { get; set; } = "bi-envelope-paper-heart-fill";
     [Parameter] public string BackLabel { get; set; } = "بازگشت";
     [Parameter] public string QuickStartTitle { get; set; } = "شروع کار در سه گام";

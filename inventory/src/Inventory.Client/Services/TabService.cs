@@ -80,6 +80,7 @@ public sealed class TabService
         ("moadian/basic-info",          "سامانه مودیان — اطلاعات پایه", "bi-archive"),
         ("moadian/invoices/new",        "سامانه مودیان — صورتحساب جدید", "bi-journal-plus"),
         ("moadian/invoices",            "سامانه مودیان — صورتحساب‌ها",   "bi-journal-text"),
+        ("moadian/guide",               "سامانه مودیان — راهنما",        "bi-journal-check"),
         ("moadian",                     "سامانه مودیان — نمای کلی",     "bi-speedometer2"),
         ("reports/kardex",              "کاردکس کالا",          "bi-bar-chart-line"),
         ("reports/reorder",             "نقطه سفارش",           "bi-exclamation-triangle"),
