@@ -280,7 +280,7 @@ else
                                 {
                                     var it = vm.InvoiceItems[ii];
                                     <tr>
-                                        <td class="num text-muted">@(ii + 1).Num()</td>
+                                        <td class="num text-muted">@MoadianUi.Num(ii + 1)</td>
                                         <td>
                                             @it.Name
                                             @if (!string.IsNullOrEmpty(it.UniqueIdentifier))
