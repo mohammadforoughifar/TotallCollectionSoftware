@@ -236,6 +236,16 @@ public class VmInvoiceItems
         public DateTime? DateEndFiscalYear { get; set; }
         public int? CPInfoId { get; set; }
         public string? CustomerName { get; set; }
+        // ---------- اطلاعات کامل مشتری (صفحهٔ جزئیات صورتحساب) ----------
+        /// <summary>نوع شخص: «حقیقی» یا «حقوقی».</summary>
+        public string? CustomerType { get; set; }
+        /// <summary>کد ملی (حقیقی) یا شمارهٔ ثبت شرکت (حقوقی).</summary>
+        public string? CustomerNationalId { get; set; }
+        /// <summary>شمارهٔ اقتصادی مشتری.</summary>
+        public string? CustomerEconomicNumber { get; set; }
+        public string? CustomerPhone { get; set; }
+        public string? CustomerPostalCode { get; set; }
+        public string? CustomerAddress { get; set; }
         public string? TypePattern { get; set; } = "نوع اول";
         public DateOnly? DateOrder { get; set; }
         public DateTime? DateOrderPicker

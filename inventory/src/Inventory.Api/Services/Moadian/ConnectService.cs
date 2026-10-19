@@ -2209,6 +2209,24 @@ context.Customers.Any(x =>
                     invoiceInfo.DateEndFiscalYear = invoice.fiscalYear?.EndDate;
                     invoiceInfo.DatestartFiscalYear = invoice.fiscalYear?.StartDate;
 
+                    // اطلاعات کامل مشتری — صفحهٔ جزئیات صورتحساب بدون این بخش ناقص است.
+                    // قبلاً CustomerName در این متد پر نمی‌شد و نام مشتری در جزئیات خالی می‌ماند.
+                    if (invoice.CustomerId is int customerId)
+                    {
+                        var customer = await context.Customers.AsNoTracking()
+                            .FirstOrDefaultAsync(c => c.Id == customerId && !c.IsDelete);
+                        if (customer is not null)
+                        {
+                            invoiceInfo.CustomerName = customer.Name;
+                            invoiceInfo.CustomerType = customer.Type;
+                            invoiceInfo.CustomerNationalId = customer.NationalID;
+                            invoiceInfo.CustomerEconomicNumber = customer.EconomicNumber;
+                            invoiceInfo.CustomerPhone = customer.Phone;
+                            invoiceInfo.CustomerPostalCode = customer.PostalCode;
+                            invoiceInfo.CustomerAddress = customer.Address;
+                        }
+                    }
+
                     invoiceInfo.DateOrder = invoice.DateOrder;
                     invoiceInfo.TypePattern = invoice.TypePattern == 1 ? "نوع اول" : invoice.TypePattern == 2 ? "نوع دوم" : "نوع سوم";
                     invoiceInfo.Description = invoice.Description;
