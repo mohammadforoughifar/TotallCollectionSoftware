@@ -32,10 +32,6 @@
     <Content Include="Reports/**/*.mrt"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <!-- سربرگ‌های PDF شرکت‌ها در مسیر اختصاصی هر شرکت برای اجرا و انتشار کپی شوند. -->
-    <Content Include="Reports/OutgoingLetters/Companies/**/*.pdf"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Resources/reports/**/*"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
