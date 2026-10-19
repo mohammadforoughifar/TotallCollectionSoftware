@@ -342,85 +342,141 @@ else
     </div>
 
     <div class="moadian-print" lang="fa" dir="rtl">
-        <table class="moadian-print-table">
-            <colgroup>
-                <col style="width:4%" /><col style="width:22%" /><col style="width:14%" /><col style="width:6%" />
-                <col style="width:6%" /><col style="width:11%" /><col style="width:10%" /><col style="width:7%" />
-                <col style="width:10%" /><col style="width:10%" />
-            </colgroup>
-            <thead>
-                <tr><th colspan="10">
-                    <div class="mprint-brand">@(seller?.PersianName ?? "صورتحساب الکترونیکی")</div>
-                    <div class="mprint-subtitle">صورتحساب فروش کالا / خدمت</div>
-                    <div class="mprint-seller">
-                        @if (!string.IsNullOrWhiteSpace(seller?.Nationalid)) { <span>شناسهٔ ملی فروشنده: <b dir="ltr">@seller!.Nationalid</b></span> }
-                        @if (!string.IsNullOrWhiteSpace(seller?.EconomicNumber)) { <span>شمارهٔ اقتصادی: <b dir="ltr">@seller!.EconomicNumber</b></span> }
-                        @if (!string.IsNullOrWhiteSpace(vm.TaxMemoryID)) { <span>شناسهٔ حافظهٔ مالیاتی: <b dir="ltr">@vm.TaxMemoryID</b></span> }
-                    </div>
-                    <div class="mprint-meta">
-                        <div><span>شمارهٔ صورتحساب</span><b class="num">@(vm.NumberInvoice?.Num() ?? "—")</b></div>
-                        <div><span>شناسهٔ داخلی</span><b class="num">@vm.Id.Num()</b></div>
-                        <div><span>تاریخ صدور</span><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></div>
-                        <div><span>موضوع</span><b>@(vm.Subject ?? "—")</b></div>
-                        <div><span>وضعیت</span><b>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</b></div>
-                        <div><span>نوع صورتحساب</span><b>@(vm.TypePattern ?? "—")</b></div>
-                        <div><span>مشتری</span><b>@(vm.CustomerName ?? "—")</b></div>
-                        <div><span>روش پرداخت</span><b>@(vm.PaymentType ?? "—")</b></div>
-                        @if (!string.IsNullOrWhiteSpace(vm.NewTaxNumber ?? vm.TaxNumber))
+        <article class="mprint-sheet">
+            <header class="mprint-official-head">
+                <div class="mprint-head-side mprint-head-serial">
+                    <div><span>سریال صورتحساب:</span><b class="num" dir="ltr">@Text(vm.Serial)</b></div>
+                    <div><span>تاریخ صدور:</span><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></div>
+                </div>
+                <div class="mprint-document-title">صورت حساب الکترونیکی</div>
+                <div class="mprint-head-side mprint-head-number">
+                    <div><span>شماره فاکتور:</span><b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></div>
+                    <div><span>شماره منحصر به‌فرد مالیاتی:</span><b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></div>
+                    <div><span>شناسه یکتای حافظه مالیاتی:</span><b class="num" dir="ltr">@Text(vm.TaxMemoryID)</b></div>
+                </div>
+            </header>
+
+            <section class="mprint-party-section">
+                <h2>مشخصات فروشنده</h2>
+                <table class="mprint-party-table" aria-label="مشخصات فروشنده">
+                    <tbody>
+                        <tr>
+                            <td><span>نام / نام تجاری:</span><b>@Text(seller?.PersianName)</b></td>
+                            <td><span>شناسه ملی / شماره اقتصادی:</span><b class="num" dir="ltr">@Text(SellerTaxIdentity)</b></td>
+                        </tr>
+                        <tr>
+                            <td><span>نوع شخص:</span><b>@Text(seller?.Type)</b></td>
+                            <td><span>کد پستی:</span><b class="num" dir="ltr">@Text(seller?.PostalCode)</b></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="mprint-party-section">
+                <h2>مشخصات خریدار</h2>
+                <table class="mprint-party-table" aria-label="مشخصات خریدار">
+                    <tbody>
+                        <tr>
+                            <td><span>نام / نام تجاری:</span><b>@Text(buyer?.Name ?? vm.CustomerName)</b></td>
+                            <td><span>شناسه ملی / شماره اقتصادی:</span><b class="num" dir="ltr">@Text(BuyerTaxIdentity)</b></td>
+                        </tr>
+                        <tr>
+                            <td><span>نوع شخص:</span><b>@Text(buyer?.Type)</b></td>
+                            <td><span>کد پستی:</span><b class="num" dir="ltr">@Text(buyer?.PostalCode)</b></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="mprint-lines-section">
+                <h2>مشخصات کالا و خدمات مورد معامله</h2>
+                <table class="mprint-lines-table">
+                    <colgroup>
+                        <col class="pl-no" /><col class="pl-code" /><col class="pl-name" /><col class="pl-unit" />
+                        <col class="pl-qty" /><col class="pl-money" /><col class="pl-money" /><col class="pl-money" />
+                        <col class="pl-money" /><col class="pl-rate" /><col class="pl-money" /><col class="pl-money" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>ردیف</th>
+                            <th>شناسه کالا/خدمت</th>
+                            <th>شرح کالا یا خدمت</th>
+                            <th>واحد</th>
+                            <th>تعداد</th>
+                            <th>مبلغ واحد<br />(ریال)</th>
+                            <th>مبلغ قبل از تخفیف<br />(ریال)</th>
+                            <th>مبلغ تخفیف<br />(ریال)</th>
+                            <th>مبلغ بعد از تخفیف<br />(ریال)</th>
+                            <th>نرخ مالیات<br />(٪)</th>
+                            <th>مالیات و عوارض<br />(ریال)</th>
+                            <th>جمع کل ردیف<br />(ریال)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < vm.InvoiceItems.Count; i++)
                         {
-                            <div class="mprint-wide"><span>شمارهٔ مالیاتی</span><b dir="ltr">@(vm.NewTaxNumber ?? vm.TaxNumber)</b></div>
+                            var item = vm.InvoiceItems[i];
+                            <tr>
+                                <td class="num">@((i + 1).Num())</td>
+                                <td class="num" dir="ltr">@Text(item.UniqueIdentifier)</td>
+                                <td class="mprint-line-name">@Text(item.Name ?? item.DescriptionKala)</td>
+                                <td>@Text(item.UnitOfMeasurement)</td>
+                                <td class="num">@((item.Count ?? 0).Qty())</td>
+                                <td class="num">@MoadianUi.Money(item.PriceUnit)</td>
+                                <td class="num">@MoadianUi.Money(LineGross(item))</td>
+                                <td class="num">@MoadianUi.Money(item.Discount)</td>
+                                <td class="num">@MoadianUi.Money(LineNet(item))</td>
+                                <td class="num">@(((decimal)(item.ValueAddedPercentage ?? 0)).Qty())</td>
+                                <td class="num">@MoadianUi.Money(LineVat(item))</td>
+                                <td class="num mprint-line-total">@MoadianUi.Money(LineTotal(item))</td>
+                            </tr>
                         }
-                        @if (!string.IsNullOrWhiteSpace(vm.ReferenceId))
-                        {
-                            <div class="mprint-wide"><span>شمارهٔ مرجع</span><b dir="ltr">@vm.ReferenceId</b></div>
-                        }
-                    </div>
-                </th></tr>
-                <tr class="mprint-columns">
-                    <th class="mprint-no">ردیف</th>
-                    <th>شرح کالا / خدمت</th>
-                    <th>شناسهٔ کالا</th>
-                    <th>واحد</th>
-                    <th>تعداد</th>
-                    <th>مبلغ واحد (ریال)</th>
-                    <th>تخفیف (ریال)</th>
-                    <th>نرخ مالیات</th>
-                    <th>مالیات (ریال)</th>
-                    <th>جمع ردیف (ریال)</th>
-                </tr>
-            </thead>
-            <tbody>
-                @for (var i = 0; i < vm.InvoiceItems.Count; i++)
-                {
-                    var item = vm.InvoiceItems[i];
-                    <tr>
-                        <td class="num">@((i + 1).Num())</td>
-                        <td>@(item.Name ?? item.DescriptionKala ?? "—")</td>
-                        <td class="num" dir="ltr">@(item.UniqueIdentifier ?? "—")</td>
-                        <td>@(item.UnitOfMeasurement ?? "—")</td>
-                        <td class="num">@((item.Count ?? 0).Qty())</td>
-                        <td class="num">@MoadianUi.Money(item.PriceUnit)</td>
-                        <td class="num">@MoadianUi.Money(item.Discount)</td>
-                        <td class="num">@(((decimal)(item.ValueAddedPercentage ?? 0)).Qty())٪</td>
-                        <td class="num">@MoadianUi.Money(item.ValueAddedAmount)</td>
-                        <td class="num fw-bold">@MoadianUi.Money(item.CalculatedPay)</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        <div class="mprint-summary">
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th colspan="6">جمع</th>
+                            <th class="num">@MoadianUi.Money(TotalGross)</th>
+                            <th class="num">@MoadianUi.Money(TotalDiscount)</th>
+                            <th class="num">@MoadianUi.Money(TotalNet)</th>
+                            <th>—</th>
+                            <th class="num">@MoadianUi.Money(TotalVat)</th>
+                            <th class="num">@MoadianUi.Money(GrandTotal)</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </section>
+
+            <section class="mprint-payment-section">
+                <div class="mprint-payment-box">
+                    <div><span>نوع صورتحساب:</span><b>@Text(vm.TypePattern)</b></div>
+                    <div><span>روش تسویه:</span><b>@Text(vm.PaymentType)</b></div>
+                    <div><span>موضوع صورتحساب:</span><b>@Text(vm.Subject)</b></div>
+                </div>
+                <div class="mprint-grand-total">
+                    <span>جمع کل صورتحساب</span>
+                    <strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong>
+                </div>
+            </section>
+
             @if (!string.IsNullOrWhiteSpace(vm.Description))
             {
-                <div class="mprint-description"><b>توضیحات:</b> @vm.Description</div>
+                <div class="mprint-description"><b>توضیحات:</b><span>@vm.Description</span></div>
             }
-            <div class="mprint-total"><span>جمع کل صورتحساب</span><strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong></div>
-        </div>
+
+            <footer class="mprint-footer">
+                <div class="mprint-signatures">
+                    <div><span>روش تسویه (اختیاری / نقدی):</span><b>@Text(vm.PaymentType)</b></div>
+                    <div class="mprint-signature-cell">مهر و امضای فروشنده</div>
+                </div>
+                <p>این صورتحساب توسط نرم‌افزار یکپارچه فروغ آریا صادر شده است.</p>
+            </footer>
+        </article>
     </div>
 }
 
 <style>
     .moadian-print { display:none; }
-    /* margin:0 یعنی مرورگر سربرگ/پابرگ خودکار (عنوان صفحه، تاریخ/ساعت، آدرس URL و شمارهٔ صفحه) چاپ نمی‌کند؛ فاصلهٔ داخلی با padding خود برگه جبران می‌شود. */
+    /* برگهٔ رسمی A4 افقی؛ margin صفر باعث حذف سربرگ و پابرگ مرورگر می‌شود. */
     @@page { size: A4 landscape; margin: 0; }
     @@media print {
         body:has(.moadian-print) * { visibility:hidden !important; }
@@ -429,31 +485,56 @@ else
         body:has(.moadian-print) .invoice-screen { display:none !important; }
         body:has(.moadian-print) .moadian-print {
             display:block !important; position:static !important; inset:auto !important;
-            width:100% !important; color:#111827 !important; background:#fff !important;
-            font-family:Tahoma,Arial,sans-serif; font-size:9pt; direction:rtl;
-            padding:8mm; box-sizing:border-box;
+            width:100% !important; color:#111 !important; background:#fff !important;
+            font-family:Tahoma, Arial, sans-serif; font-size:7.2pt; line-height:1.35;
+            direction:rtl; padding:6mm; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;
         }
-        .moadian-print-table { width:100%; border-collapse:collapse; table-layout:fixed; }
-        .moadian-print-table thead { display:table-header-group; }
-        .moadian-print-table tr { break-inside:avoid; page-break-inside:avoid; }
-        .moadian-print-table th, .moadian-print-table td { border:1px solid #64748b; padding:4px 5px; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
-        .moadian-print-table thead tr:first-child th { border:0; padding:0 0 6px; }
-        .mprint-brand { font-size:17pt; font-weight:800; text-align:center; margin:0 0 2px; }
-        .mprint-subtitle { font-size:12pt; font-weight:700; text-align:center; margin-bottom:5px; }
-        .mprint-seller { display:flex; flex-wrap:wrap; justify-content:center; gap:4px 18px; font-size:8pt; margin-bottom:6px; }
-        .mprint-meta { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid #64748b; text-align:right; }
-        .mprint-meta > div { display:flex; gap:5px; padding:4px 6px; border-left:1px solid #cbd5e1; border-bottom:1px solid #cbd5e1; min-width:0; }
-        .mprint-meta span { color:#475569; white-space:nowrap; }
-        .mprint-meta b { overflow-wrap:anywhere; }
-        .mprint-meta .mprint-wide { grid-column:span 2; }
-        .mprint-columns th { background:#e2e8f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-size:8pt; }
-        .moadian-print-table tbody td { font-size:8pt; }
-        .mprint-no { width:5%; }
-        .mprint-summary { margin-top:7px; break-inside:avoid; page-break-inside:avoid; }
-        .mprint-description { border:1px solid #94a3b8; padding:6px; margin-bottom:6px; min-height:24px; }
-        .mprint-total { display:flex; justify-content:space-between; align-items:center; border:2px solid #334155; padding:7px 10px; font-size:11pt; font-weight:700; }
-        .mprint-total strong { font-size:13pt; }
-        .mprint-total small { font-size:8pt; }
+        .mprint-sheet { min-height:198mm; border:1.25px solid #202020; padding:4mm 5mm 3mm; box-sizing:border-box; }
+        .mprint-official-head { display:grid; grid-template-columns:28% 1fr 38%; align-items:start; min-height:20mm; border-bottom:0; }
+        .mprint-document-title { padding-top:8mm; text-align:center; font-size:14pt; font-weight:800; color:#374151; white-space:nowrap; }
+        .mprint-head-side { font-size:7pt; line-height:1.8; }
+        .mprint-head-side > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .mprint-head-side span { margin-left:3px; font-weight:600; }
+        .mprint-head-serial { padding-top:4mm; text-align:left; direction:rtl; }
+        .mprint-head-number { padding-top:3mm; text-align:right; }
+        .mprint-head-number b { font-size:6.7pt; }
+        .mprint-party-section { margin-top:1.4mm; }
+        .mprint-party-section h2, .mprint-lines-section h2 { margin:0; text-align:center; font-size:7.5pt; font-weight:800; line-height:1.55; }
+        .mprint-party-table, .mprint-lines-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+        .mprint-party-table { border:1px solid #252525; }
+        .mprint-party-table td { width:50%; border:1px solid #252525; padding:1.3mm 2mm; text-align:right; vertical-align:middle; }
+        .mprint-party-table span { color:#333; margin-left:3px; }
+        .mprint-party-table b { font-weight:700; }
+        .mprint-lines-section { margin-top:1.6mm; }
+        .mprint-lines-table { border:1px solid #252525; }
+        .mprint-lines-table thead { display:table-header-group; }
+        .mprint-lines-table tr { break-inside:avoid; page-break-inside:avoid; }
+        .mprint-lines-table th, .mprint-lines-table td { border:1px solid #252525; padding:1.15mm .8mm; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
+        .mprint-lines-table th { background:#f0f0f0 !important; font-weight:800; line-height:1.25; }
+        .mprint-lines-table thead th { font-size:6.6pt; }
+        .mprint-lines-table tbody td { font-size:6.7pt; }
+        .mprint-lines-table tfoot th { background:#f6f6f6 !important; font-size:6.8pt; }
+        .mprint-lines-table .mprint-line-name { text-align:right; padding-right:1.4mm; }
+        .mprint-lines-table .mprint-line-total { font-weight:800; }
+        .pl-no { width:3%; } .pl-code { width:9%; } .pl-name { width:17%; } .pl-unit { width:5%; }
+        .pl-qty { width:5%; } .pl-money { width:9%; } .pl-rate { width:7%; }
+        .mprint-payment-section { display:grid; grid-template-columns:1fr 31%; gap:2mm; margin-top:2mm; break-inside:avoid; page-break-inside:avoid; }
+        .mprint-payment-box { min-height:13mm; border:1px solid #252525; display:grid; grid-template-columns:repeat(3, 1fr); align-items:center; }
+        .mprint-payment-box > div { padding:1.5mm 2mm; border-left:1px solid #252525; min-width:0; }
+        .mprint-payment-box > div:last-child { border-left:0; }
+        .mprint-payment-box span { color:#333; margin-left:3px; }
+        .mprint-grand-total { border:1.5px solid #151515; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:1mm 2mm; }
+        .mprint-grand-total span { font-size:8pt; font-weight:800; }
+        .mprint-grand-total strong { margin-top:.8mm; font-size:10pt; }
+        .mprint-grand-total small { font-size:6.5pt; }
+        .mprint-description { min-height:7mm; border:1px solid #252525; display:flex; gap:4px; align-items:flex-start; padding:1.4mm 2mm; margin-top:2mm; }
+        .mprint-description b { white-space:nowrap; }
+        .mprint-footer { margin-top:2mm; }
+        .mprint-signatures { width:42%; min-height:17mm; border:1px solid #252525; display:grid; grid-template-columns:1fr 1fr; }
+        .mprint-signatures > div { padding:1.6mm 2mm; border-left:1px solid #252525; }
+        .mprint-signatures > div:last-child { border-left:0; }
+        .mprint-signature-cell { display:flex; justify-content:center; align-items:flex-start; text-align:center; font-weight:700; }
+        .mprint-footer p { margin:1.8mm 0 0; text-align:center; font-size:6.7pt; color:#3f3f46; }
         .num { font-variant-numeric:tabular-nums; }
     }
 </style>
@@ -462,6 +543,7 @@ else
     [Parameter] public int Id { get; set; }
     private InvoiceVM? vm;
     private VMShowCpinfoByCompany? seller;
+    private VMCustomerList? buyer;
     private bool loading = true, acting;
     private string? loadError;
 
@@ -478,7 +560,27 @@ else
     private bool ActionIsError;
     private ErroreMesage? ErrorItem_;
 
-    private decimal GrandTotal => vm?.InvoiceItems.Sum(i => i.CalculatedPay ?? 0) ?? 0;
+    private static string Text(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+
+    private string? SellerTaxIdentity => FirstValue(seller?.Nationalid, seller?.EconomicNumber);
+    private string? BuyerTaxIdentity => FirstValue(buyer?.NationalID, buyer?.EconomicNumber);
+
+    private static string? FirstValue(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    // فرمول‌های چاپ با فرم ثبت و قواعد محاسباتی مودیان یکسان هستند.
+    private static decimal LineGross(VmInvoiceItems item) => (item.Count ?? 0) * (item.PriceUnit ?? 0);
+    private static decimal LineDiscount(VmInvoiceItems item) => Math.Max(0m, item.Discount ?? 0m);
+    private static decimal LineNet(VmInvoiceItems item) => Math.Max(0m, LineGross(item) - LineDiscount(item));
+    private static decimal LineVat(VmInvoiceItems item) => item.ValueAddedAmount
+        ?? Math.Truncate(LineNet(item) * (decimal)(item.ValueAddedPercentage ?? 0) / 100m);
+    private static decimal LineTotal(VmInvoiceItems item) => item.CalculatedPay ?? Math.Truncate(LineNet(item)) + LineVat(item);
+
+    private decimal TotalGross => vm?.InvoiceItems.Sum(LineGross) ?? 0;
+    private decimal TotalDiscount => vm?.InvoiceItems.Sum(LineDiscount) ?? 0;
+    private decimal TotalNet => vm?.InvoiceItems.Sum(LineNet) ?? 0;
+    private decimal TotalVat => vm?.InvoiceItems.Sum(LineVat) ?? 0;
+    private decimal GrandTotal => vm?.InvoiceItems.Sum(LineTotal) ?? 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -492,6 +594,8 @@ else
         try
         {
             loadError = null;
+            seller = null;
+            buyer = null;
             vm = await Moadian.GetInvoiceAsync(Id);
             if (vm is not null && vm.CPInfoId.HasValue)
             {
@@ -504,6 +608,21 @@ else
                 {
                     // اطلاعات فروشنده تکمیلی است؛ شکست دریافت آن نباید جزئیات یا چاپ صورتحساب را مختل کند.
                     seller = null;
+                }
+
+                if (vm.CustomerId.HasValue)
+                {
+                    try
+                    {
+                        var customers = await Moadian.GetCustomersAsync(vm.CPInfoId.Value);
+                        buyer = customers.FirstOrDefault(c => c.CustomerId == vm.CustomerId.Value);
+                    }
+                    catch
+                    {
+                        // کاربر ممکن است مجوز فهرست مشتری‌ها را نداشته باشد؛ نام ذخیره‌شدهٔ
+                        // روی صورتحساب همچنان برای چاپ نمایش داده می‌شود.
+                        buyer = null;
+                    }
                 }
             }
         }
