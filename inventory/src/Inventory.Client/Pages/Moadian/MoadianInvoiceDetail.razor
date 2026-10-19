@@ -122,22 +122,6 @@ else
         </div>
     </header>
 
-    @* ---------- بنر وضعیت زمینه‌ای ---------- *@
-    @if (vm.StatusSentToSystemInt == "5" && !string.IsNullOrEmpty(vm.ReferenceId))
-    {
-        <div class="alert alert-danger mi-banner d-flex align-items-center gap-2 no-print" role="status">
-            <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
-            <div>این صورتحساب دارای خطا از سمت سامانهٔ مالیاتی است؛ می‌توانید جزئیات خطا را مشاهده یا صورتحساب اصلاحی صادر کنید.</div>
-        </div>
-    }
-    else if (vm.ShowButtons && (vm.StatusSentToSystemInt == "1" || vm.StatusSentToSystemInt == "4"))
-    {
-        <div class="alert alert-info mi-banner d-flex align-items-center gap-2 no-print" role="status">
-            <i class="bi bi-hourglass-split" aria-hidden="true"></i>
-            <div>صورتحساب در جریان بررسی در سامانهٔ مالیاتی است؛ برای دیدن آخرین وضعیت، دکمهٔ «استعلام وضعیت» در بخش عملیات را بزنید.</div>
-        </div>
-    }
-
     @* ---------- نتیجه استعلام / خطا ---------- *@
     @if (ActionResult != null)
     {
