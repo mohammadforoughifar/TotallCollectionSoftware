@@ -475,25 +475,26 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>
     /// آیا کاربر جاری اجازه افزودن پیوست به این نامه را دارد؟
-    /// قاعده مصوب: فقط «فرستنده نامه» (بعد از ارسال) می‌تواند پیوست اضافه کند.
+    /// قاعده: «هر کاربر حاضر در گردش نامه» (فرستنده یا هر گیرنده‌ای در ارجاع‌ها) یا مدیر — هم‌راستا با نامهٔ وارده و صادره.
     /// </summary>
     private async Task<bool> CanAttachAsync(int letterId)
     {
-        return await InFlowAsync(letterId);
+        return await InFlowAsync(letterId) || await IsAdminAsync();
     }
 
     /// <summary>
     /// آپلود پیوست — بدون محدودیت تعداد؛ هر فایل حداکثر ۲۰ مگابایت؛ فایل خالی رد می‌شود.
-    /// فقط فرستنده نامه می‌تواند پیوست اضافه کند (قاعده مصوب کارفرما).
+    /// هر کاربر حاضر در گردش نامه (فرستنده/گیرنده) یا مدیر می‌تواند پیوست اضافه کند.
     /// فایل‌ها در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شوند و در DB فقط اطلاعات + مسیر (FilePath) ثبت می‌شود.
     /// </summary>
     [HttpPost("{id:int}/attachments")]
     [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        // Read (نه Create): گیرندهٔ در گردش معمولاً فقط مجوز خواندن ماژول را دارد
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await CanAttachAsync(id))
-            return StatusCode(403, new { message = "فقط فرستنده نامه می‌تواند پیوست اضافه کند." });
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازه افزودن پیوست ندارید." });
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });

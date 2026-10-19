@@ -325,7 +325,9 @@
                                 </div>
                             </div>
                             <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
-                            @if (attachments.Count > 0 || selected.IsMine)
+                            @* بخش پیوست‌ها باید «همیشه» برای هر کاربرِ حاضر در گردش (فرستنده/گیرنده) یا مدیر
+                               دیده شود — حتی اگر نامه هنوز پیوستی نداشته باشد تا دکمه افزودن در دسترس بماند *@
+                            @if (attachments.Count > 0 || selected.IsMine || selected.MyErja != null || Auth.IsAdmin)
                             {
                                 <div class="paper-foot">
                                     @foreach (var a in attachments)
@@ -341,11 +343,11 @@
                                             }
                                         </button>
                                     }
-                                    @if (selected.IsMine || selected.MyErja != null)
+                                    @if (selected.IsMine || selected.MyErja != null || Auth.IsAdmin)
                                     {
                                         <label class="att att-add" title="افزودن پیوست جدید">
                                             <div class="ic"><i class="bi @(attUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
-                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>بدون محدودیت حجم</small></div>
+                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
                                             <InputFile OnChange="OnReaderFiles" multiple disabled="@attUploading" style="display:none" />
                                         </label>
                                     }

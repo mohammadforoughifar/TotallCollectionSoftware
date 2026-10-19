@@ -701,9 +701,10 @@ public class OutgoingLettersController : RbacControllerBase
     [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        // Read (نه Create): هر کاربر حاضر در گردش (فرستنده/گیرنده/امضاکننده) یا مدیر — هم‌راستا با نامهٔ داخلی و وارده
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازه افزودن پیوست ندارید." });
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
