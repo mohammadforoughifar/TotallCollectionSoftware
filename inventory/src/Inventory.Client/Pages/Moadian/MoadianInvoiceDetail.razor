@@ -64,7 +64,10 @@ else
         <div class="mi-d-ops">
             @if (MoadianUi.CanSend(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
-                @if (CanPreview && vm.StatusSentToSystemInt == "0")
+                @* پیش‌نمایش برای ارسال‌نشده (۰) و خطای قطعی (۵) فعال است — همان دو وضعیتی که
+                   «ارسال/ارسال مجدد» و سرور اجازه می‌دهند؛ کاربر برای رفع خطای سامانه نیاز دارد
+                   JSON ارسال‌مجدد را ببیند. *@
+                @if (CanPreview && vm.StatusSentToSystemInt is "0" or "5")
                 {
                     <button class="btn btn-outline-primary" @onclick="PreviewPayload" disabled="@acting">
                         <i class="bi bi-braces"></i> پیش‌نمایش JSON
