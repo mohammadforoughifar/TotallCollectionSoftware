@@ -35,31 +35,33 @@ else if (vm is null)
 }
 else
 {
-    <div class="invoice-screen">
-    @* ---------- سربرگ صورتحساب (اطلاعات + عملیات در یک کارت) ---------- *@
-    <div class="card mi-hero mb-3 no-print">
-        <div class="card-body">
-            <div class="d-flex align-items-start gap-3 flex-wrap">
-                <div class="mi-hero-icon" aria-hidden="true"><i class="bi bi-receipt"></i></div>
-                <div class="mi-hero-main">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="mi-hero-title">صورتحساب #@(vm.Id.Num())</span>
-                        <span class="mi-status @MoadianUi.StatusPillClass(vm.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</span>
-                        <span class="badge @MoadianUi.SubjectBadge(vm.Subject)">@vm.Subject</span>
-                    </div>
-                    <div class="mi-meta mt-2">
-                        <span><i class="bi bi-calendar3" aria-hidden="true"></i>تاریخ: <b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
-                        <span><i class="bi bi-person" aria-hidden="true"></i>مشتری: <b>@vm.CustomerName</b></span>
-                        <span><i class="bi bi-cash-coin" aria-hidden="true"></i>پرداخت: <b>@vm.PaymentType</b></span>
-                        <span><i class="bi bi-wallet2" aria-hidden="true"></i>مجموع: <b class="num">@MoadianUi.Money(GrandTotal)</b></span>
-                    </div>
+    <div class="invoice-screen mi-detail">
+    @* ---------- سربرگ صورتحساب (عنوان + اطلاعات کلیدی + عملیات) ---------- *@
+    <header class="mi-d-head no-print">
+        <div class="mi-d-top">
+            <div class="mi-d-titlebox">
+                <div class="mi-d-tags">
+                    <span class="badge @MoadianUi.SubjectBadge(vm.Subject)">@vm.Subject</span>
+                    <span class="mi-status @MoadianUi.StatusPillClass(vm.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(vm.StatusSentToSystemInt)</span>
                 </div>
-                <div class="d-flex gap-2 ms-auto flex-wrap">
-                    <NavLink class="btn btn-outline-secondary" href="moadian/invoices"><i class="bi bi-arrow-right" aria-hidden="true"></i> فهرست</NavLink>
-                    <button type="button" class="btn btn-outline-primary" @onclick="Print"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</button>
+                <h1 class="mi-d-title">
+                    <span class="cap">صورتحساب</span>
+                    <span class="no num">#@(vm.Id.Num())</span>
+                </h1>
+                <div class="mi-d-meta">
+                    <span><i class="bi bi-calendar3" aria-hidden="true"></i><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
+                    <span><i class="bi bi-person" aria-hidden="true"></i>@vm.CustomerName</span>
+                    <span><i class="bi bi-cash-coin" aria-hidden="true"></i>@vm.PaymentType</span>
+                    <span><i class="bi bi-wallet2" aria-hidden="true"></i><b class="num">@MoadianUi.Money(GrandTotal)</b> ریال</span>
                 </div>
             </div>
-            <div class="mi-hero-bar d-flex gap-2 flex-wrap align-items-center">
+            @* دکمه‌ها عمداً در پایان‌خط قرار می‌گیرند تا در چیدمان راست‌به‌چپ، سمت چپ صفحه دیده شوند. *@
+            <div class="mi-d-actions">
+                <NavLink class="btn btn-light" href="moadian/invoices"><i class="bi bi-arrow-right" aria-hidden="true"></i> فهرست</NavLink>
+                <button type="button" class="btn btn-primary" @onclick="Print"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</button>
+            </div>
+        </div>
+        <div class="mi-d-ops">
             @if (MoadianUi.CanSend(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
                 @if (CanPreview && vm.StatusSentToSystemInt == "0")
@@ -109,7 +111,7 @@ else
             }
             @if (CanDelete && MoadianUi.CanDelete(vm.StatusSentToSystemInt, vm.ShowButtons))
             {
-                <button class="btn btn-outline-secondary ms-auto" @onclick="Delete" disabled="@acting">
+                <button class="btn btn-outline-secondary mi-push-end" @onclick="Delete" disabled="@acting">
                     <i class="bi bi-trash"></i> حذف
                 </button>
             }
@@ -117,9 +119,8 @@ else
             {
                 <span class="text-muted small align-self-center">این صورتحساب (مثلاً ابطالی) قابل ویرایش و عملیات نیست.</span>
             }
-            </div>
         </div>
-    </div>
+    </header>
 
     @* ---------- بنر وضعیت زمینه‌ای ---------- *@
     @if (vm.StatusSentToSystemInt == "5" && !string.IsNullOrEmpty(vm.ReferenceId))
@@ -192,119 +193,109 @@ else
     }
 
     <div class="row g-3">
-        @* ---------- اطلاعات ---------- *@
-        <div class="col-lg-4">
-            <div class="card mi-blocked h-100">
-                <div class="card-header"><i class="bi bi-info-circle"></i> اطلاعات صورتحساب</div>
-                <div class="card-body">
-                    <div class="mi-info">
-                        <div class="mi-info-cell">
-                            <span class="mi-info-lbl"><i class="bi bi-cash-stack"></i> مبلغ نهایی</span>
-                            <span class="mi-info-val num" style="color:var(--primary)">@MoadianUi.Money(GrandTotal)</span>
-                        </div>
-                        <div class="mi-info-cell">
-                            <span class="mi-info-lbl"><i class="bi bi-credit-card"></i> نوع پرداخت</span>
-                            <span class="mi-info-val">@vm.PaymentType</span>
-                        </div>
-                        <div class="mi-info-cell">
-                            <span class="mi-info-lbl"><i class="bi bi-tags"></i> نوع صورتحساب</span>
-                            <span class="mi-info-val">@vm.TypePattern</span>
-                        </div>
-                        @if (!string.IsNullOrEmpty(vm.Description))
-                        {
-                            <div class="mi-info-cell" style="grid-column:1/-1">
-                                <span class="mi-info-lbl"><i class="bi bi-text-left"></i> شرح</span>
-                                <span class="mi-info-val" style="font-weight:500">@vm.Description</span>
-                            </div>
-                        }
-                    </div>
-                    <div class="mt-3 d-flex flex-column gap-2">
-                        <div>
-                            <div class="text-muted small mb-1">شمارهٔ مالیاتی (TaxID)</div>
-                            @if (!string.IsNullOrEmpty(vm.NewTaxNumber))
-                            {
-                                <div class="mi-codechip" title="کپی شمارهٔ مالیاتی" @onclick="() => CopyText(vm.NewTaxNumber!)">
-                                    <i class="bi bi-clipboard"></i><span>@vm.NewTaxNumber</span>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="mi-codechip" style="cursor:default"><i class="bi bi-hourglass"></i><span style="color:#94a3b8">هنوز صادر نشده (پس از ارسال)</span></div>
-                            }
-                        </div>
-                        @if (!string.IsNullOrEmpty(vm.ReferenceId))
-                        {
-                            <div>
-                                <div class="text-muted small mb-1">شمارهٔ مرجع (ReferenceID)</div>
-                                <div class="mi-codechip" title="کپی شمارهٔ مرجع" @onclick="() => CopyText(vm.ReferenceId!)">
-                                    <i class="bi bi-clipboard"></i><span>@vm.ReferenceId</span>
-                                </div>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(vm.TaxMemoryID))
-                        {
-                            <div>
-                                <div class="text-muted small mb-1">شناسهٔ حافظه</div>
-                                <div class="mi-codechip" style="cursor:default"><i class="bi bi-hdd"></i><span>@vm.TaxMemoryID</span></div>
-                            </div>
-                        }
-                    </div>
+        @* ---------- ردیف‌ها (محتوای اصلی — ستون عریض‌تر) ---------- *@
+        <div class="col-lg-8">
+            <section class="mi-panel">
+                <div class="mi-panel-head">
+                    <i class="bi bi-list-ol" aria-hidden="true"></i> ردیف‌های صورتحساب
+                    <span class="mi-count num">@((vm.InvoiceItems.Count).Num()) ردیف</span>
                 </div>
-            </div>
+                <div class="table-responsive mi-table">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:56px">ردیف</th>
+                                <th>کالا / خدمت</th>
+                                <th class="mi-col-optional" style="width:76px">واحد</th>
+                                <th class="text-center">تعداد</th>
+                                <th class="text-center mi-col-optional">نرخ</th>
+                                <th class="text-center mi-col-optional">ارزش افزوده</th>
+                                <th class="text-center mi-col-optional">تخفیف</th>
+                                <th class="text-center">مبلغ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int ii = 0; ii < vm.InvoiceItems.Count; ii++)
+                            {
+                                var it = vm.InvoiceItems[ii];
+                                <tr>
+                                    <td><span class="mi-rowno num">@MoadianUi.Num(ii + 1)</span></td>
+                                    <td>
+                                        <div class="mi-item-name">@it.Name</div>
+                                        @if (!string.IsNullOrEmpty(it.UniqueIdentifier))
+                                        {
+                                            <div class="mi-item-code num" dir="ltr">@it.UniqueIdentifier</div>
+                                        }
+                                    </td>
+                                    <td class="small num mi-col-optional">@it.UnitOfMeasurement</td>
+                                    <td class="text-center num">@((it.Count ?? 0).Qty())</td>
+                                    <td class="text-center num mi-col-optional">@MoadianUi.Money(it.PriceUnit)</td>
+                                    <td class="text-center num text-info mi-col-optional">@(((decimal)(it.ValueAddedPercentage ?? 0)).Qty())٪</td>
+                                    <td class="text-center num mi-col-optional">@MoadianUi.Money(it.Discount)</td>
+                                    <td class="text-center num mi-amount">@MoadianUi.Money(it.CalculatedPay)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mi-moneyfoot num">
+                    <span class="lbl">جمع کل صورتحساب</span>
+                    <span class="amt">@MoadianUi.Money(GrandTotal) <small>ریال</small></span>
+                </div>
+            </section>
         </div>
 
-        @* ---------- ردیف‌ها ---------- *@
-        <div class="col-lg-8">
-            <div class="card mi-blocked h-100">
-                <div class="card-header d-flex align-items-center gap-2">
-                    <span><i class="bi bi-list-ol"></i> ردیف‌ها</span>
-                    <span class="badge badge-soft-primary num ms-auto">@((vm.InvoiceItems.Count).Num()) ردیف</span>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive mi-table">
-                        <table class="table align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th style="width:52px">ردیف</th>
-                                    <th>کالا / خدمت</th>
-                                    <th>واحد</th>
-                                    <th class="text-center">تعداد</th>
-                                    <th class="text-center">نرخ</th>
-                                    <th class="text-center">ارزش افزوده</th>
-                                    <th class="text-center">تخفیف</th>
-                                    <th class="text-center">مبلغ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @for (int ii = 0; ii < vm.InvoiceItems.Count; ii++)
-                                {
-                                    var it = vm.InvoiceItems[ii];
-                                    <tr>
-                                        <td class="num text-muted">@MoadianUi.Num(ii + 1)</td>
-                                        <td>
-                                            @it.Name
-                                            @if (!string.IsNullOrEmpty(it.UniqueIdentifier))
-                                            {
-                                                <div class="num small text-muted" dir="ltr">@it.UniqueIdentifier</div>
-                                            }
-                                        </td>
-                                        <td class="small num">@it.UnitOfMeasurement</td>
-                                        <td class="text-center num">@((it.Count ?? 0).Qty())</td>
-                                        <td class="text-center num">@MoadianUi.Money(it.PriceUnit)</td>
-                                        <td class="text-center num">@(((decimal)(it.ValueAddedPercentage ?? 0)).Qty())٪</td>
-                                        <td class="text-center num">@MoadianUi.Money(it.Discount)</td>
-                                        <td class="text-center num fw-semibold">@MoadianUi.Money(it.CalculatedPay)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+        @* ---------- اطلاعات و شناسه‌ها ---------- *@
+        <div class="col-lg-4">
+            <section class="mi-panel">
+                <div class="mi-panel-head"><i class="bi bi-info-circle" aria-hidden="true"></i> اطلاعات صورتحساب</div>
+                <div class="mi-kv">
+                    <div class="mi-kv-row">
+                        <span class="mi-kv-lbl"><i class="bi bi-tags" aria-hidden="true"></i> نوع صورتحساب</span>
+                        <span class="mi-kv-val">@(string.IsNullOrWhiteSpace(vm.TypePattern) ? "—" : vm.TypePattern)</span>
                     </div>
-                    <div class="mi-total-banner num">
-                        <span class="text-muted">مجموع صورتحساب</span>
-                        <span class="v">@MoadianUi.Money(GrandTotal) <small>ریال</small></span>
+                    <div class="mi-kv-row">
+                        <span class="mi-kv-lbl"><i class="bi bi-credit-card" aria-hidden="true"></i> نوع پرداخت</span>
+                        <span class="mi-kv-val">@(string.IsNullOrWhiteSpace(vm.PaymentType) ? "—" : vm.PaymentType)</span>
                     </div>
+                    @if (!string.IsNullOrEmpty(vm.Description))
+                    {
+                        <div class="mi-kv-row">
+                            <span class="mi-kv-lbl"><i class="bi bi-text-left" aria-hidden="true"></i> شرح</span>
+                            <span class="mi-kv-val soft">@vm.Description</span>
+                        </div>
+                    }
+                    <div class="mi-kv-row">
+                        <span class="mi-kv-lbl"><i class="bi bi-upc-scan" aria-hidden="true"></i> شمارهٔ مالیاتی (TaxID)</span>
+                        @if (!string.IsNullOrEmpty(vm.NewTaxNumber))
+                        {
+                            <div class="mi-codechip" title="کپی شمارهٔ مالیاتی" @onclick="() => CopyText(vm.NewTaxNumber!)">
+                                <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.NewTaxNumber</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mi-codechip" style="cursor:default"><i class="bi bi-hourglass" aria-hidden="true"></i><span style="color:#94a3b8">هنوز صادر نشده (پس از ارسال)</span></div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(vm.ReferenceId))
+                    {
+                        <div class="mi-kv-row">
+                            <span class="mi-kv-lbl"><i class="bi bi-link-45deg" aria-hidden="true"></i> شمارهٔ مرجع (ReferenceID)</span>
+                            <div class="mi-codechip" title="کپی شمارهٔ مرجع" @onclick="() => CopyText(vm.ReferenceId!)">
+                                <i class="bi bi-clipboard" aria-hidden="true"></i><span>@vm.ReferenceId</span>
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(vm.TaxMemoryID))
+                    {
+                        <div class="mi-kv-row">
+                            <span class="mi-kv-lbl"><i class="bi bi-hdd" aria-hidden="true"></i> شناسهٔ حافظه</span>
+                            <div class="mi-codechip" style="cursor:default"><i class="bi bi-hdd" aria-hidden="true"></i><span>@vm.TaxMemoryID</span></div>
+                        </div>
+                    }
                 </div>
-            </div>
+            </section>
         </div>
     </div>
     </div>
