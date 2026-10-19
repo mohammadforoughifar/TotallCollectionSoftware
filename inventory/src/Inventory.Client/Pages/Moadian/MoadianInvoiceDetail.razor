@@ -397,6 +397,16 @@ else
                         <col class="pl-money" /><col class="pl-rate" /><col class="pl-money" /><col class="pl-money" />
                     </colgroup>
                     <thead>
+                        @* این ردیف با table-header-group در تمام صفحه‌های بعدی هم تکرار می‌شود. *@
+                        <tr class="mprint-continuation-head">
+                            <th colspan="12">
+                                <span>صورت حساب الکترونیکی</span>
+                                <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></span>
+                                <span>شماره مالیاتی: <b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></span>
+                                <span>خریدار: <b>@Text(buyer?.Name ?? vm.CustomerName)</b></span>
+                                <span>تاریخ: <b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
+                            </th>
+                        </tr>
                         <tr>
                             <th>ردیف</th>
                             <th>شناسه کالا/خدمت</th>
@@ -417,18 +427,18 @@ else
                         {
                             var item = vm.InvoiceItems[i];
                             <tr>
-                                <td class="num">@((i + 1).Num())</td>
-                                <td class="num" dir="ltr">@Text(item.UniqueIdentifier)</td>
+                                <td class="num mprint-plain-number">@((i + 1).Num())</td>
+                                <td class="num mprint-plain-number" dir="ltr">@Text(item.UniqueIdentifier)</td>
                                 <td class="mprint-line-name">@Text(item.Name ?? item.DescriptionKala)</td>
                                 <td>@Text(item.UnitOfMeasurement)</td>
-                                <td class="num">@((item.Count ?? 0).Qty())</td>
-                                <td class="num">@MoadianUi.Money(item.PriceUnit)</td>
-                                <td class="num">@MoadianUi.Money(LineGross(item))</td>
-                                <td class="num">@MoadianUi.Money(item.Discount)</td>
-                                <td class="num">@MoadianUi.Money(LineNet(item))</td>
-                                <td class="num">@(((decimal)(item.ValueAddedPercentage ?? 0)).Qty())</td>
-                                <td class="num">@MoadianUi.Money(LineVat(item))</td>
-                                <td class="num mprint-line-total">@MoadianUi.Money(LineTotal(item))</td>
+                                <td class="num mprint-plain-number">@((item.Count ?? 0).Qty())</td>
+                                <td class="num mprint-plain-number">@MoadianUi.Money(item.PriceUnit)</td>
+                                <td class="num mprint-plain-number">@MoadianUi.Money(LineGross(item))</td>
+                                <td class="num mprint-plain-number">@MoadianUi.Money(item.Discount)</td>
+                                <td class="num mprint-plain-number">@MoadianUi.Money(LineNet(item))</td>
+                                <td class="num mprint-plain-number">@(((decimal)(item.ValueAddedPercentage ?? 0)).Qty())</td>
+                                <td class="num mprint-plain-number">@MoadianUi.Money(LineVat(item))</td>
+                                <td class="num mprint-plain-number mprint-line-total">@MoadianUi.Money(LineTotal(item))</td>
                             </tr>
                         }
                     </tbody>
@@ -447,14 +457,22 @@ else
             </section>
 
             <section class="mprint-payment-section">
-                <div class="mprint-payment-box">
-                    <div><span>نوع صورتحساب:</span><b>@Text(vm.TypePattern)</b></div>
-                    <div><span>روش تسویه:</span><b>@Text(vm.PaymentType)</b></div>
-                    <div><span>موضوع صورتحساب:</span><b>@Text(vm.Subject)</b></div>
+                @* اگر جمع‌ها به صفحهٔ آخر منتقل شوند، شمارهٔ سند و خریدار همراه آن‌ها چاپ می‌شود. *@
+                <div class="mprint-final-reference">
+                    <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></span>
+                    <span>شماره مالیاتی: <b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></span>
+                    <span>خریدار: <b>@Text(buyer?.Name ?? vm.CustomerName)</b></span>
                 </div>
-                <div class="mprint-grand-total">
-                    <span>جمع کل صورتحساب</span>
-                    <strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong>
+                <div class="mprint-payment-content">
+                    <div class="mprint-payment-box">
+                        <div><span>نوع صورتحساب:</span><b>@Text(vm.TypePattern)</b></div>
+                        <div><span>روش تسویه:</span><b>@Text(vm.PaymentType)</b></div>
+                        <div><span>موضوع صورتحساب:</span><b>@Text(vm.Subject)</b></div>
+                    </div>
+                    <div class="mprint-grand-total">
+                        <span>جمع کل صورتحساب</span>
+                        <strong class="num">@MoadianUi.Money(GrandTotal) <small>ریال</small></strong>
+                    </div>
                 </div>
             </section>
 
@@ -486,55 +504,66 @@ else
         body:has(.moadian-print) .moadian-print {
             display:block !important; position:static !important; inset:auto !important;
             width:100% !important; color:#111 !important; background:#fff !important;
-            font-family:Tahoma, Arial, sans-serif; font-size:7.2pt; line-height:1.35;
-            direction:rtl; padding:6mm; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;
+            font-family:Tahoma, Arial, sans-serif; font-size:6.8pt; line-height:1.25;
+            direction:rtl; padding:4mm; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;
         }
-        .mprint-sheet { min-height:198mm; border:1.25px solid #202020; padding:4mm 5mm 3mm; box-sizing:border-box; }
-        .mprint-official-head { display:grid; grid-template-columns:28% 1fr 38%; align-items:start; min-height:20mm; border-bottom:0; }
-        .mprint-document-title { padding-top:8mm; text-align:center; font-size:14pt; font-weight:800; color:#374151; white-space:nowrap; }
-        .mprint-head-side { font-size:7pt; line-height:1.8; }
+        /* ارتفاع اجباری نگذارید؛ با این کار محتوای کوتاه به‌دلیل فقط چند میلی‌متر اضافه، صفحهٔ دوم نمی‌سازد. */
+        .mprint-sheet { border:1.25px solid #202020; padding:3mm 4mm 2mm; box-sizing:border-box; }
+        .mprint-official-head { display:grid; grid-template-columns:28% 1fr 38%; align-items:start; min-height:16mm; }
+        .mprint-document-title { padding-top:6mm; text-align:center; font-size:12pt; font-weight:800; color:#374151; white-space:nowrap; }
+        .mprint-head-side { font-size:6.3pt; line-height:1.55; }
         .mprint-head-side > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .mprint-head-side span { margin-left:3px; font-weight:600; }
-        .mprint-head-serial { padding-top:4mm; text-align:left; direction:rtl; }
-        .mprint-head-number { padding-top:3mm; text-align:right; }
-        .mprint-head-number b { font-size:6.7pt; }
-        .mprint-party-section { margin-top:1.4mm; }
-        .mprint-party-section h2, .mprint-lines-section h2 { margin:0; text-align:center; font-size:7.5pt; font-weight:800; line-height:1.55; }
+        .mprint-head-side span { margin-left:2px; font-weight:600; }
+        .mprint-head-serial { padding-top:3mm; text-align:left; direction:rtl; }
+        .mprint-head-number { padding-top:2mm; text-align:right; }
+        .mprint-head-number b { font-size:6.1pt; }
+        .mprint-party-section { margin-top:1mm; }
+        .mprint-party-section h2, .mprint-lines-section h2 { margin:0; text-align:center; font-size:6.8pt; font-weight:800; line-height:1.4; }
         .mprint-party-table, .mprint-lines-table { width:100%; border-collapse:collapse; table-layout:fixed; }
         .mprint-party-table { border:1px solid #252525; }
-        .mprint-party-table td { width:50%; border:1px solid #252525; padding:1.3mm 2mm; text-align:right; vertical-align:middle; }
-        .mprint-party-table span { color:#333; margin-left:3px; }
+        .mprint-party-table td { width:50%; border:1px solid #252525; padding:.85mm 1.4mm; text-align:right; vertical-align:middle; }
+        .mprint-party-table span { color:#333; margin-left:2px; }
         .mprint-party-table b { font-weight:700; }
-        .mprint-lines-section { margin-top:1.6mm; }
+        .mprint-lines-section { margin-top:1.1mm; }
         .mprint-lines-table { border:1px solid #252525; }
+        /* مرورگر این بخش را در ابتدای هر صفحهٔ ادامه‌دار چاپ می‌کند. */
         .mprint-lines-table thead { display:table-header-group; }
+        /* جمع نهایی فقط بعد از آخرین ردیف باشد، نه پایین هر صفحهٔ ادامه‌دار. */
+        .mprint-lines-table tfoot { display:table-row-group; }
         .mprint-lines-table tr { break-inside:avoid; page-break-inside:avoid; }
-        .mprint-lines-table th, .mprint-lines-table td { border:1px solid #252525; padding:1.15mm .8mm; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
-        .mprint-lines-table th { background:#f0f0f0 !important; font-weight:800; line-height:1.25; }
-        .mprint-lines-table thead th { font-size:6.6pt; }
-        .mprint-lines-table tbody td { font-size:6.7pt; }
-        .mprint-lines-table tfoot th { background:#f6f6f6 !important; font-size:6.8pt; }
-        .mprint-lines-table .mprint-line-name { text-align:right; padding-right:1.4mm; }
+        .mprint-lines-table th, .mprint-lines-table td { border:1px solid #252525; padding:.65mm .45mm; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
+        .mprint-lines-table th { background:#f0f0f0 !important; font-weight:800; line-height:1.15; }
+        .mprint-lines-table thead th { font-size:5.9pt; }
+        .mprint-lines-table tbody td { font-size:6pt; line-height:1.15; }
+        .mprint-lines-table tfoot th { background:#f6f6f6 !important; font-size:6.1pt; }
+        .mprint-continuation-head th { background:#fff !important; text-align:right; padding:.75mm 1.2mm; font-size:5.9pt !important; }
+        .mprint-continuation-head span { margin-left:4mm; white-space:nowrap; }
+        /* مقادیر عددی و شناسه‌ها به شکل متن ساده داخل ستون می‌مانند، نه چیپ/باکس مستقل. */
+        .mprint-lines-table tbody td.mprint-plain-number { background:transparent !important; border-left-color:transparent; border-right-color:transparent; }
+        .mprint-lines-table .mprint-line-name { text-align:right; padding-right:.9mm; }
         .mprint-lines-table .mprint-line-total { font-weight:800; }
         .pl-no { width:3%; } .pl-code { width:9%; } .pl-name { width:17%; } .pl-unit { width:5%; }
         .pl-qty { width:5%; } .pl-money { width:9%; } .pl-rate { width:7%; }
-        .mprint-payment-section { display:grid; grid-template-columns:1fr 31%; gap:2mm; margin-top:2mm; break-inside:avoid; page-break-inside:avoid; }
-        .mprint-payment-box { min-height:13mm; border:1px solid #252525; display:grid; grid-template-columns:repeat(3, 1fr); align-items:center; }
-        .mprint-payment-box > div { padding:1.5mm 2mm; border-left:1px solid #252525; min-width:0; }
+        .mprint-payment-section { margin-top:1.2mm; break-inside:avoid; page-break-inside:avoid; }
+        .mprint-final-reference { display:flex; gap:4mm; align-items:center; padding:.7mm 1.3mm; border:1px solid #252525; border-bottom:0; font-size:5.9pt; }
+        .mprint-final-reference span { white-space:nowrap; }
+        .mprint-payment-content { display:grid; grid-template-columns:1fr 31%; gap:1.5mm; }
+        .mprint-payment-box { min-height:9mm; border:1px solid #252525; display:grid; grid-template-columns:repeat(3, 1fr); align-items:center; }
+        .mprint-payment-box > div { padding:.8mm 1.3mm; border-left:1px solid #252525; min-width:0; }
         .mprint-payment-box > div:last-child { border-left:0; }
-        .mprint-payment-box span { color:#333; margin-left:3px; }
-        .mprint-grand-total { border:1.5px solid #151515; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:1mm 2mm; }
-        .mprint-grand-total span { font-size:8pt; font-weight:800; }
-        .mprint-grand-total strong { margin-top:.8mm; font-size:10pt; }
-        .mprint-grand-total small { font-size:6.5pt; }
-        .mprint-description { min-height:7mm; border:1px solid #252525; display:flex; gap:4px; align-items:flex-start; padding:1.4mm 2mm; margin-top:2mm; }
+        .mprint-payment-box span { color:#333; margin-left:2px; }
+        .mprint-grand-total { border:1.5px solid #151515; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:.7mm 1.4mm; }
+        .mprint-grand-total span { font-size:7pt; font-weight:800; }
+        .mprint-grand-total strong { margin-top:.3mm; font-size:8.5pt; }
+        .mprint-grand-total small { font-size:5.7pt; }
+        .mprint-description { min-height:5mm; border:1px solid #252525; display:flex; gap:3px; align-items:flex-start; padding:.8mm 1.3mm; margin-top:1.2mm; }
         .mprint-description b { white-space:nowrap; }
-        .mprint-footer { margin-top:2mm; }
-        .mprint-signatures { width:42%; min-height:17mm; border:1px solid #252525; display:grid; grid-template-columns:1fr 1fr; }
-        .mprint-signatures > div { padding:1.6mm 2mm; border-left:1px solid #252525; }
+        .mprint-footer { margin-top:1.2mm; break-inside:avoid; page-break-inside:avoid; }
+        .mprint-signatures { width:42%; min-height:13mm; border:1px solid #252525; display:grid; grid-template-columns:1fr 1fr; }
+        .mprint-signatures > div { padding:.9mm 1.3mm; border-left:1px solid #252525; }
         .mprint-signatures > div:last-child { border-left:0; }
         .mprint-signature-cell { display:flex; justify-content:center; align-items:flex-start; text-align:center; font-weight:700; }
-        .mprint-footer p { margin:1.8mm 0 0; text-align:center; font-size:6.7pt; color:#3f3f46; }
+        .mprint-footer p { margin:1.1mm 0 0; text-align:center; font-size:5.7pt; color:#3f3f46; }
         .num { font-variant-numeric:tabular-nums; }
     }
 </style>
