@@ -721,6 +721,9 @@ else
     private async Task ShowError()
     {
         if (vm is null) return;
+        // وضعیت «۵» (خطای قطعی) می‌تواند بدون شماره مرجع رخ دهد؛ گارد نبودنِ مرجع
+        // باعث خطای ArgumentNull در EscapeDataString می‌شد — همان رفتار لیست (Toast.Info).
+        if (!MoadianUi.HasReference(vm.ReferenceId)) { Toast.Info("این صورتحساب هنوز به سامانه ارسال نشده است (شماره مرجع ندارد)."); return; }
         acting = true; StateHasChanged();
         try
         {

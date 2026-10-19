@@ -214,11 +214,13 @@ public class MoadianService : IMoadianService
     public Task<ApiModel> EslahiInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/EslahiInvoiceAsync", vm);
     public Task<ApiModel> EbtalInvoiceAsync(InvoiceVM vm) => _api.PostAsync<ApiModel>("Moadian/EbtalInvoiceAsync", vm);
 
-    public Task<ApiModel> EstelamInvoiceAsync(string referenceId, int invoiceId, string dateOrder)
-        => _api.GetAsync<ApiModel>($"Moadian/EstelamInvoiceAsync?ReferenceId={Uri.EscapeDataString(referenceId)}&InvoiceId={invoiceId}&dateorder={Uri.EscapeDataString(dateOrder)}");
+    // نکته: EscapeDataString با ورودی null استثنای ArgumentNull (همان Arg_ParamName_Name, stringToEscape)
+    // می‌اندازد، پس پارامترهای قابل-null با ?? "" ایمن شده‌اند.
+    public Task<ApiModel> EstelamInvoiceAsync(string? referenceId, int invoiceId, string? dateOrder)
+        => _api.GetAsync<ApiModel>($"Moadian/EstelamInvoiceAsync?ReferenceId={Uri.EscapeDataString(referenceId ?? "")}&InvoiceId={invoiceId}&dateorder={Uri.EscapeDataString(dateOrder ?? "")}");
 
-    public Task<ApiModel> ErrorInvoiceAsync(string referenceId)
-        => _api.GetAsync<ApiModel>($"Moadian/ErrorInvoiceAsync?ReferenceId={Uri.EscapeDataString(referenceId)}");
+    public Task<ApiModel> ErrorInvoiceAsync(string? referenceId)
+        => _api.GetAsync<ApiModel>($"Moadian/ErrorInvoiceAsync?ReferenceId={Uri.EscapeDataString(referenceId ?? "")}");
 
     public Task<ApiModel> UpdateStatusInvoiceAsync(int invoiceId)
         => _api.GetAsync<ApiModel>($"Moadian/UpdateStatusInvoice/{invoiceId}");
