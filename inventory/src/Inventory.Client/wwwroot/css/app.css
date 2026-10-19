@@ -3712,7 +3712,9 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 
 /* ---------- پنل‌ها ---------- */
 .mi-detail .mi-panel {
-    display: flex; flex-direction: column; height: 100%;
+    /* بدون height:100% — کارت فقط به اندازهٔ محتوای خودش بلند می‌شود؛ وگرنه با
+       یک ردیف، فضای خالی بزرگی بین آخرین ردیف و نوار «جمع کل» می‌افتد. */
+    display: flex; flex-direction: column;
     background: #fff; border: 1px solid #e8edf3; border-radius: 16px;
     box-shadow: var(--shadow-sm); overflow: hidden;
 }
