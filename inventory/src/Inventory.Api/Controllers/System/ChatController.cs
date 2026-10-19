@@ -12,12 +12,14 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
 using Inventory.Api.Services;
+using Inventory.Api.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
 [ApiController]
 [Route("api/chat")]
 [Authorize]
+[RequirePermission("Chat", "View")]
 public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
@@ -52,6 +54,7 @@ public class ChatController : ControllerBase
 
     /// <summary>شروع یا دریافت گفتگوی خصوصی با یکی از کاربران نرم‌افزار</summary>
     [HttpPost("conversations/direct")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<ChatConversationDto>> CreateDirect([FromBody] CreateDirectChatRequest req)
     {
         var conv = await _chatService.GetOrCreateDirectConversationAsync(CurrentUserId, CurrentUserName, req.TargetUserId);
@@ -60,6 +63,7 @@ public class ChatController : ControllerBase
 
     /// <summary>ایجاد گروه جدید با کاربران انتخابی</summary>
     [HttpPost("conversations/group")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<ChatConversationDto>> CreateGroup([FromBody] CreateGroupChatRequest req)
     {
         var conv = await _chatService.CreateGroupConversationAsync(CurrentUserId, CurrentUserName, req);
@@ -76,6 +80,7 @@ public class ChatController : ControllerBase
 
     /// <summary>ارسال پیام جدید در گفتگو</summary>
     [HttpPost("conversations/{id}/messages")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<ChatMessageDto>> SendMessage(int id, [FromBody] SendChatMessageRequest req)
     {
         req.ConversationId = id;
@@ -85,6 +90,7 @@ public class ChatController : ControllerBase
 
     /// <summary>فوروارد پیام (متن/فایل/رکورد) به گفتگویی که کاربر عضو آن است</summary>
     [HttpPost("messages/{id}/forward")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<ChatMessageDto>> ForwardMessage(int id, [FromBody] ForwardChatMessageRequest req)
     {
         var msg = await _chatService.ForwardMessageAsync(CurrentUserId, CurrentUserName, null, id, req.ConversationId);
@@ -93,6 +99,7 @@ public class ChatController : ControllerBase
 
     /// <summary>ویرایش پیام</summary>
     [HttpPut("messages/{id}")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<ChatMessageDto>> EditMessage(int id, [FromBody] EditChatMessageRequest req)
     {
         var msg = await _chatService.EditMessageAsync(CurrentUserId, id, req.NewText);
@@ -101,6 +108,7 @@ public class ChatController : ControllerBase
 
     /// <summary>حذف پیام</summary>
     [HttpDelete("messages/{id}")]
+    [RequirePermission("Chat", "Manage")]
     public async Task<IActionResult> DeleteMessage(int id)
     {
         await _chatService.DeleteMessageAsync(CurrentUserId, id);
@@ -109,6 +117,7 @@ public class ChatController : ControllerBase
 
     /// <summary>ثبت یا تغییر واکنش ایموجی</summary>
     [HttpPost("messages/{id}/react")]
+    [RequirePermission("Chat", "Send")]
     public async Task<ActionResult<Dictionary<string, List<ChatReactionUserDto>>>> React(int id, [FromBody] ReactChatMessageRequest req)
     {
         var reactions = await _chatService.ToggleReactionAsync(CurrentUserId, CurrentUserName, id, req.Emoji);
@@ -117,6 +126,7 @@ public class ChatController : ControllerBase
 
     /// <summary>پین یا آن‌پین کردن پیام در گفتگو</summary>
     [HttpPost("messages/{id}/pin")]
+    [RequirePermission("Chat", "Manage")]
     public async Task<ActionResult<ChatMessageDto>> TogglePinMessage(int id)
     {
         var msg = await _chatService.TogglePinMessageAsync(CurrentUserId, id);
@@ -125,6 +135,7 @@ public class ChatController : ControllerBase
 
     /// <summary>علامت‌گذاری گفتگو به عنوان خوانده شده</summary>
     [HttpPost("conversations/{id}/read")]
+    [RequirePermission("Chat", "Send")]
     public async Task<IActionResult> MarkRead(int id, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] MarkChatReadRequest? request = null)
     {
         await _chatService.MarkConversationAsReadAsync(CurrentUserId, id, request?.LastReadMessageId);
@@ -133,6 +144,7 @@ public class ChatController : ControllerBase
 
     /// <summary>پین یا آن‌پین کردن گفتگو در لیست دیالوگ‌ها</summary>
     [HttpPost("conversations/{id}/pin")]
+    [RequirePermission("Chat", "Send")]
     public async Task<IActionResult> TogglePinConversation(int id)
     {
         await _chatService.TogglePinConversationAsync(CurrentUserId, id);
@@ -141,6 +153,7 @@ public class ChatController : ControllerBase
 
     /// <summary>بی‌صدا کردن یا فعال‌سازی صدای گفتگو</summary>
     [HttpPost("conversations/{id}/mute")]
+    [RequirePermission("Chat", "Send")]
     public async Task<IActionResult> ToggleMuteConversation(int id)
     {
         await _chatService.ToggleMuteConversationAsync(CurrentUserId, id);
@@ -158,6 +171,7 @@ public class ChatController : ControllerBase
 
     /// <summary>افزودن عضو جدید به گروه</summary>
     [HttpPost("conversations/{id}/members")]
+    [RequirePermission("Chat", "Manage")]
     public async Task<IActionResult> AddMembers(int id, [FromBody] List<int> userIds)
     {
         await _chatService.AddMembersToGroupAsync(CurrentUserId, CurrentUserName, id, userIds);
@@ -166,6 +180,7 @@ public class ChatController : ControllerBase
 
     /// <summary>حذف عضو از گروه یا خروج</summary>
     [HttpDelete("conversations/{id}/members/{userId}")]
+    [RequirePermission("Chat", "Manage")]
     public async Task<IActionResult> RemoveMember(int id, int userId)
     {
         await _chatService.RemoveMemberFromGroupAsync(CurrentUserId, CurrentUserName, id, userId);
@@ -189,6 +204,7 @@ public class ChatController : ControllerBase
 
     /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)، حداکثر ۵۰ MiB.</summary>
     [HttpPost("conversations/{id:int}/attachments")]
+    [RequirePermission("Chat", "Send")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
     public async Task<IActionResult> UploadAttachment(int id, [FromForm] IFormFile? file)
@@ -199,6 +215,7 @@ public class ChatController : ControllerBase
 
     /// <summary>سازگاری با کلاینت قدیمی؛ فایل بدون گفتگو فقط در اختیار بارگذار می‌ماند.</summary>
     [HttpPost("upload")]
+    [RequirePermission("Chat", "Send")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
     public async Task<IActionResult> UploadLegacy([FromForm] IFormFile? file, [FromQuery] int? conversationId)
@@ -252,6 +269,7 @@ public class ChatController : ControllerBase
     /// «فایل پیوست روی سرور یافت نشد.» بدون دسترسی به سرور.
     /// </summary>
     [HttpGet("attachments/diagnose")]
+    [RequirePermission("Chat", "Manage")]
     public async Task<ActionResult<object>> DiagnoseAttachments([FromServices] Inventory.Api.Data.AppDbContext db)
     {
         if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == CurrentUserId && u.IsActive && u.Role == "Admin"))

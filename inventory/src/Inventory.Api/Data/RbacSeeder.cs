@@ -377,48 +377,11 @@ public static class RbacSeeder
         // دسترسی‌های منابع انسانی فقط از RolePermissions انتخاب‌شده توسط مدیر اعمال می‌شوند.
         // برای نقش‌های Operator/Accountant/Referrer هیچ دسترسی HR خودکار اضافه نمی‌شود.
 
-        // ================== پیام‌رسان سازمانی — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ==================
-        // پرمیشن‌های جدید چت فقط به Admin داده می‌شوند؛ برای حفظ رفتار فعلی (همه بتوانند چت کنند)
-        // به سایر نقش‌های فعال هم View و Send داده می‌شود. مدیر می‌تواند بعداً از صفحهٔ نقش‌ها محدود کند.
-        var chatDefaultPerms = await db.Permissions
-            .Where(p => p.Module == "Chat" && p.Action != "Manage")
-            .ToListAsync();
-        if (chatDefaultPerms.Count > 0)
-        {
-            var activeRoles = await db.Roles.Where(r => r.IsActive).ToListAsync();
-            foreach (var role in activeRoles)
-            {
-                var roleHas = await db.RolePermissions.Where(rp => rp.RoleId == role.Id)
-                    .Select(rp => rp.PermissionId).ToListAsync();
-                foreach (var perm in chatDefaultPerms.Where(p => !roleHas.Contains(p.Id)))
-                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
-            }
-            await db.SaveChangesAsync();
-            Console.WriteLine("[RBAC] دسترسی پیش‌فرض پیام‌رسان (View/Send) به نقش‌های فعال داده شد.");
-        }
-
-        // ============ کارتابل من / بایگانی شخصی / داشبورد من — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ============
-        // این صفحه‌ها شخصی هر کاربر هستند؛ برای اینکه بعد از ارتقا از منوی کسی حذف نشوند،
-        // مجوز مشاهده‌شان به همهٔ نقش‌های فعال داده می‌شود. مدیر می‌تواند بعداً از
-        // «تنظیمات ← نقش‌ها و دسترسی‌ها» برای هر نقش بردارد تا آیتم از منو پنهان شود.
-        var personalPerms = await db.Permissions
-            .Where(p => (p.Module == "MyCartable" || p.Module == "MyArchive") && p.Action == "View")
-            .Concat(db.Permissions.Where(p => p.Module == "MyDashboards"))
-            .Concat(db.Permissions.Where(p => p.Module == "ReportStudio" && p.Action == "View"))
-            .ToListAsync();
-        if (personalPerms.Count > 0)
-        {
-            var activeRolesForPersonal = await db.Roles.Where(r => r.IsActive).ToListAsync();
-            foreach (var role in activeRolesForPersonal)
-            {
-                var roleHas = await db.RolePermissions.Where(rp => rp.RoleId == role.Id)
-                    .Select(rp => rp.PermissionId).ToListAsync();
-                foreach (var perm in personalPerms.Where(p => !roleHas.Contains(p.Id)))
-                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
-            }
-            await db.SaveChangesAsync();
-            Console.WriteLine("[RBAC] دسترسی «کارتابل من / بایگانی شخصی / داشبورد من» به نقش‌های فعال داده شد.");
-        }
+        // پیام‌رسان، صفحه‌های شخصی و گزارش‌ساز نباید به‌صورت پنهان به همهٔ نقش‌ها
+        // تزریق شوند. هر نقش باید آن‌ها را صریحاً از «نقش‌ها و دسترسی‌ها» دریافت کند.
+        // این پاک‌سازی یک‌باره فقط نقش‌هایی را هدف می‌گیرد که واقعاً «فقط مودیان»
+        // بوده‌اند و مجوزهای اضافه‌شان محصول seed قدیمی بوده است.
+        await RemoveFormerImplicitPermissionsFromMoadianOnlyRolesAsync(db);
 
 // ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
         // View/Create/Update/Assign برای کار روزمره؛ Manage/Delete معمولاً فقط Admin
@@ -483,9 +446,7 @@ public static class RbacSeeder
                 db.RolePermissions.Add(new RolePermission { RoleId = adminRole.Id, PermissionId = perm.Id });
 
             // Operator: عملیات روزمره + داشبوردها و گزارش‌ها
-            // نکته: بلوک‌های بالاتر (دسترسی پیش‌فرض منابع انسانی / پیام‌رسان / صفحات شخصی)
-            // ممکن است قبلاً به این نقش پرمیشن داده باشند؛ بدون این چک، EF به دلیل
-            // «کلید تکراری RolePermission» استثنا می‌دهد.
+            // جلوگیری از کلید تکراری RolePermission در صورت هم‌پوشانی مجوزهای نقش‌های پایه.
             var operatorHas = await db.RolePermissions.Where(rp => rp.RoleId == operatorRole.Id)
                 .Select(rp => rp.PermissionId).ToListAsync();
             var operatorPerms = allPermissions
@@ -510,5 +471,70 @@ public static class RbacSeeder
             await db.SaveChangesAsync();
             Console.WriteLine("[RBAC] Roles and Permissions seeded successfully.");
         }
+    }
+
+    /// <summary>
+    /// نسخه‌های قبل در هر راه‌اندازی، Chat.View/Send و چند صفحهٔ شخصی را به همهٔ
+    /// نقش‌های فعال اضافه می‌کردند. چون آن داده‌ها منشأ جداگانه‌ای ندارند، فقط نقش
+    /// «صرفاً مودیان» (نقشی که هیچ مجوزی جز مودیان و آن تزریق‌های قدیمی ندارد) با
+    /// اطمینان قابل پاک‌سازی است. رخدادِ migration در لاگ ثبت می‌شود تا انتخاب‌های
+    /// صریح بعدی مدیر دوباره حذف نشوند.
+    /// </summary>
+    private static async Task RemoveFormerImplicitPermissionsFromMoadianOnlyRolesAsync(AppDbContext db)
+    {
+        const string migrationAction = "MoadianImplicitAccessCleanupV1";
+        if (await db.AuditLogs.AsNoTracking().AnyAsync(l => l.Module == "RbacSeeder" && l.Action == migrationAction))
+            return;
+
+        var assignments = await (
+            from rp in db.RolePermissions
+            join role in db.Roles on rp.RoleId equals role.Id
+            join permission in db.Permissions on rp.PermissionId equals permission.Id
+            where role.IsActive
+            select new { Assignment = rp, role.Id, permission.Module, permission.Action }
+        ).ToListAsync();
+
+        var formerlyImplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Chat.View",
+            "Chat.Send",
+            "MyCartable.View",
+            "MyArchive.View",
+            "MyDashboards.View",
+            "MyDashboards.Design",
+            "ReportStudio.View"
+        };
+
+        var toRemove = new List<RolePermission>();
+        foreach (var roleAssignments in assignments.GroupBy(x => x.Id))
+        {
+            var permissions = roleAssignments.ToList();
+            var hasMoadian = permissions.Any(p => p.Module.Equals("Moadian", StringComparison.OrdinalIgnoreCase));
+            var isMoadianOnly = hasMoadian && permissions.All(p =>
+                p.Module.Equals("Moadian", StringComparison.OrdinalIgnoreCase)
+                || formerlyImplicit.Contains($"{p.Module}.{p.Action}"));
+            if (!isMoadianOnly) continue;
+
+            toRemove.AddRange(permissions
+                .Where(p => formerlyImplicit.Contains($"{p.Module}.{p.Action}"))
+                .Select(p => p.Assignment));
+        }
+
+        if (toRemove.Count > 0)
+            db.RolePermissions.RemoveRange(toRemove);
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            At = DateTime.Now,
+            Module = "RbacSeeder",
+            Action = migrationAction,
+            HttpMethod = "SYSTEM",
+            Path = "startup/rbac",
+            Summary = $"پاک‌سازی {toRemove.Count} مجوز تزریقی از نقش‌های صرفاً مودیان",
+            StatusCode = 200
+        });
+        await db.SaveChangesAsync();
+
+        Console.WriteLine($"[RBAC] پاک‌سازی یک‌بارهٔ {toRemove.Count} مجوز تزریقی از نقش‌های صرفاً مودیان انجام شد.");
     }
 }

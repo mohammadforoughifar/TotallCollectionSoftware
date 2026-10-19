@@ -2,12 +2,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
+using Inventory.Api.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Inventory.Api.Controllers;
 
 /// <summary>آمار داشبورد مداربسته (همچنین از طریق SignalR در /hubs/dashboard به‌صورت بلادرنگ پخش می‌شود).</summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class DashboardController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -19,6 +22,7 @@ public class DashboardController : ControllerBase
     }
 
 [HttpGet("stats")]
+[RequirePermission("Dashboards", "Management")]
 public async Task<IActionResult> Stats()
 {
     var data = await DashboardBroadcaster.BuildAsync(_db);
@@ -27,6 +31,7 @@ public async Task<IActionResult> Stats()
 
 /// <summary>آمار سخت‌افزار (آنلاین/آفلاین از آخرین پویش).</summary>
 [HttpGet("hardware-stats")]
+[RequirePermission("Dashboards", "Hardware")]
 public async Task<IActionResult> HardwareStats()
 {
     var data = await _hw.BuildStatsAsync();
@@ -35,6 +40,7 @@ public async Task<IActionResult> HardwareStats()
 
     /// <summary>اجرای فوری یک دور پینگ همه‌ی دستگاه‌ها.</summary>
     [HttpPost("hardware-check")]
+    [RequirePermission("Dashboards", "Hardware")]
     public async Task<IActionResult> HardwareCheck()
     {
         _ = _hw.SweepAsync();

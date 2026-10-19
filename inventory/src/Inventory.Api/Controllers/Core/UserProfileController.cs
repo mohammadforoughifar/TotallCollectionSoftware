@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Inventory.Api.Services.Core;
+using Inventory.Api.Infrastructure;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ namespace Inventory.Api.Controllers.Core;
 /// <summary>پروفایل خودِ کاربر جاری؛ هیچ شناسهٔ کاربری از کلاینت برای خواندن/تغییر داده پذیرفته نمی‌شود.</summary>
 [ApiController]
 [Authorize]
+[RequirePermission("PersonalSettings", "Read")]
 [Route("api/profile")]
 public sealed class UserProfileController : ControllerBase
 {

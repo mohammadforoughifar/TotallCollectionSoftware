@@ -25,7 +25,7 @@ public class ChartItem
     public int Count { get; set; }
 }
 
-/// <summary>محاسبه‌ی آمار داشبورد و پخش بلادرنگ آن به همه‌ی کلاینت‌های متصل.</summary>
+/// <summary>محاسبهٔ آمار داشبورد و پخش بلادرنگ آن فقط برای گروه مجاز داشبورد مدیریت.</summary>
 public class DashboardBroadcaster
 {
     private readonly IHubContext<DashboardHub> _hub;
@@ -81,7 +81,7 @@ public class DashboardBroadcaster
             using var scope = _sf.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var stats = await BuildAsync(db);
-            await _hub.Clients.All.SendAsync("ReceiveStats", stats);
+            await _hub.Clients.Group(DashboardHub.ManagementGroup).SendAsync("ReceiveStats", stats);
             await _monitor.BroadcastAsync();
         }
         catch { /* پخش ناموفق نباید عملیات اصلی را خراب کند */ }

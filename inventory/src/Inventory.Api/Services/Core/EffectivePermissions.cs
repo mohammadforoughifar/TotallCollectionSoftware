@@ -7,11 +7,10 @@ namespace Inventory.Api.Services.Core;
 // =====================================================================
 //  دسترسی‌های مؤثر کاربر — منبع واحد برای کنترلرهای داشبورد/گزارش‌ساز
 //
-//  مجوزها هنگام لاگین به‌صورت claim با نوع «permission» داخل JWT
-//  گذاشته می‌شوند (همان چیزی که منوی کلاینت با آن آیتم‌ها را
-//  نشان/پنهان می‌کند). پس ابتدا از توکن خوانده می‌شود تا سرور و منو
-//  هیچ‌وقت از هم واگرا نشوند؛ اگر توکن قدیمی و بدون claim بود، از
-//  دیتابیس بازسازی می‌شود.
+// مجوزها هنگام لاگین به‌صورت claim با نوع «permission» داخل JWT
+// هم قرار می‌گیرند تا کلاینت منو را نمایش دهد؛ اما کنترل سمت سرور
+// همیشه نقش‌های فعالِ فعلی را از پایگاه‌داده می‌خواند. در نتیجه
+// تغییر یا حذف نقش، با وجود JWT قدیمی، دسترسی اضافه ایجاد نمی‌کند.
 // =====================================================================
 
 public interface IEffectivePermissions
@@ -31,7 +30,6 @@ public interface IEffectivePermissions
 
 public sealed class EffectivePermissions : IEffectivePermissions
 {
-    private const string ClaimType = "permission";
     private readonly AppDbContext _db;
 
     public EffectivePermissions(AppDbContext db) => _db = db;
@@ -41,12 +39,17 @@ public sealed class EffectivePermissions : IEffectivePermissions
 
     public async Task<HashSet<string>> GetAsync(ClaimsPrincipal user)
     {
-        var fromToken = user.FindAll(ClaimType).Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
-        // مجوزهای نقش از دیتابیس خوانده می‌شوند؛ claimهای JWT ممکن است بعد از
-        // تغییر نقش قدیمی باشند و باعث انتقال دسترسی یک ماژول به ماژول دیگر شوند.
+        // هرگز fallback به claimهای permission انجام نمی‌شود: آن claimها تا ۱۲ ساعت
+        // معتبرند و در صورت کاهش دسترسی، می‌توانند مجوزِ لغوشده را زنده نگه دارند.
         var uid = UserId(user);
-        var roleIds = await _db.UserRoles.Where(ur => ur.UserId == uid && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive)).Select(ur => ur.RoleId).Distinct().ToListAsync();
+        if (uid <= 0) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var roleIds = await _db.UserRoles
+            .Where(ur => ur.UserId == uid && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Select(ur => ur.RoleId)
+            .Distinct()
+            .ToListAsync();
+
         List<string> perms;
         if (roleIds.Count > 0)
         {
@@ -54,13 +57,15 @@ public sealed class EffectivePermissions : IEffectivePermissions
                 .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Module + "." + p.Action)
                 .Distinct().ToListAsync();
         }
-        else if (fromToken.Count > 0)
-        {
-            perms = fromToken;
-        }
         else
         {
-            perms = user.FindFirstValue(ClaimTypes.Role) switch
+            // فقط کاربران واقعاً legacy (بدون نقش RBAC فعال) از نقش قدیمی‌شان
+            // بازسازی می‌شوند؛ نقش نیز از DB خوانده می‌شود، نه از JWT قدیمی.
+            var legacyRole = await _db.Users.AsNoTracking()
+                .Where(u => u.Id == uid && u.IsActive)
+                .Select(u => u.Role)
+                .FirstOrDefaultAsync();
+            perms = legacyRole switch
             {
                 "Admin" => await _db.Permissions.Select(p => p.Module + "." + p.Action).ToListAsync(),
                 // کاربران legacy غیر Admin بدون نقش RBAC، permission سراسری دریافت نمی‌کنند.
@@ -76,8 +81,13 @@ public sealed class EffectivePermissions : IEffectivePermissions
 
     public async Task<bool> IsLegacyAdminAsync(ClaimsPrincipal user)
     {
-        if (user.FindFirstValue(ClaimTypes.Role) != "Admin") return false;
-        return !await _db.UserRoles.AnyAsync(ur => ur.UserId == UserId(user));
+        var uid = UserId(user);
+        if (uid <= 0) return false;
+        // نقش و فعال‌بودن حساب نیز باید از DB خوانده شوند؛ claim نقش در JWT ممکن است
+        // پس از ویرایش کاربر قدیمی باشد.
+        var isActiveLegacyAdmin = await _db.Users.AsNoTracking()
+            .AnyAsync(u => u.Id == uid && u.IsActive && u.Role == "Admin");
+        return isActiveLegacyAdmin && !await _db.UserRoles.AnyAsync(ur => ur.UserId == uid);
     }
 
     public async Task<bool> CanSeeModuleAsync(ClaimsPrincipal user, string module)

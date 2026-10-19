@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
 using Inventory.Api.Data;
+using Inventory.Api.Services.Core;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -13,10 +14,15 @@ namespace Inventory.Api.Hubs;
 public class ChatHub : Hub
 {
     private readonly AppDbContext _db;
+    private readonly IEffectivePermissions _permissions;
     private static readonly ConcurrentDictionary<int, ConcurrentDictionary<string, byte>> Online = new();
     private static readonly ConcurrentDictionary<int, DateTime> LastSeen = new();
 
-    public ChatHub(AppDbContext db) => _db = db;
+    public ChatHub(AppDbContext db, IEffectivePermissions permissions)
+    {
+        _db = db;
+        _permissions = permissions;
+    }
     public static bool IsUserOnline(int userId) => Online.TryGetValue(userId, out var sessions) && !sessions.IsEmpty;
     public static DateTime? GetLastSeen(int userId) => LastSeen.TryGetValue(userId, out var seen) ? seen : null;
     public static List<int> GetOnlineUserIds() => Online.Where(p => !p.Value.IsEmpty).Select(p => p.Key).ToList();
@@ -28,6 +34,8 @@ public class ChatHub : Hub
         var uid = UserId;
         if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == uid && u.IsActive))
             throw new HubException("حساب کاربری فعال نیست.");
+        if (Context.User is null || !await _permissions.CanSeeModuleAsync(Context.User, "Chat"))
+            throw new HubException("شما مجوز استفاده از پیام‌رسان سازمانی را ندارید.");
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Chat_User_{uid}");
         var sessions = Online.GetOrAdd(uid, _ => new());
         sessions.TryAdd(Context.ConnectionId, 0);

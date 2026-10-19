@@ -58,9 +58,12 @@ else
                     <a class="nav-link" style="cursor:pointer" @onclick="OpenPwFromMenu">
                         <i class="bi bi-key"></i><span>تغییر رمز عبور</span>
                     </a>
-                    <NavLink class="nav-link" href="personal-settings" @onclick="OnNavigate">
-                        <i class="bi bi-person-gear"></i><span>پروفایل و تنظیمات شخصی</span>
-                    </NavLink>
+                    @if (Auth.Has("PersonalSettings.Read"))
+                    {
+                        <NavLink class="nav-link" href="personal-settings" @onclick="OnNavigate">
+                            <i class="bi bi-person-gear"></i><span>پروفایل و تنظیمات شخصی</span>
+                        </NavLink>
+                    }
                 </div>
             }
             else
@@ -1388,6 +1391,8 @@ else
         ("cartable",            "MyCartable.View",         "کارتابل من"),
         ("my-archive",          "MyArchive.View",          "بایگانی شخصی"),
         ("my-dashboards",       "MyDashboards.View",       "داشبورد من"),
+        ("chat",                "Chat.View",               "پیام‌رسان سازمانی"),
+        ("personal-settings",   "PersonalSettings.Read",   "پروفایل و تنظیمات شخصی"),
         ("dashboard-cctv",      "Dashboards.Management",   "داشبورد مدیریت"),
         ("dashboard-hardware",  "Dashboards.Hardware",     "داشبورد سخت‌افزار"),
         ("operations/reports/kardex-quantity", "ReportPages.Kardex", "کاردکس تعداد کالاها"),
@@ -1455,6 +1460,15 @@ else
         {
             var allowed = Auth.CanSee("Orders") || Auth.CanSee("Repairs");
             if (!allowed) deniedTitle = "داشبورد جامع عملیات";
+            return allowed;
+        }
+
+        // گروه‌های گیرندگان نامه هم از تنظیمات شخصی و هم از صفحهٔ ثبت نامه قابل
+        // مدیریت‌اند؛ مسیر خاص باید پیش از گارد عمومی personal-settings بررسی شود.
+        if (p.StartsWith("personal-settings/letter-groups"))
+        {
+            var allowed = Auth.Has("PersonalSettings.ManageLetterGroups") || Auth.Has("InnerLetters.Create");
+            if (!allowed) deniedTitle = "گروه‌های گیرندگان نامه";
             return allowed;
         }
 

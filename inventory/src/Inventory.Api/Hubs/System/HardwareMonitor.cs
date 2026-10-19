@@ -249,7 +249,7 @@ public class HardwareMonitor : BackgroundService
         try
         {
             var stats = await BuildStatsAsync();
-            await _hub.Clients.All.SendAsync("ReceiveHardwareStats", stats);
+            await _hub.Clients.Group(DashboardHub.HardwareGroup).SendAsync("ReceiveHardwareStats", stats);
         }
         catch { }
     }

@@ -43,7 +43,7 @@
     }
 
     @* ============ تنظیمات شخصی کاربر ============ *@
-    @if (Auth.IsLoggedIn)
+    @if (Auth.Has("PersonalSettings.Read"))
     {
         <div class="nav-group group-personal-settings">
             <button type="button" class="nav-section-title nav-toggle @(gPersonal ? "open" : "")" @onclick="() => gPersonal = !gPersonal">
