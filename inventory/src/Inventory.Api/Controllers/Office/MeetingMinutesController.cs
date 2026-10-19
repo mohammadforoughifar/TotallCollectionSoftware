@@ -79,6 +79,17 @@ public class MeetingMinutesController : RbacControllerBase
             : Ok(d);
     }
 
+    // ================== گزینه‌های کاربر برای کمبوها ==================
+
+    /// <summary>کاربران فعال به شکل سبک (شناسه/نام) — جایگزین GET api/users که فقط با مجوز
+    /// SystemUsers پاسخ می‌داد و بازکردن جزئیات/فرم صورتجلسه را برای کاربران عادی با ۴۰۳ می‌شکست.</summary>
+    [HttpGet("user-options")]
+    public async Task<IActionResult> UserOptions()
+    {
+        if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
+        return Ok(await _svc.GetUserOptionsAsync());
+    }
+
     // ================== ساخت/ویرایش ==================
 
     public class SaveDto : SaveMinutesDto { }

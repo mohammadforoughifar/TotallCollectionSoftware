@@ -22,6 +22,9 @@ public interface IMeetingMinutesService
     Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId, Paging.Request? pagination = null);
     Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId);
 
+    /// <summary>کاربران فعال به شکل سبک (شناسه/نام) برای کمبوهای فرم — بدون نیاز به مجوز SystemUsers.</summary>
+    Task<List<UserLookupItemDto>> GetUserOptionsAsync();
+
     /// <summary>
     /// آیا این صورتجلسه «در گردش» کاربر است؟ (ایجادکننده، حاضر/غایبِ ارسال‌شده،
     /// یا مسئول اجرا/پیگیریِ بند — پس از ارسال صورتجلسه به گردش).
@@ -253,6 +256,22 @@ public class MeetingMinutesService : IMeetingMinutesService
         };
     }
 
+    public async Task<List<UserLookupItemDto>> GetUserOptionsAsync()
+    {
+        // جایگزین امن برای GET api/users (مجوز SystemUsers) — کاربر عادی دفتر باید بتواند
+        // حاضرین/مسئول/پیگیری را انتخاب کند بدون دسترسی به مدیریت کاربران.
+        var rows = await _db.Users.AsNoTracking().Where(u => u.IsActive).ToListAsync();
+        return rows
+            .Select(u => new UserLookupItemDto
+            {
+                Id = u.Id,
+                Name = string.IsNullOrWhiteSpace(u.FirstName + u.LastName)
+                    ? u.Username
+                    : (u.FirstName + " " + u.LastName).Trim()
+            })
+            .OrderBy(x => x.Name)
+            .ToList();
+    }
     // ------------------------------ ساخت/ویرایش ------------------------------
 
     public async Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName, int companyId)

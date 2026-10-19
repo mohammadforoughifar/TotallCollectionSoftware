@@ -195,3 +195,11 @@ public class MinutesSendEmailDto
     public string Subject { get; set; } = "";
     public string? Body { get; set; }
 }
+
+/// <summary>آیتم سبک کاربر (شناسه/نام) برای کمبوهای حاضرین/مسئول/پیگیری صورتجلسه —
+/// جایگزین امن برای api/users که نیازمند ماژول مدیریت کاربران است.</summary>
+public class UserLookupItemDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+}
