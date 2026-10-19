@@ -497,7 +497,15 @@ public class OutgoingLettersController : RbacControllerBase
                 message = $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignature)}"
             });
 
-        var pdf = await _print.GeneratePdfAsync(id, size, withCopy);
+        byte[]? pdf;
+        try
+        {
+            pdf = await _print.GeneratePdfAsync(id, size, withCopy);
+        }
+        catch (RequiredCompanyLetterheadPrintException ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
         var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);

@@ -37,6 +37,15 @@ public interface IOutgoingLetterPrintService
     Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true);
 }
 
+/// <summary>Raised when a company-required letterhead cannot be resolved or applied.</summary>
+public sealed class RequiredCompanyLetterheadPrintException : Exception
+{
+    public RequiredCompanyLetterheadPrintException(string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+    }
+}
+
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
     // These companies must use their own registered letterheads; never substitute Forough's.
@@ -283,6 +292,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 _env.ContentRootPath,
                 _env.WebRootPath,
                 AppContext.BaseDirectory);
+            if (requiresRegisteredLetterhead)
+            {
+                var companyName = string.IsNullOrWhiteSpace(company?.Name)
+                    ? selectedCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
+                    : company.Name;
+                throw new RequiredCompanyLetterheadPrintException(
+                    $"سربرگ ثبت‌شدهٔ {companyName} در خروجی سرور پیدا نشد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود.");
+            }
             return contentPdf;
         }
 
@@ -291,13 +308,25 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             _logger.LogInformation(
                 "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}",
                 letterId, company?.Id ?? letterCompanyId, size, letterheadPath);
-            return OverlayOnLetterhead(contentPdf, letterheadPath);
+            var overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath);
+            _logger.LogInformation(
+                "سربرگ روی PDF نامه اعمال شد. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, PdfBytes={PdfBytes}",
+                letterId, company?.Id ?? letterCompanyId, size, overlaidPdf.Length);
+            return overlaidPdf;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "قرار دادن سربرگ ثبت‌شده روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
                 letterId, company?.Id ?? letterCompanyId, letterheadPath);
+            if (requiresRegisteredLetterhead)
+            {
+                var companyName = string.IsNullOrWhiteSpace(company?.Name)
+                    ? selectedCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
+                    : company.Name;
+                throw new RequiredCompanyLetterheadPrintException(
+                    $"اعمال سربرگ ثبت‌شدهٔ {companyName} ناموفق شد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود.", ex);
+            }
             return contentPdf;
         }
     }
