@@ -40,6 +40,11 @@ namespace Inventory.Api.Services.Moadian
 {
     public class ConnectService(AppDbContext context, IHttpContextAccessor httpContextAccessor) : IConnectService
     {
+        /// <summary>یکتایِ «لحظهٔ صدور صورتحساب» برای همهٔ مسیرها (ارسال عادی/برگشت/اصلاحی/ابطال).
+        /// سامانهٔ مودیان زمان صدورِ «در آینده» را با خطای ۰۲۰۰۲۰۱ رد می‌کند و ساعت سرور مشتری
+        /// عملاً چند ده ثانیه جلوتر از ساعت سامانه دریفت دارد؛ پس ۶۰ ثانیه در گذشته مهر می‌کنیم.
+        /// TaxID و Indatim هر دو از همین یک مقدار مشتق شوند تا قاعدهٔ یک‌سانی آن‌ها حفظ بماند.</summary>
+        private static DateTimeOffset SafeIssueTime() => DateTimeOffset.UtcNow.AddSeconds(-60);
         // ================== تفکیک بر اساس شرکت فعال کاربر ==================
         // هر خدمات‌دهندهٔ مودیان (CpInfo) به یک شرکت داخلی سیستم (SystemCompany) وصل است.
         // کاربر — حتی Admin — فقط خدمات‌دهنده‌های «شرکت فعال» خودش را می‌بیند و مدیریت می‌کند.
@@ -448,7 +453,7 @@ namespace Inventory.Api.Services.Moadian
 
                             //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                            DateTimeOffset now = new DateTimeOffset(DateTime.Now);
+                            DateTimeOffset now = SafeIssueTime();
                             string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                             conection.TaxMemoryID,
                             invoice.Id, now.DateTime);
@@ -581,7 +586,7 @@ namespace Inventory.Api.Services.Moadian
 
 
                             //تولید شماره مالیاتی یکتا برای صورتحساب
-                            DateTimeOffset now = new DateTimeOffset(DateTime.Now);
+                            DateTimeOffset now = SafeIssueTime();
                             string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                                conection.TaxMemoryID,
                                 newInvoice.Id, now.DateTime);
@@ -1238,7 +1243,8 @@ namespace Inventory.Api.Services.Moadian
      (c.StatusSentToSystem == "5" && "دارای خطا".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "6" && "بدون نیاز به واکنش".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "7" && "تائید شده".Contains(request.SearchTerm)) ||
-     (c.StatusSentToSystem == "8" && "رد شده".Contains(request.SearchTerm))
+     (c.StatusSentToSystem == "8" && "رد شده".Contains(request.SearchTerm)) ||
+     (c.StatusSentToSystem == "9" && "باطل".Contains(request.SearchTerm))
      ||
      (c.TypePattern == 1 && "نوع اول".Contains(request.SearchTerm)) ||
         (c.TypePattern == 2 && "نوع دوم".Contains(request.SearchTerm)) ||
@@ -1459,7 +1465,7 @@ context.Customers.Any(x =>
                 // بین سرور و SDK جلوگیری می‌کند و سریال Inno نیز باید با ورودی Generator یکی باشد.
                 // حاشیهٔ ۶۰ ثانیه: سامانهٔ مودیان زمان صدورِ «در آینده» را با خطای ۰۲۰۰۲۰۱ رد می‌کند
                 // و ساعت سرورها عملاً چند ثانیه جلو/عقب دریفت دارند؛ صدورِ چندثانیه‌درگذشته معتبر است.
-                var issueTime = DateTimeOffset.UtcNow.AddSeconds(-60);
+                var issueTime = SafeIssueTime();
                 var invoiceSerial = invoiceForEdit.Id;
                 var fiscalId = conection.TaxMemoryID?.Trim();
                 if (string.IsNullOrWhiteSpace(fiscalId))
@@ -1700,7 +1706,7 @@ context.Customers.Any(x =>
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                        var returnIssueTime = DateTimeOffset.UtcNow.AddSeconds(-60); // همان حاشیهٔ امن ۰۲۰۰۲۰۱ — زمان صدور نباید آینده باشد
+                        var returnIssueTime = SafeIssueTime();
                         string taxId1 = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                             fiscalId, invoice.Id, returnIssueTime.UtcDateTime);
                         // TaxID و Inno باید از یک سریال داخلی ساخته شوند.
@@ -2355,7 +2361,13 @@ context.Customers.Any(x =>
                         return model;
                     }
 
-                    switch (invoiceResult)
+                    // محلی «باطل» (۹) از ابطال موفق نشأت گرفته؛ استعلام سامانه برای مرجع ابطال‌شده فقط SUCCESS
+                    // می‌دهد و نباید وضعیت باطل محلی را بازنویسی کند.
+                    if (currentInvoice.StatusSentToSystem == "9")
+                    {
+                        model.Data = "باطل";
+                    }
+                    else switch (invoiceResult)
                     {
                         case "IN_PROGRESS":
                             currentInvoice.StatusSentToSystem = "2";
@@ -2403,6 +2415,27 @@ context.Customers.Any(x =>
                     }
 
                     await context.SaveChangesAsync();
+
+                    // تأیید اصلاحیه (خریدار یا سیستمی): طبق قاعدهٔ سامانه، صورتحساب مرجع «باطل» می‌شود؛
+                    // چون استعلام مرجع فقط SUCCESS می‌دهد، اصلی را محلی «۹ = باطل» علامت می‌زنیم و قفل می‌کنیم.
+                    // (رد اصلاحیه → اصلی دست‌نخورده و زنده می‌ماند.)
+                    if (currentInvoice.StatusSentToSystem == "7"
+                        && currentInvoice.Subject == "اصلاحی"
+                        && !string.IsNullOrWhiteSpace(currentInvoice.TaxNumber))
+                    {
+                        var originalsToVoid = context.Invoices
+                            .Where(c => c.Subject == "اصلی"
+                                && c.TaxNumber == currentInvoice.TaxNumber
+                                && c.Id != currentInvoice.Id
+                                && c.StatusSentToSystem != "9")
+                            .ToList();
+                        foreach (var orig in originalsToVoid)
+                        {
+                            orig.StatusSentToSystem = "9";
+                            orig.ShowButtons = false;
+                        }
+                        if (originalsToVoid.Count > 0) await context.SaveChangesAsync();
+                    }
 
                     model.Status = 200;
                     model.Success = true;
@@ -2983,7 +3016,7 @@ context.Customers.Any(x =>
                         }
                         //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                        DateTimeOffset now = new DateTimeOffset(DateTime.Now);
+                        DateTimeOffset now = SafeIssueTime();
                         string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                         conection.TaxMemoryID,
                         invoice.Id, now.DateTime);
@@ -3215,7 +3248,7 @@ context.Customers.Any(x =>
                         await context.SaveChangesAsync();
                         //تولید شماره مالیاتی یکتا برای صورتحساب
 
-                        DateTimeOffset now = new DateTimeOffset(DateTime.Now);
+                        DateTimeOffset now = SafeIssueTime();
                         string taxId = TaxApiService.Instance.TaxIdGenerator.GenerateTaxId(
                         conection.TaxMemoryID,
                         invoice.Id, now.DateTime);
@@ -3357,6 +3390,16 @@ context.Customers.Any(x =>
                         newInvoiceForEdit.TaxNumber = modeldata.TaxNumber;
                         newInvoiceForEdit.ReferenceId = referenceId;
                         await context.SaveChangesAsync();
+
+                        // ابطال موفق: صورتحساب مرجع در کارپوشهٔ سامانه «باطل» است، ولی استعلام مرجع فقط
+                        // SUCCESS برمی‌گرداند؛ پس وضعیت محلی اصلی را «۹ = باطل» می‌کنیم تا در سیستم هم دیده شود.
+                        var originalAfterEbtal = context.Invoices.Where(c => c.Id == modeldata.Id).FirstOrDefault();
+                        if (originalAfterEbtal is not null)
+                        {
+                            originalAfterEbtal.StatusSentToSystem = "9";
+                            originalAfterEbtal.ShowButtons = false;
+                            await context.SaveChangesAsync();
+                        }
 
                         model.Data = modeldata;
                         model.Status = 201;

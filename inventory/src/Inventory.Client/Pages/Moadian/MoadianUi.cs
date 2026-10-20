@@ -31,6 +31,7 @@ public static class MoadianUi
         "6" => "بدون نیاز به واکنش",
         "7" => "تأیید شده",
         "8" => "رد شده",
+        "9" => "باطل",
         null or "" => "وضعیت نامشخص",
         _ => $"وضعیت نامعتبر ({code})"
     };
@@ -77,6 +78,7 @@ public static class MoadianUi
         "6" => "badge-soft-muted",
         "7" => "badge-soft-success",
         "8" => "badge-soft-danger",
+        "9" => "badge-soft-danger",
         _ => "badge-soft-muted"
     };
 
