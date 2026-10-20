@@ -15,7 +15,14 @@
         <h1>کالاها</h1>
         <p class="lead">تعریف کالا، قیمت و نقطه سفارش</p>
     </div>
-    <div class="ms-auto d-flex gap-2">
+    <div class="ms-auto d-flex flex-wrap gap-2">
+        <ExportButtons ReportKey="inv-products"
+                       Query="@ProductExportQuery"
+                       PdfLabel="چاپ فهرست"
+                       PdfTitle="دریافت نسخه چاپی از همه کالاهای فهرست"
+                       ExcelLabel="خروجی اکسل"
+                       ExcelTitle="خروجی اکسل از همه کالاهای فهرست"
+                       ButtonClass="btn-sm btn-outline-secondary" />
         <button class="btn btn-outline-primary" @onclick="OpenImport">
             <i class="bi bi-file-earmark-excel"></i> ورود از اکسل
         </button>
@@ -379,6 +386,14 @@
     private const int PageSize = 12;
     private string search = "";
     private bool belowOnly, loading = true;
+
+    // خروجی گزارش همه ردیف‌های منطبق با فیلترها را می‌گیرد، نه فقط صفحهٔ فعلی.
+    private Dictionary<string, object?> ProductExportQuery => new()
+    {
+        ["search"] = search,
+        ["below"] = belowOnly,
+        ["maxRows"] = 50000
+    };
 
     private Product form = new();
     private bool showModal, saving;

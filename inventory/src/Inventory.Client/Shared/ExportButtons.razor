@@ -9,22 +9,22 @@
 
 <div class="btn-group @CssClass" role="group">
     <button class="btn @ButtonClass" @onclick="@(() => Download("pdf"))" disabled="@busy"
-            title="خروجی PDF">
+            title="@PdfTitle">
         @if (busy && current == "pdf")
         {
             <span class="spinner-border spinner-border-sm"></span>
         }
         else
         {
-            <i class="bi bi-file-earmark-pdf text-danger"></i>
+            <i class="bi @(PdfLabel == "PDF" ? "bi-file-earmark-pdf text-danger" : "bi-printer text-primary")"></i>
         }
         @if (ShowText)
         {
-            <span class="ms-1">PDF</span>
+            <span class="ms-1">@PdfLabel</span>
         }
     </button>
     <button class="btn @ButtonClass" @onclick="@(() => Download("xlsx"))" disabled="@busy"
-            title="خروجی اکسل">
+            title="@ExcelTitle">
         @if (busy && current == "xlsx")
         {
             <span class="spinner-border spinner-border-sm"></span>
@@ -35,7 +35,7 @@
         }
         @if (ShowText)
         {
-            <span class="ms-1">Excel</span>
+            <span class="ms-1">@ExcelLabel</span>
         }
     </button>
 </div>
@@ -50,6 +50,10 @@
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string ButtonClass { get; set; } = "btn-sm btn-light";
     [Parameter] public bool ShowText { get; set; } = true;
+    [Parameter] public string PdfLabel { get; set; } = "PDF";
+    [Parameter] public string PdfTitle { get; set; } = "خروجی PDF";
+    [Parameter] public string ExcelLabel { get; set; } = "Excel";
+    [Parameter] public string ExcelTitle { get; set; } = "خروجی اکسل";
 
     /// <summary>پس از دانلود موفق</summary>
     [Parameter] public EventCallback OnExported { get; set; }
