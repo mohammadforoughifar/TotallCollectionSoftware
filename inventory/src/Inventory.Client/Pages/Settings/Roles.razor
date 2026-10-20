@@ -399,9 +399,10 @@
         var perm = allPermissions.FirstOrDefault(p => p.Id == id);
         if (perm == null) return;
 
-        // اکشن‌های استاندارد CRUD — وقتی یکی از این ۴ انتخاب/است kald شود، بقیه‌ی آن ماژول هم valence می‌گیرند
+        // گروه‌بندی CRUD فقط برای ماژول‌های منابع انسانی بن‌سازه (HrMain, HrCore, FaAtt, FaPay, FaLms, FaCom)
+        var hrCrudModules = new[] { "HrMain", "HrCore", "FaAtt", "FaPay", "FaLms", "FaCom" };
         var crudActions = new[] { "Create", "Read", "Update", "Delete" };
-        if (crudActions.Contains(perm.Action))
+        if (crudActions.Contains(perm.Action) && hrCrudModules.Contains(perm.Module))
         {
             var moduleCrudPerms = allPermissions
                 .Where(p => p.Module == perm.Module && crudActions.Contains(p.Action) && IsVisiblePermission(p))

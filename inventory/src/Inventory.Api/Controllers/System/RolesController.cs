@@ -107,20 +107,25 @@ public class RolesController : ControllerBase
     }
 
     /// <summary>
-    /// اگر هر کدام از ۴ مجوز CRUD (Create/Read/Update/Delete) برای یک ماژول انتخاب شده باشد،
-    ///剩余 الثلاث مجوز CRUD هم همان ماژول به لیست اضافه می‌شود.
+    /// اگر هر کدام از ۴ مجوز CRUD (Create/Read/Update/Delete) برای یک ماژول HR بن‌سازه انتخاب شده باشد،
+    ///remaining سه مجوز CRUD هم همان ماژول به لیست اضافه می‌شود.
+    /// این رفتار فقط برای ماژول‌های منابع انسانی بن‌سازه (HrMain, HrCore, FaAtt, FaPay, FaLms, FaCom) اعمال می‌شود.
     /// </summary>
     private List<int> EnforceCrudGrouping(List<int> permissionIds)
     {
         if (!permissionIds.Any()) return permissionIds;
 
+        // ماژول‌های منابع انسانی بن‌سازه که گروه‌بندی CRUD روی آن‌ها اعمال می‌شود
+        var hrCrudModules = new[] { "HrMain", "HrCore", "FaAtt", "FaPay", "FaLms", "FaCom" };
+        var crudActions = new[] { "Create", "Read", "Update", "Delete" };
+
         var allPerms = _db.Permissions
-            .Where(p => CrudActions.Contains(p.Action))
+            .Where(p => CrudActions.Contains(p.Action) && hrCrudModules.Contains(p.Module))
             .ToList();
 
         var result = new HashSet<int>(permissionIds);
 
-        // پیدا کردن ماژول‌هایی که حداقل یک مجوز CRUD از آن‌ها انتخاب شده
+        // پیدا کردن ماژول‌های HR که حداقل یک مجوز CRUD از آن‌ها انتخاب شده
         var modulesWithCrud = allPerms
             .Where(p => result.Contains(p.Id))
             .Select(p => p.Module)
