@@ -396,8 +396,28 @@
 
     private void TogglePermission(int id, bool isChecked)
     {
-        if (isChecked) selectedPermissionIds.Add(id);
-        else selectedPermissionIds.Remove(id);
+        var perm = allPermissions.FirstOrDefault(p => p.Id == id);
+        if (perm == null) return;
+
+        // اکشن‌های استاندارد CRUD — وقتی یکی از این ۴ انتخاب/است kald شود، بقیه‌ی آن ماژول هم valence می‌گیرند
+        var crudActions = new[] { "Create", "Read", "Update", "Delete" };
+        if (crudActions.Contains(perm.Action))
+        {
+            var moduleCrudPerms = allPermissions
+                .Where(p => p.Module == perm.Module && crudActions.Contains(p.Action) && IsVisiblePermission(p))
+                .Select(p => p.Id);
+
+            foreach (var pid in moduleCrudPerms)
+            {
+                if (isChecked) selectedPermissionIds.Add(pid);
+                else selectedPermissionIds.Remove(pid);
+            }
+        }
+        else
+        {
+            if (isChecked) selectedPermissionIds.Add(id);
+            else selectedPermissionIds.Remove(id);
+        }
     }
 
     private void ToggleModuleAll(string module, bool isChecked)
