@@ -12,7 +12,7 @@
 
 ## تنظیمات داخل run-server.bat
 - **آدرس**: `ASPNETCORE_URLS=http://192.168.30.104:8181`
-- **دیتابیس**: `Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=•••`
+- **دیتابیس**: `Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False`
 - متغیرهای محیطی این bat بر appsettings.json تقدّم دارند؛ برای تغییر کارخانهٔ دیتابیس/پورت فقط همین فایل را ویرایش کنید.
 
 ## نکات اجرایی

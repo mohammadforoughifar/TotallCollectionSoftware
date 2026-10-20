@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
 
-public class TransactionLine
+public class TransactionLine : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int TransactionId { get; set; }
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }

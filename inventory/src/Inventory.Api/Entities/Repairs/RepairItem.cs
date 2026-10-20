@@ -3,9 +3,11 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>ردیف کار/قطعه مصرفی روی دستگاه تعمیری</summary>
-public class RepairItem
+public class RepairItem : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int RepairOrderId { get; set; }
 
     /// <summary>شرح کار انجام‌شده یا قطعه مصرفی</summary>

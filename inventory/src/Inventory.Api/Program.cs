@@ -657,6 +657,12 @@ if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.RedirectHttp)
 app.UseCors("wasm");
 
 app.UseAuthentication();
+
+// ================== تعیین شرکت فعال (چند شرکتی) ==================
+// هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.
+// از این‌جا به بعد، AppDbContext همهٔ کوئری‌های دادهٔ فروشگاهی را به همان شرکت محدود می‌کند.
+app.UseMiddleware<Inventory.Api.Infrastructure.ActiveCompanyMiddleware>();
+
 app.UseAuthorization();
 
 // فایل‌های قدیمی چت هم فقط از endpoint دارای کنترل عضویت دانلود می‌شوند.

@@ -14,7 +14,7 @@ set "API=%ROOT%src\Inventory.Api"
 set "CLIENT_PUBLISH=%ROOT%artifacts\client-publish"
 set "API_PUBLISH=%ROOT%artifacts\inventory-server"
 set "DEPLOY=%ROOT%deploy\inventory-server"
-set "DB_CONNECTION=Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=Mohammad011700;Persist Security Info=True;TrustServerCertificate=True;Encrypt=False"
+set "DB_CONNECTION=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (

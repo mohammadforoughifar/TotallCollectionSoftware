@@ -2,9 +2,11 @@ using System.ComponentModel.DataAnnotations;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
 
-public class Party
+public class Party : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public PartyType Type { get; set; }
 
     [MaxLength(200)]

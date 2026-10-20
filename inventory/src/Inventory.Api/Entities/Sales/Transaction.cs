@@ -3,10 +3,12 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>سند انبار (خرید / فروش / اصلاح موجودی)</summary>
-public class Transaction
+public class Transaction : ICompanyOwned
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     [MaxLength(30)]
     public string Number { get; set; } = "";
 

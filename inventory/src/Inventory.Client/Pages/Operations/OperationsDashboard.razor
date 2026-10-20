@@ -5,7 +5,7 @@
 @inject LayoutState Layout
 @inject IJSRuntime JS
 
-<PageTitle>داشبورد جامع عملیات</PageTitle>
+<PageTitle>داشبورد جامع فروشگاهی</PageTitle>
 
 @if (!CanOpenDashboard)
 {
@@ -18,7 +18,7 @@ else
 {
     <div class="page-head">
         <div>
-            <h1>داشبورد جامع عملیات</h1>
+            <h1>داشبورد جامع فروشگاهی</h1>
                     </div>
         <div class="ms-auto d-flex flex-wrap gap-2">
             @if (Auth.CanSee("Orders"))
@@ -288,7 +288,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetTitle("داشبورد جامع عملیات");
+        Layout.SetTitle("داشبورد جامع فروشگاهی");
         if (CanOpenDashboard) await Load();
     }
 

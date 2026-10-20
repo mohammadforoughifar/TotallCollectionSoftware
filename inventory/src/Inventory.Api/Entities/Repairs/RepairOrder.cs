@@ -3,10 +3,12 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>پذیرش دستگاه تعمیری (لپ‌تاپ، کامپیوتر، مانیتور، دوربین و ...)</summary>
-public class RepairOrder
+public class RepairOrder : ICompanyOwned
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     /// <summary>شماره پذیرش (RP-0001)</summary>
     [MaxLength(30)]
     public string Number { get; set; } = "";

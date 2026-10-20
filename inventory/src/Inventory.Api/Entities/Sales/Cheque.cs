@@ -3,9 +3,11 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>چک دریافتی بابت سند فروش</summary>
-public class Cheque
+public class Cheque : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int TransactionId { get; set; }
 
     /// <summary>شماره چک / صیاد</summary>

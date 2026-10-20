@@ -3,9 +3,11 @@ using System.ComponentModel.DataAnnotations;
 namespace Inventory.Api.Data;
 
 /// <summary>مشخصات یکی از دستگاه‌های ثبت‌شده در یک پذیرش تعمیر.</summary>
-public class RepairDevice
+public class RepairDevice : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int RepairOrderId { get; set; }
 
     [MaxLength(100)]

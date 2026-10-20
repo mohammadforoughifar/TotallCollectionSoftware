@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 set "ASPNETCORE_ENVIRONMENT=Production"
 set "ASPNETCORE_URLS=http://192.168.30.104:8181"
-set "ConnectionStrings__Default=Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=Mohammad011700;Persist Security Info=True;TrustServerCertificate=True;Encrypt=False"
+set "ConnectionStrings__Default=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
 set "DOTNET_PRINT_TELEMETRY_MESSAGE=false"
 
 if not exist "src\Inventory.Api\Inventory.Api.csproj" (

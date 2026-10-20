@@ -5,7 +5,110 @@ namespace Inventory.Api.Data;
 
 public class AppDbContext : DbContext
 {
+    private readonly IHttpContextAccessor? _http;
+
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, IHttpContextAccessor? http) : base(options)
+    {
+        _http = http;
+    }
+
+    // ==================== زمینهٔ شرکت فعال (چند شرکتی) ====================
+
+    /// <summary>
+    /// شناسهٔ شرکت فعالِ درخواست جاری. میان‌افزار <c>ActiveCompanyMiddleware</c> آن را پس از
+    /// احراز هویت از هدر <c>X-Company-Id</c> (با اعتبارسنجی دسترسی کاربر) در
+    /// <c>HttpContext.Items</c> می‌گذارد.
+    /// <list type="bullet">
+    /// <item>مقدار null یعنی «زمینهٔ شرکتی تعیین نشده» (اجرای بدون HTTP مثل بذرکاری دیتابیس) —
+    /// در این حالت هیچ فیلتری اعمال نمی‌شود تا کارهای پس‌زمینه و نصب اولیه نشکنند.</item>
+    /// <item>برای کاربر واردشده، همیشه مقدار دارد؛ پس همهٔ داده‌ها به همان شرکت محدود می‌شوند.</item>
+    /// </list>
+    /// </summary>
+    public int? ActiveCompanyId => ReadActiveCompanyId();
+
+    private int? ReadActiveCompanyId()
+    {
+        var items = _http?.HttpContext?.Items;
+        if (items is not null && items.TryGetValue("ActiveCompanyId", out var v) && v is int id && id >= 0)
+            return id; // ۰ = کاربر به هیچ شرکتی دسترسی ندارد → هیچ رکوردی نباید دیده/ساخته شود
+        return null;
+    }
+
+    private bool _defaultCompanyResolved;
+    private int? _defaultCompanyId;
+
+    /// <summary>شرکت پیش‌فرض سیستم (اولین شرکت فعال) — برای رکوردهایی که بیرون از درخواست ساخته می‌شوند.</summary>
+    public int? ResolveDefaultCompanyId()
+    {
+        if (_defaultCompanyResolved) return _defaultCompanyId;
+        _defaultCompanyResolved = true;
+        try
+        {
+            _defaultCompanyId = SystemCompanies.AsNoTracking()
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Id)
+                .Select(c => (int?)c.Id)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            // جدول شرکت‌ها هنوز ساخته نشده است (نصب اولیه) — رکورد بدون شرکت ذخیره می‌شود.
+            _defaultCompanyId = null;
+        }
+        return _defaultCompanyId;
+    }
+
+    /// <summary>
+    /// مقداردهی خودکار CompanyId برای رکوردهای تازه و جلوگیری از تغییر شرکتِ رکورد در ویرایش.
+    /// </summary>
+    private void ApplyCompanyScopeOnSave()
+    {
+        var active = ActiveCompanyId;
+        foreach (var entry in ChangeTracker.Entries<ICompanyOwned>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if ((entry.Entity.CompanyId ?? 0) <= 0)
+                {
+                    // کاربرِ بدون شرکت (۰) اجازهٔ ساخت رکورد ندارد؛ زمینهٔ تعیین‌نشده (null) → شرکت پیش‌فرض
+                    entry.Entity.CompanyId = active is > 0 ? active
+                        : active == 0 ? null
+                        : ResolveDefaultCompanyId();
+                }
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                // جابه‌جایی رکورد بین شرکت‌ها از راه ویرایش فرم ممکن نیست
+                entry.Property(nameof(ICompanyOwned.CompanyId)).IsModified = false;
+            }
+        }
+    }
+
+    public override int SaveChanges()
+    {
+        ApplyCompanyScopeOnSave();
+        return base.SaveChanges();
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        ApplyCompanyScopeOnSave();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        ApplyCompanyScopeOnSave();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        ApplyCompanyScopeOnSave();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
 
     public DbSet<DocTemporaryGrant> DocTemporaryGrants => Set<DocTemporaryGrant>();
     public DbSet<DocRenewalPolicy> DocRenewalPolicies => Set<DocRenewalPolicy>();
@@ -465,16 +568,18 @@ public class AppDbContext : DbContext
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<ProductCategory>().HasIndex(c => c.Name).IsUnique();
-        mb.Entity<MeasureUnit>().HasIndex(u => u.Name).IsUnique();
+        // نام گروه/واحد/کد کالا فقط در محدودهٔ همان شرکت یکتاست (چند شرکتی)
+        mb.Entity<ProductCategory>().HasIndex(c => new { c.CompanyId, c.Name }).IsUnique();
+        mb.Entity<MeasureUnit>().HasIndex(u => new { u.CompanyId, u.Name }).IsUnique();
         mb.Entity<Stock>().HasIndex(s => new { s.WarehouseId, s.ProductId }).IsUnique();
-        mb.Entity<Product>().HasIndex(p => p.Code).IsUnique();
+        mb.Entity<Stock>().HasIndex(s => new { s.CompanyId, s.WarehouseId, s.ProductId });
+        mb.Entity<Product>().HasIndex(p => new { p.CompanyId, p.Code }).IsUnique();
         mb.Entity<Transaction>().HasIndex(t => t.Type);
         mb.Entity<Transaction>().HasIndex(t => t.Date);
         mb.Entity<TransactionLine>().HasIndex(l => l.ProductId);
 
         // ==================== حواله تحویل کالا (بدون قیمت) ====================
-        mb.Entity<GoodsIssue>().HasIndex(g => g.Number).IsUnique();
+        mb.Entity<GoodsIssue>().HasIndex(g => new { g.CompanyId, g.Number }).IsUnique();
         mb.Entity<GoodsIssue>().HasIndex(g => g.PartyId);
         mb.Entity<GoodsIssue>().HasIndex(g => g.Date);
         mb.Entity<GoodsIssueLine>().HasIndex(l => l.IssueId);
@@ -563,7 +668,7 @@ public class AppDbContext : DbContext
         mb.Entity<ReferrerPayment>().HasIndex(p => p.ReferrerId);
 
         // ---------- هزینه‌ها ----------
-        mb.Entity<ExpenseCategory>().HasIndex(c => c.Name).IsUnique();
+        mb.Entity<ExpenseCategory>().HasIndex(c => new { c.CompanyId, c.Name }).IsUnique();
         mb.Entity<Expense>().Property(e => e.Amount).HasPrecision(18, 2);
         mb.Entity<Expense>().HasIndex(e => e.Date);
         mb.Entity<Expense>().HasIndex(e => e.CategoryId);
@@ -1418,5 +1523,29 @@ public class AppDbContext : DbContext
             .HasOne(c => c.Task).WithMany()
             .HasForeignKey(c => c.TaskId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // ==================== فیلتر خودکار چند شرکتی ====================
+        // هر رکورد فقط در شرکت فعالِ انتخاب‌شده در نوار بالای برنامه دیده می‌شود.
+        // ActiveCompanyId == null یعنی زمینهٔ شرکتی تعیین نشده (اجرای پس‌زمینه/نصب اولیه) → بدون فیلتر.
+        mb.Entity<Product>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ProductCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<MeasureUnit>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Warehouse>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Party>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Referrer>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ReferrerPayment>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Stock>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Transaction>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<TransactionLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<GoodsIssue>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<GoodsIssueLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Cheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
     }
 }

@@ -27,6 +27,10 @@ public static class DbInitializer
                 {
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
+                    // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
+                    // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
+                    // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
+                    await SalesCompanySchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
@@ -65,6 +69,9 @@ public static class DbInitializer
                 else
                 {
                     MigrateSqlServer(db);
+                    // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
+                    // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
+                    await SalesCompanySchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
                     // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی) — مایگریشن squash شده این‌ها را نمی‌سازد
@@ -210,6 +217,12 @@ public static class DbInitializer
                 await FaComSchemaV3.EnsureAsync(db);
                 await HrTalentSchemaV1.EnsureAsync(db);
                 await HrReportSchemaV1.EnsureAsync(db);
+
+                // ---------- ماژول فروشگاهی چندشرکتی (اجرای دوم) ----------
+                // اجرای اول بلافاصله بعد از ساخت/مهاجرت دیتابیس انجام شد. این اجرای دوم
+                // جدول‌هایی را پوشش می‌دهد که در همین راه‌اندازی تازه ساخته می‌شوند
+                // (GoodsIssues/GoodsIssueLines و RepairDevices) و در اجرای اول وجود نداشتند.
+                await SalesCompanySchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {

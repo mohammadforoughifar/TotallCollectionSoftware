@@ -10,10 +10,12 @@ namespace Inventory.Api.Data;
 /// هیچ اثری روی موجودی، بهای تمام‌شده و حسابداری ندارد — صرفاً سابقهٔ تحویل است.
 /// </para>
 /// </summary>
-public class GoodsIssue
+public class GoodsIssue : ICompanyOwned
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     /// <summary>شماره حواله — الگوی <c>HI-1405-0001</c> (سال شمسی + شمارهٔ متوالی)</summary>
     [MaxLength(30)]
     public string Number { get; set; } = "";
@@ -39,9 +41,11 @@ public class GoodsIssue
 }
 
 /// <summary>سطر حواله: یک کالا با مقدار — بدون قیمت.</summary>
-public class GoodsIssueLine
+public class GoodsIssueLine : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int IssueId { get; set; }
 
     public int ProductId { get; set; }

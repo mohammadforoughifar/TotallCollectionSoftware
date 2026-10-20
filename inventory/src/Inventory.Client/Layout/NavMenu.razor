@@ -332,12 +332,12 @@
         </div>
     }
 
-    @* ============ عملیات — گروه فقط با حداقل یک مجوز مشاهده ============ *@
+    @* ============ سامانه فروشگاهی — گروه فقط با حداقل یک مجوز مشاهده ============ *@
     @if (ShowOpsGroup)
     {
     <div class="nav-group group-ops">
         <button type="button" class="nav-section-title nav-toggle @(gOps ? "open" : "")" @onclick="() => gOps = !gOps">
-            <span><i class="bi bi-box-seam"></i>عملیات</span>
+            <span><i class="bi bi-box-seam"></i>سامانه فروشگاهی</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gOps)
@@ -377,7 +377,7 @@
                     </NavLink>
                 }
 
-                @* ---------- زیرمنوی گزارش‌های عملیات ---------- *@
+                @* ---------- زیرمنوی گزارش‌های فروشگاهی ---------- *@
                 @if (ShowOpsReportsSub)
                 {
                     <div class="nav-sub">
@@ -417,7 +417,7 @@
                     </div>
                 }
 
-                @* ---------- زیرمنوی اطلاعات پایه (داخل عملیات) ---------- *@
+                @* ---------- زیرمنوی اطلاعات پایه (داخل سامانه فروشگاهی) ---------- *@
                 @if (ShowOpsBaseSub)
                 {
                     <div class="nav-sub">
@@ -799,7 +799,7 @@
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
-    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «عملیات» رفتند.
+    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");

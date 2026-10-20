@@ -4,10 +4,12 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>گروه / دسته‌بندی کالا (درختی — با پشتیبانی از گروه والد)</summary>
-public class ProductCategory
+public class ProductCategory : ICompanyOwned
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     [MaxLength(100)]
     public string Name { get; set; } = "";
 

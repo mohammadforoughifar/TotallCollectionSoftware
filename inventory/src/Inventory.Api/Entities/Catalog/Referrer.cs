@@ -3,10 +3,12 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>معرف (بازاریاب) با درصد پورسانت جداگانه برای کالا و خدمات.</summary>
-public class Referrer
+public class Referrer : ICompanyOwned
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     [MaxLength(150)]
     public string Name { get; set; } = "";
 

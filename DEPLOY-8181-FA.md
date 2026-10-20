@@ -63,7 +63,7 @@
 ## ۶) نکات عملیاتی سرور
 
 - فایروال: `netsh advfirewall firewall add rule name="Totall 8181" dir=in action=allow protocol=TCP localport=8181`
-- دیتابیس: `Server=192.168.30.104;Database=InventoryDb;User Id=sa;Password=…;TrustServerCertificate=True;Encrypt=False`
+- دیتابیس: `Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False`
   (کاربر `sa` باید مجوز ساخت دیتابیس داشته باشد؛ در اولین اجرا جداول خودکار ساخته/به‌روزرسانی می‌شوند).
 - HTTPS داخلی (اختیاری، برای اعلان سیستمی): `https://192.168.30.104:5443` + نصب گواهی از
   `http://192.168.30.104:8181/https-setup`.

@@ -3,9 +3,11 @@ using Inventory.Shared;
 namespace Inventory.Api.Data;
 
 /// <summary>قسط سند فروش اقساطی (دفترچه اقساط)</summary>
-public class InstallmentLine
+public class InstallmentLine : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     public int TransactionId { get; set; }
 
     /// <summary>شماره قسط (۱، ۲، ...)</summary>

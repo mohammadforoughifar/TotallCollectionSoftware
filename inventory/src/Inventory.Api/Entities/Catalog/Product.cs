@@ -1,9 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
-public class Product
+public class Product : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>شرکت مالک رکورد — دادهٔ هر شرکت مستقل نگه‌داری می‌شود (فیلتر خودکار).</summary>
+    public int? CompanyId { get; set; }
     [MaxLength(50)] public string Code { get; set; } = "";
     [MaxLength(200)] public string Name { get; set; } = "";
     [MaxLength(50)] public string Unit { get; set; } = "عدد";
