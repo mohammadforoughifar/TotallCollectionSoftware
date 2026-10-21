@@ -409,23 +409,40 @@
 
     private void TriggerScanModal() => showScanModal = true;
 
-    private void OnFilesSelected(InputFileChangeEventArgs e)
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
     {
         showScanModal = false;
-        foreach (var file in e.GetMultipleFiles(int.MaxValue))
+        foreach (var picked in e.GetMultipleFiles(int.MaxValue))
         {
-            if (file.Size > MaxFileBytes)
+            if (picked.Size > MaxFileBytes)
             {
-                Toast.Error($"حجم فایل «{file.Name}» ({FmtSize(file.Size)}) بیش از ۲۰ مگابایت است و افزوده نشد.");
+                Toast.Error($"حجم فایل «{picked.Name}» ({FmtSize(picked.Size)}) بیش از ۲۰ مگابایت است و افزوده نشد.");
                 continue;
             }
-            if (pendingFiles.Sum(f => f.Size) + file.Size > MaxTotalBytes)
+            if (pendingFiles.Sum(f => f.Size) + picked.Size > MaxTotalBytes)
             {
-                Toast.Error($"مجموع حجم پیوست‌ها از ۱۰۰ مگابایت عبور می‌کند؛ «{file.Name}» افزوده نشد.");
+                Toast.Error($"مجموع حجم پیوست‌ها از ۱۰۰ مگابایت عبور می‌کند؛ «{picked.Name}» افزوده نشد.");
+                continue;
+            }
+            // مرجع IBrowserFile مرورگر ناپایدار است؛ فوراً به بایت می‌خوانیم و نسخهٔ
+            // حافظه‌ای نگه می‌داریم تا OpenReadStreamِ بارگذاریِ بعدی با «no file with
+            // ID N — file list may have changed» ناموفق نشود.
+            MemoryBrowserFile file;
+            try
+            {
+                await using var src = picked.OpenReadStream(long.MaxValue);
+                using var ms = new MemoryStream(picked.Size > 0 ? (int)picked.Size : 0);
+                await src.CopyToAsync(ms);
+                file = new MemoryBrowserFile(picked.Name, picked.ContentType, ms.ToArray());
+            }
+            catch (Exception readEx)
+            {
+                Toast.Error($"خوانش «{picked.Name}» ناموفق بود ({readEx.Message})؛ افزوده نشد.");
                 continue;
             }
             pendingFiles.Add(file);
         }
+        StateHasChanged();
     }
 
     private async Task SaveAsync()

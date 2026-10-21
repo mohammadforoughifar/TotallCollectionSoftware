@@ -529,13 +529,25 @@
 
     // ==================== پیوست‌ها ====================
 
-    private void OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
         var rejected = new List<string>();
-        foreach (var f in e.GetMultipleFiles(int.MaxValue))
+        foreach (var picked in e.GetMultipleFiles(int.MaxValue))
         {
-            if (f.Size <= 0) { rejected.Add($"{f.Name} (خالی — ۰ بایت)"); continue; }
-            if (f.Size > 20 * 1024 * 1024) { rejected.Add($"{f.Name} (بیش از ۲۰ مگابایت)"); continue; }
+            if (picked.Size <= 0) { rejected.Add($"{picked.Name} (خالی — ۰ بایت)"); continue; }
+            if (picked.Size > 20 * 1024 * 1024) { rejected.Add($"{picked.Name} (بیش از ۲۰ مگابایت)"); continue; }
+            // مرجع IBrowserFile مرورگر فقط تا قبل از اولین رندرِ بعدی معتبر است (خطای
+            // «no file with ID N — file list may have changed»)؛ پس بایت‌ها را همان‌جا
+            // می‌خوانیم و نسخهٔ حافظه‌ای امن برای بارگذاریِ بعدی نگه می‌داریم.
+            MemoryBrowserFile f;
+            try
+            {
+                await using var src = picked.OpenReadStream(long.MaxValue);
+                using var ms = new MemoryStream(picked.Size > 0 ? (int)picked.Size : 0);
+                await src.CopyToAsync(ms);
+                f = new MemoryBrowserFile(picked.Name, picked.ContentType, ms.ToArray());
+            }
+            catch (Exception readEx) { rejected.Add($"{picked.Name} (خوانش: {readEx.Message})"); continue; }
             if (pendingFiles.Any(x => x.Name == f.Name && x.Size == f.Size) ||
                 savedAtts.Any(x => x.FileName == f.Name && x.Size == f.Size))
             { rejected.Add($"{f.Name} (تکراری)"); continue; }
@@ -543,6 +555,7 @@
         }
         fileErr = rejected.Count > 0 ? "این فایل‌ها پذیرفته نشدند: " + string.Join("، ", rejected) : "";
         if (rejected.Count > 0) Toast.Error("برخی فایل‌ها پذیرفته نشدند.");
+        StateHasChanged();
     }
 
     private async Task RemoveSavedAtt(LetterAttachmentDto a)
