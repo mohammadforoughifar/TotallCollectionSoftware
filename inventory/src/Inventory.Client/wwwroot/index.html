@@ -218,6 +218,63 @@
             } catch (e) { console.error(e); }
         };
 
+        // ================== صفحهٔ چاپ (باز شدن هم‌زمان با کلیک) ==================
+        // چرا؟ window.open باید «هم‌زمان با کلیک کاربر» اجرا شود؛ اگر بعد از دریافت
+        // PDF از سرور (چند ثانیه بعد) باز شود، مرورگر آن را popup محسوب و مسدود می‌کند
+        // و در نتیجه به‌جای صفحهٔ چاپ، فایل دانلود می‌شد.
+        // الگو: ltxPrintBegin همان لحظهٔ کلیک پنجره را باز می‌کند (با پیام «در حال آماده‌سازی»)،
+        // سپس ltxPrintReady پس از رسیدن PDF، آن را داخل همان پنجره با iframe نمایش می‌دهد
+        // (نمایشگر PDF مرورگر دکمهٔ چاپ خودش را دارد)؛ ltxPrintFail هم خطا را نشان می‌دهد.
+        window.ltxPrintWindows = {};
+        window.ltxPrintBegin = function () {
+            try {
+                var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+                var w = window.open('about:blank', '_blank');
+                if (!w) return null; // popup blocked → caller falls back to download
+                w.document.open();
+                w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>در حال آماده‌سازی چاپ…</title></head>' +
+                    '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:Tahoma,sans-serif;background:#f1f5f9;color:#334155">' +
+                    '<div style="text-align:center"><div style="font-size:18px;margin-bottom:8px">در حال آماده‌سازی نسخهٔ چاپ…</div>' +
+                    '<div style="font-size:13px;color:#64748b">چند لحظه صبر کنید</div></div></body></html>');
+                w.document.close();
+                window.ltxPrintWindows[id] = w;
+                return id;
+            } catch (e) { return null; }
+        };
+        window.ltxPrintReady = function (id, base64, fileName) {
+            try {
+                var w = window.ltxPrintWindows[id];
+                if (!w || w.closed) return false;
+                var bin = atob(base64);
+                var arr = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+                var safeName = String(fileName || 'letter.pdf').replace(/[<>&]/g, '');
+                w.document.open();
+                w.document.write('<!doctype html><html><head><title>' + safeName + '</title>' +
+                    '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden}iframe{border:0;display:block;width:100%;height:100%}</style></head>' +
+                    '<body><iframe src="' + url + '" title="print"></iframe></body></html>');
+                w.document.close();
+                setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+                delete window.ltxPrintWindows[id];
+                return true;
+            } catch (e) { return false; }
+        };
+        window.ltxPrintFail = function (id, message) {
+            try {
+                var w = window.ltxPrintWindows[id];
+                delete window.ltxPrintWindows[id];
+                if (!w || w.closed) return;
+                var msg = String(message || 'خطا در آماده‌سازی چاپ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                w.document.open();
+                w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>خطای چاپ</title></head>' +
+                    '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:Tahoma,sans-serif;background:#fef2f2;color:#b91c1c">' +
+                    '<div style="max-width:560px;text-align:center;padding:24px"><div style="font-size:40px;margin-bottom:12px">⚠️</div>' +
+                    '<div style="font-size:14px;line-height:2">' + msg + '</div></div></body></html>');
+                w.document.close();
+            } catch (e) { }
+        };
+
         // ================== آدرس سرور API (مهم برای ورود موفق) ==================
         // آدرس پیش‌فرض این استقرار: اگر هیچ نشانهٔ دیگری نبود، از همین استفاده می‌شود.
         window.DEFAULT_API_BASE = 'http://192.168.30.104:8181';

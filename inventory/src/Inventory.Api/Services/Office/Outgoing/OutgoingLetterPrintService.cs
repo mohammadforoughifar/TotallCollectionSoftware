@@ -22,11 +22,11 @@ namespace Inventory.Api.Services.Office.Outgoing;
 //       (Reports/OutgoingLetters/Companies/{CompanyId}/Outgoing-{Size}.mrt —
 //        Watermark.ImageBytes)؛ این طرح همیشه همراه خروجی سرور منتشر می‌شود
 //        و چاپ را از تنظیمات بانک اطلاعاتی مستقل می‌کند.
-//    ۳) سربرگ فوروث / لوگوی HR — فقط برای شرکت‌های بدون سربرگ اختصاصی.
+//    ۳) سربرگ فوروث / لوگوی HR — فقط برای نامه‌های بدون شرکت.
 //  • متن نامه با QuestPDF (فونت فارسی وزیرمتن، راست‌به‌چپ) تولید و سپس
 //    با PDFsharp روی صفحه سربرگ قرار می‌گیرد (Overlay).
-//  • برای هومپا (1003) و آریا (1005) اگر هیچ سربرگی قابل‌یافتن نباشد، چاپ
-//    متوقف می‌شود تا نامه هرگز روی صفحهٔ سفید چاپ نشود.
+//  • نامه‌ای که «شرکت» دارد هرگز بدون سربرگ (روی صفحهٔ سفید) چاپ نمی‌شود؛
+//    اگر سربرگ پیدا نشود یا اعمال آن شکست بخورد، چاپ با پیام دقیق متوقف می‌شود.
 // ============================================================
 
 public interface IOutgoingLetterPrintService
@@ -58,9 +58,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // These companies must use their own registered letterheads; never substitute Forough's.
     private const int HomepaCompanyId = 1003;
     private const int AriaCompanyId = 1005;
-
-    private static bool RequiresRegisteredCompanyLetterhead(int? companyId)
-        => companyId is HomepaCompanyId or AriaCompanyId;
 
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
@@ -147,6 +144,30 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// </summary>
     private string? ResolveRegisteredLetterheadFile(SystemCompany? company)
         => ResolveLetterheadPath(company?.LetterheadFileName);
+
+    /// <summary>برای پیام خطا: فایل ثبت‌شده به هر نوعی که باشد، اگر جایی موجود است مسیرش برمی‌گردد.</summary>
+    private string? TryResolveAnyPath(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)) return null;
+
+        var clean = fileName.Replace('\\', '/').TrimStart('/');
+        if (clean.Contains("..")) return null;
+
+        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
+        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+            ? clean["uploads/".Length..]
+            : clean;
+        var uploadFileName = Path.GetFileName(uploadClean);
+        var candidates = new[]
+        {
+            Path.Combine(webRoot, "uploads", uploadClean),
+            Path.Combine(webRoot, "uploads", "letterheads", uploadFileName),
+            Path.Combine(webRoot, clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(AppContext.BaseDirectory, clean)
+        };
+        return candidates.FirstOrDefault(File.Exists);
+    }
 
     // ==================== سربرگ جاسازی‌شده در قالب MRT شرکت ====================
 
@@ -313,7 +334,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 letterId, company?.Id);
 
         var selectedCompanyId = company?.Id ?? letterCompanyId;
-        var requiresRegisteredLetterhead = RequiresRegisteredCompanyLetterhead(selectedCompanyId);
         var companyRecordMissing = hasCompanyId && company == null;
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
@@ -329,8 +349,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var letterheadPath = registeredPath ?? templateLetterheadPath;
         var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
 
-        // ۳) سربرگ فوروث / لوگوی HR — فقط برای شرکت‌های بدون سربرگ اختصاصی (رفتار قبلی).
-        if (letterheadPath == null && !requiresRegisteredLetterhead && !companyRecordMissing)
+        // ۳) سربرگ فوروث / لوگوی HR — فقط برای نامه‌های «بدون شرکت».
+        if (letterheadPath == null && !hasCompanyId)
         {
             letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
             if (letterheadPath == null)
@@ -346,6 +366,35 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "سربرگ نامه انتخاب شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, FinalPath={FinalPath}, FromTemplate={FromTemplate}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
             letterId, letterCompanyId, selectedCompanyId, company?.LetterheadFileName, registeredPath,
             templateLetterheadPath, letterheadPath, letterheadFromTemplate, _env.WebRootPath, _env.ContentRootPath);
+
+        // قاعدهٔ سخت‌گیرانه: نامه‌ای که «شرکت» دارد هرگز بدون سربرگ چاپ نمی‌شود.
+        // اگر هیچ سربرگی (فایل ثبت‌شده یا طرح قالب MRT) پیدا نشد، چاپ با پیام دقیق متوقف می‌شود
+        // تا به‌جای نامهٔ سفید، علت واقعی دیده شود.
+        if (letterheadPath == null && hasCompanyId)
+        {
+            var companyName = string.IsNullOrWhiteSpace(company?.Name)
+                ? letterCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
+                : company!.Name;
+            var configuredStatus = companyRecordMissing
+                ? "رکورد شرکت در بانک اطلاعاتی پیدا نشد"
+                : string.IsNullOrWhiteSpace(company?.LetterheadFileName)
+                    ? "روی رکورد شرکت فایلی ثبت نشده است"
+                    : TryResolveAnyPath(company?.LetterheadFileName) is { } existing
+                        ? $"فایل ثبت‌شده یافت شد ({existing}) اما نوع قابل‌چاپ نیست؛ فقط PDF/تصویر مجاز است"
+                        : "فایل ثبت‌شده روی سرور پیدا نشد";
+            var templateStatus = templateLetterheadPath != null
+                ? "طرح قالب خوانده شد"
+                : "قالب MRT شرکت یافت نشد یا سربرگ جاسازی‌شده ندارد";
+            var message =
+                $"سربرگ شرکت «{companyName}» پیدا نشد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. " +
+                $"وضعیت: {configuredStatus}؛ قالب: {templateStatus}. " +
+                $"مسیرهای جستجوی قالب: {_env.ContentRootPath} | {AppContext.BaseDirectory}";
+            _logger.LogError(
+                "چاپ نامه {LetterId} متوقف شد: سربرگ شرکت {CompanyId} یافت نشد. Configured={Configured}, ContentRoot={ContentRoot}, BaseDirectory={BaseDirectory}, WebRoot={WebRoot}",
+                letterId, selectedCompanyId, company?.LetterheadFileName,
+                _env.ContentRootPath, AppContext.BaseDirectory, _env.WebRootPath);
+            throw new RequiredCompanyLetterheadPrintException(message);
+        }
 
         // Outgoing letters always use QuestPDF. This avoids Stimulsoft trial marks
         // and keeps all Persian shaping/layout on one rendering path.
@@ -389,6 +438,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // Use the same company record and letterhead path for all rendered pages.
         if (letterheadPath == null)
         {
+            // فقط نامه‌های «بدون شرکت» به اینجا می‌رسند (سربرگ فوروث/HR هم موجود نیست)
+            // — همان حالت قدیمی: هدر مشکی چاپ می‌شود.
             _logger.LogWarning(
                 "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
                 letterId,
@@ -398,14 +449,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 _env.ContentRootPath,
                 _env.WebRootPath,
                 AppContext.BaseDirectory);
-            if (requiresRegisteredLetterhead)
-            {
-                var companyName = string.IsNullOrWhiteSpace(company?.Name)
-                    ? selectedCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
-                    : company.Name;
-                throw new RequiredCompanyLetterheadPrintException(
-                    $"سربرگ ثبت‌شدهٔ {companyName} در خروجی سرور پیدا نشد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود.");
-            }
             return contentPdf;
         }
 
@@ -447,13 +490,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 }
             }
 
-            if (requiresRegisteredLetterhead)
+            // نامهٔ دارای شرکت هرگز بدون سربرگ تحویل نمی‌شود — خطای شفاف به کاربر.
+            if (hasCompanyId)
             {
                 var companyName = string.IsNullOrWhiteSpace(company?.Name)
-                    ? selectedCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
-                    : company.Name;
+                    ? letterCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
+                    : company!.Name;
                 throw new RequiredCompanyLetterheadPrintException(
-                    $"اعمال سربرگ ثبت‌شدهٔ {companyName} ناموفق شد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود.", ex);
+                    $"اعمال سربرگ شرکت «{companyName}» ناموفق بود؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. جزئیات: {ex.Message}", ex);
             }
             return contentPdf;
         }

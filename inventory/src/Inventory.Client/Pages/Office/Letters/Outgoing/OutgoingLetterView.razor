@@ -188,18 +188,32 @@
 
     private void GoCartable() => Nav.NavigateTo("outgoing-letters");
 
-    /// <summary>چاپ نامه روی سربرگ شرکت — دریافت PDF از سرور و باز کردن در تب جدید</summary>
+    /// <summary>چاپ نامه روی سربرگ شرکت — دریافت PDF از سرور و باز کردن صفحهٔ چاپ</summary>
     private async Task PrintPdf(string size)
     {
         if (letter == null) return;
         printing = true;
+        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
+        // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
+        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
             var bytes = await OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size);
             var name = $"letter-{(letter.SadereNumber ?? letter.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            await JS.InvokeVoidAsync("ltxOpenPdf", Convert.ToBase64String(bytes), name);
+            var payload = Convert.ToBase64String(bytes);
+            if (printId != null)
+                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
+            else
+            {
+                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
+                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
+            }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
+            Toast.Error(ex.Message);
+        }
         finally { printing = false; }
     }
 
