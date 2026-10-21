@@ -236,13 +236,20 @@
             @if (PageCount > 1)
             {
                 <div class="lt-pager">
-                    <button class="pgbtn" disabled="@(page <= 1)" @onclick="() => GoPage(page - 1)"><i class="bi bi-chevron-right"></i></button>
+                    <button class="pgbtn" disabled="@(page <= 1)" @onclick="() => GoPage(1)"><i class="bi bi-chevron-double-left"></i></button>
+                    <button class="pgbtn" disabled="@(page <= 1)" @onclick="() => GoPage(page - 1)"><i class="bi bi-chevron-left"></i></button>
                     @foreach (var p in PageNumbers)
                     {
                         var pp = p;
                         <button class="pgbtn @(pp == page ? "on" : "")" @onclick="() => GoPage(pp)">@pp.FaDigits()</button>
                     }
-                    <button class="pgbtn" disabled="@(page >= PageCount)" @onclick="() => GoPage(page + 1)"><i class="bi bi-chevron-left"></i></button>
+                    <button class="pgbtn" disabled="@(page >= PageCount)" @onclick="() => GoPage(page + 1)"><i class="bi bi-chevron-right"></i></button>
+                    <button class="pgbtn" disabled="@(page >= PageCount)" @onclick="() => GoPage(PageCount)"><i class="bi bi-chevron-double-right"></i></button>
+                    <div class="pg-jump">
+                        <label>رفتن به صفحه: </label>
+                        <input type="number" @bind="jumpPage" min="1" max="@PageCount" style="width:50px" />
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoPage(jumpPage)"><i class="bi bi-arrow-right"></i></button>
+                    </div>
                     <span class="pginfo">@TotalCount.FaDigits() نامه — صفحه @(page.FaDigits()) از @PageCount.FaDigits()</span>
                 </div>
             }
@@ -728,11 +735,13 @@
     private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
     private List<OutgoingLetterListItemDto> Paged => Filtered;
     private List<OutgoingPishnevisDto> PagedDrafts => drafts;
+    private int jumpPage;
+
     private IEnumerable<int> PageNumbers
     {
         get
         {
-            int start = Math.Max(1, page - 2), end = Math.Min(PageCount, page + 2);
+            int start = Math.Max(1, page - 3), end = Math.Min(PageCount, page + 3);
             for (int i = start; i <= end; i++) yield return i;
         }
     }
@@ -805,7 +814,7 @@
     private void OnDataChanged(string scope)
     {
         if (scope != "outgoing-letters") return;
-        _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true); StateHasChanged(); });
+        _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true, resetPage: false); StateHasChanged(); });
     }
 
     private async Task ReloadAsync() { await ReloadAsync(false, true); }
@@ -1273,6 +1282,21 @@
         public int Id { get; set; }
         public string Number { get; set; } = "";
         public string Title { get; set; } = "";
+    }
+}
+
+<style>
+    .lt-pager { display:flex; align-items:center; gap:.3rem; justify-content:center; flex-wrap:wrap; margin-top:1rem; padding:.5rem; background:#f8fafc; border-radius:.6rem; border:1px solid #e2e8f0; }
+    .lt-pager .pgbtn { min-width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:.4rem; cursor:pointer; font-size:.85rem; }
+    .lt-pager .pgbtn:hover:not(:disabled) { border-color:#2563eb; color:#2563eb; background:#eff6ff; }
+    .lt-pager .pgbtn.on { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .lt-pager .pgbtn:disabled { opacity:.5; cursor:not-allowed; }
+    .pg-jump { display:flex; align-items:center; gap:.25rem; margin-left:.5rem; padding:.1rem .4rem; background:#fff; border:1px solid #cbd5e1; border-radius:.4rem; }
+    .pg-jump label { font-size:.75rem; color:#64748b; white-space:nowrap; }
+    .pg-jump input { width:45px; height:26px; font-size:.8rem; text-align:center; border:1px solid #cbd5e1; border-radius:.3rem; }
+    .pg-jump button { height:26px; padding:0 .4rem; font-size:.75rem; }
+    .pginfo { margin-left:.75rem; font-size:.82rem; color:#64748b; white-space:nowrap; }
+</style>
         public int AssigneeCount { get; set; }
         public List<string> Assignees { get; set; } = new();
     }

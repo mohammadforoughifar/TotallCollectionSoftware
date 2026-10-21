@@ -161,12 +161,25 @@
                     @* ---------- صفحه‌بندی ---------- *@
                     @if (totalPages > 1)
                     {
-                        <div class="d-flex justify-content-between align-items-center p-3 border-top">
-                            <small class="text-muted">صفحه @currentPage.FaDigits() از @totalPages.FaDigits() (کل: @totalItems.FaDigits())</small>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(currentPage - 1)">قبلی</button>
-                                <button class="btn btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(currentPage + 1)">بعدی</button>
+                        <div class="lt-pager">
+                            <button class="pgbtn" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(1)"><i class="bi bi-chevron-double-left"></i></button>
+                            <button class="pgbtn" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(currentPage - 1)"><i class="bi bi-chevron-left"></i></button>
+                            @for (int i = 1; i <= totalPages; i++)
+                            {
+                                var p = i;
+                                if (p >= Math.Max(1, currentPage - 3) && p <= Math.Min(totalPages, currentPage + 3))
+                                {
+                                    <button class="pgbtn @(p == currentPage ? "on" : "")" @onclick="() => GoPageAsync(p)">@p.FaDigits()</button>
+                                }
+                            }
+                            <button class="pgbtn" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(currentPage + 1)"><i class="bi bi-chevron-right"></i></button>
+                            <button class="pgbtn" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(totalPages)"><i class="bi bi-chevron-double-right"></i></button>
+                            <div class="pg-jump">
+                                <label>رفتن به صفحه: </label>
+                                <input type="number" @bind="jumpPage" min="1" max="@totalPages" style="width:50px" />
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoPageAsync(jumpPage)"><i class="bi bi-arrow-right"></i></button>
                             </div>
+                            <span class="pginfo">@totalItems.FaDigits() نامه — صفحه @(currentPage.FaDigits()) از @totalPages.FaDigits()</span>
                         </div>
                     }
                 }
@@ -331,6 +344,7 @@
     private int pageSize = 15;
     private int totalPages = 1;
     private int totalItems = 0;
+    private int jumpPage;
 
     private int openMenuLetterId = 0;
     private IncomingLetterListItemDto? activeLetter;
@@ -696,4 +710,18 @@
         public int AssigneeCount { get; set; }
         public List<string> Assignees { get; set; } = new();
     }
+}
+
+<style>
+    .lt-pager { display:flex; align-items:center; gap:.3rem; justify-content:center; flex-wrap:wrap; margin-top:1rem; padding:.5rem; background:#f8fafc; border-radius:.6rem; border:1px solid #e2e8f0; }
+    .lt-pager .pgbtn { min-width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:.4rem; cursor:pointer; font-size:.85rem; }
+    .lt-pager .pgbtn:hover:not(:disabled) { border-color:#2563eb; color:#2563eb; background:#eff6ff; }
+    .lt-pager .pgbtn.on { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .lt-pager .pgbtn:disabled { opacity:.5; cursor:not-allowed; }
+    .pg-jump { display:flex; align-items:center; gap:.25rem; margin-left:.5rem; padding:.1rem .4rem; background:#fff; border:1px solid #cbd5e1; border-radius:.4rem; }
+    .pg-jump label { font-size:.75rem; color:#64748b; white-space:nowrap; }
+    .pg-jump input { width:45px; height:26px; font-size:.8rem; text-align:center; border:1px solid #cbd5e1; border-radius:.3rem; }
+    .pg-jump button { height:26px; padding:0 .4rem; font-size:.75rem; }
+    .pginfo { margin-left:.75rem; font-size:.82rem; color:#64748b; white-space:nowrap; }
+</style>
 }
