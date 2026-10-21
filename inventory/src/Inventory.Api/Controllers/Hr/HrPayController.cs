@@ -15,8 +15,15 @@ public class HrPayController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly HrPayService _svc;
+    private readonly ForoughAryaHrUsers _fa;
 
-    public HrPayController(AppDbContext db, HrPayService svc) { _db = db; _svc = svc; }
+    public HrPayController(AppDbContext db, HrPayService svc, ForoughAryaHrUsers fa) { _db = db; _svc = svc; _fa = fa; }
+
+    /// <summary>پرسنلِ مجاز این ماژول: پیوند به کاربرِ فعالِ دارای دسترسی به «منابع انسانی فروغ آریا»</summary>
+    private async Task<List<int>> AllowedEmpAsync() => (await _fa.PersonnelIdsAsync()).ToList();
+    private async Task<bool> EmpOkAsync(int employeeId)
+        => await _db.FaHrPersonnel.AnyAsync(e => e.Id == employeeId) && await _fa.IsAllowedPersonnelAsync(employeeId);
+    private const string EmpNotAllowed = "پرسنل معتبر نیست یا به کاربرِ فعالِ دارای دسترسی به این ماژول پیوند ندارد.";
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -159,7 +166,8 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> EmpItems([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPayEmployeeItems.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPayEmployeeItems.AsNoTracking().Where(x => allowedEmp.Contains(x.EmployeeId));
         if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId);
         var pg = await Paging.QueryAsync(q, skip, take, 1000);
         var rows = pg.Rows;
@@ -178,7 +186,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> SaveEmpItem([FromBody] EmpItemInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == input.EmployeeId)) return BadRequest(new { message = "پرسنل معتبر نیست." });
+        if (!await EmpOkAsync(input.EmployeeId)) return BadRequest(new { message = EmpNotAllowed });
         if (!await _db.HrPayItems.AnyAsync(i => i.Id == input.ItemId)) return BadRequest(new { message = "آیتم معتبر نیست." });
         var ex = await _db.HrPayEmployeeItems.FirstOrDefaultAsync(x => x.EmployeeId == input.EmployeeId && x.ItemId == input.ItemId);
         if (ex == null) _db.HrPayEmployeeItems.Add(new HrPayEmployeeItem { EmployeeId = input.EmployeeId, ItemId = input.ItemId, Amount = input.Amount });
@@ -204,7 +212,8 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Profiles([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPayProfiles.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPayProfiles.AsNoTracking().Where(p => allowedEmp.Contains(p.EmployeeId));
         if (employeeId != null) q = q.Where(p => p.EmployeeId == employeeId);
         var pg = await Paging.QueryAsync(q, skip, take, 2000);
         return Ok(pg.Result());
@@ -226,7 +235,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> SaveProfile([FromBody] ProfileInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == input.EmployeeId)) return BadRequest(new { message = "پرسنل معتبر نیست." });
+        if (!await EmpOkAsync(input.EmployeeId)) return BadRequest(new { message = EmpNotAllowed });
         var p = await _db.HrPayProfiles.FirstOrDefaultAsync(x => x.EmployeeId == input.EmployeeId);
         if (p == null) { p = new HrPayProfile { EmployeeId = input.EmployeeId }; _db.HrPayProfiles.Add(p); }
         p.ChildrenCount = Math.Max(0, input.ChildrenCount);
@@ -316,12 +325,13 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPayLoans.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPayLoans.AsNoTracking().Where(l => allowedEmp.Contains(l.EmployeeId));
         if (employeeId != null) q = q.Where(l => l.EmployeeId == employeeId);
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(l => l.Status == status);
         var pg = await Paging.QueryAsync(q.OrderByDescending(l => l.Id), skip, take, 1000);
         var rows = pg.Rows;
-        var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
+        var emps = await _db.FaHrPersonnel.AsNoTracking().ToDictionaryAsync(e => e.Id);
         return Ok(pg.Result(rows.Select(l => new
         {
             l.Id, l.EmployeeId, l.Kind, l.Amount, l.Installments, l.MonthlyAmount, l.PaidCount,
@@ -346,7 +356,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> CreateLoan([FromBody] LoanInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == input.EmployeeId)) return BadRequest(new { message = "پرسنل معتبر نیست." });
+        if (!await EmpOkAsync(input.EmployeeId)) return BadRequest(new { message = EmpNotAllowed });
         if (input.Amount <= 0) return BadRequest(new { message = "مبلغ نامعتبر است." });
         var n = input.Kind == "Advance" ? 1 : Math.Max(1, input.Installments);
         var monthly = input.MonthlyAmount > 0 ? input.MonthlyAmount : Math.Round(input.Amount / n);
@@ -379,12 +389,13 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Arrears([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPayArrears.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPayArrears.AsNoTracking().Where(a => allowedEmp.Contains(a.EmployeeId));
         if (year != null) q = q.Where(a => a.Year == year);
         if (month != null) q = q.Where(a => a.Month == month);
         var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.Id), skip, take, 500);
         var rows = pg.Rows;
-        var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
+        var emps = await _db.FaHrPersonnel.AsNoTracking().ToDictionaryAsync(e => e.Id);
         return Ok(pg.Result(rows.Select(a => new
         {
             a.Id, a.EmployeeId, a.Year, a.Month, a.Amount, a.Title, a.Status,
@@ -398,7 +409,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> CreateArrear([FromBody] ArrearInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == input.EmployeeId)) return BadRequest(new { message = "پرسنل معتبر نیست." });
+        if (!await EmpOkAsync(input.EmployeeId)) return BadRequest(new { message = EmpNotAllowed });
         if (input.Amount <= 0) return BadRequest(new { message = "مبلغ نامعتبر است." });
         var a = new HrPayArrear { EmployeeId = input.EmployeeId, Year = input.Year, Month = input.Month, Amount = input.Amount, Title = input.Title, Status = "Pending" };
         _db.HrPayArrears.Add(a);
@@ -422,12 +433,13 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> OnAccounts([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPayOnAccounts.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPayOnAccounts.AsNoTracking().Where(a => allowedEmp.Contains(a.EmployeeId));
         if (year != null) q = q.Where(a => a.Year == year);
         if (month != null) q = q.Where(a => a.Month == month);
         var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.Id), skip, take, 500);
         var rows = pg.Rows;
-        var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
+        var emps = await _db.FaHrPersonnel.AsNoTracking().ToDictionaryAsync(e => e.Id);
         return Ok(pg.Result(rows.Select(a => new
         {
             a.Id, a.EmployeeId, a.Year, a.Month, a.Amount, a.PaidDate, a.Status,
@@ -439,7 +451,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> CreateOnAccount([FromBody] ArrearInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == input.EmployeeId)) return BadRequest(new { message = "پرسنل معتبر نیست." });
+        if (!await EmpOkAsync(input.EmployeeId)) return BadRequest(new { message = EmpNotAllowed });
         if (input.Amount <= 0) return BadRequest(new { message = "مبلغ نامعتبر است." });
         var o = new HrPayOnAccount { EmployeeId = input.EmployeeId, Year = input.Year, Month = input.Month, Amount = input.Amount, Status = "Pending" };
         _db.HrPayOnAccounts.Add(o);
@@ -536,7 +548,8 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Slips(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await Paging.ResultAsync(_db.HrPaySlips.AsNoTracking().Where(s => s.RunId == id).OrderBy(s => s.EmployeeName), skip, take));
+        var allowedEmp = await AllowedEmpAsync();
+        return Ok(await Paging.ResultAsync(_db.HrPaySlips.AsNoTracking().Where(s => s.RunId == id && allowedEmp.Contains(s.EmployeeId)).OrderBy(s => s.EmployeeName), skip, take));
     }
 
     [HttpGet("slips/{id:int}")]
@@ -545,6 +558,7 @@ public class HrPayController : ControllerBase
         var s = await _db.HrPaySlips.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
         if (s == null) return NotFound();
         if (s.UserId != MyUserId && !await CanReadAsync()) return Forbid();
+        if (s.UserId != MyUserId && !await _fa.IsAllowedPersonnelAsync(s.EmployeeId)) return NotFound();
         var run = await _db.HrPayRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == s.RunId);
         return Ok(new
         {
@@ -613,11 +627,12 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Settlements([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var q = _db.HrPaySettlements.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrPaySettlements.AsNoTracking().Where(s => allowedEmp.Contains(s.EmployeeId));
         if (employeeId != null) q = q.Where(s => s.EmployeeId == employeeId);
         var pg = await Paging.QueryAsync(q.OrderByDescending(s => s.Id), skip, take, 500);
         var rows = pg.Rows;
-        var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
+        var emps = await _db.FaHrPersonnel.AsNoTracking().ToDictionaryAsync(e => e.Id);
         return Ok(pg.Result(rows.Select(s => new
         {
             s.Id, s.EmployeeId, s.LeaveDate, s.YearsOfService, s.LastBase, s.UnusedLeaveDays,
@@ -653,7 +668,10 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Employees([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        var pg = await Paging.QueryAsync(_db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+        // کمبو/فهرست پرسنل: فقط جدول اختصاصی این ماژول + پیوند به کاربرِ فعالِ دارای دسترسی
+        var allowedEmp = await AllowedEmpAsync();
+        var pg = await Paging.QueryAsync(_db.FaHrPersonnel.AsNoTracking().Where(e => allowedEmp.Contains(e.Id))
+            .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.NationalCode, e.BaseSalary, e.Status, e.HireDate }), skip, take, 2000);
         return Ok(pg.Result());
     }
@@ -664,8 +682,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> AttendanceMonth([FromQuery] int employeeId, [FromQuery] int year, [FromQuery] int month)
     {
         if (!await CanReadAsync()) return Forbid();
-        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId);
-        if (emp == null) return NotFound();
+        if (!await EmpOkAsync(employeeId)) return NotFound();
         var uid = await _db.HrUserLinks.AsNoTracking().Where(x => x.EmployeeId == employeeId).Select(x => (int?)x.UserId).FirstOrDefaultAsync();
         return Ok(await _svc.MonthAggAsync(uid, year, month));
     }

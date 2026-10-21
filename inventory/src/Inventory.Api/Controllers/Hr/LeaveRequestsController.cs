@@ -35,8 +35,13 @@ public class LeaveRequestsController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
-    public LeaveRequestsController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, ILogger<LeaveRequestsController> logger)
-    { _db = db; _notify = notify; _recalc = recalc; _logger = logger; }
+    private readonly ForoughAryaHrUsers _fa;
+    public LeaveRequestsController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, ILogger<LeaveRequestsController> logger, ForoughAryaHrUsers fa)
+    { _db = db; _notify = notify; _recalc = recalc; _logger = logger; _fa = fa; }
+
+    /// <summary>«منابع انسانی فروغ آریا»: فقط کاربرانِ فعالِ دارای دسترسی به ماژول در فهرست‌ها/گزارش‌ها/کمبوها</summary>
+    private async Task<List<int>> AllowedUsersAsync() => (await _fa.UserIdsAsync()).ToList();
+    private const string UserNotAllowed = "کاربر فعال نیست یا به «منابع انسانی فروغ آریا» دسترسی ندارد.";
 
     private readonly AttendanceRecalcService _recalc;
     private readonly ILogger<LeaveRequestsController> _logger;
@@ -202,7 +207,8 @@ public class LeaveRequestsController : ControllerBase
         var legacyAdmins = await _db.Users
             .Where(u => u.Role == "Admin" && u.IsActive && !_db.UserRoles.Any(ur => ur.UserId == u.Id))
             .Select(u => u.Id).ToListAsync();
-        return rbac.Concat(legacyAdmins).Distinct().ToList();
+        var allowed = await _fa.UserIdsAsync();
+        return rbac.Concat(legacyAdmins).Distinct().Where(allowed.Contains).ToList();
     }
 
     // ================== کمک‌های تاریخ شمسی ==================
@@ -339,7 +345,8 @@ public class LeaveRequestsController : ControllerBase
     {
         var pagination = new Paging.Request(skip, take);
         if (!await CanManageAsync()) return Forbid();
-        var q = _db.LeaveRequests.AsQueryable();
+        var allowedU = await AllowedUsersAsync();
+        var q = _db.LeaveRequests.Where(l => allowedU.Contains(l.RequesterUserId));
         if (!string.IsNullOrWhiteSpace(status) && status != "All")
             q = q.Where(l => l.Status == status);
         if (jy is > 0 && jm is > 0)
@@ -461,6 +468,7 @@ public class LeaveRequestsController : ControllerBase
         var req = await _db.LeaveRequests.FirstOrDefaultAsync(l => l.Id == id);
         if (req == null) return NotFound(new { message = "درخواست پیدا نشد." });
         if (req.Status != "Pending") return BadRequest(new { message = "این درخواست قبلاً بررسی شده است." });
+        if (!await _fa.IsAllowedUserAsync(req.RequesterUserId)) return BadRequest(new { message = UserNotAllowed });
 
         if (req.Type is "Daily" or "Hourly")
         {
@@ -554,9 +562,11 @@ public class LeaveRequestsController : ControllerBase
     public async Task<IActionResult> Stats()
     {
         if (!await CanManageAsync()) return Forbid();
-        var pending = await _db.LeaveRequests.CountAsync(l => l.Status == "Pending");
-        var approved = await _db.LeaveRequests.CountAsync(l => l.Status == "Approved");
-        var rejected = await _db.LeaveRequests.CountAsync(l => l.Status == "Rejected");
+        var allowedU = await AllowedUsersAsync();
+        var lq = _db.LeaveRequests.Where(l => allowedU.Contains(l.RequesterUserId));
+        var pending = await lq.CountAsync(l => l.Status == "Pending");
+        var approved = await lq.CountAsync(l => l.Status == "Approved");
+        var rejected = await lq.CountAsync(l => l.Status == "Rejected");
         var total = pending + approved + rejected;
         return Ok(new { total, pending, approved, rejected });
     }
@@ -578,9 +588,10 @@ public class LeaveRequestsController : ControllerBase
             .Where(l => l.StartDate >= ys && l.StartDate < ye && l.Status == "Approved"
                         && (l.Type == "Daily" || l.Type == "Hourly"));
 
+        var allowedU = await AllowedUsersAsync();
         var rowQuery =
             from u in _db.Users.AsNoTracking()
-            where u.IsActive
+            where u.IsActive && allowedU.Contains(u.Id)
             let daily = monthQ.Where(l => l.RequesterUserId == u.Id && l.Type == "Daily" && l.Status == "Approved")
                 .Sum(l => (double?)l.Days) ?? 0
             let hourly = monthQ.Where(l => l.RequesterUserId == u.Id && l.Type == "Hourly" && l.Status == "Approved")
@@ -785,6 +796,7 @@ public class LeaveRequestsController : ControllerBase
 
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == input.UserId);
         if (user == null) return BadRequest(new { message = "کاربر پیدا نشد." });
+        if (!await _fa.IsAllowedUserAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
 
         var userName = string.IsNullOrWhiteSpace(user.FirstName) ? user.Username : $"{user.FirstName} {user.LastName}".Trim();
 

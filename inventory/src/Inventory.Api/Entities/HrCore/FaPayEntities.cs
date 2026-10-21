@@ -210,3 +210,18 @@ public class FaPayAdjustment
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>
+/// حداقل دستمزد قانونی سالانه — جدول اختصاصی حقوق و دستمزد منابع انسانی اصلی (FaPayMinWages).
+/// پیش‌تر از جدول HrMinWages (متعلق به «منابع انسانی فروغ آریا») خوانده می‌شد؛ برای تفکیک کامل
+/// دو ماژول داده‌ها یک‌بار کپی شدند و از «تنظیمات حقوق» همین ماژول مدیریت می‌شوند.
+/// </summary>
+public class FaPayMinWage
+{
+    [Key] public int Year { get; set; }
+    public decimal MonthlyWage { get; set; }
+    public decimal DailyWage { get; set; }
+    public DateTime EffectiveDate { get; set; }
+    [MaxLength(300)] public string? Note { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}

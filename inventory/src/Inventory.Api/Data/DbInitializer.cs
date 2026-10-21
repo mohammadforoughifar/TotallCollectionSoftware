@@ -217,6 +217,9 @@ public static class DbInitializer
                 await FaComSchemaV3.EnsureAsync(db);
                 await HrTalentSchemaV1.EnsureAsync(db);
                 await HrReportSchemaV1.EnsureAsync(db);
+                // تفکیک کامل «منابع انسانی فروغ آریا» از «منابع انسانی اصلی» — جدول‌های اختصاصی
+                // FaHrPersonnel / HrMainHolidays / FaPayMinWages + کپی یک‌بارهٔ داده‌های قبلی
+                await ForoughAryaHrSeparationSchemaV1.EnsureAsync(db);
 
                 // ---------- ماژول فروشگاهی چندشرکتی (اجرای دوم) ----------
                 // اجرای اول بلافاصله بعد از ساخت/مهاجرت دیتابیس انجام شد. این اجرای دوم
@@ -524,6 +527,14 @@ public static class DbInitializer
                     Console.WriteLine(added > 0
                         ? $"[DB] {added} تعطیل رسمی سال {jy} از کاتالوگ وارد شد."
                         : "[DB] تعطیل رسمی برای سال جاری یافت نشد.");
+                }
+
+                // تعطیلات منابع انسانی اصلی — جدول اختصاصی HrMainHolidays (جدا از CompanyHolidays فروغ آریا)
+                if (!db.HrMainHolidays.Any())
+                {
+                    var (jy, _, _) = Shared.PersianDate.FromGregorian(DateTime.Now);
+                    var added = SeedHrMainOfficialHolidays(db, jy);
+                    if (added > 0) Console.WriteLine($"[DB] {added} تعطیل رسمی سال {jy} برای منابع انسانی اصلی از کاتالوگ وارد شد.");
                 }
 
                 // دسته‌های هزینه پیش‌فرض (در اولین اجرا — کاربر می‌تواند مدیریتشان کند)
@@ -1514,6 +1525,26 @@ END", "ساخت جدول AuditLogs");
                 IsOfficial = true,
                 CreatedByName = "سیستم (کاتالوگ تعطیلات)",
                 CreatedAt = DateTime.Now,
+            });
+            added++;
+        }
+        if (added > 0) db.SaveChanges();
+        return added;
+    }
+
+    /// <summary>تعطیلات رسمی کاتالوگ برای «منابع انسانی اصلی» (جدول اختصاصی HrMainHolidays).</summary>
+    public static int SeedHrMainOfficialHolidays(AppDbContext db, int jy)
+    {
+        var added = 0;
+        foreach (var (m, d, name) in OfficialHolidayCatalog.GetForYear(jy))
+        {
+            var g = Shared.PersianDate.ToGregorian(jy, m, d);
+            if (g == DateTime.MinValue) continue;
+            if (db.HrMainHolidays.Any(h => h.HolidayDate.Date == g.Date)) continue;
+            db.HrMainHolidays.Add(new HrMainHoliday
+            {
+                HolidayDate = g, Name = name, IsOfficial = true,
+                CreatedByName = "سیستم (کاتالوگ تعطیلات)", CreatedAt = DateTime.Now,
             });
             added++;
         }

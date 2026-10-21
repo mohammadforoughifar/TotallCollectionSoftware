@@ -353,10 +353,8 @@ public class FaPayService : IFaPayService
             }
         }
 
-        // پاداش عملکرد قطعیِ قابل پرداخت در این ماه
-        var bonus = await _db.HrPerfResults.AsNoTracking()
-            .Where(x => x.Status == "Final" && x.PayYear == r.Year && x.PayMonth == r.Month)
-            .GroupBy(x => x.EmployeeId).ToDictionaryAsync(g => g.Key, g => (double)g.Sum(x => x.BonusAmount));
+        // پاداش عملکرد: پیش‌تر از HrPerfResults («منابع انسانی فروغ آریا») خوانده می‌شد. برای تفکیک کامل
+        // دو ماژول این وابستگی حذف شد؛ پاداش در این ماژول از «ثبت‌های ماهانه» (FaPayAdjustments) ثبت می‌شود.
 
         var fixedTypes = await _db.FaPayItemTypes.AsNoTracking()
             .Where(t => t.IsActive && t.IsFixed).OrderBy(t => t.SortOrder).ToListAsync();
@@ -445,8 +443,6 @@ public class FaPayService : IFaPayService
             }
             if (otAmount != 0)
                 items.Add(new FaPaySlipItem { Title = "اضافه‌کاری", Kind = FaPayItemKind.Earning, Amount = otAmount, IsAuto = true, Note = $"{otMin} دقیقه" });
-            if (bonus.TryGetValue(e.Id, out var pb) && pb != 0)
-                items.Add(new FaPaySlipItem { Title = "پاداش عملکرد", Kind = FaPayItemKind.Earning, Amount = R(pb), IsAuto = true });
             if (nightAmount != 0)
                 items.Add(new FaPaySlipItem { Title = "فوق‌العاده شب‌کاری", Kind = FaPayItemKind.Earning, Amount = nightAmount, IsAuto = true, Note = $"{nightMin} دقیقه" });
             if (shiftAmount != 0)

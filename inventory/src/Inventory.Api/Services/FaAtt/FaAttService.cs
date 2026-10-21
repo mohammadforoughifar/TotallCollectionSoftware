@@ -695,7 +695,7 @@ public class FaAttService : IFaAttService
             .Where(l => l.EmployeeId == employeeId && l.Status == FaAttRequestStatus.Approved &&
                 l.FromDate.Date <= date && l.ToDate.Date >= date && l.HoursPerDay != null)
             .SumAsync(l => l.HoursPerDay ?? 0);
-        var holiday = await _db.CompanyHolidays.AsNoTracking()
+        var holiday = await _db.HrMainHolidays.AsNoTracking()
             .FirstOrDefaultAsync(h => h.HolidayDate.Date == date);
         var isOffDay = shift != null && IsOffDay(shift.OffDays, date.DayOfWeek);
 
@@ -1683,7 +1683,7 @@ public class FaAttService : IFaAttService
                     });
         }
 
-        var holidays = await _db.CompanyHolidays.AsNoTracking()
+        var holidays = await _db.HrMainHolidays.AsNoTracking()
             .Where(h => h.HolidayDate.Date >= from && h.HolidayDate.Date <= to)
             .OrderBy(h => h.HolidayDate).ThenBy(h => h.Id).Take(100).ToListAsync();
         foreach (var h in holidays)

@@ -128,9 +128,10 @@ public class HrPerfService
         var p = await _db.HrPerfPeriods.AsNoTracking().FirstOrDefaultAsync(x => x.Id == periodId)
             ?? throw new InvalidOperationException("دوره پیدا نشد.");
         if (p.Status != "Open") throw new InvalidOperationException("نمره‌دهی فقط در دوره باز ممکن است.");
-        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
+        var emp = await _db.FaHrPersonnel.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
             ?? throw new InvalidOperationException("پرسنل پیدا نشد.");
-        if (emp.Status != HrEmployeeStatus.Active) throw new InvalidOperationException("پرسنل فعال نیست.");
+        if (emp.Status != FaHrPersonnelStatus.Active) throw new InvalidOperationException("پرسنل فعال نیست.");
+        await _hrtime.EnsureAllowedPersonnelAsync(employeeId);
         var kpis = await _db.HrPerfKpis.Where(k => k.PeriodId == periodId && k.IsActive).ToDictionaryAsync(k => k.Id);
         if (items.Count == 0) throw new InvalidOperationException("نمره‌ای ارسال نشده است.");
         var n = 0;
@@ -189,8 +190,11 @@ public class HrPerfService
         var resultQ = _db.HrPerfResults.AsNoTracking().Where(r => r.PeriodId == periodId);
         var kpiQ = _db.HrPerfKpis.AsNoTracking().Where(k => k.PeriodId == periodId && k.IsActive && k.MaxScore > 0);
 
+        // فقط پرسنلِ پیوندخورده به کاربرِ فعالِ دارای دسترسی به ماژول
+        var allowedEmp = (await _hrtime.Access.PersonnelIdsAsync()).ToList();
         var rankQuery =
-            from e in _db.HrEmployees.AsNoTracking()
+            from e in _db.FaHrPersonnel.AsNoTracking()
+            where allowedEmp.Contains(e.Id)
             where scoreQ.Any(s => s.EmployeeId == e.Id) || resultQ.Any(r => r.EmployeeId == e.Id)
             let saved = resultQ.FirstOrDefault(r => r.EmployeeId == e.Id)
             let computed = scoreQ.Where(s => s.EmployeeId == e.Id)
@@ -218,6 +222,7 @@ public class HrPerfService
 
     public async Task<HrPerfResult> ComputeResultAsync(int periodId, int employeeId)
     {
+        await _hrtime.EnsureAllowedPersonnelAsync(employeeId);
         var p = await _db.HrPerfPeriods.AsNoTracking().FirstOrDefaultAsync(x => x.Id == periodId)
             ?? throw new InvalidOperationException("دوره پیدا نشد.");
         if (p.Status == "Closed") throw new InvalidOperationException("دوره بسته است.");
@@ -236,7 +241,7 @@ public class HrPerfService
         var a = await GradeCutAsync("perf.grade.a", 90);
         var b = await GradeCutAsync("perf.grade.b", 75);
         var c = await GradeCutAsync("perf.grade.c", 60);
-        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
+        var emp = await _db.FaHrPersonnel.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
             ?? throw new InvalidOperationException("پرسنل پیدا نشد.");
         var bonus = total >= p.MinScoreForBonus
             ? Math.Round(emp.BaseSalary * p.BonusMonthSalary * (decimal)(total / 100)) : 0;

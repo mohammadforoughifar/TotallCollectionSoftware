@@ -182,6 +182,8 @@ builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<HrTimeService>(); // ماژول زمان‌بندی
 builder.Services.AddScoped<HrPayService>(); // ماژول حقوق
 builder.Services.AddScoped<HrPerfService>(); // ارزیابی عملکرد
+builder.Services.AddScoped<ForoughAryaHrUsers>(); // کاربران مجاز منابع انسانی فروغ آریا (فعال + دارای دسترسی)
+builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت اختصاصی فروغ آریا (FaHrPersonnel)
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();

@@ -333,7 +333,10 @@ public class HrPayService
         var minWage = await _hrtime.EffectiveMinWageAsync(run.Year);
         var brackets = await _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == run.Year).ToListAsync();
         var items = await _db.HrPayItems.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.SortOrder).ToListAsync();
-        var employees = await _db.HrEmployees.AsNoTracking().Where(e => e.Status == HrEmployeeStatus.Active).ToListAsync();
+        // فقط پرسنلِ فعالِ جدول اختصاصی این ماژول که به کاربرِ فعالِ دارای دسترسی پیوند دارند
+        var allowedEmp = await _hrtime.Access.PersonnelIdsAsync();
+        var employees = (await _db.FaHrPersonnel.AsNoTracking().Where(e => e.Status == FaHrPersonnelStatus.Active).ToListAsync())
+            .Where(e => allowedEmp.Contains(e.Id)).ToList();
         var profiles = await _db.HrPayProfiles.AsNoTracking().ToListAsync();
         var overrides = await _db.HrPayEmployeeItems.AsNoTracking().ToListAsync();
 
@@ -484,7 +487,10 @@ public class HrPayService
         var exempt = R(rules, "pay.tax.eydi.exemption", 0);
         var yStart = PersianDate.ToGregorian(run.Year, 1, 1);
         var yEnd = PersianDate.ToGregorian(run.Year + 1, 1, 1);
-        var employees = await _db.HrEmployees.AsNoTracking().Where(e => e.Status == HrEmployeeStatus.Active).ToListAsync();
+        // فقط پرسنلِ فعالِ جدول اختصاصی این ماژول که به کاربرِ فعالِ دارای دسترسی پیوند دارند
+        var allowedEmp = await _hrtime.Access.PersonnelIdsAsync();
+        var employees = (await _db.FaHrPersonnel.AsNoTracking().Where(e => e.Status == FaHrPersonnelStatus.Active).ToListAsync())
+            .Where(e => allowedEmp.Contains(e.Id)).ToList();
         var monthlyRunIds = await _db.HrPayRuns.AsNoTracking()
             .Where(r => r.Year == run.Year && r.Kind == "Monthly").Select(r => r.Id).ToListAsync();
         _db.HrPaySlips.RemoveRange(_db.HrPaySlips.Where(x => x.RunId == run.Id));
@@ -595,7 +601,8 @@ public class HrPayService
         var prev = await _db.HrPayRuns.AsNoTracking()
             .Where(r => r.Id != runId && (r.Year < run.Year || (r.Year == run.Year && r.Month < run.Month)))
             .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).FirstOrDefaultAsync();
-        var cur = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).OrderBy(x => x.Id).ToPageListAsync(pagination);
+        var allowedCmp = (await _hrtime.Access.PersonnelIdsAsync()).ToList();
+        var cur = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId && allowedCmp.Contains(s.EmployeeId)).OrderBy(x => x.Id).ToPageListAsync(pagination);
         var rules = await GetPayRulesAsync();
         var thr = (double)R(rules, "pay.variance.pct", 10);
         if (prev == null)
@@ -699,9 +706,11 @@ public class HrPayService
 
     private async Task<List<EmpRow>> SlipRowsAsync(int runId)
     {
-        var slips = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).OrderBy(s => s.EmployeeName).ToListAsync();
+        var allowedEmp = await _hrtime.Access.PersonnelIdsAsync();
+        var slips = (await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).OrderBy(s => s.EmployeeName).ToListAsync())
+            .Where(s => allowedEmp.Contains(s.EmployeeId)).ToList();
         var empIds = slips.Select(s => s.EmployeeId).ToList();
-        var emps = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+        var emps = await _db.FaHrPersonnel.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
         var profs = await _db.HrPayProfiles.AsNoTracking().Where(p => empIds.Contains(p.EmployeeId)).ToDictionaryAsync(p => p.EmployeeId);
         return slips.Select(s =>
         {
@@ -813,7 +822,8 @@ public class HrPayService
 
     public async Task<HrPaySettlement> CalculateSettlementAsync(int employeeId, DateTime leaveDate, double? unusedOverride)
     {
-        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
+        await _hrtime.EnsureAllowedPersonnelAsync(employeeId);
+        var emp = await _db.FaHrPersonnel.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
             ?? throw new InvalidOperationException("پرسنل پیدا نشد.");
         var rules = await GetPayRulesAsync();
         var minWage = R(rules, "pay.min_wage", 103909270);

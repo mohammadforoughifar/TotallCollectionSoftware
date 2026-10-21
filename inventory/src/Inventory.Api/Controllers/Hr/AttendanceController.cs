@@ -30,11 +30,20 @@ public class AttendanceController : ControllerBase
     private readonly INotifyService _notify;
     private readonly AttendanceRecalcService _recalc;
     private readonly AttendanceSecurityService _security;
+    private readonly ForoughAryaHrUsers _fa;
 
-    public AttendanceController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, AttendanceSecurityService security)
+    public AttendanceController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, AttendanceSecurityService security, ForoughAryaHrUsers fa)
     {
-        _db = db; _notify = notify; _recalc = recalc; _security = security;
+        _db = db; _notify = notify; _recalc = recalc; _security = security; _fa = fa;
     }
+
+    /// <summary>
+    /// «منابع انسانی فروغ آریا»: در همهٔ فهرست‌ها، گزارش‌ها و کمبوهای مدیریتی فقط کاربرانی که
+    /// هم فعال‌اند و هم به این ماژول دسترسی دارند نمایش داده می‌شوند.
+    /// </summary>
+    private async Task<List<int>> AllowedUsersAsync() => (await _fa.UserIdsAsync()).ToList();
+    private Task<bool> UserAllowedAsync(int userId) => _fa.IsAllowedUserAsync(userId);
+    private const string UserNotAllowed = "کاربر فعال نیست یا به «منابع انسانی فروغ آریا» دسترسی ندارد.";
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -647,6 +656,7 @@ public class AttendanceController : ControllerBase
         if (!await HasAsync("ManageShifts")) return Forbid();
         var user = await _db.Users.FindAsync(input.UserId);
         if (user == null) return NotFound(new { message = "کاربر یافت نشد." });
+        if (!await UserAllowedAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
         if (input.ShiftGroupId.HasValue && !await _db.ShiftGroups.AnyAsync(s => s.Id == input.ShiftGroupId))
             return BadRequest(new { message = "شیفت معتبر نیست." });
         user.ShiftGroupId = input.ShiftGroupId;
@@ -664,7 +674,8 @@ public class AttendanceController : ControllerBase
         var canManage = await HasAsync("ManageShifts") || User.IsInRole("Admin");
         var canView = await IsAdminAsync();
         if (!canManage && !canView) return Forbid();
-        var list = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        var allowedU = await AllowedUsersAsync();
+        var list = await _db.Users.Where(u => u.IsActive && allowedU.Contains(u.Id)).OrderBy(u => u.Username).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var shifts = await _db.ShiftGroups.ToDictionaryAsync(s => s.Id);
         return Ok(pagination.Result(list.Select(u => new
         {
@@ -1631,7 +1642,8 @@ public class AttendanceController : ControllerBase
         from = PersianDate.ToGregorian(y, m, 1);
         to = m == 12 ? PersianDate.ToGregorian(y + 1, 1, 1) : PersianDate.ToGregorian(y, m + 1, 1);
 
-        var q = _db.AttendanceRecords.Include(a => a.ShiftGroup).Where(a => a.WorkDate >= from && a.WorkDate < to);
+        var allowedU = await AllowedUsersAsync();
+        var q = _db.AttendanceRecords.Include(a => a.ShiftGroup).Where(a => a.WorkDate >= from && a.WorkDate < to && allowedU.Contains(a.UserId));
         if (userId.HasValue && userId > 0) q = q.Where(a => a.UserId == userId);
         var pagination = new Paging.Request(skip, take);
         var list = await q.OrderByDescending(a => a.WorkDate).ThenBy(a => a.UserId).ThenBy(a => a.Id).ToPageListAsync(pagination);
@@ -1667,7 +1679,9 @@ public class AttendanceController : ControllerBase
         var toExclusive = to <= today.AddDays(1) ? to : today.AddDays(1);
         var empty = new List<object>();
 
-        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync();
+        var allowedSet = await _fa.UserIdsAsync();
+        var users = (await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync())
+            .Where(u => allowedSet.Contains(u.Id)).ToList();
         if (userId.HasValue && userId > 0) users = users.Where(u => u.Id == userId.Value).ToList();
         if (users.Count == 0 || toExclusive <= from)
             return Ok(new { year = y, month = m, monthName = PersianDate.MonthName(m), items = empty });
@@ -1768,7 +1782,8 @@ public class AttendanceController : ControllerBase
         var daysInMonth = PersianDate.DaysInMonth(y, m);
 
         var pagination = new Paging.Request(skip, take);
-        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive)
+        var allowedU = await AllowedUsersAsync();
+        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive && allowedU.Contains(u.Id))
             .OrderBy(u => u.Username).ThenBy(u => u.Id).ToPageListAsync(pagination);
         var userIds = users.Select(u => u.Id).ToList();
         var recsAll = await _db.AttendanceRecords.Include(a => a.ShiftGroup)
@@ -1898,7 +1913,9 @@ public class AttendanceController : ControllerBase
         if (!await IsAdminAsync()) return Forbid();
         day = day.Date;
         var isToday = day == DateTime.Today;
-        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync();
+        var allowedSet = await _fa.UserIdsAsync();
+        var users = (await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync())
+            .Where(u => allowedSet.Contains(u.Id)).ToList();
         var recs = await _db.AttendanceRecords.Include(a => a.ShiftGroup)
             .Where(a => a.WorkDate == day).ToDictionaryAsync(a => a.UserId);
         var allSegs = await _db.AttendanceSegments
@@ -2056,6 +2073,7 @@ public class AttendanceController : ControllerBase
         if (!await HasAsync("ManageShifts")) return Forbid();
         var rec = await _db.AttendanceRecords.Include(a => a.ShiftGroup).FirstOrDefaultAsync(a => a.Id == id);
         if (rec == null) return NotFound();
+        if (!await UserAllowedAsync(rec.UserId)) return BadRequest(new { message = UserNotAllowed });
         rec.ShiftGroupId = input.ShiftGroupId == 0 ? null : input.ShiftGroupId;
         if (input.FinalStatus != null) rec.FinalStatus = input.FinalStatus;
 
@@ -2125,6 +2143,7 @@ public class AttendanceController : ControllerBase
         if (!await HasAsync("ManageShifts")) return Forbid();
         var seg = await _db.AttendanceSegments.FirstOrDefaultAsync(s => s.Id == id);
         if (seg == null) return NotFound();
+        if (!await UserAllowedAsync(seg.UserId)) return BadRequest(new { message = UserNotAllowed });
 
         // به‌روزرسانی شرطی: مقدار = تنظیم، پرچپ Clear = حذف، نبود = بدون تغییر
         if (input.ClearEnter == true) seg.EnterAt = null;
@@ -2161,6 +2180,7 @@ public class AttendanceController : ControllerBase
         if (!await HasAsync("ManageShifts")) return Forbid();
         var seg = await _db.AttendanceSegments.FirstOrDefaultAsync(s => s.Id == id);
         if (seg == null) return NotFound();
+        if (!await UserAllowedAsync(seg.UserId)) return BadRequest(new { message = UserNotAllowed });
 
         _db.AttendanceSegments.Remove(seg);
         // شماره‌گذاری مجدد بازه‌های باقی‌مانده
@@ -2232,7 +2252,8 @@ public class AttendanceController : ControllerBase
             .Where(x => x.Module == Module && (x.Action == "ManageShifts" || x.Action == "ViewAll" || x.Action == "Report"))
             .Select(x => x.UserId).Distinct().ToListAsync();
         var legacyAdmins = await _db.Users.Where(u => u.Role == "Admin" && u.IsActive && !_db.UserRoles.Any(ur => ur.UserId == u.Id)).Select(u => u.Id).ToListAsync();
-        return rbac.Concat(legacyAdmins).Distinct().ToList();
+        var allowed = await _fa.UserIdsAsync();
+        return rbac.Concat(legacyAdmins).Distinct().Where(allowed.Contains).ToList();
     }
 
     private static bool IsWorkday(DateTime date, ShiftGroup? sg)
@@ -2323,8 +2344,9 @@ public class AttendanceController : ControllerBase
         var f = (from ?? DateTime.Today.AddDays(-30)).Date;
         var t = (to ?? DateTime.Today).Date.AddDays(1);
 
+        var allowedU = await AllowedUsersAsync();
         var segs = await _db.AttendanceSegments.AsNoTracking()
-            .Where(s => s.WorkDate >= f && s.WorkDate < t && s.EnterAt != null)
+            .Where(s => s.WorkDate >= f && s.WorkDate < t && s.EnterAt != null && allowedU.Contains(s.UserId))
             .OrderByDescending(s => s.WorkDate).ThenBy(s => s.Seq)
             .ToListAsync();
 
@@ -2398,6 +2420,7 @@ public class AttendanceController : ControllerBase
         if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
         if (input.Decision is < 0 or > 2)
             return BadRequest(new { message = "تصمیم نامعتبر است." });
+        if (!await UserAllowedAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
 
         var date = input.Date.Date;
         var segs = await _db.AttendanceSegments
@@ -2448,6 +2471,7 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> RecalcDay([FromBody] ExtraDecisionInput input)
     {
         if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
+        if (!await UserAllowedAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
         await _recalc.RecalcDayAsync(input.UserId, input.Date.Date, DateTime.Now);
         var rec = await _db.AttendanceRecords.AsNoTracking()
             .FirstOrDefaultAsync(a => a.UserId == input.UserId && a.WorkDate == input.Date.Date);
@@ -2479,7 +2503,8 @@ public class AttendanceController : ControllerBase
         var to = input.Month == 12 ? PersianDate.ToGregorian(input.Year + 1, 1, 1) : PersianDate.ToGregorian(input.Year, input.Month + 1, 1);
         if (to <= from) return BadRequest(new { message = "بازه‌ی ماه معتبر نیست." });
 
-        var q = _db.AttendanceRecords.AsNoTracking().Where(r => r.WorkDate >= from && r.WorkDate < to);
+        var allowedU = await AllowedUsersAsync();
+        var q = _db.AttendanceRecords.AsNoTracking().Where(r => r.WorkDate >= from && r.WorkDate < to && allowedU.Contains(r.UserId));
         if (input.UserId is > 0) q = q.Where(r => r.UserId == input.UserId);
         var targets = await q.Select(r => new { r.UserId, r.WorkDate }).Distinct().ToListAsync();
 
@@ -2501,7 +2526,8 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetSecurityAlerts([FromQuery] bool pendingOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
-        var q = _db.AttendanceAlerts.AsNoTracking();
+        var allowedU = await AllowedUsersAsync();
+        var q = _db.AttendanceAlerts.AsNoTracking().Where(a => allowedU.Contains(a.UserId));
         if (pendingOnly) q = q.Where(a => a.Status == AttendanceSecurityService.StatusPending);
         var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.CreatedAt), skip, take, 100);
         var list = pg.Rows;

@@ -470,6 +470,13 @@ public class AppDbContext : DbContext
     public DbSet<HrPerfKpi> HrPerfKpis => Set<HrPerfKpi>();
     public DbSet<HrPerfScore> HrPerfScores => Set<HrPerfScore>();
     public DbSet<HrPerfResult> HrPerfResults => Set<HrPerfResult>();
+    /// <summary>پرسنل اختصاصی «منابع انسانی فروغ آریا» — جدا از HrEmployees (منابع انسانی اصلی)</summary>
+    public DbSet<FaHrPersonnel> FaHrPersonnel => Set<FaHrPersonnel>();
+    public DbSet<FaHrSchemaMark> FaHrSchemaMarks => Set<FaHrSchemaMark>();
+    /// <summary>تعطیلات اختصاصی «منابع انسانی اصلی» — جدا از CompanyHolidays (فروغ آریا)</summary>
+    public DbSet<HrMainHoliday> HrMainHolidays => Set<HrMainHoliday>();
+    /// <summary>حداقل دستمزد اختصاصی حقوق منابع انسانی اصلی — جدا از HrMinWages (فروغ آریا)</summary>
+    public DbSet<FaPayMinWage> FaPayMinWages => Set<FaPayMinWage>();
 
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
@@ -954,6 +961,17 @@ public class AppDbContext : DbContext
 
         // ---------- تعطیلات شرکتی ----------
         mb.Entity<CompanyHoliday>().HasIndex(h => h.HolidayDate);
+        // ---------- تفکیک «منابع انسانی فروغ آریا» از «منابع انسانی اصلی» ----------
+        mb.Entity<FaHrPersonnel>().ToTable("FaHrPersonnel");
+        mb.Entity<FaHrPersonnel>().HasIndex(p => p.Code);
+        mb.Entity<FaHrPersonnel>().Property(p => p.BaseSalary).HasPrecision(18, 2);
+        mb.Entity<FaHrSchemaMark>().ToTable("FaHrSchemaMarks");
+        mb.Entity<HrMainHoliday>().ToTable("HrMainHolidays");
+        mb.Entity<HrMainHoliday>().HasIndex(h => h.HolidayDate);
+        mb.Entity<FaPayMinWage>().ToTable("FaPayMinWages");
+        mb.Entity<FaPayMinWage>().Property(w => w.Year).ValueGeneratedNever();
+        mb.Entity<FaPayMinWage>().Property(w => w.MonthlyWage).HasPrecision(18, 2);
+        mb.Entity<FaPayMinWage>().Property(w => w.DailyWage).HasPrecision(18, 2);
         mb.Entity<WorkCalendarDay>().HasIndex(d => d.Date).IsUnique();
         mb.Entity<WorkCalendarSettings>().HasIndex(s => s.Id).IsUnique();
         mb.Entity<AuditLog>().HasIndex(a => a.At);

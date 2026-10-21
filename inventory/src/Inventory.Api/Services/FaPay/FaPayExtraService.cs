@@ -25,6 +25,10 @@ public interface IFaPayExtraService
     Task<FaPayExtraSettingsDto> GetExtraSettingsAsync();
     Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto);
 
+    Task<List<FaPayMinWageDto>> ListMinWagesAsync();
+    Task<FaPayMinWageDto> SaveMinWageAsync(FaPayMinWageSaveDto dto);
+    Task DeleteMinWageAsync(int year);
+
     Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaPayLoanDto?> GetLoanAsync(int id);
     Task<FaPayLoanDto> CreateLoanAsync(FaPayLoanSaveDto dto, int byUserId, string byName);
@@ -129,6 +133,43 @@ public class FaPayExtraService : IFaPayExtraService
         s.EidiBaseMultiplier = dto.EidiBaseMultiplier;
         await _db.SaveChangesAsync();
         return await GetExtraSettingsAsync();
+    }
+
+    // ==================== حداقل دستمزد قانونی (جدول اختصاصی FaPayMinWages) ====================
+
+    public async Task<List<FaPayMinWageDto>> ListMinWagesAsync()
+        => await _db.FaPayMinWages.AsNoTracking().OrderByDescending(w => w.Year)
+            .Select(w => new FaPayMinWageDto
+            {
+                Year = w.Year, MonthlyWage = w.MonthlyWage, DailyWage = w.DailyWage,
+                EffectiveDate = w.EffectiveDate, Note = w.Note
+            }).ToListAsync();
+
+    public async Task<FaPayMinWageDto> SaveMinWageAsync(FaPayMinWageSaveDto dto)
+    {
+        if (dto.Year < 1300 || dto.Year > 1500) throw new InvalidOperationException("سال معتبر نیست.");
+        if (dto.MonthlyWage <= 0) throw new InvalidOperationException("مبلغ حداقل دستمزد معتبر نیست.");
+        var row = await _db.FaPayMinWages.FirstOrDefaultAsync(w => w.Year == dto.Year);
+        if (row == null) { row = new FaPayMinWage { Year = dto.Year }; _db.FaPayMinWages.Add(row); }
+        row.MonthlyWage = dto.MonthlyWage;
+        row.DailyWage = Math.Round(dto.MonthlyWage / 30, 0);
+        row.EffectiveDate = (dto.EffectiveDate ?? Pc.ToDateTime(dto.Year, 1, 1, 0, 0, 0, 0)).Date;
+        row.Note = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim();
+        row.UpdatedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return new FaPayMinWageDto
+        {
+            Year = row.Year, MonthlyWage = row.MonthlyWage, DailyWage = row.DailyWage,
+            EffectiveDate = row.EffectiveDate, Note = row.Note
+        };
+    }
+
+    public async Task DeleteMinWageAsync(int year)
+    {
+        var row = await _db.FaPayMinWages.FirstOrDefaultAsync(w => w.Year == year)
+            ?? throw new InvalidOperationException("ردیف حداقل دستمزد یافت نشد.");
+        _db.FaPayMinWages.Remove(row);
+        await _db.SaveChangesAsync();
     }
 
     // ==================== وام و مساعده ====================
@@ -314,10 +355,10 @@ public class FaPayExtraService : IFaPayExtraService
         var xs = await _db.FaPayExtraSettings.FirstOrDefaultAsync() ?? new FaPayExtraSettings();
         var yearStart = Pc.ToDateTime(r.Year, 1, 1, 0, 0, 0, 0);
         var yearEnd = Pc.ToDateTime(r.Year, 12, Pc.GetDaysInMonth(r.Year, 12), 0, 0, 0, 0);
-        var minWage = await _db.HrMinWages.AsNoTracking()
+        var minWage = await _db.FaPayMinWages.AsNoTracking()
             .Where(w => w.Year == r.Year).Select(w => (double?)w.MonthlyWage).FirstOrDefaultAsync();
         if (minWage is null or <= 0)
-            throw new InvalidOperationException($"حداقل دستمزد سال {r.Year} ثبت نشده است؛ ابتدا از مدیریت زمان‌بندی (حداقل دستمزد) ثبت کنید.");
+            throw new InvalidOperationException($"حداقل دستمزد سال {r.Year} ثبت نشده است؛ ابتدا از «تنظیمات حقوق ← حداقل دستمزد قانونی» ثبت کنید.");
         var brackets = await _db.FaPayTaxBrackets.AsNoTracking()
             .Where(b => b.IsActive).OrderBy(b => b.FromAmount).ToListAsync();
         var emps = await _db.HrEmployees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.Code).ToListAsync();
@@ -395,7 +436,7 @@ public class FaPayExtraService : IFaPayExtraService
 
         var yearSvcFrom = e.HireDate.Date > yearStart ? e.HireDate.Date : yearStart;
         var yearDays = yearSvcFrom > leaveDate ? 0 : (leaveDate - yearSvcFrom).Days + 1;
-        var minWage = await _db.HrMinWages.AsNoTracking()
+        var minWage = await _db.FaPayMinWages.AsNoTracking()
             .Where(w => w.Year == jy).Select(w => (double?)w.MonthlyWage).FirstOrDefaultAsync() ?? 0;
         var eidiFull = minWage > 0
             ? Math.Min(xs.EidiBaseMultiplier * baseSalary, xs.EidiCapMultiplier * minWage)

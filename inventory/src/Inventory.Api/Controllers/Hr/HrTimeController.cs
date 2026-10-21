@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Services;
-using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,9 +16,16 @@ public class HrTimeController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly HrTimeService _svc;
-    private readonly IHrCoreService _hrcore;
+    private readonly FaHrPersonnelService _personnel;
 
-    public HrTimeController(AppDbContext db, HrTimeService svc, IHrCoreService hrcore) { _db = db; _svc = svc; _hrcore = hrcore; }
+    // این ماژول به سرویس کارگزینیِ منابع انسانی اصلی (IHrCoreService) وابسته نیست؛ پرسنل در جدول اختصاصی FaHrPersonnel است.
+    public HrTimeController(AppDbContext db, HrTimeService svc, FaHrPersonnelService personnel) { _db = db; _svc = svc; _personnel = personnel; }
+
+    /// <summary>کاربرِ دیگر (غیر از خودم) فقط وقتی قابل مشاهده/ویرایش است که فعال و دارای دسترسی به ماژول باشد.</summary>
+    private async Task<bool> UserOkAsync(int uid) => uid == MyUserId || await _svc.Access.IsAllowedUserAsync(uid);
+    private async Task<List<int>> AllowedUsersAsync() => (await _svc.Access.UserIdsAsync()).ToList();
+    private async Task<List<int>> AllowedEmpAsync() => (await _svc.Access.PersonnelIdsAsync()).ToList();
+    private const string UserNotAllowed = "کاربر فعال نیست یا به «منابع انسانی فروغ آریا» دسترسی ندارد.";
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -63,6 +69,7 @@ public class HrTimeController : ControllerBase
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (!await UserOkAsync(uid)) return BadRequest(new { message = UserNotAllowed });
         var jy = year ?? HrTimeService.JalaliYear(DateTime.Now);
         // صفحه‌بندی در سرویس انجام می‌شود؛ شکل پاسخ { year, items } و در حالت صفحه‌بندی { year, total, items } است.
         var pagination = new Paging.Request(skip, take);
@@ -79,6 +86,7 @@ public class HrTimeController : ControllerBase
         if (!await IsHrAsync()) return Forbid();
         if (input.Category is not ("Annual" or "Sick" or "Maternity" or "Marriage" or "Bereavement" or "Hajj" or "Unpaid"))
             return BadRequest(new { message = "دسته مرخصی نامعتبر است." });
+        if (!await _svc.Access.IsAllowedUserAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
         await _svc.SetGrantAsync(input.UserId, input.Year, input.Category, Math.Max(0, input.Days));
         return Ok(new { ok = true });
     }
@@ -95,6 +103,11 @@ public class HrTimeController : ControllerBase
         else if (hr) q = q.Where(s => s.Role == "Hr" || s.ApproverUserId == MyUserId);
         else q = q.Where(s => s.ApproverUserId == MyUserId);
         q = q.Where(s => s.RequestType != "Leave" || _db.LeaveRequests.Any(l => l.Id == s.RequestId && l.Status == "Pending"));
+        // فقط درخواست‌های کاربرانِ فعالِ دارای دسترسی به ماژول
+        var allowedU = await AllowedUsersAsync();
+        q = q.Where(s => (s.RequestType == "Leave" && _db.LeaveRequests.Any(l => l.Id == s.RequestId && allowedU.Contains(l.RequesterUserId)))
+                      || (s.RequestType == "Overtime" && _db.HrOvertimeRequests.Any(o => o.Id == s.RequestId && allowedU.Contains(o.RequesterUserId)))
+                      || (s.RequestType != "Leave" && s.RequestType != "Overtime"));
         var steps = await q.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).ToPageListAsync(pagination, defaultCap: 200);
         var leaveIds = steps.Where(s => s.RequestType == "Leave").Select(s => s.RequestId).Distinct().ToList();
         var otIds = steps.Where(s => s.RequestType == "Overtime").Select(s => s.RequestId).Distinct().ToList();
@@ -161,6 +174,11 @@ public class HrTimeController : ControllerBase
         var q = _db.HrOvertimeRequests.AsNoTracking().AsQueryable();
         if (!hr || userId == null) { if (!hr) q = q.Where(o => o.RequesterUserId == MyUserId); }
         else q = q.Where(o => o.RequesterUserId == userId);
+        if (hr)
+        {
+            var allowedU = await AllowedUsersAsync();
+            q = q.Where(o => o.RequesterUserId == MyUserId || allowedU.Contains(o.RequesterUserId));
+        }
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(o => o.Status == status);
         if (from != null) q = q.Where(o => o.WorkDate >= from.Value.Date);
         if (to != null) q = q.Where(o => o.WorkDate <= to.Value.Date);
@@ -211,6 +229,7 @@ public class HrTimeController : ControllerBase
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (!await UserOkAsync(uid)) return BadRequest(new { message = UserNotAllowed });
         var f = (from ?? DateTime.Today).Date; var t = (to ?? DateTime.Today.AddDays(30)).Date;
         var pg = await Paging.QueryAsync(_db.HrShiftRosters.AsNoTracking()
             .Where(r => r.UserId == uid && r.Date >= f && r.Date <= t).OrderBy(r => r.Date), skip, take);
@@ -234,6 +253,8 @@ public class HrTimeController : ControllerBase
         var shiftIds = items.Select(i => i.ShiftGroupId).Distinct().ToList();
         var ok = await _db.ShiftGroups.CountAsync(s => shiftIds.Contains(s.Id));
         if (ok != shiftIds.Count) return BadRequest(new { message = "یکی از شیفت‌ها معتبر نیست." });
+        var allowedSet = await _svc.Access.UserIdsAsync();
+        if (items.Any(i => !allowedSet.Contains(i.UserId))) return BadRequest(new { message = UserNotAllowed });
         var n = 0;
         foreach (var it in items)
         {
@@ -284,7 +305,8 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> Mappings([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok((await Paging.QueryAsync(_db.HrDeviceUserMaps.AsNoTracking().OrderBy(m => m.UserCode), skip, take, 1000)).Result());
+        var allowedU = await AllowedUsersAsync();
+        return Ok((await Paging.QueryAsync(_db.HrDeviceUserMaps.AsNoTracking().Where(m => allowedU.Contains(m.SystemUserId)).OrderBy(m => m.UserCode), skip, take, 1000)).Result());
     }
 
     public class MapInput { public string? DeviceCode { get; set; } public string UserCode { get; set; } = ""; public int SystemUserId { get; set; } }
@@ -295,6 +317,7 @@ public class HrTimeController : ControllerBase
         if (!await IsHrAsync()) return Forbid();
         if (string.IsNullOrWhiteSpace(input.UserCode)) return BadRequest(new { message = "کد پرسنلی دستگاه را وارد کنید." });
         if (!await _db.Users.AnyAsync(u => u.Id == input.SystemUserId)) return BadRequest(new { message = "کاربر معتبر نیست." });
+        if (!await _svc.Access.IsAllowedUserAsync(input.SystemUserId)) return BadRequest(new { message = UserNotAllowed });
         var ex = await _db.HrDeviceUserMaps.FirstOrDefaultAsync(m => m.UserCode == input.UserCode && (m.DeviceCode ?? "") == (input.DeviceCode ?? ""));
         if (ex == null) _db.HrDeviceUserMaps.Add(new HrDeviceUserMap { DeviceCode = input.DeviceCode, UserCode = input.UserCode.Trim(), SystemUserId = input.SystemUserId });
         else ex.SystemUserId = input.SystemUserId;
@@ -357,6 +380,9 @@ public class HrTimeController : ControllerBase
         if (to != null) q = q.Where(p => p.PunchTime < to.Value.Date.AddDays(1));
         if (unmappedOnly) q = q.Where(p => p.MappedUserId == null);
         if (unappliedOnly) q = q.Where(p => p.AppliedRecordId == null);
+        // ترددهای نگاشت‌شده به کاربرِ غیرفعال/بدون دسترسی نمایش داده نمی‌شوند (ترددهای بدون نگاشت برای نگاشت‌کردن باقی می‌مانند)
+        var allowedU = await AllowedUsersAsync();
+        q = q.Where(p => p.MappedUserId == null || allowedU.Contains(p.MappedUserId.Value));
         return Ok((await Paging.QueryAsync(q.OrderByDescending(p => p.PunchTime), skip, take, 500)).Result());
     }
 
@@ -365,7 +391,9 @@ public class HrTimeController : ControllerBase
     {
         var pagination = new Paging.Request(skip, take);
         if (!await IsHrAsync()) return Forbid();
-        var list = await _db.Users.AsNoTracking().Where(u => u.IsActive).OrderBy(u => u.Username).ThenBy(x => x.Id)
+        // فقط کاربرانِ فعالِ دارای دسترسی به «منابع انسانی فروغ آریا»
+        var allowedU = await AllowedUsersAsync();
+        var list = await _db.Users.AsNoTracking().Where(u => u.IsActive && allowedU.Contains(u.Id)).OrderBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new { u.Id, u.Username, FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim() }).ToPageListAsync(pagination, defaultCap: 2000);
         return Ok(pagination.Result(list));
     }
@@ -397,7 +425,10 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> UserLinks([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok((await Paging.QueryAsync(_db.HrUserLinks.AsNoTracking().OrderBy(x => x.Id), skip, take, 2000)).Result());
+        var allowedU = await AllowedUsersAsync();
+        return Ok((await Paging.QueryAsync(_db.HrUserLinks.AsNoTracking()
+            .Where(x => allowedU.Contains(x.UserId) && _db.FaHrPersonnel.Any(e => e.Id == x.EmployeeId))
+            .OrderBy(x => x.Id), skip, take, 2000)).Result());
     }
 
     // ================= درخواست مرخصی/ماموریت از مسیر ماژول جدید =================
@@ -450,8 +481,9 @@ public class HrTimeController : ControllerBase
     {
         if (!await IsHrAsync()) return Forbid();
         await _svc.EnsureStepsForPendingAsync();
+        var allowedU = await AllowedUsersAsync();
         var pg = await Paging.QueryAsync(_db.LeaveRequests.AsNoTracking()
-            .Where(l => l.Status == "Pending").OrderBy(l => l.CreatedAt), skip, take, 300);
+            .Where(l => l.Status == "Pending" && allowedU.Contains(l.RequesterUserId)).OrderBy(l => l.CreatedAt), skip, take, 300);
         var rows = pg.Rows;
         var ids = rows.Select(l => l.Id).ToList();
         var extras = ids.Count == 0 ? new Dictionary<int, HrLeaveExtra>()
@@ -517,6 +549,7 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> Carryover([FromBody] CarryoverInput input)
     {
         if (!await IsHrAsync()) return Forbid();
+        if (!await _svc.Access.IsAllowedUserAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
         var r = await _svc.CarryoverCloseAsync(input.UserId, input.Year);
         return Ok(new { ok = true, remaining = r.Remaining, carry = r.Carry, nextGrant = r.NextGrant });
     }
@@ -530,11 +563,12 @@ public class HrTimeController : ControllerBase
             var pagination = new Paging.Request(skip, take);
             var soon = await _svc.ProbationsEndingSoonAsync(endingWithinDays, pagination);
             var empIds = soon.Select(x => x.EmployeeId).Distinct().ToList();
-            var names = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
+            var names = await _db.FaHrPersonnel.AsNoTracking().Where(e => empIds.Contains(e.Id))
                 .ToDictionaryAsync(e => e.Id, e => $"{e.FirstName} {e.LastName}".Trim());
             return Ok(pagination.Result(soon.Select(x => new { x.Id, x.EmployeeId, Name = names.TryGetValue(x.EmployeeId, out var n) ? n : "", x.StartDate, x.EndDate, x.Months, x.SkillLevel, x.Status }).ToList()));
         }
-        var q = _db.HrProbations.AsNoTracking().AsQueryable();
+        var allowedEmp = await AllowedEmpAsync();
+        var q = _db.HrProbations.AsNoTracking().Where(x => allowedEmp.Contains(x.EmployeeId));
         if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId);
         return Ok((await Paging.QueryAsync(q.OrderByDescending(x => x.Id), skip, take, 500)).Result());
     }
@@ -575,7 +609,21 @@ public class HrTimeController : ControllerBase
         if (dto == null) return BadRequest(new { message = "داده‌ای ارسال نشده است." });
         if (!HrTimeService.IsValidIranianNationalCode(dto.NationalCode))
             return BadRequest(new { message = "کد ملی معتبر نیست (رقم کنترل اشتباه است)." });
-        try { return Ok(await _hrcore.CreateEmployeeAsync(dto)); }
+        if (dto.SystemUserId is not > 0)
+            return BadRequest(new { message = "کاربر سیستمِ پرسنل را انتخاب کنید (فقط کاربرانِ فعالِ دارای دسترسی به این ماژول)." });
+        try
+        {
+            return Ok(await _personnel.CreateAsync(new FaHrPersonnelSaveDto
+            {
+                Code = dto.Code, FirstName = dto.FirstName, LastName = dto.LastName, NationalCode = dto.NationalCode,
+                BirthDate = dto.BirthDate, Gender = dto.Gender, MaritalStatus = dto.MaritalStatus,
+                Mobile = dto.Mobile, Email = dto.Email, Address = dto.Address, HireDate = dto.HireDate,
+                PostTitle = dto.PostTitle, ManagerId = dto.ManagerId, EmploymentType = dto.EmploymentType,
+                Status = dto.Status, BaseSalary = dto.BaseSalary, IsActive = dto.IsActive,
+                Sheba = dto.Sheba, BankName = dto.BankName, InsuranceNo = dto.InsuranceNo,
+                UserId = dto.SystemUserId.Value,
+            }));
+        }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -600,6 +648,7 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> Nursing([FromQuery] int employeeId)
     {
         if (!await IsHrAsync()) return Forbid();
+        if (!await _svc.Access.IsAllowedPersonnelAsync(employeeId)) return NotFound();
         var nb = await _svc.ActiveNursingAsync(employeeId);
         if (nb == null) return NotFound();
         return Ok(nb);
@@ -621,6 +670,7 @@ public class HrTimeController : ControllerBase
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (!await UserOkAsync(uid)) return BadRequest(new { message = UserNotAllowed });
         var r = await _svc.DailyObligationAsync(uid, date ?? DateTime.Today);
         return Ok(new { scheduledMin = r.ScheduledMin, nursingMin = r.NursingMin, requiredMin = r.RequiredMin });
     }
@@ -632,6 +682,7 @@ public class HrTimeController : ControllerBase
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (!await UserOkAsync(uid)) return BadRequest(new { message = UserNotAllowed });
         if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
             return BadRequest(new { message = "سال/ماه نامعتبر است." });
         return Ok(await _svc.MonthAttendanceAsync(uid, jy, jm));
@@ -642,6 +693,7 @@ public class HrTimeController : ControllerBase
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (!await UserOkAsync(uid)) return BadRequest(new { message = UserNotAllowed });
         if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
             return BadRequest(new { message = "سال/ماه نامعتبر است." });
         var pagination = new Paging.Request(skip, take);
@@ -666,6 +718,7 @@ public class HrTimeController : ControllerBase
         if (!await IsHrAsync()) return Forbid();
         try
         {
+            if (!await _svc.Access.IsAllowedUserAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
             var a = await _svc.DecideOtAsync(input.UserId, input.Date, input.Approve,
                 input.N, input.H, input.Ni, MyUserId, MyName, input.Note);
             return Ok(a);
@@ -687,6 +740,7 @@ public class HrTimeController : ControllerBase
         if (!await IsHrAsync()) return Forbid();
         try
         {
+            if (!await _svc.Access.IsAllowedUserAsync(input.UserId)) return BadRequest(new { message = UserNotAllowed });
             var n = await _svc.DecideOtMonthAsync(input.UserId, input.Jy, input.Jm, input.Approve, MyUserId, MyName);
             return Ok(new { ok = true, count = n });
         }

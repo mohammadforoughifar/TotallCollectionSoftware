@@ -44,7 +44,7 @@ public interface IHrMainService
     Task<HrMainRulesDto> GetRulesAsync();
     Task<HrMainRulesDto> SaveRulesAsync(HrMainRulesDto dto);
 
-    // تعطیلات رسمی/شرکتی (روی جدول موجود CompanyHoliday)
+    // تعطیلات رسمی/شرکتی (جدول اختصاصی HrMainHolidays)
     Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear, Paging.Request? pagination = null);
     Task<HrMainHolidayDto> SaveHolidayAsync(HrMainHolidaySaveDto dto, string createdBy);
     Task DeleteHolidayAsync(int id);
@@ -652,7 +652,7 @@ public class HrMainService : IHrMainService
         DefaultWeeklyOffDays = r.DefaultWeeklyOffDays
     };
 
-    // ==================== تعطیلات (جدول موجود CompanyHoliday) ====================
+    // ==================== تعطیلات (جدول اختصاصی HrMainHolidays — جدا از CompanyHolidays فروغ آریا) ====================
 
     public async Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear, Paging.Request? pagination = null)
     {
@@ -663,7 +663,7 @@ public class HrMainService : IHrMainService
         var end = PersianDate.ToGregorian(jy, 12, PersianDate.DaysInMonth(jy, 12)).Date.AddDays(1);
         if (start == DateTime.MinValue) start = new DateTime(DateTime.Today.Year, 1, 1);
         if (end == DateTime.MinValue) end = start.AddYears(1);
-        return await _db.CompanyHolidays.AsNoTracking()
+        return await _db.HrMainHolidays.AsNoTracking()
             .Where(h => h.HolidayDate >= start && h.HolidayDate < end)
             .OrderBy(h => h.HolidayDate).ThenBy(x => x.Id)
             .Select(h => new HrMainHolidayDto
@@ -679,14 +679,14 @@ public class HrMainService : IHrMainService
         var date = dto.Date == default ? DateTime.Today : dto.Date.Date;
         if (string.IsNullOrWhiteSpace(dto.Name))
             throw new InvalidOperationException("عنوان تعطیلی الزامی است.");
-        if (await _db.CompanyHolidays.AnyAsync(h => h.HolidayDate == date))
+        if (await _db.HrMainHolidays.AnyAsync(h => h.HolidayDate == date))
             throw new InvalidOperationException("برای این تاریخ قبلاً تعطیلی ثبت شده است.");
-        var h = new CompanyHoliday
+        var h = new HrMainHoliday
         {
             HolidayDate = date, Name = dto.Name.Trim(),
             IsOfficial = dto.IsOfficial, CreatedByName = createdBy
         };
-        _db.CompanyHolidays.Add(h);
+        _db.HrMainHolidays.Add(h);
         await _db.SaveChangesAsync();
         return new HrMainHolidayDto
         {
@@ -697,9 +697,9 @@ public class HrMainService : IHrMainService
 
     public async Task DeleteHolidayAsync(int id)
     {
-        var h = await _db.CompanyHolidays.FirstOrDefaultAsync(x => x.Id == id)
+        var h = await _db.HrMainHolidays.FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("تعطیلی یافت نشد.");
-        _db.CompanyHolidays.Remove(h);
+        _db.HrMainHolidays.Remove(h);
         await _db.SaveChangesAsync();
     }
 

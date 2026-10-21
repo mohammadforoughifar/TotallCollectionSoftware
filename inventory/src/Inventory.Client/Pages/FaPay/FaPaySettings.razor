@@ -65,6 +65,45 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white"><strong>حداقل دستمزد قانونی (مبنای سقف عیدی و محاسبات پایان سال)</strong></div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2"><label class="form-label">سال (شمسی)</label><input class="form-control num" type="number" @bind="mwForm.Year" /></div>
+            <div class="col-md-3"><label class="form-label">حداقل دستمزد ماهانه (ریال)</label><input class="form-control num" type="number" step="any" @bind="mwForm.MonthlyWage" /></div>
+            <div class="col-md-5"><label class="form-label">یادداشت</label><input class="form-control" @bind="mwForm.Note" maxlength="300" /></div>
+            <div class="col-md-2"><button class="btn btn-success w-100" @onclick="SaveMinWage"><i class="bi bi-check-lg"></i> ثبت / به‌روزرسانی</button></div>
+        </div>
+        @if (minWages.Count > 0)
+        {
+            <div class="table-responsive mt-3">
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>سال</th><th>ماهانه (ریال)</th><th>روزانه (ریال)</th><th>یادداشت</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var w in minWages)
+                        {
+                            <tr>
+                                <td class="num">@w.Year</td>
+                                <td class="num">@w.MonthlyWage.ToString("N0")</td>
+                                <td class="num">@w.DailyWage.ToString("N0")</td>
+                                <td>@w.Note</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => EditMinWage(w)"><i class="bi bi-pencil"></i></button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteMinWage(w.Year)"><i class="bi bi-trash"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="small text-muted mt-2">هنوز حداقل دستمزدی ثبت نشده است؛ محاسبهٔ پایان سال بدون آن انجام نمی‌شود.</div>
+        }
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <strong>پلکان مالیاتی (محاسبه روی مازاد معافیت)</strong>
         <button class="btn btn-sm btn-success" @onclick="() => OpenBracket(null)"><i class="bi bi-plus-lg"></i> پلکان جدید</button>
@@ -131,6 +170,8 @@
     private FaPaySettingsSaveDto form = new();
     private FaPayExtraSettingsSaveDto xform = new();
     private List<FaPayTaxBracketDto> brackets = new();
+    private List<FaPayMinWageDto> minWages = new();
+    private FaPayMinWageSaveDto mwForm = new() { Year = Inventory.Shared.PersianDate.FromGregorian(DateTime.Today).Year };
 
     private bool showBracket;
     private int? bEditId;
@@ -153,6 +194,7 @@
                 UnpaidLeaveDeductEnabled = s.UnpaidLeaveDeductEnabled, Note = s.Note
             };
             brackets = await Svc.ListBracketsAsync();
+            minWages = await Svc.ListMinWagesAsync();
             var xs = await Svc.GetExtraSettingsAsync();
             xform = new FaPayExtraSettingsSaveDto
             {
@@ -174,6 +216,32 @@
     private async Task SaveExtraSettings()
     {
         try { await Svc.SaveExtraSettingsAsync(xform); Toast.Success("تنظیمات بیمه و عیدی ذخیره شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void EditMinWage(FaPayMinWageDto w)
+        => mwForm = new FaPayMinWageSaveDto { Year = w.Year, MonthlyWage = w.MonthlyWage, EffectiveDate = w.EffectiveDate, Note = w.Note };
+
+    private async Task SaveMinWage()
+    {
+        try
+        {
+            await Svc.SaveMinWageAsync(mwForm);
+            minWages = await Svc.ListMinWagesAsync();
+            Toast.Success("حداقل دستمزد ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteMinWage(int year)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"حداقل دستمزد سال {year} حذف شود؟")) return;
+        try
+        {
+            await Svc.DeleteMinWageAsync(year);
+            minWages = await Svc.ListMinWagesAsync();
+            Toast.Success("حذف شد.");
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

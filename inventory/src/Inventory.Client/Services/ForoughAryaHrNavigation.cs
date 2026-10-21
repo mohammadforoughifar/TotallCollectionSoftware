@@ -5,7 +5,8 @@ namespace Inventory.Client.Services;
 /// (حضور و غیاب، مرخصی، حقوق و دستمزد، ارزیابی و… پیشین) که پیش‌تر با عنوان
 /// «سامانه‌های پیشین» درون منوی «منابع انسانی اصلی» جا داشت و اکنون به‌صورت
 /// یک منوی مستقل در نوار کنار نمایش داده می‌شود.
-/// مجوزها و مسیرها همانِ قبل است؛ فقط جای منو عوض شده است.
+/// این ماژول کاملاً از «منابع انسانی اصلی» جداست: پرسنل/چارت اختصاصی (fa-hr/*) و جدول‌های مستقل.
+/// فهرست مجوزهای این منو با Inventory.Shared.ForoughAryaHrAccess.Permissions همگام است.
 /// </summary>
 public static class ForoughAryaHrNavigation
 {
@@ -22,8 +23,9 @@ public static class ForoughAryaHrNavigation
         E("hr-time", "زمان‌بندی", "bi-clock", "LeaveRequests.Approve", "Attendance.ManageShifts"),
         E("payroll", "حقوق و دستمزد", "bi-cash-stack", "HrPay.Read", "HrPay.Manage"),
         E("hr-performance", "ارزیابی", "bi-graph-up-arrow", "LeaveRequests.Approve", "HrPay.Read"),
-        E("hr-core/employees", "فهرست پرسنل — نمای پیشین", "bi-person-lines-fill", "HrCore.Read"),
-        E("hr-core/org", "چارت سازمانی — نمای پیشین", "bi-diagram-3", "HrCore.Read"),
+        // پرسنل و چارت اختصاصی همین ماژول (جدول FaHrPersonnel) — دیگر به hr-core منابع انسانی اصلی لینک نمی‌شود
+        E("fa-hr/personnel", "پرسنل", "bi-person-lines-fill", "LeaveRequests.Approve", "HrPay.Read", "HrPay.Manage", "Attendance.ViewAll"),
+        E("fa-hr/org", "چارت سازمانی", "bi-diagram-3", "LeaveRequests.Approve", "HrPay.Read", "HrPay.Manage", "Attendance.ViewAll"),
     ];
 
     /// <summary>آیتم‌هایی که کاربر فعلی مجوز دیدنشان را دارد (مدیر سیستم همه را می‌بیند).</summary>

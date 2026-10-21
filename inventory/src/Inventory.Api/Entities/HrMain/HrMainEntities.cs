@@ -312,3 +312,18 @@ public class HrMainChangeLog
     [MaxLength(100)]
     public string ByUsername { get; set; } = "";
 }
+
+/// <summary>
+/// تعطیلات «منابع انسانی اصلی» — جدول اختصاصی HrMainHolidays.
+/// پیش‌تر این ماژول از جدول CompanyHolidays (متعلق به «منابع انسانی فروغ آریا») می‌خواند و می‌نوشت؛
+/// برای تفکیک کامل دو ماژول، داده‌ها یک‌بار کپی شدند و از این به بعد هر ماژول جدول خودش را دارد.
+/// </summary>
+public class HrMainHoliday
+{
+    public int Id { get; set; }
+    public DateTime HolidayDate { get; set; }
+    [MaxLength(100)] public string Name { get; set; } = "";
+    public bool IsOfficial { get; set; }
+    [MaxLength(150)] public string? CreatedByName { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}

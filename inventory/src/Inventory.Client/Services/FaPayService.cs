@@ -48,6 +48,9 @@ public interface IFaPayClientService
 
     Task<FaPayExtraSettingsDto> GetExtraSettingsAsync();
     Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto);
+    Task<List<FaPayMinWageDto>> ListMinWagesAsync();
+    Task<FaPayMinWageDto> SaveMinWageAsync(FaPayMinWageSaveDto dto);
+    Task DeleteMinWageAsync(int year);
 
     Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId = null, int? status = null);
     Task<FaPayLoanDto> GetLoanAsync(int id);
@@ -198,6 +201,16 @@ public class FaPayService : IFaPayClientService
 
     public Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto)
         => _api.PutAsync<FaPayExtraSettingsDto>($"{Root}/extra-settings", dto);
+
+    // حداقل دستمزد قانونی — جدول اختصاصی همین ماژول (FaPayMinWages)
+    public Task<List<FaPayMinWageDto>> ListMinWagesAsync()
+        => _api.GetAsync<List<FaPayMinWageDto>>($"{Root}/min-wages");
+
+    public Task<FaPayMinWageDto> SaveMinWageAsync(FaPayMinWageSaveDto dto)
+        => _api.PostAsync<FaPayMinWageDto>($"{Root}/min-wages", dto);
+
+    public Task DeleteMinWageAsync(int year)
+        => _api.DeleteAsync($"{Root}/min-wages/{year}");
 
     public Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId = null, int? status = null)
         => _api.GetAsync<List<FaPayLoanDto>>($"{Root}/loans?employeeId={employeeId}&status={status}");

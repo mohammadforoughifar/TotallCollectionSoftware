@@ -15,8 +15,9 @@ public class HrPerfController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly HrPerfService _svc;
+    private readonly ForoughAryaHrUsers _fa;
 
-    public HrPerfController(AppDbContext db, HrPerfService svc) { _db = db; _svc = svc; }
+    public HrPerfController(AppDbContext db, HrPerfService svc, ForoughAryaHrUsers fa) { _db = db; _svc = svc; _fa = fa; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -217,7 +218,11 @@ public class HrPerfController : ControllerBase
     public async Task<IActionResult> Employees([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        var pg = await Paging.QueryAsync(_db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+        // فقط پرسنلِ فعالِ جدول اختصاصی این ماژول که به کاربرِ فعالِ دارای دسترسی پیوند دارند
+        var allowedEmp = (await _fa.PersonnelIdsAsync()).ToList();
+        var pg = await Paging.QueryAsync(_db.FaHrPersonnel.AsNoTracking()
+            .Where(e => allowedEmp.Contains(e.Id) && e.Status == FaHrPersonnelStatus.Active)
+            .OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
             .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.BaseSalary, e.Status }), skip, take, 2000);
         return Ok(pg.Result());
     }

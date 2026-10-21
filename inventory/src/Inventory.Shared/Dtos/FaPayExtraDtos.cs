@@ -20,6 +20,24 @@ public class FaPayExtraSettingsSaveDto
     public double EidiBaseMultiplier { get; set; } = 2;
 }
 
+/// <summary>حداقل دستمزد قانونی سالانه (جدول اختصاصی FaPayMinWages — جدا از فروغ آریا)</summary>
+public class FaPayMinWageDto
+{
+    public int Year { get; set; }
+    public decimal MonthlyWage { get; set; }
+    public decimal DailyWage { get; set; }
+    public DateTime EffectiveDate { get; set; }
+    public string? Note { get; set; }
+}
+
+public class FaPayMinWageSaveDto
+{
+    public int Year { get; set; }
+    public decimal MonthlyWage { get; set; }
+    public DateTime? EffectiveDate { get; set; }
+    public string? Note { get; set; }
+}
+
 public class FaPayLoanDto
 {
     public int Id { get; set; }

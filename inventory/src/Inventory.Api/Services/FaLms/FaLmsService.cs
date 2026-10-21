@@ -14,9 +14,9 @@ namespace Inventory.Api.Services.FaLms;
 
 /// <summary>
 /// ================== آموزش و توسعه فروغ آریا (FaLms) — §۱۲، ماژول مستقل ==================
-/// نیازسنجی (با اتصال خواندنی به نمرات HrPerf)، دوره‌ها و تقویم سالانه، ثبت‌نام با تأیید و ظرفیت،
+/// نیازسنجی (با اتصال خواندنی به ارزیابی عملکرد همین ماژول — HrAppraisals)، دوره‌ها و تقویم سالانه، ثبت‌نام با تأیید و ظرفیت،
 /// جلسات و حضور، آزمون تستی تک‌تلاشه با تصحیح خودکار، گواهی داخلی با کد رهگیری، بودجه و اثربخشی.
-/// اعلان رویدادها از مسیر FaCom (سیستمی + پوش) انجام می‌شود. از HrPerf فقط خوانده می‌شود.
+/// اعلان رویدادها از مسیر FaCom (سیستمی + پوش) انجام می‌شود. از HrAppraisals فقط خوانده می‌شود (ارزیابی «منابع انسانی فروغ آریا» — HrPerf* — دیگر خوانده نمی‌شود).
 /// </summary>
 public interface IFaLmsService
 {
@@ -340,8 +340,9 @@ public class FaLmsService : IFaLmsService
     private async Task<List<FaLmsNeedDto>> MapNeedsAsync(List<FaLmsNeed> list)
     {
         var names = await EmpNamesAsync();
-        var periods = await _db.HrPerfPeriods.ToDictionaryAsync(p => p.Id, p => p.Title);
-        var kpis = await _db.HrPerfKpis.ToDictionaryAsync(k => k.Id, k => k.Title);
+        // ارزیابی عملکردِ خودِ منابع انسانی اصلی (HrAppraisals) — جدا از ارزیابی «منابع انسانی فروغ آریا»
+        var periods = await _db.HrAppraisals.ToDictionaryAsync(p => p.Id, p => p.Title);
+        var kpis = await _db.HrAppraisalKpis.ToDictionaryAsync(k => k.Id, k => k.Title);
         var courses = await _db.FaLmsCourses.ToDictionaryAsync(c => c.Id, c => c.Title);
         return list.Select(n => new FaLmsNeedDto
         {
@@ -389,9 +390,9 @@ public class FaLmsService : IFaLmsService
         n.PerfScore = null;
         if (dto.PerfPeriodId != null && dto.PerfKpiId != null)
         {
-            var s = await _db.HrPerfScores.FirstOrDefaultAsync(x =>
-                x.PeriodId == dto.PerfPeriodId.Value && x.EmployeeId == dto.EmployeeId && x.KpiId == dto.PerfKpiId.Value);
-            n.PerfScore = s?.Score;
+            var s = await _db.HrAppraisalScores.FirstOrDefaultAsync(x =>
+                x.AppraisalId == dto.PerfPeriodId.Value && x.EmployeeId == dto.EmployeeId && x.KpiId == dto.PerfKpiId.Value);
+            n.PerfScore = s?.ManagerScore ?? s?.SelfScore;
         }
         await _db.SaveChangesAsync();
         return (await MapNeedsAsync(new List<FaLmsNeed> { n }))[0];
@@ -430,12 +431,14 @@ public class FaLmsService : IFaLmsService
 
     public async Task<List<FaLmsWeakScoreDto>> WeakScoresAsync(int periodId, double threshold, Paging.Request? pagination = null)
     {
-        var period = await _db.HrPerfPeriods.FindAsync(periodId)
+        var period = await _db.HrAppraisals.FindAsync(periodId)
             ?? throw new InvalidOperationException("دوره ارزیابی یافت نشد.");
-        var scores = await _db.HrPerfScores
-            .Where(s => s.PeriodId == periodId && s.Score < threshold)
-            .OrderBy(s => s.Score).ThenBy(x => x.Id).ToPageListAsync(pagination);
-        var kpis = await _db.HrPerfKpis.Where(k => k.PeriodId == periodId)
+        // نمرهٔ مدیر ملاک است؛ اگر ثبت نشده باشد خودارزیابی
+        var scores = await _db.HrAppraisalScores
+            .Where(s => s.AppraisalId == periodId && (s.ManagerScore ?? s.SelfScore) != null
+                        && (s.ManagerScore ?? s.SelfScore) < threshold)
+            .OrderBy(s => s.ManagerScore ?? s.SelfScore).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        var kpis = await _db.HrAppraisalKpis.Where(k => k.AppraisalId == periodId)
             .ToDictionaryAsync(k => k.Id);
         var names = await EmpNamesAsync();
         return scores.Select(s => new FaLmsWeakScoreDto
@@ -445,7 +448,7 @@ public class FaLmsService : IFaLmsService
             PeriodId = periodId, PeriodTitle = period.Title,
             KpiId = s.KpiId,
             KpiTitle = kpis.TryGetValue(s.KpiId, out var k) ? k.Title : null,
-            Score = s.Score, MaxScore = kpis.TryGetValue(s.KpiId, out var k2) ? k2.MaxScore : 100
+            Score = s.ManagerScore ?? s.SelfScore ?? 0, MaxScore = kpis.TryGetValue(s.KpiId, out var k2) ? k2.MaxScore : 100
         }).ToList();
     }
 

@@ -36,6 +36,31 @@ public class FaPayExtraController : RbacControllerBase
         return Ok(await _svc.SaveExtraSettingsAsync(dto));
     }
 
+    // ------------------- حداقل دستمزد قانونی (جدول اختصاصی FaPayMinWages) -------------------
+
+    [HttpGet("min-wages")]
+    public async Task<IActionResult> MinWages()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListMinWagesAsync());
+    }
+
+    [HttpPost("min-wages")]
+    public async Task<IActionResult> SaveMinWage([FromBody] FaPayMinWageSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { return Ok(await _svc.SaveMinWageAsync(dto)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpDelete("min-wages/{year:int}")]
+    public async Task<IActionResult> DeleteMinWage(int year)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { await _svc.DeleteMinWageAsync(year); return Ok(new { ok = true }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
     // ------------------- وام و مساعده -------------------
 
     [HttpGet("loans")]

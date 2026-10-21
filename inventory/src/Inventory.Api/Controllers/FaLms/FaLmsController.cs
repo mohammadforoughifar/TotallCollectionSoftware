@@ -134,9 +134,10 @@ public class FaLmsController : RbacControllerBase
     {
         var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        var list = await Db.HrPerfPeriods.OrderByDescending(p => p.Id)
-            .Select(p => new FaLmsPerfPeriodDto { Id = p.Id, Title = p.Title, Year = p.Year, Status = p.Status })
+        // دوره‌های ارزیابی عملکردِ خودِ «منابع انسانی اصلی» (HrAppraisals) — نه ارزیابی فروغ آریا (HrPerf*)
+        var rows = await Db.HrAppraisals.AsNoTracking().OrderByDescending(p => p.Id)
             .ToPageListAsync(pagination);
+        var list = rows.Select(p => new FaLmsPerfPeriodDto { Id = p.Id, Title = p.Title, Year = p.Year, Status = p.Status.ToString() }).ToList();
         return Ok(pagination.Result(list));
     }
 

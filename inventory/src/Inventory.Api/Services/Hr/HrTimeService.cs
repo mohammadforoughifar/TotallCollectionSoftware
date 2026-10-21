@@ -17,10 +17,23 @@ public class HrTimeService
     private readonly INotifyService _notify;
     private readonly AttendanceRecalcService _recalc;
     private readonly ISmsSender _sms;
+    private readonly ForoughAryaHrUsers _access;
     private static readonly PersianCalendar Pc = new();
 
-    public HrTimeService(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, ISmsSender sms)
-    { _db = db; _notify = notify; _recalc = recalc; _sms = sms; }
+    public HrTimeService(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, ISmsSender sms, ForoughAryaHrUsers access)
+    { _db = db; _notify = notify; _recalc = recalc; _sms = sms; _access = access; }
+
+    /// <summary>فیلتر «کاربران/پرسنل مجاز» این ماژول (فعال + دارای دسترسی) — برای همهٔ سرویس‌ها و کنترلرهای فروغ آریا</summary>
+    public ForoughAryaHrUsers Access => _access;
+
+    /// <summary>پرسنل باید در جدول اختصاصی همین ماژول باشد و به یک کاربرِ فعالِ دارای دسترسی پیوند داشته باشد.</summary>
+    public async Task EnsureAllowedPersonnelAsync(int employeeId)
+    {
+        if (!await _db.FaHrPersonnel.AnyAsync(e => e.Id == employeeId))
+            throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
+        if (!await _access.IsAllowedPersonnelAsync(employeeId))
+            throw new InvalidOperationException("این پرسنل به کاربرِ فعالِ دارای دسترسی به «منابع انسانی فروغ آریا» پیوند ندارد.");
+    }
 
     public static int JalaliYear(DateTime d) => Pc.GetYear(d);
     public static double QuotaOf(LeaveRequest l) => l.Type == "Hourly" ? l.Hours / 8.0 : (l.Type == "Daily" ? l.Days : 0);
@@ -152,14 +165,17 @@ public class HrTimeService
     /// <summary>پیوند کاربر ورود به پرونده پرسنلی (جایگزین ماژول برای اتصال کاربر-پرونده)</summary>
     public async Task LinkUserAsync(int employeeId, int userId)
     {
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
+        if (!await _db.FaHrPersonnel.AnyAsync(e => e.Id == employeeId))
             throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
         if (!await _db.Users.AnyAsync(u => u.Id == userId))
             throw new InvalidOperationException("کاربر پیدا نشد.");
+        if (!await _access.IsAllowedUserAsync(userId))
+            throw new InvalidOperationException("فقط کاربرِ فعالِ دارای دسترسی به «منابع انسانی فروغ آریا» قابل پیوند است.");
         var olds = await _db.HrUserLinks.Where(x => x.EmployeeId == employeeId || x.UserId == userId).ToListAsync();
         _db.HrUserLinks.RemoveRange(olds);
         _db.HrUserLinks.Add(new HrUserLink { EmployeeId = employeeId, UserId = userId });
         await _db.SaveChangesAsync();
+        _access.InvalidatePersonnel();
     }
 
     public async Task<int?> EmployeeIdOfUserAsync(int userId)
@@ -175,12 +191,14 @@ public class HrTimeService
     {
         var empId = await EmployeeIdOfUserAsync(userId);
         if (empId == null) return (null, null);
-        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empId && e.ManagerId != null);
+        var emp = await _db.FaHrPersonnel.AsNoTracking().FirstOrDefaultAsync(e => e.Id == empId && e.ManagerId != null);
         if (emp?.ManagerId == null) return (null, null);
-        var mgr = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == emp.ManagerId);
+        var mgr = await _db.FaHrPersonnel.AsNoTracking().FirstOrDefaultAsync(e => e.Id == emp.ManagerId);
         if (mgr == null) return (null, null);
         var mgrUser = await UserIdOfEmployeeAsync(mgr.Id);
         if (mgrUser == null || mgrUser == userId) return (null, null);
+        // مدیرِ غیرفعال یا بدون دسترسی به ماژول نمی‌تواند تأییدکننده باشد → مستقیم به مرحلهٔ منابع انسانی
+        if (!await _access.IsAllowedUserAsync(mgrUser.Value)) return (null, null);
         return (mgrUser, $"{mgr.FirstName} {mgr.LastName}".Trim());
     }
 
@@ -348,8 +366,10 @@ public class HrTimeService
         try
         {
             if (!_sms.IsConfigured) return;
-            var mob = await _db.HrEmployees.AsNoTracking()
-                .Where(e => e.SystemUserId == userId && e.IsActive)
+            var empId = await EmployeeIdOfUserAsync(userId);
+            if (empId == null) return;
+            var mob = await _db.FaHrPersonnel.AsNoTracking()
+                .Where(e => e.Id == empId && e.IsActive)
                 .Select(e => e.Mobile).FirstOrDefaultAsync();
             if (string.IsNullOrWhiteSpace(mob)) return;
             await _sms.SendAsync(mob.Trim(), text);
@@ -367,7 +387,9 @@ public class HrTimeService
         var legacy = await _db.Users
             .Where(u => u.Role == "Admin" && u.IsActive && !_db.UserRoles.Any(ur => ur.UserId == u.Id))
             .Select(u => u.Id).ToListAsync();
-        return rbac.Concat(legacy).Distinct().ToList();
+        // فقط کاربرانِ فعالِ دارای دسترسی به ماژول
+        var allowed = await _access.UserIdsAsync();
+        return rbac.Concat(legacy).Distinct().Where(allowed.Contains).ToList();
     }
 
     // ================= اضافه‌کاری =================
@@ -404,7 +426,9 @@ public class HrTimeService
         var shifts = await _db.ShiftGroups.AsNoTracking().Where(s => pattern.Contains(s.Id)).Select(s => s.Id).ToListAsync();
         if (shifts.Count != pattern.Distinct().Count()) throw new InvalidOperationException("یکی از شیفت‌های الگو معتبر نیست.");
         if ((to.Date - from.Date).TotalDays > 366) throw new InvalidOperationException("بازه‌ی تولید حداکثر یک سال است.");
-        var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).Select(u => u.Id).ToListAsync();
+        var allowedUsers = await _access.UserIdsAsync();
+        var users = (await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).Select(u => u.Id).ToListAsync())
+            .Where(allowedUsers.Contains).ToList();
         var dates = Enumerable.Range(0, (int)(to.Date - from.Date).TotalDays + 1).Select(i => from.Date.AddDays(i)).ToList();
         var existing = await _db.HrShiftRosters
             .Where(r => users.Contains(r.UserId) && r.Date >= from.Date && r.Date <= to.Date).ToListAsync();
@@ -792,8 +816,7 @@ public class HrTimeService
     {
         if (months is not (1 or 3)) throw new InvalidOperationException("مدت آزمایشی ۱ یا ۳ ماه است (ماده ۱۱).");
         if (skillLevel != "Simple" && skillLevel != "Skilled") skillLevel = months == 1 ? "Simple" : "Skilled";
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
-            throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
+        await EnsureAllowedPersonnelAsync(employeeId);
         var active = await _db.HrProbations.FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.Status == "Active");
         if (active != null) throw new InvalidOperationException("این پرسنل دوره آزمایشی فعال دارد.");
         var pr = new HrProbation
@@ -820,8 +843,9 @@ public class HrTimeService
     public async Task<List<HrProbation>> ProbationsEndingSoonAsync(int withinDays, Paging.Request? pagination = null)
     {
         var to = DateTime.Today.AddDays(Math.Max(0, withinDays));
+        var allowedEmp = (await _access.PersonnelIdsAsync()).ToList();
         return await _db.HrProbations.AsNoTracking()
-            .Where(x => x.Status == "Active" && x.EndDate <= to).OrderBy(x => x.EndDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
+            .Where(x => x.Status == "Active" && x.EndDate <= to && allowedEmp.Contains(x.EmployeeId)).OrderBy(x => x.EndDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
     }
 
     // ---------- اعتبارسنجی کد ملی (الگوریتم check-digit) ----------
@@ -865,8 +889,7 @@ public class HrTimeService
 
     public async Task<HrNursingBreak> SetNursingAsync(int employeeId, DateTime childBirth)
     {
-        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
-            throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
+        await EnsureAllowedPersonnelAsync(employeeId);
         var end = childBirth.Date.AddYears(2).AddDays(-1);
         if (end < DateTime.Today) throw new InvalidOperationException("فرزند بالای ۲ سال است؛ ارفاق شیردهی تعلق نمی‌گیرد.");
         var olds = await _db.HrNursingBreaks.Where(x => x.EmployeeId == employeeId && x.IsActive).ToListAsync();
