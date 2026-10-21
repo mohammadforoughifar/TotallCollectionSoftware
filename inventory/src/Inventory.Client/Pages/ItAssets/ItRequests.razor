@@ -988,6 +988,11 @@ else
 
     private async Task TryOpenFromQuery()
     {
+        // محافظ مسیر: فقط روی خود صفحهٔ /it-requests به ?open= واکنش نشان بده؛
+        // رویداد LocationChanged حین ناوبری به مقصدهای دیگر هم تریگر می‌شود و
+        // نباید query مسیر خارجی را برای بازکردن درخواست تفسیر کند.
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        if (!rel.Equals("it-requests", StringComparison.OrdinalIgnoreCase)) return;
         var uri = new Uri(Nav.Uri);
         var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
         if (!int.TryParse(qs["open"], out var openId) || openId <= 0) return;

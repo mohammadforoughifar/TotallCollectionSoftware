@@ -2701,6 +2701,13 @@ else
 
     private async Task TryOpenFromQuery()
     {
+        // محافظ مسیر: این متد روی هر LocationChanged هم فراخوان می‌شود (حین ناوبری
+        // به صفحات دیگر، پیش از از بار رفتن کامپوننت). فقط زمانی که URL همان صفحهٔ
+        // دستور کار است به ?open= واکنش نشان بده؛ وگرنه مثلاً کلیک روی اعلان نامه
+        // (incoming-letters?open=7) با شناسهٔ نامه، دستورِکار اشتباهی را باز و
+        // خطای «دستور کار در دسترس نیست» را می‌سازد.
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        if (!rel.Equals("work-orders", StringComparison.OrdinalIgnoreCase)) return;
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
         // باز شدن مستقیم تب آمار با لینک (مثلاً از داشبورد) هم باید داده‌ها را بارگذاری کند.
