@@ -5,6 +5,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IO.Compression;
 
 namespace Inventory.Api.Controllers;
 
@@ -426,6 +427,40 @@ public class IncomingLettersController : RbacControllerBase
         var bytes = (a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes == null) return NotFound(new { message = "فایل پیوست پیدا نشد." });
         return File(bytes, a.ContentType, a.FileName);
+    }
+
+    /// <summary>دانلود کلی همهٔ پیوست‌های نامه وارده به صورت فایل ZIP</summary>
+    [HttpGet("{id:int}/attachments/download-zip")]
+    public async Task<IActionResult> DownloadAttachmentsZip(int id)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await CanAccessLetterAsync(id))
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+
+        var attachments = await Db.AppAttachments.AsNoTracking()
+            .Where(a => a.Module == Module && a.RefId == id)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data })
+            .ToListAsync();
+
+        if (attachments.Count == 0)
+            return NotFound(new { message = "پیوستی یافت نشد." });
+
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
+        {
+            foreach (var att in attachments)
+            {
+                var bytes = (att.FilePath is not null ? _store.ReadBytes(att.FilePath) : null) ?? (att.Data is { Length: > 0 } ? att.Data : null);
+                if (bytes == null) continue;
+                var entry = zip.CreateEntry(att.FileName);
+                using var entryStream = entry.Open();
+                await entryStream.WriteAsync(bytes);
+            }
+        }
+
+        ms.Position = 0;
+        return File(ms.ToArray(), "application/zip", $"incoming-letter-{id}-attachments.zip");
     }
 
     [HttpDelete("attachments/{attId:int}")]

@@ -274,6 +274,17 @@ public class LetterService : ILetterService
     public Task DeleteAttachmentAsync(int attachmentId) =>
         _api.DeleteAsync($"api/letters/attachments/{attachmentId}");
 
+    /// <summary>دانلود کلی همهٔ پیوست‌های نامه داخلی به صورت فایل ZIP</summary>
+    public async Task<byte[]> DownloadAttachmentsZipAsync(int letterId)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/letters/{letterId}/attachments/download-zip"));
+        if (!string.IsNullOrWhiteSpace(_auth.Token))
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+        var resp = await _http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await resp.Content.ReadAsStringAsync());
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
+
     public string AttachmentDownloadUrl(int attachmentId)
     {
         // لینک مستقیم <a> هدر Authorization ندارد — توکن در query string ارسال می‌شود

@@ -343,6 +343,13 @@
                                             }
                                         </button>
                                     }
+                                    @if (attachments.Count > 1)
+                                    {
+                                        <button type="button" class="att att-zip" @onclick="DownloadAttachmentsZip" title="دانلود کلی همهٔ پیوست‌ها به صورت فایل ZIP">
+                                            <div class="ic"><i class="bi bi-file-earmark-zip"></i></div>
+                                            <div>دانلود کلی (ZIP)<small>@attachments.Count.FaDigits() فایل</small></div>
+                                        </button>
+                                    }
                                     @if (selected.IsMine || selected.MyErja != null || Auth.IsAdmin)
                                     {
                                         <label class="att att-add" title="افزودن پیوست جدید">
@@ -1381,6 +1388,19 @@
             await JS.InvokeVoidAsync("downloadBlob", a.FileName, a.ContentType ?? "application/octet-stream", Convert.ToBase64String(bytes));
         }
         catch (Exception ex) { Toast.Error($"دانلود پیوست انجام نشد: {ex.Message}"); }
+    }
+
+    /// <summary>دانلود کلی همهٔ پیوست‌های نامه داخلی به صورت فایل ZIP</summary>
+    private async Task DownloadAttachmentsZip()
+    {
+        if (selected == null) return;
+        try
+        {
+            var bytes = await LetterSvc.DownloadAttachmentsZipAsync(selected.LetterId);
+            await JS.InvokeVoidAsync("downloadBlob", $"inner-letter-{selected.LetterNumber}-attachments.zip", "application/zip", Convert.ToBase64String(bytes));
+            Toast.Success("همهٔ پیوست‌ها به صورت فایل ZIP دانلود شدند.");
+        }
+        catch (Exception ex) { Toast.Error($"دانلود کلی پیوست‌ها انجام نشد: {ex.Message}"); }
     }
 
     /// <summary>حذف پیوست از نامه باز در ریدر</summary>

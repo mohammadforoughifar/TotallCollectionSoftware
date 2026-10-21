@@ -229,6 +229,15 @@
                                         <a href="@downloadUrl" target="_blank" download class="btn btn-sm btn-outline-primary py-0">دانلود</a>
                                     </div>
                                 }
+                                @if (activeDetail.Attachments.Count > 1)
+                                {
+                                    <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded border small">
+                                        <span><i class="bi bi-file-earmark-zip text-info me-1"></i><b>دانلود کلی (ZIP)</b></span>
+                                        <button class="btn btn-sm btn-outline-info py-0" @onclick="() => DownloadIncomingAttachmentsZip(activeDetail.LetterId)" title="دانلود کلی همهٔ پیوست‌ها به صورت فایل ZIP">
+                                            ZIP (@activeDetail.Attachments.Count.FaDigits() فایل)
+                                        </button>
+                                    </div>
+                                }
                             </div>
                         }
                         else
@@ -363,6 +372,20 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { incomingAttachmentUploading = false; }
+    }
+
+    /// <summary>دانلود کلی همهٔ پیوست‌های نامه وارده به صورت فایل ZIP</summary>
+    private async Task DownloadIncomingAttachmentsZip(int letterId)
+    {
+        try
+        {
+            var bytes = await IncomingSvc.DownloadAttachmentsZipAsync(letterId);
+            var letter = activeDetail;
+            var fileName = letter != null ? $"incoming-letter-{letter.NumberSabt}-attachments.zip" : $"incoming-letter-{letterId}-attachments.zip";
+            await JS.InvokeVoidAsync("downloadBlob", fileName, "application/zip", Convert.ToBase64String(bytes));
+            Toast.Success("همهٔ پیوست‌ها به صورت فایل ZIP دانلود شدند.");
+        }
+        catch (Exception ex) { Toast.Error($"دانلود کلی پیوست‌ها انجام نشد: {ex.Message}"); }
     }
 
     private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=IncomingLetter&sourceId={letterId}");
