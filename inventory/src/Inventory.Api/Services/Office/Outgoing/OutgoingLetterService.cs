@@ -346,7 +346,8 @@ public class OutgoingLetterService : IOutgoingLetterService
             var pish = await _db.OutgoingPishnevisLetters.FirstOrDefaultAsync(p => p.PishnevisId == dto.FromPishnevisId && p.UserId == creatorUserId && !p.IsDelete);
             if (pish != null)
             {
-                pish.IsDelete = true;
+                // پیش‌نویس را حذف نمی‌کنیم — کاربر ممکن است دوباره از آن استفاده کند
+                // فقط پیوست‌ها را به نامه ارسال‌شده منتقل می‌کنیم
                 var pishAtts = await _db.AppAttachments.Where(a => a.Module == "OutgoingPishnevis" && a.RefId == pish.PishnevisId).ToListAsync();
                 foreach (var a in pishAtts)
                 {

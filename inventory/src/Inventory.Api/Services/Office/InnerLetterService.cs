@@ -206,16 +206,15 @@ public class InnerLetterService : IInnerLetterService
 
         await _db.SaveChangesAsync();
 
-        // ---------- حذف پیش‌نویس مبدأ + انتقال پیوست‌های آن به نامه ----------
+        // ---------- انتقال پیوست‌های پیش‌نویس به نامه (پیش‌نویس در لیست باقی می‌ماند) ----------
         if (dto.FromPishnevisId is > 0)
         {
             var pish = await _db.PishnevisLetters
                 .FirstOrDefaultAsync(p => p.PishnevisId == dto.FromPishnevisId && p.UserId == creatorUserId && !p.IsDelete);
             if (pish != null)
             {
-                pish.IsDelete = true;
-
-                // پیوست‌های پیش‌نویس → پیوست نامه ارسال‌شده
+                // پیش‌نویس را حذف نمی‌کنیم — کاربر ممکن است دوباره از آن استفاده کند
+                // فقط پیوست‌ها را به نامه ارسال‌شده منتقل می‌کنیم
                 // فایل‌های روی دیسک هم از مسیر innerletter/pishnevis/{id} به innerletter/{letterId} منتقل می‌شوند
                 var pishAtts = await _db.AppAttachments
                     .Where(a => a.Module == "Pishnevis" && a.RefId == pish.PishnevisId)
