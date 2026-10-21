@@ -575,6 +575,21 @@ public class AppDbContext : DbContext
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
+
+        // ==================== واحدهای سازمانی و سازمان کاربر ====================
+        // کاربر → واحد سازمانی (اختیاری — برای جزء «واحد» در شماره نامه)
+        mb.Entity<SystemUser>()
+            .HasOne(u => u.Organization)
+            .WithMany()
+            .HasForeignKey(u => u.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // واحد سازمانی → شرکت (اختیاری — واحدها به صورت جداگانه برای هر شرکت تعریف می‌شوند)
+        mb.Entity<Organization>()
+            .HasOne(o => o.Company)
+            .WithMany()
+            .HasForeignKey(o => o.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
         // نام گروه/واحد/کد کالا فقط در محدودهٔ همان شرکت یکتاست (چند شرکتی)
         mb.Entity<ProductCategory>().HasIndex(c => new { c.CompanyId, c.Name }).IsUnique();
         mb.Entity<MeasureUnit>().HasIndex(u => new { u.CompanyId, u.Name }).IsUnique();

@@ -29,4 +29,7 @@ public class Organization
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public ICollection<Semat> Semats { get; set; } = new List<Semat>();
+
+    /// <summary>شرکت ملحق به این واحد</summary>
+    public SystemCompany? Company { get; set; }
 }
