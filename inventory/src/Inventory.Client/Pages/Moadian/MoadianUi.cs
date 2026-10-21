@@ -32,6 +32,7 @@ public static class MoadianUi
         "7" => "تأیید شده",
         "8" => "رد شده",
         "9" => "باطل",
+        "10" => "اصلاحی",
         null or "" => "وضعیت نامشخص",
         _ => $"وضعیت نامعتبر ({code})"
     };
@@ -79,6 +80,7 @@ public static class MoadianUi
         "7" => "badge-soft-success",
         "8" => "badge-soft-danger",
         "9" => "badge-soft-danger",
+        "10" => "badge-soft-warning",
         _ => "badge-soft-muted"
     };
 
@@ -102,6 +104,8 @@ public static class MoadianUi
         "6" => "mi-s6",
         "7" => "mi-s7",
         "8" => "mi-s8",
+        "9" => "mi-s8",
+        "10" => "mi-s4",
         _ => "mi-s0"
     };
 

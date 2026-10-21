@@ -1244,7 +1244,8 @@ namespace Inventory.Api.Services.Moadian
      (c.StatusSentToSystem == "6" && "بدون نیاز به واکنش".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "7" && "تائید شده".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "8" && "رد شده".Contains(request.SearchTerm)) ||
-     (c.StatusSentToSystem == "9" && "باطل".Contains(request.SearchTerm))
+     (c.StatusSentToSystem == "9" && "باطل".Contains(request.SearchTerm)) ||
+     (c.StatusSentToSystem == "10" && "اصلاحی".Contains(request.SearchTerm))
      ||
      (c.TypePattern == 1 && "نوع اول".Contains(request.SearchTerm)) ||
         (c.TypePattern == 2 && "نوع دوم".Contains(request.SearchTerm)) ||
@@ -2361,11 +2362,15 @@ context.Customers.Any(x =>
                         return model;
                     }
 
-                    // محلی «باطل» (۹) از ابطال موفق نشأت گرفته؛ استعلام سامانه برای مرجع ابطال‌شده فقط SUCCESS
-                    // می‌دهد و نباید وضعیت باطل محلی را بازنویسی کند.
+                    // محلی «باطل» (۹) از ابطال موفق و «اصلاحی» (۱۰) از تأیید اصلاحیهٔ خریدار نشأت گرفته‌اند؛
+                    // استعلام سامانه برای مراجع نهایی‌شدهٔ محلی فقط SUCCESS می‌دهد و نباید وضعیت محلی را بازنویسی کند.
                     if (currentInvoice.StatusSentToSystem == "9")
                     {
                         model.Data = "باطل";
+                    }
+                    else if (currentInvoice.StatusSentToSystem == "10")
+                    {
+                        model.Data = "اصلاحی";
                     }
                     else switch (invoiceResult)
                     {
@@ -2416,8 +2421,9 @@ context.Customers.Any(x =>
 
                     await context.SaveChangesAsync();
 
-                    // تأیید اصلاحیه (خریدار یا سیستمی): طبق قاعدهٔ سامانه، صورتحساب مرجع «باطل» می‌شود؛
-                    // چون استعلام مرجع فقط SUCCESS می‌دهد، اصلی را محلی «۹ = باطل» علامت می‌زنیم و قفل می‌کنیم.
+                    // تأیید اصلاحیه (خریدار یا سیستمی): صورتحساب اصلی جای خود را به اصلاحیه می‌دهد؛
+                    // چون استعلام مرجع فقط SUCCESS می‌دهد، اصلی را محلی «۱۰ = اصلاحی» علامت می‌زنیم و قفل می‌کنیم.
+                    // «۱۰» با وضعیت «۹ = باطل» (ابطال مستقیم) متفاوت و جدا نگه داشته می‌شود.
                     // (رد اصلاحیه → اصلی دست‌نخورده و زنده می‌ماند.)
                     if (currentInvoice.StatusSentToSystem == "7"
                         && currentInvoice.Subject == "اصلاحی"
@@ -2427,11 +2433,12 @@ context.Customers.Any(x =>
                             .Where(c => c.Subject == "اصلی"
                                 && c.TaxNumber == currentInvoice.TaxNumber
                                 && c.Id != currentInvoice.Id
-                                && c.StatusSentToSystem != "9")
+                                && c.StatusSentToSystem != "9"
+                                && c.StatusSentToSystem != "10")
                             .ToList();
                         foreach (var orig in originalsToVoid)
                         {
-                            orig.StatusSentToSystem = "9";
+                            orig.StatusSentToSystem = "10";
                             orig.ShowButtons = false;
                         }
                         if (originalsToVoid.Count > 0) await context.SaveChangesAsync();
