@@ -646,7 +646,6 @@
             await UploadPendingAsync(x => OutgoingSvc.UploadPishnevisAttachmentAsync(id, x.stream, x.name, x.type));
             Toast.Success("پیش‌نویس صادره ذخیره شد.");
             visible = false;
-            await OnSent.InvokeAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
