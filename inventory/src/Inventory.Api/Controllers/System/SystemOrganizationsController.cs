@@ -92,6 +92,7 @@ public class SystemOrganizationsController : ControllerBase
         return Ok(orgs.Select(o => new OrganizationDto
         {
             OrganizationId = o.OrganizationId,
+            CompanyId = o.CompanyId,
             NameUnit = o.NameUnit,
             NameUniq = o.NameUniq,
             IsDefault = o.IsDefault

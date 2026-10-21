@@ -86,6 +86,7 @@ public class OrganizationServices : IOrganizationServices
             .Select(o => new OrganizationDto
             {
                 OrganizationId = o.OrganizationId,
+                CompanyId = o.CompanyId,
                 NameUnit = o.NameUnit,
                 NameUniq = o.NameUniq,
                 IsDefault = o.IsDefault
