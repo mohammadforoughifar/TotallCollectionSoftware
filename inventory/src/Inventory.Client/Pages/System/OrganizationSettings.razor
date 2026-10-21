@@ -165,7 +165,7 @@
             string.IsNullOrWhiteSpace(searchText) ||
             o.NameUnit.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase) ||
             o.NameUniq.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase))
-        .Where(o => selectedCompanyId is null or 0 or o.CompanyId)
+        .Where(o => selectedCompanyId is null || selectedCompanyId == 0 || selectedCompanyId == o.CompanyId)
         .ToList();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
