@@ -33,6 +33,7 @@ public static class MoadianUi
         "8" => "رد شده",
         "9" => "باطل",
         "10" => "اصلاحی",
+        "11" => "تأیید سیستمی",
         null or "" => "وضعیت نامشخص",
         _ => $"وضعیت نامعتبر ({code})"
     };
@@ -49,16 +50,22 @@ public static class MoadianUi
     public static bool HasReference(string? referenceId) => !string.IsNullOrWhiteSpace(referenceId);
     /// <summary>استعلام: هر وضعیتی که مرجع دارد (پیگیری تا قطعی). استعلام خواندنی است — ShowButtons شرط نیست.</summary>
     public static bool CanInquiry(string? code, string? referenceId)
-        => HasReference(referenceId) && code is "1" or "2" or "3" or "4" or "5" or "7" or "8";
+        => HasReference(referenceId) && code is "1" or "2" or "3" or "4" or "5" or "7" or "8" or "11";
+
+    /// <summary>ثبت دستی واکنش خریدار: فقط وقتی سند در کارپوشه منتظر واکنش است (۲/۳/۴) و مرجع سامانه دارد.
+    /// بعد از هر واکنش (۷/۸/۱۱) یا پایان‌خطگاه‌های دیگر، وضعیت پایانی است و این گیت بسته می‌ماند.</summary>
+    public static bool CanReactManually(string? code, string? referenceId)
+        => HasReference(referenceId) && code is "2" or "3" or "4";
     /// <summary>خطاها: فقط خطای قطعی (5) — فهرست خطا از دادهٔ FAILED استعلام می‌آید.</summary>
     public static bool CanShowErrors(string? code) => code == "5";
     /// <summary>اصلاحی/برگشت: مرجع باید در کارپوشه ثبت‌شده و غیرباطل باشد.
-    /// ShowButtons شرط نیست — سرور بلافاصله بعد از ارسال آن را false می‌کند و عملیات سامانه‌ای را می‌بست.</summary>
+    /// ShowButtons شرط نیست — سرور بلافاصله بعد از ارسال آن را false می‌کند و عملیات سامانه‌ای را می‌بست.
+    /// «۱۱ = تأیید سیستمی» از منظر سامانه همان اعتبار «۷» را دارد.</summary>
     public static bool CanReference(string? code, string? referenceId)
-        => HasReference(referenceId) && code is "3" or "4" or "7" or "8";
-    /// <summary>ابطال: قاعدهٔ رسمی «هر وضعیتی غیر از باطل‌شده» (ثبت‌شده در سامانه).</summary>
+        => HasReference(referenceId) && code is "3" or "4" or "7" or "8" or "11";
+    /// <summary>ابطال: قاعدهٔ رسمی «هر وضعیتی غیر از باطل‌شده» (ثبت‌شده در سامانه). «۱۱ = تأیید سیستمی» با «۷» یکسان.</summary>
     public static bool CanEbtal(string? code, string? referenceId)
-        => HasReference(referenceId) && code is "2" or "3" or "4" or "7" or "8";
+        => HasReference(referenceId) && code is "2" or "3" or "4" or "7" or "8" or "11";
 
     /// <summary>آدرس رسمی درگاه ملی خدمات مالیاتی (ورودی کارپوشهٔ سامانهٔ مودیان) — نیازمند تأیید از سوی کارفرما.</summary>
     public const string WorkFolderUrl = "https://my.tax.gov.ir";
@@ -81,6 +88,7 @@ public static class MoadianUi
         "8" => "badge-soft-danger",
         "9" => "badge-soft-danger",
         "10" => "badge-soft-warning",
+        "11" => "badge-soft-success",
         _ => "badge-soft-muted"
     };
 
@@ -106,6 +114,7 @@ public static class MoadianUi
         "8" => "mi-s8",
         "9" => "mi-s8",
         "10" => "mi-s4",
+        "11" => "mi-s7",
         _ => "mi-s0"
     };
 

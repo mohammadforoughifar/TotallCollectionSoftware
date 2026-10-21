@@ -220,6 +220,14 @@ else
                                             <NavLink class="mpa mpa-blue mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}")" title="جزئیات صورتحساب" aria-label="جزئیات صورتحساب">
                                                 <i class="bi bi-eye" aria-hidden="true"></i>
                                             </NavLink>
+                                            @* c2) ثبت دستی واکنش خریدار — فقط روی اسناد منتظر واکنش در کارپوشه (۲/۳/۴) *@
+                                            @if (CanUpdate && MoadianUi.CanReactManually(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <button type="button" class="mpa mpa-amber mpa-ic" title="ثبت دستی وضعیت خریدار (تأیید شده/رد شده/تأیید سیستمی) — SDK واکنش‌ها را برنمی‌گرداند"
+                                                        aria-label="ثبت دستی وضعیت" @onclick="() => OpenReactModal(inv)" disabled="@acting">
+                                                    <i class="bi bi-person-check" aria-hidden="true"></i>
+                                                </button>
+                                            }
                                             @* d) ویرایش *@
                                             @if (CanUpdate && MoadianUi.CanEdit(inv.StatusSentToSystemInt))
                                             {
@@ -367,6 +375,10 @@ else
                                     {
                                         <button type="button" class="mpa mpa-sky" disabled="@acting" aria-label="استعلام صورتحساب" @onclick="() => EstelamRow(inv)"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> استعلام</button>
                                     }
+                                    @if (CanUpdate && MoadianUi.CanReactManually(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <button type="button" class="mpa mpa-amber" disabled="@acting" aria-label="ثبت دستی وضعیت خریدار" @onclick="() => OpenReactModal(inv)"><i class="bi bi-person-check" aria-hidden="true"></i> وضعیت</button>
+                                    }
                                     @if (CanInquiry && MoadianUi.CanShowErrors(inv.StatusSentToSystemInt))
                                     {
                                         <button type="button" class="mpa mpa-red" disabled="@acting" aria-label="نمایش خطاهای صورتحساب" @onclick="() => ShowErrorsRow(inv)"><i class="bi bi-bug" aria-hidden="true"></i> خطاها</button>
@@ -450,6 +462,57 @@ else
     </div>
 }
 
+@* ---------- مودال ثبت دستی وضعیت واکنش خریدار ---------- *@
+@if (reactOpen && reactInvoice is not null)
+{
+    <div class="modal d-block mi-modal" tabindex="-1" style="background:rgba(15,23,42,.45)" @onclick="CloseReactModal">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-check text-warning"></i> ثبت وضعیت خریدار — @(reactInvoice.NumberInvoice?.Num() ?? "—")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseReactModal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-muted mb-2">
+                        وضعیت فعلی: <span class="badge @MoadianUi.StatusBadge(reactInvoice.StatusSentToSystemInt)">@MoadianUi.StatusLabel(reactInvoice.StatusSentToSystemInt)</span>
+                    </p>
+                    <p class="fs-8 text-muted">
+                        واکنش «پایانی» است — پس از ثبت، دیگر قابل تغییر نیست.
+                        نسخهٔ فعلی SDK واکنش‌های خریدار را در استعلام برنمی‌گرداند؛ این وضعیت را
+                        بعد از مشاهده در کارپوشه دستی ثبت کنید.
+                    </p>
+                    @if (reactInvoice.Subject == "اصلاحی")
+                    {
+                        <div class="alert alert-warning fs-8 py-2 mb-2">
+                            این سند «اصلاحی» است: اگر تأیید یا تأیید سیستمی شود، صورتحساب اصلی به‌طور خودکار «اصلاحی (۱۰)» می‌شود و قفل خواهد شد. اگر رد شود، اصلی زنده می‌ماند.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info fs-8 py-2 mb-2">
+                            تأیید سیستمی = خریدار واکنش نشان نداده و سامانه پس از ۳۰ روز خودکار سند را تأیید می‌کند.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-success" disabled="@acting" @onclick='() => SubmitReact("7")'>
+                        @if (acting && reactTarget == "7") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check2-circle"></i> }
+                        تأیید شده (خریدار)
+                    </button>
+                    <button type="button" class="btn btn-danger" disabled="@acting" @onclick='() => SubmitReact("8")'>
+                        @if (acting && reactTarget == "8") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-x-octagon"></i> }
+                        رد شده (خریدار)
+                    </button>
+                    <button type="button" class="btn btn-primary" disabled="@acting" @onclick='() => SubmitReact("11")'>
+                        @if (acting && reactTarget == "11") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-clock-history"></i> }
+                        تأیید سیستمی (۳۰ روزه)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // کنترل رابط صرفاً برای تجربهٔ کاربر است؛ API نیز همین سطح‌ها را قطعی کنترل می‌کند.
     private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
@@ -506,6 +569,36 @@ else
     private bool acting;
     private bool modalOpen;
     private string modalTitle = "";
+
+    // ---------- ثبت دستی واکنش خریدار (مدال) ----------
+    private bool reactOpen;
+    private InvoiceVM? reactInvoice;
+    private string? reactTarget;
+
+    private void OpenReactModal(InvoiceVM inv) { reactInvoice = inv; reactOpen = true; reactTarget = null; }
+    private void CloseReactModal() { if (acting) return; reactOpen = false; reactInvoice = null; reactTarget = null; }
+
+    private async Task SubmitReact(string status)
+    {
+        if (reactInvoice is null) return;
+        reactTarget = status; acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.SetInvoiceStatusAsync(InvoiceId(reactInvoice), status);
+            if (r.Success)
+            {
+                Toast.Success(r.Message ?? "وضعیت صورتحساب ثبت شد.");
+                reactOpen = false;
+                await LoadAsync(pno);
+            }
+            else
+            {
+                Toast.Error(r.Message ?? "ثبت وضعیت ناموفق بود.");
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reactTarget = null; acting = false; StateHasChanged(); }
+    }
     private string modalBody = "";
 
     [Inject] private IJSRuntime JS { get; set; }

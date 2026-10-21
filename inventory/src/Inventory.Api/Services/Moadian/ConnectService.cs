@@ -1245,7 +1245,8 @@ namespace Inventory.Api.Services.Moadian
      (c.StatusSentToSystem == "7" && "تائید شده".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "8" && "رد شده".Contains(request.SearchTerm)) ||
      (c.StatusSentToSystem == "9" && "باطل".Contains(request.SearchTerm)) ||
-     (c.StatusSentToSystem == "10" && "اصلاحی".Contains(request.SearchTerm))
+     (c.StatusSentToSystem == "10" && "اصلاحی".Contains(request.SearchTerm)) ||
+     (c.StatusSentToSystem == "11" && "تأیید سیستمی".Contains(request.SearchTerm))
      ||
      (c.TypePattern == 1 && "نوع اول".Contains(request.SearchTerm)) ||
         (c.TypePattern == 2 && "نوع دوم".Contains(request.SearchTerm)) ||
@@ -2372,6 +2373,10 @@ context.Customers.Any(x =>
                     {
                         model.Data = "اصلاحی";
                     }
+                    else if (currentInvoice.StatusSentToSystem == "11")
+                    {
+                        model.Data = "تأیید سیستمی";
+                    }
                     else switch (invoiceResult)
                     {
                         case "IN_PROGRESS":
@@ -2944,6 +2949,85 @@ context.Customers.Any(x =>
 
                 return model;
             }
+        }
+
+        /// <summary>
+        /// ثبت دستی وضعیت واکنش خریدار توسط کاربر — نسخهٔ فعلی SDK واکنش‌ها را در استعلام برنمی‌گرداند؛
+        /// کاربر پس از مشاهدهٔ وضعیت در کارپوشه، آن را این‌جا دستی ثبت می‌کند.
+        /// قواعد: فقط وقتی سند در کارپوشه منتظر واکنش است (۲/۳/۴)؛ واکنش «پایانی» است — پس از
+        /// تأیید/رد/تأیید سیستمی (۷/۸/۱۱) هیچ‌کدام قابل تغییر نیستند.
+        /// اثر جانبی (سازگار با قاعدهٔ اصلاحیه): تأیید اصلاحیه (۷ یا ۱۱) → اصلی‌ها «۱۰ = اصلاحی» و قفل می‌شوند؛
+        /// رد اصلاحیه → اصلی زنده و دست‌نخورده می‌ماند.
+        /// </summary>
+        public async Task<ApiModel> SetInvoiceStatusAsync(int invoiceId, string targetStatus)
+        {
+            ApiModel model = new ApiModel();
+            if (targetStatus is not ("7" or "8" or "11"))
+            {
+                model.Success = false; model.Status = 400;
+                model.Message = "وضعیت هدف نامعتبر است — فقط «تأیید شده»، «رد شده» یا «تأیید سیستمی».";
+                return model;
+            }
+
+            var invoice = context.Invoices.FirstOrDefault(c => c.Id == invoiceId);
+            if (invoice is null)
+            {
+                model.Success = false; model.Status = 404;
+                model.Message = "صورتحساب یافت نشد.";
+                return model;
+            }
+            if (string.IsNullOrWhiteSpace(invoice.ReferenceId))
+            {
+                model.Success = false; model.Status = 409;
+                model.Message = "این صورتحساب در سامانه ثبت نشده و واکنش پذیر نیست.";
+                return model;
+            }
+            if (invoice.StatusSentToSystem is "7" or "8" or "11")
+            {
+                model.Success = false; model.Status = 409;
+                model.Message = "واکنش این صورتحساب قبلاً ثبت شده و پایانی است.";
+                return model;
+            }
+            if (invoice.StatusSentToSystem is not ("2" or "3" or "4"))
+            {
+                model.Success = false; model.Status = 409;
+                model.Message = "ثبت واکنش فقط وقتی صورتحساب در کارپوشه منتظر واکنش است (در انتظار بررسی / ارسال شده / در انتظار واکنش) ممکن است.";
+                return model;
+            }
+
+            invoice.StatusSentToSystem = targetStatus;
+
+            // تأیید اصلاحیه (خریدار یا سیستمی): اصلی‌ها را «۱۰ = اصلاحی» علامت و قفل کن — همان قاعدهٔ
+            // بلوک استعلام؛ مسیر دستی و مسیر خودکار باید خروجی یکسانی بدهند. رد → بدون اثر (اصلی زنده).
+            if (targetStatus is "7" or "11"
+                && invoice.Subject == "اصلاحی"
+                && !string.IsNullOrWhiteSpace(invoice.TaxNumber))
+            {
+                var originalsToVoid = context.Invoices
+                    .Where(c => c.Subject == "اصلی"
+                        && c.TaxNumber == invoice.TaxNumber
+                        && c.Id != invoice.Id
+                        && c.StatusSentToSystem != "9"
+                        && c.StatusSentToSystem != "10")
+                    .ToList();
+                foreach (var orig in originalsToVoid)
+                {
+                    orig.StatusSentToSystem = "10";
+                    orig.ShowButtons = false;
+                }
+            }
+
+            await context.SaveChangesAsync();
+            model.Status = 200;
+            model.Success = true;
+            model.Data = targetStatus;
+            model.Message = targetStatus switch
+            {
+                "7" => "وضعیت «تأیید شده» ثبت شد.",
+                "8" => "وضعیت «رد شده» ثبت شد.",
+                _ => "وضعیت «تأیید سیستمی» ثبت شد."
+            };
+            return model;
         }
 
         public async Task<ApiModel> EslahiInvoiceAsync(InvoiceVM modeldata)

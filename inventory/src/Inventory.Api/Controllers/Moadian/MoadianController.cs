@@ -182,6 +182,13 @@ namespace Inventory.Api.Controllers.Moadian
             }
             return result;
         }
+        /// <summary>ثبت دستی واکنش خریدار: ۷=تأیید شده، ۸=رد شده، ۱۱=تأیید سیستمی. فقط روی وضعیت‌های ۲/۳/۴.</summary>
+        [HttpPost("SetInvoiceStatusAsync")]
+        public async Task<ApiModel> SetInvoiceStatusAsync(int invoiceId, string targetStatus)
+        {
+            return await connectService.SetInvoiceStatusAsync(invoiceId, targetStatus);
+        }
+
         [HttpPost("EbtalInvoiceAsync")]
         public async Task<ApiModel> EbtalInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {

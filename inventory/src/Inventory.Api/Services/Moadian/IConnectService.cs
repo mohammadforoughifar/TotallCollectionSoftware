@@ -51,6 +51,7 @@ namespace Inventory.Api.Services.Moadian
         Task<ApiModel> EstelamInvoiceAsync(string ReferenceId, int InvoiceId,string dateorder);//استعلام صورتحساب
         Task<ApiModel> ErrorInvoiceAsync(string ReferenceId);//لیست خطاهای صورتحساب
         Task<ApiModel> UpdateStatusInvoiceAsync(int InvoiceId);//تغییر وضعیت صورتحساب به مشااهده شده در کارپوشه(ارسال)  صورتحساب
+        Task<ApiModel> SetInvoiceStatusAsync(int invoiceId, string targetStatus);//ثبت دستی واکنش خریدار: ۷ تأییدشده / ۸ ردشده / ۱۱ تأیید سیستمی
         #endregion
 
         #region مکمل رابط کاربری (شرکت / سال مالی / مشتری)
