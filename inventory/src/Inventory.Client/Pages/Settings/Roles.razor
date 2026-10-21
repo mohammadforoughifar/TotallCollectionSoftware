@@ -396,29 +396,8 @@
 
     private void TogglePermission(int id, bool isChecked)
     {
-        var perm = allPermissions.FirstOrDefault(p => p.Id == id);
-        if (perm == null) return;
-
-        // گروه‌بندی CRUD فقط برای ماژول‌های منابع انسانی بن‌سازه (HrMain, HrCore, FaAtt, FaPay, FaLms, FaCom)
-        var hrCrudModules = new[] { "HrMain", "HrCore", "FaAtt", "FaPay", "FaLms", "FaCom" };
-        var crudActions = new[] { "Create", "Read", "Update", "Delete" };
-        if (crudActions.Contains(perm.Action) && hrCrudModules.Contains(perm.Module))
-        {
-            var moduleCrudPerms = allPermissions
-                .Where(p => p.Module == perm.Module && crudActions.Contains(p.Action) && IsVisiblePermission(p))
-                .Select(p => p.Id);
-
-            foreach (var pid in moduleCrudPerms)
-            {
-                if (isChecked) selectedPermissionIds.Add(pid);
-                else selectedPermissionIds.Remove(pid);
-            }
-        }
-        else
-        {
-            if (isChecked) selectedPermissionIds.Add(id);
-            else selectedPermissionIds.Remove(id);
-        }
+        if (isChecked) selectedPermissionIds.Add(id);
+        else selectedPermissionIds.Remove(id);
     }
 
     private void ToggleModuleAll(string module, bool isChecked)

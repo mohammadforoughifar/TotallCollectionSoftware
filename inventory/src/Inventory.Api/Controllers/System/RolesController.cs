@@ -10,9 +10,6 @@ namespace Inventory.Api.Controllers;
 [Route("api/[controller]")]
 public class RolesController : ControllerBase
 {
-    // اکشن‌های استاندارد CRUD — وقتی یکی از این ۴ برای یک ماژول به یک نقش داده شود، چهارتـانکمهم باید وجود داشته باشد
-    private static readonly string[] CrudActions = { "Create", "Read", "Update", "Delete" };
-
     private readonly AppDbContext _db;
 
     public RolesController(AppDbContext db) => _db = db;
@@ -46,12 +43,10 @@ public class RolesController : ControllerBase
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
 
-        // Assign permissions — با اجرای قانون گروه‌بندی CRUD
-        var finalPermIds = EnforceCrudGrouping(dto.PermissionIds ?? new List<int>());
-
-        if (finalPermIds.Any())
+        // Assign permissions
+        if (dto.PermissionIds?.Any() == true)
         {
-            foreach (var permId in finalPermIds)
+            foreach (var permId in dto.PermissionIds)
             {
                 _db.RolePermissions.Add(new RolePermission
                 {
@@ -79,16 +74,17 @@ public class RolesController : ControllerBase
         var oldPerms = await _db.RolePermissions.Where(rp => rp.RoleId == id).ToListAsync();
         _db.RolePermissions.RemoveRange(oldPerms);
 
-        // Add new permissions — با اجرای قانون گروه‌بندی CRUD
-        var finalPermIds = EnforceCrudGrouping(dto.PermissionIds ?? new List<int>());
-
-        foreach (var permId in finalPermIds)
+        // Add new permissions
+        if (dto.PermissionIds?.Any() == true)
         {
-            _db.RolePermissions.Add(new RolePermission
+            foreach (var permId in dto.PermissionIds)
             {
-                RoleId = id,
-                PermissionId = permId
-            });
+                _db.RolePermissions.Add(new RolePermission
+                {
+                    RoleId = id,
+                    PermissionId = permId
+                });
+            }
         }
 
         await _db.SaveChangesAsync();
@@ -104,44 +100,6 @@ public class RolesController : ControllerBase
         _db.Roles.Remove(role);
         await _db.SaveChangesAsync();
         return Ok();
-    }
-
-    /// <summary>
-    /// اگر هر کدام از ۴ مجوز CRUD (Create/Read/Update/Delete) برای یک ماژول HR بن‌سازه انتخاب شده باشد،
-    ///remaining سه مجوز CRUD هم همان ماژول به لیست اضافه می‌شود.
-    /// این رفتار فقط برای ماژول‌های منابع انسانی بن‌سازه (HrMain, HrCore, FaAtt, FaPay, FaLms, FaCom) اعمال می‌شود.
-    /// </summary>
-    private List<int> EnforceCrudGrouping(List<int> permissionIds)
-    {
-        if (!permissionIds.Any()) return permissionIds;
-
-        // ماژول‌های منابع انسانی بن‌سازه که گروه‌بندی CRUD روی آن‌ها اعمال می‌شود
-        var hrCrudModules = new[] { "HrMain", "HrCore", "FaAtt", "FaPay", "FaLms", "FaCom" };
-        var crudActions = new[] { "Create", "Read", "Update", "Delete" };
-
-        var allPerms = _db.Permissions
-            .Where(p => CrudActions.Contains(p.Action) && hrCrudModules.Contains(p.Module))
-            .ToList();
-
-        var result = new HashSet<int>(permissionIds);
-
-        // پیدا کردن ماژول‌های HR که حداقل یک مجوز CRUD از آن‌ها انتخاب شده
-        var modulesWithCrud = allPerms
-            .Where(p => result.Contains(p.Id))
-            .Select(p => p.Module)
-            .Distinct();
-
-        foreach (var module in modulesWithCrud)
-        {
-            var moduleCrudPerms = allPerms
-                .Where(p => p.Module == module)
-                .Select(p => p.Id);
-
-            foreach (var permId in moduleCrudPerms)
-                result.Add(permId);
-        }
-
-        return result.ToList();
     }
 
     public class RoleDto
