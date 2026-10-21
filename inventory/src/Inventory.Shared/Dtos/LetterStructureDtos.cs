@@ -11,6 +11,9 @@ public class OrganizationDto
 {
     public int OrganizationId { get; set; }
 
+    /// <summary>شناسه شرکت — واحدها به صورت جداگانه برای هر شرکت تعریف می‌شوند</summary>
+    public int? CompanyId { get; set; }
+
     /// <summary>نام نمایشی — مثل «مدیریت کیفیت»</summary>
     public string NameUnit { get; set; } = "";
 

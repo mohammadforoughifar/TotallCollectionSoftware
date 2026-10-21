@@ -12,6 +12,9 @@ public class Organization
 {
     public int OrganizationId { get; set; }
 
+    /// <summary>شناسه شرکت — واحدها به صورت جداگانه برای هر شرکت تعریف می‌شوند</summary>
+    public int? CompanyId { get; set; }
+
     /// <summary>نام نمایشی سازمان/واحد — مثل «مدیریت کیفیت»</summary>
     [MaxLength(200)] public string NameUnit { get; set; } = "";
 

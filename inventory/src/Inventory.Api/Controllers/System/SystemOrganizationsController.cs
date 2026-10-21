@@ -21,9 +21,15 @@ public class SystemOrganizationsController : ControllerBase
         _org = org;
     }
 
+    /// <summary>فهرست واحدها — می‌تواند بر اساس شرکت فیلتر شود (companyId)</summary>
     [HttpGet]
-    public async Task<ActionResult> Get([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(await Paging.ResultAsync(_db.Organizations.Where(o => !o.IsDelete).OrderBy(o => o.NameUnit), skip, take));
+    public async Task<ActionResult> Get([FromQuery] int? companyId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+    {
+        var query = _db.Organizations.Where(o => !o.IsDelete).OrderBy(o => o.NameUnit);
+        if (companyId is > 0)
+            query = query.Where(o => o.CompanyId == companyId);
+        return Ok(await Paging.ResultAsync(query, skip, take));
+    }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult> Get(int id)
@@ -51,6 +57,7 @@ public class SystemOrganizationsController : ControllerBase
 
         item.NameUnit = o.NameUnit;
         item.NameUniq = o.NameUniq;
+        item.CompanyId = o.CompanyId;
         item.IsDefault = o.IsDefault;
         item.IsActive = o.IsActive;
         item.IsDelete = o.IsDelete;
@@ -70,8 +77,24 @@ public class SystemOrganizationsController : ControllerBase
         return Ok();
     }
 
-    /// <summary>فهرست سازمان‌های فعال برای دندگان انتخاب (combeobox)</summary>
+    /// <summary>فهرست سازمان‌های فعال برای د virgehenden انتخاب (combeobox) — می‌تواند بر اساس شرکت فیلتر شود</summary>
     [HttpGet("active")]
-    public async Task<ActionResult<List<OrganizationDto>>> GetActive() =>
-        Ok(await _org.GetOrganizationsAsync());
+    public async Task<ActionResult<List<OrganizationDto>>> GetActive([FromQuery] int? companyId = null)
+    {
+        var orgs = await _db.Organizations.AsNoTracking()
+            .Where(o => !o.IsDelete && o.IsActive)
+            .OrderBy(o => o.NameUnit)
+            .ToListAsync();
+
+        if (companyId is > 0)
+            orgs = orgs.Where(o => o.CompanyId == companyId).ToList();
+
+        return Ok(orgs.Select(o => new OrganizationDto
+        {
+            OrganizationId = o.OrganizationId,
+            NameUnit = o.NameUnit,
+            NameUniq = o.NameUniq,
+            IsDefault = o.IsDefault
+        }).ToList());
+    }
 }
