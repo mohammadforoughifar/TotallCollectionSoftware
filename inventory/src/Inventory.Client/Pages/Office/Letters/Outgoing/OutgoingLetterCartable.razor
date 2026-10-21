@@ -340,6 +340,13 @@
                                         <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
                                     </a>
                                 }
+                                @if (attachments.Count > 1)
+                                {
+                                    <button type="button" class="att att-zip" @onclick="DownloadAttachmentsZip" title="دانلود کلی همهٔ پیوست‌ها به صورت فایل ZIP">
+                                        <div class="ic"><i class="bi bi-file-earmark-zip"></i></div>
+                                        <div>دانلود کلی (ZIP)<small>@attachments.Count.FaDigits() فایل</small></div>
+                                    </button>
+                                }
                                 <label class="att att-add" title="افزودن پیوست جدید">
                                     <div class="ic"><i class="bi @(outgoingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
                                     <div>@(outgoingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
@@ -966,6 +973,19 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { outgoingAttachmentUploading = false; }
+    }
+
+    /// <summary>دانلود کلی همهٔ پیوست‌های نامه صادره به صورت فایل ZIP</summary>
+    private async Task DownloadAttachmentsZip()
+    {
+        if (selected == null) return;
+        try
+        {
+            var bytes = await OutgoingSvc.DownloadAttachmentsZipAsync(selected.LetterId);
+            await JS.InvokeVoidAsync("downloadBlob", $"outgoing-letter-{selected.LetterNumber}-attachments.zip", "application/zip", Convert.ToBase64String(bytes));
+            Toast.Success("همهٔ پیوست‌ها به صورت فایل ZIP دانلود شدند.");
+        }
+        catch (Exception ex) { Toast.Error($"دانلود کلی پیوست‌ها انجام نشد: {ex.Message}"); }
     }
 
     private void OpenWorkOrder(int letterId) => Nav.NavigateTo($"/work-orders?sourceModule=OutgoingLetter&sourceId={letterId}");
