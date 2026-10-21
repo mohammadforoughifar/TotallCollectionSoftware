@@ -62,6 +62,7 @@ public class SystemUsersController : ControllerBase
         item.StaffNumber = u.StaffNumber;
         item.DepartmentId = u.DepartmentId;
         item.CompanyId = u.CompanyId;
+        item.OrganizationId = u.OrganizationId;
         item.Role = u.Role;
         item.IsActive = u.IsActive;
 

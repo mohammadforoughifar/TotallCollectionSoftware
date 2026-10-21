@@ -184,6 +184,16 @@
                             </select>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">واحد سازمانی (برای شماره نامه)</label>
+                            <select class="form-select" @bind="selectedOrganizationId">
+                                <option value="">— بدون واحد سازمانی —</option>
+                                @foreach (var o in organizations.Where(o => o.IsActive).OrderBy(o => o.NameUnit))
+                                {
+                                    <option value="@o.OrganizationId">@o.NameUnit (@o.NameUniq)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">دسته‌بندی (سطح دسترسی سیستمی)</label>
                             <select class="form-select" @bind="form.Role">
                                 <option value="User">کاربر عادی (کارمند)</option>
@@ -265,6 +275,7 @@
 @code {
     private List<SystemUserItem> items = new();
     private List<SystemCompanyItem> companies = new();
+    private List<OrganizationItem> organizations = new();
 
     // ================== عکس کاربر ==================
     private long photoBust;
@@ -400,6 +411,7 @@
     private string formError = "";
     private string searchText = "";
     private int selectedCompanyId = 0;
+    private int? selectedOrganizationId = null;
     private int editId = 0;
 
     private UserForm form = new();
@@ -426,6 +438,8 @@
         catch { companies = new(); companiesLoadFailed = true; }
         try { departments = await Http.GetFromJsonAsync<List<SystemDepartmentItem>>("/api/SystemDepartments") ?? new(); }
         catch { departments = new(); }
+        try { organizations = await Http.GetFromJsonAsync<List<OrganizationItem>>("/api/SystemOrganizations") ?? new(); }
+        catch { organizations = new(); }
         finally { isLoading = false; }
     }
 
@@ -434,6 +448,7 @@
         editingUser = false; editId = 0; formError = "";
         form = new UserForm();
         selectedCompanyId = 0;
+        selectedOrganizationId = null;
         ResetPhoto();
         ShowForm = true;
     }
@@ -452,6 +467,7 @@
             IsActive = u.IsActive
         };
         selectedCompanyId = u.CompanyId ?? 0;
+        selectedOrganizationId = u.OrganizationId;
         ResetPhoto();
         ShowForm = true;
         StateHasChanged();
@@ -498,6 +514,7 @@
                                departments.Any(d => d.Id == form.DepartmentId && d.CompanyId == selectedCompanyId)
                                ? form.DepartmentId : null,
                 CompanyId = selectedCompanyId,
+                OrganizationId = selectedOrganizationId,
                 Role = form.Role,
                 IsActive = form.IsActive,
                 CreatedAt = DateTime.Now
@@ -584,6 +601,7 @@
         public string Phone { get; set; } = "";
         public string StaffNumber { get; set; } = "";
         public int? DepartmentId { get; set; }
+        public int? OrganizationId { get; set; }
         public string Role { get; set; } = "User";
         public bool IsActive { get; set; } = true;
     }
@@ -597,9 +615,18 @@
         public string StaffNumber { get; set; } = "";
         public int? DepartmentId { get; set; }
         public int? CompanyId { get; set; }
+        public int? OrganizationId { get; set; }
         public string? Role { get; set; } = "User";
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+    }
+
+    public class OrganizationItem
+    {
+        public int OrganizationId { get; set; }
+        public string NameUnit { get; set; } = "";
+        public string NameUniq { get; set; } = "";
+        public bool IsActive { get; set; } = true;
     }
 
     public class SystemCompanyItem

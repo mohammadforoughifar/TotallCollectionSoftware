@@ -95,9 +95,9 @@ public class OutgoingLetterService : IOutgoingLetterService
     /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
     /// «سال/ص-شماره» (مثل 1404/ص-5) حفظ می‌شود تا رفتار قدیمی نشکند.
     /// </summary>
-    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null, int? sematId = null)
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null, int? sematId = null, int? userId = null)
     {
-        var s = await _strature.TotalNumberAsync(number, typeForm: 2, date: date, sematId: sematId);
+        var s = await _strature.TotalNumberAsync(number, typeForm: 2, date: date, sematId: sematId, userId: userId);
         if (!string.IsNullOrEmpty(s)) return s;
 
         var pc = new PersianCalendar();
@@ -253,8 +253,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             Id = source.Id,
             Number = number,
-            // sematId بعداً از CreatorSematId صادرکننده پر می‌شود (فاز چارت سازمانی)
-            LetterNumber = await BuildLetterNumberAsync(number, now),
+            LetterNumber = await BuildLetterNumberAsync(number, now, userId: creatorUserId),
             // هر دو ستون برای سازگاری دیتابیس‌های جدید و قدیمی مقداردهی می‌شوند.
             CreatorUserId = creatorUserId,
             CreatorId = creatorUserId,

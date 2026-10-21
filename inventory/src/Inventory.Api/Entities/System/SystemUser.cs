@@ -26,6 +26,12 @@ public class SystemUser
     public int? DepartmentId { get; set; }
     public int? CompanyId { get; set; }
 
+    /// <summary>شناسه واحد/سازمان سازمانی کاربر — برای جزء «واحد» در شماره نامه</summary>
+    public int? OrganizationId { get; set; }
+
+    /// <summary>واحد/سازمان سازمانی کاربر</summary>
+    public Organization? Organization { get; set; }
+
     [MaxLength(20)]
     public string? Role { get; set; } = "User";
 

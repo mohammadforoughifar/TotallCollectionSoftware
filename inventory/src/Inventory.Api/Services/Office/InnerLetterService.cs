@@ -83,9 +83,9 @@ public class InnerLetterService : IInnerLetterService
     /// اگر ساختاری تعریف نشده باشد، به فرمت قبلی این پروژه «سال/شماره» (مثل 1404/12) برمی‌گردد
     /// تا شماره‌ی نامه‌های موجود بدون پیکربندی ساختار تغییر نکند.
     /// </summary>
-    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null)
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null, int? userId = null)
     {
-        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date);
+        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date, userId: userId);
         if (!string.IsNullOrEmpty(s)) return s;
         var pc = new PersianCalendar();
         return $"{pc.GetYear(date ?? DateTime.Now)}/{number}";
@@ -168,7 +168,7 @@ public class InnerLetterService : IInnerLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = await BuildLetterNumberAsync(number),
+            LetterNumber = await BuildLetterNumberAsync(number, now, creatorUserId),
             CreatorUserId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,

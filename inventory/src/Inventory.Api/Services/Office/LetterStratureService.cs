@@ -22,8 +22,9 @@ public interface ILetterStratureService
     /// ساخت شماره اندیکاتور کامل بر اساس ساختار ذخیره‌شده (معادل TotalNumberAsync مرجع).
     /// date: تاریخ مبنای جزء «سال» (پیش‌فرض: اکنون — برای بازسازی شماره نامه‌های قدیمی، تاریخ ثبت نامه پاس داده می‌شود)
     /// sematId: سمت صادرکننده — مبنای «واحد» (سازمانِ سمت)؛ null یعنی سازمان پیش‌فرض
+    /// userId: شناسه صادرکننده — برای bagian «واحد» از واحد اختصاص یافته به کاربر استفاده شود
     /// </summary>
-    Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null);
+    Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null, int? userId = null);
 
     /// <summary>اجزای ساختار برای فرم مشخص (به ترتیب)</summary>
     Task<List<string>> GetStructureAsync(int typeForm);
@@ -51,7 +52,7 @@ public class LetterStratureService : ILetterStratureService
         _org = org;
     }
 
-    public async Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null)
+    public async Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null, int? userId = null)
     {
         if (number == -1) return string.Empty;
 
@@ -66,8 +67,10 @@ public class LetterStratureService : ILetterStratureService
         var pc = new PersianCalendar();
         var year = pc.GetYear(date ?? DateTime.Now);
 
-        // «واحد» — از سازمانِ سمتِ صادرکننده، وگرنه سازمانِ پیش‌فرض (Organization.NameUniq)
+        // «واحد» — از سازمانِ سمتِ صادرکننده، وگرنه سازمانِ کاربر، وگرنه سازمانِ پیش‌فرض
         var unit = await _org.GetOrganizationNameUniqAsync(sematId);
+        if (string.IsNullOrEmpty(unit) && userId is > 0)
+            unit = await _org.GetOrganizationNameUniqByUserIdAsync(userId);
 
         var parts = new List<string>();
         foreach (var item in structure)
@@ -78,7 +81,7 @@ public class LetterStratureService : ILetterStratureService
                     parts.Add(year.ToString());
                     break;
                 case "واحد":
-                    // اگر سازمانی تعریف نشده، جزء «واحد» انداخته می‌شود تا شماره بدون شکاف ساخته شود
+                    // اگر سازمانی تعریف نشده، جزء «واحد» انداشته می‌شود تا شماره بدون شکاف ساخته شود
                     if (!string.IsNullOrEmpty(unit)) parts.Add(unit);
                     break;
                 case "شماره":
