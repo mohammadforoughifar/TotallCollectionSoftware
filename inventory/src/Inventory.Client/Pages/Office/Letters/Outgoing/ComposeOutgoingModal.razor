@@ -191,21 +191,7 @@
 
             <div class="fcard">
                 <label>متن نامه</label>
-                <div class="edt">
-                    <div class="edt-bar">
-                        <button type="button" @onclick='() => Ed("undo")'><i class="bi bi-arrow-clockwise"></i></button>
-                        <button type="button" @onclick='() => Ed("redo")'><i class="bi bi-arrow-counterclockwise"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" @onclick='() => Ed("bold")'><i class="bi bi-type-bold"></i></button>
-                        <button type="button" @onclick='() => Ed("italic")'><i class="bi bi-type-italic"></i></button>
-                        <button type="button" @onclick='() => Ed("underline")'><i class="bi bi-type-underline"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" @onclick='() => Ed("justifyRight")'><i class="bi bi-text-right"></i></button>
-                        <button type="button" @onclick='() => Ed("justifyCenter")'><i class="bi bi-text-center"></i></button>
-                        <button type="button" @onclick='() => Ed("justifyLeft")'><i class="bi bi-text-left"></i></button>
-                    </div>
-                    <div class="edt-body" id="ltxOutEditor" contenteditable="true" data-ph="متن نامه صادره را بنویسید…"></div>
-                </div>
+                <RichTextEditor @ref="_richOut" Id="ltxOutEditor" Placeholder="متن نامه صادره را بنویسید…" @bind-Value="pendingBody" Height="260" />
             </div>
 
             <div class="fcard">
@@ -355,6 +341,7 @@
     private int companyId;
 
     private LetterPickCombo? cbRcv, cbErja, cbHamesh, cbSigners;
+    private RichTextEditor? _richOut;
     private HashSet<int> rcvUsers = new(), rcvGroups = new();
     private HashSet<int> erjaUsers = new(), erjaGroups = new();
     private HashSet<int> hameshUsers = new(), hameshGroups = new();
@@ -471,7 +458,7 @@
     private async Task SetEditorSoonAsync()
     {
         await Task.Delay(60);
-        try { await JS.InvokeVoidAsync("rteSetHtml", "ltxOutEditor", pendingBody); } catch { }
+        if (_richOut != null) await _richOut.SetContentAsync(pendingBody);
     }
 
     private async Task LoadListsAsync()
@@ -502,11 +489,6 @@
     private void CloseCombos() { cbRcv?.Close(); cbErja?.Close(); cbHamesh?.Close(); cbSigners?.Close(); }
     private void OnRcvChanged() { }
     private void OnSignerChanged() { }
-
-    private async Task Ed(string cmd)
-    {
-        try { await JS.InvokeVoidAsync("rteExec", cmd); } catch { }
-    }
 
     private void OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
@@ -585,8 +567,8 @@
 
     private async Task<string> EditorHtmlAsync()
     {
-        try { return await JS.InvokeAsync<string>("rteGetHtml", "ltxOutEditor") ?? ""; }
-        catch { return pendingBody; }
+        if (_richOut != null) return await _richOut.GetContentAsync();
+        return pendingBody;
     }
 
     private bool Validate()
