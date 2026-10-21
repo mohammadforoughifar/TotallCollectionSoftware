@@ -70,7 +70,7 @@ public class LetterStratureService : ILetterStratureService
         // «واحد» — از سازمانِ سمتِ صادرکننده، وگرنه سازمانِ کاربر، وگرنه سازمانِ پیش‌فرض
         var unit = await _org.GetOrganizationNameUniqAsync(sematId);
         if (string.IsNullOrEmpty(unit) && userId is > 0)
-            unit = await _org.GetOrganizationNameUniqByUserIdAsync(userId);
+            unit = await _org.GetOrganizationNameUniqByUserIdAsync(userId.Value);
 
         var parts = new List<string>();
         foreach (var item in structure)

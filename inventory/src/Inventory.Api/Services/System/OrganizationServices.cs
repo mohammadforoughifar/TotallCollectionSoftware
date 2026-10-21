@@ -67,7 +67,9 @@ public class OrganizationServices : IOrganizationServices
     {
         // کاربر → سازمانِ اختصاص یافته → NameUniq
         var name = await _db.SystemUsers.AsNoTracking()
-            .Where(u => u.Id == userId && u.OrganizationId is > 0
+            // توجه: داخل expression tree (Where روی IQueryable) الگوی «is > 0»
+            // مجاز نیست (CS8122) — مقایسهٔ معمولی به‌کار می‌رود (NULL>0=false).
+            .Where(u => u.Id == userId && u.OrganizationId > 0
                         && u.Organization != null && !u.Organization.IsDelete && u.Organization.IsActive)
             .Select(u => u.Organization!.NameUniq)
             .FirstOrDefaultAsync();
