@@ -223,7 +223,7 @@ public class WorkOrderLog
     [MaxLength(150)]
     public string ActorName { get; set; } = "";
 
-    /// <summary>Created | Seen | Reply | Approved | Rejected | Extended | Closed | Reopened</summary>
+    /// <summary>Created | Seen | Reply | Approved | Rejected | Extended | Closed | Reopened | AssigneesAdded</summary>
     [MaxLength(30)]
     public string Action { get; set; } = "";
 

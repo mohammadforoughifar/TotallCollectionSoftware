@@ -1014,6 +1014,90 @@ public class WorkOrdersController : ControllerBase
         return Ok();
     }
 
+    // ================== افزودن نفر به گردش دستور کار (فقط دستوردهنده) ==================
+    /// <summary>
+    /// افزودن گیرندهٔ جدید به دستور کارِ باز از داخل «گردش» — حتی بعد از رویت/پاسخِ دیگران
+    /// (برخلاف ویرایش که پس از اولین رویت قفل می‌شود). فقط اضافه می‌کند؛ گیرندگان فعلی دست نمی‌خورند.
+    /// قواعد انتخاب افراد همان ثبت دستور کار است: «به دیگران» + لیست مجاز.
+    /// </summary>
+    public class AddAssigneesDto { public List<int> UserIds { get; set; } = new(); public string? Note { get; set; } public bool SendSms { get; set; } }
+
+    [HttpPost("{id:int}/assignees")]
+    public async Task<IActionResult> AddAssignees(int id, [FromBody] AddAssigneesDto dto)
+    {
+        var ids = (dto?.UserIds ?? new()).Where(x => x > 0).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
+        if (ids.Count > 50) return BadRequest(new { message = "در هر مرحله حداکثر ۵۰ نفر قابل افزودن است." });
+
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status != "Open")
+            return BadRequest(new { message = "دستور کار بسته است؛ برای افزودن نفر ابتدا آن را بازگشایی کنید." });
+
+        var existingIds = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).Select(a => a.UserId).ToListAsync();
+        var dup = ids.Where(existingIds.Contains).ToList();
+        if (dup.Count == ids.Count) return BadRequest(new { message = "افراد انتخابی از قبل در گردش این دستور کار هستند." });
+        ids = ids.Except(dup).ToList();
+
+        var others = ids.Where(x => x != MyUserId).ToList();
+        if (others.Count > 0)
+        {
+            if (!await HasAsync("AssignOthers"))
+                return BadRequest(new { message = "شما فقط مجاز به ثبت دستور کار برای خودتان هستید." });
+            if (!IsLegacyAdmin)
+            {
+                var allowed = await _db.WorkOrderAllowedAssignees.Where(a => a.OwnerUserId == MyUserId)
+                    .Select(a => a.TargetUserId).ToListAsync();
+                if (others.Any(x => !allowed.Contains(x)))
+                    return BadRequest(new { message = "برخی افراد انتخابی در لیست مجاز شما نیستند." });
+            }
+        }
+
+        var users = await _db.Users.Where(u => ids.Contains(u.Id) && u.IsActive).ToListAsync();
+        if (users.Count != ids.Count)
+            return BadRequest(new { message = "برخی افراد انتخابی وجود ندارند یا غیرفعال‌اند." });
+        var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
+            .Select(u => u.Username).ToList();
+        if (noName.Count > 0)
+            return BadRequest(new { message = $"این کاربران نام و نام خانوادگی ندارند: {string.Join("، ", noName)} — از بخش کاربران تکمیل کنید." });
+
+        foreach (var u in users)
+            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = UserDisplay.Name(u) });
+
+        var note = dto!.Note?.Trim();
+        var names = string.Join("، ", users.Select(UserDisplay.Name));
+        var text = $"افزودن به گردش: {names}" + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
+        Log(wo.Id, "AssigneesAdded", text.Length > 4000 ? text[..4000] : text);
+
+        // دستور کارِ ساخته‌شده از نامه: افراد جدید در گردش واقعی همان نامه هم قرار می‌گیرند
+        if (!string.IsNullOrWhiteSpace(wo.SourceModule) && wo.SourceId is > 0)
+        {
+            try
+            {
+                await AddNewLetterWorkOrderAssigneesToFlowAsync(
+                    new CreateDto { SourceModule = wo.SourceModule, SourceId = wo.SourceId, AssigneeUserIds = users.Select(u => u.Id).ToList() }, wo);
+            }
+            catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+        }
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
+        foreach (var u in users.Where(u => u.Id != MyUserId))
+            await _notify.SendAsync(u.Id, "به دستور کار اضافه شدید 📋",
+                $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}{(string.IsNullOrWhiteSpace(note) ? "" : " — " + note)}",
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+
+        WorkOrderSmsResult? smsResult = dto.SendSms
+            ? await _sms.SendNewWorkOrderAsync(wo, users.Where(u => u.Id != MyUserId).ToList())
+            : null;
+
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { added = users.Count, skipped = dup.Count, sms = smsResult });
+    }
+
     // ================== بازگشایی دستور کار بسته‌شده و برگشت به گردش ==================
     /// <param name="Note">علت بازگشایی (اختیاری) — در تاریخچه ثبت می‌شود.</param>
     /// <param name="NewDueAt">مهلت جدید (اختیاری)؛ جزو ۵ بار تمدید حساب نمی‌شود.</param>

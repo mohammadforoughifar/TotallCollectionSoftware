@@ -2031,6 +2031,75 @@ else
                 </div>
                 <div class="modal-body">
 
+                    @* ---------- افزودن نفر به گردش (فقط دستوردهنده، دستور باز) ---------- *@
+                    @if (isOwnerG && detail.Status == "Open")
+                    {
+                        @if (!gdAddOpen)
+                        {
+                            <div class="d-flex justify-content-end mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenGardeshAdd">
+                                    <i class="bi bi-person-plus"></i> افزودن نفر به گردش
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            var existingIds = detail.Assignees.Select(x => x.UserId).ToHashSet();
+                            var opts = targets.Where(t => !existingIds.Contains(t.Id)
+                                && (string.IsNullOrWhiteSpace(gdAddSearch) || t.Username.Contains(gdAddSearch.Trim(), StringComparison.OrdinalIgnoreCase))).ToList();
+                            <div class="wo-block mb-3" style="border-color:#bfdbfe">
+                                <div class="wo-block-title" style="background:#eff6ff">
+                                    <i class="bi bi-person-plus text-primary"></i> افزودن نفر به گردش
+                                    <button type="button" class="btn-close ms-auto" style="font-size:.6rem" aria-label="انصراف" @onclick="() => gdAddOpen = false"></button>
+                                </div>
+                                <div class="wo-block-body">
+                                    @if (gdAddSel.Count > 0)
+                                    {
+                                        <div class="d-flex flex-wrap gap-1 mb-2">
+                                            @foreach (var t in targets.Where(t => gdAddSel.Contains(t.Id)))
+                                            {
+                                                var tid = t.Id;
+                                                <span class="ms-chip">@t.Username <i class="bi bi-x-circle-fill" role="button" @onclick="() => gdAddSel.Remove(tid)"></i></span>
+                                            }
+                                        </div>
+                                    }
+                                    <input class="form-control form-control-sm mb-1" placeholder="جستجوی افراد..." @bind="gdAddSearch" @bind:event="oninput" />
+                                    <div class="border rounded mb-2" style="max-height:200px;overflow:auto">
+                                        @if (gdAddLoading)
+                                        {
+                                            <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+                                        }
+                                        else if (opts.Count == 0)
+                                        {
+                                            <div class="text-muted fs-8 text-center py-3">فرد دیگری در لیست مجاز شما برای افزودن نیست.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var t in opts)
+                                            {
+                                                var tid = t.Id;
+                                                var isSel = gdAddSel.Contains(tid);
+                                                <div class="ms-combo-item @(isSel ? "sel" : "")" role="button" @onclick="() => { if (!gdAddSel.Remove(tid)) gdAddSel.Add(tid); }">
+                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i> @t.Username
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                    <textarea class="form-control form-control-sm mb-2" rows="2" placeholder="توضیح برای افراد جدید (اختیاری)..." @bind="gdAddNote"></textarea>
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <div class="form-check mb-0">
+                                            <input class="form-check-input" type="checkbox" id="gdAddSms" @bind="gdAddSms" disabled="@(!access.SmsConfigured)" />
+                                            <label class="form-check-label fs-8" for="gdAddSms">ارسال پیامک@(access.SmsConfigured ? "" : " (تنظیم نشده)")</label>
+                                        </div>
+                                        <button type="button" class="btn btn-primary btn-sm ms-auto" disabled="@(busy || gdAddSel.Count == 0)" @onclick="SubmitGardeshAdd">
+                                            <i class="bi bi-check2"></i> افزودن @(gdAddSel.Count > 0 ? $"({gdAddSel.Count} نفر)" : "")
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+
                     @* ---------- نمای لیستی ---------- *@
                     @if (gardeshView == 0)
                     {
@@ -2656,7 +2725,44 @@ else
     {
         gardeshView = 0;
         selectedGardeshAssignee = null;
+        gdAddOpen = false;
         gardeshOpen = true;
+    }
+
+    // افزودن نفر به گردش
+    private bool gdAddOpen, gdAddLoading, gdAddSms;
+    private string gdAddSearch = "", gdAddNote = "";
+    private HashSet<int> gdAddSel = new();
+
+    private async Task OpenGardeshAdd()
+    {
+        gdAddSel = new(); gdAddSearch = ""; gdAddNote = ""; gdAddSms = false;
+        gdAddOpen = true;
+        gdAddLoading = true;
+        StateHasChanged();
+        try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        gdAddLoading = false;
+    }
+
+    private async Task SubmitGardeshAdd()
+    {
+        if (detail == null || gdAddSel.Count == 0) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/assignees",
+                new { userIds = gdAddSel.ToList(), note = gdAddNote, sendSms = gdAddSms });
+            if (!resp.IsSuccessStatusCode) { Toast.Error(await resp.Content.ReadAsStringAsync()); return; }
+            Toast.Success($"{gdAddSel.Count} نفر به گردش دستور کار اضافه شد.");
+            var id = detail.Id; var view = gardeshView;
+            gdAddOpen = false;
+            await LoadAll();
+            await OpenById(id);          // جزئیات و تاریخچه تازه
+            gardeshView = view; gardeshOpen = true; // گردش باز بماند
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
     }
 
     /// <summary>نشان تاریخچه گردش</summary>
@@ -2671,6 +2777,7 @@ else
         "Extended" => "<span class='badge bg-warning-subtle text-warning border'>تمدید</span>",
         "Closed" => "<span class='badge bg-dark-subtle text-dark border'>بستن</span>",
         "Reopened" => "<span class='badge bg-success-subtle text-success border'>بازگشایی</span>",
+        "AssigneesAdded" => "<span class='badge bg-primary-subtle text-primary border'>افزودن نفر</span>",
         _ => $"<span class='badge bg-light text-dark border'>{action}</span>"
     };
     private bool? myDone = true;
@@ -3805,7 +3912,7 @@ else
     {
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
-        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", "Reopened" => "بازگشایی",
+        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", "Reopened" => "بازگشایی", "AssigneesAdded" => "افزودن نفر به گردش",
         "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار",
         "Chained" => "ارجاع زنجیره‌ای", "Scheduled" => "ثبت نوبت‌های تقویمی", "Deleted" => "حذف دستور کار", _ => a
     };
