@@ -21,7 +21,7 @@ public interface IOrganizationServices
     /// نام اختصاصی سازمان (NameUniq) بر اساس شناسه کاربر — برای parte «واحد» در شماره نامه.
     /// اگر کاربر سازمانی اختصاص یافته نداشت، به روش پیش‌فرض (sematId null) بازمی‌گردد.
     /// </summary>
-    Task<string> GetOrganizationNameUniqByUserIdAsync(int userId);
+    Task<string> GetOrganizationNameUniqByUserIdAsync(int? userId);
 
     /// <summary>فهرست سازمان‌های فعال (برای انتخاب در تنظیمات)</summary>
     Task<List<OrganizationDto>> GetOrganizationsAsync();
@@ -63,11 +63,13 @@ public class OrganizationServices : IOrganizationServices
                    .FirstOrDefaultAsync() ?? "";
     }
 
-    public async Task<string> GetOrganizationNameUniqByUserIdAsync(int userId)
+    public async Task<string> GetOrganizationNameUniqByUserIdAsync(int? userId)
     {
+        if (userId is null) return await GetOrganizationNameUniqAsync(null);
+
         // کاربر → سازمانِ اختصاص یافته → NameUniq
         var name = await _db.SystemUsers.AsNoTracking()
-            .Where(u => u.Id == userId && u.OrganizationId is > 0
+            .Where(u => u.Id == userId && u.OrganizationId > 0
                         && u.Organization != null && !u.Organization.IsDelete && u.Organization.IsActive)
             .Select(u => u.Organization!.NameUniq)
             .FirstOrDefaultAsync();
