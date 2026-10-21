@@ -79,13 +79,13 @@ public class DevTeamClient : IDevTeamClient
     {
         if (res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadAsStringAsync();
-        string msg = body;
+        string msg = ApiClient.DescribeBody(body);
         try
         {
             var err = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-            if (err != null && err.TryGetValue("message", out var m)) msg = m?.ToString() ?? body;
+            if (err != null && err.TryGetValue("message", out var m)) msg = m?.ToString() ?? msg;
         }
-        catch { /* keep raw */ }
+        catch { /* keep summarized raw */ }
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(msg) ? res.ReasonPhrase : msg);
     }
 

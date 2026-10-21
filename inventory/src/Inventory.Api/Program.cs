@@ -816,7 +816,19 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     // بعد از پابلیش خودِ index.html و همهٔ فایل‌های WASM خطای 401 می‌گیرند و برنامه اصلاً باز نمی‌شود
     // (در حالت سورس، کلاینت با dev server جدا سرو می‌شود و مشکل دیده نمی‌شود).
     // APIها همچنان با همان FallbackPolicy محافظت می‌شوند؛ فقط پوستهٔ SPA عمومی می‌ماند (مثل صفحهٔ ورود).
-    app.MapFallback("{*path:nonfile}", ctx => ServeSpaIndexAsync(ctx, clientRoot)).AllowAnonymous();
+    // ⚠ مسیرهای /api/* هرگز نباید پوستهٔ SPA را بگیرند: اگر درخواست API با هیچ endpoint ای
+    // مطابقت نداشت (نسخهٔ قدیمی سرور / مسیر اشتباه)، به‌جای HTML باید 404 JSON برگردد تا
+    // کلاینت به‌جای «کد صفحهٔ HTML» در باکس خطا، پیام قابل‌فهم ببیند.
+    app.MapFallback("{*path:nonfile}", ctx =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            return ctx.Response.WriteAsync("{\"message\": \"این مسیر در API یافت نشد؛ احتمالاً نسخهٔ سرور قدیمی است یا آدرس درخواست اشتباه است.\"}");
+        }
+        return ServeSpaIndexAsync(ctx, clientRoot);
+    }).AllowAnonymous();
 }
 
 if (runningUnderIis)
