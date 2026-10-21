@@ -1282,6 +1282,8 @@
         public int Id { get; set; }
         public string Number { get; set; } = "";
         public string Title { get; set; } = "";
+        public int AssigneeCount { get; set; }
+        public List<string> Assignees { get; set; } = new();
     }
 }
 
@@ -1297,7 +1299,3 @@
     .pg-jump button { height:26px; padding:0 .4rem; font-size:.75rem; }
     .pginfo { margin-left:.75rem; font-size:.82rem; color:#64748b; white-space:nowrap; }
 </style>
-        public int AssigneeCount { get; set; }
-        public List<string> Assignees { get; set; } = new();
-    }
-}
