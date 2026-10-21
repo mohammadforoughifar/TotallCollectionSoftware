@@ -25,10 +25,10 @@ public class SystemOrganizationsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult> Get([FromQuery] int? companyId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var query = _db.Organizations.Where(o => !o.IsDelete).OrderBy(o => o.NameUnit);
+        IQueryable<Organization> query = _db.Organizations.Where(o => !o.IsDelete);
         if (companyId is > 0)
             query = query.Where(o => o.CompanyId == companyId);
-        return Ok(await Paging.ResultAsync(query, skip, take));
+        return Ok(await Paging.ResultAsync(query.OrderBy(o => o.NameUnit), skip, take));
     }
 
     [HttpGet("{id:int}")]

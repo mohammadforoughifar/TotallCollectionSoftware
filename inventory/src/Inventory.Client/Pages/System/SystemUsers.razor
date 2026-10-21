@@ -410,7 +410,7 @@
     private bool busy = false;
     private string formError = "";
     private string searchText = "";
-    private int selectedCompanyId = 0;
+    private int? selectedCompanyId = null;
     private int? selectedOrganizationId = null;
     private int editId = 0;
 
@@ -624,6 +624,7 @@
     public class OrganizationItem
     {
         public int OrganizationId { get; set; }
+        public int? CompanyId { get; set; }
         public string NameUnit { get; set; } = "";
         public string NameUniq { get; set; } = "";
         public bool IsActive { get; set; } = true;
