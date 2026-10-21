@@ -68,7 +68,7 @@ public class WorkOrder
     /// <summary>تاریخ و ساعت مقرر</summary>
     public DateTime DueAt { get; set; }
 
-    /// <summary>Open | Closed — بعد از بستن هیچ عملیاتی مجاز نیست</summary>
+    /// <summary>Open | Closed — بعد از بستن هیچ عملیاتی مجاز نیست، مگر «بازگشایی» توسط دستوردهنده (برگشت به Open)</summary>
     [MaxLength(20)]
     public string Status { get; set; } = "Open";
 
@@ -223,7 +223,7 @@ public class WorkOrderLog
     [MaxLength(150)]
     public string ActorName { get; set; } = "";
 
-    /// <summary>Created | Seen | Reply | Approved | Rejected | Extended | Closed</summary>
+    /// <summary>Created | Seen | Reply | Approved | Rejected | Extended | Closed | Reopened</summary>
     [MaxLength(30)]
     public string Action { get; set; } = "";
 

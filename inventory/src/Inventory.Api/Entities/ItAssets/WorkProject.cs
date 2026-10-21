@@ -100,7 +100,7 @@ public class WorkProjectLog
 
     /// <summary>
     /// Created | Edited | Extended | Closed | Reopened | Deleted |
-    /// MemberAdded | MemberRemoved | OrderAdded | OrderRemoved | OrderClosed
+    /// MemberAdded | MemberRemoved | OrderAdded | OrderRemoved | OrderClosed | OrderReopened
     /// </summary>
     [MaxLength(30)]
     public string Action { get; set; } = "";

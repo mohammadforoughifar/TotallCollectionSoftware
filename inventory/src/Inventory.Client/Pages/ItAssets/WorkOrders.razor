@@ -1485,6 +1485,38 @@ else
                             }
                         </div>
                     }
+                    @if (detail.Status == "Closed" && isOwner)
+                    {
+                        <div class="wo-block mb-3" style="border-color:#bbf7d0">
+                            <div class="wo-block-title" style="background:#f0fdf4"><i class="bi bi-unlock" style="color:#16a34a"></i> بازگشایی و برگشت به گردش</div>
+                            <div class="wo-block-body">
+                                <div class="fs-8 text-muted mb-2">دستور کار دوباره «باز» می‌شود، به کارتابل گیرندگان برمی‌گردد و همهٔ عملیات (پاسخ، تمدید، چک‌لیست، گفت‌وگو و بستن مجدد) دوباره فعال می‌شود. سابقهٔ قبلی در تاریخچه محفوظ می‌ماند.</div>
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-5">
+                                        <label class="form-label fs-8">مهلت جدید (اختیاری)</label>
+                                        <DatePicker @bind-Value="reopenDate" />
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="time" class="form-control num" dir="ltr" @bind="reopenTime" disabled="@(reopenDate == null)" />
+                                    </div>
+                                    <div class="col-md-4 fs-9 text-muted">
+                                        @if (reopenDate == null && detail.DueAt < DateTime.Now)
+                                        {
+                                            <span class="text-danger"><i class="bi bi-exclamation-triangle"></i> مهلت فعلی (@detail.DueAt.ToFa()) گذشته است.</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="woReopenReset" @bind="reopenReset" />
+                                    <label class="form-check-label fs-8" for="woReopenReset">پاسخ‌ها و تأییدهای قبلی گیرندگان باطل شود تا دوباره پاسخ دهند</label>
+                                </div>
+                                <textarea class="form-control form-control-sm mb-2" rows="2" placeholder="علت بازگشایی (اختیاری)..." @bind="reopenNote"></textarea>
+                                <button class="btn btn-success" disabled="@busy" @onclick="SubmitReopen">
+                                    <i class="bi bi-unlock"></i> بازگشایی دستور کار
+                                </button>
+                            </div>
+                        </div>
+                    }
 
                     </section>
                 </div>
@@ -2638,10 +2670,15 @@ else
         "Rejected" => "<span class='badge bg-danger-subtle text-danger border'>رد</span>",
         "Extended" => "<span class='badge bg-warning-subtle text-warning border'>تمدید</span>",
         "Closed" => "<span class='badge bg-dark-subtle text-dark border'>بستن</span>",
+        "Reopened" => "<span class='badge bg-success-subtle text-success border'>بازگشایی</span>",
         _ => $"<span class='badge bg-light text-dark border'>{action}</span>"
     };
     private bool? myDone = true;
     private string myReply = "", closeNote = "";
+    private string reopenNote = "";
+    private DateTime? reopenDate;
+    private TimeOnly reopenTime = new(14, 0);
+    private bool reopenReset = true;
     private Dictionary<int, string> decideNotes = new();
     private DateTime? extDate;
     private TimeOnly extTime = new(14, 0);
@@ -3683,6 +3720,30 @@ else
         finally { busy = false; }
     }
 
+    private async Task SubmitReopen()
+    {
+        if (detail == null) return;
+        DateTime? due = reopenDate?.Date.Add(reopenTime.ToTimeSpan());
+        if (due != null && due <= DateTime.Now) { Toast.Error("مهلت جدید باید بعد از زمان فعلی باشد."); return; }
+        if (!await JS.InvokeAsync<bool>("confirm", $"دستور کار «{detail.Title}» بازگشایی و به گردش برگردد؟")) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/reopen",
+                new { note = reopenNote, newDueAt = due, resetReplies = reopenReset });
+            if (resp.IsSuccessStatusCode)
+            {
+                Toast.Success("دستور کار بازگشایی شد و به گردش برگشت. 🔓");
+                var id = detail.Id;
+                reopenNote = ""; reopenDate = null; reopenReset = true;
+                detail = null; await LoadAll(); await OpenById(id);
+            }
+            else Toast.Error(await resp.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
     private async Task SubmitClose()
     {
         if (detail == null) return;
@@ -3744,7 +3805,7 @@ else
     {
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
-        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی",
+        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", "Reopened" => "بازگشایی",
         "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار",
         "Chained" => "ارجاع زنجیره‌ای", "Scheduled" => "ثبت نوبت‌های تقویمی", "Deleted" => "حذف دستور کار", _ => a
     };

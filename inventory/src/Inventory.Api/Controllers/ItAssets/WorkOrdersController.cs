@@ -1014,6 +1014,74 @@ public class WorkOrdersController : ControllerBase
         return Ok();
     }
 
+    // ================== بازگشایی دستور کار بسته‌شده و برگشت به گردش ==================
+    /// <param name="Note">علت بازگشایی (اختیاری) — در تاریخچه ثبت می‌شود.</param>
+    /// <param name="NewDueAt">مهلت جدید (اختیاری)؛ جزو ۵ بار تمدید حساب نمی‌شود.</param>
+    /// <param name="ResetReplies">پاسخ‌ها و تأییدهای قبلی گیرندگان باطل شود تا دوباره پاسخ دهند.</param>
+    public class ReopenDto { public string? Note { get; set; } public DateTime? NewDueAt { get; set; } public bool ResetReplies { get; set; } = true; }
+
+    [HttpPost("{id:int}/reopen")]
+    public async Task<IActionResult> Reopen(int id, [FromBody] ReopenDto? dto)
+    {
+        dto ??= new ReopenDto();
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid(); // مثل بستن: فقط دستوردهنده
+        if (wo.Status != "Closed") return BadRequest(new { message = "این دستور کار باز است." });
+        if (dto.NewDueAt is { } nd && nd <= DateTime.Now)
+            return BadRequest(new { message = "مهلت جدید باید بعد از زمان فعلی باشد." });
+
+        // ارجاع زنجیره‌ای — والد بسته یعنی همهٔ زیر-دستورها بسته‌اند؛ اول والد بازگشایی شود
+        if (wo.ParentOrderId is > 0)
+        {
+            var parent = await _db.WorkOrders.AsNoTracking()
+                .Where(w => w.Id == wo.ParentOrderId).Select(w => new { w.Number, w.Status }).FirstOrDefaultAsync();
+            if (parent != null && parent.Status == "Closed")
+                return BadRequest(new { message = $"دستور والد ({parent.Number}) بسته است؛ ابتدا آن را بازگشایی کنید." });
+        }
+        // پروژهٔ بسته دستور باز نمی‌پذیرد
+        if (wo.ProjectId is > 0)
+        {
+            var prj = await _db.WorkProjects.AsNoTracking()
+                .Where(p => p.Id == wo.ProjectId).Select(p => new { p.Number, p.Status }).FirstOrDefaultAsync();
+            if (prj != null && prj.Status == WorkProjectStatus.Closed)
+                return BadRequest(new { message = $"پروژهٔ این دستور ({prj.Number}) بسته است؛ ابتدا پروژه را بازگشایی کنید." });
+        }
+
+        wo.Status = "Open";
+        wo.ClosedAt = null;
+        wo.CloseNote = null; // یادداشت بستن قبلی در تاریخچه محفوظ است
+        var oldDue = wo.DueAt;
+        if (dto.NewDueAt is { } newDue) wo.DueAt = newDue;
+
+        var asgs = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).ToListAsync();
+        if (dto.ResetReplies)
+            foreach (var a in asgs)
+            {
+                a.Done = null; a.RepliedAt = null; a.ReplyText = null;
+                a.OwnerDecision = null; a.OwnerDecisionNote = null;
+            }
+
+        var note = dto.Note?.Trim();
+        var text = $"دستور کار توسط {MyUsername} بازگشایی شد و به گردش برگشت"
+                 + (dto.NewDueAt is { } d2 ? $" — مهلت جدید: {ToFa(d2)} (قبلی: {ToFa(oldDue)})" : "")
+                 + (dto.ResetReplies && asgs.Count > 0 ? " — پاسخ‌های قبلی گیرندگان باطل شد" : "")
+                 + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
+        Log(id, "Reopened", text.Length > 4000 ? text[..4000] : text);
+        if (wo.ProjectId is > 0)
+            _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = wo.ProjectId.Value, ActorName = MyUsername, Action = "OrderReopened", Text = $"دستور {wo.Number} «{wo.Title}» بازگشایی شد." });
+        await _db.SaveChangesAsync();
+
+        foreach (var a in asgs.Where(a => a.UserId != MyUserId))
+            await _notify.SendAsync(a.UserId, "دستور کار بازگشایی شد 🔓",
+                $"{wo.Number} — «{wo.Title}»{(dto.ResetReplies ? " — لطفاً دوباره پاسخ دهید" : "")}{(string.IsNullOrWhiteSpace(note) ? "" : " — " + note)}",
+                MyUsername, "دستور کار", $"/work-orders?open={id}");
+
+        await _notify.BroadcastChangedAsync("workorders");
+        if (wo.ProjectId is > 0) await _notify.BroadcastChangedAsync("workprojects");
+        return Ok();
+    }
+
     /// <summary>حذف منطقی یک نوبت؛ نه کل سری. دسترسی مستقل در نقش‌ها.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
