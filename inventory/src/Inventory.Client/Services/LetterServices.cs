@@ -18,6 +18,8 @@ public interface ILetterService
     Task DeleteAsync(int letterId);
     Task<List<LetterPickDto>> PickAsync(string? search = null);
     Task<byte[]> GetPrintPdfAsync(int letterId, string size);
+    /// <summary>دانلود کلی پیوست‌های نامهٔ داخلی به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
+    Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 
     // گردش / ارجاع
     Task<List<ErjaTreeNodeDto>> GetGardeshAsync(int letterId);

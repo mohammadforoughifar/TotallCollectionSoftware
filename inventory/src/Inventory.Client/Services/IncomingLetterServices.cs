@@ -23,6 +23,8 @@ public interface IIncomingLetterService
     Task<bool> ToggleBayeganiAsync(int erjaId);
     Task<bool> ToggleLetterBayeganiAsync(int letterId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
+    /// <summary>دانلود کلی پیوست‌های نامهٔ وارده به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
+    Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
     Task AddErjaAsync(AddErjaDto dto);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
     Task MarkReadAsync(int erjaId);

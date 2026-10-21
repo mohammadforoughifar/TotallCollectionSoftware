@@ -68,6 +68,8 @@ public interface IOutgoingLetterService
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
     Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true);
+    /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
+    Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 }
 
 public class OutgoingLetterService : IOutgoingLetterService
