@@ -125,7 +125,8 @@ public class LetterService : ILetterService
         var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/letters/{letterId}/print?size={Uri.EscapeDataString(size)}"));
         if (!string.IsNullOrWhiteSpace(_auth.Token)) req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
         var resp = await _http.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await resp.Content.ReadAsStringAsync());
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(
+            ApiClient.DescribeBody(await resp.Content.ReadAsStringAsync()));
         return await resp.Content.ReadAsByteArrayAsync();
     }
 
@@ -283,7 +284,8 @@ public class LetterService : ILetterService
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
         var resp = await _http.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await resp.Content.ReadAsStringAsync());
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(
+            ApiClient.DescribeBody(await resp.Content.ReadAsStringAsync()));
         return await resp.Content.ReadAsByteArrayAsync();
     }
 

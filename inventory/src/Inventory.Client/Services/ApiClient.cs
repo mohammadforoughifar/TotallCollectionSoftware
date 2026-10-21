@@ -154,14 +154,22 @@ public class ApiClient : IApiClient
                 using var doc = JsonDocument.Parse(text);
                 if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
                     msg = m.GetString() ?? msg;
-                else msg = text;
+                else msg = DescribeBody(text);
             }
-            catch { if (!string.IsNullOrWhiteSpace(text)) msg = text; }
+            catch { msg = DescribeBody(text); }
             throw new ApiException(msg);
         }
 
         if (string.IsNullOrWhiteSpace(text)) return default!;
-        return JsonSerializer.Deserialize<T>(text, JsonOpts) ?? default!;
+        try
+        {
+            return JsonSerializer.Deserialize<T>(text, JsonOpts) ?? default!;
+        }
+        catch (JsonException)
+        {
+            // پاسخ ۲۰۰ ولی بدنه JSON نبود (مثلاً صفحهٔ HTML) — پیام کوتاه به‌جای خطای خام
+            throw new ApiException(DescribeBody(text));
+        }
     }
 
     public async Task<T> GetAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path);
@@ -228,11 +236,11 @@ public class ApiClient : IApiClient
                 if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
                     msg = m.GetString() ?? "خطایی رخ داد.";
                 else
-                    msg = string.IsNullOrWhiteSpace(text) ? "بدنه‌ی پاسخ خالی بود." : text;
+                    msg = DescribeBody(text);
             }
             catch
             {
-                msg = string.IsNullOrWhiteSpace(text) ? "بدنه‌ی پاسخ خالی بود." : text;
+                msg = DescribeBody(text);
             }
             // افزودن کد وضعیت و آدرس برای تشخیص آسان‌تر
             throw new ApiException($"{msg} (HTTP {(int)resp.StatusCode} — {Url(path)})");
@@ -240,6 +248,30 @@ public class ApiClient : IApiClient
 
         if (string.IsNullOrWhiteSpace(text)) return default!;
         if (typeof(T) == typeof(string)) return (T)(object)text;
-        return JsonSerializer.Deserialize<T>(text, JsonOpts) ?? default!;
+        try
+        {
+            return JsonSerializer.Deserialize<T>(text, JsonOpts) ?? default!;
+        }
+        catch (JsonException)
+        {
+            // پاسخ ۲۰۰ ولی بدنه JSON نبود (مثلاً صفحهٔ HTML) — پیام کوتاه به‌جای خطای خام
+            throw new ApiException($"{DescribeBody(text)} (HTTP {(int)resp.StatusCode} — {Url(path)})");
+        }
+    }
+
+    /// <summary>
+    /// خلاصهٔ کوتاه و قابل‌فهم از بدنهٔ غیر JSON — به‌جای ریختن کل صفحهٔ HTML در پیام خطا.
+    /// اگر پاسخ یک صفحهٔ وب بود (خطای IIS/پروکسی یا پوستهٔ SPA)، پیام راهنما برمی‌گردد؛
+    /// سایر متن‌ها به ۲۰۰ کاراکتر خلاصه می‌شوند.
+    /// </summary>
+    internal static string DescribeBody(string? text)
+    {
+        var trimmed = text?.TrimStart('\uFEFF', ' ', '\t', '\r', '\n') ?? string.Empty;
+        if (trimmed.Length == 0) return "بدنه‌ی پاسخ خالی بود.";
+        if (trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+            return "پاسخ سرور به‌جای داده (JSON) یک صفحهٔ HTML بود؛ احتمالاً نشانی سرور API اشتباه است یا سرویس API در دسترس نیست.";
+        var oneLine = trimmed.Replace('\r', ' ').Replace('\n', ' ');
+        return oneLine.Length <= 200 ? oneLine : oneLine[..200] + "…";
     }
 }
