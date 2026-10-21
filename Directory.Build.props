@@ -1,0 +1,46 @@
+<Project>
+  <!--
+    این فایل در «ریشهٔ مخزن» است و روی همهٔ پروژه‌های MSBuild مخزن (inventory/*) اعمال می‌شود.
+
+    ⚠ نحوهٔ قرارگیری فایل: MSBuild هنگام بالا رفتن از پوشهٔ پروژه، اولین
+    Directory.Build.props را import می‌کند؛ پس این فایل باید در ریشه بماند و
+    نباید نسخهٔ دیگری در inventory/ باشد (وگرنه این تنظیمات نادیده گرفته می‌شود).
+  -->
+  <PropertyGroup>
+    <!-- .NET 8 uses C# 12. Do not use latest: C# 14 can bind array
+         extension calls to Span overloads that .NET 8 expression interpreters cannot execute. -->
+    <LangVersion>12.0</LangVersion>
+    <!--
+      CS0006 Metadata file '...\\obj\\Debug\\net8.0\\ref\\*.dll' could not be found
+      اسمبلی مرجع (ref) اگر مسیر پروژه پرانتز/فاصله داشته باشد (مثل Downloads\... (2)\)
+      یا بیلد موازی قبل از اتمام Shared اجرا شود، ساخته نمی‌شود.
+      وابسته‌ها باید همان DLL اصلی را مرجع کنند.
+    -->
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!--
+    ── محدودیت ۲۶۰ کاراکتری ویندوز (MAX_PATH) ──
+    اگر مخزن در مسیرهای عمیق (مثلاً Downloads با پوشهٔ دوبلِ آرشیو GitHub:
+    «TotallCollectionSoftware-arena-...\TotallCollectionSoftware-arena-...\») استخراج شود،
+    مسیر فایل‌های موقت داخل obj و حتی کپی‌های محتوا در bin از ۲۶۰ کاراکتر می‌گذرد و
+    ویژوال استودیو با خطای زیر قطع می‌شود:
+      Could not find a part of the path '...obj\Debug\net8.0\*.GeneratedMSBuildEditorConfig.editorconfig'
+    برای پیشگیری، پوشه‌های obj و bin هر پروژه به پوشه‌های کوتاه «.o» و «.b» در
+    ریشهٔ مخزن منتقل می‌شود؛ طولانی‌ترین مسیر بیلد به‌این‌ترتیب ~۲۵۶ کاراکتر می‌ماند.
+    - تفکیک با نام پروژه انجام می‌شود تا دو پروژه هرگز obj مشترک نداشته باشند.
+    - خروجی dotnet publish (پوشهٔ publish) به‌صورت عادی داخل همین .b ساخته می‌شود
+      و اسکریپت‌های publish-win-server.bat و ... با -o خروجی می‌دهند (مستقل از این مسیر).
+  -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)' == ''">$(MSBuildThisFileDirectory).o\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath Condition="'$(BaseOutputPath)' == ''">$(MSBuildThisFileDirectory).b\$(MSBuildProjectName)\</BaseOutputPath>
+  </PropertyGroup>
+
+  <!-- کاهش حجم خروجی: در Release فایل PDB تولید نشود (بیلد Debug دست‌نخورده) -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+</Project>

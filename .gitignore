@@ -1,5 +1,7 @@
 # Build results
 bin/
+.o/
+.b/
 obj/
 [Dd]ebug/
 [Rr]elease/
