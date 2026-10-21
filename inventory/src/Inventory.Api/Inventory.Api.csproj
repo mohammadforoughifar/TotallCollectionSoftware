@@ -39,6 +39,11 @@
     <Content Update="wwwroot/uploads/letterheads/aria_company1005_letterhead.pdf"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="Always" />
+    <!-- همهٔ سربرگ‌های ثبت‌شدهٔ شرکت‌ها (هومپا/آریا/فوروث) باید با Publish منتشر شوند؛
+         اگر فایل سربرگ روی سرور غایب باشد، چاپ نامه صادره از طرح داخل قالب MRT شرکت
+         استفاده می‌کند اما این فایل‌ها هم باید برای مسیر «فایل ثبت‌شده» موجود باشند. -->
+    <Content Update="wwwroot/uploads/letterheads/**/*"
+             CopyToPublishDirectory="PreserveNewest" />
     <!-- appsettings.Development فقط برای توسعه است؛ در انتشار منتشر نشود -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using PdfSharp.Drawing;
@@ -15,11 +16,17 @@ namespace Inventory.Api.Services.Office.Outgoing;
 
 // ============================================================
 //  چاپ نامه صادره روی سربرگ شرکت — سایز A4 و A5
-//  • سربرگ: فایل PDF ثبت‌شده در SystemCompanies.LetterheadFileName که
-//    نسبت به wwwroot مسیر‌دهی می‌شود (مثلاً uploads/letterheads/header.pdf).
+//  • منبع سربرگ به ترتیب:
+//    ۱) فایل ثبت‌شده در SystemCompanies.LetterheadFileName (نسبت به wwwroot)
+//    ۲) طرح سربرگ جاسازی‌شده در قالب چاپ خودِ شرکت
+//       (Reports/OutgoingLetters/Companies/{CompanyId}/Outgoing-{Size}.mrt —
+//        Watermark.ImageBytes)؛ این طرح همیشه همراه خروجی سرور منتشر می‌شود
+//        و چاپ را از تنظیمات بانک اطلاعاتی مستقل می‌کند.
+//    ۳) سربرگ فوروث / لوگوی HR — فقط برای شرکت‌های بدون سربرگ اختصاصی.
 //  • متن نامه با QuestPDF (فونت فارسی وزیرمتن، راست‌به‌چپ) تولید و سپس
 //    با PDFsharp روی صفحه سربرگ قرار می‌گیرد (Overlay).
-//  • اگر شرکت/سربرگ نداشته باشد، نامه بدون پس‌زمینه چاپ می‌شود.
+//  • برای هومپا (1003) و آریا (1005) اگر هیچ سربرگی قابل‌یافتن نباشد، چاپ
+//    متوقف می‌شود تا نامه هرگز روی صفحهٔ سفید چاپ نشود.
 // ============================================================
 
 public interface IOutgoingLetterPrintService
@@ -123,24 +130,105 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
         };
 
-        return candidates.FirstOrDefault(File.Exists);
+        var found = candidates.FirstOrDefault(File.Exists);
+        if (found == null) return null;
+
+        // Only renderable letterhead files (PDF/image) are accepted. Values that
+        // point at an MRT report template or any other file type are ignored —
+        // the template's embedded design is used through ExtractTemplateLetterhead.
+        var extension = Path.GetExtension(found).ToLowerInvariant();
+        return extension is ".pdf" or ".png" or ".jpg" or ".jpeg" ? found : null;
     }
 
-    /// <summary>Use the exact letterhead path saved on the selected SystemCompany.</summary>
-    private string? ResolveCompanyLetterheadPath(SystemCompany? company)
+    /// <summary>
+    /// فایل سربرگ ثبت‌شده روی رکورد شرکت — بدون جانشین‌سازی. مقدار نامعتبر
+    /// (مسیر قالب MRT، فایل غایب یا نوع غیرقابل‌رندر) نادیده گرفته می‌شود تا
+    /// سربرگ جاسازی‌شده در قالب همان شرکت جایگزین شود.
+    /// </summary>
+    private string? ResolveRegisteredLetterheadFile(SystemCompany? company)
+        => ResolveLetterheadPath(company?.LetterheadFileName);
+
+    // ==================== سربرگ جاسازی‌شده در قالب MRT شرکت ====================
+
+    /// <summary>
+    /// طرح سربرگ طراحی‌شدهٔ هر شرکت داخل فایل قالب چاپ همان شرکت
+    /// (Reports/OutgoingLetters/Companies/{CompanyId}/Outgoing-{Size}.mrt)
+    /// به‌صورت Watermark.ImageBytes ذخیره شده است. این متد همان تصویر را
+    /// استخراج و در پوشهٔ موقت کش می‌کند تا نامهٔ هر شرکت روی سربرگ خودش
+    /// چاپ شود — حتی اگر رکورد شرکت در بانک اطلاعاتی سربرگی ثبت نکرده باشد
+    /// یا فایل‌های wwwroot روی سرور موجود نباشند (قالب‌ها همراه بیلد منتشر می‌شوند).
+    /// </summary>
+    private string? ExtractTemplateLetterhead(int companyId, bool isA5)
     {
-        var configuredFileName = company?.LetterheadFileName;
-        var configuredPath = ResolveLetterheadPath(configuredFileName);
-        if (configuredPath != null) return configuredPath;
+        var sizes = isA5 ? new[] { "A5", "A4" } : new[] { "A4", "A5" };
+        foreach (var templateSize in sizes)
+        {
+            var templatePath = FindCompanyTemplate(companyId, templateSize);
+            if (templatePath == null) continue;
 
-        // Homepa and Aria must never silently receive another company's letterhead.
-        if (RequiresRegisteredCompanyLetterhead(company?.Id)) return null;
+            try
+            {
+                var watermarkBytes = ReadTemplateWatermark(templatePath);
+                if (watermarkBytes is not { Length: > 0 })
+                {
+                    _logger.LogWarning(
+                        "قالب MRT شرکت سربرگ جاسازی‌شده ندارد. CompanyId={CompanyId}, Path={Path}",
+                        companyId, templatePath);
+                    continue;
+                }
 
-        if (string.IsNullOrWhiteSpace(configuredFileName)
-            || configuredFileName.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase))
-            return ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+                var cachePath = Path.Combine(
+                    Path.GetTempPath(), "totall-letterheads",
+                    $"company-{companyId}-outgoing-{templateSize.ToLowerInvariant()}.jpg");
+                Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+                try
+                {
+                    File.WriteAllBytes(cachePath, watermarkBytes);
+                }
+                catch (IOException)
+                {
+                    // چاپ هم‌زمان دو نامه: فایل کش ممکن است در استفاده باشد — با نام یکتا بنویس.
+                    cachePath = Path.Combine(
+                        Path.GetDirectoryName(cachePath)!,
+                        $"company-{companyId}-outgoing-{templateSize.ToLowerInvariant()}-{Guid.NewGuid():N}.jpg");
+                    File.WriteAllBytes(cachePath, watermarkBytes);
+                }
+
+                _logger.LogInformation(
+                    "سربرگ طراحی‌شده از قالب MRT شرکت استخراج شد. CompanyId={CompanyId}, TemplateSize={TemplateSize}, TemplatePath={TemplatePath}, Bytes={Bytes}",
+                    companyId, templateSize, templatePath, watermarkBytes.Length);
+                return cachePath;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "استخراج سربرگ از قالب MRT شرکت ناموفق بود. CompanyId={CompanyId}, Path={Path}",
+                    companyId, templatePath);
+            }
+        }
 
         return null;
+    }
+
+    private string? FindCompanyTemplate(int companyId, string size)
+    {
+        var relative = Path.Combine("Reports", "OutgoingLetters", "Companies",
+            companyId.ToString(CultureInfo.InvariantCulture), $"Outgoing-{size}.mrt");
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
+        return roots.Select(root => Path.Combine(root, relative)).FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>خواندن Watermark.ImageBytes از فایل قالب MRT (XML استیمول‌سافت).</summary>
+    private static byte[]? ReadTemplateWatermark(string templatePath)
+    {
+        using var stream = File.OpenRead(templatePath);
+        var document = XDocument.Load(stream, LoadOptions.None);
+        var watermark = document.Descendants()
+            .FirstOrDefault(element => element.Name.LocalName == "Watermark");
+        var imageBytesValue = watermark?.Elements()
+            .FirstOrDefault(element => element.Name.LocalName == "ImageBytes")?.Value;
+        if (string.IsNullOrWhiteSpace(imageBytesValue)) return null;
+        return Convert.FromBase64String(imageBytesValue);
     }
 
     // ==================== تبدیل HTML ادیتور به متن ساده ====================
@@ -227,18 +315,37 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var selectedCompanyId = company?.Id ?? letterCompanyId;
         var requiresRegisteredLetterhead = RequiresRegisteredCompanyLetterhead(selectedCompanyId);
         var companyRecordMissing = hasCompanyId && company == null;
-        var letterheadPath = companyRecordMissing ? null : ResolveCompanyLetterheadPath(company);
+        bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
+
+        // زنجیرهٔ منبع سربرگ:
+        // ۱) فایل ثبت‌شده روی رکورد شرکت
+        var registeredPath = companyRecordMissing ? null : ResolveRegisteredLetterheadFile(company);
+
+        // ۲) طرح سربرگ جاسازی‌شده در قالب MRT خود شرکت (Reports/OutgoingLetters/Companies/{id})
+        //    — هم استخراج می‌شود تا اگر فایل ثبت‌شده خراب بود هم جایگزین باشد.
+        var templateLetterheadPath = selectedCompanyId is > 0
+            ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
+            : null;
+        var letterheadPath = registeredPath ?? templateLetterheadPath;
+        var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
+
+        // ۳) سربرگ فوروث / لوگوی HR — فقط برای شرکت‌های بدون سربرگ اختصاصی (رفتار قبلی).
         if (letterheadPath == null && !requiresRegisteredLetterhead && !companyRecordMissing)
         {
-            var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
-                .Select(c => c.LogoPath)
-                .FirstOrDefaultAsync();
-            letterheadPath = ResolveLetterheadPath(hrLogoPath);
+            letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+            if (letterheadPath == null)
+            {
+                var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
+                    .Select(c => c.LogoPath)
+                    .FirstOrDefaultAsync();
+                letterheadPath = ResolveLetterheadPath(hrLogoPath);
+            }
         }
 
         _logger.LogInformation(
-            "مسیر سربرگ نامه از اطلاعات شرکت خوانده شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, ResolvedPath={ResolvedPath}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
-            letterId, letterCompanyId, selectedCompanyId, company?.LetterheadFileName, letterheadPath, _env.WebRootPath, _env.ContentRootPath);
+            "سربرگ نامه انتخاب شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, FinalPath={FinalPath}, FromTemplate={FromTemplate}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
+            letterId, letterCompanyId, selectedCompanyId, company?.LetterheadFileName, registeredPath,
+            templateLetterheadPath, letterheadPath, letterheadFromTemplate, _env.WebRootPath, _env.ContentRootPath);
 
         // Outgoing letters always use QuestPDF. This avoids Stimulsoft trial marks
         // and keeps all Persian shaping/layout on one rendering path.
@@ -271,9 +378,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var hasAttachment = await _db.AppAttachments.AsNoTracking()
             .AnyAsync(a => a.Module == "OutgoingLetters" && a.RefId == letterId);
 
-        bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
-
-        // Keep the content PDF transparent; the exact company-registered file is
+        // Keep the content PDF transparent; the company letterhead (registered
+        // file or the design embedded in the company's print template) is
         // placed underneath it by OverlayOnLetterhead below.
         var contentPdf = BuildContentPdf(
             letter, signers, sematTitles, hasAttachment, isA5, withCopy, copyTos,
@@ -306,8 +412,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         try
         {
             _logger.LogInformation(
-                "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}",
-                letterId, company?.Id ?? letterCompanyId, size, letterheadPath);
+                "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
+                letterId, company?.Id ?? letterCompanyId, size, letterheadPath, letterheadFromTemplate);
             var overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath);
             _logger.LogInformation(
                 "سربرگ روی PDF نامه اعمال شد. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, PdfBytes={PdfBytes}",
@@ -317,8 +423,30 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "قرار دادن سربرگ ثبت‌شده روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
-                letterId, company?.Id ?? letterCompanyId, letterheadPath);
+                "قرار دادن سربرگ روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
+                letterId, company?.Id ?? letterCompanyId, letterheadPath, letterheadFromTemplate);
+
+            // اگر فایل سربرگ انتخاب‌شده (مثلاً فایل ثبت‌شدهٔ شرکت) قابل رندر نبود،
+            // طرح سربرگ جاسازی‌شده در قالب خودِ شرکت را امتحان کن تا نامه بی‌سربرگ نماند.
+            if (templateLetterheadPath != null && !letterheadFromTemplate)
+            {
+                try
+                {
+                    var retriedPdf = OverlayOnLetterhead(contentPdf, templateLetterheadPath);
+                    _logger.LogInformation(
+                        "سربرگ قالب MRT شرکت جایگزین شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={TemplatePath}",
+                        letterId, company?.Id ?? letterCompanyId, templateLetterheadPath);
+                    return retriedPdf;
+                }
+                catch (Exception retryEx)
+                {
+                    _logger.LogError(retryEx,
+                        "اعمال سربرگ قالب MRT شرکت هم ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={TemplatePath}",
+                        letterId, company?.Id ?? letterCompanyId, templateLetterheadPath);
+                    ex = retryEx;
+                }
+            }
+
             if (requiresRegisteredLetterhead)
             {
                 var companyName = string.IsNullOrWhiteSpace(company?.Name)
