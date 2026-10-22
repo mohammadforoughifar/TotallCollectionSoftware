@@ -58,9 +58,11 @@ internal static class InnerLetterPdfRenderer
                 page.Header().ContentFromLeftToRight().Height(a5 ? 112 : 160).Layers(layers =>
                 {
                     layers.PrimaryLayer().Extend();
+                    // پیوند/پیوست هم‌سطح با شماره و تاریخ باشد (Right) و در یک خط بماند؛
+                    // ScaleToFit اندازهсниازک می‌کند تا خط شکسته نشود و کادر عمودی بزرگ نشود.
                     HeaderField(layers.Layer(), HomepaLetterheadLayout.Number(a5), number);
                     HeaderField(layers.Layer(), HomepaLetterheadLayout.Date(a5), date);
-                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Attachment(a5), attachment ? "دارد" : "ندارد", true);
+                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Attachment(a5), attachment ? "دارد" : "ندارد", false);
                 });
             }
             else
