@@ -673,6 +673,12 @@ if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.RedirectHttp)
 
 app.UseCors("wasm");
 
+// Source development has a separate Blazor dev server. Do not serve an old published login
+// page from the API root; refreshes must keep the developer on the current client build.
+// Production and IIS retain single-server hosting and are deliberately unaffected.
+if (app.Environment.IsDevelopment() && !runningUnderIis)
+    app.UseMiddleware<DevelopmentClientRedirect>();
+
 app.UseAuthentication();
 
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
