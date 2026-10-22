@@ -589,7 +589,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }).ToList();
         var signerRows = signerCards.Chunk(3).ToList();
         var signerCardWidth = isA5 ? 98f : 143f;
-        var signatureHeight = isA5 ? 30f : 44f;
+        // امضا نسبت به متن و نام امضا کننده بزرگتر نمایش داده شود تا بهتر دیده شود.
+        var signatureHeight = isA5 ? 50f : 72f;
 
         void AddSignerRow(IContainer container, (string Name, string Role, byte[]? Signature)[] rowSigners)
         {
