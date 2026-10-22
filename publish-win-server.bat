@@ -29,6 +29,7 @@ echo [5/5] پابلیش API (self-contained، تک‌فایل)...
 if exist "%OUT%" rmdir /s /q "%OUT%"
 dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained -o "%OUT%" --no-restore || goto err
 
+copy /y "%ROOT%update-database.bat" "%OUT%\update-database.bat" >nul
 copy /y "%ROOT%run-server.bat" "%OUT%\run-server.bat" >nul
 copy /y "%ROOT%start.bat"      "%OUT%\start.bat"      >nul
 copy /y "%ROOT%stop.bat"       "%OUT%\stop.bat"       >nul

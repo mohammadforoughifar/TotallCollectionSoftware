@@ -34,6 +34,7 @@ public sealed partial class HttpsCertificates
     public string DataDir => _dir;
     public IReadOnlyList<string> Messages => _log;
     public string CaPath => Path.Combine(_dir, "ca.crt");
+    private string CaKeyPath => Path.Combine(_dir, "ca.key");
     public string PfxPath => Path.Combine(_dir, "server.pfx");
 
     private HttpsCertificates(string dir, bool enabled, int port, X509Certificate2? cert)
@@ -47,11 +48,13 @@ public sealed partial class HttpsCertificates
     private void Note(string message) => _log.Add(message);
 
     /// <summary>آماده‌سازی گواهی‌ها پیش از ساخت وب‌هاست (چون Kestrel در زمان راه‌اندازی به گواهی نیاز دارد).</summary>
-    public static HttpsCertificates Prepare(IHostEnvironment env, IConfiguration cfg)
+    public static HttpsCertificates Prepare(IHostEnvironment env, IConfiguration cfg, bool skipPreparation = false)
     {
         var enabled = cfg.GetValue<bool?>("Https:Enabled") ?? true;
         var portText = Environment.GetEnvironmentVariable("HTTPS_PORT") ?? cfg["Https:Port"];
         var port = int.TryParse(portText, out var p) && p is > 0 and < 65536 ? p : DefaultPort;
+        // EF/maintenance must not touch certificates, probe ports, or create certificate directories.
+        if (skipPreparation) return new HttpsCertificates("", false, port, null);
         var dir = ResolveDataDir(env, cfg);
         var result = new HttpsCertificates(dir, enabled, port, null);
 
@@ -102,11 +105,29 @@ public sealed partial class HttpsCertificates
 
         if (needsNewServerCert)
         {
-            var ca = caExists ? LoadCa(target.CaPath) : CreateRootCa();
-            if (!caExists) SavePem(target.CaPath, ca);
+            // Old releases persisted only ca.crt. Its private key cannot be recovered from a certificate.
+            // Preserve a working legacy server until renewal is necessary; then rotate explicitly with a warning.
+            var reuseCa = caExists && File.Exists(target.CaKeyPath);
+            using var existingCa = reuseCa ? X509Certificate2.CreateFromPemFile(target.CaPath, target.CaKeyPath) : null;
+            reuseCa = existingCa is not null && existingCa.HasPrivateKey
+                && existingCa.NotAfter.ToUniversalTime() > DateTime.UtcNow.AddDays(31);
+            using var ca = reuseCa ? null : CreateRootCa();
+            var issuer = reuseCa ? existingCa! : ca!;
+            if (!reuseCa)
+            {
+                if (caExists)
+                {
+                    var backup = target.CaPath + "." + Guid.NewGuid().ToString("N") + ".bak";
+                    File.Copy(target.CaPath, backup);
+                    target.Note("کلید خصوصی CA قبلی موجود نیست یا CA در آستانهٔ انقضا است؛ CA جدید ساخته شد. فایل ca.crt جدید را روی دستگاه‌ها دوباره نصب کنید.");
+                }
+                SaveCaKey(target.CaKeyPath, issuer);
+                SavePem(target.CaPath, issuer);
+            }
 
             var hostList = CollectHosts(cfg);
-            var (server, pfxPassword) = CreateServerCertificate(ca, hostList);
+            var (serverCertificate, pfxPassword) = CreateServerCertificate(issuer, hostList);
+            using var server = serverCertificate;
             File.WriteAllBytes(target.PfxPath, server.Export(X509ContentType.Pfx, pfxPassword));
 
             meta = new Meta
@@ -114,13 +135,13 @@ public sealed partial class HttpsCertificates
                 Hosts = hostList,
                 CreatedAtUtc = DateTime.UtcNow,
                 ServerNotAfterUtc = server.NotAfter.ToUniversalTime(),
-                CaNotAfterUtc = ca.NotAfter.ToUniversalTime(),
+                CaNotAfterUtc = issuer.NotAfter.ToUniversalTime(),
                 PfxPassword = pfxPassword,
-                CaFingerprint = Fingerprint(ca),
+                CaFingerprint = Fingerprint(issuer),
                 ServerFingerprint = Fingerprint(server)
             };
             File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }));
-            target.Note(caExists
+            target.Note(reuseCa
                 ? "گواهی سرور برای آی‌پی‌های فعلی شبکه بازسازی شد (فایل CA تغییر نکرده و نصب‌های قبلی معتبر می‌مانند)."
                 : "مرجع صدور گواهی (CA) و گواهی سرور ساخته شد.");
         }
@@ -222,19 +243,29 @@ public sealed partial class HttpsCertificates
         req.CertificateExtensions.Add(san.Build());
 
         var serial = RandomNumberGenerator.GetBytes(16);
-        using var signed = req.Create(ca, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(3), serial);
+        var notAfter = DateTimeOffset.UtcNow.AddYears(3);
+        var caExpiry = new DateTimeOffset(ca.NotAfter.ToUniversalTime()).AddMinutes(-1);
+        if (notAfter > caExpiry) notAfter = caExpiry;
+        using var signed = req.Create(ca, DateTimeOffset.UtcNow.AddDays(-1), notAfter, serial);
         var server = signed.CopyWithPrivateKey(key);
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).Replace("+", "").Replace("/", "").Replace("=", "");
         return (server, password);
     }
 
-    private static X509Certificate2 LoadCa(string path)
+    private static void SaveCaKey(string path, X509Certificate2 ca)
     {
-        // فایل ca.crt فقط شامل «گواهی» است (بدون کلید خصوصی)؛ CreateFromPemFile برای چنین فایلی خطا می‌دهد.
-        using var pem = X509Certificate2.CreateFromPem(File.ReadAllText(path));
-#pragma warning disable SYSLIB0057
-        return new X509Certificate2(pem.Export(X509ContentType.Cert));
-#pragma warning restore SYSLIB0057
+        using var key = ca.GetRSAPrivateKey()
+            ?? throw new InvalidOperationException("کلید خصوصی CA در دسترس نیست.");
+        // Restrict Unix permissions at creation, not after writing the private key.
+        // On Windows the data directory must be ACL-restricted to the service identity/admins.
+        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
+        if (!OperatingSystem.IsWindows())
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        using (var stream = new FileStream(path, options))
+        using (var writer = new StreamWriter(stream))
+            writer.Write(key.ExportPkcs8PrivateKeyPem());
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     private static void SavePem(string path, X509Certificate2 cert)

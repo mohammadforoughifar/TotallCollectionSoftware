@@ -27,6 +27,8 @@ public static class DbInitializer
                 {
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
+                    // Required model columns must exist before any service queries organizations/users.
+                    await OrganizationSchemaV1.EnsureAsync(db);
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
@@ -69,6 +71,8 @@ public static class DbInitializer
                 else
                 {
                     MigrateSqlServer(db);
+                    // Also repairs old databases whose migration history was previously stamped/skipped.
+                    await OrganizationSchemaV1.EnsureAsync(db);
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);
@@ -184,9 +188,6 @@ public static class DbInitializer
                 else
                     Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز حرفه‌ای آماده‌اند.");
                 await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
-
-                // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها
-                await OrganizationSchemaV1.EnsureAsync(db);
 
                 // ماژول انبارداری: ستون‌های جدید قیمت‌گذاری انبار، ارزش افزوده گروه و خطوط سند
                 await WarehousingSchemaV1.EnsureAsync(db);

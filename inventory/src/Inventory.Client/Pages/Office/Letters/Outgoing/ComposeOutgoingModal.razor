@@ -147,12 +147,12 @@
 
             @* ---------- شرکت صادرکننده (سربرگ چاپ) ---------- *@
             <div class="fcard">
-                <label>شرکت صادرکننده (سربرگ چاپ) <span class="opt">چاپ نامه روی سربرگ همین شرکت انجام می‌شود</span></label>
+                <label>شرکت صادرکننده (سربرگ چاپ) <span class="opt">فقط شرکت فعال کاربر نمایش داده می‌شود؛ «بدون انتخاب شرکت» = چاپ بدون سربرگ</span></label>
                 <select class="tin" @bind="companyId">
-                    <option value="0">— بدون انتخاب شرکت —</option>
-                    @foreach (var c in companies)
+                    <option value="0">— بدون انتخاب شرکت (چاپ بدون سربرگ) —</option>
+                    @if (activeCompany is { } c)
                     {
-                        <option value="@c.Id">@c.Name @(c.HasLetterhead ? "📄" : "(بدون سربرگ)")</option>
+                        <option value="@c.Id">@c.Name @(c.HasLetterhead ? "📄 سربرگ" : "(بدون سربرگ)")</option>
                     }
                 </select>
             </div>
@@ -337,7 +337,7 @@
     private bool errTitle, errReceiverOrg, errSigners;
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
-    private List<LetterCompanyDto> companies = new();
+    private LetterCompanyDto? activeCompany;
     private int companyId;
 
     private LetterPickCombo? cbRcv, cbErja, cbHamesh, cbSigners;
@@ -468,7 +468,7 @@
             if (allUsers.Count == 0) allUsers = await OutgoingSvc.GetReciversAsync();
             allGroups = await OutgoingSvc.GetGroupsAsync();
             try { signerUsers = await OutgoingSvc.GetAvailableSignersAsync(); } catch { signerUsers = allUsers; }
-            try { companies = await OutgoingSvc.GetCompaniesAsync(); } catch { companies = new(); }
+            try { activeCompany = await OutgoingSvc.GetActiveCompanyAsync(); } catch { activeCompany = null; }
             StateHasChanged();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

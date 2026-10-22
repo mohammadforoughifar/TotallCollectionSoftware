@@ -65,15 +65,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<OutgoingLetterPrintService> _logger;
+    private readonly IConfiguration _configuration;
 
     public OutgoingLetterPrintService(
         AppDbContext db,
         IWebHostEnvironment env,
-        ILogger<OutgoingLetterPrintService> logger)
+        ILogger<OutgoingLetterPrintService> logger,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _env = env;
         _logger = logger;
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -233,10 +236,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private string? FindCompanyTemplate(int companyId, string size)
     {
-        var relative = Path.Combine("Reports", "OutgoingLetters", "Companies",
+        // The active QuestPDF pipeline must honor the same template-root setting as the legacy renderer.
+        var configuredRoot = _configuration["Reporting:Stimulsoft:TemplateRoot"];
+        var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
+            ? Path.Combine("Reports", "OutgoingLetters", "Companies")
+            : configuredRoot.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        var template = Path.Combine(templateRoot,
             companyId.ToString(CultureInfo.InvariantCulture), $"Outgoing-{size}.mrt");
         var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
-        return roots.Select(root => Path.Combine(root, relative)).FirstOrDefault(File.Exists);
+        var candidates = Path.IsPathRooted(templateRoot)
+            ? new[] { template }
+            : roots.Select(root => Path.Combine(root, template)).Distinct().ToArray();
+        var found = candidates.FirstOrDefault(File.Exists);
+        if (found == null)
+            _logger.LogDebug("قالب سربرگ شرکت یافت نشد. CompanyId={CompanyId}, Size={Size}, SearchedPaths={SearchedPaths}",
+                companyId, size, string.Join(" | ", candidates));
+        return found;
     }
 
     /// <summary>خواندن Watermark.ImageBytes از فایل قالب MRT (XML استیمول‌سافت).</summary>
@@ -536,19 +551,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var fontSize = isA5 ? 8f : 10.5f;
         var titleFontSize = isA5 ? 9.5f : 12f;
         var smallFontSize = isA5 ? 7f : 9f;
-        var lineHeight = isA5 ? 1.5f : 1.55f;
+        var lineHeight = isA5 ? 1.3f : 1.35f;
 
-        var plainText = HtmlToPlainText(letter.Text);
-        var closingMatch = Regex.Match(
-            plainText,
-            @"(?:^|\n)[ \t]*(?<closing>با\s*تشکر[^\n]*)\s*$",
-            RegexOptions.Multiline);
-        var bodyText = closingMatch.Success
-            ? plainText[..closingMatch.Index].TrimEnd()
-            : plainText;
-        var closingText = closingMatch.Success
-            ? ToPersianDigits(closingMatch.Groups["closing"].Value.Trim())
-            : "با تشکر";
+        // Print the authored body as-is; do not append a generated closing phrase.
+        var bodyText = HtmlToPlainText(letter.Text);
 
         var number = ToPersianDigits(
             string.IsNullOrWhiteSpace(letter.SadereNumber)
@@ -583,8 +589,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }).ToList();
         var signerRows = signerCards.Chunk(3).ToList();
         var signerCardWidth = isA5 ? 98f : 143f;
-        var signatureHeight = isA5 ? 30f : 44f;
-        var stampHeight = isA5 ? 24f : 32f;
+        // امضا نسبت به متن و نام امضا کننده بزرگتر نمایش داده شود تا بهتر دیده شود.
+        var signatureHeight = isA5 ? 50f : 72f;
 
         void AddSignerRow(IContainer container, (string Name, string Role, byte[]? Signature)[] rowSigners)
         {
@@ -610,10 +616,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         card.Item().AlignCenter()
                             .Text(signer.Role).FontFamily("Vazirmatn").FontSize(smallFontSize)
                             .LineHeight(1.25f).DirectionFromRightToLeft();
-                        card.Item().PaddingTop(5).Height(stampHeight)
-                            .Border(0.5f).BorderColor("#9ca3af").AlignCenter().AlignMiddle()
-                            .Text("مهر").FontFamily("Vazirmatn").FontSize(smallFontSize)
-                            .DirectionFromRightToLeft();
                     });
                 }
 
@@ -622,11 +624,27 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         }
 
+        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
+        {
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle();
+            // The enclosing header is physically left-to-right; only the field text is RTL.
+            // Do not allow a long letter number to push the date/attachment down a flowing column.
+            box = center ? box.AlignCenter() : box.AlignRight();
+            box.ScaleToFit().Text(value)
+                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                .FontColor(Colors.White).LineHeight(1.2f)
+                .DirectionFromRightToLeft();
+        }
+
         var document = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
+                // company background by PDFsharp, that white fill would hide the entire letterhead.
+                page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
                 page.MarginTop(0);
                 // Reserve the printed company footer area on every page.
                 page.MarginBottom(isA5 ? 52 : 90);
@@ -642,7 +660,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
                 var contentTopPadding = isAriaLetterhead
                     ? (isA5 ? 26f : 36f)
-                    : (isA5 ? 40f : 30f);
+                    : (isA5 ? 30f : 30f); // در A5 بدنه نامه از بالاتر شروع شود
 
                 if (isAriaLetterhead)
                 {
@@ -678,9 +696,24 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                                 .DirectionFromRightToLeft();
                         });
                 }
+                else if (hasLetterhead && letterheadCompanyId == HomepaCompanyId)
+                {
+                    // Match company 1003's MRT rectangles, not the RTL body's default right edge.
+                    // Preserve the existing reserved header height so body/signature layout does not move.
+                    page.Header().ContentFromLeftToRight()
+                        .Height(isA5 ? 150 : 160)
+                        .Layers(layers =>
+                        {
+                            layers.PrimaryLayer().Extend();
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Attachment(isA5),
+                                hasAttachment ? "دارد" : "ندارد", center: true);
+                        });
+                }
                 else if (hasLetterhead)
                 {
-                    // Homepa prints these labels vertically in its blue header; place
+                    // Preserve the existing layout for other company letterheads; place
                     // only the values beside them, without duplicating the captions.
                     page.Header()
                         .Height(isA5 ? 150 : 160)
@@ -728,7 +761,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 }
 
                 // One shared padded body column keeps receiver, subject, paragraphs,
-                // closing and signature block on identical left/right margins.
+                // signature block on identical left/right margins.
                 page.Content().PaddingTop(contentTopPadding)
                     .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
                 {
@@ -761,23 +794,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             .AlignRight().DirectionFromRightToLeft();
                     }
 
-                    if (signerRows.Count == 0)
+                    if (signerRows.Count > 0)
                     {
-                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire()
-                            .Text(closingText).FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-                    }
-                    else
-                    {
-                        // Keep the closing and the first signer row together; later rows
-                        // also move intact if there is not enough room above the footer.
+                        // Keep the heading and first signer row together; do not add a closing or stamp box.
                         col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Column(signOff =>
                         {
-                            signOff.Item().Text(closingText)
-                                .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                                .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-                            signOff.Item().PaddingTop(isA5 ? 8 : 12)
-                                .Text("امضاکنندگان")
+                            signOff.Item().Text("امضاکنندگان")
                                 .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
                                 .AlignRight().DirectionFromRightToLeft();
                             AddSignerRow(signOff.Item().PaddingTop(isA5 ? 4 : 6), signerRows[0]);

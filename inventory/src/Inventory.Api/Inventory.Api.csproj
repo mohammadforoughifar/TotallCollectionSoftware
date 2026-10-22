@@ -26,6 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Maintenance command travels with every publish, including Visual Studio/IIS publishes. -->
+    <Content Include="../../../update-database.bat" Link="update-database.bat"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+             ExcludeFromSingleFile="true" />
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
     <Content Include="Resources/fonts/**/*" CopyToOutputDirectory="PreserveNewest" />
     <!-- قالب‌های MRT و تصویر امضای آزمایشی برای رندر سروری گزارش. -->
