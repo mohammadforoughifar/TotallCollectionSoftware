@@ -319,6 +319,10 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task<List<LetterCompanyDto>> GetCompaniesAsync() =>
         ListOrPaged.GetAsync<LetterCompanyDto>(_api, "api/outgoing-letters/companies");
 
+    /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
+    public Task<LetterCompanyDto?> GetActiveCompanyAsync() =>
+        _api.GetAsync<LetterCompanyDto?>("api/outgoing-letters/companies/active");
+
     public Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync() =>
         _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/dabirkhane/creators");
 

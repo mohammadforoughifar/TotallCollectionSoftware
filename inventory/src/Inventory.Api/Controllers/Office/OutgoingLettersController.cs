@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Infrastructure;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared.Dtos;
@@ -452,6 +453,26 @@ public class OutgoingLettersController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await Paging.ResultAsync(async pagination => await _letters.GetCompaniesAsync(pagination: pagination), skip, take));
+    }
+
+    /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره (فقط همین شرکت نمایش داده می‌شود)</summary>
+    [HttpGet("companies/active")]
+    public async Task<IActionResult> ActiveCompany()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        var activeId = HttpContext.Items[ActiveCompanyMiddleware.ItemKey] as int?;
+        if (activeId is not > 0) return Ok(null);
+        var c = await Db.SystemCompanies.AsNoTracking()
+            .Where(x => x.Id == activeId.Value && x.IsActive)
+            .Select(x => new LetterCompanyDto
+            {
+                Id = x.Id,
+                Name = x.Name,
+                LetterheadFileName = x.LetterheadFileName,
+                HasLetterhead = x.LetterheadFileName != null && x.LetterheadFileName != ""
+            })
+            .FirstOrDefaultAsync();
+        return Ok(c);
     }
 
     // ==================== چاپ نامه روی سربرگ شرکت (A4 / A5) ====================
