@@ -50,6 +50,10 @@ public interface IOutgoingLetterService
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
+
+    /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
+    Task<LetterCompanyDto?> GetActiveCompanyAsync();
+
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
     // ==================== بایگانی دبیرخانه ====================

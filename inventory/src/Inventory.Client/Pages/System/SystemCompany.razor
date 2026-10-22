@@ -106,7 +106,9 @@
                     }
                     <small class="text-muted">فایل PDF سربرگ آپلود شود و در مسیر <b>wwwroot/uploads/letterheads/</b> ذخیره شود. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
                     @if (!string.IsNullOrWhiteSpace(letterheadUploadError))
+                    {
                         <div class="text-danger small mt-1">@letterheadUploadError</div>
+                    }
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch mt-1">
@@ -181,7 +183,7 @@
     private async Task OnLetterheadFile(InputFileChangeEventArgs e)
     {
         letterheadUploadError = null;
-        var file = e.File.GetMultipleFiles(1).FirstOrDefault();
+        var file = e.GetMultipleFiles(1).FirstOrDefault();
         if (file == null) return;
         if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
         {

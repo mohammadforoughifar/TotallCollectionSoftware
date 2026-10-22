@@ -37,11 +37,11 @@
                     @if (printMenuOpen)
                     {
                         <div class="ltmenu" @onclick:stopPropagation="true">
-                            <button @onclick="async () => { await PrintSelected(\"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                            <button @onclick="async () => { await PrintSelected(\"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                             <div class="mdiv"></div>
-                            <button @onclick="async () => { await PrintSelected(\"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                            <button @onclick="async () => { await PrintSelected(\"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                         </div>
                     }
                 </span>
@@ -153,6 +153,11 @@
 </div>
 
 @code {
+    // اندازهٔ چاپ — به‌صورت ثابت تعریف می‌شود تا داخل صفت‌های HTML
+    // نیازی به نوشتن رشتهٔ داخل کوتیشن نباشیم (در Razor بک‌اسلش داخل صفت HTML معتبر نیست).
+    private const string SizeA4 = "A4";
+    private const string SizeA5 = "A5";
+
     [Parameter] public int LetterId { get; set; }
 
     private OutgoingLetterDetailDto? letter;
