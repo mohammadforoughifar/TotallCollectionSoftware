@@ -660,7 +660,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
                 var contentTopPadding = isAriaLetterhead
                     ? (isA5 ? 26f : 36f)
-                    : (isA5 ? 40f : 30f);
+                    : (isA5 ? 30f : 30f); // در A5 بدنه نامه از بالاتر شروع شود
 
                 if (isAriaLetterhead)
                 {
