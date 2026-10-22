@@ -268,8 +268,8 @@
                                 <i class="bi bi-files"></i> کپی نامه
                             </button>
                         }
-                        <button class="btn btn-sm btn-outline-info" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
-                            <i class="bi bi-diagram-3"></i> گردش
+                        <button class="btn btn-sm btn-outline-info" title="مشاهدهٔ گردش نامه" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
+                            <i class="bi bi-diagram-3"></i> گردش نامه
                         </button>
                         @if (activeDetail.ActiveErjaId.HasValue)
                         {
@@ -280,8 +280,10 @@
                         <button class="btn btn-sm btn-success" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
                             <i class="bi bi-send-fill"></i> ارجاع
                         </button>
-                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
-                            <i class="bi bi-list-task"></i> دستورکار
+                        <button class="btn btn-sm btn-outline-primary" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
+                                @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
+                            <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
+                            @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
                         </button>
                         @if (workOrders.Count > 0)
                         {

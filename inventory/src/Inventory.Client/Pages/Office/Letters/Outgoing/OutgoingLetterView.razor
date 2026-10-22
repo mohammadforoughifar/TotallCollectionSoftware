@@ -49,6 +49,9 @@
                 {
                     <button class="lbtn grn" @onclick="SignAsync"><i class="bi bi-pen"></i> امضای نامه</button>
                 }
+                <button class="lbtn pri" title="مشاهدهٔ گردش نامه" @onclick="OpenGardesh">
+                    <i class="bi bi-diagram-3"></i> گردش نامه
+                </button>
             </div>
 
             <div class="paper">
@@ -152,6 +155,9 @@
     }
 </div>
 
+@* ---------- مدالِ گردش نامه ---------- *@
+<OutgoingGardeshModal @ref="gardesh" />
+
 @code {
     // اندازهٔ چاپ — به‌صورت ثابت تعریف می‌شود تا داخل صفت‌های HTML
     // نیازی به نوشتن رشتهٔ داخل کوتیشن نباشیم (در Razor بک‌اسلش داخل صفت HTML معتبر نیست).
@@ -164,6 +170,15 @@
     private List<LetterAttachmentDto> attachments = new();
     private bool loading = true;
     private bool printing, printMenuOpen;
+    private OutgoingGardeshModal? gardesh;
+
+    /// <summary>باز کردنِ پنجرهٔ گردشِ همین نامه از صفحهٔ نمایشِ نامه صادره</summary>
+    private void OpenGardesh()
+    {
+        if (letter == null) return;
+        _ = gardesh?.Open(letter.LetterId, letter.Title, letter.LetterNumber,
+            string.IsNullOrWhiteSpace(letter.SenderName) ? "شما" : letter.SenderName, letter.DateSabt);
+    }
 
     private void TogglePrintSelected() => printMenuOpen = !printMenuOpen;
 

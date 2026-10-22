@@ -315,7 +315,11 @@
                     }
                     @if (selected.IsMine || selected.MyErja != null || selected.IsSigner)
                     {
-                        <button class="lbtn ghost" @onclick="() => OpenWorkOrder(selected.LetterId)"><i class="bi bi-list-task"></i> دستورکار</button>
+                        <button class="lbtn ghost" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
+                                @onclick="() => OpenWorkOrder(selected.LetterId)">
+                            <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
+                            @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
+                        </button>
                     }
                 }
             </div>
@@ -457,12 +461,13 @@
                             }
                             else if (selected.IsMine)
                             {
-                                <button class="lbtn pri" @onclick="() => MenuGardeshCur()"><i class="bi bi-diagram-3"></i> پیگیری گردش</button>
                                 @if (selected.CanEdit)
                                 {
                                     <button class="lbtn ghost" @onclick="() => EditLetter(selected.LetterId)"><i class="bi bi-pencil-square"></i> ویرایش</button>
                                 }
                             }
+                            @* دکمهٔ «گردش نامه» برای همه‌ی بینندگانِ نامه (فرستنده، گیرنده و امضاکننده) *@
+                            <button class="lbtn pri" title="مشاهدهٔ گردش نامه" @onclick="() => MenuGardeshCur()"><i class="bi bi-diagram-3"></i> گردش نامه</button>
                         </div>
                         @if (workOrders.Count > 0)
                         {
@@ -1048,6 +1053,9 @@
                 if (selectedItem != null) selectedItem.IsRead = true;
                 stats = await OutgoingSvc.GetStatsAsync();
             }
+            // نامه باز نشد: یا دسترسی نداریم یا حذف شده است — به‌جای صفحهٔ خالی
+            // پیامِ روشن نشان داده می‌شود.
+            if (selected == null) Toast.Error("این نامه برای شما در دسترس نیست یا حذف شده است.");
         }
         catch (Exception ex) { selected = null; Toast.Error(ex.Message); }
     }
