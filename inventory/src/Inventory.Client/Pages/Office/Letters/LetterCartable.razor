@@ -259,8 +259,8 @@
                         </button>
                     }
                     <button class="icb" title="@(folder == "archive" ? "خروج از بایگانی (Ctrl+Shift+B)" : "بایگانی (Ctrl+Shift+B)")" data-hotkey="ctrl+shift+b" @onclick="ArchiveCurrent"><i class="bi bi-archive"></i></button>
-                    <button class="icb" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A4")'><i class="bi bi-printer"></i></button>
-                    <button class="icb" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A5")'><i class="bi bi-printer-fill"></i></button>
+                    <button class="lbtn ghost" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => OpenPrintOptions("A4")'><i class="bi bi-printer"></i> A4</button>
+                    <button class="lbtn ghost" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => OpenPrintOptions("A5")'><i class="bi bi-printer-fill"></i> A5</button>
                     <button class="icb" title="کپی نامه" @onclick="CopyLetter"><i class="bi bi-files"></i></button>
                     @if (selected.CanEdit)
                     {
@@ -546,6 +546,31 @@
         </main>
         }
     </div>
+
+    @if (printOptionsOpen && selected != null)
+    {
+        <div class="gov" @onclick="ClosePrintOptions">
+            <div class="gmodal" role="dialog" aria-modal="true" aria-labelledby="inner-print-title"
+                 style="width:min(460px,96vw)" @onclick:stopPropagation="true">
+                <div class="gm-h">
+                    <div class="ttl"><b id="inner-print-title">چاپ نامه داخلی روی سربرگ</b><small>@selected.Title</small></div>
+                    <button class="x" title="بستن" @onclick="ClosePrintOptions"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="gm-b">
+                    <label for="inner-print-size">اندازه کاغذ</label>
+                    <select id="inner-print-size" class="form-select" @bind="printSize">
+                        <option value="A4">A4</option>
+                        <option value="A5">A5</option>
+                    </select>
+                    <p class="mt-3 mb-0">نسخهٔ چاپ را انتخاب کنید. در نامه‌های چندصفحه‌ای، سربرگ روی همهٔ صفحات تکرار می‌شود.</p>
+                </div>
+                <div class="gm-f">
+                    <button class="lbtn ghost" disabled="@printingPdf" @onclick="() => PrintPdf(printSize, false)">بدون هامش</button>
+                    <button class="lbtn pri" disabled="@printingPdf" @onclick="() => PrintPdf(printSize, true)">با هامش</button>
+                </div>
+            </div>
+        </div>
+    }
 
     @* ---------- مودال پاسخ ---------- *@
     @if (replyOpen)
@@ -1197,21 +1222,35 @@
     {
         openMenuId = 0;
         await OpenLetter(l);
-        await PrintPdf("A4");
+        OpenPrintOptions("A4");
     }
 
-    private bool printingPdf;
-    private async Task PrintPdf(string size)
+    private bool printingPdf, printOptionsOpen;
+    private string printSize = "A4";
+
+    private void OpenPrintOptions(string size)
     {
-        if (selected == null) return;
+        if (selected == null || printingPdf) return;
+        printSize = size == "A5" ? "A5" : "A4";
+        printOptionsOpen = true;
+    }
+
+    private void ClosePrintOptions() => printOptionsOpen = false;
+
+    private async Task PrintPdf(string size, bool withHamesh)
+    {
+        if (selected == null || printingPdf) return;
+        var letterId = selected.LetterId;
+        var number = selected.LetterNumber;
         printingPdf = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
-        // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
+        printOptionsOpen = false;
+        string? printId = null;
         try
         {
-            var bytes = await LetterSvc.GetPrintPdfAsync(selected.LetterId, size);
-            var name = $"inner-letter-{selected.LetterNumber}-{size}.pdf";
+            // Open only on the user's explicit with/without-hamesh click, before awaiting the API.
+            printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
+            var bytes = await LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh);
+            var name = $"inner-letter-{number}-{size}-{(withHamesh ? "with-hamesh" : "without-hamesh")}.pdf";
             var payload = Convert.ToBase64String(bytes);
             if (printId != null)
                 _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);

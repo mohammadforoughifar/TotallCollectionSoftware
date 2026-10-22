@@ -17,7 +17,7 @@ public interface ILetterService
     Task<int> SendAsync(AddInnerLetterDto dto);
     Task DeleteAsync(int letterId);
     Task<List<LetterPickDto>> PickAsync(string? search = null);
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withHamesh = false);
     /// <summary>دانلود کلی پیوست‌های نامهٔ داخلی به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 
@@ -120,14 +120,14 @@ public class LetterService : ILetterService
 
     public Task DeleteAsync(int letterId) => _api.DeleteAsync($"api/letters/{letterId}");
 
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withHamesh = false)
     {
-        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/letters/{letterId}/print?size={Uri.EscapeDataString(size)}"));
-        if (!string.IsNullOrWhiteSpace(_auth.Token)) req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
-        var resp = await _http.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(
-            ApiClient.DescribeBody(await resp.Content.ReadAsStringAsync()));
-        return await resp.Content.ReadAsByteArrayAsync();
+        var path = $"api/letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withHamesh={(withHamesh ? "true" : "false")}";
+        // Shared transport supplies both authentication and the selected X-Company-Id header.
+        var file = await _api.GetFileAsync(path);
+        if (!string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("پاسخ چاپ PDF نیست؛ آدرس API و وضعیت سرویس چاپ را بررسی کنید.");
+        return file.Data;
     }
 
     public Task<List<LetterPickDto>> PickAsync(string? search = null) =>

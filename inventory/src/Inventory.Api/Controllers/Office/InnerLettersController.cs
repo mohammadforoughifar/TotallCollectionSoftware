@@ -46,12 +46,19 @@ public class InnerLettersController : RbacControllerBase
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
 
     [HttpGet("{id:int}/print")]
-    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4")
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withHamesh = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (size is not ("A4" or "A5")) return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
-        var pdf = await _print.GeneratePdfAsync(id, size, MyUserId);
-        return pdf == null ? NotFound(new { message = "نامه پیدا نشد یا دسترسی چاپ ندارید." }) : File(pdf, "application/pdf", $"inner-letter-{id}-{size}.pdf");
+        try
+        {
+            var pdf = await _print.GeneratePdfAsync(id, size, MyUserId, HttpContext.RequestAborted, withHamesh);
+            var variant = withHamesh ? "with-hamesh" : "without-hamesh";
+            return pdf == null ? NotFound(new { message = "نامه پیدا نشد یا دسترسی چاپ ندارید." })
+                : File(pdf, "application/pdf", $"inner-letter-{id}-{size}-{variant}.pdf");
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(403, new { message = ex.Message }); }
+        catch (InnerLetterPrintException ex) { return StatusCode(500, new { message = ex.Message }); }
     }
 
     /// <summary>نام نمایشی کاربر جاری (نام و نام خانوادگی، وگرنه نام کاربری)</summary>

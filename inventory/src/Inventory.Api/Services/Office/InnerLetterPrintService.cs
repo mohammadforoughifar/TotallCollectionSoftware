@@ -1,32 +1,20 @@
 using System.Globalization;
-using System.Net;
-using System.Text.RegularExpressions;
 using Inventory.Api.Data;
-using Inventory.Api.Services;
+using Inventory.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
-using QuestPDF.Drawing;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
 
 namespace Inventory.Api.Services.Office;
 
 public interface IInnerLetterPrintService
 {
-    Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default);
+    Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default, bool withHamesh = false);
 }
 
 public sealed class InnerLetterPrintService : IInnerLetterPrintService
 {
-    private sealed class ReceiverPrintRow
-    {
-        public string Name { get; set; } = "";
-        public DateTime ReferralDate { get; set; }
-    }
-
     private readonly AppDbContext _db;
     private readonly FileStore _files;
     private readonly IWebHostEnvironment _env;
@@ -36,10 +24,9 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
-        QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default)
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default, bool withHamesh = false)
     {
         size = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase) ? "A5" : "A4";
         var letter = await _db.InnerLetters.AsNoTracking().FirstOrDefaultAsync(x => x.Id == letterId && !x.IsDelete, ct);
@@ -48,37 +35,69 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             && letter.CreatorUserId != userId)
             return null;
 
-        var receivers = await _db.Erjas.AsNoTracking().Include(x => x.UserReciver)
+        var receivers = await _db.Erjas.AsNoTracking()
             .Where(x => x.SourceId == letterId && !x.IsDelete && (x.Type == "گیرنده" || x.Type == "ارجاع"))
-            .OrderBy(x => x.ErjaId).Take(20)
-            .Select(x => new ReceiverPrintRow
+            .OrderBy(x => x.ErjaId)
+            .Select(x => new
             {
-                Name = x.UserReciver == null ? "" : ($"{x.UserReciver.FirstName} {x.UserReciver.LastName}").Trim(),
+                Name = x.UserReciver == null ? "" : ((x.UserReciver.FirstName ?? "") + " " + (x.UserReciver.LastName ?? "")).Trim(),
                 ReferralDate = x.Date
-            })
-            .ToListAsync(ct);
-        var creator = await _db.Users.AsNoTracking()
-            .Where(x => x.Id == letter.CreatorUserId)
-            .Select(x => ($"{x.FirstName} {x.LastName}").Trim())
-            .FirstOrDefaultAsync(ct) ?? "";
-        var hasAttachment = await _db.AppAttachments.AnyAsync(x => x.Module == "InnerLetters" && x.RefId == letterId, ct);
+            }).ToListAsync(ct);
+        var creator = await _db.Users.AsNoTracking().Where(x => x.Id == letter.CreatorUserId)
+            .Select(x => ((x.FirstName ?? "") + " " + (x.LastName ?? "")).Trim()).FirstOrDefaultAsync(ct) ?? "";
+        var hasAttachment = await _db.AppAttachments.AsNoTracking().AnyAsync(x => x.Module == "InnerLetters" && x.RefId == letterId, ct);
         var companyId = await ActiveCompanyIdAsync(userId, ct);
         var company = companyId is int cid
             ? await _db.SystemCompanies.AsNoTracking().Where(x => x.Id == cid && x.IsActive)
                 .Select(x => new { x.Id, x.Code, x.LetterheadFileName }).FirstOrDefaultAsync(ct)
             : null;
-        var header = company?.LetterheadFileName;
-        var isAria1005 = company?.Id == 1005 || string.Equals(company?.Code?.Trim(), "1005", StringComparison.OrdinalIgnoreCase);
 
-        var content = BuildContent(letter, receivers, creator, hasAttachment, size == "A5");
+        // Print actual hamesh referrals, not signatures/private answers or every circulation row.
+        IReadOnlyList<InnerLetterHameshRow> hamesh = Array.Empty<InnerLetterHameshRow>();
+        if (withHamesh)
+            hamesh = await _db.Erjas.AsNoTracking()
+                .Where(x => x.SourceId == letterId && !x.IsDelete && x.Type == "هامش")
+                .OrderBy(x => x.ErjaId)
+                .Select(x => new InnerLetterHameshRow(
+                    x.UserReciver == null ? "" : ((x.UserReciver.FirstName ?? "") + " " + (x.UserReciver.LastName ?? "")).Trim(),
+                    x.MatnErja, x.Amalgar == null ? "" : x.Amalgar.Title)).ToListAsync(ct);
+        var calendar = new PersianCalendar();
+        var referrals = string.Join("، ", receivers.Select(x =>
+            $"{calendar.GetYear(x.ReferralDate):0000}/{calendar.GetMonth(x.ReferralDate):00}/{calendar.GetDayOfMonth(x.ReferralDate):00}"));
+        var data = new InnerLetterPrintData(letter.LetterNumber ?? "—", letter.DateSabt, letter.Title,
+            letter.Text ?? "", string.Join("، ", receivers.Select(x => x.Name)), creator, hamesh, referrals);
+        var a5 = size == "A5";
+        var fonts = new[] { Path.Combine(AppContext.BaseDirectory, "Resources", "fonts"), Path.Combine(_env.ContentRootPath, "Resources", "fonts") }
+            .FirstOrDefault(p => File.Exists(Path.Combine(p, "Vazirmatn-Regular.ttf")))
+            ?? throw new InnerLetterPrintException("فونت فارسی چاپ پیدا نشد؛ پوشهٔ Resources/fonts را همراه API منتشر کنید.");
+        ct.ThrowIfCancellationRequested();
+
+        if (company?.Id == 1003)
+        {
+            // This exact inner-letter template is required; never silently substitute another company's art.
+            var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5);
+            try
+            {
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts);
+                _log.LogInformation("چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}",
+                    letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5));
+                return pdf;
+            }
+            catch (Exception ex)
+            {
+                throw new InnerLetterPrintException("تولید PDF نامه داخلی شرکت ۱۰۰۳ روی سربرگ ناموفق بود؛ چاپ بدون سربرگ انجام نشد.", ex);
+            }
+        }
+
+        var header = company?.LetterheadFileName;
         var headerPath = ResolveLetterheadPath(header);
-        // سربرگ اختصاصی شرکت آریا با کد 1005: فایل PDF به‌عنوان لایهٔ پس‌زمینه
-        // روی صفحهٔ A4 قرار می‌گیرد و محتوای نامه با حاشیهٔ امن روی آن رندر می‌شود.
+        var isAria1005 = company?.Id == 1005 || string.Equals(company?.Code?.Trim(), "1005", StringComparison.OrdinalIgnoreCase);
         if (headerPath == null && isAria1005)
             headerPath = ResolveLetterheadPath("uploads/letterheads/aria-1005-letterhead.pdf")
-                         ?? ResolveLetterheadPath("Reports/InnerLetters/Companies/1005/letterhead-final.pdf");
+                ?? ResolveLetterheadPath("Reports/InnerLetters/Companies/1005/letterhead-final.pdf");
         if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
             headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+        var content = InnerLetterPdfRenderer.Render(data, a5, withHamesh, null, hasAttachment, fonts);
         if (headerPath == null)
         {
             _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
@@ -107,28 +126,19 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
 
     private async Task<int?> ActiveCompanyIdAsync(int userId, CancellationToken ct)
     {
-        var raw = _http.HttpContext?.Request.Headers["X-Company-Id"].FirstOrDefault();
-        if (!int.TryParse(raw, out var id) || id <= 0) return null;
-        return await _db.UserCompanyAccesses.AnyAsync(x => x.UserId == userId && x.CompanyId == id && x.Company.IsActive, ct) ? id : null;
-    }
-
-    private static byte[] BuildContent(InnerLetter l, List<ReceiverPrintRow> receivers, string creator, bool attachment, bool a5)
-    {
-        var text = Regex.Replace(WebUtility.HtmlDecode(Regex.Replace(l.Text ?? "", "<[^>]+>", " ")), @"\s+", " ").Trim();
-        var pc = new PersianCalendar(); var d = l.DateSabt;
-        var date = $"{pc.GetYear(d):0000}/{pc.GetMonth(d):00}/{pc.GetDayOfMonth(d):00}";
-        var receiverText = string.Join("، ", receivers.Where(x => !string.IsNullOrWhiteSpace(x.Name)).Select(x => x.Name));
-        var referralDate = receivers.Count == 0 ? "—" : string.Join("، ", receivers.Select(x => $"{pc.GetYear(x.ReferralDate):0000}/{pc.GetMonth(x.ReferralDate):00}/{pc.GetDayOfMonth(x.ReferralDate):00}"));
-        var doc = Document.Create(root => root.Page(page =>
+        // Middleware handles membership, legacy-user company and admin fallback. Never trust raw header alone.
+        var context = _http.HttpContext;
+        if (context != null && context.Items.TryGetValue(ActiveCompanyMiddleware.ItemKey, out var resolved) && resolved is int selected)
         {
-            page.Size(a5 ? PageSizes.A5 : PageSizes.A4);
-            page.MarginTop(a5 ? 90 : 130); page.MarginBottom(a5 ? 42 : 60); page.MarginHorizontal(a5 ? 30 : 46);
-            page.ContentFromRightToLeft(); page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(a5 ? 9 : 11).LineHeight(1.7f));
-            page.Header().AlignLeft().Column(c => { c.Item().Text($"شماره نامه: {l.LetterNumber ?? "—"}"); c.Item().Text($"تاریخ ثبت: {date}"); c.Item().Text($"تاریخ ارجاع: {referralDate}"); c.Item().Text($"پیوست: {(attachment ? "دارد" : "ندارد")}"); });
-            page.Content().Column(c => { c.Item().Text($"عنوان: {l.Title}").Bold(); c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(receiverText) ? "—" : receiverText)}").Bold(); c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(creator) ? "—" : creator)}"); c.Item().PaddingVertical(8).LineHorizontal(0.7f); c.Item().Text(text); });
-            page.Footer().AlignCenter().Text(t => { t.CurrentPageNumber(); t.Span(" از "); t.TotalPages(); });
-        }));
-        return doc.GeneratePdf();
+            if (selected <= 0) throw new UnauthorizedAccessException("به شرکت انتخاب‌شده برای چاپ دسترسی ندارید.");
+            return selected;
+        }
+        var raw = _http.HttpContext?.Request.Headers[ActiveCompanyMiddleware.HeaderName].FirstOrDefault();
+        int.TryParse(raw, out var requested);
+        return await _db.UserCompanyAccesses.AsNoTracking()
+            .Where(x => x.UserId == userId && x.Company.IsActive)
+            .OrderByDescending(x => x.CompanyId == requested).ThenByDescending(x => x.IsDefault).ThenBy(x => x.CompanyId)
+            .Select(x => (int?)x.CompanyId).FirstOrDefaultAsync(ct);
     }
 
     private static byte[] Overlay(byte[] content, string headerPath)
