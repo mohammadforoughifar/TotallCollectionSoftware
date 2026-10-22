@@ -1,6 +1,9 @@
 @namespace Inventory.Client.Pages
 @page "/system-company"
 @inject HttpClient Http
+@using System.Net.Http
+@using System.Net.Http.Headers
+@using System.Net.Http.Json
 
 <PageTitle>مدیریت شرکت‌ها و شعب</PageTitle>
 
@@ -95,8 +98,15 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
-                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: uploads/letterheads/letterhead.pdf" />
-                    <small class="text-muted">مسیر فایل PDF نسبت به <b>wwwroot</b>؛ مثلاً uploads/letterheads/letterhead.pdf. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
+                    <InputFile class="form-control" OnChange="OnLetterheadFile" accept=".pdf" />
+                    @if (!string.IsNullOrWhiteSpace(newCompany.LetterheadFileName))
+                    {
+                        <div class="mt-1 mb-1"><b>فایل فعلی:</b> @newCompany.LetterheadFileName</div>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="ClearLetterhead">حذف سربرگ</button>
+                    }
+                    <small class="text-muted">فایل PDF سربرگ آپلود شود و در مسیر <b>wwwroot/uploads/letterheads/</b> ذخیره شود. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
+                    @if (!string.IsNullOrWhiteSpace(letterheadUploadError))
+                        <div class="text-danger small mt-1">@letterheadUploadError</div>
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch mt-1">
@@ -118,6 +128,8 @@
     private bool ShowForm = false;
     private SystemCompanyItem newCompany = new() { IsActive = true, CreatedAt = DateTime.Now };
     private bool editingCompany = false;
+    private IBrowserFile? pendingLetterhead;
+    private string? letterheadUploadError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,6 +151,7 @@
         try
         {
             HttpResponseMessage resp;
+            int? createdId = null;
             if (editingCompany && newCompany.Id > 0)
             {
                 resp = await Http.PutAsJsonAsync($"/api/SystemCompanies/{newCompany.Id}", newCompany);
@@ -146,16 +159,77 @@
             else
             {
                 resp = await Http.PostAsJsonAsync("/api/SystemCompanies", newCompany);
+                var result = await resp.Content.ReadFromJsonAsync<SaveResult>();
+                createdId = result?.Id;
             }
             if (resp.IsSuccessStatusCode)
             {
                 ShowForm = false; editingCompany = false;
+                var fileToUpload = pendingLetterhead;
                 newCompany = new() { IsActive = true, CreatedAt = DateTime.Now };
+                pendingLetterhead = null;
+                letterheadUploadError = null;
                 await OnInitializedAsync();
+                // شرکت جدید: پس از دریافت Id، فایل سربرگ در انتظار (در صورت وجود) آپلود شود
+                if (createdId is > 0 && fileToUpload is { })
+                    await UploadLetterheadAsync(createdId.Value, fileToUpload);
             }
         }
         catch { }
     }
+
+    private async Task OnLetterheadFile(InputFileChangeEventArgs e)
+    {
+        letterheadUploadError = null;
+        var file = e.File.GetMultipleFiles(1).FirstOrDefault();
+        if (file == null) return;
+        if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            letterheadUploadError = "فقط فایل PDF برای سربرگ مجاز است.";
+            return;
+        }
+        pendingLetterhead = file;
+        // ویرایش شرکت موجود: بلافاصله آپلود شود
+        if (editingCompany && newCompany.Id > 0)
+            await UploadLetterheadAsync(newCompany.Id, file);
+    }
+
+    private async Task UploadLetterheadAsync(int companyId, IBrowserFile file)
+    {
+        try
+        {
+            letterheadUploadError = null;
+            await using var stream = file.OpenReadStream(maxAllowedSize: 10L * 1024 * 1024);
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(stream);
+            sc.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+            content.Add(sc, "file", file.Name);
+            var resp = await Http.PostAsync($"/api/SystemCompanies/{companyId}/letterhead", content);
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<LetterheadResult>();
+                if (result?.LetterheadFileName is { } path)
+                    newCompany.LetterheadFileName = path;
+                pendingLetterhead = null;
+            }
+            else
+            {
+                var text = await resp.Content.ReadAsStringAsync();
+                letterheadUploadError = "آپلود سربرگ ناموفق بود: " + text;
+            }
+        }
+        catch (Exception ex) { letterheadUploadError = ex.Message; }
+    }
+
+    private void ClearLetterhead()
+    {
+        newCompany.LetterheadFileName = null;
+        pendingLetterhead = null;
+        letterheadUploadError = null;
+    }
+
+    private record SaveResult { public int Id { get; set; } }
+    private record LetterheadResult { public string? LetterheadFileName { get; set; } }
 
     private async Task ToggleStatus(SystemCompanyItem c)
     {
