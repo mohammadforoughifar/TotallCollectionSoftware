@@ -553,17 +553,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var smallFontSize = isA5 ? 7f : 9f;
         var lineHeight = isA5 ? 1.5f : 1.55f;
 
-        var plainText = HtmlToPlainText(letter.Text);
-        var closingMatch = Regex.Match(
-            plainText,
-            @"(?:^|\n)[ \t]*(?<closing>با\s*تشکر[^\n]*)\s*$",
-            RegexOptions.Multiline);
-        var bodyText = closingMatch.Success
-            ? plainText[..closingMatch.Index].TrimEnd()
-            : plainText;
-        var closingText = closingMatch.Success
-            ? ToPersianDigits(closingMatch.Groups["closing"].Value.Trim())
-            : "با تشکر";
+        // Print the authored body as-is; do not append a generated closing phrase.
+        var bodyText = HtmlToPlainText(letter.Text);
 
         var number = ToPersianDigits(
             string.IsNullOrWhiteSpace(letter.SadereNumber)
@@ -599,7 +590,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var signerRows = signerCards.Chunk(3).ToList();
         var signerCardWidth = isA5 ? 98f : 143f;
         var signatureHeight = isA5 ? 30f : 44f;
-        var stampHeight = isA5 ? 24f : 32f;
 
         void AddSignerRow(IContainer container, (string Name, string Role, byte[]? Signature)[] rowSigners)
         {
@@ -625,10 +615,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         card.Item().AlignCenter()
                             .Text(signer.Role).FontFamily("Vazirmatn").FontSize(smallFontSize)
                             .LineHeight(1.25f).DirectionFromRightToLeft();
-                        card.Item().PaddingTop(5).Height(stampHeight)
-                            .Border(0.5f).BorderColor("#9ca3af").AlignCenter().AlignMiddle()
-                            .Text("مهر").FontFamily("Vazirmatn").FontSize(smallFontSize)
-                            .DirectionFromRightToLeft();
                     });
                 }
 
@@ -774,7 +760,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 }
 
                 // One shared padded body column keeps receiver, subject, paragraphs,
-                // closing and signature block on identical left/right margins.
+                // signature block on identical left/right margins.
                 page.Content().PaddingTop(contentTopPadding)
                     .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
                 {
@@ -807,23 +793,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             .AlignRight().DirectionFromRightToLeft();
                     }
 
-                    if (signerRows.Count == 0)
+                    if (signerRows.Count > 0)
                     {
-                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire()
-                            .Text(closingText).FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-                    }
-                    else
-                    {
-                        // Keep the closing and the first signer row together; later rows
-                        // also move intact if there is not enough room above the footer.
+                        // Keep the heading and first signer row together; do not add a closing or stamp box.
                         col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Column(signOff =>
                         {
-                            signOff.Item().Text(closingText)
-                                .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                                .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-                            signOff.Item().PaddingTop(isA5 ? 8 : 12)
-                                .Text("امضاکنندگان")
+                            signOff.Item().Text("امضاکنندگان")
                                 .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
                                 .AlignRight().DirectionFromRightToLeft();
                             AddSignerRow(signOff.Item().PaddingTop(isA5 ? 4 : 6), signerRows[0]);

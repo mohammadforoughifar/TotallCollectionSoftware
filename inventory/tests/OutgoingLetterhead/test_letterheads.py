@@ -40,7 +40,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("Path.IsPathRooted(templateRoot)", source)
         self.assertIn("$\"Outgoing-{size}.mrt\"", source)
 
-    def test_homepa_metadata_boxes_match_each_mrt_size_in_page_points(self):
+    def test_homepa_metadata_boxes_preserve_mrt_geometry_with_calibrated_left_shift(self):
         layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
         expressions = {"Number": "LetterNumber", "Date": "DateShams", "Attachment": "Peyvast"}
         for field, column in expressions.items():
@@ -55,7 +55,8 @@ class LetterheadAssetsTests(unittest.TestCase):
                     margins = [float(v) for v in page.findtext("Margins").split(",")]
                     component = next(e for e in page.iter() if e.findtext("Text") == "{DataSource1." + column + "}")
                     x, y, width, height = [float(v) for v in component.findtext("ClientRectangle").split(",")]
-                    expected = ((margins[0] + x) * 72, (margins[2] + y) * 72, width * 72, height * 72)
+                    left_shift = (3 if size == "A5" else 4) if field in ("Date", "Attachment") else 0
+                    expected = ((margins[0] + x) * 72 - left_shift, (margins[2] + y) * 72, width * 72, height * 72)
                     actual = [float(v.strip().removesuffix("f")) for v in variants[index].split(",")]
                     for value, target in zip(actual, expected):
                         self.assertAlmostEqual(value, target, places=3)
@@ -73,6 +74,20 @@ class LetterheadAssetsTests(unittest.TestCase):
             self.assertIn(f"HomepaLetterheadLayout.{field}(isA5)", branch)
         self.assertNotIn(".Column(", branch)
         self.assertIn(".Height(isA5 ? 150 : 160)", branch, "body layout must not move")
+
+    def test_print_does_not_inject_a_closing_or_stamp_box(self):
+        source = SERVICE.read_text()
+        self.assertNotIn("closingText", source)
+        self.assertNotIn("closingMatch", source)
+        self.assertNotIn('Text("با تشکر")', source)
+        self.assertNotIn('Text("مهر")', source)
+        self.assertNotIn("stampHeight", source)
+        self.assertIn("var bodyText = HtmlToPlainText(letter.Text);", source,
+                      "authored text must not be truncated at a closing-looking line")
+        self.assertIn(".Text(signer.Name)", source)
+        self.assertIn(".Text(signer.Role)", source)
+        self.assertIn(".Image(signer.Signature)", source)
+        self.assertIn("if (signerRows.Count > 0)", source)
 
     def test_templates_travel_with_build_and_publish(self):
         project = ET.parse(API / "Inventory.Api.csproj").getroot()

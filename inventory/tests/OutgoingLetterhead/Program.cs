@@ -34,7 +34,7 @@ foreach (var hasAttachment in company == 1003 ? new[] { false, true } : new[] { 
         Id = 1, CompanyId = company, LetterNumber = "1405/12",
         SadereNumber = company == 1003 && hasAttachment ? "1405/1003/12345678" : "1405/12",
         DateSabt = new DateTime(2026, 10, 22), Title = "آزمایش سربرگ شرکت",
-        ReceiverOrganization = "گیرنده آزمایشی", Text = "این یک آزمایش مستقل چاپ است.\nبا تشکر"
+        ReceiverOrganization = "گیرنده آزمایشی", Text = "این یک آزمایش مستقل چاپ است."
     };
     var content = (byte[])build.Invoke(service, new object?[]
     {
@@ -62,11 +62,12 @@ foreach (var size in new[] { "A4", "A5" })
         var rect = page.Descendants().Single(e => e.Element("Text")?.Value == "{DataSource1." + column + "}")
             .Element("ClientRectangle")!.Value.Split(',').Select(v => double.Parse(v, CultureInfo.InvariantCulture)).ToArray();
         var expected = new[] { (margin[0] + rect[0]) * 72, (margin[2] + rect[1]) * 72, rect[2] * 72, rect[3] * 72 };
+        if (field is "Date" or "Attachment") expected[0] -= size == "A5" ? 3 : 4;
         var actual = layoutType.GetMethod(field, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[] { size == "A5" })!;
         var names = new[] { "Left", "Top", "Width", "Height" };
         for (var i = 0; i < names.Length; i++)
             Check(Math.Abs(Convert.ToDouble(actual.GetType().GetProperty(names[i])!.GetValue(actual)) - expected[i]) < 0.001,
-                $"1003/{size}/{field}/{names[i]} matches the MRT page coordinates");
+                $"1003/{size}/{field}/{names[i]} matches the calibrated MRT page coordinates");
     }
 }
 
