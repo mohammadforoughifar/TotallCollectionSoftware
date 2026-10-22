@@ -14,6 +14,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
+// Update both contexts using this installation's configuration, without starting the web server.
+var updateDatabaseOnly = args.Any(a => a.Equals("--update-database", StringComparison.OrdinalIgnoreCase));
+args = args.Where(a => !a.Equals("--update-database", StringComparison.OrdinalIgnoreCase)).ToArray();
 var builder = WebApplication.CreateBuilder(args);
 
 // ================== تشخیص میزبانی پشت IIS ==================
@@ -51,7 +54,8 @@ builder.WebHost.ConfigureKestrel(options =>
     // سقف هر endpoint همچنان با [RequestSizeLimit]/[DisableRequestSizeLimit] خودش اعمال می‌شود.
     options.Limits.MaxRequestBodySize = null;
 });
-var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration);
+var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration,
+    skipPreparation: updateDatabaseOnly || EF.IsDesignTime);
 foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {message}");
 // ================== تعیین آدرس/پورت HTTP از تنظیمات اجرا ==================
 // آدرس از ASPNETCORE_URLS (مثل http://192.168.30.104:8181) یا سوئیچ --urls خوانده می‌شود.
@@ -554,6 +558,17 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+
+if (updateDatabaseOnly)
+{
+    await using (app)
+    {
+        await DbInitializer.InitializeAsync(app);
+        await app.InitializeRadisHrAsync(isDesignTime: false, failOnError: true);
+        Console.WriteLine("[DB] به‌روزرسانی هسته و RADIS-HR پایان یافت؛ هشدارهای احتمالی اسکیما را در لاگ بررسی کنید.");
+    }
+    return;
+}
 
 // ================== محل ذخیرهٔ فایل مدارک آرشیو ==================
 // همین ابتدای کار مسیر واقعی روی دیسک سرور و امکان نوشتن روی آن بررسی و لاگ می‌شود

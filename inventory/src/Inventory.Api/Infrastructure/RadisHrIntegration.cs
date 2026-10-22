@@ -57,7 +57,7 @@ public static class RadisHrIntegration
         return services;
     }
 
-    public static async Task InitializeRadisHrAsync(this WebApplication app, bool isDesignTime)
+    public static async Task InitializeRadisHrAsync(this WebApplication app, bool isDesignTime, bool failOnError = false)
     {
         if (isDesignTime) return;
 
@@ -72,6 +72,8 @@ public static class RadisHrIntegration
         }
         catch (Exception ex)
         {
+            // A maintenance command must fail rather than report success after a migration error.
+            if (failOnError) throw;
             // جدول Users/PK_Users مجموعه نباید مانع روشن‌شدن برنامه شود.
             logger.LogError(ex, "راه‌اندازی دیتابیس ماژول منابع انسانی بن‌سازه ناموفق بود؛ سامانه جامع ادامه می‌دهد.");
         }
