@@ -10849,6 +10849,9 @@ namespace Inventory.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrganizationId"));
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -10872,6 +10875,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("OrganizationId");
+
+                    b.HasIndex("CompanyId");
 
                     b.HasIndex("NameUniq")
                         .IsUnique();
@@ -13545,6 +13550,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -13587,6 +13595,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
 
                     b.ToTable("SystemUsers");
                 });
@@ -16640,6 +16650,26 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.Organization", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.SystemCompany", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.SystemUser", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.Organization", b =>
