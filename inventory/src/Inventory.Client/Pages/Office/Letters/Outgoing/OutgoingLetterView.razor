@@ -32,12 +32,19 @@
             <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
                 <span class="t"><i class="bi bi-envelope-paper" style="color:var(--p2)"></i> @letter.Title</span>
                 <button class="icb" title="بازگشت به کارتابل" @onclick="GoCartable"><i class="bi bi-arrow-right-circle"></i></button>
-                <button class="lbtn ghost" disabled="@printing" @onclick='() => PrintPdf("A4")'>
-                    <i class="bi bi-printer"></i> چاپ A4
-                </button>
-                <button class="lbtn ghost" disabled="@printing" @onclick='() => PrintPdf("A5")'>
-                    <i class="bi bi-printer-fill"></i> چاپ A5
-                </button>
+                <span class="print-wr">
+                    <button class="lbtn ghost" title="چاپ نامٔ صادره روی سربرگ" disabled="@printing" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i> چاپ</button>
+                    @if (printMenuOpen)
+                    {
+                        <div class="ltmenu" @onclick:stopPropagation="true">
+                            <button @onclick="async () => { await PrintSelected(\"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                            <button @onclick="async () => { await PrintSelected(\"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                            <div class="mdiv"></div>
+                            <button @onclick="async () => { await PrintSelected(\"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                            <button @onclick="async () => { await PrintSelected(\"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                        </div>
+                    }
+                </span>
                 @if (letter.CanSign)
                 {
                     <button class="lbtn grn" @onclick="SignAsync"><i class="bi bi-pen"></i> امضای نامه</button>
@@ -151,7 +158,17 @@
     private OutgoingLetterDetailDto? letter;
     private List<LetterAttachmentDto> attachments = new();
     private bool loading = true;
-    private bool printing;
+    private bool printing, printMenuOpen;
+
+    private void TogglePrintSelected() => printMenuOpen = !printMenuOpen;
+
+    private void ClosePrintMenu() => printMenuOpen = false;
+
+    private async Task PrintSelected(string size, bool withHamesh)
+    {
+        ClosePrintMenu();
+        await PrintPdf(size);
+    }
 
     private string StatusTitle => letter?.Status switch
     {
@@ -192,6 +209,7 @@
     private async Task PrintPdf(string size)
     {
         if (letter == null) return;
+        printMenuOpen = false;
         printing = true;
         // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
         // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.

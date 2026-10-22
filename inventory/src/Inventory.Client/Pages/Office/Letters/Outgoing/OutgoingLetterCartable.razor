@@ -218,7 +218,17 @@
                                         }
                                         <div class="mdiv"></div>
                                         <button @onclick="() => MenuGardesh(ll)"><i class="bi bi-diagram-3"></i> گردش نامه</button>
-                                        <button @onclick="() => MenuPrint(ll)"><i class="bi bi-printer"></i> چاپ</button>
+                                        <button class="lbtn ghost" @onclick="() => TogglePrintMenu(ll)" @onclick:stopPropagation="true"><i class="bi bi-printer"></i> چاپ</button>
+                                        @if (printMenuOpen && printMenuLetterId == ll.LetterId)
+                                        {
+                                            <div class="ltmenu" @onclick:stopPropagation="true">
+                                                <button @onclick="async () => { await PrintRow(ll, \"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, \"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <div class="mdiv"></div>
+                                                <button @onclick="async () => { await PrintRow(ll, \"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, \"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                            </div>
+                                        }
                                         @if (ll.ErjaId is { } eid2)
                                         {
                                             <button class="warn" @onclick="() => ToggleArchive(ll)">
@@ -273,8 +283,19 @@
                         </button>
                     }
                     <button class="icb" title="نمایش نامه (صفحه کامل)" @onclick="() => ViewLetter(selected.LetterId)"><i class="bi bi-eye"></i></button>
-                    <button class="icb" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A4")'><i class="bi bi-printer"></i></button>
-                    <button class="icb" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A5")'><i class="bi bi-printer-fill"></i></button>
+                    <span class="print-wr">
+                        <button class="icb" title="چاپ نامٔ صادره روی سربرگ" disabled="@printingPdf" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i></button>
+                        @if (printMenuOpen)
+                        {
+                            <div class="ltmenu" @onclick:stopPropagation="true">
+                                <button @onclick="async () => { await PrintSelected(\"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                <button @onclick="async () => { await PrintSelected(\"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <div class="mdiv"></div>
+                                <button @onclick="async () => { await PrintSelected(\"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                <button @onclick="async () => { await PrintSelected(\"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                            </div>
+                        }
+                    </span>
                     <button class="icb" title="کپی نامه" @onclick="CopyLetter"><i class="bi bi-files"></i></button>
                     @if (selected.CanSign)
                     {
@@ -910,7 +931,12 @@
         StateHasChanged();
     }
     private void ToggleMenu(int id) => openMenuId = openMenuId == id ? 0 : id;
-    private void CloseMenus() => openMenuId = 0;
+    private void CloseMenus()
+    {
+        openMenuId = 0;
+        printMenuOpen = false;
+        printMenuLetterId = null;
+    }
 
     private static string AvatarText(string name)
     {
@@ -949,6 +975,8 @@
     private async Task OpenLetter(OutgoingLetterListItemDto l)
     {
         openMenuId = 0;
+        printMenuOpen = false;
+        printMenuLetterId = null;
         selectedItem = l;
         await LoadDetailAsync(l.LetterId);
         readerOpen = true;
@@ -1091,14 +1119,39 @@
     private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt); }
     // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
     // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
-    private async Task MenuPrint(OutgoingLetterListItemDto l)
+    private bool printingPdf, printMenuOpen;
+    private int? printMenuLetterId;
+
+    private void TogglePrintMenu(OutgoingLetterListItemDto l)
     {
-        openMenuId = 0;
-        await OpenLetter(l);
-        await PrintPdf("A4");
+        printMenuOpen = !printMenuOpen;
+        printMenuLetterId = printMenuOpen ? l.LetterId : (int?)null;
     }
 
-    private bool printingPdf;
+    private void ClosePrintMenu()
+    {
+        printMenuOpen = false;
+        printMenuLetterId = null;
+    }
+
+    private void TogglePrintSelected()
+    {
+        printMenuOpen = !printMenuOpen;
+    }
+
+    private async Task PrintSelected(string size, bool withHamesh)
+    {
+        ClosePrintMenu();
+        await PrintPdf(size);
+    }
+
+    private async Task PrintRow(OutgoingLetterListItemDto l, string size, bool withHamesh)
+    {
+        ClosePrintMenu();
+        openMenuId = 0;
+        await OpenLetter(l);
+        await PrintPdf(size);
+    }
 
     private void ViewLetter(int letterId) => Nav.NavigateTo($"outgoing-letters/view/{letterId}");
 
@@ -1106,6 +1159,7 @@
     private async Task PrintPdf(string size)
     {
         if (selected == null) return;
+        printMenuOpen = false;
         printingPdf = true;
         // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ اگر پس از دریافت PDF باز شود،
         // مرورگر آن را popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
