@@ -65,15 +65,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<OutgoingLetterPrintService> _logger;
+    private readonly IConfiguration _configuration;
 
     public OutgoingLetterPrintService(
         AppDbContext db,
         IWebHostEnvironment env,
-        ILogger<OutgoingLetterPrintService> logger)
+        ILogger<OutgoingLetterPrintService> logger,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _env = env;
         _logger = logger;
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -233,10 +236,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private string? FindCompanyTemplate(int companyId, string size)
     {
-        var relative = Path.Combine("Reports", "OutgoingLetters", "Companies",
+        // The active QuestPDF pipeline must honor the same template-root setting as the legacy renderer.
+        var configuredRoot = _configuration["Reporting:Stimulsoft:TemplateRoot"];
+        var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
+            ? Path.Combine("Reports", "OutgoingLetters", "Companies")
+            : configuredRoot.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        var template = Path.Combine(templateRoot,
             companyId.ToString(CultureInfo.InvariantCulture), $"Outgoing-{size}.mrt");
         var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
-        return roots.Select(root => Path.Combine(root, relative)).FirstOrDefault(File.Exists);
+        var candidates = Path.IsPathRooted(templateRoot)
+            ? new[] { template }
+            : roots.Select(root => Path.Combine(root, template)).Distinct().ToArray();
+        var found = candidates.FirstOrDefault(File.Exists);
+        if (found == null)
+            _logger.LogDebug("قالب سربرگ شرکت یافت نشد. CompanyId={CompanyId}, Size={Size}, SearchedPaths={SearchedPaths}",
+                companyId, size, string.Join(" | ", candidates));
+        return found;
     }
 
     /// <summary>خواندن Watermark.ImageBytes از فایل قالب MRT (XML استیمول‌سافت).</summary>
@@ -627,6 +642,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
+                // company background by PDFsharp, that white fill would hide the entire letterhead.
+                page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
                 page.MarginTop(0);
                 // Reserve the printed company footer area on every page.
                 page.MarginBottom(isA5 ? 52 : 90);
