@@ -47,7 +47,7 @@ internal static class InnerLetterPdfRenderer
             page.PageColor(Colors.Transparent);
             page.ContentFromRightToLeft();
             page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(fontSize)
-                .LineHeight(1.65f).DirectionFromRightToLeft());
+                .LineHeight(1.3f).DirectionFromRightToLeft());
             if (homepa)
             {
                 page.MarginTop(0);

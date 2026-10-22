@@ -551,7 +551,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var fontSize = isA5 ? 8f : 10.5f;
         var titleFontSize = isA5 ? 9.5f : 12f;
         var smallFontSize = isA5 ? 7f : 9f;
-        var lineHeight = isA5 ? 1.5f : 1.55f;
+        var lineHeight = isA5 ? 1.3f : 1.35f;
 
         // Print the authored body as-is; do not append a generated closing phrase.
         var bodyText = HtmlToPlainText(letter.Text);
