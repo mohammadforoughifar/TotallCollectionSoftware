@@ -73,8 +73,9 @@
 .ltx .avt { width:40px; height:40px; border-radius:12px; flex-shrink:0; background:linear-gradient(135deg,#e0e7ff,#ede9fe);
             display:flex; align-items:center; justify-content:center; color:var(--p2); font-weight:800; font-size:14px; }
 .ltx .mail-b { flex:1; min-width:0; }
-.ltx .mail-r1 { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.ltx .mail-r1 .who { font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px; }
+.ltx .mail-r1 { display:flex; align-items:center; justify-content:space-between; gap:6px; min-width:0; }
+.ltx .mail-r1 .who { font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px; min-width:0; }
+.ltx .mail-r1 .who-val { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; min-width:0; }
 .ltx .mail-r1 .who .star-ico { color:#eab308; font-size:11px; display:none; }
 .ltx .mail.starred .who .star-ico { display:inline; }
 .ltx .mail-r1 .tm { font-size:10px; color:var(--sub); white-space:nowrap; }

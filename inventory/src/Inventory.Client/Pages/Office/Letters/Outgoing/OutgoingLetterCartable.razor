@@ -151,7 +151,7 @@
                             <div class="mail-b">
                                 <div class="mail-r1">
                                     <span class="who">
-                                        @(FolderIsSent ? "به: " + ll.ReceiverOrganization + (ll.ReceiverName != null ? " (" + ll.ReceiverName + ")" : "") : ll.Sender)
+                                        <span class="who-val">@(FolderIsSent ? "به: " + ll.ReceiverOrganization + (ll.ReceiverName != null ? " (" + ll.ReceiverName + ")" : "") : ll.Sender)</span>
                                         <i class="bi bi-star-fill star-ico"></i>
                                     </span>
                                     <span class="tm num">@ll.Date.ToFaDateTime()</span>
