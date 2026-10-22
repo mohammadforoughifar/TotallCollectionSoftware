@@ -637,6 +637,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         }
 
+        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
+        {
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle();
+            // The enclosing header is physically left-to-right; only the field text is RTL.
+            // Do not allow a long letter number to push the date/attachment down a flowing column.
+            box = center ? box.AlignCenter() : box.AlignRight();
+            box.ScaleToFit().Text(value)
+                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                .FontColor(Colors.White).LineHeight(1.2f)
+                .DirectionFromRightToLeft();
+        }
+
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -696,9 +709,24 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                                 .DirectionFromRightToLeft();
                         });
                 }
+                else if (hasLetterhead && letterheadCompanyId == HomepaCompanyId)
+                {
+                    // Match company 1003's MRT rectangles, not the RTL body's default right edge.
+                    // Preserve the existing reserved header height so body/signature layout does not move.
+                    page.Header().ContentFromLeftToRight()
+                        .Height(isA5 ? 150 : 160)
+                        .Layers(layers =>
+                        {
+                            layers.PrimaryLayer().Extend();
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Attachment(isA5),
+                                hasAttachment ? "دارد" : "ندارد", center: true);
+                        });
+                }
                 else if (hasLetterhead)
                 {
-                    // Homepa prints these labels vertically in its blue header; place
+                    // Preserve the existing layout for other company letterheads; place
                     // only the values beside them, without duplicating the captions.
                     page.Header()
                         .Height(isA5 ? 150 : 160)
