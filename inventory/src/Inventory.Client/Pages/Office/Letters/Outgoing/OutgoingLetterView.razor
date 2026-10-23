@@ -114,6 +114,10 @@
                             <span class="pp" style="@(s.IsSigned ? "background:#dcfce7" : "background:#fef3c7")">
                                 <span class="mini"><i class="bi @(s.IsSigned ? "bi-check2-all" : "bi-pen")"></i></span>
                                 @s.DisplayName
+                                @if (!string.IsNullOrWhiteSpace(s.SematTitle))
+                                {
+                                    <small style="margin-inline-start:6px;color:#475569"><i class="bi bi-briefcase"></i> @s.SematTitle</small>
+                                }
                                 @if (s.IsSigned)
                                 {
                                     <small style="margin-inline-start:6px;color:#16a34a">@s.DateSigned?.ToFaDateTime() ✓</small>

@@ -23,6 +23,12 @@ public class LetterReciverDto
     /// <summary>سمت — بعد از چارت سازمانی فعال می‌شود</summary>
     public int? SematId { get; set; }
     public string? SematTitle { get; set; }
+
+    /// <summary>
+    /// همهٔ سمت‌های فعالِ کاربر (هر کاربر می‌تواند چند سمت داشته باشد).
+    /// در کمبو باکسِ انتخابِ امضاکننده نمایش داده می‌شود و جستجو با آن هم کار می‌کند.
+    /// </summary>
+    public List<string>? Positions { get; set; }
 }
 
 /// <summary>ثبت/ویرایش نامه داخلی — معادل VMInnerLetrer.AddInner</summary>

@@ -75,6 +75,13 @@ public class UserDto
     public string? SignaturePath { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// سمت‌های فعالِ کاربر (عنوان سمت‌هایی که هنگام تعریفِ دستیِ کاربر ثبت شده‌اند).
+    /// هنگام ذخیره، این فهرست با سمت‌های ثبت‌شده هم‌گام می‌شود؛ اگر null باشد
+    /// سمت‌های کاربر دست‌نخورده می‌مانند.
+    /// </summary>
+    public List<string>? Positions { get; set; }
 }
 
 /// <summary>خلاصه داشبورد معرف.</summary>

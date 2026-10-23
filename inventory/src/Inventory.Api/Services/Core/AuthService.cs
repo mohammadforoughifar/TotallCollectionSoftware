@@ -203,6 +203,8 @@ public class AuthService : IAuthService
         var roleNames = await _db.Roles.ToDictionaryAsync(r => r.Id, r => r.Name);
         var ids = users.Select(u => u.Id).ToList();
         var userRoles = await _db.UserRoles.Where(ur => ids.Contains(ur.UserId)).ToListAsync();
+        // سمت‌های فعالِ هر کاربر (هر کاربر می‌تواند چند سمت داشته باشد)
+        var positions = await UserPositionMapAsync(ids);
         return users.Select(u => new UserDto
         {
             Id = u.Id,
@@ -221,8 +223,113 @@ public class AuthService : IAuthService
             EitaaChatId = u.EitaaChatId,
             SignaturePath = u.SignaturePath,
             IsActive = u.IsActive,
-            CreatedAt = u.CreatedAt
+            CreatedAt = u.CreatedAt,
+            Positions = positions.TryGetValue(u.Id, out var p) ? p : new List<string>()
         }).ToList();
+    }
+
+    /// <summary>
+    /// نگاشتِ شناسهٔ کاربر → فهرستِ عنوانِ سمت‌های فعالِ او.
+    /// سمت‌ها در جدولِ Semats نگه‌داری می‌شوند (Semats.UserId)؛ هر کاربر می‌تواند
+    /// چند سمت فعال داشته باشد.
+    /// </summary>
+    private async Task<Dictionary<int, List<string>>> UserPositionMapAsync(List<int> userIds)
+    {
+        var map = new Dictionary<int, List<string>>();
+        if (userIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId != null && userIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+            .OrderBy(s => s.SematId)
+            .Select(s => new { s.UserId, s.Title })
+            .ToListAsync();
+        foreach (var r in rows)
+        {
+            var title = (r.Title ?? "").Trim();
+            if (title.Length == 0) continue;
+            if (!map.TryGetValue(r.UserId!.Value, out var list))
+            {
+                list = new List<string>();
+                map[r.UserId!.Value] = list;
+            }
+            if (!list.Any(t => string.Equals(t, title, StringComparison.OrdinalIgnoreCase)))
+                list.Add(title);
+        }
+        return map;
+    }
+
+    /// <summary>سازمانِ پیش‌فرض — سمت‌های کاربر به آن نسبت داده می‌شوند.</summary>
+    private async Task<int> DefaultOrganizationIdAsync()
+    {
+        var id = await _db.Organizations.AsNoTracking()
+            .Where(o => !o.IsDelete && o.IsActive && o.IsDefault)
+            .Select(o => (int?)o.OrganizationId)
+            .FirstOrDefaultAsync();
+        if (id is > 0) return id.Value;
+
+        var any = await _db.Organizations.AsNoTracking()
+            .Where(o => !o.IsDelete)
+            .Select(o => (int?)o.OrganizationId)
+            .FirstOrDefaultAsync();
+        if (any is > 0) return any.Value;
+
+        // سازمانِ پیش‌فرض معمولاً در DbInitializer ساخته می‌شود؛ اگر نبود، ساخته می‌شود.
+        // چون NameUniq ایندکسِ یکتا دارد، کدِ یکتا انتخاب می‌شود.
+        var code = "MQ";
+        var suffix = 1;
+        while (await _db.Organizations.AnyAsync(o => o.NameUniq == code))
+            code = $"MQ-{suffix++}";
+
+        var org = new Db.Organization { NameUnit = "سازمان پیش‌فرض", NameUniq = code, IsDefault = true, IsActive = true };
+        _db.Organizations.Add(org);
+        await _db.SaveChangesAsync();
+        return org.OrganizationId;
+    }
+
+    /// <summary>
+    /// هم‌گام‌سازیِ سمت‌های کاربر با فهرستِ عنوان‌های ارسالی.
+    /// سمت‌هایی که دیگر در فهرست نیستند حذف (soft-delete) و سمت‌های جدید ساخته
+    /// می‌شوند. اولین سمت به‌عنوان «سمت پیش‌فرض» علامت می‌خورد تا در انتخابِ
+    /// امضاکنندگانِ نامهٔ صادره، سمتِ اصلیِ کاربر مشخص باشد.
+    /// </summary>
+    private async Task SyncUserPositionsAsync(int userId, List<string>? titles)
+    {
+        if (titles is null) return;
+        var wanted = titles
+            .Select(t => (t ?? "").Trim())
+            .Where(t => t.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var current = await _db.Semats.Where(s => s.UserId == userId && !s.IsDelete).ToListAsync();
+        foreach (var s in current.Where(s => !wanted.Any(t =>
+                     string.Equals(t, (s.Title ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
+        {
+            s.IsDelete = true;
+            s.IsActive = false;
+            s.DefaultSemat = false;
+        }
+
+        // آیا هنوز سمتِ پیش‌فرضِ فعالی برای این کاربر باقی مانده است؟
+        var hasDefault = current.Any(s => s.DefaultSemat);
+
+        var orgId = await DefaultOrganizationIdAsync();
+        var newTitles = wanted.Where(t => !current.Any(s =>
+                            string.Equals(t, (s.Title ?? "").Trim(), StringComparison.OrdinalIgnoreCase))).ToList();
+        for (var i = 0; i < newTitles.Count; i++)
+        {
+            _db.Semats.Add(new Db.Semat
+            {
+                UserId = userId,
+                Title = newTitles[i],
+                OrganizationId = orgId,
+                IsActive = true,
+                IsDelete = false,
+                // فقط اولین سمتِ جدید، در صورت نبودِ سمتِ پیش‌فرض، پیش‌فرض می‌شود
+                DefaultSemat = !hasDefault && i == 0
+            });
+            hasDefault = true;
+        }
+        await _db.SaveChangesAsync();
     }
 
     /// <summary>نگاشت نقش‌های RBAC به نقش قدیمی (برای احراز هویت/JWT).</summary>
@@ -409,6 +516,12 @@ public class AuthService : IAuthService
                 _db.UserRoles.Add(new UserRole { UserId = entity.Id, RoleId = rid });
             await _db.SaveChangesAsync();
         }
+
+        // ================== سمت‌های کاربر (می‌تواند چند سمت فعال داشته باشد) ==================
+        // فقط وقتی فرم، فهرستِ سمت‌ها را فرستاده باشد هم‌گام می‌شود؛ تا فراخوانی‌های
+        // دیگر (مثلاً تغییر رمز از پنل شخصی) سمت‌های کاربر را پاک نکنند.
+        if (dto.Positions is not null)
+            await SyncUserPositionsAsync(entity.Id, dto.Positions);
 
         return (await GetUsersAsync()).First(u => u.Id == entity.Id);
     }

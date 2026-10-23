@@ -432,6 +432,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     s => string.IsNullOrWhiteSpace(s.OnvanMokatebati) ? s.Title : s.OnvanMokatebati!,
                     cancellationToken: default);
 
+        // نامه‌های قدیمی ممکن است سمتِ ثبت‌شده نداشته باشند؛ در این حالت
+        // سمتِ فعالِ فعلیِ کاربر (سمتِ پیش‌فرض) نمایش داده می‌شود.
+        var signerUserIds = signers.Select(s => s.UserId).Distinct().ToList();
+        var sematTitlesByUser = signerUserIds.Count == 0
+            ? new Dictionary<int, string>()
+            : (await _db.Semats.AsNoTracking()
+                    .Where(s => s.UserId != null && signerUserIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+                    .OrderByDescending(s => s.DefaultSemat)
+                    .ThenBy(s => s.SematId)
+                    .Select(s => new { s.UserId, s.Title, s.OnvanMokatebati })
+                    .ToListAsync())
+                .GroupBy(s => s.UserId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => string.IsNullOrWhiteSpace(g.First().OnvanMokatebati) ? g.First().Title : g.First().OnvanMokatebati!);
+
         // رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای چاپ «با رونوشت».
         // برای نامه‌های قدیمی که ردیفی در این جدول ندارند، ستون متنی CopyTo به کار می‌رود.
         var copyTos = await _db.OutgoingLetterCopyToes.AsNoTracking()
@@ -446,7 +462,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // file or the design embedded in the company's print template) is
         // placed underneath it by OverlayOnLetterhead below.
         var contentPdf = BuildContentPdf(
-            letter, signers, sematTitles, hasAttachment, isA5, withCopy, copyTos,
+            letter, signers, sematTitles, sematTitlesByUser, hasAttachment, isA5, withCopy, copyTos,
             hasLetterhead: letterheadPath != null,
             letterheadCompanyId: selectedCompanyId);
 
@@ -539,6 +555,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         OutgoingLetter letter,
         List<OutgoingLetterSigner> signers,
         IReadOnlyDictionary<int, string> sematTitles,
+        IReadOnlyDictionary<int, string> sematTitlesByUser,
         bool hasAttachment,
         bool isA5,
         bool withCopy,
@@ -581,46 +598,45 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
                 ? sematTitle
-                : "سمت ثبت نشده";
+                : (sematTitlesByUser.TryGetValue(s.UserId, out var userSematTitle) ? userSematTitle : "سمت ثبت نشده");
             return (
                 Name: ToPersianDigits(FullName(s.User)),
                 Role: ToPersianDigits(role),
                 Signature: s.IsSigned ? TryReadSignature(s.User?.SignaturePath) : null);
         }).ToList();
-        var signerRows = signerCards.Chunk(3).ToList();
-        var signerCardWidth = isA5 ? 98f : 143f;
-        // امضا نسبت به متن و نام امضا کننده بزرگتر نمایش داده شود تا بهتر دیده شود.
-        var signatureHeight = isA5 ? 50f : 72f;
 
-        void AddSignerRow(IContainer container, (string Name, string Role, byte[]? Signature)[] rowSigners)
+        // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
+        // نام، سمت و امضای امضاکننده در سمتِ چپِ انتهای نامه قرار می‌گیرد و
+        // تصویرِ امضا دقیقاً روی نام و سمتِ امضاکننده می‌افتد (Overlap).
+        var signerBlockWidth = isA5 ? 140f : 200f;
+        var signerBlockHeight = isA5 ? 54f : 72f;
+        var signatureBoxWidth = isA5 ? 96f : 132f;
+        var signatureBoxHeight = isA5 ? 30f : 40f;
+
+        void AddSignerCard(IContainer container, (string Name, string Role, byte[]? Signature) signer)
         {
-            container.ShowEntire().Row(row =>
+            container.Height(signerBlockHeight).Layers(layers =>
             {
-                foreach (var signer in rowSigners)
+                // لایهٔ اصلی: نام و سمتِ امضاکننده (چسبیده به پایینِ بلوک).
+                // اندازهٔ این لایه، اندازهٔ کلِ بلوک را تعیین می‌کند.
+                layers.PrimaryLayer().AlignBottom().Column(textColumn =>
                 {
-                    row.ConstantItem(signerCardWidth).PaddingHorizontal(isA5 ? 2 : 4).Column(card =>
-                    {
-                        if (signer.Signature is { Length: > 0 })
-                        {
-                            card.Item().Height(signatureHeight).Padding(2).AlignCenter()
-                                .Image(signer.Signature).FitArea();
-                        }
-                        else
-                        {
-                            card.Item().Height(signatureHeight).BorderBottom(0.7f).BorderColor("#9ca3af");
-                        }
+                    textColumn.Item().Text(signer.Name)
+                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
+                    textColumn.Item().Text(signer.Role)
+                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
+                });
 
-                        card.Item().PaddingTop(3).AlignCenter()
-                            .Text(signer.Name).FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                            .LineHeight(1.25f).DirectionFromRightToLeft();
-                        card.Item().AlignCenter()
-                            .Text(signer.Role).FontFamily("Vazirmatn").FontSize(smallFontSize)
-                            .LineHeight(1.25f).DirectionFromRightToLeft();
-                    });
+                // لایهٔ رویی: تصویرِ امضا که روی نام و سمت قرار می‌گیرد.
+                // چون بعد از لایهٔ اصلی تعریف شده، روی متن رسم می‌شود.
+                if (signer.Signature is { Length: > 0 })
+                {
+                    layers.Layer().AlignBottom().AlignRight()
+                        .Width(signatureBoxWidth).Height(signatureBoxHeight)
+                        .Image(signer.Signature).FitArea();
                 }
-
-                // Keep a partial final row aligned to the right on RTL pages.
-                row.RelativeItem();
             });
         }
 
@@ -794,19 +810,24 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             .AlignRight().DirectionFromRightToLeft();
                     }
 
-                    if (signerRows.Count > 0)
+                    if (signerCards.Count > 0)
                     {
-                        // Keep the heading and first signer row together; do not add a closing or stamp box.
-                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Column(signOff =>
+                        // بلوکِ امضاکنندگان در سمتِ چپِ انتهای نامه قرار می‌گیرد.
+                        // در صفحهٔ راست‌به‌چپ، آیتمِ نسبیِ اول در سمتِ راست و
+                        // آیتمِ ثابتِ بعدی در سمتِ چپ می‌نشیند.
+                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Row(signersRow =>
                         {
-                            signOff.Item().Text("امضاکنندگان")
-                                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                                .AlignRight().DirectionFromRightToLeft();
-                            AddSignerRow(signOff.Item().PaddingTop(isA5 ? 4 : 6), signerRows[0]);
-                        });
+                            signersRow.RelativeItem();
+                            signersRow.ConstantItem(signerBlockWidth).Column(signerColumn =>
+                            {
+                                signerColumn.Item().Text("امضاکنندگان")
+                                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                                    .AlignCenter().DirectionFromRightToLeft();
 
-                        for (var rowIndex = 1; rowIndex < signerRows.Count; rowIndex++)
-                            AddSignerRow(col.Item().PaddingTop(isA5 ? 8 : 12), signerRows[rowIndex]);
+                                foreach (var signer in signerCards)
+                                    AddSignerCard(signerColumn.Item().PaddingTop(isA5 ? 4 : 6), signer);
+                            });
+                        });
                     }
 
                     if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
