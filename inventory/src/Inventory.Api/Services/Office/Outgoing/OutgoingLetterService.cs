@@ -282,14 +282,18 @@ public class OutgoingLetterService : IOutgoingLetterService
         foreach (var uid in hamesh.Where(seen.Add))
             _db.Erjas.Add(NewErja(source.Id, creatorUserId, uid, now, "هامش"));
 
-        // امضا کنندگان
+        // امضا کنندگان — سمتِ هر امضاکننده هم‌زمان ثبت می‌شود تا در چاپِ نامه
+        // نام و سمتِ درستِ همان لحظه نمایش داده شود.
         int order = 1;
-        foreach (var uid in signerIds.Distinct())
+        var distinctSignerIds = signerIds.Distinct().ToList();
+        var signerSematIds = await DefaultSematIdsAsync(distinctSignerIds);
+        foreach (var uid in distinctSignerIds)
         {
             _db.OutgoingLetterSigners.Add(new OutgoingLetterSigner
             {
                 SourceId = source.Id,
                 UserId = uid,
+                SematId = signerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = order++,
                 IsSigned = false,
                 IsDelete = false
@@ -828,6 +832,8 @@ public class OutgoingLetterService : IOutgoingLetterService
             }
         }
 
+        var sematTitles = await SematTitleMapAsync(signers.Where(s => s.SematId != null).Select(s => s.SematId!.Value).ToList());
+
         dto.Signers = signers.Select(s => new OutgoingSignerDto
         {
             Id = s.Id,
@@ -836,6 +842,7 @@ public class OutgoingLetterService : IOutgoingLetterService
             UserName = s.User?.Username ?? "",
             DisplayName = FullName(s.User),
             SematId = s.SematId,
+            SematTitle = s.SematId != null && sematTitles.TryGetValue(s.SematId.Value, out var st) ? st : null,
             Order = s.Order,
             IsSigned = s.IsSigned,
             DateSigned = s.DateSigned,
@@ -889,6 +896,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 UserName = mySigner.User?.Username ?? "",
                 DisplayName = FullName(mySigner.User),
                 SematId = mySigner.SematId,
+                SematTitle = mySigner.SematId != null && sematTitles.TryGetValue(mySigner.SematId.Value, out var mst) ? mst : null,
                 Order = mySigner.Order,
                 IsSigned = mySigner.IsSigned,
                 DateSigned = mySigner.DateSigned,
@@ -1106,12 +1114,15 @@ public class OutgoingLetterService : IOutgoingLetterService
                 es.IsDelete = true;
         }
         int maxOrder = existingSigners.Any() ? existingSigners.Max(s => s.Order) : 0;
-        foreach (var uid in wantedSignerIds.Where(id => !existingUserIds.Contains(id)))
+        var newSignerIds = wantedSignerIds.Where(id => !existingUserIds.Contains(id)).ToList();
+        var newSignerSematIds = await DefaultSematIdsAsync(newSignerIds);
+        foreach (var uid in newSignerIds)
         {
             _db.OutgoingLetterSigners.Add(new OutgoingLetterSigner
             {
                 SourceId = letterId,
                 UserId = uid,
+                SematId = newSignerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = ++maxOrder,
                 IsSigned = false,
                 IsDelete = false
@@ -1191,6 +1202,11 @@ public class OutgoingLetterService : IOutgoingLetterService
                     ? (string.IsNullOrWhiteSpace((s.User.FirstName ?? "") + (s.User.LastName ?? "")) ? s.User.Username : (s.User.FirstName + " " + s.User.LastName).Trim())
                     : "",
                 SematId = s.SematId,
+                SematTitle = s.SematId != null
+                    ? _db.Semats.Where(x => x.SematId == s.SematId)
+                        .Select(x => string.IsNullOrWhiteSpace(x.OnvanMokatebati) ? x.Title : x.OnvanMokatebati)
+                        .FirstOrDefault()
+                    : null,
                 Order = s.Order,
                 IsSigned = s.IsSigned,
                 DateSigned = s.DateSigned,
@@ -1275,15 +1291,98 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            q = q.Where(u => u.Username.Contains(s) || (u.FirstName + " " + u.LastName).Contains(s) || (u.FirstName ?? "").Contains(s) || (u.LastName ?? "").Contains(s));
+            // جستجو هم با نام و هم با عنوانِ سمتِ کاربر کار می‌کند
+            q = q.Where(u => u.Username.Contains(s) || (u.FirstName + " " + u.LastName).Contains(s) || (u.FirstName ?? "").Contains(s) || (u.LastName ?? "").Contains(s)
+                || _db.Semats.Any(x => x.UserId == u.Id && !x.IsDelete && x.IsActive && x.Title.Contains(s)));
         }
 
-        return await q.OrderBy(u => u.Username).ThenBy(x => x.Id)
+        var list = await q.OrderBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
                 FullName = string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()
             }).ToPageListAsync(pagination, defaultCap: 100);
+
+        // سمت‌های فعالِ هر امضاکننده (هر کاربر می‌تواند چند سمت داشته باشد)
+        var userIds = list.Select(x => x.UserId).ToList();
+        var positions = await UserPositionMapAsync(userIds);
+        var defaultSematIds = await DefaultSematIdsAsync(userIds);
+        var defaultSematTitles = await SematTitleMapAsync(defaultSematIds.Values.ToList());
+        foreach (var item in list)
+        {
+            if (positions.TryGetValue(item.UserId, out var titles) && titles.Count > 0)
+                item.Positions = titles;
+            if (defaultSematIds.TryGetValue(item.UserId, out var sematId))
+            {
+                item.SematId = sematId;
+                if (defaultSematTitles.TryGetValue(sematId, out var sematTitle))
+                    item.SematTitle = sematTitle;
+            }
+        }
+        return list;
+    }
+
+    /// <summary>نگاشتِ شناسهٔ کاربر → عنوانِ سمت‌های فعالِ او</summary>
+    private async Task<Dictionary<int, List<string>>> UserPositionMapAsync(List<int> userIds)
+    {
+        var map = new Dictionary<int, List<string>>();
+        if (userIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId != null && userIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+            .OrderBy(s => s.SematId)
+            .Select(s => new { s.UserId, s.Title })
+            .ToListAsync();
+        foreach (var r in rows)
+        {
+            var title = (r.Title ?? "").Trim();
+            if (title.Length == 0) continue;
+            if (!map.TryGetValue(r.UserId!.Value, out var list))
+            {
+                list = new List<string>();
+                map[r.UserId!.Value] = list;
+            }
+            if (!list.Any(t => string.Equals(t, title, StringComparison.OrdinalIgnoreCase)))
+                list.Add(title);
+        }
+        return map;
+    }
+
+    /// <summary>نگاشتِ شناسهٔ کاربر → شناسهٔ سمتِ پیش‌فرضِ او</summary>
+    private async Task<Dictionary<int, int>> DefaultSematIdsAsync(List<int> userIds)
+    {
+        var map = new Dictionary<int, int>();
+        if (userIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId != null && userIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+            .OrderByDescending(s => s.DefaultSemat)
+            .ThenBy(s => s.SematId)
+            .Select(s => new { s.UserId, s.SematId })
+            .ToListAsync();
+        foreach (var r in rows)
+        {
+            var uid = r.UserId!.Value;
+            if (map.ContainsKey(uid)) continue;
+            map[uid] = r.SematId;
+        }
+        return map;
+    }
+
+    /// <summary>نگاشتِ شناسهٔ سمت → عنوانِ سمت</summary>
+    private async Task<Dictionary<int, string>> SematTitleMapAsync(List<int> sematIds)
+    {
+        var map = new Dictionary<int, string>();
+        if (sematIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => sematIds.Contains(s.SematId))
+            .Select(s => new { s.SematId, s.Title, s.OnvanMokatebati })
+            .ToListAsync();
+        foreach (var r in rows)
+        {
+            var title = string.IsNullOrWhiteSpace(r.OnvanMokatebati) ? (r.Title ?? "").Trim() : r.OnvanMokatebati!.Trim();
+            if (title.Length == 0) continue;
+            map[r.SematId] = title;
+        }
+        return map;
     }
 
     // ============================================================

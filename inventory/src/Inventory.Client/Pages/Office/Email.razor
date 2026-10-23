@@ -275,7 +275,7 @@
                                 var mm = m;
                                 var day = mm.Date.ToFaDate();
                                 @if (day != lastDay) { lastDay = day; <div class="day">@day</div> }
-                                <div class="mail @(mm.IsRead || mm.Box == "Sent" ? "" : "unread") @(mm.IsNeshan ? "starred" : "") @(openId == mm.Id && openBox == mm.Box ? "sel" : "")"
+                                <div class="mail @(IsReadMsg(mm) ? "" : "unread") @(mm.IsNeshan ? "starred" : "") @(openId == mm.Id && openBox == mm.Box ? "sel" : "")"
                                      @onclick="() => OpenMessage(mm)">
                                     <div class="avt">@AvatarText(mm)</div>
                                     <div class="mail-b">
@@ -293,7 +293,7 @@
                                             @if (mm.IsSpam) { <span class="tg red"><i class="bi bi-shield-slash"></i> اسپم</span> }
                                             @if (mm.IsAttachment) { <span class="tg gray"><i class="bi bi-paperclip"></i> پیوست</span> }
                                             @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
-                                            @if (!mm.IsRead && mm.Box == "Inbox") { <span class="tg blue">جدید</span> }
+                                            @if (!IsReadMsg(mm) && mm.Box == "Inbox") { <span class="tg blue">جدید</span> }
                                         </div>
                                     </div>
                                 </div>
@@ -912,6 +912,21 @@
             }
 
             messages = res.Items;
+
+            // وضعیتِ «خوانده‌شده»ٔ ایمیل‌هایی که در این نشست باز شده‌اند دوباره اعمال می‌شود.
+            // بدون این کار، بعد از «دریافتِ» ایمیل‌های جدید، ایمیل‌های قبلی که کاربر
+            // دیده بود ممکن است دوباره خوانده‌نشده (بولد) نمایش داده شوند.
+            var restoredRead = 0;
+            foreach (var m in res.Items)
+            {
+                if (!m.IsRead && m.Box == "Inbox" && _readKeys.Contains(ReadKey(m.Box, m.Id)))
+                {
+                    m.IsRead = true;
+                    restoredRead++;
+                }
+            }
+            // شمارنده فقط مربوط به صندوقِ دریافتی است
+            if (restoredRead > 0 && tab == "inbox") unreadCount = Math.Max(0, unreadCount - restoredRead);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -1012,6 +1027,11 @@
 
     private async Task OpenMessage(EmailMessageListItemDto m)
     {
+        // وضعیتِ «خوانده‌شده» **قبل** از هر درخواستی ثبت می‌شود تا اگر دریافتِ
+        // جزئیات به هر دلیلی شکست خورد (شبکه، خطای سرور، پیامِ حذف‌شده) باز هم
+        // ایمیل در این نشست خوانده‌شده بماند و بعد از «دریافتِ» دوباره بولد نشود.
+        MarkSeenLocally(m);
+
         try
         {
             if (folders.Count == 0)
@@ -1021,9 +1041,48 @@
             openMsg = await EmailSvc.GetMessageAsync(m.Box, m.Id);
             openId = m.Id; openBox = m.Box; archOpen = false;
             archFolderId = openMsg.IsInFolder;
-            if (!m.IsRead && m.Box == "Inbox") { m.IsRead = true; unreadCount = Math.Max(0, unreadCount - 1); }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            // اگر جزئیات باز نشد، پنجرهٔ خالی نشان داده نشود
+            openMsg = null; openId = 0; openBox = "";
+        }
+    }
+
+    /// <summary>کلیدِ یکتای پیام برای نگه‌داشتنِ وضعیتِ خوانده‌شدن در نشست</summary>
+    private static string ReadKey(string box, int id) => $"{box}:{id}";
+
+    /// <summary>
+    /// پیام‌هایی که کاربر در این نشست باز کرده است. نگه‌داشتنِ آن‌ها تضمین می‌کند
+    /// که ایمیلِ «مشاهده‌شده» بعد از همگام‌سازی/بارگذاریِ دوباره دوباره به‌صورت
+    /// خوانده‌نشده (بولد + برچسبِ «جدید») ظاهر نشود.
+    /// </summary>
+    private readonly HashSet<string> _readKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>آیا پیام خوانده‌شده است؟ (پرچمِ سرور یا پیام‌های بازشده در این نشست)</summary>
+    private bool IsReadMsg(EmailMessageListItemDto m)
+        => m.IsRead || m.Box == "Sent" || _readKeys.Contains(ReadKey(m.Box, m.Id));
+
+    /// <summary>
+    /// علامت‌زدنِ پیام به‌عنوان خوانده‌شده — هم در فهرستِ کلاینت و هم روی سرور.
+    /// سرور برای حساب‌های رسمیِ دبیرخانه بین چند دستیار مشترک است، بنابراین ثبتِ
+    /// وضعیت روی سرور تضمین می‌کند حتی پس از خروج/ورود دوباره هم ایمیل خوانده بماند.
+    /// </summary>
+    private void MarkSeenLocally(EmailMessageListItemDto m)
+    {
+        if (m.Box != "Inbox") return;
+        _readKeys.Add(ReadKey(m.Box, m.Id));
+        if (m.IsRead) return;
+        m.IsRead = true;
+        unreadCount = Math.Max(0, unreadCount - 1);
+        _ = PersistReadAsync(m.Box, m.Id);
+    }
+
+    private async Task PersistReadAsync(string box, int id)
+    {
+        try { await EmailSvc.MarkReadAsync(box, id); }
+        catch { /* در تلاش بعدی دوباره ثبت می‌شود؛ وضعیتِ کلاینت محفوظ است */ }
     }
 
     private async Task ToggleStar()

@@ -42,10 +42,15 @@
                 {
                     @foreach (var u in FilteredUsers)
                     {
+                        var pos = PositionText(u);
                         <div class="copt @(SelectedUsers.Contains(u.UserId) ? "on" : "")" @onclick="() => ToggleUser(u.UserId)">
                             <span class="chk"><i class="bi bi-check"></i></span>
                             <span class="mini"><i class="bi bi-person-circle"></i></span>
                             <span>@u.FullName</span>
+                            @if (!string.IsNullOrWhiteSpace(pos))
+                            {
+                                <span class="cpos" title="سمت: @pos"><i class="bi bi-briefcase"></i> @pos</span>
+                            }
                         </div>
                     }
                     @if (FilteredUsers.Count == 0) { <div class="cempty">کاربری یافت نشد</div> }
@@ -70,7 +75,15 @@
         @foreach (var uid in SelectedUsers)
         {
             var u = Users.FirstOrDefault(x => x.UserId == uid);
-            <span class="spill">@(u?.FullName ?? uid.ToString()) <i class="bi bi-x-lg" @onclick="() => ToggleUser(uid)"></i></span>
+            var pos = u is null ? "" : PositionText(u);
+            <span class="spill">
+                @(u?.FullName ?? uid.ToString())
+                @if (!string.IsNullOrWhiteSpace(pos))
+                {
+                    <small title="سمت: @pos"><i class="bi bi-briefcase"></i> @pos</small>
+                }
+                <i class="bi bi-x-lg" @onclick="() => ToggleUser(uid)"></i>
+            </span>
         }
         @foreach (var gid in SelectedGroups)
         {
@@ -103,8 +116,36 @@
 
     private int Count => SelectedUsers.Count + SelectedGroups.Count;
 
+    /// <summary>
+    /// عنوانِ سمت‌های فعالِ کاربر — اگر چند سمت داشته باشد، همه با «، » جدا می‌شوند.
+    /// اگر سمتی تعریف نشده باشد، رشتهٔ خالی برمی‌گردد.
+    /// </summary>
+    private static string PositionText(LetterReciverDto u)
+    {
+        if (u.Positions is { Count: > 0 })
+        {
+            var joined = string.Join("، ", u.Positions.Where(p => !string.IsNullOrWhiteSpace(p)));
+            if (!string.IsNullOrWhiteSpace(joined)) return joined;
+        }
+        return u.SematTitle ?? "";
+    }
+
+    /// <summary>جستجو با نام کاربر و هم با عنوانِ سمت‌های فعالِ او کار می‌کند.</summary>
+    private static bool MatchesUserQuery(LetterReciverDto u, string q)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return true;
+        if (!string.IsNullOrWhiteSpace(u.FullName)
+            && u.FullName.Contains(q, StringComparison.OrdinalIgnoreCase)) return true;
+        if (!string.IsNullOrWhiteSpace(u.SematTitle)
+            && u.SematTitle.Contains(q, StringComparison.OrdinalIgnoreCase)) return true;
+        if (u.Positions is not null
+            && u.Positions.Any(p => !string.IsNullOrWhiteSpace(p)
+                && p.Contains(q, StringComparison.OrdinalIgnoreCase))) return true;
+        return false;
+    }
+
     private List<LetterReciverDto> FilteredUsers =>
-        Users.Where(u => string.IsNullOrWhiteSpace(query) || u.FullName.Contains(query.Trim())).Take(30).ToList();
+        Users.Where(u => MatchesUserQuery(u, query.Trim())).Take(30).ToList();
 
     private List<LetterGroupDto> FilteredGroups =>
         Groups.Where(g => string.IsNullOrWhiteSpace(query) || g.NameGroup.Contains(query.Trim())).Take(30).ToList();

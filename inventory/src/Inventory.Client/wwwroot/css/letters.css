@@ -212,6 +212,9 @@
 .ltx .copt { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; cursor:pointer; font-size:12px; }
 .ltx .copt:hover { background:#f1f5f9; }
 .ltx .copt small { margin-inline-start:auto; color:var(--sub); font-size:10px; }
+.ltx .copt .cpos { color:var(--sub); font-size:10px; font-weight:600; max-width:52%; overflow:hidden;
+                   text-overflow:ellipsis; white-space:nowrap; }
+.ltx .copt .cpos i.bi { font-size:9px; }
 .ltx .copt .chk { width:17px; height:17px; border:1.5px solid #cbd5e1; border-radius:6px; display:inline-flex; align-items:center;
                   justify-content:center; color:transparent; font-size:11px; flex-shrink:0; }
 .ltx .copt.on .chk { background:var(--p); border-color:var(--p); color:#fff; }

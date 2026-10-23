@@ -43,6 +43,14 @@ public interface IEmailClientService
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id);
     Task<bool> ToggleNeshanAsync(string box, int id);
 
+    /// <summary>
+    /// علامت‌زدنِ ایمیل به‌عنوان «خوانده‌شده» روی سرور.
+    /// جدا از گرفتنِ جزئیات است تا اگر دریافتِ جزئیات به هر دلیلی شکست خورد،
+    /// وضعیتِ خوانده‌شدن باز هم روی سرور ثبت شود و ایمیل بعد از «دریافتِ» دوباره
+    /// به‌صورت خوانده‌نشده (بولد) برنگردد.
+    /// </summary>
+    Task MarkReadAsync(string box, int id);
+
     /// <summary>نشان‌کردنِ ایمیل به‌عنوان هرزنامه / یا بازگرداندن به صندوقِ دریافتی</summary>
     Task<bool> MarkSpamAsync(string box, int id, bool spam);
     Task ArchiveAsync(string box, int id, int folderId);
@@ -182,6 +190,12 @@ public class EmailClientService : IEmailClientService
 
     public Task<EmailMessageDetailDto> GetMessageAsync(string box, int id) =>
         _api.GetAsync<EmailMessageDetailDto>($"api/email/message/{box}/{id}");
+
+    public async Task MarkReadAsync(string box, int id)
+    {
+        try { await _api.PostAsync<object>($"api/email/message/{box}/{id}/read"); }
+        catch { /* وضعیتِ خوانده‌شدن در سمتِ کلاینت نگه داشته می‌شود */ }
+    }
 
     public async Task<bool> ToggleNeshanAsync(string box, int id) =>
         (await _api.PostAsync<NeshanResponse>($"api/email/message/{box}/{id}/neshan")).IsNeshan;

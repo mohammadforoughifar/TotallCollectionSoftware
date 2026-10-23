@@ -50,6 +50,7 @@ else
                             <tr>
                                 <th>نام کاربری</th>
                                 <th>نام و نام خانوادگی</th>
+                                <th>سمت‌ها</th>
                                 <th>نقش</th>
                                 <th>معرف مرتبط</th>
                                 <th>تاریخ ایجاد</th>
@@ -87,6 +88,19 @@ else
                                         @if (!string.IsNullOrWhiteSpace(u.Mobile))
                                         {
                                             <div class="fs-8 text-muted num" dir="ltr">@u.Mobile</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (u.Positions is { Count: > 0 })
+                                        {
+                                            @foreach (var pos in u.Positions)
+                                            {
+                                                <span class="badge badge-soft-primary me-1 mb-1"><i class="bi bi-briefcase ms-1"></i>@pos</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
                                         }
                                     </td>
                                     <td>
@@ -313,6 +327,28 @@ else
                     </div>
                 </div>
             }
+            <div class="col-12">
+                <label class="form-label d-block">
+                    <i class="bi bi-briefcase text-primary"></i>
+                    سمت‌های کاربر
+                    <span class="fs-8 text-muted">(هر کاربر می‌تواند چند سمت فعال داشته باشد؛ عنوان سمت‌ها هنگام انتخاب امضاکنندهٔ نامهٔ صادره نمایش داده می‌شود)</span>
+                </label>
+                <div class="border rounded p-2">
+                    @for (var i = 0; i < positionInputs.Count; i++)
+                    {
+                        var idx = i;
+                        <div class="d-flex gap-2 align-items-center mb-1">
+                            <input class="form-control form-control-sm" placeholder="عنوان سمت — مثلاً: مدیر فنی" @bind="positionInputs[idx]" />
+                            <button type="button" class="btn btn-sm btn-light text-danger" title="حذف این سمت" @onclick="() => RemovePosition(idx)">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    }
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-1" @onclick="AddPosition">
+                        <i class="bi bi-plus-lg"></i> افزودن سمت
+                    </button>
+                </div>
+            </div>
             @if (Auth.IsAdmin && editing)
             {
                 <div class="col-12">
@@ -456,6 +492,33 @@ else
     private bool loading = true;
 
     private UserDto form = new();
+
+    // ================== سمت‌های کاربر (چند سمت فعال) ==================
+    private List<string> positionInputs = new();
+
+    private void AddPosition()
+    {
+        positionInputs.Add("");
+        StateHasChanged();
+    }
+
+    private void RemovePosition(int index)
+    {
+        if (index < 0 || index >= positionInputs.Count) return;
+        positionInputs.RemoveAt(index);
+        if (positionInputs.Count == 0) positionInputs.Add("");
+        StateHasChanged();
+    }
+
+    /// <summary>سطرهای سمت را به فهرستِ یکتا و پاک‌شده تبدیل می‌کند.</summary>
+    private List<string> CollectPositions()
+    {
+        return positionInputs
+            .Select(t => (t ?? "").Trim())
+            .Where(t => t.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     // ================== عکس کاربر لاگین ==================
     private long photoBust;
@@ -704,6 +767,7 @@ else
         referrerIdStr = "0";
         selectedRoleIds = new();
         selectedCompanyIds = new();
+        positionInputs = new List<string> { "" };
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
@@ -730,6 +794,9 @@ else
         };
         referrerIdStr = (u.ReferrerId ?? 0).ToString();
         selectedRoleIds = new HashSet<int>(u.RoleIds ?? new List<int>());
+        positionInputs = new List<string>();
+        if (u.Positions is { Count: > 0 }) positionInputs.AddRange(u.Positions);
+        positionInputs.Add("");
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
         woSearch = "";
@@ -768,6 +835,8 @@ else
         { saveError = "حداقل یک نقش برای کاربر انتخاب کنید."; return; }
 
         form.RoleIds = selectedRoleIds.ToList();
+        // سمت‌های فعالِ کاربر (هر کاربر می‌تواند چند سمت داشته باشد)
+        form.Positions = CollectPositions();
         form.ReferrerId = int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : null;
         form.Username = form.Username.Trim();
         form.FirstName = form.FirstName?.Trim();

@@ -1312,11 +1312,22 @@ public class EmailService : IEmailService
         try { return new FileInfo(full).Length; } catch { return 0; }
     }
 
+    /// <summary>
+    /// علامت‌زدن ایمیل به‌عنوان «خوانده‌شده».
+    /// نکته: پیش‌تر این متد فقط برای صاحبِ حساب کار می‌کرد و روی حساب‌های
+    /// رسمیِ دبیرخانه (که بین چند دستیار مشترک است) خطا می‌داد؛ حالا دستیارِ
+    /// دبیرخانه هم اجازهٔ علامت‌زدن دارد تا ایمیلِ «مشاهده‌شده» بعد از «دریافت»
+    /// دوباره به‌صورت خوانده‌نشده (بولد) برنگردد. اگر پیام در دسترس نبود،
+    /// خطا نمی‌دهیم چون نتیجهٔ موردنظر (خوانده‌شدن) از قبل برقرار است.
+    /// </summary>
     public async Task MarkReadAsync(string box, int id, int userId, bool isDabirkhaneAdmin)
     {
         if (string.Equals(box, "Sent", StringComparison.OrdinalIgnoreCase)) return;
-        var i = await _db.OtoInboxEmails.Include(x => x.Email).FirstOrDefaultAsync(x => x.InboxId == id && x.Email!.UserId == userId)
-            ?? throw new Exception("ایمیل پیدا نشد.");
+        var i = await _db.OtoInboxEmails.Include(x => x.Email)
+            .FirstOrDefaultAsync(x => x.InboxId == id &&
+                (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)));
+        if (i is null) return;
+        if (i.IsRead) return;
         i.IsRead = true;
         await _db.SaveChangesAsync();
     }

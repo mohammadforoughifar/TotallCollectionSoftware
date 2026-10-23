@@ -586,7 +586,7 @@ else
                                 </td>
                                 <td class="num fw-700 text-primary">@w.Number</td>
                                 <td class="fw-600">
-                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId) @ProjectBadge(w)
+                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId, null, w.SourceType) @ProjectBadge(w)
                                     @if (w.Recurrence > 0)
                                     {
                                         <i class="bi bi-arrow-repeat text-info" title="تکرار @RecurrenceFa(w.Recurrence)"></i>
@@ -703,7 +703,7 @@ else
                     <div class="fw-700">@PriorityBadge(w.Priority) @w.Title</div>
                     @ToneBadge(w, tone)
                 </div>
-                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId) @ProjectBadge(w)</div>
+                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId, null, w.SourceType) @ProjectBadge(w)</div>
                 @if (HasRelatedOrders(w)) { <div class="wo-mobile-related">@RelatedOrderLinks(w)</div> }
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
@@ -1150,7 +1150,7 @@ else
                             {
                                 <div>
                                     <span class="wo-lbl">منبع</span><span class="d-inline-flex align-items-center flex-wrap gap-1">
-                                        @SourceLink(detail.SourceModule, detail.SourceId, detail.SourceRefId)
+                                        @SourceLink(detail.SourceModule, detail.SourceId, detail.SourceRefId, detail.SourceType)
                                         @if (detail.SourceModule == "Document" && _docRefs.TryGetValue(detail.Id, out var docRef))
                                         {
                                             <span class="text-muted fs-9">@docRef.Code — @docRef.Title</span>
@@ -3293,7 +3293,15 @@ else
         </a>;
     }
 
-    private RenderFragment? SourceLink(string? module, int? sourceId, int? sourceRefId = null)
+    /// <summary>
+    /// لینکِ «نامهٔ مبدأ» برای دستورکار.
+    /// نوعِ نامه از <paramref name="sourceType"/> خوانده می‌شود که سرور آن را از
+    /// جدولِ LetterSources (مرجعِ یکتای هر نامه) می‌گیرد؛ رشتهٔ
+    /// <paramref name="module"/> فقط نقشِ پشتیبان دارد چون در داده‌های قدیمی ممکن
+    /// است اشتباه یا خالی باشد. بدون این تفکیک، دستورکارِ ساخته‌شده از نامهٔ صادره
+    /// ممکن بود به کارتابلِ نامهٔ داخلی باز شود (یا اصلاً باز نشود).
+    /// </summary>
+    private RenderFragment? SourceLink(string? module, int? sourceId, int? sourceRefId = null, int? sourceType = null)
     {
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0) return null;
         if (module == "Document")
@@ -3307,15 +3315,36 @@ else
                 <i class="bi bi-journal-text"></i> صورتجلسه
             </a>;
         }
-        var letterRoute = module switch
+        // اولویت با نوعِ معتبرِ نامه (از سرور) و سپس با نامِ ماژولِ ذخیره‌شده
+        var letterType = sourceType is >= 1 and <= 3 ? sourceType : LetterTypeFromModule(module);
+        var letterRoute = letterType switch
         {
-            "OutgoingLetter" or "OutgoingLetters" => "/outgoing-letters",
-            "IncomingLetter" or "IncomingLetters" => "/incoming-letters",
+            2 => "/outgoing-letters",
+            3 => "/incoming-letters",
+            1 => "/letters",
             _ => "/letters"
         };
-        return @<a class="wo-att" href="@($"{letterRoute}?open={sourceId}")" title="رفتن به نامه مبدأ">
+        var letterTitle = letterType switch
+        {
+            1 => "رفتن به نامهٔ داخلی مبدأ",
+            2 => "رفتن به نامهٔ صادره مبدأ",
+            3 => "رفتن به نامهٔ وارده مبدأ",
+            _ => "رفتن به نامه مبدأ"
+        };
+        return @<a class="wo-att" href="@($"{letterRoute}?open={sourceId}")" target="_blank" title="@letterTitle">
             <i class="bi bi-envelope"></i> نامه
         </a>;
+    }
+
+    /// <summary>نگاشتِ نامِ ماژولِ ذخیره‌شده → نوعِ نامه (۱=داخلی، ۲=صادره، ۳=وارده)</summary>
+    private static int? LetterTypeFromModule(string? module)
+    {
+        if (string.IsNullOrWhiteSpace(module)) return null;
+        var m = module.Trim().ToLowerInvariant();
+        if (m is "innerletter" or "innerletters") return 1;
+        if (m is "outgoingletter" or "outgoingletters") return 2;
+        if (m is "incomingletter" or "incomingletters") return 3;
+        return null;
     }
 
     private RenderFragment ToneBadge(WoItem w, string tone) => tone switch
@@ -3957,6 +3986,8 @@ else
         public string? ParentTitle { get; set; }
         public List<ChildItem> Children { get; set; } = new();
         public string? SourceModule { get; set; } public int? SourceId { get; set; } public int? SourceRefId { get; set; }
+        /// <summary>نوعِ نامهٔ مبدأ (۱=داخلی، ۲=صادره، ۳=وارده) — از LetterSource روی سرور</summary>
+        public int? SourceType { get; set; }
         public int? ProjectId { get; set; } public string? ProjectCode { get; set; } public string? ProjectName { get; set; }
         public int Weight { get; set; } = 1; public int OrderProgress { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();

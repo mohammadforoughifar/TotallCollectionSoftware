@@ -214,11 +214,11 @@
                                         @if (printMenuOpen && printMenuLetterId == ll.LetterId)
                                         {
                                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                                <button @onclick="async () => { await PrintRow(ll, \"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, \"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                                 <div class="mdiv"></div>
-                                                <button @onclick="async () => { await PrintRow(ll, \"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, \"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                                             </div>
                                         }
                                         <button class="warn" @onclick="() => ToggleArchive(ll)">
@@ -274,11 +274,11 @@
                         @if (printMenuOpen)
                         {
                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                <button @onclick="async () => { await PrintSelected(\"A4\", false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(\"A4\", true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                 <div class="mdiv"></div>
-                                <button @onclick="async () => { await PrintSelected(\"A5\", false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(\"A5\", true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                             </div>
                         }
                     </span>
@@ -296,16 +296,22 @@
                         <button class="lbtn pri" @onclick="OpenErjaSheet"><i class="bi bi-arrow-left-circle"></i> ارجاع / هامش</button>
                     }
                     @* ---------- اتصال به دستور کار ---------- *@
+                    @* نامه‌ای که قبلاً دستورکار شده هم باید بتواند دوباره دستورکار بگیرد؛
+                       بنابراین دکمهٔ «افزودن دستورکار» در کنار گزارشِ دستورکارهای موجود
+                       نمایش داده می‌شود و دیگر پنهان نمی‌شود. *@
+                    @if (woLoaded && CanConvertToWorkOrder)
+                    {
+                        <button class="lbtn pri"
+                                title="@(IsConverted ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
+                                @onclick="ConvertToWorkOrder">
+                            <i class="bi @(IsConverted ? "bi-plus-circle" : "bi-arrow-right-circle")"></i>
+                            @(IsConverted ? "افزودن دستورکار" : "تبدیل به دستور کار")
+                        </button>
+                    }
                     @if (IsConverted)
                     {
                         <button class="lbtn grn" title="نمایش گزارش دستورکارهای این نامه" @onclick="ToggleWorkOrderReport">
                             <i class="bi bi-list-task"></i> دستورکار شده (@WorkOrderCount)
-                        </button>
-                    }
-                    else if (woLoaded && CanConvertToWorkOrder)
-                    {
-                        <button class="lbtn pri" title="تبدیل این نامه به دستور کار" @onclick="ConvertToWorkOrder">
-                            <i class="bi bi-arrow-right-circle"></i> تبدیل به دستور کار
                         </button>
                     }
                 }
@@ -513,12 +519,13 @@
                             }
                             else if (selected.IsMine)
                             {
-                                <button class="lbtn pri" @onclick="() => MenuGardeshCur()"><i class="bi bi-diagram-3"></i> پیگیری گردش</button>
                                 @if (selected.CanEdit)
                                 {
                                     <button class="lbtn ghost" @onclick="() => EditLetter(selected.LetterId)"><i class="bi bi-pencil-square"></i> ویرایش</button>
                                 }
                             }
+                            @* دکمهٔ «گردش نامه» برای همه‌ی بینندگانِ نامه (فرستنده و گیرندگانِ گردش) *@
+                            <button class="lbtn pri" title="مشاهدهٔ گردش نامه" @onclick="() => MenuGardeshCur()"><i class="bi bi-diagram-3"></i> گردش نامه</button>
                             @if (selectedItem != null)
                             {
                                 <button class="lbtn ghost" @onclick="() => ToggleArchive(selectedItem!)">
@@ -623,6 +630,11 @@
 
 @code {
     [Parameter] public string? Tab { get; set; }
+
+    // اندازهٔ چاپ — به‌صورت ثابت تعریف می‌شود تا داخل صفت‌های HTML
+    // نیازی به نوشتن رشتهٔ داخل کوتیشن نباشیم (در Razor بک‌اسلش داخل صفت HTML معتبر نیست).
+    private const string SizeA4 = "A4";
+    private const string SizeA5 = "A5";
 
     private HashSet<int> selectedErjaIds = new();
     private bool batchBayeganiModalOpen;
@@ -1074,6 +1086,9 @@
                 if (selectedItem != null) selectedItem.IsRead = true;
                 stats = await LetterSvc.GetStatsAsync();
             }
+            // نامه باز نشد: یا دسترسی نداریم یا حذف شده است — به‌جای صفحهٔ خالی
+            // پیامِ روشن نشان داده می‌شود.
+            if (selected == null) Toast.Error("این نامه برای شما در دسترس نیست یا حذف شده است.");
         }
         catch (Exception ex)
         {

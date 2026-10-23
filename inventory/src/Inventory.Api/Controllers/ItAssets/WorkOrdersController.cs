@@ -79,22 +79,30 @@ public class WorkOrdersController : ControllerBase
     /// </summary>
     private async Task AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order)
     {
-        if (dto.SourceId is not > 0 || string.IsNullOrWhiteSpace(dto.SourceModule)) return;
-        var sourceType = dto.SourceModule.Trim() switch
-        {
-            "InnerLetter" or "InnerLetters" => 1,
-            "OutgoingLetter" or "OutgoingLetters" => 2,
-            "IncomingLetter" or "IncomingLetters" => 3,
-            _ => 0
-        };
-        if (sourceType == 0) return;
+        if (dto.SourceId is not > 0) return;
 
+        // ماژولِ صریحِ غیرنامه (مدرک/صورتجلسه) اصلاً به گردشِ نامه ربطی ندارد
+        if (!IsLetterModuleOrUnknown(dto.SourceModule)) return;
+
+        // نامهٔ مبدأ مستقل از نامِ ماژولِ ارسالیِ کلاینت و از روی شناسه پیدا می‌شود:
+        // جدولِ LetterSources کلیدِ مشترکِ هر سه نوع نامه است و SourceType آن نوعِ
+        // واقعیِ نامه را می‌گوید. پیش‌تر، نامِ ماژول ملاک بود و اگر کلاینت نامِ اشتباه
+        // (یا نامِ قدیمی/خالی) می‌فرستاد، یا دستورکار ساخته نمی‌شد یا با نوعِ نادرست
+        // ذخیره می‌شد و لینکِ «نامه» به کارتابلِ اشتباه می‌رفت.
         var source = await _db.LetterSources.AsNoTracking()
             .Include(x => x.InnerLetter)
             .Include(x => x.OutgoingLetter)
             .Include(x => x.IncomingLetter)
-            .FirstOrDefaultAsync(x => x.Id == dto.SourceId.Value && !x.IsDelete && x.SourceType == sourceType);
-        if (source == null) throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
+            .FirstOrDefaultAsync(x => x.Id == dto.SourceId.Value && !x.IsDelete && x.SourceType >= 1 && x.SourceType <= 3);
+
+        if (source == null)
+        {
+            // مبدأ یک نامه نیست و نامِ ماژول هم نامه را نشان نمی‌دهد — کاری لازم نیست.
+            if (ModuleToLetterType(dto.SourceModule) is null) return;
+            throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
+        }
+
+        var sourceType = source.SourceType;
 
         var creatorId = sourceType == 1 ? source.InnerLetter?.CreatorUserId
                      : sourceType == 2 ? source.OutgoingLetter?.CreatorUserId
@@ -104,15 +112,9 @@ public class WorkOrdersController : ControllerBase
         if (!mayUseLetter && !IsLegacyAdmin)
             throw new InvalidOperationException("فقط ایجادکننده یا گیرندهٔ حاضر در گردش نامه می‌تواند از این نامه دستورکار بسازد.");
 
-        // مقدار کاننیکال را از نوع واقعی LetterSource تعیین می‌کنیم تا اشتباه
-        // کلاینت یا داده‌های قدیمی باعث جابه‌جایی فیلتر نوع نامه نشود.
-        order.SourceModule = sourceType switch
-        {
-            1 => "InnerLetter",
-            2 => "OutgoingLetter",
-            3 => "IncomingLetter",
-            _ => order.SourceModule
-        };
+        // مقدار کاننیکال از نوعِ واقعیِ LetterSource تعیین می‌شود تا اشتباهِ کلاینت
+        // یا داده‌های قدیمی باعث جابه‌جاییِ فیلترِ نوعِ نامه و اشتباه در لینک نشود.
+        order.SourceModule = LetterModuleName(sourceType) ?? order.SourceModule;
 
         var targets = dto.AssigneeUserIds.Where(x => x > 0 && x != MyUserId).Distinct().ToList();
         var existing = await _db.Erjas
@@ -640,6 +642,64 @@ public class WorkOrdersController : ControllerBase
         return q;
     }
 
+    // ==================== نوعِ نامهٔ مبدأ ====================
+    // منبعِ حقیقت، جدولِ LetterSources است: هر نامه (داخلی/صادره/وارده) یک ردیف
+    // در آن جدول دارد که SourceType آن (۱=داخلی، ۲=صادره، ۳=وارده) نوعِ واقعیِ نامه
+    // را مشخص می‌کند و Id آن کلیدِ مشترک با هر سه نوع نامه است. رشتهٔ
+    // WorkOrder.SourceModule یک متنِ آزاد است و ممکن است در داده‌های قدیمی اشتباه،
+    // قدیمی یا خالی باشد — به همین دلیل هرگز مبنای تصمیم دربارهٔ نوعِ نامه نیست.
+
+    /// <summary>نگاشتِ شناسهٔ مبدأ → نوعِ نامه (۱=داخلی، ۲=صادره، ۳=وارده)</summary>
+    private async Task<Dictionary<int, int>> LetterTypeMapAsync(IEnumerable<int?> sourceIds)
+    {
+        var ids = sourceIds.Where(x => x is > 0).Select(x => x!.Value).Distinct().ToList();
+        if (ids.Count == 0) return new();
+        return await _db.LetterSources.AsNoTracking()
+            .Where(s => ids.Contains(s.Id) && !s.IsDelete && s.SourceType >= 1 && s.SourceType <= 3)
+            .ToDictionaryAsync(s => s.Id, s => s.SourceType);
+    }
+
+    /// <summary>
+    /// نوعِ نامهٔ مبدأ را با اولویتِ جدولِ LetterSources و سپس نامِ ماژول برمی‌گرداند.
+    /// اگر مبدأ صریحاً یک ماژولِ غیرنامه (مدرک/صورتجلسه) باشد، null برمی‌گردد تا
+    /// لینکِ «نامه» اشتباه ساخته نشود.
+    /// </summary>
+    private static int? LetterTypeOf(string? module, int? sourceId, Dictionary<int, int> map)
+    {
+        var byModule = ModuleToLetterType(module);
+        if (!IsLetterModuleOrUnknown(module)) return null;
+        if (sourceId is > 0 && map.TryGetValue(sourceId.Value, out var st)) return st;
+        return byModule;
+    }
+
+    /// <summary>نگاشتِ نامِ ماژول → نوعِ نامه (۱=داخلی، ۲=صادره، ۳=وارده)</summary>
+    private static int? ModuleToLetterType(string? module)
+    {
+        if (string.IsNullOrWhiteSpace(module)) return null;
+        var m = module.Trim().ToLowerInvariant();
+        if (m is "innerletter" or "innerletters") return 1;
+        if (m is "outgoingletter" or "outgoingletters") return 2;
+        if (m is "incomingletter" or "incomingletters") return 3;
+        return null;
+    }
+
+    /// <summary>
+    /// آیا مبدأ می‌تواند نامه باشد؟ ماژولِ خالی (داده‌های قدیمی) «نامعلوم» است و
+    /// اجازه می‌دهد نوعِ نامه از LetterSource خوانده شود؛ اما ماژولِ صریحِ غیرنامه
+    /// (مدرک/صورتجلسه) رد می‌شود تا شناسهٔ آن با شناسهٔ یک نامه اشتباه گرفته نشود.
+    /// </summary>
+    private static bool IsLetterModuleOrUnknown(string? module)
+        => string.IsNullOrWhiteSpace(module) || ModuleToLetterType(module) is not null;
+
+    /// <summary>نامِ ماژولِ استانداردِ متناظر با نوعِ نامه</summary>
+    private static string? LetterModuleName(int sourceType) => sourceType switch
+    {
+        1 => "InnerLetter",
+        2 => "OutgoingLetter",
+        3 => "IncomingLetter",
+        _ => null
+    };
+
     private async Task<List<object>> BuildList(IQueryable<WorkOrder> q)
     {
         // مرتب‌سازی: اول اولویت (فوری بالاتر)، بعد جدیدترین
@@ -677,12 +737,20 @@ public class WorkOrdersController : ControllerBase
         string? ProjName(int? id) => id != null && projDict.TryGetValue(id.Value, out var b)
             ? (b.Deleted ? b.Title + " (حذف‌شده)" : b.Title) : null;
 
+        // نوعِ نامهٔ مبدأ — از جدولِ LetterSources خوانده می‌شود (مرجعِ اصلی) و نه از
+        // رشتهٔ SourceModule. نامِ ماژول یک متنِ آزاد است و در داده‌های قدیمی می‌تواند
+        // اشتباه یا خالی باشد؛ اما SourceType همیشه نوعِ واقعیِ نامه را می‌گوید
+        // (۱=داخلی، ۲=صادره، ۳=وارده) تا لینکِ «نامه» هرگز نامهٔ اشتباهی را باز نکند.
+        var letterTypeBySourceId = await LetterTypeMapAsync(orders.Select(w => w.SourceId));
+
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
             w.SourceModule, w.SourceId, w.SourceRefId,
+            // نوعِ نامهٔ مبدأ (۱=داخلی، ۲=صادره، ۳=وارده) — از LetterSource خوانده شده
+            SourceType = LetterTypeOf(w.SourceModule, w.SourceId, letterTypeBySourceId),
             w.ProjectId, w.Weight,
             ProjectCode = ProjCode(w.ProjectId),
             ProjectName = ProjName(w.ProjectId),
@@ -770,7 +838,25 @@ public class WorkOrdersController : ControllerBase
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var q = _db.WorkOrders.Where(w => w.CompanyId == companyId.Value && w.SourceId != null);
-        if (!string.IsNullOrWhiteSpace(module)) q = q.Where(w => w.SourceModule == module);
+        var letterType = ModuleToLetterType(module);
+        // نامِ ماژول‌های نامه — برای اینکه دستورهای مدرک/صورتجلسه (که شناسهٔ
+        // مبدأشان ممکن است با شناسهٔ یک نامه برخورد کند) قاطی نشوند.
+        var letterModuleNames = new[] { "InnerLetter", "InnerLetters", "OutgoingLetter", "OutgoingLetters", "IncomingLetter", "IncomingLetters" };
+        if (letterType is int lt)
+        {
+            // نوعِ نامه از جدولِ LetterSources خوانده می‌شود (مرجعِ اصلی) تا دستورهایی
+            // که با نامِ ماژولِ قدیمی یا نادرست ذخیره شده‌اند هم دیده شوند.
+            q = q.Where(w => letterModuleNames.Contains(w.SourceModule!) && w.SourceId != null && _db.LetterSources
+                .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType == lt));
+        }
+        else if (!string.IsNullOrWhiteSpace(module))
+        {
+            var source = module.Trim();
+            q = source.Equals("letters", StringComparison.OrdinalIgnoreCase)
+                ? q.Where(w => letterModuleNames.Contains(w.SourceModule!) && w.SourceId != null && _db.LetterSources
+                    .Any(s => s.Id == w.SourceId.Value && !s.IsDelete && s.SourceType >= 1 && s.SourceType <= 3))
+                : q.Where(w => w.SourceModule == source);
+        }
         return Ok(await q.Select(w => w.SourceId!.Value).Distinct().ToListAsync());
     }
 
@@ -782,14 +868,37 @@ public class WorkOrdersController : ControllerBase
         var pagination = new Paging.Request(skip, take);
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
-        if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0)
-            return Ok(new List<object>());
-        var list = await _db.WorkOrders
-            .Where(w => w.CompanyId == companyId.Value && w.SourceModule == module && w.SourceId == sourceId)
+        if (sourceId is not > 0) return Ok(new List<object>());
+
+        var q = _db.WorkOrders.Where(w => w.CompanyId == companyId.Value && w.SourceId == sourceId);
+        var letterType = ModuleToLetterType(module);
+        int? canonicalType = null;
+        if (letterType is int lt)
+        {
+            // شناسهٔ نامه یکتا و مشترک میان هر سه نوع نامه است؛ نوعِ واقعی از
+            // LetterSource خوانده می‌شود. اگر این شناسه به نامه‌ای از نوعِ دیگری
+            // اشاره کند، این نامه دستورکاری ندارد.
+            var src = await _db.LetterSources.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == sourceId.Value && !x.IsDelete);
+            if (src == null || src.SourceType != lt) return Ok(new List<object>());
+            canonicalType = src.SourceType;
+            // نامِ ماژولِ ذخیره‌شده ممکن است قدیمی یا اشتباه باشد؛ پس ملاک، «نامه
+            // بودنِ مبدأ» است و نه رشتهٔ ماژول — وگرنه دستورهای قدیمی از قلم می‌افتادند.
+            var letterModuleNames = new[] { "InnerLetter", "InnerLetters", "OutgoingLetter", "OutgoingLetters", "IncomingLetter", "IncomingLetters" };
+            q = q.Where(w => letterModuleNames.Contains(w.SourceModule!));
+        }
+        else if (!string.IsNullOrWhiteSpace(module))
+        {
+            q = q.Where(w => w.SourceModule == module.Trim());
+        }
+        else return Ok(new List<object>());
+
+        var list = await q
             .OrderByDescending(w => w.Id)
             .Select(w => new
             {
                 w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId,
+                SourceType = canonicalType,
                 Assignees = _db.WorkOrderAssignees.Where(a => a.OrderId == w.Id).Select(a => a.Name).ToList(),
                 AssigneeCount = _db.WorkOrderAssignees.Count(a => a.OrderId == w.Id)
             })
