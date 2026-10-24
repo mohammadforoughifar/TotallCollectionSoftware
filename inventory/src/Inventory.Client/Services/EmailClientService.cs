@@ -153,7 +153,8 @@ public class EmailClientService : IEmailClientService
         _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-junk");
 
     public Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
-        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false)
+        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
@@ -163,11 +164,15 @@ public class EmailClientService : IEmailClientService
         if (spam) q.Add("spam=true");
         if (starred) q.Add("starred=true");
         if (personal) q.Add("personal=true");
+        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
+        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
         return _api.GetAsync<EmailListPageDto>($"api/email/inbox?{string.Join("&", q)}");
     }
 
     public Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
-        int page = 1, int pageSize = 25, bool starred = false, bool personal = false)
+        int page = 1, int pageSize = 25, bool starred = false, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
@@ -175,6 +180,9 @@ public class EmailClientService : IEmailClientService
         if (folderId != null) q.Add($"folderId={folderId.Value}"); // 0=بایگانی‌نشده، -1=بایگانی‌شده، n=پوشه n
         if (starred) q.Add("starred=true");
         if (personal) q.Add("personal=true");
+        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
+        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
         return _api.GetAsync<EmailListPageDto>($"api/email/sent?{string.Join("&", q)}");
     }
 

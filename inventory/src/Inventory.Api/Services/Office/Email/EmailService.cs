@@ -49,12 +49,14 @@ public interface IEmailService
     /// personalOnly: فقط حساب‌های شخصیِ خود کاربر (بدون حساب‌های رسمی دبیرخانه)</summary>
     Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
-        int? folderId = null, bool spamOnly = false, bool starredOnly = false);
+        int? folderId = null, bool spamOnly = false, bool starredOnly = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
-        int? folderId = null, bool starredOnly = false);
+        int? folderId = null, bool starredOnly = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه) — صفحه‌بندی سمت سرور</summary>
     Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
@@ -1028,7 +1030,8 @@ public class EmailService : IEmailService
 
     public async Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
-        int? folderId = null, bool spamOnly = false, bool starredOnly = false)
+        int? folderId = null, bool spamOnly = false, bool starredOnly = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1046,6 +1049,9 @@ public class EmailService : IEmailService
 
         if (unreadOnly == true) q = q.Where(i => !i.IsRead);
         if (starredOnly) q = q.Where(i => i.IsNeshan);
+        if (dateFrom.HasValue) q = q.Where(i => i.Date >= dateFrom.Value);
+        if (dateTo.HasValue) q = q.Where(i => i.Date <= dateTo.Value);
+        if (hasAttachment.HasValue) q = q.Where(i => i.IsAttachment == hasAttachment.Value);
 
         // folderId = 0 → بایگانی‌نشده | -1 → بایگانی‌شده در هر پوشه‌ای | n → پوشه n | خالی → همه
         if (folderId is > 0) q = q.Where(i => i.IsInFolder == folderId.Value);
@@ -1090,7 +1096,8 @@ public class EmailService : IEmailService
 
     public async Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
-        int? folderId = null, bool starredOnly = false)
+        int? folderId = null, bool starredOnly = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1104,6 +1111,9 @@ public class EmailService : IEmailService
             .Where(s => ids.Contains(s.EmailId));
 
         if (starredOnly) q = q.Where(x => x.IsNeshan);
+        if (dateFrom.HasValue) q = q.Where(x => x.Date >= dateFrom.Value);
+        if (dateTo.HasValue) q = q.Where(x => x.Date <= dateTo.Value);
+        if (hasAttachment.HasValue) q = q.Where(x => x.IsAttachment == hasAttachment.Value);
 
         if (folderId is > 0) q = q.Where(x => x.IsInFolder == folderId.Value);
         else if (folderId == 0) q = q.Where(x => x.IsInFolder == 0);
