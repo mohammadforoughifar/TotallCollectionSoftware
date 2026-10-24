@@ -407,7 +407,9 @@ public class ProjectsController : RbacControllerBase
 
         var fSerial = NormFilter(q.FSerial);
         if (fSerial is not null) query = query.Where(p => p.SerialNumber.Contains(fSerial));
+        // «ندارد» بر «دارد» اولویت دارد؛ اگر هیچ‌کدام انتخاب نشده باشد («همه») شرطی اعمال نمی‌شود
         if (q.EmptySerial) query = query.Where(p => p.SerialNumber == null || p.SerialNumber == "");
+        else if (q.HasSerial) query = query.Where(p => p.SerialNumber != null && p.SerialNumber != "");
 
         var fKarfarma = NormFilter(q.FKarfarma);
         if (fKarfarma is not null) query = query.Where(p => p.KarFarma != null && p.KarFarma.Name.Contains(fKarfarma));
@@ -424,11 +426,15 @@ public class ProjectsController : RbacControllerBase
         }
 
         if (q.EmptyFactor) query = query.Where(p => p.FactorNumber == null || p.FactorNumber == "");
+        else if (q.HasFactor) query = query.Where(p => p.FactorNumber != null && p.FactorNumber != "");
         if (q.EmptyFactorType) query = query.Where(p => p.FactorTypeId == null);
+        else if (q.HasFactorType) query = query.Where(p => p.FactorTypeId != null);
 
         // «-» در فیلتر کارشناسی اولیه = فقط پروژه‌هایی که کارشناسی ثبت نشده دارد
         var fKarshenasi = NormFilter(q.FKarshenasi);
         if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
+        if (q.EmptyKarshenasi) query = query.Where(p => p.KarshenasiAvalie == null || p.KarshenasiAvalie == "");
+        else if (q.HasKarshenasi) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie != "");
 
         // ----- تاریخ‌های اختیاری: تایپ «-» یعنی فقط پروژه‌هایی که این تاریخ را ندارند -----
         if (q.EmptyEntry)
@@ -437,6 +443,7 @@ public class ProjectsController : RbacControllerBase
         }
         else
         {
+            if (q.HasEntry) query = query.Where(p => p.EntryDate != null);
             var rEntry = JalaliRange(q.FEntry);
             if (rEntry is not null)
             {
@@ -451,6 +458,7 @@ public class ProjectsController : RbacControllerBase
         }
         else
         {
+            if (q.HasExit) query = query.Where(p => p.ExitDate != null);
             var rExit = JalaliRange(q.FExit);
             if (rExit is not null)
             {
@@ -474,8 +482,9 @@ public class ProjectsController : RbacControllerBase
         {
             query = query.Where(p => p.TemporaryExitDate == null);
         }
-        else if (q.TemporaryExitFrom.HasValue || q.TemporaryExitTo.HasValue)
+        else if (q.HasTemporaryExit || q.TemporaryExitFrom.HasValue || q.TemporaryExitTo.HasValue)
         {
+            if (q.HasTemporaryExit) query = query.Where(p => p.TemporaryExitDate != null);
             if (q.TemporaryExitFrom.HasValue) query = query.Where(p => p.TemporaryExitDate >= q.TemporaryExitFrom.Value.Date);
             if (q.TemporaryExitTo.HasValue) query = query.Where(p => p.TemporaryExitDate < q.TemporaryExitTo.Value.Date.AddDays(1));
         }
@@ -484,8 +493,9 @@ public class ProjectsController : RbacControllerBase
         {
             query = query.Where(p => p.DeliveryDate == null);
         }
-        else if (q.DeliveryFrom.HasValue || q.DeliveryTo.HasValue)
+        else if (q.HasDelivery || q.DeliveryFrom.HasValue || q.DeliveryTo.HasValue)
         {
+            if (q.HasDelivery) query = query.Where(p => p.DeliveryDate != null);
             if (q.DeliveryFrom.HasValue) query = query.Where(p => p.DeliveryDate >= q.DeliveryFrom.Value.Date);
             if (q.DeliveryTo.HasValue) query = query.Where(p => p.DeliveryDate < q.DeliveryTo.Value.Date.AddDays(1));
         }
@@ -494,8 +504,9 @@ public class ProjectsController : RbacControllerBase
         {
             query = query.Where(p => p.FileDate == null);
         }
-        else if (q.FileFrom.HasValue || q.FileTo.HasValue)
+        else if (q.HasFile || q.FileFrom.HasValue || q.FileTo.HasValue)
         {
+            if (q.HasFile) query = query.Where(p => p.FileDate != null);
             if (q.FileFrom.HasValue) query = query.Where(p => p.FileDate >= q.FileFrom.Value.Date);
             if (q.FileTo.HasValue) query = query.Where(p => p.FileDate < q.FileTo.Value.Date.AddDays(1));
         }
@@ -506,6 +517,7 @@ public class ProjectsController : RbacControllerBase
         }
         else
         {
+            if (q.HasRegistration) query = query.Where(p => p.ProjectRegistrationDate != null);
             var rSabt = JalaliRange(q.FSabt);
             if (rSabt is not null)
             {
@@ -520,6 +532,7 @@ public class ProjectsController : RbacControllerBase
         }
         else
         {
+            if (q.HasCustomerNeed) query = query.Where(p => p.CustomerRequiredDate != null);
             var rNeed = JalaliRange(q.FNeed);
             if (rNeed is not null)
             {

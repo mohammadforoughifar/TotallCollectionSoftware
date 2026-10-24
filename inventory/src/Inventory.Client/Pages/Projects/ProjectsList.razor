@@ -262,43 +262,90 @@
                     <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                 </div>
             </div>
+            @* ================== جستجوی پیشرفته (وضعیت داده + بازهٔ تاریخ) ==================
+               هر فیلد سه حالت دارد: «همه» (بی‌تفاوت)، «دارد» (مقدار ثبت شده) و «ندارد» (مقدار ثبت نشده).
+               در حالت «دارد» می‌توان بازهٔ تاریخی هم داد تا فقط ردیف‌هایی بیایند که هم تاریخ دارند
+               و هم داخل آن بازه‌اند؛ در حالت «ندارد» بازه بی‌معنی است و غیرفعال می‌شود. *@
             <details class="mt-3">
-                <summary class="fw-700 text-primary" style="cursor:pointer"><i class="bi bi-funnel ms-1"></i> جستجوی پیشرفته — پروژه‌های بدون داده</summary>
-                @if (HasAnyFilter)
-                {
-                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" @onclick="ClearColFilters">
-                        <i class="bi bi-x-circle ms-1"></i> پاک کردن همه فیلترها
-                    </button>
-                }
-                <div class="d-flex flex-wrap gap-3 mt-2 p-2 rounded" style="background:#f8fafc">
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptySerial" @bind:after="OnFilterChanged" /> شماره سریال ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyEntry" @bind:after="OnFilterChanged" /> تاریخ ورود ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyExit" @bind:after="OnFilterChanged" /> تاریخ خروج ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyRegistration" @bind:after="OnFilterChanged" /> تاریخ ثبت پروژه ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyCustomerNeed" @bind:after="OnFilterChanged" /> تاریخ نیاز مشتری ثبت نشده</label>
-                    @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactor" @bind:after="OnFilterChanged" /> شماره فاکتور ثبت نشده</label> }
-                    @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactorType" @bind:after="OnFilterChanged" /> نوع فاکتور ثبت نشده</label> }
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyKarshenasi" @bind:after="OnFilterChanged" /> کارشناسی اولیه ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyTemporaryExit" @bind:after="OnFilterChanged" /> خروج موقت ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyDelivery" @bind:after="OnFilterChanged" /> تاریخ تحویل ثبت نشده</label>
-                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFile" @bind:after="OnFilterChanged" /> تاریخ پرونده ثبت نشده</label>
+                <summary class="fw-700 text-primary" style="cursor:pointer">
+                    <i class="bi bi-funnel ms-1"></i> جستجوی پیشرفته — وضعیت داده‌ها و بازه‌های تاریخی
+                    @if (HasAdvancedFilter)
+                    {
+                        <span class="badge bg-warning text-dark ms-1">@AdvancedActiveCount فیلد فعال</span>
+                    }
+                </summary>
+
+                <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                    <span class="small text-muted">
+                        برای هر فیلد یکی از سه حالت «همه»، «دارد» یا «ندارد» را انتخاب کنید —
+                        مثلاً «تاریخ خروج: ندارد» یعنی پروژه‌هایی که هنوز خارج نشده‌اند و
+                        «تاریخ خروج: دارد + از ۱۴۰۵/۰۱/۰۱ تا ۱۴۰۵/۰۶/۳۱» یعنی خارج‌شده‌های همان بازه.
+                    </span>
+                    @if (HasAdvancedFilter)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-warning text-dark" @onclick="ClearAdvanced">
+                            <i class="bi bi-x-circle ms-1"></i> پاک کردن جستجوی پیشرفته
+                        </button>
+                    }
+                    @if (HasAnyFilter)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="ClearColFilters">
+                            <i class="bi bi-x-circle ms-1"></i> پاک کردن همه فیلترها
+                        </button>
+                    }
                 </div>
-                <div class="row g-2 mt-2 p-2 rounded" style="background:#f8fafc">
-                    <div class="col-12 small fw-bold text-primary">بازه‌های تاریخی (برای ردیف‌های دارای تاریخ)</div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">ورود از</label><DatePicker @bind-Value="advancedEntryFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">ورود تا</label><DatePicker @bind-Value="advancedEntryTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">خروج از</label><DatePicker @bind-Value="advancedExitFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">خروج تا</label><DatePicker @bind-Value="advancedExitTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">خروج موقت از</label><DatePicker @bind-Value="advancedTemporaryExitFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">خروج موقت تا</label><DatePicker @bind-Value="advancedTemporaryExitTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">ثبت پروژه از</label><DatePicker @bind-Value="advancedRegistrationFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">ثبت پروژه تا</label><DatePicker @bind-Value="advancedRegistrationTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">نیاز مشتری از</label><DatePicker @bind-Value="advancedCustomerNeedFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">نیاز مشتری تا</label><DatePicker @bind-Value="advancedCustomerNeedTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">تحویل از</label><DatePicker @bind-Value="advancedDeliveryFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">تحویل تا</label><DatePicker @bind-Value="advancedDeliveryTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">پرونده از</label><DatePicker @bind-Value="advancedFileFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                    <div class="col-sm-6 col-lg-3"><label class="small">پرونده تا</label><DatePicker @bind-Value="advancedFileTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+
+                @* خلاصهٔ فیلترهای فعال — تا کاربر بداند دقیقاً چه چیزی اعمال شده است *@
+                @if (HasAdvancedFilter)
+                {
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        @foreach (var chip in AdvancedSummary())
+                        {
+                            <span class="badge bg-primary-subtle text-primary border">@chip</span>
+                        }
+                    </div>
+                }
+
+                <div class="mt-2 p-2 rounded" style="background:#f8fafc; overflow-x:auto">
+                    <div style="display:grid; grid-template-columns:1.1fr 1fr 1fr 1fr; gap:8px; align-items:center; min-width:640px">
+                        <div class="small fw-bold text-secondary">فیلد</div>
+                        <div class="small fw-bold text-secondary">وضعیت داده</div>
+                        <div class="small fw-bold text-secondary">از تاریخ</div>
+                        <div class="small fw-bold text-secondary">تا تاریخ</div>
+
+                        @foreach (var f in AdvancedFields.Where(x => !x.FactorOnly || canViewFactor))
+                        {
+                            var key = f.Key;
+                            var pv = PresenceOf(key);
+                            var rangeOff = pv == "empty";
+                            <div style="display:contents">
+                                <div class="small fw-600">@f.Label</div>
+                                <div>
+                                    <select class="form-select form-select-sm" value="@pv"
+                                            @onchange="e => SetPresenceAsync(key, e.Value?.ToString())"
+                                            title="همه = با یا بدون داده | دارد = فقط ردیف‌هایی که این مقدار را دارند | ندارد = فقط ردیف‌های خالی">
+                                        <option value="">همه (با یا بدون داده)</option>
+                                        <option value="has">دارد</option>
+                                        <option value="empty">ندارد</option>
+                                    </select>
+                                </div>
+                                @if (!f.IsDate)
+                                {
+                                    <div class="small text-muted text-center">—</div>
+                                    <div class="small text-muted text-center">—</div>
+                                }
+                                else
+                                {
+                                    <div style="@(rangeOff ? "pointer-events:none;opacity:.4" : "")" title="@(rangeOff ? "در حالت «ندارد» بازهٔ تاریخ کاربردی ندارد" : "بازهٔ تاریخ")">
+                                        @RenderRangePicker(key, true)
+                                    </div>
+                                    <div style="@(rangeOff ? "pointer-events:none;opacity:.4" : "")" title="@(rangeOff ? "در حالت «ندارد» بازهٔ تاریخ کاربردی ندارد" : "بازهٔ تاریخ")">
+                                        @RenderRangePicker(key, false)
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
             </details>
         </div>
@@ -1340,7 +1387,150 @@
     private string search = "";
     private int filterKarfarma, filterTypeFactor, filterUser;
     private bool filterReturned;
-    private bool emptySerial, emptyEntry, emptyExit, emptyTemporaryExit, emptyDelivery, emptyFile, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
+    // ---------- جستجوی پیشرفته: وضعیت داده برای هر فیلد ----------
+    /// <summary>فیلدهای جستجوی پیشرفته: کلید، برچسب، داشتن بازهٔ تاریخ، وابسته به مجوز فاکتور.</summary>
+    private static readonly (string Key, string Label, bool IsDate, bool FactorOnly)[] AdvancedFields =
+    {
+        ("serial", "شماره سریال", false, false),
+        ("entry", "تاریخ ورود", true, false),
+        ("exit", "تاریخ خروج", true, false),
+        ("temporaryExit", "خروج موقت", true, false),
+        ("registration", "تاریخ ثبت پروژه", true, false),
+        ("customerNeed", "تاریخ نیاز مشتری", true, false),
+        ("delivery", "تاریخ تحویل", true, false),
+        ("file", "تاریخ پرونده", true, false),
+        ("factor", "شماره فاکتور", false, true),
+        ("factorType", "نوع فاکتور", false, true),
+        ("karshenasi", "کارشناسی اولیه", false, false),
+    };
+
+    /// <summary>وضعیت انتخاب‌شدهٔ هر فیلد: "" = همه، "has" = دارد، "empty" = ندارد.</summary>
+    private readonly Dictionary<string, string> presence = new();
+
+    private string PresenceOf(string key) => presence.TryGetValue(key, out var v) ? v : "";
+
+    private bool IsPresence(string key, string value) => PresenceOf(key) == value;
+
+    /// <summary>تغییر وضعیت یک فیلد (همه / دارد / ندارد) و بارگذاری دوبارهٔ لیست.</summary>
+    private async Task SetPresenceAsync(string key, string? value)
+    {
+        value ??= "";
+        if (value.Length == 0) presence.Remove(key);
+        else presence[key] = value;
+
+        // در حالت «ندارد» بازهٔ تاریخ همان فیلد بی‌معنی است؛ پاک می‌شود تا فیلتر متناقض نماند
+        if (value == "empty") ClearRange(key);
+
+        await OnFilterChanged();
+    }
+
+    private DateTime? RangeFrom(string key) => key switch
+    {
+        "entry" => advancedEntryFrom,
+        "exit" => advancedExitFrom,
+        "temporaryExit" => advancedTemporaryExitFrom,
+        "registration" => advancedRegistrationFrom,
+        "customerNeed" => advancedCustomerNeedFrom,
+        "delivery" => advancedDeliveryFrom,
+        "file" => advancedFileFrom,
+        _ => null
+    };
+
+    private DateTime? RangeTo(string key) => key switch
+    {
+        "entry" => advancedEntryTo,
+        "exit" => advancedExitTo,
+        "temporaryExit" => advancedTemporaryExitTo,
+        "registration" => advancedRegistrationTo,
+        "customerNeed" => advancedCustomerNeedTo,
+        "delivery" => advancedDeliveryTo,
+        "file" => advancedFileTo,
+        _ => null
+    };
+
+    private void ClearRange(string key)
+    {
+        switch (key)
+        {
+            case "entry": advancedEntryFrom = advancedEntryTo = null; break;
+            case "exit": advancedExitFrom = advancedExitTo = null; break;
+            case "temporaryExit": advancedTemporaryExitFrom = advancedTemporaryExitTo = null; break;
+            case "registration": advancedRegistrationFrom = advancedRegistrationTo = null; break;
+            case "customerNeed": advancedCustomerNeedFrom = advancedCustomerNeedTo = null; break;
+            case "delivery": advancedDeliveryFrom = advancedDeliveryTo = null; break;
+            case "file": advancedFileFrom = advancedFileTo = null; break;
+        }
+    }
+
+    /// <summary>یک انتخاب‌گر تاریخ شمسی (از/تا) برای فیلدهای تاریخی جستجوی پیشرفته.</summary>
+    private Microsoft.AspNetCore.Components.RenderFragment RenderRangePicker(string key, bool isFrom) => builder =>
+    {
+        var seq = 0;
+        builder.OpenComponent<DatePicker>(seq++);
+        builder.AddAttribute(seq++, "Value", isFrom ? RangeFrom(key) : RangeTo(key));
+        builder.AddAttribute(seq++, "ValueChanged",
+            EventCallback.Factory.Create<DateTime?>(this, async v =>
+            {
+                SetRange(key, isFrom, v);
+                await OnFilterChanged();
+            }));
+        builder.AddAttribute(seq++, "Placeholder", isFrom ? "از تاریخ" : "تا تاریخ");
+        builder.CloseComponent();
+    };
+
+    private void SetRange(string key, bool isFrom, DateTime? value)
+    {
+        switch (key)
+        {
+            case "entry": if (isFrom) advancedEntryFrom = value; else advancedEntryTo = value; break;
+            case "exit": if (isFrom) advancedExitFrom = value; else advancedExitTo = value; break;
+            case "temporaryExit": if (isFrom) advancedTemporaryExitFrom = value; else advancedTemporaryExitTo = value; break;
+            case "registration": if (isFrom) advancedRegistrationFrom = value; else advancedRegistrationTo = value; break;
+            case "customerNeed": if (isFrom) advancedCustomerNeedFrom = value; else advancedCustomerNeedTo = value; break;
+            case "delivery": if (isFrom) advancedDeliveryFrom = value; else advancedDeliveryTo = value; break;
+            case "file": if (isFrom) advancedFileFrom = value; else advancedFileTo = value; break;
+        }
+    }
+
+    /// <summary>آیا در جستجوی پیشرفته چیزی انتخاب شده است؟</summary>
+    private bool HasAdvancedFilter => AdvancedFields.Any(f =>
+        PresenceOf(f.Key).Length > 0 || (f.IsDate && (RangeFrom(f.Key).HasValue || RangeTo(f.Key).HasValue)));
+
+    private int AdvancedActiveCount => AdvancedFields.Count(f =>
+        PresenceOf(f.Key).Length > 0 || (f.IsDate && (RangeFrom(f.Key).HasValue || RangeTo(f.Key).HasValue)));
+
+    /// <summary>خلاصهٔ خوانا از فیلترهای پیشرفتهٔ فعال — برای نمایش به‌صورت برچسب.</summary>
+    private IEnumerable<string> AdvancedSummary()
+    {
+        foreach (var f in AdvancedFields)
+        {
+            var pv = PresenceOf(f.Key);
+            if (pv.Length == 0 && !(f.IsDate && (RangeFrom(f.Key).HasValue || RangeTo(f.Key).HasValue))) continue;
+
+            var state = pv == "has" ? "دارد" : pv == "empty" ? "ندارد" : "همه";
+            var text = $"{f.Label}: {state}";
+            if (f.IsDate && pv != "empty")
+            {
+                var from = RangeFrom(f.Key);
+                var to = RangeTo(f.Key);
+                if (from.HasValue || to.HasValue)
+                    text += from.HasValue && to.HasValue
+                        ? $" ({from.Value.ToFa()} تا {to.Value.ToFa()})"
+                        : from.HasValue ? $" (از {from.Value.ToFa()})" : $" (تا {to.Value.ToFa()})";
+            }
+            yield return text;
+        }
+    }
+
+    /// <summary>پاک کردن فقط فیلترهای جستجوی پیشرفته.</summary>
+    private async Task ClearAdvanced()
+    {
+        presence.Clear();
+        foreach (var f in AdvancedFields.Where(x => x.IsDate).Select(x => x.Key))
+            ClearRange(f);
+        page = 1;
+        await Load();
+    }
     private DateTime? advancedEntryFrom, advancedEntryTo, advancedExitFrom, advancedExitTo, advancedTemporaryExitFrom, advancedTemporaryExitTo;
     private DateTime? advancedRegistrationFrom, advancedRegistrationTo, advancedCustomerNeedFrom, advancedCustomerNeedTo, advancedDeliveryFrom, advancedDeliveryTo, advancedFileFrom, advancedFileTo;
 
@@ -1367,7 +1557,7 @@
     /// <summary>آیا هیچ فیلتری (بالای صفحه یا سرستون) فعال است؟</summary>
     private bool HasAnyFilter => HasColFilter || !string.IsNullOrWhiteSpace(search)
         || filterKarfarma > 0 || filterTypeFactor > 0 || filterUser > 0 || filterReturned
-        || emptySerial || emptyEntry || emptyExit || emptyTemporaryExit || emptyDelivery || emptyFile || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed
+        || HasAdvancedFilter
         || advancedEntryFrom.HasValue || advancedEntryTo.HasValue || advancedExitFrom.HasValue || advancedExitTo.HasValue
         || advancedTemporaryExitFrom.HasValue || advancedTemporaryExitTo.HasValue || advancedRegistrationFrom.HasValue || advancedRegistrationTo.HasValue
         || advancedCustomerNeedFrom.HasValue || advancedCustomerNeedTo.HasValue || advancedDeliveryFrom.HasValue || advancedDeliveryTo.HasValue
@@ -1377,7 +1567,7 @@
     {
         fNum = fName = fSerial = fKarfarma = fEntry = fExit = fFactor = fFactorType = "";
         fKarshenasi = fSabt = fNeed = fSpent = fFolder = fStatus = "";
-        emptySerial = emptyEntry = emptyExit = emptyTemporaryExit = emptyDelivery = emptyFile = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
+        presence.Clear();
         advancedEntryFrom = advancedEntryTo = advancedExitFrom = advancedExitTo = advancedTemporaryExitFrom = advancedTemporaryExitTo = null;
         advancedRegistrationFrom = advancedRegistrationTo = advancedCustomerNeedFrom = advancedCustomerNeedTo = advancedDeliveryFrom = advancedDeliveryTo = advancedFileFrom = advancedFileTo = null;
         page = 1;
@@ -1537,9 +1727,18 @@
         TypeFactorId = filterTypeFactor > 0 ? filterTypeFactor : null,
         UserId = filterUser > 0 ? filterUser : null,
         Returned = filterReturned ? true : null,
-        EmptySerial = emptySerial, EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyTemporaryExit = emptyTemporaryExit, EmptyDelivery = emptyDelivery, EmptyFile = emptyFile, EmptyFactor = emptyFactor,
-        EmptyFactorType = emptyFactorType, EmptyKarshenasi = emptyKarshenasi,
-        EmptyRegistration = emptyRegistration, EmptyCustomerNeed = emptyCustomerNeed,
+        // وضعیت داده: «ندارد» → Empty*، «دارد» → Has*، «همه» → هیچ‌کدام
+        EmptySerial = IsPresence("serial", "empty"), HasSerial = IsPresence("serial", "has"),
+        EmptyEntry = IsPresence("entry", "empty"), HasEntry = IsPresence("entry", "has"),
+        EmptyExit = IsPresence("exit", "empty"), HasExit = IsPresence("exit", "has"),
+        EmptyTemporaryExit = IsPresence("temporaryExit", "empty"), HasTemporaryExit = IsPresence("temporaryExit", "has"),
+        EmptyDelivery = IsPresence("delivery", "empty"), HasDelivery = IsPresence("delivery", "has"),
+        EmptyFile = IsPresence("file", "empty"), HasFile = IsPresence("file", "has"),
+        EmptyFactor = IsPresence("factor", "empty"), HasFactor = IsPresence("factor", "has"),
+        EmptyFactorType = IsPresence("factorType", "empty"), HasFactorType = IsPresence("factorType", "has"),
+        EmptyKarshenasi = IsPresence("karshenasi", "empty"), HasKarshenasi = IsPresence("karshenasi", "has"),
+        EmptyRegistration = IsPresence("registration", "empty"), HasRegistration = IsPresence("registration", "has"),
+        EmptyCustomerNeed = IsPresence("customerNeed", "empty"), HasCustomerNeed = IsPresence("customerNeed", "has"),
         FCode = fNum,
         FName = fName,
         FSerial = fSerial,

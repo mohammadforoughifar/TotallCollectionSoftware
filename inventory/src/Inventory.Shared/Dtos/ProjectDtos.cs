@@ -247,6 +247,23 @@ public class ProjectListQuery
     public int? UserId { get; set; }
     public bool? Returned { get; set; }
 
+    // ---------- فیلتر پیشرفته: وضعیت داده ----------
+    // هر فیلد سه حالت دارد: «همه» (هر دو false)، «دارد» (Has*=true) و «ندارد» (Empty*=true).
+    // ترتیب اعمال در سرور: Empty*=true یعنی فقط ردیف‌های بدون مقدار؛ در غیر این صورت
+    // Has*=true یعنی فقط ردیف‌های دارای مقدار (و اگر بازهٔ تاریخ هم داده شده باشد،
+    // همان بازه هم روی این ردیف‌های دارای تاریخ اعمال می‌شود).
+    public bool HasSerial { get; set; }
+    public bool HasEntry { get; set; }
+    public bool HasExit { get; set; }
+    public bool HasTemporaryExit { get; set; }
+    public bool HasDelivery { get; set; }
+    public bool HasFile { get; set; }
+    public bool HasFactor { get; set; }
+    public bool HasFactorType { get; set; }
+    public bool HasKarshenasi { get; set; }
+    public bool HasRegistration { get; set; }
+    public bool HasCustomerNeed { get; set; }
+
     // ---------- فیلتر پیشرفته «بدون داده» ----------
     public bool EmptySerial { get; set; }
     public bool EmptyEntry { get; set; }
