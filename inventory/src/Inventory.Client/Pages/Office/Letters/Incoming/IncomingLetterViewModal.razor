@@ -209,7 +209,11 @@
         }
     }
 
-    private void Close() => visible = false;
+    private void Close()
+    {
+        visible = false;
+        letter = null; // پاک‌سازی داده‌های نامه قبلی برای جلوگیری از نمایش گزارش دستورکار در باره‌های بعدی
+    }
 
     private string MahramanegiTitle(int m) => m switch
     {
