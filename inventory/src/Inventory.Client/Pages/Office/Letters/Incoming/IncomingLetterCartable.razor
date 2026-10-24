@@ -514,6 +514,15 @@
             try { workOrderLetterIds = (await Api.GetAsync<List<int>>("api/workorders/source-ids?module=IncomingLetter") ?? new()).ToHashSet(); } catch { workOrderLetterIds.Clear(); }
             totalItems = result.TotalCount;
             totalPages = result.TotalPages > 0 ? result.TotalPages : 1;
+
+            // اگر ریدر باز است، جزئیاتِ نمایش‌داده‌شده هم تازه شود؛ وگرنه بعد از
+            // ذخیرهٔ ویرایش (مثلاً «توضیحات / خلاصه متن»)، ریدر همان نسخهٔ قدیمی و
+            // خالی را نشان می‌داد تا کاربر نامه را دوباره انتخاب کند.
+            if (readerOpen && activeDetail != null)
+            {
+                try { activeDetail = await IncomingSvc.GetDetailAsync(activeDetail.LetterId); }
+                catch { /* نمایشِ قبلی حفظ می‌شود */ }
+            }
         }
         catch (Exception ex)
         {

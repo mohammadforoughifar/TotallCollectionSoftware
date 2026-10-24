@@ -106,7 +106,21 @@
 </style>
 
 @code {
+    /// <summary>
+    /// شناسهٔ عنصر contenteditable. اگر میزبان Id ندهد یک شناسهٔ یکتا ساخته می‌شود؛
+    /// بدون آن، عنصر با id خالی رندر می‌شد و همهٔ فراخوانی‌های JS
+    /// (rteSetHtml/rteGetHtml) روی null می‌افتادند: متن اولیه در ادیتور نمی‌نشست
+    /// (مثل بدنهٔ ایمیل هنگام «تبدیل به نامه وارده») و متن تایپ‌شده هم خوانده
+    /// نمی‌شد، پس مقدار خالی ذخیره می‌شد.
+    /// </summary>
     [Parameter] public string Id { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrWhiteSpace(Id))
+            Id = $"rte-{Guid.NewGuid():N}";
+    }
+
     [Parameter] public string Placeholder { get; set; } = "متن را بنویسید…";
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -116,6 +130,9 @@
 
     private bool _initialized;
     private bool _uploading;
+
+    /// <summary>آخرین HTML‌ای که بین ادیتور و پارامتر Value هم‌گام شده است.</summary>
+    private string? _syncedValue;
     private string _fontSel = "Vazirmatn";
     private string _sizeSel = "14";
     private string _colorSel = "#0f172a";
@@ -144,16 +161,30 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_initialized)
+        if (!_initialized)
         {
             _initialized = true;
+            _syncedValue = Value ?? "";
             try { await JS.InvokeVoidAsync("rteSetHtml", Id, Value ?? ""); } catch { }
+            return;
+        }
+
+        // تغییر «بیرونی» مقدار (مثلاً پر شدن فرم از روی ایمیل یا نامهٔ موجود) باید
+        // داخل ادیتور هم منعکس شود؛ چون contenteditable با پارامتر Value به‌طور
+        // خودکار هم‌گام نمی‌شود. هنگام تایپ، _syncedValue با Value یکی است و
+        // محتوا دست‌نخورده می‌ماند (مکان‌نما نمی‌پرد).
+        var current = Value ?? "";
+        if (!string.Equals(current, _syncedValue, StringComparison.Ordinal))
+        {
+            _syncedValue = current;
+            try { await JS.InvokeVoidAsync("rteSetHtml", Id, current); } catch { }
         }
     }
 
     /// <summary>تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم).</summary>
     public async Task SetContentAsync(string html)
     {
+        _syncedValue = html ?? "";
         try { await JS.InvokeVoidAsync("rteSetHtml", Id, html ?? ""); } catch { }
     }
 
@@ -167,6 +198,7 @@
     /// <summary>پاک کردن ادیتور.</summary>
     public async Task ClearAsync()
     {
+        _syncedValue = "";
         try { await JS.InvokeVoidAsync("rteSetHtml", Id, ""); } catch { }
         await ValueChanged.InvokeAsync("");
     }
@@ -174,6 +206,8 @@
     private async Task OnInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
     {
         var html = await GetContentAsync();
+        // مقدارِ ادیتور «همگام‌شده» است؛ تا رندر بعدی نباید دوباره داخل ادیتور نوشته شود
+        _syncedValue = html;
         await ValueChanged.InvokeAsync(html);
     }
 
@@ -300,6 +334,7 @@
     private async Task PushChange()
     {
         var html = await GetContentAsync();
+        _syncedValue = html;
         await ValueChanged.InvokeAsync(html);
     }
 
