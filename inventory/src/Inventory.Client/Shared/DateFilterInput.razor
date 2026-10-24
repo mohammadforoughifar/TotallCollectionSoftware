@@ -5,6 +5,7 @@
     <input type="text"
            class="col-filter-input"
            placeholder="@Placeholder"
+           title="@Title"
            value="@Text"
            @oninput="OnText"
            dir="ltr" />
@@ -74,6 +75,9 @@
     [Parameter] public string? Text { get; set; }
     [Parameter] public EventCallback<string?> TextChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "مثلا ۱۴۰۵/۰۶";
+
+    /// <summary>راهنمای شناور (tooltip) — مثلاً «برای ردیف‌های بدون تاریخ، - بنویسید».</summary>
+    [Parameter] public string? Title { get; set; }
 
     private ElementReference btnRef;
     private static readonly string[] WeekDays = { "ش", "ی", "د", "س", "چ", "پ", "ج" };

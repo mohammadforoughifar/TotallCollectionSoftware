@@ -277,9 +277,12 @@
 
                 <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
                     <span class="small text-muted">
-                        برای هر فیلد یکی از سه حالت «همه»، «دارد» یا «ندارد» را انتخاب کنید —
+                        برای <b>همهٔ تاریخ‌های پروژه</b> (ورود، خروج، خروج موقت، ثبت، نیاز مشتری، تحویل، پرونده)
+                        یکی از سه حالت «همه»، «دارد» یا «ندارد» را انتخاب کنید —
                         مثلاً «تاریخ خروج: ندارد» یعنی پروژه‌هایی که هنوز خارج نشده‌اند و
                         «تاریخ خروج: دارد + از ۱۴۰۵/۰۱/۰۱ تا ۱۴۰۵/۰۶/۳۱» یعنی خارج‌شده‌های همان بازه.
+                        <br />
+                        در ردیف جستجوی سرستون‌ها هم نوشتن «-» در ستون تاریخ یعنی «ردیف‌های بدون تاریخ».
                     </span>
                     @if (HasAdvancedFilter)
                     {
@@ -394,16 +397,16 @@
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fName" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fSerial" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarfarma" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
-                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
+                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا -" Title="تاریخ ورود: بخشی مثل ۱۴۰۵/۰۶ یا ۱۴۰۵/۰۶/۱۵ — برای ردیف‌های بدون تاریخ ورود، «-» بنویسید" /></th>
+                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا -" Title="تاریخ خروج: بخشی مثل ۱۴۰۵/۰۶ — برای ردیف‌های بدون تاریخ خروج، «-» بنویسید" /></th>
                             @if (canViewFactor)
                             {
                                 <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactor" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                                 <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactorType" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             }
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarshenasi" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
-                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
+                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا -" Title="تاریخ ثبت پروژه: بخشی از تاریخ یا «-» برای ردیف‌های بدون تاریخ ثبت" /></th>
+                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا -" Title="تاریخ نیاز مشتری: بخشی از تاریخ یا «-» برای ردیف‌های بدون تاریخ نیاز" /></th>
                             <th>
                                 <input class="col-filter-input" placeholder="ساعت — مثلا 2:" @bind="fSpent" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" />
                             </th>
