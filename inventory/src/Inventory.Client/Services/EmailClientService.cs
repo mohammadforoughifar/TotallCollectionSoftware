@@ -30,11 +30,13 @@ public interface IEmailClientService
 
     /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
-        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false);
+        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
-        int page = 1, int pageSize = 25, bool starred = false, bool personal = false);
+        int page = 1, int pageSize = 25, bool starred = false, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
