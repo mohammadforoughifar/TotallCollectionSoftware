@@ -221,6 +221,13 @@
     /// </summary>
     [Parameter] public string? TextPreviewApi { get; set; }
 
+    /// <summary>
+    /// تعداد پیوست‌ها پس از هر بارگذاری/حذف/بازخوانی به میزبان خبر داده می‌شود تا
+    /// شمارندهٔ پیوست در جای‌های دیگر همان فرم (مثلاً تب یا خلاصهٔ جزئیات) هم‌زمان
+    /// به‌روز شود؛ بدون این، شمارندهٔ نمایش‌داده‌شده با محتوای واقعی جعبه اختلاف داشت.
+    /// </summary>
+    [Parameter] public EventCallback<int> OnCountChanged { get; set; }
+
     // بدون محدودیت حجم و تعداد فایل
     private const long MaxBytes = long.MaxValue;
     private const int MaxFiles = int.MaxValue;
@@ -446,9 +453,17 @@
 
     private async Task Reload()
     {
-        if (RefId <= 0 || string.IsNullOrWhiteSpace(Module)) { items = new(); return; }
+        if (RefId <= 0 || string.IsNullOrWhiteSpace(Module)) { items = new(); await NotifyCount(); return; }
         try { items = await Http.GetFromJsonAsync<List<AttItem>>($"/api/attachments/{Module}/{RefId}") ?? new(); }
         catch { items = new(); }
+        await NotifyCount();
+    }
+
+    /// <summary>اطلاع‌دادن تعداد پیوست‌ها به میزبان (آپلود/حذف/بازخوانی).</summary>
+    private async Task NotifyCount()
+    {
+        if (OnCountChanged.HasDelegate)
+            await OnCountChanged.InvokeAsync(items.Count);
     }
 
     private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)

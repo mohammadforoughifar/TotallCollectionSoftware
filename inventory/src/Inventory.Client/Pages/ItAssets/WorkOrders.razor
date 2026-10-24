@@ -1133,7 +1133,7 @@ else
                 <div class="wo-detail-tabs" aria-label="بخش‌های دستور کار">
                     <button type="button" class="@(detailTab == "overview" ? "active" : "")" @onclick='() => detailTab = "overview"'>اطلاعات</button>
                     <button type="button" class="@(detailTab == "people" ? "active" : "")" @onclick='() => detailTab = "people"'>گیرندگان <span>@detail.Assignees.Count</span></button>
-                    <button type="button" class="@(detailTab == "files" ? "active" : "")" @onclick='() => detailTab = "files"'>پیوست‌ها</button>
+                    <button type="button" class="@(detailTab == "files" ? "active" : "")" @onclick='() => detailTab = "files"'>پیوست‌ها <span class="num">@detailAttCount</span></button>
                     <button type="button" class="@(detailTab == "comments" ? "active" : "")" @onclick='() => detailTab = "comments"'>گفت‌وگو <span>@comments.Count(c => !c.IsDeleted)</span></button>
                     @if (isOwner || detail.Status == "Closed")
                     {
@@ -1146,6 +1146,20 @@ else
                             <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
                             <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
                             <div><span class="wo-lbl">تاریخ ثبت</span><span class="num">@detail.CreatedAt.ToFa()</span></div>
+                            @* تعداد پیوست‌ها — از خودِ فهرست پیوست‌ها خوانده می‌شود تا شمارنده با
+                               محتوای واقعی جعبهٔ پیوست یکی باشد، و کلیک روی آن تب پیوست‌ها را باز می‌کند. *@
+                            <div>
+                                <span class="wo-lbl">پیوست‌ها</span>
+                                <span class="d-inline-flex align-items-center flex-wrap gap-1">
+                                    <i class="bi bi-paperclip"></i>
+                                    <b class="num">@detailAttCount</b>
+                                    <span class="text-muted fs-9">فایل</span>
+                                    @if (detailAttCount > 0)
+                                    {
+                                        <button type="button" class="btn btn-link btn-sm py-0 fs-9" @onclick='() => detailTab = "files"'>مشاهده</button>
+                                    }
+                                </span>
+                            </div>
                             @if (!string.IsNullOrWhiteSpace(detail.SourceModule) && detail.SourceId is > 0)
                             {
                                 <div>
@@ -1340,7 +1354,8 @@ else
                     <section hidden="@(detailTab != "files")" aria-label="پیوست‌ها">@* ---------- پیوست‌ها — کامپوننت جامع (یک کد برای همه فرم‌ها) ---------- *@
                     <div class="mb-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
                         <div class="flex-grow-1">
-                            <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")" />
+                            <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")"
+                                           OnCountChanged="SetDetailAttCount" />
                         </div>
                         <ArchiveButton Module="WorkOrders" RefId="@detail.Id"
                                        Title="@($"{detail.Number} — {detail.Title}")"
@@ -2711,6 +2726,23 @@ else
 
     // جزئیات
     private WoItem? detail;
+
+    /// <summary>تعداد پیوست‌های دستور کارِ باز — در تب و خلاصهٔ جزئیات نمایش داده می‌شود.</summary>
+    private int detailAttCount;
+
+    private void SetDetailAttCount(int count) => detailAttCount = count;
+
+    /// <summary>تازه‌سازی شمارندهٔ پیوست‌ها از فهرست واقعی پیوست‌های دستور کار.</summary>
+    private async Task LoadAttachmentCount(int orderId)
+    {
+        try
+        {
+            var rows = await Http.GetFromJsonAsync<List<AttItem>>($"/api/workorders/{orderId}/attachments");
+            if (detail?.Id == orderId) detailAttCount = rows?.Count ?? 0;
+        }
+        catch { /* شمارندهٔ اولیه (AttachmentCount) باقی می‌ماند */ }
+    }
+
     private List<AttItem> attachments = new();
     private List<LogItem> logs = new();
 
@@ -3767,6 +3799,9 @@ else
         decideNotes = w.Assignees.ToDictionary(a => a.Id, a => "");
         extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
         attachments = new(); logs = new();
+        // شمارندهٔ اولیه از لیست (سبک) و سپس تازه‌سازی از فهرست واقعی پیوست‌ها
+        detailAttCount = w.AttachmentCount;
+        _ = LoadAttachmentCount(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
         detailChecklist = new();
         comments = new(); newCommentText = ""; replyTo = null; editingCommentId = 0;
         _ = LoadDetailChecklist(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
