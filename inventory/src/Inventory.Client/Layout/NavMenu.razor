@@ -304,9 +304,14 @@
                         <NavLink class="nav-link" href="office/email" @onclick="NotifyClose">
                             <i class="bi bi-envelope-at"></i><span>ایمیل سازمانی</span>
                         </NavLink>
-                        <NavLink class="nav-link" href="office/personal-email" @onclick="NotifyClose">
-                            <i class="bi bi-person-badge"></i><span>ایمیل شخصی</span>
-                        </NavLink>
+                        @* «ایمیل شخصی» مجوز جدا دارد (Email.Personal)؛ بدون آن، سرور
+                            همهٔ درخواست‌های این صفحه را 403 می‌دهد. *@
+                        @if (Auth.Has("Email.Personal"))
+                        {
+                            <NavLink class="nav-link" href="office/personal-email" @onclick="NotifyClose">
+                                <i class="bi bi-person-badge"></i><span>ایمیل شخصی</span>
+                            </NavLink>
+                        }
                     }
                 </div>
             }

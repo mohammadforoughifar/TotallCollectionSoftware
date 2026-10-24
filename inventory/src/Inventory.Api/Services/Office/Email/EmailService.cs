@@ -37,13 +37,13 @@ public interface IEmailService
     Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin);
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر</summary>
-    Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin);
+    Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false);
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ ارسالیِ همه‌ی حساب‌های کاربر</summary>
-    Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin);
+    Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false);
 
     /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk / Spam) همه‌ی حساب‌های کاربر</summary>
-    Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin);
+    Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false);
 
     /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور.
     /// personalOnly: فقط حساب‌های شخصیِ خود کاربر (بدون حساب‌های رسمی دبیرخانه)</summary>
@@ -58,9 +58,12 @@ public interface IEmailService
         int? folderId = null, bool starredOnly = false,
         DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
 
-    /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه) — صفحه‌بندی سمت سرور</summary>
+    /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه) — صفحه‌بندی سمت سرور
+    /// با همان فیلترهای تاریخ/خوانده‌شدن/پیوستِ صندوق‌ها (نوار فیلترِ مشترکِ صفحه).</summary>
     Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
-        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25);
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null,
+        bool? unreadOnly = null);
 
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id, int userId, bool markRead, bool isDabirkhaneAdmin);
     Task MarkReadAsync(string box, int id, int userId, bool isDabirkhaneAdmin);
@@ -615,20 +618,20 @@ public class EmailService : IEmailService
     /// بارِ اول همه‌ی پیام‌ها را می‌گیرد و در بانک می‌نشاند؛ از بارِ دوم،
     /// به‌کمک Last_Inbox_Uid فقط پیام‌های جدیدتر از آخرین نوبت خوانده می‌شوند.
     /// </summary>
-    public async Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin)
-        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Inbox");
+    public async Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Inbox", personalOnly);
 
     /// <summary>مانند SyncInboxAsync ولی برای صندوقِ ارسالی (پیشرفت در Last_Sent_Uid)</summary>
-    public async Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin)
-        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Sent");
+    public async Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Sent", personalOnly);
 
     /// <summary>
     /// همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk / Spam) همه‌ی حساب‌های کاربر.
     /// پیام‌ها در همان جدولِ دریافتی و با نشانِ Is_Spam ذخیره می‌شوند تا بشود
     /// آن‌ها را در بخش «اسپم» دید و در صورت اشتباه به صندوقِ دریافتی برگرداند.
     /// </summary>
-    public async Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin)
-        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Junk");
+    public async Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Junk", personalOnly);
 
     /// <summary>همگام‌سازیِ دستیِ یک حساب (دکمه‌ی «دریافت» در فهرست حساب‌ها)</summary>
     public async Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin)
@@ -656,10 +659,13 @@ public class EmailService : IEmailService
         };
     }
 
-    private async Task<EmailSyncResultDto> SyncAllAccountsAsync(int userId, bool isDabirkhaneAdmin, string box)
+    /// <summary>همگام‌سازیِ همه‌ی حساب‌های در دسترس.
+    /// personalOnly=true → صفحهٔ «ایمیل شخصی»: فقط حساب‌های شخصیِ خودِ کاربر
+    /// (حساب‌های رسمیِ دبیرخانه همگام نمی‌شوند تا بار و دادهٔ اضافه نیاید).</summary>
+    private async Task<EmailSyncResultDto> SyncAllAccountsAsync(int userId, bool isDabirkhaneAdmin, string box, bool personalOnly = false)
     {
         var result = new EmailSyncResultDto();
-        var accIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin);
+        var accIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin, personalOnly);
         if (accIds.Count == 0)
         {
             result.Message = "هیچ حساب ایمیلی برای شما تعریف نشده است.";
@@ -1049,8 +1055,11 @@ public class EmailService : IEmailService
 
         if (unreadOnly == true) q = q.Where(i => !i.IsRead);
         if (starredOnly) q = q.Where(i => i.IsNeshan);
-        if (dateFrom.HasValue) q = q.Where(i => i.Date >= dateFrom.Value);
-        if (dateTo.HasValue) q = q.Where(i => i.Date <= dateTo.Value);
+        // بازهٔ تاریخ «کاملِ روز» است: تا تاریخ ۱۴۰۵/۰۶/۳۱ باید همهٔ ایمیل‌های همان
+        // روز را هم بیاورد، نه فقط تا ساعت ۰۰:۰۰ آن روز (مقایسهٔ <= تاریخِ بدونِ
+        // ساعت، تمامِ آن روز را حذف می‌کرد).
+        if (dateFrom.HasValue) q = q.Where(i => i.Date >= dateFrom.Value.Date);
+        if (dateTo.HasValue) { var to = dateTo.Value.Date.AddDays(1); q = q.Where(i => i.Date < to); }
         if (hasAttachment.HasValue) q = q.Where(i => i.IsAttachment == hasAttachment.Value);
 
         // folderId = 0 → بایگانی‌نشده | -1 → بایگانی‌شده در هر پوشه‌ای | n → پوشه n | خالی → همه
@@ -1111,8 +1120,8 @@ public class EmailService : IEmailService
             .Where(s => ids.Contains(s.EmailId));
 
         if (starredOnly) q = q.Where(x => x.IsNeshan);
-        if (dateFrom.HasValue) q = q.Where(x => x.Date >= dateFrom.Value);
-        if (dateTo.HasValue) q = q.Where(x => x.Date <= dateTo.Value);
+        if (dateFrom.HasValue) q = q.Where(x => x.Date >= dateFrom.Value.Date);
+        if (dateTo.HasValue) { var to = dateTo.Value.Date.AddDays(1); q = q.Where(x => x.Date < to); }
         if (hasAttachment.HasValue) q = q.Where(x => x.IsAttachment == hasAttachment.Value);
 
         if (folderId is > 0) q = q.Where(x => x.IsInFolder == folderId.Value);
@@ -1160,7 +1169,9 @@ public class EmailService : IEmailService
     /// حجمِ خوانده‌شده همواره در حدِ page × pageSize می‌ماند.
     /// </summary>
     public async Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
-        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25)
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null,
+        bool? unreadOnly = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1176,6 +1187,29 @@ public class EmailService : IEmailService
             .Where(i => ids.Contains(i.EmailId) && i.IsInFolder > 0 && !i.IsSpam);
         var outQ = _db.OtoSentEmails.AsNoTracking().Include(x => x.Email)
             .Where(x => ids.Contains(x.EmailId) && x.IsInFolder > 0);
+
+        // همان فیلترهای نوارِ پیشرفته (تاریخ/خوانده‌شدن/پیوست) روی بایگانی هم اعمال می‌شوند؛
+        // قبلاً این نوار در تب بایگانی نمایش داده می‌شد ولی هیچ اثری روی نتیجه نداشت.
+        if (dateFrom.HasValue)
+        {
+            var from = dateFrom.Value.Date;
+            inQ = inQ.Where(i => i.Date >= from);
+            outQ = outQ.Where(x => x.Date >= from);
+        }
+        if (dateTo.HasValue)
+        {
+            var to = dateTo.Value.Date.AddDays(1);
+            inQ = inQ.Where(i => i.Date < to);
+            outQ = outQ.Where(x => x.Date < to);
+        }
+        if (hasAttachment.HasValue)
+        {
+            inQ = inQ.Where(i => i.IsAttachment == hasAttachment.Value);
+            outQ = outQ.Where(x => x.IsAttachment == hasAttachment.Value);
+        }
+        // «خوانده‌نشده» فقط برای دریافتی معنا دارد؛ ارسالی همیشه خوانده‌شده است
+        if (unreadOnly == true) inQ = inQ.Where(i => !i.IsRead);
+        else if (unreadOnly == false) { inQ = inQ.Where(i => i.IsRead); }
         if (s != null)
         {
             inQ = inQ.Where(i => i.Subject.Contains(s) || i.FromAddress.Contains(s) || i.Body.Contains(s));

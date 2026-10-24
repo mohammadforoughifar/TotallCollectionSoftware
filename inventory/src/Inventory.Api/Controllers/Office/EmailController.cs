@@ -124,26 +124,29 @@ public class EmailController : RbacControllerBase
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر.
     /// بارِ اول همه‌ی پیام‌ها را در بانک می‌نشاند و از بارِ دوم فقط پیام‌های جدید را می‌گیرد.</summary>
     [HttpPost("sync-inbox")]
-    public async Task<IActionResult> SyncInbox()
+    public async Task<IActionResult> SyncInbox([FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _email.SyncInboxAsync(MyUserId, await IsDabirkhaneAsync()));
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
+        return Ok(await _email.SyncInboxAsync(MyUserId, await IsDabirkhaneAsync(), personal));
     }
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ ارسالیِ همه‌ی حساب‌های کاربر</summary>
     [HttpPost("sync-sent")]
-    public async Task<IActionResult> SyncSent()
+    public async Task<IActionResult> SyncSent([FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _email.SyncSentAsync(MyUserId, await IsDabirkhaneAsync()));
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
+        return Ok(await _email.SyncSentAsync(MyUserId, await IsDabirkhaneAsync(), personal));
     }
 
     /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk/Spam) روی سرورِ IMAP</summary>
     [HttpPost("sync-junk")]
-    public async Task<IActionResult> SyncJunk()
+    public async Task<IActionResult> SyncJunk([FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _email.SyncJunkAsync(MyUserId, await IsDabirkhaneAsync()));
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
+        return Ok(await _email.SyncJunkAsync(MyUserId, await IsDabirkhaneAsync(), personal));
     }
 
     /// <summary>
@@ -185,14 +188,17 @@ public class EmailController : RbacControllerBase
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     [HttpGet("archive")]
     public async Task<IActionResult> Archive([FromQuery] int? emailId, [FromQuery] string? search,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false,
+        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool? hasAttachment = null, [FromQuery] bool? unreadOnly = null,
+        [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetArchiveAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
-            personal, page, pageSize));
+            personal, page, pageSize, dateFrom, dateTo, hasAttachment, unreadOnly));
     }
 
     /// <summary>جزئیات ایمیل — box: Inbox یا Sent (دریافتی خودکار خوانده‌شده می‌شود)</summary>

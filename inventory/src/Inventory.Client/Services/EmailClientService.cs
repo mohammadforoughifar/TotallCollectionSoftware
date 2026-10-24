@@ -20,13 +20,14 @@ public interface IEmailClientService
     // ---------- پیام‌ها ----------
     Task<EmailSyncResultDto> SyncAsync(int emailId);
 
-    /// <summary>همگام‌سازیِ افزایشیِ صندوق دریافتیِ همه‌ی حساب‌ها</summary>
-    Task<EmailSyncResultDto> SyncInboxAsync();
+    /// <summary>همگام‌سازیِ افزایشیِ صندوق دریافتیِ همه‌ی حساب‌ها.
+    /// personal=true → صفحهٔ «ایمیل شخصی»: فقط حساب‌های شخصیِ کاربر</summary>
+    Task<EmailSyncResultDto> SyncInboxAsync(bool personal = false);
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوق ارسالیِ همه‌ی حساب‌ها</summary>
-    Task<EmailSyncResultDto> SyncSentAsync();
+    Task<EmailSyncResultDto> SyncSentAsync(bool personal = false);
     /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk/Spam) روی سرورِ IMAP</summary>
-    Task<EmailSyncResultDto> SyncJunkAsync();
+    Task<EmailSyncResultDto> SyncJunkAsync(bool personal = false);
 
     /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
@@ -40,7 +41,8 @@ public interface IEmailClientService
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
-        int page = 1, int pageSize = 25, bool personal = false);
+        int page = 1, int pageSize = 25, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null);
 
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id);
     Task<bool> ToggleNeshanAsync(string box, int id);
@@ -145,14 +147,14 @@ public class EmailClientService : IEmailClientService
     public Task<EmailSyncResultDto> SyncAsync(int emailId) =>
         _api.PostAsync<EmailSyncResultDto>($"api/email/accounts/{emailId}/sync");
 
-    public Task<EmailSyncResultDto> SyncInboxAsync() =>
-        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-inbox");
+    public Task<EmailSyncResultDto> SyncInboxAsync(bool personal = false) =>
+        _api.PostLongAsync<EmailSyncResultDto>($"api/email/sync-inbox{(personal ? "?personal=true" : "")}");
 
-    public Task<EmailSyncResultDto> SyncSentAsync() =>
-        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-sent");
+    public Task<EmailSyncResultDto> SyncSentAsync(bool personal = false) =>
+        _api.PostLongAsync<EmailSyncResultDto>($"api/email/sync-sent{(personal ? "?personal=true" : "")}");
 
-    public Task<EmailSyncResultDto> SyncJunkAsync() =>
-        _api.PostLongAsync<EmailSyncResultDto>("api/email/sync-junk");
+    public Task<EmailSyncResultDto> SyncJunkAsync(bool personal = false) =>
+        _api.PostLongAsync<EmailSyncResultDto>($"api/email/sync-junk{(personal ? "?personal=true" : "")}");
 
     public Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
         int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false,
@@ -189,12 +191,17 @@ public class EmailClientService : IEmailClientService
     }
 
     public Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
-        int page = 1, int pageSize = 25, bool personal = false)
+        int page = 1, int pageSize = 25, bool personal = false,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
         if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
         if (personal) q.Add("personal=true");
+        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
+        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
+        if (unreadOnly.HasValue) q.Add($"unreadOnly={unreadOnly.Value.ToString().ToLower()}");
         return _api.GetAsync<EmailListPageDto>($"api/email/archive?{string.Join("&", q)}");
     }
 
