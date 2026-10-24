@@ -168,10 +168,25 @@
             @if (showFilters)
             {
                 <div style="flex:1;min-width:260px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-                    <label style="font-size:12px;margin:0;white-space:nowrap">از تاریخ:</label>
-                    <input class="tin" type="date" style="max-width:130px" @bind="dateFrom" @bind:after="OnDateFilterChanged" />
-                    <label style="font-size:12px;margin:0;white-space:nowrap">تا تاریخ:</label>
-                    <input class="tin" type="date" style="max-width:130px" @bind="dateTo" @bind:after="OnDateFilterChanged" />
+                    @* تاریخ‌ها باید شمسی باشند — input type="date" تقویم میلادیِ مرورگر را باز می‌کرد *@
+                    <label style="font-size:12px;margin:0;white-space:nowrap">از تاریخ (شمسی):</label>
+                    <div style="max-width:170px;flex:0 0 170px">
+                        <DatePicker @bind-Value="dateFrom" @bind-Value:after="OnDateFilterChanged"
+                                    AllowClear="true" CssClass="tin" Placeholder="از تاریخ شمسی…" />
+                    </div>
+                    <label style="font-size:12px;margin:0;white-space:nowrap">تا تاریخ (شمسی):</label>
+                    <div style="max-width:170px;flex:0 0 170px">
+                        <DatePicker @bind-Value="dateTo" @bind-Value:after="OnDateFilterChanged"
+                                    AllowClear="true" CssClass="tin" Placeholder="تا تاریخ شمسی…" />
+                    </div>
+                    @if (dateFrom.HasValue || dateTo.HasValue)
+                    {
+                        <span class="text-muted" style="font-size:11.5px">
+                            @(dateFrom.HasValue ? dateFrom.Value.ToFa() : "…")
+                            تا
+                            @(dateTo.HasValue ? dateTo.Value.ToFa() : "…")
+                        </span>
+                    }
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">وضعیت خواندن:</label>
