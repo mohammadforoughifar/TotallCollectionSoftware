@@ -155,6 +155,47 @@
             }
         </div>
 
+        @* ---------- فیلترهای پیشرفته ---------- *@
+        <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <button class="lbtn ghost" style="padding:6px 12px;font-size:12.5px" @onclick="() => showFilters = !showFilters">
+                <i class="bi @(showFilters ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                <span>فیلترهای پیشرفته</span>
+                @if (HasActiveFilters())
+                {
+                    <span class="rbadge" style="background:var(--p);color:#fff;margin-inline-start:6px">@ActiveFilterCount()</span>
+                }
+            </button>
+            @if (showFilters)
+            {
+                <div style="flex:1;min-width:260px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+                    <label style="font-size:12px;margin:0;white-space:nowrap">از تاریخ:</label>
+                    <input class="tin" type="date" style="max-width:130px" @bind="dateFrom" @onchange="OnDateFilterChanged" />
+                    <label style="font-size:12px;margin:0;white-space:nowrap">تا تاریخ:</label>
+                    <input class="tin" type="date" style="max-width:130px" @bind="dateTo" @onchange="OnDateFilterChanged" />
+                </div>
+                <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <label style="font-size:12px;margin:0;white-space:nowrap">وضعیت خواندن:</label>
+                    <button class="chip @(readFilter == "all" ? "on" : "")" @onclick="() => { readFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
+                    <button class="chip @(readFilter == "unread" ? "on" : "")" @onclick="() => { readFilter = "unread"; curPage = 1; ReloadAsync(); }">خوانده‌نشده</button>
+                    <button class="chip @(readFilter == "read" ? "on" : "")" @onclick="() => { readFilter = "read"; curPage = 1; ReloadAsync(); }">خوانده‌شده</button>
+                </div>
+                <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <label style="font-size:12px;margin:0;white-space:nowrap">پیوست:</label>
+                    <button class="chip @(attachmentFilter == "all" ? "on" : "")" @onclick="() => { attachmentFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
+                    <button class="chip @(attachmentFilter == "with" ? "on" : "")" @onclick="() => { attachmentFilter = "with"; curPage = 1; ReloadAsync(); }">با پیوست</button>
+                    <button class="chip @(attachmentFilter == "without" ? "on" : "")" @onclick="() => { attachmentFilter = "without"; curPage = 1; ReloadAsync(); }">بدون پیوست</button>
+                </div>
+                <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <label style="font-size:12px;margin:0;white-space:nowrap">نشان‌شده:</label>
+                    <button class="chip" @onclick="() => { readFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
+                    <button class="chip @(tab == "starred" ? "on" : "")" @onclick="() => { SetTab("starred"); }">فقط نشان‌شده‌ها</button>
+                </div>
+                <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <button class="lbtn ghost" style="padding:6px 12px" @onclick="ClearFilters">پاک‌سازی همه فیلترها</button>
+                </div>
+            }
+        </div>
+
         @* ---------- مدیریت پوشه‌های بایگانی (تب بایگانی) ---------- *@
         @if (tab == "archive" && Auth.Has("Email.Create"))
         {
@@ -653,6 +694,13 @@
     private string search = "";
     private int accFilter;
 
+    // ---------- فیلترهای پیشرفته ----------
+    private DateTime? dateFrom;   // تاریخ شروع
+    private DateTime? dateTo;     // تاریخ پایان
+    private string readFilter = "all";          // all | read | unread
+    private string attachmentFilter = "all";    // all | with | without
+    private bool showFilters;
+
     /// <summary>true وقتی کاربر از مسیر «ایمیل شخصی» آمده — فقط حساب‌های شخصیِ خودش</summary>
     private bool personalMode;
 
@@ -885,17 +933,23 @@
             int? fid = accFilter > 0 ? accFilter : null;
             var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
 
+            // فیلترهای پیشرفته
+            DateTime? df = dateFrom;
+            DateTime? dt = dateTo;
+            bool? uo = readFilter == "unread" ? true : readFilter == "read" ? false : null;
+            bool? ha = attachmentFilter == "with" ? true : attachmentFilter == "without" ? false : null;
+
             EmailListPageDto res;
             if (tab == "archive")
                 res = await EmailSvc.GetArchiveAsync(fid, term, curPage, pageSize, personalMode);
             else if (tab == "sent")
-                res = await EmailSvc.GetSentAsync(fid, term, null, curPage, pageSize, false, personalMode);
+                res = await EmailSvc.GetSentAsync(fid, term, null, curPage, pageSize, false, personalMode, df, dt, ha);
             else if (tab == "starred")
-                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, false, true, personalMode);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, true, personalMode, df, dt, ha);
             else if (tab == "spam")
-                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, true, false, personalMode);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, true, false, personalMode, df, dt, ha);
             else
-                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, false, false, personalMode);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, false, personalMode, df, dt, ha);
 
             totalItems = res.TotalCount;
             totalPages = res.PageCount;
@@ -969,6 +1023,40 @@
         await ReloadAsync();
     }
 
+    private void OnDateFilterChanged()
+    {
+        curPage = 1;
+        _ = ReloadAsync();
+    }
+
+    private bool HasActiveFilters()
+    {
+        return dateFrom.HasValue
+            || dateTo.HasValue
+            || readFilter != "all"
+            || attachmentFilter != "all";
+    }
+
+    private int ActiveFilterCount()
+    {
+        int c = 0;
+        if (dateFrom.HasValue) c++;
+        if (dateTo.HasValue) c++;
+        if (readFilter != "all") c++;
+        if (attachmentFilter != "all") c++;
+        return c;
+    }
+
+    private void ClearFilters()
+    {
+        dateFrom = null;
+        dateTo = null;
+        readFilter = "all";
+        attachmentFilter = "all";
+        curPage = 1;
+        _ = ReloadAsync();
+    }
+
     /// <summary>نشان‌کردن / خارج‌کردنِ یک ایمیل از هرزنامه</summary>
     private async Task ToggleSpamAsync(bool spam)
     {
@@ -1030,7 +1118,7 @@
         // وضعیتِ «خوانده‌شده» **قبل** از هر درخواستی ثبت می‌شود تا اگر دریافتِ
         // جزئیات به هر دلیلی شکست خورد (شبکه، خطای سرور، پیامِ حذف‌شده) باز هم
         // ایمیل در این نشست خوانده‌شده بماند و بعد از «دریافتِ» دوباره بولد نشود.
-        MarkSeenLocally(m);
+        await MarkSeenLocally(m);
 
         try
         {
@@ -1069,14 +1157,15 @@
     /// سرور برای حساب‌های رسمیِ دبیرخانه بین چند دستیار مشترک است، بنابراین ثبتِ
     /// وضعیت روی سرور تضمین می‌کند حتی پس از خروج/ورود دوباره هم ایمیل خوانده بماند.
     /// </summary>
-    private void MarkSeenLocally(EmailMessageListItemDto m)
+    private async Task MarkSeenLocally(EmailMessageListItemDto m)
     {
         if (m.Box != "Inbox") return;
         _readKeys.Add(ReadKey(m.Box, m.Id));
         if (m.IsRead) return;
         m.IsRead = true;
         unreadCount = Math.Max(0, unreadCount - 1);
-        _ = PersistReadAsync(m.Box, m.Id);
+        // سرور را هم بلافاصله آپدیت کن تا اگر لیست دوباره بارگذاری شد، unreadCount از بانک درست آید
+        await PersistReadAsync(m.Box, m.Id);
     }
 
     private async Task PersistReadAsync(string box, int id)

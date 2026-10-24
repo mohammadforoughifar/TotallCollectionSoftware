@@ -154,28 +154,32 @@ public class EmailController : RbacControllerBase
     [HttpGet("inbox")]
     public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
-        [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false,
+        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync(),
-            personal, page, pageSize, folderId, spam, starred));
+            personal, page, pageSize, folderId, spam, starred, dateFrom, dateTo, hasAttachment));
     }
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
     [HttpGet("sent")]
     public async Task<IActionResult> Sent([FromQuery] int? emailId, [FromQuery] string? search,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
-        [FromQuery] bool starred = false, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        [FromQuery] bool starred = false, [FromQuery] bool personal = false,
+        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
-            personal, page, pageSize, folderId, starred));
+            personal, page, pageSize, folderId, starred, dateFrom, dateTo, hasAttachment));
     }
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
