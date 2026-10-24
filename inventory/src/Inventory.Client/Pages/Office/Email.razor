@@ -175,20 +175,20 @@
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">وضعیت خواندن:</label>
-                    <button class="chip @(readFilter == "all" ? "on" : "")" @onclick="() => { readFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
-                    <button class="chip @(readFilter == "unread" ? "on" : "")" @onclick="() => { readFilter = "unread"; curPage = 1; ReloadAsync(); }">خوانده‌نشده</button>
-                    <button class="chip @(readFilter == "read" ? "on" : "")" @onclick="() => { readFilter = "read"; curPage = 1; ReloadAsync(); }">خوانده‌شده</button>
+                    <button class="chip @(readFilter == "all" ? "on" : "")" @onclick='async () => { readFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
+                    <button class="chip @(readFilter == "unread" ? "on" : "")" @onclick='async () => { readFilter = "unread"; curPage = 1; await ReloadAsync(); }'>خوانده‌نشده</button>
+                    <button class="chip @(readFilter == "read" ? "on" : "")" @onclick='async () => { readFilter = "read"; curPage = 1; await ReloadAsync(); }'>خوانده‌شده</button>
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">پیوست:</label>
-                    <button class="chip @(attachmentFilter == "all" ? "on" : "")" @onclick="() => { attachmentFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
-                    <button class="chip @(attachmentFilter == "with" ? "on" : "")" @onclick="() => { attachmentFilter = "with"; curPage = 1; ReloadAsync(); }">با پیوست</button>
-                    <button class="chip @(attachmentFilter == "without" ? "on" : "")" @onclick="() => { attachmentFilter = "without"; curPage = 1; ReloadAsync(); }">بدون پیوست</button>
+                    <button class="chip @(attachmentFilter == "all" ? "on" : "")" @onclick='async () => { attachmentFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
+                    <button class="chip @(attachmentFilter == "with" ? "on" : "")" @onclick='async () => { attachmentFilter = "with"; curPage = 1; await ReloadAsync(); }'>با پیوست</button>
+                    <button class="chip @(attachmentFilter == "without" ? "on" : "")" @onclick='async () => { attachmentFilter = "without"; curPage = 1; await ReloadAsync(); }'>بدون پیوست</button>
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">نشان‌شده:</label>
-                    <button class="chip" @onclick="() => { readFilter = "all"; curPage = 1; ReloadAsync(); }">همه</button>
-                    <button class="chip @(tab == "starred" ? "on" : "")" @onclick="() => { SetTab("starred"); }">فقط نشان‌شده‌ها</button>
+                    <button class="chip" @onclick='async () => { readFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
+                    <button class="chip @(tab == "starred" ? "on" : "")" @onclick='() => SetTab("starred")'>فقط نشان‌شده‌ها</button>
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <button class="lbtn ghost" style="padding:6px 12px" @onclick="ClearFilters">پاک‌سازی همه فیلترها</button>
