@@ -1118,7 +1118,7 @@
         // وضعیتِ «خوانده‌شده» **قبل** از هر درخواستی ثبت می‌شود تا اگر دریافتِ
         // جزئیات به هر دلیلی شکست خورد (شبکه، خطای سرور، پیامِ حذف‌شده) باز هم
         // ایمیل در این نشست خوانده‌شده بماند و بعد از «دریافتِ» دوباره بولد نشود.
-        MarkSeenLocally(m);
+        await MarkSeenLocally(m);
 
         try
         {
@@ -1157,14 +1157,15 @@
     /// سرور برای حساب‌های رسمیِ دبیرخانه بین چند دستیار مشترک است، بنابراین ثبتِ
     /// وضعیت روی سرور تضمین می‌کند حتی پس از خروج/ورود دوباره هم ایمیل خوانده بماند.
     /// </summary>
-    private void MarkSeenLocally(EmailMessageListItemDto m)
+    private async Task MarkSeenLocally(EmailMessageListItemDto m)
     {
         if (m.Box != "Inbox") return;
         _readKeys.Add(ReadKey(m.Box, m.Id));
         if (m.IsRead) return;
         m.IsRead = true;
         unreadCount = Math.Max(0, unreadCount - 1);
-        _ = PersistReadAsync(m.Box, m.Id);
+        // سرور را هم بلافاصله آپدیت کن تا اگر لیست دوباره بارگذاری شد، unreadCount از بانک درست آید
+        await PersistReadAsync(m.Box, m.Id);
     }
 
     private async Task PersistReadAsync(string box, int id)
