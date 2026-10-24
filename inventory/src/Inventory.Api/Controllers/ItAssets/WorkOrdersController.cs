@@ -1011,12 +1011,79 @@ public class WorkOrdersController : ControllerBase
         Log(id, "Reply", $"{MyUsername}: {(dto.Done ? "✅ انجام شد" : "❌ انجام نشد")}{(string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text)}");
         await _db.SaveChangesAsync();
 
-        if (wo.OwnerUserId != MyUserId)
-            await _notify.SendAsync(wo.OwnerUserId, "پاسخ دستور کار",
-                $"{wo.Number} — {MyUsername}: {(dto.Done ? "انجام شد" : "انجام نشد")}",
-                MyUsername, "دستور کار", $"/work-orders?open={id}");
+        await NotifyReplyOwnersAsync(wo, dto);
         await _notify.BroadcastChangedAsync("workorders");
         return Ok();
+    }
+
+    /// <summary>
+    /// دستوردهندگانِ بالادست یک دستور کار (والد، جد، … تا ۵ سطح).
+    /// برای زیر-دستورها لازم است: گیرندهٔ زیر-دستور پاسخ می‌دهد، اما صاحبِ
+    /// دستور کار اصلی هم باید از نتیجه باخبر شود.
+    /// </summary>
+    private async Task<List<WorkOrder>> LoadAncestorsAsync(WorkOrder wo)
+    {
+        var ancestors = new List<WorkOrder>();
+        var cur = wo;
+        var guard = 0;
+        while (cur.ParentOrderId is > 0 && guard++ < 6)
+        {
+            var parent = await _db.WorkOrders.AsNoTracking()
+                .FirstOrDefaultAsync(w => w.Id == cur.ParentOrderId);
+            if (parent == null) break;
+            ancestors.Add(parent);
+            cur = parent;
+        }
+        return ancestors;
+    }
+
+    /// <summary>
+    /// اطلاع‌رسانی پاسخ ثبت‌شده: دستوردهندهٔ همین دستور کار + دستوردهندگان زنجیرهٔ والدها.
+    /// هر کاربر یک‌بار و هرگز خودِ پاسخ‌دهنده اعلان نمی‌گیرد. پاسخِ زیر-دستور در
+    /// تاریخچهٔ دستور بالاسری هم ثبت می‌شود تا در «گردش کار» والد دیده شود.
+    /// </summary>
+    private async Task NotifyReplyOwnersAsync(WorkOrder wo, ReplyDto dto)
+    {
+        var result = dto.Done ? "انجام شد ✅" : "انجام نشد ❌";
+        var note = string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text.Trim();
+        var link = $"/work-orders?open={wo.Id}";
+
+        var ancestors = await LoadAncestorsAsync(wo);
+        var parent = ancestors.FirstOrDefault(); // نزدیک‌ترین والد
+        var chainTag = parent is null ? "" : $" (زیر-دستورِ {parent.Number})";
+        var title = parent is null ? "پاسخ دستور کار" : "پاسخ زیر-دستور کار 📋";
+
+        var notified = new HashSet<int>();
+
+        // ۱) دستوردهندهٔ همین دستور کار (رفتار قبلی — فقط با نشانهٔ زنجیره اگر زیر-دستور باشد)
+        if (wo.OwnerUserId > 0 && wo.OwnerUserId != MyUserId)
+        {
+            await _notify.SendAsync(wo.OwnerUserId, title,
+                $"{wo.Number}{chainTag} — {MyUsername}: {result}{note}",
+                MyUsername, "دستور کار", link);
+            notified.Add(wo.OwnerUserId);
+        }
+
+        // ۲) دستوردهندگان بالادست — پاسخِ زیر-دستور باید به اطلاع کسی هم برسد که
+        //    دستور کار بالاسری را صادر کرده است.
+        foreach (var anc in ancestors)
+        {
+            if (anc.OwnerUserId <= 0) continue;
+            if (anc.OwnerUserId == MyUserId) continue;
+            if (!notified.Add(anc.OwnerUserId)) continue;
+
+            await _notify.SendAsync(anc.OwnerUserId, "پاسخ زیر-دستور کار 📋",
+                $"{wo.Number} — «{wo.Title}»{chainTag} — {MyUsername}: {result}{note}",
+                MyUsername, "دستور کار", link);
+        }
+
+        // ۳) ثبت در تاریخچهٔ دستورهای بالاسری — تا در «گردش کار» والد هم ردّ پاسخ بماند.
+        if (ancestors.Count > 0)
+        {
+            foreach (var anc in ancestors)
+                Log(anc.Id, "SubReply", $"پاسخ زیر-دستور {wo.Number} «{wo.Title}» — {MyUsername}: {result}{note}");
+            await _db.SaveChangesAsync();
+        }
     }
 
     // ================== تایید/رد پاسخ هر گیرنده (بند ۹ و ۱۸) ==================
