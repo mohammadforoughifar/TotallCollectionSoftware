@@ -5,19 +5,21 @@
 <div class="card shadow-sm mb-4">
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:linear-gradient(135deg,#4f8cff,#8e5cff);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-building me-2"></i>تعریف واحدهای سازمانی</span>
-        <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;" @onclick="OpenForm"><i class="bi bi-plus-lg"></i> افزودن واحد</button>
+        <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;" disabled="@(activeCompanyId is null)" title="@(activeCompanyId is null ? "ابتدا شرکت فعال را از نوار بالا انتخاب کنید" : "افزودن واحد به شرکت فعال")" @onclick="OpenForm"><i class="bi bi-plus-lg"></i> افزودن واحد</button>
     </div>
+
+    @if (!isLoading && activeCompanyId is null)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2 mx-3">
+            <i class="bi bi-exclamation-triangle"></i>
+            <div>شرکت فعالی انتخاب نشده است. از منوی بالای صفحه یک شرکت انتخاب کنید تا واحدهای سازمانی همان شرکت نمایش داده شود.</div>
+        </div>
+    }
 
     <div class="mb-3">
         <div class="row g-2 align-items-center">
             <div class="col-md-4">
-                <select class="form-select" @bind="selectedCompanyId">
-                    <option value="0">— همه شرکت‌ها —</option>
-                    @foreach (var c in companies.Where(c => c.IsActive).OrderBy(c => c.Name))
-                    {
-                        <option value="@c.Id">@c.Name</option>
-                    }
-                </select>
+                <span class="badge bg-primary fs-8 py-2 px-3"><i class="bi bi-buildings me-1"></i> شرکت فعال: @ActiveCompanyName</span>
             </div>
             <div class="col-md-4">
                 <input type="text" class="form-control" placeholder="جستجوی نام واحد..." @bind="searchText" @bind:event="oninput" />
@@ -26,6 +28,7 @@
                 <span class="badge bg-secondary">@filteredItems.Count واحد</span>
             </div>
         </div>
+        <div class="fs-9 text-muted mt-2">واحدهای سازمانی برای هر شرکت جداگانه تعریف می‌شوند؛ این فهرست و فرم فقط واحدهای شرکت فعال را نشان می‌دهد.</div>
     </div>
 
     <div class="table-responsive">
@@ -35,7 +38,6 @@
                     <th>#</th>
                     <th>نام واحد</th>
                     <th>کد اختصاری (در شماره نامه)</th>
-                    <th>شرکت</th>
                     <th>پیش‌فرض</th>
                     <th>وضعیت</th>
                     <th></th>
@@ -44,11 +46,15 @@
             <tbody>
                 @if (isLoading)
                 {
-                    <tr><td colspan="7" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
+                    <tr><td colspan="6" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
                 }
                 else if (!filteredItems.Any())
                 {
-                    <tr><td colspan="7" class="text-center text-muted py-4">واحد سازمانی یافت نشد.</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-4">
+                        @(string.IsNullOrWhiteSpace(searchText)
+                            ? $"برای شرکت فعال ({ActiveCompanyName}) هنوز واحد سازمانی تعریف نشده است."
+                            : "واحد سازمانی با این جستجو یافت نشد.")
+                    </td></tr>
                 }
                 else
                 {
@@ -59,7 +65,6 @@
                             <td>@(i++)</td>
                             <td>@o.NameUnit</td>
                             <td class="num" dir="ltr"><strong>@o.NameUniq</strong></td>
-                            <td>@GetCompanyName(o.CompanyId)</td>
                             <td>
                                 @if (o.IsDefault)
                                 {
@@ -103,14 +108,9 @@
                     }
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">شرکت <span class="text-danger">*</span></label>
-                            <select class="form-select" @bind="form.CompanyId">
-                                <option value="0">— انتخاب شرکت —</option>
-                                @foreach (var c in companies.Where(c => c.IsActive).OrderBy(c => c.Name))
-                                {
-                                    <option value="@c.Id">@c.Name</option>
-                                }
-                            </select>
+                            <label class="form-label">شرکت</label>
+                            <input class="form-control" value="@ActiveCompanyName" disabled readonly />
+                            <div class="fs-9 text-muted mt-1">واحد سازمانی همیشه به شرکت فعال تعلق می‌گیرد؛ برای شرکت دیگر، ابتدا از نوار بالای صفحه آن شرکت را فعال کنید.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">نام واحد <span class="text-danger">*</span></label>
@@ -155,35 +155,66 @@
     private bool busy = false;
     private string formError = "";
     private string searchText = "";
-    private int? selectedCompanyId = null;
+    /// <summary>شرکت فعال (انتخاب‌شده در نوار بالای برنامه) — مبنای نمایش و ثبت واحدها.</summary>
+    private int? activeCompanyId = null;
+    private string activeCompanyName = "";
     private int editId = 0;
 
     private OrganizationForm form = new();
+
+    private string ActiveCompanyName =>
+        !string.IsNullOrWhiteSpace(activeCompanyName)
+            ? activeCompanyName
+            : companies.FirstOrDefault(c => c.Id == activeCompanyId)?.Name ?? "—";
 
     private List<OrganizationDto> filteredItems =>
         items.Where(o =>
             string.IsNullOrWhiteSpace(searchText) ||
             o.NameUnit.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase) ||
             o.NameUniq.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase))
-        .Where(o => selectedCompanyId is null || selectedCompanyId == 0 || selectedCompanyId == o.CompanyId)
         .ToList();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
+    /// <summary>
+    /// ترتیب بارگذاری مهم است: نخست زمینهٔ شرکت فعال از سرور خوانده می‌شود و سپس
+    /// واحدها فقط برای همان شرکت (`?companyId=`) گرفته می‌شوند؛ در غیر این صورت
+    /// واحدهای همهٔ شرکت‌ها با هم نمایش داده می‌شدند.
+    /// </summary>
     private async Task LoadAsync()
     {
         isLoading = true;
-        try { items = await Http.GetFromJsonAsync<List<OrganizationDto>>("/api/SystemOrganizations") ?? new(); }
+        try
+        {
+            try
+            {
+                var ctx = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context");
+                activeCompanyId = ctx?.ActiveCompanyId is > 0 ? ctx!.ActiveCompanyId : null;
+                companies = ctx?.Companies ?? new();
+                activeCompanyName = companies.FirstOrDefault(c => c.Id == activeCompanyId)?.Name ?? "";
+            }
+            catch
+            {
+                activeCompanyId = null; companies = new(); activeCompanyName = "";
+            }
+
+            items = activeCompanyId is > 0
+                ? await Http.GetFromJsonAsync<List<OrganizationDto>>($"/api/SystemOrganizations?companyId={activeCompanyId}") ?? new()
+                : new();
+        }
         catch { items = new(); }
-        try { companies = await Http.GetFromJsonAsync<List<CompanyItem>>("/api/SystemCompanies") ?? new(); }
-        catch { companies = new(); }
         finally { isLoading = false; }
     }
 
     private void OpenForm()
     {
+        if (activeCompanyId is null or 0)
+        {
+            formError = "ابتدا از نوار بالای صفحه یک شرکت فعال انتخاب کنید.";
+            return;
+        }
         editingOrg = false; editId = 0; formError = "";
-        form = new OrganizationForm();
+        form = new OrganizationForm { CompanyId = activeCompanyId };
         ShowForm = true;
     }
 
@@ -211,8 +242,8 @@
     {
         formError = "";
 
-        if (form.CompanyId is null or 0)
-        { formError = "یک شرکت انتخاب کنید."; return; }
+        if (activeCompanyId is null or 0)
+        { formError = "شرکت فعالی انتخاب نشده است؛ ابتدا از نوار بالای صفحه یک شرکت انتخاب کنید."; return; }
 
         if (string.IsNullOrWhiteSpace(form.NameUnit))
         { formError = "نام واحد الزامی است."; return; }
@@ -228,7 +259,7 @@
                 OrganizationId = editId,
                 NameUnit = form.NameUnit.Trim(),
                 NameUniq = form.NameUniq.Trim(),
-                CompanyId = form.CompanyId,
+                CompanyId = activeCompanyId,
                 IsDefault = form.IsDefault,
                 IsActive = form.IsActive,
                 IsDelete = false,
@@ -269,9 +300,6 @@
         catch { }
     }
 
-    private string GetCompanyName(int? companyId) =>
-        companies.FirstOrDefault(c => c.Id == companyId)?.Name ?? "—";
-
     private static string ExtractServerError(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return "بدون جزئیات";
@@ -303,6 +331,13 @@
         public int? CompanyId { get; set; }
         public bool IsDefault { get; set; }
         public bool IsActive { get; set; } = true;
+    }
+
+    /// <summary>پاسخ api/company-context (نام‌ها camelCase از سرور می‌آیند).</summary>
+    private class CompanyContextResponse
+    {
+        public int? ActiveCompanyId { get; set; }
+        public List<CompanyItem> Companies { get; set; } = new();
     }
 
     public class CompanyItem
