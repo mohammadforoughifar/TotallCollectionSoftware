@@ -130,61 +130,11 @@
 
             <div class="row2">
                 <div>
-                    <div class="fcard @(errSigners ? "err" : "")">
-                        <label><i class="bi bi-pen"></i> امضاکنندگان <span class="req">*</span></label>
-                        <button type="button" class="tin signer-combo-trigger" @onclick="() => signerPickerOpen = !signerPickerOpen">
-                            <span><i class="bi bi-person-lines-fill"></i> انتخاب نام و سمت امضاکننده</span>
-                            <span>@signerSelections.Count.FaDigits() انتخاب <i class="bi bi-chevron-down"></i></span>
-                        </button>
-                        @if (signerPickerOpen)
-                        {
-                            <div class="signer-picker-panel">
-                                <input class="tin mb-2" placeholder="جستجو بر اساس نام یا سمت…" @bind="signerQuery" @bind:event="oninput" />
-                                <div class="signer-options">
-                                    @foreach (var option in FilteredSignerOptions)
-                                    {
-                                        var selected = IsSignerSelected(option);
-                                        <button type="button" class="signer-option @(selected ? "selected" : "")" @onclick="() => ToggleSigner(option)">
-                                            <span class="chk"><i class="bi bi-check"></i></span>
-                                            <span>@option.FullName</span>
-                                            <small><i class="bi bi-briefcase"></i> @option.PositionTitle</small>
-                                        </button>
-                                    }
-                                    @if (FilteredSignerOptions.Count == 0) { <div class="text-muted small p-2">امضاکننده‌ای یافت نشد.</div> }
-                                </div>
-                            </div>
-                        }
-                        @if (allGroups.Count > 0)
-                        {
-                            <div class="mt-2 small fw-bold">افزودن گروه‌های امضاکننده</div>
-                            <div class="d-flex flex-wrap gap-2 mt-1">
-                                @foreach (var group in allGroups)
-                                {
-                                    <label class="badge rounded-pill text-bg-light border" style="cursor:pointer">
-                                        <input type="checkbox" checked="@signerSelGroups.Contains(group.GroupId)" @onchange="e => ToggleSignerGroup(group.GroupId, e)" />
-                                        @group.NameGroup
-                                    </label>
-                                }
-                            </div>
-                        }
-                        <div class="selpills">
-                            @foreach (var item in signerSelections)
-                            {
-                                var option = SignerOptions.FirstOrDefault(x => x.UserId == item.UserId && x.SematId == item.SematId);
-                                <span class="spill">@(option?.FullName ?? item.UserId.ToString()) <small><i class="bi bi-briefcase"></i> @(option?.PositionTitle ?? "سمت ثبت‌شده")</small>
-                                    <i class="bi bi-x-lg" @onclick="() => RemoveSigner(item.UserId, item.SematId)"></i></span>
-                            }
-                            @foreach (var gid in signerSelGroups)
-                            {
-                                var group = allGroups.FirstOrDefault(x => x.GroupId == gid);
-                                <span class="spill gp">@(group?.NameGroup ?? gid.ToString()) <i class="bi bi-x-lg" @onclick="() => signerSelGroups.Remove(gid)"></i></span>
-                            }
-                        </div>
-                        @if (errSigners)
-                        {
-                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> نامه صادره باید حداقل یک امضاکننده داشته باشد.</div>
-                        }
-                    </div>
+                    <LetterPickCombo @ref="cbSigners" Label="امضاکنندگان" Icon="bi-pen" Required="true" HasError="errSigners"
+                                     ErrorText="نامه صادره باید حداقل یک امضاکننده داشته باشد."
+                                     Users="signerUsers" Groups="allGroups" AllowSelectAll="false"
+                                     SelectedUsers="signerSelOptionIds" SelectedGroups="signerSelGroups"
+                                     Changed="OnSignerChanged" />
                 </div>
                 <div class="fcard" style="display:flex;align-items:center;gap:8px;padding:10px">
                     <i class="bi bi-info-circle" style="color:var(--p2)"></i>
@@ -342,16 +292,7 @@
 </div>
 }
 
-<style>
-.signer-combo-trigger{display:flex;justify-content:space-between;align-items:center;text-align:right;width:100%;cursor:pointer}
-.signer-picker-panel{position:relative;z-index:5;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-top:4px;box-shadow:0 8px 24px #0f172a1a}
-.signer-options{max-height:210px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:4px;display:grid;gap:3px}
-.signer-option{display:flex;align-items:center;gap:8px;width:100%;text-align:right;background:#fff;border:0;border-radius:6px;padding:7px 9px;color:inherit}
-.signer-option:hover,.signer-option.selected{background:#eef2ff}
-.signer-option .chk{width:17px;height:17px;border:1px solid #94a3b8;border-radius:4px;display:inline-flex;align-items:center;justify-content:center}
-.signer-option.selected .chk{background:#4f46e5;color:white;border-color:#4f46e5}
-.signer-option small{margin-inline-start:auto;color:#64748b}
-</style>
+
 
 @code {
     [Parameter] public EventCallback OnSent { get; set; }
@@ -398,45 +339,80 @@
     private LetterCompanyDto? activeCompany;
     private int companyId;
 
-    private LetterPickCombo? cbRcv, cbErja, cbHamesh;
+    private LetterPickCombo? cbRcv, cbErja, cbHamesh, cbSigners;
     private RichTextEditor? _richOut;
     private HashSet<int> rcvUsers = new(), rcvGroups = new();
     private HashSet<int> erjaUsers = new(), erjaGroups = new();
     private HashSet<int> hameshUsers = new(), hameshGroups = new();
-    private HashSet<int> signerSelGroups = new();
-    private List<OutgoingSignerSelectionDto> signerSelections = new();
+    private HashSet<int> signerSelOptionIds = new(), signerSelGroups = new();
+    private HashSet<int> lastSignerSelOptionIds = new();
+    private List<OutgoingSignerSelectionDto> pendingSignerSelections = new();
+    private Dictionary<int, OutgoingSignerSelectionDto> signerOptionMap = new();
     private List<LetterReciverDto> signerUsers = new();
-    private string signerQuery = "";
-    private bool signerPickerOpen;
+    private int nextSignerOptionId = -1;
 
-    private sealed record SignerOption(int UserId, int? SematId, string FullName, string PositionTitle);
-    private List<SignerOption> SignerOptions => signerUsers.SelectMany(user =>
-        user.PositionOptions is { Count: > 0 }
-            ? user.PositionOptions.Select(position => new SignerOption(user.UserId, position.SematId, user.FullName, position.Title))
-            : new[] { new SignerOption(user.UserId, user.SematId, user.FullName, user.SematTitle ?? "بدون سمت") })
+    private List<OutgoingSignerSelectionDto> SelectedSignerSelections => signerSelOptionIds
+        .Where(signerOptionMap.ContainsKey)
+        .Select(id => signerOptionMap[id])
+        .GroupBy(x => x.UserId)
+        .Select(g => g.First())
         .ToList();
-    private List<SignerOption> FilteredSignerOptions => SignerOptions
-        .Where(x => string.IsNullOrWhiteSpace(signerQuery) || x.FullName.Contains(signerQuery, StringComparison.OrdinalIgnoreCase)
-            || x.PositionTitle.Contains(signerQuery, StringComparison.OrdinalIgnoreCase))
-        .Take(100).ToList();
-    private bool IsSignerSelected(SignerOption option) => signerSelections.Any(x => x.UserId == option.UserId && x.SematId == option.SematId);
-    private void ToggleSigner(SignerOption option)
+
+    private void BuildSignerOptions(List<LetterReciverDto> available)
     {
-        var existing = signerSelections.FirstOrDefault(x => x.UserId == option.UserId && x.SematId == option.SematId);
-        if (existing != null) signerSelections.Remove(existing);
-        else
+        var restore = pendingSignerSelections.Count > 0
+            ? pendingSignerSelections.ToList()
+            : SelectedSignerSelections.ToList();
+        signerUsers.Clear();
+        signerOptionMap.Clear();
+        signerSelOptionIds.Clear();
+        nextSignerOptionId = -1;
+
+        foreach (var user in available)
         {
-            // برای هر نفر یک سمت انتخاب می‌شود؛ انتخاب سمت دیگر جایگزین قبلی است.
-            signerSelections.RemoveAll(x => x.UserId == option.UserId);
-            signerSelections.Add(new OutgoingSignerSelectionDto { UserId = option.UserId, SematId = option.SematId });
+            var positions = user.PositionOptions is { Count: > 0 }
+                ? user.PositionOptions
+                : new List<LetterPositionDto>
+                {
+                    new() { SematId = user.SematId ?? 0, Title = user.SematTitle ?? "بدون سمت" }
+                };
+            foreach (var position in positions)
+            {
+                var optionId = nextSignerOptionId--;
+                int? sematId = position.SematId > 0 ? position.SematId : null;
+                signerOptionMap[optionId] = new OutgoingSignerSelectionDto { UserId = user.UserId, SematId = sematId };
+                signerUsers.Add(new LetterReciverDto
+                {
+                    UserId = optionId,
+                    FullName = user.FullName,
+                    SematId = sematId,
+                    SematTitle = position.Title,
+                    Positions = new List<string> { position.Title }
+                });
+            }
         }
-        errSigners = false;
+        foreach (var selected in restore)
+        {
+            var match = signerOptionMap.FirstOrDefault(pair => pair.Value.UserId == selected.UserId
+                && pair.Value.SematId == selected.SematId);
+            if (match.Key != 0) signerSelOptionIds.Add(match.Key);
+        }
+        pendingSignerSelections.Clear();
+        lastSignerSelOptionIds = signerSelOptionIds.ToHashSet();
     }
-    private void RemoveSigner(int userId, int? sematId) => signerSelections.RemoveAll(x => x.UserId == userId && x.SematId == sematId);
-    private void ToggleSignerGroup(int groupId, ChangeEventArgs e)
+
+    private void OnSignerChanged()
     {
-        if (e.Value is bool isChecked && isChecked) signerSelGroups.Add(groupId);
-        else signerSelGroups.Remove(groupId);
+        var addedOption = signerSelOptionIds.Except(lastSignerSelOptionIds).FirstOrDefault();
+        if (addedOption != 0 && signerOptionMap.TryGetValue(addedOption, out var addedSelection))
+        {
+            foreach (var optionId in signerSelOptionIds.ToList())
+                if (optionId != addedOption && signerOptionMap.TryGetValue(optionId, out var existing)
+                    && existing.UserId == addedSelection.UserId)
+                    signerSelOptionIds.Remove(optionId);
+        }
+        lastSignerSelOptionIds = signerSelOptionIds.ToHashSet();
+        if (signerSelOptionIds.Count + signerSelGroups.Count > 0) errSigners = false;
     }
 
     private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> pendingFiles = new();
@@ -509,7 +485,7 @@
         foreach (var r in letter.ReciversGirande) rcvUsers.Add(r.UserId);
         foreach (var r in letter.ReciversErja) erjaUsers.Add(r.UserId);
         foreach (var r in letter.ReciversHamesh) hameshUsers.Add(r.UserId);
-        foreach (var s in letter.Signers) signerSelections.Add(new OutgoingSignerSelectionDto { UserId = s.UserId, SematId = s.SematId });
+        pendingSignerSelections = letter.Signers.Select(s => new OutgoingSignerSelectionDto { UserId = s.UserId, SematId = s.SematId }).ToList();
 
         related = letter.RelatedLetters.Select(r => new RelatedLetterDto
         {
@@ -541,7 +517,7 @@
         rcvUsers.Clear(); rcvGroups.Clear();
         erjaUsers.Clear(); erjaGroups.Clear();
         hameshUsers.Clear(); hameshGroups.Clear();
-        signerSelections.Clear(); signerSelGroups.Clear(); signerQuery = ""; signerPickerOpen = false;
+        signerSelOptionIds.Clear(); signerSelGroups.Clear(); lastSignerSelOptionIds.Clear(); pendingSignerSelections.Clear(); signerOptionMap.Clear(); signerUsers.Clear();
         pendingFiles.Clear(); savedAtts.Clear();
         related.Clear(); relOpen = false; relSel.Clear();
     }
@@ -558,7 +534,9 @@
         {
             if (allUsers.Count == 0) allUsers = await OutgoingSvc.GetReciversAsync();
             allGroups = await OutgoingSvc.GetGroupsAsync();
-            try { signerUsers = await OutgoingSvc.GetAvailableSignersAsync(); } catch { signerUsers = new(); }
+            List<LetterReciverDto> availableSigners;
+            try { availableSigners = await OutgoingSvc.GetAvailableSignersAsync(); } catch { availableSigners = allUsers; }
+            BuildSignerOptions(availableSigners);
             try { activeCompany = await OutgoingSvc.GetActiveCompanyAsync(); } catch { activeCompany = null; }
             StateHasChanged();
         }
@@ -577,7 +555,7 @@
             !await JS.InvokeAsync<bool>("confirm", "اطلاعات فرم وارد شده است. فرم بسته شود؟")) return;
         visible = false;
     }
-    private void CloseCombos() { cbRcv?.Close(); cbErja?.Close(); cbHamesh?.Close(); }
+    private void CloseCombos() { cbRcv?.Close(); cbErja?.Close(); cbHamesh?.Close(); cbSigners?.Close(); }
     private void OnRcvChanged() { }
 
     private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
@@ -678,7 +656,7 @@
         errTitle = string.IsNullOrWhiteSpace(title);
         errReceiverOrg = string.IsNullOrWhiteSpace(receiverOrg);
         // 🔒 حداقل یک امضا کننده الزامی است
-        errSigners = signerSelections.Count == 0 && signerSelGroups.Count == 0;
+        errSigners = signerSelOptionIds.Count == 0 && signerSelGroups.Count == 0;
         if (errTitle || errReceiverOrg || errSigners)
         {
             Toast.Error(errSigners && !errTitle && !errReceiverOrg
@@ -715,7 +693,7 @@
                 GroupsErja = erjaGroups.ToList(),
                 ReciversHamesh = hameshUsers.ToList(),
                 GroupsHamesh = hameshGroups.ToList(),
-                SignerSelections = signerSelections.ToList(),
+                SignerSelections = SelectedSignerSelections,
                 SignerGroupIds = signerSelGroups.ToList(),
                 RelatedLetters = related,
                 FromPishnevisId = draftId
@@ -779,7 +757,7 @@
                 GroupsErja = erjaGroups.ToList(),
                 ReciversHamesh = hameshUsers.ToList(),
                 GroupsHamesh = hameshGroups.ToList(),
-                SignerSelections = signerSelections.ToList(),
+                SignerSelections = SelectedSignerSelections,
                 SignerGroupIds = signerSelGroups.ToList(),
                 RelatedLetters = related
             });

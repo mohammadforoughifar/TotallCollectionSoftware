@@ -142,8 +142,12 @@ public class AuthController : ControllerBase
         }
 
         using var output = new MemoryStream(processedPng, writable: false);
-        var path = await _store.SaveAsync("UserSignatures", id, output, "signature.png");
-        if (!string.IsNullOrWhiteSpace(user.SignaturePath)) _store.Delete(user.SignaturePath);
+        var previousPath = user.SignaturePath;
+        var path = await _store.SaveNamedAsync("UserSignatures", id, output, $"user_{id}_signature.png");
+        static string NormalizeSignaturePath(string value) => value.Replace('\\', '/').TrimStart('/');
+        if (!string.IsNullOrWhiteSpace(previousPath)
+            && !string.Equals(NormalizeSignaturePath(previousPath), NormalizeSignaturePath(path), StringComparison.OrdinalIgnoreCase))
+            _store.Delete(previousPath);
         user.SignaturePath = path;
         await _db.SaveChangesAsync();
         return Ok(new { signaturePath = path, url = $"/api/auth/users/signature/{id}" });

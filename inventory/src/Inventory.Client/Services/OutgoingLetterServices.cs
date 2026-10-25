@@ -72,6 +72,7 @@ public interface IOutgoingLetterService
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
     Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true);
+    Task<string?> GetUserSignatureDataUrlAsync(int userId);
     /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 }
@@ -360,6 +361,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/move-letter", dto);
 
     /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود و نسخهٔ چاپ</summary>
+    public async Task<string?> GetUserSignatureDataUrlAsync(int userId)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/auth/users/signature/{userId}"));
+        if (!string.IsNullOrWhiteSpace(_auth.Token))
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+        using var resp = await _http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode) return null;
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        return bytes.Length == 0 ? null : $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+    }
+
     public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true)
     {
         var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}&withMargin={(withMargin ? "true" : "false")}&withLetterhead={(withLetterhead ? "true" : "false")}";

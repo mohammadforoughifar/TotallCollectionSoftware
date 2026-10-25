@@ -68,6 +68,22 @@ try
     var savedUser = await db.Users.SingleAsync(x => x.Id == user.Id);
     Check(savedUser.SignaturePath?.Contains($"UserSignatures/{user.Id}/", StringComparison.OrdinalIgnoreCase) == true,
         "signature is stored under the user-ID folder");
+    Check(Path.GetFileName(savedUser.SignaturePath).Contains(user.Id.ToString(), StringComparison.Ordinal),
+        "signature filename is based on the user ID");
+    var initialSignaturePath = savedUser.SignaturePath;
+    using (var replacementStream = new MemoryStream(inputBytes, writable: false))
+    {
+        var replacementFile = new FormFile(replacementStream, 0, inputBytes.Length, "file", "signature.png")
+        {
+            Headers = new HeaderDictionary()
+        };
+        var replacement = await controller.UploadUserSignature(user.Id, replacementFile);
+        Check(replacement is OkObjectResult, "a replacement signature upload succeeds");
+    }
+    savedUser = await db.Users.SingleAsync(x => x.Id == user.Id);
+    Check(savedUser.SignaturePath == initialSignaturePath, "re-upload replaces the signature at the same user-ID filename");
+    var signatureDirectory = Path.Combine(store.RootPath, "UserSignatures", user.Id.ToString());
+    Check(Directory.GetFiles(signatureDirectory).Length == 1, "re-upload leaves only one signature file for the user");
     var storedBytes = store.ReadBytes(savedUser.SignaturePath)
         ?? throw new Exception("FAIL: stored signature bytes are missing");
     Check(storedBytes.Length > 25, "stored signature bytes are readable");

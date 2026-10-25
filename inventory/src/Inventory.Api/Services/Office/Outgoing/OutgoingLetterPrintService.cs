@@ -566,7 +566,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         try
         {
             using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(pngBytes);
-            // امضاها در PDF حداکثر حدود 178pt عرض دارند؛ این وضوح همچنان از کیفیت چاپ کافی بالاتر است.
+            // امضاها در PDF حداکثر حدود 205pt عرض دارند؛ این وضوح همچنان از کیفیت چاپ کافی بالاتر است.
             if (image.Width > 1200 || image.Height > 480)
                 image.Mutate(x => x.Resize(new ResizeOptions
                 {
@@ -710,41 +710,33 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }).ToList();
 
         // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
-        // نام، سمت و امضای امضاکننده در سمتِ چپِ انتهای نامه قرار می‌گیرد و
-        // تصویرِ امضا دقیقاً روی نام و سمتِ امضاکننده می‌افتد (Overlap).
+        // Each card flows in image → name → position order. The signature is contained
+        // within its box (aspect ratio preserved), so it cannot cover the text or overflow.
         var signerBlockWidth = isA5 ? 150f : 220f;
-        var signerBlockHeight = isA5 ? 68f : 92f;
-        var signatureBoxWidth = isA5 ? 126f : 178f;
-        var signatureBoxHeight = isA5 ? 42f : 58f;
+        var signatureBoxWidth = isA5 ? 138f : 205f;
+        var signatureBoxHeight = isA5 ? 46f : 66f;
 
         void AddSignerCard(IContainer container, (string Name, string Role, string? SignatureSvg) signer)
         {
-            container.Height(signerBlockHeight).Layers(layers =>
+            container.Width(signerBlockWidth).Column(card =>
             {
-                // لایهٔ اصلی: نام و سمتِ امضاکننده (چسبیده به پایینِ بلوک).
-                // اندازهٔ این لایه، اندازهٔ کلِ بلوک را تعیین می‌کند.
-                layers.PrimaryLayer().AlignBottom().Column(textColumn =>
-                {
-                    textColumn.Item().Text(signer.Name)
-                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
-                    textColumn.Item().Text(signer.Role)
-                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
-                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
-                });
-
-                // لایهٔ رویی: تصویرِ امضا که روی نام و سمت قرار می‌گیرد.
-                // چون بعد از لایهٔ اصلی تعریف شده، روی متن رسم می‌شود.
                 if (!string.IsNullOrWhiteSpace(signer.SignatureSvg))
                 {
-                    // PNG alpha in raster XObjects is flattened inconsistently by some printer/PDF
-                    // stacks (notably after PDFsharp overlays the letterhead). Draw only the ink
-                    // pixels as SVG paths: the empty canvas has no paint at all, so no opaque box
-                    // can appear even in consumers that mishandle image soft masks.
-                    layers.Layer().AlignBottom().AlignRight()
-                        .Width(signatureBoxWidth).Height(signatureBoxHeight)
+                    // SVG ink paths retain transparency; FitArea contains the image and preserves its ratio.
+                    card.Item().AlignCenter().Width(signatureBoxWidth).Height(signatureBoxHeight)
                         .Svg(signer.SignatureSvg).FitArea();
                 }
+                else
+                {
+                    card.Item().Height(signatureBoxHeight);
+                }
+
+                card.Item().PaddingTop(3).Text(signer.Name)
+                    .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                    .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                card.Item().Text(signer.Role)
+                    .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                    .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
             });
         }
 
@@ -920,21 +912,21 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                     if (signerCards.Count > 0)
                     {
-                        // بلوکِ امضاکنندگان در سمتِ چپِ انتهای نامه قرار می‌گیرد.
-                        // در صفحهٔ راست‌به‌چپ، آیتمِ نسبیِ اول در سمتِ راست و
-                        // آیتمِ ثابتِ بعدی در سمتِ چپ می‌نشیند.
-                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Row(signersRow =>
+                        var signerColumns = signerCards.Count == 1 ? 1 : 2;
+                        col.Item().PaddingTop(isA5 ? 8 : 12).Text("امضاکنندگان")
+                            .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                            .AlignCenter().DirectionFromRightToLeft();
+                        col.Item().PaddingTop(isA5 ? 4 : 6).Table(table =>
                         {
-                            signersRow.RelativeItem();
-                            signersRow.ConstantItem(signerBlockWidth).Column(signerColumn =>
+                            table.ColumnsDefinition(columns =>
                             {
-                                signerColumn.Item().Text("امضاکنندگان")
-                                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                                    .AlignCenter().DirectionFromRightToLeft();
-
-                                foreach (var signer in signerCards)
-                                    AddSignerCard(signerColumn.Item().PaddingTop(isA5 ? 4 : 6), signer);
+                                for (var i = 0; i < signerColumns; i++)
+                                    columns.RelativeColumn();
                             });
+
+                            foreach (var signer in signerCards)
+                                table.Cell().Padding(4).ShowEntire().AlignCenter()
+                                    .Element(card => AddSignerCard(card, signer));
                         });
                     }
 
