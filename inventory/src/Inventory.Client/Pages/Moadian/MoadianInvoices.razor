@@ -168,7 +168,7 @@ else
                             @for (int ix = 0; ix < items.Count; ix++)
                             {
                                 var inv = items[ix];
-                                <tr class="mi-rt mi-rt-@inv.StatusSentToSystemInt">
+                                <tr class="mi-rt mi-rt-@inv.StatusSentToSystemInt @(_flashId == InvoiceId(inv) ? "mi-flash" : "")" id="mi-row-@InvoiceId(inv)">
                                     <td class="num text-muted">@(((pno - 1) * PageSize + ix + 1).Num())</td>
                                     <td>
                                         <span class="badge @MoadianUi.SubjectBadge(inv.Subject)">
@@ -204,7 +204,13 @@ else
                                                 {
                                                     <div class="d-flex align-items-center gap-1 small text-muted">
                                                         <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
-                                                        <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.78rem; letter-spacing:0.3px;">@taxRef</span>
+                                                        @* کلیک روی شمارهٔ مرجع → رفتن به ردیفِ صورتحسابِ مرجع *@
+                                                        <button type="button" class="mi-ref-link num" dir="ltr"
+                                                                style="font-family:ui-monospace,monospace; font-size:0.78rem; letter-spacing:0.3px;"
+                                                                title="رفتن به صورتحسابِ مرجع (@taxRef)"
+                                                                aria-label="رفتن به صورتحسابِ مرجع @taxRef"
+                                                                @onclick="() => GoToReferenceAsync(taxRef)"
+                                                                @onclick:stopPropagation="true">@taxRef</button>
                                                         <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @taxRef" @onclick="() => CopyText(taxRef)"><i class="bi bi-clipboard" style="font-size:0.85rem;"></i></button>
                                                     </div>
                                                 }
@@ -313,7 +319,7 @@ else
                 <div class="cards-mobile px-2 py-2">
                     @foreach (var inv in items)
                     {
-                        <article class="card mb-2 mi-card @MoadianUi.StatusAccent(inv.StatusSentToSystemInt)" aria-label="صورتحساب شمارهٔ @(inv.NumberInvoice?.Num() ?? "نامشخص")">
+                        <article class="card mb-2 mi-card @MoadianUi.StatusAccent(inv.StatusSentToSystemInt) @(_flashId == InvoiceId(inv) ? "mi-flash" : "")" id="mi-card-@InvoiceId(inv)" aria-label="صورتحساب شمارهٔ @(inv.NumberInvoice?.Num() ?? "نامشخص")">
                             <div class="card-body p-3">
                                 <div class="d-flex justify-content-between align-items-start gap-2">
                                     <div class="mi-card-title">
@@ -349,7 +355,11 @@ else
                                         {
                                             <div class="d-flex align-items-center gap-1 flex-wrap text-muted">
                                                 <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
-                                                <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.78rem;">@mobileTaxReference</span>
+                                                <button type="button" class="mi-ref-link num" dir="ltr"
+                                                        style="font-family:ui-monospace,monospace; font-size:0.78rem;"
+                                                        title="رفتن به صورتحسابِ مرجع (@mobileTaxReference)"
+                                                        aria-label="رفتن به صورتحسابِ مرجع @mobileTaxReference"
+                                                        @onclick="() => GoToReferenceAsync(mobileTaxReference)">@mobileTaxReference</button>
                                                 <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @mobileTaxReference" @onclick="() => CopyText(mobileTaxReference)"><i class="bi bi-clipboard" aria-hidden="true"></i></button>
                                             </div>
                                         }
@@ -507,6 +517,34 @@ else
                         @if (acting && reactTarget == "11") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-clock-history"></i> }
                         تأیید سیستمی (۳۰ روزه)
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (copyFallbackOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45)" @onclick="CloseCopyFallback">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clipboard-x text-warning"></i> کپی خودکار ممکن نبود</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCopyFallback" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-muted mb-2">
+                        مرورگر اجازهٔ کپیِ خودکار نداد (این حالت روی http یا با تنظیمات امنیتی مرورگر پیش می‌آید).
+                        متن زیر انتخاب شده است؛ با <b>Ctrl+C</b> کپی کنید.
+                    </p>
+                    <input id="@CopyFallbackInputId" class="form-control num" dir="ltr" readonly
+                           value="@copyFallbackText" @onfocus="OnCopyFallbackShown" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="OnCopyFallbackShown">
+                        <i class="bi bi-select-all"></i> انتخاب دوباره
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="CloseCopyFallback">بستن</button>
                 </div>
             </div>
         </div>
@@ -738,14 +776,123 @@ else
         }
     }
 
-    private async Task CopyText(string text)
+    /// <summary>
+    /// کپیِ شماره در کلیپ‌بورد. روی http (شبکهٔ داخلی) navigator.clipboard در دسترس نیست؛
+    /// ClipboardInterop با execCommand کپی می‌کند و اگر مرورگر باز هم اجازه نداد، همان متن
+    /// در پنجره‌ای انتخاب‌شده نمایش داده می‌شود تا کاربر با Ctrl+C کپی کند.
+    /// </summary>
+    private async Task CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) { Toast.Info("مقداری برای کپی وجود ندارد."); return; }
+        var ok = await ClipboardInterop.CopyAsync(JS, text);
+        if (ok) { Toast.Info("شمارهٔ مالیاتی کپی شد."); return; }
+        copyFallbackText = text;
+        copyFallbackOpen = true;
+        StateHasChanged();
+    }
+
+    // ---------- کپیِ دستی (وقتی مرورگر اجازهٔ کپی نمی‌دهد) ----------
+    private bool copyFallbackOpen;
+    private string copyFallbackText = "";
+    private const string CopyFallbackInputId = "mi-copy-fallback";
+
+    private async Task OnCopyFallbackShown()
+    {
+        await ClipboardInterop.SelectAllAsync(JS, CopyFallbackInputId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // بعد از باز شدن پنجرهٔ کپیِ دستی، متن داخل فیلد انتخاب شود
+        if (copyFallbackOpen && !_copyFallbackSelected)
+        {
+            _copyFallbackSelected = true;
+            await OnCopyFallbackShown();
+        }
+        else if (!copyFallbackOpen) _copyFallbackSelected = false;
+    }
+
+    private bool _copyFallbackSelected;
+
+    private void CloseCopyFallback() { copyFallbackOpen = false; copyFallbackText = ""; }
+
+    // ==================== رفتن به صورتحسابِ مرجع ====================
+    private int _flashId;
+
+    /// <summary>صورتحسابِ مرجعی که شمارهٔ مالیاتی‌اش برابر مقدار داده‌شده است.</summary>
+    private static InvoiceVM? FindByOwnTaxNumber(IEnumerable<InvoiceVM>? source, string taxNumber)
+    {
+        if (source is null) return null;
+        var t = (taxNumber ?? "").Trim();
+        if (t.Length == 0) return null;
+        return source.FirstOrDefault(x =>
+            string.Equals(GetTaxPrimary(x).Trim(), t, StringComparison.OrdinalIgnoreCase)
+            || string.Equals((x.NewTaxNumber ?? "").Trim(), t, StringComparison.OrdinalIgnoreCase)
+            || (!IsReferenceSubject(x) && string.Equals((x.TaxNumber ?? "").Trim(), t, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// کلیک روی «شمارهٔ مرجع»: ابتدا در همان صفحهٔ جاری دنبال صورتحسابی می‌گردد که
+    /// شمارهٔ مالیاتیِ خودش همان مقدار است. اگر در این صفحه نبود (صفحهٔ دیگر یا فیلتر
+    /// فعال)، فیلترها پاک و با همان شماره جستجو می‌شود و در نهایت روی همان ردیف
+    /// اسکرول و هایلایت انجام می‌شود.
+    /// </summary>
+    private async Task GoToReferenceAsync(string? reference)
+    {
+        var refNo = (reference ?? "").Trim();
+        if (refNo.Length == 0) return;
+
+        var hit = FindByOwnTaxNumber(items, refNo);
+        if (hit is not null && InvoiceId(hit) > 0)
+        {
+            await FocusInvoiceRowAsync(InvoiceId(hit), refNo);
+            return;
+        }
+
+        // در صفحهٔ جاری نبود → جستجوی سروری با پاک‌کردن فیلترهای مزاحم
+        // (جستجوی سرور روی TaxNumber و NewTaxNumber هر دو اعمال می‌شود)
+        fOp = "همه"; fFrom = null; fTo = null; dateFilterError = null; search = refNo;
+        await LoadAsync(1);
+
+        var found = FindByOwnTaxNumber(items, refNo);
+        // جستجو ممکن است چند صفحه نتیجه بدهد (سند اصلاحی + سند اصلی)؛ تا سقف ۱۰ صفحه
+        // جلو می‌رویم تا همان ردیفی که «شمارهٔ مالیاتیِ خودش» برابر مرجع است پیدا شود.
+        var guard = 0;
+        while (found is null && guard++ < 10 && pno < (data?.TotalPages ?? 1))
+        {
+            await LoadAsync(pno + 1);
+            found = FindByOwnTaxNumber(items, refNo);
+        }
+        if (found is not null && InvoiceId(found) > 0)
+        {
+            await FocusInvoiceRowAsync(InvoiceId(found), refNo);
+            return;
+        }
+
+        Toast.Info($"صورتحسابِ مرجع با شمارهٔ مالیاتی {refNo} در این فهرست پیدا نشد.");
+    }
+
+    /// <summary>اسکرول به ردیفِ هدف و هایلایتِ موقتِ آن</summary>
+    private async Task FocusInvoiceRowAsync(int invoiceId, string refNo)
+    {
+        _flashId = invoiceId;
+        StateHasChanged();
+        await ClipboardInterop.ScrollToAsync(JS, $"mi-row-{invoiceId}");
+        await ClipboardInterop.ScrollToAsync(JS, $"mi-card-{invoiceId}");
+        Toast.Success($"صورتحسابِ مرجع {refNo} مشخص شد.");
+        _ = ClearFlashLaterAsync(invoiceId);
+    }
+
+    private async Task ClearFlashLaterAsync(int invoiceId)
     {
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            InvokeAsync(() => Toast.Info("شمارهٔ مالیاتی کپی شد."));
+            await Task.Delay(3500);
+            if (_flashId != invoiceId) return;
+            _flashId = 0;
+            await InvokeAsync(StateHasChanged);
         }
-        catch { InvokeAsync(() => Toast.Error("کپی ممکن نبود.")); }
+        catch { /* کامپوننت بسته شده است */ }
     }
 
     /// <summary>a) ارسال ردیف به سامانهٔ مودیان — ابتدا جزئیات کامل صورتحساب واکشی، سپس همان فلوی صفحهٔ جزئیات ارسال می‌شود.</summary>

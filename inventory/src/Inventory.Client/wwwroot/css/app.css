@@ -2171,6 +2171,26 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .mi-error .mi-error-text { min-width: 0; }
 .mi-error .btn { flex: none; }
 .mi-money { font-weight: 700; white-space: nowrap; }
+
+/* شمارهٔ مالیاتیِ مرجع — قابل کلیک برای رفتن به صورتحسابِ مرجع */
+.mi-ref-link {
+    background: none; border: 0; padding: 0 .1rem; margin: 0;
+    color: var(--primary-600, #2563eb); cursor: pointer; text-align: start;
+    border-bottom: 1px dashed currentColor; line-height: 1.6;
+}
+.mi-ref-link:hover, .mi-ref-link:focus-visible { color: var(--primary, #1d4ed8); background: var(--primary-50, #eff6ff); border-radius: 4px; }
+.mi-ref-link:focus-visible { outline: 2px solid var(--primary, #1d4ed8); outline-offset: 1px; }
+
+/* هایلایتِ موقتِ ردیفِ هدف وقتی از «شمارهٔ مرجع» به آن پرش می‌کنیم */
+@keyframes mi-flash-pulse {
+    0%   { background-color: rgba(37, 99, 235, .22); box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .75); }
+    70%  { background-color: rgba(37, 99, 235, .16); box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .55); }
+    100% { background-color: transparent; box-shadow: none; }
+}
+tr.mi-flash > td, .mi-card.mi-flash {
+    animation: mi-flash-pulse 3.4s ease-out 1;
+    border-radius: 10px;
+}
 .mi-sep { width: 1px; height: 1.15rem; background: var(--border); margin: 0 .3rem; align-self: center; flex: none; }
 .mi-pager { padding: .8rem 1.15rem; border-top: 1px solid var(--border); }
 .mi-ellipsis { display: inline-flex; align-items: center; justify-content: center; width: 2rem; color: var(--text-soft); }

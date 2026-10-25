@@ -614,6 +614,31 @@ else
     }
 </style>
 
+@if (copyFallbackOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45)" @onclick="CloseCopyFallback">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clipboard-x text-warning"></i> کپی خودکار ممکن نبود</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCopyFallback" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-muted mb-2">متن زیر انتخاب شده است؛ با <b>Ctrl+C</b> کپی کنید.</p>
+                    <input id="@CopyFallbackInputId" class="form-control num" dir="ltr" readonly
+                           value="@copyFallbackText" @onfocus="OnCopyFallbackShown" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="OnCopyFallbackShown">
+                        <i class="bi bi-select-all"></i> انتخاب دوباره
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="CloseCopyFallback">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public int Id { get; set; }
     private InvoiceVM? vm;
@@ -713,6 +738,14 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // پنجرهٔ کپیِ دستی: متنِ داخل فیلد انتخاب شود
+        if (copyFallbackOpen && !_copyFallbackSelected)
+        {
+            _copyFallbackSelected = true;
+            await OnCopyFallbackShown();
+        }
+        else if (!copyFallbackOpen) _copyFallbackSelected = false;
+
         // چاپ خودکار هنگام ورود با ?print=1 (مثلاً از دکمهٔ چاپ لیست)
         if (firstRender) return;
         if (!_printHandled && !loading && vm is not null && Nav.Uri.Contains("print=1", StringComparison.OrdinalIgnoreCase))
@@ -854,13 +887,29 @@ else
         finally { acting = false; StateHasChanged(); }
     }
 
-    private async Task CopyText(string text)
+    /// <summary>
+    /// کپی با فالبک: روی http (شبکهٔ داخلی) navigator.clipboard وجود ندارد و کپی
+    /// با execCommand انجام می‌شود؛ اگر مرورگر باز هم اجازه نداد، متن در پنجره‌ای
+    /// انتخاب‌شده نشان داده می‌شود تا کاربر دستی Ctrl+C کند.
+    /// </summary>
+    private async Task CopyText(string? text)
     {
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            InvokeAsync(() => Toast.Info("کپی شد."));
-        }
-        catch { InvokeAsync(() => Toast.Error("کپی ممکن نبود.")); }
+        if (string.IsNullOrWhiteSpace(text)) { Toast.Info("مقداری برای کپی وجود ندارد."); return; }
+        var ok = await ClipboardInterop.CopyAsync(JS, text);
+        if (ok) { Toast.Info("کپی شد."); return; }
+        copyFallbackText = text;
+        copyFallbackOpen = true;
+        StateHasChanged();
     }
+
+    private bool copyFallbackOpen;
+    private string copyFallbackText = "";
+    private bool _copyFallbackSelected;
+    private const string CopyFallbackInputId = "mid-copy-fallback";
+
+    private async Task OnCopyFallbackShown()
+        => await ClipboardInterop.SelectAllAsync(JS, CopyFallbackInputId);
+
+    private void CloseCopyFallback() { copyFallbackOpen = false; copyFallbackText = ""; }
+
 }
