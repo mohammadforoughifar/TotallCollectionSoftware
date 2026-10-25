@@ -1038,42 +1038,53 @@ public class WorkOrdersController : ControllerBase
     }
 
     /// <summary>
-    /// اطلاع‌رسانی پاسخ ثبت‌شده: دستوردهندهٔ همین دستور کار + دستوردهندگان زنجیرهٔ والدها.
-    /// هر کاربر یک‌بار و هرگز خودِ پاسخ‌دهنده اعلان نمی‌گیرد. پاسخِ زیر-دستور در
-    /// تاریخچهٔ دستور بالاسری هم ثبت می‌شود تا در «گردش کار» والد دیده شود.
+    /// اطلاع‌رسانی پاسخ ثبت‌شده: مالکِ همین دستور کار (مثلاً B) + مالکان همهٔ والدهای
+    /// زنجیره (مثلاً A که دستور کار اصلی را داده است) تا ۵ سطح.
+    /// هر کاربر فقط یک‌بار و هرگز خودِ پاسخ‌دهنده اعلان نمی‌گیرد. پاسخِ زیر-دستور در
+    /// تاریخچهٔ همهٔ دستورهای بالاسری هم ثبت می‌شود تا در «گردش کار» والد دیده شود.
     /// </summary>
     private async Task NotifyReplyOwnersAsync(WorkOrder wo, ReplyDto dto)
     {
         var result = dto.Done ? "انجام شد ✅" : "انجام نشد ❌";
         var note = string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text.Trim();
-        var link = $"/work-orders?open={wo.Id}";
+        var selfLink = $"/work-orders?open={wo.Id}";
 
         var ancestors = await LoadAncestorsAsync(wo);
         var parent = ancestors.FirstOrDefault(); // نزدیک‌ترین والد
         var chainTag = parent is null ? "" : $" (زیر-دستورِ {parent.Number})";
         var title = parent is null ? "پاسخ دستور کار" : "پاسخ زیر-دستور کار 📋";
 
+        // کاربرانی که مجوز «View» دستور کار را دارند می‌توانند خودِ زیر-دستور را باز کنند؛
+        // بقیه (مثلاً دستوردهندهٔ بالاسری بدون این مجوز) به دستور خودشان هدایت می‌شوند تا
+        // لینک اعلان برایشان ۴۰۳ نشود و ردّ پاسخ را در «گردش کار» همان دستور ببینند.
+        var viewers = (await UsersWithPermissionAsync("WorkOrders", "View")).ToHashSet();
+        var subAssigneesFa = await AssigneesFaAsync(wo.Id);
+
         var notified = new HashSet<int>();
 
-        // ۱) دستوردهندهٔ همین دستور کار (رفتار قبلی — فقط با نشانهٔ زنجیره اگر زیر-دستور باشد)
+        // ۱) مالکِ همین دستور کار — پاسخ‌دهنده به او خبر می‌دهد.
         if (wo.OwnerUserId > 0 && wo.OwnerUserId != MyUserId)
         {
             await _notify.SendAsync(wo.OwnerUserId, title,
                 $"{wo.Number}{chainTag} — {MyUsername}: {result}{note}",
-                MyUsername, "دستور کار", link);
+                MyUsername, "دستور کار", selfLink);
             notified.Add(wo.OwnerUserId);
         }
 
-        // ۲) دستوردهندگان بالادست — پاسخِ زیر-دستور باید به اطلاع کسی هم برسد که
-        //    دستور کار بالاسری را صادر کرده است.
+        // ۲) مالکان بالادست — پاسخِ زیر-دستور باید به اطلاع کسی هم برسد که دستور کار
+        //    بالاسری را صادر کرده است (A). برای هر والد یک اعلان، با لینک قابل‌بازکردن.
         foreach (var anc in ancestors)
         {
             if (anc.OwnerUserId <= 0) continue;
             if (anc.OwnerUserId == MyUserId) continue;
             if (!notified.Add(anc.OwnerUserId)) continue;
 
-            await _notify.SendAsync(anc.OwnerUserId, "پاسخ زیر-دستور کار 📋",
-                $"{wo.Number} — «{wo.Title}»{chainTag} — {MyUsername}: {result}{note}",
+            var link = viewers.Contains(anc.OwnerUserId) ? selfLink : $"/work-orders?open={anc.Id}";
+            var body = anc.Id == parent?.Id
+                ? $"{wo.Number} «{wo.Title}» — زیر-دستورِ {anc.Number} («{anc.Title}») که {wo.OwnerName} به {subAssigneesFa} سپرده بود — {MyUsername}: {result}{note}"
+                : $"{wo.Number} «{wo.Title}» — در زنجیرهٔ {anc.Number} («{anc.Title}») — {MyUsername}: {result}{note}";
+
+            await _notify.SendAsync(anc.OwnerUserId, "پاسخ زیر-دستور کار 📋", body,
                 MyUsername, "دستور کار", link);
         }
 
@@ -1084,6 +1095,17 @@ public class WorkOrdersController : ControllerBase
                 Log(anc.Id, "SubReply", $"پاسخ زیر-دستور {wo.Number} «{wo.Title}» — {MyUsername}: {result}{note}");
             await _db.SaveChangesAsync();
         }
+    }
+
+    /// <summary>نام گیرندگان یک دستور برای متن اعلان (حداکثر سه نفر و بقیه با شمارش).</summary>
+    private async Task<string> AssigneesFaAsync(int orderId)
+    {
+        var names = await _db.WorkOrderAssignees.AsNoTracking()
+            .Where(a => a.OrderId == orderId).Select(a => a.Name).ToListAsync();
+        if (names.Count == 0) return "کسی";
+        return names.Count <= 3
+            ? string.Join("، ", names)
+            : string.Join("، ", names.Take(3)) + $" و {names.Count - 3} نفر دیگر";
     }
 
     // ================== تایید/رد پاسخ هر گیرنده (بند ۹ و ۱۸) ==================
