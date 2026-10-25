@@ -786,8 +786,8 @@
             gMisc = path.StartsWith("misc");
             if (path.StartsWith("trs/vouchers")) gOps = true;
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
-            if (path.StartsWith("moadian")) gOps = true;
-            if (path.StartsWith("moadian/settings")) gOpsBase = true;
+            // «سامانه مودیان» یک گروه مستقل است و نباید گروه «سامانه فروشگاهی» را باز کند.
+            if (path.StartsWith("moadian")) gMoadian = true;
             StateHasChanged();
         });
 
@@ -838,10 +838,12 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOpsReports = p.StartsWith("operations/reports");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase;
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || gOpsReports || gOpsBase;
+        // گروه «سامانه مودیان» مستقل از «سامانه فروشگاهی» است.
+        gMoadian = p.StartsWith("moadian");
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("servers") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||
