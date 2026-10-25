@@ -772,17 +772,96 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         }
 
-        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
+        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
+            float fieldFontSize, bool isolateLtr = false)
         {
+            // Captions are part of the enhanced company artwork, so only values are painted.
+            // Keep date/number runs isolated in LTR and preserve their fixed row alignment.
+            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
             var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
-                .Width(field.Width).Height(field.Height).AlignMiddle();
-            // The enclosing header is physically left-to-right; only the field text is RTL.
-            // Do not allow a long letter number to push the date/attachment down a flowing column.
-            box = center ? box.AlignCenter() : box.AlignRight();
-            box.ScaleToFit().Text(value)
-                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                .FontColor(Colors.White).LineHeight(1.2f)
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+            box.ScaleToFit().Text(displayValue)
+                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
+                .FontColor(Colors.White).LineHeight(1.05f)
                 .DirectionFromRightToLeft();
+        }
+
+        void AddSubjectAndFollowingContent(ColumnDescriptor col, float subjectTopPadding = 0f)
+        {
+            col.Spacing(isA5 ? 4 : 6);
+
+            col.Item().PaddingTop(subjectTopPadding).Text($"موضوع: {title}")
+                .FontFamily("Vazirmatn-Bold").FontSize(titleFontSize).LineHeight(lineHeight)
+                .AlignRight().DirectionFromRightToLeft();
+
+            if (!string.IsNullOrWhiteSpace(externalReference))
+            {
+                col.Item().Text($"عطف به شماره: {externalReference}")
+                    .FontSize(smallFontSize).LineHeight(lineHeight)
+                    .AlignRight().DirectionFromRightToLeft();
+            }
+
+            col.Item().PaddingVertical(isA5 ? 3 : 5)
+                .LineHorizontal(0.7f).LineColor("#999999");
+
+            if (!string.IsNullOrWhiteSpace(bodyText))
+            {
+                // Right-align; never justify. Newlines and ZWNJ are preserved,
+                // and normal word wrapping avoids clipping/splitting words.
+                col.Item().Text(bodyText)
+                    .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
+                    .AlignRight().DirectionFromRightToLeft();
+            }
+
+            if (signerCards.Count > 0)
+            {
+                var signerColumns = signerCards.Count == 1 ? 1 : 2;
+                col.Item().PaddingTop(isA5 ? 8 : 12).Text("امضاکنندگان")
+                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                    .AlignCenter().DirectionFromRightToLeft();
+                col.Item().PaddingTop(isA5 ? 4 : 6).Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        for (var i = 0; i < signerColumns; i++)
+                            columns.RelativeColumn();
+                    });
+
+                    foreach (var signer in signerCards)
+                        table.Cell().Padding(4).ShowEntire().AlignCenter()
+                            .Element(card => AddSignerCard(card, signer));
+                });
+            }
+
+            if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
+            {
+                col.Item().PaddingTop(isA5 ? 8 : 12)
+                    .LineHorizontal(0.5f).LineColor("#cbd5e1");
+                col.Item().Text("رونوشت:")
+                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                    .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+
+                if (copyTos is { Count: > 0 })
+                {
+                    foreach (var copyTo in copyTos)
+                    {
+                        var details = new[] { copyTo.Desc, copyTo.RefNo }
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(ToPersianDigits)
+                            .ToArray();
+                        var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
+                        col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
+                            .FontSize(smallFontSize).LineHeight(lineHeight)
+                            .AlignRight().DirectionFromRightToLeft();
+                    }
+                }
+                else
+                {
+                    col.Item().Text(ToPersianDigits(letter.CopyTo))
+                        .FontSize(smallFontSize).LineHeight(lineHeight)
+                        .AlignRight().DirectionFromRightToLeft();
+                }
+            }
         }
 
         var document = Document.Create(container =>
@@ -790,12 +869,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                var isHomepaLetterhead = hasLetterhead && letterheadCompanyId == HomepaCompanyId;
+                // Keep the 1003 header anchored at the same page coordinates even when
+                // the body-margin option is toggled; all other companies retain their old rule.
+                page.MarginTop(isHomepaLetterhead
+                    ? (isA5 ? 16 : 24)
+                    : (withMargin ? (isA5 ? 16 : 24) : 0));
                 // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
                 // company background by PDFsharp, that white fill would hide the entire letterhead.
                 page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
-                page.MarginTop(withMargin ? (isA5 ? 16 : 24) : 0);
-                // Reserve the printed company footer only when a letterhead is requested.
-                page.MarginBottom(hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
+                // Keep content clear of company 1003's lower artwork; leave other companies unchanged.
+                page.MarginBottom(isHomepaLetterhead
+                    ? HomepaLetterheadLayout.FooterReserve(isA5)
+                    : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -806,9 +892,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .DirectionFromRightToLeft());
 
                 var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
-                // Keep the same clear gap between every header reservation and the body.
-                // QuestPDF repeats both the header and this content offset on every page.
-                var contentTopPadding = withMargin || hasLetterhead ? 30f : 0f;
+                // This offset belongs only to the flowing body. The company 1003
+                // metadata fields remain in the separately positioned page header.
+                // QuestPDF repeats both regions on every page.
+                var contentTopPadding = isHomepaLetterhead
+                    ? HomepaLetterheadLayout.ReceiverTopPadding(isA5)
+                    : (withMargin || hasLetterhead ? 30f : 0f);
 
                 if (isAriaLetterhead)
                 {
@@ -844,19 +933,21 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                                 .DirectionFromRightToLeft();
                         });
                 }
-                else if (hasLetterhead && letterheadCompanyId == HomepaCompanyId)
+                else if (isHomepaLetterhead)
                 {
                     // Match company 1003's MRT rectangles, not the RTL body's default right edge.
-                    // Preserve the existing reserved header height so body/signature layout does not move.
+                    // Header fields retain their fixed height/coordinates; only page.Content receives the larger gap.
                     page.Header().ContentFromLeftToRight()
-                        .Height(isA5 ? 150 : 160)
+                        .Height(HomepaLetterheadLayout.HeaderHeight(isA5))
                         .Layers(layers =>
                         {
                             layers.PrimaryLayer().Extend();
-                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number);
-                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number,
+                                HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date,
+                                HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
                             AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Attachment(isA5),
-                                hasAttachment ? "دارد" : "ندارد", center: true);
+                                hasAttachment ? "دارد" : "ندارد", HomepaLetterheadLayout.HeaderValueFontSize(isA5));
                         });
                 }
                 else if (hasLetterhead)
@@ -908,89 +999,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         });
                 }
 
-                // One shared padded body column keeps receiver, subject, paragraphs,
-                // signature block on identical left/right margins.
+                // Header values live in page.Header with fixed template coordinates.
+                // For company 1003, keep the recipient at its existing top offset and
+                // add the extra space only before subject/body and all following items.
                 page.Content().PaddingTop(contentTopPadding)
                     .PaddingHorizontal(withMargin ? (isA5 ? 48 : 68) : 0).Column(col =>
                 {
                     col.Spacing(isA5 ? 4 : 6);
-
                     col.Item().Text($"به: {receiverLine}")
                         .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
                         .AlignRight().DirectionFromRightToLeft();
-
-                    col.Item().Text($"موضوع: {title}")
-                        .FontFamily("Vazirmatn-Bold").FontSize(titleFontSize).LineHeight(lineHeight)
-                        .AlignRight().DirectionFromRightToLeft();
-
-                    if (!string.IsNullOrWhiteSpace(externalReference))
-                    {
-                        col.Item().Text($"عطف به شماره: {externalReference}")
-                            .FontSize(smallFontSize).LineHeight(lineHeight)
-                            .AlignRight().DirectionFromRightToLeft();
-                    }
-
-                    col.Item().PaddingVertical(isA5 ? 3 : 5)
-                        .LineHorizontal(0.7f).LineColor("#999999");
-
-                    if (!string.IsNullOrWhiteSpace(bodyText))
-                    {
-                        // Right-align; never justify. Newlines and ZWNJ are preserved,
-                        // and normal word wrapping avoids clipping/splitting words.
-                        col.Item().Text(bodyText)
-                            .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
-                            .AlignRight().DirectionFromRightToLeft();
-                    }
-
-                    if (signerCards.Count > 0)
-                    {
-                        var signerColumns = signerCards.Count == 1 ? 1 : 2;
-                        col.Item().PaddingTop(isA5 ? 8 : 12).Text("امضاکنندگان")
-                            .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                            .AlignCenter().DirectionFromRightToLeft();
-                        col.Item().PaddingTop(isA5 ? 4 : 6).Table(table =>
-                        {
-                            table.ColumnsDefinition(columns =>
-                            {
-                                for (var i = 0; i < signerColumns; i++)
-                                    columns.RelativeColumn();
-                            });
-
-                            foreach (var signer in signerCards)
-                                table.Cell().Padding(4).ShowEntire().AlignCenter()
-                                    .Element(card => AddSignerCard(card, signer));
-                        });
-                    }
-
-                    if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
-                    {
-                        col.Item().PaddingTop(isA5 ? 8 : 12)
-                            .LineHorizontal(0.5f).LineColor("#cbd5e1");
-                        col.Item().Text("رونوشت:")
-                            .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-
-                        if (copyTos is { Count: > 0 })
-                        {
-                            foreach (var copyTo in copyTos)
-                            {
-                                var details = new[] { copyTo.Desc, copyTo.RefNo }
-                                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                                    .Select(ToPersianDigits)
-                                    .ToArray();
-                                var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
-                                col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
-                                    .FontSize(smallFontSize).LineHeight(lineHeight)
-                                    .AlignRight().DirectionFromRightToLeft();
-                            }
-                        }
-                        else
-                        {
-                            col.Item().Text(ToPersianDigits(letter.CopyTo))
-                                .FontSize(smallFontSize).LineHeight(lineHeight)
-                                .AlignRight().DirectionFromRightToLeft();
-                        }
-                    }
+                    AddSubjectAndFollowingContent(col,
+                        isHomepaLetterhead ? HomepaLetterheadLayout.SubjectBodyGap(isA5) : 0f);
                 });
             });
         });

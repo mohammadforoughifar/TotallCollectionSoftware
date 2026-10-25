@@ -12,6 +12,17 @@ internal static class HomepaLetterheadLayout
 {
     internal readonly record struct Field(float Left, float Top, float Width, float Height);
 
+    // Header field placement and body start spacing are deliberately independent.
+    // These fixed header bounds keep values on company 1003's printed labels;
+    // only the body content offset may change without moving those values.
+    internal static float HeaderHeight(bool isA5) => isA5 ? 150f : 160f;
+    // The art ends at about 232pt on A4 and scales to about 163pt on A5.
+    // Keep roughly 32pt (11mm) clear below it in both formats.
+    internal static float ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f;
+    internal static float SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f;
+    internal static float FooterReserve(bool isA5) => isA5 ? 68f : 90f;
+    internal static float HeaderValueFontSize(bool isA5) => isA5 ? 7.5f : 9.5f;
+
     internal static Field Number(bool isA5) => isA5
         ? new(7.2f, 41.04f, 59.04f, 12.96f)
         : new(14.4f, 60.48f, 82.08f, 14.4f);
