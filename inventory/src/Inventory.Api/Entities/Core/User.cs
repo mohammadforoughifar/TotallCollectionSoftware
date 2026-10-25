@@ -43,6 +43,13 @@ public class User
     [MaxLength(300)]
     public string? SignaturePath { get; set; }
 
+    /// <summary>
+    /// واحد سازمانیِ کاربر (جدول Organizations) — برای جزء «واحد» در شمارهٔ نامه.
+    /// ستون به‌صورت خودتعمیر (DbInitializer) به دیتابیس‌های موجود اضافه می‌شود؛
+    /// رابطهٔ EF عمداً تعریف نشده تا حذف یک واحد، کاربر را تحت تأثیر قرار ندهد.
+    /// </summary>
+    public int? OrganizationId { get; set; }
+
     /// <summary>شیفت پیش‌فرض پرسنل (می‌تواند null باشد)</summary>
     public int? ShiftGroupId { get; set; }
     public ShiftGroup? ShiftGroup { get; set; }

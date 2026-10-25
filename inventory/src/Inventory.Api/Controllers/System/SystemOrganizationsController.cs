@@ -36,7 +36,7 @@ public class SystemOrganizationsController : RbacControllerBase
 
     /// <summary>فهرست واحدها — می‌تواند بر اساس شرکت فیلتر شود (companyId)</summary>
     [HttpGet]
-    public async Task<ActionResult> Get([FromQuery] int? companyId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+    public async Task<IActionResult> Get([FromQuery] int? companyId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ReadGuardAsync() is { } forbid) return forbid;
         IQueryable<Organization> query = _db.Organizations.Where(o => !o.IsDelete);
@@ -46,7 +46,7 @@ public class SystemOrganizationsController : RbacControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult> Get(int id)
+    public async Task<IActionResult> Get(int id)
     {
         if (await ReadGuardAsync() is { } forbidId) return forbidId;
         var org = await _db.Organizations.FirstOrDefaultAsync(o => o.OrganizationId == id);
@@ -55,7 +55,7 @@ public class SystemOrganizationsController : RbacControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult> Post([FromBody] Organization o)
+    public async Task<IActionResult> Post([FromBody] Organization o)
     {
         if (await WriteGuardAsync("Create") is { } forbidPost) return forbidPost;
         if (o.CompanyId is null or 0)
@@ -70,7 +70,7 @@ public class SystemOrganizationsController : RbacControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<ActionResult> Put(int id, [FromBody] Organization o)
+    public async Task<IActionResult> Put(int id, [FromBody] Organization o)
     {
         if (await WriteGuardAsync("Update") is { } forbidPut) return forbidPut;
         var item = await _db.Organizations.FirstOrDefaultAsync(x => x.OrganizationId == id);
@@ -88,7 +88,7 @@ public class SystemOrganizationsController : RbacControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    public async Task<ActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id)
     {
         if (await WriteGuardAsync("Delete") is { } forbidDel) return forbidDel;
         var item = await _db.Organizations.FirstOrDefaultAsync(x => x.OrganizationId == id);
@@ -101,7 +101,7 @@ public class SystemOrganizationsController : RbacControllerBase
 
     /// <summary>فهرست سازمان‌های فعال برای د virgehenden انتخاب (combeobox) — می‌تواند بر اساس شرکت فیلتر شود</summary>
     [HttpGet("active")]
-    public async Task<ActionResult<List<OrganizationDto>>> GetActive([FromQuery] int? companyId = null)
+    public async Task<IActionResult> GetActive([FromQuery] int? companyId = null)
     {
         if (await ReadGuardAsync() is { } forbidActive) return forbidActive;
         var orgs = await _db.Organizations.AsNoTracking()

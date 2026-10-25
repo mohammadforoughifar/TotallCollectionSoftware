@@ -28,7 +28,8 @@
 | ۳ | `Inventory.Api/Data/RbacSeeder.cs` | افزودن ماژول `SystemOrganizations` (Create/Read/Update/Delete/Export) — مجوزها در استارت‌آپ ساخته و به نقش **Admin** داده می‌شوند |
 | ۴ | `Inventory.Client/Layout/NavMenu.razor` | گروه «سازمان و کیف پول» با داشتن `SystemOrganizations` هم نمایش داده می‌شود |
 | ۵ | `Inventory.Client/Pages/System/Users.razor` | کمبوی **«واحد سازمانی (برای شماره نامه)»** در فرم کاربر + فیلتر بر اساس شرکت‌های مجاز + پیش‌انتخاب واحد پیش‌فرض + هشدار «واحدی تعریف نشده» |
-| ۶ | `Inventory.Api/Controllers/System/SystemOrganizationsController.cs` | بررسی مجوز: نوشتن با `SystemOrganizations.Create/Update/Delete`؛ خواندن با همان یا `SystemUsers.Read` / `SystemCompanies.Read`؛ اعتبارسنجی «شرکت» و «نام واحد» هنگام ثبت |
+| ۶ | `Inventory.Api/Controllers/System/SystemOrganizationsController.cs` | بررسی مجوز: نوشتن با `SystemOrganizations.Create/Update/Delete`؛ خواندن با همان یا `SystemUsers.Read` / `SystemCompanies.Read`؛ اعتبارسنجی «شرکت» و «نام واحد» هنگام ثبت (نوع بازگشتی اکشن‌ها `IActionResult` شد تا بتوان 403 گارد را برگرداند) |
+| ۷ | `Inventory.Api/Entities/Core/User.cs` + `Data/DbInitializer.cs` | ستون `OrganizationId` روی جدول `Users` و **خودتعمیر** آن در استارت‌آپ (SQL Server: `COL_LENGTH`؛ SQLite: `ALTER TABLE` با پذیرش خطای ستون تکراری) — بدون نیاز به مایگریشن دستی |
 
 ## مسیر رسیدن به صفحه
 

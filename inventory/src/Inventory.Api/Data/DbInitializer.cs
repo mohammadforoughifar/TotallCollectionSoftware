@@ -650,11 +650,17 @@ AND (
     {
         try { db.Database.ExecuteSqlRaw(@"IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', N'SignaturePath') IS NULL ALTER TABLE dbo.Users ADD SignaturePath nvarchar(300) NULL;"); }
         catch (Exception ex) { Console.WriteLine($"[DB] هشدار: افزودن ستون SignaturePath: {ex.Message}"); }
+
+        // واحد سازمانیِ کاربر — برای جزء «واحد» در شمارهٔ نامه و تخصیص از فرم «کاربران»
+        try { db.Database.ExecuteSqlRaw(@"IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', N'OrganizationId') IS NULL ALTER TABLE dbo.Users ADD OrganizationId int NULL;"); }
+        catch (Exception ex) { Console.WriteLine($"[DB] هشدار: افزودن ستون OrganizationId: {ex.Message}"); }
     }
 
     private static void EnsureSqliteUserSignatureColumn(AppDbContext db)
     {
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN SignaturePath TEXT NULL;"); } catch { }
+        // واحد سازمانیِ کاربر (SQLite: خطای «ستون تکراری» پذیرفته می‌شود)
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN OrganizationId INTEGER NULL;"); } catch { }
     }
 
     private static void EnsureSystemUserPhoneColumn(AppDbContext db)
