@@ -52,9 +52,13 @@ public class IncomingLetterService : IIncomingLetterService
     /// date: تاریخ ورود/ثبت نامه (DateErsal) — مبنای جزء «سال». پیش‌تر سال از
     /// DateTime.Now گرفته می‌شد و نامهٔ backdate‌شده شمارهٔ سالِ امروز را می‌گرفت.
     /// </summary>
-    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date)
+    /// <param name="userId">
+    /// شناسهٔ کاربری که نامه را ثبت می‌کند — مبنای جزء «واحد» در شمارهٔ نامه.
+    /// پیش از این پاس داده نمی‌شد و همیشه کد واحد پیش‌فرض شرکت در شماره می‌نشست.
+    /// </param>
+    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date, int? userId = null)
     {
-        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date);
+        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date, userId: userId);
         if (!string.IsNullOrEmpty(s)) return s;
 
         var pc = new PersianCalendar();
@@ -541,7 +545,7 @@ public class IncomingLetterService : IIncomingLetterService
             throw new Exception($"شمارهٔ اندیکاتور {numberSabt} پیش‌تر برای نامهٔ واردهٔ دیگری ثبت شده است. لطفاً شمارهٔ دیگری وارد کنید یا فیلد شماره را خالی بگذارید تا خودکار تخصیص یابد.");
 
         // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
-        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate);
+        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate, userId);
 
         var source = new LetterSource
         {

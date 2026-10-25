@@ -91,6 +91,25 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     /// <summary>
+    /// شناسهٔ سمتِ پیش‌فرضِ یک کاربر (SematId — نه OrganizationId) برای fallback جزء «واحد»
+    /// در شمارهٔ نامه، وقتی کاربر واحد سازمانی اختصاصی ندارد.
+    /// </summary>
+    private async Task<int?> DefaultSematIdAsync(int userId)
+    {
+        if (userId <= 0) return null;
+        return await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId == userId && s.DefaultSemat && s.IsActive && !s.IsDelete
+                        && s.OrganizationId > 0)
+            .Select(s => (int?)s.SematId)
+            .FirstOrDefaultAsync()
+            ?? await _db.Semats.AsNoTracking()
+                .Where(s => s.UserId == userId && s.IsActive && !s.IsDelete && s.OrganizationId > 0)
+                .OrderBy(s => s.SematId)
+                .Select(s => (int?)s.SematId)
+                .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
     /// ساخت شماره نامه صادره از ساختار پیکربندی‌شده (TypeForm=2) — قابل تنظیم از
     /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
     /// «سال/ص-شماره» (مثل 1404/ص-5) حفظ می‌شود تا رفتار قدیمی نشکند.
@@ -253,7 +272,10 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = await BuildLetterNumberAsync(number, now, userId: creatorUserId),
+            // جزء «واحد»: اول واحدِ اختصاصی خودِ سازندهٔ نامه، بعد سازمانِ سمتِ پیش‌فرض او
+            // و در نهایت واحد پیش‌فرض شرکت فعال (منطق در LetterStratureService).
+            LetterNumber = await BuildLetterNumberAsync(number, now,
+                sematId: await DefaultSematIdAsync(creatorUserId), userId: creatorUserId),
             // هر دو ستون برای سازگاری دیتابیس‌های جدید و قدیمی مقداردهی می‌شوند.
             CreatorUserId = creatorUserId,
             CreatorId = creatorUserId,
