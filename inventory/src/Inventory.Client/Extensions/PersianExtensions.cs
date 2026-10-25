@@ -35,6 +35,16 @@ public static class PersianExtensions
     public static string Num(this int v) => Fa.Number(v);
 
     /// <summary>
+    /// عددِ شناسه‌ای (شمارهٔ سند/صورتحساب/فاکتور) با ارقام فارسی و **بدون** جداکنندهٔ سه‌رقمی.
+    /// شمارهٔ سند یک شناسه است نه مبلغ؛ «۱۲۳٬۴۵۶» هم اشتباه خوانده می‌شود و هم در کپی/جستجو
+    /// مشکل ایجاد می‌کند، بنابراین برای شماره‌ها به‌جای <see cref="Num(int)"/> از این استفاده کنید.
+    /// </summary>
+    public static string NoGroup(this int v) => Fa.Digits(v.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>مثل <see cref="NoGroup(int)"/> برای شناسه‌های بزرگ‌تر از int.</summary>
+    public static string NoGroup(this long v) => Fa.Digits(v.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>
     /// مقدار/تعداد با ارقام فارسی و جداکننده هزارگان، با حفظ اعشار — مثلاً ۶٫۵ یا ۱۲۳۴٫۲۵.
     /// برخلاف <see cref="Num(decimal)"/> عدد را گرد نمی‌کند (برای مقدارهای کسری مثل ۲٫۵ لازم است).
     /// </summary>

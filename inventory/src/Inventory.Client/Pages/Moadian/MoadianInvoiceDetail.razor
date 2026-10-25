@@ -46,7 +46,7 @@ else
                 </div>
                 <h1 class="mi-d-title">
                     <span class="cap">صورتحساب</span>
-                    <span class="no num">#@(vm.Id.Num())</span>
+                    <span class="no num">#@(vm.Id.NoGroup())</span>
                 </h1>
                 <div class="mi-d-meta">
                     <span><i class="bi bi-calendar3" aria-hidden="true"></i><b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
@@ -395,7 +395,7 @@ else
                 </div>
                 <div class="mprint-document-title">صورت حساب الکترونیکی</div>
                 <div class="mprint-head-side mprint-head-number">
-                    <div><span>شماره فاکتور:</span><b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></div>
+                    <div><span>شماره فاکتور:</span><b class="num">@(vm.NumberInvoice?.NoGroup() ?? vm.Id.NoGroup())</b></div>
                     <div><span>شماره منحصر به‌فرد مالیاتی:</span><b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></div>
                     <div><span>شناسه یکتای حافظه مالیاتی:</span><b class="num" dir="ltr">@Text(vm.TaxMemoryID)</b></div>
                 </div>
@@ -446,7 +446,7 @@ else
                         <tr class="mprint-continuation-head">
                             <th colspan="12">
                                 <span>صورت حساب الکترونیکی</span>
-                                <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></span>
+                                <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.NoGroup() ?? vm.Id.NoGroup())</b></span>
                                 <span>شماره مالیاتی: <b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></span>
                                 <span>خریدار: <b>@Text(buyer?.Name ?? vm.CustomerName)</b></span>
                                 <span>تاریخ: <b class="num">@MoadianUi.Shamsi(vm.DateOrder)</b></span>
@@ -504,7 +504,7 @@ else
             <section class="mprint-payment-section">
                 @* اگر جمع‌ها به صفحهٔ آخر منتقل شوند، شمارهٔ سند و خریدار همراه آن‌ها چاپ می‌شود. *@
                 <div class="mprint-final-reference">
-                    <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.Num() ?? vm.Id.Num())</b></span>
+                    <span>شماره فاکتور: <b class="num">@(vm.NumberInvoice?.NoGroup() ?? vm.Id.NoGroup())</b></span>
                     <span>شماره مالیاتی: <b class="num" dir="ltr">@Text(vm.NewTaxNumber ?? vm.TaxNumber)</b></span>
                     <span>خریدار: <b>@Text(buyer?.Name ?? vm.CustomerName)</b></span>
                 </div>
