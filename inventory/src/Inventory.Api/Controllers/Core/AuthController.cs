@@ -203,6 +203,14 @@ public class AuthController : ControllerBase
             using var trimmed = image.Clone(ctx => ctx
                 .Crop(crop)
                 .Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
+            // Keep the stored signature compact without touching its transparent alpha channel.
+            if (trimmed.Width > 1200 || trimmed.Height > 480)
+                trimmed.Mutate(ctx => ctx.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(1200, 480),
+                    Sampler = KnownResamplers.Lanczos3
+                }));
             await using var png = new MemoryStream();
             await trimmed.SaveAsync(png, new PngEncoder { ColorType = SixLabors.ImageSharp.Formats.Png.PngColorType.RgbWithAlpha });
             processedPng = png.ToArray();

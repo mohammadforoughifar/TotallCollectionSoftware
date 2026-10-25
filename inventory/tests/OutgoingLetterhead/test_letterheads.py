@@ -86,8 +86,44 @@ class LetterheadAssetsTests(unittest.TestCase):
                       "authored text must not be truncated at a closing-looking line")
         self.assertIn(".Text(signer.Name)", source)
         self.assertIn(".Text(signer.Role)", source)
-        self.assertIn(".Image(signer.Signature)", source)
-        self.assertIn("if (signerRows.Count > 0)", source)
+        self.assertIn(".Svg(signature.Svg).FitArea()", source)
+        self.assertIn("if (signerCards.Count > 0)", source)
+
+    def test_a5_header_reservation_and_body_gap_are_consistent_on_every_page(self):
+        source = SERVICE.read_text()
+        aria_branch = source.split("if (isAriaLetterhead)", 1)[1].split("else if (hasLetterhead && letterheadCompanyId == HomepaCompanyId)", 1)[0]
+        self.assertIn(".Height(isA5 ? 150 : 160)", aria_branch)
+        self.assertIn("var contentTopPadding = withMargin || hasLetterhead ? 30f : 0f;", source)
+        self.assertIn("page.Content().PaddingTop(contentTopPadding)", source)
+        self.assertIn("page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);", source)
+
+    def test_print_popup_is_reserved_on_native_menu_click(self):
+        view = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "Pages" / "Office" / "Letters" / "Outgoing" / "OutgoingLetterView.razor").read_text()
+        shell = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "wwwroot" / "js" / "app-shell.js").read_text()
+        self.assertIn('data-ltx-print-option', view)
+        self.assertIn("document.addEventListener('click'", shell)
+        self.assertIn("window.ltxReservePrintWindow()", shell)
+        self.assertIn("window.ltxPrintPendingWindows", shell)
+
+    def test_print_api_keeps_access_and_not_found_guards(self):
+        controller = (API / "Controllers" / "Office" / "OutgoingLettersController.cs").read_text()
+        print_action = controller.split('public async Task<IActionResult> Print(', 1)[1].split('// ==================== گردش / ارجاع', 1)[0]
+        self.assertIn('ForbiddenUnlessAsync(Module, "Read")', print_action)
+        self.assertIn('if (pdf == null) return NotFound', print_action)
+        self.assertIn('!string.Equals(size, "A4"', print_action)
+        self.assertIn('!string.Equals(size, "A5"', print_action)
+
+    def test_saved_signature_preview_uses_authenticated_bytes_not_an_img_request(self):
+        users_page = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "Pages" / "System" / "Users.razor").read_text()
+        auth_controller = (API / "Controllers" / "Core" / "AuthController.cs").read_text()
+        self.assertIn('Http.GetAsync($"/api/auth/users/signature/{userId}")', users_page)
+        self.assertIn('data:image/png;base64,', users_page)
+        self.assertNotIn('src="/api/auth/users/signature/@form.Id"', users_page)
+        self.assertIn('[Authorize]', auth_controller.split('[HttpGet("users/signature/{id:int}")]', 1)[1].split('private static byte[] CropSignatureToAlphaBounds', 1)[0])
+        self.assertIn('SaveNamedAsync("UserSignatures", id, output, $"user_{id}_signature.png")', auth_controller)
+        self.assertIn('Size = new Size(1200, 480)', auth_controller)
+        self.assertIn('PngColorType.RgbWithAlpha', auth_controller)
+        self.assertIn('Accept="image/png"', users_page)
 
     def test_templates_travel_with_build_and_publish(self):
         project = ET.parse(API / "Inventory.Api.csproj").getroot()

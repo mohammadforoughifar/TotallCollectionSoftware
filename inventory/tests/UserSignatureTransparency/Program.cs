@@ -117,6 +117,16 @@ try
     await db.SaveChangesAsync();
     store.Delete(legacyPath);
 
+    // Recreate the disk store/controller as a process restart would; the persisted path/file stay usable.
+    var restartedStore = new FileStore(environment);
+    var restartedPhotos = new UserPhotoService(restartedStore, NullLogger<UserPhotoService>.Instance);
+    var restartedController = new AuthController(null!, db, restartedStore, restartedPhotos);
+    var restartedPreview = await restartedController.UserSignature(user.Id);
+    Check(restartedPreview is FileContentResult, "saved signature remains readable after store/controller restart");
+    Check(((FileContentResult)restartedPreview).FileContents.Length > 0,
+        "signature bytes survive restart without being deleted or overwritten");
+    store = restartedStore;
+
     // Exercise the production outgoing-letter PDF content builder using the saved signature.
     var printService = new OutgoingLetterPrintService(db, environment, NullLogger<OutgoingLetterPrintService>.Instance);
     var signer = new OutgoingLetterSigner { UserId = user.Id, Order = 1, IsSigned = true, User = savedUser };
@@ -138,6 +148,48 @@ try
     Check(!pdfText.Contains("/Subtype /Image", StringComparison.Ordinal),
         "signature is emitted as ink-only vector paths, not a raster XObject that can lose its alpha mask");
 
+    var a5ShortPdf = (byte[])build.Invoke(printService, new object?[]
+    {
+        new OutgoingLetter
+        {
+            Id = 2, LetterNumber = "1405/2", SadereNumber = "1405/2", DateSabt = DateTime.Now,
+            Title = "آزمون A5", ReceiverOrganization = "گیرنده", Text = "متن کوتاه A5"
+        },
+        new List<OutgoingLetterSigner> { signer },
+        new Dictionary<int, string>(), new Dictionary<int, string>(),
+        false, true, true, new List<OutgoingLetterCopyTo>(), false, null, true
+    })!;
+    using (var a5ShortDocument = PdfReader.Open(new MemoryStream(a5ShortPdf), PdfDocumentOpenMode.Import))
+    {
+        Check(a5ShortDocument.PageCount == 1, "short A5 letter with one signer fits on one page");
+        Check(Math.Abs(a5ShortDocument.Pages[0].Width.Point - 419.53) < 1, "short signed output is A5 sized");
+    }
+
+    var longText = string.Join(" ", Enumerable.Repeat("متن آزمایشی بلند برای بررسی صفحه‌بندی نامه در اندازه‌های مختلف و حفظ بلوک امضاکنندگان.", 400));
+    var multipleSigners = new List<OutgoingLetterSigner>
+    {
+        signer,
+        new OutgoingLetterSigner { UserId = user.Id, Order = 2, IsSigned = true, User = savedUser }
+    };
+    foreach (var isA5 in new[] { false, true })
+    {
+        var longPdf = (byte[])build.Invoke(printService, new object?[]
+        {
+            new OutgoingLetter
+            {
+                Id = isA5 ? 4 : 3, LetterNumber = "1405/3", SadereNumber = "1405/3", DateSabt = DateTime.Now,
+                Title = "آزمون چندصفحه‌ای", ReceiverOrganization = "گیرنده", Text = longText
+            },
+            multipleSigners,
+            new Dictionary<int, string>(), new Dictionary<int, string>(),
+            false, isA5, true, new List<OutgoingLetterCopyTo>(), false, null, true
+        })!;
+        using var longDocument = PdfReader.Open(new MemoryStream(longPdf), PdfDocumentOpenMode.Import);
+        Check(longDocument.PageCount > 1, $"long {(isA5 ? "A5" : "A4")} letter with multiple signers spans multiple pages");
+        Check(Math.Abs(longDocument.Pages[0].Width.Point - (isA5 ? 419.53 : 595.28)) < 1,
+            $"long {(isA5 ? "A5" : "A4")} output keeps its selected page size");
+    }
+
     // Run the same PDFsharp page-overlay stage used for company letterheads.
     var backgroundPath = Path.Combine(tempRoot, "blank-letterhead.pdf");
     using (var background = new PdfSharp.Pdf.PdfDocument())
@@ -151,6 +203,30 @@ try
     Check(finalDocument.PageCount == 1, "PDFsharp letterhead overlay retains the printed page");
     Check(!Encoding.Latin1.GetString(finalPdf).Contains("/Subtype /Image", StringComparison.Ordinal),
         "letterhead overlay does not reintroduce a raster signature/alpha mask");
+
+    using var oversizedSignature = new Image<Rgba32>(1400, 600, new Rgba32(0, 0, 0, 0));
+    for (var x = 20; x < 1380; x++) oversizedSignature[x, 300] = new Rgba32(15, 25, 45, 255);
+    for (var y = 20; y < 580; y++) oversizedSignature[700, y] = new Rgba32(15, 25, 45, 255);
+    await using var oversizedPng = new MemoryStream();
+    await oversizedSignature.SaveAsync(oversizedPng, new PngEncoder { ColorType = PngColorType.RgbWithAlpha });
+    var oversizedBytes = oversizedPng.ToArray();
+    using (var oversizedStream = new MemoryStream(oversizedBytes, writable: false))
+    {
+        var oversizedFile = new FormFile(oversizedStream, 0, oversizedBytes.Length, "file", "oversized.png")
+        {
+            Headers = new HeaderDictionary()
+        };
+        var oversizedUploadResponse = await controller.UploadUserSignature(user.Id, oversizedFile);
+        Check(oversizedUploadResponse is OkObjectResult,
+            "oversized transparent PNG signature uploads successfully");
+    }
+    var resizedBytes = store.ReadBytes((await db.Users.SingleAsync(x => x.Id == user.Id)).SignaturePath)
+        ?? throw new Exception("FAIL: resized signature is missing");
+    using var resizedImage = Image.Load<Rgba32>(resizedBytes);
+    Check(resizedImage.Width <= 1200 && resizedImage.Height <= 480,
+        "stored signature is resized to the print-safe maximum bounds");
+    Check(resizedBytes[25] == 6 && resizedImage[0, 0].A == 0,
+        "resizing preserves RGBA color mode and transparent padding");
 
     Console.WriteLine("User signature RGBA upload and PDF transparency probes passed.");
 }

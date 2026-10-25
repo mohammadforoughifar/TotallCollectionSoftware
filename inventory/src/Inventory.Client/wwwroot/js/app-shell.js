@@ -204,10 +204,28 @@ window.ltxOpenPdf = function (base64, fileName) {
 // سپس ltxPrintReady پس از رسیدن PDF، آن را داخل همان پنجره با iframe نمایش می‌دهد
 // (نمایشگر PDF مرورگر دکمهٔ چاپ خودش را دارد)؛ ltxPrintFail هم خطا را نشان می‌دهد.
 window.ltxPrintWindows = {};
+window.ltxPrintPendingWindows = [];
+window.ltxReservePrintWindow = function () {
+    try {
+        // Blazor dispatches @onclick through .NET first; reserve the popup in the
+        // native click's capture phase so browser popup blockers still recognize
+        // the user's gesture when the PDF request starts asynchronously.
+        var w = window.open('about:blank', '_blank');
+        if (w) window.ltxPrintPendingWindows.push(w);
+        return !!w;
+    } catch (e) {
+        return false;
+    }
+};
+document.addEventListener('click', function (event) {
+    var target = event.target instanceof Element ? event.target.closest('[data-ltx-print-option]') : null;
+    if (target) window.ltxReservePrintWindow();
+}, true);
 window.ltxPrintBegin = function () {
     try {
         var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-        var w = window.open('about:blank', '_blank');
+        var w = window.ltxPrintPendingWindows.shift();
+        if (!w || w.closed) w = window.open('about:blank', '_blank');
         if (!w) return null; // popup blocked → caller falls back to download
         w.document.open();
         w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>در حال آماده‌سازی چاپ…</title></head>' +

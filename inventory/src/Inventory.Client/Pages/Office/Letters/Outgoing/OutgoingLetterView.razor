@@ -33,17 +33,17 @@
                 <span class="t"><i class="bi bi-envelope-paper" style="color:var(--p2)"></i> @letter.Title</span>
                 <button class="icb" title="بازگشت به کارتابل" @onclick="GoCartable"><i class="bi bi-arrow-right-circle"></i></button>
                 <span class="print-wr">
-                    <button class="lbtn ghost" title="چاپ نامٔ صادره روی سربرگ" disabled="@printing" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i> چاپ</button>
+                    <button type="button" class="lbtn ghost" title="چاپ نامٔ صادره روی سربرگ" aria-haspopup="true" aria-expanded="@printMenuOpen" disabled="@printing" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i> چاپ</button>
                     @if (printMenuOpen)
                     {
                         <div class="ltmenu" @onclick:stopPropagation="true">
                             <label class="print-letterhead-toggle"><input type="checkbox" @bind="printWithLetterhead" /> چاپ با سربرگ شرکت</label>
                             <div class="mdiv"></div>
-                            <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
-                            <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                            <button type="button" data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                            <button type="button" data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
                             <div class="mdiv"></div>
-                            <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
-                            <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                            <button type="button" data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                            <button type="button" data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
                         </div>
                     }
                 </span>

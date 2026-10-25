@@ -806,9 +806,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .DirectionFromRightToLeft());
 
                 var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
-                var contentTopPadding = withMargin || hasLetterhead
-                    ? (isAriaLetterhead ? (isA5 ? 26f : 36f) : 30f) // فضای امن سربرگ حفظ شود
-                    : 0f;
+                // Keep the same clear gap between every header reservation and the body.
+                // QuestPDF repeats both the header and this content offset on every page.
+                var contentTopPadding = withMargin || hasLetterhead ? 30f : 0f;
 
                 if (isAriaLetterhead)
                 {
@@ -821,7 +821,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     var numberFieldInset = 27f * fieldScale;
                     var attachmentFieldInset = 21f * fieldScale;
                     page.Header()
-                        .Height(isA5 ? 94 : 134)
+                        .Height(isA5 ? 150 : 160)
                         .PaddingTop(isA5 ? 64 : 90)
                         .AlignLeft()
                         .Width(fieldWidth * 3)
