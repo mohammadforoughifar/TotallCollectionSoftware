@@ -18,7 +18,8 @@ public interface IEmailClientService
     Task<EmailTestResultDto> TestAccountAsync(SaveEmailAccountDto dto);
 
     // ---------- پیام‌ها ----------
-    Task<EmailSyncResultDto> SyncAsync(int emailId);
+    /// <summary>همگام‌سازیِ یک حساب و یک صندوق (Inbox | Sent | Junk)</summary>
+    Task<EmailSyncResultDto> SyncAsync(int emailId, string box = "Inbox");
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوق دریافتیِ همه‌ی حساب‌ها.
     /// personal=true → صفحهٔ «ایمیل شخصی»: فقط حساب‌های شخصیِ کاربر</summary>
@@ -32,17 +33,18 @@ public interface IEmailClientService
     /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
         int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null);
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
         int page = 1, int pageSize = 25, bool starred = false, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null);
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
         int page = 1, int pageSize = 25, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null);
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null,
+        bool? isRead = null);
 
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id);
     Task<bool> ToggleNeshanAsync(string box, int id);
@@ -144,8 +146,9 @@ public class EmailClientService : IEmailClientService
 
     // ==================== پیام‌ها ====================
 
-    public Task<EmailSyncResultDto> SyncAsync(int emailId) =>
-        _api.PostAsync<EmailSyncResultDto>($"api/email/accounts/{emailId}/sync");
+    public Task<EmailSyncResultDto> SyncAsync(int emailId, string box = "Inbox") =>
+        _api.PostLongAsync<EmailSyncResultDto>(
+            $"api/email/accounts/{emailId}/sync?box={Uri.EscapeDataString(string.IsNullOrWhiteSpace(box) ? "Inbox" : box)}");
 
     public Task<EmailSyncResultDto> SyncInboxAsync(bool personal = false) =>
         _api.PostLongAsync<EmailSyncResultDto>($"api/email/sync-inbox{(personal ? "?personal=true" : "")}");
@@ -156,27 +159,33 @@ public class EmailClientService : IEmailClientService
     public Task<EmailSyncResultDto> SyncJunkAsync(bool personal = false) =>
         _api.PostLongAsync<EmailSyncResultDto>($"api/email/sync-junk{(personal ? "?personal=true" : "")}");
 
+    /// <summary>تاریخ همیشه با قالبِ ثابتِ میلادی (yyyy-MM-dd) و بدونِ وابستگی به کالچر فرستاده می‌شود</summary>
+    private static string DateArg(DateTime d) =>
+        d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
     public Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
         int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
         if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
-        if (unreadOnly == true) q.Add("unreadOnly=true");
+        // هر دو حالتِ خوانده/خوانده‌نشده فرستاده می‌شود (قبلاً «خوانده‌شده» هیچ پارامتری نداشت و بی‌اثر بود)
+        if (unreadOnly.HasValue) q.Add($"unreadOnly={(unreadOnly.Value ? "true" : "false")}");
+        if (isRead.HasValue) q.Add($"isRead={(isRead.Value ? "true" : "false")}");
         if (folderId != null) q.Add($"folderId={folderId.Value}"); // 0=بایگانی‌نشده، -1=بایگانی‌شده، n=پوشه n
         if (spam) q.Add("spam=true");
         if (starred) q.Add("starred=true");
         if (personal) q.Add("personal=true");
-        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
-        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
-        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
+        if (dateFrom.HasValue) q.Add($"dateFrom={DateArg(dateFrom.Value)}");
+        if (dateTo.HasValue) q.Add($"dateTo={DateArg(dateTo.Value)}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={(hasAttachment.Value ? "true" : "false")}");
         return _api.GetAsync<EmailListPageDto>($"api/email/inbox?{string.Join("&", q)}");
     }
 
     public Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
         int page = 1, int pageSize = 25, bool starred = false, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
@@ -184,24 +193,27 @@ public class EmailClientService : IEmailClientService
         if (folderId != null) q.Add($"folderId={folderId.Value}"); // 0=بایگانی‌نشده، -1=بایگانی‌شده، n=پوشه n
         if (starred) q.Add("starred=true");
         if (personal) q.Add("personal=true");
-        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
-        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
-        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
+        if (isRead.HasValue) q.Add($"isRead={(isRead.Value ? "true" : "false")}");
+        if (dateFrom.HasValue) q.Add($"dateFrom={DateArg(dateFrom.Value)}");
+        if (dateTo.HasValue) q.Add($"dateTo={DateArg(dateTo.Value)}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={(hasAttachment.Value ? "true" : "false")}");
         return _api.GetAsync<EmailListPageDto>($"api/email/sent?{string.Join("&", q)}");
     }
 
     public Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
         int page = 1, int pageSize = 25, bool personal = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null)
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? unreadOnly = null,
+        bool? isRead = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
         if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
         if (personal) q.Add("personal=true");
-        if (dateFrom.HasValue) q.Add($"dateFrom={dateFrom.Value:yyyy-MM-dd}");
-        if (dateTo.HasValue) q.Add($"dateTo={dateTo.Value:yyyy-MM-dd}");
-        if (hasAttachment.HasValue) q.Add($"hasAttachment={hasAttachment.Value.ToString().ToLower()}");
-        if (unreadOnly.HasValue) q.Add($"unreadOnly={unreadOnly.Value.ToString().ToLower()}");
+        if (dateFrom.HasValue) q.Add($"dateFrom={DateArg(dateFrom.Value)}");
+        if (dateTo.HasValue) q.Add($"dateTo={DateArg(dateTo.Value)}");
+        if (hasAttachment.HasValue) q.Add($"hasAttachment={(hasAttachment.Value ? "true" : "false")}");
+        if (unreadOnly.HasValue) q.Add($"unreadOnly={(unreadOnly.Value ? "true" : "false")}");
+        if (isRead.HasValue) q.Add($"isRead={(isRead.Value ? "true" : "false")}");
         return _api.GetAsync<EmailListPageDto>($"api/email/archive?{string.Join("&", q)}");
     }
 

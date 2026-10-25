@@ -35,6 +35,24 @@ public class EmailController : RbacControllerBase
     }
 
     /// <summary>دسترسی دبیرخانه صادره — برای مدیریت حساب‌های رسمی دبیرخانه</summary>
+    /// <summary>
+    /// تجزیهٔ تاریخِ فیلتر مستقل از کالچرِ سرور.
+    /// قبلاً این پارامتر مستقیماً DateTime? بود و اگر سیستم‌عامل/سرویس با کالچرِ
+    /// غیرمیلادی اجرا می‌شد، «2026-10-25» بی‌صدا null می‌شد و فیلترِ تاریخ
+    /// هیچ اثری نداشت. حالا فقط قالب‌های صریح پذیرفته می‌شوند (yyyy-MM-dd یا ISO).
+    /// </summary>
+    private static DateTime? ParseDate(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var s = raw.Trim();
+        var t = s.IndexOf('T');
+        if (t > 0) s = s[..t];
+        if (DateTime.TryParseExact(s, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var exact)) return exact;
+        return DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var loose) ? loose : null;
+    }
+
     private async Task<bool> IsDabirkhaneAsync() =>
         await HasAsync("OutgoingLetters", "Dabirkhane") || await HasAsync(Module, "Delete");
 
@@ -112,12 +130,12 @@ public class EmailController : RbacControllerBase
         return Ok(new { message = "ایمیل ارسال شد." });
     }
 
-    /// <summary>همگام‌سازی صندوق دریافت (IMAP) — آخرین ۵۰ پیام سرور بررسی می‌شود</summary>
+    /// <summary>همگام‌سازی صندوق (IMAP) — box: Inbox | Sent | Junk (پیش‌فرض: Inbox)</summary>
     [HttpPost("accounts/{emailId:int}/sync")]
-    public async Task<IActionResult> Sync(int emailId)
+    public async Task<IActionResult> Sync(int emailId, [FromQuery] string? box = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var r = await _email.SyncAsync(emailId, MyUserId, await IsDabirkhaneAsync());
+        var r = await _email.SyncAsync(emailId, MyUserId, await IsDabirkhaneAsync(), box ?? "Inbox");
         return Ok(r);
     }
 
@@ -158,7 +176,8 @@ public class EmailController : RbacControllerBase
     public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
         [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false,
-        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] string? dateFrom = null, [FromQuery] string? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] bool? isRead = null,
         [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
@@ -166,7 +185,7 @@ public class EmailController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync(),
-            personal, page, pageSize, folderId, spam, starred, dateFrom, dateTo, hasAttachment));
+            personal, page, pageSize, folderId, spam, starred, ParseDate(dateFrom), ParseDate(dateTo), hasAttachment, isRead));
     }
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
@@ -174,7 +193,8 @@ public class EmailController : RbacControllerBase
     public async Task<IActionResult> Sent([FromQuery] int? emailId, [FromQuery] string? search,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
         [FromQuery] bool starred = false, [FromQuery] bool personal = false,
-        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] string? dateFrom = null, [FromQuery] string? dateTo = null, [FromQuery] bool? hasAttachment = null,
+        [FromQuery] bool? isRead = null,
         [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
@@ -182,15 +202,15 @@ public class EmailController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
-            personal, page, pageSize, folderId, starred, dateFrom, dateTo, hasAttachment));
+            personal, page, pageSize, folderId, starred, ParseDate(dateFrom), ParseDate(dateTo), hasAttachment, isRead));
     }
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     [HttpGet("archive")]
     public async Task<IActionResult> Archive([FromQuery] int? emailId, [FromQuery] string? search,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false,
-        [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null,
-        [FromQuery] bool? hasAttachment = null, [FromQuery] bool? unreadOnly = null,
+        [FromQuery] string? dateFrom = null, [FromQuery] string? dateTo = null,
+        [FromQuery] bool? hasAttachment = null, [FromQuery] bool? unreadOnly = null, [FromQuery] bool? isRead = null,
         [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
@@ -198,7 +218,7 @@ public class EmailController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetArchiveAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
-            personal, page, pageSize, dateFrom, dateTo, hasAttachment, unreadOnly));
+            personal, page, pageSize, ParseDate(dateFrom), ParseDate(dateTo), hasAttachment, unreadOnly, isRead));
     }
 
     /// <summary>جزئیات ایمیل — box: Inbox یا Sent (دریافتی خودکار خوانده‌شده می‌شود)</summary>

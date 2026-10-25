@@ -926,15 +926,28 @@
         tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false; curPage = 1;
         if (t == "accounts") await LoadAccountsAsync();
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
-        // دریافتی/ارسالی/اسپم: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
-        // سپس فهرستِ صفحه‌بندی‌شده از بانک خوانده می‌شود.
+        // دریافتی/ارسالی/اسپم: اول فهرستِ صفحه‌بندی‌شده از بانک خوانده می‌شود تا کاربر
+        // معطلِ سرورِ IMAP نماند؛ بعد همگام‌سازی در پس‌زمینه انجام و در صورت رسیدنِ
+        // پیامِ تازه فهرست بازخوانی می‌شود (حداکثر هر ۶۰ ثانیه یک‌بار برای هر صندوق).
         if (t is "inbox" or "sent" or "spam")
         {
-            if (VisibleAccounts.Any(a => a.IsActive)) await SyncFolderAsync(t);
-            else { messages = new(); totalItems = 0; totalPages = 1; unreadCount = 0; spamCount = 0; }
+            if (!VisibleAccounts.Any(a => a.IsActive))
+            {
+                messages = new(); totalItems = 0; totalPages = 1; unreadCount = 0; spamCount = 0;
+                return;
+            }
+            await ReloadAsync();
+            if (ShouldAutoSync(t)) _ = SyncFolderAsync(t);
+            return;
         }
         await ReloadAsync();
     }
+
+    /// <summary>آخرین همگام‌سازیِ موفقِ هر صندوق (برای جلوگیری از تکرارِ پشت‌سرهم)</summary>
+    private readonly Dictionary<string, DateTime> _lastSyncAt = new();
+
+    private bool ShouldAutoSync(string box) =>
+        !_lastSyncAt.TryGetValue(box, out var last) || (DateTime.UtcNow - last).TotalSeconds >= 60;
 
     /// <summary>
     /// همگام‌سازیِ افزایشی: بارِ اول همه‌ی پیام‌ها را در بانک می‌نشاند؛
@@ -943,6 +956,7 @@
     private async Task SyncFolderAsync(string box)
     {
         syncing = true;
+        _lastSyncAt[box] = DateTime.UtcNow;
         StateHasChanged();
         try
         {
@@ -954,7 +968,11 @@
                 _ => await EmailSvc.SyncInboxAsync(personalMode)
             };
             // فقط هنگام رسیدنِ پیام تازه اطلاع می‌دهیم تا هر بار کلیک مزاحم نشود
-            if (r.NewCount > 0) Toast.Success(r.Message);
+            if (r.NewCount > 0)
+            {
+                Toast.Success(r.Message);
+                await ReloadAsync();   // پیام‌های تازه در همان لحظه در فهرست دیده شوند
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { syncing = false; StateHasChanged(); }
@@ -973,12 +991,18 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    /// <summary>شمارنده‌ی درخواست‌ها — اگر کاربر سریع چند فیلتر را عوض کند، فقط نتیجه‌ی
+    /// آخرین درخواست روی صفحه می‌نشیند (قبلاً نتیجه‌ی درخواستِ قدیمی‌تر می‌توانست
+    /// دیرتر برسد و فیلتر را «بی‌اثر» نشان دهد).</summary>
+    private int _reloadVersion;
+
     /// <summary>
     /// خواندنِ یک صفحه از فهرست. همه‌ی پالایش‌ها (جستجو، پوشه، اسپم، نشان،
     /// حساب) و برشِ صفحه در بانک انجام می‌شود و فقط همین صفحه به کلاینت می‌آید.
     /// </summary>
     private async Task ReloadAsync()
     {
+        var version = ++_reloadVersion;
         loading = true;
         try
         {
@@ -995,20 +1019,29 @@
             // فیلترهای پیشرفته
             DateTime? df = dateFrom;
             DateTime? dt = dateTo;
-            bool? uo = readFilter == "unread" ? true : readFilter == "read" ? false : null;
+            // اگر کاربر «از تاریخ» را بعد از «تا تاریخ» انتخاب کند، بازه بی‌صدا خالی
+            // برمی‌گشت؛ اینجا جای دو تاریخ عوض می‌شود تا بازه همیشه معتبر باشد.
+            if (df.HasValue && dt.HasValue && df.Value.Date > dt.Value.Date) (df, dt) = (dt, df);
+            // «خوانده‌شده» و «خوانده‌نشده» هر دو به سرور می‌روند (isRead: true = فقط خوانده‌شده).
+            // قبلاً انتخابِ «خوانده‌شده» هیچ پارامتری نمی‌فرستاد و مثلِ «همه» رفتار می‌کرد.
+            bool? uo = readFilter == "unread" ? true : null;
+            bool? ir = readFilter == "read" ? true : readFilter == "unread" ? false : null;
             bool? ha = attachmentFilter == "with" ? true : attachmentFilter == "without" ? false : null;
 
             EmailListPageDto res;
             if (tab == "archive")
-                res = await EmailSvc.GetArchiveAsync(fid, term, curPage, pageSize, personalMode, df, dt, ha, uo);
+                res = await EmailSvc.GetArchiveAsync(fid, term, curPage, pageSize, personalMode, df, dt, ha, uo, ir);
             else if (tab == "sent")
-                res = await EmailSvc.GetSentAsync(fid, term, null, curPage, pageSize, false, personalMode, df, dt, ha);
+                res = await EmailSvc.GetSentAsync(fid, term, null, curPage, pageSize, false, personalMode, df, dt, ha, ir);
             else if (tab == "starred")
-                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, true, personalMode, df, dt, ha);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, true, personalMode, df, dt, ha, ir);
             else if (tab == "spam")
-                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, true, false, personalMode, df, dt, ha);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, true, false, personalMode, df, dt, ha, ir);
             else
-                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, false, personalMode, df, dt, ha);
+                res = await EmailSvc.GetInboxAsync(fid, term, uo, null, curPage, pageSize, false, false, personalMode, df, dt, ha, ir);
+
+            // درخواستِ تازه‌تری در جریان است — این نتیجه دور ریخته می‌شود
+            if (version != _reloadVersion) return;
 
             totalItems = res.TotalCount;
             totalPages = res.PageCount;
@@ -1041,8 +1074,8 @@
             // شمارنده فقط مربوط به صندوقِ دریافتی است
             if (restoredRead > 0 && tab == "inbox") unreadCount = Math.Max(0, unreadCount - restoredRead);
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == _reloadVersion) Toast.Error(ex.Message); }
+        finally { if (version == _reloadVersion) loading = false; }
     }
 
     /// <summary>رفتن به یک صفحه — همیشه از سرور خوانده می‌شود</summary>
@@ -1135,13 +1168,15 @@
     {
         if (accFilter <= 0) { Toast.Error("ابتدا یک حساب انتخاب کنید."); return; }
         syncing = true;
+        // صندوقِ همان تبی که باز است همگام می‌شود؛ قبلاً این دکمه در تبِ «ارسالی» و «اسپم»
+        // باز هم صندوقِ دریافتی را می‌خواند و نتیجه‌اش دیده نمی‌شد.
+        var syncBox = tab switch { "sent" => "Sent", "spam" => "Junk", _ => "Inbox" };
+        _lastSyncAt[tab] = DateTime.UtcNow;
         try
         {
-            // در تبِ اسپم پوشه‌ی هرزنامه (Junk) روی سرورِ IMAP خوانده می‌شود
-            var r = tab == "spam"
-                ? await EmailSvc.SyncJunkAsync(personalMode)
-                : await EmailSvc.SyncAsync(accFilter);
-            if (r.NewCount > 0) Toast.Success(r.Message);
+            var r = await EmailSvc.SyncAsync(accFilter, syncBox);
+            if (r.NewCount > 0 || r.Message.Contains("صف") || r.Message.Contains("در حال اجراست"))
+                Toast.Success(r.Message);
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

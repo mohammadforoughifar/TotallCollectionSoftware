@@ -34,7 +34,8 @@ public interface IEmailService
     Task<int> SendLetterEmailAsync(int letterId, DabirkhaneRegisterDto dto, string userName);
 
     // ---------- دریافت ----------
-    Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin);
+    /// <summary>همگام‌سازیِ یک حساب و یک صندوق مشخص (Inbox | Sent | Junk)</summary>
+    Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin, string box = "Inbox");
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر</summary>
     Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false);
@@ -50,20 +51,20 @@ public interface IEmailService
     Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         int? folderId = null, bool spamOnly = false, bool starredOnly = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null);
 
     /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
     Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         int? folderId = null, bool starredOnly = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null);
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null);
 
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه) — صفحه‌بندی سمت سرور
     /// با همان فیلترهای تاریخ/خوانده‌شدن/پیوستِ صندوق‌ها (نوار فیلترِ مشترکِ صفحه).</summary>
     Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null,
-        bool? unreadOnly = null);
+        bool? unreadOnly = null, bool? isRead = null);
 
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id, int userId, bool markRead, bool isDabirkhaneAdmin);
     Task MarkReadAsync(string box, int id, int userId, bool isDabirkhaneAdmin);
@@ -95,6 +96,13 @@ public class EmailService : IEmailService
     /// برای جلوگیری از قطع‌شدن درخواست؛ نوبتِ بعدی از همان شناسه ادامه می‌دهد.</summary>
     private const int MaxMessagesPerAccountPerSync = 700;
 
+    /// <summary>سقفِ پیام‌هایی که در یک درخواستِ همگام‌سازی پردازش می‌شود.
+    /// بقیه در نوبت‌های بعد (از همان UID ادامه) گرفته می‌شوند تا درخواست بی‌پاسخ نماند.</summary>
+    private const int MaxMessagesPerSyncRequest = 400;
+
+    /// <summary>تعداد پیام در هر دسته‌ی ذخیره‌سازی — به‌جای دو SaveChanges به‌ازای هر پیام</summary>
+    private const int SyncSaveBatchSize = 25;
+
     public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log, IOutgoingLetterPrintService print)
     {
         _db = db;
@@ -104,6 +112,44 @@ public class EmailService : IEmailService
     }
 
     // ==================== ابزارهای مشترک ====================
+
+    /// <summary>
+    /// تاریخِ پیام‌ها بر پایه‌ی ساعتِ ایران ذخیره و مقایسه می‌شود، نه ساعتِ سرور.
+    /// اگر تاریخ با ساعتِ سرور (مثلاً UTC) ذخیره شود، ایمیل‌های بعد از نیمه‌شبِ تهران
+    /// در روزِ قبل می‌افتند و فیلترِ تاریخ (و ستونِ تاریخ) یک روز جابه‌جا می‌شود.
+    /// </summary>
+    private static readonly TimeZoneInfo IranTz = ResolveIranTz();
+
+    private static TimeZoneInfo ResolveIranTz()
+    {
+        foreach (var id in new[] { "Iran Standard Time", "Asia/Tehran" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); } catch { }
+        }
+        return TimeZoneInfo.CreateCustomTimeZone("Iran+0330", TimeSpan.FromMinutes(210), "Iran", "Iran");
+    }
+
+    /// <summary>تبدیل زمانِ پیام (DateTimeOffset) به ساعتِ ایران</summary>
+    private static DateTime IranTime(DateTimeOffset dto) =>
+        TimeZoneInfo.ConvertTime(dto, IranTz).DateTime;
+
+    /// <summary>اکنون به وقتِ ایران</summary>
+    private static DateTime IranNow() =>
+        TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, IranTz).DateTime;
+
+    private static string NormalizeBox(string? box) => box?.Trim() switch
+    {
+        "Sent" or "sent" => "Sent",
+        "Junk" or "junk" or "Spam" or "spam" => "Junk",
+        _ => "Inbox"
+    };
+
+    /// <summary>قفلِ همگام‌سازیِ هر حساب — دو مسئولِ دبیرخانه نباید هم‌زمان یک صندوق را
+    /// بخوانند (وگرنه پیامِ تکراری یا UID پرش‌کرده پیش می‌آید).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> SyncGates = new();
+
+    private static SemaphoreSlim SyncGateOf(int emailId) =>
+        SyncGates.GetOrAdd(emailId, _ => new SemaphoreSlim(1, 1));
 
     private string AttachmentRoot =>
         Path.Combine(_env.ContentRootPath, "wwwroot", AttachmentFolder);
@@ -368,7 +414,7 @@ public class EmailService : IEmailService
             UId = "",
             ToDisplay = string.Join("، ", toList.Select(t => t.Address)),
             Subject = dto.Subject?.Trim() ?? "",
-            Date = DateTime.Now,
+            Date = IranNow(),
             Body = dto.Body ?? "",
             IsAttachment = false
         };
@@ -633,30 +679,36 @@ public class EmailService : IEmailService
     public async Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false)
         => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Junk", personalOnly);
 
-    /// <summary>همگام‌سازیِ دستیِ یک حساب (دکمه‌ی «دریافت» در فهرست حساب‌ها)</summary>
-    public async Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin)
+    /// <summary>
+    /// همگام‌سازیِ دستیِ یک حساب و یک صندوق (دکمه‌ی «دریافت ایمیل‌ها»).
+    /// box: Inbox | Sent | Junk — قبلاً این دکمه همیشه صندوقِ دریافتی را همگام می‌کرد،
+    /// پس در تبِ «ارسالی» و «اسپم» هیچ نتیجه‌ای دیده نمی‌شد.
+    /// </summary>
+    public async Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin, string box = "Inbox")
     {
         var acc = await AccessibleAccountAsync(emailId, userId, isDabirkhaneAdmin)
             ?? throw new Exception("حساب ایمیل پیدا نشد یا به شما تعلق ندارد.");
         if (!acc.IsActive) throw new Exception("حساب ایمیل غیرفعال است.");
 
-        var added = 0;
-        var total = 0;
-        var more = true;
-        while (more)
+        box = NormalizeBox(box);
+        var gate = SyncGateOf(acc.EmailId);
+        if (!await gate.WaitAsync(TimeSpan.FromSeconds(1)))
+            return new EmailSyncResultDto
+            {
+                AccountCount = 0,
+                Message = "همگام‌سازیِ این حساب همین حالا در حال اجراست؛ چند لحظه بعد دوباره تلاش کنید."
+            };
+        try
         {
-            var batch = await SyncAccountFolderAsync(acc, "Inbox");
-            added += batch.Added;
-            total = batch.Total;
-            more = batch.HasMore;
+            var r = await SyncAccountBoxAsync(acc, box, box == "Junk");
+            var boxName = BoxTitle(box);
+            if (string.IsNullOrWhiteSpace(r.Message))
+                r.Message = r.NewCount > 0
+                    ? $"{r.NewCount} ایمیل جدید از صندوق {boxName} دریافت شد."
+                    : $"ایمیل جدیدی در صندوق {boxName} نبود.";
+            return r;
         }
-        return new EmailSyncResultDto
-        {
-            NewCount = added,
-            TotalCount = total,
-            AccountCount = 1,
-            Message = added > 0 ? $"{added} ایمیل جدید دریافت شد." : "ایمیل جدیدی نبود."
-        };
+        finally { gate.Release(); }
     }
 
     /// <summary>همگام‌سازیِ همه‌ی حساب‌های در دسترس.
@@ -682,16 +734,14 @@ public class EmailService : IEmailService
         var errors = new List<string>();
         foreach (var acc in accounts)
         {
+            // اگر مسئولِ دیگری همین حالا این حساب را همگام می‌کند، رد می‌شویم (جلوگیری از پیامِ تکراری)
+            var gate = SyncGateOf(acc.EmailId);
+            if (!await gate.WaitAsync(TimeSpan.FromSeconds(1))) continue;
             try
             {
-                var more = true;
-                while (more)
-                {
-                    var batch = await SyncAccountFolderAsync(acc, box, tolerateMissing);
-                    result.NewCount += batch.Added;
-                    result.TotalCount = batch.Total;
-                    more = batch.HasMore;
-                }
+                var r = await SyncAccountBoxAsync(acc, box, tolerateMissing);
+                result.NewCount += r.NewCount;
+                result.TotalCount = r.TotalCount;
                 result.AccountCount++;
             }
             catch (Exception ex)
@@ -699,6 +749,7 @@ public class EmailService : IEmailService
                 _log.LogWarning(ex, "همگام‌سازی {Box} برای حساب {Account} ناموفق بود", box, acc.EmailAddress);
                 errors.Add($"{acc.EmailAddress}: {ex.Message}");
             }
+            finally { gate.Release(); }
         }
 
         var boxName = box == "Sent" ? "ارسالی" : box == "Junk" ? "هرزنامه" : "دریافتی";
@@ -716,11 +767,19 @@ public class EmailService : IEmailService
     }
 
     /// <summary>
-    /// هسته‌ی همگام‌سازیِ یک حساب و یک صندوق. خروجی: (تعدادِ جدید ذخیره‌شده، تعدادِ کلِ پیام‌های صندوق)
-    /// box: Inbox | Sent | Junk (هرزنامه — در جدولِ دریافتی با نشانِ Is_Spam ذخیره می‌شود)
+    /// هسته‌ی همگام‌سازیِ یک صندوق از یک حساب.
+    /// • یک اتصالِ IMAP برای کلِ صندوق باز می‌شود (قبلاً برای هر دستهٔ ۷۰۰تایی اتصالِ تازه ساخته می‌شد)
+    /// • ذخیره‌سازی دسته‌ای است (قبلاً هر پیام دو SaveChanges داشت و همگام‌سازی را چند برابر کند می‌کرد)
+    /// • در هر درخواست حداکثر MaxMessagesPerSyncRequest پیام پردازش می‌شود تا کاربر معطل نماند
+    /// box: Inbox | Sent | Junk (هرزنامه در جدولِ دریافتی با نشانِ Is_Spam ذخیره می‌شود)
     /// </summary>
-    private async Task<(int Added, int Total, bool HasMore)> SyncAccountFolderAsync(OtoEmail acc, string box, bool tolerateMissing = false)
+    private async Task<EmailSyncResultDto> SyncAccountBoxAsync(OtoEmail acc, string box, bool tolerateMissing = false)
     {
+        var res = new EmailSyncResultDto { AccountCount = 1 };
+        box = NormalizeBox(box);
+        // پیوست‌های هرزنامه در جدولِ پیوست با Type = Inbox ذخیره می‌شوند (مثل قبل)
+        var attBox = box == "Sent" ? "Sent" : "Inbox";
+
         if (string.IsNullOrWhiteSpace(acc.Imap))
             throw new Exception("سرور IMAP این حساب تنظیم نشده است — از تنظیمات ایمیل تکمیل کنید.");
 
@@ -732,12 +791,13 @@ public class EmailService : IEmailService
         var folder = OpenFolder(client, box);
         if (folder == null)
         {
-            if (tolerateMissing) { await client.DisconnectAsync(true); return (0, 0, false); }
+            await client.DisconnectAsync(true);
+            if (tolerateMissing) return res;
             throw new Exception($"پوشه‌ی {BoxTitle(box)} در این حساب یافت نشد.");
         }
         await folder.OpenAsync(FolderAccess.ReadOnly);
 
-        var total = folder.Count;
+        res.TotalCount = folder.Count;
         long lastUid = box == "Sent" ? acc.LastSentUid : box == "Junk" ? acc.LastJunkUid : acc.LastInboxUid;
 
         // همه‌ی شناسه‌های صندوق؛ فقط آن‌هایی که از آخرین نوبت جدیدترند انتخاب می‌شوند.
@@ -750,17 +810,17 @@ public class EmailService : IEmailService
             .Take(MaxMessagesPerAccountPerSync)
             .ToList();
 
-        var existingSet = box == "Sent"
-            ? new HashSet<string>(await _db.OtoSentEmails.AsNoTracking()
-                .Where(x => x.EmailId == acc.EmailId).Select(x => x.UId).ToListAsync())
-            : new HashSet<string>(await _db.OtoInboxEmails.AsNoTracking()
-                .Where(x => x.EmailId == acc.EmailId).Select(x => x.UId).ToListAsync());
-
-        int added = 0;
+        var existing = await ExistingKeysAsync(acc.EmailId, box);
         long maxUid = lastUid;
+        int added = 0;
+        int handled = 0;
+        var batch = new List<PendingMessage>();
 
         foreach (var uid in pending)
         {
+            if (handled >= MaxMessagesPerSyncRequest) break;
+            handled++;
+
             MimeMessage msg;
             try { msg = await folder.GetMessageAsync(uid); }
             catch (Exception ex)
@@ -778,95 +838,147 @@ public class EmailService : IEmailService
                 : box == "Junk" ? $"junk-uid-{acc.EmailId}-{uid.Id}" : $"uid-{acc.EmailId}-{uid.Id}";
             if (key.Length > 300) key = key[^300..];
 
-            if (existingSet.Contains(key))
+            if (existing.Contains(key))
             {
                 // اگر ایمیل قبلاً ثبت شده اما پیوست‌هایش در یک Sync قبلی ذخیره نشده‌اند،
                 // آن را دوباره از IMAP ترمیم می‌کنیم؛ صرفاً وجود رکورد ایمیل کافی نیست.
-                var existingId = box == "Sent"
-                    ? await _db.OtoSentEmails.Where(x => x.EmailId == acc.EmailId && x.UId == key)
-                        .Select(x => (int?)x.SentId).FirstOrDefaultAsync()
-                    : await _db.OtoInboxEmails.Where(x => x.EmailId == acc.EmailId && x.UId == key)
-                        .Select(x => (int?)x.InboxId).FirstOrDefaultAsync();
-                if (existingId is int id && HasExtractableAttachment(msg))
+                if (HasExtractableAttachment(msg)
+                    && await ExistingMessageIdAsync(acc.EmailId, box, key) is int existingId
+                    && !await _db.OtoEmailAttachments.AnyAsync(x => x.EmailId == existingId && x.Type == attBox))
                 {
-                    var hasStored = await _db.OtoEmailAttachments.AnyAsync(x =>
-                        x.EmailId == id && x.Type == box);
-                    if (!hasStored)
-                    {
-                        await SaveAttachmentsAsync(msg, box, id, key);
-                        _log.LogInformation("پیوست‌های ایمیل موجود ترمیم شد؛ حساب {EmailId}، صندوق {Box}، شناسه {MessageId}",
-                            acc.EmailId, box, id);
-                    }
+                    await SaveAttachmentsAsync(msg, attBox, existingId, key);
+                    _log.LogInformation("پیوست‌های ایمیل موجود ترمیم شد؛ حساب {EmailId}، صندوق {Box}، شناسه {MessageId}",
+                        acc.EmailId, box, existingId);
                 }
                 if (uid.Id > maxUid) maxUid = uid.Id;
                 continue;
             }
 
+            var body = msg.HtmlBody
+                ?? (msg.TextBody != null
+                    ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>"
+                    : "");
+            // تاریخِ پیام به وقتِ ایران ذخیره می‌شود (نه ساعتِ سرور) تا فیلترِ تاریخ و
+            // ستونِ تاریخ همان روزی را نشان دهند که کاربر در تقویمِ شمسی می‌بیند.
+            var date = msg.Date == default(DateTimeOffset) ? IranNow() : IranTime(msg.Date);
+            var hasAttach = HasExtractableAttachment(msg);
+            var subject = Trunc(msg.Subject ?? "", 500);
+
+            if (box == "Sent")
             {
-                var body = msg.HtmlBody
-                    ?? (msg.TextBody != null
-                        ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>"
-                        : "");
-                var date = msg.Date == default ? DateTime.Now : msg.Date.LocalDateTime;
-                var hasAttach = HasExtractableAttachment(msg);
-
-                if (box == "Sent")
+                var sent = new OtoSentEmail
                 {
-                    var sent = new OtoSentEmail
-                    {
-                        EmailId = acc.EmailId,
-                        UId = key,
-                        Subject = Trunc(msg.Subject ?? "", 500),
-                        Date = date,
-                        Body = body,
-                        ToDisplay = RecipientsOf(msg),
-                        IsAttachment = hasAttach
-                    };
-                    _db.OtoSentEmails.Add(sent);
-                    await _db.SaveChangesAsync();
-                    var inline = await SaveAttachmentsAsync(msg, "Sent", sent.SentId, key);
-                    sent.Body = ReplaceInlineImageReferences(sent.Body, inline);
-                    await _db.SaveChangesAsync();
-                }
-                else
+                    EmailId = acc.EmailId,
+                    UId = key,
+                    Subject = subject,
+                    Date = date,
+                    Body = body,
+                    ToDisplay = RecipientsOf(msg),
+                    IsAttachment = hasAttach
+                };
+                _db.OtoSentEmails.Add(sent);
+                batch.Add(new PendingMessage(msg, key, null, sent));
+            }
+            else
+            {
+                var inbox = new OtoInboxEmail
                 {
-                    var inbox = new OtoInboxEmail
-                    {
-                        EmailId = acc.EmailId,
-                        UId = key,
-                        Subject = Trunc(msg.Subject ?? "", 500),
-                        Date = date,
-                        IsRead = false,
-                        Body = body,
-                        FromAddress = Trunc(ExtractAddress(msg.From.ToString()) ?? "", 250),
-                        IsAttachment = hasAttach,
-                        // پیام‌های پوشه‌ی هرزنامه با نشانِ اسپم ذخیره می‌شوند
-                        IsSpam = box == "Junk"
-                    };
-                    _db.OtoInboxEmails.Add(inbox);
-                    await _db.SaveChangesAsync();
-                    var inline = await SaveAttachmentsAsync(msg, "Inbox", inbox.InboxId, key);
-                    inbox.Body = ReplaceInlineImageReferences(inbox.Body, inline);
-                    await _db.SaveChangesAsync();
-                }
-
-                existingSet.Add(key);
-                added++;
+                    EmailId = acc.EmailId,
+                    UId = key,
+                    Subject = subject,
+                    Date = date,
+                    IsRead = false,
+                    Body = body,
+                    FromAddress = Trunc(ExtractAddress(msg.From.ToString()) ?? "", 250),
+                    IsAttachment = hasAttach,
+                    // پیام‌های پوشه‌ی هرزنامه با نشانِ اسپم ذخیره می‌شوند
+                    IsSpam = box == "Junk"
+                };
+                _db.OtoInboxEmails.Add(inbox);
+                batch.Add(new PendingMessage(msg, key, inbox, null));
             }
 
+            existing.Add(key);
+            added++;
             if (uid.Id > maxUid) maxUid = uid.Id;
+
+            if (batch.Count >= SyncSaveBatchSize) await FlushPendingAsync(batch, attBox);
         }
 
+        await FlushPendingAsync(batch, attBox);
         await client.DisconnectAsync(true);
 
-        acc.LastSync = DateTime.Now;
+        acc.LastSync = IranNow();
         if (box == "Sent") acc.LastSentUid = maxUid;
         else if (box == "Junk") acc.LastJunkUid = maxUid;
         else acc.LastInboxUid = maxUid;
         await _db.SaveChangesAsync();
 
-        return (added, total, pending.Count == MaxMessagesPerAccountPerSync);
+        res.NewCount = added;
+        if (pending.Count > handled)
+            res.Message = $"{FaDigits(pending.Count - handled)} ایمیل دیگر در صف است — دوباره «دریافت» را بزنید.";
+        return res;
     }
+
+    /// <summary>یک پیامِ در انتظارِ ذخیره (برای ذخیره‌سازیِ دسته‌ای)</summary>
+    private sealed class PendingMessage
+    {
+        public PendingMessage(MimeMessage msg, string key, OtoInboxEmail? inbox, OtoSentEmail? sent)
+        {
+            Msg = msg; Key = key; Inbox = inbox; Sent = sent;
+        }
+
+        public MimeMessage Msg { get; }
+        public string Key { get; }
+        public OtoInboxEmail? Inbox { get; }
+        public OtoSentEmail? Sent { get; }
+    }
+
+    /// <summary>کلیدهای یکتای ذخیره‌شده‌ی یک حساب و صندوق — فقط ستون UId خوانده می‌شود</summary>
+    private async Task<HashSet<string>> ExistingKeysAsync(int emailId, string box) =>
+        box == "Sent"
+            ? new HashSet<string>(await _db.OtoSentEmails.AsNoTracking()
+                .Where(x => x.EmailId == emailId).Select(x => x.UId).ToListAsync())
+            : new HashSet<string>(await _db.OtoInboxEmails.AsNoTracking()
+                .Where(x => x.EmailId == emailId).Select(x => x.UId).ToListAsync());
+
+    private async Task<int?> ExistingMessageIdAsync(int emailId, string box, string key) =>
+        box == "Sent"
+            ? await _db.OtoSentEmails.AsNoTracking()
+                .Where(x => x.EmailId == emailId && x.UId == key).Select(x => (int?)x.SentId).FirstOrDefaultAsync()
+            : await _db.OtoInboxEmails.AsNoTracking()
+                .Where(x => x.EmailId == emailId && x.UId == key).Select(x => (int?)x.InboxId).FirstOrDefaultAsync();
+
+    /// <summary>
+    /// ذخیره‌ی یک دسته پیام + پیوست‌هایش با حداقل رفت‌وبرگشت به بانک:
+    /// ابتدا همه‌ی پیام‌های دسته ذخیره می‌شوند (شناسه‌ها ساخته می‌شوند)، بعد پیوست‌ها.
+    /// </summary>
+    private async Task FlushPendingAsync(List<PendingMessage> batch, string attBox)
+    {
+        if (batch.Count == 0) return;
+        await _db.SaveChangesAsync();
+        foreach (var p in batch)
+        {
+            if (p.Sent != null)
+            {
+                var inline = await SaveAttachmentsAsync(p.Msg, "Sent", p.Sent.SentId, p.Key);
+                if (inline.Count > 0) p.Sent.Body = ReplaceInlineImageReferences(p.Sent.Body, inline);
+            }
+            else if (p.Inbox != null)
+            {
+                var inline = await SaveAttachmentsAsync(p.Msg, attBox, p.Inbox.InboxId, p.Key);
+                if (inline.Count > 0) p.Inbox.Body = ReplaceInlineImageReferences(p.Inbox.Body, inline);
+            }
+        }
+        await _db.SaveChangesAsync();
+        batch.Clear();
+    }
+
+    /// <summary>ارقامِ فارسی برای متنِ پیام‌ها (بدون وابستگی به کلاینت)</summary>
+    private static string FaDigits(int n) =>
+        n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+         .Replace('0', '۰').Replace('1', '۱').Replace('2', '۲').Replace('3', '۳').Replace('4', '۴')
+         .Replace('5', '۵').Replace('6', '۶').Replace('7', '۷').Replace('8', '۸').Replace('9', '۹');
 
     /// <summary>عنوان فارسیِ صندوق — برای پیام‌های خطا</summary>
     private static string BoxTitle(string box) => box switch
@@ -1037,7 +1149,7 @@ public class EmailService : IEmailService
     public async Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         int? folderId = null, bool spamOnly = false, bool starredOnly = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1053,7 +1165,11 @@ public class EmailService : IEmailService
         // هرزنامه‌ها پیش‌فرض در صندوقِ دریافتی دیده نمی‌شوند و فقط در بخش «اسپم» می‌آیند
         q = spamOnly ? q.Where(i => i.IsSpam) : q.Where(i => !i.IsSpam);
 
-        if (unreadOnly == true) q = q.Where(i => !i.IsRead);
+        // فیلترِ خوانده/خوانده‌نشده — isRead = true یعنی «فقط خوانده‌شده».
+        // قبلاً فقط حالتِ «خوانده‌نشده» از کلاینت به سرور می‌رسید و انتخابِ
+        // «خوانده‌شده» هیچ اثری نداشت (فهرست مثل حالتِ «همه» می‌ماند).
+        if (isRead.HasValue) q = q.Where(i => i.IsRead == isRead.Value);
+        else if (unreadOnly == true) q = q.Where(i => !i.IsRead);
         if (starredOnly) q = q.Where(i => i.IsNeshan);
         // بازهٔ تاریخ «کاملِ روز» است: تا تاریخ ۱۴۰۵/۰۶/۳۱ باید همهٔ ایمیل‌های همان
         // روز را هم بیاورد، نه فقط تا ساعت ۰۰:۰۰ آن روز (مقایسهٔ <= تاریخِ بدونِ
@@ -1106,7 +1222,7 @@ public class EmailService : IEmailService
     public async Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         int? folderId = null, bool starredOnly = false,
-        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null)
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, bool? isRead = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1171,7 +1287,7 @@ public class EmailService : IEmailService
     public async Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
         bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
         DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null,
-        bool? unreadOnly = null)
+        bool? unreadOnly = null, bool? isRead = null)
     {
         var (pg, size) = Norm(page, pageSize);
         var result = new EmailListPageDto { Page = pg, PageSize = size };
@@ -1208,8 +1324,8 @@ public class EmailService : IEmailService
             outQ = outQ.Where(x => x.IsAttachment == hasAttachment.Value);
         }
         // «خوانده‌نشده» فقط برای دریافتی معنا دارد؛ ارسالی همیشه خوانده‌شده است
-        if (unreadOnly == true) inQ = inQ.Where(i => !i.IsRead);
-        else if (unreadOnly == false) { inQ = inQ.Where(i => i.IsRead); }
+        var filterRead = isRead ?? (unreadOnly.HasValue ? !unreadOnly.Value : (bool?)null);
+        if (filterRead.HasValue) inQ = inQ.Where(i => i.IsRead == filterRead.Value);
         if (s != null)
         {
             inQ = inQ.Where(i => i.Subject.Contains(s) || i.FromAddress.Contains(s) || i.Body.Contains(s));
