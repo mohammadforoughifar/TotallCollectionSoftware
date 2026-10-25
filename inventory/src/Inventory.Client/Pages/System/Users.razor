@@ -586,10 +586,12 @@ else
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > 2 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
-        if (file.ContentType is not ("image/png" or "image/jpeg")) { saveError = "امضا باید PNG یا JPG باشد."; return; }
+        if (file.Size > 10 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۱۰ مگابایت است."; return; }
+        if (file.ContentType != "image/png" || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
+        { saveError = "فقط فایل PNG مجاز است."; return; }
         luSignatureBytes = new byte[file.Size];
-        await file.OpenReadStream(long.MaxValue).ReadAsync(luSignatureBytes);
+        await using (var signatureStream = file.OpenReadStream(10 * 1024 * 1024))
+            await signatureStream.ReadExactlyAsync(luSignatureBytes);
         luSignaturePreview = "data:" + file.ContentType + ";base64," + Convert.ToBase64String(luSignatureBytes);
         StateHasChanged();
     }

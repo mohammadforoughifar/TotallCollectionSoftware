@@ -133,7 +133,7 @@ public class AuthController : ControllerBase
             });
 
             await using var png = new MemoryStream();
-            await image.SaveAsync(png, new PngEncoder());
+            await image.SaveAsync(png, new PngEncoder { ColorType = SixLabors.ImageSharp.Formats.Png.PngColorType.RgbWithAlpha });
             processedPng = png.ToArray();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

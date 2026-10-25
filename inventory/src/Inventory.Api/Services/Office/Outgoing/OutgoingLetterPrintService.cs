@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Text;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using System.Xml.Linq;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -553,6 +556,103 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return path == null ? null : File.ReadAllBytes(path);
     }
 
+    /// <summary>
+    /// تبدیل امضا به مسیرهای SVG بدون پس‌زمینه. این مسیر چاپی عمداً PNG را به‌عنوان
+    /// Image XObject در PDF نمی‌گذارد تا مشکل SMask/alpha در PDFsharp و درایور چاپگر حذف شود.
+    /// </summary>
+    private static string? TryReadSignatureSvg(byte[]? pngBytes)
+    {
+        if (pngBytes is not { Length: > 0 }) return null;
+        try
+        {
+            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(pngBytes);
+            // امضاها در PDF حداکثر حدود 178pt عرض دارند؛ این وضوح همچنان از کیفیت چاپ کافی بالاتر است.
+            if (image.Width > 1200 || image.Height > 480)
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,
+                    Size = new SixLabors.ImageSharp.Size(1200, 480),
+                    Sampler = KnownResamplers.Lanczos3
+                }));
+
+            long red = 0, green = 0, blue = 0, weight = 0;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    foreach (var px in row)
+                    {
+                        var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                        var inkAlpha = (int)((255 - min) * px.A / 255);
+                        if (inkAlpha < 24) continue; // eliminate white/near-white paper pixels
+                        red += (long)px.R * inkAlpha;
+                        green += (long)px.G * inkAlpha;
+                        blue += (long)px.B * inkAlpha;
+                        weight += inkAlpha;
+                    }
+                }
+            });
+            if (weight == 0) return null;
+
+            // Eight opacity bands retain antialiased edges but do not rely on a raster alpha mask.
+            var paths = Enumerable.Range(0, 9).Select(_ => new StringBuilder()).ToArray();
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var level = 1; level <= 8; level++)
+                    {
+                        var runStart = -1;
+                        for (var x = 0; x <= row.Length; x++)
+                        {
+                            var pixelLevel = 0;
+                            if (x < row.Length)
+                            {
+                                var px = row[x];
+                                var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                                var alpha = (int)((255 - min) * px.A / 255);
+                                if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
+                            }
+
+                            if (pixelLevel == level)
+                            {
+                                if (runStart < 0) runStart = x;
+                            }
+                            else if (runStart >= 0)
+                            {
+                                var length = x - runStart;
+                                paths[level].Append('M').Append(runStart).Append(' ').Append(y)
+                                    .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
+                                runStart = -1;
+                            }
+                        }
+                    }
+                }
+            });
+
+            var color = $"#{(byte)(red / weight):X2}{(byte)(green / weight):X2}{(byte)(blue / weight):X2}";
+            var svg = new StringBuilder(256);
+            svg.Append("<svg xmlns='http://www.w3.org/2000/svg' width='").Append(image.Width)
+                .Append("px' height='").Append(image.Height).Append("px' viewBox='0 0 ")
+                .Append(image.Width).Append(' ').Append(image.Height).Append("'>");
+            for (var level = 1; level <= 8; level++)
+            {
+                if (paths[level].Length == 0) continue;
+                svg.Append("<path fill='").Append(color).Append("' fill-opacity='")
+                    .Append((level / 8d).ToString("0.###", CultureInfo.InvariantCulture))
+                    .Append("' d='").Append(paths[level]).Append("'/>");
+            }
+            svg.Append("</svg>");
+            return svg.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>ساخت محتوای نامه با RTL صریح، فونت وزیرمتن و سربرگ ثبت‌شده.</summary>
     private byte[] BuildContentPdf(
         OutgoingLetter letter,
@@ -606,7 +706,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             return (
                 Name: ToPersianDigits(FullName(s.User)),
                 Role: ToPersianDigits(role),
-                Signature: s.IsSigned ? TryReadSignature(s.User?.SignaturePath) : null);
+                SignatureSvg: s.IsSigned ? TryReadSignatureSvg(TryReadSignature(s.User?.SignaturePath)) : null);
         }).ToList();
 
         // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
@@ -617,7 +717,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var signatureBoxWidth = isA5 ? 126f : 178f;
         var signatureBoxHeight = isA5 ? 42f : 58f;
 
-        void AddSignerCard(IContainer container, (string Name, string Role, byte[]? Signature) signer)
+        void AddSignerCard(IContainer container, (string Name, string Role, string? SignatureSvg) signer)
         {
             container.Height(signerBlockHeight).Layers(layers =>
             {
@@ -635,11 +735,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                 // لایهٔ رویی: تصویرِ امضا که روی نام و سمت قرار می‌گیرد.
                 // چون بعد از لایهٔ اصلی تعریف شده، روی متن رسم می‌شود.
-                if (signer.Signature is { Length: > 0 })
+                if (!string.IsNullOrWhiteSpace(signer.SignatureSvg))
                 {
+                    // PNG alpha in raster XObjects is flattened inconsistently by some printer/PDF
+                    // stacks (notably after PDFsharp overlays the letterhead). Draw only the ink
+                    // pixels as SVG paths: the empty canvas has no paint at all, so no opaque box
+                    // can appear even in consumers that mishandle image soft masks.
                     layers.Layer().AlignBottom().AlignRight()
                         .Width(signatureBoxWidth).Height(signatureBoxHeight)
-                        .Image(signer.Signature).FitArea();
+                        .Svg(signer.SignatureSvg).FitArea();
                 }
             });
         }

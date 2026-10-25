@@ -1,5 +1,7 @@
 using System.Data;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Services;
@@ -122,6 +124,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
                 .ToListAsync(cancellationToken)
             : new List<HameshPrintRow>();
 
+        var alphaBitmaps = new List<Bitmap>();
         try
         {
             RegisterStimulsoftFonts();
@@ -161,8 +164,17 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
                 if (signatureBytes is not { Length: > 0 }) continue;
                 var suffix = index == 0 ? string.Empty : (index + 1).ToString(CultureInfo.InvariantCulture);
                 using var signatureStream = new MemoryStream(signatureBytes);
-                using var source = Image.FromStream(signatureStream);
-                SetVariable(report, $"ImageSignature{suffix}", new Bitmap(source));
+                using var source = Image.FromStream(signatureStream, useEmbeddedColorManagement: false, validateImageData: true);
+                // Force an alpha-capable pixel format; Bitmap(Image) may pick an opaque RGB format.
+                var alphaBitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+                using (var graphics = Graphics.FromImage(alphaBitmap))
+                {
+                    graphics.Clear(Color.Transparent);
+                    graphics.CompositingMode = CompositingMode.SourceCopy;
+                    graphics.DrawImage(source, new Rectangle(0, 0, source.Width, source.Height));
+                }
+                alphaBitmaps.Add(alphaBitmap);
+                SetVariable(report, $"ImageSignature{suffix}", alphaBitmap);
             }
 
             report.Render(false);
@@ -179,6 +191,10 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
                 "رندر Stimulsoft ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Template={Template}",
                 letterId, company.Id, size, templatePath);
             return null;
+        }
+        finally
+        {
+            foreach (var bitmap in alphaBitmaps) bitmap.Dispose();
         }
     }
 
