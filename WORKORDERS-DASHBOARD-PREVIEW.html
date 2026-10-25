@@ -55,8 +55,16 @@ table{width:100%;border-collapse:collapse}
     .wdr-hint { font-size:.65rem; color:#a89f92; }
     .wdr-mini-bar { height:5px; width:90px; background:#f3efe8; border-radius:2px; overflow:hidden; }
     .wdr-mini-bar > i { display:block; height:100%; background:#1c1917; }
-    .wdr-def { margin-top:.85rem; background:#fbf9f6; border:1px solid #eee9e1; border-radius:8px; padding:.7rem .85rem; font-size:.71rem; color:#5b554d; line-height:1.9; }
-    .wdr-def b { color:#1c1917; }
+    .wdr-help { font:inherit; font-size:.7rem; font-weight:700; color:#6b625a; background:#fff; border:1px solid #ddd6cb; border-radius:999px; padding:.22rem .7rem; display:inline-flex; align-items:center; gap:.32rem; cursor:pointer; }
+    .wdr-help:hover, .wdr-help.open { border-color:#1c1917; color:#1c1917; background:#faf8f5; }
+    .wdr-help-q { width:14px; height:14px; border-radius:50%; background:#8a8378; color:#fff; font-size:.6rem; font-weight:800; display:grid; place-items:center; line-height:1; }
+    .wdr-help-pop { background:#fbf9f6; border:1px solid #eee9e1; border-radius:8px; padding:.7rem .9rem .8rem; margin:-.2rem 0 .9rem; }
+    .wdr-help-pop-h { display:flex; align-items:center; justify-content:space-between; gap:.6rem; border-bottom:1px solid #eee9e1; padding-bottom:.45rem; margin-bottom:.5rem; }
+    .wdr-help-pop-h b { font-size:.76rem; color:#1c1917; }
+    .wdr-help-x { border:0; background:none; color:#a89f92; font-size:1rem; line-height:1; padding:0 .15rem; cursor:pointer; }
+    .wdr-help-item { font-size:.71rem; color:#5b554d; line-height:1.9; padding:.2rem 0; }
+    .wdr-help-item b { color:#1c1917; }
+    .wdr-help-item + .wdr-help-item { border-top:1px dashed #eee9e1; margin-top:.25rem; padding-top:.4rem; }
     .wdr-empty { font-size:.78rem; color:#a89f92; padding:.6rem 0 1rem; }
 
     /* نمودار */
@@ -112,7 +120,17 @@ table{width:100%;border-collapse:collapse}
     <div class="wdr-fig"><div class="wdr-fig-n num">3</div><div class="wdr-fig-t">انجام با تاخیر</div></div>
   </div>
 
-  <div class="wdr-sec"><span class="wdr-idx">۰۱</span><h2>وضعیت سبد</h2><span class="wdr-rule"></span></div>
+  <div class="wdr-sec">
+    <span class="wdr-idx">۰۱</span><h2>وضعیت سبد</h2><span class="wdr-rule"></span>
+    <button class="wdr-help open" onclick="document.getElementById('hp').hidden=!document.getElementById('hp').hidden"><span class="wdr-help-q">؟</span> راهنما</button>
+  </div>
+  <div class="wdr-help-pop" id="hp">
+    <div class="wdr-help-pop-h"><b>راهنمای اصطلاحات</b><button class="wdr-help-x" onclick="document.getElementById('hp').hidden=true">×</button></div>
+    <div class="wdr-help-item"><b>بستهٔ بی‌نتیجه</b> دستوری که توسط دستوردهنده <b>بسته/بایگانی</b> شده است، اما هیچ‌یک از گیرندگان پاسخ «انجام شد» نداده‌اند (یا پاسخ نداده‌اند یا «انجام نشد» ثبت کرده‌اند). این دستورها نه «انجام‌شده» شمرده می‌شوند و نه «باز»؛ برای همین یک گروه جدا در ترکیب سبد دارند.</div>
+    <div class="wdr-help-item"><b>گذشته از مهلت / مهلت امروز</b> هر دو زیرمجموعهٔ دستورهای «باز» هستند و در جمع کل دوباره شمرده نمی‌شوند.</div>
+    <div class="wdr-help-item"><b>نرخ انجام به‌موقع</b> انجام به‌موقع ÷ دستورهای بسته‌شده (به‌موقع + با تاخیر + بی‌نتیجه). «نرخ انجام» در جدول گیرندگان مخرج متفاوتی دارد: انجام‌شده ÷ کل واگذاری‌ها.</div>
+    <div class="wdr-help-item"><b>در انتظار پاسخ</b> تعداد واگذاری‌هایی که گیرنده هنوز هیچ پاسخی نداده است (نه تعداد دستور).</div>
+  </div>
   <div class="wdr-two">
     <div class="wdr-kv-list">
       <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#1c1917"></i>باز و در مهلت</span><b class="num">6</b></div>
@@ -122,7 +140,6 @@ table{width:100%;border-collapse:collapse}
       <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#7f1d1d"></i>انجام با تاخیر</span><b class="num">3</b></div>
       <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#a8a29e"></i>بستهٔ بی‌نتیجه</span><b class="num">2</b></div>
       <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#78716c"></i>در انتظار پاسخ <span class="wdr-hint">تعداد واگذاری</span></span><b class="num">5</b></div>
-      <div class="wdr-def"><b>«بستهٔ بی‌نتیجه» یعنی چه؟</b> دستوری که توسط دستوردهنده <b>بسته/بایگانی</b> شده است، اما هیچ‌یک از گیرندگان پاسخ «انجام شد» نداده‌اند (یا پاسخ نداده‌اند یا «انجام نشد» ثبت کرده‌اند). این دستورها نه «انجام‌شده» شمرده می‌شوند و نه «باز»؛ برای همین یک گروه جدا در ترکیب سبد دارند.</div>
     </div>
 
     <div class="wdr-chart-wrap">
