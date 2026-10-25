@@ -1057,7 +1057,7 @@ public class WorkOrdersController : ControllerBase
         // کاربرانی که مجوز «View» دستور کار را دارند می‌توانند خودِ زیر-دستور را باز کنند؛
         // بقیه (مثلاً دستوردهندهٔ بالاسری بدون این مجوز) به دستور خودشان هدایت می‌شوند تا
         // لینک اعلان برایشان ۴۰۳ نشود و ردّ پاسخ را در «گردش کار» همان دستور ببینند.
-        var viewers = (await UsersWithPermissionAsync("WorkOrders", "View")).ToHashSet();
+        var viewers = await UsersWithWorkOrderViewAsync();
         var subAssigneesFa = await AssigneesFaAsync(wo.Id);
 
         var notified = new HashSet<int>();
@@ -1095,6 +1095,30 @@ public class WorkOrdersController : ControllerBase
                 Log(anc.Id, "SubReply", $"پاسخ زیر-دستور {wo.Number} «{wo.Title}» — {MyUsername}: {result}{note}");
             await _db.SaveChangesAsync();
         }
+    }
+
+    /// <summary>
+    /// شناسهٔ کاربرانی که مجوز «WorkOrders.View» دارند (+ ادمین‌های قدیمی بدون نقش RBAC).
+    /// این کنترلر از RbacControllerBase ارث نمی‌برد، پس متد کمکی در همین کلاس تعریف شده است.
+    /// </summary>
+    private async Task<List<int>> UsersWithWorkOrderViewAsync()
+    {
+        var rbac = await _db.UserRoles
+            .Where(ur => _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur.UserId, rp.PermissionId })
+            .Join(_db.Permissions, x => x.PermissionId, p => p.Id, (x, p) => new { x.UserId, p.Module, p.Action })
+            .Where(x => x.Module == "WorkOrders" && x.Action == "View")
+            .Select(x => x.UserId)
+            .Distinct()
+            .ToListAsync();
+
+        // ادمین‌های قدیمی (بدون نقش RBAC) به همهٔ مجوزها دسترسی دارند
+        var legacyAdmins = await _db.Users
+            .Where(u => u.Role == "Admin" && u.IsActive && !_db.UserRoles.Any(ur => ur.UserId == u.Id))
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        return rbac.Concat(legacyAdmins).Distinct().ToList();
     }
 
     /// <summary>نام گیرندگان یک دستور برای متن اعلان (حداکثر سه نفر و بقیه با شمارش).</summary>
