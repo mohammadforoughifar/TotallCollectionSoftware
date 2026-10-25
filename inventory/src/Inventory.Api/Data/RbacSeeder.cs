@@ -33,6 +33,10 @@ public static class RbacSeeder
         ["SystemUsers"] = CrudActions,
         ["SystemCompanies"] = CrudActions,   // کمپانی‌ها
         ["SystemDepartments"] = CrudActions, // واحدها (دپارتمان‌ها)
+        // واحدهای سازمانیِ هر شرکت (مبنای جزء «واحد» در شمارهٔ نامه و واحدِ کاربر).
+        // بدون تعریفِ این ماژول، هیچ مجوزی برایش ساخته نمی‌شد و آیتم منو
+        // «تعریف واحدهای سازمانی» حتی برای مدیر کل هم دیده نمی‌شد.
+        ["SystemOrganizations"] = CrudActions,
         // ================== درخواست خدمت آی‌تی ==================
         // Create: ثبت درخواست | ViewCompany: دیدن سیستم‌های کل شرکت | ViewDepartment: دیدن سیستم‌های واحد خود
         // Expert: کارشناس آی‌تی (دریافت ارجاع) | Manage: مدیر آی‌تی (ارجاع و تایید)

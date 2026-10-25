@@ -327,6 +327,29 @@ else
                     </div>
                 </div>
             }
+            <div class="col-md-6">
+                <label class="form-label">
+                    <i class="bi bi-diagram-3 text-primary"></i>
+                    واحد سازمانی (برای شماره نامه)
+                </label>
+                <select class="form-select" @bind="form.OrganizationId">
+                    <option value="">— بدون واحد سازمانی —</option>
+                    @foreach (var o in AvailableOrganizations)
+                    {
+                        <option value="@o.OrganizationId">@o.NameUnit (@o.NameUniq)@(string.IsNullOrWhiteSpace(o.CompanyName) ? "" : $" — {o.CompanyName}")</option>
+                    }
+                </select>
+                <div class="form-text fs-8">
+                    واحدها در «سازمان و کیف پول ← تعریف واحدهای سازمانی» به‌ازای هر شرکت ساخته می‌شوند؛
+                    جزء «واحد» در شمارهٔ نامه از همین‌جا خوانده می‌شود.
+                </div>
+                @if (organizations.Count == 0)
+                {
+                    <div class="alert alert-warning py-2 mt-2 mb-0 fs-8">
+                        واحدی تعریف نشده — اول از صفحهٔ «تعریف واحدهای سازمانی» برای شرکت‌ها واحد بسازید.
+                    </div>
+                }
+            </div>
             <div class="col-12">
                 <label class="form-label d-block">
                     <i class="bi bi-briefcase text-primary"></i>
@@ -487,6 +510,26 @@ else
     private List<UserDto> items = new();
     private List<CompanyOption> companyOptions = new();
     private HashSet<int> selectedCompanyIds = new();
+
+    // ---------- واحدهای سازمانی (تعریف‌شده به‌ازای هر شرکت) ----------
+    private List<OrgOption> organizations = new();
+    private sealed class OrgOption
+    {
+        public int OrganizationId { get; set; }
+        public int? CompanyId { get; set; }
+        public string NameUnit { get; set; } = "";
+        public string NameUniq { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public bool IsDefault { get; set; }
+        public string CompanyName { get; set; } = "";
+    }
+
+    /// <summary>واحدهای قابل انتخاب: فعال و در محدودهٔ شرکت‌های مجازِ همین کاربر.</summary>
+    private IEnumerable<OrgOption> AvailableOrganizations =>
+        organizations
+            .Where(o => o.IsActive)
+            .Where(o => o.CompanyId is null or 0 || selectedCompanyIds.Count == 0 || selectedCompanyIds.Contains(o.CompanyId.Value))
+            .OrderBy(o => o.NameUnit);
     private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
     private List<Referrer> referrers = new();
     private bool loading = true;
@@ -747,6 +790,14 @@ else
         {
             items = await AuthApi.GetUsersAsync();
             try { companyOptions = await Http.GetFromJsonAsync<List<CompanyOption>>("/api/SystemCompanies") ?? new(); } catch { companyOptions = new(); }
+            try
+            {
+                organizations = await Http.GetFromJsonAsync<List<OrgOption>>("/api/SystemOrganizations") ?? new();
+                var names = companyOptions.ToDictionary(c => c.Id, c => c.Name);
+                foreach (var o in organizations)
+                    o.CompanyName = o.CompanyId is int cid && names.TryGetValue(cid, out var cn) ? cn : "";
+            }
+            catch { organizations = new(); }
             referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
             try { allRoles = (await Http.GetFromJsonAsync<List<RoleOpt>>("/api/roles") ?? new()).Where(r => r.IsActive).ToList(); }
             catch (Exception rex)
@@ -763,7 +814,13 @@ else
     {
         // سطح قدیمی (Admin/Operator/Referrer) هنگام ذخیره از روی نقش‌های RBAC انتخاب‌شده تعیین می‌شود؛
         // پس اینجا هرگز «Admin» پیش‌فرض نمی‌گذاریم (اگر فهرست نقش‌ها لود نشده باشد، کاربر بی‌نقش = مدیر کل می‌شد).
-        form = new UserDto { Role = "Operator", IsActive = true };
+        form = new UserDto
+        {
+            Role = "Operator",
+            IsActive = true,
+            // واحد پیش‌فرضِ شرکت (اگر تعریف شده باشد) از ابتدا انتخاب می‌شود
+            OrganizationId = organizations.FirstOrDefault(o => o.IsActive && o.IsDefault)?.OrganizationId
+        };
         referrerIdStr = "0";
         selectedRoleIds = new();
         selectedCompanyIds = new();
@@ -790,7 +847,8 @@ else
             RoleIds = u.RoleIds is null ? null : new List<int>(u.RoleIds),
             ReferrerId = u.ReferrerId,
             IsActive = u.IsActive,
-            CreatedAt = u.CreatedAt
+            CreatedAt = u.CreatedAt,
+            OrganizationId = u.OrganizationId
         };
         referrerIdStr = (u.ReferrerId ?? 0).ToString();
         selectedRoleIds = new HashSet<int>(u.RoleIds ?? new List<int>());

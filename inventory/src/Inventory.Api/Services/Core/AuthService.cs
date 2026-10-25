@@ -224,6 +224,7 @@ public class AuthService : IAuthService
             SignaturePath = u.SignaturePath,
             IsActive = u.IsActive,
             CreatedAt = u.CreatedAt,
+            OrganizationId = u.OrganizationId,
             Positions = positions.TryGetValue(u.Id, out var p) ? p : new List<string>()
         }).ToList();
     }
@@ -498,6 +499,9 @@ public class AuthService : IAuthService
         entity.EitaaChatId = string.IsNullOrWhiteSpace(dto.EitaaChatId) ? null : dto.EitaaChatId.Trim();
         entity.ReferrerId = dto.Role == "Referrer" ? dto.ReferrerId : null;
         entity.IsActive = dto.IsActive;
+        // واحد سازمانی — قبلاً در فرم «کاربران» قابل تعیین نبود و فقط از صفحهٔ
+        // «کاربران سیستم» مقدار می‌گرفت؛ حالا از همان فرم اصلی هم ذخیره می‌شود.
+        entity.OrganizationId = dto.OrganizationId;
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
             if (dto.Password.Length < 4)

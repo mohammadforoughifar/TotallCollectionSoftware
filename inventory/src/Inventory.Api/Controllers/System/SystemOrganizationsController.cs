@@ -10,21 +10,35 @@ namespace Inventory.Api.Controllers;
 /// <summary>مدیریت سازمان‌ها / واحدها — برای تخصیص به کاربران و جزء «واحد» در شماره نامه</summary>
 [ApiController]
 [Route("api/[controller]")]
-public class SystemOrganizationsController : ControllerBase
+public class SystemOrganizationsController : RbacControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IOrganizationServices _org;
 
-    public SystemOrganizationsController(AppDbContext db, IOrganizationServices org)
+    public SystemOrganizationsController(AppDbContext db, IOrganizationServices org) : base(db)
     {
         _db = db;
         _org = org;
     }
 
+    // خواندن فهرست واحدها برای صفحاتِ دیگر هم لازم است (کاربران/کاربران سیستم/نامه صادره)؛
+    // پس علاوه بر مجوز خودِ این ماژول، داشتنِ مجوز «کاربران» یا «شرکت‌ها» هم کافی است.
+    private async Task<IActionResult?> ReadGuardAsync()
+    {
+        if (await HasAnyAsync("SystemOrganizations", "Read", "Create", "Update", "Delete")) return null;
+        if (await HasAsync("SystemUsers", "Read")) return null;
+        if (await HasAsync("SystemCompanies", "Read")) return null;
+        return StatusCode(403, new { message = "شما به واحدهای سازمانی دسترسی ندارید." });
+    }
+
+    private Task<IActionResult?> WriteGuardAsync(string action) =>
+        ForbiddenUnlessAsync("SystemOrganizations", action);
+
     /// <summary>فهرست واحدها — می‌تواند بر اساس شرکت فیلتر شود (companyId)</summary>
     [HttpGet]
     public async Task<ActionResult> Get([FromQuery] int? companyId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        if (await ReadGuardAsync() is { } forbid) return forbid;
         IQueryable<Organization> query = _db.Organizations.Where(o => !o.IsDelete);
         if (companyId is > 0)
             query = query.Where(o => o.CompanyId == companyId);
@@ -34,6 +48,7 @@ public class SystemOrganizationsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult> Get(int id)
     {
+        if (await ReadGuardAsync() is { } forbidId) return forbidId;
         var org = await _db.Organizations.FirstOrDefaultAsync(o => o.OrganizationId == id);
         if (org == null) return NotFound(new { message = "سازمان پیدا نشد." });
         return Ok(org);
@@ -42,6 +57,11 @@ public class SystemOrganizationsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Post([FromBody] Organization o)
     {
+        if (await WriteGuardAsync("Create") is { } forbidPost) return forbidPost;
+        if (o.CompanyId is null or 0)
+            return BadRequest(new { message = "شرکتِ واحد سازمانی را انتخاب کنید (هر واحد باید به یک شرکت تعلق داشته باشد)." });
+        if (string.IsNullOrWhiteSpace(o.NameUnit))
+            return BadRequest(new { message = "نام واحد را وارد کنید." });
         o.OrganizationId = 0;
         if (o.CreatedAt == default) o.CreatedAt = DateTime.Now;
         _db.Organizations.Add(o);
@@ -52,6 +72,7 @@ public class SystemOrganizationsController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<ActionResult> Put(int id, [FromBody] Organization o)
     {
+        if (await WriteGuardAsync("Update") is { } forbidPut) return forbidPut;
         var item = await _db.Organizations.FirstOrDefaultAsync(x => x.OrganizationId == id);
         if (item == null) return NotFound(new { message = "سازمان پیدا نشد." });
 
@@ -69,6 +90,7 @@ public class SystemOrganizationsController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<ActionResult> Delete(int id)
     {
+        if (await WriteGuardAsync("Delete") is { } forbidDel) return forbidDel;
         var item = await _db.Organizations.FirstOrDefaultAsync(x => x.OrganizationId == id);
         if (item == null) return NotFound(new { message = "سازمان پیدا نشد." });
 
@@ -81,6 +103,7 @@ public class SystemOrganizationsController : ControllerBase
     [HttpGet("active")]
     public async Task<ActionResult<List<OrganizationDto>>> GetActive([FromQuery] int? companyId = null)
     {
+        if (await ReadGuardAsync() is { } forbidActive) return forbidActive;
         var orgs = await _db.Organizations.AsNoTracking()
             .Where(o => !o.IsDelete && o.IsActive)
             .OrderBy(o => o.NameUnit)
