@@ -426,9 +426,9 @@ else if (tab == "stats")
                 <div class="wdr-fig"><div class="wdr-fig-n num">@stats.Cards.DoneLate</div><div class="wdr-fig-t">انجام با تاخیر</div></div>
             </div>
 
-            @* ---------- ۰۱ وضعیت سبد ---------- *@
+            @* ---------- ۰۱ وضعیت دستور کار ---------- *@
             <div class="wdr-sec">
-                <span class="wdr-idx">۰۱</span><h2>وضعیت سبد</h2><span class="wdr-rule"></span>
+                <span class="wdr-idx">۰۱</span><h2>وضعیت دستور کار</h2><span class="wdr-rule"></span>
                 <button type="button" class="wdr-help @(showStatsHelp ? "open" : "")"
                         title="راهنمای اصطلاحات این گزارش"
                         @onclick="() => showStatsHelp = !showStatsHelp">
@@ -446,7 +446,7 @@ else if (tab == "stats")
                         <b>بستهٔ بی‌نتیجه</b>
                         دستوری که توسط دستوردهنده <b>بسته/بایگانی</b> شده است، اما هیچ‌یک از گیرندگان پاسخ «انجام شد» نداده‌اند
                         (یا پاسخ نداده‌اند یا «انجام نشد» ثبت کرده‌اند). این دستورها نه «انجام‌شده» شمرده می‌شوند و نه «باز»؛
-                        برای همین یک گروه جدا در ترکیب سبد دارند.
+                        برای همین یک گروه جدا در ترکیب دستور کارها دارند.
                     </div>
                     <div class="wdr-help-item">
                         <b>گذشته از مهلت / مهلت امروز</b>
