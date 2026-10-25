@@ -41,7 +41,7 @@ public interface IOutgoingLetterPrintService
     /// false = «بدون رونوشت» (بلوک رونوشت حذف می‌شود — برای نسخه‌ای که به
     /// سازمان مقصد تحویل داده می‌شود و نیازی به اطلاع رونوشت‌گیرندگان ندارد)
     /// </param>
-    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true);
+    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true);
 }
 
 /// <summary>Raised when a company-required letterhead cannot be resolved or applied.</summary>
@@ -318,7 +318,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// نسخهٔ بدون رونوشت برای تحویل به سازمان مقصد است؛ نسخهٔ با رونوشت
     /// در پروندهٔ دبیرخانه باقی می‌ماند.
     /// </summary>
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true)
     {
         // Resolve the letter and its company-registered letterhead before rendering.
         var letter = await _db.OutgoingLetters.AsNoTracking()
@@ -354,18 +354,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         // زنجیرهٔ منبع سربرگ:
         // ۱) فایل ثبت‌شده روی رکورد شرکت
-        var registeredPath = companyRecordMissing ? null : ResolveRegisteredLetterheadFile(company);
+        var registeredPath = withLetterhead && !companyRecordMissing ? ResolveRegisteredLetterheadFile(company) : null;
 
         // ۲) طرح سربرگ جاسازی‌شده در قالب MRT خود شرکت (Reports/OutgoingLetters/Companies/{id})
         //    — هم استخراج می‌شود تا اگر فایل ثبت‌شده خراب بود هم جایگزین باشد.
-        var templateLetterheadPath = selectedCompanyId is > 0
+        var templateLetterheadPath = withLetterhead && selectedCompanyId is > 0
             ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
             : null;
         var letterheadPath = registeredPath ?? templateLetterheadPath;
         var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
 
         // ۳) سربرگ فوروث / لوگوی HR — فقط برای نامه‌های «بدون شرکت».
-        if (letterheadPath == null && !hasCompanyId)
+        if (withLetterhead && letterheadPath == null && !hasCompanyId)
         {
             letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
             if (letterheadPath == null)
@@ -385,7 +385,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // قاعدهٔ سخت‌گیرانه: نامه‌ای که «شرکت» دارد هرگز بدون سربرگ چاپ نمی‌شود.
         // اگر هیچ سربرگی (فایل ثبت‌شده یا طرح قالب MRT) پیدا نشد، چاپ با پیام دقیق متوقف می‌شود
         // تا به‌جای نامهٔ سفید، علت واقعی دیده شود.
-        if (letterheadPath == null && hasCompanyId)
+        if (withLetterhead && letterheadPath == null && hasCompanyId)
         {
             var companyName = string.IsNullOrWhiteSpace(company?.Name)
                 ? letterCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
@@ -464,22 +464,25 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var contentPdf = BuildContentPdf(
             letter, signers, sematTitles, sematTitlesByUser, hasAttachment, isA5, withCopy, copyTos,
             hasLetterhead: letterheadPath != null,
-            letterheadCompanyId: selectedCompanyId);
+            letterheadCompanyId: selectedCompanyId,
+            withMargin: withMargin);
 
         // Use the same company record and letterhead path for all rendered pages.
         if (letterheadPath == null)
         {
-            // فقط نامه‌های «بدون شرکت» به اینجا می‌رسند (سربرگ فوروث/HR هم موجود نیست)
-            // — همان حالت قدیمی: هدر مشکی چاپ می‌شود.
-            _logger.LogWarning(
-                "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
-                letterId,
-                company?.Id ?? letterCompanyId,
-                company?.Name,
-                company?.LetterheadFileName,
-                _env.ContentRootPath,
-                _env.WebRootPath,
-                AppContext.BaseDirectory);
+            // در حالت انتخاب صریح «بدون سربرگ» پیام هشدارِ یافت‌نشدن ثبت نکن.
+            if (withLetterhead)
+            {
+                _logger.LogWarning(
+                    "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
+                    letterId,
+                    company?.Id ?? letterCompanyId,
+                    company?.Name,
+                    company?.LetterheadFileName,
+                    _env.ContentRootPath,
+                    _env.WebRootPath,
+                    AppContext.BaseDirectory);
+            }
             return contentPdf;
         }
 
@@ -561,7 +564,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         bool withCopy,
         List<OutgoingLetterCopyTo>? copyTos,
         bool hasLetterhead,
-        int? letterheadCompanyId)
+        int? letterheadCompanyId,
+        bool withMargin)
     {
         EnsureFonts();
 
@@ -608,10 +612,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
         // نام، سمت و امضای امضاکننده در سمتِ چپِ انتهای نامه قرار می‌گیرد و
         // تصویرِ امضا دقیقاً روی نام و سمتِ امضاکننده می‌افتد (Overlap).
-        var signerBlockWidth = isA5 ? 140f : 200f;
-        var signerBlockHeight = isA5 ? 54f : 72f;
-        var signatureBoxWidth = isA5 ? 96f : 132f;
-        var signatureBoxHeight = isA5 ? 30f : 40f;
+        var signerBlockWidth = isA5 ? 150f : 220f;
+        var signerBlockHeight = isA5 ? 68f : 92f;
+        var signatureBoxWidth = isA5 ? 126f : 178f;
+        var signatureBoxHeight = isA5 ? 42f : 58f;
 
         void AddSignerCard(IContainer container, (string Name, string Role, byte[]? Signature) signer)
         {
@@ -661,9 +665,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
                 // company background by PDFsharp, that white fill would hide the entire letterhead.
                 page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
-                page.MarginTop(0);
-                // Reserve the printed company footer area on every page.
-                page.MarginBottom(isA5 ? 52 : 90);
+                page.MarginTop(withMargin ? (isA5 ? 16 : 24) : 0);
+                // Reserve the printed company footer only when a letterhead is requested.
+                page.MarginBottom(hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -674,9 +678,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .DirectionFromRightToLeft());
 
                 var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
-                var contentTopPadding = isAriaLetterhead
-                    ? (isA5 ? 26f : 36f)
-                    : (isA5 ? 30f : 30f); // در A5 بدنه نامه از بالاتر شروع شود
+                var contentTopPadding = withMargin || hasLetterhead
+                    ? (isAriaLetterhead ? (isA5 ? 26f : 36f) : 30f) // فضای امن سربرگ حفظ شود
+                    : 0f;
 
                 if (isAriaLetterhead)
                 {
@@ -779,7 +783,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // One shared padded body column keeps receiver, subject, paragraphs,
                 // signature block on identical left/right margins.
                 page.Content().PaddingTop(contentTopPadding)
-                    .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
+                    .PaddingHorizontal(withMargin ? (isA5 ? 48 : 68) : 0).Column(col =>
                 {
                     col.Spacing(isA5 ? 4 : 6);
 

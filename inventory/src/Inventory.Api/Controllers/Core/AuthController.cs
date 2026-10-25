@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Formats.Png;
 using Inventory.Api.Services;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -73,20 +76,76 @@ public class AuthController : ControllerBase
     /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
     [HttpPost("users/signature/{id:int}")]
     [Authorize(Roles = "Admin")]
-    [DisableRequestSizeLimit]
+    [RequestSizeLimit(11 * 1024 * 1024)]
     public async Task<IActionResult> UploadUserSignature(int id, IFormFile file)
     {
         var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == id);
         if (user == null) return NotFound(new { message = "کاربر پیدا نشد." });
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایل امضا انتخاب نشده است." });
-        var type = (file.ContentType ?? "").ToLowerInvariant();
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (type is not ("image/png" or "image/jpeg") || ext is not (".png" or ".jpg" or ".jpeg"))
-            return BadRequest(new { message = "امضا باید به‌صورت تصویر PNG یا JPG باشد." });
-        using var ms = new MemoryStream(); await file.CopyToAsync(ms); ms.Position = 0;
-        var path = await _store.SaveAsync("UserSignatures", id, ms, "signature.png");
+        const int maxBytes = 10 * 1024 * 1024;
+        if (file.Length > maxBytes) return BadRequest(new { message = "حجم فایل امضا نباید بیشتر از ۱۰ مگابایت باشد." });
+
+        // اعتبارسنجی بر اساس بایت‌های واقعی فایل است؛ پسوند و Content-Type قابل جعل هستند.
+        using var upload = new MemoryStream((int)file.Length);
+        await file.CopyToAsync(upload);
+        var inputBytes = upload.ToArray();
+        byte[] pngSignature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        if (inputBytes.Length < pngSignature.Length || !inputBytes.AsSpan(0, pngSignature.Length).SequenceEqual(pngSignature))
+            return BadRequest(new { message = "فقط فایل PNG معتبر مجاز است." });
+
+        byte[] processedPng;
+        try
+        {
+            var info = Image.Identify(inputBytes);
+            if (info == null || info.Width <= 0 || info.Height <= 0 || (long)info.Width * info.Height > 40_000_000)
+                return BadRequest(new { message = "ابعاد تصویر امضا معتبر نیست یا بیش از حد مجاز است." });
+
+            using var image = Image.Load<Rgba32>(inputBytes); // decode کامل، نه صرفاً بررسی header
+            if (image.Width != info.Width || image.Height != info.Height)
+                return BadRequest(new { message = "تصویر PNG قابل رمزگشایی نیست." });
+
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        var px = row[x];
+                        if (px.A == 0) continue; // preserve pixels already transparent in the uploaded PNG
+                        var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                        var max = Math.Max(px.R, Math.Max(px.G, px.B));
+                        if (min >= 250 && max - min <= 12)
+                        {
+                            row[x] = new Rgba32(0, 0, 0, 0);
+                            continue;
+                        }
+
+                        // حذف زمینهٔ سفید با حفظ لبه‌های anti-alias امضا.
+                        var foregroundAlpha = 255 - min;
+                        if (foregroundAlpha <= 0) { row[x] = new Rgba32(0, 0, 0, 0); continue; }
+                        var alpha = (foregroundAlpha * px.A + 127) / 255;
+                        if (alpha <= 0) { row[x] = new Rgba32(0, 0, 0, 0); continue; }
+                        static byte Unblend(byte channel, int a) => (byte)Math.Clamp(((channel - (255 - a)) * 255 + a / 2) / a, 0, 255);
+                        row[x] = new Rgba32(Unblend(px.R, foregroundAlpha), Unblend(px.G, foregroundAlpha), Unblend(px.B, foregroundAlpha), (byte)alpha);
+                    }
+                }
+            });
+
+            await using var png = new MemoryStream();
+            await image.SaveAsync(png, new PngEncoder());
+            processedPng = png.ToArray();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return BadRequest(new { message = "فایل انتخاب‌شده PNG معتبر یا قابل رمزگشایی نیست." });
+        }
+
+        using var output = new MemoryStream(processedPng, writable: false);
+        var path = await _store.SaveAsync("UserSignatures", id, output, "signature.png");
         if (!string.IsNullOrWhiteSpace(user.SignaturePath)) _store.Delete(user.SignaturePath);
-        user.SignaturePath = path; await _db.SaveChangesAsync();
+        user.SignaturePath = path;
+        await _db.SaveChangesAsync();
         return Ok(new { signaturePath = path, url = $"/api/auth/users/signature/{id}" });
     }
 

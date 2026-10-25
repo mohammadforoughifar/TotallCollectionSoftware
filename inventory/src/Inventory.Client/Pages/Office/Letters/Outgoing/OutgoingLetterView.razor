@@ -37,11 +37,13 @@
                     @if (printMenuOpen)
                     {
                         <div class="ltmenu" @onclick:stopPropagation="true">
-                            <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                            <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                            <label class="print-letterhead-toggle"><input type="checkbox" @bind="printWithLetterhead" /> چاپ با سربرگ شرکت</label>
                             <div class="mdiv"></div>
-                            <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                            <div class="mdiv"></div>
                             <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                            <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
                         </div>
                     }
                 </span>
@@ -162,6 +164,10 @@
 @* ---------- مدالِ گردش نامه ---------- *@
 <OutgoingGardeshModal @ref="gardesh" />
 
+<style>
+.print-letterhead-toggle{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+</style>
+
 @code {
     // اندازهٔ چاپ — به‌صورت ثابت تعریف می‌شود تا داخل صفت‌های HTML
     // نیازی به نوشتن رشتهٔ داخل کوتیشن نباشیم (در Razor بک‌اسلش داخل صفت HTML معتبر نیست).
@@ -174,6 +180,7 @@
     private List<LetterAttachmentDto> attachments = new();
     private bool loading = true;
     private bool printing, printMenuOpen;
+    private bool printWithLetterhead = true;
     private OutgoingGardeshModal? gardesh;
 
     /// <summary>باز کردنِ پنجرهٔ گردشِ همین نامه از صفحهٔ نمایشِ نامه صادره</summary>
@@ -191,7 +198,7 @@
     private async Task PrintSelected(string size, bool withHamesh)
     {
         ClosePrintMenu();
-        await PrintPdf(size);
+        await PrintPdf(size, withHamesh);
     }
 
     private string StatusTitle => letter?.Status switch
@@ -230,7 +237,7 @@
     private void GoCartable() => Nav.NavigateTo("outgoing-letters");
 
     /// <summary>چاپ نامه روی سربرگ شرکت — دریافت PDF از سرور و باز کردن صفحهٔ چاپ</summary>
-    private async Task PrintPdf(string size)
+    private async Task PrintPdf(string size, bool withMargin)
     {
         if (letter == null) return;
         printMenuOpen = false;
@@ -240,7 +247,8 @@
         var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size);
+            var bytes = await OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
+                withMargin: withMargin, withLetterhead: printWithLetterhead);
             var name = $"letter-{(letter.SadereNumber ?? letter.LetterNumber).Replace('/', '-')}-{size}.pdf";
             var payload = Convert.ToBase64String(bytes);
             if (printId != null)

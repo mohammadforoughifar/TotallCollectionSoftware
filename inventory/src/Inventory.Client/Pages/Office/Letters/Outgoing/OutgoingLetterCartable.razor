@@ -222,11 +222,13 @@
                                         @if (printMenuOpen && printMenuLetterId == ll.LetterId)
                                         {
                                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <label class="print-letterhead-toggle"><input type="checkbox" @bind="printWithLetterhead" /> چاپ با سربرگ شرکت</label>
                                                 <div class="mdiv"></div>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                                <div class="mdiv"></div>
                                                 <button @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
                                             </div>
                                         }
                                         @if (ll.ErjaId is { } eid2)
@@ -288,11 +290,13 @@
                         @if (printMenuOpen)
                         {
                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <label class="print-letterhead-toggle"><input type="checkbox" @bind="printWithLetterhead" /> چاپ با سربرگ شرکت</label>
                                 <div class="mdiv"></div>
-                                <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                <div class="mdiv"></div>
                                 <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
                             </div>
                         }
                     </span>
@@ -622,6 +626,8 @@
 <ComposeOutgoingModal @ref="compose" OnSent="OnComposed" />
 <OutgoingErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
 <OutgoingGardeshModal @ref="gardesh" />
+
+<style>.print-letterhead-toggle{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:13px;cursor:pointer;white-space:nowrap}</style>
 
 @code {
     // اندازهٔ چاپ — به‌صورت ثابت تعریف می‌شود تا داخل صفت‌های HTML
@@ -1137,6 +1143,7 @@
     // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
     // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
     private bool printingPdf, printMenuOpen;
+    private bool printWithLetterhead = true;
     private int? printMenuLetterId;
 
     private void TogglePrintMenu(OutgoingLetterListItemDto l)
@@ -1159,7 +1166,7 @@
     private async Task PrintSelected(string size, bool withHamesh)
     {
         ClosePrintMenu();
-        await PrintPdf(size);
+        await PrintPdf(size, withHamesh);
     }
 
     private async Task PrintRow(OutgoingLetterListItemDto l, string size, bool withHamesh)
@@ -1167,13 +1174,13 @@
         ClosePrintMenu();
         openMenuId = 0;
         await OpenLetter(l);
-        await PrintPdf(size);
+        await PrintPdf(size, withHamesh);
     }
 
     private void ViewLetter(int letterId) => Nav.NavigateTo($"outgoing-letters/view/{letterId}");
 
     /// <summary>چاپ نامه روی سربرگ شرکت (A4/A5) — PDF از سرور</summary>
-    private async Task PrintPdf(string size)
+    private async Task PrintPdf(string size, bool withMargin)
     {
         if (selected == null) return;
         printMenuOpen = false;
@@ -1183,7 +1190,8 @@
         var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size);
+            var bytes = await OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size, withCopy: true,
+                withMargin: withMargin, withLetterhead: printWithLetterhead);
             var name = $"letter-{(selected.SadereNumber ?? selected.LetterNumber).Replace('/', '-')}-{size}.pdf";
             var payload = Convert.ToBase64String(bytes);
             if (printId != null)

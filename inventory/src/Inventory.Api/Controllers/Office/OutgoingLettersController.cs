@@ -484,13 +484,10 @@ public class OutgoingLettersController : RbacControllerBase
     /// • withCopy=false → «بدون رونوشت» (نسخه‌ای که تحویل سازمان مقصد می‌شود)
     /// </summary>
     [HttpGet("{id:int}/print")]
-    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true)
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
+        [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        // چاپ نامه صادره فقط برای کاربران دبیرخانه مجاز است.
-        if (!await HasDabirkhaneAsync())
-            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه مجاز است." });
-
         if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
@@ -522,7 +519,7 @@ public class OutgoingLettersController : RbacControllerBase
         byte[]? pdf;
         try
         {
-            pdf = await _print.GeneratePdfAsync(id, size, withCopy);
+            pdf = await _print.GeneratePdfAsync(id, size, withCopy, withMargin, withLetterhead);
         }
         catch (RequiredCompanyLetterheadPrintException ex)
         {
