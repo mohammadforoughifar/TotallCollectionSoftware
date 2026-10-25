@@ -73,13 +73,34 @@ class LetterheadAssetsTests(unittest.TestCase):
                     component = next(e for e in page.iter() if e.findtext("Text") == "{DataSource1." + column + "}")
                     x, y, width, height = [float(v) for v in component.findtext("ClientRectangle").split(",")]
                     left_shift = (3 if size == "A5" else 4) if field in ("Date", "Attachment") else 0
-                    expected = ((margins[0] + x) * 72 - left_shift, (margins[2] + y) * 72, width * 72, height * 72)
+                    physical_x = (margins[0] + x) * 72 - left_shift
+                    physical_y = (margins[2] + y) * 72
+                    page_header_origin = 16 if size == "A5" else 24
+                    expected = (physical_x, physical_y - page_header_origin, width * 72, height * 72)
                     actual = [float(v.strip().removesuffix("f")) for v in variants[index].split(",")]
                     for value, target in zip(actual, expected):
                         self.assertAlmostEqual(value, target, places=3)
+                    self.assertAlmostEqual(actual[1] + page_header_origin, physical_y, places=3,
+                                           msg="value top must match the corresponding label's page coordinate")
                     self.assertGreaterEqual(actual[0], 0)
                     self.assertLess(actual[0] + actual[2], float(page.findtext("PageWidth")) * 72 / 3,
                                     "values must stay in the physical left third, not the RTL right edge")
+
+    def test_1003_header_values_match_the_label_rows_and_use_ltr_isolation(self):
+        source = SERVICE.read_text()
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        self.assertIn("Header content begins after Page.MarginTop", layout)
+        self.assertIn("text.DirectionFromLeftToRight()", source)
+        self.assertIn('isolateLtr ? $"\\u2066{value}\\u2069" : value', source)
+        for is_a5, expected in ((False, (36.48, 53.04, 69.6)), (True, (25.04, 36.56, 48.08))):
+            fields = [re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
+                      for name in ("Number", "Date", "Attachment")]
+            actual = []
+            for field in fields:
+                variants = re.findall(r"new\(([^)]+)\)", field)
+                size_index = 0 if is_a5 else 1
+                actual.append(float(variants[size_index].split(",")[1].strip().removesuffix("f")))
+            self.assertEqual(tuple(actual), expected)
 
     def test_homepa_header_is_left_anchored_and_fields_are_independent(self):
         source = SERVICE.read_text()
@@ -92,6 +113,21 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertNotIn(".Column(", branch)
         self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", branch)
         self.assertIn("HomepaLetterheadLayout.Number(isA5)", branch, "fixed metadata positions are independent of body spacing")
+
+    def test_1003_signer_heading_group_and_multpage_footer_are_conditional(self):
+        source = SERVICE.read_text()
+        self.assertIn("col.Item().ShowEntire().Column(AddSignerBlock)", source)
+        self.assertIn("var headingTopPadding = isHomepaLetterhead", source)
+        self.assertIn("var tableTopPadding = isHomepaLetterhead", source)
+        self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
+        self.assertIn("context.TotalPages > 1", source)
+        self.assertIn("page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent())", source)
+        overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
+        self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
+        self.assertLess(overlay.index("graphics.DrawImage(asset.Image, bounds)"),
+                        overlay.index("graphics.DrawImage(contentForm, bounds)"))
+        self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
+        self.assertIn("page.Content().Background(Colors.Transparent)", source)
 
     def test_print_does_not_inject_a_closing_or_stamp_box(self):
         source = SERVICE.read_text()
@@ -106,7 +142,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn(".Text(signer.Name)", source)
         self.assertIn(".Text(signer.Role)", source)
         self.assertIn(".Svg(signature.Svg).FitArea()", source)
-        self.assertIn("if (signerCards.Count > 0)", source)
+        self.assertIn("if (signerCards.Count > 0 && !signersKeptWithTrailingParagraph)", source)
 
     def test_homepa_header_fields_and_body_spacing_are_independent(self):
         source = SERVICE.read_text()
@@ -116,7 +152,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn(": (withMargin || hasLetterhead ? 30f : 0f);", source,
                       "other companies keep their existing body spacing")
         self.assertIn("HomepaLetterheadLayout.ReceiverTopPadding(isA5)", source)
-        self.assertIn("page.Content().PaddingTop(contentTopPadding)", source)
+        self.assertIn("contentContainer.PaddingTop(contentTopPadding)", source)
         self.assertIn("HomepaLetterheadLayout.SubjectBodyGap(isA5) : 0f", source)
         self.assertIn("col.Item().PaddingTop(subjectTopPadding).Text", source)
         self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", source)
@@ -124,7 +160,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f", layout)
         self.assertIn("SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f", layout)
         self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 90f", layout)
-        self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 7.5f : 9.5f", layout)
+        self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f", layout)
         homepa_branch = source.split("else if (isHomepaLetterhead)", 1)[1].split("else if (hasLetterhead)", 1)[0]
         self.assertNotIn("center: true", homepa_branch)
         self.assertNotIn('"شماره:"', homepa_branch, "captions must not be duplicated over the artwork")

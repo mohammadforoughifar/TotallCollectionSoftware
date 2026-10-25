@@ -25,10 +25,65 @@ internal static class RichLetterPdfRenderer
     private static readonly HashSet<string> BlockTags = new(StringComparer.OrdinalIgnoreCase)
         { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
 
-    internal static void AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight)
+    internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
+        Action<ColumnDescriptor>? keepWithTrailingText = null)
     {
         var root = Parse(RichLetterHtml.Sanitize(html));
+        if (keepWithTrailingText != null)
+        {
+            var lastIndex = root.Children.FindLastIndex(node => node.Tag != "#text" || !string.IsNullOrWhiteSpace(node.Text));
+            if (lastIndex >= 0)
+            {
+                var trailing = root.Children[lastIndex];
+                var isParagraph = trailing.Tag is "p" or "#text" or "strong" or "b" or "em" or "i" or "u" or "span" ||
+                    trailing.Tag == "div" && !trailing.Children.Any(child => BlockTags.Contains(child.Tag));
+                if (isParagraph && TextLength(trailing) <= 360)
+                {
+                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight);
+                    column.Item().ShowEntire().Column(group =>
+                    {
+                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight);
+                        keepWithTrailingText(group);
+                    });
+                    return true;
+                }
+
+                if (trailing.Tag is "ol" or "ul")
+                {
+                    var items = trailing.Children.Where(child => child.Tag == "li").ToList();
+                    if (items.Count >= 2 && TextLength(items[^1]) + TextLength(items[^2]) <= 360)
+                    {
+                        var ordered = trailing.Tag == "ol";
+                        var prefixItems = trailing.Children.Where(child => child.Tag == "li").Take(items.Count - 2).ToList();
+                        var preceding = root.Children.Take(lastIndex).ToList();
+                        if (prefixItems.Count > 0) preceding.Add(CloneWithChildren(trailing, prefixItems));
+                        RenderChildren(column, preceding, defaultFontSize, lineHeight);
+                        column.Item().ShowEntire().Column(group =>
+                        {
+                            RenderListItem(group, items[^2], ordered, items.Count - 1, defaultFontSize, lineHeight);
+                            RenderListItem(group, items[^1], ordered, items.Count, defaultFontSize, lineHeight);
+                            keepWithTrailingText(group);
+                        });
+                        return true;
+                    }
+                }
+            }
+        }
+
         RenderChildren(column, root.Children, defaultFontSize, lineHeight);
+        return false;
+    }
+
+    private static int TextLength(Node node) => node.Tag == "#text"
+        ? node.Text.Length
+        : node.Children.Sum(TextLength);
+
+    private static Node CloneWithChildren(Node source, IEnumerable<Node> children)
+    {
+        var clone = new Node { Tag = source.Tag, Text = source.Text };
+        foreach (var attribute in source.Attributes) clone.Attributes[attribute.Key] = attribute.Value;
+        clone.Children.AddRange(children);
+        return clone;
     }
 
     private static Node Parse(string html)
@@ -162,17 +217,23 @@ internal static class RichLetterPdfRenderer
         foreach (var item in list.Children.Where(x => x.Tag == "li"))
         {
             index++;
-            var nested = item.Children.Where(x => x.Tag is "ol" or "ul").ToList();
-            var marker = ordered ? PersianDigits(index.ToString(CultureInfo.InvariantCulture)) + ". " : "• ";
-            column.Item().Text(text =>
-            {
-                text.Span(marker).Bold();
-                foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
-                    AppendInline(text, child, new Formatting(), fontSize);
-            })
-            .FontSize(fontSize).LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-            foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
+            RenderListItem(column, item, ordered, index, fontSize, lineHeight);
         }
+    }
+
+    private static void RenderListItem(ColumnDescriptor column, Node item, bool ordered, int index,
+        float fontSize, float lineHeight)
+    {
+        var nested = item.Children.Where(x => x.Tag is "ol" or "ul").ToList();
+        var marker = ordered ? PersianDigits(index.ToString(CultureInfo.InvariantCulture)) + ". " : "• ";
+        column.Item().Text(text =>
+        {
+            text.Span(marker).Bold();
+            foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
+                AppendInline(text, child, new Formatting(), fontSize);
+        })
+        .FontSize(fontSize).LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+        foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
 
     private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight)

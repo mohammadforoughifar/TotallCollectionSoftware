@@ -68,6 +68,40 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private sealed record SignatureSvgData(string Svg, int Width, int Height);
     private sealed record CachedSignature(SignatureSvgData? Data);
     private sealed record SematPrintTitle(int SematId, int? UserId, string Title, string? CorrespondenceTitle, bool DefaultSemat, bool IsActive);
+    private sealed class HomepaPageNumberComponent : IDynamicComponent
+    {
+        public DynamicComponentComposeResult Compose(DynamicContext context)
+        {
+            var content = context.CreateElement(element =>
+            {
+                if (context.TotalPages > 1)
+                {
+                    element.AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(style => style
+                            .FontFamily("Vazirmatn")
+                            .FontSize(8)
+                            .FontColor("#475569"));
+                        text.Span("صفحه ");
+                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                        text.Span(" از ");
+                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                    }).DirectionFromRightToLeft();
+                }
+                else
+                {
+                    element.Text(string.Empty);
+                }
+            });
+
+            return new DynamicComponentComposeResult
+            {
+                Content = content,
+                HasMoreContent = false
+            };
+        }
+    }
+
     private sealed class CachedLetterheadAsset
     {
         public CachedLetterheadAsset(bool isPdf, XPdfForm? pdf, XImage? image)
@@ -774,6 +808,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         var title = ToPersianDigits(letter.Title);
         var externalReference = ToPersianDigits(letter.ExternalRefNumber);
+        var isHomepaLetterhead = hasLetterhead && letterheadCompanyId == HomepaCompanyId;
         var signerCards = signers.Select(s =>
         {
             var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
@@ -789,6 +824,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var signerBlockWidth = isA5 ? 150f : 220f;
         var maxSignatureWidth = isA5 ? 138f : 205f;
         var maxSignatureHeight = isA5 ? 68f : 72f; // 91–96 CSS px at 96 dpi
+        var signerColumns = signerCards.Count == 1 ? 1 : 2;
 
         void AddSignerCard(IContainer container, (string Name, string Role, SignatureSvgData? Signature) signer)
         {
@@ -820,6 +856,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         }
 
+        void AddSignerBlock(ColumnDescriptor target)
+        {
+            var headingTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
+            var tableTopPadding = isHomepaLetterhead ? (isA5 ? 2 : 3) : (isA5 ? 4 : 6);
+            var cellPadding = isHomepaLetterhead ? 2 : 4;
+
+            target.Item().PaddingTop(headingTopPadding).Text("امضاکنندگان")
+                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                .AlignCenter().DirectionFromRightToLeft();
+            target.Item().PaddingTop(tableTopPadding).Table(table =>
+            {
+                table.ColumnsDefinition(columns =>
+                {
+                    for (var i = 0; i < signerColumns; i++)
+                        columns.RelativeColumn();
+                });
+
+                foreach (var signer in signerCards)
+                    table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
+                        .Element(card => AddSignerCard(card, signer));
+            });
+        }
+
         void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
             float fieldFontSize, bool isolateLtr = false)
         {
@@ -828,10 +887,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
             var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
                 .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
-            box.ScaleToFit().Text(displayValue)
+            var text = box.ScaleToFit().Text(displayValue)
                 .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
-                .FontColor(Colors.White).LineHeight(1.05f)
-                .DirectionFromRightToLeft();
+                .FontColor(Colors.White).LineHeight(1.05f);
+            if (isolateLtr)
+                text.DirectionFromLeftToRight();
+            else
+                text.DirectionFromRightToLeft();
         }
 
         void AddSubjectAndFollowingContent(ColumnDescriptor col, float subjectTopPadding = 0f)
@@ -852,30 +914,27 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             col.Item().PaddingVertical(isA5 ? 3 : 5)
                 .LineHorizontal(0.7f).LineColor("#999999");
 
+            var signersKeptWithTrailingParagraph = false;
             if (!string.IsNullOrWhiteSpace(letter.Text))
             {
-                // Keep editor paragraphs, ordered/unordered lists, inline emphasis, tables and explicit breaks.
-                RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight);
+                // On 1003, keep a short final paragraph with signatures if pagination would otherwise strand them.
+                // Other companies retain their existing body flow and signature placement.
+                signersKeptWithTrailingParagraph = isHomepaLetterhead && signerCards.Count > 0
+                    ? RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight, AddSignerBlock)
+                    : RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight);
             }
 
-            if (signerCards.Count > 0)
+            if (signerCards.Count > 0 && !signersKeptWithTrailingParagraph)
             {
-                var signerColumns = signerCards.Count == 1 ? 1 : 2;
-                col.Item().PaddingTop(isA5 ? 8 : 12).Text("امضاکنندگان")
-                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                    .AlignCenter().DirectionFromRightToLeft();
-                col.Item().PaddingTop(isA5 ? 4 : 6).Table(table =>
+                if (isHomepaLetterhead)
                 {
-                    table.ColumnsDefinition(columns =>
-                    {
-                        for (var i = 0; i < signerColumns; i++)
-                            columns.RelativeColumn();
-                    });
-
-                    foreach (var signer in signerCards)
-                        table.Cell().Padding(4).ShowEntire().AlignCenter()
-                            .Element(card => AddSignerCard(card, signer));
-                });
+                    // Keep heading and all signer cards as one pagination unit, and compact only 1003's block.
+                    col.Item().ShowEntire().Column(AddSignerBlock);
+                }
+                else
+                {
+                    AddSignerBlock(col);
+                }
             }
 
             if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
@@ -914,7 +973,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
-                var isHomepaLetterhead = hasLetterhead && letterheadCompanyId == HomepaCompanyId;
                 // Keep the 1003 header anchored at the same page coordinates even when
                 // the body-margin option is toggled; all other companies retain their old rule.
                 page.MarginTop(isHomepaLetterhead
@@ -927,6 +985,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 page.MarginBottom(isHomepaLetterhead
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
                     : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
+                if (isHomepaLetterhead)
+                    page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent());
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -1047,7 +1107,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // Header values live in page.Header with fixed template coordinates.
                 // For company 1003, keep the recipient at its existing top offset and
                 // add the extra space only before subject/body and all following items.
-                page.Content().PaddingTop(contentTopPadding)
+                // Keep the PDF content transparent on 1003 so the per-page letterhead image remains visible beneath it.
+                var contentContainer = isHomepaLetterhead
+                    ? page.Content().Background(Colors.Transparent)
+                    : page.Content();
+                contentContainer.PaddingTop(contentTopPadding)
                     .PaddingHorizontal(withMargin ? (isA5 ? 48 : 68) : 0).Column(col =>
                 {
                     col.Spacing(isA5 ? 4 : 6);
