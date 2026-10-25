@@ -160,8 +160,15 @@ internal static class RichLetterPdfRenderer
                         column.Item().PaddingVertical(4).LineHorizontal(0.6f).LineColor("#94a3b8");
                         break;
                     case "blockquote":
-                        column.Item().PaddingRight(10).Text(text => AppendInline(text, node, new Formatting(), fontSize))
-                            .FontSize(fontSize).LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+                        column.Item().PaddingRight(10).Text(text =>
+                        {
+                            text.DefaultTextStyle(style => style
+                                .FontSize(fontSize)
+                                .LineHeight(lineHeight)
+                                .DirectionFromRightToLeft());
+                            text.AlignRight();
+                            AppendInline(text, node, new Formatting(), fontSize);
+                        });
                         break;
                     case "div":
                         if (node.Children.Any(child => child.Tag != "#text" && BlockTags.Contains(child.Tag)))
@@ -196,18 +203,21 @@ internal static class RichLetterPdfRenderer
         var blockStyle = ParseStyle(style);
         if (blockStyle.TryGetValue("font-size", out var size) && TryFontSize(size, out var styledSize))
             fontSize = Math.Clamp(styledSize, 6, 30);
-        var textBlock = item.Text(text =>
+        item.Text(text =>
         {
+            text.DefaultTextStyle(style => style
+                .FontSize(fontSize)
+                .LineHeight(lineHeight)
+                .DirectionFromRightToLeft());
+            switch (blockStyle.GetValueOrDefault("text-align"))
+            {
+                case "center": text.AlignCenter(); break;
+                case "left": text.AlignLeft(); break;
+                case "justify": text.Justify(); break;
+                default: text.AlignRight(); break;
+            }
             foreach (var node in nodes) AppendInline(text, node, new Formatting { Bold = bold }, fontSize);
-        })
-        .FontSize(fontSize).LineHeight(lineHeight).DirectionFromRightToLeft();
-        switch (blockStyle.GetValueOrDefault("text-align"))
-        {
-            case "center": textBlock.AlignCenter(); break;
-            case "left": textBlock.AlignLeft(); break;
-            case "justify": textBlock.Justify(); break;
-            default: textBlock.AlignRight(); break;
-        }
+        });
     }
 
     private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight)
@@ -228,11 +238,15 @@ internal static class RichLetterPdfRenderer
         var marker = ordered ? PersianDigits(index.ToString(CultureInfo.InvariantCulture)) + ". " : "• ";
         column.Item().Text(text =>
         {
+            text.DefaultTextStyle(style => style
+                .FontSize(fontSize)
+                .LineHeight(lineHeight)
+                .DirectionFromRightToLeft());
+            text.AlignRight();
             text.Span(marker).Bold();
             foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
                 AppendInline(text, child, new Formatting(), fontSize);
-        })
-        .FontSize(fontSize).LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+        });
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
 
@@ -252,8 +266,15 @@ internal static class RichLetterPdfRenderer
                 foreach (var cell in row.Children.Where(x => x.Tag is "td" or "th"))
                 {
                     table.Cell().Border(0.5f).BorderColor("#94a3b8").Padding(4)
-                        .Text(text => AppendInline(text, cell, new Formatting { Bold = cell.Tag == "th" }, fontSize))
-                        .FontSize(fontSize).LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+                        .Text(text =>
+                        {
+                            text.DefaultTextStyle(style => style
+                                .FontSize(fontSize)
+                                .LineHeight(lineHeight)
+                                .DirectionFromRightToLeft());
+                            text.AlignRight();
+                            AppendInline(text, cell, new Formatting { Bold = cell.Tag == "th" }, fontSize);
+                        });
                 }
             }
         });
