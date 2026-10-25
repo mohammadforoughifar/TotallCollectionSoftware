@@ -1526,9 +1526,9 @@ public class WorkOrdersController : ControllerBase
     // ================== داشبورد آماری ==================
 
     /// <summary>
-    /// داشبورد آماری دستور کار — همیشه محدود به «شرکت فعال» است.
-    /// اگر کاربر مجوز «View» داشته باشد آمار کل دستورهای شرکت را می‌بیند؛
-    /// در غیر این صورت فقط دستورهایی که خودش صادر کرده یا به او محول شده است.
+    /// داشبورد آماری دستور کار — همیشه «شخصی» است و محدود به «شرکت فعال».
+    /// برای همهٔ کاربران (حتی دارندهٔ مجوز «View») فقط دستورهایی شمرده می‌شود که
+    /// خود کاربر صادر کرده یا به او محول شده است؛ آمار کل شرکت در این داشبورد نمایش داده نمی‌شود.
     /// خروجی: کارت‌های KPI + توزیع وضعیت و اولویت + عملکرد گیرندگان + روند ۶ ماه شمسی.
     /// </summary>
     [HttpGet("stats")]
@@ -1538,12 +1538,13 @@ public class WorkOrdersController : ControllerBase
         if (companyId is null)
             return BadRequest(new { message = "شرکت فعال انتخاب نشده است. از منوی بالای صفحه یک شرکت انتخاب کنید." });
 
-        var canViewAll = await HasAsync("View");
+        // داشبورد برای همه شخصی است: مجوز «View» (دیدن کل دستورهای شرکت) اینجا
+        // باعث دیده‌شدن آمار دیگران نمی‌شود؛ فقط دستورهای خودِ کاربر شمرده می‌شوند.
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
 
-        var query = _db.WorkOrders.AsNoTracking().Where(w => w.CompanyId == companyId.Value);
-        if (!canViewAll)
-            query = query.Where(w => w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id));
+        var query = _db.WorkOrders.AsNoTracking()
+            .Where(w => w.CompanyId == companyId.Value)
+            .Where(w => w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id));
 
         var orders = await query.ToListAsync();
         var ids = orders.Select(o => o.Id).ToList();
@@ -1584,10 +1585,8 @@ public class WorkOrdersController : ControllerBase
             .Select(g => new { Priority = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Priority).ToList();
 
-        // عملکرد گیرندگان
-        // • مدیر (View): همهٔ گیرندگان دستورهای شرکت
-        // • کاربر عادی: فقط دستورهایی که خودش صادر کرده است
-        var scopeIds = (canViewAll ? orders : orders.Where(o => o.OwnerUserId == MyUserId)).Select(o => o.Id).ToHashSet();
+        // عملکرد گیرندگان — فقط گیرندگانِ دستورهایی که خودِ کاربر صادر کرده است
+        var scopeIds = orders.Where(o => o.OwnerUserId == MyUserId).Select(o => o.Id).ToHashSet();
         var dueMap = orders.Where(o => scopeIds.Contains(o.Id)).ToDictionary(o => o.Id, o => o.DueAt);
         var perAssignee = asgs.Where(a => scopeIds.Contains(a.OrderId))
             .GroupBy(a => new { a.UserId, a.Name })
@@ -1625,7 +1624,7 @@ public class WorkOrdersController : ControllerBase
 
         return Ok(new
         {
-            Scope = canViewAll ? "company" : "personal",
+            Scope = "personal",
             CompanyId = companyId.Value,
             Cards = new
             {
