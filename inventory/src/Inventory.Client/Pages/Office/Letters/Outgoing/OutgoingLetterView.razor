@@ -1,5 +1,7 @@
 @page "/outgoing-letters/view/{LetterId:int}"
+@using Inventory.Shared.Security
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -88,7 +90,7 @@
                     <span class="tg">محرمانگی: @letter.Mahramanegi</span>
                 </div>
 
-                <div class="paper-body">@((MarkupString)(letter.Text ?? "—"))</div>
+                <div class="paper-body letter-body">@((MarkupString)RichLetterHtml.Sanitize(letter.Text ?? "—"))</div>
 
                 @if (letter.Signers.Count > 0)
                 {
@@ -270,39 +272,16 @@
     /// <summary>چاپ نامه روی سربرگ شرکت — دریافت PDF از سرور و باز کردن صفحهٔ چاپ</summary>
     private async Task PrintPdf(string size, bool withMargin)
     {
-        if (letter == null) return;
+        if (letter == null || printing) return;
         printMenuOpen = false;
         printing = true;
-        string? printId = null;
         try
         {
-            try { printId = await JS.InvokeAsync<string?>("ltxPrintBegin"); }
-            catch { printId = null; }
-
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
-                withMargin: withMargin, withLetterhead: printWithLetterhead);
-            var name = $"letter-{(letter.SadereNumber ?? letter.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            var ready = printId != null && await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            if (!ready)
-            {
-                if (printId != null)
-                {
-                    try { await JS.InvokeVoidAsync("ltxPrintFail", printId, "پنجرهٔ چاپ آماده نشد."); }
-                    catch { }
-                }
-                Toast.Info("پنجرهٔ چاپ آماده نشد؛ نسخهٔ PDF باز می‌شود.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null)
-            {
-                try { await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message); }
-                catch { }
-            }
-            Toast.Error(ex.Message);
+            var number = letter.SadereNumber ?? letter.LetterNumber ?? letter.LetterId.ToString();
+            var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            await PrintWorkflow.PrintPdfAsync(
+                () => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
+                    withMargin: withMargin, withLetterhead: printWithLetterhead), name);
         }
         finally { printing = false; }
     }

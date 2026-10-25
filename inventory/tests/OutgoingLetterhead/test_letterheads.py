@@ -45,7 +45,8 @@ class LetterheadAssetsTests(unittest.TestCase):
     def test_content_pdf_does_not_cover_the_underlaid_letterhead(self):
         source = SERVICE.read_text()
         self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
-        self.assertLess(source.index("gfx.DrawImage(letterheadImg, rect)"), source.index("gfx.DrawImage(contentForm, rect)"))
+        self.assertLess(source.index("graphics.DrawImage(asset.Pdf, bounds)"), source.index("graphics.DrawImage(contentForm, bounds)"))
+        self.assertIn("graphics.DrawImage(asset.Image, bounds)", source)
 
     def test_registered_file_priority_is_preserved(self):
         self.assertIn("var letterheadPath = registeredPath ?? templateLetterheadPath;", SERVICE.read_text())
@@ -99,8 +100,9 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertNotIn('Text("با تشکر")', source)
         self.assertNotIn('Text("مهر")', source)
         self.assertNotIn("stampHeight", source)
-        self.assertIn("var bodyText = HtmlToPlainText(letter.Text);", source,
-                      "authored text must not be truncated at a closing-looking line")
+        self.assertNotIn("HtmlToPlainText", source,
+                         "authored HTML must be rendered rather than flattened or truncated")
+        self.assertIn("RichLetterPdfRenderer.AddTo(col, letter.Text", source)
         self.assertIn(".Text(signer.Name)", source)
         self.assertIn(".Text(signer.Role)", source)
         self.assertIn(".Svg(signature.Svg).FitArea()", source)

@@ -1,6 +1,8 @@
 @page "/outgoing-letters"
+@using Inventory.Shared.Security
 @page "/outgoing-letters/{Tab}"
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject ILetterService LetterSvc
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -366,7 +368,7 @@
                                     <span class="tg green"><i class="bi bi-patch-check-fill"></i> شماره صادره: @selected.SadereNumber.FaDigits()</span>
                                 }
                             </div>
-                            <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
+                            <div class="paper-body letter-body">@((MarkupString)RichLetterHtml.Sanitize(selected.Text ?? "—"))</div>
                             <div class="paper-foot" style="display:flex;flex-wrap:wrap;gap:8px">
                                 @foreach (var a in attachments)
                                 {
@@ -1182,30 +1184,16 @@
     /// <summary>چاپ نامه روی سربرگ شرکت (A4/A5) — PDF از سرور</summary>
     private async Task PrintPdf(string size, bool withMargin)
     {
-        if (selected == null) return;
+        if (selected == null || printingPdf) return;
         printMenuOpen = false;
         printingPdf = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ اگر پس از دریافت PDF باز شود،
-        // مرورگر آن را popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size, withCopy: true,
-                withMargin: withMargin, withLetterhead: printWithLetterhead);
-            var name = $"letter-{(selected.SadereNumber ?? selected.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            var number = selected.SadereNumber ?? selected.LetterNumber ?? selected.LetterId.ToString();
+            var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            await PrintWorkflow.PrintPdfAsync(
+                () => OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size, withCopy: true,
+                    withMargin: withMargin, withLetterhead: printWithLetterhead), name);
         }
         finally { printingPdf = false; }
     }
