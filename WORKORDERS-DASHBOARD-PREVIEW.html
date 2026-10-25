@@ -1,271 +1,218 @@
 <!doctype html>
-<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>پیش‌نمایش داشبورد مدیریتی دستور کار</title>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>داشبورد دستور کار — گزارش مدیریتی</title>
 <style>
-.wo-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-left:.25rem;}
-.wo-donut{width:148px;height:148px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;}
-.wo-donut-hole{width:92px;height:92px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-.wo-donut-total{font-size:1.35rem;font-weight:800;line-height:1;}
-.wo-donut-cap{font-size:.65rem;color:#64748b;margin-top:.1rem;}
-.wo-legend-row{display:flex;align-items:center;gap:.45rem;font-size:.8rem;color:#475569;padding:.18rem 0;}
-.wo-bar-track{height:8px;background:#f1f5f9;border-radius:999px;overflow:hidden;}
-.wo-bar{height:100%;border-radius:999px;background:#3b82f6;transition:width .3s;}
-.wo-bar-p3{background:#dc2626}.wo-bar-p2{background:#ea580c}.wo-bar-p1{background:#3b82f6}.wo-bar-p0{background:#94a3b8}
-.wo-chart{display:flex;gap:.5rem;align-items:stretch;height:180px;}
-.wo-chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:.25rem;}
-.wo-chart-bars{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:3px;}
-.wo-cb{width:12px;border-radius:4px 4px 0 0;min-height:2px;}
-.wo-cb-created{background:#94a3b8}.wo-cb-ontime{background:#22c55e}.wo-cb-late{background:#a855f7}.wo-cb-notdone{background:#ef4444}
-body{margin:0;padding:18px;background:#f6f8fb;font-family:Tahoma,"Segoe UI",sans-serif;direction:rtl;color:#0f172a;}
-.fs-9{font-size:.72rem}.fs-8{font-size:.8rem}.num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:embed;}
-.row{display:flex;flex-wrap:wrap;margin:-.5rem;}
-.g-3>*{padding:.5rem;}
-.col-12{flex:0 0 100%;max-width:100%;}
-@media(min-width:1200px){.col-xl-5{flex:0 0 41.66%;max-width:41.66%}.col-xl-7{flex:0 0 58.33%;max-width:58.33%}}
-.d-flex{display:flex}.flex-column{flex-direction:column}.flex-wrap{flex-wrap:wrap}.align-items-center{align-items:center}.justify-content-between{justify-content:space-between}
-.gap-2{gap:.5rem}.gap-3{gap:1rem}.gap-4{gap:1.5rem}.flex-grow-1{flex-grow:1}.ms-auto{margin-right:auto}.mt-2{margin-top:.5rem}.mb-0{margin-bottom:0}.mb-3{margin-bottom:1rem}
-.fw-600{font-weight:600}.fw-700{font-weight:700}.text-muted{color:#94a3b8}.text-center{text-align:center}
-h5{margin:.3rem 0}.h-100{height:100%}
+body{margin:0;padding:22px 18px;background:#f3f0eb;font-family:"Vazirmatn","Segoe UI",Tahoma,sans-serif;color:#1c1917;direction:rtl;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.fs-8{font-size:.8rem}.text-muted{color:#8a8378}.mt-2{margin-top:.5rem}
+.wrap{max-width:1140px;margin:0 auto}
+table{width:100%;border-collapse:collapse}
 .table-responsive{overflow-x:auto}
-table{border-collapse:collapse;width:100%}
-th,td{padding:.5rem .6rem;text-align:right;border-bottom:1px solid #eef2f7}
-.preview-note{max-width:1240px;margin:0 auto 14px;background:#fff;border:1px solid #e8edf3;border-radius:12px;padding:.6rem .9rem;font-size:.78rem;color:#475569}
-.wrap{max-width:1240px;margin:0 auto}
+.user-avatar-sm{width:20px;height:20px;border-radius:50%;background:#eee9e1;display:inline-block}
+.wdr-who .wdr-sq{margin-inline-end:.35rem}
+    /* ================== داشبورد دستور کار — «گزارش مدیریتی» (wdr-*) ================== */
+    .wdr-sheet { background:#fff; border:1px solid #e7e1d8; border-radius:8px; padding:1.5rem 1.7rem 1.2rem; box-shadow:0 1px 3px rgba(28,25,23,.05); color:#1c1917; }
+    .wdr-alert { display:flex; align-items:center; gap:.6rem; background:#fdf8ec; border:1px solid #e6d9b8; color:#6b4e12; border-radius:8px; padding:.65rem .9rem; font-size:.82rem; }
+    .wdr-alert-ic { width:20px; height:20px; border-radius:50%; background:#b45309; color:#fff; display:grid; place-items:center; font-size:.72rem; font-weight:800; flex:0 0 auto; }
+    .wdr-loading { text-align:center; padding:3rem 1rem; }
 
-/* ================== داشبورد مدیریتی دستور کار (wd-*) ================== */
-    .wd { display: flex; flex-direction: column; gap: .85rem; }
-    .wd-alert { display: flex; align-items: center; gap: .6rem; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 14px; padding: .7rem 1rem; margin-bottom: .85rem; }
-    .wd-skeleton { text-align: center; padding: 3rem 1rem; }
+    /* سرصفحه */
+    .wdr-masthead { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; border-bottom:2px solid #1c1917; padding-bottom:.7rem; }
+    .wdr-kicker { font-size:.68rem; letter-spacing:.14em; color:#a89f92; font-weight:800; }
+    .wdr-masthead h1 { font-size:1.32rem; font-weight:800; margin:.3rem 0 .2rem; letter-spacing:-.01em; }
+    .wdr-scope { font-size:.73rem; color:#8a8378; }
+    .wdr-meta { text-align:left; font-size:.71rem; color:#8a8378; display:flex; flex-direction:column; gap:.45rem; align-items:flex-end; }
+    .wdr-btn { font:inherit; font-size:.74rem; font-weight:700; border:1px solid #ddd6cb; background:#fff; color:#3f3a34; border-radius:6px; padding:.34rem .8rem; display:inline-flex; align-items:center; gap:.35rem; }
+    .wdr-btn:hover:not(:disabled) { border-color:#1c1917; color:#1c1917; }
+    .wdr-btn:disabled { opacity:.6; }
 
-    /* نوار عنوان */
-    .wd-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
-    .wd-top-l { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
-    .wd-scope { display: inline-flex; align-items: center; gap: .35rem; background: #eef2ff; color: #3730a3; border: 1px solid #e0e7ff; border-radius: 999px; padding: .28rem .8rem; font-size: .78rem; font-weight: 700; }
-    .wd-scope-note { font-size: .74rem; color: #64748b; }
-    .wd-top-r { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
-    .wd-updated { font-size: .74rem; color: #94a3b8; }
-    .wd-refresh { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 10px; padding: .38rem .85rem; font-size: .8rem; font-weight: 600; transition: all .15s; }
-    .wd-refresh:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; box-shadow: 0 4px 14px rgba(37,99,235,.15); }
-    .wd-refresh:disabled { opacity: .6; }
+    /* اعداد اصلی */
+    .wdr-figures { display:grid; grid-template-columns:1.35fr repeat(4, 1fr); border-bottom:1px solid #e7e1d8; }
+    .wdr-fig { padding:1.15rem .2rem 1rem 1rem; border-inline-start:1px solid #f0ebe4; }
+    .wdr-fig:first-child { border-inline-start:0; padding-inline-start:0; }
+    .wdr-fig-n { font-size:1.95rem; font-weight:800; letter-spacing:-.02em; line-height:1; color:#1c1917; }
+    .wdr-fig-t { font-size:.72rem; color:#8a8378; margin-top:.45rem; font-weight:600; line-height:1.7; }
+    .wdr-fig-t span { font-weight:400; }
+    .wdr-fig-t b { font-weight:800; color:#3f3a34; }
+    .wdr-fig-hero .wdr-fig-n { font-size:2.75rem; color:#7f1d1d; }
+    .wdr-fig-u { font-size:1.05rem; font-weight:700; margin-inline-start:.1rem; opacity:.8; }
 
-    /* کارت خلاصهٔ مدیریتی */
-    .wd-hero {
-        display: grid; grid-template-columns: minmax(220px, 1.15fr) auto minmax(240px, 1.5fr);
-        align-items: center; gap: 1.25rem;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #1d4ed8 165%);
-        border-radius: 20px; padding: 1.1rem 1.35rem; color: #fff;
-        box-shadow: 0 14px 34px rgba(15,23,42,.22);
-    }
-    .wd-hero-lbl { font-size: .78rem; color: #cbd5e1; letter-spacing: .02em; }
-    .wd-hero-val { font-size: 2.5rem; font-weight: 800; line-height: 1.05; margin-top: .15rem; }
-    .wd-pct-sign { font-size: 1.1rem; font-weight: 700; opacity: .75; margin-right: .15rem; }
-    .wd-hero-cap { font-size: .76rem; color: #cbd5e1; margin-top: .2rem; }
-    .wd-hero-cap b { color: #fff; }
-    .wd-hero-note { font-size: .72rem; color: #93c5fd; margin-top: .45rem; }
-    .wd-hint { cursor: help; color: #93c5fd; }
-    .wd-ring { width: 124px; height: 124px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
-    .wd-ring-hole { width: 92px; height: 92px; border-radius: 50%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .wd-ring-num { font-size: 1.4rem; font-weight: 800; line-height: 1; }
-    .wd-ring-cap { font-size: .66rem; color: #94a3b8; margin-top: .15rem; }
-    .wd-hero-side { min-width: 0; }
-    .wd-stack-title { font-size: .76rem; color: #cbd5e1; margin-bottom: .45rem; }
-    .wd-stack-title b { color: #fff; }
-    .wd-stack { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.12); }
-    .wd-stack-seg { display: block; height: 100%; transition: width .35s; }
-    .wd-stack-seg.s-open { background: #3b82f6; }
-    .wd-stack-seg.s-late { background: #ef4444; }
-    .wd-stack-seg.s-ontime { background: #22c55e; }
-    .wd-stack-seg.s-latedone { background: #a855f7; }
-    .wd-stack-seg.s-nodone { background: #94a3b8; }
-    .wd-stack-legend { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .55rem; font-size: .72rem; color: #cbd5e1; }
-    .wd-stack-legend b { color: #fff; font-weight: 700; }
-    .wd-stack-legend .wo-dot { width: 8px; height: 8px; }
+    /* بخش‌ها */
+    .wdr-sec { display:flex; align-items:baseline; gap:.6rem; margin:1.7rem 0 .7rem; }
+    .wdr-idx { font-size:.66rem; color:#a89f92; font-weight:800; letter-spacing:.1em; }
+    .wdr-sec h2 { font-size:.88rem; margin:0; font-weight:800; }
+    .wdr-rule { flex:1; height:1px; background:#eee9e1; }
+    .wdr-sec-meta { font-size:.69rem; color:#a89f92; }
 
-    /* کارت‌های شاخص */
-    .wd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: .7rem; }
-    .wd-kpi { position: relative; display: flex; align-items: flex-start; gap: .65rem; background: #fff; border: 1px solid #e8edf3; border-radius: 16px; padding: .8rem .9rem .95rem; box-shadow: 0 2px 10px rgba(15,23,42,.04); transition: transform .15s, box-shadow .15s; }
-    .wd-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,23,42,.09); }
-    .wd-kpi-ic { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 1rem; flex: 0 0 auto; background: #f1f5f9; color: #475569; }
-    .wd-kpi-body { min-width: 0; }
-    .wd-kpi-num { font-size: 1.55rem; font-weight: 800; line-height: 1.1; color: #0f172a; }
-    .wd-kpi-lbl { font-size: .74rem; color: #64748b; margin-top: .1rem; }
-    .wd-kpi-bar { position: absolute; right: .9rem; left: .9rem; bottom: .45rem; height: 4px; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
-    .wd-kpi-bar > span { display: block; height: 100%; border-radius: 999px; background: #3b82f6; transition: width .35s; }
-    .wd-kpi-share { position: absolute; left: .9rem; bottom: .62rem; font-size: .64rem; color: #94a3b8; }
-    .wd-kpi.k-total { background: linear-gradient(135deg, #f8fafc, #eef2ff); border-color: #e0e7ff; }
-    .wd-kpi.k-total .wd-kpi-ic { background: #1e293b; color: #fff; }
-    .wd-kpi.k-total .wd-kpi-bar > span { background: #1e293b; }
-    .wd-kpi.k-open .wd-kpi-ic { background: #eff6ff; color: #2563eb; }
-    .wd-kpi.k-open .wd-kpi-bar > span { background: #3b82f6; }
-    .wd-kpi.k-ontime .wd-kpi-ic { background: #f0fdf4; color: #16a34a; }
-    .wd-kpi.k-ontime .wd-kpi-num { color: #15803d; }
-    .wd-kpi.k-ontime .wd-kpi-bar > span { background: #22c55e; }
-    .wd-kpi.k-latedone .wd-kpi-ic { background: #faf5ff; color: #9333ea; }
-    .wd-kpi.k-latedone .wd-kpi-num { color: #7e22ce; }
-    .wd-kpi.k-latedone .wd-kpi-bar > span { background: #a855f7; }
-    .wd-kpi.k-nodone .wd-kpi-ic { background: #f8fafc; color: #64748b; }
-    .wd-kpi.k-nodone .wd-kpi-bar > span { background: #94a3b8; }
-    .wd-kpi.k-reply .wd-kpi-ic { background: #fffbeb; color: #b45309; }
-    .wd-kpi.k-reply .wd-kpi-num { color: #b45309; }
+    /* فهرست کلید-مقدار */
+    .wdr-two { display:grid; grid-template-columns:1fr 1fr; gap:2rem; align-items:start; }
+    .wdr-kv-list { display:flex; flex-direction:column; }
+    .wdr-kv { display:flex; align-items:center; gap:.55rem; font-size:.79rem; color:#3f3a34; padding:.42rem 0; border-bottom:1px solid #f3efe8; }
+    .wdr-kv:last-of-type { border-bottom:0; }
+    .wdr-kv-l { display:flex; align-items:center; gap:.45rem; flex:1; min-width:0; }
+    .wdr-kv b { font-size:.86rem; font-weight:800; color:#1c1917; min-width:34px; text-align:left; }
+    .wdr-kv-pct { font-size:.68rem; color:#a89f92; min-width:38px; text-align:left; }
+    .wdr-sq { width:7px; height:7px; border-radius:1px; display:inline-block; flex:0 0 auto; }
+    .wdr-hint { font-size:.65rem; color:#a89f92; }
+    .wdr-mini-bar { height:5px; width:90px; background:#f3efe8; border-radius:2px; overflow:hidden; }
+    .wdr-mini-bar > i { display:block; height:100%; background:#1c1917; }
+    .wdr-def { margin-top:.85rem; background:#fbf9f6; border:1px solid #eee9e1; border-radius:8px; padding:.7rem .85rem; font-size:.71rem; color:#5b554d; line-height:1.9; }
+    .wdr-def b { color:#1c1917; }
+    .wdr-empty { font-size:.78rem; color:#a89f92; padding:.6rem 0 1rem; }
 
-    /* نوار تسویه */
-    .wd-recon { display: flex; align-items: center; gap: .55rem; background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; border-radius: 14px; padding: .55rem .9rem; font-size: .8rem; }
-    .wd-recon.bad { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
-    .wd-recon > i { font-size: 1rem; }
-    .wd-recon-txt { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
-    .wd-recon-sep { opacity: .4; margin: 0 .3rem; }
+    /* نمودار */
+    .wdr-chart-wrap { padding-top:.2rem; }
+    .wdr-chart-legend { display:flex; gap:1rem; flex-wrap:wrap; align-items:center; font-size:.68rem; color:#8a8378; margin-top:.35rem; }
+    .wdr-chart-legend span { display:inline-flex; align-items:center; gap:.35rem; }
+    .wdr-chart-cap { margin-inline-start:auto; color:#a89f92; }
 
-    /* تفکیک دستورهای باز */
-    .wd-sub-strip { background: #fff; border: 1px solid #e8edf3; border-radius: 16px; padding: .7rem .95rem; }
-    .wd-sub-head { font-size: .78rem; font-weight: 700; color: #334155; margin-bottom: .5rem; }
-    .wd-sub-head i { color: #2563eb; margin-left: .3rem; }
-    .wd-sub-items { display: flex; align-items: center; gap: 1.4rem; flex-wrap: wrap; }
-    .wd-sub-item { display: flex; flex-direction: column; }
-    .wd-sub-num { font-size: 1.2rem; font-weight: 800; line-height: 1.1; }
-    .wd-sub-lbl { font-size: .7rem; color: #64748b; }
-    .wd-sub-note { margin-inline-start: auto; font-size: .7rem; color: #94a3b8; max-width: 420px; }
+    /* جدول */
+    .wdr-table { width:100%; border-collapse:collapse; }
+    .wdr-table thead th { font-size:.66rem; color:#8a8378; font-weight:700; text-align:right; padding:.45rem .5rem; border-bottom:1px solid #1c1917; white-space:nowrap; }
+    .wdr-table thead th.c { text-align:center; }
+    .wdr-table tbody td { font-size:.79rem; padding:.55rem .5rem; border-bottom:1px solid #f2eee8; color:#2b2723; }
+    .wdr-table tbody tr:last-child td { border-bottom:0; }
+    .wdr-table tbody td.c { text-align:center; }
+    .wdr-who { display:flex; align-items:center; gap:.4rem; font-weight:700; }
+    .wdr-rate { font-weight:800; }
+    .wdr-u { font-size:.7rem; opacity:.7; margin-inline-start:.05rem; }
 
-    /* کارت‌های نمودار */
-    .wd-card { background: #fff; border: 1px solid #e8edf3; border-radius: 18px; box-shadow: 0 4px 16px rgba(15,23,42,.05); overflow: hidden; }
-    .wd-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; flex-wrap: wrap; padding: .85rem 1rem .35rem; }
-    .wd-card-head h6 { margin: 0; font-weight: 800; font-size: .92rem; color: #0f172a; }
-    .wd-card-body { padding: .35rem 1rem 1rem; }
-    .wd-card-sub { font-size: .72rem; color: #94a3b8; }
-    .wd-card-sub b { color: #475569; }
-    .wd-donut.wo-donut { width: 148px; height: 148px; box-shadow: 0 6px 18px rgba(15,23,42,.10); }
-    .wd-leg-pct { width: 38px; text-align: left; font-size: .72rem; color: #94a3b8; }
-    .wd-chart { height: 180px; }
-    .wd-chart-val { font-size: .68rem; color: #94a3b8; font-weight: 700; }
-    .wd-table thead th { font-size: .72rem; color: #64748b; font-weight: 700; background: #f8fafc; border-bottom: 1px solid #eef2f7; white-space: nowrap; }
-    .wd-table tbody td { font-size: .84rem; }
-    .wd-foot-note { display: flex; gap: .45rem; align-items: flex-start; padding: .65rem 1rem .85rem; font-size: .71rem; color: #94a3b8; border-top: 1px solid #f1f5f9; }
-    .wd-foot-note i { color: #cbd5e1; margin-top: .1rem; }
+    /* یادداشت روش */
+    .wdr-clarify { font-size:.67rem; color:#8a8378; line-height:1.95; margin-top:1.3rem; border-top:1px solid #e7e1d8; padding-top:.75rem; }
+    .wdr-clarify b { color:#3f3a34; }
 
-    @media (max-width: 1100px) {
-        .wd-hero { grid-template-columns: 1fr auto; }
-        .wd-hero-side { grid-column: 1 / -1; }
-    }
-    @media (max-width: 640px) {
-        .wd-hero { grid-template-columns: 1fr; text-align: center; justify-items: center; padding: 1rem; }
-        .wd-hero-side { width: 100%; }
-        .wd-stack-legend { justify-content: center; }
-        .wd-ring { width: 108px; height: 108px; }
-        .wd-ring-hole { width: 80px; height: 80px; }
-        .wd-hero-val { font-size: 2.1rem; }
-        .wd-sub-note { margin-inline-start: 0; }
-        .wd-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    @media (max-width: 992px) {
+        .wdr-figures { grid-template-columns:1fr 1fr; }
+        .wdr-fig { border-inline-start:0; border-bottom:1px solid #f0ebe4; }
+        .wdr-fig-hero { grid-column:1 / -1; border-bottom:1px solid #e7e1d8; }
+        .wdr-two { grid-template-columns:1fr; gap:1rem; }
+        .wdr-sheet { padding:1.1rem 1rem 1rem; }
+        .wdr-chart-cap { margin-inline-start:0; }
     }
 </style></head><body>
-<div class="preview-note">🖼 پیش‌نمایش استاتیک داشبورد جدید «دستور کار» با داده‌های نمونه. آیکون‌های Bootstrap Icons در این پیش‌نمایش بارگذاری نمی‌شوند (به‌جای آن‌ها نویسهٔ ساده گذاشته شده)؛ در برنامهٔ اصلی، آیکون‌ها نمایش داده می‌شوند.</div>
-<div class="wrap"><div class="wd">
+<div class="wrap">
+<div class="wdr-sheet">
 
-<div class="wd-top">
-  <div class="wd-top-l"><span class="wd-scope">👤 داشبورد شخصی</span><span class="wd-scope-note">فقط دستورهایی که شما صادر کرده‌اید یا به شما سپرده شده‌اند</span></div>
-  <div class="wd-top-r"><span class="wd-updated">آخرین محاسبه: <b class="num">09:42</b></span><button class="wd-refresh">↻ بروزرسانی</button></div>
-</div>
-
-<div class="wd-hero">
-  <div class="wd-hero-main">
-    <div class="wd-hero-lbl">نرخ انجام به‌موقع</div>
-    <div class="wd-hero-val num">67<span class="wd-pct-sign">٪</span></div>
-    <div class="wd-hero-cap">از <b class="num">15</b> دستور بسته‌شده <span class="wd-hint" title="مخرج: به‌موقع + با تاخیر + بی‌نتیجه">ⓘ</span></div>
-    <div class="wd-hero-note">قابل قبول اما نیازمند پیگیری: بخشی از کارها با تاخیر بسته شده‌اند.</div>
-  </div>
-  <div class="wd-ring" style="background:conic-gradient(#22c55e 0% 67%, rgba(255,255,255,.14) 67% 100%)">
-    <div class="wd-ring-hole"><div class="wd-ring-num num">67٪</div><div class="wd-ring-cap">به‌موقع</div></div>
-  </div>
-  <div class="wd-hero-side">
-    <div class="wd-stack-title">ترکیب <b class="num">25</b> دستور کار</div>
-    <div class="wd-stack">
-      <span class="wd-stack-seg s-open" style="width:24%"></span><span class="wd-stack-seg s-late" style="width:16%"></span>
-      <span class="wd-stack-seg s-ontime" style="width:40%"></span><span class="wd-stack-seg s-latedone" style="width:12%"></span>
-      <span class="wd-stack-seg s-nodone" style="width:8%"></span>
+  <div class="wdr-masthead">
+    <div>
+      <div class="wdr-kicker">گزارش عملکرد · دستور کار</div>
+      <h1>خلاصهٔ مدیریتی دستور کارها</h1>
+      <div class="wdr-scope">دستورهایی که شما صادر کرده‌اید یا به شما سپرده شده‌اند · شرکت فعال</div>
     </div>
-    <div class="wd-stack-legend">
-      <span><i class="wo-dot" style="background:#3b82f6"></i>باز <b class="num">6</b></span>
-      <span><i class="wo-dot" style="background:#ef4444"></i>معوق <b class="num">4</b></span>
-      <span><i class="wo-dot" style="background:#22c55e"></i>به‌موقع <b class="num">10</b></span>
-      <span><i class="wo-dot" style="background:#a855f7"></i>با تاخیر <b class="num">3</b></span>
-      <span><i class="wo-dot" style="background:#94a3b8"></i>بی‌نتیجه <b class="num">2</b></span>
+    <div class="wdr-meta">
+      <div class="num">آخرین محاسبه: 09:42</div>
+      <button class="wdr-btn">محاسبهٔ مجدد</button>
     </div>
   </div>
-</div>
 
-<div class="wd-kpis">
-  <div class="wd-kpi k-total"><div class="wd-kpi-ic">▦</div><div class="wd-kpi-body"><div class="wd-kpi-num num">25</div><div class="wd-kpi-lbl">کل دستورها</div></div><div class="wd-kpi-bar"><span style="width:100%"></span></div></div>
-  <div class="wd-kpi k-open"><div class="wd-kpi-ic">⏳</div><div class="wd-kpi-body"><div class="wd-kpi-num num">10</div><div class="wd-kpi-lbl">باز / در جریان</div></div><div class="wd-kpi-bar"><span style="width:40%"></span></div><div class="wd-kpi-share num">40٪ از کل</div></div>
-  <div class="wd-kpi k-ontime"><div class="wd-kpi-ic">✓</div><div class="wd-kpi-body"><div class="wd-kpi-num num">10</div><div class="wd-kpi-lbl">انجام به‌موقع</div></div><div class="wd-kpi-bar"><span style="width:40%"></span></div><div class="wd-kpi-share num">40٪ از کل</div></div>
-  <div class="wd-kpi k-latedone"><div class="wd-kpi-ic">🕓</div><div class="wd-kpi-body"><div class="wd-kpi-num num">3</div><div class="wd-kpi-lbl">انجام با تاخیر</div></div><div class="wd-kpi-bar"><span style="width:12%"></span></div><div class="wd-kpi-share num">12٪ از کل</div></div>
-  <div class="wd-kpi k-nodone"><div class="wd-kpi-ic">⊘</div><div class="wd-kpi-body"><div class="wd-kpi-num num">2</div><div class="wd-kpi-lbl">بستهٔ بی‌نتیجه</div></div><div class="wd-kpi-bar"><span style="width:8%"></span></div><div class="wd-kpi-share num">8٪ از کل</div></div>
-  <div class="wd-kpi k-reply"><div class="wd-kpi-ic">💬</div><div class="wd-kpi-body"><div class="wd-kpi-num num">5</div><div class="wd-kpi-lbl">در انتظار پاسخ</div></div><div class="wd-kpi-bar"><span style="width:100%;background:#f59e0b"></span></div><div class="wd-kpi-share num">واگذاری بی‌پاسخ</div></div>
-</div>
-
-<div class="wd-recon"><span>✓</span><div class="wd-recon-txt"><b class="num">25</b> کل = <b class="num">10</b> باز + <b class="num">10</b> به‌موقع + <b class="num">3</b> با تاخیر + <b class="num">2</b> بی‌نتیجه <span class="wd-recon-sep">|</span> مجموع چهار سهم = <b class="num">25</b></div></div>
-
-<div class="wd-sub-strip">
-  <div class="wd-sub-head">🔀 تفکیک دستورهای باز</div>
-  <div class="wd-sub-items">
-    <div class="wd-sub-item"><span class="wd-sub-num num" style="color:#ef4444">4</span><span class="wd-sub-lbl">گذشته از مهلت</span></div>
-    <div class="wd-sub-item"><span class="wd-sub-num num" style="color:#f59e0b">3</span><span class="wd-sub-lbl">مهلت امروز</span></div>
-    <div class="wd-sub-item"><span class="wd-sub-num num" style="color:#3b82f6">6</span><span class="wd-sub-lbl">باز و در مهلت</span></div>
-    <div class="wd-sub-note">این سه عدد زیرمجموعهٔ کارت «باز» هستند و در جمع کل دوباره حساب نمی‌شوند.</div>
+  <div class="wdr-figures">
+    <div class="wdr-fig wdr-fig-hero">
+      <div class="wdr-fig-n num">67<span class="wdr-fig-u">٪</span></div>
+      <div class="wdr-fig-t">نرخ انجام به‌موقع<br><span>از <b class="num">15</b> دستور بسته‌شده</span></div>
+    </div>
+    <div class="wdr-fig"><div class="wdr-fig-n num">25</div><div class="wdr-fig-t">کل دستورها</div></div>
+    <div class="wdr-fig"><div class="wdr-fig-n num">10</div><div class="wdr-fig-t">باز / در جریان</div></div>
+    <div class="wdr-fig"><div class="wdr-fig-n num">10</div><div class="wdr-fig-t">انجام به‌موقع</div></div>
+    <div class="wdr-fig"><div class="wdr-fig-n num">3</div><div class="wdr-fig-t">انجام با تاخیر</div></div>
   </div>
-</div>
 
-<div class="row g-3">
-  <div class="col-12 col-xl-5"><div class="wd-card h-100">
-    <div class="wd-card-head"><h6>ترکیب وضعیت</h6><span class="wd-card-sub">سهم هر وضعیت از کل</span></div>
-    <div class="wd-card-body d-flex align-items-center gap-4 flex-wrap">
-      <div class="wo-donut wd-donut" style="background:conic-gradient(#3b82f6 0% 24%,#ef4444 24% 40%,#22c55e 40% 80%,#a855f7 80% 92%,#94a3b8 92% 100%)">
-        <div class="wo-donut-hole"><div class="wo-donut-total num">25</div><div class="wo-donut-cap">دستور</div></div>
+  <div class="wdr-sec"><span class="wdr-idx">۰۱</span><h2>وضعیت سبد</h2><span class="wdr-rule"></span></div>
+  <div class="wdr-two">
+    <div class="wdr-kv-list">
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#1c1917"></i>باز و در مهلت</span><b class="num">6</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#b45309"></i>گذشته از مهلت <span class="wdr-hint">زیرمجموعهٔ باز</span></span><b class="num">4</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#c9a227"></i>مهلت امروز <span class="wdr-hint">زیرمجموعهٔ باز</span></span><b class="num">3</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#1f6f43"></i>انجام به‌موقع</span><b class="num">10</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#7f1d1d"></i>انجام با تاخیر</span><b class="num">3</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#a8a29e"></i>بستهٔ بی‌نتیجه</span><b class="num">2</b></div>
+      <div class="wdr-kv"><span class="wdr-kv-l"><i class="wdr-sq" style="background:#78716c"></i>در انتظار پاسخ <span class="wdr-hint">تعداد واگذاری</span></span><b class="num">5</b></div>
+      <div class="wdr-def"><b>«بستهٔ بی‌نتیجه» یعنی چه؟</b> دستوری که توسط دستوردهنده <b>بسته/بایگانی</b> شده است، اما هیچ‌یک از گیرندگان پاسخ «انجام شد» نداده‌اند (یا پاسخ نداده‌اند یا «انجام نشد» ثبت کرده‌اند). این دستورها نه «انجام‌شده» شمرده می‌شوند و نه «باز»؛ برای همین یک گروه جدا در ترکیب سبد دارند.</div>
+    </div>
+
+    <div class="wdr-chart-wrap">
+      <svg viewBox="0 0 300 190" width="100%" height="190">
+        <line x1="6" y1="158" x2="294" y2="158" stroke="#1c1917" stroke-width="1.2"/>
+        <g>
+      <rect x="11.5" y="123.7" width="13.0" height="34.3" fill="#1c1917"/>
+      <rect x="24.5" y="140.9" width="13.0" height="17.1" fill="#1f6f43"/>
+      <rect x="37.5" y="158.0" width="13.0" height="0.0" fill="#7f1d1d"/>
+      <text x="31.0" y="117.7" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">2</text>
+      <text x="31.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">اردیبهشت</text>
+      <text x="31.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">1 / 0 / 1</text>
+    </g><g>
+      <rect x="61.5" y="89.4" width="13.0" height="68.6" fill="#1c1917"/>
+      <rect x="74.5" y="123.7" width="13.0" height="34.3" fill="#1f6f43"/>
+      <rect x="87.5" y="140.9" width="13.0" height="17.1" fill="#7f1d1d"/>
+      <text x="81.0" y="83.4" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">4</text>
+      <text x="81.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">خرداد</text>
+      <text x="81.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">2 / 1 / 1</text>
+    </g><g>
+      <rect x="111.5" y="106.6" width="13.0" height="51.4" fill="#1c1917"/>
+      <rect x="124.5" y="123.7" width="13.0" height="34.3" fill="#1f6f43"/>
+      <rect x="137.5" y="158.0" width="13.0" height="0.0" fill="#7f1d1d"/>
+      <text x="131.0" y="100.6" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">3</text>
+      <text x="131.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">تیر</text>
+      <text x="131.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">2 / 0 / 1</text>
+    </g><g>
+      <rect x="161.5" y="72.3" width="13.0" height="85.7" fill="#1c1917"/>
+      <rect x="174.5" y="106.6" width="13.0" height="51.4" fill="#1f6f43"/>
+      <rect x="187.5" y="123.7" width="13.0" height="34.3" fill="#7f1d1d"/>
+      <text x="181.0" y="66.3" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">5</text>
+      <text x="181.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">مرداد</text>
+      <text x="181.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">3 / 2 / 0</text>
+    </g><g>
+      <rect x="211.5" y="89.4" width="13.0" height="68.6" fill="#1c1917"/>
+      <rect x="224.5" y="106.6" width="13.0" height="51.4" fill="#1f6f43"/>
+      <rect x="237.5" y="140.9" width="13.0" height="17.1" fill="#7f1d1d"/>
+      <text x="231.0" y="83.4" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">4</text>
+      <text x="231.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">شهریور</text>
+      <text x="231.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">3 / 1 / 0</text>
+    </g><g>
+      <rect x="261.5" y="38.0" width="13.0" height="120.0" fill="#1c1917"/>
+      <rect x="274.5" y="72.3" width="13.0" height="85.7" fill="#1f6f43"/>
+      <rect x="287.5" y="123.7" width="13.0" height="34.3" fill="#7f1d1d"/>
+      <text x="281.0" y="32.0" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1c1917" font-family="Vazirmatn,Tahoma">7</text>
+      <text x="281.0" y="174" text-anchor="middle" font-size="9.5" fill="#8a8378" font-family="Vazirmatn,Tahoma">مهر</text>
+      <text x="281.0" y="186" text-anchor="middle" font-size="8.5" fill="#a89f92" font-family="Vazirmatn,Tahoma">5 / 2 / 0</text>
+    </g>
+      </svg>
+      <div class="wdr-chart-legend">
+        <span><i class="wdr-sq" style="background:#1c1917"></i>ایجادشده</span>
+        <span><i class="wdr-sq" style="background:#1f6f43"></i>انجام به‌موقع</span>
+        <span><i class="wdr-sq" style="background:#7f1d1d"></i>انجام با تاخیر</span>
+        <span class="wdr-chart-cap">ردیف زیر هر ماه: به‌موقع / با تاخیر / بی‌نتیجه</span>
       </div>
-      <div class="d-flex flex-column gap-2 flex-grow-1">
-        <div class="wo-legend-row"><i class="wo-dot" style="background:#3b82f6"></i> باز و در مهلت <span class="ms-auto num fw-700">6</span><span class="wd-leg-pct num">24٪</span></div>
-        <div class="wo-legend-row"><i class="wo-dot" style="background:#ef4444"></i> گذشته از مهلت <span class="ms-auto num fw-700">4</span><span class="wd-leg-pct num">16٪</span></div>
-        <div class="wo-legend-row"><i class="wo-dot" style="background:#22c55e"></i> انجام به‌موقع <span class="ms-auto num fw-700">10</span><span class="wd-leg-pct num">40٪</span></div>
-        <div class="wo-legend-row"><i class="wo-dot" style="background:#a855f7"></i> انجام با تاخیر <span class="ms-auto num fw-700">3</span><span class="wd-leg-pct num">12٪</span></div>
-        <div class="wo-legend-row"><i class="wo-dot" style="background:#94a3b8"></i> بستهٔ بی‌نتیجه <span class="ms-auto num fw-700">2</span><span class="wd-leg-pct num">8٪</span></div>
-      </div>
     </div>
-  </div></div>
+  </div>
 
-  <div class="col-12 col-xl-7"><div class="wd-card h-100">
-    <div class="wd-card-head"><h6>اولویت دستورهای باز</h6><span class="wd-card-sub"><b class="num">10</b> دستور باز</span></div>
-    <div class="wd-card-body">
-      <div class="d-flex align-items-center gap-2 mb-3"><span class="fs-8 fw-600" style="width:56px">فوری</span><div class="wo-bar-track flex-grow-1"><div class="wo-bar wo-bar-p3" style="width:100%"></div></div><span class="fs-8 fw-700 num" style="width:34px">4</span><span class="fs-9 text-muted num" style="width:40px">40٪</span></div>
-      <div class="d-flex align-items-center gap-2 mb-3"><span class="fs-8 fw-600" style="width:56px">بالا</span><div class="wo-bar-track flex-grow-1"><div class="wo-bar wo-bar-p2" style="width:75%"></div></div><span class="fs-8 fw-700 num" style="width:34px">3</span><span class="fs-9 text-muted num" style="width:40px">30٪</span></div>
-      <div class="d-flex align-items-center gap-2 mb-3"><span class="fs-8 fw-600" style="width:56px">عادی</span><div class="wo-bar-track flex-grow-1"><div class="wo-bar wo-bar-p1" style="width:50%"></div></div><span class="fs-8 fw-700 num" style="width:34px">2</span><span class="fs-9 text-muted num" style="width:40px">20٪</span></div>
-      <div class="d-flex align-items-center gap-2 mb-3"><span class="fs-8 fw-600" style="width:56px">کم</span><div class="wo-bar-track flex-grow-1"><div class="wo-bar wo-bar-p0" style="width:25%"></div></div><span class="fs-8 fw-700 num" style="width:34px">1</span><span class="fs-9 text-muted num" style="width:40px">10٪</span></div>
-    </div>
-  </div></div>
+  <div class="wdr-sec"><span class="wdr-idx">۰۲</span><h2>اولویت دستورهای باز</h2><span class="wdr-rule"></span><span class="wdr-sec-meta num">10 دستور باز</span></div>
+  <div class="wdr-kv-list">
+    <div class="wdr-kv"><span class="wdr-kv-l">فوری</span><span class="wdr-mini-bar"><i style="width:40%"></i></span><b class="num">4</b><span class="wdr-kv-pct num">40٪</span></div>
+    <div class="wdr-kv"><span class="wdr-kv-l">بالا</span><span class="wdr-mini-bar"><i style="width:30%"></i></span><b class="num">3</b><span class="wdr-kv-pct num">30٪</span></div>
+    <div class="wdr-kv"><span class="wdr-kv-l">عادی</span><span class="wdr-mini-bar"><i style="width:20%"></i></span><b class="num">2</b><span class="wdr-kv-pct num">20٪</span></div>
+    <div class="wdr-kv"><span class="wdr-kv-l">کم</span><span class="wdr-mini-bar"><i style="width:10%"></i></span><b class="num">1</b><span class="wdr-kv-pct num">10٪</span></div>
+  </div>
 
-  <div class="col-12"><div class="wd-card">
-    <div class="wd-card-head"><h6>روند ۶ ماه اخیر</h6><span class="wd-card-sub">بر اساس تاریخ <b>ایجاد</b> دستور — ماه شمسی</span></div>
-    <div class="wd-card-body">
-      <div class="wo-chart wd-chart">
-        <div class="wo-chart-col"><div class="wd-chart-val num">2</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:40%"></div><div class="wo-cb wo-cb-ontime" style="height:20%"></div><div class="wo-cb wo-cb-late" style="height:10%"></div><div class="wo-cb wo-cb-notdone" style="height:5%"></div></div><div class="fs-9 text-muted num">اردیبهشت</div></div>
-        <div class="wo-chart-col"><div class="wd-chart-val num">4</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:80%"></div><div class="wo-cb wo-cb-ontime" style="height:50%"></div><div class="wo-cb wo-cb-late" style="height:20%"></div><div class="wo-cb wo-cb-notdone" style="height:10%"></div></div><div class="fs-9 text-muted num">خرداد</div></div>
-        <div class="wo-chart-col"><div class="wd-chart-val num">3</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:60%"></div><div class="wo-cb wo-cb-ontime" style="height:40%"></div><div class="wo-cb wo-cb-late" style="height:15%"></div><div class="wo-cb wo-cb-notdone" style="height:8%"></div></div><div class="fs-9 text-muted num">تیر</div></div>
-        <div class="wo-chart-col"><div class="wd-chart-val num">5</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:100%"></div><div class="wo-cb wo-cb-ontime" style="height:60%"></div><div class="wo-cb wo-cb-late" style="height:30%"></div><div class="wo-cb wo-cb-notdone" style="height:12%"></div></div><div class="fs-9 text-muted num">مرداد</div></div>
-        <div class="wo-chart-col"><div class="wd-chart-val num">4</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:80%"></div><div class="wo-cb wo-cb-ontime" style="height:55%"></div><div class="wo-cb wo-cb-late" style="height:20%"></div><div class="wo-cb wo-cb-notdone" style="height:6%"></div></div><div class="fs-9 text-muted num">شهریور</div></div>
-        <div class="wo-chart-col"><div class="wd-chart-val num">7</div><div class="wo-chart-bars"><div class="wo-cb wo-cb-created" style="height:95%"></div><div class="wo-cb wo-cb-ontime" style="height:70%"></div><div class="wo-cb wo-cb-late" style="height:35%"></div><div class="wo-cb wo-cb-notdone" style="height:15%"></div></div><div class="fs-9 text-muted num">مهر</div></div>
-      </div>
-      <div class="d-flex gap-3 mt-2 fs-9 text-muted flex-wrap"><span><i class="wo-dot" style="background:#94a3b8"></i> ایجادشده</span><span><i class="wo-dot" style="background:#22c55e"></i> به‌موقع</span><span><i class="wo-dot" style="background:#a855f7"></i> با تاخیر</span><span><i class="wo-dot" style="background:#ef4444"></i> بستهٔ بی‌نتیجه</span></div>
-    </div>
-  </div></div>
-
-  <div class="col-12"><div class="wd-card">
-    <div class="wd-card-head"><h6>عملکرد گیرندگان</h6><span class="wd-card-sub">گیرندگان دستورهایی که شما صادر کرده‌اید</span></div>
-    <div class="table-responsive"><table class="wd-table">
-      <thead><tr><th>گیرنده</th><th class="text-center">کل</th><th class="text-center">انجام شد</th><th class="text-center">به‌موقع</th><th class="text-center">انجام نشد</th><th class="text-center">بی‌پاسخ</th><th style="min-width:170px">نرخ انجام</th></tr></thead>
+  <div class="wdr-sec"><span class="wdr-idx">۰۳</span><h2>عملکرد گیرندگان</h2><span class="wdr-rule"></span><span class="wdr-sec-meta">گیرندگان دستورهایی که شما صادر کرده‌اید</span></div>
+  <div class="table-responsive">
+    <table class="wdr-table">
+      <thead><tr><th>گیرنده</th><th class="c">کل</th><th class="c">انجام شد</th><th class="c">به‌موقع</th><th class="c">انجام نشد</th><th class="c">بی‌پاسخ</th><th class="c">نرخ انجام</th></tr></thead>
       <tbody>
-        <tr><td class="fw-600">سارا محمدی</td><td class="text-center num">8</td><td class="text-center num fw-700">8</td><td class="text-center num">6</td><td class="text-center num">0</td><td class="text-center num">0</td><td><div class="d-flex align-items-center gap-2"><div class="wo-bar-track flex-grow-1"><div class="wo-bar" style="width:100%;background:#22c55e"></div></div><span class="fs-9 num fw-700">100٪</span></div></td></tr>
-        <tr><td class="fw-600">رضا کریمی</td><td class="text-center num">6</td><td class="text-center num fw-700">5</td><td class="text-center num">3</td><td class="text-center num">1</td><td class="text-center num">0</td><td><div class="d-flex align-items-center gap-2"><div class="wo-bar-track flex-grow-1"><div class="wo-bar" style="width:83%;background:#22c55e"></div></div><span class="fs-9 num fw-700">83٪</span></div></td></tr>
-        <tr><td class="fw-600">مهدی رستمی</td><td class="text-center num">5</td><td class="text-center num fw-700">3</td><td class="text-center num">1</td><td class="text-center num">1</td><td class="text-center num">1</td><td><div class="d-flex align-items-center gap-2"><div class="wo-bar-track flex-grow-1"><div class="wo-bar" style="width:60%;background:#f59e0b"></div></div><span class="fs-9 num fw-700">60٪</span></div></td></tr>
+        <tr><td class="wdr-who"><i class="wdr-sq" style="background:#1f6f43"></i><span class="user-avatar-sm"></span> سارا محمدی</td><td class="c num">8</td><td class="c num">8</td><td class="c num">6</td><td class="c num">0</td><td class="c num">0</td><td class="c num wdr-rate">100<span class="wdr-u">٪</span></td></tr>
+        <tr><td class="wdr-who"><i class="wdr-sq" style="background:#1f6f43"></i><span class="user-avatar-sm"></span> رضا کریمی</td><td class="c num">6</td><td class="c num">5</td><td class="c num">3</td><td class="c num">1</td><td class="c num">0</td><td class="c num wdr-rate">83<span class="wdr-u">٪</span></td></tr>
+        <tr><td class="wdr-who"><i class="wdr-sq" style="background:#b45309"></i><span class="user-avatar-sm"></span> مهدی رستمی</td><td class="c num">5</td><td class="c num">3</td><td class="c num">1</td><td class="c num">1</td><td class="c num">1</td><td class="c num wdr-rate">60<span class="wdr-u">٪</span></td></tr>
       </tbody>
-    </table></div>
-    <div class="wd-foot-note"><span>ⓘ</span><span>«نرخ انجام» = انجام‌شده ÷ کل واگذاری‌ها. تفاوت آن با «نرخ انجام به‌موقع» بالا در این است که مخرج این ستون همهٔ واگذاری‌هاست، نه فقط دستورهای بسته‌شده.</span></div>
-  </div></div>
-</div>
+    </table>
+  </div>
 
-</div></div>
+  <div class="wdr-clarify">
+    <b>یادداشت روش محاسبه:</b>
+    «نرخ انجام به‌موقع» = انجام به‌موقع ÷ دستورهای بسته‌شده (به‌موقع + با تاخیر + بی‌نتیجه).
+    «گذشته از مهلت» و «مهلت امروز» زیرمجموعهٔ دستورهای باز هستند و در جمع کل دوباره شمرده نمی‌شوند.
+    «بستهٔ بی‌نتیجه» = دستور بسته‌شده‌ای که هیچ گیرنده‌ای «انجام شد» ثبت نکرده است.
+    «نرخ انجام» جدول بالا = انجام‌شده ÷ کل واگذاری‌ها (مخرج متفاوت با نرخ به‌موقع).
+    آمار فقط شامل دستورهایی است که شما صادر کرده‌اید یا به شما سپرده شده‌اند.
+  </div>
+
+</div>
+</div>
 </body></html>
