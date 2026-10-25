@@ -9,6 +9,7 @@ using System.Xml.Linq;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using QuestPDF.Elements;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
