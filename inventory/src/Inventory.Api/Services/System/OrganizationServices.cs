@@ -18,10 +18,17 @@ public interface IOrganizationServices
     Task<string> GetOrganizationNameUniqAsync(int? sematId = null);
 
     /// <summary>
-    /// نام اختصاصی سازمان (NameUniq) بر اساس شناسه کاربر — برای parte «واحد» در شماره نامه.
+    /// نام اختصاصی سازمان (NameUniq) بر اساس شناسه کاربر — برای جزء «واحد» در شماره نامه.
     /// اگر کاربر سازمانی اختصاص یافته نداشت، به روش پیش‌فرض (sematId null) بازمی‌گردد.
     /// </summary>
     Task<string> GetOrganizationNameUniqByUserIdAsync(int? userId);
+
+    /// <summary>
+    /// واحدِ اختصاصی خودِ کاربر (فقط همان) — از جدول کاربرانِ سامانه (`Users`).
+    /// مقدار null یعنی برای این کاربر واحدی ثبت نشده است (هیچ fallback‌ای انجام نمی‌شود).
+    /// این متد مبنای جزء «واحد» در شمارهٔ نامه است تا شمارهٔ نامه با واحدِ سازندهٔ نامه ساخته شود.
+    /// </summary>
+    Task<string?> GetUserOrganizationNameUniqAsync(int? userId);
 
     /// <summary>فهرست سازمان‌های فعال (برای انتخاب در تنظیمات)</summary>
     Task<List<OrganizationDto>> GetOrganizationsAsync();
@@ -49,34 +56,93 @@ public class OrganizationServices : IOrganizationServices
             if (!string.IsNullOrWhiteSpace(name)) return name;
         }
 
-        // ۲) سازمانِ پیش‌فرض (وقتی صادرکننده سمت ندارد — وضعیت فعلی پروژه)
+        // ۲) سازمانِ پیش‌فرض — ابتدا در محدودهٔ شرکت فعال، سپس عمومی
+        var active = _db.ActiveCompanyId;
         var def = await _db.Organizations.AsNoTracking()
-            .Where(o => !o.IsDelete && o.IsActive && o.IsDefault)
+            .Where(o => !o.IsDelete && o.IsActive && o.IsDefault
+                        && (active == null || o.CompanyId == null || o.CompanyId == active))
             .Select(o => o.NameUniq)
             .FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(def))
+            def = await _db.Organizations.AsNoTracking()
+                .Where(o => !o.IsDelete && o.IsActive && o.IsDefault)
+                .Select(o => o.NameUniq)
+                .FirstOrDefaultAsync();
         if (!string.IsNullOrWhiteSpace(def)) return def;
 
         // ۳) اولین سازمان فعال به‌عنوان آخرین fallback
+        var first = await _db.Organizations.AsNoTracking()
+            .Where(o => !o.IsDelete && o.IsActive
+                        && (active == null || o.CompanyId == null || o.CompanyId == active))
+            .OrderBy(o => o.OrganizationId)
+            .Select(o => o.NameUniq)
+            .FirstOrDefaultAsync();
+        if (!string.IsNullOrWhiteSpace(first)) return first;
+
         return await _db.Organizations.AsNoTracking()
                    .Where(o => !o.IsDelete && o.IsActive)
+                   .OrderBy(o => o.OrganizationId)
                    .Select(o => o.NameUniq)
                    .FirstOrDefaultAsync() ?? "";
     }
 
     public async Task<string> GetOrganizationNameUniqByUserIdAsync(int? userId)
     {
-        if (userId is null) return await GetOrganizationNameUniqAsync(null);
+        var own = await GetUserOrganizationNameUniqAsync(userId);
+        if (!string.IsNullOrWhiteSpace(own)) return own!;
 
-        // کاربر → سازمانِ اختصاص یافته → NameUniq
-        var name = await _db.SystemUsers.AsNoTracking()
-            .Where(u => u.Id == userId && u.OrganizationId > 0
-                        && u.Organization != null && !u.Organization.IsDelete && u.Organization.IsActive)
-            .Select(u => u.Organization!.NameUniq)
-            .FirstOrDefaultAsync();
-        if (!string.IsNullOrWhiteSpace(name)) return name;
-
-        // اگر کاربر سازمانی نداشته باشد، به روش پیش‌فرض بازگردان (بدون sematId)
+        // اگر کاربر واحدِ اختصاصی نداشته باشد، سازمانِ پیش‌فرض (همان شرکت فعال) مبنا می‌شود.
         return await GetOrganizationNameUniqAsync(null);
+    }
+
+    /// <summary>
+    /// واحدِ اختصاصی خودِ کاربر — منبع اصلی: ستون `OrganizationId` در جدول `Users`
+    /// (همان کاربری که با آن وارد سامانه می‌شود و نامه را می‌سازد).
+    /// پیش از این کد از جدول قدیمی `SystemUsers` می‌خواند؛ چون شناسه‌های دو جدول
+    /// مستقل‌اند، واحدِ شخص دیگری (یا پیش‌فرض) در شمارهٔ نامه می‌نشست.
+    /// </summary>
+    public async Task<string?> GetUserOrganizationNameUniqAsync(int? userId)
+    {
+        if (userId is not > 0) return null;
+
+        var orgId = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.OrganizationId)
+            .FirstOrDefaultAsync();
+
+        // سازگاری با داده‌های قدیمی: اگر کاربر در جدول `Users` واحد نداشت،
+        // همان شناسه در جدول `SystemUsers` بررسی می‌شود.
+        if (orgId is not > 0)
+        {
+            orgId = await _db.SystemUsers.AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => u.OrganizationId)
+                .FirstOrDefaultAsync();
+        }
+
+        if (orgId is not > 0) return null;
+
+        var name = await OrganizationCodeAsync(orgId.Value);
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
+    /// <summary>کد اختصاری یک واحد فعال (NameUniq) — با حفظ فیلتر شرکت فعال.</summary>
+    private async Task<string?> OrganizationCodeAsync(int organizationId)
+    {
+        var active = _db.ActiveCompanyId;
+        var code = await _db.Organizations.AsNoTracking()
+            .Where(o => o.OrganizationId == organizationId
+                        && !o.IsDelete && o.IsActive
+                        && (active == null || o.CompanyId == null || o.CompanyId == active))
+            .Select(o => o.NameUniq)
+            .FirstOrDefaultAsync();
+        if (!string.IsNullOrWhiteSpace(code)) return code;
+
+        // اگر واحد به شرکت دیگری تعلق داشت، همان واحد کاربر معتبر است و استفاده می‌شود.
+        return await _db.Organizations.AsNoTracking()
+            .Where(o => o.OrganizationId == organizationId && !o.IsDelete && o.IsActive)
+            .Select(o => o.NameUniq)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<List<OrganizationDto>> GetOrganizationsAsync() =>
