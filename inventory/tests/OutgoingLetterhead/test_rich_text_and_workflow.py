@@ -1,4 +1,5 @@
 """Source-contract checks for shared letter printing and rich-text preservation."""
+import re
 import unittest
 from pathlib import Path
 
@@ -19,8 +20,18 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn('node.Tag is "strong" or "b"', renderer)
         self.assertIn('node.Tag is "em" or "i"', renderer)
         self.assertIn('text.Span("\\n")', renderer)
-        self.assertIn(".AlignRight().DirectionFromRightToLeft()", renderer)
+        self.assertIn(".DirectionFromRightToLeft()", renderer)
+        self.assertIn("text.AlignRight();", renderer)
         self.assertIn("PersianDigits(index.ToString", renderer)
+
+    def test_questpdf_text_action_callbacks_do_not_chain_void_return_values(self):
+        service = (API / "Services/Office/Outgoing/OutgoingLetterPrintService.cs").read_text()
+        renderer = (API / "Services/Office/Outgoing/RichLetterPdfRenderer.cs").read_text()
+        invalid_chain = re.compile(r"\}\)\s*\.(?:FontSize|LineHeight|AlignRight|DirectionFromRightToLeft)\s*\(")
+        self.assertIsNone(invalid_chain.search(service))
+        self.assertIsNone(invalid_chain.search(renderer))
+        self.assertIn("text.DefaultTextStyle(style => style", renderer)
+        self.assertIn("text.Justify();", renderer)
 
     def test_markup_is_allow_list_sanitized_before_blazor_render(self):
         sanitizer = (ROOT / "src/Inventory.Shared/Security/RichLetterHtml.cs").read_text()

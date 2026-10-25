@@ -82,12 +82,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         text.DefaultTextStyle(style => style
                             .FontFamily("Vazirmatn")
                             .FontSize(8)
-                            .FontColor("#475569"));
+                            .FontColor("#475569")
+                            .DirectionFromRightToLeft());
                         text.Span("صفحه ");
                         text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
                         text.Span(" از ");
                         text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                    }).DirectionFromRightToLeft();
+                    });
                 }
                 else
                 {
