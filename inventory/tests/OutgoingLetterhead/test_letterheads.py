@@ -120,6 +120,8 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("var headingTopPadding = isHomepaLetterhead", source)
         self.assertIn("var tableTopPadding = isHomepaLetterhead", source)
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
+        self.assertIn("using QuestPDF.Elements;", source)
+        self.assertIn("DynamicComponentComposeResult Compose(DynamicContext context)", source)
         self.assertIn("context.TotalPages > 1", source)
         self.assertIn("page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent())", source)
         overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
