@@ -38,7 +38,7 @@
 
 /* Email uses a flex shell rather than the three-column letter workspace. */
 .ltx .email-shell {
-    display:flex; height:calc(100vh - 130px); min-height:540px; background:var(--card);
+    display:flex; height:calc(100vh - 130px); height:calc(100dvh - 130px); min-height:540px; background:var(--card);
     border:1px solid var(--line); border-radius:18px; overflow:hidden;
 }
 
@@ -608,18 +608,53 @@
    هم‌طراز با کارتابل نامه داخلی (همان کلاس‌های mail/paper)، با نام‌گذاریِ مستقل
    تا قواعدِ واکنش‌گرای کارتابل (پنهان‌کردنِ ستون خواندن در صفحه‌های کوچک)
    روی این صفحه اثر نگذارد. */
-.ltx .eml-wrap { display:flex; gap:12px; align-items:stretch; flex:1; min-height:0; margin-top:12px; }
-.ltx .eml-list { flex:0 0 clamp(300px,32%,400px); display:flex; flex-direction:column; min-width:0; min-height:0;
+.ltx .eml-wrap { display:flex; gap:12px; align-items:stretch; flex:1 1 auto; min-height:340px; margin-top:12px; }
+.ltx .eml-list { flex:0 0 clamp(280px,26%,360px); display:flex; flex-direction:column; min-width:0; min-height:0;
                  background:var(--card,#fff); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-.ltx .eml-reader { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
-.ltx .eml-scroll { flex:1; overflow:auto; padding:8px; }
+.ltx .eml-reader { flex:1 1 0; display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
+
+/* ⚠️ ستون‌های اسکرول باید height:0 + min-height:0 داشته باشند؛ وگرنه محتوای بلند
+   (بدنهٔ ایمیل) آن‌ها را بزرگ‌تر از کادر می‌کند، کادرِ بیرونی با overflow:hidden
+   آن را می‌بُرد و اسکرول هیچ‌وقت فعال نمی‌شود. */
+.ltx .eml-scroll { flex:1 1 0; min-height:0; height:0; overflow-y:auto; overflow-x:hidden;
+                   overscroll-behavior:contain; padding:8px; }
+.ltx .eml-scroll::-webkit-scrollbar { width:10px; }
+.ltx .eml-scroll::-webkit-scrollbar-thumb { background:#c3c9da; border-radius:8px; border:2px solid #fff; }
+.ltx .eml-scroll::-webkit-scrollbar-thumb:hover { background:#9aa3bd; }
 .ltx .eml-reader .eml-scroll { padding:0; }
 .ltx .eml-reader .paper { min-height:100%; }
-.ltx .eml-reader .paper-body { min-height:220px; }
+.ltx .eml-reader .paper-body { min-height:220px; overflow-wrap:anywhere; word-break:break-word; }
+/* بدنهٔ ایمیل‌های HTML اغلب جدول/تصویرِ عریض دارد — نباید چیدمان را پهن کند */
+.ltx .eml-reader .paper-body img { max-width:100% !important; height:auto !important; }
+.ltx .eml-reader .paper-body table { max-width:100% !important; display:block; overflow-x:auto; }
+.ltx .eml-reader .paper-body pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* ستونِ صفحه (سرتیتر + نوار ابزار + فیلترها + لیست/خواندن) */
+.ltx .email-main { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+.ltx .eml-page { padding:14px; width:100%; box-sizing:border-box; display:flex; flex-direction:column;
+                 min-height:0; flex:1; overflow-y:auto; }
+/* فیلترهای پیشرفته با ارتفاعِ زیاد، بقیهٔ صفحه را نخورند؛ خودشان اسکرول می‌شوند */
+.ltx .eml-filters { flex:0 0 auto; max-height:34vh; overflow-y:auto; }
+
+/* دکمهٔ بازگشت به فهرست — فقط در نمایشگر کوچک */
+.ltx .eml-back { display:none; }
 
 @media (max-width: 900px) {
-    .ltx .eml-wrap { flex-direction:column; }
-    .ltx .eml-list { flex:0 0 auto; max-height:42%; }
+    /* در حالت خواندن، فهرست پنهان و صفحهٔ خواندن تمام‌عرض/تمام‌ارتفاع می‌شود
+       (قبلاً خواندن زیر فهرست می‌افتاد و اسکرولِ آن هم کار نمی‌کرد). */
+    .ltx .eml-wrap { flex-direction:column; min-height:240px; }
+    .ltx .eml-list { flex:1 1 auto; max-height:none; }
+    .ltx .eml-wrap.reading .eml-list { display:none; }
+    .ltx .eml-wrap.reading .eml-reader { flex:1 1 auto; min-height:0; height:100%; }
+    .ltx .eml-back { display:inline-flex; }
+    .ltx .eml-page { padding:10px; }
+    .ltx .eml-filters { max-height:30vh; }
+    /* در حالت خواندن، سرتیتر و نوار ابزار/فیلترهای بالای صفحه کنار می‌روند
+       تا تمامِ ارتفاع به متن ایمیل برسد (نوارِ خودِ صفحهٔ خواندن دست‌نخورده است) */
+    .ltx .eml-page.reading > .rd-top,
+    .ltx .eml-page.reading > .scard { display:none; }
+    .ltx .eml-page.reading { overflow:hidden; }
+    .ltx .email-shell { height:calc(100dvh - 120px); min-height:420px; }
 }
 
 /* ---------- نوار پیشرفت هنگام دریافت ایمیل ---------- */

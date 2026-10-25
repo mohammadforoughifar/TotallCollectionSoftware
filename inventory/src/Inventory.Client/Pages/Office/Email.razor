@@ -103,8 +103,8 @@
         }
         else
         {
-        <section style="flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden">
-        <div style="padding:14px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;flex:1">
+        <section class="email-main">
+        <div class="eml-page @(openMsg != null ? "reading" : "")">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
             <span class="t"><i class="bi @(personalMode ? "bi-person-badge" : "bi-envelope-at")" style="color:var(--p2)"></i> @(personalMode ? "ایمیل شخصی" : "ایمیل سازمانی")</span>
@@ -172,7 +172,7 @@
         </div>
 
         @* ---------- فیلترهای پیشرفته ---------- *@
-        <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <div class="scard eml-filters" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
             <button class="lbtn ghost" style="padding:6px 12px;font-size:12.5px" @onclick="() => showFilters = !showFilters">
                 <i class="bi @(showFilters ? "bi-chevron-up" : "bi-chevron-down")"></i>
                 <span>فیلترهای پیشرفته</span>
@@ -313,7 +313,7 @@
         else
         {
             @* ==================== دو ستون لیست + خواندن ==================== *@
-            <div class="eml-wrap">
+            <div class="eml-wrap @(openMsg != null ? "reading" : "")">
                 @* ---------- لیست ایمیل‌ها ---------- *@
                 <div class="eml-list">
                     <div class="eml-scroll">
@@ -420,6 +420,8 @@
                     else
                     {
                         <div class="rd-top">
+                            <button class="icb eml-back" title="بازگشت به فهرست ایمیل‌ها" aria-label="بازگشت به فهرست"
+                                    @onclick="CloseMessage"><i class="bi bi-chevron-right"></i></button>
                             <span class="t">@openMsg.Subject</span>
                             <span style="flex:1"></span>
                             <button class="icb @(openMsg.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStar">
@@ -1147,6 +1149,13 @@
         attachmentFilter = "all";
         curPage = 1;
         _ = ReloadAsync();
+    }
+
+    /// <summary>بستنِ ایمیل و بازگشت به فهرست (در نمایشگر کوچک، فهرست دوباره تمام‌عرض می‌شود)</summary>
+    private void CloseMessage()
+    {
+        openMsg = null; openId = 0; openBox = ""; archOpen = false;
+        StateHasChanged();
     }
 
     /// <summary>نشان‌کردن / خارج‌کردنِ یک ایمیل از هرزنامه</summary>
