@@ -195,6 +195,34 @@ public class FileStore
     }
 
     /// <summary>
+    /// جایگزینی اتمیک یک فایل با نام ثابت زیر wwwroot/uploads/{module}/{refId}.
+    /// برای فایل‌هایی مثل امضای کاربر که یک فایل مشخص به ازای هر شناسه دارند.
+    /// </summary>
+    public async Task<string> SaveNamedAsync(string module, int refId, Stream stream, string fileName, string? subFolder = null)
+    {
+        var safe = SanitizeName(fileName);
+        var dir = BuildDirectory(module, refId, subFolder);
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, safe);
+        var temp = file + $".{Guid.NewGuid():N}.part";
+        try
+        {
+            await using (var fs = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                await stream.CopyToAsync(fs);
+                await fs.FlushAsync();
+            }
+            File.Move(temp, file, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            throw;
+        }
+        return ToRelative(file);
+    }
+
+    /// <summary>
     /// ذخیره بایت‌ها یا عکس خام زیر wwwroot/uploads/{module}/{ownerId|common}/{guid}.{ext}
     /// </summary>
     public async Task<string> SaveRawAsync(string module, byte[] data, string ext, int? ownerId = null)

@@ -31,7 +31,7 @@
             <div class="cpanel" @onclick:stopPropagation="true">
                 <div class="cpanel-tools">
                     <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput" />
-                    @if (mode == "user" && FilteredUsers.Count > 0)
+                    @if (AllowSelectAll && mode == "user" && FilteredUsers.Count > 0)
                     {
                         <button type="button" class="select-all" @onclick="SelectAllUsers">
                             <i class="bi bi-check2-all"></i> انتخاب همه
@@ -94,7 +94,7 @@
 
     @if (HasError)
     {
-        <div class="ferr"><i class="bi bi-exclamation-circle"></i> انتخاب حداقل یک گیرنده الزامی است</div>
+        <div class="ferr"><i class="bi bi-exclamation-circle"></i> @ErrorText</div>
     }
 </div>
 
@@ -103,12 +103,15 @@
     [Parameter] public string Icon { get; set; } = "bi-person-plus";
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool AllowGroups { get; set; } = true;
+    /// <summary>خاموش‌کردن «انتخاب همه» برای لیست‌هایی که چند گزینهٔ سمتی برای یک نفر دارند.</summary>
+    [Parameter] public bool AllowSelectAll { get; set; } = true;
     [Parameter] public List<LetterReciverDto> Users { get; set; } = new();
     [Parameter] public List<LetterGroupDto> Groups { get; set; } = new();
     [Parameter] public HashSet<int> SelectedUsers { get; set; } = new();
     [Parameter] public HashSet<int> SelectedGroups { get; set; } = new();
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public bool HasError { get; set; }
+    [Parameter] public string ErrorText { get; set; } = "انتخاب حداقل یک گیرنده الزامی است";
 
     private string mode = "user";
     private bool open;

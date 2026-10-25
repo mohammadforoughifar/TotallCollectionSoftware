@@ -217,7 +217,12 @@ public class OutgoingLetterService : IOutgoingLetterService
         var girande = dto.ReciversGirande.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsGirande)).Distinct().ToList();
         var erjaIds = dto.ReciversErja.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsErja)).Distinct().ToList();
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
-        var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
+        var signerIds = await ResolveSignersAsync(
+            dto.SignerSelections.Select(x => x.UserId).Concat(dto.SignerUserIds).Distinct().ToList(), dto.SignerGroupIds);
+        var requestedSignerSemats = await ResolveRequestedSignerSematsAsync(dto.SignerSelections);
+        var permittedSignerIds = await GetUsersWithSignPermissionAsync();
+        if (signerIds.Any(id => !permittedSignerIds.Contains(id)))
+            throw new Exception("فقط کاربران دارای مجوز امضای نامه صادره می‌توانند امضاکننده باشند.");
 
         // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
         if (signerIds.Count == 0)
@@ -315,7 +320,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 SourceId = source.Id,
                 UserId = uid,
-                SematId = signerSematIds.TryGetValue(uid, out var sid) ? sid : null,
+                SematId = requestedSignerSemats.TryGetValue(uid, out var selectedSematId)
+                    ? selectedSematId
+                    : signerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = order++,
                 IsSigned = false,
                 IsDelete = false
@@ -1049,7 +1056,12 @@ public class OutgoingLetterService : IOutgoingLetterService
         var girande = dto.ReciversGirande.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsGirande)).Distinct().ToList();
         var erjaIds = dto.ReciversErja.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsErja)).Distinct().ToList();
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
-        var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
+        var signerIds = await ResolveSignersAsync(
+            dto.SignerSelections.Select(x => x.UserId).Concat(dto.SignerUserIds).Distinct().ToList(), dto.SignerGroupIds);
+        var requestedSignerSemats = await ResolveRequestedSignerSematsAsync(dto.SignerSelections);
+        var permittedSignerIds = await GetUsersWithSignPermissionAsync();
+        if (signerIds.Any(id => !permittedSignerIds.Contains(id)))
+            throw new Exception("فقط کاربران دارای مجوز امضای نامه صادره می‌توانند امضاکننده باشند.");
 
         // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
         if (signerIds.Count == 0)
@@ -1134,6 +1146,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             if (!wantedSignerIds.Contains(es.UserId))
                 es.IsDelete = true;
+            else if (requestedSignerSemats.TryGetValue(es.UserId, out var selectedSematId))
+                es.SematId = selectedSematId;
         }
         int maxOrder = existingSigners.Any() ? existingSigners.Max(s => s.Order) : 0;
         var newSignerIds = wantedSignerIds.Where(id => !existingUserIds.Contains(id)).ToList();
@@ -1144,7 +1158,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 SourceId = letterId,
                 UserId = uid,
-                SematId = newSignerSematIds.TryGetValue(uid, out var sid) ? sid : null,
+                SematId = requestedSignerSemats.TryGetValue(uid, out var selectedSematId)
+                    ? selectedSematId
+                    : newSignerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = ++maxOrder,
                 IsSigned = false,
                 IsDelete = false
@@ -1305,17 +1321,15 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var q = _db.Users.AsNoTracking().Where(u => u.IsActive);
 
-        if (allowed.Count > 0)
-        {
-            q = q.Where(u => allowed.Contains(u.Id));
-        }
+        q = q.Where(u => allowed.Contains(u.Id));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
             // جستجو هم با نام و هم با عنوانِ سمتِ کاربر کار می‌کند
             q = q.Where(u => u.Username.Contains(s) || (u.FirstName + " " + u.LastName).Contains(s) || (u.FirstName ?? "").Contains(s) || (u.LastName ?? "").Contains(s)
-                || _db.Semats.Any(x => x.UserId == u.Id && !x.IsDelete && x.IsActive && x.Title.Contains(s)));
+                || _db.Semats.Any(x => x.UserId == u.Id && !x.IsDelete && x.IsActive
+                    && (x.Title.Contains(s) || (x.OnvanMokatebati ?? "").Contains(s))));
         }
 
         var list = await q.OrderBy(u => u.Username).ThenBy(x => x.Id)
@@ -1328,12 +1342,15 @@ public class OutgoingLetterService : IOutgoingLetterService
         // سمت‌های فعالِ هر امضاکننده (هر کاربر می‌تواند چند سمت داشته باشد)
         var userIds = list.Select(x => x.UserId).ToList();
         var positions = await UserPositionMapAsync(userIds);
+        var positionOptions = await UserPositionOptionsMapAsync(userIds);
         var defaultSematIds = await DefaultSematIdsAsync(userIds);
         var defaultSematTitles = await SematTitleMapAsync(defaultSematIds.Values.ToList());
         foreach (var item in list)
         {
             if (positions.TryGetValue(item.UserId, out var titles) && titles.Count > 0)
                 item.Positions = titles;
+            if (positionOptions.TryGetValue(item.UserId, out var options))
+                item.PositionOptions = options;
             if (defaultSematIds.TryGetValue(item.UserId, out var sematId))
             {
                 item.SematId = sematId;
@@ -1365,6 +1382,45 @@ public class OutgoingLetterService : IOutgoingLetterService
             }
             if (!list.Any(t => string.Equals(t, title, StringComparison.OrdinalIgnoreCase)))
                 list.Add(title);
+        }
+        return map;
+    }
+
+    private async Task<Dictionary<int, int?>> ResolveRequestedSignerSematsAsync(List<OutgoingSignerSelectionDto> selections)
+    {
+        var result = new Dictionary<int, int?>();
+        foreach (var selection in selections.Where(x => x.UserId > 0))
+            result[selection.UserId] = selection.SematId;
+        var sematIds = result.Values.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
+        if (sematIds.Count == 0) return result;
+        var userIds = result.Keys.ToList();
+        var valid = await _db.Semats.AsNoTracking()
+            .Where(s => sematIds.Contains(s.SematId) && s.UserId != null && userIds.Contains(s.UserId.Value)
+                && !s.IsDelete && s.IsActive)
+            .Select(s => new { s.SematId, UserId = s.UserId!.Value })
+            .ToListAsync();
+        var validPairs = valid.Select(x => (x.UserId, (int?)x.SematId)).ToHashSet();
+        foreach (var uid in result.Keys.ToList())
+            if (result[uid] is int sid && !validPairs.Contains((uid, (int?)sid)))
+                throw new Exception("سمت انتخاب‌شده برای یکی از امضاکنندگان معتبر یا فعال نیست.");
+        return result;
+    }
+
+    private async Task<Dictionary<int, List<LetterPositionDto>>> UserPositionOptionsMapAsync(List<int> userIds)
+    {
+        var map = new Dictionary<int, List<LetterPositionDto>>();
+        if (userIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId != null && userIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+            .OrderBy(s => s.SematId)
+            .Select(s => new { UserId = s.UserId!.Value, s.SematId, s.Title, s.OnvanMokatebati })
+            .ToListAsync();
+        foreach (var row in rows)
+        {
+            var title = string.IsNullOrWhiteSpace(row.OnvanMokatebati) ? row.Title?.Trim() : row.OnvanMokatebati.Trim();
+            if (string.IsNullOrWhiteSpace(title)) continue;
+            if (!map.TryGetValue(row.UserId, out var list)) map[row.UserId] = list = new();
+            list.Add(new LetterPositionDto { SematId = row.SematId, Title = title });
         }
         return map;
     }

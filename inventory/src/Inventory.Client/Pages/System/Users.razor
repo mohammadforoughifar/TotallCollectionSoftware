@@ -241,15 +241,20 @@ else
         <div class="border rounded-3 p-3 mb-3 bg-light-subtle">
             <label class="form-label small fw-800 mb-1"><i class="bi bi-pen"></i> امضای کاربر (اختیاری)</label>
             <div class="d-flex align-items-center gap-3">
-                <div class="border rounded bg-white p-2" style="width:180px;height:70px;display:flex;align-items:center;justify-content:center">
-                    @if (luSignaturePreview != null) { <img src="@luSignaturePreview" alt="پیش‌نمایش امضا" style="max-width:165px;max-height:58px;object-fit:contain" /> }
-                    else if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath)) { <img src="/api/auth/users/signature/@form.Id" alt="امضای کاربر" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                <div class="signature-checkerboard border rounded p-2" style="width:180px;height:70px;display:flex;align-items:center;justify-content:center">
+                    @if (luSignaturePreview != null) { <img src="@luSignaturePreview" alt="پیش‌نمایش امضای جدید" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else if (luStoredSignaturePreview != null) { <img src="@luStoredSignaturePreview" alt="امضای ثبت‌شدهٔ کاربر" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else if (signaturePreviewLoading) { <span class="text-muted small">در حال دریافت امضا…</span> }
+                    else if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath)) { <span class="text-muted small">پیش‌نمایش امضا در دسترس نیست</span> }
                     else { <span class="text-muted small">بدون امضا</span> }
                 </div>
                 <div class="d-flex flex-column gap-1">
-                    <InputFile OnChange="OnUserSignaturePicked" Accept="image/png,image/jpeg" class="btn btn-sm btn-outline-primary" style="max-width:220px" />
-                    <span class="text-muted fs-8">PNG یا JPG — بدون محدودیت حجم</span>
-                    @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب</button> }
+                    <label class="btn btn-sm btn-outline-primary mb-0" style="max-width:220px">
+                        <i class="bi bi-cloud-arrow-up-fill"></i> @(string.IsNullOrWhiteSpace(form.SignaturePath) ? "ثبت امضا" : "تغییر امضا")
+                        <InputFile OnChange="OnUserSignaturePicked" Accept="image/png" class="visually-hidden" />
+                    </label>
+                    <span class="text-muted fs-8">فقط PNG — شفافیت حفظ و اندازه هنگام ذخیره بهینه می‌شود</span>
+                    @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب جدید</button> }
                 </div>
             </div>
         </div>
@@ -569,6 +574,33 @@ else
     private string? luPhotoPreview;
     private byte[]? luSignatureBytes;
     private string? luSignaturePreview;
+    private string? luStoredSignaturePreview;
+    private bool signaturePreviewLoading;
+
+    private async Task LoadStoredSignaturePreviewAsync(int userId)
+    {
+        signaturePreviewLoading = true;
+        try
+        {
+            EnsureAuthHeader();
+            using var response = await Http.GetAsync($"/api/auth/users/signature/{userId}");
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                if (bytes.Length > 0)
+                    luStoredSignaturePreview = "data:image/png;base64," + Convert.ToBase64String(bytes);
+            }
+        }
+        catch
+        {
+            // The saved SignaturePath remains untouched; preview failure must not block editing.
+        }
+        finally
+        {
+            signaturePreviewLoading = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task OnLoginUserPhotoPicked(InputFileChangeEventArgs e)
     {
@@ -586,10 +618,12 @@ else
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > 2 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
-        if (file.ContentType is not ("image/png" or "image/jpeg")) { saveError = "امضا باید PNG یا JPG باشد."; return; }
+        if (file.Size > 10 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۱۰ مگابایت است."; return; }
+        if (file.ContentType != "image/png" || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
+        { saveError = "فقط فایل PNG مجاز است."; return; }
         luSignatureBytes = new byte[file.Size];
-        await file.OpenReadStream(long.MaxValue).ReadAsync(luSignatureBytes);
+        await using (var signatureStream = file.OpenReadStream(10 * 1024 * 1024))
+            await signatureStream.ReadExactlyAsync(luSignatureBytes);
         luSignaturePreview = "data:" + file.ContentType + ";base64," + Convert.ToBase64String(luSignatureBytes);
         StateHasChanged();
     }
@@ -828,10 +862,11 @@ else
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
+        luStoredSignaturePreview = null; signaturePreviewLoading = false;
         showModal = true;
     }
 
-    private void OpenEdit(UserDto u)
+    private async Task OpenEdit(UserDto u)
     {
         form = new UserDto
         {
@@ -861,8 +896,11 @@ else
         _ = LoadWoAllowed(u.Id);
         _ = LoadCompanyAccess(u.Id);
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
+        luStoredSignaturePreview = null;
         showModal = true;
         StateHasChanged();
+        if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath))
+            await LoadStoredSignaturePreviewAsync(form.Id);
     }
 
     private void CloseModal() => showModal = false;
@@ -1018,6 +1056,15 @@ else
 </style>
 
 <style>
+    .signature-checkerboard {
+        background-color: #f8fafc;
+        background-image: linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+            linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+            linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+        background-size: 12px 12px;
+        background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    }
     /* ===== نشان‌های بله و ایتا ===== */
     .msgr-badge {
         display: inline-flex; align-items: center; gap: .2rem;

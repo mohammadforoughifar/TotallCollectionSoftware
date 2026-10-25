@@ -1,7 +1,9 @@
 @page "/letters"
+@using Inventory.Shared.Security
 @page "/letters/{Tab}"
 @using System.Net.Http.Headers
 @inject ILetterService LetterSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -214,11 +216,11 @@
                                         @if (printMenuOpen && printMenuLetterId == ll.LetterId)
                                         {
                                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                                 <div class="mdiv"></div>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                                             </div>
                                         }
                                         <button class="warn" @onclick="() => ToggleArchive(ll)">
@@ -274,11 +276,11 @@
                         @if (printMenuOpen)
                         {
                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                 <div class="mdiv"></div>
-                                <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                             </div>
                         }
                     </span>
@@ -358,7 +360,7 @@
                                     <div class="dt">@selected.DateSabt.ToFaDateTime()</div>
                                 </div>
                             </div>
-                            <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
+                            <div class="paper-body letter-body">@((MarkupString)RichLetterHtml.Sanitize(selected.Text ?? "—"))</div>
                             @* بخش پیوست‌ها باید «همیشه» برای هر کاربرِ حاضر در گردش (فرستنده/گیرنده) یا مدیر
                                دیده شود — حتی اگر نامه هنوز پیوستی نداشته باشد تا دکمه افزودن در دسترس بماند *@
                             @if (attachments.Count > 0 || selected.IsMine || selected.MyErja != null || Auth.IsAdmin)
@@ -1280,26 +1282,10 @@
         var letterId = selected.LetterId;
         var number = selected.LetterNumber;
         printingPdf = true;
-        string? printId = null;
         try
         {
-            // Open only on the user's explicit with/without-hamesh click, before awaiting the API.
-            printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
-            var bytes = await LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh);
             var name = $"inner-letter-{number}-{size}-{(withHamesh ? "with-hamesh" : "without-hamesh")}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            await PrintWorkflow.PrintPdfAsync(() => LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh), name);
         }
         finally { printingPdf = false; }
     }
