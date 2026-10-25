@@ -58,6 +58,8 @@ public sealed class RequiredCompanyLetterheadPrintException : Exception
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
+    private sealed record SignatureSvgData(string Svg, int Width, int Height);
+
     // These companies must use their own registered letterheads; never substitute Forough's.
     private const int HomepaCompanyId = 1003;
     private const int AriaCompanyId = 1005;
@@ -560,13 +562,39 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// تبدیل امضا به مسیرهای SVG بدون پس‌زمینه. این مسیر چاپی عمداً PNG را به‌عنوان
     /// Image XObject در PDF نمی‌گذارد تا مشکل SMask/alpha در PDFsharp و درایور چاپگر حذف شود.
     /// </summary>
-    private static string? TryReadSignatureSvg(byte[]? pngBytes)
+    private static SignatureSvgData? TryReadSignatureSvg(byte[]? pngBytes)
     {
         if (pngBytes is not { Length: > 0 }) return null;
         try
         {
             using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(pngBytes);
-            // امضاها در PDF حداکثر حدود 205pt عرض دارند؛ این وضوح همچنان از کیفیت چاپ کافی بالاتر است.
+            // Trim legacy uploads at render time too, so printing remains tight even before
+            // the one-time disk migration has been run. Keep a four-pixel transparent border.
+            var left = image.Width;
+            var top = image.Height;
+            var right = -1;
+            var bottom = -1;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        var px = row[x];
+                        var inkAlpha = (int)((255 - Math.Min(px.R, Math.Min(px.G, px.B))) * px.A / 255);
+                        if (inkAlpha < 24) continue;
+                        left = Math.Min(left, x);
+                        top = Math.Min(top, y);
+                        right = Math.Max(right, x);
+                        bottom = Math.Max(bottom, y);
+                    }
+                }
+            });
+            if (right < left || bottom < top) return null;
+            var crop = new SixLabors.ImageSharp.Rectangle(left, top, right - left + 1, bottom - top + 1);
+            image.Mutate(ctx => ctx.Crop(crop).Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
+            // Resize only after trimming; otherwise a large transparent canvas would reduce ink resolution.
             if (image.Width > 1200 || image.Height > 480)
                 image.Mutate(x => x.Resize(new ResizeOptions
                 {
@@ -645,7 +673,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .Append("' d='").Append(paths[level]).Append("'/>");
             }
             svg.Append("</svg>");
-            return svg.ToString();
+            return new SignatureSvgData(svg.ToString(), image.Width, image.Height);
         }
         catch
         {
@@ -706,37 +734,41 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             return (
                 Name: ToPersianDigits(FullName(s.User)),
                 Role: ToPersianDigits(role),
-                SignatureSvg: s.IsSigned ? TryReadSignatureSvg(TryReadSignature(s.User?.SignaturePath)) : null);
+                Signature: s.IsSigned ? TryReadSignatureSvg(TryReadSignature(s.User?.SignaturePath)) : null);
         }).ToList();
 
-        // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
-        // Each card flows in image → name → position order. The signature is contained
-        // within its box (aspect ratio preserved), so it cannot cover the text or overflow.
+        // ── بلوک امضا: هر نفر یک ستونِ مستقل، تصویر سپس نام و سمت با فاصلهٔ کم ──
         var signerBlockWidth = isA5 ? 150f : 220f;
-        var signatureBoxWidth = isA5 ? 138f : 205f;
-        var signatureBoxHeight = isA5 ? 46f : 66f;
+        var maxSignatureWidth = isA5 ? 138f : 205f;
+        var maxSignatureHeight = isA5 ? 68f : 72f; // 91–96 CSS px at 96 dpi
 
-        void AddSignerCard(IContainer container, (string Name, string Role, string? SignatureSvg) signer)
+        void AddSignerCard(IContainer container, (string Name, string Role, SignatureSvgData? Signature) signer)
         {
             container.Width(signerBlockWidth).Column(card =>
             {
-                if (!string.IsNullOrWhiteSpace(signer.SignatureSvg))
+                if (signer.Signature is { } signature)
                 {
-                    // SVG ink paths retain transparency; FitArea contains the image and preserves its ratio.
-                    card.Item().AlignCenter().Width(signatureBoxWidth).Height(signatureBoxHeight)
-                        .Svg(signer.SignatureSvg).FitArea();
+                    var scale = Math.Min(maxSignatureWidth / signature.Width, maxSignatureHeight / signature.Height);
+                    var imageWidth = signature.Width * scale;
+                    var imageHeight = signature.Height * scale;
+                    card.Item().AlignCenter().Width(imageWidth).Height(imageHeight)
+                        .Svg(signature.Svg).FitArea();
+                    card.Item().PaddingTop(2).Text(signer.Name)
+                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                    card.Item().Text(signer.Role)
+                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
                 }
                 else
                 {
-                    card.Item().Height(signatureBoxHeight);
+                    card.Item().Text(signer.Name)
+                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                    card.Item().Text(signer.Role)
+                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
                 }
-
-                card.Item().PaddingTop(3).Text(signer.Name)
-                    .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                    .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
-                card.Item().Text(signer.Role)
-                    .FontFamily("Vazirmatn").FontSize(smallFontSize)
-                    .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
             });
         }
 

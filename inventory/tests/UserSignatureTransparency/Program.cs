@@ -83,7 +83,11 @@ try
     savedUser = await db.Users.SingleAsync(x => x.Id == user.Id);
     Check(savedUser.SignaturePath == initialSignaturePath, "re-upload replaces the signature at the same user-ID filename");
     var signatureDirectory = Path.Combine(store.RootPath, "UserSignatures", user.Id.ToString());
-    Check(Directory.GetFiles(signatureDirectory).Length == 1, "re-upload leaves only one signature file for the user");
+    Check(Directory.GetFiles(signatureDirectory).Length == 1, "re-upload leaves only one active signature file for the user");
+    var originalDirectory = Path.Combine(signatureDirectory, "originals");
+    Check(Directory.GetFiles(originalDirectory, "*.png").Length == 2, "both original upload files are retained for rollback");
+    Check(File.ReadAllBytes(Directory.GetFiles(originalDirectory, "*.png")[0]).SequenceEqual(inputBytes),
+        "an unmodified source PNG is retained in the originals folder");
     var storedBytes = store.ReadBytes(savedUser.SignaturePath)
         ?? throw new Exception("FAIL: stored signature bytes are missing");
     Check(storedBytes.Length > 25, "stored signature bytes are readable");
@@ -92,10 +96,26 @@ try
     Check(storedBytes[25] == 6, "stored PNG IHDR color type is RGBA (6), not RGB/indexed");
 
     using var storedImage = Image.Load<Rgba32>(storedBytes);
-    Check(storedImage[0, 0].A == 0, "transparent source corner remains alpha zero after upload/save");
-    Check(storedImage[1, 1].A == 0, "white background is removed to alpha zero");
-    Check(storedImage[5, 4].A >= 240, "signature ink stays opaque after background removal");
-    Check(storedImage[4, 3].A is > 0 and < 200, "antialiased signature alpha is preserved");
+    Check(storedImage.Width == 14 && storedImage.Height == 10, "signature is alpha-cropped with a four-pixel transparent border");
+    Check(storedImage[0, 0].A == 0 && storedImage[1, 1].A == 0, "transparent crop padding is preserved");
+    Check(storedImage[6, 5].A >= 240, "signature ink stays opaque after cropping");
+    Check(storedImage[5, 4].A is > 0 and < 200, "antialiased signature alpha is preserved after cropping");
+
+    // Legacy, uncropped files are returned cropped for preview without changing the source file.
+    string legacyPath;
+    using (var legacyStream = new MemoryStream(inputBytes, writable: false))
+        legacyPath = await store.SaveAsync("UserSignatures", user.Id, legacyStream, "legacy_signature.png");
+    savedUser.SignaturePath = legacyPath;
+    await db.SaveChangesAsync();
+    var previewResponse = await controller.UserSignature(user.Id);
+    Check(previewResponse is FileContentResult, "signature preview endpoint returns PNG data");
+    var previewBytes = ((FileContentResult)previewResponse).FileContents;
+    using var previewImage = Image.Load<Rgba32>(previewBytes);
+    Check(previewImage.Width == 14 && previewImage.Height == 10, "legacy signature preview is cropped with four-pixel padding");
+    Check(store.ReadBytes(legacyPath)!.SequenceEqual(inputBytes), "preview cropping does not alter the original stored file");
+    savedUser.SignaturePath = initialSignaturePath;
+    await db.SaveChangesAsync();
+    store.Delete(legacyPath);
 
     // Exercise the production outgoing-letter PDF content builder using the saved signature.
     var printService = new OutgoingLetterPrintService(db, environment, NullLogger<OutgoingLetterPrintService>.Instance);

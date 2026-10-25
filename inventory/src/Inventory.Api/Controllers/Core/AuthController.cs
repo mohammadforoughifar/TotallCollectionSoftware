@@ -2,6 +2,7 @@ using System.Security.Claims;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Processing;
 using Inventory.Api.Services;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -70,7 +71,50 @@ public class AuthController : ControllerBase
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (user == null || string.IsNullOrWhiteSpace(user.SignaturePath)) return NotFound(new { message = "امضای کاربر ثبت نشده است." });
         var bytes = _store.ReadBytes(user.SignaturePath);
-        return bytes is null ? NotFound(new { message = "فایل امضای کاربر یافت نشد." }) : File(bytes, "image/png", enableRangeProcessing: true);
+        if (bytes is null) return NotFound(new { message = "فایل امضای کاربر یافت نشد." });
+        // Legacy files are served cropped as well, so previews do not need to wait for disk migration.
+        return File(CropSignatureToAlphaBounds(bytes), "image/png", enableRangeProcessing: true);
+    }
+
+    private static byte[] CropSignatureToAlphaBounds(byte[] pngBytes)
+    {
+        try
+        {
+            using var image = Image.Load<Rgba32>(pngBytes);
+            var left = image.Width;
+            var top = image.Height;
+            var right = -1;
+            var bottom = -1;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        if (row[x].A == 0) continue;
+                        left = Math.Min(left, x);
+                        top = Math.Min(top, y);
+                        right = Math.Max(right, x);
+                        bottom = Math.Max(bottom, y);
+                    }
+                }
+            });
+            if (right < left || bottom < top) return pngBytes;
+
+            var crop = new Rectangle(left, top, right - left + 1, bottom - top + 1);
+            using var trimmed = image.Clone(ctx => ctx
+                .Crop(crop)
+                .Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
+            using var output = new MemoryStream();
+            trimmed.Save(output, new PngEncoder { ColorType = SixLabors.ImageSharp.Formats.Png.PngColorType.RgbWithAlpha });
+            return output.ToArray();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Do not block a preview if an old signature cannot be decoded; the migration tool reports it separately.
+            return pngBytes;
+        }
     }
 
     /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
@@ -132,14 +176,45 @@ public class AuthController : ControllerBase
                 }
             });
 
+            // Crop to the alpha-channel bounds of visible ink and add only a 4 px transparent inset.
+            var left = image.Width;
+            var top = image.Height;
+            var right = -1;
+            var bottom = -1;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        if (row[x].A == 0) continue;
+                        left = Math.Min(left, x);
+                        top = Math.Min(top, y);
+                        right = Math.Max(right, x);
+                        bottom = Math.Max(bottom, y);
+                    }
+                }
+            });
+            if (right < left || bottom < top)
+                return BadRequest(new { message = "تصویر امضا پس از حذف زمینه، هیچ پیکسل قابل‌مشاهده‌ای ندارد." });
+
+            var crop = new Rectangle(left, top, right - left + 1, bottom - top + 1);
+            using var trimmed = image.Clone(ctx => ctx
+                .Crop(crop)
+                .Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
             await using var png = new MemoryStream();
-            await image.SaveAsync(png, new PngEncoder { ColorType = SixLabors.ImageSharp.Formats.Png.PngColorType.RgbWithAlpha });
+            await trimmed.SaveAsync(png, new PngEncoder { ColorType = SixLabors.ImageSharp.Formats.Png.PngColorType.RgbWithAlpha });
             processedPng = png.ToArray();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return BadRequest(new { message = "فایل انتخاب‌شده PNG معتبر یا قابل رمزگشایی نیست." });
         }
+
+        var originalFileName = $"user_{id}_signature_original_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.png";
+        using (var originalUpload = new MemoryStream(inputBytes, writable: false))
+            await _store.SaveNamedAsync("UserSignatures", id, originalUpload, originalFileName, "originals");
 
         using var output = new MemoryStream(processedPng, writable: false);
         var previousPath = user.SignaturePath;
