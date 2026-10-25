@@ -376,11 +376,11 @@ else if (tab == "perf")
 }
 else if (tab == "stats")
 {
-    @* ================== داشبورد آماری ================== *@
+    @* ================== داشبورد آماری — نسخهٔ مدیریتی ================== *@
     @if (statsError is not null)
     {
-        <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
-            <i class="bi bi-exclamation-triangle"></i>
+        <div class="wd-alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
             <div class="flex-grow-1">@statsError</div>
             <button class="btn btn-sm btn-outline-warning" @onclick="LoadStats">تلاش دوباره</button>
         </div>
@@ -388,131 +388,271 @@ else if (tab == "stats")
 
     @if (stats == null)
     {
-        <div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="text-muted fs-8 mt-2">در حال محاسبهٔ آمار…</div></div>
+        <div class="wd-skeleton"><div class="spinner-border text-primary"></div><div class="text-muted fs-8 mt-2">در حال محاسبهٔ آمار…</div></div>
     }
     else if (stats.Cards.Total == 0)
     {
-        <div class="wo-empty"><i class="bi bi-bar-chart"></i><h5>هنوز دادهای برای نمایش نیست</h5>
-            <div class="text-muted fs-8">با ثبت اولین دستور کار، نمودارها تکمیل میشوند.</div></div>
+        <div class="wo-empty"><i class="bi bi-bar-chart"></i><h5>هنوز داده‌ای برای نمایش نیست</h5>
+            <div class="text-muted fs-8">با ثبت اولین دستور کار، شاخص‌ها و نمودارها تکمیل می‌شوند.</div></div>
     }
     else
     {
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-            <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-soft-primary text-primary"><i class="bi bi-buildings"></i>
-                    دستورهای من
-                </span>
-                <span class="fs-8 text-muted">آمار فقط بر پایهٔ دستورهایی است که شما صادر کرده‌اید یا به شما محول شده‌اند؛ آمار سایر کاربران نمایش داده نمی‌شود.</span>
+        <div class="wd">
+
+            @* ---------- نوار عنوان داشبورد ---------- *@
+            <div class="wd-top">
+                <div class="wd-top-l">
+                    <span class="wd-scope"><i class="bi bi-person-badge"></i> داشبورد شخصی</span>
+                    <span class="wd-scope-note">فقط دستورهایی که شما صادر کرده‌اید یا به شما سپرده شده‌اند</span>
+                </div>
+                <div class="wd-top-r">
+                    <span class="wd-updated">آخرین محاسبه: <b class="num">@UpdatedFa</b></span>
+                    <button type="button" class="wd-refresh" @onclick="LoadStats" disabled="@statsLoading" title="محاسبهٔ مجدد آمار">
+                        @if (statsLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-clockwise"></i>
+                        }
+                        بروزرسانی
+                    </button>
+                </div>
             </div>
-            <button class="btn btn-sm btn-light" @onclick="LoadStats" disabled="@statsLoading">
-                @if (statsLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                <i class="bi bi-arrow-clockwise"></i> بروزرسانی
-            </button>
-        </div>
 
-        @* ---------- کارت‌های شاخص ---------- *@
-        <div class="wo-kpis mb-3">
-            <div class="wo-kpi"><div class="wo-kpi-num num">@stats.Cards.Total</div><div class="wo-kpi-lbl">کل دستورها</div></div>
-            <div class="wo-kpi k-open"><div class="wo-kpi-num num">@stats.Cards.Open</div><div class="wo-kpi-lbl">باز / در جریان</div></div>
-            <div class="wo-kpi k-late"><div class="wo-kpi-num num">@stats.Cards.Overdue</div><div class="wo-kpi-lbl">گذشته از مهلت</div></div>
-            <div class="wo-kpi k-today"><div class="wo-kpi-num num">@stats.Cards.DueToday</div><div class="wo-kpi-lbl">مهلت امروز</div></div>
-            <div class="wo-kpi k-ontime"><div class="wo-kpi-num num">@stats.Cards.DoneOnTime</div><div class="wo-kpi-lbl">انجام به‌موقع</div></div>
-            <div class="wo-kpi k-latedone"><div class="wo-kpi-num num">@stats.Cards.DoneLate</div><div class="wo-kpi-lbl">انجام با تاخیر</div></div>
-            <div class="wo-kpi"><div class="wo-kpi-num num">@DoneRate%</div><div class="wo-kpi-lbl">نرخ انجام به‌موقع</div></div>
-        </div>
+            @* ---------- کارت خلاصهٔ مدیریتی ---------- *@
+            <div class="wd-hero">
+                <div class="wd-hero-main">
+                    <div class="wd-hero-lbl">نرخ انجام به‌موقع</div>
+                    <div class="wd-hero-val num">@DoneRate<span class="wd-pct-sign">٪</span></div>
+                    <div class="wd-hero-cap">
+                        از <b class="num">@ClosedTotal</b> دستور بسته‌شده
+                        <span class="wd-hint" title="مخرج کسر: دستورهای بسته‌شده = انجام به‌موقع + انجام با تاخیر + بستهٔ بی‌نتیجه"><i class="bi bi-info-circle"></i></span>
+                    </div>
+                    <div class="wd-hero-note">@DoneRateHint</div>
+                </div>
 
-        <div class="row g-3">
-            @* ---------- ترکیب وضعیت (دوناتی) ---------- *@
-            <div class="col-12 col-lg-5">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h6 class="fw-700 mb-3"><i class="bi bi-pie-chart text-primary"></i> ترکیب وضعیت دستورها</h6>
-                        <div class="d-flex align-items-center gap-4 flex-wrap">
-                            <div class="wo-donut" style="@StatusDonutStyle()" role="img" aria-label="نمودار ترکیب وضعیت دستور کار">
+                <div class="wd-ring" style="@RingStyle()" role="img" aria-label="نرخ انجام به‌موقع @DoneRate درصد">
+                    <div class="wd-ring-hole">
+                        <div class="wd-ring-num num">@DoneRate٪</div>
+                        <div class="wd-ring-cap">به‌موقع</div>
+                    </div>
+                </div>
+
+                <div class="wd-hero-side">
+                    <div class="wd-stack-title">ترکیب <b class="num">@stats.Cards.Total</b> دستور کار</div>
+                    <div class="wd-stack" role="img" aria-label="ترکیب وضعیت دستور کارها">
+                        <span class="wd-stack-seg s-open" style="width:@Share(OpenOnly)%" title="باز و در مهلت: @OpenOnly"></span>
+                        <span class="wd-stack-seg s-late" style="width:@Share(OverdueCount)%" title="گذشته از مهلت: @OverdueCount"></span>
+                        <span class="wd-stack-seg s-ontime" style="width:@Share(stats.Cards.DoneOnTime)%" title="انجام به‌موقع: @stats.Cards.DoneOnTime"></span>
+                        <span class="wd-stack-seg s-latedone" style="width:@Share(stats.Cards.DoneLate)%" title="انجام با تاخیر: @stats.Cards.DoneLate"></span>
+                        <span class="wd-stack-seg s-nodone" style="width:@Share(stats.Cards.ClosedNoDone)%" title="بستهٔ بی‌نتیجه: @stats.Cards.ClosedNoDone"></span>
+                    </div>
+                    <div class="wd-stack-legend">
+                        <span><i class="wo-dot" style="background:#3b82f6"></i>باز <b class="num">@OpenOnly</b></span>
+                        <span><i class="wo-dot" style="background:#ef4444"></i>معوق <b class="num">@OverdueCount</b></span>
+                        <span><i class="wo-dot" style="background:#22c55e"></i>به‌موقع <b class="num">@stats.Cards.DoneOnTime</b></span>
+                        <span><i class="wo-dot" style="background:#a855f7"></i>با تاخیر <b class="num">@stats.Cards.DoneLate</b></span>
+                        <span><i class="wo-dot" style="background:#94a3b8"></i>بی‌نتیجه <b class="num">@stats.Cards.ClosedNoDone</b></span>
+                    </div>
+                </div>
+            </div>
+
+            @* ---------- کارت‌های شاخص (چهار سهم کامل + کل) ---------- *@
+            <div class="wd-kpis">
+                <div class="wd-kpi k-total">
+                    <div class="wd-kpi-ic"><i class="bi bi-collection"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.Total</div>
+                        <div class="wd-kpi-lbl">کل دستورها</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:100%"></span></div>
+                </div>
+
+                <div class="wd-kpi k-open" title="دستورهای باز (بسته‌نشده) — شامل معوق و مهلت‌امروز">
+                    <div class="wd-kpi-ic"><i class="bi bi-hourglass-split"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.Open</div>
+                        <div class="wd-kpi-lbl">باز / در جریان</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:@Share(stats.Cards.Open)%"></span></div>
+                    <div class="wd-kpi-share num">@Share(stats.Cards.Open)٪ از کل</div>
+                </div>
+
+                <div class="wd-kpi k-ontime" title="همهٔ گیرندگان انجام داده‌اند و آخرین پاسخ تا مهلت بوده است">
+                    <div class="wd-kpi-ic"><i class="bi bi-check2-circle"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.DoneOnTime</div>
+                        <div class="wd-kpi-lbl">انجام به‌موقع</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:@Share(stats.Cards.DoneOnTime)%"></span></div>
+                    <div class="wd-kpi-share num">@Share(stats.Cards.DoneOnTime)٪ از کل</div>
+                </div>
+
+                <div class="wd-kpi k-latedone" title="همهٔ گیرندگان انجام داده‌اند اما پاسخ بعد از مهلت ثبت شده است">
+                    <div class="wd-kpi-ic"><i class="bi bi-clock-history"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.DoneLate</div>
+                        <div class="wd-kpi-lbl">انجام با تاخیر</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:@Share(stats.Cards.DoneLate)%"></span></div>
+                    <div class="wd-kpi-share num">@Share(stats.Cards.DoneLate)٪ از کل</div>
+                </div>
+
+                <div class="wd-kpi k-nodone" title="دستور بسته شده ولی هیچ گیرنده‌ای «انجام شد» ثبت نکرده است">
+                    <div class="wd-kpi-ic"><i class="bi bi-slash-circle"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.ClosedNoDone</div>
+                        <div class="wd-kpi-lbl">بستهٔ بی‌نتیجه</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:@Share(stats.Cards.ClosedNoDone)%"></span></div>
+                    <div class="wd-kpi-share num">@Share(stats.Cards.ClosedNoDone)٪ از کل</div>
+                </div>
+
+                <div class="wd-kpi k-reply" title="گیرندگانی که هنوز هیچ پاسخی نداده‌اند (تعداد واگذاری، نه تعداد دستور)">
+                    <div class="wd-kpi-ic"><i class="bi bi-chat-dots"></i></div>
+                    <div class="wd-kpi-body">
+                        <div class="wd-kpi-num num">@stats.Cards.PendingReply</div>
+                        <div class="wd-kpi-lbl">در انتظار پاسخ</div>
+                    </div>
+                    <div class="wd-kpi-bar"><span style="width:100%;background:#f59e0b"></span></div>
+                    <div class="wd-kpi-share num">واگذاری بی‌پاسخ</div>
+                </div>
+            </div>
+
+            @* ---------- نوار تسویهٔ اعداد ---------- *@
+            <div class="wd-recon @(ReconcileOk ? "" : "bad")">
+                <i class="bi @(ReconcileOk ? "bi-check2-circle" : "bi-exclamation-circle")"></i>
+                <div class="wd-recon-txt">
+                    <b class="num">@stats.Cards.Total</b> کل
+                    =
+                    <b class="num">@stats.Cards.Open</b> باز
+                    +
+                    <b class="num">@stats.Cards.DoneOnTime</b> به‌موقع
+                    +
+                    <b class="num">@stats.Cards.DoneLate</b> با تاخیر
+                    +
+                    <b class="num">@stats.Cards.ClosedNoDone</b> بی‌نتیجه
+                    <span class="wd-recon-sep">|</span>
+                    مجموع چهار سهم = <b class="num">@ToneSum</b>
+                </div>
+            </div>
+
+            @* ---------- زیرمجموعه‌های «باز» — دوباره‌شماری نمی‌شوند ---------- *@
+            <div class="wd-sub-strip">
+                <div class="wd-sub-head"><i class="bi bi-diagram-3"></i> تفکیک دستورهای باز</div>
+                <div class="wd-sub-items">
+                    <div class="wd-sub-item">
+                        <span class="wd-sub-num num" style="color:#ef4444">@OverdueCount</span>
+                        <span class="wd-sub-lbl">گذشته از مهلت</span>
+                    </div>
+                    <div class="wd-sub-item">
+                        <span class="wd-sub-num num" style="color:#f59e0b">@stats.Cards.DueToday</span>
+                        <span class="wd-sub-lbl">مهلت امروز</span>
+                    </div>
+                    <div class="wd-sub-item">
+                        <span class="wd-sub-num num" style="color:#3b82f6">@OpenOnly</span>
+                        <span class="wd-sub-lbl">باز و در مهلت</span>
+                    </div>
+                    <div class="wd-sub-note">این سه عدد زیرمجموعهٔ کارت «باز» هستند و در جمع کل دوباره حساب نمی‌شوند.</div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                @* ---------- ترکیب وضعیت (دوناتی) ---------- *@
+                <div class="col-12 col-xl-5">
+                    <div class="wd-card h-100">
+                        <div class="wd-card-head"><h6>ترکیب وضعیت</h6><span class="wd-card-sub">سهم هر وضعیت از کل</span></div>
+                        <div class="wd-card-body d-flex align-items-center gap-4 flex-wrap">
+                            <div class="wo-donut wd-donut" style="@StatusDonutStyle()" role="img" aria-label="نمودار ترکیب وضعیت">
                                 <div class="wo-donut-hole">
                                     <div class="wo-donut-total num">@stats.Cards.Total</div>
                                     <div class="wo-donut-cap">دستور</div>
                                 </div>
                             </div>
                             <div class="d-flex flex-column gap-2 flex-grow-1">
-                                <div class="wo-legend-row"><i class="wo-dot" style="background:#3b82f6"></i> باز <span class="ms-auto num fw-700">@stats.ByStatus.Open</span></div>
-                                <div class="wo-legend-row"><i class="wo-dot" style="background:#ef4444"></i> گذشته از مهلت <span class="ms-auto num fw-700">@stats.ByStatus.OverdueOpen</span></div>
-                                <div class="wo-legend-row"><i class="wo-dot" style="background:#22c55e"></i> انجام به‌موقع <span class="ms-auto num fw-700">@stats.ByStatus.OnTime</span></div>
-                                <div class="wo-legend-row"><i class="wo-dot" style="background:#a855f7"></i> انجام با تاخیر <span class="ms-auto num fw-700">@stats.ByStatus.LateDone</span></div>
-                                <div class="wo-legend-row"><i class="wo-dot" style="background:#94a3b8"></i> بستهٔ بی‌نتیجه <span class="ms-auto num fw-700">@stats.ByStatus.ClosedNoDone</span></div>
+                                <div class="wo-legend-row"><i class="wo-dot" style="background:#3b82f6"></i> باز و در مهلت <span class="ms-auto num fw-700">@OpenOnly</span><span class="wd-leg-pct num">@Share(OpenOnly)٪</span></div>
+                                <div class="wo-legend-row"><i class="wo-dot" style="background:#ef4444"></i> گذشته از مهلت <span class="ms-auto num fw-700">@OverdueCount</span><span class="wd-leg-pct num">@Share(OverdueCount)٪</span></div>
+                                <div class="wo-legend-row"><i class="wo-dot" style="background:#22c55e"></i> انجام به‌موقع <span class="ms-auto num fw-700">@stats.Cards.DoneOnTime</span><span class="wd-leg-pct num">@Share(stats.Cards.DoneOnTime)٪</span></div>
+                                <div class="wo-legend-row"><i class="wo-dot" style="background:#a855f7"></i> انجام با تاخیر <span class="ms-auto num fw-700">@stats.Cards.DoneLate</span><span class="wd-leg-pct num">@Share(stats.Cards.DoneLate)٪</span></div>
+                                <div class="wo-legend-row"><i class="wo-dot" style="background:#94a3b8"></i> بستهٔ بی‌نتیجه <span class="ms-auto num fw-700">@stats.Cards.ClosedNoDone</span><span class="wd-leg-pct num">@Share(stats.Cards.ClosedNoDone)٪</span></div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            @* ---------- توزیع اولویت ---------- *@
-            <div class="col-12 col-lg-7">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h6 class="fw-700 mb-3"><i class="bi bi-flag text-primary"></i> اولویت دستورهای باز
-                            <span class="badge bg-soft-warning text-warning me-1">@stats.Cards.Open باز</span></h6>
-                        @if (!stats.ByPriority.Any())
-                        {
-                            <div class="text-muted fs-8 text-center py-4">دستور بازی وجود ندارد</div>
-                        }
-                        else
-                        {
-                            var prMax = Math.Max(1, stats.ByPriority.Max(x => x.Count));
-                            @foreach (var p in stats.ByPriority)
-                            {
-                                <div class="d-flex align-items-center gap-2 mb-3">
-                                    <span class="fs-8" style="width:56px">@PriorityFa(p.Priority)</span>
-                                    <div class="wo-bar-track flex-grow-1">
-                                        <div class="wo-bar wo-bar-p@(p.Priority)" style="width:@Pct(p.Count, prMax)%"></div>
-                                    </div>
-                                    <span class="fs-8 fw-700 num" style="width:34px">@p.Count</span>
-                                    <span class="fs-9 text-muted num" style="width:40px">@Pct(p.Count, Math.Max(1, stats.Cards.Open))%</span>
-                                </div>
-                            }
-                        }
-                    </div>
-                </div>
-            </div>
-
-            @* ---------- روند ۶ ماه اخیر ---------- *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="fw-700 mb-3"><i class="bi bi-graph-up text-primary"></i> روند ۶ ماه اخیر</h6>
-                        @{ var moMax = Math.Max(1, stats.Months.SelectMany(m => new[] { m.Created, m.OnTime, m.Late, m.NotDone }).DefaultIfEmpty(0).Max()); }
-                        <div class="wo-chart">
-                            @foreach (var m in stats.Months)
-                            {
-                                <div class="wo-chart-col">
-                                    <div class="wo-chart-bars">
-                                        <div class="wo-cb wo-cb-created" style="height:@Pct(m.Created, moMax)%" title="ایجادشده: @m.Created"></div>
-                                        <div class="wo-cb wo-cb-ontime" style="height:@Pct(m.OnTime, moMax)%" title="به‌موقع: @m.OnTime"></div>
-                                        <div class="wo-cb wo-cb-late" style="height:@Pct(m.Late, moMax)%" title="با تاخیر: @m.Late"></div>
-                                        <div class="wo-cb wo-cb-notdone" style="height:@Pct(m.NotDone, moMax)%" title="بستهٔ بی‌نتیجه: @m.NotDone"></div>
-                                    </div>
-                                    <div class="fs-9 text-muted num">@MonthName(m.Month)</div>
-                                    <div class="fs-9 fw-700 num">@m.Created</div>
-                                </div>
-                            }
+                @* ---------- توزیع اولویت ---------- *@
+                <div class="col-12 col-xl-7">
+                    <div class="wd-card h-100">
+                        <div class="wd-card-head">
+                            <h6>اولویت دستورهای باز</h6>
+                            <span class="wd-card-sub"><b class="num">@stats.Cards.Open</b> دستور باز</span>
                         </div>
-                        <div class="d-flex gap-3 mt-2 fs-9 text-muted flex-wrap">
-                            <span><i class="wo-dot" style="background:#94a3b8"></i> ایجادشده</span>
-                            <span><i class="wo-dot" style="background:#22c55e"></i> به‌موقع</span>
-                            <span><i class="wo-dot" style="background:#a855f7"></i> با تاخیر</span>
-                            <span><i class="wo-dot" style="background:#ef4444"></i> بستهٔ بی‌نتیجه</span>
+                        <div class="wd-card-body">
+                            @if (!stats.ByPriority.Any())
+                            {
+                                <div class="text-muted fs-8 text-center py-4">دستور بازی وجود ندارد</div>
+                            }
+                            else
+                            {
+                                @foreach (var p in stats.ByPriority)
+                                {
+                                    var prMax = Math.Max(1, stats.ByPriority.Max(x => x.Count));
+                                    <div class="d-flex align-items-center gap-2 mb-3">
+                                        <span class="fs-8 fw-600" style="width:56px">@PriorityFa(p.Priority)</span>
+                                        <div class="wo-bar-track flex-grow-1">
+                                            <div class="wo-bar wo-bar-p@(p.Priority)" style="width:@Pct(p.Count, prMax)%"></div>
+                                        </div>
+                                        <span class="fs-8 fw-700 num" style="width:34px">@p.Count</span>
+                                        <span class="fs-9 text-muted num" style="width:40px">@Pct(p.Count, Math.Max(1, stats.Cards.Open))٪</span>
+                                    </div>
+                                }
+                            }
                         </div>
                     </div>
                 </div>
-            </div>
 
-            @* ---------- عملکرد گیرندگان ---------- *@
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body p-0">
-                        <div class="p-3 pb-0">
-                            <h6 class="fw-700 mb-1"><i class="bi bi-people text-primary"></i> عملکرد گیرندگان</h6>
-                            <div class="fs-9 text-muted">گیرندگان دستورهایی که شما صادر کرده‌اید</div>
+                @* ---------- روند ۶ ماه اخیر ---------- *@
+                <div class="col-12">
+                    <div class="wd-card">
+                        <div class="wd-card-head">
+                            <h6>روند ۶ ماه اخیر</h6>
+                            <span class="wd-card-sub">بر اساس تاریخ <b>ایجاد</b> دستور — ماه شمسی</span>
+                        </div>
+                        <div class="wd-card-body">
+                            <div class="wo-chart wd-chart">
+                                @foreach (var m in stats.Months)
+                                {
+                                    var moMax = Math.Max(1, stats.Months.SelectMany(x => new[] { x.Created, x.OnTime, x.Late, x.NotDone }).DefaultIfEmpty(0).Max());
+                                    <div class="wo-chart-col">
+                                        <div class="wd-chart-val num">@m.Created</div>
+                                        <div class="wo-chart-bars">
+                                            <div class="wo-cb wo-cb-created" style="height:@Pct(m.Created, moMax)%" title="ایجادشده: @m.Created"></div>
+                                            <div class="wo-cb wo-cb-ontime" style="height:@Pct(m.OnTime, moMax)%" title="به‌موقع: @m.OnTime"></div>
+                                            <div class="wo-cb wo-cb-late" style="height:@Pct(m.Late, moMax)%" title="با تاخیر: @m.Late"></div>
+                                            <div class="wo-cb wo-cb-notdone" style="height:@Pct(m.NotDone, moMax)%" title="بستهٔ بی‌نتیجه: @m.NotDone"></div>
+                                        </div>
+                                        <div class="fs-9 text-muted num">@MonthName(m.Month)</div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="d-flex gap-3 mt-2 fs-9 text-muted flex-wrap">
+                                <span><i class="wo-dot" style="background:#94a3b8"></i> ایجادشده</span>
+                                <span><i class="wo-dot" style="background:#22c55e"></i> به‌موقع</span>
+                                <span><i class="wo-dot" style="background:#a855f7"></i> با تاخیر</span>
+                                <span><i class="wo-dot" style="background:#ef4444"></i> بستهٔ بی‌نتیجه</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* ---------- عملکرد گیرندگان ---------- *@
+                <div class="col-12">
+                    <div class="wd-card">
+                        <div class="wd-card-head">
+                            <h6>عملکرد گیرندگان</h6>
+                            <span class="wd-card-sub">گیرندگان دستورهایی که شما صادر کرده‌اید</span>
                         </div>
                         @if (!stats.PerAssignee.Any())
                         {
@@ -521,25 +661,36 @@ else if (tab == "stats")
                         else
                         {
                             <div class="table-responsive">
-                                <table class="table table-hover align-middle mb-0">
-                                    <thead class="table-light">
-                                        <tr><th>گیرنده</th><th>کل</th><th>انجام شد</th><th>به‌موقع</th><th>انجام نشد</th><th>بی‌پاسخ</th><th style="min-width:160px">نرخ موفقیت</th></tr>
+                                <table class="table table-hover align-middle mb-0 wd-table">
+                                    <thead>
+                                        <tr>
+                                            <th>گیرنده</th>
+                                            <th class="text-center">کل</th>
+                                            <th class="text-center">انجام شد</th>
+                                            <th class="text-center">به‌موقع</th>
+                                            <th class="text-center">انجام نشد</th>
+                                            <th class="text-center">بی‌پاسخ</th>
+                                            <th style="min-width:170px">نرخ انجام</th>
+                                        </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var a in stats.PerAssignee)
                                         {
                                             var rate = a.Total == 0 ? 0 : a.Done * 100 / a.Total;
+                                            var onTimeShare = a.Total == 0 ? 0 : a.OnTime * 100 / a.Total;
                                             <tr>
                                                 <td class="fw-600"><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="a.UserId" Size="22" CssClass="user-avatar-sm" /> @a.Name</span></td>
-                                                <td class="num">@a.Total</td>
-                                                <td class="num text-success">@a.Done</td>
-                                                <td class="num text-primary">@a.OnTime</td>
-                                                <td class="num text-danger">@a.NotDone</td>
-                                                <td class="num text-warning">@a.Pending</td>
+                                                <td class="text-center num">@a.Total</td>
+                                                <td class="text-center num text-success fw-700">@a.Done</td>
+                                                <td class="text-center num text-primary">@a.OnTime</td>
+                                                <td class="text-center num text-danger">@a.NotDone</td>
+                                                <td class="text-center num text-warning">@a.Pending</td>
                                                 <td>
                                                     <div class="d-flex align-items-center gap-2">
-                                                        <div class="wo-bar-track flex-grow-1"><div class="wo-bar" style="width:@rate%;background:@(rate >= 70 ? "#22c55e" : rate >= 40 ? "#f59e0b" : "#ef4444")"></div></div>
-                                                        <span class="fs-9 num">@rate%</span>
+                                                        <div class="wo-bar-track flex-grow-1" title="نرخ انجام: @rate٪ | از این تعداد، @onTimeShare٪ به‌موقع بوده">
+                                                            <div class="wo-bar" style="width:@rate%;background:@(rate >= 70 ? "#22c55e" : rate >= 40 ? "#f59e0b" : "#ef4444")"></div>
+                                                        </div>
+                                                        <span class="fs-9 num fw-700" style="width:34px">@rate٪</span>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -548,6 +699,11 @@ else if (tab == "stats")
                                 </table>
                             </div>
                         }
+                        <div class="wd-foot-note">
+                            <i class="bi bi-info-circle"></i>
+                            «نرخ انجام» = انجام‌شده ÷ کل واگذاری‌ها. تفاوت آن با «نرخ انجام به‌موقع» بالا در این است که
+                            مخرج این ستون همهٔ واگذاری‌هاست، نه فقط دستورهای بسته‌شده.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1614,6 +1770,131 @@ else
     .wo-cb-notdone { background: #ef4444; }
     .wo-empty { text-align: center; padding: 3.5rem 1rem; color: #94a3b8; }
     .wo-empty i { font-size: 3rem; display: block; margin-bottom: .5rem; }
+
+
+    /* ================== داشبورد مدیریتی دستور کار (wd-*) ================== */
+    .wd { display: flex; flex-direction: column; gap: .85rem; }
+    .wd-alert { display: flex; align-items: center; gap: .6rem; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 14px; padding: .7rem 1rem; margin-bottom: .85rem; }
+    .wd-skeleton { text-align: center; padding: 3rem 1rem; }
+
+    /* نوار عنوان */
+    .wd-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+    .wd-top-l { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+    .wd-scope { display: inline-flex; align-items: center; gap: .35rem; background: #eef2ff; color: #3730a3; border: 1px solid #e0e7ff; border-radius: 999px; padding: .28rem .8rem; font-size: .78rem; font-weight: 700; }
+    .wd-scope-note { font-size: .74rem; color: #64748b; }
+    .wd-top-r { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .wd-updated { font-size: .74rem; color: #94a3b8; }
+    .wd-refresh { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 10px; padding: .38rem .85rem; font-size: .8rem; font-weight: 600; transition: all .15s; }
+    .wd-refresh:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; box-shadow: 0 4px 14px rgba(37,99,235,.15); }
+    .wd-refresh:disabled { opacity: .6; }
+
+    /* کارت خلاصهٔ مدیریتی */
+    .wd-hero {
+        display: grid; grid-template-columns: minmax(220px, 1.15fr) auto minmax(240px, 1.5fr);
+        align-items: center; gap: 1.25rem;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #1d4ed8 165%);
+        border-radius: 20px; padding: 1.1rem 1.35rem; color: #fff;
+        box-shadow: 0 14px 34px rgba(15,23,42,.22);
+    }
+    .wd-hero-lbl { font-size: .78rem; color: #cbd5e1; letter-spacing: .02em; }
+    .wd-hero-val { font-size: 2.5rem; font-weight: 800; line-height: 1.05; margin-top: .15rem; }
+    .wd-pct-sign { font-size: 1.1rem; font-weight: 700; opacity: .75; margin-right: .15rem; }
+    .wd-hero-cap { font-size: .76rem; color: #cbd5e1; margin-top: .2rem; }
+    .wd-hero-cap b { color: #fff; }
+    .wd-hero-note { font-size: .72rem; color: #93c5fd; margin-top: .45rem; }
+    .wd-hint { cursor: help; color: #93c5fd; }
+    .wd-ring { width: 124px; height: 124px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+    .wd-ring-hole { width: 92px; height: 92px; border-radius: 50%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .wd-ring-num { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+    .wd-ring-cap { font-size: .66rem; color: #94a3b8; margin-top: .15rem; }
+    .wd-hero-side { min-width: 0; }
+    .wd-stack-title { font-size: .76rem; color: #cbd5e1; margin-bottom: .45rem; }
+    .wd-stack-title b { color: #fff; }
+    .wd-stack { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.12); }
+    .wd-stack-seg { display: block; height: 100%; transition: width .35s; }
+    .wd-stack-seg.s-open { background: #3b82f6; }
+    .wd-stack-seg.s-late { background: #ef4444; }
+    .wd-stack-seg.s-ontime { background: #22c55e; }
+    .wd-stack-seg.s-latedone { background: #a855f7; }
+    .wd-stack-seg.s-nodone { background: #94a3b8; }
+    .wd-stack-legend { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .55rem; font-size: .72rem; color: #cbd5e1; }
+    .wd-stack-legend b { color: #fff; font-weight: 700; }
+    .wd-stack-legend .wo-dot { width: 8px; height: 8px; }
+
+    /* کارت‌های شاخص */
+    .wd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: .7rem; }
+    .wd-kpi { position: relative; display: flex; align-items: flex-start; gap: .65rem; background: #fff; border: 1px solid #e8edf3; border-radius: 16px; padding: .8rem .9rem .95rem; box-shadow: 0 2px 10px rgba(15,23,42,.04); transition: transform .15s, box-shadow .15s; }
+    .wd-kpi:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,23,42,.09); }
+    .wd-kpi-ic { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 1rem; flex: 0 0 auto; background: #f1f5f9; color: #475569; }
+    .wd-kpi-body { min-width: 0; }
+    .wd-kpi-num { font-size: 1.55rem; font-weight: 800; line-height: 1.1; color: #0f172a; }
+    .wd-kpi-lbl { font-size: .74rem; color: #64748b; margin-top: .1rem; }
+    .wd-kpi-bar { position: absolute; right: .9rem; left: .9rem; bottom: .45rem; height: 4px; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+    .wd-kpi-bar > span { display: block; height: 100%; border-radius: 999px; background: #3b82f6; transition: width .35s; }
+    .wd-kpi-share { position: absolute; left: .9rem; bottom: .62rem; font-size: .64rem; color: #94a3b8; }
+    .wd-kpi.k-total { background: linear-gradient(135deg, #f8fafc, #eef2ff); border-color: #e0e7ff; }
+    .wd-kpi.k-total .wd-kpi-ic { background: #1e293b; color: #fff; }
+    .wd-kpi.k-total .wd-kpi-bar > span { background: #1e293b; }
+    .wd-kpi.k-open .wd-kpi-ic { background: #eff6ff; color: #2563eb; }
+    .wd-kpi.k-open .wd-kpi-bar > span { background: #3b82f6; }
+    .wd-kpi.k-ontime .wd-kpi-ic { background: #f0fdf4; color: #16a34a; }
+    .wd-kpi.k-ontime .wd-kpi-num { color: #15803d; }
+    .wd-kpi.k-ontime .wd-kpi-bar > span { background: #22c55e; }
+    .wd-kpi.k-latedone .wd-kpi-ic { background: #faf5ff; color: #9333ea; }
+    .wd-kpi.k-latedone .wd-kpi-num { color: #7e22ce; }
+    .wd-kpi.k-latedone .wd-kpi-bar > span { background: #a855f7; }
+    .wd-kpi.k-nodone .wd-kpi-ic { background: #f8fafc; color: #64748b; }
+    .wd-kpi.k-nodone .wd-kpi-bar > span { background: #94a3b8; }
+    .wd-kpi.k-reply .wd-kpi-ic { background: #fffbeb; color: #b45309; }
+    .wd-kpi.k-reply .wd-kpi-num { color: #b45309; }
+
+    /* نوار تسویه */
+    .wd-recon { display: flex; align-items: center; gap: .55rem; background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; border-radius: 14px; padding: .55rem .9rem; font-size: .8rem; }
+    .wd-recon.bad { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+    .wd-recon > i { font-size: 1rem; }
+    .wd-recon-txt { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+    .wd-recon-sep { opacity: .4; margin: 0 .3rem; }
+
+    /* تفکیک دستورهای باز */
+    .wd-sub-strip { background: #fff; border: 1px solid #e8edf3; border-radius: 16px; padding: .7rem .95rem; }
+    .wd-sub-head { font-size: .78rem; font-weight: 700; color: #334155; margin-bottom: .5rem; }
+    .wd-sub-head i { color: #2563eb; margin-left: .3rem; }
+    .wd-sub-items { display: flex; align-items: center; gap: 1.4rem; flex-wrap: wrap; }
+    .wd-sub-item { display: flex; flex-direction: column; }
+    .wd-sub-num { font-size: 1.2rem; font-weight: 800; line-height: 1.1; }
+    .wd-sub-lbl { font-size: .7rem; color: #64748b; }
+    .wd-sub-note { margin-inline-start: auto; font-size: .7rem; color: #94a3b8; max-width: 420px; }
+
+    /* کارت‌های نمودار */
+    .wd-card { background: #fff; border: 1px solid #e8edf3; border-radius: 18px; box-shadow: 0 4px 16px rgba(15,23,42,.05); overflow: hidden; }
+    .wd-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; flex-wrap: wrap; padding: .85rem 1rem .35rem; }
+    .wd-card-head h6 { margin: 0; font-weight: 800; font-size: .92rem; color: #0f172a; }
+    .wd-card-body { padding: .35rem 1rem 1rem; }
+    .wd-card-sub { font-size: .72rem; color: #94a3b8; }
+    .wd-card-sub b { color: #475569; }
+    .wd-donut.wo-donut { width: 148px; height: 148px; box-shadow: 0 6px 18px rgba(15,23,42,.10); }
+    .wd-leg-pct { width: 38px; text-align: left; font-size: .72rem; color: #94a3b8; }
+    .wd-chart { height: 180px; }
+    .wd-chart-val { font-size: .68rem; color: #94a3b8; font-weight: 700; }
+    .wd-table thead th { font-size: .72rem; color: #64748b; font-weight: 700; background: #f8fafc; border-bottom: 1px solid #eef2f7; white-space: nowrap; }
+    .wd-table tbody td { font-size: .84rem; }
+    .wd-foot-note { display: flex; gap: .45rem; align-items: flex-start; padding: .65rem 1rem .85rem; font-size: .71rem; color: #94a3b8; border-top: 1px solid #f1f5f9; }
+    .wd-foot-note i { color: #cbd5e1; margin-top: .1rem; }
+
+    @media (max-width: 1100px) {
+        .wd-hero { grid-template-columns: 1fr auto; }
+        .wd-hero-side { grid-column: 1 / -1; }
+    }
+    @media (max-width: 640px) {
+        .wd-hero { grid-template-columns: 1fr; text-align: center; justify-items: center; padding: 1rem; }
+        .wd-hero-side { width: 100%; }
+        .wd-stack-legend { justify-content: center; }
+        .wd-ring { width: 108px; height: 108px; }
+        .wd-ring-hole { width: 80px; height: 80px; }
+        .wd-hero-val { font-size: 2.1rem; }
+        .wd-sub-note { margin-inline-start: 0; }
+        .wd-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    }
 
     /* ===== رنگ‌بندی مهلت (بند ۱۱ و ۱۲) ===== */
     .wo-row td:nth-child(2) { border-right: 4px solid transparent; }
@@ -3073,7 +3354,7 @@ else
             stats = null;
             statsError = "بارگذاری آمار ناموفق بود: " + ex.Message;
         }
-        finally { statsLoading = false; }
+        finally { statsLoading = false; lastStatsAt = DateTime.Now; }
         StateHasChanged();
     }
 
@@ -3106,6 +3387,50 @@ else
             var done = stats.Cards.DoneOnTime + stats.Cards.DoneLate;
             var closed = done + stats.Cards.ClosedNoDone;
             return closed == 0 ? 0 : (int)Math.Round(stats.Cards.DoneOnTime * 100.0 / closed);
+        }
+    }
+
+    // ================== شاخص‌های داشبورد (نسخهٔ مدیریتی) ==================
+
+    /// <summary>زمان آخرین محاسبهٔ آمار — برای نمایش در نوار بالای داشبورد.</summary>
+    private DateTime? lastStatsAt;
+
+    private string UpdatedFa => lastStatsAt is null ? "—" : lastStatsAt.Value.ToString("HH:mm");
+
+    /// <summary>بازهایی که هنوز از مهلت نگذشته‌اند (بدون همپوشانی با «گذشته از مهلت»).</summary>
+    private int OpenOnly
+        => stats is null ? 0 : Math.Max(0, stats.Cards.Open - stats.Cards.Overdue);
+
+    private int OverdueCount => stats?.Cards.Overdue ?? 0;
+
+    /// <summary>دستورهای بسته‌شده = انجام به‌موقع + انجام با تاخیر + بستهٔ بی‌نتیجه.</summary>
+    private int ClosedTotal
+        => stats is null ? 0 : stats.Cards.DoneOnTime + stats.Cards.DoneLate + stats.Cards.ClosedNoDone;
+
+    /// <summary>جمع چهار سهمی که باید دقیقاً برابر «کل دستورها» باشد.</summary>
+    private int ToneSum
+        => stats is null ? 0 : stats.Cards.Open + stats.Cards.DoneOnTime + stats.Cards.DoneLate + stats.Cards.ClosedNoDone;
+
+    /// <summary>آیا چهار سهم با کل می‌خوانند؟ (تشخیص ناسازگاری داده به‌جای نمایش عدد گمراه‌کننده)</summary>
+    private bool ReconcileOk => stats is not null && ToneSum == stats.Cards.Total;
+
+    /// <summary>سهم یک شاخص از کل، برای نوارها و درصدهای داشبورد.</summary>
+    private int Share(int value)
+        => stats is null || stats.Cards.Total <= 0 ? 0 : (int)Math.Round(value * 100.0 / stats.Cards.Total);
+
+    /// <summary>حلقهٔ نرخ انجام به‌موقع.</summary>
+    private string RingStyle()
+        => $"background:conic-gradient(#22c55e 0% {DoneRate}%, rgba(255,255,255,.14) {DoneRate}% 100%)";
+
+    /// <summary>تفسیر کوتاه managerial از نرخ انجام به‌موقع.</summary>
+    private string DoneRateHint
+    {
+        get
+        {
+            if (ClosedTotal == 0) return "هنوز دستوری بسته نشده است؛ نرخ پس از نخستین بستن محاسبه می‌شود.";
+            return DoneRate >= 80 ? "وضعیت مطلوب: بیشتر دستورهای بسته‌شده در مهلت انجام شده‌اند."
+                 : DoneRate >= 50 ? "قابل قبول اما نیازمند پیگیری: بخشی از کارها با تاخیر بسته شده‌اند."
+                 : "هشدار مدیریتی: سهم بالایی از دستورهای بسته‌شده با تاخیر یا بی‌نتیجه بوده‌اند.";
         }
     }
 
