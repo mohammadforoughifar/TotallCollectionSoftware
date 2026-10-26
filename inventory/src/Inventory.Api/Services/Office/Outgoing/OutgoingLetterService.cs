@@ -518,7 +518,10 @@ public class OutgoingLetterService : IOutgoingLetterService
                 SenderUserId = s.Source.OutgoingLetter!.CreatorUserId,
                 ReceiverOrganization = s.Source.OutgoingLetter!.ReceiverOrganization,
                 ReceiverName = s.Source.OutgoingLetter!.ReceiverName,
-                Date = s.Source.OutgoingLetter!.DateSabt,
+                // تاریخ نمایش = تاریخ ارجاع به همین کاربر (اگر ارجاعی نباشد، تاریخ ثبت نامه)
+                Date = _db.Erjas
+                    .Where(e => e.SourceId == s.SourceId && e.ReciverUserId == userId && !e.IsDelete)
+                    .Max(e => (DateTime?)e.Date) ?? s.Source.OutgoingLetter!.DateSabt,
                 Mahramanegi = s.Source.OutgoingLetter!.Mahramanegi,
                 Foriat = s.Source.OutgoingLetter!.Foriat,
                 ErjaType = "امضا",
@@ -601,7 +604,16 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(s => s.Id)
+        // ترتیب «امضایی‌های من»:
+        //   ۱) نامه‌هایی که هنوز امضا نشده‌اند (نیاز به امضا) بالاتر از امضاشده‌ها؛
+        //   ۲) در هر گروه، جدیدترین «تاریخ ارجاع به این کاربر» اول؛ اگر نامه ارجاعی
+        //      به کاربر نداشته باشد، تاریخ ثبت نامه ملاک است.
+        var items = await q
+            .OrderBy(s => s.IsSigned)
+            .ThenByDescending(s => _db.Erjas
+                .Where(e => e.SourceId == s.SourceId && e.ReciverUserId == userId && !e.IsDelete)
+                .Max(e => (DateTime?)e.Date) ?? s.Source.OutgoingLetter!.DateSabt)
+            .ThenByDescending(s => s.SourceId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(s => new OutgoingLetterListItemDto

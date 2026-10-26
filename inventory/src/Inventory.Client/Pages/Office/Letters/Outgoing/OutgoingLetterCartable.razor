@@ -74,7 +74,7 @@
                         @if (folder == "inbox" || folder == "signing")
                         {
                             <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")' title="فقط نامه‌های خوانده‌نشده / در انتظار امضا (روی همهٔ صفحات)">خوانده‌نشده <span class="n">@stats.InboxUnread.FaDigits()</span></button>
-                            <button class="chip @(filter == "sign" ? "on" : "")" @onclick='() => SetFilter("sign")'><i class="bi bi-pen"></i> امضایی <span class="n">@BaseItems.Count(l => l.IsSigner).FaDigits()</span></button>
+                            <button class="chip @(filter == "sign" ? "on" : "")" @onclick='() => SetFilter("sign")' title="نامه‌های امضایی من — اول نیازمند امضا، سپس امضاشده‌ها"><i class="bi bi-pen"></i> امضایی <span class="n">@signingTotal.FaDigits()</span></button>
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
@@ -766,7 +766,12 @@
             arr = filter switch
             {
                 "unread" => arr.Where(l => !l.IsRead && !l.IsSigned).ToList(),
-                "sign" => arr.Where(l => l.IsSigner).ToList(),
+                // «امضایی»: اول نامه‌های نیازمند امضا، بعد امضاشده‌ها؛ در هر گروه جدیدترین
+                // تاریخ ارجاع/ثبت اول — همان ترتیبی که سرور برای پوشهٔ «امضا» می‌دهد.
+                "sign" => arr.Where(l => l.IsSigner)
+                              .OrderBy(l => l.IsSigned)
+                              .ThenByDescending(l => l.Date)
+                              .ToList(),
                 "starred" => arr.Where(l => l.IsNeshan).ToList(),
                 "attach" => arr.Where(l => l.HasAttachment).ToList(),
                 "workorder" => arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList(),
@@ -886,7 +891,13 @@
             else
             {
                 PagedResult<OutgoingLetterListItemDto> res;
-                switch (folder)
+                // با فیلتر «امضایی» فهرست مستقیماً از «امضایی‌های من» گرفته می‌شود تا
+                // مرتب‌سازی (نیاز به امضا اول، سپس جدیدترین ارجاع) و صفحه‌بندی سمت سرور درست باشد.
+                if (filter == "sign" && (folder == "inbox" || folder == "signing"))
+                {
+                    res = await OutgoingSvc.GetSigningInboxAsync(s, null, page, PageSize);
+                }
+                else switch (folder)
                 {
                     case "sent":
                         res = await OutgoingSvc.GetSentAsync(s, page, PageSize);
@@ -920,6 +931,8 @@
             {
                 var signingList = await OutgoingSvc.GetSigningInboxAsync(null, true, 1, 1);
                 signingUnsigned = signingList.TotalCount;
+                var signingAll = await OutgoingSvc.GetSigningInboxAsync(null, null, 1, 1);
+                signingTotal = signingAll.TotalCount;
             }
             catch { }
             if (keepSelection && selected != null)
@@ -956,7 +969,9 @@
         // InvokeAsync(...) + StateHasChanged().
         // «خوانده‌نشده» باید سمت سرور اعمال شود؛ وگرنه فقط روی همان ۱۵ ردیف بارگذاری‌شده
         // (یک صفحه) کار می‌کرد و نامه‌های نخواندهٔ صفحات بعد دیده نمی‌شدند.
-        var needsServer = folder == "inbox" && (f == "unread" || filter == "unread");
+        var needsServer =
+            (folder == "inbox" && (f == "unread" || filter == "unread")) ||
+            ((folder == "inbox" || folder == "signing") && (f == "sign" || filter == "sign"));
         filter = f;
         page = 1;
         if (needsServer)
@@ -1164,6 +1179,7 @@
     private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt); }
     // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
     // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
+    private int signingTotal;
     private bool printingPdf, printMenuOpen;
     private bool printWithLetterhead = true;
     private int? printMenuLetterId;
