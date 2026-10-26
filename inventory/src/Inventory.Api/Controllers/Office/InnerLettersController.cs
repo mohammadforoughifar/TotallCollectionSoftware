@@ -16,6 +16,7 @@ public class InnerLettersController : RbacControllerBase
 {
     private const string Module = "InnerLetters";
 
+
     private static string PersianError(Exception ex, string fallback)
     {
         var message = ex.GetBaseException().Message?.Trim();
@@ -48,7 +49,7 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("{id:int}/print")]
     public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withHamesh = false)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (size is not ("A4" or "A5")) return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
         try
         {
@@ -117,10 +118,15 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Detail(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        var isAdmin = await IsAdminAsync();
+        // کاربر حاضر در گردش نامه (از جمله گیرندهٔ افزوده‌شده از دستور کار) بدون مجوز عمومی هم می‌تواند باز کند
+        if (!isAdmin && !await InFlowAsync(id))
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        }
         try
         {
-            var dto = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
+            var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin);
             return dto is null
                 ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
                 : Ok(dto);
@@ -192,7 +198,7 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("{id:int}/gardesh")]
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         try { return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take)); }
         catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "گردش نامه قابل دریافت نیست.") }); }
     }
@@ -458,9 +464,12 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // فرد حاضر در گردش نامه (از جمله گیرندهٔ افزوده‌شده از دستور کار) مجاز است
         if (!await InFlowAsync(id) && !await IsAdminAsync())
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        }
 
         var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == Module && a.RefId == id)

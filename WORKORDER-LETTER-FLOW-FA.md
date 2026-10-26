@@ -38,3 +38,42 @@
 - `inventory/src/Inventory.Api/Controllers/ItAssets/WorkOrdersController.cs`
 - `inventory/src/Inventory.Client/Pages/ItAssets/WorkOrders.razor`
 - `inventory/src/Inventory.Client/Pages/ItAssets/WorkOrdersGuide.razor`
+
+---
+
+# پیوست: اعمال یکسان برای هر سه نوع نامه (داخلی، صادره، وارده)
+
+تاریخ: ۱۴۰۵/۰۸/۰۴
+
+## چرا این مرحله لازم بود
+ساخت ردیف ارجاع از قبل برای هر سه نوع نامه انجام می‌شد (`LetterSources.SourceType` = ۱ داخلی، ۲ صادره، ۳ وارده)،
+اما **باز کردن** نامه برای کسی که فقط از طریق دستور کار به گردش اضافه شده بود، در هر سه نوع با ۴۰۳ بسته می‌شد؛
+چون endpointهای جزئیات، مجوز عمومی کارتابل (`InnerLetters.Read` / `OutgoingLetters.Read` / `IncomingLetters.Read`)
+را می‌خواستند و «حاضر بودن در گردش» را به‌عنوان مجوز جایگزین قبول نمی‌کردند.
+
+## تغییرات سمت سرور — قاعدهٔ «حاضر در گردش = مجاز به دیدن»
+| نامه | endpoint | قبل | حالا |
+|---|---|---|---|
+| داخلی | `GET api/letters/{id}` | فقط مجوز Read | ایجادکننده یا دارندهٔ ارجاع هم مجاز |
+| داخلی | `GET api/letters/{id}/gardesh` | فقط Read | گردش برای عضو گردش هم باز می‌شود |
+| داخلی | `GET api/letters/{id}/attachments` و `.../download` | Read + گردش | گردش به‌تنهایی کافی است |
+| داخلی | `GET api/letters/{id}/print` | فقط Read | عضو گردش هم می‌تواند چاپ بگیرد |
+| صادره | `GET api/outgoing-letters/{id}` | فقط dبیرخانه/مدیر/Read | ایجادکننده، امضاکننده و دارندهٔ ارجاع هم مجاز |
+| صادره | `.../gardesh` و `.../attachments` | Read | عضو گردش کافی است |
+| وارده | `GET api/incoming-letters/{id}` | فقط Read | `CanAccessLetterAsync` (ایجادکننده/عضو گردش/مدیر) هم کافی است |
+| وارده | `.../{id}/gardesh` و پیوست‌ها | Read | عضو گردش کافی است |
+
+## تغییرات سمت کلاینت
+- `LetterCartable.razor` (داخلی)، `OutgoingLetterCartable.razor` (صادره)، `IncomingLetterCartable.razor` (وارده):
+  وقتی صفحه با `?open={id}` باز می‌شود، خطای بارگذاری فهرست بی‌صدا رد می‌شود تا کاربری که فقط از طریق دستور کار
+  به گردش نامه اضافه شده، بدون پیام خطا مستقیماً نامه را ببیند.
+- لینک «نامه» در فهرست دستور کار برای هر سه نوع، مسیر درست را می‌سازد (`/letters`، `/outgoing-letters`، `/incoming-letters` + `?open=`).
+
+## فایل‌های تغییریافتهٔ این مرحله
+- `Inventory.Api/Controllers/Office/InnerLettersController.cs`
+- `Inventory.Api/Controllers/Office/IncomingLettersController.cs`
+- `Inventory.Api/Controllers/Office/OutgoingLettersController.cs`
+- `Inventory.Client/Pages/Office/Letters/LetterCartable.razor`
+- `Inventory.Client/Pages/Office/Letters/Outgoing/OutgoingLetterCartable.razor`
+- `Inventory.Client/Pages/Office/Letters/Incoming/IncomingLetterCartable.razor`
+- `Inventory.Client/Pages/ItAssets/WorkOrdersGuide.razor`

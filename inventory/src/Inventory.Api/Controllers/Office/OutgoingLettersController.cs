@@ -118,7 +118,9 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        // کاربر حاضر در گردش نامه (ایجادکننده، امضاکننده یا دارندهٔ ارجاع — از جمله گیرنده‌ای که
+        // از دستور کار به گردش اضافه شده) بدون مجوز عمومی کارتابل هم می‌تواند نامه را باز کند.
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
         // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
@@ -553,10 +555,10 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
-        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane, pagination), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane || await InFlowAsync(id), pagination), skip, take));
     }
 
     [HttpPost("erja")]
@@ -723,9 +725,11 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        }
 
         var list = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == AttachmentModule && a.RefId == id)

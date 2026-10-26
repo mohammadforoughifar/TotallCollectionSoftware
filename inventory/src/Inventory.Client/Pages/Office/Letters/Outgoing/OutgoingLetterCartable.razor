@@ -821,8 +821,13 @@
             folder = Tab;
         else folder = "sent";
 
+        // باز کردن نامه از لینک مستقیم (نوتیفیکیشن یا «نامه» در دستور کار)؛ اگر کاربر در گردش
+        // نامه باشد ولی مجوز عمومی کارتابل نداشته باشد، خطای فهرست بی‌صدا رد می‌شود.
+        var hasOpenParam = int.TryParse(qs["open"], out var openId) && openId > 0;
+        _openingFromLink = hasOpenParam;
         await ReloadAsync();
-        if (int.TryParse(qs["open"], out var openId) && openId > 0)
+        _openingFromLink = false;
+        if (hasOpenParam)
             await OpenById(openId);
 
         if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
@@ -833,6 +838,8 @@
     }
 
     private bool _composeHandled;
+    /// <summary>در حال باز کردن نامه از لینک مستقیم هستیم — خطای فهرست بی‌صدا رد می‌شود.</summary>
+    private bool _openingFromLink;
     private async Task OpenComposeFromMinutesAsync(int minutesId, int itemId = 0)
     {
         try
@@ -942,7 +949,7 @@
             if (keepSelection && selected != null)
                 selectedItem = items.FirstOrDefault(l => l.LetterId == selected.LetterId) ?? selectedItem;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { if (!_openingFromLink) Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 

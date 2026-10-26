@@ -819,10 +819,14 @@
         if (!string.IsNullOrEmpty(Tab) && Tab is "inbox" or "sent" or "draft" or "starred" or "archive" or "guide")
             folder = Tab;
 
+        // باز کردن مستقیم یک نامه (لینک نوتیفیکیشن یا «نامه» در دستور کار): letters?open=ID
+        // اگر کاربر در گردش همین نامه باشد ولی مجوز عمومی کارتابل را نداشته باشد،
+        // بارگذاری فهرست خطا می‌دهد؛ در این حالت پیام خطا نمایش داده نمی‌شود و نامه باز می‌شود.
+        var hasOpenParam = int.TryParse(qs["open"], out var openId) && openId > 0;
+        _openingFromLink = hasOpenParam;
         await ReloadAsync();
-
-        // باز کردن مستقیم یک نامه (لینک نوتیفیکیشن): letters?open=ID
-        if (int.TryParse(qs["open"], out var openId) && openId > 0)
+        _openingFromLink = false;
+        if (hasOpenParam)
             await OpenById(openId);
 
         if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
@@ -833,6 +837,8 @@
     }
 
     private bool _composeHandled;
+    /// <summary>در حال باز کردن نامه از لینک مستقیم هستیم — خطای فهرست بی‌صدا رد می‌شود.</summary>
+    private bool _openingFromLink;
     private async Task OpenComposeFromMinutesAsync(int minutesId, int? itemId)
     {
         try
@@ -949,7 +955,7 @@
                 selectedItem = items.FirstOrDefault(l => l.LetterId == selected.LetterId) ?? selectedItem;
             }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { if (!_openingFromLink) Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 

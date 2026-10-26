@@ -117,7 +117,10 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetDetail(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // کاربر حاضر در گردش نامه (ایجادکننده یا دارندهٔ ارجاع — از جمله گیرندهٔ افزوده‌شده از
+        // دستور کار) حتی بدون مجوز عمومی کارتابل باید بتواند نامه را باز کند.
+        if (!await CanAccessLetterAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+            return forbid;
         try
         {
             var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
@@ -222,7 +225,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/gardesh")]
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await CanAccessLetterAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take));
     }
 
@@ -342,7 +345,6 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         // مجوز ماژول به‌تنهایی کافی نیست — باید در گردشِ همین نامه هم باشد
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دیدن پیوست‌های آن را ندارید." });
@@ -433,7 +435,6 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/attachments/download-zip")]
     public async Task<IActionResult> DownloadAttachmentsZip(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
 
