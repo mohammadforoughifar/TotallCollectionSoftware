@@ -18,7 +18,7 @@
     <div>
         <h1>دستور کار و وظایف</h1>
     </div>
-    @if (access.CanCreate)
+    @if (access.CanCreate && tab != "guide")
     {
         <button class="btn btn-primary wo-page-action" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> دستور کار جدید
@@ -49,10 +49,13 @@
     <button class="wo-tab @(tab == "stats" ? "active" : "")" @onclick='() => SwitchTab("stats")'>
         <i class="bi bi-bar-chart"></i> داشبورد
     </button>
+    <button class="wo-tab @(tab == "guide" ? "active" : "")" @onclick='() => SwitchTab("guide")'>
+        <i class="bi bi-journal-check"></i> راهنما
+    </button>
 </div>
 
 @* ================== نوار جستجو و فیلتر ================== *@
-@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban" && tab != "perf")
+@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban" && tab != "perf" && tab != "guide")
 {
     <div class="wo-filterbar mb-3">
         <div class="wo-flt-search">
@@ -121,6 +124,10 @@
 @if (loading)
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (tab == "guide")
+{
+    <WorkOrdersGuide OnBack="BackFromGuide" />
 }
 else if (tab == "kanban")
 {
@@ -3117,6 +3124,13 @@ else
         if (t == "calendar") _ = LoadCal();
         if (t == "stats") _ = LoadStats();
         if (t == "perf") _ = LoadPerf();
+    }
+
+    /// <summary>بازگشت از تب راهنما به فهرست دستورهای من.</summary>
+    private Task BackFromGuide()
+    {
+        SwitchTab("mine");
+        return Task.CompletedTask;
     }
 
     // ================== گزارش عملکرد افراد (موج ۸) ==================
