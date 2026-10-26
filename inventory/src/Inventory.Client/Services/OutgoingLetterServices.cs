@@ -50,6 +50,9 @@ public interface IOutgoingLetterService
 
     // ==================== دبیرخانه نامه صادره ====================
     Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null);
+
+    /// <summary>فهرست دبیرخانهٔ نامهٔ صادره با صفحه‌بندی سمت سرور (skip/take).</summary>
+    Task<PagedResult<DabirkhaneListItemDto>> GetDabirkhanePageAsync(DabirkhaneSearchDto? filter = null, int page = 1, int pageSize = 15);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
@@ -287,6 +290,20 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     /// <summary>لیست دبیرخانه با جستجوی پیشرفته — فیلترها به‌صورت پارامتر کوئری ارسال می‌شوند</summary>
     public Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null)
+        => ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{BuildDabirkhaneQuery(filter)}");
+
+    public Task<PagedResult<DabirkhaneListItemDto>> GetDabirkhanePageAsync(DabirkhaneSearchDto? filter = null, int page = 1, int pageSize = 15)
+    {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+        var q = BuildDabirkhaneQuery(filter);
+        var sep = q.Length > 0 ? "&" : "?";
+        return ListOrPaged.GetPagedAsync<DabirkhaneListItemDto>(_api,
+            $"api/outgoing-letters/dabirkhane{q}{sep}skip={(page - 1) * pageSize}&take={pageSize}");
+    }
+
+    /// <summary>ساخت رشتهٔ کوئری فیلترهای جستجوی پیشرفتهٔ دبیرخانه (مشترک بین فهرست کامل و صفحه‌بندی‌شده).</summary>
+    private static string BuildDabirkhaneQuery(DabirkhaneSearchDto? filter)
     {
         var qs = new List<string>();
         if (filter != null)
@@ -317,8 +334,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 qs.Add($"toDate={Uri.EscapeDataString(filter.ToDate.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
         }
 
-        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{q}");
+        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
     }
 
     public Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync() =>
