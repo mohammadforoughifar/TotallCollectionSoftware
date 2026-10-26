@@ -356,8 +356,12 @@ public class IncomingLetterService : IIncomingLetterService
             ? (string.IsNullOrEmpty(creator.FirstName + creator.LastName) ? creator.Username : $"{creator.FirstName} {creator.LastName}".Trim())
             : "ثبت‌کننده سیستم";
 
+        // ردیف‌های خودکارِ قدیمی (ثبت‌کننده = گیرنده، Type=گیرنده) که پیش‌تر هنگام ثبت
+        // ساخته می‌شدند، در گردش و فهرست گیرندگان نمایش داده نمی‌شوند؛ ثبت‌کننده فقط
+        // وقتی در گردش است که ارجاع واقعی از شخص دیگری گرفته باشد.
         var allErjas = await _db.Erjas.AsNoTracking()
-            .Where(e => e.SourceId == letterId && !e.IsDelete)
+            .Where(e => e.SourceId == letterId && !e.IsDelete
+                        && !(e.SenderUserId == e.ReciverUserId && e.Type == "گیرنده"))
             .OrderBy(e => e.ErjaId)
             .Select(e => new ErjaDto
             {
@@ -590,9 +594,12 @@ public class IncomingLetterService : IIncomingLetterService
 
         _db.IncomingLetters.Add(letter);
 
-        // اضافه کردن خود ثبت‌کننده یا گیرندگان اولیه در جدول Erja
+        // ثبت‌کننده در گردش نامه قرار نمی‌گیرد؛ فقط «گیرندگان اولیه» ردیف ارجاع می‌گیرند.
+        // (کاربر دبیرخانه که نامه را ثبت می‌کند فقط «ایجادکننده» است و در «دریافتی» خودش
+        //  دیده نمی‌شود. اگر بعداً شخص دیگری نامه را به او ارجاع دهد، ارجاع واقعی ساخته
+        //  می‌شود و از آن لحظه در گردش و کارتابل او قرار می‌گیرد.)
         var recivers = dto.InitialReciverUserIds.Distinct().ToList();
-        if (!recivers.Contains(userId)) recivers.Insert(0, userId);
+        recivers.Remove(userId);
 
         foreach (var rId in recivers)
         {
@@ -605,8 +612,8 @@ public class IncomingLetterService : IIncomingLetterService
                 Type = "گیرنده",
                 MatnErja = string.IsNullOrWhiteSpace(dto.InitialMatnErja) ? "ثبت نامه وارده" : dto.InitialMatnErja.Trim(),
                 MohlatPasokh = dto.InitialMohlatPasokh,
-                IsRead = rId == userId,
-                DateRead = rId == userId ? DateTime.Now : null
+                IsRead = false,
+                DateRead = null
             });
         }
 

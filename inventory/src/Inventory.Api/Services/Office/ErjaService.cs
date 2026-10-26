@@ -254,6 +254,10 @@ public class ErjaService : IErjaService
         var scope = _db.Erjas.AsNoTracking()
             .Include(e => e.UserSender).Include(e => e.UserReciver).Include(e => e.Amalgar)
             .Where(e => e.SourceId == sourceId && !e.IsDelete);
+        // نامهٔ وارده: ردیف خودکارِ «ثبت‌کننده = گیرنده» (دادهٔ قدیمی) در درخت گردش نمی‌آید؛
+        // ثبت‌کننده فقط با ارجاع واقعیِ شخص دیگر در گردش قرار می‌گیرد.
+        if (isIncoming)
+            scope = scope.Where(e => !(e.SenderUserId == e.ReciverUserId && e.Type == "گیرنده"));
         var erjas = await scope.OrderBy(e => e.ErjaId).ReadTreePageAsync(
             scope.Where(e => e.ParentErjaId == null || !scope.Any(p => p.ErjaId == e.ParentErjaId)).OrderBy(e => e.ErjaId),
             ids => scope.Where(e => e.ParentErjaId != null && ids.Contains(e.ParentErjaId.Value)).OrderBy(e => e.ErjaId),
