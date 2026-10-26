@@ -2981,6 +2981,9 @@ else
 
         try { access = await Http.GetFromJsonAsync<AccessInfo>("/api/workorders/my-access") ?? new(); } catch { }
         await LoadAll();
+        // دسترسیِ لینک نامه در دستورکارهای متصل به نامه: اگر دادهٔ قبلی گیرندهٔ نامه را در گردش
+        // نداشته باشد، یک‌بار (idempotent) ردیف ارجاع ساخته می‌شود تا کلیک روی لینک نامه ۴۰۳ ندهد.
+        _ = SyncLetterFlowAsync();
 
         var now = DateTime.Now;
         calYear = pc.GetYear(now); calMonth = pc.GetMonth(now);
@@ -3086,6 +3089,15 @@ else
             return r?.TotalCount ?? 0;
         }
         catch { return 0; }
+    }
+
+    /// <summary>
+    /// همگام‌سازی یک‌بارهٔ دسترسی به نامه برای دستورکارهای متصل به نامه (بدون بلاک‌کردن بارگذاری صفحه).
+    /// </summary>
+    private async Task SyncLetterFlowAsync()
+    {
+        try { await Http.PostAsync("/api/workorders/letter-flow/sync", null); }
+        catch { /* همگام‌سازی کمکی است؛ خطای آن نباید صفحه را مختل کند */ }
     }
 
     private async Task LoadAll()

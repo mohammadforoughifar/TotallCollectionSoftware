@@ -74,10 +74,66 @@ public class WorkOrdersController : ControllerBase
         _db.WorkOrderLogs.Add(new WorkOrderLog { OrderId = orderId, ActorName = MyUsername, Action = action, Text = text });
 
     /// <summary>
+    /// هستهٔ «افزودن افراد به گردش واقعی نامه» — بدون بررسی مجوز؛ بررسی مجوز وظیفهٔ فراخوان است.
+    /// برای هر کاربری که هنوز در گردش نامه نیست، یک ردیف ارجاع (Erja) ساخته می‌شود تا از
+    /// فهرست دستور کار روی لینک نامه، به کارتابل همان نامه دسترسی داشته باشد.
+    /// خروجی: تعداد افرادی که واقعاً به گردش اضافه شدند.
+    /// </summary>
+    private async Task<int> EnsureLetterFlowForUsersAsync(int sourceId, IEnumerable<int> userIds,
+        int senderUserId, string orderTitle, string orderNumber)
+    {
+        if (sourceId <= 0) return 0;
+        var targets = (userIds ?? Enumerable.Empty<int>()).Where(x => x > 0).Distinct().ToList();
+        if (targets.Count == 0) return 0;
+
+        var isLetter = await _db.LetterSources.AsNoTracking()
+            .AnyAsync(x => x.Id == sourceId && !x.IsDelete && x.SourceType >= 1 && x.SourceType <= 3);
+        if (!isLetter) return 0;
+
+        var existing = await _db.Erjas
+            .Where(x => x.SourceId == sourceId && !x.IsDelete && targets.Contains(x.ReciverUserId))
+            .Select(x => x.ReciverUserId).Distinct().ToListAsync();
+        var newTargets = targets.Except(existing).ToList();
+        if (newTargets.Count == 0) return 0;
+
+        var text = $"دسترسی به نامه از طریق دستورکار «{orderTitle}» ({orderNumber}) ایجاد شد.";
+        foreach (var userId in newTargets)
+        {
+            _db.Erjas.Add(new Erja
+            {
+                SourceId = sourceId,
+                SenderUserId = senderUserId,
+                ReciverUserId = userId,
+                Date = DateTime.Now,
+                Type = "ارجاع",
+                MatnErja = text,
+                AmalgarId = 1,
+                ShowMassage = true
+            });
+        }
+        return newTargets.Count;
+    }
+
+    /// <summary>
+    /// گیرندگانِ یک دستورکارِ متصل به نامه را به گردش همان نامه اضافه می‌کند.
+    /// برای مسیرهای «ویرایش دستور کار» و «افزودن نفر به گردش» که مبدأ از خودِ رکورد خوانده می‌شود.
+    /// </summary>
+    private Task<int> SyncOrderAssigneesToLetterFlowAsync(WorkOrder order, IEnumerable<int> userIds)
+    {
+        if (order.SourceId is not > 0) return Task.FromResult(0);
+        if (!IsLetterModuleOrUnknown(order.SourceModule)) return Task.FromResult(0);
+        return EnsureLetterFlowForUsersAsync(order.SourceId.Value, userIds, MyUserId, order.Title, order.Number);
+    }
+
+    /// <summary>
     /// افراد جدید دستورکار را به گردش واقعی نامه اضافه می‌کند. این کار عمداً در API
     /// انجام می‌شود تا ایجاد دستورکار از هر کلاینتی، دسترسی ناقص به نامه نسازد.
     /// </summary>
-    private async Task AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order)
+    /// <param name="requireRequestorInFlow">
+    /// true = سازندهٔ دستورکار باید ایجادکننده یا گیرندهٔ نامه باشد (مسیر «ساخت از نامه»).
+    /// false = مبدأ از دستور والد به ارث رسیده و پیوند از قبل برقرار است (زیر-دستور).
+    /// </param>
+    private async Task AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order, bool requireRequestorInFlow = true)
     {
         if (dto.SourceId is not > 0) return;
 
@@ -107,37 +163,20 @@ public class WorkOrdersController : ControllerBase
         var creatorId = sourceType == 1 ? source.InnerLetter?.CreatorUserId
                      : sourceType == 2 ? source.OutgoingLetter?.CreatorUserId
                      : source.IncomingLetter?.CreateUserId;
-        var mayUseLetter = creatorId == MyUserId || await _db.Erjas.AnyAsync(e =>
-            e.SourceId == source.Id && e.ReciverUserId == MyUserId && !e.IsDelete);
-        if (!mayUseLetter && !IsLegacyAdmin)
-            throw new InvalidOperationException("فقط ایجادکننده یا گیرندهٔ حاضر در گردش نامه می‌تواند از این نامه دستورکار بسازد.");
+        if (requireRequestorInFlow)
+        {
+            var mayUseLetter = creatorId == MyUserId || await _db.Erjas.AnyAsync(e =>
+                e.SourceId == source.Id && e.ReciverUserId == MyUserId && !e.IsDelete);
+            if (!mayUseLetter && !IsLegacyAdmin)
+                throw new InvalidOperationException("فقط ایجادکننده یا گیرندهٔ حاضر در گردش نامه می‌تواند از این نامه دستورکار بسازد.");
+        }
 
         // مقدار کاننیکال از نوعِ واقعیِ LetterSource تعیین می‌شود تا اشتباهِ کلاینت
         // یا داده‌های قدیمی باعث جابه‌جاییِ فیلترِ نوعِ نامه و اشتباه در لینک نشود.
         order.SourceModule = LetterModuleName(sourceType) ?? order.SourceModule;
 
-        var targets = dto.AssigneeUserIds.Where(x => x > 0 && x != MyUserId).Distinct().ToList();
-        var existing = await _db.Erjas
-            .Where(x => x.SourceId == source.Id && !x.IsDelete && targets.Contains(x.ReciverUserId))
-            .Select(x => x.ReciverUserId).Distinct().ToListAsync();
-        var newTargets = targets.Except(existing).ToList();
-        if (newTargets.Count == 0) return;
-
-        var text = $"دسترسی به نامه از طریق دستورکار «{order.Title}» ({order.Number}) ایجاد شد.";
-        foreach (var userId in newTargets)
-        {
-            _db.Erjas.Add(new Erja
-            {
-                SourceId = source.Id,
-                SenderUserId = MyUserId,
-                ReciverUserId = userId,
-                Date = DateTime.Now,
-                Type = "ارجاع",
-                MatnErja = text,
-                AmalgarId = 1,
-                ShowMassage = true
-            });
-        }
+        await EnsureLetterFlowForUsersAsync(source.Id, dto.AssigneeUserIds.Where(x => x != MyUserId),
+            MyUserId, order.Title, order.Number);
     }
 
     // ================== دسترسی‌ها و لیست افراد مجاز ==================
@@ -318,12 +357,23 @@ public class WorkOrdersController : ControllerBase
         }
 
         // اتصال به مبدأ (سورس) — اختیاری. اگر عنوان سورس داده شده باشد، همزمان نباید خالی/بی‌اعتبار باشد.
+        var inheritedSource = false;
         if (!string.IsNullOrWhiteSpace(dto.SourceModule) && dto.SourceId is not null and > 0)
         {
             dto.SourceModule = dto.SourceModule.Trim();
             // اعتبارسنجی: ماژول سورس شناخته‌شده باشد (برای حفظ عمومی‌بودن، فقط طول/الگو بررسی می‌شود)
             if (dto.SourceModule.Length > 50)
                 return BadRequest(new { message = "نام ماژول سورس نامعتبر است." });
+        }
+        else if (parent?.SourceId is > 0 && !string.IsNullOrWhiteSpace(parent.SourceModule))
+        {
+            // زیر-دستورِ یک دستورکارِ متصل به نامه، همان مبدأ را به ارث می‌برد؛ در غیر این صورت
+            // گیرندگان زیر-دستور از فهرست دستور کار به نامه دسترسی نداشتند.
+            dto.SourceModule = parent.SourceModule;
+            dto.SourceId = parent.SourceId;
+            dto.SourceRefId ??= parent.SourceRefId;
+            inheritedSource = true;
+            // پیوند والد از قبل مجاز بوده است؛ شرط «حاضر در گردش نامه» برای زیر-دستور اعمال نمی‌شود.
         }
         else
         {
@@ -383,7 +433,7 @@ public class WorkOrdersController : ControllerBase
             _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = project.Id, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
         // اگر دستورکار از روی نامه ساخته شده باشد، افراد جدید باید در گردش واقعی
         // همان نامه نیز قرار بگیرند؛ صرفاً لینک‌کردن دستورکار به نامه کافی نیست.
-        await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo);
+        await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo, requireRequestorInFlow: !inheritedSource);
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
@@ -506,6 +556,12 @@ public class WorkOrdersController : ControllerBase
         wo.Tags = NormalizeTags(dto.Tags);
         wo.OwnerName = await MyDisplayNameAsync();
 
+        // گیرندگان تازهٔ دستورکارِ متصل به نامه باید در گردش واقعی همان نامه هم قرار بگیرند؛
+        // وگرنه از فهرست دستور کار روی لینک نامه ۴۰۳ می‌گیرند. (ویرایش فقط پیش از رویت ممکن است)
+        var letterFlowAdded = 0;
+        if (addedUserIds.Count > 0)
+            letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, addedUserIds);
+
         var oldProjectId = wo.ProjectId;
         wo.ProjectId = newProject?.Id;
         wo.Weight = dto.Weight;
@@ -543,8 +599,14 @@ public class WorkOrdersController : ControllerBase
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
+        if (letterFlowAdded > 0)
+        {
+            await _notify.BroadcastChangedAsync("letters");
+            await _notify.BroadcastChangedAsync("incoming-letters");
+            await _notify.BroadcastChangedAsync("outgoing-letters");
+        }
         if (oldProjectId != wo.ProjectId) await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1 });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, letterFlowAdded });
     }
 
     private static string ToFa(DateTime d)
@@ -1293,16 +1355,9 @@ public class WorkOrdersController : ControllerBase
         var text = $"افزودن به گردش: {names}" + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
         Log(wo.Id, "AssigneesAdded", text.Length > 4000 ? text[..4000] : text);
 
-        // دستور کارِ ساخته‌شده از نامه: افراد جدید در گردش واقعی همان نامه هم قرار می‌گیرند
-        if (!string.IsNullOrWhiteSpace(wo.SourceModule) && wo.SourceId is > 0)
-        {
-            try
-            {
-                await AddNewLetterWorkOrderAssigneesToFlowAsync(
-                    new CreateDto { SourceModule = wo.SourceModule, SourceId = wo.SourceId, AssigneeUserIds = users.Select(u => u.Id).ToList() }, wo);
-            }
-            catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        }
+        // دستور کارِ متصل به نامه: افراد جدید در گردش واقعی همان نامه هم قرار می‌گیرند تا از
+        // فهرست دستور کار بتوانند نامه را باز کنند (مبدأ از خود رکورد خوانده می‌شود، نه از کلاینت).
+        var letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, users.Select(u => u.Id));
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
@@ -1317,7 +1372,52 @@ public class WorkOrdersController : ControllerBase
             : null;
 
         await _notify.BroadcastChangedAsync("workorders");
-        return Ok(new { added = users.Count, skipped = dup.Count, sms = smsResult });
+        if (letterFlowAdded > 0)
+        {
+            await _notify.BroadcastChangedAsync("letters");
+            await _notify.BroadcastChangedAsync("incoming-letters");
+            await _notify.BroadcastChangedAsync("outgoing-letters");
+        }
+        return Ok(new { added = users.Count, skipped = dup.Count, sms = smsResult, letterFlowAdded });
+    }
+
+    // ================== همگام‌سازی دسترسی به نامه برای گیرندگان ==================
+    /// <summary>
+    /// هر گیرندهٔ دستورکاری که به یک نامه متصل است باید از فهرست دستور کار بتواند همان نامه را
+    /// باز کند. این endpoint برای «دادهٔ قبلی» است: روی همهٔ دستورکارهایی که کاربر در آن‌ها
+    /// گیرنده یا دستوردهنده است اجرا می‌شود و در صورت نبودِ ردیف ارجاع در گردش نامه، آن را
+    /// idempotent اضافه می‌کند. ردیف‌های موجود دست نمی‌خورند.
+    /// </summary>
+    [HttpPost("letter-flow/sync")]
+    public async Task<IActionResult> SyncLetterFlow()
+    {
+        if (!await HasAsync("View")) return Forbid();
+
+        var orders = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.DeletedAt == null && w.SourceId != null && w.SourceId > 0
+                        && w.SourceModule != null && w.SourceModule != ""
+                        && (w.OwnerUserId == MyUserId
+                            || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == MyUserId)))
+            .Select(w => new { w.Title, w.Number, SourceId = w.SourceId!.Value, w.OwnerUserId })
+            .ToListAsync();
+        if (orders.Count == 0) return Ok(new { added = 0, orders = 0 });
+
+        var added = 0;
+        foreach (var o in orders)
+        {
+            // فرستندهٔ ارجاع، دستوردهندهٔ همان دستور کار است تا ردیف در گردش نامه منطقی بماند
+            added += await EnsureLetterFlowForUsersAsync(o.SourceId, new[] { MyUserId }, o.OwnerUserId, o.Title, o.Number);
+        }
+        if (added > 0)
+        {
+            await _db.SaveChangesAsync();
+            // ردیف‌های ارجاعِ تازه، کارتابل و شمارندهٔ نخواندهٔ نامه‌ها را تغییر می‌دهند
+            await _notify.BroadcastChangedAsync("workorders");
+            await _notify.BroadcastChangedAsync("letters");
+            await _notify.BroadcastChangedAsync("incoming-letters");
+            await _notify.BroadcastChangedAsync("outgoing-letters");
+        }
+        return Ok(new { added, orders = orders.Count });
     }
 
     // ================== بازگشایی دستور کار بسته‌شده و برگشت به گردش ==================
