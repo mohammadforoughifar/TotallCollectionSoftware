@@ -58,7 +58,7 @@
 | داخلی | `GET api/letters/{id}/gardesh` | فقط Read | گردش برای عضو گردش هم باز می‌شود |
 | داخلی | `GET api/letters/{id}/attachments` و `.../download` | Read + گردش | گردش به‌تنهایی کافی است |
 | داخلی | `GET api/letters/{id}/print` | فقط Read | عضو گردش هم می‌تواند چاپ بگیرد |
-| صادره | `GET api/outgoing-letters/{id}` | فقط dبیرخانه/مدیر/Read | ایجادکننده، امضاکننده و دارندهٔ ارجاع هم مجاز |
+| صادره | `GET api/outgoing-letters/{id}` | فقط دبیرخانه/مدیر/Read | ایجادکننده، امضاکننده و دارندهٔ ارجاع هم مجاز |
 | صادره | `.../gardesh` و `.../attachments` | Read | عضو گردش کافی است |
 | وارده | `GET api/incoming-letters/{id}` | فقط Read | `CanAccessLetterAsync` (ایجادکننده/عضو گردش/مدیر) هم کافی است |
 | وارده | `.../{id}/gardesh` و پیوست‌ها | Read | عضو گردش کافی است |
