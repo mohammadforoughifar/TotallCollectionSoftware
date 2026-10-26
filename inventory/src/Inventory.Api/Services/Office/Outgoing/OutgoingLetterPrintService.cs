@@ -622,8 +622,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         if (!cacheHit || cacheTimer.ElapsedMilliseconds >= 100)
             _logger.LogInformation(
-                "OutgoingLetterPrintTiming Stage=signature-svg-cache CacheHit={CacheHit} InputBytes={InputBytes} StageMs={StageMs}",
-                cacheHit, info.Length, cacheTimer.ElapsedMilliseconds);
+                "OutgoingLetterPrintTiming Stage=signature-svg-cache CacheHit={CacheHit} InputBytes={InputBytes} SvgChars={SvgChars} StageMs={StageMs}",
+                cacheHit, info.Length, cached?.Data?.Svg.Length ?? 0, cacheTimer.ElapsedMilliseconds);
         return cached?.Data;
     }
 
@@ -1132,7 +1132,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         });
 
-        return document.GeneratePdf();
+        var renderTimer = Stopwatch.StartNew();
+        var generatedPdf = document.GeneratePdf();
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=questpdf-generate-pdf StageMs={StageMs} Bytes={Bytes}",
+            letter.Id, renderTimer.ElapsedMilliseconds, generatedPdf.Length);
+        return generatedPdf;
     }
 
     private static string FullName(User? user)

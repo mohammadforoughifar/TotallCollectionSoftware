@@ -97,6 +97,11 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn("LetterheadAssets.GetOrAdd", service)
         self.assertIn("outgoing-signature-svg:", service)
         self.assertIn("Stage=signature-svg-cache", service)
+        self.assertIn("Stage=questpdf-generate-pdf", service)
+        controller = (API / "Controllers/Office/OutgoingLettersController.cs").read_text()
+        self.assertIn("Stage=controller-access-checks", controller)
+        self.assertIn("Stage=controller-pdf-generation", controller)
+        self.assertIn("Stage=db-filename", controller)
         self.assertIn("outgoing-letterhead:", service)
         self.assertIn("GetCachedSignatureSvg", service)
         vectorizer = service.split("private static SignatureSvgData? TryReadSignatureSvg", 1)[1].split(

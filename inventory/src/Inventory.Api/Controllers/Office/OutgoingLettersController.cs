@@ -490,6 +490,7 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
         [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
     {
+        var accessTimer = Stopwatch.StartNew();
         // چه کسانی می‌توانند چاپ بگیرند؟
         //   • دبیرخانهٔ نامهٔ صادره و مدیر (بدون قید)
         //   • ایجادکنندهٔ نامه، امضاکنندگان و هر کاربری که نامه به او ارجاع شده (دریافت‌کننده)
@@ -507,7 +508,12 @@ public class OutgoingLettersController : RbacControllerBase
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-access-checks StageMs={StageMs}",
+            id, accessTimer.ElapsedMilliseconds);
+
         byte[]? pdf;
+        var generationTimer = Stopwatch.StartNew();
         try
         {
             // دبیرخانه و مدیر: چاپ فقط با امضای کامل همهٔ امضاکنندگان.
@@ -522,6 +528,12 @@ public class OutgoingLettersController : RbacControllerBase
         catch (OutgoingSignaturePrintException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-pdf-generation StageMs={StageMs}",
+                id, generationTimer.ElapsedMilliseconds);
         }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
