@@ -207,8 +207,22 @@ window.ltxOpenPdf = function (payload, fileName) {
 // پنجره در capture-phase کلیک رزرو می‌شود تا popup blocker متوجه gesture کاربر شود.
 window.ltxPrintSessions = Object.create(null);
 window.ltxPrintPendingWindows = [];
+// بستن پنجره‌های رزروشدهٔ در انتظار — جلوی باقی‌ماندن تب خالیِ «بارگزاری‌نشده» را می‌گیرد.
+window.ltxPrintReleasePending = function () {
+    var released = 0;
+    while (window.ltxPrintPendingWindows.length) {
+        try {
+            var pending = window.ltxPrintPendingWindows.shift();
+            if (pending && !pending.closed) { pending.close(); released++; }
+        } catch (error) { console.error('[letter-print] pending popup release failed', error); }
+    }
+    return released;
+};
 window.ltxPrintReserveByClick = function () {
     try {
+        // فقط «یک» پنجرهٔ رزروشده در انتظار می‌ماند؛ دابل‌کلیکِ کاربر (وقتی باز شدن
+        // پنجره کمی طول می‌کشد) دیگر تب خالیِ بلااستفاده جا نمی‌گذارد.
+        window.ltxPrintReleasePending();
         var popup = window.open('about:blank', '_blank');
         if (popup) window.ltxPrintPendingWindows.push(popup);
         return !!popup;
@@ -216,6 +230,13 @@ window.ltxPrintReserveByClick = function () {
         console.error('[letter-print] popup reservation failed', error);
         return false;
     }
+};
+// گارد سمت C# قبل از هر چاپ: اگر مرورگر app-shell.js قدیمی (بدون جریان چاپ) از کش آورده باشد،
+// به‌جای خطای گمراه‌کنندهٔ «popup را مجاز کنید»، پیام درستِ تازه‌سازی کش نمایش داده می‌شود.
+window.ltxPrintHasRuntime = function () {
+    return typeof window.ltxPrintBegin === 'function'
+        && typeof window.ltxPrintReady === 'function'
+        && typeof window.ltxPrintFail === 'function';
 };
 document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target.closest('[data-ltx-print-option]') : null;
@@ -319,6 +340,7 @@ function ltxPrintAttemptCurrent(session, attemptId) {
 function ltxPrintCleanup(session, closePopup) {
     if (!session || session.cleaned) return;
     session.cleaned = true;
+    ltxStopPrintWatchdog(session);
     if (session.closePoll) clearInterval(session.closePoll);
     if (session.objectUrl) { URL.revokeObjectURL(session.objectUrl); session.objectUrl = null; }
     document.body.classList.remove('ltx-print-direct-page');
@@ -376,10 +398,38 @@ function ltxTriggerPrint(session) {
         return false;
     }
 }
+// ---------- ساعت‌چه و تپش وضعیت: پنجرهٔ چاپ هرگز بی‌پاسخ روی «در حال آماده‌سازی…» نمی‌ماند ----------
+// اگر سمت برنامه (Blazor WASM) پاسخی ندهد — قطع ارتباط، ناوبری یا کرش — بعد از ۹۰ ثانیه
+// خودِ پنجره خطا و راهنما را نشان می‌دهد و شمارش‌گر ثانیه، کاربر را در جریان «در حال کار بودن» نگه می‌دارد.
+function ltxStopPrintWatchdog(session) {
+    if (!session) return;
+    if (session.watchdog) { clearTimeout(session.watchdog); session.watchdog = null; }
+    if (session.heartbeat) { clearInterval(session.heartbeat); session.heartbeat = null; }
+}
+function ltxStartPrintWatchdog(session) {
+    ltxStopPrintWatchdog(session);
+    session.preparingSince = Date.now();
+    session.heartbeat = setInterval(function () {
+        if (!session || session.cleaned || session.ready || session.failed || session.pdfLoaded) return;
+        var seconds = Math.max(1, Math.round((Date.now() - session.preparingSince) / 1000));
+        var base = session.popupBlocked ? 'پنجرهٔ بازشو مسدود شد؛ چاپ در همین صفحه ادامه می‌یابد — ' : 'در حال آماده‌سازی نسخهٔ چاپ… ';
+        ltxSetPrintStatus(session, base + '(' + seconds + ' ثانیه)');
+    }, 1000);
+    session.watchdog = setTimeout(function () {
+        if (!session || session.cleaned || session.ready || session.failed || session.pdfLoaded) return;
+        ltxStopPrintWatchdog(session);
+        console.error('[letter-print] print window received no answer from the app; showing self-diagnostics.');
+        ltxSetPrintError(session,
+            'پنجرهٔ چاپ مدت طولانی است پاسخی از برنامه دریافت نکرده است (ارتباط صفحه با سرور قطع شده یا برنامه بازآغاز شده). ' +
+            'این پنجره را ببندید و دوباره «چاپ» را بزنید؛ اگر تکرار شد، صفحهٔ برنامه را با Ctrl+Shift+R تازه‌سازی کنید.');
+    }, Math.max(1000, Number(window.ltxPrintWatchdogMs) || 90000));
+}
 window.ltxPrintBegin = function () {
     var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     var popup = null;
     try { popup = window.ltxPrintPendingWindows.shift(); } catch (error) { console.error('[letter-print] reserved popup retrieval failed', error); }
+    // پنجره‌های رزروشدهٔ اضافی (دابل‌کلیک) بسته شوند تا تب خالیِ بی‌محتوا جا نماند.
+    try { window.ltxPrintReleasePending(); } catch (error) { /* non-fatal */ }
     if (!popup || popup.closed) {
         try { popup = window.open('about:blank', '_blank'); } catch (error) { console.error('[letter-print] popup open failed', error); }
     }
@@ -394,6 +444,7 @@ window.ltxPrintBegin = function () {
         console.error('[letter-print] popup setup failed; using in-page print surface', error);
         session.win = null; session.popupBlocked = true; ltxCreateOverlay(session);
     }
+    ltxStartPrintWatchdog(session);
     window.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true });
     if (session.win) {
         try { session.win.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true }); } catch (error) { console.error('[letter-print] afterprint listener failed', error); }
@@ -440,6 +491,7 @@ window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
         if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
         if (session.win) session.win.document.title = String(fileName || 'چاپ نامه');
         session.ready = true;
+        ltxStopPrintWatchdog(session);
         ltxSetPrintStatus(session, 'PDF آماده است؛ پنجرهٔ چاپ باز می‌شود…');
         var printButton = session.overlay ? session.overlay.querySelector('.ltx-print-now') : session.win.document.getElementById('ltx-print-now');
         if (printButton) printButton.hidden = false;
@@ -455,6 +507,7 @@ window.ltxPrintFail = function (id, message) {
     if (!session) return false;
     if (!ltxEnsurePrintSurface(session)) return false;
     session.failed = true;
+    ltxStopPrintWatchdog(session);
     session.attemptId = (session.attemptId || 0) + 1;
     session.ready = false;
     session.printRequested = false;

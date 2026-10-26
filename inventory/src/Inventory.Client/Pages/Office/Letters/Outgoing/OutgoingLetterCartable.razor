@@ -1247,7 +1247,13 @@
     /// <summary>دریافت PDF چاپ از سرور برای هر شناسهٔ نامه (بدون نیاز به باز بودن نامه).</summary>
     private async Task PrintPdf(int letterId, string? letterNumber, string size, bool withMargin)
     {
-        if (printingPdf) return;
+        if (printingPdf)
+        {
+            // اگر وسط یک چاپِ در جریان، گزینهٔ چاپ دوباره کلیک شده باشد، پنجرهٔ رزروشدهٔ همین
+            // کلیک مصرف نمی‌شود؛ بستنش جلوی بازماندن «تب خالیِ بارگزاری‌نشده» را می‌گیرد.
+            try { await JS.InvokeVoidAsync("ltxPrintReleasePending"); } catch { }
+            return;
+        }
         printMenuOpen = false;
         printingPdf = true;
         try

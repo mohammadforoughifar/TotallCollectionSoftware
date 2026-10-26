@@ -68,8 +68,15 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn('"ltxPrintFail"', workflow)
         self.assertIn('"ltxPrintWaitForAction"', workflow)
         self.assertIn('"ltxPrintDirectPage"', workflow)
+        # بودجهٔ زمانی دانلود (سرور) و تحویل به مرورگر جدا شده‌اند تا اولین چاپِ سرد
+        # کل بودجه را نخورد و پنجرهٔ چاپ «بارگزاری‌نشده» نماند.
         self.assertIn("TimeSpan.FromSeconds(15)", workflow)
-        self.assertIn("CancellationTokenSource(PreparationTimeout)", workflow)
+        self.assertIn("TimeSpan.FromSeconds(90)", workflow)
+        self.assertIn("CancellationTokenSource(DownloadTimeout)", workflow)
+        self.assertIn("CancellationTokenSource(HandoffTimeout)", workflow)
+        # گارد «app-shell.js قدیمی از کش» + بستن پنجرهٔ رزروشده در مسیرهای خروج زودهنگام
+        self.assertIn('"ltxPrintHasRuntime"', workflow)
+        self.assertIn('"ltxPrintReleasePending"', workflow)
         self.assertIn("PrintWorkflow.PrintPdfAsync", internal)
         self.assertIn("PrintWorkflow.PrintPdfAsync", outgoing)
         self.assertIn("PrintWorkflow.PrintPdfAsync", outgoing_view)
@@ -80,7 +87,7 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn("LetterPrintClientTiming", workflow)
         self.assertIn('MarkStage("pdf-download")', workflow)
         self.assertIn('MarkStage("browser-print-handoff")', workflow)
-        self.assertIn('"ltxPrintReady", timeout.Token, printId, pdfBytes, fileName, remainingMs', workflow)
+        self.assertIn('"ltxPrintReady", handoffCts.Token, printId, pdfBytes, fileName', workflow)
         self.assertNotIn("Convert.ToBase64String(pdfBytes)", workflow)
         self.assertIn("doc.fonts.ready", js)
         self.assertIn("doc.images", js)
