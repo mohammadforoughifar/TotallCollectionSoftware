@@ -73,6 +73,12 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn("LetterPrintClientTiming", workflow)
         self.assertIn('MarkStage("pdf-download")', workflow)
         self.assertIn('MarkStage("browser-print-handoff")', workflow)
+        self.assertIn('"ltxPrintReady", printId, pdfBytes, fileName', workflow)
+        self.assertIn('"ltxOpenPdf", pdfBytes, fileName', workflow)
+        self.assertNotIn("Convert.ToBase64String(pdfBytes)", workflow)
+        js = (CLIENT / "wwwroot/js/app-shell.js").read_text()
+        self.assertIn("payload instanceof Uint8Array", js)
+        self.assertIn("payload instanceof ArrayBuffer", js)
         program = (CLIENT / "Program.cs").read_text()
         self.assertIn("AddScoped<LetterPrintWorkflow>()", program)
 
@@ -90,8 +96,15 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn("Stage=letterhead-image-pdf-cache-open", service)
         self.assertIn("LetterheadAssets.GetOrAdd", service)
         self.assertIn("outgoing-signature-svg:", service)
+        self.assertIn("Stage=signature-svg-cache", service)
         self.assertIn("outgoing-letterhead:", service)
         self.assertIn("GetCachedSignatureSvg", service)
+        vectorizer = service.split("private static SignatureSvgData? TryReadSignatureSvg", 1)[1].split(
+            "private byte[] BuildContentPdf", 1)[0]
+        self.assertIn("var activeLevel = 0;", vectorizer)
+        self.assertIn("for (var x = 0; x <= row.Length; x++)", vectorizer)
+        band_scan = vectorizer.split("Classify every pixel once", 1)[1].split("});", 1)[0]
+        self.assertNotIn("for (var level = 1; level <= 8; level++)", band_scan)
         self.assertIn("var copyTos = withCopy", service)
         self.assertIn(": new List<OutgoingLetterCopyTo>()", service)
 

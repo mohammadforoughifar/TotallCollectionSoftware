@@ -151,11 +151,12 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
         self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
         self.assertNotIn('Text("امضاکنندگان")', source)
-        self.assertIn("using QuestPDF.Elements;", source)
-        self.assertIn("DynamicComponentComposeResult Compose(DynamicContext context)", source)
-        self.assertIn("context.TotalPages > 1", source)
+        self.assertNotIn("IDynamicComponent", source)
+        self.assertNotIn(".Dynamic(", source)
+        self.assertIn("page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>", source)
+        self.assertIn("text.CurrentPageNumber()", source)
+        self.assertIn("text.TotalPages()", source)
         self.assertIn(".FontSize(8)\n                            .LineHeight(1.1f)", source)
-        self.assertIn("page.Footer().Height(20).AlignTop().Dynamic(new HomepaPageNumberComponent())", source)
         overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
         self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
         self.assertLess(overlay.index("graphics.DrawImage(asset.Image, bounds)"),

@@ -9,7 +9,6 @@ using System.Xml.Linq;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using QuestPDF.Elements;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -73,42 +72,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private sealed record SignatureSvgData(string Svg, int Width, int Height);
     private sealed record CachedSignature(SignatureSvgData? Data);
     private sealed record SematPrintTitle(int SematId, int? UserId, string Title, string? CorrespondenceTitle, bool DefaultSemat, bool IsActive);
-    private sealed class HomepaPageNumberComponent : IDynamicComponent
-    {
-        public DynamicComponentComposeResult Compose(DynamicContext context)
-        {
-            var content = context.CreateElement(element =>
-            {
-                if (context.TotalPages > 1)
-                {
-                    element.AlignCenter().Text(text =>
-                    {
-                        text.DefaultTextStyle(style => style
-                            .FontFamily("Vazirmatn")
-                            .FontSize(8)
-                            .LineHeight(1.1f)
-                            .FontColor("#475569")
-                            .DirectionFromRightToLeft());
-                        text.Span("صفحه ");
-                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                        text.Span(" از ");
-                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                    });
-                }
-                else
-                {
-                    element.Text(string.Empty);
-                }
-            });
-
-            return new DynamicComponentComposeResult
-            {
-                Content = content,
-                HasMoreContent = false
-            };
-        }
-    }
-
     private sealed class CachedLetterheadAsset
     {
         public CachedLetterheadAsset(bool isPdf, XPdfForm? pdf, XImage? image)
@@ -645,12 +608,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         if (path == null) return null;
         var info = new FileInfo(path);
         var key = $"outgoing-signature-svg:{path}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
-        var cached = _cache.GetOrCreate(key, entry =>
+        var cacheTimer = Stopwatch.StartNew();
+        var cacheHit = _cache.TryGetValue(key, out CachedSignature? cached);
+        if (!cacheHit)
         {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
-            entry.Size = Math.Max(info.Length, 1);
-            return new CachedSignature(TryReadSignatureSvg(TryReadSignature(relativePath)));
-        });
+            cached = _cache.GetOrCreate(key, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+                entry.Size = Math.Max(info.Length, 1);
+                return new CachedSignature(TryReadSignatureSvg(TryReadSignature(relativePath)));
+            });
+        }
+
+        if (!cacheHit || cacheTimer.ElapsedMilliseconds >= 100)
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming Stage=signature-svg-cache CacheHit={CacheHit} InputBytes={InputBytes} StageMs={StageMs}",
+                cacheHit, info.Length, cacheTimer.ElapsedMilliseconds);
         return cached?.Data;
     }
 
@@ -719,39 +692,38 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
             if (weight == 0) return null;
 
-            // Eight opacity bands retain antialiased edges but do not rely on a raster alpha mask.
+            // Eight opacity bands retain antialiased edges without relying on a raster alpha mask.
+            // Classify every pixel once, then close/open horizontal runs as the band changes.
+            // The previous implementation rescanned every row eight times (once per opacity band).
             var paths = Enumerable.Range(0, 9).Select(_ => new StringBuilder()).ToArray();
             image.ProcessPixelRows(accessor =>
             {
                 for (var y = 0; y < accessor.Height; y++)
                 {
                     var row = accessor.GetRowSpan(y);
-                    for (var level = 1; level <= 8; level++)
+                    var activeLevel = 0;
+                    var runStart = -1;
+                    for (var x = 0; x <= row.Length; x++)
                     {
-                        var runStart = -1;
-                        for (var x = 0; x <= row.Length; x++)
+                        var pixelLevel = 0;
+                        if (x < row.Length)
                         {
-                            var pixelLevel = 0;
-                            if (x < row.Length)
-                            {
-                                var px = row[x];
-                                var min = Math.Min(px.R, Math.Min(px.G, px.B));
-                                var alpha = (int)((255 - min) * px.A / 255);
-                                if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
-                            }
-
-                            if (pixelLevel == level)
-                            {
-                                if (runStart < 0) runStart = x;
-                            }
-                            else if (runStart >= 0)
-                            {
-                                var length = x - runStart;
-                                paths[level].Append('M').Append(runStart).Append(' ').Append(y)
-                                    .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
-                                runStart = -1;
-                            }
+                            var px = row[x];
+                            var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                            var alpha = (int)((255 - min) * px.A / 255);
+                            if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
                         }
+
+                        if (pixelLevel == activeLevel) continue;
+                        if (activeLevel > 0 && runStart >= 0)
+                        {
+                            var length = x - runStart;
+                            paths[activeLevel].Append('M').Append(runStart).Append(' ').Append(y)
+                                .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
+                        }
+
+                        activeLevel = pixelLevel;
+                        runStart = pixelLevel > 0 ? x : -1;
                     }
                 }
             });
@@ -1025,7 +997,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
                     : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 if (isHomepaLetterhead)
-                    page.Footer().Height(20).AlignTop().Dynamic(new HomepaPageNumberComponent());
+                    page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(style => style
+                            .FontFamily("Vazirmatn")
+                            .FontSize(8)
+                            .LineHeight(1.1f)
+                            .FontColor("#475569")
+                            .DirectionFromRightToLeft());
+                        text.Span("صفحه ");
+                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                        text.Span(" از ");
+                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                    });
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();

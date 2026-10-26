@@ -42,16 +42,15 @@ public sealed class LetterPrintWorkflow
             if (pdfBytes == null || pdfBytes.Length == 0)
                 throw new InvalidOperationException("فایل PDF چاپ خالی است.");
 
-            var encodeTimer = Stopwatch.StartNew();
-            var payload = Convert.ToBase64String(pdfBytes);
+            // Blazor WebAssembly transfers byte[] to JavaScript as Uint8Array. Avoid
+            // the previous full-size base64 expansion and JS atob/byte-copy pass.
             _logger.LogInformation(
-                "LetterPrintClientTiming Stage=pdf-base64-encode StageMs={StageMs} Bytes={Bytes}",
-                encodeTimer.ElapsedMilliseconds, pdfBytes.Length);
+                "LetterPrintClientTiming Stage=pdf-binary-ready Bytes={Bytes}", pdfBytes.Length);
 
             var ready = false;
             if (printId != null)
             {
-                try { ready = await _js.InvokeAsync<bool>("ltxPrintReady", printId, payload, fileName); }
+                try { ready = await _js.InvokeAsync<bool>("ltxPrintReady", printId, pdfBytes, fileName); }
                 catch { ready = false; }
             }
             MarkStage("browser-print-handoff");
@@ -67,7 +66,7 @@ public sealed class LetterPrintWorkflow
                 catch { }
             }
             _toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF باز می‌شود.");
-            await _js.InvokeVoidAsync("ltxOpenPdf", payload, fileName);
+            await _js.InvokeVoidAsync("ltxOpenPdf", pdfBytes, fileName);
             MarkStage("pdf-fallback-open");
             MarkStage("complete");
         }
