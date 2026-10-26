@@ -111,7 +111,59 @@ public class WorkOrdersController : ControllerBase
                 ShowMassage = true
             });
         }
+
+        // اعلان «نامهٔ جدید در کارتابل شما» — عمداً فقط برای افرادی که در این لحظه به گردش
+        // نامه اضافه شدند (newTargets)؛ کسانی که از قبل در گردش بودند اعلان تکراری نمی‌گیرند.
+        await NotifyNewLetterAccessAsync(sourceId, newTargets, orderTitle, orderNumber, senderUserId);
+
         return newTargets.Count;
+    }
+
+    /// <summary>
+    /// اعلان «نامهٔ جدید در کارتابل شما» برای افرادی که تازه به گردش نامه اضافه شده‌اند.
+    /// لینک اعلان همان مسیر کارتابلِ درستِ همان نوع نامه است تا با یک کلیک باز شود.
+    /// </summary>
+    private async Task NotifyNewLetterAccessAsync(int sourceId, List<int> userIds,
+        string orderTitle, string orderNumber, int senderUserId)
+    {
+        if (userIds.Count == 0) return;
+
+        var letter = await _db.LetterSources.AsNoTracking()
+            .Where(x => x.Id == sourceId && !x.IsDelete)
+            .Select(x => new
+            {
+                x.SourceType,
+                InnerTitle = x.InnerLetter != null ? x.InnerLetter.Title : null,
+                InnerNumber = x.InnerLetter != null ? x.InnerLetter.LetterNumber : null,
+                OutTitle = x.OutgoingLetter != null ? x.OutgoingLetter.Title : null,
+                OutNumber = x.OutgoingLetter != null ? x.OutgoingLetter.SadereNumber : null,
+                IncTitle = x.IncomingLetter != null ? x.IncomingLetter.Title : null,
+                IncNumber = x.IncomingLetter != null ? x.IncomingLetter.LetterNumber : null
+            })
+            .FirstOrDefaultAsync();
+        if (letter == null) return;
+
+        var (formName, route, number, title) = letter.SourceType switch
+        {
+            1 => ("نامه داخلی", "/letters", letter.InnerNumber, letter.InnerTitle),
+            2 => ("نامه صادره", "/outgoing-letters", letter.OutNumber, letter.OutTitle),
+            3 => ("نامه وارده", "/incoming-letters", letter.IncNumber, letter.IncTitle),
+            _ => ("نامه", "/letters", null, null)
+        };
+
+        var senderName = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == senderUserId)
+            .Select(u => string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? ""))
+                ? u.Username : (u.FirstName + " " + u.LastName).Trim())
+            .FirstOrDefaultAsync() ?? "دستور کار";
+
+        var numberTag = string.IsNullOrWhiteSpace(number) ? "" : $"{number} — ";
+        var titleTag = string.IsNullOrWhiteSpace(title) ? "" : $"«{title}»";
+        var body = $"{numberTag}{titleTag} — دسترسی از طریق دستورکار «{orderTitle}» ({orderNumber})";
+
+        foreach (var uid in userIds.Where(id => id > 0 && id != senderUserId).Distinct())
+            await _notify.SendAsync(uid, "نامهٔ جدید در کارتابل شما 📨", body, senderName, formName,
+                $"{route}?open={sourceId}");
     }
 
     /// <summary>
