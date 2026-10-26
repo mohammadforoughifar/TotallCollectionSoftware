@@ -71,9 +71,10 @@ public class IncomingLetterService : IIncomingLetterService
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
         // «دریافتی» فقط نامه‌هایی است که «به کاربر ارسال شده»؛ نه نامه‌هایی که خودش ثبت کرده.
-        // در AddAsync برای ثبت‌کننده هم یک ارجاع خودکار (Sender == Reciver) ساخته می‌شود تا
-        // رکورد در گردش بماند؛ همان ردیف اینجا فیلتر می‌شود. اگر نامه بعداً توسط شخص دیگری
-        // به همین کاربر ارجاع شود، یک ارجاع جدید با فرستندهٔ متفاوت ساخته می‌شود و دیده می‌شود.
+        // از این پس AddAsync برای ثبت‌کننده ردیف ارجاع نمی‌سازد؛ این شرط (Sender != Reciver)
+        // برای دادهٔ قدیمیِ باقی‌مانده هم جلوی نمایش ردیف خودکارِ «ثبت‌کننده = گیرنده» را می‌گیرد.
+        // اگر نامه بعداً توسط شخص دیگری به همین کاربر ارجاع شود، ارجاع جدید با فرستندهٔ متفاوت
+        // ساخته می‌شود و در دریافتی دیده می‌شود.
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
