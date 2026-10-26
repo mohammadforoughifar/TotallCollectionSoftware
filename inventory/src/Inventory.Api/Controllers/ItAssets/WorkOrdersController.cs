@@ -133,12 +133,12 @@ public class WorkOrdersController : ControllerBase
     /// true = سازندهٔ دستورکار باید ایجادکننده یا گیرندهٔ نامه باشد (مسیر «ساخت از نامه»).
     /// false = مبدأ از دستور والد به ارث رسیده و پیوند از قبل برقرار است (زیر-دستور).
     /// </param>
-    private async Task AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order, bool requireRequestorInFlow = true)
+    private async Task<int> AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order, bool requireRequestorInFlow = true)
     {
-        if (dto.SourceId is not > 0) return;
+        if (dto.SourceId is not > 0) return 0;
 
         // ماژولِ صریحِ غیرنامه (مدرک/صورتجلسه) اصلاً به گردشِ نامه ربطی ندارد
-        if (!IsLetterModuleOrUnknown(dto.SourceModule)) return;
+        if (!IsLetterModuleOrUnknown(dto.SourceModule)) return 0;
 
         // نامهٔ مبدأ مستقل از نامِ ماژولِ ارسالیِ کلاینت و از روی شناسه پیدا می‌شود:
         // جدولِ LetterSources کلیدِ مشترکِ هر سه نوع نامه است و SourceType آن نوعِ
@@ -154,7 +154,7 @@ public class WorkOrdersController : ControllerBase
         if (source == null)
         {
             // مبدأ یک نامه نیست و نامِ ماژول هم نامه را نشان نمی‌دهد — کاری لازم نیست.
-            if (ModuleToLetterType(dto.SourceModule) is null) return;
+            if (ModuleToLetterType(dto.SourceModule) is null) return 0;
             throw new InvalidOperationException("نامهٔ مبدأ برای ایجاد گردش دستورکار پیدا نشد.");
         }
 
@@ -175,7 +175,7 @@ public class WorkOrdersController : ControllerBase
         // یا داده‌های قدیمی باعث جابه‌جاییِ فیلترِ نوعِ نامه و اشتباه در لینک نشود.
         order.SourceModule = LetterModuleName(sourceType) ?? order.SourceModule;
 
-        await EnsureLetterFlowForUsersAsync(source.Id, dto.AssigneeUserIds.Where(x => x != MyUserId),
+        return await EnsureLetterFlowForUsersAsync(source.Id, dto.AssigneeUserIds.Where(x => x != MyUserId),
             MyUserId, order.Title, order.Number);
     }
 
@@ -433,7 +433,7 @@ public class WorkOrdersController : ControllerBase
             _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = project.Id, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
         // اگر دستورکار از روی نامه ساخته شده باشد، افراد جدید باید در گردش واقعی
         // همان نامه نیز قرار بگیرند؛ صرفاً لینک‌کردن دستورکار به نامه کافی نیست.
-        await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo, requireRequestorInFlow: !inheritedSource);
+        var letterFlowAdded = await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo, requireRequestorInFlow: !inheritedSource);
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
@@ -457,8 +457,15 @@ public class WorkOrdersController : ControllerBase
             : null;
 
         await _notify.BroadcastChangedAsync("workorders");
+        // ردیف‌های ارجاعِ تازه، کارتابل و شمارندهٔ نخواندهٔ نامه‌ها را تغییر می‌دهند
+        if (letterFlowAdded > 0)
+        {
+            await _notify.BroadcastChangedAsync("letters");
+            await _notify.BroadcastChangedAsync("incoming-letters");
+            await _notify.BroadcastChangedAsync("outgoing-letters");
+        }
         if (project != null) await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult, letterFlowAdded });
     }
 
     /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
