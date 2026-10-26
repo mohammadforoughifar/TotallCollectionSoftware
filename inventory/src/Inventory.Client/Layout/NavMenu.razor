@@ -197,7 +197,7 @@
                 <div class="nav-group-items">
                     @foreach (var item in BonHrNav.Items)
                     {
-                        @if (Auth.Has("RadisHr.Access") || Auth.Has("RadisHr." + item.Section))
+                        @if (CanSeeBonHrSection(item.Section))
                         {
                         <NavLink class="nav-link" href="@item.Href" Match="@(item.Href == "bon-hr" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="NotifyClose">
                             <i class="bi @item.Icon"></i><span>@item.Label</span>
@@ -758,6 +758,18 @@
 </div>
 
 @code {
+    /// <summary>
+    /// نمایش آیتم منوی بن‌سازه: مجوز کل ماژول، مجوز همان بخش، یا مجوز تفکیکی معادل.
+    /// بخش «ورود اطلاعات» با هر یک از مجوزهای افزودن/ویرایش پرسنل هم دیده می‌شود.
+    /// </summary>
+    private bool CanSeeBonHrSection(string section)
+    {
+        if (Auth.Has("RadisHr.Access")) return true;
+        if (Auth.Has("RadisHr." + section)) return true;
+        return section == "EmployeeEntry"
+               && (Auth.Has("RadisHr.EmployeeCreate") || Auth.Has("RadisHr.EmployeeUpdate"));
+    }
+
     [Parameter] public int ReorderCount { get; set; }
     [Parameter] public int NewSystemsCount { get; set; }
     [Parameter] public int LettersUnreadCount { get; set; }

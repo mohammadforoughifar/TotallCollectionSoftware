@@ -108,7 +108,10 @@ public static class RbacSeeder
         // ================== سامانه کامل RADIS-HR V019 ==================
         // HrTalent و جذب/استعداد فعلاً زیرمجموعهٔ HrCore هستند؛ بنابراین permission مستقل HrTalent تعریف نمی‌شود.
         // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
-        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
+        // EmployeeCreate / EmployeeUpdate: تفکیک «افزودن» از «ویرایش» پرسنل (در EmployeesController و صفحات
+        // پرسنل چک می‌شوند). EmployeeEntry به‌عنوان مجوز قدیمی حفظ شده و هم‌ارز Create+Update رفتار می‌کند
+        // تا دسترسی نقش‌های موجود با ارتقا قطع نشود.
+        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "EmployeeCreate", "EmployeeUpdate", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
         // ================== دسترسی به ازای هر داشبورد ==================
         ["Dashboards"] = new[] { "Financial", "Management", "Hardware" },
         // ================== دسترسی به ازای هر گزارش ==================
@@ -259,6 +262,43 @@ public static class RbacSeeder
             }
 
             Console.WriteLine($"[RBAC] {newPermissions.Count} پرمیشن جدید اضافه شد (داشبوردها/گزارش‌ها/معرف).");
+        }
+
+        // ================== رادیس‌اچ‌آر: تفکیک «افزودن پرسنل» از «ویرایش پرسنل» ==================
+        // نقش‌هایی که پیش‌تر مجوز قدیمی RadisHr.EmployeeEntry را داشتند، هر دو مجوز تازه را هم
+        // می‌گیرند تا با ارتقا دسترسی کسی قطع نشود؛ از این پس مدیر سیستم می‌تواند آن‌ها را
+        // جداگانه به نقش‌ها بدهد یا بگیرد.
+        var legacyEntry = await db.Permissions
+            .FirstOrDefaultAsync(p => p.Module == "RadisHr" && p.Action == "EmployeeEntry");
+        var splitPerms = await db.Permissions
+            .Where(p => p.Module == "RadisHr" && (p.Action == "EmployeeCreate" || p.Action == "EmployeeUpdate"))
+            .ToListAsync();
+        if (legacyEntry != null && splitPerms.Count > 0)
+        {
+            var roleIdsWithLegacy = await db.RolePermissions
+                .Where(rp => rp.PermissionId == legacyEntry.Id)
+                .Select(rp => rp.RoleId)
+                .ToListAsync();
+            if (roleIdsWithLegacy.Count > 0)
+            {
+                var splitPermIds = splitPerms.Select(p => p.Id).ToArray();
+                var already = await db.RolePermissions
+                    .Where(rp => roleIdsWithLegacy.Contains(rp.RoleId) && splitPermIds.Contains(rp.PermissionId))
+                    .Select(rp => new { rp.RoleId, rp.PermissionId })
+                    .ToListAsync();
+                var existingPairs = already.Select(a => $"{a.RoleId}:{a.PermissionId}").ToHashSet();
+                var toAdd = new List<RolePermission>();
+                foreach (var roleId in roleIdsWithLegacy.Distinct())
+                    foreach (var perm in splitPerms)
+                        if (existingPairs.Add($"{roleId}:{perm.Id}"))
+                            toAdd.Add(new RolePermission { RoleId = roleId, PermissionId = perm.Id });
+                if (toAdd.Count > 0)
+                {
+                    db.RolePermissions.AddRange(toAdd);
+                    await db.SaveChangesAsync();
+                    Console.WriteLine($"[RBAC] تفکیک مجوز پرسنل رادیس‌اچ‌آر: {toAdd.Count} دسترسی برای نقش‌های موجود اضافه شد.");
+                }
+            }
         }
 
         // ================== مهاجرت مودیان: تفکیک مجوزهای قدیمی به جدید ==================

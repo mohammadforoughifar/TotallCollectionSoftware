@@ -63,6 +63,12 @@ else
     /// <summary>عنوان فارسی بخش برای نمایش در پیام عدم دسترسی (پیش‌فرض: از فهرست منو)</summary>
     [Parameter] public string? SectionTitle { get; set; }
 
+    /// <summary>
+    /// مجوزهای جایگزین (بدون پیشوند RadisHr.) — برای بخش‌هایی که چند مجوز تفکیکی دارند؛
+    /// داشتن هر کدام برای ورود کافی است. مثال: بخش EmployeeEntry با EmployeeCreate / EmployeeUpdate.
+    /// </summary>
+    [Parameter] public string[]? AlsoPermissions { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private string Title
@@ -78,7 +84,8 @@ else
     private bool Allowed =>
         Auth.IsAdmin
         || Auth.Has("RadisHr.Access")
-        || (!string.IsNullOrWhiteSpace(Section) && Auth.Has("RadisHr." + Section));
+        || (!string.IsNullOrWhiteSpace(Section) && Auth.Has("RadisHr." + Section))
+        || (AlsoPermissions?.Any(p => !string.IsNullOrWhiteSpace(p) && Auth.Has("RadisHr." + p)) ?? false);
 
     private void GoHome() => Nav.NavigateTo("");
 }

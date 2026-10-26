@@ -16,6 +16,25 @@ public class EmployeesController : ControllerBase
     private readonly AppDbContext _db;
     public EmployeesController(AppDbContext db) => _db = db;
 
+    // ==================== دسترسی تفکیکی پرسنل ====================
+    // «افزودن» و «ویرایش» پرسنل دو مجوز مستقل‌اند تا در تنظیمات ← نقش‌ها جداگانه انتخاب شوند:
+    //   RadisHr.EmployeeCreate → ایجاد پرسنل و ورود گروهی
+    //   RadisHr.EmployeeUpdate → ویرایش پرونده پرسنلی
+    // مجوز قدیمی RadisHr.EmployeeEntry (و RadisHr.Access / نقش‌های hr و ceo) برای سازگاری،
+    // هر دو عمل را مجاز می‌کند تا با ارتقا دسترسی هیچ کاربری قطع نشود.
+    private bool HasPerm(string perm) => User.HasClaim("permission", perm);
+    private bool IsModulePrivileged =>
+        User.IsInRole("hr") || User.IsInRole("ceo") || User.IsInRole("Admin") || HasPerm("RadisHr.Access");
+    private bool CanCreateEmployee =>
+        IsModulePrivileged || HasPerm("RadisHr.EmployeeCreate") || HasPerm("RadisHr.EmployeeEntry");
+    private bool CanUpdateEmployee =>
+        IsModulePrivileged || HasPerm("RadisHr.EmployeeUpdate") || HasPerm("RadisHr.EmployeeEntry");
+
+    private ObjectResult ForbiddenCreate() => StatusCode(403, new ApiMessage(false,
+        "برای ثبت پرسنل جدید مجوز «افزودن پرسنل» (RadisHr.EmployeeCreate) لازم است."));
+    private ObjectResult ForbiddenUpdate() => StatusCode(403, new ApiMessage(false,
+        "برای ویرایش پروندهٔ پرسنلی مجوز «ویرایش پرسنل» (RadisHr.EmployeeUpdate) لازم است."));
+
     [HttpGet]
     public async Task<ActionResult<List<Employee>>> GetAll([FromQuery] string? search, [FromQuery] string? unit, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
@@ -56,6 +75,8 @@ public class EmployeesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<IdResponse>> Create(Employee employee)
     {
+        // مجوز تفکیکی «افزودن» (نقش‌های hr/ceo و مجوز قدیمی EmployeeEntry همچنان مجازند)
+        if (!CanCreateEmployee) return ForbiddenCreate();
         if (string.IsNullOrWhiteSpace(employee.Code))
             return BadRequest(new ApiMessage(false, "کد پرسنلی الزامی است."));
 
@@ -73,6 +94,8 @@ public class EmployeesController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<ActionResult<ApiMessage>> Update(int id, Employee input)
     {
+        // مجوز تفکیکی «ویرایش» — کسی که فقط EmployeeCreate دارد نمی‌تواند پرونده را تغییر دهد
+        if (!CanUpdateEmployee) return ForbiddenUpdate();
         var employee = await _db.Employees.Include(e => e.Contracts)
             .FirstOrDefaultAsync(e => e.Id == id);
         if (employee == null) return NotFound(new ApiMessage(false, "پرسنل یافت نشد."));
@@ -109,6 +132,10 @@ public class EmployeesController : ControllerBase
     [HttpPost("import")]
     public async Task<ActionResult<ImportEmployeesResult>> Import(ImportEmployeesRequest request)
     {
+        // ورود گروهی «ایجاد» می‌کند؛ اگر Overwrite فعال باشد پرونده‌های موجود را هم ویرایش می‌کند
+        // بنابراین هر دو مجوز لازم است (مجوز قدیمی EmployeeEntry هر دو را می‌دهد).
+        if (!CanCreateEmployee) return ForbiddenCreate();
+        if (request.Overwrite && !CanUpdateEmployee) return ForbiddenUpdate();
         int inserted = 0, updated = 0, skipped = 0;
         var errors = new List<string>();
 
