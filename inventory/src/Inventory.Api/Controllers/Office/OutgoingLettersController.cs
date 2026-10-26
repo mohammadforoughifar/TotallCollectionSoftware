@@ -510,7 +510,10 @@ public class OutgoingLettersController : RbacControllerBase
         byte[]? pdf;
         try
         {
-            pdf = await _print.GeneratePdfAsync(id, size, withCopy, withMargin, withLetterhead);
+            // دبیرخانه و مدیر: چاپ فقط با امضای کامل همهٔ امضاکنندگان.
+            // ایجادکننده/دریافت‌کننده (کاربران غیر دبیرخانه): چاپ ممکن است و جای امضا با نام و سِمَت پر می‌شود.
+            pdf = await _print.GeneratePdfAsync(id, size, withCopy, withMargin, withLetterhead,
+                requireSignatures: hasDabirkhane || isAdmin);
         }
         catch (RequiredCompanyLetterheadPrintException ex)
         {

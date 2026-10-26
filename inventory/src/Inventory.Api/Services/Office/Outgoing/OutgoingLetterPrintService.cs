@@ -47,7 +47,11 @@ public interface IOutgoingLetterPrintService
     /// false = «بدون رونوشت» (بلوک رونوشت حذف می‌شود — برای نسخه‌ای که به
     /// سازمان مقصد تحویل داده می‌شود و نیازی به اطلاع رونوشت‌گیرندگان ندارد)
     /// </param>
-    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true);
+    /// <param name="requireSignatures">
+    /// وقتی true است (دبیرخانه/مدیر) تا کامل‌شدن امضاها و وجود تصویر امضای همهٔ امضاکنندگان، چاپ انجام نمی‌شود.
+    /// برای ایجادکننده/دریافت‌کنندهٔ نامه false است تا آن‌ها بتوانند نسخهٔ چاپی بگیرند (جای امضا فقط نام و سِمَت می‌آید).
+    /// </param>
+    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true);
 }
 
 /// <summary>Raised when a company-required letterhead cannot be resolved or applied.</summary>
@@ -374,7 +378,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// نسخهٔ بدون رونوشت برای تحویل به سازمان مقصد است؛ نسخهٔ با رونوشت
     /// در پروندهٔ دبیرخانه باقی می‌ماند.
     /// </summary>
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true)
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
     {
         var total = Stopwatch.StartNew();
         long lastStageMs = 0;
@@ -515,9 +519,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
         MarkStage("signature-read-decode-cache");
         if (missingSignatures.Count > 0)
-            throw new OutgoingSignaturePrintException(
-                $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignatures)}. " +
-                "این محدودیت مربوط به وضعیت امضای نامه است (نه دسترسی شما)؛ پس از تکمیل امضاها چاپ روی سربرگ انجام می‌شود.");
+        {
+            if (requireSignatures)
+                throw new OutgoingSignaturePrintException(
+                    $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignatures)}. " +
+                    "این محدودیت مربوط به وضعیت امضای نامه است (نه دسترسی شما)؛ پس از تکمیل امضاها چاپ روی سربرگ انجام می‌شود.");
+
+            // ایجادکننده/دریافت‌کنندهٔ نامه (کاربران غیر دبیرخانه) هم باید بتوانند نسخهٔ چاپی بگیرند؛
+            // در این حالت جای امضای ناقص خالی/با نام و سِمَت چاپ می‌شود و چاپ متوقف نمی‌شود.
+            _logger.LogWarning(
+                "چاپ بدون اعتبارسنجی امضا انجام شد (کاربر غیر دبیرخانه). LetterId={LetterId} امضاکنندگان ناقص: {Missing}",
+                letterId, string.Join("، ", missingSignatures));
+        }
 
         _logger.LogInformation(
             "سربرگ نامه انتخاب شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
