@@ -58,7 +58,7 @@
 | داخلی | `GET api/letters/{id}/gardesh` | فقط Read | گردش برای عضو گردش هم باز می‌شود |
 | داخلی | `GET api/letters/{id}/attachments` و `.../download` | Read + گردش | گردش به‌تنهایی کافی است |
 | داخلی | `GET api/letters/{id}/print` | فقط Read | عضو گردش هم می‌تواند چاپ بگیرد |
-| صادره | `GET api/outgoing-letters/{id}` | فقط دبیرخانه/مدیر/Read | ایجادکننده، امضاکننده و دارندهٔ ارجاع هم مجاز |
+| صادره | `GET api/outgoing-letters/{id}` | فقط dبیرخانه/مدیر/Read | ایجادکننده، امضاکننده و دارندهٔ ارجاع هم مجاز |
 | صادره | `.../gardesh` و `.../attachments` | Read | عضو گردش کافی است |
 | وارده | `GET api/incoming-letters/{id}` | فقط Read | `CanAccessLetterAsync` (ایجادکننده/عضو گردش/مدیر) هم کافی است |
 | وارده | `.../{id}/gardesh` و پیوست‌ها | Read | عضو گردش کافی است |
@@ -77,71 +77,3 @@
 - `Inventory.Client/Pages/Office/Letters/Outgoing/OutgoingLetterCartable.razor`
 - `Inventory.Client/Pages/Office/Letters/Incoming/IncomingLetterCartable.razor`
 - `Inventory.Client/Pages/ItAssets/WorkOrdersGuide.razor`
-
----
-
-# پیوست ۲: اعلان «نامهٔ جدید در کارتابل شما» برای افراد تازه‌اضافه‌شده
-
-تاریخ: ۱۴۰۵/۰۸/۰۴
-
-## قاعده
-هر فردی که **در همان لحظه** به گردش نامه اضافه می‌شود (یعنی برایش ردیف ارجاع ساخته می‌شود)، یک اعلان با عنوان
-**«نامهٔ جدید در کارتابل شما 📨»** می‌گیرد. افرادی که از قبل در گردش نامه بوده‌اند **اعلان تکراری نمی‌گیرند**
-و خودِ فرستنده/دستوردهنده هم اعلان نمی‌گیرد.
-
-## محتوای اعلان
-- **بدنه:** «{شمارهٔ نامه} — «{عنوان نامه}» — دسترسی از طریق دستورکار «{عنوان دستور}» ({شمارهٔ دستور})»
-- **فرم:** نامه داخلی / نامه صادره / نامه وارده (بر اساس نوع واقعی نامه)
-- **از طرف:** کاربری که ارجاع را ثبت کرده (دستوردهنده / افزایندهٔ نفر)
-- **لینک:** مسیر کارتابل همان نوع نامه + `?open={شناسه}` ⇒ `/letters`، `/outgoing-letters`، `/incoming-letters`
-
-## جایگاه پیاده‌سازی
-داخل `EnsureLetterFlowForUsersAsync` در `Controllers/ItAssets/WorkOrdersController.cs` و درست پس از ساخت
-ردیف‌های `Erjas`، متد `NotifyNewLetterAccessAsync(...)` فقط برای فهرست `newTargets` (افراد تازه‌افزوده‌شده)
-فراخوانی می‌شود. بنابراین **همهٔ مسیرها** به‌طور خودکار پوشش داده می‌شوند:
-
-1. ثبت دستور کار از روی نامه (`POST api/workorders`)
-2. ویرایش دستور کار و افزودن گیرندهٔ تازه (`PUT api/workorders/{id}`)
-3. افزودن نفر به گردش (`POST api/workorders/{id}/assignees`)
-4. زیر-دستور زنجیره‌ای (نامه از والد به ارث می‌رسد)
-5. همگام‌سازی دادهٔ قبلی (`POST api/workorders/letter-flow/sync`)
-
-## هم‌زمانی
-پس از ساخت ارجاع، رویدادهای زندهٔ `letters` / `incoming-letters` / `outgoing-letters` منتشر می‌شود تا کارتابل باز
-کاربر و شمارندهٔ نخوانده، بدون رفرش تازه شوند.
-
----
-
-# پیوست ۳ — اعلان «پیوست جدید» برای رویت‌کرده‌های گردش
-
-## قاعده
-هرگاه به نامه‌ای (داخلی، صادره یا وارده) پیوست تازه‌ای اضافه شود، اعلان «پیوست جدید برای نامه» فقط برای
-افرادی ارسال می‌شود که **هم در گردش آن نامه هستند** و **هم نامه را رویت کرده‌اند**.
-
-## گیرندگان اعلان
-| نوع نامه | «حاضر در گردش» | «رویت‌کرده» |
-|---|---|---|
-| داخلی | ردیف‌های `Erja` فعال (ایجادکننده هم اگر ردیف ارجاع داشته باشد) | `Erja.IsRead == true` |
-| صادره | ردیف‌های `Erja` فعال + `OutgoingLetterSigners` + ایجادکننده | `Erja.IsRead == true` یا `OutgoingLetterSigner.IsRead == true` |
-| وارده | ردیف‌های `Erja` فعال | `Erja.IsRead == true` |
-
-- بارگذارندهٔ فایل (`uploaderUserId`) از فهرست گیرندگان حذف می‌شود.
-- افرادی که نامه را نخوانده‌اند اعلان جداگانه نمی‌گیرند؛ نامهٔ نخوانده از قبل در کارتابل/شمارندهٔ آن‌ها برجسته است.
-
-## محتوای اعلان
-- **عنوان:** «پیوست جدید برای نامه 📎»
-- **بدنه:** `{شمارهٔ نامه} — «{عنوان نامه}» — فایل: {نام فایل}`
-- **فرم:** نامه داخلی / نامه صادره / نامه وارده
-- **از طرف:** نام بارگذارندهٔ فایل
-- **لینک:** `/letters` ، `/outgoing-letters` ، `/incoming-letters` + `?open={شناسه}`
-
-## جایگاه پیاده‌سازی
-- `Services/Office/LetterAttachmentNotifier.cs` → `LetterAttachmentNotifier.NotifyNewAttachmentAsync(...)`
-  (منبع واحد قاعده؛ هر سه نوع نامه از همین متد استفاده می‌کنند).
-- فراخوانی در `UploadAttachment` (یعنی `POST {id}/attachments`) هر سه کنترلر
-  `InnerLettersController`، `OutgoingLettersController` و `IncomingLettersController`
-  و درست پس از `SaveChangesAsync`؛ خطای اعلان در `try/catch` گرفته می‌شود تا آپلود هرگز به‌خاطر اعلان شکست نخورد.
-
-## راهنماها
-این رفتار در `InnerLetterGuide.razor`، `OutgoingLetterGuide.razor` و `IncomingLetterGuide.razor`
-(بخش «اعلان پیوست جدید») و همچنین `ItAssets/WorkOrdersGuide.razor` مستند شده است.
