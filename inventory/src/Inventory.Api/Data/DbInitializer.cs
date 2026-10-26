@@ -152,6 +152,9 @@ public static class DbInitializer
                 // راه‌اندازی فراخوانی نمی‌شد و ثبت نامه دارای رونوشت با 400 شکست می‌خورد.
                 await OutgoingCopyToSchemaV1.EnsureAsync(db);
 
+                // وضعیت «خوانده شدن» امضاکنندگان نامه صادره (مستقل از امضا)
+                await OutgoingSignerReadSchemaV1.EnsureAsync(db);
+
                 // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
                 await MeetingMinutesSchemaV1.EnsureAsync(db);
 

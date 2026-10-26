@@ -24,6 +24,9 @@ public interface IOutgoingLetterService
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
     Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
     Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly, int page = 1, int pageSize = 20);
+
+    /// <summary>علامت‌گذاری «خوانده شد» برای ارجاع‌ها و ردیف امضای همین کاربر (بدون نیاز به امضا).</summary>
+    Task MarkReadAsync(int letterId, int userId);
     Task<OutgoingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20);
@@ -442,7 +445,9 @@ public class OutgoingLetterService : IOutgoingLetterService
         }
         if (unreadOnly == true)
         {
-            qSign = qSign.Where(s => !s.IsSigned);
+            // «خوانده‌نشده» برای امضاکننده یعنی نامه را باز نکرده؛ نه یعنی امضا نکرده.
+            // نامهٔ امضاشده هم به‌طور طبیعی خوانده‌شده است (سازگاری با دادهٔ قبل از این ستون).
+            qSign = qSign.Where(s => !s.IsRead && !s.IsSigned);
         }
 
         page = Math.Max(1, page);
@@ -519,7 +524,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 ErjaType = "امضا",
                 MatnErja = s.SignNote,
                 IsNeshan = false,
-                IsRead = s.IsSigned, // امضا شده = خوانده شده تلقی شود
+                IsRead = s.IsRead || s.IsSigned, // خوانده‌شدن مستقل از امضاست
                 TypeTaeed = 0,
                 HasAnswer = s.IsSigned,
                 ReciverCount = s.Source.Erjas.Count(x => !x.IsDelete),
@@ -547,6 +552,8 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 existing.IsSigner = true;
                 existing.IsSigned = item.IsSigned;
+                // اگر از هر یک از دو مسیر (ارجاع یا امضا) خوانده شده باشد، خوانده‌شده است
+                existing.IsRead = existing.IsRead || item.IsRead;
                 existing.CanSign = item.CanSign;
                 existing.SignersTotal = item.SignersTotal;
                 existing.SignersSigned = item.SignersSigned;
@@ -615,7 +622,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Foriat = s.Source.OutgoingLetter!.Foriat,
                 ErjaType = "امضا",
                 IsNeshan = false,
-                IsRead = s.IsSigned,
+                IsRead = s.IsRead || s.IsSigned,
                 TypeTaeed = 0,
                 HasAnswer = s.IsSigned,
                 ReciverCount = s.Source.Erjas.Count(x => !x.IsDelete),
@@ -952,12 +959,28 @@ public class OutgoingLetterService : IOutgoingLetterService
         var soon = DateTime.Now.AddDays(2);
         return new OutgoingLetterCartableStatsDto
         {
-            InboxUnread = await inbox.CountAsync(e => !e.IsRead) + await signing.CountAsync(s => !s.IsSigned),
+            InboxUnread = await inbox.CountAsync(e => !e.IsRead) + await signing.CountAsync(s => !s.IsRead && !s.IsSigned),
             InboxTotal = await inbox.CountAsync() + await signing.CountAsync(),
             SentTotal = await _db.OutgoingLetters.CountAsync(l => l.CreatorUserId == userId && !l.IsDelete),
             PishnevisTotal = await _db.OutgoingPishnevisLetters.CountAsync(p => p.UserId == userId && !p.IsDelete),
             DeadlineSoon = await inbox.CountAsync(e => e.MohlatPasokh != null && e.Answer == "" && e.MohlatPasokh <= soon)
         };
+    }
+
+    public async Task MarkReadAsync(int letterId, int userId)
+    {
+        var now = DateTime.Now;
+        var erjas = await _db.Erjas
+            .Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete && !e.IsRead)
+            .ToListAsync();
+        foreach (var e in erjas) { e.IsRead = true; e.DateRead = now; }
+
+        var signers = await _db.OutgoingLetterSigners
+            .Where(s => s.SourceId == letterId && s.UserId == userId && !s.IsDelete && !s.IsRead)
+            .ToListAsync();
+        foreach (var s in signers) { s.IsRead = true; s.DateRead = now; }
+
+        if (erjas.Count > 0 || signers.Count > 0) await _db.SaveChangesAsync();
     }
 
     public async Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20)

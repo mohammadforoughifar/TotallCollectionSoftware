@@ -1073,12 +1073,17 @@
             await LoadWorkOrdersAsync(letterId);
             attachments = new();
             try { attachments = await OutgoingSvc.GetAttachmentsAsync(letterId); } catch { }
-            if (selected?.MyErja is { IsRead: false } my)
+            // «خوانده شد» همیشه — هم برای دارندهٔ ارجاع و هم برای امضاکننده (که ممکن است
+            // هیچ ارجاعی نداشته باشد و پیش‌تر تا لحظهٔ امضا خوانده‌نشده می‌ماند).
+            if (selected != null)
             {
-                await OutgoingSvc.MarkReadAsync(my.ErjaId);
-                my.IsRead = true;
+                try { await OutgoingSvc.MarkLetterReadAsync(letterId); } catch { }
+                if (selected.MyErja != null) selected.MyErja.IsRead = true;
+                foreach (var it in items.Where(i => i.LetterId == letterId)) it.IsRead = true;
                 if (selectedItem != null) selectedItem.IsRead = true;
+                // شمارندهٔ «خوانده‌نشده» باید همان لحظه کم شود، نه با رفرش صفحه.
                 stats = await OutgoingSvc.GetStatsAsync();
+                StateHasChanged();
             }
             // نامه باز نشد: یا دسترسی نداریم یا حذف شده است — به‌جای صفحهٔ خالی
             // پیامِ روشن نشان داده می‌شود.

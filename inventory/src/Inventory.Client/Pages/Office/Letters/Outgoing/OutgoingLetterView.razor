@@ -238,6 +238,11 @@
         try
         {
             letter = await OutgoingSvc.GetDetailAsync(LetterId);
+            // باز کردن نامه = خوانده شدن (مستقل از امضا کردن)
+            if (letter != null)
+            {
+                try { await OutgoingSvc.MarkLetterReadAsync(LetterId); } catch { }
+            }
             try { attachments = await OutgoingSvc.GetAttachmentsAsync(LetterId); } catch { attachments = new(); }
             signaturePreviewUrls.Clear();
             if (letter != null)

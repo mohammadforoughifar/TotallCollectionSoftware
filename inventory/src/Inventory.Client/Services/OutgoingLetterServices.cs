@@ -19,6 +19,9 @@ public interface IOutgoingLetterService
     Task AddErjaAsync(AddErjaDto dto);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
     Task MarkReadAsync(int erjaId);
+
+    /// <summary>«خوانده شد» برای کل نامه: ارجاع‌های من + ردیف امضای من (بدون نیاز به امضا).</summary>
+    Task MarkLetterReadAsync(int letterId);
     Task<bool> ToggleNeshanAsync(int erjaId);
 
     /// <summary>نشان‌کردن (ستاره) نامه صادره ارسالی توسط فرستنده — روی خود نامه</summary>
@@ -150,6 +153,9 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public Task MarkReadAsync(int erjaId) =>
         _api.PostAsync<object>($"api/outgoing-letters/erja/{erjaId}/read");
+
+    public Task MarkLetterReadAsync(int letterId) =>
+        _api.PostAsync<object>($"api/outgoing-letters/{letterId}/read");
 
     public async Task<bool> ToggleNeshanAsync(int erjaId) =>
         (await _api.PostAsync<NeshanResponse>($"api/outgoing-letters/erja/{erjaId}/neshan")).IsNeshan;

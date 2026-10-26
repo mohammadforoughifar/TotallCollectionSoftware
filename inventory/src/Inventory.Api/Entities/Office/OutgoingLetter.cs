@@ -171,6 +171,14 @@ public class OutgoingLetterSigner
     public bool IsSigned { get; set; }
     public DateTime? DateSigned { get; set; }
 
+    /// <summary>
+    /// آیا امضاکننده نامه را «خوانده» است — مستقل از امضا کردن.
+    /// پیش‌تر خوانده‌شدن مساوی امضا شدن گرفته می‌شد و نامه تا لحظهٔ امضا در فهرست
+    /// «خوانده‌نشده» می‌ماند.
+    /// </summary>
+    public bool IsRead { get; set; }
+    public DateTime? DateRead { get; set; }
+
     /// <summary>توضیح/پاراف امضا کننده (اختیاری)</summary>
     [MaxLength(1000)] public string? SignNote { get; set; }
 

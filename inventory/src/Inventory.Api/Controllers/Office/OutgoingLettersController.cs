@@ -125,6 +125,8 @@ public class OutgoingLettersController : RbacControllerBase
         // دیتابیس‌های قدیمی ممکن است جدول رونوشت‌ها را نداشته باشند؛ قبل از
         // خواندن جزئیات، اسکیمای idempotent آن را تضمین می‌کنیم.
         await OutgoingCopyToSchemaV1.EnsureAsync(Db);
+        // ستون‌های IsRead/DateRead امضاکنندگان (خوانده‌شدن مستقل از امضا) برای دیتابیس‌های قدیمی
+        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
         try
         {
             var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
@@ -582,6 +584,19 @@ public class OutgoingLettersController : RbacControllerBase
     {
         await _erja.MarkReadAsync(erjaId, MyUserId);
         return Ok();
+    }
+
+    /// <summary>
+    /// «خوانده شد» برای یک نامهٔ صادره — هم ارجاع‌های همین کاربر و هم ردیف امضای او.
+    /// لازم است چون امضاکننده ممکن است هیچ ارجاعی نداشته باشد و پیش‌تر فقط با امضا
+    /// کردن از فهرست خوانده‌نشده‌ها خارج می‌شد.
+    /// </summary>
+    [HttpPost("{id:int}/read")]
+    public async Task<IActionResult> MarkLetterRead(int id)
+    {
+        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
+        await _letters.MarkReadAsync(id, MyUserId);
+        return Ok(new { message = "نامه خوانده شد." });
     }
 
     [HttpPost("erja/{erjaId:int}/neshan")]
