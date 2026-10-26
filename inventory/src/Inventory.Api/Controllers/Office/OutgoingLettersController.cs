@@ -488,7 +488,19 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
         [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // چه کسانی می‌توانند چاپ بگیرند؟
+        //   • دبیرخانهٔ نامهٔ صادره و مدیر (بدون قید)
+        //   • ایجادکنندهٔ نامه، امضاکنندگان و هر کاربری که نامه به او ارجاع شده (دریافت‌کننده)
+        // برای گروه دوم، داشتن مجوز «خواندن» الزامی نیست تا کاربری که نامه را ساخته یا
+        // دریافت کرده ولی مجوز کارتابل ندارد هم بتواند نسخهٔ چاپی بگیرد.
+        var isAdmin = await IsAdminAsync();
+        var hasDabirkhane = await HasDabirkhaneAsync();
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه، مدیر، ایجادکننده و دریافت‌کنندگان نامه مجاز است." });
+        }
+
         if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });

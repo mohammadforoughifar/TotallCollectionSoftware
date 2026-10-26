@@ -516,7 +516,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         MarkStage("signature-read-decode-cache");
         if (missingSignatures.Count > 0)
             throw new OutgoingSignaturePrintException(
-                $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignatures)}");
+                $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignatures)}. " +
+                "این محدودیت مربوط به وضعیت امضای نامه است (نه دسترسی شما)؛ پس از تکمیل امضاها چاپ روی سربرگ انجام می‌شود.");
 
         _logger.LogInformation(
             "سربرگ نامه انتخاب شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
