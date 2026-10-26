@@ -9,7 +9,6 @@ using System.Xml.Linq;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using QuestPDF.Elements;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -73,41 +72,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private sealed record SignatureSvgData(string Svg, int Width, int Height);
     private sealed record CachedSignature(SignatureSvgData? Data);
     private sealed record SematPrintTitle(int SematId, int? UserId, string Title, string? CorrespondenceTitle, bool DefaultSemat, bool IsActive);
-    private sealed class HomepaPageNumberComponent : IDynamicComponent
-    {
-        public DynamicComponentComposeResult Compose(DynamicContext context)
-        {
-            var content = context.CreateElement(element =>
-            {
-                if (context.TotalPages > 1)
-                {
-                    element.AlignCenter().Text(text =>
-                    {
-                        text.DefaultTextStyle(style => style
-                            .FontFamily("Vazirmatn")
-                            .FontSize(8)
-                            .FontColor("#475569")
-                            .DirectionFromRightToLeft());
-                        text.Span("صفحه ");
-                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                        text.Span(" از ");
-                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                    });
-                }
-                else
-                {
-                    element.Text(string.Empty);
-                }
-            });
-
-            return new DynamicComponentComposeResult
-            {
-                Content = content,
-                HasMoreContent = false
-            };
-        }
-    }
-
     private sealed class CachedLetterheadAsset
     {
         public CachedLetterheadAsset(bool isPdf, XPdfForm? pdf, XImage? image)
@@ -644,12 +608,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         if (path == null) return null;
         var info = new FileInfo(path);
         var key = $"outgoing-signature-svg:{path}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
-        var cached = _cache.GetOrCreate(key, entry =>
+        var cacheTimer = Stopwatch.StartNew();
+        var cacheHit = _cache.TryGetValue(key, out CachedSignature? cached);
+        if (!cacheHit)
         {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
-            entry.Size = Math.Max(info.Length, 1);
-            return new CachedSignature(TryReadSignatureSvg(TryReadSignature(relativePath)));
-        });
+            cached = _cache.GetOrCreate(key, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+                entry.Size = Math.Max(info.Length, 1);
+                return new CachedSignature(TryReadSignatureSvg(TryReadSignature(relativePath)));
+            });
+        }
+
+        if (!cacheHit || cacheTimer.ElapsedMilliseconds >= 100)
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming Stage=signature-svg-cache CacheHit={CacheHit} InputBytes={InputBytes} SvgChars={SvgChars} StageMs={StageMs}",
+                cacheHit, info.Length, cached?.Data?.Svg.Length ?? 0, cacheTimer.ElapsedMilliseconds);
         return cached?.Data;
     }
 
@@ -718,39 +692,38 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
             if (weight == 0) return null;
 
-            // Eight opacity bands retain antialiased edges but do not rely on a raster alpha mask.
+            // Eight opacity bands retain antialiased edges without relying on a raster alpha mask.
+            // Classify every pixel once, then close/open horizontal runs as the band changes.
+            // The previous implementation rescanned every row eight times (once per opacity band).
             var paths = Enumerable.Range(0, 9).Select(_ => new StringBuilder()).ToArray();
             image.ProcessPixelRows(accessor =>
             {
                 for (var y = 0; y < accessor.Height; y++)
                 {
                     var row = accessor.GetRowSpan(y);
-                    for (var level = 1; level <= 8; level++)
+                    var activeLevel = 0;
+                    var runStart = -1;
+                    for (var x = 0; x <= row.Length; x++)
                     {
-                        var runStart = -1;
-                        for (var x = 0; x <= row.Length; x++)
+                        var pixelLevel = 0;
+                        if (x < row.Length)
                         {
-                            var pixelLevel = 0;
-                            if (x < row.Length)
-                            {
-                                var px = row[x];
-                                var min = Math.Min(px.R, Math.Min(px.G, px.B));
-                                var alpha = (int)((255 - min) * px.A / 255);
-                                if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
-                            }
-
-                            if (pixelLevel == level)
-                            {
-                                if (runStart < 0) runStart = x;
-                            }
-                            else if (runStart >= 0)
-                            {
-                                var length = x - runStart;
-                                paths[level].Append('M').Append(runStart).Append(' ').Append(y)
-                                    .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
-                                runStart = -1;
-                            }
+                            var px = row[x];
+                            var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                            var alpha = (int)((255 - min) * px.A / 255);
+                            if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
                         }
+
+                        if (pixelLevel == activeLevel) continue;
+                        if (activeLevel > 0 && runStart >= 0)
+                        {
+                            var length = x - runStart;
+                            paths[activeLevel].Append('M').Append(runStart).Append(' ').Append(y)
+                                .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
+                        }
+
+                        activeLevel = pixelLevel;
+                        runStart = pixelLevel > 0 ? x : -1;
                     }
                 }
             });
@@ -825,6 +798,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var title = ToPersianDigits(letter.Title);
         var externalReference = ToPersianDigits(letter.ExternalRefNumber);
         var isHomepaLetterhead = hasLetterhead && letterheadCompanyId == HomepaCompanyId;
+        var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
         var signerCards = signers.Select(s =>
         {
             var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
@@ -874,25 +848,46 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         void AddSignerBlock(ColumnDescriptor target)
         {
-            var headingTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
+            var signerTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
             var tableTopPadding = isHomepaLetterhead ? (isA5 ? 2 : 3) : (isA5 ? 4 : 6);
             var cellPadding = isHomepaLetterhead ? 2 : 4;
 
-            target.Item().PaddingTop(headingTopPadding).Text("امضاکنندگان")
-                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                .AlignCenter().DirectionFromRightToLeft();
-            target.Item().PaddingTop(tableTopPadding).Table(table =>
-            {
-                table.ColumnsDefinition(columns =>
+            // Keep the complete signer block at the physical lower-left of the flowing letter
+            // for every company; individual cards remain centered within their own columns.
+            target.Item().PaddingTop(signerTopPadding)
+                .AlignLeft().Width(signerBlockWidth * signerColumns)
+                .Column(block =>
                 {
-                    for (var i = 0; i < signerColumns; i++)
-                        columns.RelativeColumn();
-                });
+                    block.Item().PaddingTop(tableTopPadding).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            for (var i = 0; i < signerColumns; i++)
+                                columns.RelativeColumn();
+                        });
 
-                foreach (var signer in signerCards)
-                    table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
-                        .Element(card => AddSignerCard(card, signer));
-            });
+                        foreach (var signer in signerCards)
+                            table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
+                                .Element(card => AddSignerCard(card, signer));
+                    });
+                });
+        }
+
+        void AddAriaField(IContainer container, AriaLetterheadLayout.Field field, string value,
+            float fieldFontSize, bool isolateLtr = false)
+        {
+            // Place values in fixed page-coordinate boxes over the printed dotted fields.
+            // ScaleToFit prevents long dates/numbers from extending beyond each line.
+            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+            var text = box.ScaleToFit().Text(displayValue)
+                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
+                .FontColor("#666666").LineHeight(1.05f);
+            if (isolateLtr)
+                text.DirectionFromLeftToRight();
+            else
+                text.DirectionFromRightToLeft();
         }
 
         void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
@@ -989,9 +984,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
-                // Keep the 1003 header anchored at the same page coordinates even when
-                // the body-margin option is toggled; all other companies retain their old rule.
-                page.MarginTop(isHomepaLetterhead
+                // Keep the 1003/1005 header coordinates stable even when body margins are toggled;
+                // all other companies retain their previous margin behavior.
+                page.MarginTop(isHomepaLetterhead || isAriaLetterhead
                     ? (isA5 ? 16 : 24)
                     : (withMargin ? (isA5 ? 16 : 24) : 0));
                 // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
@@ -1002,7 +997,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
                     : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 if (isHomepaLetterhead)
-                    page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent());
+                    page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(style => style
+                            .FontFamily("Vazirmatn")
+                            .FontSize(8)
+                            .LineHeight(1.1f)
+                            .FontColor("#475569")
+                            .DirectionFromRightToLeft());
+                        text.Span("صفحه ");
+                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                        text.Span(" از ");
+                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                    });
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -1012,46 +1019,31 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .LineHeight(lineHeight)
                     .DirectionFromRightToLeft());
 
-                var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
                 // This offset belongs only to the flowing body. The company 1003
                 // metadata fields remain in the separately positioned page header.
                 // QuestPDF repeats both regions on every page.
                 var contentTopPadding = isHomepaLetterhead
                     ? HomepaLetterheadLayout.ReceiverTopPadding(isA5)
-                    : (withMargin || hasLetterhead ? 30f : 0f);
+                    : isAriaLetterhead
+                        ? AriaLetterheadLayout.BodyTopPadding(isA5)
+                        : (withMargin || hasLetterhead ? 30f : 0f);
 
                 if (isAriaLetterhead)
                 {
-                    // Aria's registered PDF has its labels printed in one gray row.
-                    // Fill the existing dotted fields (date, number, attachment) without
-                    // repeating labels, keeping the logo and company details untouched.
-                    var fieldScale = isA5 ? 0.704f : 1f;
-                    var fieldWidth = 90f * fieldScale;
-                    var dateFieldInset = 13f * fieldScale;
-                    var numberFieldInset = 27f * fieldScale;
-                    var attachmentFieldInset = 21f * fieldScale;
-                    page.Header()
-                        .Height(isA5 ? 150 : 160)
-                        .PaddingTop(isA5 ? 64 : 90)
-                        .AlignLeft()
-                        .Width(fieldWidth * 3)
-                        .Row(fields =>
+                    // The artwork already contains all three captions and dotted lines.
+                    // Paint each value in its own fixed box; these coordinates are independent
+                    // of the body start offset and are repeated by QuestPDF on every page.
+                    page.Header().ContentFromLeftToRight()
+                        .Height(AriaLetterheadLayout.HeaderHeight(isA5))
+                        .Layers(layers =>
                         {
-                            fields.ConstantItem(fieldWidth).PaddingRight(dateFieldInset)
-                                .AlignRight().Text(date)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(numberFieldInset)
-                                .AlignRight().Text(number)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(attachmentFieldInset)
-                                .AlignRight().Text(hasAttachment ? "دارد" : "ندارد")
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
+                            layers.PrimaryLayer().Extend();
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
+                                hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
                         });
                 }
                 else if (isHomepaLetterhead)
@@ -1140,7 +1132,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         });
 
-        return document.GeneratePdf();
+        var renderTimer = Stopwatch.StartNew();
+        var generatedPdf = document.GeneratePdf();
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=questpdf-generate-pdf StageMs={StageMs} Bytes={Bytes}",
+            letter.Id, renderTimer.ElapsedMilliseconds, generatedPdf.Length);
+        return generatedPdf;
     }
 
     private static string FullName(User? user)

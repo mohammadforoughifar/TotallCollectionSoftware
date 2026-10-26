@@ -102,6 +102,35 @@ class LetterheadAssetsTests(unittest.TestCase):
                 actual.append(float(variants[size_index].split(",")[1].strip().removesuffix("f")))
             self.assertEqual(tuple(actual), expected)
 
+    def test_aria_fields_and_body_start_are_fixed_independently_for_a4_and_a5(self):
+        source = SERVICE.read_text()
+        layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
+        expected = {
+            "Date": ((142.2, 47, 35.9, 10), (202, 66, 51, 14)),
+            "Number": ((77.4, 47, 34.5, 10), (110, 66, 49, 14)),
+            "Attachment": ((7, 47, 35.2, 10), (10, 66, 50, 14)),
+        }
+        for name, sizes in expected.items():
+            method = re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
+            variants = re.findall(r"new\(([^)]+)\)", method)
+            self.assertEqual(len(variants), 2)
+            for index, size in enumerate(sizes):
+                with self.subTest(field=name, size=("A5", "A4")[index]):
+                    actual = tuple(float(v.strip().removesuffix("f")) for v in variants[index].split(","))
+                    self.assertEqual(actual, size)
+
+        self.assertIn("HeaderHeight(bool isA5) => isA5 ? 70f : 95f", layout)
+        self.assertIn("BodyTopPadding(bool isA5) => isA5 ? 13f : 12f", layout)
+        self.assertIn(r'isolateLtr ? $"\u2066{value}\u2069" : value', source)
+        self.assertIn("text.DirectionFromLeftToRight();", source)
+        self.assertIn("page.MarginTop(isHomepaLetterhead || isAriaLetterhead", source)
+        aria_branch = source.split("if (isAriaLetterhead)", 1)[1].split("else if (isHomepaLetterhead)", 1)[0]
+        self.assertIn("page.Header().ContentFromLeftToRight()", aria_branch)
+        self.assertIn(".Layers(layers =>", aria_branch)
+        for field in expected:
+            self.assertIn(f"AriaLetterheadLayout.{field}(isA5)", aria_branch)
+        self.assertIn("? AriaLetterheadLayout.BodyTopPadding(isA5)", source)
+
     def test_homepa_header_is_left_anchored_and_fields_are_independent(self):
         source = SERVICE.read_text()
         branch = source.split("else if (isHomepaLetterhead)", 1)[1]
@@ -114,16 +143,20 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", branch)
         self.assertIn("HomepaLetterheadLayout.Number(isA5)", branch, "fixed metadata positions are independent of body spacing")
 
-    def test_1003_signer_heading_group_and_multpage_footer_are_conditional(self):
+    def test_1003_signer_block_alignment_and_multpage_footer_are_conditional(self):
         source = SERVICE.read_text()
         self.assertIn("col.Item().ShowEntire().Column(AddSignerBlock)", source)
-        self.assertIn("var headingTopPadding = isHomepaLetterhead", source)
+        self.assertIn("var signerTopPadding = isHomepaLetterhead", source)
         self.assertIn("var tableTopPadding = isHomepaLetterhead", source)
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
-        self.assertIn("using QuestPDF.Elements;", source)
-        self.assertIn("DynamicComponentComposeResult Compose(DynamicContext context)", source)
-        self.assertIn("context.TotalPages > 1", source)
-        self.assertIn("page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent())", source)
+        self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
+        self.assertNotIn('Text("امضاکنندگان")', source)
+        self.assertNotIn("IDynamicComponent", source)
+        self.assertNotIn(".Dynamic(", source)
+        self.assertIn("page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>", source)
+        self.assertIn("text.CurrentPageNumber()", source)
+        self.assertIn("text.TotalPages()", source)
+        self.assertIn(".FontSize(8)\n                            .LineHeight(1.1f)", source)
         overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
         self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
         self.assertLess(overlay.index("graphics.DrawImage(asset.Image, bounds)"),

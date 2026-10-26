@@ -178,13 +178,20 @@ window.focusById = function (id, select) {
     if (select && el.select) { try { el.select(); } catch (e) { } }
     return true;
 };
-// باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64
-window.ltxOpenPdf = function (base64, fileName) {
+// Normalize optimized Blazor byte-array interop (Uint8Array); retain base64 fallback for older callers.
+function ltxPdfBytes(payload) {
+    if (payload instanceof Uint8Array) return payload;
+    if (payload instanceof ArrayBuffer) return new Uint8Array(payload);
+    var bin = atob(String(payload || ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+// باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی باینری ترجیح دارد
+window.ltxOpenPdf = function (payload, fileName) {
     try {
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        var blob = new Blob([arr], { type: 'application/pdf' });
+        var bytes = ltxPdfBytes(payload);
+        var blob = new Blob([bytes], { type: 'application/pdf' });
         var url = URL.createObjectURL(blob);
         var w = window.open(url, '_blank');
         if (!w) { // popup blocked → download
@@ -237,14 +244,12 @@ window.ltxPrintBegin = function () {
         return id;
     } catch (e) { return null; }
 };
-window.ltxPrintReady = function (id, base64, fileName) {
+window.ltxPrintReady = function (id, payload, fileName) {
     try {
         var w = window.ltxPrintWindows[id];
         if (!w || w.closed) return false;
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+        var bytes = ltxPdfBytes(payload);
+        var url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
         var safeName = String(fileName || 'letter.pdf').replace(/[<>&]/g, '');
         w.document.open();
         w.document.write('<!doctype html><html><head><title>' + safeName + '</title>' +
