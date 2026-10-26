@@ -76,12 +76,12 @@
                 @if (folder != "archive")
                 {
                 <div class="chips">
-                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@BaseItems.Count.FaDigits()</span></button>
+                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@((folder == "inbox" ? stats.InboxTotal : BaseItems.Count).FaDigits())</span></button>
                     @if (folder != "draft")
                     {
                         @if (folder == "inbox")
                         {
-                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")'>خوانده‌نشده <span class="n">@BaseItems.Count(l => !l.IsRead).FaDigits()</span></button>
+                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")' title="فقط نامه‌های خوانده‌نشده (روی همهٔ صفحات)">خوانده‌نشده <span class="n">@stats.InboxUnread.FaDigits()</span></button>
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "deadline" ? "on" : "")" @onclick='() => SetFilter("deadline")'><i class="bi bi-clock" style="font-size:10px"></i> مهلت‌دار</button>
@@ -177,6 +177,11 @@
                                 </div>
                                 <div class="mail-tt">@ll.Title</div>
                                 <div class="tags">
+                                    @* لیبل «خوانده‌نشده» — علاوه بر بولد شدن عنوان، وضعیت را صریح نشان می‌دهد *@
+                                    @if (folder == "inbox" && !ll.IsRead)
+                                    {
+                                        <span class="tg unread" title="این نامه هنوز خوانده نشده است"><i class="bi bi-envelope-fill"></i> خوانده‌نشده</span>
+                                    }
                                     <span class="tg purple num"># @ll.LetterNumber.FaDigits()</span>
                                     @if (ll.Foriat != "عادی") { <span class="tg red">! @ll.Foriat</span> }
                                     @if (ll.Mahramanegi != "عادی") { <span class="tg dark"><i class="bi bi-lock-fill"></i> @ll.Mahramanegi</span> }
@@ -995,12 +1000,20 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f)
+    private async Task SetFilter(string f)
     {
-        // فیلترهای نشان‌شده، مهلت‌دار و خوانده‌نشده روی دادهٔ همین صفحه اعمال می‌شوند؛
-        // درخواست دوباره باعث loading طولانی و هم‌پوشانی درخواست‌ها می‌شد.
+        // «خوانده‌نشده» و «همه» باید «سمت سرور» اعمال شوند؛ وگرنه فیلتر فقط روی همان
+        // ۱۵ ردیف بارگذاری‌شده کار می‌کرد و نامه‌های خوانده‌نشدهٔ صفحات بعد هرگز دیده
+        // نمی‌شدند و شماره‌گذاری صفحه‌ها هم با فهرست هم‌خوان نبود.
+        var needsServer = folder == "inbox" && (f == "unread" || filter == "unread");
         filter = f;
         page = 1;
+        if (needsServer)
+        {
+            await ReloadAsync(keepSelection: true, resetPage: true);
+            return;
+        }
+        // بقیهٔ فیلترها (نشان‌شده/مهلت‌دار/پیوست‌دار/دستورکارشده) روی دادهٔ همین صفحه اعمال می‌شوند.
         loading = false;
         StateHasChanged();
     }

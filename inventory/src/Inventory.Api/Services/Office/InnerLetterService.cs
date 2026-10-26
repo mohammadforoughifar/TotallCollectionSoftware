@@ -529,9 +529,12 @@ public class InnerLetterService : IInnerLetterService
 
     public async Task<LetterCartableStatsDto> GetStatsAsync(int userId)
     {
+        // شمارنده‌ها باید دقیقاً با فهرست «دریافتی» هم‌خوان باشند؛ نامه‌های بایگانی‌شده
+        // (IsBayegani) در GetInboxAsync نمایش داده نمی‌شوند، پس اینجا هم شمرده نشوند.
         var inbox = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
-                        && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete);
+                        && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
+                        && e.IsBayegani != true);
 
         var soon = DateTime.Now.AddDays(2);
         return new LetterCartableStatsDto

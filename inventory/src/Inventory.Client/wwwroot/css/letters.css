@@ -90,6 +90,9 @@
 .ltx .tg.amber { background:#fef3c7; color:#b45309; }
 .ltx .tg.green { background:#d1fae5; color:#047857; }
 .ltx .tg.blue { background:#dbeafe; color:#1d4ed8; }
+/* لیبل «خوانده‌نشده» در کارتابل دریافتی — مکمل بولد شدن عنوان */
+.ltx .tg.unread { background:#4338ca; color:#fff; box-shadow:0 1px 2px rgba(67,56,202,.28); letter-spacing:.2px; }
+.ltx .mail.unread .tg.unread { background:#3730a3; }
 .ltx .empty { text-align:center; padding:48px 10px; color:var(--sub); font-size:12.5px; }
 .ltx .empty i { display:block; font-size:34px; margin-bottom:8px; opacity:.4; }
 
