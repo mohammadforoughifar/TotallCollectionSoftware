@@ -3,7 +3,6 @@
 @inject ILetterService LetterSvc
 @inject IAuthState Auth
 @inject IToastService Toast
-@inject IJSRuntime JS
 
 <div class="integrated-incoming-panel" dir="rtl">
     <style>
@@ -55,7 +54,7 @@
                         <div class="iin-r1"><span class="iin-num">@l.NumberSabt.FaDigits()</span><strong title="@l.Title">@l.Title</strong><span class="iin-badge @(view == "archived" ? "arc" : "ok")">@(view == "archived" ? "بایگانی‌شده" : "ثبت و ارسال شده")</span></div>
                         <div class="iin-meta"><span><b>فرستنده:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
                     </div>
-                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => Print(l)"><i class="bi bi-printer"></i> چاپ</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button><button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
+                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button><button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
                 </div>
             }
         }
@@ -154,11 +153,6 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
-    private async Task Print(IncomingLetterListItemDto l)
-    {
-        await JS.InvokeVoidAsync("window.print");
-    }
-
     private async Task ReloadAsync()
     {
         loading = true;

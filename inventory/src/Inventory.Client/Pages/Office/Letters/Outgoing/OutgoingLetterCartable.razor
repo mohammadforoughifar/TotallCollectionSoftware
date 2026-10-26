@@ -95,7 +95,8 @@
                 }
                 else if (folder == "draft")
                 {
-                    <button class="draft-add" @onclick='() => compose?.Open()'>
+                    @* «افزودن پیش‌نویس» فرم سبک پیش‌نویس را باز می‌کند، نه فرم کامل ارسال نامه *@
+                    <button class="draft-add" @onclick="() => pishModal?.Open()">
                         <i class="bi bi-plus-lg"></i> افزودن پیش‌نویس
                     </button>
                     @if (drafts.Count == 0)
@@ -117,7 +118,8 @@
                                 @if (openMenuId == -dd.PishnevisId)
                                 {
                                     <div class="ltmenu" @onclick:stopPropagation="true">
-                                        <button @onclick="() => OpenDraft(dd)"><i class="bi bi-pencil-square"></i> ادامه پیش‌نویس</button>
+                                        <button @onclick="() => OpenDraft(dd)"><i class="bi bi-send"></i> ادامه پیش‌نویس (ارسال)</button>
+                                        <button @onclick="() => pishModal?.Open(dd)"><i class="bi bi-pencil-square"></i> ویرایش پیش‌نویس</button>
                                         <div class="mdiv"></div>
                                         <button class="danger" @onclick="() => DeleteDraft(dd)"><i class="bi bi-trash"></i> حذف پیش‌نویس</button>
                                     </div>
@@ -633,6 +635,7 @@
 
 <BayeganiFolderPickerModal @ref="personalArchivePicker" />
 <ComposeOutgoingModal @ref="compose" OnSent="OnComposed" />
+<OutgoingPishnevisModal @ref="pishModal" OnSaved="OnDraftSaved" />
 <OutgoingErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
 <OutgoingGardeshModal @ref="gardesh" />
 
@@ -738,6 +741,7 @@
     private string signNote = "";
 
     private ComposeOutgoingModal? compose;
+    private OutgoingPishnevisModal? pishModal;
     private OutgoingErjaSheet? erjaSheet;
     private OutgoingGardeshModal? gardesh;
 
@@ -1114,6 +1118,9 @@
         openMenuId = 0;
         compose?.Open(d.Title, d.Text, d.PishnevisId, d.ReceiverOrganization);
     }
+
+    /// <summary>پس از ذخیرهٔ پیش‌نویس (فرم پیش‌نویس) فهرست و شمارنده‌ها تازه می‌شوند.</summary>
+    private async Task OnDraftSaved() => await ReloadAsync(keepSelection: true);
 
     private async Task DeleteDraft(OutgoingPishnevisDto d)
     {
