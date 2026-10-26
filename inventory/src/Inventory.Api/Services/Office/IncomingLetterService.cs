@@ -70,8 +70,12 @@ public class IncomingLetterService : IIncomingLetterService
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
+        // «دریافتی» فقط نامه‌هایی است که «به کاربر ارسال شده»؛ نه نامه‌هایی که خودش ثبت کرده.
+        // در AddAsync برای ثبت‌کننده هم یک ارجاع خودکار (Sender == Reciver) ساخته می‌شود تا
+        // رکورد در گردش بماند؛ همان ردیف اینجا فیلتر می‌شود. اگر نامه بعداً توسط شخص دیگری
+        // به همین کاربر ارجاع شود، یک ارجاع جدید با فرستندهٔ متفاوت ساخته می‌شود و دیده می‌شود.
         var q = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani != true);
 
@@ -148,8 +152,9 @@ public class IncomingLetterService : IIncomingLetterService
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
+        // همان قاعدهٔ «دریافتی»: ردیف خودکارِ خودِ ثبت‌کننده در بایگانی هم نمایش داده نمی‌شود.
         var q = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani == true);
 
@@ -275,8 +280,10 @@ public class IncomingLetterService : IIncomingLetterService
 
     public async Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId)
     {
+        // شمارندهٔ «دریافتی/خوانده‌نشده» باید با فهرست هم‌خوان باشد؛ پس ردیف خودکارِ
+        // خودِ ثبت‌کننده اینجا هم کنار گذاشته می‌شود.
         var inboxQuery = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani != true);
 
@@ -287,7 +294,7 @@ public class IncomingLetterService : IIncomingLetterService
             .CountAsync(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete);
 
         var totalArchive = await _db.Erjas.AsNoTracking()
-            .CountAsync(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
+            .CountAsync(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
                              && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                              && e.IsBayegani == true);
 
