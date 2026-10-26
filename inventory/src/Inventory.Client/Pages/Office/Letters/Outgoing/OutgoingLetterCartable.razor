@@ -1218,26 +1218,40 @@
     {
         ClosePrintMenu();
         openMenuId = 0;
-        await OpenLetter(l);
-        await PrintPdf(size, withHamesh);
+        // چاپ نباید به باز شدن نامه گره بخورد: برای ایجادکننده یا دریافت‌کنندهٔ نامه
+        // که ممکن است مجوز دیدن جزئیات را نداشته باشد، قبلاً چاپ در سکوت انجام نمی‌شد.
+        if (selected?.LetterId != l.LetterId)
+        {
+            try { await OpenLetter(l); }
+            catch { /* چاپ با شناسهٔ همان ردیف ادامه می‌یابد */ }
+        }
+        await PrintPdf(l.LetterId, l.SadereNumber ?? l.LetterNumber, size, withHamesh);
     }
 
     private void ViewLetter(int letterId) => Nav.NavigateTo($"outgoing-letters/view/{letterId}");
 
     /// <summary>چاپ نامه روی سربرگ شرکت (A4/A5) — PDF از سرور</summary>
-    private async Task PrintPdf(string size, bool withMargin)
+    private Task PrintPdf(string size, bool withMargin)
     {
-        if (selected == null || printingPdf) return;
+        if (selected == null) return Task.CompletedTask;
+        return PrintPdf(selected.LetterId, selected.SadereNumber ?? selected.LetterNumber, size, withMargin);
+    }
+
+    /// <summary>دریافت PDF چاپ از سرور برای هر شناسهٔ نامه (بدون نیاز به باز بودن نامه).</summary>
+    private async Task PrintPdf(int letterId, string? letterNumber, string size, bool withMargin)
+    {
+        if (printingPdf) return;
         printMenuOpen = false;
         printingPdf = true;
         try
         {
-            var number = selected.SadereNumber ?? selected.LetterNumber ?? selected.LetterId.ToString();
+            var number = string.IsNullOrWhiteSpace(letterNumber) ? letterId.ToString() : letterNumber;
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
             await PrintWorkflow.PrintPdfAsync(
-                () => OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size, withCopy: true,
+                () => OutgoingSvc.GetPrintPdfAsync(letterId, size, withCopy: true,
                     withMargin: withMargin, withLetterhead: printWithLetterhead), name);
         }
+        catch (Exception ex) { Toast.Error(ex.Message); }
         finally { printingPdf = false; }
     }
 
