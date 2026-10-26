@@ -287,19 +287,18 @@ public class IncomingLetterService : IIncomingLetterService
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani != true);
 
-        // شمارش بر اساس «نامهٔ متمایز» (Distinct SourceId) — همان قاعدهٔ کارتابل داخلی؛
-        // اگر نامه‌ای بیش از یک ارجاع برای همین کاربر داشته باشد، یک‌بار شمرده می‌شود.
-        var totalInbox = await inboxQuery.Select(e => e.SourceId).Distinct().CountAsync();
-        var unreadCount = await inboxQuery.Where(e => !e.IsRead).Select(e => e.SourceId).Distinct().CountAsync();
+        // هر ارجاع یک قلم جدا در «دریافتی» است؛ ارجاع دوبارهٔ یک نامه هم ردیف و
+        // شمارندهٔ تازه دارد (مطابق فهرست).
+        var totalInbox = await inboxQuery.CountAsync();
+        var unreadCount = await inboxQuery.CountAsync(e => !e.IsRead);
 
         var totalSent = await _db.IncomingLetters.AsNoTracking()
             .CountAsync(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete);
 
         var totalArchive = await _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
-                        && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
-                        && e.IsBayegani == true)
-            .Select(e => e.SourceId).Distinct().CountAsync();
+            .CountAsync(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+                             && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                             && e.IsBayegani == true);
 
         var totalStarred = await inboxQuery.CountAsync(e => e.IsNeshan);
 

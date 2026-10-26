@@ -536,14 +536,14 @@ public class InnerLetterService : IInnerLetterService
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
                         && e.IsBayegani != true);
 
-        // «تعداد نامه‌های خوانده‌نشده» = تعداد «نامه»های متمایز، نه تعداد ردیف‌های ارجاع.
-        // یک نامه می‌تواند برای یک کاربر چند ارجاع داشته باشد (گیرنده + ارجاع/هامش بعدی)؛
-        // شمردن ارجاع‌ها باعث می‌شد بج کارتابل از تعداد واقعی نامه‌های نخوانده بیشتر شود.
+        // شمارش بر اساس «ارجاع» است، نه نامهٔ متمایز: اگر نامه دوباره به همین کاربر
+        // ارجاع شود، یک ردیف تازه (نخوانده) در کارتابل او ساخته می‌شود و باید هم در
+        // فهرست دیده شود و هم در این شمارنده حساب شود.
         var soon = DateTime.Now.AddDays(2);
         return new LetterCartableStatsDto
         {
-            InboxUnread = await inbox.Where(e => !e.IsRead).Select(e => e.SourceId).Distinct().CountAsync(),
-            InboxTotal = await inbox.Select(e => e.SourceId).Distinct().CountAsync(),
+            InboxUnread = await inbox.CountAsync(e => !e.IsRead),
+            InboxTotal = await inbox.CountAsync(),
             SentTotal = await _db.InnerLetters.CountAsync(l => l.CreatorUserId == userId && !l.IsDelete),
             PishnevisTotal = await _db.PishnevisLetters.CountAsync(p => p.UserId == userId && !p.IsDelete),
             DeadlineSoon = await inbox.CountAsync(e =>

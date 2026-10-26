@@ -24,7 +24,8 @@
             <button class="compose" title="نامه صادره جدید" @onclick="OpenCompose"><i class="bi bi-plus-lg"></i></button>
             <div style="height:8px"></div>
 
-            <button class="@(!showGuide && folder == "inbox" ? "on" : "")" title="دریافتی (شامل امضا)" @onclick='() => SetFolder("inbox")'>
+            @* عدد روی «دریافتی» = تعداد نخوانده‌ها (ارجاع‌های خوانده‌نشده + نامه‌های در انتظار امضا) *@
+            <button class="@(!showGuide && folder == "inbox" ? "on" : "")" title="@($"دریافتی (شامل امضا) — {stats.InboxUnread.FaDigits()} نامهٔ خوانده‌نشده")" aria-label="@($"دریافتی، {stats.InboxUnread.FaDigits()} نامهٔ خوانده‌نشده")" @onclick='() => SetFolder("inbox")'>
                 <i class="bi bi-inbox-fill"></i>
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
@@ -67,12 +68,12 @@
                     <input placeholder="جستجو در عنوان، شماره، سازمان مقصد، شماره صادره…" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
                 </div>
                 <div class="chips">
-                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@BaseItems.Count.FaDigits()</span></button>
+                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@((folder == "inbox" ? stats.InboxTotal : BaseItems.Count).FaDigits())</span></button>
                     @if (folder != "draft")
                     {
                         @if (folder == "inbox" || folder == "signing")
                         {
-                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")'>امضا نشده/خوانده‌نشده <span class="n">@BaseItems.Count(l => !l.IsRead && !l.IsSigned).FaDigits()</span></button>
+                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")' title="فقط نامه‌های خوانده‌نشده / در انتظار امضا (روی همهٔ صفحات)">خوانده‌نشده <span class="n">@stats.InboxUnread.FaDigits()</span></button>
                             <button class="chip @(filter == "sign" ? "on" : "")" @onclick='() => SetFilter("sign")'><i class="bi bi-pen"></i> امضایی <span class="n">@BaseItems.Count(l => l.IsSigner).FaDigits()</span></button>
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
@@ -169,6 +170,11 @@
                                     }
                                 </div>
                                 <div class="tags">
+                                    @* لیبل «خوانده‌نشده» — همان شرطی که ردیف را بولد می‌کند *@
+                                    @if ((folder == "inbox" || folder == "signing") && !ll.IsRead && !ll.IsSigned)
+                                    {
+                                        <span class="tg unread" title="این نامه هنوز خوانده نشده است"><i class="bi bi-envelope-fill"></i> خوانده‌نشده</span>
+                                    }
                                     <span class="tg purple num"># @ll.LetterNumber.FaDigits()</span>
                                     @if (!string.IsNullOrWhiteSpace(ll.SadereNumber))
                                     {
@@ -931,7 +937,7 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f)
+    private async Task SetFilter(string f)
     {
         // فیلترهای نشان‌شده / پیوست‌دار / امضایی / خوانده‌نشده سمت کلاینت روی دادهٔ
         // همین صفحه اعمال می‌شوند (نگاه کنید به Filtered و BaseItems)، پس درخواست
@@ -948,8 +954,16 @@
         // («درخواست دوباره باعث loading طولانی و هم‌پوشانی درخواست‌ها می‌شد»).
         // GoPage در همین فایل هم از راه‌حل معادل استفاده می‌کند:
         // InvokeAsync(...) + StateHasChanged().
+        // «خوانده‌نشده» باید سمت سرور اعمال شود؛ وگرنه فقط روی همان ۱۵ ردیف بارگذاری‌شده
+        // (یک صفحه) کار می‌کرد و نامه‌های نخواندهٔ صفحات بعد دیده نمی‌شدند.
+        var needsServer = folder == "inbox" && (f == "unread" || filter == "unread");
         filter = f;
         page = 1;
+        if (needsServer)
+        {
+            await ReloadAsync(keepSelection: true);
+            return;
+        }
         loading = false;
         StateHasChanged();
     }

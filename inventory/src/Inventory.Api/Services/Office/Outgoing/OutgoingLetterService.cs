@@ -938,9 +938,12 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public async Task<OutgoingLetterCartableStatsDto> GetStatsAsync(int userId)
     {
+        // بج «دریافتی» = تعداد نخوانده‌های همان فهرست؛ پس نامه‌های بایگانی‌شده
+        // (IsBayegani) نباید شمرده شوند، همان‌طور که GetInboxAsync آن‌ها را نشان نمی‌دهد.
         var inbox = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
-                        && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete);
+                        && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
+                        && e.IsBayegani != true);
 
         var signing = _db.OutgoingLetterSigners.AsNoTracking()
             .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete

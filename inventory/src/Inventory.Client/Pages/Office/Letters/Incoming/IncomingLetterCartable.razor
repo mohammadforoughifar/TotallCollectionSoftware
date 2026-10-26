@@ -470,9 +470,17 @@
         await ReloadDataAsync();
     }
 
-    private void SetFilter(string flt)
+    private async Task SetFilter(string flt)
     {
+        var needsServer = folder == "inbox" && (flt == "unread" || filter == "unread");
         filter = flt;
+        if (needsServer)
+        {
+            currentPage = 1;
+            await ReloadDataAsync();
+            return;
+        }
+        StateHasChanged();
     }
 
     private async Task GoPageAsync(int page)
@@ -508,7 +516,9 @@
             }
             else
             {
-                result = await IncomingSvc.GetInboxAsync(searchTerm, null, currentPage, pageSize);
+                // فیلتر «خوانده‌نشده» سمت سرور اعمال می‌شود تا روی همهٔ صفحات مؤثر باشد
+                // (پیش‌تر چیپ فقط متغیر filter را عوض می‌کرد و هیچ‌جا استفاده نمی‌شد).
+                result = await IncomingSvc.GetInboxAsync(searchTerm, filter == "unread" ? true : null, currentPage, pageSize);
             }
 
             letters = result.Items;
