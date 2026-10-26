@@ -80,7 +80,7 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn("LetterPrintClientTiming", workflow)
         self.assertIn('MarkStage("pdf-download")', workflow)
         self.assertIn('MarkStage("browser-print-handoff")', workflow)
-        self.assertIn('"ltxPrintReady", printId, pdfBytes, fileName, remainingMs', workflow)
+        self.assertIn('"ltxPrintReady", timeout.Token, printId, pdfBytes, fileName, remainingMs', workflow)
         self.assertNotIn("Convert.ToBase64String(pdfBytes)", workflow)
         self.assertIn("doc.fonts.ready", js)
         self.assertIn("doc.images", js)

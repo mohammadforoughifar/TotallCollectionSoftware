@@ -73,7 +73,7 @@ public sealed class LetterPrintWorkflow
 
                 var remainingMs = Math.Max(1, (int)(PreparationTimeout - attempt.Elapsed).TotalMilliseconds);
                 var ready = await _js.InvokeAsync<bool>(
-                    timeout.Token, "ltxPrintReady", printId, pdfBytes, fileName, remainingMs);
+                    "ltxPrintReady", timeout.Token, printId, pdfBytes, fileName, remainingMs);
                 MarkStage("browser-print-handoff");
 
                 if (ready)
