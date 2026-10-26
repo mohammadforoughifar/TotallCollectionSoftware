@@ -1305,7 +1305,7 @@
         try
         {
             var name = $"inner-letter-{number}-{size}-{(withHamesh ? "with-hamesh" : "without-hamesh")}.pdf";
-            await PrintWorkflow.PrintPdfAsync(() => LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh), name);
+            await PrintWorkflow.PrintPdfAsync(ct => LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh, ct), name);
         }
         finally { printingPdf = false; }
     }

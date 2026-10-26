@@ -499,7 +499,9 @@ public class OutgoingLettersController : RbacControllerBase
         // برای گروه دوم، داشتن مجوز «خواندن» الزامی نیست تا کاربری که نامه را ساخته یا
         // دریافت کرده ولی مجوز کارتابل ندارد هم بتواند نسخهٔ چاپی بگیرد.
         var isAdmin = await IsAdminAsync();
-        var hasDabirkhane = await HasDabirkhaneAsync();
+        // HasDabirkhaneAsync also checks Admin. We already evaluated that permission above,
+        // so avoid repeating the two RBAC database checks for the same request.
+        var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane");
         if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
         {
             if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
@@ -722,15 +724,16 @@ public class OutgoingLettersController : RbacControllerBase
 
     // ==================== پیوست‌ها ====================
 
-    private async Task<bool> InFlowAsync(int letterId)
+    private Task<bool> InFlowAsync(int letterId)
     {
-        var letter = await Db.OutgoingLetters.AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
-        if (letter == null) return false;
-        if (letter.CreatorUserId == MyUserId) return true;
-        if (await Db.Erjas.AnyAsync(e => e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete)) return true;
-        if (await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == letterId && s.UserId == MyUserId && !s.IsDelete)) return true;
-        return false;
+        // Keep authorization semantics but issue one SQL query instead of up to three
+        // sequential round-trips (letter, erja, signer), which delayed print requests.
+        var userId = MyUserId;
+        return Db.OutgoingLetters.AsNoTracking().AnyAsync(letter =>
+            letter.Id == letterId && !letter.IsDelete &&
+            (letter.CreatorUserId == userId ||
+             Db.Erjas.Any(erja => erja.SourceId == letter.Id && erja.ReciverUserId == userId && !erja.IsDelete) ||
+             Db.OutgoingLetterSigners.Any(signer => signer.SourceId == letter.Id && signer.UserId == userId && !signer.IsDelete)));
     }
 
     [HttpGet("{id:int}/attachments")]
