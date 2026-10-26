@@ -285,8 +285,8 @@
             var number = letter.SadereNumber ?? letter.LetterNumber ?? letter.LetterId.ToString();
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
             await PrintWorkflow.PrintPdfAsync(
-                () => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
-                    withMargin: withMargin, withLetterhead: printWithLetterhead), name);
+                ct => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
+                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name);
         }
         finally { printing = false; }
     }

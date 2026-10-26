@@ -1255,8 +1255,8 @@
             var number = string.IsNullOrWhiteSpace(letterNumber) ? letterId.ToString() : letterNumber;
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
             await PrintWorkflow.PrintPdfAsync(
-                () => OutgoingSvc.GetPrintPdfAsync(letterId, size, withCopy: true,
-                    withMargin: withMargin, withLetterhead: printWithLetterhead), name);
+                ct => OutgoingSvc.GetPrintPdfAsync(letterId, size, withCopy: true,
+                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { printingPdf = false; }

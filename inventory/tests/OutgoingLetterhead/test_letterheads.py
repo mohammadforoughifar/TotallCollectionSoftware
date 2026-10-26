@@ -233,8 +233,9 @@ class LetterheadAssetsTests(unittest.TestCase):
         shell = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "wwwroot" / "js" / "app-shell.js").read_text()
         self.assertIn('data-ltx-print-option', view)
         self.assertIn("document.addEventListener('click'", shell)
-        self.assertIn("window.ltxReservePrintWindow()", shell)
+        self.assertIn("window.ltxPrintReserveByClick()", shell)
         self.assertIn("window.ltxPrintPendingWindows", shell)
+        self.assertIn("window.ltxPrintSessions", shell)
 
     def test_print_api_keeps_access_and_not_found_guards(self):
         controller = (API / "Controllers" / "Office" / "OutgoingLettersController.cs").read_text()
@@ -243,6 +244,12 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn('if (pdf == null) return NotFound', print_action)
         self.assertIn('!string.Equals(size, "A4"', print_action)
         self.assertIn('!string.Equals(size, "A5"', print_action)
+        self.assertIn('var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane")', print_action)
+        flow_check = controller.split("private Task<bool> InFlowAsync(int letterId)", 1)[1].split("[HttpGet(\"{id:int}/attachments\")", 1)[0]
+        self.assertIn("AnyAsync(letter =>", flow_check)
+        self.assertIn("Db.Erjas.Any", flow_check)
+        self.assertIn("Db.OutgoingLetterSigners.Any", flow_check)
+        self.assertNotIn("FirstOrDefaultAsync", flow_check)
 
     def test_saved_signature_preview_uses_authenticated_bytes_not_an_img_request(self):
         users_page = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "Pages" / "System" / "Users.razor").read_text()
