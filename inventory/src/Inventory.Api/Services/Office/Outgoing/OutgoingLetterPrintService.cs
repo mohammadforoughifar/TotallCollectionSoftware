@@ -86,6 +86,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         text.DefaultTextStyle(style => style
                             .FontFamily("Vazirmatn")
                             .FontSize(8)
+                            .LineHeight(1.1f)
                             .FontColor("#475569")
                             .DirectionFromRightToLeft());
                         text.Span("صفحه ");
@@ -825,6 +826,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var title = ToPersianDigits(letter.Title);
         var externalReference = ToPersianDigits(letter.ExternalRefNumber);
         var isHomepaLetterhead = hasLetterhead && letterheadCompanyId == HomepaCompanyId;
+        var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
         var signerCards = signers.Select(s =>
         {
             var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
@@ -874,25 +876,46 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         void AddSignerBlock(ColumnDescriptor target)
         {
-            var headingTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
+            var signerTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
             var tableTopPadding = isHomepaLetterhead ? (isA5 ? 2 : 3) : (isA5 ? 4 : 6);
             var cellPadding = isHomepaLetterhead ? 2 : 4;
 
-            target.Item().PaddingTop(headingTopPadding).Text("امضاکنندگان")
-                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                .AlignCenter().DirectionFromRightToLeft();
-            target.Item().PaddingTop(tableTopPadding).Table(table =>
-            {
-                table.ColumnsDefinition(columns =>
+            // Keep the complete signer block at the physical lower-left of the flowing letter
+            // for every company; individual cards remain centered within their own columns.
+            target.Item().PaddingTop(signerTopPadding)
+                .AlignLeft().Width(signerBlockWidth * signerColumns)
+                .Column(block =>
                 {
-                    for (var i = 0; i < signerColumns; i++)
-                        columns.RelativeColumn();
-                });
+                    block.Item().PaddingTop(tableTopPadding).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            for (var i = 0; i < signerColumns; i++)
+                                columns.RelativeColumn();
+                        });
 
-                foreach (var signer in signerCards)
-                    table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
-                        .Element(card => AddSignerCard(card, signer));
-            });
+                        foreach (var signer in signerCards)
+                            table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
+                                .Element(card => AddSignerCard(card, signer));
+                    });
+                });
+        }
+
+        void AddAriaField(IContainer container, AriaLetterheadLayout.Field field, string value,
+            float fieldFontSize, bool isolateLtr = false)
+        {
+            // Place values in fixed page-coordinate boxes over the printed dotted fields.
+            // ScaleToFit prevents long dates/numbers from extending beyond each line.
+            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+            var text = box.ScaleToFit().Text(displayValue)
+                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
+                .FontColor("#666666").LineHeight(1.05f);
+            if (isolateLtr)
+                text.DirectionFromLeftToRight();
+            else
+                text.DirectionFromRightToLeft();
         }
 
         void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
@@ -989,9 +1012,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
-                // Keep the 1003 header anchored at the same page coordinates even when
-                // the body-margin option is toggled; all other companies retain their old rule.
-                page.MarginTop(isHomepaLetterhead
+                // Keep the 1003/1005 header coordinates stable even when body margins are toggled;
+                // all other companies retain their previous margin behavior.
+                page.MarginTop(isHomepaLetterhead || isAriaLetterhead
                     ? (isA5 ? 16 : 24)
                     : (withMargin ? (isA5 ? 16 : 24) : 0));
                 // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
@@ -1002,7 +1025,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
                     : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 if (isHomepaLetterhead)
-                    page.Footer().Height(12).AlignTop().Dynamic(new HomepaPageNumberComponent());
+                    page.Footer().Height(20).AlignTop().Dynamic(new HomepaPageNumberComponent());
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -1012,46 +1035,31 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .LineHeight(lineHeight)
                     .DirectionFromRightToLeft());
 
-                var isAriaLetterhead = hasLetterhead && letterheadCompanyId == AriaCompanyId;
                 // This offset belongs only to the flowing body. The company 1003
                 // metadata fields remain in the separately positioned page header.
                 // QuestPDF repeats both regions on every page.
                 var contentTopPadding = isHomepaLetterhead
                     ? HomepaLetterheadLayout.ReceiverTopPadding(isA5)
-                    : (withMargin || hasLetterhead ? 30f : 0f);
+                    : isAriaLetterhead
+                        ? AriaLetterheadLayout.BodyTopPadding(isA5)
+                        : (withMargin || hasLetterhead ? 30f : 0f);
 
                 if (isAriaLetterhead)
                 {
-                    // Aria's registered PDF has its labels printed in one gray row.
-                    // Fill the existing dotted fields (date, number, attachment) without
-                    // repeating labels, keeping the logo and company details untouched.
-                    var fieldScale = isA5 ? 0.704f : 1f;
-                    var fieldWidth = 90f * fieldScale;
-                    var dateFieldInset = 13f * fieldScale;
-                    var numberFieldInset = 27f * fieldScale;
-                    var attachmentFieldInset = 21f * fieldScale;
-                    page.Header()
-                        .Height(isA5 ? 150 : 160)
-                        .PaddingTop(isA5 ? 64 : 90)
-                        .AlignLeft()
-                        .Width(fieldWidth * 3)
-                        .Row(fields =>
+                    // The artwork already contains all three captions and dotted lines.
+                    // Paint each value in its own fixed box; these coordinates are independent
+                    // of the body start offset and are repeated by QuestPDF on every page.
+                    page.Header().ContentFromLeftToRight()
+                        .Height(AriaLetterheadLayout.HeaderHeight(isA5))
+                        .Layers(layers =>
                         {
-                            fields.ConstantItem(fieldWidth).PaddingRight(dateFieldInset)
-                                .AlignRight().Text(date)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(numberFieldInset)
-                                .AlignRight().Text(number)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(attachmentFieldInset)
-                                .AlignRight().Text(hasAttachment ? "دارد" : "ندارد")
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
+                            layers.PrimaryLayer().Extend();
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
+                                hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
                         });
                 }
                 else if (isHomepaLetterhead)
