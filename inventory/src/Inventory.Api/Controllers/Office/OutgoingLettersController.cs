@@ -794,6 +794,15 @@ public class OutgoingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // اعلان «پیوست جدید» برای ایجادکننده، امضاکنندگان و گیرندگانی که نامه را رویت کرده‌اند
+        try
+        {
+            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
+        }
+        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
