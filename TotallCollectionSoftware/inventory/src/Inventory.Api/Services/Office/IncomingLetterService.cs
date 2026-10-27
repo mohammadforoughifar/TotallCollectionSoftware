@@ -11,9 +11,11 @@ namespace Inventory.Api.Services;
 /// </summary>
 public interface IIncomingLetterService
 {
-    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null);
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null,
+        bool? attachOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
-    Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<int> AddAsync(AddIncomingLetterDto dto, int userId);
@@ -65,7 +67,8 @@ public class IncomingLetterService : IIncomingLetterService
         return $"{pc.GetYear(date)}/V/{numberSabt}";
     }
 
-    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null)
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null,
+        bool? attachOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
@@ -91,6 +94,9 @@ public class IncomingLetterService : IIncomingLetterService
         // پارامتر عمداً در «انتهای» امضا اضافه شد تا چهار فراخوان موجودِ AiTools و
         // AiBriefingService (که positionally صدا می‌زنند) نشکنند.
         if (starredOnly == true) q = q.Where(e => e.IsNeshan);
+        // «پیوست‌دار» هم سمت سرور — وگرنه فقط نامه‌های پیوست‌دارِ صفحهٔ جاری دیده می‌شدند
+        if (attachOnly == true)
+            q = q.Where(e => _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -105,7 +111,9 @@ public class IncomingLetterService : IIncomingLetterService
         var totalCount = await q.CountAsync();
 
         var items = await q
-            .OrderByDescending(e => e.ErjaId)
+            // ترتیب بریدگی صفحه = ترتیب نمایش (تاریخ ارجاع، سپس شناسه)
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.ErjaId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new IncomingLetterListItemDto
@@ -225,7 +233,8 @@ public class IncomingLetterService : IIncomingLetterService
         };
     }
 
-    public async Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15)
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
@@ -239,10 +248,16 @@ public class IncomingLetterService : IIncomingLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
         }
 
+        if (starredOnly == true) q = q.Where(l => l.IsNeshan);
+        if (attachOnly == true)
+            q = q.Where(l => _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id));
+
         var totalCount = await q.CountAsync();
 
         var items = await q
-            .OrderByDescending(l => l.Id)
+            // ترتیب بریدگی صفحه = ترتیب نمایش (تاریخ، سپس شناسه)
+            .OrderByDescending(l => l.Date)
+            .ThenByDescending(l => l.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(l => new IncomingLetterListItemDto

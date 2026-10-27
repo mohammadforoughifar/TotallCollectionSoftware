@@ -18,9 +18,11 @@ namespace Inventory.Api.Services;
 public interface IInnerLetterService
 {
     Task<int> AddInnerLetterAsync(AddInnerLetterDto dto, int creatorUserId, string creatorName);
-    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null);
     Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
-    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<LetterCartableStatsDto> GetStatsAsync(int userId);
     Task<PagedResult<LetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20);
@@ -251,7 +253,8 @@ public class InnerLetterService : IInnerLetterService
         return source.Id;
     }
 
-    public async Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -262,6 +265,14 @@ public class InnerLetterService : IInnerLetterService
                         && e.IsBayegani != true); // نامه‌های بایگانی‌شده در پوشه بایگانی نمایش داده می‌شوند
 
         if (unreadOnly == true) q = q.Where(e => !e.IsRead);
+
+        // فیلترهای چیپ کارتابل «سمت سرور» اعمال می‌شوند تا روی همهٔ صفحات اثر بگذارند.
+        // پیش‌تر فقط ۱۵ ردیف صفحهٔ جاری فیلتر می‌شد و نامه‌های بقیهٔ صفحات بی‌صدا ناپدید
+        // می‌شدند (کاربر فکر می‌کرد نامه‌اش گم شده است).
+        if (starredOnly == true) q = q.Where(e => e.IsNeshan);
+        if (attachOnly == true)
+            q = q.Where(e => _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId));
+        if (deadlineOnly == true) q = q.Where(e => e.MohlatPasokh != null && e.Answer == "");
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -275,7 +286,12 @@ public class InnerLetterService : IInnerLetterService
         var totalCount = await q.CountAsync();
 
         var items = await q
-            .OrderByDescending(e => e.ErjaId)
+            // ترتیب «بریدگی صفحه» باید همان ترتیب «نمایش» باشد. پیش‌تر صفحه‌ها با
+            // ErjaId بریده می‌شدند ولی رابط با تاریخ نزولی می‌چید؛ هر جا این دو
+            // هم‌جهت نبودند، نامه‌های تازه در صفحه‌های دور می‌افتادند و «گم» به نظر
+            // می‌رسیدند. اکنون هر دو یکی هستند: تاریخ ارجاع، سپس شناسه.
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.ErjaId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new InnerLetterListItemDto
@@ -334,7 +350,12 @@ public class InnerLetterService : IInnerLetterService
         var totalCount = await q.CountAsync();
 
         var items = await q
-            .OrderByDescending(e => e.ErjaId)
+            // ترتیب «بریدگی صفحه» باید همان ترتیب «نمایش» باشد. پیش‌تر صفحه‌ها با
+            // ErjaId بریده می‌شدند ولی رابط با تاریخ نزولی می‌چید؛ هر جا این دو
+            // هم‌جهت نبودند، نامه‌های تازه در صفحه‌های دور می‌افتادند و «گم» به نظر
+            // می‌رسیدند. اکنون هر دو یکی هستند: تاریخ ارجاع، سپس شناسه.
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.ErjaId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new InnerLetterListItemDto
@@ -371,7 +392,8 @@ public class InnerLetterService : IInnerLetterService
         };
     }
 
-    public async Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -387,10 +409,17 @@ public class InnerLetterService : IInnerLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
+        // چیپ‌های کارتابل «ارسالی» سمت سرور فیلتر می‌شوند (روی کل نامه‌ها، نه ۱۵ ردیف صفحه)
+        if (starredOnly == true) q = q.Where(l => l.IsNeshan);
+        if (attachOnly == true)
+            q = q.Where(l => _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id));
+
         var totalCount = await q.CountAsync();
 
         var items = await q
-            .OrderByDescending(l => l.Id)
+            // ترتیب صفحه‌بندی = ترتیب نمایش: تاریخ ثبت، سپس شناسه (دلیل در GetInboxAsync).
+            .OrderByDescending(l => l.DateSabt)
+            .ThenByDescending(l => l.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(l => new InnerLetterListItemDto
@@ -544,7 +573,11 @@ public class InnerLetterService : IInnerLetterService
         {
             InboxUnread = await inbox.CountAsync(e => !e.IsRead),
             InboxTotal = await inbox.CountAsync(),
-            SentTotal = await _db.InnerLetters.CountAsync(l => l.CreatorUserId == userId && !l.IsDelete),
+            // همان شرط فهرست «ارسالی» — نامهٔ بایگانی‌شده یا منبع‌حذف‌شده نباید در
+            // شمارنده حساب شود تا عدد شمارنده با تعداد ردیف‌های فهرست یکی باشد.
+            SentTotal = await _db.InnerLetters.CountAsync(l => l.CreatorUserId == userId && !l.IsDelete
+                && !l.Source.IsDelete
+                && !_db.LetterBayeganis.Any(b => b.LetterId == l.Id && b.UserId == userId && !b.IsDelete)),
             PishnevisTotal = await _db.PishnevisLetters.CountAsync(p => p.UserId == userId && !p.IsDelete),
             DeadlineSoon = await inbox.CountAsync(e =>
                 e.MohlatPasokh != null && e.Answer == "" && e.MohlatPasokh <= soon)

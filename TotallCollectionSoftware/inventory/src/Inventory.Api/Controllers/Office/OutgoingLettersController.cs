@@ -70,12 +70,13 @@ public class OutgoingLettersController : RbacControllerBase
     // ==================== کارتابل — دریافتی (شامل امضا) و ارسالی ====================
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("signing-inbox")]
@@ -97,12 +98,13 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("stats")]

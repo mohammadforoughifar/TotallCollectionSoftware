@@ -6,8 +6,10 @@ public interface IOutgoingLetterService
 {
     /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
     Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync();
     Task<OutgoingLetterDetailDto> GetDetailAsync(int letterId);
@@ -106,18 +108,24 @@ public class OutgoingLetterService : IOutgoingLetterService
             $"api/outgoing-letters/{letterId}/copy-tos",
             new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/sent?{string.Join("&", qs)}");
     }
 

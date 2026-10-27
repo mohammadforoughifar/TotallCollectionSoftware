@@ -109,3 +109,39 @@
 ## هم‌زمانی
 پس از ساخت ارجاع، رویدادهای زندهٔ `letters` / `incoming-letters` / `outgoing-letters` منتشر می‌شود تا کارتابل باز
 کاربر و شمارندهٔ نخوانده، بدون رفرش تازه شوند.
+
+---
+
+# پیوست ۳ — اعلان «پیوست جدید» برای رویت‌کرده‌های گردش
+
+## قاعده
+هرگاه به نامه‌ای (داخلی، صادره یا وارده) پیوست تازه‌ای اضافه شود، اعلان «پیوست جدید برای نامه» فقط برای
+افرادی ارسال می‌شود که **هم در گردش آن نامه هستند** و **هم نامه را رویت کرده‌اند**.
+
+## گیرندگان اعلان
+| نوع نامه | «حاضر در گردش» | «رویت‌کرده» |
+|---|---|---|
+| داخلی | ردیف‌های `Erja` فعال (ایجادکننده هم اگر ردیف ارجاع داشته باشد) | `Erja.IsRead == true` |
+| صادره | ردیف‌های `Erja` فعال + `OutgoingLetterSigners` + ایجادکننده | `Erja.IsRead == true` یا `OutgoingLetterSigner.IsRead == true` |
+| وارده | ردیف‌های `Erja` فعال | `Erja.IsRead == true` |
+
+- بارگذارندهٔ فایل (`uploaderUserId`) از فهرست گیرندگان حذف می‌شود.
+- افرادی که نامه را نخوانده‌اند اعلان جداگانه نمی‌گیرند؛ نامهٔ نخوانده از قبل در کارتابل/شمارندهٔ آن‌ها برجسته است.
+
+## محتوای اعلان
+- **عنوان:** «پیوست جدید برای نامه 📎»
+- **بدنه:** `{شمارهٔ نامه} — «{عنوان نامه}» — فایل: {نام فایل}`
+- **فرم:** نامه داخلی / نامه صادره / نامه وارده
+- **از طرف:** نام بارگذارندهٔ فایل
+- **لینک:** `/letters` ، `/outgoing-letters` ، `/incoming-letters` + `?open={شناسه}`
+
+## جایگاه پیاده‌سازی
+- `Services/Office/LetterAttachmentNotifier.cs` → `LetterAttachmentNotifier.NotifyNewAttachmentAsync(...)`
+  (منبع واحد قاعده؛ هر سه نوع نامه از همین متد استفاده می‌کنند).
+- فراخوانی در `UploadAttachment` (یعنی `POST {id}/attachments`) هر سه کنترلر
+  `InnerLettersController`، `OutgoingLettersController` و `IncomingLettersController`
+  و درست پس از `SaveChangesAsync`؛ خطای اعلان در `try/catch` گرفته می‌شود تا آپلود هرگز به‌خاطر اعلان شکست نخورد.
+
+## راهنماها
+این رفتار در `InnerLetterGuide.razor`، `OutgoingLetterGuide.razor` و `IncomingLetterGuide.razor`
+(بخش «اعلان پیوست جدید») و همچنین `ItAssets/WorkOrdersGuide.razor` مستند شده است.

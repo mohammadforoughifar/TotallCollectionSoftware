@@ -9,8 +9,10 @@ namespace Inventory.Client.Services;
 public interface ILetterService
 {
     // کارتابل
-    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
-    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<LetterCartableStatsDto> GetStatsAsync();
     Task<InnerLetterDetailDto> GetDetailAsync(int letterId);
@@ -87,18 +89,26 @@ public class LetterService : ILetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
 
-    public Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
+        // فیلترهای چیپ کارتابل سمت سرور — وگرنه فقط ۱۵ ردیف صفحهٔ جاری فیلتر می‌شد
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
+        if (deadlineOnly == true) qs.Add("deadlineOnly=true");
         return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/sent?{string.Join("&", qs)}");
     }
 
