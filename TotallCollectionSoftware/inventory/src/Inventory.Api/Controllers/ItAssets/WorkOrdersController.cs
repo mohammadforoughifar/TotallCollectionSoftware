@@ -792,7 +792,7 @@ public class WorkOrdersController : ControllerBase
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
-    private IQueryable<WorkOrder> ApplyFilter(IQueryable<WorkOrder> q, ListFilterDto f)
+    private IQueryable<WorkOrder> ApplyFilter(IQueryable<WorkOrder> q, ListFilterDto f, bool myAssignmentOnly = false)
     {
         if (!string.IsNullOrWhiteSpace(f.Q))
         {
@@ -823,25 +823,49 @@ public class WorkOrdersController : ControllerBase
             var dec = f.Decision.Trim().ToLowerInvariant();
             switch (dec)
             {
+                // در تب «محول به من» ملاک، ردیفِ خودِ کاربر است: «در انتظار پاسخ» یعنی
+                // *من* پاسخ نداده‌ام (نه اینکه هیچ‌کس پاسخ نداده باشد)؛ وگرنه وقتی یکی از
+                // همکاران پاسخ می‌داد، دستورِ بی‌پاسخِ من از فیلتر بیرون می‌افتاد و فیلتر
+                // خالی به‌نظر می‌رسید. در تب «دستورهای من» (دستوردهنده) ملاک همهٔ گیرندگان است.
                 case "approved":
-                    q = q.Where(w => _db.WorkOrderAssignees
-                        .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Approved"));
+                    if (myAssignmentOnly)
+                        q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id
+                            && a.UserId == MyUserId && a.OwnerDecision == "Approved"));
+                    else
+                        q = q.Where(w => _db.WorkOrderAssignees
+                            .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Approved"));
                     break;
                 case "rejected":
-                    q = q.Where(w => _db.WorkOrderAssignees
-                        .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Rejected"));
+                    if (myAssignmentOnly)
+                        q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id
+                            && a.UserId == MyUserId && a.OwnerDecision == "Rejected"));
+                    else
+                        q = q.Where(w => _db.WorkOrderAssignees
+                            .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Rejected"));
                     break;
                 case "undecided":
                     // پاسخ داده شده ولی دستوردهنده هنوز تأیید/رد نکرده است
-                    q = q.Where(w => _db.WorkOrderAssignees
-                        .Any(a => a.OrderId == w.Id && a.RepliedAt != null
-                                  && (a.OwnerDecision == null
-                                      || (a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected"))));
+                    if (myAssignmentOnly)
+                        q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id
+                            && a.UserId == MyUserId && a.RepliedAt != null
+                            && a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected"));
+                    else
+                        q = q.Where(w => _db.WorkOrderAssignees
+                            .Any(a => a.OrderId == w.Id && a.RepliedAt != null
+                                      && (a.OwnerDecision == null
+                                          || (a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected"))));
                     break;
                 case "awaiting":
-                    // گیرنده دارد ولی هیچ پاسخی ثبت نشده ⇒ «در انتظار پاسخ»
-                    q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id)
-                                  && !_db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.RepliedAt != null));
+                    // «در انتظار پاسخ» = گیرنده دارد و پاسخ ثبت نشده است.
+                    // در تب «محول به من»: پاسخِ خودِ من ثبت نشده باشد.
+                    if (myAssignmentOnly)
+                        q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id
+                                              && a.UserId == MyUserId)
+                                          && !_db.WorkOrderAssignees.Any(a => a.OrderId == w.Id
+                                              && a.UserId == MyUserId && a.RepliedAt != null));
+                    else
+                        q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id)
+                                      && !_db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.RepliedAt != null));
                     break;
             }
         }
@@ -1015,12 +1039,13 @@ public class WorkOrdersController : ControllerBase
         public int PageSize { get; set; }
     }
 
-    private async Task<IActionResult> BuildPage(IQueryable<WorkOrder> query, ListFilterDto filter, int companyId)
+    private async Task<IActionResult> BuildPage(IQueryable<WorkOrder> query, ListFilterDto filter, int companyId,
+        bool myAssignmentOnly = false)
     {
         query = query.Where(w => w.CompanyId == companyId);
         var page = Math.Max(1, filter.Page);
         var pageSize = Math.Clamp(filter.PageSize <= 0 ? 10 : filter.PageSize, 1, 100);
-        var filtered = ApplyFilter(query, filter);
+        var filtered = ApplyFilter(query, filter, myAssignmentOnly);
         var total = await filtered.CountAsync();
         var rows = await BuildList(filtered.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id)
             .Skip((page - 1) * pageSize).Take(pageSize));
@@ -1046,7 +1071,8 @@ public class WorkOrdersController : ControllerBase
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return await BuildPage(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter, companyId.Value);
+        return await BuildPage(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter, companyId.Value,
+            myAssignmentOnly: true);
     }
 
     /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده) — با فیلتر اختیاری.</summary>
@@ -2415,7 +2441,7 @@ public class WorkOrdersController : ControllerBase
             _ => (_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), "دستورهای من")
         };
 
-        var orders = await ApplyFilter(query, filter)
+        var orders = await ApplyFilter(query, filter, myAssignmentOnly: tab == "assigned")
             .OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).ToListAsync();
         var ids = orders.Select(o => o.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.AsNoTracking().Where(a => ids.Contains(a.OrderId)).ToListAsync();

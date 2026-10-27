@@ -112,7 +112,9 @@
         }
         @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0 || !string.IsNullOrEmpty(fltDecision))
         {
-            <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
+            <span class="fs-8 text-muted">
+                @TabItems.Count مورد در این صفحه · <b class="num">@CurrentTotal</b> مورد با فیلتر فعلی
+            </span>
         }
         <div class="d-flex gap-1 wo-filter-actions">
             <button class="btn btn-sm btn-outline-success" title="خروجی اکسل (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("xlsx")'>
@@ -622,7 +624,21 @@ else if (tab == "stats")
 }
 else if (!PagedItems.Any())
 {
-    <div class="wo-empty"><i class="bi bi-clipboard-x"></i><h5>دستور کاری وجود ندارد</h5></div>
+    @if (HasActiveFilter)
+    {
+        <div class="wo-empty">
+            <i class="bi bi-funnel"></i>
+            <h5>با فیلترهای فعلی موردی پیدا نشد</h5>
+            <div class="fs-8 mb-3">فیلترها سمت سرور روی همهٔ دستورها اعمال می‌شوند، نه فقط همین صفحه.</div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearAllFilters">
+                <i class="bi bi-x-circle"></i> پاک‌کردن فیلترها
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="wo-empty"><i class="bi bi-clipboard-x"></i><h5>دستور کاری وجود ندارد</h5></div>
+    }
 }
 else
 {
@@ -806,13 +822,28 @@ else
     @if (TotalPages > 1)
     {
         <div class="wo-pager mt-3">
-            <button class="wo-page-btn" disabled="@(page <= 1)" @onclick="() => page--"><i class="bi bi-chevron-right"></i></button>
-            @for (var pn = 1; pn <= TotalPages; pn++)
+            <button class="wo-page-btn" title="اولین صفحه" disabled="@(page <= 1)" @onclick="() => GoToPage(1)">
+                <i class="bi bi-chevron-double-right"></i>
+            </button>
+            @* قبلی باید داده را هم دوباره بگیرد (قبلاً فقط عدد صفحه کم می‌شد و فهرست عوض نمی‌شد) *@
+            <button class="wo-page-btn" title="قبلی" disabled="@(page <= 1)" @onclick="() => GoToPage(page - 1)">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            @foreach (var pn in PageWindow)
             {
                 var p2 = pn;
                 <button class="wo-page-btn num @(page == p2 ? "active" : "")" @onclick="() => GoToPage(p2)">@p2</button>
             }
-            <button class="wo-page-btn" disabled="@(page >= TotalPages)" @onclick="() => GoToPage(page + 1)"><i class="bi bi-chevron-left"></i></button>
+            <button class="wo-page-btn" title="بعدی" disabled="@(page >= TotalPages)" @onclick="() => GoToPage(page + 1)">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <button class="wo-page-btn" title="آخرین صفحه" disabled="@(page >= TotalPages)" @onclick="() => GoToPage(TotalPages)">
+                <i class="bi bi-chevron-double-left"></i>
+            </button>
+            <span class="fs-8 text-muted ms-2">
+                صفحهٔ <b class="num">@page</b> از <b class="num">@TotalPages</b>
+                · نمایش <span class="num">@RangeStart</span> تا <span class="num">@RangeEnd</span> از <span class="num">@CurrentTotal</span>
+            </span>
         </div>
     }
 }
@@ -2491,44 +2522,44 @@ else
     }
     private List<WoItem> TabItems => tab switch { "assigned" => assignedItems, "archive" => archiveItems, _ => mineItems };
 
-    // ---- فیلتر و جستجو (روی داده لودشده — API هم همین فیلترها را با کوئری‌استرینگ می‌پذیرد) ----
+    // ---- فیلتر و جستجو — همه سمت سرور (کوئری‌استرینگ API) و روی *همهٔ* دستورها، نه صفحهٔ جاری ----
     private string fltQ = "";
     private int fltPriority = -1; // -1 = همه
     // فیلتر تصمیم دستوردهنده: null=همه | approved | rejected | undecided | awaiting
     private string? fltDecision;
-    private List<WoItem> FilteredItems
-    {
-        get
-        {
-            IEnumerable<WoItem> it = TabItems;
-            if (!string.IsNullOrWhiteSpace(fltQ))
-            {
-                var t = fltQ.Trim();
-                it = it.Where(w => w.Title.Contains(t, StringComparison.OrdinalIgnoreCase)
-                                || w.Number.Contains(t, StringComparison.OrdinalIgnoreCase)
-                                || w.OwnerName.Contains(t, StringComparison.OrdinalIgnoreCase));
-            }
-            if (fltPriority >= 0) it = it.Where(w => w.Priority == fltPriority);
-            if (fltTag != null) it = it.Where(w => w.Tags.Contains(fltTag));
-            if (fltProject > 0) it = it.Where(w => w.ProjectId == fltProject);
-            if (!string.IsNullOrEmpty(fltDecision))
-            {
-                it = fltDecision switch
-                {
-                    "approved" => it.Where(w => w.Assignees.Any(a => a.OwnerDecision == "Approved")),
-                    "rejected" => it.Where(w => w.Assignees.Any(a => a.OwnerDecision == "Rejected")),
-                    "undecided" => it.Where(w => w.Assignees.Any(a => a.RepliedAt != null
-                        && a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected")),
-                    "awaiting" => it.Where(w => w.Assignees.Count > 0 && w.Assignees.All(a => a.RepliedAt == null)),
-                    _ => it
-                };
-            }
-            return it.ToList();
-        }
-    }
+    // توجه: فیلترها «فقط سمت سرور» اعمال می‌شوند (همان کوئری‌استرینگی که به API می‌رود).
+    // قبلاً همین فیلترها دوباره روی «صفحهٔ جاری» هم اجرا می‌شد؛ نتیجه این بود که با
+    // ۱۰ ردیف در صفحه، فیلترهایی مثل «در انتظار پاسخ» خالی به‌نظر می‌رسیدند و شمارنده/
+    // صفحه‌بندی هم با نتیجه نمی‌خواند. حالا فهرست دقیقاً همان چیزی است که سرور برگردانده.
+    private List<WoItem> FilteredItems => TabItems;
     private int CurrentTotal => tab switch { "assigned" => assignedTotal, "archive" => archiveTotal, _ => mineTotal };
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(CurrentTotal / (double)PageSize));
     private IEnumerable<WoItem> PagedItems => FilteredItems;
+
+    /// <summary>حداکثر ۷ شمارهٔ صفحه حول صفحهٔ جاری (به‌جای ردیف بی‌پایان دکمه‌ها).</summary>
+    private IEnumerable<int> PageWindow
+    {
+        get
+        {
+            const int win = 7;
+            var start = Math.Max(1, page - win / 2);
+            var end = Math.Min(TotalPages, start + win - 1);
+            start = Math.Max(1, end - win + 1);
+            for (var i = start; i <= end; i++) yield return i;
+        }
+    }
+    private int RangeStart => CurrentTotal == 0 ? 0 : ((page - 1) * PageSize) + 1;
+    private int RangeEnd => Math.Min(page * PageSize, CurrentTotal);
+
+    private bool HasActiveFilter => !string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0
+        || fltTag != null || fltProject > 0 || !string.IsNullOrEmpty(fltDecision);
+
+    private void ClearAllFilters()
+    {
+        fltQ = ""; fltPriority = -1; fltTag = null; fltDecision = null; fltProject = 0; fltProjectName = "";
+        page = 1;
+        _ = LoadAll();
+    }
 
     private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
     private void ClearSearch() { fltQ = ""; page = 1; _ = LoadAll(); }
@@ -3163,6 +3194,16 @@ else
             var m = await LoadWorkOrderPage("mine"); mineItems = m.Items; mineTotal = m.TotalCount;
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
+
+            // اگر با فیلتر/بایگانی، صفحهٔ جاری از محدوده بیرون افتاد (مثلاً آخرین صفحه خالی شد)
+            // خودکار به آخرین صفحهٔ موجود می‌رویم تا کاربر با فهرست خالی گیر نکند.
+            if (page > TotalPages)
+            {
+                page = TotalPages;
+                var m2 = await LoadWorkOrderPage("mine"); mineItems = m2.Items; mineTotal = m2.TotalCount;
+                var a2 = await LoadWorkOrderPage("assigned"); assignedItems = a2.Items; assignedTotal = a2.TotalCount;
+                var ar2 = await LoadWorkOrderPage("archive"); archiveItems = ar2.Items; archiveTotal = ar2.TotalCount;
+            }
 
             if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0
                 && string.IsNullOrEmpty(fltDecision))
