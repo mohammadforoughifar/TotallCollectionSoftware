@@ -153,7 +153,7 @@
                                         <button @onclick="() => OpenGardesh(l)"><i class="bi bi-diagram-3"></i> گردش نامه</button>
                                         @if (l.ErjaId.HasValue && !l.IsBayegani)
                                         {
-                                            <button @onclick="() => ToggleBayeganiAsync(l)"><i class="bi bi-archive"></i> انطباق و بایگانی</button>
+                                            <button @onclick="() => ArchiveLetterAsync(l)"><i class="bi bi-archive"></i> انطباق و بایگانی</button>
                                         }
                                     </div>
                                 }
@@ -349,7 +349,8 @@
                             }
                             @if (activeLetter?.ErjaId is > 0 && !activeLetter.IsBayegani)
                             {
-                                <button class="lbtn ghost" @onclick="() => ToggleBayeganiAsync(activeLetter)">
+                                <button class="lbtn ghost" title="انتخاب پوشه و بایگانی نامه"
+                                        @onclick="() => ArchiveLetterAsync(activeLetter)">
                                     <i class="bi bi-archive"></i> انطباق و بایگانی
                                 </button>
                             }
@@ -379,42 +380,6 @@
                             </section>
                         }
 
-                        @* ---------- تاریخچهٔ ارجاع‌ها و پاسخ‌ها ---------- *@
-                        @if (activeDetail.Erjas.Count > 0)
-                        {
-                            <section class="scard rd-history">
-                                <h3><i class="bi bi-clock-history"></i> گردش و پاسخ‌های نامه (@activeDetail.Erjas.Count.FaDigits())</h3>
-                                @foreach (var e in activeDetail.Erjas)
-                                {
-                                    <div class="rd-erja-row">
-                                        <div class="rd-erja-head">
-                                            <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @e.SenderName</span>
-                                            <i class="bi bi-arrow-left" style="color:var(--sub)"></i>
-                                            <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @e.ReciverName</span>
-                                            <span class="tg @(e.Type == "هامش" ? "amber" : "purple")">@e.Type</span>
-                                            <span class="rd-erja-date num">@e.Date.ToFaDateTime()</span>
-                                        </div>
-                                        @if (!string.IsNullOrWhiteSpace(e.MatnErja))
-                                        {
-                                            <div class="rd-erja-text"><i class="bi bi-chat-left-quote"></i> @e.MatnErja</div>
-                                        }
-                                        @if (e.MohlatPasokh is { } dl)
-                                        {
-                                            <div class="rd-erja-deadline"><i class="bi bi-clock"></i> مهلت پاسخ: @dl.ToFa()</div>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(e.Answer))
-                                        {
-                                            <div class="rd-erja-answer">
-                                                <i class="bi bi-reply"></i> <b>پاسخ:</b> @e.Answer
-                                                @if (e.TypeTaeed == 1) { <span class="tg green">تایید ✓</span> }
-                                                @if (e.TypeTaeed == 2) { <span class="tg red">رد ✗</span> }
-                                                @if (e.DateAnswer is { } da) { <small class="num"> — @da.ToFaDateTime()</small> }
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </section>
-                        }
                     </div>
 
                     @* ---------- ستون مشخصات (مثل نامه داخلی) ---------- *@
@@ -985,6 +950,56 @@
             if (item.ErjaId.HasValue) item.IsNeshan = await IncomingSvc.ToggleNeshanAsync(item.ErjaId.Value);
             else item.IsNeshan = await IncomingSvc.ToggleLetterNeshanAsync(item.LetterId);
             Toast.Success(item.IsNeshan ? "نامه نشان شد." : "نشان برداشت شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>
+    /// «انطباق و بایگانی» با فرم: اول مودال انتخاب پوشهٔ بایگانی باز می‌شود و بعد از تأیید
+    /// کاربر، نامه در همان پوشه بایگانی می‌گردد. پیش‌تر این دکمه بدون هیچ فرمی، وضعیت
+    /// بایگانی را فوراً جابه‌جا می‌کرد و کاربر نمی‌توانست پوشه را انتخاب کند.
+    /// اگر نامه ارجاعِ شخصی (ErjaId) داشته باشد، همان ارجاع بایگانی می‌شود؛ در غیر این صورت
+    /// خودِ نامه (برای ثبت‌کننده/دبیرخانه) با ToggleLetterBayeganiAsync.
+    /// </summary>
+    private async Task ArchiveLetterAsync(IncomingLetterListItemDto item)
+    {
+        if (item.IsBayegani)
+        {
+            // خروج از بایگانی نیاز به پوشه ندارد و همان مسیر قبلی را می‌رود
+            await ToggleBayeganiAsync(item);
+            return;
+        }
+        try
+        {
+            if (folderPicker == null) return;
+            var folderId = await folderPicker.PickAsync($"بایگانی نامه «{item.Title}»");
+            if (folderId is not { } selected || selected <= 0) return; // کاربر انصراف داد
+
+            if (item.ErjaId is { } erjaId)
+            {
+                await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto
+                {
+                    FolderId = selected,
+                    ErjaIds = new List<int> { erjaId }
+                });
+            }
+            else
+            {
+                // نامهٔ بدون ارجاع (ثبت‌کننده): فقط وضعیت بایگانی همان نامه عوض می‌شود
+                await IncomingSvc.ToggleLetterBayeganiAsync(item.LetterId);
+            }
+
+            var details = activeDetail;
+            if (details != null && details.LetterId == item.LetterId)
+                activeDetail = await IncomingSvc.GetDetailAsync(item.LetterId);
+
+            Toast.Success("نامه بایگانی شد.");
+            await ReloadDataAsync();
+
+            // ارجاعِ ردیفِ سمت راست (ریدر) باید با دادهٔ تازه هم‌خوان شود تا دکمه
+            // «انطباق و بایگانی» بلافاصله جای خود را به وضعیت بایگانی بدهد.
+            if (activeLetter != null && activeLetter.LetterId == item.LetterId)
+                activeLetter = letters.FirstOrDefault(x => x.LetterId == item.LetterId) ?? activeLetter;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

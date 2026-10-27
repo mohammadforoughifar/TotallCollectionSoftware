@@ -3901,6 +3901,101 @@ else
                 await ShowNewFormAsync("", "");
             }
         }
+        else if (module == "IncomingLetter" || module == "IncomingLetters")
+        {
+            // پیش‌پُرش فرم از «نامهٔ وارده»: عنوان، متن (شرح نامه + مبدأ/شماره/تاریخ) و
+            // گیرندگانِ گردش نامه. پیش‌تر این حالت به شاخهٔ else می‌افتاد و فرم خالی باز
+            // می‌شد؛ یعنی «دکمهٔ دستورکار» از جزئیات نامهٔ وارده عملاً چیزی را پر نمی‌کرد.
+            try
+            {
+                var letter = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.IncomingLetterDetailDto>(
+                    $"/api/incoming-letters/{sourceId}");
+                if (letter != null)
+                {
+                    _sourceLabel = string.IsNullOrWhiteSpace(letter.NumberLetterVarede)
+                        ? $"نامهٔ وارده {letter.NumberSabt}"
+                        : $"نامهٔ وارده {letter.NumberLetterVarede}";
+
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append("<p><b>نامهٔ وارده: ")
+                      .Append(System.Net.WebUtility.HtmlEncode(letter.Title))
+                      .Append("</b>");
+                    if (!string.IsNullOrWhiteSpace(letter.Ferestande))
+                        sb.Append(" — فرستنده: ").Append(System.Net.WebUtility.HtmlEncode(letter.Ferestande));
+                    if (!string.IsNullOrWhiteSpace(letter.NumberLetterVarede))
+                        sb.Append(" — شمارهٔ مبدأ: ").Append(System.Net.WebUtility.HtmlEncode(letter.NumberLetterVarede));
+                    if (letter.Date != default)
+                        sb.Append(" — تاریخ نامه: ").Append(letter.Date.ToFaDate());
+                    sb.Append(" — شمارهٔ اندیکاتور: ").Append(letter.NumberSabt);
+                    sb.Append("</p>");
+                    if (!string.IsNullOrWhiteSpace(letter.Description))
+                        sb.Append("<p>").Append(System.Net.WebUtility.HtmlEncode(letter.Description)).Append("</p>");
+
+                    await ShowNewFormAsync(letter.Title, sb.ToString());
+
+                    // گیرندگان: همهٔ افراد حاضر در گردش نامه (گیرنده/ارجاع/هامش)، بدون خودم
+                    var crew = letter.Erjas.Where(e => e.ReciverUserId > 0)
+                                           .Select(e => (Id: e.ReciverUserId, Name: e.ReciverName))
+                                           .GroupBy(x => x.Id).Select(g => g.First()).ToList();
+                    foreach (var u in crew.Where(x => x.Id != access.UserId))
+                        selTargets.Add(u.Id);
+                    var known = targets.Select(t => t.Id).ToHashSet();
+                    foreach (var u in crew.Where(x => !known.Contains(x.Id)))
+                        targets.Add(new TargetOpt { Id = u.Id, Username = string.IsNullOrWhiteSpace(u.Name) ? $"کاربر {u.Id}" : u.Name });
+                }
+                else await ShowNewFormAsync("", "");
+            }
+            catch (Exception ex)
+            {
+                Toast.Error($"بارگذاری نامهٔ وارده ناموفق بود: {ex.Message}");
+                await ShowNewFormAsync("", "");
+            }
+        }
+        else if (module == "OutgoingLetter" || module == "OutgoingLetters")
+        {
+            // همان قاعده برای «نامهٔ صادره» (یکسان‌سازی سه نوع نامه): عنوان، متن و افراد گردش/رونوشت.
+            try
+            {
+                var letter = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.OutgoingLetterDetailDto>(
+                    $"/api/outgoing-letters/{sourceId}");
+                if (letter != null)
+                {
+                    _sourceLabel = $"نامهٔ صادره {letter.LetterNumber}";
+
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append("<p><b>نامهٔ صادره: ")
+                      .Append(System.Net.WebUtility.HtmlEncode(letter.Title))
+                      .Append("</b>");
+                    if (!string.IsNullOrWhiteSpace(letter.ReceiverOrganization))
+                        sb.Append(" — گیرنده: ").Append(System.Net.WebUtility.HtmlEncode(letter.ReceiverOrganization));
+                    if (!string.IsNullOrWhiteSpace(letter.LetterNumber))
+                        sb.Append(" — شماره: ").Append(System.Net.WebUtility.HtmlEncode(letter.LetterNumber));
+                    sb.Append("</p>");
+                    if (!string.IsNullOrWhiteSpace(letter.Text))
+                        sb.Append("<p>").Append(System.Net.WebUtility.HtmlEncode(System.Text.RegularExpressions.Regex.Replace(letter.Text, "<[^>]+>", " "))).Append("</p>");
+
+                    await ShowNewFormAsync(letter.Title, sb.ToString());
+
+                    var crew = letter.ReciversGirande.Concat(letter.ReciversErja).Concat(letter.ReciversHamesh)
+                                    .Concat(letter.Signers.Select(sg => new Inventory.Shared.Dtos.LetterReciverDto
+                                    { UserId = sg.UserId, FullName = string.IsNullOrWhiteSpace(sg.DisplayName) ? sg.UserName : sg.DisplayName }))
+                                    .Where(x => x.UserId > 0)
+                                    .Select(x => (Id: x.UserId, Name: x.FullName))
+                                    .GroupBy(x => x.Id).Select(g => g.First()).ToList();
+                    foreach (var u in crew.Where(x => x.Id != access.UserId))
+                        selTargets.Add(u.Id);
+                    var known = targets.Select(t => t.Id).ToHashSet();
+                    foreach (var u in crew.Where(x => !known.Contains(x.Id)))
+                        targets.Add(new TargetOpt { Id = u.Id, Username = string.IsNullOrWhiteSpace(u.Name) ? $"کاربر {u.Id}" : u.Name });
+                }
+                else await ShowNewFormAsync("", "");
+            }
+            catch (Exception ex)
+            {
+                Toast.Error($"بارگذاری نامهٔ صادره ناموفق بود: {ex.Message}");
+                await ShowNewFormAsync("", "");
+            }
+        }
         else if (module == "Document")
         {
             // پیش‌پُرش فرم ایجاد از مدرک آرشیو اسناد
