@@ -40,6 +40,27 @@
     /* ---------- جستجوی سرستون ---------- */
     .col-filter-row th { padding: 4px 6px !important; background: #f8fafc; vertical-align: middle; }
     .col-filter-row th:first-child { border-top-right-radius: 8px; }
+    /* ---------- نوار پیشرفت جستجو (نامعین) ---------- */
+    .search-progress {
+        position: relative; height: 4px; overflow: hidden;
+        border-radius: 14px 14px 0 0; background: #fff7ed; border-bottom: 1px solid #fde68a;
+    }
+    .search-progress::after {
+        content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 0; width: 38%;
+        border-radius: 999px; background: linear-gradient(90deg, #f59e0b, #ef4444);
+        animation: searchSlide 1.15s ease-in-out infinite;
+    }
+    /* جهت پویه: راست به چپ (مطابق چیدمان RTL) */
+    @@keyframes searchSlide {
+        from { transform: translateX(320%); opacity: .55; }
+        50%  { opacity: 1; }
+        to   { transform: translateX(-120%); opacity: .55; }
+    }
+    .search-progress-text { font-size: .74rem; opacity: .9; }
+    @@media (prefers-reduced-motion: reduce) {
+        .search-progress::after { animation: none; inset-inline-start: 0; width: 100%; opacity: .55; }
+    }
+
     .col-filter-input {
         width: 100%; min-width: 72px; border: 1px solid #e2e8f0; border-radius: 7px;
         padding: 2px 8px; font-size: .75rem; text-align: center; color: #334155; background: #fff;
@@ -203,8 +224,7 @@
             </span>
             @if (searching)
             {
-                <span class="spinner-border spinner-border-sm ms-1" role="status" title="در حال جستجو…"
-                      style="width:.72rem;height:.72rem;border-width:.14em"></span>
+                <span class="search-progress-text ms-1" role="status" title="در حال جستجو…">⏳ در حال جستجو…</span>
             }
             @if (HasAnyFilter)
             {
@@ -361,6 +381,11 @@
 </div>
 
 <div class="card mt-3">
+    @if (searching)
+    {
+        @* نوار پیشرفت جستجو — تا پایان پاسخ سرور زیر سرصفحهٔ نتایج حرکت می‌کند *@
+        <div class="search-progress" role="progressbar" aria-busy="true" aria-label="در حال جستجو…"></div>
+    }
     <div class="card-body p-0">
         @if (loading)
         {
