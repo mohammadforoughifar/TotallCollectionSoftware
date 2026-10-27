@@ -42,6 +42,23 @@ public class WorkProjectsController : ControllerBase
         return string.IsNullOrWhiteSpace(n) ? MyUsername : n;
     }
 
+    /// <summary>بررسی مجوز با ماژول دلخواه (مثلاً «دستور کار» برای کمبوی پروژه در فیلتر).</summary>
+    private async Task<bool> HasAsyncIn(string module, string action)
+    {
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
+        if (!hasRoles)
+        {
+            var legacy = User.FindFirstValue(ClaimTypes.Role);
+            if (legacy == "Admin") return true;
+            if (legacy == "Operator") return action is "Create" or "View";
+            return false;
+        }
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .AnyAsync(p => p.Module == module && p.Action == action);
+    }
+
     /// <summary>مثل دستور کار: ادمین قدیمی همه‌چیز، اپراتور قدیمی مشاهده/ساخت، بقیه از RBAC.</summary>
     private async Task<bool> HasAsync(string action)
     {
@@ -115,17 +132,27 @@ public class WorkProjectsController : ControllerBase
     }
 
     /// <summary>جستجوی سبک پروژه‌های باز — برای کمبوی «پروژه» در فرم دستور کار.</summary>
+    /// <summary>
+    /// جستجوی سمت سرور پروژه‌های کاری برای کمبوها.
+    /// <para>
+    /// نکته‌های دسترسی: پیش‌تر فقط با مجوز «پروژه‌های کاری/مشاهده» جواب می‌داد؛ کاربری که
+    /// تنها مجوز «دستور کار» داشت، فیلتر پروژهٔ همان صفحه را خالی می‌دید (۴۰۳ و بلعیده‌شدن
+    /// خطا در کلاینت) ⇒ «فیلتر پروژه کار نمی‌کند». اکنون مجوز دستور کار هم کافی است.
+    /// </para>
+    /// <param name="openOnly">true (پیش‌فرض): فقط پروژه‌های باز — برای فرم اتصال دستور کار.
+    /// برای «فیلتر» باید false باشد، وگرنه دستورهای متصل به پروژهٔ بسته‌شده قابل فیلتر نیستند.</param>
+    /// </summary>
     [HttpGet("lookup")]
-    public async Task<IActionResult> Lookup([FromQuery] string? q, [FromQuery] int? take)
+    public async Task<IActionResult> Lookup([FromQuery] string? q, [FromQuery] int? take, [FromQuery] bool openOnly = true)
     {
-        if (!await HasAsync("View")) return Forbid();
+        if (!await HasAsync("View") && !await HasAsyncIn("WorkOrders", "View")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
-        var query = _db.WorkProjects.AsNoTracking()
-            .Where(p => p.CompanyId == companyId.Value && p.Status == WorkProjectStatus.Open);
+        var query = _db.WorkProjects.AsNoTracking().Where(p => p.CompanyId == companyId.Value);
+        if (openOnly) query = query.Where(p => p.Status == WorkProjectStatus.Open);
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var term = q.Trim();
+            var term = Inventory.Shared.Fa.ToEn(q.Trim()).Replace('\u064A', '\u06CC').Replace('\u0643', '\u06A9');
             query = query.Where(p => EF.Functions.Like(p.Title, $"%{term}%") || EF.Functions.Like(p.Number, $"%{term}%"));
         }
         var n = Math.Clamp(take is > 0 ? take.Value : 20, 1, 50);

@@ -813,13 +813,43 @@ public class WorkOrdersController : ControllerBase
         public string? Decision { get; set; }
     }
 
+    /// <summary>
+    /// نرمال‌سازی عبارت جستجو: ارقام فارسی/عربی → لاتین، ي/ك عربی → ی/ک فارسی،
+    /// یکسان‌سازی نیم‌فاصله، حذف کاراکترهای ویژهٔ LIKE (% و _) و فشرده‌کردن فاصله‌ها.
+    /// <para>
+    /// چرا: کاربر شمارهٔ «۱۲۳» یا «علي» را با حروف عربی تایپ می‌کند؛ بدون این نرمال‌سازی
+    /// هیچ نتیجه‌ای نمی‌گرفت و فیلتر «کار نمی‌کرد». و اگر % تایپ می‌شد، LIKE همهٔ ردیف‌ها
+    /// را برمی‌گرداند («اطلاعات اشتباه»).
+    /// </para>
+    /// </summary>
+    private static string NormalizeTerm(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var t = Inventory.Shared.Fa.ToEn(text)
+            .Replace('\u064A', '\u06CC')   // ي عربی → ی فارسی
+            .Replace('\u0643', '\u06A9')   // ك عربی → ک فارسی
+            .Replace('\u200C', ' ')         // نیم‌فاصله → فاصله
+            .Replace("%", "").Replace("_", "");
+        return string.Join(' ', t.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
     private IQueryable<WorkOrder> ApplyFilter(IQueryable<WorkOrder> q, ListFilterDto f, bool myAssignmentOnly = false)
     {
         if (!string.IsNullOrWhiteSpace(f.Q))
         {
-            var term = f.Q.Trim();
-            q = q.Where(w => EF.Functions.Like(w.Title, $"%{term}%") || EF.Functions.Like(w.Number, $"%{term}%"));
+            // جستجو در شماره، عنوان، نام دستوردهنده، نام گیرندگان و برچسب‌ها — همان چیزی که
+            // placeholder نوار جستجو وعده می‌دهد («شماره، عنوان یا دستوردهنده»).
+            var term = NormalizeTerm(f.Q);
+            if (term.Length > 0)
+            {
+                var pat = $"%{term}%";
+                q = q.Where(w => EF.Functions.Like(w.Title, pat)
+                              || EF.Functions.Like(w.Number, pat)
+                              || EF.Functions.Like(w.OwnerName, pat)
+                              || (w.Tags != null && EF.Functions.Like(w.Tags, pat))
+                              || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && EF.Functions.Like(a.Name, pat)));
+            }
         }
         if (f.Priority is >= WorkOrderPriority.Low and <= WorkOrderPriority.Urgent)
             q = q.Where(w => w.Priority == f.Priority);
@@ -828,8 +858,16 @@ public class WorkOrdersController : ControllerBase
         if (!string.IsNullOrWhiteSpace(f.Tag))
         {
             // برچسب‌ها به شکل ",برق,کارگاه," ذخیره می‌شوند → تطبیق دقیق با LIKE '%,برق,%'
-            var tagToken = $"%,{f.Tag.Trim().Replace(",", "،")},%";
-            q = q.Where(w => w.Tags != null && EF.Functions.Like(w.Tags, tagToken));
+            // نرمال‌سازی لازم است، وگرنه برچسبی که با «ك/ي» عربی یا فاصلهٔ اضافه ذخیره شده
+            // با چیپ فیلتر (که با «ک/ی» فارسی نمایش داده می‌شود) هیچ‌وقت تطبیق نمی‌خورد و
+            // فیلتر «کار نمی‌کند». هر دو حالت (نرمال‌شده و خام) بررسی می‌شود.
+            var raw = f.Tag.Trim().Replace(",", "،");
+            var norm = NormalizeTerm(raw);
+            var t1 = $"%,{raw},%";
+            var t2 = $"%,{norm},%";
+            q = q.Where(w => w.Tags != null
+                && (EF.Functions.Like(w.Tags, t1) || EF.Functions.Like(w.Tags, t2)
+                    || EF.Functions.Like(w.Tags, $"%{raw}%")));
         }
         if (f.UserId is > 0)
         {

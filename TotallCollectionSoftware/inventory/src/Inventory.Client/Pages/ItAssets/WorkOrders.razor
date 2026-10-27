@@ -102,21 +102,34 @@
                           SearchChanged="OnFltProjectSearch" RemoteSearch="true"
                           Placeholder="🏗 فیلتر پروژه…" CssClass="form-select-sm" />
         </div>
-        @if (AllTabTags.Any())
+        @if (TagOptions.Any() || !string.IsNullOrWhiteSpace(fltTag))
         {
             <div class="d-flex gap-1 flex-wrap align-items-center">
                 <i class="bi bi-tags text-muted fs-8"></i>
-                @foreach (var t in AllTabTags.Take(10))
+                @* چیپ برچسب فعال همیشه دیده می‌شود — حتی اگر در فهرست پرکاربردها نباشد،
+                   وگرنه کاربر نمی‌توانست فیلتر برچسب را بردارد. *@
+                @if (!string.IsNullOrWhiteSpace(fltTag) && !TagOptions.Contains(fltTag))
+                {
+                    <button type="button" class="wo-tag-suggest active"
+                            title="برداشتن فیلتر برچسب"
+                            @onclick="() => SetTagFilter(null)">@fltTag <i class="bi bi-x"></i></button>
+                }
+                @foreach (var t in TagOptions.Take(10))
                 {
                     var t2 = t;
                     <button type="button" class="wo-tag-suggest @(fltTag == t2 ? "active" : "")"
+                            title="@TagChipTitle(t2)"
                             @onclick="() => SetTagFilter(fltTag == t2 ? null : t2)">@t2</button>
                 }
             </div>
         }
         @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0 || !string.IsNullOrEmpty(fltDecision))
         {
-            <span class="fs-8 text-muted">
+            <span class="fs-8 text-muted d-inline-flex align-items-center gap-1">
+                @if (filterBusy)
+                {
+                    <span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;border-width:.14em" title="در حال اعمال فیلتر"></span>
+                }
                 @TabItems.Count مورد در این صفحه · <b class="num">@CurrentTotal</b> مورد با فیلتر فعلی
             </span>
         }
@@ -154,6 +167,23 @@ else if (tab == "guide")
 else if (tab == "kanban")
 {
     @* ================== نمای کانبان — ستون‌بندی بر اساس اولویت، درگ‌اند‌دراپ برای تغییر اولویت ================== *@
+    @if (HasActiveFilter)
+    {
+        @* نوار فیلتر در این نما پنهان است؛ اگر فیلتری از تب قبلی مانده باشد، کارت‌ها فیلترشده‌اند
+           و کاربر فکر می‌کند داده کم/اشتباه است. پس وضعیت فیلتر صریح نشان داده می‌شود. *@
+        <div class="alert alert-warning d-flex align-items-center gap-2 py-2 flex-wrap">
+            <i class="bi bi-funnel-fill"></i>
+            <span class="fs-8">
+                این نما با فیلترهای فعال نمایش داده می‌شود
+                @if (!string.IsNullOrWhiteSpace(fltQ)) { <b>— جستجو: «@fltQ»</b> }
+                @if (fltPriority >= 0) { <b>— اولویت: @PriorityFa(fltPriority)</b> }
+                @if (!string.IsNullOrEmpty(fltDecision)) { <b>— تصمیم: @DecisionFa(fltDecision)</b> }
+                @if (fltProject > 0) { <b>— پروژه: @(string.IsNullOrWhiteSpace(fltProjectName) ? "انتخاب‌شده" : fltProjectName)</b> }
+                @if (!string.IsNullOrWhiteSpace(fltTag)) { <b>— برچسب: @fltTag</b> }
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ClearAllFilters">پاک کردن فیلترها</button>
+        </div>
+    }
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <div class="wo-pr-group">
             <button type="button" class="wo-pr-btn @(kanbanScope == "mine" ? "active" : "")" @onclick='() => kanbanScope = "mine"'>دستورهای من</button>
@@ -2558,30 +2588,74 @@ else
     private bool HasActiveFilter => !string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0
         || fltTag != null || fltProject > 0 || !string.IsNullOrEmpty(fltDecision);
 
+    // ==================== بارگذاری فیلترها (ضدلرزش + لغو + نسخه) ====================
+    // پیش‌تر هر کلید در کادر جستجو، هر سه تب + شمارنده‌ها را بدون تأخیر و بدون لغو
+    // دوباره می‌خواند: چهار درخواست به‌ازای هر حرف، و اگر پاسخِ حرف قبلی دیر می‌رسید روی
+    // نتیجهٔ حرف جدید می‌نشست ⇒ فهرست با متن کادر جستجو هم‌خوان نبود («اطلاعات اشتباه»).
+    private CancellationTokenSource? filterCts;
+    private int filterVersion;
+    private bool filterBusy;
+
+    /// <summary>زمان‌بندی بارگذاری با فیلترهای جاری — ۳۵۰ms تأخیر، لغو درخواست قبلی.</summary>
+    private void ScheduleFilterLoad(bool immediate = false)
+    {
+        filterCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        filterCts = cts;
+        _ = FilterLoadAsync(immediate, cts);
+    }
+
+    private async Task FilterLoadAsync(bool immediate, CancellationTokenSource cts)
+    {
+        try { if (!immediate) await Task.Delay(350, cts.Token); }
+        catch (OperationCanceledException) { return; }
+        if (cts.IsCancellationRequested) return;
+
+        var version = ++filterVersion;
+        filterBusy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadPagesAsync(version, cts.Token);
+        }
+        finally
+        {
+            if (version == filterVersion)
+            {
+                filterBusy = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
     private void ClearAllFilters()
     {
         fltQ = ""; fltPriority = -1; fltTag = null; fltDecision = null; fltProject = 0; fltProjectName = "";
         page = 1;
-        _ = LoadAll();
+        ScheduleFilterLoad(immediate: true);
     }
 
-    private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
-    private void ClearSearch() { fltQ = ""; page = 1; _ = LoadAll(); }
-    private void SetPriorityFilter(int p) { fltPriority = p; page = 1; _ = LoadAll(); }
-    private void SetDecisionFilter(string? d) { fltDecision = d; page = 1; _ = LoadAll(); }
+    private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; ScheduleFilterLoad(); }
+    private void ClearSearch() { fltQ = ""; page = 1; ScheduleFilterLoad(immediate: true); }
+    private void SetPriorityFilter(int p) { fltPriority = p; page = 1; ScheduleFilterLoad(immediate: true); }
+    private void SetDecisionFilter(string? d) { fltDecision = d; page = 1; ScheduleFilterLoad(immediate: true); }
     private void SetProjectFilter(int id)
     {
         fltProject = id;
         fltProjectName = id <= 0 ? "" : (fltProjectOpts.FirstOrDefault(x => x.Id == id)?.Name ?? fltProjectName);
-        page = 1; _ = LoadAll();
+        page = 1; ScheduleFilterLoad(immediate: true);
     }
 
-    private async Task SearchProjectsAsync(string q, List<LookupItem> sink, int keepId, string keepName)
+    /// <param name="openOnly">
+    /// true: فقط پروژه‌های باز (فرم اتصال دستور کار). false: همهٔ پروژه‌ها (فیلتر — چون دستورهای
+    /// متصل به پروژهٔ بسته‌شده هم باید قابل فیلتر باشند).
+    /// </param>
+    private async Task SearchProjectsAsync(string q, List<LookupItem> sink, int keepId, string keepName, bool openOnly = true)
     {
         try
         {
             var list = await Http.GetFromJsonAsync<List<WorkProjectLookupDto>>(
-                $"/api/workprojects/lookup?q={Uri.EscapeDataString(q ?? "")}&take=20") ?? new();
+                $"/api/workprojects/lookup?q={Uri.EscapeDataString(q ?? "")}&take=20&openOnly={(openOnly ? "true" : "false")}") ?? new();
             foreach (var p in list)
                 if (!projectOpts.Any(x => x.Id == p.Id)) projectOpts.Add(p);
             sink.Clear();
@@ -2593,7 +2667,8 @@ else
         catch { }
     }
 
-    private Task OnFltProjectSearch(string q) => SearchProjectsAsync(q, fltProjectOpts, fltProject, fltProjectName);
+    // فیلتر: همهٔ پروژه‌ها (باز و بسته) — نه فقط بازها
+    private Task OnFltProjectSearch(string q) => SearchProjectsAsync(q, fltProjectOpts, fltProject, fltProjectName, openOnly: false);
 
     private Task OnFormProjectSearch(string q)
     {
@@ -2649,6 +2724,20 @@ else
     private string? fltTag;                 // فیلتر برچسب فعال
 
     /// <summary>برچسب‌های موجود در تب جاری — برای چیپ‌های فیلتر.</summary>
+    /// <summary>راهنمای شناور چیپ برچسب (متن در متد ساخته می‌شود تا صفت Razor سالم بماند).</summary>
+    private string TagChipTitle(string t) => fltTag == t
+        ? "برداشتن فیلتر این برچسب"
+        : $"فقط دستورهای برچسب «{t}»";
+
+    /// <summary>
+    /// چیپ‌های برچسب: از فهرست سرور (۳۰ برچسب پرکاربردِ دستورهای من) — نه از صفحهٔ جاری.
+    /// پیش‌تر از ردیف‌های همان صفحه ساخته می‌شد و با تعویض صفحه یا فیلترِ بی‌نتیجه،
+    /// چیپ‌ها عوض می‌شدند/ناپدید می‌شدند و فیلتر برچسب «کار نمی‌کرد».
+    /// </summary>
+    private List<string> TagOptions => myTags.Count > 0
+        ? myTags
+        : AllTabTags.Distinct().Take(10).ToList();
+
     private List<string> AllTabTags => TabItems.SelectMany(w => w.Tags)
         .GroupBy(t => t).OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
         .Select(g => g.Key).ToList();
@@ -2662,7 +2751,7 @@ else
     }
     private void AddSuggestedTag(string t) { if (newTags.Count < 5 && !newTags.Contains(t)) newTags.Add(t); }
     private void OnTagKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddTag(); }
-    private void SetTagFilter(string? t) { fltTag = t; page = 1; _ = LoadAll(); }
+    private void SetTagFilter(string? t) { fltTag = t; page = 1; ScheduleFilterLoad(immediate: true); }
 
     private async Task LoadMyTags()
     {
@@ -2886,6 +2975,16 @@ else
     // ---- اولویت ----
     private static readonly (int Val, string Fa)[] PriorityOpts = { (0, "کم"), (1, "عادی"), (2, "بالا"), (3, "فوری") };
     private static string PriorityFa(int p) => p switch { 0 => "کم", 2 => "بالا", 3 => "فوری", _ => "عادی" };
+
+    /// <summary>عنوان فارسی فیلتر تصمیم دستوردهنده (برای نوار وضعیت فیلترها).</summary>
+    private static string DecisionFa(string? d) => d switch
+    {
+        "approved" => "تأییدشده",
+        "rejected" => "ردشده",
+        "undecided" => "بی‌تصمیم",
+        "awaiting" => "در انتظار پاسخ",
+        _ => "همه"
+    };
     private RenderFragment? PriorityBadge(int p) => p switch
     {
         3 => @<span class="badge wo-prb-3">🔴 فوری</span>,
@@ -3070,6 +3169,7 @@ else
         apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
 
         try { access = await Http.GetFromJsonAsync<AccessInfo>("/api/workorders/my-access") ?? new(); } catch { }
+        await LoadMyTags(); // چیپ‌های فیلتر برچسب از سرور (پایدار، مستقل از صفحه)
         await LoadAll();
         // دسترسیِ لینک نامه در دستورکارهای متصل به نامه: اگر دادهٔ قبلی گیرندهٔ نامه را در گردش
         // نداشته باشد، یک‌بار (idempotent) ردیف ارجاع ساخته می‌شود تا کلیک روی لینک نامه ۴۰۳ ندهد.
@@ -3161,7 +3261,7 @@ else
         catch { Toast.Error("دریافت دستور کار انجام نشد."); }
     }
 
-    private async Task<WorkOrderPage> LoadWorkOrderPage(string endpoint)
+    private async Task<WorkOrderPage> LoadWorkOrderPage(string endpoint, CancellationToken ct = default)
     {
         var qs = $"page={page}&pageSize={PageSize}";
         if (!string.IsNullOrWhiteSpace(fltQ)) qs += $"&Q={Uri.EscapeDataString(fltQ.Trim())}";
@@ -3169,7 +3269,71 @@ else
         if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
         if (fltProject > 0) qs += $"&ProjectId={fltProject}";
         if (!string.IsNullOrEmpty(fltDecision)) qs += $"&Decision={fltDecision}";
-        return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
+        return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}", ct) ?? new();
+    }
+
+    /// <summary>
+    /// بارگذاری فهرست پس از تغییر فیلتر — <b>فقط تبی که دیده می‌شود</b> (به‌جای سه تب).
+    /// <para>
+    /// چرا: پیش‌تر هر تغییر فیلتر سه درخواست سنگین (mine/assigned/archive) می‌فرستاد و
+    /// کاربر فقط یکی را می‌دید؛ با چند هزار دستور کار، همین باعث کندی و «هنگ» می‌شد.
+    /// شمارندهٔ تب‌ها از اندپوینت سبک counts می‌آید و به این سه درخواست وابسته نیست.
+    /// </para>
+    /// </summary>
+    private async Task LoadPagesAsync(int version, CancellationToken ct)
+    {
+        try
+        {
+            var needMine = tab is "mine" or "kanban";
+            var needAssigned = tab is "assigned" or "kanban";
+            var needArchive = tab == "archive";
+
+            if (needMine)
+            {
+                var m = await LoadWorkOrderPage("mine", ct);
+                if (version != filterVersion) return; // نتیجهٔ منسوخ
+                mineItems = m.Items; mineTotal = m.TotalCount;
+            }
+            if (needAssigned)
+            {
+                var a = await LoadWorkOrderPage("assigned", ct);
+                if (version != filterVersion) return;
+                assignedItems = a.Items; assignedTotal = a.TotalCount;
+            }
+            if (needArchive)
+            {
+                var ar = await LoadWorkOrderPage("archive", ct);
+                if (version != filterVersion) return;
+                archiveItems = ar.Items; archiveTotal = ar.TotalCount;
+            }
+
+            // اگر با فیلتر جدید، صفحهٔ جاری از محدوده بیرون افتاد، به آخرین صفحهٔ موجود برو
+            if (page > TotalPages)
+            {
+                page = TotalPages;
+                await ReloadActiveTabAsync(version, ct);
+            }
+
+            // شمارندهٔ تب‌ها (سطر دستور کار، بدون فیلتر) — سبک و مستقل
+            await LoadTabCountsAsync();
+        }
+        // لغوِ خودمان (درخواست تازه‌تر جایش را گرفت) خطا نیست؛ ولی تایم‌اوت شبکه باید دیده شود
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex) { if (version == filterVersion) Toast.Error(ex.Message); }
+    }
+
+    /// <summary>بارگذاری دوبارهٔ فقط تب فعال (بعد از اصلاح شمارهٔ صفحه).</summary>
+    private async Task ReloadActiveTabAsync(int version, CancellationToken ct)
+    {
+        var endpoint = tab switch { "assigned" => "assigned", "archive" => "archive", _ => "mine" };
+        var r = await LoadWorkOrderPage(endpoint, ct);
+        if (version != filterVersion) return;
+        switch (endpoint)
+        {
+            case "assigned": assignedItems = r.Items; assignedTotal = r.TotalCount; break;
+            case "archive": archiveItems = r.Items; archiveTotal = r.TotalCount; break;
+            default: mineItems = r.Items; mineTotal = r.TotalCount; break;
+        }
     }
 
     /// <summary>
@@ -3227,15 +3391,20 @@ else
     {
         if (target < 1 || target > TotalPages || target == page) return;
         page = target;
-        await LoadAll();
+        ScheduleFilterLoad(immediate: true); // فقط تب فعال دوباره خوانده می‌شود
     }
 
     private void SwitchTab(string t)
     {
-        tab = t; page = 1; fltTag = null; // برچسب‌های هر تب متفاوت‌اند
-        if (t == "calendar") _ = LoadCal();
-        if (t == "stats") _ = LoadStats();
-        if (t == "perf") _ = LoadPerf();
+        tab = t; page = 1;
+        // برچسب‌های هر تب متفاوت‌اند؛ فیلتر برچسب پاک می‌شود (بقیهٔ فیلترها می‌مانند).
+        fltTag = null;
+        if (t == "calendar") { _ = LoadCal(); return; }
+        if (t == "stats") { _ = LoadStats(); return; }
+        if (t == "perf") { _ = LoadPerf(); return; }
+        if (t == "guide") return;
+        // فهرست فقط برای همین تب از سرور خوانده می‌شود (نه هر سه تب).
+        ScheduleFilterLoad(immediate: true);
     }
 
     /// <summary>بازگشت از تب راهنما به فهرست دستورهای من.</summary>
