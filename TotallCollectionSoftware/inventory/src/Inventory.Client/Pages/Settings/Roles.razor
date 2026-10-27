@@ -507,7 +507,11 @@
         new() { Title = "منابع انسانی فروغ آریا", Icon = "bi-stopwatch", Modules = new[] { "FaAtt", "LeaveRequests", "Attendance" } },
         new() { Title = "منابع انسانی بن‌سازه (هر بخش جداگانه)", Icon = "bi-building", Modules = new[] { "RadisHr" } },
         new() { Title = "مدیریت سیستم", Icon = "bi-gear", Modules = new[] { "SystemUsers", "Settings", "ItRequests", "ItVault", "Ipam", "Servers" } },
-        new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
+        // «پروژه‌های کاری» زیرمجموعهٔ دستور کار است و مجوز مستقل خودش را دارد
+        // (View/Create/Update/Delete). پیش‌تر این ماژول در فهرست تنظیمات نبود و مجوزهایش
+        // فقط در گروه «سایر» با نام لاتین دیده می‌شد؛ یعنی مدیر نمی‌توانست آگاهانه و در
+        // جای درست، دسترسی بخش پروژه را به نقش بدهد.
+        new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
         new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
         new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } },
@@ -536,6 +540,7 @@
         ["SystemCompanies"] = "کمپانی‌ها",
         ["ItRequests"] = "درخواست خدمت IT",
         ["WorkOrders"] = "دستور کار",
+        ["WorkProjects"] = "پروژه‌های کاری (بخش پروژهٔ دستور کار)",
         ["SystemDepartments"] = "واحدها",
         ["Settings"] = "تنظیمات",
         ["Warehouses"] = "انبارها",
@@ -681,6 +686,15 @@
         ["Moadian.InvoiceSend"] = "ارسال صورتحساب به سامانه مودیان",
         ["Moadian.InvoiceStatus"] = "به‌روزرسانی وضعیت ارسال",
         ["Moadian.InvoiceInquiry"] = "استعلام وضعیت و مشاهده خطاها",
+        // دستور کار و بخش پروژهٔ آن — معنای اکشن‌ها با CRUD عمومی فرق دارد
+        ["WorkOrders.View"] = "مشاهدهٔ دستور کار و نمایش در منو",
+        ["WorkOrders.Create"] = "ساخت دستور کار (حداقل برای خود)",
+        ["WorkOrders.AssignOthers"] = "واگذاری دستور کار به دیگران",
+        ["WorkOrders.Delete"] = "حذف دستور کار",
+        ["WorkProjects.View"] = "مشاهدهٔ پروژه‌های کاری و نمایش در منو",
+        ["WorkProjects.Create"] = "ساخت پروژهٔ کاری",
+        ["WorkProjects.Update"] = "ویرایش/تمدید/بستن و مدیریت اعضای پروژه (مالک پروژه همیشه مجاز است)",
+        ["WorkProjects.Delete"] = "حذف پروژهٔ کاری",
         ["ItRequests.Manage"] = "مدیر IT (ارجاع و تایید)",
         ["ProjectCartable.Expert"] = "اتمام کارشناسی (تکمیل پروژه)",
         ["DocArchive.Manage"] = "مدیریت آرشیو (حذف و تغییر دسترسی‌ها)",
