@@ -620,7 +620,9 @@ else
                             <th style="width:44px"></th>
                             <th style="width:36px"><input type="checkbox" title="انتخاب همه" @onclick="ToggleSelectAll" /></th>
                             <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
-                            <th>مهلت</th><th>گیرندگان</th><th>دستورهای مرتبط</th><th>وضعیت</th><th class="text-end">عملیات</th>
+                            <th>مهلت</th><th>گیرندگان</th><th>دستورهای مرتبط</th><th>وضعیت</th>
+                            <th title="نتیجهٔ تصمیم دستوردهنده روی پاسخ گیرندگان">تصمیم دستوردهنده</th>
+                            <th class="text-end">عملیات</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -663,6 +665,7 @@ else
                                 </td>
                                 <td class="wo-related-cell">@RelatedOrderLinks(w)</td>
                                 <td>@ToneBadge(w, tone)</td>
+                                <td class="wo-decision-cell">@DecisionCell(w)</td>
                                 <td class="text-end">
                                     <div class="d-flex gap-1 justify-content-end align-items-center">
                                         <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenDetail(w)"><i class="bi bi-eye text-primary"></i></button>
@@ -685,7 +688,7 @@ else
                             {
                                 <tr class="wo-subrow">
                                     <td></td>
-                                    <td colspan="8">
+                                    <td colspan="10">
                                         <table class="table table-sm mb-0 wo-subtable">
                                             <thead>
                                                 <tr>
@@ -755,6 +758,13 @@ else
                 </div>
                 <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId, null, w.SourceType) @ProjectBadge(w)</div>
                 @if (HasRelatedOrders(w)) { <div class="wo-mobile-related">@RelatedOrderLinks(w)</div> }
+                @if (w.Assignees.Any(a => a.OwnerDecision != null) || w.Assignees.Any(a => a.RepliedAt != null))
+                {
+                    @* ستون «تصمیم دستوردهنده» در نمای موبایل — فقط وقتی تصمیمی یا پاسخی وجود دارد *@
+                    <div class="fs-8 d-flex align-items-center gap-1 flex-wrap">
+                        <span class="text-muted">تصمیم دستوردهنده:</span> @DecisionCell(w)
+                    </div>
+                }
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
                     <div class="d-flex gap-1" @onclick:stopPropagation="true">
@@ -2120,6 +2130,9 @@ else
     .wo-detail-body .wo-asg:last-child { margin-bottom:0; }
     .wo-detail-body .wo-block-body img { max-width:100%; height:auto; }
     .wo-related-cell { min-width:145px; max-width:240px; }
+    /* ستون «تصمیم دستوردهنده» — نشان‌ها کوتاه و بدون شکست خط بمانند */
+    .wo-decision-cell { min-width:120px; }
+    .wo-decision-cell .badge { white-space: nowrap; }
     .wo-related-links { display:flex; align-items:center; flex-wrap:wrap; gap:.3rem; }
     .wo-related-link { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .5rem; border:1px solid #dce6f5; border-radius:6px; color:#2563eb; background:#f8fbff; text-decoration:none; font-size:.74rem; font-weight:600; white-space:nowrap; }
     .wo-related-link:hover { background:#eaf2ff; border-color:#93b5ed; color:#1d4ed8; text-decoration:underline; }
@@ -3566,6 +3579,74 @@ else
             ? @<span class="badge bg-secondary-subtle text-secondary border">بسته شده 🔒</span>
             : @<span class="badge bg-light text-dark border">در جریان</span>
     };
+
+    // ================== ستون «تصمیم دستوردهنده» ==================
+    // تصمیم دستوردهنده روی «پاسخ هر گیرنده» ثبت می‌شود (WorkOrderAssignee.OwnerDecision:
+    // Approved / Rejected / خالی)؛ در لیست، خلاصهٔ آن برای همهٔ گیرندگان یک دستور نشان
+    // داده می‌شود تا بدون باز کردن جزئیات مشخص باشد کدام دستور تایید، کدام رد و کدام
+    // هنوز بی‌تصمیم است.
+
+    /// <summary>خلاصهٔ تصمیم دستوردهنده برای یک دستور کار.</summary>
+    private (int Total, int Approved, int Rejected, int AwaitingDecision, int NoReply,
+        bool HasAnyDecision, string ApprovedNames, string RejectedNames, string AwaitingNames) DecisionSummary(WoItem w)
+    {
+        var list = w.Assignees ?? new List<AsgItem>();
+        var approved = list.Where(a => a.OwnerDecision == "Approved").ToList();
+        var rejected = list.Where(a => a.OwnerDecision == "Rejected").ToList();
+        var awaiting = list.Where(a => a.RepliedAt != null
+                                       && a.OwnerDecision != "Approved"
+                                       && a.OwnerDecision != "Rejected").ToList();
+        var noReply = list.Count - approved.Count - rejected.Count - awaiting.Count;
+
+        static string Names(IEnumerable<AsgItem> items) => string.Join("، ", items.Select(a =>
+            string.IsNullOrWhiteSpace(a.OwnerDecisionNote) ? a.Name : $"{a.Name} ({a.OwnerDecisionNote})"));
+
+        return (list.Count, approved.Count, rejected.Count, awaiting.Count, noReply,
+            approved.Count + rejected.Count > 0, Names(approved), Names(rejected), Names(awaiting));
+    }
+
+    /// <summary>
+    /// سلول ستون «تصمیم دستوردهنده» — نشان‌های فشرده با tooltip نام افراد و یادداشت تصمیم.
+    /// به‌صورت رشتهٔ HTML ساخته می‌شود تا در هر دو نمای فهرست و کارت موبایل یکسان باشد.
+    /// </summary>
+    private MarkupString DecisionCell(WoItem w)
+    {
+        var d = DecisionSummary(w);
+        static string Enc(string? value) => System.Net.WebUtility.HtmlEncode(value ?? "");
+
+        if (d.Total == 0)
+            return new MarkupString("<span class=\"text-muted fs-8\">—</span>");
+
+        if (!d.HasAnyDecision && d.AwaitingDecision == 0)
+        {
+            var noReplyTitle = Enc(d.NoReply.ToString() + " گیرنده هنوز پاسخی نداده‌اند؛ تصمیمی برای ثبت نیست");
+            return new MarkupString("<span class=\"badge bg-light text-dark border fs-9\" title=\"" + noReplyTitle + "\">در انتظار پاسخ</span>");
+        }
+
+        // ساخت با الحاق رشته (نه درج داخل رشته) تا کاراکترهایی مثل «:» و «"» مفسر قالب نشوند.
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<span class=\"d-inline-flex flex-wrap gap-1\">");
+        if (d.Approved > 0)
+        {
+            var title = Enc("تأییدشده: " + d.ApprovedNames);
+            sb.Append("<span class=\"badge bg-primary-subtle text-primary border fs-9 num\" title=\"").Append(title).Append("\">✔ ")
+              .Append(d.Approved.FaDigits()).Append(" تأیید</span>");
+        }
+        if (d.Rejected > 0)
+        {
+            var title = Enc("ردشده: " + d.RejectedNames);
+            sb.Append("<span class=\"badge bg-danger-subtle text-danger border fs-9 num\" title=\"").Append(title).Append("\">✖ ")
+              .Append(d.Rejected.FaDigits()).Append(" رد</span>");
+        }
+        if (d.AwaitingDecision > 0)
+        {
+            var title = Enc("در انتظار تصمیم دستوردهنده: " + d.AwaitingNames);
+            sb.Append("<span class=\"badge bg-warning-subtle text-warning border fs-9 num\" title=\"").Append(title).Append("\">… ")
+              .Append(d.AwaitingDecision.FaDigits()).Append(" بی‌تصمیم</span>");
+        }
+        sb.Append("</span>");
+        return new MarkupString(sb.ToString());
+    }
 
     // ================== دستور کار جدید ==================
     private async Task OpenNew()
