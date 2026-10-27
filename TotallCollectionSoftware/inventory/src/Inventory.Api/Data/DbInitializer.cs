@@ -402,17 +402,39 @@ public static class DbInitializer
 
                 // ============ اتوماسیون اداری: عملگرهای پیش‌فرض ارجاع ============
                 // عملگر (Amalgar) تعیین می‌کند ارجاع «جهت اطلاع» است یا «جهت اقدام/تایید و امضا».
-                if (!db.Amalgars.Any())
+                // نکته: به‌جای «فقط وقتی هیچ عملگری نیست»، تک‌تک عملگرهای پیش‌فرض چک می‌شوند تا
+                // عملگرهای تازه‌ای که بعداً به این فهرست اضافه می‌شوند (مثل «جهت استحضار») در
+                // پایگاه‌داده‌های موجود هم ساخته شوند. عملگرهای ساخته‌شده توسط کاربر دست‌نخورده می‌مانند.
+                var defaultAmalgars = new (string Title, string Taeed)[]
                 {
-                    db.Amalgars.AddRange(
-                        new Amalgar { Title = "جهت اطلاع", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت اقدام", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت بررسی و اعلام نظر", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت تایید و امضا", TaeedEmza = "تایید" },
-                        new Amalgar { Title = "جهت پاسخگویی", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت بایگانی", TaeedEmza = "" });
+                    ("جهت اطلاع", ""),
+                    ("جهت استحضار", ""),
+                    ("جهت اقدام", ""),
+                    ("جهت بررسی و اعلام نظر", ""),
+                    ("جهت تایید و امضا", "تایید"),
+                    ("جهت پاسخگویی", ""),
+                    ("جهت بایگانی", ""),
+                };
+                var addedAmalgars = 0;
+                foreach (var (title, taeed) in defaultAmalgars)
+                {
+                    var existing = db.Amalgars.FirstOrDefault(a => a.Title == title);
+                    if (existing is null)
+                    {
+                        db.Amalgars.Add(new Amalgar { Title = title, TaeedEmza = taeed });
+                        addedAmalgars++;
+                    }
+                    else if (existing.IsDelete)
+                    {
+                        // عملگر پیش‌فرضی که قبلاً حذف نرم شده بود، برگردانده می‌شود
+                        existing.IsDelete = false;
+                        addedAmalgars++;
+                    }
+                }
+                if (addedAmalgars > 0)
+                {
                     db.SaveChanges();
-                    Console.WriteLine("[DB] عملگرهای پیش‌فرض ارجاع نامه ساخته شدند.");
+                    Console.WriteLine($"[DB] {addedAmalgars} عملگر پیش‌فرض ارجاع نامه ساخته/بازگردانده شد.");
                 }
 
                 // ============ اتوماسیون اداری: سازمان‌ها — مبنای جزء «واحد» در شماره نامه ============

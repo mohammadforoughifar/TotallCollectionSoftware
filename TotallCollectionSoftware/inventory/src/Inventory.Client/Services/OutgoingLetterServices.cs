@@ -31,6 +31,9 @@ public interface IOutgoingLetterService
     Task<bool> ToggleBayeganiAsync(int erjaId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
+
+    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
+    Task<AmalgarDto> CreateAmalgarAsync(string title);
     Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
     Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null);
     Task<OutgoingPishnevisDto> GetPishnevisAsync(int id);
@@ -188,6 +191,9 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/outgoing-letters/amalgars");
+
+    public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
+        _api.PostAsync<AmalgarDto>("api/outgoing-letters/amalgars", new CreateAmalgarDto { Title = title });
 
     public Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
         => ListOrPaged.GetPagedAsync<OutgoingPishnevisDto>(_api, $"api/outgoing-letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");

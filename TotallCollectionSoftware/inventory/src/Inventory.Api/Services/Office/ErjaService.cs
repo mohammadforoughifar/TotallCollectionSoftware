@@ -23,6 +23,9 @@ public interface IErjaService
     Task<bool> ToggleBayeganiAsync(int erjaId, int userId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, int userId, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync(Paging.Request? pagination = null);
+
+    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» کنار انتخاب عملگر).</summary>
+    Task<AmalgarDto> CreateAmalgarAsync(string title, string? taeedEmza = null);
 }
 
 public class ErjaService : IErjaService
@@ -485,4 +488,29 @@ public class ErjaService : IErjaService
             .OrderBy(a => a.AmalgarId)
             .Select(a => new AmalgarDto { AmalgarId = a.AmalgarId, Title = a.Title, TaeedEmza = a.TaeedEmza })
             .ToPageListAsync(pagination);
+
+    public async Task<AmalgarDto> CreateAmalgarAsync(string title, string? taeedEmza = null)
+    {
+        title = (title ?? "").Trim();
+        if (title.Length == 0) throw new Exception("عنوان عملگر را وارد کنید.");
+        if (title.Length > 100) throw new Exception("عنوان عملگر حداکثر ۱۰۰ کاراکتر است.");
+
+        // عملگر تکراری ساخته نشود — همان قبلی برگردانده و احیا می‌شود
+        var exist = await _db.Amalgars.FirstOrDefaultAsync(a => a.Title == title);
+        if (exist is not null)
+        {
+            if (exist.IsDelete) { exist.IsDelete = false; await _db.SaveChangesAsync(); }
+            return new AmalgarDto { AmalgarId = exist.AmalgarId, Title = exist.Title, TaeedEmza = exist.TaeedEmza };
+        }
+
+        var amalgar = new Amalgar
+        {
+            Title = title,
+            TaeedEmza = (taeedEmza ?? "").Trim(),
+            IsDelete = false
+        };
+        _db.Amalgars.Add(amalgar);
+        await _db.SaveChangesAsync();
+        return new AmalgarDto { AmalgarId = amalgar.AmalgarId, Title = amalgar.Title, TaeedEmza = amalgar.TaeedEmza };
+    }
 }

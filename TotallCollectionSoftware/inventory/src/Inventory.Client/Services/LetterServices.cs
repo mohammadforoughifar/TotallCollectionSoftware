@@ -46,6 +46,9 @@ public interface ILetterService
     Task UnarchiveByLetterAsync(int letterId);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
 
+    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
+    Task<AmalgarDto> CreateAmalgarAsync(string title);
+
     // پیش‌نویس
     Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
     Task<List<PishnevisDto>> GetPishnevisListAsync(string? search = null);
@@ -208,6 +211,9 @@ public class LetterService : ILetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/letters/amalgars");
+
+    public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
+        _api.PostAsync<AmalgarDto>("api/letters/amalgars", new CreateAmalgarDto { Title = title });
 
     public Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
         => ListOrPaged.GetPagedAsync<PishnevisDto>(_api, $"api/letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");

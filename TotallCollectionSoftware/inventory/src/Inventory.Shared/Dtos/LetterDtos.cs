@@ -296,6 +296,15 @@ public class AmalgarDto
     public string TaeedEmza { get; set; } = "";
 }
 
+/// <summary>افزودن عملگر ارجاع تازه از فرم ارجاع</summary>
+public class CreateAmalgarDto
+{
+    public string Title { get; set; } = "";
+
+    /// <summary>خالی = بدون نیاز به تایید/امضا</summary>
+    public string? TaeedEmza { get; set; }
+}
+
 /// <summary>آمار کارتابل (شمارنده‌های منو)</summary>
 public class LetterCartableStatsDto
 {

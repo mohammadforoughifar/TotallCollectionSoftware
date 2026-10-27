@@ -392,6 +392,19 @@ public class IncomingLettersController : RbacControllerBase
         return Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
     }
 
+    /// <summary>افزودن عملگر ارجاع از داخل فرم ارجاع (دکمهٔ «+»)</summary>
+    [HttpPost("amalgars")]
+    public async Task<IActionResult> CreateAmalgar([FromBody] CreateAmalgarDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        try
+        {
+            var created = await _erja.CreateAmalgarAsync(dto?.Title ?? "", dto?.TaeedEmza);
+            return Ok(created);
+        }
+        catch (Exception ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {

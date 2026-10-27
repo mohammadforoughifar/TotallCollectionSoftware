@@ -203,6 +203,23 @@
 .ltx .fcard .req { color:var(--bad); }
 .ltx .fcard .opt { font-size:9.5px; color:var(--sub); font-weight:600; background:#f1f5f9; border-radius:6px; padding:1px 6px; margin-inline-start:4px; }
 .ltx .fcard.err { border-color:var(--bad); box-shadow:0 0 0 3px rgba(220,38,38,.08); }
+/* ---------- عملگر ارجاع: دکمهٔ «+» و فرم افزودن عملگر تازه ---------- */
+.ltx .fcard .fhd { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px; }
+.ltx .fcard .fhd > label { display:block; font-size:11.5px; font-weight:800; margin:0; }
+.ltx .amal-add { display:inline-flex; align-items:center; justify-content:center; gap:4px; width:24px; height:24px;
+    border:1px solid var(--line); background:#fff; color:var(--p); border-radius:8px; cursor:pointer;
+    font-size:11px; line-height:1; padding:0; }
+.ltx .amal-add:hover { background:var(--p); border-color:var(--p); color:#fff; }
+.ltx .amal-new { display:flex; align-items:center; gap:6px; margin-top:8px; padding:7px; border:1px dashed #cbd5e1;
+    border-radius:10px; background:#f8fafc; }
+.ltx .amal-new .tin { flex:1; margin:0; min-height:0; height:34px; padding:6px 9px; font-size:12px; }
+.ltx .amal-new .amal-ok { display:inline-flex; align-items:center; gap:4px; border:0; border-radius:9px; cursor:pointer;
+    padding:7px 11px; font:inherit; font-size:11.5px; font-weight:800; color:#fff;
+    background:linear-gradient(135deg,#10b981,#059669); white-space:nowrap; }
+.ltx .amal-new .amal-ok:disabled { opacity:.55; cursor:default; }
+.ltx .amal-new .amal-x { border:1px solid var(--line); background:#fff; color:#64748b; border-radius:9px;
+    width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+
 .ltx .ferr { display:flex; align-items:center; gap:5px; color:var(--bad); font-size:10.5px; margin-top:7px; }
 
 .ltx .mode { display:inline-flex; background:#f1f5f9; border-radius:10px; padding:3px; margin-bottom:9px; }

@@ -43,6 +43,9 @@ public interface IIncomingLetterService
 
     /// <summary>عملگرهای ارجاع</summary>
     Task<List<AmalgarDto>> GetAmalgarsAsync();
+
+    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
+    Task<AmalgarDto> CreateAmalgarAsync(string title);
     Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId);
     Task UploadAttachmentAsync(int letterId, Stream stream, string fileName, string contentType);
     Task DeleteAttachmentAsync(int attachmentId);
@@ -166,6 +169,9 @@ public class IncomingLetterService : IIncomingLetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/incoming-letters/amalgars");
+
+    public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
+        _api.PostAsync<AmalgarDto>("api/incoming-letters/amalgars", new CreateAmalgarDto { Title = title });
 
     public Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId) =>
         ListOrPaged.GetAsync<LetterAttachmentDto>(_api, $"api/incoming-letters/{letterId}/attachments");
