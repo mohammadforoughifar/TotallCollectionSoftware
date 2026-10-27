@@ -20,9 +20,11 @@ namespace Inventory.Api.Services.Office.Outgoing;
 public interface IOutgoingLetterService
 {
     Task<int> AddOutgoingLetterAsync(AddOutgoingLetterDto dto, int creatorUserId, string creatorName);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly, int page = 1, int pageSize = 20);
 
     /// <summary>علامت‌گذاری «خوانده شد» برای ارجاع‌ها و ردیف امضای همین کاربر (بدون نیاز به امضا).</summary>
@@ -411,7 +413,8 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     // ---------- Inbox: شامل ارجاعات + امضا ----------
-    public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         // بخش 1: ارجاعات
         var qErja = _db.Erjas.AsNoTracking()
@@ -420,6 +423,11 @@ public class OutgoingLetterService : IOutgoingLetterService
                         && e.IsBayegani != true);
 
         if (unreadOnly == true) qErja = qErja.Where(e => !e.IsRead);
+
+        // چیپ‌های کارتابل «سمت سرور» — فیلتر سمت کلاینت فقط صفحهٔ جاری را می‌دید
+        if (starredOnly == true) qErja = qErja.Where(e => e.IsNeshan);
+        if (attachOnly == true)
+            qErja = qErja.Where(e => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == e.SourceId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -449,6 +457,11 @@ public class OutgoingLetterService : IOutgoingLetterService
             // نامهٔ امضاشده هم به‌طور طبیعی خوانده‌شده است (سازگاری با دادهٔ قبل از این ستون).
             qSign = qSign.Where(s => !s.IsRead && !s.IsSigned);
         }
+
+        // همان فیلترهای کارتابل برای ردیف‌های «امضایی» (بدون ارجاع)
+        if (starredOnly == true) qSign = qSign.Where(sg => sg.Source.OutgoingLetter!.IsNeshan);
+        if (attachOnly == true)
+            qSign = qSign.Where(sg => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == sg.SourceId));
 
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -678,7 +691,9 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(e => e.ErjaId)
+        var items = await q
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.ErjaId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new OutgoingLetterListItemDto
@@ -721,7 +736,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         };
     }
 
-    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -735,9 +751,17 @@ public class OutgoingLetterService : IOutgoingLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.ReceiverOrganization.Contains(s) || (l.SadereNumber ?? "").Contains(s));
         }
 
+        // چیپ‌های کارتابل «ارسالی» سمت سرور (روی کل نامه‌ها، نه صفحهٔ جاری)
+        if (starredOnly == true) q = q.Where(l => l.IsNeshan);
+        if (attachOnly == true)
+            q = q.Where(l => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id));
+
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(l => l.Id)
+        var items = await q
+            // ترتیب بریدگی صفحه = ترتیب نمایش (تاریخ ثبت، سپس شناسه)
+            .OrderByDescending(l => l.DateSabt)
+            .ThenByDescending(l => l.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(l => new OutgoingLetterListItemDto

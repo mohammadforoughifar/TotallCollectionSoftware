@@ -427,6 +427,10 @@
         _ => "دریافتی (کارتابل جاری)"
     };
 
+    /// <summary>
+    /// «خوانده‌نشده / نشان‌شده / پیوست‌دار» سمت سرور فیلتر می‌شوند تا روی همهٔ نامه‌ها
+    /// اثر بگذارند؛ تنها «دستورکارشده» در همین صفحه فیلتر می‌شود.
+    /// </summary>
     private IEnumerable<IncomingLetterListItemDto> PagedLetters => filter switch
     {
         "unread" => letters.Where(l => !l.IsRead),
@@ -478,7 +482,9 @@
 
     private async Task SetFilter(string flt)
     {
-        var needsServer = folder == "inbox" && (flt == "unread" || filter == "unread");
+        // همهٔ چیپ‌ها سمت سرور اعمال می‌شوند تا روی کل نامه‌ها اثر بگذارند (نه فقط ۱۵
+        // ردیف صفحهٔ جاری). تنها استثنا «دستورکارشده» است.
+        var needsServer = folder != "guide" && flt != "workorder" && filter != "workorder";
         filter = flt;
         if (needsServer)
         {
@@ -506,7 +512,9 @@
             PagedResult<IncomingLetterListItemDto> result;
             if (folder == "sent")
             {
-                result = await IncomingSvc.GetSentAsync(searchTerm, currentPage, pageSize);
+                result = await IncomingSvc.GetSentAsync(searchTerm, currentPage, pageSize,
+                    starredOnly: filter == "starred" ? true : null,
+                    attachOnly: filter == "attach" ? true : null);
             }
             else if (folder == "archive")
             {
@@ -518,13 +526,16 @@
                 // کلیک روی آن دقیقاً همان لیست «دریافتی» را برمی‌گرداند. حالا فیلتر
                 // «سمت سرور» انجام می‌شود تا نامه‌های نشان‌شدهٔ همهٔ صفحه‌ها دیده شوند —
                 // نه فقط صفحهٔ جاری (که محدودیت فیلتر سمت کلاینت بود).
-                result = await IncomingSvc.GetInboxAsync(searchTerm, null, currentPage, pageSize, starredOnly: true);
+                result = await IncomingSvc.GetInboxAsync(searchTerm, null, currentPage, pageSize, starredOnly: true,
+                    attachOnly: filter == "attach" ? true : null);
             }
             else
             {
                 // فیلتر «خوانده‌نشده» سمت سرور اعمال می‌شود تا روی همهٔ صفحات مؤثر باشد
                 // (پیش‌تر چیپ فقط متغیر filter را عوض می‌کرد و هیچ‌جا استفاده نمی‌شد).
-                result = await IncomingSvc.GetInboxAsync(searchTerm, filter == "unread" ? true : null, currentPage, pageSize);
+                result = await IncomingSvc.GetInboxAsync(searchTerm, filter == "unread" ? true : null, currentPage, pageSize,
+                    starredOnly: filter == "starred" ? true : null,
+                    attachOnly: filter == "attach" ? true : null);
             }
 
             letters = result.Items;

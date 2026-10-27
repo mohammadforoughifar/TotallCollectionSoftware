@@ -1,24 +1,24 @@
 @echo off
 setlocal
-REM Uses ConnectionStrings__Default / appsettings of THIS installation. Never embeds a server or password.
-REM Back up the database and stop other instances before running this command.
-pushd "%~dp0" || exit /b 1
-if exist "Inventory.Api.exe" (
-    Inventory.Api.exe --update-database %*
-    goto done
+pushd "%~dp0" >nul
+
+echo [DB] Starting the Inventory and RADIS-HR database update...
+
+if exist "%~dp0Inventory.Api.exe" (
+    "%~dp0Inventory.Api.exe" --update-database
+) else if exist "%~dp0Inventory.Api.dll" (
+    dotnet "%~dp0Inventory.Api.dll" --update-database
+) else if exist "%~dp0src\Inventory.Api\Inventory.Api.csproj" (
+    dotnet run --project "%~dp0src\Inventory.Api\Inventory.Api.csproj" -- --update-database
+) else (
+    echo [ERROR] Inventory.Api.exe/.dll or the source project was not found beside this script.
+    set "EXIT_CODE=2"
+    goto :finish
 )
-if exist "Inventory.Api.dll" (
-    dotnet Inventory.Api.dll --update-database %*
-    goto done
-)
-if not exist "inventory\src\Inventory.Api\Inventory.Api.csproj" (
-    echo [DB] Inventory.Api application/project not found beside this script.
-    popd
-    exit /b 1
-)
-cd /d "inventory\src\Inventory.Api"
-dotnet run --project Inventory.Api.csproj --no-launch-profile -- --update-database %*
-:done
-set "RESULT=%ERRORLEVEL%"
-popd
-endlocal & exit /b %RESULT%
+
+set "EXIT_CODE=%ERRORLEVEL%"
+if not "%EXIT_CODE%"=="0" echo [ERROR] Database update failed with exit code %EXIT_CODE%.
+
+:finish
+popd >nul
+exit /b %EXIT_CODE%

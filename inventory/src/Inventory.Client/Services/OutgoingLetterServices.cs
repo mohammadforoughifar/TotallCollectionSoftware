@@ -6,8 +6,10 @@ public interface IOutgoingLetterService
 {
     /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
     Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync();
     Task<OutgoingLetterDetailDto> GetDetailAsync(int letterId);
@@ -77,7 +79,7 @@ public interface IOutgoingLetterService
     /// دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, CancellationToken cancellationToken = default);
     Task<string?> GetUserSignatureDataUrlAsync(int userId);
     /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
@@ -106,18 +108,24 @@ public class OutgoingLetterService : IOutgoingLetterService
             $"api/outgoing-letters/{letterId}/copy-tos",
             new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/sent?{string.Join("&", qs)}");
     }
 
@@ -394,17 +402,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         return bytes.Length == 0 ? null : $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
     }
 
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, CancellationToken cancellationToken = default)
     {
         var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}&withMargin={(withMargin ? "true" : "false")}&withLetterhead={(withLetterhead ? "true" : "false")}";
-        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
+        using var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
 
-        var resp = await _http.SendAsync(req);
+        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!resp.IsSuccessStatusCode)
         {
-            var text = await resp.Content.ReadAsStringAsync();
+            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
             string msg = "دریافت فایل چاپ ناموفق بود.";
             try
             {
@@ -414,6 +422,6 @@ public class OutgoingLetterService : IOutgoingLetterService
             catch { }
             throw new ApiException(msg);
         }
-        return await resp.Content.ReadAsByteArrayAsync();
+        return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 }

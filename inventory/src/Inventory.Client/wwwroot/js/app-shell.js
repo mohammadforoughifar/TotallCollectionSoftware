@@ -178,13 +178,20 @@ window.focusById = function (id, select) {
     if (select && el.select) { try { el.select(); } catch (e) { } }
     return true;
 };
-// باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64
-window.ltxOpenPdf = function (base64, fileName) {
+// Normalize optimized Blazor byte-array interop (Uint8Array); retain base64 fallback for older callers.
+function ltxPdfBytes(payload) {
+    if (payload instanceof Uint8Array) return payload;
+    if (payload instanceof ArrayBuffer) return new Uint8Array(payload);
+    var bin = atob(String(payload || ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+// باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی باینری ترجیح دارد
+window.ltxOpenPdf = function (payload, fileName) {
     try {
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        var blob = new Blob([arr], { type: 'application/pdf' });
+        var bytes = ltxPdfBytes(payload);
+        var blob = new Blob([bytes], { type: 'application/pdf' });
         var url = URL.createObjectURL(blob);
         var w = window.open(url, '_blank');
         if (!w) { // popup blocked → download
@@ -196,79 +203,300 @@ window.ltxOpenPdf = function (base64, fileName) {
     } catch (e) { console.error(e); }
 };
 
-// ================== صفحهٔ چاپ (باز شدن هم‌زمان با کلیک) ==================
-// چرا؟ window.open باید «هم‌زمان با کلیک کاربر» اجرا شود؛ اگر بعد از دریافت
-// PDF از سرور (چند ثانیه بعد) باز شود، مرورگر آن را popup محسوب و مسدود می‌کند
-// و در نتیجه به‌جای صفحهٔ چاپ، فایل دانلود می‌شد.
-// الگو: ltxPrintBegin همان لحظهٔ کلیک پنجره را باز می‌کند (با پیام «در حال آماده‌سازی»)،
-// سپس ltxPrintReady پس از رسیدن PDF، آن را داخل همان پنجره با iframe نمایش می‌دهد
-// (نمایشگر PDF مرورگر دکمهٔ چاپ خودش را دارد)؛ ltxPrintFail هم خطا را نشان می‌دهد.
-window.ltxPrintWindows = {};
+// ================== آماده‌سازی و بازیابی جریان چاپ ==================
+// پنجره در capture-phase کلیک رزرو می‌شود تا popup blocker متوجه gesture کاربر شود.
+window.ltxPrintSessions = Object.create(null);
 window.ltxPrintPendingWindows = [];
-window.ltxReservePrintWindow = function () {
+window.ltxPrintReserveByClick = function () {
     try {
-        // Blazor dispatches @onclick through .NET first; reserve the popup in the
-        // native click's capture phase so browser popup blockers still recognize
-        // the user's gesture when the PDF request starts asynchronously.
-        var w = window.open('about:blank', '_blank');
-        if (w) window.ltxPrintPendingWindows.push(w);
-        return !!w;
-    } catch (e) {
+        var popup = window.open('about:blank', '_blank');
+        if (popup) window.ltxPrintPendingWindows.push(popup);
+        return !!popup;
+    } catch (error) {
+        console.error('[letter-print] popup reservation failed', error);
         return false;
     }
 };
 document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target.closest('[data-ltx-print-option]') : null;
-    if (target) window.ltxReservePrintWindow();
+    if (target) window.ltxPrintReserveByClick();
 }, true);
-window.ltxPrintBegin = function () {
+
+function ltxEnsurePrintFallbackStyles() {
+    if (document.getElementById('ltx-print-fallback-style')) return;
+    var style = document.createElement('style');
+    style.id = 'ltx-print-fallback-style';
+    style.textContent = '@media print {' +
+        '@page{size:A4;margin:12mm}' +
+        'body.ltx-print-direct-page .ltx-print-overlay,body.ltx-print-direct-page [data-print-hide],body.ltx-print-direct-page .no-print,body.ltx-print-direct-page nav,body.ltx-print-direct-page [role=navigation],body.ltx-print-direct-page .sidebar,body.ltx-print-direct-page .rail,body.ltx-print-direct-page .navbar,body.ltx-print-direct-page .topbar,body.ltx-print-direct-page .app-menu,body.ltx-print-direct-page button,body.ltx-print-direct-page input,body.ltx-print-direct-page select{display:none!important}' +
+        'body.ltx-print-direct-page{direction:rtl;font-family:Vazirmatn,Tahoma,Arial,sans-serif!important;color:#111!important;background:#fff!important}' +
+        'body.ltx-print-direct-page main,body.ltx-print-direct-page [role=main]{width:100%!important;max-width:none!important;overflow:visible!important}' +
+        'body.ltx-print-direct-page p,body.ltx-print-direct-page li{orphans:3;widows:3}body.ltx-print-direct-page img,body.ltx-print-direct-page figure,body.ltx-print-direct-page tr{break-inside:avoid;page-break-inside:avoid}' +
+        '}';
+    document.head.appendChild(style);
+}
+function ltxPrintShellMarkup() {
+    return '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>چاپ نامه</title>' +
+        '<style>html,body{margin:0;width:100%;height:100%;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b;background:#f1f5f9}*{box-sizing:border-box}.bar{height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.status{margin-left:auto;font-size:14px}.actions{display:flex;gap:8px}button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}button.primary{background:#0f766e;color:#fff}button[hidden]{display:none}iframe{display:block;width:100%;height:calc(100% - 58px);border:0;background:white}.error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.error[hidden]{display:none}</style></head><body>' +
+        '<div class="bar"><div id="ltx-print-status" class="status">در حال آماده‌سازی نسخهٔ چاپ…</div><div class="actions">' +
+        '<button id="ltx-print-now" class="primary" hidden>چاپ PDF</button><button id="ltx-print-retry" hidden>تلاش مجدد</button><button id="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button id="ltx-print-close">بستن</button></div></div>' +
+        '<div id="ltx-print-error" class="error" hidden></div><iframe id="ltx-print-frame" title="پیش‌نمایش PDF"></iframe></body></html>';
+}
+function ltxCreateOverlay(session) {
+    ltxEnsurePrintFallbackStyles();
+    var overlay = document.createElement('section');
+    overlay.className = 'ltx-print-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'چاپ نامه');
+    overlay.innerHTML = '<style>.ltx-print-overlay{position:fixed;z-index:2147483000;inset:0;background:#f1f5f9;display:flex;flex-direction:column;direction:rtl;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b}.ltx-print-overlay .ltx-bar{min-height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.ltx-print-overlay .ltx-status{margin-left:auto;font-size:14px}.ltx-print-overlay .ltx-actions{display:flex;gap:8px}.ltx-print-overlay button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}.ltx-print-overlay button.primary{background:#0f766e;color:#fff}.ltx-print-overlay button[hidden]{display:none}.ltx-print-overlay .ltx-error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.ltx-print-overlay .ltx-error[hidden]{display:none}.ltx-print-overlay iframe{display:block;flex:1;width:100%;min-height:0;border:0;background:white}@media print{.ltx-print-overlay .ltx-bar,.ltx-print-overlay .ltx-error{display:none!important}.ltx-print-overlay iframe{height:100vh}}</style>' +
+        '<div class="ltx-bar"><div class="ltx-status">در حال آماده‌سازی نسخهٔ چاپ…</div><div class="ltx-actions"><button class="ltx-print-now primary" hidden>چاپ PDF</button><button class="ltx-print-retry" hidden>تلاش مجدد</button><button class="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button class="ltx-print-close">بستن</button></div></div>' +
+        '<div class="ltx-error" hidden></div><iframe class="ltx-print-frame" title="پیش‌نمایش PDF"></iframe>';
+    document.body.appendChild(overlay);
+    session.overlay = overlay;
+    session.frame = overlay.querySelector('.ltx-print-frame');
+    session.status = overlay.querySelector('.ltx-status');
+    session.error = overlay.querySelector('.ltx-error');
+    overlay.querySelector('.ltx-print-now').addEventListener('click', function () { ltxTriggerPrint(session); });
+    overlay.querySelector('.ltx-print-retry').addEventListener('click', function () { ltxResolvePrintAction(session, 'retry'); });
+    overlay.querySelector('.ltx-print-direct').addEventListener('click', function () { ltxResolvePrintAction(session, 'direct'); });
+    overlay.querySelector('.ltx-print-close').addEventListener('click', function () { ltxResolvePrintAction(session, 'close'); });
+    if (session.popupBlocked) ltxSetPrintStatus(session, 'پنجرهٔ بازشو مسدود شد؛ چاپ در همین صفحه ادامه می‌یابد. برای تجربهٔ بهتر، popup این سایت را مجاز کنید.');
+}
+function ltxSetPrintStatus(session, text) {
+    if (session.status) session.status.textContent = text;
+}
+function ltxSetPrintError(session, message) {
+    var actions = session.overlay ? session.overlay : session.win && !session.win.closed ? session.win.document : null;
+    if (!actions) return;
+    var status = session.status || actions.getElementById('ltx-print-status');
+    var error = session.error || actions.getElementById('ltx-print-error');
+    if (status) status.textContent = 'چاپ آماده نشد';
+    if (error) { error.textContent = String(message || 'خطا در آماده‌سازی چاپ'); error.hidden = false; }
+    var retry = session.overlay ? actions.querySelector('.ltx-print-retry') : actions.getElementById('ltx-print-retry');
+    var direct = session.overlay ? actions.querySelector('.ltx-print-direct') : actions.getElementById('ltx-print-direct');
+    if (retry) retry.hidden = false;
+    if (direct) direct.hidden = false;
+}
+function ltxResolvePrintAction(session, action) {
+    if (session.overlay) {
+        if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve(action); }
+        else session.queuedAction = action;
+        return;
+    }
     try {
-        var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-        var w = window.ltxPrintPendingWindows.shift();
-        if (!w || w.closed) w = window.open('about:blank', '_blank');
-        if (!w) return null; // popup blocked → caller falls back to download
-        w.document.open();
-        w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>در حال آماده‌سازی چاپ…</title></head>' +
-            '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:Tahoma,sans-serif;background:#f1f5f9;color:#334155">' +
-            '<div style="text-align:center"><div style="font-size:18px;margin-bottom:8px">در حال آماده‌سازی نسخهٔ چاپ…</div>' +
-            '<div style="font-size:13px;color:#64748b">چند لحظه صبر کنید</div></div></body></html>');
-        w.document.close();
-        window.ltxPrintWindows[id] = w;
-        return id;
-    } catch (e) { return null; }
-};
-window.ltxPrintReady = function (id, base64, fileName) {
+        if (session.win && !session.win.closed && session.win.opener)
+            session.win.opener.postMessage({ type: 'ltx-print-action', id: session.id, action: action }, window.location.origin);
+    } catch (error) { console.error('[letter-print] could not notify opener', error); }
+}
+window.addEventListener('message', function (event) {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== 'ltx-print-action') return;
+    var session = window.ltxPrintSessions[event.data.id];
+    if (!session || event.source !== session.win) return;
+    if (event.data.action === 'print') { ltxTriggerPrint(session); return; }
+    if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve(event.data.action); }
+    else session.queuedAction = event.data.action;
+});
+function ltxAttachPopupControls(session) {
+    var doc = session.win.document;
+    session.frame = doc.getElementById('ltx-print-frame');
+    session.status = doc.getElementById('ltx-print-status');
+    session.error = doc.getElementById('ltx-print-error');
+    doc.getElementById('ltx-print-now').addEventListener('click', function () { ltxResolvePrintAction(session, 'print'); });
+    doc.getElementById('ltx-print-retry').addEventListener('click', function () { ltxResolvePrintAction(session, 'retry'); });
+    doc.getElementById('ltx-print-direct').addEventListener('click', function () { ltxResolvePrintAction(session, 'direct'); });
+    doc.getElementById('ltx-print-close').addEventListener('click', function () { session.win.close(); });
+}
+function ltxEnsurePrintSurface(session) {
+    if (session.win && !session.win.closed) return true;
+    session.win = null;
+    if (!session.overlay) ltxCreateOverlay(session);
+    return !!session.overlay;
+}
+function ltxPrintAttemptCurrent(session, attemptId) {
+    return !!session && !session.cleaned && !session.failed && session.attemptId === attemptId;
+}
+function ltxPrintCleanup(session, closePopup) {
+    if (!session || session.cleaned) return;
+    session.cleaned = true;
+    if (session.closePoll) clearInterval(session.closePoll);
+    if (session.objectUrl) { URL.revokeObjectURL(session.objectUrl); session.objectUrl = null; }
+    document.body.classList.remove('ltx-print-direct-page');
+    if (session.overlay && session.overlay.parentNode) session.overlay.parentNode.removeChild(session.overlay);
+    if (closePopup && session.win && !session.win.closed) {
+        try { session.win.close(); window.focus(); }
+        catch (error) { console.error('[letter-print] popup close failed', error); }
+    }
+    delete window.ltxPrintSessions[session.id];
+}
+function ltxPrintAfterPrint(session) {
+    if (!session || (!session.printRequested && !session.directFallback)) return;
+    ltxPrintCleanup(session, true);
+}
+function ltxWithPrintTimeout(promise, timeoutMs, message) {
+    var timer;
+    var timeout = new Promise(function (_, reject) {
+        timer = setTimeout(function () { reject(new Error(message)); }, Math.max(1, timeoutMs));
+    });
+    return Promise.race([promise, timeout]).finally(function () { clearTimeout(timer); });
+}
+function ltxWaitForPrintAssets(doc, timeoutMs) {
+    var tasks = [];
     try {
-        var w = window.ltxPrintWindows[id];
-        if (!w || w.closed) return false;
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
-        var safeName = String(fileName || 'letter.pdf').replace(/[<>&]/g, '');
-        w.document.open();
-        w.document.write('<!doctype html><html><head><title>' + safeName + '</title>' +
-            '<style>html,body{margin:0;padding:0;height:100%;overflow:hidden}iframe{border:0;display:block;width:100%;height:100%}</style></head>' +
-            '<body><iframe src="' + url + '" title="print"></iframe></body></html>');
-        w.document.close();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
-        delete window.ltxPrintWindows[id];
+        if (doc.fonts && doc.fonts.ready) tasks.push(doc.fonts.ready);
+        Array.prototype.forEach.call(doc.images || [], function (image) {
+            tasks.push(new Promise(function (resolve, reject) {
+                function loaded() {
+                    image.removeEventListener('load', loaded); image.removeEventListener('error', failed);
+                    if (image.naturalWidth === 0) reject(new Error('بارگذاری یکی از تصاویر صفحهٔ چاپ ناموفق بود.'));
+                    else if (image.decode) image.decode().then(resolve, reject);
+                    else resolve();
+                }
+                function failed() { image.removeEventListener('load', loaded); image.removeEventListener('error', failed); reject(new Error('بارگذاری یکی از تصاویر صفحهٔ چاپ ناموفق بود.')); }
+                if (image.complete) loaded();
+                else { image.addEventListener('load', loaded, { once: true }); image.addEventListener('error', failed, { once: true }); }
+            }));
+        });
+    } catch (error) { return Promise.reject(error); }
+    return ltxWithPrintTimeout(Promise.all(tasks), timeoutMs, 'بارگذاری فونت‌ها و تصاویر چاپ بیش از ۱۵ ثانیه طول کشید.');
+}
+function ltxTriggerPrint(session) {
+    if (!session || !(session.ready || session.pdfLoaded) || !session.frame) return false;
+    try {
+        var target = session.frame.contentWindow;
+        if (!target) throw new Error('صفحهٔ PDF در مرورگر آماده نیست.');
+        target.focus();
+        session.printRequested = true;
+        target.print();
         return true;
-    } catch (e) { return false; }
+    } catch (error) {
+        session.printRequested = false;
+        console.error('[letter-print] native print request failed', error);
+        ltxSetPrintError(session, 'PDF آماده است، اما مرورگر اجازهٔ بازکردن پنجرهٔ چاپ را نداد. از دکمهٔ چاپ داخل نمایشگر PDF استفاده کنید یا دوباره تلاش کنید.');
+        return false;
+    }
+}
+window.ltxPrintBegin = function () {
+    var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+    var popup = null;
+    try { popup = window.ltxPrintPendingWindows.shift(); } catch (error) { console.error('[letter-print] reserved popup retrieval failed', error); }
+    if (!popup || popup.closed) {
+        try { popup = window.open('about:blank', '_blank'); } catch (error) { console.error('[letter-print] popup open failed', error); }
+    }
+    var session = { id: id, win: popup && !popup.closed ? popup : null, popupBlocked: !popup || popup.closed, overlay: null, frame: null, status: null, error: null, objectUrl: null, ready: false, cleaned: false, queuedAction: null, resolveAction: null };
+    window.ltxPrintSessions[id] = session;
+    try {
+        if (session.win) {
+            session.win.document.open(); session.win.document.write(ltxPrintShellMarkup()); session.win.document.close();
+            ltxAttachPopupControls(session);
+        } else ltxCreateOverlay(session);
+    } catch (error) {
+        console.error('[letter-print] popup setup failed; using in-page print surface', error);
+        session.win = null; session.popupBlocked = true; ltxCreateOverlay(session);
+    }
+    window.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true });
+    if (session.win) {
+        try { session.win.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true }); } catch (error) { console.error('[letter-print] afterprint listener failed', error); }
+    }
+    return id;
+};
+window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
+    var session = window.ltxPrintSessions[id];
+    if (!session || session.cleaned || !ltxEnsurePrintSurface(session)) return false;
+    var timeout = Math.max(1, Number(timeoutMs) || 15000);
+    var started = Date.now();
+    try {
+        var attemptId = (session.attemptId || 0) + 1;
+        session.attemptId = attemptId;
+        session.failed = false;
+        if (session.objectUrl) URL.revokeObjectURL(session.objectUrl);
+        var bytes = ltxPdfBytes(payload);
+        session.objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        session.ready = false;
+        session.pdfLoaded = false;
+        session.printRequested = false;
+        session.directFallback = false;
+        session.frame = session.overlay ? session.overlay.querySelector('.ltx-print-frame') : session.win.document.getElementById('ltx-print-frame');
+        if (!session.frame) throw new Error('صفحهٔ نمایش PDF ساخته نشد.');
+        var loaded = new Promise(function (resolve, reject) {
+            session.frame.onload = function () { resolve(); };
+            session.frame.onerror = function () { reject(new Error('مرورگر نتوانست فایل PDF را باز کند.')); };
+        });
+        session.frame.src = session.objectUrl;
+        await ltxWithPrintTimeout(loaded, timeout, 'بارگذاری PDF بیش از ۱۵ ثانیه طول کشید.');
+        if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
+        session.pdfLoaded = true;
+        var doc = session.overlay ? document : session.win.document;
+        await ltxWaitForPrintAssets(doc, Math.max(1, timeout - (Date.now() - started)));
+        if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
+        try {
+            var pdfDoc = session.frame.contentDocument;
+            if (pdfDoc && pdfDoc.contentType && pdfDoc.contentType !== 'application/pdf')
+                await ltxWaitForPrintAssets(pdfDoc, Math.max(1, timeout - (Date.now() - started)));
+        } catch (error) { console.info('[letter-print] browser PDF viewer does not expose its document; iframe load was used as readiness signal.'); }
+        if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
+        var renderWindow = session.win || window;
+        await new Promise(function (resolve) { renderWindow.requestAnimationFrame(function () { renderWindow.requestAnimationFrame(resolve); }); });
+        if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
+        if (session.win) session.win.document.title = String(fileName || 'چاپ نامه');
+        session.ready = true;
+        ltxSetPrintStatus(session, 'PDF آماده است؛ پنجرهٔ چاپ باز می‌شود…');
+        var printButton = session.overlay ? session.overlay.querySelector('.ltx-print-now') : session.win.document.getElementById('ltx-print-now');
+        if (printButton) printButton.hidden = false;
+        if (!ltxTriggerPrint(session)) throw new Error('مرورگر نتوانست پنجرهٔ چاپ را باز کند.');
+        return true;
+    } catch (error) {
+        console.error('[letter-print] preparation failed', error);
+        throw error;
+    }
 };
 window.ltxPrintFail = function (id, message) {
-    try {
-        var w = window.ltxPrintWindows[id];
-        delete window.ltxPrintWindows[id];
-        if (!w || w.closed) return;
-        var msg = String(message || 'خطا در آماده‌سازی چاپ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        w.document.open();
-        w.document.write('<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>خطای چاپ</title></head>' +
-            '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;font-family:Tahoma,sans-serif;background:#fef2f2;color:#b91c1c">' +
-            '<div style="max-width:560px;text-align:center;padding:24px"><div style="font-size:40px;margin-bottom:12px">⚠️</div>' +
-            '<div style="font-size:14px;line-height:2">' + msg + '</div></div></body></html>');
-        w.document.close();
-    } catch (e) { }
+    var session = window.ltxPrintSessions[id];
+    if (!session) return false;
+    if (!ltxEnsurePrintSurface(session)) return false;
+    session.failed = true;
+    session.attemptId = (session.attemptId || 0) + 1;
+    session.ready = false;
+    session.printRequested = false;
+    var guidance = session.popupBlocked ? 'پنجرهٔ بازشو مسدود شد؛ popup این سایت را مجاز کنید. ' : '';
+    ltxSetPrintError(session, guidance + String(message || 'خطا در آماده‌سازی چاپ'));
+    return true;
+};
+window.ltxPrintWaitForAction = function (id) {
+    var session = window.ltxPrintSessions[id];
+    if (!session) return Promise.resolve('close');
+    if (session.queuedAction) { var queued = session.queuedAction; session.queuedAction = null; return Promise.resolve(queued); }
+    return new Promise(function (resolve) {
+        session.resolveAction = resolve;
+        session.closePoll = setInterval(function () {
+            if (session.win && session.win.closed) {
+                clearInterval(session.closePoll); session.closePoll = null;
+                session.resolveAction = null; resolve('close');
+            }
+        }, 300);
+    });
+};
+window.ltxPrintDirectPage = function (id) {
+    var session = window.ltxPrintSessions[id];
+    if (session && session.pdfLoaded && session.frame) {
+        if (ltxTriggerPrint(session)) return true;
+    }
+    ltxEnsurePrintFallbackStyles();
+    if (session) session.directFallback = true;
+    document.body.classList.add('ltx-print-direct-page');
+    try { window.print(); } catch (error) { console.error('[letter-print] direct page print failed', error); }
+    if (session) {
+        var done = function () { ltxPrintAfterPrint(session); };
+        window.addEventListener('afterprint', done, { once: true });
+        setTimeout(function () { if (!session.cleaned) { document.body.classList.remove('ltx-print-direct-page'); } }, 60000);
+    } else {
+        window.addEventListener('afterprint', function () { document.body.classList.remove('ltx-print-direct-page'); }, { once: true });
+    }
+    return true;
+};
+window.ltxPrintCancel = function (id) {
+    var session = window.ltxPrintSessions[id];
+    if (session) ltxPrintCleanup(session, true);
 };
 
 // ================== آدرس سرور API (مهم برای ورود موفق) ==================

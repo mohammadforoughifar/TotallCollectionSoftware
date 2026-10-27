@@ -78,12 +78,14 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>صندوق وارده کاربر جاری</summary>
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null, [FromQuery] bool? deadlineOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
+        // فیلترهای چیپ کارتابل (نشان‌شده/پیوست‌دار/مهلت‌دار) سمت سرور اعمال می‌شوند
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly, deadlineOnly));
     }
 
     /// <summary>پوشه بایگانی کاربر جاری</summary>
@@ -98,12 +100,13 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>نامه‌های ارسالی کاربر جاری</summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize, starredOnly, attachOnly));
     }
 
     /// <summary>آمار کارتابل (شمارنده نخوانده‌ها و…)</summary>
@@ -538,6 +541,15 @@ public class InnerLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // اعلان «پیوست جدید» برای همهٔ افرادی که در گردش این نامه‌اند و آن را رویت کرده‌اند
+        try
+        {
+            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
+        }
+        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 

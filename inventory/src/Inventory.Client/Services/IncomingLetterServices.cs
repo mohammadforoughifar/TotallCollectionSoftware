@@ -4,8 +4,10 @@ namespace Inventory.Client.Services;
 
 public interface IIncomingLetterService
 {
-    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null);
-    Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null,
+        bool? attachOnly = null);
+    Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync();
     Task<IncomingLetterDetailDto> GetDetailAsync(int letterId);
@@ -66,19 +68,24 @@ public class IncomingLetterService : IIncomingLetterService
     private class BatchBayeganiRes { public int Count { get; set; } }
     private class FinalizeResponse { public int Notified { get; set; } }
 
-    public Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null)
+    public Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null,
+        bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
         if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<IncomingLetterListItemDto>(_api, $"api/incoming-letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<IncomingLetterListItemDto>(_api, $"api/incoming-letters/sent?{string.Join("&", qs)}");
     }
 

@@ -767,6 +767,8 @@
         get
         {
             var arr = BaseItems;
+            // «نشان‌شده / پیوست‌دار» سمت سرور اعمال می‌شوند (روی همهٔ نامه‌ها، نه فقط
+            // صفحهٔ جاری)؛ پیش‌تر نامه‌های بقیهٔ صفحات بی‌صدا ناپدید می‌شدند.
             arr = filter switch
             {
                 "unread" => arr.Where(l => !l.IsRead && !l.IsSigned).ToList(),
@@ -776,8 +778,6 @@
                               .OrderBy(l => l.IsSigned)
                               .ThenByDescending(l => l.Date)
                               .ToList(),
-                "starred" => arr.Where(l => l.IsNeshan).ToList(),
-                "attach" => arr.Where(l => l.HasAttachment).ToList(),
                 "workorder" => arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList(),
                 _ => arr
             };
@@ -893,6 +893,9 @@
         {
             var s = string.IsNullOrWhiteSpace(search) ? null : search;
             var unread = filter == "unread" ? (bool?)true : null;
+            // فیلترهای چیپ کارتابل — سمت سرور تا روی همهٔ صفحات اثر کنند
+            var starredOnly = filter == "starred" ? (bool?)true : null;
+            var attachOnly = filter == "attach" ? (bool?)true : null;
             if (folder == "draft")
             {
                 var draftPage = await OutgoingSvc.GetPishnevisPageAsync((page - 1) * PageSize, PageSize, s);
@@ -911,7 +914,7 @@
                 else switch (folder)
                 {
                     case "sent":
-                        res = await OutgoingSvc.GetSentAsync(s, page, PageSize);
+                        res = await OutgoingSvc.GetSentAsync(s, page, PageSize, starredOnly, attachOnly);
                         break;
                     case "archive":
                         res = await OutgoingSvc.GetArchiveAsync(s, page, PageSize);
@@ -920,8 +923,8 @@
                         res = await OutgoingSvc.GetSigningInboxAsync(s, null, page, PageSize);
                         break;
                     case "starred":
-                        var starredInbox = await OutgoingSvc.GetInboxAsync(s, null, page, PageSize);
-                        var starredSent = await OutgoingSvc.GetSentAsync(s, page, PageSize);
+                        var starredInbox = await OutgoingSvc.GetInboxAsync(s, null, page, PageSize, starredOnly: true);
+                        var starredSent = await OutgoingSvc.GetSentAsync(s, page, PageSize, starredOnly: true);
                         res = new PagedResult<OutgoingLetterListItemDto>
                         {
                             Items = starredInbox.Items.Concat(starredSent.Items).Where(x => x.IsNeshan).ToList(),
@@ -980,9 +983,10 @@
         // InvokeAsync(...) + StateHasChanged().
         // «خوانده‌نشده» باید سمت سرور اعمال شود؛ وگرنه فقط روی همان ۱۵ ردیف بارگذاری‌شده
         // (یک صفحه) کار می‌کرد و نامه‌های نخواندهٔ صفحات بعد دیده نمی‌شدند.
-        var needsServer =
-            (folder == "inbox" && (f == "unread" || filter == "unread")) ||
-            ((folder == "inbox" || folder == "signing") && (f == "sign" || filter == "sign"));
+        // همهٔ چیپ‌ها سمت سرور اعمال می‌شوند تا روی کل نامه‌ها اثر بگذارند (نه فقط ۱۵
+        // ردیف صفحهٔ جاری). تنهــا استثنا «دستورکارشده» است که فهرست شناسه‌هایش از
+        // ماژول دستور کار می‌آید.
+        var needsServer = folder != "guide" && f != "workorder" && filter != "workorder";
         filter = f;
         page = 1;
         if (needsServer)
@@ -1255,8 +1259,8 @@
             var number = string.IsNullOrWhiteSpace(letterNumber) ? letterId.ToString() : letterNumber;
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
             await PrintWorkflow.PrintPdfAsync(
-                () => OutgoingSvc.GetPrintPdfAsync(letterId, size, withCopy: true,
-                    withMargin: withMargin, withLetterhead: printWithLetterhead), name);
+                ct => OutgoingSvc.GetPrintPdfAsync(letterId, size, withCopy: true,
+                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { printingPdf = false; }

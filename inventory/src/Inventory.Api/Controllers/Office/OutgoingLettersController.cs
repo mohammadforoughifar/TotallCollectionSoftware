@@ -70,12 +70,13 @@ public class OutgoingLettersController : RbacControllerBase
     // ==================== کارتابل — دریافتی (شامل امضا) و ارسالی ====================
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("signing-inbox")]
@@ -97,12 +98,13 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("stats")]
@@ -492,13 +494,16 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
         [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
     {
+        var accessTimer = Stopwatch.StartNew();
         // چه کسانی می‌توانند چاپ بگیرند؟
         //   • دبیرخانهٔ نامهٔ صادره و مدیر (بدون قید)
         //   • ایجادکنندهٔ نامه، امضاکنندگان و هر کاربری که نامه به او ارجاع شده (دریافت‌کننده)
         // برای گروه دوم، داشتن مجوز «خواندن» الزامی نیست تا کاربری که نامه را ساخته یا
         // دریافت کرده ولی مجوز کارتابل ندارد هم بتواند نسخهٔ چاپی بگیرد.
         var isAdmin = await IsAdminAsync();
-        var hasDabirkhane = await HasDabirkhaneAsync();
+        // HasDabirkhaneAsync also checks Admin. We already evaluated that permission above,
+        // so avoid repeating the two RBAC database checks for the same request.
+        var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane");
         if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
         {
             if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
@@ -509,7 +514,12 @@ public class OutgoingLettersController : RbacControllerBase
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-access-checks StageMs={StageMs}",
+            id, accessTimer.ElapsedMilliseconds);
+
         byte[]? pdf;
+        var generationTimer = Stopwatch.StartNew();
         try
         {
             // دبیرخانه و مدیر: چاپ فقط با امضای کامل همهٔ امضاکنندگان.
@@ -524,6 +534,12 @@ public class OutgoingLettersController : RbacControllerBase
         catch (OutgoingSignaturePrintException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-pdf-generation StageMs={StageMs}",
+                id, generationTimer.ElapsedMilliseconds);
         }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
@@ -710,15 +726,16 @@ public class OutgoingLettersController : RbacControllerBase
 
     // ==================== پیوست‌ها ====================
 
-    private async Task<bool> InFlowAsync(int letterId)
+    private Task<bool> InFlowAsync(int letterId)
     {
-        var letter = await Db.OutgoingLetters.AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
-        if (letter == null) return false;
-        if (letter.CreatorUserId == MyUserId) return true;
-        if (await Db.Erjas.AnyAsync(e => e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete)) return true;
-        if (await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == letterId && s.UserId == MyUserId && !s.IsDelete)) return true;
-        return false;
+        // Keep authorization semantics but issue one SQL query instead of up to three
+        // sequential round-trips (letter, erja, signer), which delayed print requests.
+        var userId = MyUserId;
+        return Db.OutgoingLetters.AsNoTracking().AnyAsync(letter =>
+            letter.Id == letterId && !letter.IsDelete &&
+            (letter.CreatorUserId == userId ||
+             Db.Erjas.Any(erja => erja.SourceId == letter.Id && erja.ReciverUserId == userId && !erja.IsDelete) ||
+             Db.OutgoingLetterSigners.Any(signer => signer.SourceId == letter.Id && signer.UserId == userId && !signer.IsDelete)));
     }
 
     [HttpGet("{id:int}/attachments")]
@@ -779,6 +796,15 @@ public class OutgoingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // اعلان «پیوست جدید» برای ایجادکننده، امضاکنندگان و گیرندگانی که نامه را رویت کرده‌اند
+        try
+        {
+            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
+        }
+        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
