@@ -89,6 +89,8 @@ public static class RbacSeeder
         // Connection: اتصال/حافظه مالیاتی/کلید | Goods: کالا/خدمت | Units: واحد | Customers: مشتری
         // InvoiceCreate/Update/Delete/Send/Preview/Status/Inquiry: چرخهٔ صورتحساب | Diagnose: عیب‌یابی
         ["Moadian"] = new[] { "View", "Company", "FiscalYear", "Connection", "Goods", "Units", "Customers", "InvoiceCreate", "InvoiceUpdate", "InvoiceDelete", "InvoiceSend", "InvoicePreview", "InvoiceStatus", "InvoiceInquiry", "Diagnose" },
+        // ShopGuide: راهنمای کاربری «سامانه فروشگاهی» — فقط مشاهده (بدون دسترسی به اسناد)
+        ["ShopGuide"] = new[] { "View" },
         // ================== ماژول انبارگردانی و بارکد ==================
         // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
         ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },

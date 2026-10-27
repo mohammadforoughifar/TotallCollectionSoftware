@@ -15,9 +15,17 @@
         <h1>@(isPurchase ? "اسناد خرید" : "اسناد فروش")</h1>
         <p class="lead">@(isPurchase ? "ثبت و مدیریت رسیدهای خرید" : "ثبت و مدیریت فاکتورهای فروش")</p>
     </div>
-    <button class="btn btn-primary me-auto" @onclick="OpenNew">
-        <i class="bi bi-plus-lg"></i> @(isPurchase ? "خرید جدید" : "فروش جدید")
-    </button>
+    <div class="d-flex align-items-center gap-2 me-auto">
+        @if (Auth.CanSee("ShopGuide"))
+        {
+            <a class="btn btn-outline-secondary" href="shop-guide">
+                <i class="bi bi-journal-check"></i> راهنما
+            </a>
+        }
+        <button class="btn btn-primary" @onclick="OpenNew">
+            <i class="bi bi-plus-lg"></i> @(isPurchase ? "خرید جدید" : "فروش جدید")
+        </button>
+    </div>
 </div>
 
 <div class="card mb-3">

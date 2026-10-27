@@ -381,6 +381,12 @@
                         <i class="bi bi-cash-stack"></i><span>تسویه فاکتورها</span>
                     </NavLink>
                 }
+                @if (Auth.CanSee("ShopGuide"))
+                {
+                    <NavLink class="nav-link" href="shop-guide" @onclick="NotifyClose">
+                        <i class="bi bi-journal-check"></i><span>راهنمای سامانه</span>
+                    </NavLink>
+                }
 
                 @* ---------- زیرمنوی گزارش‌های فروشگاهی ---------- *@
                 @if (ShowOpsReportsSub)
@@ -819,7 +825,7 @@
     private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
     private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
-                                                        "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
+                                                        "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers", "ShopGuide");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
