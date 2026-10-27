@@ -1,0 +1,472 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+<div class="alert alert-info d-flex align-items-center gap-2 py-2">
+    <i class="bi bi-diagram-3"></i>
+    <span>شرکت فعال سیستم: <b>@(ActiveSystemCompanyName ?? "—")</b> — فقط خدمات‌دهنده‌های همین شرکت نمایش داده می‌شوند (@(CpInfos.Count.Num()) مورد). برای دیدن خدمات‌دهنده‌های شرکت دیگر، شرکت فعال را از نوار بالای سیستم تغییر دهید.</span>
+</div>
+
+<div class="row g-3">
+    @* ---------- فهرست شرکت‌ها ---------- *@
+    <div class="col-lg-7">
+        <div class="card mi-blocked h-100">
+            <div class="card-header d-flex align-items-center gap-2">
+                <span><i class="bi bi-building"></i> فهرست شرکت‌ها</span>
+                <span class="badge badge-soft-primary num ms-auto">@(CpInfos.Count.Num()) شرکت</span>
+            </div>
+            <div class="card-body p-0">
+                @if (loading)
+                {
+                    <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری شرکت‌ها">
+                        @for (int si = 0; si < 3; si++)
+                        {
+                            <div class="mi-sk-row">
+                                <div class="mi-sk" style="width:26%"></div>
+                                <div class="mi-sk" style="width:20%"></div>
+                                <div class="mi-sk" style="width:20%"></div>
+                                <div class="mi-sk" style="width:16%"></div>
+                                <div class="mi-sk" style="width:12%"></div>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (CpInfos.Count == 0)
+                {
+                    <div class="empty-state">
+                        <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-building-add"></i></div>
+                        <h5>شرکتی تعریف نشده است</h5>
+                        <p class="text-muted">از فرم سمت چپ نخستین شرکت را ثبت کنید.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive grid-desktop mi-table">
+                        <table class="table table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>شرکت</th>
+                                    <th>شرکت سیستم (کمپانی)</th>
+                                    <th>شناسهٔ ملی / ثبت</th>
+                                    <th>شماره اقتصادی</th>
+                                    <th class="text-end">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var c in CpInfos)
+                                {
+                                    <tr class="@(c.cpinfoid == Ctx.CpInfoId ? "table-active" : "")">
+                                        <td>
+                                            <div class="fw-semibold d-flex align-items-center gap-2">
+                                                @c.PersianName
+                                                @if (!string.IsNullOrEmpty(c.Type))
+                                                {
+                                                    <span class="badge @(c.Type == "حقوقی" ? "badge-soft-primary" : "badge-soft-success")">@c.Type</span>
+                                                }
+                                                @if (c.cpinfoid == Ctx.CpInfoId)
+                                                {
+                                                    <span class="badge badge-soft-success"><i class="bi bi-check2-circle"></i> فعال</span>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-sm btn-link p-0" title="انتخاب به‌عنوان شرکت فعال" @onclick="() => Activate(c)">فعال کردن</button>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(c.EnglishName))
+                                            {
+                                                <div class="text-muted small" dir="ltr">@c.EnglishName</div>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(c.CompanyName))
+                                            {
+                                                <span class="badge badge-soft-primary"><i class="bi bi-diagram-3"></i> @c.CompanyName</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                        <td class="num">@c.Nationalid</td>
+                                        <td class="num">@c.EconomicNumber</td>
+                                        <td class="text-end text-nowrap">
+                                            <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => EditCompany(c)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                            <button type="button" class="mpa mpa-red mpa-ic" title="حذف" @onclick="() => DeleteCompany(c)"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ---------- ثبت / ویرایش شرکت ---------- *@
+    <div class="col-lg-5">
+        <div class="card mi-blocked h-100">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi @(newCp.cpinfoid > 0 ? "bi-pencil-square" : "bi-building-add")"></i>
+                <span>@((newCp.cpinfoid > 0) ? "ویرایش شرکت" : "ثبت شرکت جدید")</span>
+                @if (newCp.cpinfoid > 0)
+                {
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" title="برگشت به ثبت جدید" @onclick="ResetForm"><i class="bi bi-x-lg"></i> انصراف</button>
+                }
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label">شرکت سیستم (کمپانی) <span class="text-danger">*</span></label>
+                    <select class="form-select" value="@(newCp.CompanyId?.ToString() ?? "")" @onchange="OnSystemCompanyChanged" disabled="@(newCp.cpinfoid == 0)">
+                        <option value="">— انتخاب شرکت سیستم —</option>
+                        @foreach (var sc in SystemCompanies.Where(sc => newCp.cpinfoid > 0 || sc.Id == ActiveSystemCompanyId))
+                        {
+                            <option value="@sc.Id">@sc.Name@(ActiveSystemCompanyId == sc.Id ? " (شرکت فعال)" : "")</option>
+                        }
+                    </select>
+                    <div class="form-text">برای ثبت شرکت جدید، مقدار نهایی از «شرکت فعال» در کمبوی بالای برنامه گرفته می‌شود؛ بنابراین شرکت تازه بلافاصله در همین فهرست دیده خواهد شد.</div>
+                    @if (SystemCompanies.Count == 0)
+                    {
+                        <div class="alert alert-warning py-1 px-2 mt-2 small mb-0">برای شما شرکتی در سیستم تعریف نشده است؛ از مدیر بخواهید در «تعریف کاربر» شرکت فعال برایتان انتخاب کند.</div>
+                    }
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">نام شرکت <span class="text-danger">*</span></label>
+                    <input class="form-control" value="@newCp.PersianName" @oninput="e => newCp.PersianName = e.Value?.ToString()" placeholder="مثلاً: شرکت نمونه آریا" />
+                </div>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">کد ملی / ثبت <span class="text-danger">*</span></label>
+                        <input class="form-control num" dir="ltr" value="@newCp.Nationalid" @oninput="OnNewCpNationalId" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">نوع شرکت <span class="text-danger">*</span></label>
+                        <select class="form-select" value="@newCp.Type" @onchange="e => newCp.Type = e.Value?.ToString()">
+                            <option value="حقیقی">حقیقی</option>
+                            <option value="حقوقی">حقوقی</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-12">
+                        <label class="form-label">شماره اقتصادی @(newCp.Type == "حقوقی" ? "(اختیاری)" : "")</label>
+                        <input class="form-control num" dir="ltr" value="@newCp.EconomicNumber" @oninput="e => newCp.EconomicNumber = e.Value?.ToString()" />
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-6">
+                        <label class="form-label">نام لاتین شرکت</label>
+                        <input class="form-control num" dir="ltr" value="@newCp.EnglishName" @oninput="e => newCp.EnglishName = e.Value?.ToString()" placeholder="Aria Sample Co." />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">کد پستی شرکت</label>
+                        <input class="form-control num" dir="ltr" value="@newCp.PostalCode" @oninput="e => newCp.PostalCode = e.Value?.ToString()" />
+                    </div>
+                </div>
+                <button class="btn @(newCp.cpinfoid > 0 ? "btn-primary" : "btn-success") mt-3" @onclick="SaveCompany" disabled="@savingCp">
+                    @if (savingCp) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi @(newCp.cpinfoid > 0 ? "bi-check-lg" : "bi-plus-lg")"></i> }
+                    @(newCp.cpinfoid > 0 ? "ذخیرهٔ تغییرات" : "ثبت شرکت")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ---------- سال‌های مالی ---------- *@
+<div class="row g-3 mt-1">
+    <div class="col-12">
+        <div class="card mi-blocked">
+            <div class="card-header"><i class="bi bi-calendar-range"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span></div>
+            <div class="card-body">
+                @if (Ctx.CpInfoId <= 0)
+                {
+                    <div class="alert alert-warning py-2 small">ابتدا یک شرکت انتخاب یا ثبت کنید.</div>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-calendar-plus text-success"></i> تعریف سال مالی جدید</span>
+                            <div class="mb-2">
+                                <label class="form-label">عنوان</label>
+                                <input class="form-control" value="@newFy.Title" @oninput="e => newFy.Title = e.Value?.ToString()" placeholder="مثلاً: سال ۱۴۰۵" />
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label">تاریخ شروع <span class="text-danger">*</span></label>
+                                    <DatePicker Value="newFy.StartDatePicker" ValueChanged="v => newFy.StartDatePicker = v" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">تاریخ پایان <span class="text-danger">*</span></label>
+                                    <DatePicker Value="newFy.EndDatePicker" ValueChanged="v => newFy.EndDatePicker = v" />
+                                </div>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="fyActive" checked="@newFy.IsActive" @onchange="e => newFy.IsActive = (bool)(e.Value ?? false)" />
+                                <label class="form-check-label" for="fyActive">سال مالی فعال است</label>
+                            </div>
+                            <button class="btn btn-success mt-3" @onclick="SaveFiscalYear" disabled="@savingFy">
+                                @if (savingFy) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-plus-lg"></i> }
+                                ثبت سال مالی
+                            </button>
+                        </div>
+                        <div class="col-lg-7">
+                            <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-list-ul"></i> سال‌های تعریف‌شده</span>
+                            @if (FiscalYears.Count == 0)
+                            {
+                                <div class="text-muted small">هنوز سال مالی‌ای ثبت نشده است.</div>
+                            }
+                            else
+                            {
+                                <div class="table-responsive mi-table">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr><th>عنوان</th><th>بازه</th><th class="text-nowrap">وضعیت</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var fy in FiscalYears)
+                                            {
+                                                <tr>
+                                                    <td>@(string.IsNullOrWhiteSpace(fy.Title) ? "—" : fy.Title)</td>
+                                                    <td class="text-nowrap">@MoadianUi.Shamsi(fy.StartDate) تا @MoadianUi.Shamsi(fy.EndDate)</td>
+                                                    <td><span class="badge @(fy.IsActive ? "badge-soft-success" : "badge-soft-muted")">@(fy.IsActive ? "فعال" : "غیرفعال")</span></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private VMShowCpinfoByCompany newCp = new() { Type = "حقیقی" };
+    private List<VMShowCpinfoByCompany> CpInfos = new();
+    private List<VMFiscalYear> FiscalYears = new();
+    private FiscalYearForm newFy = new();
+    private bool loading = true, savingCp, savingFy;
+
+    // شرکت‌های داخلی سیستم که کاربر به آن‌ها دسترسی دارد (از company-context) + شرکت فعال
+    private sealed class SystemCompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
+    private sealed class CompanyContextResponse { public int? ActiveCompanyId { get; set; } public List<SystemCompanyOption> Companies { get; set; } = new(); }
+    private List<SystemCompanyOption> SystemCompanies = new();
+    private int? ActiveSystemCompanyId;
+    private string? ActiveSystemCompanyName => ActiveSystemCompanyId is > 0
+        ? SystemCompanies.FirstOrDefault(c => c.Id == ActiveSystemCompanyId.Value)?.Name
+        : null;
+
+    private void OnSystemCompanyChanged(ChangeEventArgs e)
+        => newCp.CompanyId = int.TryParse(e.Value?.ToString(), out var id) && id > 0 ? id : null;
+
+    private VMShowCpinfoByCompany? Current => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId);
+
+    /// <summary>فرم تعریف سال مالی — DatePicker ها DateTime? برمی‌دارند؛ هنگام ذخیره به VM تبدیل می‌شود.</summary>
+    private sealed class FiscalYearForm
+    {
+        public string? Title { get; set; }
+        public DateTime? StartDatePicker { get; set; }
+        public DateTime? EndDatePicker { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        _ = LoadAsync();
+    }
+
+    private void OnCtxChanged() => _ = LoadAsync(fyOnly: true);
+
+    private async Task LoadAsync(bool fyOnly = false)
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            // هدر شرکت فعال را پیش از واکشی ست می‌کنیم تا فهرست فقط خدمات‌دهنده‌های شرکت فعال باشد.
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var cid) && cid > 0)
+                {
+                    Http.DefaultRequestHeaders.Remove("X-Company-Id");
+                    Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", cid.ToString());
+                }
+            }
+            catch { }
+            if (!fyOnly)
+            {
+                try
+                {
+                    var ctxResp = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context");
+                    SystemCompanies = ctxResp?.Companies ?? new();
+                    ActiveSystemCompanyId = ctxResp?.ActiveCompanyId;
+                    if (newCp.cpinfoid == 0 && newCp.CompanyId is null && ActiveSystemCompanyId is > 0)
+                        newCp.CompanyId = ActiveSystemCompanyId;
+                }
+                catch { SystemCompanies = new(); }
+                // فهرست خدمات‌دهندگان باید دقیقاً با CompanyId انتخاب‌شده در کمبوی بالای برنامه
+                // واکشی شود؛ هیچ شرکت مودیان متعلق به کمپانی دیگر در این فرم نمایش داده نمی‌شود.
+                CpInfos = await Moadian.GetCpInfosAsync(ActiveSystemCompanyId);
+                // تطبیق فعال: اگر خدمات‌دهندهٔ انتخاب‌شده در فهرست این شرکت نیست، اولین مورد فعال شود.
+                if (CpInfos.Count == 0)
+                {
+                    if (Ctx.CpInfoId != 0) Ctx.SetCpInfoId(0);
+                }
+                else if (Ctx.CpInfoId == 0 || CpInfos.All(c => c.cpinfoid != Ctx.CpInfoId))
+                {
+                    Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+                }
+            }
+            FiscalYears = Ctx.CpInfoId > 0 ? await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId) : new();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void Activate(VMShowCpinfoByCompany c) => Ctx.SetCpInfoId(c.cpinfoid);
+
+    private void EditCompany(VMShowCpinfoByCompany c)
+    {
+        newCp = new VMShowCpinfoByCompany
+        {
+            cpinfoid = c.cpinfoid,
+            CompanyId = c.CompanyId,
+            PersianName = c.PersianName,
+            Nationalid = c.Nationalid,
+            EconomicNumber = c.EconomicNumber,
+            Type = string.IsNullOrEmpty(c.Type) ? "حقیقی" : c.Type,
+            EnglishName = c.EnglishName,
+            PostalCode = c.PostalCode
+        };
+    }
+
+    private void ResetForm() => newCp = new() { Type = "حقیقی", CompanyId = ActiveSystemCompanyId };
+
+    private async Task DeleteCompany(VMShowCpinfoByCompany c)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"شرکت «{c.PersianName}» حذف شود؟ (سوابق و صورتحساب‌ها حفظ می‌شوند)");
+        if (!ok) return;
+        try
+        {
+            var r = await Moadian.DeleteCpInfoAsync(c.cpinfoid);
+            if (r.Success)
+            {
+                Toast.Success("شرکت حذف شد.");
+                ResetForm();
+                await LoadAsync();
+            }
+            else Toast.Error(r.Message ?? "خطا در حذف شرکت.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OnNewCpNationalId(ChangeEventArgs e)
+    {
+        // پیشنهاد خودکار نوع از روی طول شناسه: ۱۱ رقم → حقوقی | ۱۰ رقم → حقیقی
+        newCp.Nationalid = e.Value?.ToString();
+        var digits = new string(newCp.Nationalid?.Where(char.IsDigit).ToArray()) ?? "";
+        if (digits.Length == 11) newCp.Type = "حقوقی";
+        else if (digits.Length == 10) newCp.Type = "حقیقی";
+    }
+
+    private async Task SaveCompany()
+    {
+        // شرکت مودیانِ تازه باید دقیقاً به همان کمپانیِ انتخاب‌شده در کمبوی بالای برنامه
+        // وصل شود؛ در غیر این صورت پس از ثبت، به‌دلیل فیلتر CompanyId در این صفحه دیده نمی‌شود.
+        if (newCp.cpinfoid == 0)
+        {
+            var activeCompanyId = ActiveSystemCompanyId;
+            if (activeCompanyId is not > 0)
+            {
+                try
+                {
+                    var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                    if (int.TryParse(saved, out var id) && id > 0) activeCompanyId = id;
+                }
+                catch { }
+            }
+
+            if (activeCompanyId is not > 0)
+            {
+                Toast.Error("ابتدا شرکت فعال را از کمبوی بالای برنامه انتخاب کنید.");
+                return;
+            }
+            newCp.CompanyId = activeCompanyId;
+        }
+
+        if (SystemCompanies.Count > 0 && newCp.CompanyId is null or <= 0) { Toast.Error("شرکت سیستم (کمپانی) را انتخاب کنید."); return; }
+        if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(newCp.Nationalid)) { Toast.Error("کد ملی / شناسهٔ ثبت شرکت الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(newCp.Type)) newCp.Type = "حقیقی";
+        savingCp = true;
+        StateHasChanged();
+        try
+        {
+            var wasEdit = newCp.cpinfoid > 0;
+            var savedNationalId = newCp.Nationalid;
+            var r = await Moadian.SaveCpInfoAsync(newCp);
+            if (r.Success)
+            {
+                Toast.Success(wasEdit ? "تغییرات شرکت ذخیره شد." : "شرکت ثبت شد و فعال شد.");
+                var saved = MoadianService.As<VMShowCpinfoByCompany>(r);
+                ResetForm();
+                await LoadAsync();
+                if (!wasEdit)
+                {
+                    // شرکت تازه‌تعریف‌شده به‌صورت پیش‌فرض «فعال» می‌شود تا بقیهٔ بخش‌ها
+                    // (سال مالی، کالا، مشتری، صورتحساب) بی‌درنگ روی همان کار کنند.
+                    var newId = saved?.cpinfoid > 0
+                        ? saved.cpinfoid
+                        : CpInfos.FirstOrDefault(c => c.Nationalid == savedNationalId)?.cpinfoid ?? 0;
+                    if (newId > 0 && CpInfos.Any(c => c.cpinfoid == newId)) Ctx.SetCpInfoId(newId);
+                }
+            }
+            else Toast.Error(r.Message ?? "خطا در ثبت شرکت.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingCp = false; }
+    }
+
+    private async Task SaveFiscalYear()
+    {
+        if (Ctx.CpInfoId <= 0) { Toast.Error("ابتدا یک شرکت انتخاب کنید."); return; }
+        if (newFy.StartDatePicker is null) { Toast.Error("تاریخ شروع سال مالی را وارد کنید."); return; }
+        if (newFy.EndDatePicker is null) { Toast.Error("تاریخ پایان سال مالی را وارد کنید."); return; }
+        if (newFy.EndDatePicker < newFy.StartDatePicker) { Toast.Error("تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد."); return; }
+
+        savingFy = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.SaveFiscalYearAsync(new VMFiscalYear
+            {
+                CpInfoId = Ctx.CpInfoId,
+                Title = newFy.Title,
+                StartDate = newFy.StartDatePicker.Value,
+                EndDate = newFy.EndDatePicker.Value,
+                IsActive = newFy.IsActive
+            });
+            if (r.Success)
+            {
+                Toast.Success("سال مالی ثبت شد.");
+                newFy = new();
+                FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
+            }
+            else Toast.Error(r.Message ?? "خطا در ثبت سال مالی.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { savingFy = false; StateHasChanged(); }
+    }
+
+    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+}

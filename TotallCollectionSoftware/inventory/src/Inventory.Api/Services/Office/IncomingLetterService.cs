@@ -1,0 +1,870 @@
+using System.Globalization;
+using Inventory.Api.Data;
+using Inventory.Api.Hubs;
+using Inventory.Shared.Dtos;
+using Microsoft.EntityFrameworkCore;
+
+namespace Inventory.Api.Services;
+
+/// <summary>
+/// پیاده‌سازی سرویس اصلی مدیریت نامه‌های وارده (Incoming Letters Service)
+/// </summary>
+public interface IIncomingLetterService
+{
+    Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null);
+    Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
+    Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15);
+    Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
+    Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId);
+    Task<int> AddAsync(AddIncomingLetterDto dto, int userId);
+    Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin);
+    Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin);
+    Task DeleteAsync(int letterId, int userId, bool isAdmin);
+    Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
+    Task<PagedResult<IncomingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 15);
+
+    // رزرو شماره
+    Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3, Paging.Request? pagination = null);
+    Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int userId, int typeForm = 3, int count = 1);
+}
+
+public class IncomingLetterService : IIncomingLetterService
+{
+    private readonly AppDbContext _db;
+    private readonly INotifyService _notify;
+    private readonly FileStore _store;
+    private readonly ILetterStratureService _strature;
+
+    public IncomingLetterService(AppDbContext db, INotifyService notify, FileStore store, ILetterStratureService strature)
+    {
+        _db = db;
+        _notify = notify;
+        _store = store;
+        _strature = strature;
+    }
+
+    /// <summary>
+    /// ساخت شمارهٔ نامهٔ وارده از ساختار پیکربندی‌شده (TypeForm=3) — قابل تنظیم از
+    /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
+    /// «سال/V-شماره» (مثل 1404/V/12) حفظ می‌شود تا شمارهٔ نامه‌های موجود و
+    /// نصب‌های پیکربندی‌نشده نشکنند — همان قراردادی که نامهٔ داخلی و صادره دارند.
+    ///
+    /// date: تاریخ ورود/ثبت نامه (DateErsal) — مبنای جزء «سال». پیش‌تر سال از
+    /// DateTime.Now گرفته می‌شد و نامهٔ backdate‌شده شمارهٔ سالِ امروز را می‌گرفت.
+    /// </summary>
+    /// <param name="userId">
+    /// شناسهٔ کاربری که نامه را ثبت می‌کند — مبنای جزء «واحد» در شمارهٔ نامه.
+    /// پیش از این پاس داده نمی‌شد و همیشه کد واحد پیش‌فرض شرکت در شماره می‌نشست.
+    /// </param>
+    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date, int? userId = null)
+    {
+        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date, userId: userId);
+        if (!string.IsNullOrEmpty(s)) return s;
+
+        var pc = new PersianCalendar();
+        return $"{pc.GetYear(date)}/V/{numberSabt}";
+    }
+
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+
+        // «دریافتی» فقط نامه‌هایی است که «به کاربر ارسال شده»؛ نه نامه‌هایی که خودش ثبت کرده.
+        // از این پس AddAsync برای ثبت‌کننده ردیف ارجاع نمی‌سازد؛ این شرط (Sender != Reciver)
+        // برای دادهٔ قدیمیِ باقی‌مانده هم جلوی نمایش ردیف خودکارِ «ثبت‌کننده = گیرنده» را می‌گیرد.
+        // اگر نامه بعداً توسط شخص دیگری به همین کاربر ارجاع شود، ارجاع جدید با فرستندهٔ متفاوت
+        // ساخته می‌شود و در دریافتی دیده می‌شود.
+        var q = _db.Erjas.AsNoTracking()
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+                        && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                        && e.IsBayegani != true);
+
+        if (unreadOnly == true) q = q.Where(e => !e.IsRead);
+
+        // باگ B1: پوشهٔ «نشان‌شده» در کارتابل تا پیش از این هیچ فیلتری اعمال نمی‌کرد و
+        // دقیقاً همان لیست «دریافتی» را نشان می‌داد. فیلتر باید «سمت سرور» باشد چون
+        // فیلتر سمت کلاینت فقط صفحهٔ جاری را محدود می‌کند و نامه‌های نشان‌شدهٔ صفحات
+        // دیگر هرگز دیده نمی‌شدند. نشان روی Erja.IsNeshan است، یعنی به‌ازای هر کاربر —
+        // درست همان موجودیتی که ToggleNeshanAsync تغییرش می‌دهد.
+        //
+        // پارامتر عمداً در «انتهای» امضا اضافه شد تا چهار فراخوان موجودِ AiTools و
+        // AiBriefingService (که positionally صدا می‌زنند) نشکنند.
+        if (starredOnly == true) q = q.Where(e => e.IsNeshan);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Source.IncomingLetter!.Title.Contains(s)
+                             || (e.Source.IncomingLetter!.LetterNumber ?? "").Contains(s)
+                             || (e.Source.IncomingLetter!.NumberLetterVarede ?? "").Contains(s)
+                             || e.Source.IncomingLetter!.Ferestande.Contains(s)
+                             || (e.UserSender!.FirstName + " " + e.UserSender.LastName).Contains(s));
+        }
+
+        var totalCount = await q.CountAsync();
+
+        var items = await q
+            .OrderByDescending(e => e.ErjaId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(e => new IncomingLetterListItemDto
+            {
+                LetterId = e.SourceId,
+                ErjaId = e.ErjaId,
+                LetterNumber = e.Source.IncomingLetter!.LetterNumber ?? "",
+                NumberSabt = e.Source.IncomingLetter!.NumberSabt,
+                NumberLetterVarede = e.Source.IncomingLetter!.NumberLetterVarede ?? "",
+                Title = e.Source.IncomingLetter!.Title,
+                Ferestande = e.Source.IncomingLetter!.Ferestande,
+                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
+                    ? e.UserSender.Username
+                    : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+                SenderUserId = e.SenderUserId,
+                Date = e.Source.IncomingLetter!.Date,
+                DateErsal = e.Source.IncomingLetter!.DateErsal,
+                TypeErsal = e.Source.IncomingLetter!.TypeErsal ?? "",
+                DeliveryName = e.Source.IncomingLetter!.DeliveryName ?? "",
+                Mahramanegi = e.Source.IncomingLetter!.Mahramanegi,
+                Foriat = e.Source.IncomingLetter!.Foriat,
+                ErjaType = e.Type,
+                MatnErja = e.MatnErja,
+                MohlatPasokh = e.MohlatPasokh,
+                IsNeshan = e.IsNeshan,
+                IsRead = e.IsRead,
+                IsBayegani = e.IsBayegani == true,
+                HasAnswer = !string.IsNullOrEmpty(e.Answer),
+                ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId)
+            })
+            .ToListAsync();
+
+        return new PagedResult<IncomingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15)
+    {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+
+        // همان قاعدهٔ «دریافتی»: ردیف خودکارِ خودِ ثبت‌کننده در بایگانی هم نمایش داده نمی‌شود.
+        var q = _db.Erjas.AsNoTracking()
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+                        && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                        && e.IsBayegani == true);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(e => e.Source.IncomingLetter!.Title.Contains(s)
+                             || (e.Source.IncomingLetter!.LetterNumber ?? "").Contains(s)
+                             || e.Source.IncomingLetter!.Ferestande.Contains(s));
+        }
+
+        var direct = _db.IncomingLetters.AsNoTracking()
+            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            direct = direct.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
+        }
+        // Page the UNION of lightweight keys in SQL; hydrate only those keys.
+        var keys = q.Select(e => new { LetterId = e.SourceId, ErjaId = (int?)e.ErjaId,
+                NumberSabt = e.Source.IncomingLetter!.NumberSabt })
+            .Concat(direct.Select(l => new { LetterId = l.Id, ErjaId = (int?)null, NumberSabt = l.NumberSabt }));
+        var totalCount = await keys.CountAsync();
+        var pageKeys = await keys.OrderByDescending(k => k.NumberSabt)
+            .ThenByDescending(k => k.LetterId).ThenBy(k => k.ErjaId)
+            .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
+        var erjaIds = pageKeys.Where(k => k.ErjaId.HasValue).Select(k => k.ErjaId!.Value).ToList();
+        var directIds = pageKeys.Where(k => !k.ErjaId.HasValue).Select(k => k.LetterId).ToList();
+        q = q.Where(e => erjaIds.Contains(e.ErjaId));
+        direct = direct.Where(l => directIds.Contains(l.Id));
+
+        var erjaItems = await q
+            .Select(e => new IncomingLetterListItemDto
+            {
+                LetterId = e.SourceId, ErjaId = e.ErjaId,
+                LetterNumber = e.Source.IncomingLetter!.LetterNumber ?? "", NumberSabt = e.Source.IncomingLetter!.NumberSabt,
+                NumberLetterVarede = e.Source.IncomingLetter!.NumberLetterVarede ?? "", Title = e.Source.IncomingLetter!.Title,
+                Ferestande = e.Source.IncomingLetter!.Ferestande,
+                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName) ? e.UserSender.Username : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+                SenderUserId = e.SenderUserId, Date = e.Source.IncomingLetter!.Date, DateErsal = e.Source.IncomingLetter!.DateErsal,
+                TypeErsal = e.Source.IncomingLetter!.TypeErsal ?? "", DeliveryName = e.Source.IncomingLetter!.DeliveryName ?? "",
+                Mahramanegi = e.Source.IncomingLetter!.Mahramanegi, Foriat = e.Source.IncomingLetter!.Foriat,
+                ErjaType = e.Type, MatnErja = e.MatnErja, MohlatPasokh = e.MohlatPasokh, IsNeshan = e.IsNeshan, IsRead = e.IsRead,
+                IsBayegani = true, HasAnswer = !string.IsNullOrEmpty(e.Answer), ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId)
+            }).ToListAsync();
+
+        var directItems = await direct.Select(l => new IncomingLetterListItemDto
+        {
+            LetterId = l.Id, LetterNumber = l.LetterNumber ?? "", NumberSabt = l.NumberSabt,
+            NumberLetterVarede = l.NumberLetterVarede ?? "", Title = l.Title, Ferestande = l.Ferestande,
+            Sender = l.Ferestande, Date = l.Date, DateErsal = l.DateErsal, TypeErsal = l.TypeErsal ?? "",
+            DeliveryName = l.DeliveryName ?? "", Mahramanegi = l.Mahramanegi, Foriat = l.Foriat,
+            IsBayegani = true, IsRead = true, ReciverCount = _db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete),
+            HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
+        }).ToListAsync();
+
+        var items = erjaItems.Concat(directItems).OrderByDescending(x => x.NumberSabt)
+            .ThenByDescending(x => x.LetterId).ThenBy(x => x.ErjaId).ToList();
+
+        return new PagedResult<IncomingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15)
+    {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+
+        var q = _db.IncomingLetters.AsNoTracking()
+            .Where(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete && !l.IsBayegani);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
+        }
+
+        var totalCount = await q.CountAsync();
+
+        var items = await q
+            .OrderByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new IncomingLetterListItemDto
+            {
+                LetterId = l.Id,
+                ErjaId = null,
+                LetterNumber = l.LetterNumber ?? "",
+                NumberSabt = l.NumberSabt,
+                NumberLetterVarede = l.NumberLetterVarede ?? "",
+                Title = l.Title,
+                Ferestande = l.Ferestande,
+                Sender = "شما",
+                SenderUserId = userId,
+                Date = l.Date,
+                DateErsal = l.DateErsal,
+                TypeErsal = l.TypeErsal ?? "",
+                DeliveryName = l.DeliveryName ?? "",
+                Mahramanegi = l.Mahramanegi,
+                Foriat = l.Foriat,
+                IsNeshan = l.IsNeshan,
+                IsRead = true,
+                IsBayegani = l.IsBayegani,
+                ReciverCount = l.Source.Erjas.Count(x => !x.IsDelete),
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
+            })
+            .ToListAsync();
+
+        return new PagedResult<IncomingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId)
+    {
+        // شمارندهٔ «دریافتی/خوانده‌نشده» باید با فهرست هم‌خوان باشد؛ پس ردیف خودکارِ
+        // خودِ ثبت‌کننده اینجا هم کنار گذاشته می‌شود.
+        var inboxQuery = _db.Erjas.AsNoTracking()
+            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+                        && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                        && e.IsBayegani != true);
+
+        // هر ارجاع یک قلم جدا در «دریافتی» است؛ ارجاع دوبارهٔ یک نامه هم ردیف و
+        // شمارندهٔ تازه دارد (مطابق فهرست).
+        var totalInbox = await inboxQuery.CountAsync();
+        var unreadCount = await inboxQuery.CountAsync(e => !e.IsRead);
+
+        var totalSent = await _db.IncomingLetters.AsNoTracking()
+            .CountAsync(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete);
+
+        var totalArchive = await _db.Erjas.AsNoTracking()
+            .CountAsync(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+                             && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                             && e.IsBayegani == true);
+
+        var totalStarred = await inboxQuery.CountAsync(e => e.IsNeshan);
+
+        return new IncomingLetterCartableStatsDto
+        {
+            TotalInbox = totalInbox,
+            UnreadCount = unreadCount,
+            TotalSent = totalSent,
+            TotalArchive = totalArchive,
+            TotalStarred = totalStarred
+        };
+    }
+
+    public async Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
+    {
+        var letter = await _db.IncomingLetters
+            .Include(l => l.Source)
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+
+        if (letter == null) return null;
+
+        // ---------- بررسی دسترسی ----------
+        // باگ قبلی: هیچ بررسی‌ای وجود نداشت و پارامتر isAdmin هرگز استفاده نمی‌شد؛
+        // در نتیجه هر کاربر دارای مجوز عمومی «IncomingLetters.Read» می‌توانست با
+        // حدس‌زدن letterId متن کامل و تمام گردش «هر» نامه‌ای را بخواند — از جمله
+        // نامه‌های Mahramanegi=3 (سرّی).
+        //
+        // قاعدهٔ دسترسی دقیقاً هم‌راستا با ErjaService.GetGardeshTreeAsync است تا
+        // «جزئیات نامه» و «درخت گردش» یک سطح محافظت داشته باشند:
+        //   سازندهٔ نامه  |  حاضر در گردش (ارجاع/هامش)  |  مدیر
+        //
+        // نکته: این بررسی باید «پیش از» هر اثر جانبی انجام شود؛ وگرنه کاربر
+        // غیرمجاز هم نامه را برای خودش خوانده‌شده علامت می‌زد.
+        var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
+        var inFlow = myErjas.Count > 0;
+        if (!inFlow && letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("شما در گردش این نامه نیستید و اجازهٔ مشاهدهٔ آن را ندارید.");
+
+        // علامت‌گذاری «رویت شد» برای ارجاع‌های همین کاربر
+        // (باگ قبلی: شرط ذخیره پس از تغییر IsRead بررسی می‌شد و هرگز درست نبود)
+        var hadUnread = false;
+        foreach (var e in myErjas)
+        {
+            if (!e.IsRead)
+            {
+                e.IsRead = true;
+                e.DateRead = DateTime.Now;
+                hadUnread = true;
+            }
+        }
+        if (hadUnread) await _db.SaveChangesAsync();
+
+        var creator = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == letter.CreateUserId);
+        var creatorName = creator != null
+            ? (string.IsNullOrEmpty(creator.FirstName + creator.LastName) ? creator.Username : $"{creator.FirstName} {creator.LastName}".Trim())
+            : "ثبت‌کننده سیستم";
+
+        // ردیف‌های خودکارِ قدیمی (ثبت‌کننده = گیرنده، Type=گیرنده) که پیش‌تر هنگام ثبت
+        // ساخته می‌شدند، در گردش و فهرست گیرندگان نمایش داده نمی‌شوند؛ ثبت‌کننده فقط
+        // وقتی در گردش است که ارجاع واقعی از شخص دیگری گرفته باشد.
+        var allErjas = await _db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letterId && !e.IsDelete
+                        && !(e.SenderUserId == e.ReciverUserId && e.Type == "گیرنده"))
+            .OrderBy(e => e.ErjaId)
+            .Select(e => new ErjaDto
+            {
+                ErjaId = e.ErjaId,
+                SenderUserId = e.SenderUserId,
+                SenderName = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
+                    ? e.UserSender.Username
+                    : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+                ReciverUserId = e.ReciverUserId,
+                ReciverName = string.IsNullOrEmpty(e.UserReciver!.FirstName + e.UserReciver.LastName)
+                    ? e.UserReciver.Username
+                    : (e.UserReciver.FirstName + " " + e.UserReciver.LastName).Trim(),
+                Date = e.Date,
+                Type = e.Type,
+                MatnErja = e.MatnErja,
+                MohlatPasokh = e.MohlatPasokh,
+                IsRead = e.IsRead,
+                DateRead = e.DateRead,
+                Answer = e.Answer,
+                DateAnswer = e.DateAnswer
+            })
+            .ToListAsync();
+
+        var curErja = allErjas.LastOrDefault(e => e.ReciverUserId == userId);
+
+        var dto = new IncomingLetterDetailDto
+        {
+            LetterId = letter.Id,
+            SourceId = letter.Id,
+            LetterNumber = letter.LetterNumber ?? "",
+            Number = letter.Number,
+            NumberSabt = letter.NumberSabt,
+            Title = letter.Title,
+            Description = letter.Description,
+            Ferestande = letter.Ferestande,
+            NumberLetterVarede = letter.NumberLetterVarede ?? "",
+            Date = letter.Date,
+            DateErsal = letter.DateErsal,
+            TypeErsal = letter.TypeErsal ?? "",
+            DeliveryName = letter.DeliveryName ?? "",
+            CreatorUserId = letter.CreateUserId,
+            CreatorName = creatorName,
+            Mahramanegi = letter.Mahramanegi,
+            Foriat = letter.Foriat,
+            IsNeshan = letter.IsNeshan,
+            IsMine = letter.CreateUserId == userId,
+            CurrentErja = curErja,
+            Erjas = allErjas,
+
+            // ---------- باگ B11: این پنج فیلد تا پیش از این «هرگز» پر نمی‌شدند ----------
+            // (فیلد ششم، ErjaHistory، فقط نام مستعار Erjas است و همان را برمی‌گرداند.)
+            //
+            // «ارجاعی که کاربر جاری باید به آن پاسخ دهد». دکمهٔ «ثبت پاسخ» در UI فقط وقتی
+            // ActiveErjaId.HasValue باشد رندر می‌شود، پس تا الان هرگز دیده نمی‌شد.
+            // قرارداد «هنوز پاسخ داده نشده» در کل کدبیس e.Answer == "" است
+            // (ErjaService:179 هنگام ثبت پاسخ آن را پر می‌کند؛ AiDigestService:193 و
+            // AiBriefingService:104 هم با همین شرط می‌شمارند).
+            ActiveErjaId = myErjas
+                .Where(e => string.IsNullOrEmpty(e.Answer))
+                .OrderBy(e => e.Date)
+                .LastOrDefault()?.ErjaId,
+
+            // قابل ویرایش: ثبت‌کننده (یا مدیر) و هنوز هیچ گیرنده‌ای نامه را نخوانده باشد —
+            // دقیقاً همان قاعدهٔ InnerLetterService:476 تا رفتار دو ماژول یکی باشد.
+            CanEdit = (letter.CreateUserId == userId || isAdmin) && !allErjas.Any(e => e.IsRead),
+
+            // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
+            // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
+            IsBayegani = myErjas.Any(e => e.IsBayegani == true)
+        };
+
+        // پیوست‌های نامه — بدون این، بخش «پیوست‌های نامه» در پانل خواننده همیشه خالی بود.
+        // حجم فایل باید «پس از» materialize شدن حساب شود چون _store.Size یک متد سمت کلاینت
+        // است و در projection ترجمه‌پذیر به SQL نیست. همان الگوی endpoint پیوست‌ها در
+        // IncomingLettersController، تا عدد حجم در دو جا یکسان بماند.
+        var attRows = await _db.AppAttachments.AsNoTracking()
+            .Where(a => a.Module == "IncomingLetters" && a.RefId == letterId)
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
+            .ToListAsync();
+
+        dto.Attachments = attRows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
+
+        // نامه‌های مرتبط (عطف/پیرو) — هم‌راستا با InnerLetterService:492
+        dto.RelatedLetters = await _db.RelatedLetters.AsNoTracking()
+            .Where(r => r.LetterId == letterId && !r.IsDelete)
+            .Select(r => new RelatedLetterDto
+            {
+                Id = r.Id,
+                Related = r.Related,
+                RelateLetterId = r.RelateLetterId,
+                RelateLetterNumber = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber : "",
+                RelateLetterTitle = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title : ""
+            })
+            .ToListAsync();
+
+        return dto;
+    }
+
+    public async Task<int> AddAsync(AddIncomingLetterDto dto, int userId)
+    {
+        var pc = new PersianCalendar();
+
+        // مبنای سال، «تاریخ ورود/ثبت نامه» است نه امروز — وگرنه نامه‌ای که با تاریخ
+        // سال قبل ثبت می‌شود شمارهٔ ترتیبی و جزء سالِ امسال را می‌گیرد.
+        var entryDate = dto.DateErsal == default ? DateTime.Now : dto.DateErsal;
+        var currentYear = pc.GetYear(entryDate);
+
+        // تقریب شروع/پایان سال شمسی به میلادی — برای فیلتر در SQL.
+        // مثل InnerLetterService.NextNumberAsync با try/catch تا تاریخ نامعتبر استارتاپ را نخواباند.
+        DateTime startOfYear, endOfYear;
+        try
+        {
+            startOfYear = new DateTime(currentYear, 1, 1, pc);
+            endOfYear = new DateTime(currentYear + 1, 1, 1, pc);
+        }
+        catch
+        {
+            startOfYear = entryDate.AddDays(-400);
+            endOfYear = entryDate.AddDays(400);
+        }
+
+        // ==================== باگ B4 (بند ۲): اتمیکیتی ====================
+        // تراکنش عمداً «پیش از» خواندن‌های شماره‌گذاری شروع می‌شود، نه پیش از درج.
+        // اگر بعد از آن‌ها شروع می‌شد، سطح Serializable هیچ اثری نداشت چون خواندن‌های
+        // MAX() بیرون از تراکنش و بدون قفل انجام می‌شدند و دو درخواست همزمان باز هم
+        // عدد یکسانی می‌خواندند.
+        //
+        // Serializable همان الگویی است که خودِ پروژه برای تخصیص شماره در جاهای
+        // race‌پذیر به کار می‌برد (WorkOrdersController:180/314/798 و
+        // DocEvolutionController:48) — پس رفتار و ریسک deadlock با بقیهٔ کدبیس یکی است.
+        //
+        // همچنین این متد «دو» بار SaveChanges می‌کند (اولی برای گرفتن source.Id، چون
+        // IncomingLetter کلید مشترک با LetterSource دارد؛ دومی برای نامه و ارجاع‌ها).
+        // یک باگ گزارش‌نشده: اگر دومی شکست می‌خورد، رکورد LetterSource «یتیم» در
+        // دیتابیس می‌ماند. با تراکنش، هر دو یا با هم ثبت می‌شوند یا هیچ‌کدام.
+        //
+        // try/catch و تورفتگی دوبارهٔ بدنه لازم نیست: Dispose شدن تراکنشِ commit‌نشده
+        // خودش rollback می‌کند، پس `await using` به‌تنهایی کافی است (همان HrDemoPurger:33).
+        //
+        // آوردن BuildLetterNumberAsync داخل تراکنش امن است: TotalNumberAsync فقط می‌خواند
+        // (نه تراکنش جدا دارد نه SaveChanges) و AppDbContext هم Scoped است، پس همان
+        // نمونهٔ مشترک در کل درخواست به کار می‌رود و تراکنش تودرتو ساخته نمی‌شود.
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+        var maxNumber = await _db.IncomingLetters
+            .Where(l => l.DateErsal >= startOfYear && l.DateErsal < endOfYear)
+            .MaxAsync(l => (int?)l.Number) ?? 0;
+
+        var nextNumber = maxNumber + 1;
+
+        int numberSabt;
+        if (dto.NumberSabt is > 0)
+        {
+            numberSabt = dto.NumberSabt.Value;
+
+            // باگ B4 (بند ۳): مصرف رزرو دو شرط نداشت.
+            //   !r.IsDelete  → رزروِ نرم‌حذف‌شده هم مصرف می‌شد
+            //   r.UserId == userId → هر کاربری می‌توانست شمارهٔ رزروشدهٔ کاربر دیگر را بسوزاند
+            var res = await _db.LetterNumberReservations.FirstOrDefaultAsync(r =>
+                r.TypeForm == 3 && r.NumberSabt == numberSabt
+                && !r.IsUsed && !r.IsDelete && r.UserId == userId);
+            if (res != null) res.IsUsed = true;
+        }
+        else
+        {
+            // باگ B4 (بند ۱): این مسیر «فقط» جدول نامه‌ها را می‌دید و
+            // LetterNumberReservations را نادیده می‌گرفت، در حالی که ReserveNumberAsync
+            // هر دو را می‌بیند (Math.Max(lastUsedSabt, lastResSabt)). نتیجه: شماره‌ای که
+            // کاربر A رزرو کرده ولی هنوز مصرف نشده بود، خودکار به نامهٔ کاربر B می‌رسید
+            // و شمارهٔ اندیکاتور تکراری تولید می‌شد. حالا هر دو مسیر یک منطق دارند.
+            var maxSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0;
+            var maxReserved = await _db.LetterNumberReservations
+                .Where(r => r.TypeForm == 3 && !r.IsDelete)
+                .MaxAsync(r => (int?)r.NumberSabt) ?? 0;
+            numberSabt = Math.Max(maxSabt, maxReserved) + 1;
+        }
+
+        // باگ B4 (بند ۲): تا اینجا همه‌چیز «MAX()+1» بدون تراکنش، بدون lock و بدون
+        // محدودیت یکتایی بود. محافظت اصلی، ایندکس یکتای فیلترشده‌ای است که در
+        // IncomingLetterSchemaV1 ساخته می‌شود؛ این بررسی صریح هم برای آن است که در
+        // مسیر «شمارهٔ دستی» به‌جای خطای خامِ نقض یکتایی از دیتابیس، پیام فارسی
+        // خوانا برگردانده شود (ApiExceptionFilter آن را به 400 تبدیل می‌کند).
+        if (await _db.IncomingLetters.AnyAsync(l => l.NumberSabt == numberSabt && !l.IsDelete))
+            throw new Exception($"شمارهٔ اندیکاتور {numberSabt} پیش‌تر برای نامهٔ واردهٔ دیگری ثبت شده است. لطفاً شمارهٔ دیگری وارد کنید یا فیلد شماره را خالی بگذارید تا خودکار تخصیص یابد.");
+
+        // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
+        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate, userId);
+
+        var source = new LetterSource
+        {
+            SourceType = 3, // 3 = نامه وارده
+            IsDelete = false
+        };
+        _db.LetterSources.Add(source);
+        await _db.SaveChangesAsync();
+
+        var letter = new IncomingLetter
+        {
+            Id = source.Id,
+            LetterNumber = letterNumber,
+            Number = nextNumber,
+            NumberSabt = numberSabt,
+            Title = dto.Title.Trim(),
+            Ferestande = dto.Ferestande.Trim(),
+            NumberLetterVarede = dto.NumberLetterVarede?.Trim(),
+            Date = dto.Date,
+            DateErsal = dto.DateErsal,
+            TypeErsal = dto.TypeErsal?.Trim(),
+            DeliveryName = dto.DeliveryName?.Trim(),
+            Description = dto.Description,
+            Mahramanegi = dto.Mahramanegi,
+            Foriat = dto.Foriat,
+            CreateUserId = userId,
+            Creator = 1,
+            CreatorId = userId,
+            IsNeshan = false,
+            IsBayegani = false,
+            IsDelete = false
+        };
+
+        _db.IncomingLetters.Add(letter);
+
+        // ثبت‌کننده در گردش نامه قرار نمی‌گیرد؛ فقط «گیرندگان اولیه» ردیف ارجاع می‌گیرند.
+        // (کاربر دبیرخانه که نامه را ثبت می‌کند فقط «ایجادکننده» است و در «دریافتی» خودش
+        //  دیده نمی‌شود. اگر بعداً شخص دیگری نامه را به او ارجاع دهد، ارجاع واقعی ساخته
+        //  می‌شود و از آن لحظه در گردش و کارتابل او قرار می‌گیرد.)
+        var recivers = dto.InitialReciverUserIds.Distinct().ToList();
+        recivers.Remove(userId);
+
+        foreach (var rId in recivers)
+        {
+            _db.Erjas.Add(new Erja
+            {
+                SourceId = source.Id,
+                SenderUserId = userId,
+                ReciverUserId = rId,
+                Date = DateTime.Now,
+                Type = "گیرنده",
+                MatnErja = string.IsNullOrWhiteSpace(dto.InitialMatnErja) ? "ثبت نامه وارده" : dto.InitialMatnErja.Trim(),
+                MohlatPasokh = dto.InitialMohlatPasokh,
+                IsRead = false,
+                DateRead = null
+            });
+        }
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        await _notify.BroadcastChangedAsync("incoming-letters");
+        return letter.Id;
+    }
+
+    /// <summary>
+    /// نهایی‌سازی نامهٔ وارده و ارسال اعلان به «گیرندگان اولیه».
+    ///
+    /// ترتیب صحیح در مسیر «تبدیل ایمیل به نامه وارده» این است:
+    ///   ثبت نامه (AddAsync، با Commit تراکنش)  →  ایجاد ارجاع‌ها (همان AddAsync)
+    ///   →  آپلود کامل «همهٔ» پیوست‌ها  →  Finalize  →  اعلان گیرندگان
+    /// پس وقتی این متد صدا زده می‌شود، نامه و ارجاع‌هایش از پیش Commit شده‌اند و
+    /// اعلان هیچ‌گاه برای نامهٔ ناتمام (بدون پیوست) ارسال نمی‌شود.
+    ///
+    /// قواعد:
+    ///   • فقط ثبت‌کننده یا مدیر؛
+    ///   • گیرندگان اولیه = ارجاع‌های Type=«گیرنده» که هنگام ثبت ساخته شده‌اند؛
+    ///   • خودِ ثبت‌کننده اعلان نمی‌گیرد؛
+    ///   • جلوگیری از اعلان تکراری: به‌ازای هر گیرنده، اگر اعلان «نامه وارده» با
+    ///     همین لینک از قبل وجود دارد، دوباره ساخته نمی‌شود (Finalize idempotent است)؛
+    ///   • لینک اعلان «incoming-letters?open={id}» است چون در کلاینت Route‌ای به
+    ///     شکل /incoming-letters/view/{id} وجود ندارد و کارتابل با ?open= همان نامه
+    ///     را در Reader باز می‌کند.
+    ///
+    /// خروجی: تعداد گیرندگانِی که در «این فراخوان» اعلان گرفتند.
+    /// </summary>
+    public async Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin)
+    {
+        var letter = await _db.IncomingLetters.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new InvalidOperationException("نامه وارده یافت نشد.");
+
+        if (letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("فقط ثبت‌کننده یا مدیر می‌تواند نامه وارده را نهایی‌سازی کند.");
+
+        // استخراج گیرندگان اولیه (به‌جز ثبت‌کننده)
+        var targetIds = await _db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letterId && !e.IsDelete
+                        && e.Type == "گیرنده" && e.SenderUserId == letter.CreateUserId
+                        && e.ReciverUserId != letter.CreateUserId)
+            .Select(e => e.ReciverUserId)
+            .Distinct()
+            .ToListAsync();
+        if (targetIds.Count == 0) return 0;
+
+        var link = $"incoming-letters?open={letterId}";
+
+        // جلوگیری از اعلان تکراری — فراخوان دوبارهٔ Finalize (یا هر مسیر موازی)
+        // نباید برای کاربری که قبلاً اعلان همین نامه را گرفته، اعلان تازه بسازد.
+        var alreadyNotified = await _db.AppNotifications.AsNoTracking()
+            .Where(n => targetIds.Contains(n.UserId)
+                        && n.FormName == "نامه وارده" && n.Link == link)
+            .Select(n => n.UserId)
+            .Distinct()
+            .ToListAsync();
+        var pendingIds = targetIds.Except(alreadyNotified).ToList();
+        if (pendingIds.Count == 0) return 0;
+
+        var creator = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == letter.CreateUserId)
+            .Select(u => new { u.FirstName, u.LastName, u.Username })
+            .FirstOrDefaultAsync();
+        var fromName = creator == null
+            ? "سیستم"
+            : (string.IsNullOrWhiteSpace((creator.FirstName ?? "") + (creator.LastName ?? ""))
+                ? creator.Username
+                : $"{creator.FirstName} {creator.LastName}".Trim());
+
+        await _notify.SendManyAsync(pendingIds,
+            $"نامه وارده جدید: {letter.Title}",
+            $"شماره {letter.LetterNumber}",
+            fromName, "نامه وارده", link);
+        await _notify.BroadcastChangedAsync("incoming-letters");
+        return pendingIds.Count;
+    }
+
+    public async Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin)
+    {
+        var letter = await _db.IncomingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) throw new InvalidOperationException("نامه یافت نشد.");
+        if (letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("فقط ثبت‌کننده یا مدیر می‌تواند نامه را ویرایش کند.");
+
+        letter.Title = dto.Title.Trim();
+        letter.Ferestande = dto.Ferestande.Trim();
+        letter.NumberLetterVarede = dto.NumberLetterVarede?.Trim();
+        letter.Date = dto.Date;
+        letter.DateErsal = dto.DateErsal;
+        letter.TypeErsal = dto.TypeErsal?.Trim();
+        letter.DeliveryName = dto.DeliveryName?.Trim();
+        letter.Description = dto.Description;
+        letter.Mahramanegi = dto.Mahramanegi;
+        letter.Foriat = dto.Foriat;
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("incoming-letters");
+    }
+
+    public async Task DeleteAsync(int letterId, int userId, bool isAdmin)
+    {
+        var letter = await _db.IncomingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) return;
+        if (letter.CreateUserId != userId && !isAdmin)
+            throw new UnauthorizedAccessException("دستور حذف صادر نشد.");
+
+        letter.IsDelete = true;
+        var source = await _db.LetterSources.FirstOrDefaultAsync(s => s.Id == letterId);
+        if (source != null) source.IsDelete = true;
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("incoming-letters");
+    }
+
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId, int userId)
+    {
+        var letter = await _db.IncomingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) return false;
+        letter.IsNeshan = !letter.IsNeshan;
+        await _db.SaveChangesAsync();
+        return letter.IsNeshan;
+    }
+
+    public async Task<PagedResult<IncomingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 15)
+    {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+
+        var q = _db.IncomingLetters.AsNoTracking()
+            .Where(l => !l.IsDelete && (l.CreateUserId == userId || l.Source.Erjas.Any(e => e.ReciverUserId == userId && !e.IsDelete)));
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
+        }
+
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(l => new IncomingLetterPickDto
+            {
+                SourceId = l.Id,
+                LetterNumber = l.LetterNumber ?? "",
+                NumberSabt = l.NumberSabt,
+                Title = l.Title,
+                Ferestande = l.Ferestande,
+                Date = l.Date
+            })
+            .ToListAsync();
+
+        return new PagedResult<IncomingLetterPickDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3, Paging.Request? pagination = null)
+    {
+        try
+        {
+            await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
+
+            var list = await _db.LetterNumberReservations.AsNoTracking()
+                .Where(r => r.TypeForm == typeForm && !r.IsUsed && !r.IsDelete)
+                .OrderByDescending(r => r.NumberSabt).ThenBy(x => x.Id)
+                .ToPageListAsync(pagination, defaultCap: 50);
+
+            var userIds = list.Select(r => r.UserId).Distinct().ToList();
+            var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id);
+
+            return list.Select(r => new LetterNumberReservationDto
+            {
+                Id = r.Id,
+                TypeForm = r.TypeForm,
+                NumberSabt = r.NumberSabt,
+                DateRezerv = r.DateRezerv,
+                UserId = r.UserId,
+                UserName = users.TryGetValue(r.UserId, out var u) ? (string.IsNullOrEmpty(u.FirstName + u.LastName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()) : "سیستم",
+                IsUsed = r.IsUsed
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IncomingLetterService] GetReservations error: {ex.Message}");
+            return new List<LetterNumberReservationDto>();
+        }
+    }
+
+    public async Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int userId, int typeForm = 3, int count = 1)
+    {
+        count = Math.Clamp(count, 1, 20);
+        await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
+
+        int lastUsedSabt = 0;
+        int lastResSabt = 0;
+
+        try { lastUsedSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0; } catch { }
+        try { lastResSabt = await _db.LetterNumberReservations.Where(r => r.TypeForm == typeForm).MaxAsync(r => (int?)r.NumberSabt) ?? 0; } catch { }
+
+        var startSabt = Math.Max(lastUsedSabt, lastResSabt) + 1;
+        var created = new List<LetterNumberReservation>();
+
+        for (int i = 0; i < count; i++)
+        {
+            var res = new LetterNumberReservation
+            {
+                TypeForm = typeForm,
+                NumberSabt = startSabt + i,
+                DateRezerv = DateTime.Now,
+                UserId = userId,
+                IsUsed = false,
+                IsDelete = false
+            };
+            _db.LetterNumberReservations.Add(res);
+            created.Add(res);
+        }
+
+        await _db.SaveChangesAsync();
+
+        // باگ B4 (بند ۴): لیست `created` ساخته و پر می‌شد ولی «هرگز» استفاده نمی‌شد —
+        // کد مرده. متد در عوض GetReservationsAsync را صدا می‌زد که کل رزروهای
+        // مصرف‌نشدهٔ «همهٔ کاربران» را (با سقف ۵۰) برمی‌گرداند، پس UI پس از رزرو
+        // لیست غلطی را به‌عنوان نتیجه نشان می‌داد. حالا همان شماره‌هایی برمی‌گردند
+        // که در این فراخوان رزرو شده‌اند.
+        //
+        // UserName یک بار گرفته می‌شود چون همهٔ رزروهای این فراخوان متعلق به یک کاربرند.
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var myName = me == null
+            ? "سیستم"
+            : (string.IsNullOrEmpty(me.FirstName + me.LastName) ? me.Username : $"{me.FirstName} {me.LastName}".Trim());
+
+        return created.Select(r => new LetterNumberReservationDto
+        {
+            Id = r.Id,
+            TypeForm = r.TypeForm,
+            NumberSabt = r.NumberSabt,
+            DateRezerv = r.DateRezerv,
+            UserId = r.UserId,
+            UserName = myName,
+            IsUsed = r.IsUsed
+        }).ToList();
+    }
+}

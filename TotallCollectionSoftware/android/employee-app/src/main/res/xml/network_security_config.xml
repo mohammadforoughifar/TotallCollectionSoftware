@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  اعتماد به گواهی داخلی سامانه (Totall Local Certificate Authority).
+
+  در شبکهٔ داخلی سرور با https://<آی‌پی>:5443 و گواهیِ ساخت خودِ سامانه کار می‌کند. اندروید ۷ به بعد به‌طور
+  پیش‌فرض به گواهی‌هایی که کاربر نصب کرده (مثل ca.crt سامانه) داخل اپ‌ها اعتماد نمی‌کند؛ این فایل آن را مجاز
+  می‌کند تا اپ هم مثل Chrome، پس از نصب ca.crt روی گوشی (http://<آی‌پی-سرور>:5100/https-setup) وصل شود.
+  برای دامنهٔ واقعی با گواهی Let's Encrypt همان گواهی‌های سیستمی کافی است.
+  ترافیک HTTP ساده همچنان بسته است.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
