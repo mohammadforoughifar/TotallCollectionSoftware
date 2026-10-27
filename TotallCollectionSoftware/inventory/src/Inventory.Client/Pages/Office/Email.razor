@@ -1,3 +1,4 @@
+@using Inventory.Shared.Security
 @page "/office/email"
 @page "/office/personal-email"
 @inject IEmailClientService EmailSvc
@@ -919,7 +920,11 @@
                        + " — تاریخ: " + openMsg.Date.ToFaDateTime()
                        + "</div>";
 
-            letterCompose?.Open(title, header + (openMsg.Body ?? ""), null, files);
+            // بدنهٔ ایمیل قبل از ریختن در ادیتور نامه پاک‌سازی و «خوانا» می‌شود:
+            // تگ <style> ایمیل‌های تبلیغاتی به کل صفحه اعمال می‌شد و کادر فرم را سیاه
+            // می‌کرد؛ رنگ متن سفید هم روی کاغذ سفید نامه ناپیدا بود.
+            var body = RichLetterHtml.Sanitize(openMsg.Body);
+            letterCompose?.Open(title, header + body, null, files);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }

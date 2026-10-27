@@ -1,3 +1,4 @@
+@using Inventory.Shared.Security
 @page "/incoming-letters"
 @page "/office/incoming-letters"
 @inject IIncomingLetterService IncomingSvc
@@ -276,7 +277,7 @@
                                 }
                                 else
                                 {
-                                    @((MarkupString)activeDetail.Description)
+                                    @((MarkupString)RichLetterHtml.Sanitize(activeDetail.Description))
                                 }
                             </div>
 
@@ -1085,16 +1086,37 @@
     {
         try
         {
-            item.IsBayegani = item.ErjaId is { } erjaId
-                ? await IncomingSvc.ToggleBayeganiAsync(erjaId)
-                : await IncomingSvc.ToggleLetterBayeganiAsync(item.LetterId);
-
-            Toast.Success(item.IsBayegani ? "نامه به بایگانی منتقل شد." : "از بایگانی خارج شد؛ به «دریافتی» برگشت.");
+            if (item.IsBayegani)
+            {
+                // خروج از بایگانی از مسیر «کامل» سرور: گره درختی حذف و همهٔ پرچم‌های
+                // بایگانیِ همین کاربر برای این نامه آزاد می‌شود. پیش‌تر فقط یکی از پرچم‌ها
+                // آزاد می‌شد و نامه از بایگانی بیرون می‌رفت ولی به «دریافتی» برنمی‌گشت.
+                await IncomingSvc.UnarchiveLetterAsync(item.LetterId);
+                item.IsBayegani = false;
+                Toast.Success("از بایگانی خارج شد و به فهرست نامه‌ها برگشت.");
+            }
+            else
+            {
+                item.IsBayegani = item.ErjaId is { } erjaId
+                    ? await IncomingSvc.ToggleBayeganiAsync(erjaId)
+                    : await IncomingSvc.ToggleLetterBayeganiAsync(item.LetterId);
+                Toast.Success(item.IsBayegani ? "نامه به بایگانی منتقل شد." : "از بایگانی خارج شد.");
+            }
 
             if (activeDetail != null && activeDetail.LetterId == item.LetterId)
                 activeDetail = await IncomingSvc.GetDetailAsync(item.LetterId);
 
+            var keep = activeLetter;
             await ReloadDataAsync();
+            if (bayeganiTree != null) await bayeganiTree.ReloadAsync();
+
+            // ریدر باز می‌ماند و وضعیت تازهٔ همان نامه را نشان می‌دهد (ردیف ممکن است از
+            // فهرست صفحهٔ بایگانی حذف شده باشد، ولی نمایش نامه نباید ناگهان بسته شود).
+            if (readerOpen && keep != null && keep.LetterId == item.LetterId)
+            {
+                keep.IsBayegani = item.IsBayegani;
+                activeLetter = keep;
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

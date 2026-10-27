@@ -298,6 +298,9 @@ public class IncomingLettersController : RbacControllerBase
                     {
                         Title = (letter.Title ?? "نامه").Length > 200 ? letter.Title![..200] : (letter.Title ?? "نامه"),
                         ErjaId = myErja.ErjaId,
+                        // شناسهٔ نامه هم ثبت می‌شود تا هنگام خروج از بایگانی، گره درختی
+                        // با اطمینان پیدا و بسته شود (پیش‌تر فقط ErjaId ذخیره می‌شد).
+                        LetterId = letter.Id,
                         ParentId = 0,
                         UserId = MyUserId,
                         TypeBayegani = 1,
@@ -329,6 +332,18 @@ public class IncomingLettersController : RbacControllerBase
 
         await Db.SaveChangesAsync();
         return Ok(new { isBayegani = letter.IsBayegani });
+    }
+
+    /// <summary>
+    /// خروج کامل نامهٔ وارده از بایگانی کاربر — گره درختی و همهٔ پرچم‌های بایگانیِ
+    /// همین کاربر برای این نامه آزاد می‌شود تا نامه بی‌چون‌وچرا به فهرست برگردد.
+    /// </summary>
+    [HttpPost("{id:int}/unarchive")]
+    public async Task<IActionResult> UnarchiveLetter(int id)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        var closed = await _archive.UnarchiveIncomingLetterAsync(id, MyUserId);
+        return Ok(new { isBayegani = false, closedNodes = closed });
     }
 
     [HttpPost("erja/{erjaId:int}/bayegani")]

@@ -42,6 +42,12 @@ public interface IArchiveService
     /// <summary>خروج نامه از بایگانی بر اساس شناسه ارجاع (برای دکمه بایگانی در نمایش نامه)</summary>
     Task UnarchiveByErjaAsync(int erjaId, int userId);
 
+    /// <summary>
+    /// خروج قطعی یک «نامهٔ وارده» از بایگانی کاربر: همهٔ گره‌های درختی و همهٔ پرچم‌های
+    /// بایگانیِ همین کاربر برای همین نامه آزاد می‌شوند تا نامه حتماً به فهرست برگردد.
+    /// </summary>
+    Task<int> UnarchiveIncomingLetterAsync(int letterId, int userId);
+
     // ==================== بایگانی دبیرخانه (نامه صادره — TypeBayegani=2) ====================
     // بایگانی دبیرخانه درخت پوشه‌های مستقل خودش را دارد تا با بایگانی شخصی
     // نامه‌های داخلی قاطی نشود.
@@ -632,6 +638,28 @@ public class ArchiveService : IArchiveService
 
     // ==================== حذف ====================
 
+    /// <summary>شناسهٔ همهٔ گره‌های زیرِ یک پوشه (تا هر عمقی) — برای حذف آبشاری پوشه.</summary>
+    private async Task<HashSet<int>> CollectSubtreeIdsAsync(int folderId, int userId)
+    {
+        var rows = await _db.LetterBayeganis.AsNoTracking()
+            .Where(x => x.UserId == userId && !x.IsDelete && x.TypeBayegani != TypeOutgoing)
+            .Select(x => new { x.BayeganiId, x.ParentId })
+            .ToListAsync();
+
+        var result = new HashSet<int>();
+        var queue = new Queue<int>();
+        queue.Enqueue(folderId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in rows.Where(x => x.ParentId == current))
+            {
+                if (result.Add(child.BayeganiId)) queue.Enqueue(child.BayeganiId);
+            }
+        }
+        return result;
+    }
+
     /// <summary>همهٔ گره‌های زیرِ یک پوشه (تا هر عمقی) — برای حذف آبشاری پوشه.</summary>
     private async Task<List<LetterBayegani>> CollectSubtreeAsync(int folderId, int userId)
     {
@@ -673,6 +701,15 @@ public class ArchiveService : IArchiveService
             {
                 erja.IsBayegani = false;
 
+                // نامه ممکن است چند ارجاع برای همین کاربر داشته باشد (ارجاع مجدد). اگر
+                // فقط ارجاعِ متصل به گره آزاد شود، ردیفِ دیگر با پرچم بایگانی، نامه را
+                // همچنان از «دریافتی» بیرون نگه می‌دارد؛ پس همهٔ ردیف‌های همین کاربر
+                // روی همین نامه آزاد می‌شوند.
+                var siblings = await _db.Erjas
+                    .Where(e => e.SourceId == erja.SourceId && e.ReciverUserId == userId && e.IsBayegani == true)
+                    .ToListAsync();
+                foreach (var sibling in siblings) sibling.IsBayegani = false;
+
                 // ثبت‌کنندهٔ همان نامهٔ وارده اگر خودِ کاربر باشد، پرچم خود نامه هم آزاد شود
                 var ownIncoming = await _db.IncomingLetters
                     .FirstOrDefaultAsync(l => l.Id == erja.SourceId && l.CreateUserId == userId);
@@ -708,15 +745,22 @@ public class ArchiveService : IArchiveService
         if (entity.IsFolder)
         {
             // حذف پوشه آبشاری است: همان چیزی که پیام تأیید هم می‌گوید («نامه‌های داخل آن از
-            // بایگانی خارج می‌شوند»). پیش‌تر با پوشهٔ پر خطا می‌داد و پرچم نامه‌ها ناهمگام می‌ماند.
-            var subtree = await CollectSubtreeAsync(bayeganiId, userId);
-            foreach (var node in subtree)
+            // بایگانی خارج می‌شوند»). مهم است که «همهٔ» نسل‌های زیرپوشه‌ها هم بسته شوند؛
+            // وگرنه نامهٔ داخل زیرپوشه نه در بایگانی می‌ماند (گره حذف شده) و نه به
+            // «دریافتی» برمی‌گردد (پرچم بایگانی هنوز true است) — همان باگ «نامه گم می‌شود».
+            var ids = await CollectSubtreeIdsAsync(bayeganiId, userId);
+            ids.Add(bayeganiId);
+
+            var nodes = await _db.LetterBayeganis
+                .Where(x => ids.Contains(x.BayeganiId) && x.UserId == userId && !x.IsDelete)
+                .ToListAsync();
+
+            foreach (var node in nodes)
             {
                 if (!node.IsFolder) await ClearArchiveFlagsAsync(node, userId);
                 node.IsDelete = true;
             }
 
-            entity.IsDelete = true;
             await _db.SaveChangesAsync();
             await _notify.BroadcastChangedAsync("letters");
             return;
@@ -750,6 +794,51 @@ public class ArchiveService : IArchiveService
         erja.IsBayegani = false;
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
+    }
+
+    /// <summary>
+    /// خروج نامهٔ وارده از بایگانی به‌صورت «کامل»: افزون بر گره درختی، پرچم بایگانیِ
+    /// خود نامه و همهٔ ارجاع‌های همین کاربر روی این نامه آزاد می‌شود.
+    /// <para>
+    /// چرا لازم است: یک نامهٔ وارده می‌تواند هم‌زمان در ردیفِ ارجاعِ کاربر و در ردیفِ
+    /// «ثبت‌کننده» بایگانی شود؛ اگر فقط یکی از پرچم‌ها آزاد شود، نامه از بایگانی حذف
+    /// می‌شود ولی با پرچمِ دیگر همچنان از «دریافتی» بیرون می‌ماند و در عمل گم می‌شود.
+    /// </para>
+    /// </summary>
+    public async Task<int> UnarchiveIncomingLetterAsync(int letterId, int userId)
+    {
+        var erjaIds = await _db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letterId && e.ReciverUserId == userId)
+            .Select(e => e.ErjaId)
+            .ToListAsync();
+
+        // ۱) همهٔ گره‌های درختیِ همین کاربر برای همین نامه (بر اساس شناسهٔ نامه یا ارجاع)
+        var nodes = await _db.LetterBayeganis
+            .Where(b => b.UserId == userId && !b.IsDelete && !b.IsFolder &&
+                        (b.LetterId == letterId ||
+                         (b.ErjaId != null && erjaIds.Contains(b.ErjaId.Value))))
+            .ToListAsync();
+
+        foreach (var node in nodes)
+        {
+            node.IsDelete = true;
+            await ClearArchiveFlagsAsync(node, userId);
+        }
+
+        // ۲) پرچم همهٔ ارجاع‌های همین کاربر روی این نامه
+        var erjas = await _db.Erjas
+            .Where(e => erjaIds.Contains(e.ErjaId))
+            .ToListAsync();
+        foreach (var erja in erjas) erja.IsBayegani = false;
+
+        // ۳) پرچم خود نامه (فقط اگر کاربر ثبت‌کنندهٔ آن باشد)
+        var letter = await _db.IncomingLetters
+            .FirstOrDefaultAsync(l => l.Id == letterId && l.CreateUserId == userId);
+        if (letter != null) letter.IsBayegani = false;
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("letters");
+        return nodes.Count;
     }
 
     // ============================================================

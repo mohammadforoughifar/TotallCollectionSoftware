@@ -1,3 +1,4 @@
+@using Inventory.Shared.Security
 @inject IIncomingLetterService IncomingSvc
 @inject IToastService Toast
 @inject IJSRuntime JS
@@ -74,7 +75,7 @@
                         }
                         else
                         {
-                            @((MarkupString)letter.Description)
+                            @((MarkupString)RichLetterHtml.Sanitize(letter.Description))
                         }
                     </div>
                 </div>

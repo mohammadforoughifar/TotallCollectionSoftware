@@ -1,3 +1,4 @@
+@using Inventory.Shared.Security
 @inject IIncomingLetterService IncomingSvc
 @inject IEmailClientService EmailSvc
 @inject IJSRuntime JS
@@ -326,7 +327,9 @@
                     + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
                     + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
                     + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + (email.Body ?? "") + "</blockquote>";
+                    // بدنهٔ ایمیل پاک‌سازی و «خوانا» می‌شود (حذف <style> و پس‌زمینهٔ تیره،
+                    // تبدیل متن سفید به تیره) تا کادر فرم سیاه نشود و متن ناپیدا نماند.
+                    + RichLetterHtml.Sanitize(email.Body) + "</blockquote>";
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
         // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و

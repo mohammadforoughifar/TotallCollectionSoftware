@@ -179,8 +179,13 @@ public class IncomingLetterService : IIncomingLetterService
                              || e.Source.IncomingLetter!.Ferestande.Contains(s));
         }
 
+        // نامه‌ای که هم با پرچم ارجاع و هم با پرچم ثبت‌کننده بایگانی شده، دو بار در
+        // فهرست نمی‌آید؛ ردیف «ثبت‌کننده» فقط وقتی نمایش داده می‌شود که ردیف ارجاعی
+        // برای همین کاربر وجود نداشته باشد.
         var direct = _db.IncomingLetters.AsNoTracking()
-            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete);
+            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete
+                        && !_db.Erjas.Any(e => e.SourceId == l.Id && e.ReciverUserId == userId
+                                               && !e.IsDelete && e.IsBayegani == true));
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();

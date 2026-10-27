@@ -117,7 +117,19 @@ public static class RichLetterHtml
                 "list-style-type" => value is "decimal" or "decimal-leading-zero" or "lower-alpha" or "upper-alpha" or "lower-roman" or "upper-roman" or "disc" or "circle" or "square",
                 _ => false
             };
-            if (valid) safe.Add($"{name}: {value}");
+            if (!valid) continue;
+
+            // ---------- هم‌خوان‌سازی با «کاغذ سفید» نامه ----------
+            // بدنهٔ ایمیل‌های تبلیغاتی معمولاً «متن سفید روی پس‌زمینهٔ تیره» است. اگر همان
+            // رنگ‌ها بدون تغییر داخل نامه/کادر فرم بریزند، متن ناپیدا می‌شود و پس‌زمینهٔ
+            // تیره هم کادر را سیاه نشان می‌دهد. پس رنگ متنِ روشن تیره و پس‌زمینهٔ تیره
+            // حذف می‌شود تا نامه همیشه خوانا بماند.
+            if (name == "color" && TryLuminance(value, out var textLum) && textLum >= 0.72)
+                value = "#1f2937";
+            else if (name == "background-color" && TryLuminance(value, out var bgLum) && bgLum <= 0.30)
+                continue;
+
+            safe.Add($"{name}: {value}");
         }
         return string.Join("; ", safe);
     }
@@ -141,6 +153,64 @@ public static class RichLetterHtml
             return uri.Scheme is "http" or "https";
         return !trimmed.StartsWith("//", StringComparison.Ordinal) && !trimmed.StartsWith("\\\\", StringComparison.Ordinal);
     }
+
+    /// <summary>روشنایی نسبی رنگ (۰=سیاه، ۱=سفید) — برای تشخیص متن سفید/پس‌زمینهٔ تیره.</summary>
+    private static bool TryLuminance(string value, out double luminance)
+    {
+        luminance = 0.5;
+        var v = (value ?? "").Trim().ToLowerInvariant();
+        if (v.Length == 0) return false;
+
+        int r, g, b;
+        if (v.StartsWith('#') && (v.Length == 4 || v.Length == 7 || v.Length == 9))
+        {
+            var hex = v[1..];
+            if (hex.Length is 3)
+                hex = string.Concat(hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]);
+            if (hex.Length >= 6 && int.TryParse(hex[..6], System.Globalization.NumberStyles.HexNumber, null, out var packed))
+            {
+                r = (packed >> 16) & 0xFF; g = (packed >> 8) & 0xFF; b = packed & 0xFF;
+            }
+            else return false;
+        }
+        else if (v.StartsWith("rgb"))
+        {
+            var open = v.IndexOf('(');
+            if (open < 0) return false;
+            var inside = v[(open + 1)..].TrimEnd(')');
+            var parts = inside.Split(new[] { ',', ' ', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3) return false;
+            var rgb = new int[3];
+            for (var i = 0; i < 3; i++)
+            {
+                var part = parts[i];
+                var percent = part.EndsWith('%');
+                if (percent) part = part[..^1];
+                if (!int.TryParse(part, out var n)) return false;
+                rgb[i] = Math.Clamp(percent ? (int)Math.Round(n * 2.55) : n, 0, 255);
+            }
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+        }
+        else if (NamedColors.TryGetValue(v, out var named))
+        {
+            r = named.R; g = named.G; b = named.B;
+        }
+        else return false;
+
+        luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+        return true;
+    }
+
+    private static readonly Dictionary<string, (int R, int G, int B)> NamedColors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["white"] = (255, 255, 255), ["whitesmoke"] = (245, 245, 245), ["snow"] = (255, 250, 250),
+        ["ivory"] = (255, 255, 240), ["floralwhite"] = (255, 250, 240), ["ghostwhite"] = (248, 248, 255),
+        ["lightgray"] = (211, 211, 211), ["lightgrey"] = (211, 211, 211), ["gainsboro"] = (220, 220, 220),
+        ["silver"] = (192, 192, 192), ["black"] = (0, 0, 0), ["midnightblue"] = (25, 25, 112),
+        ["navy"] = (0, 0, 128), ["darkblue"] = (0, 0, 139), ["darkgray"] = (169, 169, 169),
+        ["darkgrey"] = (169, 169, 169), ["dimgray"] = (105, 105, 105), ["dimgrey"] = (105, 105, 105),
+        ["transparent"] = (255, 255, 255)
+    };
 
     private static bool SafeDimension(string value) =>
         Regex.IsMatch(value.Trim(), @"^\d{1,4}(?:\.\d{1,2})?(?:px|pt|em|rem|%)?$", RegexOptions.IgnoreCase);

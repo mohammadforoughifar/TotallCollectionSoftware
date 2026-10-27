@@ -44,6 +44,9 @@ public interface IIncomingLetterService
     /// <summary>عملگرهای ارجاع</summary>
     Task<List<AmalgarDto>> GetAmalgarsAsync();
 
+    /// <summary>خروج کامل نامهٔ وارده از بایگانی (پاک‌کردن گره درختی و همهٔ پرچم‌ها)</summary>
+    Task UnarchiveLetterAsync(int letterId);
+
     /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
     Task<AmalgarDto> CreateAmalgarAsync(string title);
     Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId);
@@ -169,6 +172,10 @@ public class IncomingLetterService : IIncomingLetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/incoming-letters/amalgars");
+
+    /// <summary>خروج کامل نامهٔ وارده از بایگانی (گره درختی + همهٔ پرچم‌های همین کاربر).</summary>
+    public async Task UnarchiveLetterAsync(int letterId) =>
+        await _api.PostAsync<object>($"api/incoming-letters/{letterId}/unarchive");
 
     public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
         _api.PostAsync<AmalgarDto>("api/incoming-letters/amalgars", new CreateAmalgarDto { Title = title });
