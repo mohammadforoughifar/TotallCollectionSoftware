@@ -773,3 +773,41 @@
 .wo-gardesh-modal .gnode-click, .wo-gardesh-modal .wo-gd-station { cursor:pointer; }
 .wo-gardesh-modal .wo-gd-selected { border-color:var(--p,#6941e8) !important; box-shadow:0 0 0 3px rgba(105,65,232,.14); }
 .wo-gardesh-modal .wo-gd-description { border:1px solid #dcd5ff; border-radius:12px; background:#faf9ff; overflow:hidden; }
+
+/* ======================================================================
+   جستجو و فیلتر در صفحهٔ ایمیل — دکمهٔ جستجو، پاک کردن، نوار پیشرفت
+   ====================================================================== */
+.eml-srch { position:relative; display:flex; align-items:center; }
+.eml-srch .eml-srch-ico { position:absolute; right:11px; top:50%; transform:translateY(-50%);
+    color:#64748b; font-size:13px; pointer-events:none; }
+.eml-srch-input { width:100%; border:1.5px solid #dfe7f2; border-radius:11px;
+    padding:7px 34px 7px 32px; font:inherit; font-size:12.5px; background:#fff; }
+.eml-srch-input:focus { outline:0; border-color:var(--p,#6941e8); background:#fff;
+    box-shadow:0 0 0 3px rgba(105,65,232,.12); }
+.eml-srch-x { position:absolute; left:8px; top:50%; transform:translateY(-50%);
+    border:0; background:#eef2f7; color:#475569; width:20px; height:20px; line-height:1;
+    border-radius:50%; font-size:13px; cursor:pointer; padding:0; }
+.eml-srch-x:hover { background:#e2e8f0; color:#b91c1c; }
+.eml-srch-btn, .eml-srch-clear { white-space:nowrap; display:inline-flex; align-items:center; gap:6px;
+    padding:6px 13px; font-size:12.5px; }
+.eml-srch-btn:disabled, .eml-srch-clear:disabled { opacity:.65; cursor:not-allowed; }
+.eml-spin { width:12px; height:12px; border:2px solid rgba(255,255,255,.55); border-top-color:#fff;
+    border-radius:50%; display:inline-block; animation:eml-spin .7s linear infinite; }
+.eml-srch-clear .eml-spin { border-color:#c7d2fe; border-top-color:#4338ca; }
+@keyframes eml-spin { to { transform:rotate(360deg); } }
+
+/* تیغهٔ پیشرفتِ جستجو — بلافاصله زیر نوار ابزار */
+.eml-searchprog { position:relative; height:5px; margin:8px 0 10px; border-radius:99px;
+    background:#e2e8f0; overflow:hidden; }
+.eml-searchprog .bar { position:absolute; top:0; bottom:0; width:35%; border-radius:99px;
+    background:linear-gradient(90deg,#4338ca,#6941e8,#8b5cf6);
+    animation:eml-searchprog 1.15s ease-in-out infinite; }
+@keyframes eml-searchprog {
+    0%   { right:-40%; }
+    100% { right:100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .eml-searchprog .bar, .eml-spin { animation-duration:2.4s; }
+}
+/* یادآوری «تغییرات اعمال‌نشده» در پنل فیلتر */
+.eml-dirty { font-size:11.5px; color:#b45309; display:inline-flex; align-items:center; gap:4px; }

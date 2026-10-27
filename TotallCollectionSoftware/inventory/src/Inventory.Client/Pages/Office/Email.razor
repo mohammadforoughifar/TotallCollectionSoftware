@@ -150,10 +150,32 @@
                     }
                 </select>
 
-                <div class="search" style="flex:1;min-width:180px">
-                    <i class="bi bi-search"></i>
-                    <input placeholder="جستجو در موضوع، آدرس، متن…" @bind="search" @bind:event="oninput" @bind:after="OnSearchChanged" />
+                @* جستجو فقط با دکمه (یا Enter) اجرا می‌شود؛ تایپ‌کردن دیگر درخواستی نمی‌فرستد *@
+                <div class="eml-srch" style="flex:1;min-width:220px">
+                    <i class="bi bi-search eml-srch-ico"></i>
+                    <input class="eml-srch-input" placeholder="جستجو در موضوع، آدرس، متن… (Enter)"
+                           value="@searchInput" @oninput="OnSearchInputChanged" @onkeydown="OnSearchKeyDown" />
+                    @if (!string.IsNullOrEmpty(searchInput))
+                    {
+                        <button type="button" class="eml-srch-x" title="پاک کردن کادر جستجو"
+                                @onclick="ClearSearchBox">&times;</button>
+                    }
                 </div>
+                <button class="lbtn pri eml-srch-btn" disabled="@searching" @onclick="ApplySearchAsync"
+                        title="اجرای جستجو (Enter)">
+                    @if (searching)
+                    {
+                        <span class="eml-spin"></span><span>در حال جستجو…</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-search"></i><span>جستجو</span>
+                    }
+                </button>
+                <button class="lbtn ghost eml-srch-clear" disabled="@searching" @onclick="ClearSearchAsync"
+                        title="پاک کردن جستجو و نمایش همهٔ ایمیل‌ها">
+                    <i class="bi bi-x-circle"></i><span>پاک کردن</span>
+                </button>
 
                 <select class="tin" style="max-width:120px" @bind="pageSize" @bind:after="OnFilterChanged" title="تعداد ایمیل در هر صفحه">
                     <option value="25">۲۵ در صفحه</option>
@@ -171,6 +193,14 @@
             }
         </div>
 
+        @* ---------- نوار پیشرفت جستجو (تیغه‌ای، بلافاصله زیر کادر جستجو) ---------- *@
+        @if (searching)
+        {
+            <div class="eml-searchprog" title="در حال جستجو…">
+                <div class="bar"></div>
+            </div>
+        }
+
         @* ---------- فیلترهای پیشرفته ---------- *@
         <div class="scard eml-filters" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
             <button class="lbtn ghost" style="padding:6px 12px;font-size:12.5px" @onclick="() => showFilters = !showFilters">
@@ -187,42 +217,60 @@
                     @* تاریخ‌ها باید شمسی باشند — input type="date" تقویم میلادیِ مرورگر را باز می‌کرد *@
                     <label style="font-size:12px;margin:0;white-space:nowrap">از تاریخ (شمسی):</label>
                     <div style="max-width:170px;flex:0 0 170px">
-                        <DatePicker @bind-Value="dateFrom" @bind-Value:after="OnDateFilterChanged"
+                        <DatePicker @bind-Value="fDateFrom"
                                     AllowClear="true" CssClass="tin" Placeholder="از تاریخ شمسی…" />
                     </div>
                     <label style="font-size:12px;margin:0;white-space:nowrap">تا تاریخ (شمسی):</label>
                     <div style="max-width:170px;flex:0 0 170px">
-                        <DatePicker @bind-Value="dateTo" @bind-Value:after="OnDateFilterChanged"
+                        <DatePicker @bind-Value="fDateTo"
                                     AllowClear="true" CssClass="tin" Placeholder="تا تاریخ شمسی…" />
                     </div>
-                    @if (dateFrom.HasValue || dateTo.HasValue)
+                    @if (fDateFrom.HasValue || fDateTo.HasValue)
                     {
                         <span class="text-muted" style="font-size:11.5px">
-                            @(dateFrom.HasValue ? dateFrom.Value.ToFa() : "…")
+                            @(fDateFrom.HasValue ? fDateFrom.Value.ToFa() : "…")
                             تا
-                            @(dateTo.HasValue ? dateTo.Value.ToFa() : "…")
+                            @(fDateTo.HasValue ? fDateTo.Value.ToFa() : "…")
                         </span>
                     }
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">وضعیت خواندن:</label>
-                    <button class="chip @(readFilter == "all" ? "on" : "")" @onclick='async () => { readFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
-                    <button class="chip @(readFilter == "unread" ? "on" : "")" @onclick='async () => { readFilter = "unread"; curPage = 1; await ReloadAsync(); }'>خوانده‌نشده</button>
-                    <button class="chip @(readFilter == "read" ? "on" : "")" @onclick='async () => { readFilter = "read"; curPage = 1; await ReloadAsync(); }'>خوانده‌شده</button>
+                    <button class="chip @(dReadFilter == "all" ? "on" : "")" @onclick='() => dReadFilter = "all"'>همه</button>
+                    <button class="chip @(dReadFilter == "unread" ? "on" : "")" @onclick='() => dReadFilter = "unread"'>خوانده‌نشده</button>
+                    <button class="chip @(dReadFilter == "read" ? "on" : "")" @onclick='() => dReadFilter = "read"'>خوانده‌شده</button>
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">پیوست:</label>
-                    <button class="chip @(attachmentFilter == "all" ? "on" : "")" @onclick='async () => { attachmentFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
-                    <button class="chip @(attachmentFilter == "with" ? "on" : "")" @onclick='async () => { attachmentFilter = "with"; curPage = 1; await ReloadAsync(); }'>با پیوست</button>
-                    <button class="chip @(attachmentFilter == "without" ? "on" : "")" @onclick='async () => { attachmentFilter = "without"; curPage = 1; await ReloadAsync(); }'>بدون پیوست</button>
+                    <button class="chip @(dAttachmentFilter == "all" ? "on" : "")" @onclick='() => dAttachmentFilter = "all"'>همه</button>
+                    <button class="chip @(dAttachmentFilter == "with" ? "on" : "")" @onclick='() => dAttachmentFilter = "with"'>با پیوست</button>
+                    <button class="chip @(dAttachmentFilter == "without" ? "on" : "")" @onclick='() => dAttachmentFilter = "without"'>بدون پیوست</button>
                 </div>
                 <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
                     <label style="font-size:12px;margin:0;white-space:nowrap">نشان‌شده:</label>
-                    <button class="chip" @onclick='async () => { readFilter = "all"; curPage = 1; await ReloadAsync(); }'>همه</button>
+                    <button class="chip @(dReadFilter == "all" ? "on" : "")" @onclick='() => dReadFilter = "all"'>همه</button>
                     <button class="chip @(tab == "starred" ? "on" : "")" @onclick='() => SetTab("starred")'>فقط نشان‌شده‌ها</button>
                 </div>
-                <div style="flex:1;min-width:200px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                    <button class="lbtn ghost" style="padding:6px 12px" @onclick="ClearFilters">پاک‌سازی همه فیلترها</button>
+                <div style="flex:1;min-width:260px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                    <button class="lbtn pri" style="padding:6px 14px" disabled="@searching" @onclick="ApplyFiltersAsync"
+                            title="اعمال فیلترهای انتخاب‌شده روی فهرست">
+                        @if (searching)
+                        {
+                            <span class="eml-spin"></span><span>در حال اعمال…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-funnel"></i><span>اعمال فیلتر</span>
+                        }
+                    </button>
+                    <button class="lbtn ghost" style="padding:6px 12px" disabled="@searching" @onclick="ClearFiltersAsync"
+                            title="پاک کردن همهٔ فیلترها و نمایش همهٔ ایمیل‌ها">
+                        <i class="bi bi-eraser"></i><span>پاک کردن فیلترها</span>
+                    </button>
+                    @if (FiltersDirty)
+                    {
+                        <span class="eml-dirty"><i class="bi bi-exclamation-circle"></i> تغییرات اعمال نشده — «اعمال فیلتر» را بزنید</span>
+                    }
                 </div>
             }
         </div>
@@ -730,16 +778,37 @@
     /// تا زمانی که درست است، تغییرِ بخش مجاز نیست تا کاربر وسطِ کار جابه‌جا نشود.</summary>
     private bool busy => syncing || loading;
 
-    private string busyText => syncing ? "در حال دریافت ایمیل‌ها از سرور…" : "در حال بارگذاری…";
+    private string busyText => syncing ? "در حال دریافت ایمیل‌ها از سرور…"
+        : searching ? "در حال جستجو…"
+        : "در حال بارگذاری…";
     private string tab = "inbox";
+
+    /// <summary>متنِ داخل کادر جستجو (پیش‌نویس) — با تایپ‌کردن جستجو اجرا نمی‌شود.</summary>
+    private string searchInput = "";
+
+    /// <summary>عبارتِ جستجویِ اعمال‌شده؛ فقط با دکمهٔ «جستجو» یا Enter عوض می‌شود.</summary>
     private string search = "";
+
+    /// <summary>جستجو/اعمال فیلتر در جریان است (نوار پیشرفت و اسپینر دکمه‌ها).</summary>
+    private bool searching;
+
     private int accFilter;
 
-    // ---------- فیلترهای پیشرفته ----------
+    // ---------- فیلترهای پیشرفته (اعمال‌شده) ----------
     private DateTime? dateFrom;   // تاریخ شروع
     private DateTime? dateTo;     // تاریخ پایان
     private string readFilter = "all";          // all | read | unread
     private string attachmentFilter = "all";    // all | with | without
+
+    // ---------- پیش‌نویس فیلترها (تا زدنِ «اعمال فیلتر» به کوئری تبدیل نمی‌شوند) ----------
+    private DateTime? fDateFrom;
+    private DateTime? fDateTo;
+    private string dReadFilter = "all";
+    private string dAttachmentFilter = "all";
+
+    /// <summary>پیش‌نویس با فیلترِ اعمال‌شده تفاوت دارد ⇒ دکمهٔ «اعمال فیلتر» معنا پیدا می‌کند.</summary>
+    private bool FiltersDirty => fDateFrom != dateFrom || fDateTo != dateTo
+                                 || dReadFilter != readFilter || dAttachmentFilter != attachmentFilter;
     private bool showFilters;
 
     /// <summary>true وقتی کاربر از مسیر «ایمیل شخصی» آمده — فقط حساب‌های شخصیِ خودش</summary>
@@ -920,7 +989,7 @@
         }
     }
 
-    public void Dispose() { _searchTimer?.Dispose(); }
+    public void Dispose() { /* جستجوی تأخیری حذف شد؛ منبعی برای آزادسازی نیست */ }
 
     private async Task SetTab(string t)
     {
@@ -1097,18 +1166,45 @@
         return Enumerable.Range(start, win).ToList();
     }
 
-    // ---------- جستجو با تأخیر (جلوگیری از یک درخواست به‌ازای هر کلید) ----------
-    private System.Threading.Timer? _searchTimer;
+    // ---------- جستجو و فیلتر فقط با دکمه ----------
+    // قبلاً هر کلید یک درخواست (با تأخیر ۴۰۰ms) می‌فرستاد؛ حالا متن فقط در «searchInput»
+    // نگه داشته می‌شود و تا زدن دکمهٔ «جستجو» (یا Enter) چیزی به سرور نمی‌رود.
 
-    private void OnSearchChanged()
+    /// <summary>تایپ در کادر جستجو — عمداً درخواستی نمی‌فرستد.</summary>
+    private void OnSearchInputChanged(ChangeEventArgs e) => searchInput = e.Value?.ToString() ?? "";
+
+    /// <summary>Enter داخل کادر جستجو = زدن دکمهٔ جستجو.</summary>
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
-        _searchTimer?.Dispose();
-        _searchTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () =>
-        {
-            curPage = 1;
-            await ReloadAsync();
-            StateHasChanged();
-        }), null, 400, Timeout.Infinite);
+        if (e.Key == "Enter" || e.Key == "NumpadEnter") await ApplySearchAsync();
+    }
+
+    /// <summary>اجرای جستجو با عبارتِ فعلی کادر.</summary>
+    private async Task ApplySearchAsync()
+    {
+        search = (searchInput ?? "").Trim();
+        await RunQueryAsync();
+    }
+
+    /// <summary>پاک کردن کادر جستجو و بازگرداندن فهرست کامل.</summary>
+    private void ClearSearchBox() => searchInput = "";
+
+    /// <summary>پاک کردن کامل جستجو (کادر + عبارت اعمال‌شده) و بازخوانی فهرست.</summary>
+    private async Task ClearSearchAsync()
+    {
+        searchInput = "";
+        search = "";
+        await RunQueryAsync();
+    }
+
+    /// <summary>اعمال فیلترهای پیش‌نویس روی فهرست.</summary>
+    private async Task ApplyFiltersAsync()
+    {
+        dateFrom = fDateFrom;
+        dateTo = fDateTo;
+        readFilter = dReadFilter;
+        attachmentFilter = dAttachmentFilter;
+        await RunQueryAsync();
     }
 
     private async Task OnFilterChanged()
@@ -1117,15 +1213,28 @@
         await ReloadAsync();
     }
 
-    private void OnDateFilterChanged()
+    /// <summary>اجرای کوئری با نشانگر پیشرفت (جستجو/فیلتر).</summary>
+    private async Task RunQueryAsync()
     {
         curPage = 1;
-        _ = ReloadAsync();
+        searching = true;
+        StateHasChanged();
+        try
+        {
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally
+        {
+            searching = false;
+            StateHasChanged();
+        }
     }
 
     private bool HasActiveFilters()
     {
-        return dateFrom.HasValue
+        return FiltersDirty
+            || dateFrom.HasValue
             || dateTo.HasValue
             || readFilter != "all"
             || attachmentFilter != "all";
@@ -1141,14 +1250,14 @@
         return c;
     }
 
-    private void ClearFilters()
+    private async Task ClearFiltersAsync()
     {
-        dateFrom = null;
-        dateTo = null;
-        readFilter = "all";
-        attachmentFilter = "all";
-        curPage = 1;
-        _ = ReloadAsync();
+        // پیش‌نویس و مقدارِ اعمال‌شده هر دو صفر می‌شوند تا شمارندهٔ فیلترها هم درست شود
+        fDateFrom = null; fDateTo = null;
+        dReadFilter = "all"; dAttachmentFilter = "all";
+        dateFrom = null; dateTo = null;
+        readFilter = "all"; attachmentFilter = "all";
+        await RunQueryAsync();
     }
 
     /// <summary>بستنِ ایمیل و بازگشت به فهرست (در نمایشگر کوچک، فهرست دوباره تمام‌عرض می‌شود)</summary>
