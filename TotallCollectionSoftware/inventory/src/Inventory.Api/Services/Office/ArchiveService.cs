@@ -177,7 +177,7 @@ public class ArchiveService : IArchiveService
             foreach (var l in loose)
                 _db.LetterBayeganis.Add(new LetterBayegani
                 {
-                    Title = (l.Title ?? "نامه").Length > 200 ? l.Title![..200] : (l.Title ?? "نامه"),
+                    Title = l.Title.Length > 200 ? l.Title[..200] : l.Title,
                     ErjaId = l.ErjaId,
                     ParentId = 0,
                     UserId = userId,

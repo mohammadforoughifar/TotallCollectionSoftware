@@ -281,8 +281,9 @@ public class IncomingLettersController : RbacControllerBase
 
         // رکورد درخت بایگانی هم هم‌زمان ساخته/حذف می‌شود؛ وگرنه نامه از دریافتی خارج
         // می‌شود ولی در ریل «بایگانی» (که از درخت خوانده می‌شود) هیچ اثری نمی‌گذارد.
+        // کلید مشترک IncomingLetter با LetterSource همان Id است (SourceId وجود ندارد)
         var myErja = await Db.Erjas.AsNoTracking()
-            .Where(e => e.SourceId == letter.SourceId && e.ReciverUserId == MyUserId && !e.IsDelete)
+            .Where(e => e.SourceId == letter.Id && e.ReciverUserId == MyUserId && !e.IsDelete)
             .OrderByDescending(e => e.ErjaId)
             .Select(e => new { e.ErjaId })
             .FirstOrDefaultAsync();

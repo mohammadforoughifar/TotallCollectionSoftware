@@ -125,6 +125,7 @@
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
     /// <summary>تعداد گره‌های قابل‌نمایش پس از فیلتر — والد برای حالت جایگزین استفاده می‌کند.</summary>
+    // (Parameter در بخش پارامترها تعریف شده؛ اینجا فقط وضعیت داخلی است)
     public int NodeCount { get; private set; }
 
     /// <summary>پس از هر بار بارگذاری (موفق یا ناموفق) والد را باخبر می‌کند.</summary>
@@ -144,7 +145,11 @@
             NodeCount = CountNodes(roots);
             loading = false;
             StateHasChanged();
-            if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
+            if (OnLoaded.HasDelegate)
+            {
+                try { await OnLoaded.InvokeAsync(); }
+                catch { /* اطلاع‌رسانی به والد نباید بارگذاری درخت را بشکند */ }
+            }
         }
     }
 
