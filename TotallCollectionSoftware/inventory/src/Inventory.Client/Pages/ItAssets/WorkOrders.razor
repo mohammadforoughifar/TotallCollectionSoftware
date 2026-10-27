@@ -3929,7 +3929,12 @@ else
                     sb.Append(" — شمارهٔ اندیکاتور: ").Append(letter.NumberSabt);
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Description))
-                        sb.Append("<p>").Append(System.Net.WebUtility.HtmlEncode(letter.Description)).Append("</p>");
+                    {
+                        // شرح نامهٔ وارده (و بدنهٔ ایمیلی که از آن ساخته شده) خودش HTML است؛
+                        // اگر encode خام شود، همهٔ تگ‌ها به شکل &lt;p&gt; روی صفحه می‌آیند.
+                        // اول به متن خوانا تبدیل، بعد به HTML امن برمی‌گردانیم.
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(letter.Description));
+                    }
 
                     await ShowNewFormAsync(letter.Title, sb.ToString());
 
@@ -3972,7 +3977,7 @@ else
                         sb.Append(" — شماره: ").Append(System.Net.WebUtility.HtmlEncode(letter.LetterNumber));
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Text))
-                        sb.Append("<p>").Append(System.Net.WebUtility.HtmlEncode(System.Text.RegularExpressions.Regex.Replace(letter.Text, "<[^>]+>", " "))).Append("</p>");
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(letter.Text));
 
                     await ShowNewFormAsync(letter.Title, sb.ToString());
 
@@ -4013,7 +4018,7 @@ else
                         sb.Append($" (مشتری: {System.Net.WebUtility.HtmlEncode(doc.CustomerCode)})");
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(doc.Description))
-                        sb.Append($"<p>{System.Net.WebUtility.HtmlEncode(doc.Description)}</p>");
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(doc.Description));
                     await ShowNewFormAsync(title, sb.ToString());
                 }
                 else await ShowNewFormAsync("", "");
