@@ -180,6 +180,10 @@ public class ApiClient : IApiClient
     }
 
     public async Task<T> GetAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path);
+
+    /// <summary>GET قابل لغو — برای جستجوهای زنده (هر بار درخواست قبلی کنار می‌رود).</summary>
+    public async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
+        await SendAsync<T>(HttpMethod.Get, path, null, null, cancellationToken);
     public async Task<T> GetLongAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path, null, LongCallTimeout);
 
     public async Task<T> PostAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body);
@@ -191,7 +195,8 @@ public class ApiClient : IApiClient
 
     public async Task<T> DeleteAsync<T>(string path) => await SendAsync<T>(HttpMethod.Delete, path);
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null)
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
     {
         var req = new HttpRequestMessage(method, Url(path));
         AddAuth(req);
@@ -200,11 +205,18 @@ public class ApiClient : IApiClient
             req.Content = JsonContent.Create(body, options: JsonOpts);
 
         var limit = timeout ?? DefaultCallTimeout;
-        using var cts = new CancellationTokenSource(limit);
+        // سقف انتظار + لغو از بیرون (جستجوی زنده): هر کدام زودتر برسد درخواست تمام می‌شود.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(limit);
         HttpResponseMessage resp;
         try
         {
             resp = await _http.SendAsync(req, cts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // لغو از سوی فراخوان (درخواست تازه‌تر جای این را گرفته) — خطا نیست
+            throw;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
@@ -215,7 +227,16 @@ public class ApiClient : IApiClient
             throw new ApiException($"ارتباط با سرور برقرار نشد. ({ex.Message})");
         }
 
-        var text = await resp.Content.ReadAsStringAsync();
+        string text;
+        try
+        {
+            text = await resp.Content.ReadAsStringAsync(cts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            resp.Dispose();
+            throw;
+        }
 
         if (!resp.IsSuccessStatusCode)
         {

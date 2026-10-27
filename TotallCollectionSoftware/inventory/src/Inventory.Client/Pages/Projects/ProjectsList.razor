@@ -201,6 +201,11 @@
             <span class="badge bg-light text-dark ms-1" title="تعداد کل رکوردهای منطبق با فیلترها (خوانده‌شده از دیتابیس)">
                 @total.FaDigits() رکورد
             </span>
+            @if (searching)
+            {
+                <span class="spinner-border spinner-border-sm ms-1" role="status" title="در حال جستجو…"
+                      style="width:.72rem;height:.72rem;border-width:.14em"></span>
+            }
             @if (HasAnyFilter)
             {
                 <span class="badge bg-warning text-dark ms-1" title="نتایج فیلترشده">فیلتر فعال</span>
@@ -1778,11 +1783,10 @@
         filterCts?.Cancel();
         var cts = new CancellationTokenSource();
         filterCts = cts;
-        try { await Task.Delay(350, cts.Token); }
-        catch (TaskCanceledException) { return; }
+        try { await Task.Delay(400, cts.Token); }
+        catch (OperationCanceledException) { return; }
         if (cts.IsCancellationRequested) return;
         await Load();
-        StateHasChanged();
     }
 
     private bool AnyModalOpen => showModal || showFactor || showDates || showResubmit
@@ -1794,7 +1798,7 @@
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
         try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { /* دسترسی نداشت */ }
-        await Load();
+        await Load(blocking: true);
 
         // رفرش خودکار زنده با SignalR — ثبت/ویرایش/حذف پروژه یا اقدام کارتابل، لیست را تازه می‌کند
         Rt.DataChanged += OnRtDataChanged;
@@ -1817,19 +1821,44 @@
     /// خواندن «فقط یک صفحه» از سرور — فیلتر، مرتب‌سازی و شمارش همه در دیتابیس انجام می‌شود
     /// تا لیست‌های چندهزارتایی هم سریع باز شوند.
     /// </summary>
-    private async Task Load()
+    /// <summary>شمارندهٔ نسخهٔ بارگذاری — پاسخ درخواست‌های قدیمی‌تر نادیده گرفته می‌شود.</summary>
+    private int loadVersion;
+
+    private CancellationTokenSource? loadCts;
+
+    /// <summary>جستجو/فیلتر در جریان است — جدول و کادر جستجوی سرستون‌ها از صفحه حذف نمی‌شوند.</summary>
+    private bool searching;
+
+    /// <summary>
+    /// بارگذاری یک صفحه از سرور. <paramref name="blocking"/> فقط برای بارگذاری اولیه true است؛
+    /// در جستجوی زنده جدول سرجایش می‌ماند تا فوکوس کادر جستجو از دست نرود و تایپ ادامه پیدا کند.
+    /// هر بار درخواست قبلی لغو و پاسخ‌های قدیمی نادیده گرفته می‌شوند.
+    /// </summary>
+    private async Task Load(bool blocking = false)
     {
-        loading = true;
+        var version = ++loadVersion;
+
+        // لغو درخواست قبلی (بدون Dispose؛ توکنِ در حال استفاده نباید آزاد شود)
+        loadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        loadCts = cts;
+
+        if (blocking) loading = true; else searching = true;
         try
         {
-            var res = await ProjectSvc.GetPagedAsync(BuildQuery(PageSize));
+            var res = await ProjectSvc.GetPagedAsync(BuildQuery(PageSize), cts.Token);
+            if (version != loadVersion) return; // پاسخ قدیمی
             items = res.Items;
             total = res.Total;
             pageCount = res.PageCount;
             if (page > pageCount) page = pageCount;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (OperationCanceledException) { /* درخواست تازه‌تر جایش را گرفت */ }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally
+        {
+            if (version == loadVersion) { loading = false; searching = false; }
+        }
     }
 
     /// <summary>استایل موقعیت منوی شناور در نقطه کلیک (مقادیر عددی با فرهنگ خنثی)</summary>

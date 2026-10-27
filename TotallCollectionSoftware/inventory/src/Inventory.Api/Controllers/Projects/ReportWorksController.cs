@@ -78,13 +78,21 @@ public class ReportWorksController : RbacControllerBase
         return (from, to);
     }
 
-    /// <summary>متن ساعت («۸» یا «۸:۳۰») → بازهٔ دقیقه‌ای [از، تا)</summary>
-    private static (int From, int To)? MinuteRange(string? text)
+    /// <summary>
+    /// متن ساعت («۸» یا «۸:۳۰») → بازهٔ دقیقه‌ای [از، تا).
+    /// <para>
+    /// <paramref name="maxHour"/> سقف ساعت مجاز است. برای ستون‌های «شروع/پایان» مقدار ۲۳ است،
+    /// چون <c>TimeOnly.FromTimeSpan</c> برای ۲۴ ساعت و بیشتر استثنا می‌دهد و در نسخهٔ قبلی
+    /// تایپ «۲۵» یا «۹۹» در کادر جستجو باعث خطای ۵۰۰ سرور (و پشت‌سرهم خطا در کلاینت) می‌شد.
+    /// ورودی خارج از بازه نادیده گرفته می‌شود، نه اینکه درخواست را بشکند.
+    /// </para>
+    /// </summary>
+    private static (int From, int To)? MinuteRange(string? text, int maxHour = 999)
     {
         var t = NormFilter(text);
         if (t is null) return null;
         var parts = t.Split(':');
-        if (!int.TryParse(parts[0].Trim(), out var h) || h < 0 || h > 999) return null;
+        if (!int.TryParse(parts[0].Trim(), out var h) || h < 0 || h > maxHour) return null;
         if (parts.Length == 1 || string.IsNullOrWhiteSpace(parts[1]))
             return (h * 60, (h + 1) * 60);
         if (!int.TryParse(parts[1].Trim(), out var mi) || mi < 0 || mi > 59) return null;
@@ -131,7 +139,7 @@ public class ReportWorksController : RbacControllerBase
             query = query.Where(r => r.User != null &&
                 ((r.User.FirstName + " " + r.User.LastName).Contains(fUser) || r.User.Username.Contains(fUser)));
 
-        var rStart = MinuteRange(q.FStart);
+        var rStart = MinuteRange(q.FStart, maxHour: 23);
         if (rStart is not null)
         {
             var f = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(rStart.Value.From));
@@ -142,7 +150,7 @@ public class ReportWorksController : RbacControllerBase
                 query = query.Where(r => r.StartTime < t);
             }
         }
-        var rEnd = MinuteRange(q.FEnd);
+        var rEnd = MinuteRange(q.FEnd, maxHour: 23);
         if (rEnd is not null)
         {
             var f = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(rEnd.Value.From));
@@ -153,7 +161,7 @@ public class ReportWorksController : RbacControllerBase
                 query = query.Where(r => r.EndTime < t);
             }
         }
-        var rRest = MinuteRange(q.FRest);
+        var rRest = MinuteRange(q.FRest, maxHour: 48);
         if (rRest is not null)
         {
             var f = rRest.Value.From; var t = rRest.Value.To;
@@ -161,7 +169,7 @@ public class ReportWorksController : RbacControllerBase
                 (r.BreakfastTime.Hour * 60 + r.BreakfastTime.Minute + r.LunchTime.Hour * 60 + r.LunchTime.Minute) >= f &&
                 (r.BreakfastTime.Hour * 60 + r.BreakfastTime.Minute + r.LunchTime.Hour * 60 + r.LunchTime.Minute) < t);
         }
-        var rSpent = MinuteRange(q.FSpent);
+        var rSpent = MinuteRange(q.FSpent, maxHour: 48);
         if (rSpent is not null)
         {
             var f = TimeSpan.FromMinutes(rSpent.Value.From);
@@ -206,7 +214,11 @@ public class ReportWorksController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
         var filtered = ApplyFilters(Db.ReportWorks.AsNoTracking().Where(r => !r.IsDelete), q);
-        var total = await filtered.CountAsync();
+
+        // تعداد و جمع ساعت‌ها با هم خوانده می‌شوند (یک اسکن روی ردیف‌های فیلترشده به‌جای دو اسکن).
+        // برای بازه‌های چندصد‌هزار ردیفی، همین یک اسکن کمتر در جستجوی زندهٔ سرستون‌ها محسوس است.
+        var spentAll = await filtered.Select(r => r.SpentTime).ToListAsync();
+        var total = spentAll.Count;
 
         var page = q.Page < 1 ? 1 : q.Page;
         var pageSize = q.PageSize;
@@ -230,9 +242,6 @@ public class ReportWorksController : RbacControllerBase
             .ToListAsync();
         var map = rows.ToDictionary(r => r.Id);
         var ordered = ids.Where(map.ContainsKey).Select(id => map[id]).ToList();
-
-        // جمع ساعت خالص روی کل ردیف‌های فیلترشده (فقط یک ستون خوانده می‌شود)
-        var spentAll = await filtered.Select(r => r.SpentTime).ToListAsync();
 
         return Ok(new PagedResult<ReportWorkDto>
         {

@@ -63,6 +63,11 @@
          style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-clock-history me-2"></i>گزارش‌های کار
             <span class="badge bg-light text-dark ms-1" title="تعداد کل گزارش‌های منطبق با فیلترها">@total.FaDigits() رکورد</span>
+            @if (searching)
+            {
+                <span class="spinner-border spinner-border-sm ms-1" role="status" title="در حال جستجو…"
+                      style="width:.72rem;height:.72rem;border-width:.14em"></span>
+            }
             @if (HasAnyFilter)
             {
                 <span class="badge bg-warning text-dark ms-1">فیلتر فعال</span>
@@ -475,11 +480,11 @@
         filterCts?.Cancel();
         var cts = new CancellationTokenSource();
         filterCts = cts;
-        try { await Task.Delay(350, cts.Token); }
-        catch (TaskCanceledException) { return; }
+        try { await Task.Delay(400, cts.Token); }
+        catch (OperationCanceledException) { return; }
         if (cts.IsCancellationRequested) return;
+        // فقط صفحهٔ جدول تازه می‌شود؛ کادر جستجو در DOM می‌ماند تا فوکوس و ادامهٔ تایپ از دست نرود.
         await Load();
-        StateHasChanged();
     }
 
     // ---------- مرتب‌سازی (صعودی/نزولی) ----------
@@ -530,26 +535,55 @@
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
         try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { /* دسترسی نداشت */ }
-        await Load();
+        await Load(blocking: true);
     }
+
+    /// <summary>شمارندهٔ نسخهٔ بارگذاری — پاسخِ درخواست‌های قدیمی‌تر نادیده گرفته می‌شود.</summary>
+    private int loadVersion;
+
+    private CancellationTokenSource? loadCts;
+
+    /// <summary>جستجو/فیلتر در جریان است (نوار کوچک؛ جدول و کادر جستجو از صفحه حذف نمی‌شوند).</summary>
+    private bool searching;
 
     /// <summary>
     /// خواندن «فقط یک صفحه» از سرور — فیلترها، مرتب‌سازی، شمارش و جمع ساعت‌ها همه در دیتابیس.
+    /// <para>
+    /// دو نکتهٔ مهم برای جستجوی زندهٔ سرستون‌ها:
+    /// ۱) درخواست قبلی لغو می‌شود و پاسخ‌های قدیمی (با شمارهٔ نسخهٔ کمتر) نادیده گرفته می‌شوند؛
+    ///    وگرنه پاسخ کندِ یک کلید، نتیجهٔ تازهٔ کلید بعدی را بازنویسی می‌کرد و «جستجو کار نمی‌کرد».
+    /// ۲) <paramref name="blocking"/> فقط در بارگذاری اولیه true است تا جدول (و کادر جستجوی
+    ///    درون سرستون) از صفحه حذف نشود؛ حذف‌شدن جدول باعث از دست رفتن فوکوس و تایپ‌نشدن
+    ///    متن در کادر جستجو می‌شد.
+    /// </para>
     /// </summary>
-    private async Task Load()
+    private async Task Load(bool blocking = false)
     {
-        loading = true;
+        var version = ++loadVersion;
+
+        // لغو درخواست قبلی (بدون Dispose؛ توکنِ در حال استفاده نباید آزاد شود)
+        loadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        loadCts = cts;
+
+        if (blocking) loading = true; else searching = true;
         try
         {
-            var res = await ReportSvc.GetPagedAsync(BuildQuery(PageSize));
+            var res = await ReportSvc.GetPagedAsync(BuildQuery(PageSize), cts.Token);
+            if (version != loadVersion) return; // پاسخ قدیمی — نتیجهٔ تازه‌تر در راه است
+
             items = res.Items;
             total = res.Total;
             pageCount = res.PageCount;
             sumSpent = TimeSpan.FromTicks(res.SumTicks ?? 0);
             if (page > pageCount) page = pageCount;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (OperationCanceledException) { /* درخواست تازه‌تر جایش را گرفت — خطا نیست */ }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally
+        {
+            if (version == loadVersion) { loading = false; searching = false; }
+        }
     }
 
     private string? editUserName;

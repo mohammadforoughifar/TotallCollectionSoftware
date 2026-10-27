@@ -38,6 +38,9 @@ public interface IProjectService
     /// <summary>لیست صفحه‌بندی‌شده سمت سرور (فقط ردیف‌های همان صفحه از دیتابیس خوانده می‌شوند).</summary>
     Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query);
 
+    /// <summary>همان لیست با امکان لغو درخواست (جستجوی زندهٔ سرستون‌ها).</summary>
+    Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query, CancellationToken cancellationToken);
+
     /// <summary>کدهای برگشتی (RE) یک پروژه — برای نمایش در ستون «برگشتی» بدون خواندن کل لیست.</summary>
     Task<ProjectReturnsDto?> GetReturnsAsync(int id);
 
@@ -69,6 +72,9 @@ public interface IReportWorkService
 
     /// <summary>لیست صفحه‌بندی‌شده سمت سرور با فیلتر سرستون‌ها.</summary>
     Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query);
+
+    /// <summary>همان لیست با امکان لغو درخواست (جستجوی زندهٔ سرستون‌ها).</summary>
+    Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query, CancellationToken cancellationToken);
 
     /// <summary>آدرس دانلود اکسل گزارش‌های کار با همان فیلترهای جاری.</summary>
     string BuildExportUrl(ReportWorkListQuery query);
@@ -161,9 +167,12 @@ public class ProjectService : IProjectService
     }
 
     public async Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query)
+        => await GetPagedAsync(query, CancellationToken.None);
+
+    public async Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query, CancellationToken cancellationToken)
     {
         var qs = (query ?? new ProjectListQuery()).ToQueryString();
-        var res = await _api.GetAsync<PagedResult<ProjectEntryExitDto>>($"api/projects?{qs}");
+        var res = await _api.GetAsync<PagedResult<ProjectEntryExitDto>>($"api/projects?{qs}", cancellationToken);
         return res ?? new PagedResult<ProjectEntryExitDto>();
     }
 
@@ -229,9 +238,12 @@ public class ReportWorkService : IReportWorkService
     }
 
     public async Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query)
+        => await GetPagedAsync(query, CancellationToken.None);
+
+    public async Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query, CancellationToken cancellationToken)
     {
         var qs = (query ?? new ReportWorkListQuery()).ToQueryString();
-        var res = await _api.GetAsync<PagedResult<ReportWorkDto>>($"api/reportworks?{qs}");
+        var res = await _api.GetAsync<PagedResult<ReportWorkDto>>($"api/reportworks?{qs}", cancellationToken);
         return res ?? new PagedResult<ReportWorkDto>();
     }
 
