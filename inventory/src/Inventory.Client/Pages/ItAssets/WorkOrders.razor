@@ -77,6 +77,22 @@
                         @onclick="() => SetPriorityFilter(v2)">@fa</button>
             }
         </div>
+        <div class="wo-pr-group wo-flt-dec" title="فیلتر بر اساس تصمیم دستوردهنده روی پاسخ گیرندگان">
+            <button type="button" class="wo-pr-btn @(string.IsNullOrEmpty(fltDecision) ? "active" : "")"
+                    @onclick="() => SetDecisionFilter(null)">همه</button>
+            <button type="button" class="wo-pr-btn wo-dec-approved @(fltDecision == "approved" ? "active" : "")"
+                    title="دستورهایی که حداقل یک پاسخ را تأیید کرده‌اند"
+                    @onclick="() => SetDecisionFilter("approved")">✔ تأییدشده</button>
+            <button type="button" class="wo-pr-btn wo-dec-rejected @(fltDecision == "rejected" ? "active" : "")"
+                    title="دستورهایی که حداقل یک پاسخ را رد کرده‌اند"
+                    @onclick="() => SetDecisionFilter("rejected")">✖ ردشده</button>
+            <button type="button" class="wo-pr-btn wo-dec-pending @(fltDecision == "undecided" ? "active" : "")"
+                    title="گیرنده پاسخ داده ولی دستوردهنده هنوز تأیید/رد نکرده است"
+                    @onclick="() => SetDecisionFilter("undecided")">… بی‌تصمیم</button>
+            <button type="button" class="wo-pr-btn wo-dec-awaiting @(fltDecision == "awaiting" ? "active" : "")"
+                    title="گیرنده دارد ولی هنوز هیچ پاسخی ثبت نشده است"
+                    @onclick="() => SetDecisionFilter("awaiting")">⏳ در انتظار پاسخ</button>
+        </div>
         <div class="wo-flt-project" style="min-width:210px">
             <SearchSelect Items="fltProjectOpts" Value="fltProject" ValueChanged="(int v) => SetProjectFilter(v)"
                           SearchChanged="OnFltProjectSearch" RemoteSearch="true"
@@ -94,7 +110,7 @@
                 }
             </div>
         }
-        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0)
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null || fltProject > 0 || !string.IsNullOrEmpty(fltDecision))
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
@@ -2131,6 +2147,11 @@ else
     .wo-detail-body .wo-block-body img { max-width:100%; height:auto; }
     .wo-related-cell { min-width:145px; max-width:240px; }
     /* ستون «تصمیم دستوردهنده» — نشان‌ها کوتاه و بدون شکست خط بمانند */
+    .wo-dec-approved.active { background:#dbeafe !important; color:#1d4ed8 !important; border-color:#93b5ed !important; }
+    .wo-dec-rejected.active { background:#fee2e2 !important; color:#b91c1c !important; border-color:#fca5a5 !important; }
+    .wo-dec-pending.active { background:#fef3c7 !important; color:#92400e !important; border-color:#fcd34d !important; }
+    .wo-dec-awaiting.active { background:#f1f5f9 !important; color:#334155 !important; border-color:#cbd5e1 !important; }
+    .wo-flt-dec .wo-pr-btn { white-space:nowrap; }
     .wo-decision-cell { min-width:120px; }
     .wo-decision-cell .badge { white-space: nowrap; }
     .wo-related-links { display:flex; align-items:center; flex-wrap:wrap; gap:.3rem; }
@@ -2473,6 +2494,8 @@ else
     // ---- فیلتر و جستجو (روی داده لودشده — API هم همین فیلترها را با کوئری‌استرینگ می‌پذیرد) ----
     private string fltQ = "";
     private int fltPriority = -1; // -1 = همه
+    // فیلتر تصمیم دستوردهنده: null=همه | approved | rejected | undecided | awaiting
+    private string? fltDecision;
     private List<WoItem> FilteredItems
     {
         get
@@ -2488,6 +2511,18 @@ else
             if (fltPriority >= 0) it = it.Where(w => w.Priority == fltPriority);
             if (fltTag != null) it = it.Where(w => w.Tags.Contains(fltTag));
             if (fltProject > 0) it = it.Where(w => w.ProjectId == fltProject);
+            if (!string.IsNullOrEmpty(fltDecision))
+            {
+                it = fltDecision switch
+                {
+                    "approved" => it.Where(w => w.Assignees.Any(a => a.OwnerDecision == "Approved")),
+                    "rejected" => it.Where(w => w.Assignees.Any(a => a.OwnerDecision == "Rejected")),
+                    "undecided" => it.Where(w => w.Assignees.Any(a => a.RepliedAt != null
+                        && a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected")),
+                    "awaiting" => it.Where(w => w.Assignees.Count > 0 && w.Assignees.All(a => a.RepliedAt == null)),
+                    _ => it
+                };
+            }
             return it.ToList();
         }
     }
@@ -2498,6 +2533,7 @@ else
     private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
     private void ClearSearch() { fltQ = ""; page = 1; _ = LoadAll(); }
     private void SetPriorityFilter(int p) { fltPriority = p; page = 1; _ = LoadAll(); }
+    private void SetDecisionFilter(string? d) { fltDecision = d; page = 1; _ = LoadAll(); }
     private void SetProjectFilter(int id)
     {
         fltProject = id;
@@ -2700,6 +2736,7 @@ else
             if (fltPriority >= 0) url += $"&priority={fltPriority}";
             if (fltTag != null) url += $"&tag={Uri.EscapeDataString(fltTag)}";
             if (fltProject > 0) url += $"&projectId={fltProject}";
+            if (!string.IsNullOrEmpty(fltDecision)) url += $"&decision={fltDecision}";
 
             var resp = await Http.GetAsync(url);
             if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
@@ -3096,6 +3133,7 @@ else
         if (fltPriority >= 0) qs += $"&Priority={fltPriority}";
         if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
         if (fltProject > 0) qs += $"&ProjectId={fltProject}";
+        if (!string.IsNullOrEmpty(fltDecision)) qs += $"&Decision={fltDecision}";
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
@@ -3126,7 +3164,8 @@ else
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
 
-            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0)
+            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0
+                && string.IsNullOrEmpty(fltDecision))
             {
                 mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
             }
