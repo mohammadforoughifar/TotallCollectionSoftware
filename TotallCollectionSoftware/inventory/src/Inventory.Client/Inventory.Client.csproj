@@ -12,6 +12,18 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <NoWarn>CS0414</NoWarn>
+
+    <!--
+      رفع خطای «Failed to convert … to webcil: Could not find a part of the path …
+      \obj\Debug\net8.0\tmp-webcil\…\*.wasm»
+      وقتی پروژهٔ net8.0 با «wasm pack» نسخهٔ ۹/۱۰ بیلد می‌شود (SDK جدیدتر نصب است و
+      global.json با rollForward=latestMajor اجازهٔ استفاده از آن را می‌دهد)، مرحلهٔ
+      تبدیل اسمبلی‌ها به webcil شکست می‌خورد — خصوصاً اگر مسیر پروژه پرانتز/فاصله
+      داشته باشد (مثل …\Downloads\TotallCollectionSoftware-main (14)\…).
+      با false کردنِ webcil، اسمبلی‌ها به شکل معمولِ .dll در خروجی می‌مانند؛
+      رفتار برنامه هیچ تغییری نمی‌کند و روی SDK 8 هم معتبر است.
+    -->
+    <WasmEnableWebcil>false</WasmEnableWebcil>
   </PropertyGroup>
 
   <ItemGroup>
