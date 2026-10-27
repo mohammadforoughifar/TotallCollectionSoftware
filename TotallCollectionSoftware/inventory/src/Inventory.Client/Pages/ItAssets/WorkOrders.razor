@@ -79,19 +79,19 @@
         </div>
         <div class="wo-pr-group wo-flt-dec" title="فیلتر بر اساس تصمیم دستوردهنده روی پاسخ گیرندگان">
             <button type="button" class="wo-pr-btn @(string.IsNullOrEmpty(fltDecision) ? "active" : "")"
-                    @onclick="() => SetDecisionFilter(null)">همه</button>
+                    @onclick='() => SetDecisionFilter(null)'>همه</button>
             <button type="button" class="wo-pr-btn wo-dec-approved @(fltDecision == "approved" ? "active" : "")"
                     title="دستورهایی که حداقل یک پاسخ را تأیید کرده‌اند"
-                    @onclick="() => SetDecisionFilter("approved")">✔ تأییدشده</button>
+                    @onclick='() => SetDecisionFilter("approved")'>✔ تأییدشده</button>
             <button type="button" class="wo-pr-btn wo-dec-rejected @(fltDecision == "rejected" ? "active" : "")"
                     title="دستورهایی که حداقل یک پاسخ را رد کرده‌اند"
-                    @onclick="() => SetDecisionFilter("rejected")">✖ ردشده</button>
+                    @onclick='() => SetDecisionFilter("rejected")'>✖ ردشده</button>
             <button type="button" class="wo-pr-btn wo-dec-pending @(fltDecision == "undecided" ? "active" : "")"
                     title="گیرنده پاسخ داده ولی دستوردهنده هنوز تأیید/رد نکرده است"
-                    @onclick="() => SetDecisionFilter("undecided")">… بی‌تصمیم</button>
+                    @onclick='() => SetDecisionFilter("undecided")'>… بی‌تصمیم</button>
             <button type="button" class="wo-pr-btn wo-dec-awaiting @(fltDecision == "awaiting" ? "active" : "")"
                     title="گیرنده دارد ولی هنوز هیچ پاسخی ثبت نشده است"
-                    @onclick="() => SetDecisionFilter("awaiting")">⏳ در انتظار پاسخ</button>
+                    @onclick='() => SetDecisionFilter("awaiting")'>⏳ در انتظار پاسخ</button>
         </div>
         <div class="wo-flt-project" style="min-width:210px">
             <SearchSelect Items="fltProjectOpts" Value="fltProject" ValueChanged="(int v) => SetProjectFilter(v)"
