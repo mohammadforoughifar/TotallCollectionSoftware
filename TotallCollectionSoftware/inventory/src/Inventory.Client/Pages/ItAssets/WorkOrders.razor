@@ -28,13 +28,17 @@
 
 @* ================== تب‌ها ================== *@
 <div class="wo-tabs mb-3">
-    <button class="wo-tab @(tab == "mine" ? "active" : "")" @onclick='() => SwitchTab("mine")'>
+    @* شمارندهٔ هر تب = «تعداد سطر دستور کار» (هر دستور کار یک عدد)، نه تعداد گیرندگان آن دستورها. *@
+    <button class="wo-tab @(tab == "mine" ? "active" : "")" @onclick='() => SwitchTab("mine")'
+            title="تعداد سطر دستور کار — هر دستور کار یک عدد، مستقل از تعداد گیرندگان">
         <i class="bi bi-send"></i> دستورهای من <span class="wo-tab-badge">@mineAll</span>
     </button>
-    <button class="wo-tab @(tab == "assigned" ? "active" : "")" @onclick='() => SwitchTab("assigned")'>
+    <button class="wo-tab @(tab == "assigned" ? "active" : "")" @onclick='() => SwitchTab("assigned")'
+            title="تعداد سطر دستور کار — هر دستور کار یک عدد، مستقل از تعداد گیرندگان">
         <i class="bi bi-inbox"></i> محول به من <span class="wo-tab-badge">@assignedAll</span>
     </button>
-    <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'>
+    <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'
+            title="تعداد سطر دستور کار — هر دستور کار یک عدد، مستقل از تعداد گیرندگان">
         <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveAll</span>
     </button>
     <button class="wo-tab @(tab == "kanban" ? "active" : "")" @onclick='() => SwitchTab("kanban")'>
@@ -515,7 +519,7 @@ else if (tab == "stats")
                         <b class="num">@stats.Cards.ClosedNoDone</b>
                     </div>
                     <div class="wdr-kv">
-                        <span class="wdr-kv-l"><i class="wdr-sq" style="background:#78716c"></i>در انتظار پاسخ <span class="wdr-hint">تعداد واگذاری</span></span>
+                        <span class="wdr-kv-l"><i class="wdr-sq" style="background:#78716c"></i>در انتظار پاسخ <span class="wdr-hint">تعداد دستور کار</span></span>
                         <b class="num">@stats.Cards.PendingReply</b>
                     </div>
                 </div>
@@ -692,7 +696,7 @@ else
                                 <td>@w.OwnerName</td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
                                 <td>
-                                    <span class="badge bg-light text-dark border">@w.Assignees.Count نفر</span>
+                                    <span class="badge bg-light text-dark border" title="تعداد گیرندگان این دستور کار">@w.Assignees.Count گیرنده</span>
                                     <span class="fs-8 text-muted">(@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</span>
                                 </td>
                                 <td class="wo-related-cell">@RelatedOrderLinks(w)</td>
@@ -3168,14 +3172,21 @@ else
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
-    private async Task<int> CountAll(string endpoint)
+    /// <summary>
+    /// شمارندهٔ تب‌ها از اندپوینت اختصاصی خوانده می‌شود که در سرور
+    /// «تعداد سطر دستور کار» را برمی‌گرداند (COUNT روی جدول دستور کار).
+    /// قبلاً با pageSize=1 خوانده می‌شد؛ نتیجه یکی بود، ولی سه درخواست اضافه می‌فرستاد.
+    /// مهم: این عدد هرگز از تعداد گیرندگان یا پاسخ‌ها گرفته نمی‌شود.
+    /// </summary>
+    private async Task LoadTabCountsAsync()
     {
         try
         {
-            var r = await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?page=1&pageSize=1");
-            return r?.TotalCount ?? 0;
+            var c = await Http.GetFromJsonAsync<WorkOrderCounts>("/api/workorders/counts");
+            if (c == null) return;
+            mineAll = c.Mine; assignedAll = c.Assigned; archiveAll = c.Archive;
         }
-        catch { return 0; }
+        catch { /* شمارنده کمکی است؛ خطای آن فهرست را مختل نمی‌کند */ }
     }
 
     /// <summary>
@@ -3205,18 +3216,9 @@ else
                 var ar2 = await LoadWorkOrderPage("archive"); archiveItems = ar2.Items; archiveTotal = ar2.TotalCount;
             }
 
-            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null && fltProject <= 0
-                && string.IsNullOrEmpty(fltDecision))
-            {
-                mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
-            }
-            else
-            {
-                // فیلتر فعال است؛ عدد تب‌ها باید همچنان کل واقعی باشد، نه نتیجهٔ فیلتر
-                mineAll = await CountAll("mine");
-                assignedAll = await CountAll("assigned");
-                archiveAll = await CountAll("archive");
-            }
+            // شمارندهٔ تب‌ها همیشه از سرور و «سطری» خوانده می‌شود؛ نه از نتیجهٔ فیلتر و نه
+            // از تعداد گیرندگان. هر دستور کار = یک عدد، هر چند گیرنده داشته باشد.
+            await LoadTabCountsAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -3423,6 +3425,8 @@ else
         public List<AssigneeStat> PerAssignee { get; set; } = new();
         public List<MonthStat> Months { get; set; } = new();
     }
+    public class WorkOrderCounts { public int Mine { get; set; } public int Assigned { get; set; } public int Archive { get; set; } }
+
     public class StatsCards { public int Total { get; set; } public int Open { get; set; } public int Overdue { get; set; } public int DueToday { get; set; } public int DoneOnTime { get; set; } public int DoneLate { get; set; } public int ClosedNoDone { get; set; } public int PendingReply { get; set; } }
     public class StatsByStatus { public int Open { get; set; } public int OverdueOpen { get; set; } public int OnTime { get; set; } public int LateDone { get; set; } public int ClosedNoDone { get; set; } }
     public class PriorityStat { public int Priority { get; set; } public int Count { get; set; } }

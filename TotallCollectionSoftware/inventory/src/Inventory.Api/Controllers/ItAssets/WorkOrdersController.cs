@@ -1088,6 +1088,37 @@ public class WorkOrdersController : ControllerBase
             w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter, companyId.Value);
     }
 
+    public class WorkOrderCountsDto
+    {
+        public int Mine { get; set; }
+        public int Assigned { get; set; }
+        public int Archive { get; set; }
+    }
+
+    /// <summary>
+    /// شمارندهٔ تب‌ها — «تعداد سطر دستور کار»، نه تعداد گیرندگان.
+    /// هر دستور کار یک بار شمرده می‌شود، حتی اگر چند گیرنده (یا گیرندهٔ تکراری) داشته باشد؛
+    /// فقط سطرهای همان شرکت فعال هم لحاظ می‌شوند تا با فهرست همان تب هم‌خوان باشد.
+    /// </summary>
+    [HttpGet("counts")]
+    public async Task<IActionResult> Counts()
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+
+        var baseQ = _db.WorkOrders.AsNoTracking().Where(w => w.CompanyId == companyId.Value);
+        var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
+
+        return Ok(new WorkOrderCountsDto
+        {
+            // Count() روی سطرهای جدول دستور کار = یک عدد به‌ازای هر دستور کار
+            Mine = await baseQ.CountAsync(w => w.OwnerUserId == MyUserId && w.Status == "Open"),
+            Assigned = await baseQ.CountAsync(w => w.Status == "Open" && myOrderIds.Contains(w.Id)),
+            Archive = await baseQ.CountAsync(w =>
+                w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))
+        });
+    }
+
     /// <summary>شناسه منابعی که حداقل یک دستورکار دارند؛ برای نشان‌گذاری لیست نامه‌ها.</summary>
     [HttpGet("source-ids")]
     public async Task<IActionResult> SourceIds([FromQuery] string? module)
@@ -1918,7 +1949,12 @@ public class WorkOrdersController : ControllerBase
         var doneOnTime = orders.Count(o => tones[o.Id] == "ontime");
         var doneLate = orders.Count(o => tones[o.Id] == "latedone");
         var closedNoDone = orders.Count(o => tones[o.Id] == "closednodone");
-        var pendingReply = asgs.Count(a => a.RepliedAt == null);
+        // «در انتظار پاسخ» باید بر اساس «سطر دستور کار» باشد، نه تعداد گیرندگانی که پاسخ
+        // نداده‌اند: دستوری که به سه نفر واگذار شده و هیچ‌کدام پاسخ نداده‌اند، «یک» دستور
+        // در انتظار پاسخ است (مطابق شمارش دیگر کارت‌های همین داشبورد که همه سطری‌اند).
+        var pendingOrderIds = asgs.Where(a => a.RepliedAt == null)
+            .Select(a => a.OrderId).Distinct().ToHashSet();
+        var pendingReply = orders.Count(o => o.Status == "Open" && pendingOrderIds.Contains(o.Id));
 
         // توزیع اولویت دستورهای باز
         var byPriority = orders.Where(o => o.Status == "Open")
