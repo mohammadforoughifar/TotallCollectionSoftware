@@ -124,6 +124,12 @@
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
+    /// <summary>تعداد گره‌های قابل‌نمایش پس از فیلتر — والد برای حالت جایگزین استفاده می‌کند.</summary>
+    public int NodeCount { get; private set; }
+
+    /// <summary>پس از هر بار بارگذاری (موفق یا ناموفق) والد را باخبر می‌کند.</summary>
+    [Parameter] public EventCallback OnLoaded { get; set; }
+
     public async Task ReloadAsync()
     {
         loading = true; StateHasChanged();
@@ -133,7 +139,20 @@
             if (IncomingOnly) roots = KeepIncomingNodes(roots);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; StateHasChanged(); }
+        finally
+        {
+            NodeCount = CountNodes(roots);
+            loading = false;
+            StateHasChanged();
+            if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
+        }
+    }
+
+    private static int CountNodes(List<BayeganiNodeDto> nodes)
+    {
+        var c = nodes.Count;
+        foreach (var n in nodes) c += CountNodes(n.Children);
+        return c;
     }
 
     // ==================== فیلتر (فقط موضوع و شماره نامه) ====================

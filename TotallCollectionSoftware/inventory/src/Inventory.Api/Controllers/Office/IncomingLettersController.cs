@@ -278,6 +278,42 @@ public class IncomingLettersController : RbacControllerBase
         if (letter == null) return NotFound(new { message = "نامه وارده پیدا نشد." });
         if (letter.CreateUserId != MyUserId && !await IsAdminAsync() && !await HasDabirkhaneAsync()) return StatusCode(403, new { message = "فقط ثبت‌کننده، دبیرخانه یا مدیر می‌تواند نامه را بایگانی کند." });
         letter.IsBayegani = !letter.IsBayegani;
+
+        // رکورد درخت بایگانی هم هم‌زمان ساخته/حذف می‌شود؛ وگرنه نامه از دریافتی خارج
+        // می‌شود ولی در ریل «بایگانی» (که از درخت خوانده می‌شود) هیچ اثری نمی‌گذارد.
+        var myErja = await Db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letter.SourceId && e.ReciverUserId == MyUserId && !e.IsDelete)
+            .OrderByDescending(e => e.ErjaId)
+            .Select(e => new { e.ErjaId })
+            .FirstOrDefaultAsync();
+        if (myErja != null)
+        {
+            var row = await Db.LetterBayeganis.FirstOrDefaultAsync(b =>
+                b.ErjaId == myErja.ErjaId && b.UserId == MyUserId && !b.IsFolder && !b.IsDelete);
+            if (letter.IsBayegani)
+            {
+                if (row == null)
+                    Db.LetterBayeganis.Add(new LetterBayegani
+                    {
+                        Title = (letter.Title ?? "نامه").Length > 200 ? letter.Title![..200] : (letter.Title ?? "نامه"),
+                        ErjaId = myErja.ErjaId,
+                        ParentId = 0,
+                        UserId = MyUserId,
+                        TypeBayegani = 1,
+                        IsFolder = false,
+                        IsDelete = false
+                    });
+            }
+            else if (row != null)
+            {
+                row.IsDelete = true;
+            }
+
+            // وضعیت ارجاع هم همان ما بماند تا فهرست دریافتی/بایگانی هم‌خوان باشد
+            var erja = await Db.Erjas.FirstOrDefaultAsync(e => e.ErjaId == myErja.ErjaId);
+            if (erja != null) erja.IsBayegani = letter.IsBayegani;
+        }
+
         await Db.SaveChangesAsync();
         return Ok(new { isBayegani = letter.IsBayegani });
     }

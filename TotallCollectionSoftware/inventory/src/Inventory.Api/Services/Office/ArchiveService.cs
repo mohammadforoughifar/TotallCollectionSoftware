@@ -153,20 +153,31 @@ public class ArchiveService : IArchiveService
 
     public async Task<List<BayeganiNodeDto>> GetTreeAsync(int userId, Paging.Request? pagination = null)
     {
-        // مهاجرت تنبل: نامه‌هایی که با toggle قدیمی بایگانی شده‌اند ولی رکورد درختی ندارند
-        var loose = await _db.Erjas
+        // مهاجرت تنبل: نامه‌هایی که با toggle قدیمی بایگانی شده‌اند ولی رکورد درختی ندارند.
+        // این مهاجرت برای «هر سه نوع نامه» اجرا می‌شود؛ پیش‌تر فقط نامهٔ داخلی را پوشش می‌داد و
+        // نتیجه این بود که نامهٔ واردهٔ بایگانی‌شده (IsBayegani=true روی ارجاع) هیچ رکورد
+        // درختی نداشت و در ریل «بایگانی» کارتابل وارده دیده نمی‌شد.
+        var looseInner = await _db.Erjas
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && e.IsBayegani == true
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
                         && !_db.LetterBayeganis.Any(b => b.ErjaId == e.ErjaId && !b.IsDelete))
-            .Select(e => new { e.ErjaId, e.Source.InnerLetter!.Title })
+            .Select(e => new { e.ErjaId, Title = e.Source.InnerLetter!.Title })
             .ToListAsync();
 
+        var looseIncoming = await _db.Erjas
+            .Where(e => e.ReciverUserId == userId && !e.IsDelete && e.IsBayegani == true
+                        && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
+                        && !_db.LetterBayeganis.Any(b => b.ErjaId == e.ErjaId && !b.IsDelete))
+            .Select(e => new { e.ErjaId, Title = e.Source.IncomingLetter!.Title })
+            .ToListAsync();
+
+        var loose = looseInner.Concat(looseIncoming).ToList();
         if (loose.Count > 0)
         {
             foreach (var l in loose)
                 _db.LetterBayeganis.Add(new LetterBayegani
                 {
-                    Title = l.Title.Length > 200 ? l.Title[..200] : l.Title,
+                    Title = (l.Title ?? "نامه").Length > 200 ? l.Title![..200] : (l.Title ?? "نامه"),
                     ErjaId = l.ErjaId,
                     ParentId = 0,
                     UserId = userId,

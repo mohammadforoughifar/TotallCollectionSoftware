@@ -877,3 +877,14 @@
 /* پیوست‌های ریدر به شکل لینک دانلود */
 .ltx .paper-foot a.att { text-decoration:none; color:inherit; }
 .ltx .paper-foot a.att:hover { border-color:var(--p); color:var(--p); }
+
+/* ===== فهرست جایگزین بایگانی (وقتی درخت پوشه خالی است ولی نامهٔ بایگانی‌شده داریم) ===== */
+.ltx .arv-fallback { margin-top:12px; border:1px dashed #cbd5e1; border-radius:12px; padding:10px 12px; background:#f8fafc; }
+.ltx .arv-fallback-h { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#334155; margin-bottom:8px; flex-wrap:wrap; }
+.ltx .arv-fallback-h span { font-weight:400; font-size:10.5px; color:var(--sub); }
+.ltx .arv-fallback-row { display:flex; align-items:center; gap:8px; width:100%; text-align:right; background:#fff;
+    border:1px solid var(--line); border-radius:10px; padding:7px 10px; margin-bottom:6px; cursor:pointer; }
+.ltx .arv-fallback-row:hover { border-color:#93c5fd; box-shadow:0 4px 12px rgba(37,99,235,.08); }
+.ltx .arv-fallback-row .t { font-size:12px; font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ltx .arv-fallback-row .n { font-size:11px; color:var(--p2); }
+.ltx .arv-fallback-row .s { font-size:10.5px; color:var(--sub); margin-inline-start:auto; }

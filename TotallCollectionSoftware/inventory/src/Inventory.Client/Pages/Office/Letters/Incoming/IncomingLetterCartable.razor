@@ -102,7 +102,34 @@
                 }
                 else if (folder == "archive")
                 {
-                    <BayeganiTree @ref="bayeganiTree" IncomingOnly="true" Filter="@searchTerm" OnOpenLetter="OpenArchivedLetter" OnChanged="OnArchiveChanged" OnLetterUnarchived="OnLetterUnarchived" />
+                    <BayeganiTree @ref="bayeganiTree" IncomingOnly="true" Filter="@searchTerm"
+                                  OnOpenLetter="OpenArchivedLetter" OnChanged="OnArchiveChanged"
+                                  OnLetterUnarchived="OnLetterUnarchived" OnLoaded="OnArchiveTreeLoaded" />
+
+                    @* ---- جایگزین مطمئن ----
+                       اگر درخت بایگانی خالی بود ولی سرویس «بایگانی» نامه دارد (مثلاً رکورد
+                       درختیِ نامه در نسخه‌های قبلی ساخته نشده بود)، فهرست تخت نمایش داده
+                       می‌شود تا نامهٔ بایگانی‌شده هیچ‌وقت «گم» نشود. *@
+                    @if (archiveTreeEmpty && letters.Count > 0)
+                    {
+                        <div class="arv-fallback">
+                            <div class="arv-fallback-h">
+                                <i class="bi bi-archive"></i>
+                                نامه‌های بایگانی‌شده (@totalItems.FaDigits())
+                                <span>— این نامه‌ها در درخت پوشه‌ها ثبت نشده‌اند و اینجا فهرست شده‌اند</span>
+                            </div>
+                            @foreach (var item in letters)
+                            {
+                                var l = item;
+                                <button class="arv-fallback-row" @onclick="() => OpenArchivedLetterFromList(l)">
+                                    <i class="bi bi-envelope-paper"></i>
+                                    <span class="t">@l.Title</span>
+                                    <span class="n num">@l.NumberSabt.FaDigits()</span>
+                                    <span class="s">@l.Ferestande</span>
+                                </button>
+                            }
+                        </div>
+                    }
                 }
                 else if (letters.Count == 0)
                 {
@@ -552,6 +579,8 @@
     private IncomingReservationManager? reservationManager;
     private BayeganiFolderPickerModal? folderPicker;
     private BayeganiTree? bayeganiTree;
+    /// <summary>درخت بایگانی خالی برگشت (برای نمایش فهرست جایگزین).</summary>
+    private bool archiveTreeEmpty;
     private IncomingLetterViewModal? archiveViewModal;
 
     private string FolderTitle => folder switch
@@ -773,6 +802,26 @@
             readerOpen = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>باز کردن نامه از فهرست جایگزین بایگانی (بدون گره درختی).</summary>
+    private async Task OpenArchivedLetterFromList(IncomingLetterListItemDto item)
+    {
+        try
+        {
+            activeDetail = await IncomingSvc.GetDetailAsync(item.LetterId);
+            activeLetter = item;
+            readerOpen = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>پس از بارگذاری درخت بایگانی: اگر خالی بود، فهرست جایگزین نمایش داده می‌شود.</summary>
+    private Task OnArchiveTreeLoaded()
+    {
+        archiveTreeEmpty = (bayeganiTree?.NodeCount ?? 0) == 0;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task OnArchiveChanged()
