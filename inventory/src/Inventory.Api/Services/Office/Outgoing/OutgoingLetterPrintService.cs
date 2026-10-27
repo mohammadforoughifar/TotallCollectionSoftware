@@ -7,6 +7,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Xml.Linq;
 using Inventory.Api.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using PdfSharp.Drawing;
@@ -100,20 +101,32 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly ILogger<OutgoingLetterPrintService> _logger;
     private readonly IConfiguration _configuration;
     private readonly IMemoryCache _cache;
+    private readonly IHttpContextAccessor? _http;
 
     public OutgoingLetterPrintService(
         AppDbContext db,
         IWebHostEnvironment env,
         ILogger<OutgoingLetterPrintService> logger,
         IConfiguration? configuration = null,
-        IMemoryCache? cache = null)
+        IMemoryCache? cache = null,
+        IHttpContextAccessor? http = null)
     {
         _db = db;
         _env = env;
         _logger = logger;
         _configuration = configuration ?? new ConfigurationBuilder().Build();
         _cache = cache ?? new MemoryCache(new MemoryCacheOptions());
+        _http = http;
         QuestPDF.Settings.License = LicenseType.Community;
+    }
+
+    /// <summary>شرکت فعالِ همان درخواست (اعتبارسنجی‌شده در ActiveCompanyMiddleware).</summary>
+    private int ActiveCompanyIdFromContext()
+    {
+        var ctx = _http?.HttpContext;
+        if (ctx == null) return 0;
+        return ctx.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var v)
+               && v is int id ? id : 0;
     }
 
     // ==================== فونت فارسی ====================
@@ -379,16 +392,27 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var letterCompanyId = letter.CompanyId;
         var hasCompanyId = letterCompanyId is > 0;
         var company = printData.Company;
+        var activeCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
+            .Select(c => new { c.Id, c.LetterheadFileName }).ToListAsync();
         if (!hasCompanyId)
         {
-            company = await _db.SystemCompanies.AsNoTracking()
-                .Where(c => c.IsActive && c.LetterheadFileName != null && c.LetterheadFileName != "")
-                .OrderBy(c => c.Id)
-                .FirstOrDefaultAsync();
+            // نامهٔ بدون شرکت (دادهٔ قدیمی): فقط وقتی مجاز به انتخاب خودکار هستیم که
+            // «تنها یک شرکت فعال» وجود داشته باشد یا شرکت فعالِ درخواست مشخص باشد.
+            // پیش‌تر اولین شرکتِ دارای سربرگ انتخاب می‌شد و روی نصب چندشرکتی، نامه روی
+            // سربرگ شرکت دیگری چاپ می‌شد.
+            var activeCompanyId = ActiveCompanyIdFromContext();
+            var pickId = activeCompanies.Count == 1
+                ? activeCompanies[0].Id
+                : activeCompanyId > 0 && activeCompanies.Any(c => c.Id == activeCompanyId)
+                    ? activeCompanyId
+                    : 0;
+            company = pickId > 0
+                ? await _db.SystemCompanies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == pickId)
+                : null;
             MarkStage("db-default-company");
             _logger.LogWarning(
-                "نامه {LetterId} CompanyId ندارد؛ برای چاپ از شرکت پیش‌فرض {SelectedCompanyId} استفاده می‌شود.",
-                letterId, company?.Id);
+                "نامه {LetterId} CompanyId ندارد؛ شرکت انتخابی برای چاپ: {SelectedCompanyId} (شرکت‌های فعال: {ActiveCount}, شرکت فعال درخواست: {RequestCompanyId}).",
+                letterId, company?.Id, activeCompanies.Count, activeCompanyId);
         }
 
         var selectedCompanyId = company?.Id ?? letterCompanyId;
@@ -404,17 +428,33 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         if (withLetterhead && letterheadPath == null && !hasCompanyId)
         {
-            letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
-            if (letterheadPath == null)
+            // فقط نصب‌های تک‌شرکتیِ بدون رکورد شرکت: هیچ شرکت دیگری وجود ندارد که
+            // اشتباهاً سربرگش استفاده شود. در نصب چندشرکتی هرگز سربرگ نمی‌گذاریم و
+            // پایین‌تر خطای روشن داده می‌شود.
+            if (activeCompanies.Count == 0)
             {
-                var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
-                    .Select(c => c.LogoPath)
-                    .FirstOrDefaultAsync();
-                MarkStage("db-hr-letterhead-logo");
-                letterheadPath = ResolveLetterheadPath(hrLogoPath);
+                letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+                if (letterheadPath == null)
+                {
+                    var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
+                        .Select(c => c.LogoPath)
+                        .FirstOrDefaultAsync();
+                    MarkStage("db-hr-letterhead-logo");
+                    letterheadPath = ResolveLetterheadPath(hrLogoPath);
+                }
             }
         }
         MarkStage("letterhead-resolution-cache");
+
+        if (withLetterhead && letterheadPath == null && !hasCompanyId && activeCompanies.Count > 0)
+        {
+            _logger.LogError(
+                "چاپ نامه {LetterId} متوقف شد: نامه به هیچ شرکتی متصل نیست و نصب چندشرکتی است (شرکت‌های فعال: {ActiveCount}).",
+                letterId, activeCompanies.Count);
+            throw new RequiredCompanyLetterheadPrintException(
+                "این نامه به هیچ شرکتی متصل نیست و سامانه چند شرکت فعال دارد؛ برای جلوگیری از چاپ روی سربرگ شرکت دیگر، " +
+                "ابتدا شرکتِ نامه را مشخص کنید (ویرایش نامه ← شرکت) یا از بالای صفحه شرکت درست را انتخاب و دوباره چاپ کنید.");
+        }
 
         if (withLetterhead && letterheadPath == null && hasCompanyId)
         {

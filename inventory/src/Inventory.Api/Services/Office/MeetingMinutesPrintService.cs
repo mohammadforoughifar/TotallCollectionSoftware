@@ -145,9 +145,11 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         string? letterheadPath = null;
         try
         {
-            var rawCompanyId = _http.HttpContext?.Request.Headers["X-Company-Id"].FirstOrDefault();
-            var companyId = int.TryParse(rawCompanyId, out var parsedCompanyId) && parsedCompanyId > 0
-                ? parsedCompanyId
+            // شرکت فعال باید از میان‌افزار ActiveCompanyMiddleware خوانده شود، نه از هدر خام؛
+            // هدر خام اعتبارسنجی دسترسی نمی‌شود و می‌توانست سربرگ شرکت دیگری را چاپ کند.
+            var companyId = _http.HttpContext?.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var resolved) == true
+                            && resolved is int resolvedId && resolvedId > 0
+                ? resolvedId
                 : 0;
             var company = companyId > 0
                 ? await _db.SystemCompanies.AsNoTracking()

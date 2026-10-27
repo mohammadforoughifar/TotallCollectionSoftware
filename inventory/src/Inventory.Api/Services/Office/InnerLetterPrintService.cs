@@ -49,7 +49,7 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         var companyId = await ActiveCompanyIdAsync(userId, ct);
         var company = companyId is int cid
             ? await _db.SystemCompanies.AsNoTracking().Where(x => x.Id == cid && x.IsActive)
-                .Select(x => new { x.Id, x.Code, x.LetterheadFileName }).FirstOrDefaultAsync(ct)
+                .Select(x => new { x.Id, x.Code, x.Name, x.LetterheadFileName }).FirstOrDefaultAsync(ct)
             : null;
 
         // Print actual hamesh referrals, not signatures/private answers or every circulation row.
@@ -72,39 +72,78 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             ?? throw new InnerLetterPrintException("فونت فارسی چاپ پیدا نشد؛ پوشهٔ Resources/fonts را همراه API منتشر کنید.");
         ct.ThrowIfCancellationRequested();
 
-        if (company?.Id == 1003)
+        // ==================== انتخاب سربرگ ====================
+        // قاعدهٔ سخت: سربرگ همیشه از «همان شرکت» گرفته می‌شود و هیچ‌گاه سربرگ شرکت دیگری
+        // جانشین نمی‌شود. پیش‌تر شناسه‌های ۱۰۰۳ و ۱۰۰۵ در کد ثابت بودند و در نبود سربرگ،
+        // فایل نمونهٔ «forough-letterhead.pdf» به‌صورت بی‌صدا استفاده می‌شد؛ نتیجه این بود
+        // که روی نصب مشتری، نامه‌ها روی سربرگ شرکتی دیگر چاپ می‌شدند.
+        var companyArt = company is null ? null
+            : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5);
+        if (companyArt != null)
         {
-            // This exact inner-letter template is required; never silently substitute another company's art.
-            var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5);
             try
             {
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts);
-                _log.LogInformation("چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}",
-                    letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5));
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts);
+                _log.LogInformation(
+                    "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}",
+                    letterId, company!.Id, InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company!.Id, a5));
                 return pdf;
             }
             catch (Exception ex)
             {
-                throw new InnerLetterPrintException("تولید PDF نامه داخلی شرکت ۱۰۰۳ روی سربرگ ناموفق بود؛ چاپ بدون سربرگ انجام نشد.", ex);
+                throw new InnerLetterPrintException(
+                    $"تولید PDF نامه داخلی روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ چاپ بدون سربرگ انجام نشد.", ex);
             }
         }
 
         var header = company?.LetterheadFileName;
         var headerPath = ResolveLetterheadPath(header);
-        var isAria1005 = company?.Id == 1005 || string.Equals(company?.Code?.Trim(), "1005", StringComparison.OrdinalIgnoreCase);
-        if (headerPath == null && isAria1005)
-            headerPath = ResolveLetterheadPath("uploads/letterheads/aria-1005-letterhead.pdf")
-                ?? ResolveLetterheadPath("Reports/InnerLetters/Companies/1005/letterhead-final.pdf");
-        if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
-            headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+
+        // نصب‌های تک‌شرکتیِ قدیمی که هیچ رکورد شرکتی ندارند: تنها جایی که استفاده از
+        // سربرگ پیش‌فرض مجاز است، چون شرکت دیگری در سیستم وجود ندارد.
+        if (headerPath == null && company is null)
+        {
+            var anyActiveCompany = await _db.SystemCompanies.AsNoTracking().AnyAsync(x => x.IsActive, ct);
+            if (!anyActiveCompany)
+                headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+        }
+
         var content = InnerLetterPdfRenderer.Render(data, a5, withHamesh, null, hasAttachment, fonts);
+
         if (headerPath == null)
         {
+            if (company is not null)
+            {
+                // شرکت مشخص است ولی سربرگش تنظیم نشده — عمداً خطا می‌دهیم تا نامه روی
+                // سربرگ شرکت دیگر یا صفحهٔ سفید چاپ نشود.
+                var status = string.IsNullOrWhiteSpace(header)
+                    ? "روی رکورد شرکت فایلی ثبت نشده است"
+                    : $"فایل ثبت‌شده یافت نشد: {header}";
+                _log.LogError(
+                    "چاپ نامه داخلی متوقف شد: سربرگ شرکت {CompanyId} ({CompanyName}) تنظیم نشده. Status={Status}",
+                    company!.Id, company!.Name, status);
+                throw new InnerLetterPrintException(
+                    $"سربرگ شرکت «{company!.Name}» تنظیم نشده است؛ چاپ متوقف شد تا نامه روی سربرگ شرکت دیگری چاپ نشود. " +
+                    $"وضعیت: {status}. از مسیر «سیستم ← شرکت‌ها» فایل PDF سربرگ این شرکت را بارگذاری کنید.");
+            }
             _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
             return content;
         }
-        try { return Overlay(content, headerPath); }
-        catch (Exception ex) { _log.LogError(ex, "چاپ نامه داخلی روی سربرگ ناموفق بود. LetterId={LetterId}", letterId); return content; }
+
+        try
+        {
+            _log.LogInformation("چاپ نامه داخلی روی سربرگ شرکت. LetterId={LetterId}, CompanyId={CompanyId}, File={File}",
+                letterId, companyId, Path.GetFileName(headerPath));
+            return Overlay(content, headerPath);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "چاپ نامه داخلی روی سربرگ ناموفق بود. LetterId={LetterId}", letterId);
+            if (company is not null)
+                throw new InnerLetterPrintException(
+                    $"چاپ نامه روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ فایل سربرگ را بررسی کنید.", ex);
+            return content;
+        }
     }
 
     private string? ResolveLetterheadPath(string? value)
