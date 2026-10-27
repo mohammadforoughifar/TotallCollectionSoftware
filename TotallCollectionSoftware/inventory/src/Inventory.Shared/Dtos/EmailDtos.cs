@@ -28,6 +28,15 @@ public class EmailAccountDto
     public string? DisplayName { get; set; }
     public DateTime? LastSync { get; set; }
 
+    /// <summary>
+    /// تاریخِ آخرین ایمیلِ این حساب (آخرین پیام دریافتی یا ارسالی).
+    /// برای انتخابِ پیش‌فرضِ حساب در صفحهٔ ایمیل استفاده می‌شود: حسابی که تازه‌ترین ایمیل را دارد.
+    /// </summary>
+    public DateTime? LastMessageAt { get; set; }
+
+    /// <summary>تعداد کل پیام‌های این حساب (دریافتی + ارسالی) — نمایش کمکی در فهرست حساب‌ها</summary>
+    public int MessageCount { get; set; }
+
     /// <summary>مالک حساب</summary>
     public int UserId { get; set; }
     public string UserName { get; set; } = "";

@@ -145,7 +145,7 @@
                     @foreach (var a in VisibleAccounts)
                     {
                         <option value="@a.EmailId">
-                            @(a.IsDabirkhane ? "📮 " : "")@a.EmailAddress @(a.IsMine ? "" : "(دبیرخانه)")
+                            @(a.IsDabirkhane ? "📮 " : "")@a.EmailAddress @(a.IsMine ? "" : "(دبیرخانه)")@(MailHint(a))
                         </option>
                     }
                 </select>
@@ -1058,8 +1058,49 @@
             if (cpAccountId == 0 && pool.Any(x => x.IsActive))
                 cpAccountId = pool.First(x => x.IsActive).EmailId;
             if (accFilter > 0 && accounts.All(x => x.EmailId != accFilter)) accFilter = 0;
+
+            // انتخابِ پیش‌فرضِ کمبوی حساب‌ها: حسابی که «تازه‌ترین ایمیل» را دارد.
+            // فقط یک‌بار (اولین بارگذاری) اعمال می‌شود تا اگر کاربر «همه حساب‌ها» را انتخاب کرد،
+            // بارگذاری‌های بعدی انتخاب او را بازنویسی نکنند.
+            if (!_accountDefaultApplied)
+            {
+                _accountDefaultApplied = true;
+                if (accFilter == 0)
+                {
+                    var newest = NewestMailAccount(pool);
+                    if (newest != null) accFilter = newest.EmailId;
+                }
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>انتخابِ پیش‌فرضِ حساب (تازه‌ترین ایمیل) فقط یک‌بار در هر نشست اعمال می‌شود.</summary>
+    private bool _accountDefaultApplied;
+
+    /// <summary>متن کمکیِ کنار نام حساب در کمبو: تاریخِ آخرین ایمیل</summary>
+    private static string MailHint(EmailAccountDto a)
+        => a.LastMessageAt.HasValue ? $" — آخرین ایمیل: {a.LastMessageAt.Value.ToFaDate()}" : "";
+
+    /// <summary>
+    /// حسابی که تازه‌ترین ایمیل را دارد: اول بر اساس <c>LastMessageAt</c> (تاریخِ آخرین پیام)،
+    /// اگر هیچ حسابی پیامی نداشت بر اساس <c>LastSync</c>، و در نهایت اولین حسابِ فعال.
+    /// فقط حساب‌های فعال در نظر گرفته می‌شوند.
+    /// </summary>
+    private static EmailAccountDto? NewestMailAccount(IEnumerable<EmailAccountDto> pool)
+    {
+        var active = pool.Where(a => a.IsActive).ToList();
+        if (active.Count == 0) return null;
+
+        var withMail = active.Where(a => a.LastMessageAt.HasValue).ToList();
+        if (withMail.Count > 0)
+            return withMail.OrderByDescending(a => a.LastMessageAt).First();
+
+        var synced = active.Where(a => a.LastSync.HasValue).ToList();
+        if (synced.Count > 0)
+            return synced.OrderByDescending(a => a.LastSync).First();
+
+        return active[0];
     }
 
     /// <summary>شمارنده‌ی درخواست‌ها — اگر کاربر سریع چند فیلتر را عوض کند، فقط نتیجه‌ی

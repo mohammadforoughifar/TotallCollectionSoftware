@@ -251,6 +251,14 @@ public class EmailService : IEmailService
                 IsDabirkhane = e.IsDabirkhane,
                 DisplayName = e.DisplayName,
                 LastSync = e.LastSync,
+                // تازه‌ترین پیامِ حساب (دریافتی یا ارسالی) — مبنای انتخابِ پیش‌فرضِ حساب در صفحهٔ ایمیل.
+                // هر دو عدد در همان کوئری محاسبه می‌شوند تا برای هر حساب رفت‌وبرگشت جدا لازم نباشد.
+                LastMessageAt = _db.OtoInboxEmails.Where(m => m.EmailId == e.EmailId)
+                                   .Max(m => (DateTime?)m.Date)
+                               ?? _db.OtoSentEmails.Where(m => m.EmailId == e.EmailId)
+                                   .Max(m => (DateTime?)m.Date),
+                MessageCount = _db.OtoInboxEmails.Count(m => m.EmailId == e.EmailId)
+                             + _db.OtoSentEmails.Count(m => m.EmailId == e.EmailId),
                 UserId = e.UserId,
                 UserName = e.User != null
                     ? (string.IsNullOrWhiteSpace((e.User.FirstName ?? "") + (e.User.LastName ?? "")) ? e.User.Username : ((e.User.FirstName ?? "") + " " + (e.User.LastName ?? "")).Trim())
