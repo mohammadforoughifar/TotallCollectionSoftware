@@ -707,6 +707,14 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>نوع نامه مبدأ: 1=داخلی، 2=صادره، 3=وارده.</summary>
         public int? SourceType { get; set; }
+
+        /// <summary>
+        /// فیلتر تصمیم دستوردهنده روی پاسخ گیرندگان:
+        /// approved = حداقل یک تأیید، rejected = حداقل یک رد،
+        /// undecided = پاسخ داده شده ولی هنوز تصمیمی ثبت نشده،
+        /// awaiting = گیرنده دارد ولی هیچ‌کس هنوز پاسخی نداده است.
+        /// </summary>
+        public string? Decision { get; set; }
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
@@ -735,6 +743,34 @@ public class WorkOrdersController : ControllerBase
         }
         if (f.ProjectId is > 0)
             q = q.Where(w => w.ProjectId == f.ProjectId);
+        // فیلتر «تصمیم دستوردهنده» — تصمیم روی پاسخ هر گیرنده ثبت می‌شود.
+        if (!string.IsNullOrWhiteSpace(f.Decision))
+        {
+            var dec = f.Decision.Trim().ToLowerInvariant();
+            switch (dec)
+            {
+                case "approved":
+                    q = q.Where(w => _db.WorkOrderAssignees
+                        .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Approved"));
+                    break;
+                case "rejected":
+                    q = q.Where(w => _db.WorkOrderAssignees
+                        .Any(a => a.OrderId == w.Id && a.OwnerDecision == "Rejected"));
+                    break;
+                case "undecided":
+                    // پاسخ داده شده ولی دستوردهنده هنوز تأیید/رد نکرده است
+                    q = q.Where(w => _db.WorkOrderAssignees
+                        .Any(a => a.OrderId == w.Id && a.RepliedAt != null
+                                  && (a.OwnerDecision == null
+                                      || (a.OwnerDecision != "Approved" && a.OwnerDecision != "Rejected"))));
+                    break;
+                case "awaiting":
+                    // گیرنده دارد ولی هیچ پاسخی ثبت نشده ⇒ «در انتظار پاسخ»
+                    q = q.Where(w => _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id)
+                                  && !_db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.RepliedAt != null));
+                    break;
+            }
+        }
         // نوع نامه از LetterSource خوانده می‌شود، نه از نام رشته‌ای SourceModule.
         // این کار داده‌های قدیمی و دستورکارهایی را که با نام ماژول متفاوت ذخیره شده‌اند
         // نیز درست دسته‌بندی می‌کند.
