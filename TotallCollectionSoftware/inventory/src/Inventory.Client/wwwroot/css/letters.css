@@ -830,3 +830,50 @@
 .ltx .paper-inline-note { display:flex; align-items:center; gap:6px; padding:8px 16px 2px;
     font-size:11px; color:#64748b; }
 .ltx .paper-inline-note .bi { color:#6941e8; }
+
+/* ======================================================================
+   کارتابل نامهٔ وارده — صفحه‌بندی سروری (نوار کامل) و ریدرِ جزئیات کامل
+   ====================================================================== */
+.ltx .lt-pager2 { justify-content:space-between; gap:10px; padding:10px 12px;
+    background:#fff; border-top:1px solid var(--line); border-radius:0 0 12px 12px; }
+.ltx .lt-pager2 .pg-size { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--sub); }
+.ltx .pg-select { border:1px solid var(--line); border-radius:8px; padding:3px 6px; font:inherit;
+    font-size:11.5px; background:#fff; color:#334155; }
+.ltx .lt-pager2 .pg-nav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.ltx .lt-pager2 .pg-jump { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--sub); }
+.ltx .pg-input { width:52px; border:1px solid var(--line); border-radius:8px; padding:3px 6px;
+    font:inherit; font-size:11.5px; text-align:center; }
+.ltx .lt-pager2 .pginfo { margin-inline-start:0; white-space:nowrap; }
+@media (max-width: 900px) {
+    .ltx .lt-pager2 { flex-direction:column; align-items:stretch; gap:8px; }
+    .ltx .lt-pager2 .pg-nav { justify-content:center; }
+    .ltx .lt-pager2 .pginfo { text-align:center; }
+}
+
+/* ---------- ریدر: چیدمان دو ستونه (نامه + مشخصات) مثل نامهٔ داخلی ---------- */
+.ltx .reader.rd-full { display:flex; flex-direction:column; }
+.ltx .rd-full .rd-scroll { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:12px;
+    padding:12px; align-items:start;
+    /* قاعدهٔ .rd-scroll در نامهٔ داخلی height:0 دارد (اسکرول داخلی)؛ در چیدمان جدید
+       کلِ ستون ریدر اسکرول می‌شود، پس ارتفاع آزاد و سرریز دیده می‌شود. */
+    height:auto; flex:0 0 auto; overflow:visible; }
+.ltx .rd-full .rd-main { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.ltx .rd-full .side { display:flex; flex-direction:column; gap:10px; position:sticky; top:8px; }
+@media (max-width: 1100px) {
+    .ltx .rd-full .rd-scroll { grid-template-columns:minmax(0,1fr); }
+    .ltx .rd-full .side { position:static; }
+}
+
+/* تاریخچهٔ گردش/پاسخ‌های داخل ریدر */
+.ltx .rd-history .rd-erja-row { border:1px solid var(--line); border-radius:10px; padding:8px 10px;
+    background:#fff; margin-bottom:8px; font-size:12px; }
+.ltx .rd-history .rd-erja-row:last-child { margin-bottom:0; }
+.ltx .rd-erja-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ltx .rd-erja-date { font-size:10.5px; color:var(--sub); margin-inline-start:auto; }
+.ltx .rd-erja-text { margin-top:5px; color:#334155; line-height:1.9; }
+.ltx .rd-erja-deadline { margin-top:4px; font-size:11px; color:#b45309; }
+.ltx .rd-erja-answer { margin-top:5px; padding:6px 8px; border-radius:8px; background:#f0fdf4;
+    border:1px solid #bbf7d0; color:#166534; line-height:1.8; }
+/* پیوست‌های ریدر به شکل لینک دانلود */
+.ltx .paper-foot a.att { text-decoration:none; color:inherit; }
+.ltx .paper-foot a.att:hover { border-color:var(--p); color:var(--p); }

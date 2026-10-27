@@ -157,6 +157,12 @@ public class IncomingLetterCartableStatsDto
     public int TotalArchive { get; set; }
     public int TotalStarred { get; set; }
 
+    /// <summary>تعداد نامه‌های دارای پیوست در «دریافتی» (برای عدد چیپ «پیوست‌دار»)</summary>
+    public int TotalAttach { get; set; }
+
+    /// <summary>تعداد نامه‌های دستورکارشده در «دریافتی» (برای عدد چیپ «دستورکارشده»)</summary>
+    public int TotalWorkOrder { get; set; }
+
     // نام‌های مستعار — رابط این آمار را با نام‌های رایج کارتابل می‌خواند
     public int InboxUnread => UnreadCount;
     public int InboxTotal => TotalInbox;

@@ -82,12 +82,12 @@ public class IncomingLettersController : RbacControllerBase
 
     [HttpGet("inbox")]
     public async Task<IActionResult> GetInbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] bool? starredOnly = null, [FromQuery] int? skip = null, [FromQuery] int? take = null,
-        [FromQuery] bool? attachOnly = null)
+        [FromQuery] bool? attachOnly = null, [FromQuery] bool? workOrderOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly, workOrderOnly));
     }
 
     [HttpGet("archive")]

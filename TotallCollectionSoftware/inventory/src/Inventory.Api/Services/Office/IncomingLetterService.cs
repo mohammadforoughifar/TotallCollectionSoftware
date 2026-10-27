@@ -12,7 +12,7 @@ namespace Inventory.Api.Services;
 public interface IIncomingLetterService
 {
     Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null,
-        bool? attachOnly = null);
+        bool? attachOnly = null, bool? workOrderOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15,
         bool? starredOnly = null, bool? attachOnly = null);
@@ -68,7 +68,7 @@ public class IncomingLetterService : IIncomingLetterService
     }
 
     public async Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15, bool? starredOnly = null,
-        bool? attachOnly = null)
+        bool? attachOnly = null, bool? workOrderOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
@@ -97,6 +97,10 @@ public class IncomingLetterService : IIncomingLetterService
         // «پیوست‌دار» هم سمت سرور — وگرنه فقط نامه‌های پیوست‌دارِ صفحهٔ جاری دیده می‌شدند
         if (attachOnly == true)
             q = q.Where(e => _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId));
+        // «دستورکارشده» هم سمت سرور — پیش‌تر فقط روی صفحهٔ جاری فیلتر می‌شد و
+        // شمارش/صفحه‌بندی با نتیجهٔ نمایش هم‌خوان نبود.
+        if (workOrderOnly == true)
+            q = q.Where(e => _db.WorkOrders.Any(w => w.SourceModule == "IncomingLetter" && w.SourceId == e.SourceId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -318,13 +322,22 @@ public class IncomingLetterService : IIncomingLetterService
 
         var totalStarred = await inboxQuery.CountAsync(e => e.IsNeshan);
 
+        // عدد روی چیپ‌های «پیوست‌دار» و «دستورکارشده» — از همان کوئری «دریافتی» تا
+        // با فهرست هم‌خوان باشد (فیلتر این دو چیپ سمت سرور اعمال می‌شود).
+        var totalAttach = await inboxQuery.CountAsync(e =>
+            _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId));
+        var totalWorkOrder = await inboxQuery.CountAsync(e =>
+            _db.WorkOrders.Any(w => w.SourceModule == "IncomingLetter" && w.SourceId == e.SourceId));
+
         return new IncomingLetterCartableStatsDto
         {
             TotalInbox = totalInbox,
             UnreadCount = unreadCount,
             TotalSent = totalSent,
             TotalArchive = totalArchive,
-            TotalStarred = totalStarred
+            TotalStarred = totalStarred,
+            TotalAttach = totalAttach,
+            TotalWorkOrder = totalWorkOrder
         };
     }
 
@@ -397,7 +410,12 @@ public class IncomingLetterService : IIncomingLetterService
                 IsRead = e.IsRead,
                 DateRead = e.DateRead,
                 Answer = e.Answer,
-                DateAnswer = e.DateAnswer
+                DateAnswer = e.DateAnswer,
+                // تأیید/رد پاسخ و نام اقدام‌کننده — ریدر کارتابل بر همین‌ها نشان «تایید ✓/رد ✗» را
+                // می‌سازد. پیش‌تر پر نمی‌شد و پاسخ‌ها همیشه بی‌نشان دیده می‌شدند.
+                TypeTaeed = e.TypeTaeed,
+                AmalgarId = e.AmalgarId,
+                AmalgarTitle = e.Amalgar != null ? e.Amalgar.Title : null
             })
             .ToListAsync();
 

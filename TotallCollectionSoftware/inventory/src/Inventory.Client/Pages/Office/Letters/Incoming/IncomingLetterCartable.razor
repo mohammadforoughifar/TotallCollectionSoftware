@@ -75,14 +75,16 @@
                 </div>
 
                 <div class="chips">
-                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@totalItems.FaDigits()</span></button>
+                    @* همهٔ چیپ‌ها سمت سرور اعمال می‌شوند (نه فقط روی صفحهٔ جاری) تا شمارش و
+                       صفحه‌بندی با نتیجهٔ نمایش هم‌خوان باشد. *@
+                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@stats.InboxTotal.FaDigits()</span></button>
                     @if (folder == "inbox")
                     {
                         <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")'>خوانده‌نشده <span class="n">@stats.InboxUnread.FaDigits()</span></button>
                     }
-                    <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
-                    <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
-                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
+                    <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده <span class="n">@stats.TotalStarred.FaDigits()</span></button>
+                    <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار <span class="n">@stats.TotalAttach.FaDigits()</span></button>
+                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده <span class="n">@stats.TotalWorkOrder.FaDigits()</span></button>
 
                     @if (selectedErjaIds.Count > 0 && folder == "inbox")
                     {
@@ -108,7 +110,7 @@
                 }
                 else
                 {
-                    @foreach (var item in PagedLetters)
+                    @foreach (var item in letters)
                     {
                         var l = item;
                         var isUnread = !l.IsRead && folder == "inbox";
@@ -159,153 +161,321 @@
                         </div>
                     }
 
-                    @* ---------- صفحه‌بندی ---------- *@
-                    @if (totalPages > 1)
+                    @* ---------- صفحه‌بندی (سمت سرور) ---------- *@
+                    @if (totalItems > 0)
                     {
-                        <div class="lt-pager">
-                            <button class="pgbtn" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(1)"><i class="bi bi-chevron-double-left"></i></button>
-                            <button class="pgbtn" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(currentPage - 1)"><i class="bi bi-chevron-left"></i></button>
-                            @for (int i = 1; i <= totalPages; i++)
-                            {
-                                var p = i;
-                                if (p >= Math.Max(1, currentPage - 3) && p <= Math.Min(totalPages, currentPage + 3))
-                                {
-                                    <button class="pgbtn @(p == currentPage ? "on" : "")" @onclick="() => GoPageAsync(p)">@p.FaDigits()</button>
-                                }
-                            }
-                            <button class="pgbtn" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(currentPage + 1)"><i class="bi bi-chevron-right"></i></button>
-                            <button class="pgbtn" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(totalPages)"><i class="bi bi-chevron-double-right"></i></button>
-                            <div class="pg-jump">
-                                <label>رفتن به صفحه: </label>
-                                <input type="number" @bind="jumpPage" min="1" max="@totalPages" style="width:50px" />
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoPageAsync(jumpPage)"><i class="bi bi-arrow-right"></i></button>
+                        <div class="lt-pager lt-pager2">
+                            <div class="pg-size">
+                                <label for="incoming-page-size">تعداد در صفحه:</label>
+                                <select id="incoming-page-size" class="pg-select" @bind="pageSize" @bind:after="OnPageSizeChangedAsync">
+                                    @foreach (var size in PageSizes)
+                                    {
+                                        <option value="@size">@size.FaDigits()</option>
+                                    }
+                                </select>
                             </div>
-                            <span class="pginfo">@totalItems.FaDigits() نامه — صفحه @(currentPage.FaDigits()) از @totalPages.FaDigits()</span>
+
+                            <div class="pg-nav">
+                                <button class="pgbtn" title="صفحهٔ اول" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(1)"><i class="bi bi-chevron-double-right"></i></button>
+                                <button class="pgbtn" title="قبلی" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(currentPage - 1)"><i class="bi bi-chevron-right"></i></button>
+                                @foreach (var p in PageWindow)
+                                {
+                                    var pp = p;
+                                    <button class="pgbtn @(pp == currentPage ? "on" : "")" @onclick="() => GoPageAsync(pp)">@pp.FaDigits()</button>
+                                }
+                                <button class="pgbtn" title="بعدی" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(currentPage + 1)"><i class="bi bi-chevron-left"></i></button>
+                                <button class="pgbtn" title="صفحهٔ آخر" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(totalPages)"><i class="bi bi-chevron-double-left"></i></button>
+                            </div>
+
+                            <div class="pg-jump">
+                                <label for="incoming-jump">رفتن به صفحه:</label>
+                                <input id="incoming-jump" type="number" class="pg-input" min="1" max="@Math.Max(1, totalPages)"
+                                       @bind="jumpPage" @onkeydown="OnJumpKeyDown" @onblur="EnterJumpAsync" />
+                                <button class="btn btn-sm btn-outline-secondary" disabled="@(jumpPage < 1 || jumpPage > totalPages)" @onclick="() => GoPageAsync(jumpPage)"><i class="bi bi-arrow-left"></i></button>
+                            </div>
+
+                            <span class="pginfo">
+                                نمایش @RangeStart.FaDigits() تا @RangeEnd.FaDigits() از @totalItems.FaDigits() نامه
+                                — صفحهٔ @currentPage.FaDigits() از @Math.Max(1, totalPages).FaDigits()
+                            </span>
                         </div>
                     }
                 }
             </div>
         </section>
 
-        @* ---------- ستون پانل خواندن و جزییات نامه ---------- *@
+        @* ---------- ستون پانل خواندن و جزییات کامل نامه ---------- *@
         @if (readerOpen && activeDetail != null)
         {
-            <aside class="reader" style="overflow-y:auto">
+            <aside class="reader rd-full" style="overflow-y:auto">
                 <div class="rd-top">
+                    <button class="icb rd-back" title="بازگشت به فهرست" @onclick="CloseReader"><i class="bi bi-arrow-right"></i></button>
                     <span class="t"><i class="bi bi-envelope-paper-fill" style="color:var(--p)"></i> @activeDetail.Title</span>
+                    @if (activeDetail.CurrentErja != null)
+                    {
+                        <button class="icb @(activeDetail.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStarReader">
+                            <i class="bi @(activeDetail.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                        </button>
+                    }
                     <button class="icb" title="بستن" @onclick="CloseReader"><i class="bi bi-x-lg"></i></button>
                 </div>
 
-                <div class="paper" style="padding:16px">
-                    <div class="d-flex justify-content-between align-items-start mb-3 pb-2 border-bottom">
-                        <div>
-                            <h6 class="fw-bold mb-1">فرستنده: @activeDetail.Ferestande</h6>
-                            <small class="text-muted">تاریخ نامه مبدأ: @activeDetail.Date.ToFaDate() | ثبت ورودی: @activeDetail.DateErsal.ToFaDate()</small>
-                        </div>
-                        <div class="text-end">
-                            <span class="badge bg-primary fs-6">شماره ثبت: # @activeDetail.NumberSabt.FaDigits()</span>
-                            @if (!string.IsNullOrWhiteSpace(activeDetail.NumberLetterVarede))
-                            {
-                                <div class="small text-muted mt-1">شماره مبدأ: @activeDetail.NumberLetterVarede</div>
-                            }
-                        </div>
-                    </div>
+                <div class="rd-scroll">
+                    <div class="rd-main">
+                        @* ---------- برگهٔ نامه ---------- *@
+                        <div class="paper">
+                            <div class="paper-h">
+                                <div class="avt">@AvatarText(activeDetail.Ferestande)</div>
+                                <div class="ph-meta">
+                                    <div class="n1">@activeDetail.Ferestande</div>
+                                    <div class="n2">
+                                        فرستندهٔ نامه
+                                        @if (!string.IsNullOrWhiteSpace(activeDetail.NumberLetterVarede))
+                                        {
+                                            <span> — شماره مبدأ: @activeDetail.NumberLetterVarede</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="ind">
+                                    <div class="no num"># @activeDetail.NumberSabt.FaDigits()</div>
+                                    <div class="dt">@activeDetail.DateErsal.ToFaDateTime()</div>
+                                </div>
+                            </div>
 
-                    <div class="mb-3" style="min-height:120px; line-height:1.7; background:#fafafa; padding:12px; border-radius:8px">
-                        @if (string.IsNullOrWhiteSpace(activeDetail.Description))
-                        {
-                            <span class="text-muted">بدون توضیحات متنی</span>
-                        }
-                        else
-                        {
-                            @((MarkupString)activeDetail.Description)
-                        }
-                    </div>
+                            <div class="paper-body letter-body">
+                                @if (string.IsNullOrWhiteSpace(activeDetail.Description))
+                                {
+                                    <span class="text-muted">بدون توضیحات متنی</span>
+                                }
+                                else
+                                {
+                                    @((MarkupString)activeDetail.Description)
+                                }
+                            </div>
 
-                    @* پیوست‌ها — حتی اگر نامه پیوست نداشته باشد، گزینه افزودن نمایش داده می‌شود *@
-                    <div class="card border-0 bg-light p-2 mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="fw-bold small mb-0"><i class="bi bi-paperclip me-1"></i>پیوست‌های نامه (@activeDetail.Attachments.Count.FaDigits() فایل):</label>
-                            <label class="btn btn-sm btn-outline-success py-0 mb-0" title="افزودن پیوست جدید">
-                                <i class="bi @(incomingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i>
-                                @(incomingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")
-                                <InputFile OnChange="OnIncomingAttachmentSelected" multiple disabled="@incomingAttachmentUploading" style="display:none" />
-                            </label>
-                        </div>
-                        @if (activeDetail.Attachments.Count > 0)
-                        {
-                            <div class="d-flex flex-column gap-2">
+                            <div class="paper-foot">
                                 @foreach (var att in activeDetail.Attachments)
                                 {
                                     var downloadUrl = IncomingSvc.AttachmentDownloadUrl(att.AttachmentId);
-                                    <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded border small">
-                                        <span><i class="bi bi-file-earmark-arrow-down text-primary me-1"></i><b>@att.FileName</b></span>
-                                        <a href="@downloadUrl" target="_blank" download class="btn btn-sm btn-outline-primary py-0">دانلود</a>
-                                    </div>
+                                    <a class="att text-start" href="@downloadUrl" target="_blank" download
+                                       title="دانلود @att.FileName">
+                                        <div class="ic"><i class="bi @FileIcon(att.FileName)"></i></div>
+                                        <div>@att.FileName<small>@FmtSize(att.FileSize)</small></div>
+                                    </a>
                                 }
                                 @if (activeDetail.Attachments.Count > 1)
                                 {
-                                    <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded border small">
-                                        <span><i class="bi bi-file-earmark-zip text-info me-1"></i><b>دانلود کلی (ZIP)</b></span>
-                                        <button class="btn btn-sm btn-outline-info py-0" @onclick="() => DownloadIncomingAttachmentsZip(activeDetail.LetterId)" title="دانلود کلی همهٔ پیوست‌ها به صورت فایل ZIP">
-                                            ZIP (@activeDetail.Attachments.Count.FaDigits() فایل)
-                                        </button>
-                                    </div>
+                                    <button type="button" class="att att-zip" @onclick="() => DownloadIncomingAttachmentsZip(activeDetail.LetterId)"
+                                            title="دانلود همهٔ پیوست‌ها در یک فایل ZIP">
+                                        <div class="ic"><i class="bi bi-file-earmark-zip"></i></div>
+                                        <div>دانلود کلی (ZIP)<small>@activeDetail.Attachments.Count.FaDigits() فایل</small></div>
+                                    </button>
+                                }
+                                @if (CanEditLetter)
+                                {
+                                    <label class="att att-add" title="افزودن پیوست جدید">
+                                        <div class="ic"><i class="bi @(incomingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
+                                        <div>@(incomingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
+                                        <InputFile OnChange="OnIncomingAttachmentSelected" multiple disabled="@incomingAttachmentUploading" style="display:none" />
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        @* ---------- دستور ارجاع به من + مهلت ---------- *@
+                        @if (activeDetail.CurrentErja is { } myErja && !string.IsNullOrWhiteSpace(myErja.MatnErja))
+                        {
+                            <div class="myerja">
+                                <i class="bi bi-arrow-left-circle"></i>
+                                <b>دستور @myErja.Type:</b> @myErja.MatnErja
+                                @if (!string.IsNullOrWhiteSpace(myErja.AmalgarTitle))
+                                {
+                                    <span class="tg purple" style="margin-inline-start:5px">@myErja.AmalgarTitle</span>
+                                }
+                                @if (myErja.MohlatPasokh is { } mp)
+                                {
+                                    <span class="tg amber" style="margin-inline-start:5px"><i class="bi bi-clock"></i> مهلت: @mp.ToFa()</span>
                                 }
                             </div>
                         }
-                        else
+
+                        @* ---------- پاسخ ثبت‌شدهٔ من ---------- *@
+                        @if (activeDetail.CurrentErja is { } myAns && !string.IsNullOrWhiteSpace(myAns.Answer))
                         {
-                            <div class="text-muted small">این نامه هنوز پیوستی ندارد.</div>
+                            <div class="myans">
+                                <i class="bi bi-check-circle"></i> <b>پاسخ شما:</b> @myAns.Answer
+                                @if (myAns.TypeTaeed == 1) { <span class="tg green" style="margin-inline-start:5px">تایید ✓</span> }
+                                @if (myAns.TypeTaeed == 2) { <span class="tg red" style="margin-inline-start:5px">رد ✗</span> }
+                                <small style="color:var(--sub);display:block;margin-top:3px">@myAns.DateAnswer?.ToFaDateTime()</small>
+                            </div>
+                        }
+
+                        @* ---------- نوار عملیات ---------- *@
+                        <div class="act-strip">
+                            @if (activeDetail.ActiveErjaId.HasValue)
+                            {
+                                <button class="lbtn pri" @onclick="() => OpenAnswerFromReader(activeDetail.ActiveErjaId.Value, activeDetail.NumberSabt)">
+                                    <i class="bi bi-reply-fill"></i> ثبت پاسخ
+                                </button>
+                            }
+                            <button class="lbtn ghost" title="مشاهدهٔ گردش نامه" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
+                                <i class="bi bi-diagram-3"></i> گردش نامه
+                            </button>
+                            <button class="lbtn pri" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
+                                <i class="bi bi-send-fill"></i> ارجاع
+                            </button>
+                            <button class="lbtn ghost" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
+                                    @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
+                                <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
+                                @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
+                            </button>
+                            @if (workOrders.Count > 0)
+                            {
+                                <button class="lbtn grn" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
+                                    <i class="bi bi-list-task"></i> دستورکار شده (@workOrders.Count.FaDigits())
+                                </button>
+                            }
+                            @if (CanDabirkhane)
+                            {
+                                <button class="lbtn ghost" title="کپی نامه با همهٔ اطلاعات و افراد در گردش" disabled="@copying" @onclick="CopyLetter">
+                                    <i class="bi bi-files"></i> کپی نامه
+                                </button>
+                            }
+                            @if (CanEditLetter)
+                            {
+                                <button class="lbtn ghost" title="ویرایش نامه" @onclick="() => OpenEditFromReader()">
+                                    <i class="bi bi-pencil-square"></i> ویرایش
+                                </button>
+                            }
+                            @if (activeLetter?.ErjaId is > 0 && !activeLetter.IsBayegani)
+                            {
+                                <button class="lbtn ghost" @onclick="() => ToggleBayeganiAsync(activeLetter)">
+                                    <i class="bi bi-archive"></i> انطباق و بایگانی
+                                </button>
+                            }
+                        </div>
+
+                        @if (showWorkOrderReport && workOrders.Count > 0)
+                        {
+                            <section class="wo-report">
+                                <div class="wo-report-head">
+                                    <strong><i class="bi bi-list-task"></i> گزارش دستورکارهای این نامه</strong>
+                                    <button class="icb" title="بستن" @onclick="() => showWorkOrderReport = false"><i class="bi bi-x"></i></button>
+                                </div>
+                                @foreach (var wo in workOrders)
+                                {
+                                    <div class="wo-report-row">
+                                        <div><b>@wo.Number</b> — @wo.Title</div>
+                                        <div class="wo-report-meta">
+                                            @if (wo.AssigneeCount > 0)
+                                            {
+                                                <span><i class="bi bi-person"></i> @wo.AssigneeCount.FaDigits() نفر</span>
+                                                <span>@string.Join("، ", wo.Assignees)</span>
+                                            }
+                                            <button class="lbtn ghost" @onclick="() => OpenWorkOrderReport(wo.Id)">مشاهده</button>
+                                        </div>
+                                    </div>
+                                }
+                            </section>
+                        }
+
+                        @* ---------- تاریخچهٔ ارجاع‌ها و پاسخ‌ها ---------- *@
+                        @if (activeDetail.Erjas.Count > 0)
+                        {
+                            <section class="scard rd-history">
+                                <h3><i class="bi bi-clock-history"></i> گردش و پاسخ‌های نامه (@activeDetail.Erjas.Count.FaDigits())</h3>
+                                @foreach (var e in activeDetail.Erjas)
+                                {
+                                    <div class="rd-erja-row">
+                                        <div class="rd-erja-head">
+                                            <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @e.SenderName</span>
+                                            <i class="bi bi-arrow-left" style="color:var(--sub)"></i>
+                                            <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @e.ReciverName</span>
+                                            <span class="tg @(e.Type == "هامش" ? "amber" : "purple")">@e.Type</span>
+                                            <span class="rd-erja-date num">@e.Date.ToFaDateTime()</span>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(e.MatnErja))
+                                        {
+                                            <div class="rd-erja-text"><i class="bi bi-chat-left-quote"></i> @e.MatnErja</div>
+                                        }
+                                        @if (e.MohlatPasokh is { } dl)
+                                        {
+                                            <div class="rd-erja-deadline"><i class="bi bi-clock"></i> مهلت پاسخ: @dl.ToFa()</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(e.Answer))
+                                        {
+                                            <div class="rd-erja-answer">
+                                                <i class="bi bi-reply"></i> <b>پاسخ:</b> @e.Answer
+                                                @if (e.TypeTaeed == 1) { <span class="tg green">تایید ✓</span> }
+                                                @if (e.TypeTaeed == 2) { <span class="tg red">رد ✗</span> }
+                                                @if (e.DateAnswer is { } da) { <small class="num"> — @da.ToFaDateTime()</small> }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </section>
                         }
                     </div>
 
-                    @* عملیات سریع *@
-                    <div class="d-flex gap-2 justify-content-end pt-2 border-top">
-                        @if (CanDabirkhane)
+                    @* ---------- ستون مشخصات (مثل نامه داخلی) ---------- *@
+                    <aside class="side">
+                        <div class="scard">
+                            <h3><i class="bi bi-info-circle-fill"></i> مشخصات نامه</h3>
+                            <div class="kv"><b>شماره اندیکاتور</b><span class="num">@activeDetail.NumberSabt.FaDigits()</span></div>
+                            <div class="kv"><b>شماره مبدأ</b><span>@(string.IsNullOrWhiteSpace(activeDetail.NumberLetterVarede) ? "—" : activeDetail.NumberLetterVarede)</span></div>
+                            <div class="kv"><b>تاریخ نامه مبدأ</b><span class="num">@activeDetail.Date.ToFaDate()</span></div>
+                            <div class="kv"><b>تاریخ ثبت ورود</b><span class="num">@activeDetail.DateErsal.ToFaDateTime()</span></div>
+                            <div class="kv"><b>روش ارسال</b><span>@(string.IsNullOrWhiteSpace(activeDetail.TypeErsal) ? "دستی / پیک" : activeDetail.TypeErsal)</span></div>
+                            @if (!string.IsNullOrWhiteSpace(activeDetail.DeliveryName))
+                            {
+                                <div class="kv"><b>تحویل‌دهنده</b><span>@activeDetail.DeliveryName</span></div>
+                            }
+                            <div class="kv"><b>فوریت</b><span style="@(activeDetail.Foriat > 0 ? "color:var(--bad);font-weight:700" : "")">@ForiatTitle(activeDetail.Foriat)</span></div>
+                            <div class="kv"><b>محرمانگی</b><span style="@(activeDetail.Mahramanegi > 0 ? "color:var(--bad);font-weight:700" : "")">@MahramanegiTitle(activeDetail.Mahramanegi)</span></div>
+                            @if (!string.IsNullOrWhiteSpace(activeDetail.CreatorName))
+                            {
+                                <div class="kv"><b>ثبت‌کننده</b><span>@activeDetail.CreatorName</span></div>
+                            }
+                            @if (activeDetail.CurrentErja?.MohlatPasokh is { } myDeadline)
+                            {
+                                <div class="kv"><b>مهلت پاسخ من</b><span style="color:var(--amb);font-weight:700">@myDeadline.ToFa()</span></div>
+                            }
+                            @if (activeDetail.IsBayegani)
+                            {
+                                <div class="kv"><b>وضعیت</b><span><i class="bi bi-archive"></i> بایگانی شده</span></div>
+                            }
+                        </div>
+
+                        @if (activeDetail.RelatedLetters.Count > 0)
                         {
-                            <button class="btn btn-sm btn-outline-secondary" title="کپی نامه — فرم ثبت نامهٔ واردهٔ جدید با اطلاعات این نامه و همهٔ افراد در گردش"
-                                    disabled="@copying" @onclick="CopyLetter">
-                                <i class="bi bi-files"></i> کپی نامه
-                            </button>
-                        }
-                        <button class="btn btn-sm btn-outline-info" title="مشاهدهٔ گردش نامه" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
-                            <i class="bi bi-diagram-3"></i> گردش نامه
-                        </button>
-                        @if (activeDetail.ActiveErjaId.HasValue)
-                        {
-                            <button class="btn btn-sm btn-primary" @onclick="() => OpenAnswerFromReader(activeDetail.ActiveErjaId.Value, activeDetail.NumberSabt)">
-                                <i class="bi bi-reply-fill"></i> ثبت پاسخ
-                            </button>
-                        }
-                        <button class="btn btn-sm btn-success" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
-                            <i class="bi bi-send-fill"></i> ارجاع
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
-                                @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
-                            <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
-                            @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
-                        </button>
-                        @if (workOrders.Count > 0)
-                        {
-                            <button class="btn btn-sm btn-outline-success" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
-                                <i class="bi bi-list-task"></i> دستورکار (@workOrders.Count)
-                            </button>
-                        }
-                        @if (showWorkOrderReport)
-                        {
-                            <div class="alert alert-success mt-2 text-start">
-                                <b><i class="bi bi-list-task"></i> گزارش دستورکارهای نامه</b>
-                                @foreach (var wo in workOrders)
+                            <div class="scard">
+                                <h3><i class="bi bi-link-45deg"></i> نامه‌های مرتبط</h3>
+                                @foreach (var r in activeDetail.RelatedLetters)
                                 {
-                                    <div class="border-top mt-2 pt-2"><b>@wo.Number</b> — @wo.Title<br />
-                                        <small>@wo.AssigneeCount نفر: @string.Join("، ", wo.Assignees)</small>
-                                        <button class="btn btn-link btn-sm p-0 ms-2" @onclick="() => OpenWorkOrderReport(wo.Id)">مشاهده</button>
+                                    <div class="kv">
+                                        <b>@(r.Related == 2 ? "عطف به" : "پیرو")</b>
+                                        <span class="num" title="@r.RelateLetterTitle">@(string.IsNullOrWhiteSpace(r.RelateLetterNumber) ? r.RelateLetterNumber : r.RelateLetterNumber)</span>
                                     </div>
                                 }
                             </div>
                         }
-                    </div>
+
+                        @if (activeDetail.Erjas.Count > 0)
+                        {
+                            <div class="scard">
+                                <h3><i class="bi bi-people-fill"></i> افراد در گردش</h3>
+                                <div class="ppl">
+                                    @foreach (var e in activeDetail.Erjas.GroupBy(x => x.ReciverUserId).Select(g => g.First()))
+                                    {
+                                        <span class="pp">
+                                            <span class="mini"><i class="bi bi-person"></i></span>
+                                            @e.ReciverName (@e.Type)
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </aside>
                 </div>
             </aside>
         }
@@ -431,18 +601,8 @@
     /// «خوانده‌نشده / نشان‌شده / پیوست‌دار» سمت سرور فیلتر می‌شوند تا روی همهٔ نامه‌ها
     /// اثر بگذارند؛ تنها «دستورکارشده» در همین صفحه فیلتر می‌شود.
     /// </summary>
-    private IEnumerable<IncomingLetterListItemDto> PagedLetters => filter switch
-    {
-        "unread" => letters.Where(l => !l.IsRead),
-        "starred" => letters.Where(l => l.IsNeshan),
-        // باگ B2: این فیلتر روی AttachmentCount بود که سرویس سمت API «هرگز» مقدارش
-        // نمی‌دهد (فقط HasAttachment پر می‌شود) — پس چیپ «پیوست‌دار» همیشه لیست خالی
-        // می‌داد. دو کارتابل خواهر درست عمل می‌کنند و از HasAttachment استفاده می‌کنند
-        // (LetterCartable:678 و OutgoingLetterCartable:674)؛ این هم هم‌راستا شد.
-        "attach" => letters.Where(l => l.HasAttachment),
-        "workorder" => letters.Where(l => workOrderLetterIds.Contains(l.LetterId)),
-        _ => letters
-    };
+    // فهرست نمایش‌داده‌شده همان نتیجهٔ سرور است؛ فیلتر دوبارهٔ سمت کلاینت حذف شد
+    // (قبلاً بعد از فیلترِ سروری دوباره روی صفحهٔ جاری فیلتر می‌شد و ردیف‌ها «گم» می‌شدند).
 
     protected override async Task OnInitializedAsync()
     {
@@ -482,23 +642,70 @@
 
     private async Task SetFilter(string flt)
     {
-        // همهٔ چیپ‌ها سمت سرور اعمال می‌شوند تا روی کل نامه‌ها اثر بگذارند (نه فقط ۱۵
-        // ردیف صفحهٔ جاری). تنها استثنا «دستورکارشده» است.
-        var needsServer = folder != "guide" && flt != "workorder" && filter != "workorder";
+        // همهٔ چیپ‌ها (خوانده‌نشده/نشان‌شده/پیوست‌دار/دستورکارشده) سمت سرور اعمال می‌شوند
+        // تا روی «کل» نامه‌ها اثر بگذارند، نه فقط ردیف‌های صفحهٔ جاری؛ و شمارش/صفحه‌بندی
+        // با نتیجهٔ نمایش هم‌خوان بماند.
+        if (filter == flt) return;
         filter = flt;
-        if (needsServer)
+        currentPage = 1;
+        jumpPage = 0;
+        await ReloadDataAsync();
+    }
+
+    // ---------- صفحه‌بندی سمت سرور ----------
+    private static readonly int[] PageSizes = { 10, 15, 25, 50 };
+
+    /// <summary>شمارهٔ اولین ردیفِ صفحهٔ جاری (برای متن «نمایش X تا Y»)</summary>
+    private int RangeStart => totalItems == 0 ? 0 : (currentPage - 1) * pageSize + 1;
+
+    /// <summary>شمارهٔ آخرین ردیفِ صفحهٔ جاری</summary>
+    private int RangeEnd => Math.Min(currentPage * pageSize, totalItems);
+
+    /// <summary>
+    /// پنجرهٔ شماره‌های صفحه (حداکثر ۷ دکمه) — با صفحه‌های زیاد، همهٔ شماره‌ها
+    /// رندر نمی‌شوند تا نوار صفحه‌بندی شکسته نشود.
+    /// </summary>
+    private IEnumerable<int> PageWindow
+    {
+        get
         {
-            currentPage = 1;
-            await ReloadDataAsync();
-            return;
+            const int win = 7;
+            var last = Math.Max(1, totalPages);
+            if (last <= win) return Enumerable.Range(1, last);
+            var start = Math.Max(1, Math.Min(currentPage - win / 2, last - win + 1));
+            return Enumerable.Range(start, win);
         }
-        StateHasChanged();
+    }
+
+    /// <summary>تغییر «تعداد در صفحه» — مقدار با @bind ست شده است؛ فقط بازخوانی لازم است</summary>
+    private async Task OnPageSizeChangedAsync()
+    {
+        if (pageSize <= 0) { pageSize = 15; return; }
+        currentPage = 1;
+        jumpPage = 1;
+        await ReloadDataAsync();
+    }
+
+    private async Task OnJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == "NumpadEnter") await EnterJumpAsync();
+    }
+
+    /// <summary>پریدن به صفحهٔ واردشده — با Enter یا خروج از کادر</summary>
+    private async Task EnterJumpAsync()
+    {
+        var last = Math.Max(1, totalPages);
+        if (jumpPage < 1 || jumpPage > last) return;
+        if (jumpPage == currentPage) return;
+        await GoPageAsync(jumpPage);
     }
 
     private async Task GoPageAsync(int page)
     {
-        if (page < 1 || page > totalPages) return;
+        var last = Math.Max(1, totalPages);
+        if (page < 1 || page > last) return;
         currentPage = page;
+        jumpPage = page;
         await ReloadDataAsync();
     }
 
@@ -527,7 +734,8 @@
                 // «سمت سرور» انجام می‌شود تا نامه‌های نشان‌شدهٔ همهٔ صفحه‌ها دیده شوند —
                 // نه فقط صفحهٔ جاری (که محدودیت فیلتر سمت کلاینت بود).
                 result = await IncomingSvc.GetInboxAsync(searchTerm, null, currentPage, pageSize, starredOnly: true,
-                    attachOnly: filter == "attach" ? true : null);
+                    attachOnly: filter == "attach" ? true : null,
+                    workOrderOnly: filter == "workorder" ? true : null);
             }
             else
             {
@@ -535,13 +743,25 @@
                 // (پیش‌تر چیپ فقط متغیر filter را عوض می‌کرد و هیچ‌جا استفاده نمی‌شد).
                 result = await IncomingSvc.GetInboxAsync(searchTerm, filter == "unread" ? true : null, currentPage, pageSize,
                     starredOnly: filter == "starred" ? true : null,
-                    attachOnly: filter == "attach" ? true : null);
+                    attachOnly: filter == "attach" ? true : null,
+                    workOrderOnly: filter == "workorder" ? true : null);
             }
 
             letters = result.Items;
             try { workOrderLetterIds = (await Api.GetAsync<List<int>>("api/workorders/source-ids?module=IncomingLetter") ?? new()).ToHashSet(); } catch { workOrderLetterIds.Clear(); }
             totalItems = result.TotalCount;
             totalPages = result.TotalPages > 0 ? result.TotalPages : 1;
+
+            // اگر بعد از تغییر فیلتر/جستجو یا حذف/بایگانی، صفحهٔ جاری از محدوده بیرون رفت،
+            // یک‌بار با صفحهٔ معتبر بازخوانی می‌شود (به‌جای نمایش فهرست خالی).
+            if (result.Items.Count == 0 && totalItems > 0 && currentPage > totalPages)
+            {
+                currentPage = Math.Max(1, totalPages);
+                jumpPage = currentPage;
+                loading = false;
+                await ReloadDataAsync();
+                return;
+            }
 
             // اگر ریدر باز است، جزئیاتِ نمایش‌داده‌شده هم تازه شود؛ وگرنه بعد از
             // ذخیرهٔ ویرایش (مثلاً «توضیحات / خلاصه متن»)، ریدر همان نسخهٔ قدیمی و
@@ -673,6 +893,90 @@
     }
 
     private void OpenAnswerFromReader(int erjaId, int sabtNumber) => erjaSheet?.OpenAnswer(erjaId, sabtNumber);
+
+    // ==================== ریدر کامل (هم‌طراز نامه داخلی) ====================
+    /// <summary>کاربر جاری مجاز به افزودن پیوست/ویرایش این نامه است (ثبت‌کننده یا مدیر)</summary>
+    private bool CanEditLetter => activeDetail?.CanEdit == true || Auth.IsAdmin;
+
+    /// <summary>نشان‌کردن/برداشتن نشان از داخل ریدر — روی همان ردیف فهرست هم اعمال می‌شود</summary>
+    private async Task ToggleStarReader()
+    {
+        if (activeDetail == null) return;
+        try
+        {
+            var value = activeDetail.CurrentErja != null
+                ? await IncomingSvc.ToggleNeshanAsync(activeDetail.CurrentErja.ErjaId)
+                : await IncomingSvc.ToggleLetterNeshanAsync(activeDetail.LetterId);
+            activeDetail.IsNeshan = value;
+            var row = letters.FirstOrDefault(l => l.LetterId == activeDetail.LetterId);
+            if (row != null) { row.IsNeshan = value; }
+            if (activeDetail.CurrentErja != null) activeDetail.CurrentErja.IsNeshan = value;
+            Toast.Success(value ? "نامه نشان شد." : "نشان برداشت شد.");
+            StateHasChanged();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>ویرایش نامه از داخل ریدر — همان فرم ثبت، در حالت ویرایش</summary>
+    private async Task OpenEditFromReader()
+    {
+        if (activeDetail == null || composeModal == null) return;
+        try { await composeModal.OpenEdit(activeDetail); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>حروف آواتارِ فرستنده — هم‌طراز کارتابل نامه داخلی</summary>
+    private static string AvatarText(string? name)
+    {
+        var t = (name ?? "").Trim();
+        if (t.Length == 0) return "؟";
+        var parts = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? (parts[0][..1] + parts[1][..1])
+            : t[..1];
+    }
+
+    /// <summary>آیکن پیوست بر اساس پسوند فایل</summary>
+    private static string FileIcon(string? fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName ?? "").TrimStart('.').ToLowerInvariant();
+        return ext switch
+        {
+            "pdf" => "bi-file-earmark-pdf",
+            "doc" or "docx" => "bi-file-earmark-word",
+            "xls" or "xlsx" or "csv" => "bi-file-earmark-excel",
+            "ppt" or "pptx" => "bi-file-earmark-ppt",
+            "jpg" or "jpeg" or "png" or "gif" or "bmp" or "webp" => "bi-file-earmark-image",
+            "zip" or "rar" or "7z" => "bi-file-earmark-zip",
+            "txt" => "bi-file-earmark-text",
+            _ => "bi-file-earmark"
+        };
+    }
+
+    private static string FmtSize(long size) => size switch
+    {
+        >= 1024 * 1024 => $"{size / (1024.0 * 1024.0):0.#} MB",
+        >= 1024 => $"{size / 1024.0:0.#} KB",
+        _ => $"{size} B"
+    };
+
+    /// <summary>عنوان فوریت (0=عادی … 3=آنی) — همان نگاشتِ مدال مشاهدهٔ نامه</summary>
+    private static string ForiatTitle(int f) => f switch
+    {
+        1 => "فوری",
+        2 => "خیلی فوری",
+        3 => "آنی",
+        _ => "عادی"
+    };
+
+    /// <summary>عنوان محرمانگی (0=عادی … 3=سرّی)</summary>
+    private static string MahramanegiTitle(int m) => m switch
+    {
+        1 => "محرمانه",
+        2 => "خیلی محرمانه",
+        3 => "سرّی",
+        _ => "عادی"
+    };
 
     private async Task ToggleNeshanAsync(IncomingLetterListItemDto item)
     {
