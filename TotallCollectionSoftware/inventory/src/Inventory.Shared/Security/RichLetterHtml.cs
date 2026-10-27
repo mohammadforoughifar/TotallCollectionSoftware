@@ -37,6 +37,12 @@ public static class RichLetterHtml
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
         var safe = UnescapeEscapedMarkup(html!);
+
+        // <pre> در فهرست تگ‌های مجاز نیست؛ برای اینکه متنِ بدنهٔ متنیِ ایمیل‌های قدیمی از
+        // دست نرود، آن را به div تبدیل می‌کنیم (شکست خط با white-space حفظ می‌شود).
+        safe = Regex.Replace(safe, @"<\s*pre\b", "<div", RegexOptions.IgnoreCase);
+        safe = Regex.Replace(safe, @"<\s*/\s*pre\s*>", "</div>", RegexOptions.IgnoreCase);
+
         safe = DangerousBlocks.Replace(safe, string.Empty);
         safe = DangerousTags.Replace(safe, string.Empty);
         safe = Comments.Replace(safe, string.Empty);
@@ -55,11 +61,12 @@ public static class RichLetterHtml
     /// </summary>
     private static string UnescapeEscapedMarkup(string html)
     {
-        if (Regex.IsMatch(html, @"<\s*/?\s*[a-zA-Z][^>]*>")) return html;
-        if (!Regex.IsMatch(html, @"&lt;\s*/?\s*[a-zA-Z]", RegexOptions.IgnoreCase)) return html;
+        // الگوی «تگِ escape‌شده» مثل &lt;p&gt; یا &lt;br /&gt; → متن یک‌بار رمزگشایی می‌شود.
+        // اگر چنین الگویی نبود، متن دست‌نخورده می‌ماند تا HTML سالم تغییر نکند.
+        if (!Regex.IsMatch(html, @"&lt;\s*/?\s*[a-zA-Z][^&]{0,300}?&gt;", RegexOptions.IgnoreCase))
+            return html;
 
-        var once = WebUtility.HtmlDecode(html);
-        return Regex.IsMatch(once, @"<\s*/?\s*[a-zA-Z][^>]*>") ? once : html;
+        return WebUtility.HtmlDecode(html);
     }
 
     private static string SanitizeTag(Match match)
