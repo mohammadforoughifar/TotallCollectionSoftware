@@ -39,9 +39,21 @@ public static class HtmlText
         // ۳) حذف بقیهٔ تگ‌ها
         s = Regex.Replace(s, @"<[^>]+>", " ");
 
-        // ۴) رمزگشایی موجودیت‌ها — دوبار، چون دادهٔ قدیمی ممکن است دوبار encode شده باشد
-        s = WebUtility.HtmlDecode(s);
-        s = WebUtility.HtmlDecode(s);
+        // ۴) رمزگشایی موجودیت‌ها + حذف تگ‌هایی که «بعد از» رمزگشایی آشکار می‌شوند.
+        // دادهٔ قدیمی ممکن است یک‌بار یا دوبار encode شده باشد (مثلاً بدنهٔ متنیِ ایمیلی
+        // که خودش تگ HTML داشت و با HtmlEncode ذخیره شده بود). در آن حالت، تگ‌ها فقط بعد
+        // از رمزگشایی پیدا می‌شوند؛ اگر همان‌جا حذف نشوند، در متن دستور کار به شکل
+        // <p> و &lt;p&gt; روی صفحه ظاهر می‌شوند (همان «متن به‌هم‌ریخته»).
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var before = s;
+            s = WebUtility.HtmlDecode(s);
+            s = Regex.Replace(s, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"</\s*(p|div|tr|li|ul|ol|table|tbody|thead|blockquote|pre|h[1-6]|section|article)\s*>", "\n",
+                              RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"<\s*/?\s*[a-zA-Z][^>]*>", " ");
+            if (s == before) break;
+        }
 
         // ۵) تمیزکاری فاصله‌ها و خطوط خالی تکراری
         s = s.Replace("\r\n", "\n").Replace('\r', '\n');

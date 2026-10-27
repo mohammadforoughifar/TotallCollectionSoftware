@@ -36,10 +36,30 @@ public static class RichLetterHtml
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
 
-        var safe = DangerousBlocks.Replace(html, string.Empty);
+        var safe = UnescapeEscapedMarkup(html!);
+        safe = DangerousBlocks.Replace(safe, string.Empty);
         safe = DangerousTags.Replace(safe, string.Empty);
         safe = Comments.Replace(safe, string.Empty);
         return Tags.Replace(safe, SanitizeTag);
+    }
+
+    /// <summary>
+    /// متنی که به‌اشتباه escape شده (مثل <c>&amp;lt;p&amp;gt;</c>) یک‌بار رمزگشایی می‌شود تا
+    /// تگ‌هایش واقعی شوند.
+    /// <para>
+    /// چرا لازم است: بدنهٔ متنیِ بعضی ایمیل‌ها خودش HTML است و در نسخه‌های قبلی وقتی به
+    /// متن نامه منتقل می‌شد encode می‌شد؛ نتیجه این بود که در نامه و «دستور کار» به‌جای
+    /// پاراگراف، عبارت‌هایی مثل &amp;lt;p&amp;gt; روی صفحه دیده می‌شد. فقط وقتی این
+    /// رمزگشایی انجام می‌شود که متن هیچ تگ واقعی نداشته باشد، تا HTML سالم دست‌نخورده بماند.
+    /// </para>
+    /// </summary>
+    private static string UnescapeEscapedMarkup(string html)
+    {
+        if (Regex.IsMatch(html, @"<\s*/?\s*[a-zA-Z][^>]*>")) return html;
+        if (!Regex.IsMatch(html, @"&lt;\s*/?\s*[a-zA-Z]", RegexOptions.IgnoreCase)) return html;
+
+        var once = WebUtility.HtmlDecode(html);
+        return Regex.IsMatch(once, @"<\s*/?\s*[a-zA-Z][^>]*>") ? once : html;
     }
 
     private static string SanitizeTag(Match match)

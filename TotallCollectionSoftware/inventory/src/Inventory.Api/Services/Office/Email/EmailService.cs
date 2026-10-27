@@ -868,10 +868,7 @@ public class EmailService : IEmailService
                 continue;
             }
 
-            var body = msg.HtmlBody
-                ?? (msg.TextBody != null
-                    ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>"
-                    : "");
+            var body = msg.HtmlBody ?? BuildTextBodyHtml(msg.TextBody);
             // تاریخِ پیام به وقتِ ایران ذخیره می‌شود (نه ساعتِ سرور) تا فیلترِ تاریخ و
             // ستونِ تاریخ همان روزی را نشان دهند که کاربر در تقویمِ شمسی می‌بیند.
             var date = msg.Date == default(DateTimeOffset) ? IranNow() : IranTime(msg.Date);
@@ -1741,5 +1738,36 @@ public class EmailService : IEmailService
         await _db.OtoInboxEmails.Where(i => i.IsInFolder == folderId).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsInFolder, 0));
         await _db.OtoSentEmails.Where(s => s.IsInFolder == folderId).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsInFolder, 0));
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// بدنهٔ متنیِ (text/plain) ایمیل را به HTML امن تبدیل می‌کند.
+    /// <para>
+    /// بعضی کلاینت‌ها در بخش متنی هم تگ HTML می‌گذارند (مثل Outlook: «From: … Sent: …» و
+    /// سپس تگ‌های پاراگراف). اگر آن متن خام encode شود، همان تگ‌ها بعداً در متن نامه و
+    /// دستور کار به شکل &amp;lt;p&amp;gt; دیده می‌شوند؛ پس اول تگ‌ها حذف و موجودیت‌ها
+    /// رمزگشایی می‌شوند، بعد متن در بلوک white-space:pre-wrap قرار می‌گیرد تا شکست خط بماند.
+    /// </para>
+    /// </summary>
+    private static string BuildTextBodyHtml(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var t = text!;
+
+        if (System.Text.RegularExpressions.Regex.IsMatch(
+                t, @"<\s*/?\s*(p|br|div|span|table|tr|td|html|body|font|pre)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"<\s*br\s*/?\s*>", "\n",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            t = System.Text.RegularExpressions.Regex.Replace(
+                    t, @"</\s*(p|div|tr|li|table|blockquote|pre|h[1-6])\s*>", "\n",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"<\s*/?\s*[a-zA-Z][^>]*>", " ");
+            t = System.Net.WebUtility.HtmlDecode(t);
+            t = System.Net.WebUtility.HtmlDecode(t);
+        }
+
+        return "<div style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(t) + "</div>";
     }
 }
