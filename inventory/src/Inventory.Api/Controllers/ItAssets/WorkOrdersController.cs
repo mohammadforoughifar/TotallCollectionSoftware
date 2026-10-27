@@ -25,6 +25,37 @@ public class WorkOrdersController : ControllerBase
     public WorkOrdersController(AppDbContext db, INotifyService notify, FileStore store, IWorkOrderSmsService sms)
     { _db = db; _notify = notify; _store = store; _sms = sms; }
 
+    /// <summary>
+    /// حافظهٔ کوتاه‌مدتِ «ثبت‌های تازه» برای جلوگیری از دستور کار تکراری.
+    /// کلید = شناسهٔ درخواست (ClientRequestId) یا اثرانگشت محتوا؛ مقدار = شناسهٔ دستور کار و زمان.
+    /// فقط چند ثانیه معتبر است تا ثبت عمدیِ دومین دستور کارِ مشابه بلاک نشود.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int OrderId, string Number, DateTime At)> RecentCreates = new();
+
+    /// <summary>پنجرهٔ زمانی یکسان‌سازی ثبت — دو کلیک پشت‌سرهم قطعاً داخل این بازه‌اند.</summary>
+    private static readonly TimeSpan DuplicateWindow = TimeSpan.FromSeconds(12);
+
+    /// <summary>اثرانگشت محتواییِ درخواست — برای مواردی که کلاینت ClientRequestId نفرستد.</summary>
+    private static string CreateFingerprint(int userId, CreateDto dto, int companyId)
+    {
+        var assignees = string.Join(",", dto.AssigneeUserIds.Distinct().OrderBy(x => x));
+        var raw = string.Join("|", userId, companyId, dto.Title.Trim(), (dto.Description ?? "").Trim(),
+            dto.DueAt.ToString("O"), dto.Priority, dto.Recurrence, assignees,
+            dto.SourceModule ?? "", dto.SourceId?.ToString() ?? "", dto.ParentOrderId?.ToString() ?? "",
+            dto.ProjectId?.ToString() ?? "", dto.Weight);
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        return Convert.ToHexString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw)));
+    }
+
+    private void RememberCreate(string key, int orderId, string number)
+    {
+        // پاک‌سازی ورودی‌های منقضی — بدون تایمر و بدون نشتی حافظه
+        var now = DateTime.UtcNow;
+        foreach (var kv in RecentCreates)
+            if (now - kv.Value.At > DuplicateWindow) RecentCreates.TryRemove(kv.Key, out _);
+        RecentCreates[key] = (orderId, number, now);
+    }
+
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsLegacyAdmin => User.IsInRole("Admin");
@@ -323,6 +354,13 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>وزن دستور در پیشرفت پروژه: ۰ تا ۱۰ (۰ = مستثنی از محاسبه)؛ پیش‌فرض ۱.</summary>
         public int Weight { get; set; } = 1;
+
+        /// <summary>
+        /// کلید یکتای هر بار پر کردن فرم (اختیاری). کلاینت هنگام باز شدن فرم یک GUID می‌سازد و
+        /// پس از ثبت موفق آن را عوض می‌کند. اگر همان کلید دوباره برسد (دوبار کلیک، ارسال مجدد
+        /// مرورگر، شبکهٔ کند) دستور کار دوم ساخته نمی‌شود و همان دستور کار قبلی برگردانده می‌شود.
+        /// </summary>
+        public string? ClientRequestId { get; set; }
     }
 
     /// <summary>
@@ -456,6 +494,39 @@ public class WorkOrdersController : ControllerBase
         if (parent != null && WorkOrderSchedule.Dates(dto.DueAt, dto.Recurrence).Last() > parent.DueAt)
             return BadRequest(new { message = "پایان سری تکرار از مهلت دستور والد عبور می‌کند؛ دستور مستقل بسازید یا مهلت والد را اصلاح کنید." });
 
+        // ⛔ ضدِ ثبت تکراری — دو کلیک پشت‌سرهم روی «ثبت دستور کار» نباید دو دستور کار بسازد.
+        // کلید: ClientRequestId (اگر کلاینت فرستاده باشد) وگرنه اثرانگشت محتوای درخواست.
+        // جای‌نگهدارِ خالی پیش از ساخت ثبت می‌شود؛ درخواست هم‌زمانِ دوم آن را می‌بیند،
+        // منتظر می‌ماند تا شناسهٔ دستور کارِ در حال ساخت پر شود و همان را برمی‌گرداند.
+        var idemKey = string.IsNullOrWhiteSpace(dto.ClientRequestId)
+            ? $"fp:{MyUserId}:{CreateFingerprint(MyUserId, dto, companyId.Value)}"
+            : $"cid:{MyUserId}:{dto.ClientRequestId!.Trim()}";
+
+        if (!RecentCreates.TryAdd(idemKey, (0, "", DateTime.UtcNow)))
+        {
+            for (var i = 0; i < 25; i++)
+            {
+                if (RecentCreates.TryGetValue(idemKey, out var hit))
+                {
+                    if (hit.OrderId > 0 && DateTime.UtcNow - hit.At <= DuplicateWindow)
+                        return Ok(new
+                        {
+                            id = hit.OrderId, number = hit.Number, occurrenceCount = 0,
+                            sms = (WorkOrderSmsResult?)null, letterFlowAdded = 0, duplicate = true
+                        });
+                    if (DateTime.UtcNow - hit.At > DuplicateWindow) break;
+                    // جای‌نگهدار بیش از ۶ ثانیه خالی مانده یعنی ثبتِ اول شکست خورده
+                    // است؛ بیشتر از این منتظر نمان و اجازهٔ ثبت تازه بده.
+                    if (hit.OrderId == 0 && DateTime.UtcNow - hit.At > TimeSpan.FromSeconds(6)) break;
+                }
+                else break;
+                await Task.Delay(200);
+            }
+            // جای‌نگهدارِ معلق/منقضی — اجازهٔ عبور بده تا کاربر در بن‌بست نماند.
+            RecentCreates.TryRemove(idemKey, out _);
+            RecentCreates.TryAdd(idemKey, (0, "", DateTime.UtcNow));
+        }
+
         var wo = new WorkOrder
         {
             Title = dto.Title.Trim(), Description = dto.Description ?? "",
@@ -489,6 +560,9 @@ public class WorkOrdersController : ControllerBase
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
+        // ثبتِ موفق در حافظهٔ کوتاه‌مدت ذخیره می‌شود تا ارسال دوبارهٔ همان درخواست
+        // (کلیک دوم، تلاش مجدد مرورگر) دستور کار تکراری نسازد.
+        RememberCreate(idemKey, wo.Id, wo.Number);
 
         // One summary per recipient, not dozens of future-occurrence notifications.
         if (parent != null && parent.OwnerUserId != MyUserId)
@@ -517,7 +591,7 @@ public class WorkOrdersController : ControllerBase
             await _notify.BroadcastChangedAsync("outgoing-letters");
         }
         if (project != null) await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult, letterFlowAdded });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult, letterFlowAdded, duplicate = false });
     }
 
     /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
