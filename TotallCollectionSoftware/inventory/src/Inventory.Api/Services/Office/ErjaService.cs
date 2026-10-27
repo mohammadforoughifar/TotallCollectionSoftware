@@ -115,6 +115,24 @@ public class ErjaService : IErjaService
             throw new InvalidOperationException($"این گیرندگان قبلاً در گردش نامه هستند: {string.Join("، ", duplicateNames)}. برای ارسال مجدد باید گزینه ارسال تکراری را تأیید کنید.");
         }
 
+        // والدِ خودکار برای نمودار گردش ----------
+        // کلاینت هیچ‌وقت ParentErjaId نمی‌فرستد؛ نتیجه این بود که هر ارجاع «ریشه» می‌شد و در
+        // نمودار درختواره/فلوچارتی، گیرندهٔ دوم (C) کنار گیرندهٔ اول (B) می‌نشست، نه زیر او.
+        // قاعده: ارجاع جدید فرزندِ ردیفی است که با آن، نامه به همین فرستنده رسیده است
+        // (آخرین ردیفی که گیرنده‌اش خودِ فرستنده است). اگر فرستنده ثبت‌کنندهٔ نامه باشد و
+        // هیچ ردیف دریافتی نداشته باشد، ارجاع او ریشه می‌ماند (زیر خودِ نامه).
+        var parentErjaId = dto.ParentErjaId is > 0 ? dto.ParentErjaId : null;
+        if (parentErjaId == null)
+        {
+            parentErjaId = await _db.Erjas.AsNoTracking()
+                .Where(e => e.SourceId == dto.LetterId && !e.IsDelete
+                            && e.ReciverUserId == senderUserId
+                            && e.SenderUserId != senderUserId)
+                .OrderByDescending(e => e.ErjaId)
+                .Select(e => (int?)e.ErjaId)
+                .FirstOrDefaultAsync();
+        }
+
         var now = DateTime.Now;
         var seen = new HashSet<int>();
         foreach (var uid in girandegan.Where(seen.Add))
@@ -129,7 +147,7 @@ public class ErjaService : IErjaService
                 MatnErja = dto.TextErja?.Trim() ?? "",
                 AmalgarId = dto.AmalgarId,
                 MohlatPasokh = dto.DeadlineAnswer,
-                ParentErjaId = dto.ParentErjaId,
+                ParentErjaId = parentErjaId,
                 Answer = "",
                 ShowMassage = true
             });
@@ -145,7 +163,7 @@ public class ErjaService : IErjaService
                 Type = "هامش",
                 MatnErja = dto.TextErja?.Trim() ?? "",
                 AmalgarId = dto.AmalgarId,
-                ParentErjaId = dto.ParentErjaId,
+                ParentErjaId = parentErjaId,
                 Answer = "",
                 ShowMassage = true
             });
@@ -290,11 +308,40 @@ public class ErjaService : IErjaService
             ShowForAll = e.ShowForAll
         };
 
+        // ---- استنتاج والد برای دادهٔ قدیمی ----
+        // ارجاع‌هایی که پیش از قاعدهٔ «والد خودکار» ثبت شده‌اند ParentErjaId خالی دارند و
+        // در نمودار همه ریشه می‌شدند (C کنار B، نه زیر B). اینجا برای هر ردیف بی‌والد،
+        // والد را از نحوهٔ رسیدن نامه به فرستنده‌اش استنتاج می‌کنیم: آخرین ردیفی که
+        // گیرندهٔ آن، فرستندهٔ همین ردیف است و زودتر ثبت شده است. چون همیشه ErjaId کوچک‌تر
+        // انتخاب می‌شود، زنجیره هرگز حلقه نمی‌شود.
+        var receivedBy = new Dictionary<int, List<int>>(); // userId → ارجاع‌هایی که به او رسیده
+        foreach (var e in erjas.OrderBy(x => x.ErjaId))
+        {
+            if (e.SenderUserId == e.ReciverUserId) continue; // ردیف خودکار/خودارجاعی
+            if (!receivedBy.ContainsKey(e.ReciverUserId))
+                receivedBy[e.ReciverUserId] = new List<int>();
+            receivedBy[e.ReciverUserId].Add(e.ErjaId);
+        }
+        int? DeriveParent(Erja e)
+        {
+            if (!receivedBy.TryGetValue(e.SenderUserId, out var list) || list == null || list.Count == 0)
+                return null;
+            int? best = null;
+            foreach (var id in list)
+            {
+                if (id >= e.ErjaId) break;
+                best = id;
+            }
+            return best;
+        }
+
         var map = erjas.ToDictionary(e => e.ErjaId, ToNode);
         var roots = new List<ErjaTreeNodeDto>();
+        bool IsSelfLoop(Erja e, int parentId) => parentId == e.ErjaId;
         foreach (var e in erjas)
         {
-            if (e.ParentErjaId is int pid && map.TryGetValue(pid, out var parent))
+            var parentId = e.ParentErjaId is int pid0 && pid0 > 0 ? pid0 : DeriveParent(e);
+            if (parentId is int pid && !IsSelfLoop(e, pid) && map.TryGetValue(pid, out var parent))
                 parent.Children.Add(map[e.ErjaId]);
             else
                 roots.Add(map[e.ErjaId]);
