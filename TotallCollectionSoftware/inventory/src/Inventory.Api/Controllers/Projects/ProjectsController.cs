@@ -24,8 +24,12 @@ public class ProjectsController : RbacControllerBase
 
     /// <summary>آیتم‌های کمبو: کاربران لاگین، کارفرماها، انواع فاکتور، پروژه‌ها.
     /// برای کاربران ماژول پروژه یا گزارش کار آزاد است.</summary>
+    /// <param name="withProjects">
+    /// اگر false باشد، فهرست کامل پروژه‌ها (Projects / ReportableProjects / BaseProjects) در پاسخ
+    /// نمی‌آید و صفحه باید از اندپوینت <c>api/projects/lookup</c> (جستجوی سمت سرور) استفاده کند.
+    /// </param>
     [HttpGet("lookups")]
-    public async Task<IActionResult> Lookups()
+    public async Task<IActionResult> Lookups([FromQuery] bool withProjects = true)
     {
         var allowed = await HasAsync(Module, "Read") || await HasAsync("ReportWorks", "Read")
                       || await HasAsync("Karfarmas", "Read") || await HasAsync("TypeFactors", "Read");
@@ -51,6 +55,15 @@ public class ProjectsController : RbacControllerBase
             .OrderBy(t => t.Name)
             .Select(t => new LookupItem { Id = t.Id, Name = t.Name })
             .ToListAsync();
+
+        if (!withProjects)
+            return Ok(new ProjectLookups
+            {
+                Users = users,
+                Operators = operators,
+                KarFarmas = karfarmas,
+                TypeFactors = typeFactors
+            });
 
         // کمبوی پروژه: نام پروژه + کد پروژه (نه سریال — سریال مستقل از کد است)
         var projects = await Db.ProjectEntryExits.AsNoTracking().Where(p => !p.IsDelete)
@@ -83,6 +96,40 @@ public class ProjectsController : RbacControllerBase
             BaseProjects = baseProjects,
             ReportableProjects = reportableProjects
         });
+    }
+
+    /// <summary>
+    /// جستجوی سمت سرور پروژه‌ها برای کمبوها — <b>فقط همان تعداد لازم</b> از دیتابیس خوانده می‌شود.
+    /// <para>
+    /// چرا لازم است: کمبوی «همه پروژه‌ها» پیش‌تر کل جدول پروژه‌ها را یک‌جا می‌گرفت؛ با
+    /// چند هزار پروژه، هر بار باز کردن صفحه یک payload سنگین و فهرست بلند در کلاینت
+    /// می‌ساخت. اکنون با تایپ هر عبارت، فقط ۲۰ نتیجهٔ منطبق از سرور می‌آید.
+    /// </para>
+    /// <param name="q">عبارت جستجو در نام یا کد پروژه (ارقام فارسی هم پذیرفته می‌شود).</param>
+    /// <param name="take">تعداد نتیجه (پیش‌فرض ۲۰، حداکثر ۵۰).</param>
+    /// <param name="reportable">فقط پروژه‌های قابل گزارش (تأییدشدهٔ مدیر: ۱=در انتظار کارشناسی، ۳=نهایی).</param>
+    /// </summary>
+    [HttpGet("lookup")]
+    public async Task<IActionResult> ProjectLookup([FromQuery] string? q = null, [FromQuery] int take = 20,
+        [FromQuery] bool reportable = false)
+    {
+        var allowed = await HasAsync(Module, "Read") || await HasAsync("ReportWorks", "Read");
+        if (!allowed) return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
+
+        take = take <= 0 ? 20 : Math.Min(take, 50);
+
+        var query = Db.ProjectEntryExits.AsNoTracking().Where(p => !p.IsDelete);
+        if (reportable) query = query.Where(p => p.FlowStatus == 1 || p.FlowStatus == 3);
+
+        var term = Inventory.Shared.Fa.ToEn((q ?? "").Trim());
+        if (term.Length > 0)
+            query = query.Where(p => p.ProjectName.Contains(term) || p.CodeProject.Contains(term));
+
+        var items = await query.OrderByDescending(p => p.Id).Take(take)
+            .Select(p => new LookupItem { Id = p.Id, Name = p.ProjectName + " (کد " + p.CodeProject + ")" })
+            .ToListAsync();
+
+        return Ok(items);
     }
 
     /// <summary>کد پروژه پیشنهادی بعدی = بزرگ‌ترین کد عددی + ۱ (خودکار — فقط نمایشی)</summary>

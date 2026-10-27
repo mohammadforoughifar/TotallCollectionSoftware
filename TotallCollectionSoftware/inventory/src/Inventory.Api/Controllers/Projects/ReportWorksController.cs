@@ -215,10 +215,20 @@ public class ReportWorksController : RbacControllerBase
 
         var filtered = ApplyFilters(Db.ReportWorks.AsNoTracking().Where(r => !r.IsDelete), q);
 
-        // تعداد و جمع ساعت‌ها با هم خوانده می‌شوند (یک اسکن روی ردیف‌های فیلترشده به‌جای دو اسکن).
-        // برای بازه‌های چندصد‌هزار ردیفی، همین یک اسکن کمتر در جستجوی زندهٔ سرستون‌ها محسوس است.
-        var spentAll = await filtered.Select(r => r.SpentTime).ToListAsync();
-        var total = spentAll.Count;
+        // ---------------------------------------------------------------
+        //  صفحه‌بندی کاملاً سمت سرور است: از جدول فقط «یک صفحه» خوانده می‌شود.
+        //  (۱) تعداد کل ردیف‌های منطبق — COUNT در دیتابیس
+        //  (۲) جمع ساعت خالص کل ردیف‌های منطبق — تجمیع جریانی (Stream) بدون ساخت لیست
+        //  (۳) شناسه‌های همان صفحه — ORDER BY ... OFFSET/FETCH
+        //  (۴) فقط ردیف‌های همان صفحه با Include
+        //  پیش‌تر جمع ساعت‌ها با ToListAsync خوانده می‌شد؛ با ۸۰۰۰ گزارش، برای هر جستجو
+        //  هزاران مقدار در حافظه ساخته می‌شد. اکنون حافظه ثابت (O(1)) و انتقال سبک است.
+        // ---------------------------------------------------------------
+        var total = await filtered.CountAsync();
+
+        var spentTicks = 0L;
+        await foreach (var ts in filtered.Select(r => r.SpentTime).AsAsyncEnumerable())
+            spentTicks += ts.Ticks;
 
         var page = q.Page < 1 ? 1 : q.Page;
         var pageSize = q.PageSize;
@@ -249,7 +259,7 @@ public class ReportWorksController : RbacControllerBase
             Total = total,
             Page = page,
             PageSize = pageSize > 0 ? pageSize : Math.Max(total, 1),
-            SumTicks = spentAll.Sum(t => t.Ticks)
+            SumTicks = spentTicks
         });
     }
 

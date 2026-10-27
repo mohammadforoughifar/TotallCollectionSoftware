@@ -130,7 +130,13 @@
     <div class="card">
         <div class="card-body">
             <div class="row g-2 align-items-center">
-                <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" @bind-Value:after="OnFilterChanged" Placeholder="همه پروژه‌ها" /></div>
+                <div class="col-md-3">
+                    @* جستجوی سمت سرور: با تایپ هر عبارت فقط ۲۰ نتیجهٔ منطبق از سرور می‌آید
+                       (پیش‌تر کل جدول پروژه‌ها یک‌جا در کمبو بارگذاری می‌شد). *@
+                    <SearchSelect Items="projectFilterOpts" Value="filterProject" ValueChanged="OnProjectFilterPicked"
+                                  SearchChanged="OnProjectFilterSearch" RemoteSearch="true"
+                                  Placeholder="همه پروژه‌ها" />
+                </div>
                 <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" @bind-Value:after="OnFilterChanged" Placeholder="همه کاربران" /></div>
                 <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" @bind-Value:after="OnFilterChanged" Placeholder="همه اپراتورها" /></div>
                 <div class="col-md-2"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" AllowClear /></div>
@@ -334,7 +340,9 @@
         <div class="col-md-6">
             <label class="form-label">پروژه <span class="text-danger">*</span></label>
             @* فقط پروژه‌های تاییدشدهٔ مدیر — پروژه‌های در انتظار تایید یا ردشده گزارش‌پذیر نیستند *@
-            <SearchSelect Items="FormProjects" @bind-Value="form.ProjectId" Placeholder="جستجو و انتخاب پروژه…" />
+            <SearchSelect Items="formProjectOpts" Value="form.ProjectId ?? 0" ValueChanged="OnFormProjectPicked"
+                          SearchChanged="OnFormProjectSearch" RemoteSearch="true"
+                          Placeholder="جستجو و انتخاب پروژه…" />
             <div class="fs-8 text-muted mt-1">
                 <i class="bi bi-info-circle ms-1"></i>
                 فقط پروژه‌های <b>تاییدشدهٔ مدیر</b> در این فهرست هستند؛ پروژه‌های «در انتظار تایید» و «رد شده» گزارش‌پذیر نیستند.
@@ -394,6 +402,73 @@
     private int pageCount = 1;
     private TimeSpan sumSpent;      // جمع ساعت خالص روی کل ردیف‌های فیلترشده
     private ProjectLookups lookups = new();
+
+    // ---------- کمبوی پروژه با جستجوی سمت سرور ----------
+    // فهرست کامل پروژه‌ها دیگر یک‌جا بارگذاری نمی‌شود؛ هر کمبو فقط نتایج همان عبارت را دارد.
+    private List<LookupItem> projectFilterOpts = new();
+    private List<LookupItem> formProjectOpts = new();
+    private CancellationTokenSource? projectSearchCts;
+    private CancellationTokenSource? formProjectSearchCts;
+
+    /// <summary>نام پروژهٔ انتخاب‌شده در فیلتر (برای چاپ/عنوان، حتی وقتی در ۲۰ نتیجهٔ اول نیست).</summary>
+    private string filterProjectName = "";
+
+    private async Task OnProjectFilterPicked(int id)
+    {
+        filterProject = id;
+        filterProjectName = id <= 0 ? "" : (projectFilterOpts.FirstOrDefault(x => x.Id == id)?.Name ?? filterProjectName);
+        await OnFilterChanged();
+    }
+
+    /// <summary>جستجوی پروژهٔ فیلتر در سرور (ضدلرزش ۳۰۰ms؛ درخواست قبلی لغو می‌شود).</summary>
+    private async Task OnProjectFilterSearch(string q)
+    {
+        projectSearchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        projectSearchCts = cts;
+
+        var list = await SearchProjectsDebouncedAsync(q, reportable: false, cts);
+        if (list is null) return; // نتیجهٔ این فراخوانی منسوخ شده است
+
+        if (filterProject > 0 && list.All(x => x.Id != filterProject) && !string.IsNullOrWhiteSpace(filterProjectName))
+            list.Insert(0, new LookupItem { Id = filterProject, Name = filterProjectName });
+        projectFilterOpts = list;
+        StateHasChanged();
+    }
+
+    private void OnFormProjectPicked(int id) => form.ProjectId = id <= 0 ? null : id;
+
+    private async Task OnFormProjectSearch(string q)
+    {
+        formProjectSearchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        formProjectSearchCts = cts;
+
+        var list = await SearchProjectsDebouncedAsync(q, reportable: true, cts);
+        if (list is null) return;
+
+        var keepId = form.ProjectId ?? 0;
+        if (keepId > 0 && list.All(x => x.Id != keepId))
+        {
+            var known = formProjectOpts.FirstOrDefault(x => x.Id == keepId);
+            if (known is not null) list.Insert(0, known);
+        }
+        formProjectOpts = list;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// جستجوی پروژه در سرور با تأخیر کوتاه (ضدلرزش).
+    /// null یعنی در این فاصله درخواست تازه‌تری آمده و نتیجهٔ این فراخوانی منسوخ است.
+    /// </summary>
+    private async Task<List<LookupItem>?> SearchProjectsDebouncedAsync(string q, bool reportable, CancellationTokenSource cts)
+    {
+        try { await Task.Delay(300, cts.Token); }
+        catch (OperationCanceledException) { return null; }
+        try { return await ProjectSvc.SearchProjectsAsync(q, take: 20, reportable: reportable); }
+        catch (OperationCanceledException) { return null; }
+        catch { return new List<LookupItem>(); }
+    }
     private bool loading = true;
     private int filterProject, filterUser, filterOperator;
     private DateTime? filterFrom, filterTo;
@@ -441,20 +516,6 @@
     /// در حالت ویرایش، اگر پروژهٔ فعلیِ گزارش دیگر در آن فهرست نباشد (مثلاً وضعیتش عوض شده)
     /// همان یک مورد اضافه می‌شود تا کمبو خالی/گمراه‌کننده نشود.
     /// </summary>
-    private List<LookupItem> FormProjects
-    {
-        get
-        {
-            var list = lookups.ReportableProjects.Count > 0 ? lookups.ReportableProjects : lookups.Projects;
-            if (editing && form.ProjectId > 0 && list.All(x => x.Id != form.ProjectId))
-            {
-                var current = lookups.Projects.FirstOrDefault(x => x.Id == form.ProjectId);
-                if (current is not null) return list.Prepend(current).ToList();
-            }
-            return list;
-        }
-    }
-
     private DateTime reportDate = DateTime.Today;
 
     private int page = 1;
@@ -559,7 +620,10 @@
         Layout.SetTitle("گزارش‌های کار");
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
-        try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { /* دسترسی نداشت */ }
+        // فقط کاربران/اپراتورها/کارفرماها/انواع فاکتور — فهرست کامل پروژه‌ها دیگر در پاسخ نمی‌آید
+        try { lookups = await ProjectSvc.GetLookupsAsync(withProjects: false); } catch { /* دسترسی نداشت */ }
+        // ۲۰ پروژهٔ آخر برای شروع کمبوها (بقیه با تایپ کاربر از سرور می‌آید)
+        try { projectFilterOpts = await ProjectSvc.SearchProjectsAsync("", take: 20); } catch { }
         await Load(blocking: true);
     }
 
@@ -644,6 +708,12 @@
         };
         reportDate = r.ReportDate;
         editUserName = r.UserName;
+        // پروژهٔ همین گزارش باید در فهرست کمبو باشد، وگرنه نامش خالی نمایش داده می‌شود
+        if (r.ProjectId > 0 && formProjectOpts.All(x => x.Id != r.ProjectId))
+            formProjectOpts = new List<LookupItem>
+            {
+                new() { Id = r.ProjectId, Name = string.IsNullOrWhiteSpace(r.CodeProject) ? (r.ProjectName ?? "—") : $"{r.ProjectName} (کد {r.CodeProject})" }
+            }.Concat(formProjectOpts).ToList();
         showModal = true;
     }
 
@@ -705,7 +775,7 @@
                 SubTitle = "سامانه مدیریت پروژه‌ها",
                 Meta = new List<string>
                 {
-                    $"پروژه: {(filterProject > 0 ? lookups.Projects.FirstOrDefault(x => x.Id == filterProject)?.Name ?? "—" : "همه پروژه‌ها")}",
+                    $"پروژه: {(filterProject > 0 ? (string.IsNullOrWhiteSpace(filterProjectName) ? "—" : filterProjectName) : "همه پروژه‌ها")}",
                     $"اپراتور: {(filterOperator > 0 ? lookups.Operators.FirstOrDefault(x => x.Id == filterOperator)?.Name ?? "—" : "همه اپراتورها")}",
                     $"کاربر: {(filterUser > 0 ? lookups.Users.FirstOrDefault(x => x.Id == filterUser)?.Name ?? "—" : "همه کاربران")}",
                     $"از تاریخ: {(filterFrom?.ToFaDate() ?? "—")}",

@@ -30,7 +30,17 @@ public interface ITypeFactorService
 /// <summary>سرویس ورود و خروج پروژه‌ها.</summary>
 public interface IProjectService
 {
-    Task<ProjectLookups> GetLookupsAsync();
+    /// <param name="withProjects">
+    /// false = فهرست کامل پروژه‌ها در پاسخ نیاید (صفحه‌هایی که کمبوی پروژه را با جستجوی سروری پر می‌کنند).
+    /// </param>
+    Task<ProjectLookups> GetLookupsAsync(bool withProjects = true);
+
+    /// <summary>
+    /// جستجوی سمت سرور پروژه‌ها برای کمبو — فقط <paramref name="take"/> نتیجهٔ منطبق می‌آید
+    /// (نه کل جدول پروژه‌ها). اگر <paramref name="reportable"/> روشن باشد فقط پروژه‌های
+    /// تأییدشدهٔ مدیر برمی‌گردند (همان شرط فرم گزارش کار).
+    /// </summary>
+    Task<List<LookupItem>> SearchProjectsAsync(string? q, int take = 20, bool reportable = false);
     Task<string> GetNextSerialAsync();
     Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
         int? typeFactorId = null, int? userId = null, bool? returned = null);
@@ -138,8 +148,14 @@ public class ProjectService : IProjectService
     private readonly IApiClient _api;
     public ProjectService(IApiClient api) => _api = api;
 
-    public Task<ProjectLookups> GetLookupsAsync()
-        => _api.GetAsync<ProjectLookups>("api/projects/lookups");
+    public Task<ProjectLookups> GetLookupsAsync(bool withProjects = true)
+        => _api.GetAsync<ProjectLookups>($"api/projects/lookups?withProjects={(withProjects ? "true" : "false")}");
+
+    public async Task<List<LookupItem>> SearchProjectsAsync(string? q, int take = 20, bool reportable = false)
+    {
+        var url = $"api/projects/lookup?q={Uri.EscapeDataString(q ?? "")}&take={take}&reportable={(reportable ? "true" : "false")}";
+        return await _api.GetAsync<List<LookupItem>>(url) ?? new();
+    }
 
     public async Task<string> GetNextSerialAsync()
     {
