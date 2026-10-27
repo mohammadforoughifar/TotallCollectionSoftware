@@ -858,6 +858,12 @@ public class EmailService : IEmailService
                     _log.LogInformation("پیوست‌های ایمیل موجود ترمیم شد؛ حساب {EmailId}، صندوق {Box}، شناسه {MessageId}",
                         acc.EmailId, box, existingId);
                 }
+                // بدنهٔ ایمیل‌هایی که پیش از پشتیبانیِ تصویر درون‌متن دریافت شده‌اند هنوز
+                // «cid:…» دارند و تصویرشان نمایش داده نمی‌شود؛ همان‌جا (پیام از IMAP
+                // خوانده شده است) ارجاع‌ها به آدرسِ پیوست تبدیل می‌شوند.
+                try { await RepairInlineBodyAsync(msg, box, await ExistingMessageIdAsync(acc.EmailId, box, key) ?? 0, key); }
+                catch (Exception ex) { _log.LogWarning(ex, "ترمیم تصاویر درون‌متن ایمیل ناموفق بود؛ شناسه {MessageId}", key); }
+
                 if (uid.Id > maxUid) maxUid = uid.Id;
                 continue;
             }
@@ -869,7 +875,8 @@ public class EmailService : IEmailService
             // تاریخِ پیام به وقتِ ایران ذخیره می‌شود (نه ساعتِ سرور) تا فیلترِ تاریخ و
             // ستونِ تاریخ همان روزی را نشان دهند که کاربر در تقویمِ شمسی می‌بیند.
             var date = msg.Date == default(DateTimeOffset) ? IranNow() : IranTime(msg.Date);
-            var hasAttach = HasExtractableAttachment(msg);
+            // پرچمِ «پیوست دارد» فقط برای پیوست واقعی؛ تصاویر درونِ متن نباید در فهرست پیوست‌ها بیایند
+            var hasAttach = HasRealAttachment(msg);
             var subject = Trunc(msg.Subject ?? "", 500);
 
             if (box == "Sent")
@@ -1038,6 +1045,56 @@ public class EmailService : IEmailService
         return null;
     }
 
+    /// <summary>
+    /// ترمیمِ بدنهٔ ذخیره‌شده: تبدیل ارجاع‌های <c>cid:</c> به آدرسِ پیوستِ روی دیسک.
+    /// برای ایمیل‌هایی است که پیش از پشتیبانی از تصویرِ درون‌متن دریافت شده‌اند
+    /// (پیوست‌ها ذخیره شده‌اند ولی بدنه هنوز cid: دارد و تصویر دیده نمی‌شود).
+    /// نگاشتِ Content-ID به پیوست از روی «نام فایل» انجام می‌شود، چون جدول پیوست
+    /// ستونِ ContentId ندارد و اسکیما عوض نمی‌شود.
+    /// </summary>
+    private async Task RepairInlineBodyAsync(MimeMessage msg, string box, int messageId, string key)
+    {
+        if (messageId <= 0) return;
+
+        string? body = box == "Sent"
+            ? await _db.OtoSentEmails.Where(x => x.SentId == messageId).Select(x => x.Body).FirstOrDefaultAsync()
+            : await _db.OtoInboxEmails.Where(x => x.InboxId == messageId).Select(x => x.Body).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(body)) return;
+        if (body.IndexOf("cid:", StringComparison.OrdinalIgnoreCase) < 0) return;
+
+        var atts = await _db.OtoEmailAttachments.AsNoTracking()
+            .Where(a => a.Type == box && a.EmailId == messageId && a.UId == key)
+            .Select(a => new { a.AttachmentId, a.AttachmentRealName })
+            .ToListAsync();
+        if (atts.Count == 0) return;
+
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in msg.BodyParts.OfType<MimePart>())
+        {
+            if (string.IsNullOrWhiteSpace(p.ContentId)) continue;
+            var name = string.IsNullOrWhiteSpace(p.FileName) ? "attachment" : Path.GetFileName(p.FileName!);
+            var hit = atts.FirstOrDefault(a => string.Equals(a.AttachmentRealName, name, StringComparison.OrdinalIgnoreCase));
+            if (hit != null) map[p.ContentId.Trim('<', '>')] = hit.AttachmentId;
+        }
+        if (map.Count == 0) return;
+
+        var fixedBody = ReplaceInlineImageReferences(body, map);
+        if (string.Equals(fixedBody, body, StringComparison.Ordinal)) return;
+
+        if (box == "Sent")
+        {
+            var row = await _db.OtoSentEmails.FirstOrDefaultAsync(x => x.SentId == messageId);
+            if (row != null) { row.Body = fixedBody; await _db.SaveChangesAsync(); }
+        }
+        else
+        {
+            var row = await _db.OtoInboxEmails.FirstOrDefaultAsync(x => x.InboxId == messageId);
+            if (row != null) { row.Body = fixedBody; await _db.SaveChangesAsync(); }
+        }
+        _log.LogInformation("ارجاع تصاویر درون‌متن ایمیل ترمیم شد؛ صندوق {Box}، شناسه {MessageId}، تعداد {Count}",
+            box, messageId, map.Count);
+    }
+
     private static string ReplaceInlineImageReferences(string body, Dictionary<string, int> inline)
     {
         foreach (var pair in inline)
@@ -1048,17 +1105,33 @@ public class EmailService : IEmailService
         return body;
     }
 
-    private static bool HasExtractableAttachment(MimeMessage msg) =>
-        msg.BodyParts.Any(x => x is MessagePart ||
-            x is MimePart p && (p.IsAttachment || !string.IsNullOrWhiteSpace(p.FileName) || !string.IsNullOrWhiteSpace(p.ContentId)));
+    /// <summary>
+    /// تصویرِ درونِ متن (inline) — مثل لوگو/امضای ایمیل که با <c>cid:</c> در بدنه ارجاع داده می‌شود.
+    /// این‌ها «پیوستِ واقعی» نیستند: باید داخل بدنه دیده شوند و در فهرست پیوست‌ها شمرده نشوند.
+    /// </summary>
+    private static bool IsInlineBodyPart(MimeEntity entity) =>
+        entity is MimePart p
+        && !p.IsAttachment                                   // disposition=attachment ⇒ پیوست واقعی
+        && (!string.IsNullOrWhiteSpace(p.ContentId) || string.Equals(p.ContentDisposition?.Disposition, "inline", StringComparison.OrdinalIgnoreCase))
+        && p.ContentType.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>هر بخشی که باید روی دیسک ذخیره شود (پیوست واقعی + تصویر درون‌متن)</summary>
+    private static bool ShouldExtractPart(MimeEntity entity) =>
+        entity is MessagePart ||
+        entity is MimePart p && (p.IsAttachment || !string.IsNullOrWhiteSpace(p.FileName) || !string.IsNullOrWhiteSpace(p.ContentId));
+
+    /// <summary>پیوستِ واقعی (قابلِ نمایش در فهرست پیوست‌ها) — تصاویر درون‌متن حساب نمی‌شوند</summary>
+    private static bool HasRealAttachment(MimeMessage msg) =>
+        msg.BodyParts.Any(x => ShouldExtractPart(x) && !IsInlineBodyPart(x));
+
+    private static bool HasExtractableAttachment(MimeMessage msg) => msg.BodyParts.Any(ShouldExtractPart);
 
     private async Task<Dictionary<string, int>> SaveAttachmentsAsync(MimeMessage msg, string box, int messageId, string uid)
     {
         var inline = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var dir = Path.Combine(AttachmentRoot, $"{box}_{messageId}");
         var pendingInline = new List<(string ContentId, OtoEmailAttachment Attachment)>();
-        var entities = msg.BodyParts.Where(x => x is MessagePart ||
-            x is MimePart p && (p.IsAttachment || !string.IsNullOrWhiteSpace(p.FileName) || !string.IsNullOrWhiteSpace(p.ContentId)));
+        var entities = msg.BodyParts.Where(ShouldExtractPart);
 
         foreach (var entity in entities)
         {
@@ -1417,13 +1490,18 @@ public class EmailService : IEmailService
             var s = await _db.OtoSentEmails.AsNoTracking().Include(x => x.Email)
                 .FirstOrDefaultAsync(x => x.SentId == id && (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)))
                 ?? throw new Exception($"ایمیل پیدا نشد (ارسالی، شناسه {id}). اگر تازه ارسال شده، «دریافت» را بزنید.");
+
+            var attsSent = await AttachmentDtosAsync("Sent", s.SentId);
+            var bodySent = FixLegacyInlineRefs(s.Body, attsSent);
+            MarkInlineAttachments(attsSent, bodySent);
+
             return new EmailMessageDetailDto
             {
                 Id = s.SentId, Box = "Sent", EmailId = s.EmailId,
                 AccountAddress = s.Email?.EmailAddress ?? "",
                 FromOrTo = s.ToDisplay, Subject = s.Subject, Date = s.Date,
-                IsRead = true, IsNeshan = s.IsNeshan, Body = s.Body, IsInFolder = s.IsInFolder, IsSpam = false,
-                Attachments = await AttachmentDtosAsync("Sent", s.SentId)
+                IsRead = true, IsNeshan = s.IsNeshan, Body = bodySent, IsInFolder = s.IsInFolder, IsSpam = false,
+                Attachments = attsSent
             };
         }
 
@@ -1431,13 +1509,17 @@ public class EmailService : IEmailService
             .FirstOrDefaultAsync(x => x.InboxId == id && (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)))
             ?? throw new Exception($"ایمیل پیدا نشد (دریافتی، شناسه {id}). اگر تازه رسیده، «دریافت» را بزنید.");
         if (markRead && !i.IsRead) { i.IsRead = true; await _db.SaveChangesAsync(); }
+
+        var attsInbox = await AttachmentDtosAsync("Inbox", i.InboxId);
+        var bodyInbox = FixLegacyInlineRefs(i.Body, attsInbox);
+        MarkInlineAttachments(attsInbox, bodyInbox);
         return new EmailMessageDetailDto
         {
             Id = i.InboxId, Box = "Inbox", EmailId = i.EmailId,
             AccountAddress = i.Email?.EmailAddress ?? "",
             FromOrTo = i.FromAddress, Subject = i.Subject, Date = i.Date,
-            IsRead = true, IsNeshan = i.IsNeshan, Body = i.Body, IsInFolder = i.IsInFolder, IsSpam = i.IsSpam,
-            Attachments = await AttachmentDtosAsync("Inbox", i.InboxId)
+            IsRead = true, IsNeshan = i.IsNeshan, Body = bodyInbox, IsInFolder = i.IsInFolder, IsSpam = i.IsSpam,
+            Attachments = attsInbox
         };
     }
 
@@ -1456,6 +1538,41 @@ public class EmailService : IEmailService
         return spam;
     }
 
+    /// <summary>
+    /// علامت‌زدنِ «تصویر درونِ متن»: هر پیوستی که آدرسش داخل بدنه آمده، بخشی از
+    /// بدنه است و نباید به‌عنوان فایل پیوست نمایش/منتقل شود.
+    /// </summary>
+    private static void MarkInlineAttachments(List<EmailAttachmentDto> atts, string? body)
+    {
+        foreach (var a in atts)
+            a.IsInline = body != null &&
+                body.Contains($"/api/email/attachments/{a.AttachmentId}/download", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// ایمیل‌هایی که پیش از پشتیبانیِ تصویر درون‌متن دریافت شده‌اند، بدنه‌شان هنوز
+    /// <c>cid:</c> دارد. چون Content-ID در جدول پیوست ذخیره نمی‌شود، نگاشت از روی
+    /// «نام فایل» انجام می‌شود (بیشتر سرورها Content-ID را با نام فایل می‌سازند:
+    /// <c>cid:image001.png@01DA…</c>). این اصلاح فقط در خروجی انجام می‌شود و
+    /// داده‌ای را بازنویسی نمی‌کند؛ ترمیمِ دائمی هنگام Sync انجام می‌گیرد.
+    /// </summary>
+    private static string FixLegacyInlineRefs(string? body, List<EmailAttachmentDto> atts)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return body ?? "";
+        if (body.IndexOf("cid:", StringComparison.OrdinalIgnoreCase) < 0) return body!;
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in atts)
+        {
+            if (string.IsNullOrWhiteSpace(a.RealName)) continue;
+            var name = a.RealName;
+            if (body.Contains("cid:" + name, StringComparison.OrdinalIgnoreCase)
+                || body.Contains("cid:" + Uri.EscapeDataString(name), StringComparison.OrdinalIgnoreCase))
+                map[name] = a.AttachmentId;
+        }
+        return map.Count == 0 ? body! : ReplaceInlineImageReferences(body!, map);
+    }
+
+    /// <summary>پیوست‌ها بدون علامتِ inline — علامت بعد از آماده‌سازی بدنه زده می‌شود</summary>
     private async Task<List<EmailAttachmentDto>> AttachmentDtosAsync(string box, int messageId)
     {
         var list = await _db.OtoEmailAttachments.AsNoTracking()

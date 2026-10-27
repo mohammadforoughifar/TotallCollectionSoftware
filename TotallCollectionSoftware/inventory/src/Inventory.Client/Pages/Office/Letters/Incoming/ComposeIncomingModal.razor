@@ -335,7 +335,9 @@
         pendingFiles.Clear();
         long totalAttBytes = 0;
         var skippedAtt = 0;
-        foreach (var attachment in email.Attachments)
+        // تصاویرِ درونِ متنِ ایمیل (IsInline) بخشی از بدنه‌اند و به‌عنوان فایل پیوست
+        // نامه ثبت نمی‌شوند؛ فقط پیوست‌های واقعی منتقل می‌شوند.
+        foreach (var attachment in email.Attachments.Where(a => !a.IsInline))
         {
             // ۱) کنترل پیش از دانلود پیوست از ایمیل
             if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)

@@ -147,6 +147,13 @@ public class EmailAttachmentDto
     /// استنباط می‌کند تا کلاینت دیگر ناچار نباشد همه‌جا application/octet-stream بفرستد.
     /// </summary>
     public string ContentType { get; set; } = "application/octet-stream";
+
+    /// <summary>
+    /// true = این فایل «تصویرِ درونِ متنِ» ایمیل است (مثل لوگو یا امضا) و آدرسش
+    /// داخل بدنه آمده؛ باید در بدنه دیده شود و در فهرست پیوست‌ها/تبدیل به نامه
+    /// به‌عنوان فایل جدا نمایش داده نشود.
+    /// </summary>
+    public bool IsInline { get; set; }
 }
 
 /// <summary>ارسال ایمیل جدید</summary>

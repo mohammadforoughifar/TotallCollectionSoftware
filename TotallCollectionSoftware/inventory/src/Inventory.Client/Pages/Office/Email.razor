@@ -522,10 +522,10 @@
 
                                 <div class="paper-body">@((MarkupString)RenderEmailBody(openMsg.Body))</div>
 
-                                @if (openMsg.Attachments.Count > 0)
+                                @if (FileAttachments.Any())
                                 {
                                     <div class="paper-foot">
-                                        @foreach (var a in openMsg.Attachments)
+                                        @foreach (var a in FileAttachments)
                                         {
                                             var att = a;
                                             <button type="button" class="att text-start" @onclick="() => DownloadAttachmentAsync(att)">
@@ -533,6 +533,14 @@
                                                 <div>@att.RealName<small>@FmtSize(att.Size)</small></div>
                                             </button>
                                         }
+                                    </div>
+                                }
+                                @if (InlineImageCount > 0)
+                                {
+                                    @* تصاویرِ درونِ متن جزو بدنه‌اند، نه فایل پیوست — فقط شمارش برای شفافیت *@
+                                    <div class="paper-inline-note" title="این تصاویر داخل بدنهٔ ایمیل هستند و به‌عنوان فایل جدا ذخیره نشده‌اند">
+                                        <i class="bi bi-image"></i>
+                                        @InlineImageCount.FaDigits() تصویر داخل متن ایمیل نمایش داده شد
                                     </div>
                                 }
                             </div>
@@ -750,17 +758,37 @@
     private bool showGuide;
     private void BackFromGuide() => showGuide = false;
 
+    /// <summary>
+    /// آماده‌سازی بدنهٔ HTML ایمیل برای نمایش: تصاویرِ درونِ متن به آدرسِ پیوست
+    /// تبدیل شده‌اند؛ اینجا آن آدرس‌ها مطلق می‌شوند و توکن دسترسی به آن‌ها اضافه
+    /// می‌شود (تگ img نمی‌تواند هدر Bearer بفرستد).
+    /// </summary>
+    /// <summary>پیوست‌های واقعیِ ایمیلِ باز (تصاویر درون‌متن حذف می‌شوند)</summary>
+    private List<EmailAttachmentDto> FileAttachments =>
+        openMsg?.Attachments.Where(a => !a.IsInline).ToList() ?? new();
+
+    /// <summary>تعداد تصاویرِ درونِ متن (برای نمایش اطلاع‌رسانی کوچک)</summary>
+    private int InlineImageCount => openMsg?.Attachments.Count(a => a.IsInline) ?? 0;
+
     private string RenderEmailBody(string? body)
     {
-        var html = body ?? "—";
-        // تصاویر inline ایمیل اکنون به endpoint کنترل‌شدهٔ پیوست تبدیل می‌شوند.
-        // چون img نمی‌تواند هدر Bearer بفرستد، توکن فقط برای همین URL اضافه می‌شود.
+        var html = string.IsNullOrWhiteSpace(body) ? "—" : body!;
         var marker = "/api/email/attachments/";
         var pos = 0;
         while ((pos = html.IndexOf(marker, pos, StringComparison.OrdinalIgnoreCase)) >= 0)
         {
             var end = pos + marker.Length;
-            while (end < html.Length && html[end] is not ('\"' or '\'' or ' ' or '>')) end++;
+            while (end < html.Length && html[end] is not ('"' or '\'' or ' ' or '>' or ')' or '&')) end++;
+
+            // نسبی → مطلق (اگر از قبل مطلق باشد دست نمی‌خورد)
+            var isAbsolute = pos > 0 && (html[pos - 1] == '/' || html[pos - 1] == ':');
+            if (!isAbsolute)
+            {
+                var absolute = Api.BuildUrl(html.Substring(pos, end - pos));
+                html = html.Remove(pos, end - pos).Insert(pos, absolute);
+                end = pos + absolute.Length;
+            }
+
             if (html.IndexOf("?access_token=", pos, end - pos, StringComparison.OrdinalIgnoreCase) < 0)
             {
                 html = html.Insert(end, "?access_token=" + Uri.EscapeDataString(Auth.Token ?? ""));
@@ -868,7 +896,8 @@
         try
         {
             var files = new List<IBrowserFile>();
-            foreach (var a in openMsg.Attachments)
+            // تصاویرِ درونِ متن داخل بدنه می‌مانند؛ نباید به‌عنوان فایل پیوست نامه ثبت شوند
+            foreach (var a in openMsg.Attachments.Where(x => !x.IsInline))
             {
                 var (data, name) = await EmailSvc.DownloadAttachmentAsync(a.AttachmentId);
                 if (data != null && data.Length > 0)
