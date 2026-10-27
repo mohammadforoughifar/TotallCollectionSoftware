@@ -83,23 +83,61 @@ else
                         </div>
                     }
 
-                    @* شمارندهٔ اعلان‌ها همهٔ نخوانده‌ها را می‌شمارد؛ پس فهرست هم باید کامل
-                       قابل دیدن باشد (قبلاً فقط ۱۵ ردیف اول نمایش داده می‌شد). *@
-                    @if (ntfs.Count > 0)
+                    @* ---------- صفحه‌بندی پیام‌ها (سمت سرور) ---------- *@
+                    @if (ntfTotal > 0)
                     {
-                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-2 py-2 border-top mt-1">
-                            <span class="fs-9 text-muted">@ntfs.Count.FaDigits() از @ntfTotal.FaDigits() پیام</span>
-                            @if (ntfHasMore)
-                            {
-                                <button type="button" class="btn btn-sm btn-outline-primary fs-9"
-                                        disabled="@ntfLoadingMore" @onclick="LoadMoreNtfAsync">
-                                    @if (ntfLoadingMore)
+                        <div class="ct-pager">
+                            <div class="ct-pg-size">
+                                <label for="ct-page-size">تعداد در صفحه:</label>
+                                <select id="ct-page-size" class="ct-pg-select" @bind="ntfPageSize" @bind:after="OnNtfPageSizeChangedAsync">
+                                    @foreach (var size in NtfPageSizes)
                                     {
-                                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                                        var sz = size;
+                                        <option value="@sz">@sz.FaDigits()</option>
                                     }
-                                    <i class="bi bi-chevron-double-down"></i> نمایش پیام‌های بیشتر
+                                </select>
+                            </div>
+
+                            <div class="ct-pg-nav">
+                                <button class="ct-pgbtn" title="صفحهٔ اول" disabled="@(ntfPage <= 1 || ntfBusy)" @onclick="() => GoNtfPageAsync(1)">
+                                    <i class="bi bi-chevron-double-right"></i>
                                 </button>
-                            }
+                                <button class="ct-pgbtn" title="قبلی" disabled="@(ntfPage <= 1 || ntfBusy)" @onclick="() => GoNtfPageAsync(ntfPage - 1)">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                                @foreach (var p in NtfPageWindow)
+                                {
+                                    var pp = p;
+                                    <button class="ct-pgbtn @(pp == ntfPage ? "on" : "")" disabled="@ntfBusy"
+                                            @onclick="() => GoNtfPageAsync(pp)">@pp.FaDigits()</button>
+                                }
+                                <button class="ct-pgbtn" title="بعدی" disabled="@(ntfPage >= NtfTotalPages || ntfBusy)" @onclick="() => GoNtfPageAsync(ntfPage + 1)">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <button class="ct-pgbtn" title="صفحهٔ آخر" disabled="@(ntfPage >= NtfTotalPages || ntfBusy)" @onclick="() => GoNtfPageAsync(NtfTotalPages)">
+                                    <i class="bi bi-chevron-double-left"></i>
+                                </button>
+                            </div>
+
+                            <div class="ct-pg-jump">
+                                <label for="ct-jump">رفتن به صفحه:</label>
+                                <input id="ct-jump" type="number" class="ct-pg-input" min="1" max="@NtfTotalPages"
+                                       @bind="ntfJumpPage" @onkeydown="OnNtfJumpKeyAsync" @onblur="EnterNtfJumpAsync" />
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        disabled="@(ntfJumpPage < 1 || ntfJumpPage > NtfTotalPages || ntfBusy)"
+                                        @onclick="EnterNtfJumpAsync">
+                                    <i class="bi bi-arrow-left"></i>
+                                </button>
+                            </div>
+
+                            <span class="ct-pg-info">
+                                نمایش @NtfRangeStart.FaDigits() تا @NtfRangeEnd.FaDigits() از @ntfTotal.FaDigits() پیام
+                                — صفحهٔ @ntfPage.FaDigits() از @NtfTotalPages.FaDigits()
+                                @if (ntfBusy)
+                                {
+                                    <span class="spinner-border spinner-border-sm ms-1" style="width:.8rem;height:.8rem"></span>
+                                }
+                            </span>
                         </div>
                     }
                 </div>
@@ -114,17 +152,60 @@ else
     .ct-unread { background: #eff6ff; }
     .ct-icon { width: 34px; height: 34px; border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .fs-9 { font-size: .7rem; }
+
+    /* ---------- صفحه‌بندی پیام‌ها ---------- */
+    .ct-pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+        padding: .55rem .6rem; border-top: 1px solid #eef2f7; background: #f8fafc; border-radius: 0 0 12px 12px; }
+    .ct-pg-size, .ct-pg-jump { display: flex; align-items: center; gap: 5px; font-size: .7rem; color: #64748b; }
+    .ct-pg-select, .ct-pg-input { border: 1px solid #e2e8f0; border-radius: 8px; padding: 3px 6px; font: inherit; background: #fff; color: #334155; }
+    .ct-pg-input { width: 58px; }
+    .ct-pg-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .ct-pgbtn { min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid #e2e8f0; background: #fff; border-radius: 9px;
+        font-size: .72rem; color: #334155; display: inline-flex; align-items: center; justify-content: center; }
+    .ct-pgbtn:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; }
+    .ct-pgbtn.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .ct-pgbtn:disabled { opacity: .4; cursor: default; }
+    .ct-pg-info { font-size: .7rem; color: #64748b; }
+    @@media (max-width: 575.98px) {
+        .ct-pg-info { width: 100%; text-align: center; }
+        .ct-pg-nav { justify-content: center; }
+    }
 </style>
 
 @code {
     private bool loading = true;
     private List<NtfItem> ntfs = new();
-    // صفحه‌بندی پیام‌ها/اعلان‌ها — هم‌خوان با شمارندهٔ زنگوله
-    private const int NtfPageSize = 20;
+    // ================== صفحه‌بندی پیام‌ها (سمت سرور) ==================
+    // شمارندهٔ زنگوله همهٔ اعلان‌ها را می‌شمارد؛ پس فهرست هم صفحه‌به‌صفحه و کامل دیده می‌شود.
+    private int ntfPage = 1;
+    private int ntfPageSize = 10;
+    private int ntfJumpPage = 1;
+    private bool ntfBusy;
     private int ntfTotal;
     private int ntfUnread;
-    private bool ntfHasMore;
-    private bool ntfLoadingMore;
+    private static readonly int[] NtfPageSizes = { 10, 20, 50 };
+
+    private int NtfTotalPages => Math.Max(1, (int)Math.Ceiling(ntfTotal / (double)Math.Max(1, ntfPageSize)));
+    private int NtfRangeStart => ntfTotal == 0 ? 0 : (ntfPage - 1) * ntfPageSize + 1;
+    private int NtfRangeEnd => Math.Min(ntfTotal, ntfPage * ntfPageSize);
+
+    /// <summary>حداکثر ۵ شمارهٔ صفحه پیرامون صفحهٔ جاری (مثل بقیهٔ کارتابل‌ها).</summary>
+    private IEnumerable<int> NtfPageWindow
+    {
+        get
+        {
+            var total = NtfTotalPages;
+            if (total <= 5)
+            {
+                for (var i = 1; i <= total; i++) yield return i;
+                yield break;
+            }
+            var start = Math.Max(1, ntfPage - 2);
+            var end = Math.Min(total, start + 4);
+            start = Math.Max(1, end - 4);
+            for (var i = start; i <= end; i++) yield return i;
+        }
+    }
 
     private class NtfPage
     {
@@ -157,7 +238,8 @@ else
     private async Task ReloadAsync()
     {
         actions = new();
-        await LoadNotificationsAsync(reset: true);
+        // بدون reset: با هر رفرش بلادرنگ، کاربر از صفحهٔ جاری‌اش بیرون نمی‌افتد
+        await LoadNotificationsAsync();
 
         // ================== موارد منتظر اقدام ==================
         try
@@ -248,35 +330,61 @@ else
     private class AttStatus { public AttStats stats { get; set; } = new(); public List<object> items { get; set; } = new(); }
     private class AttStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } }
 
-    /// <summary>بارگذاری اعلان‌ها با صفحه‌بندی — فهرست کامل، نه فقط چند ردیف اول.</summary>
-    private async Task LoadNotificationsAsync(bool reset)
+    /// <summary>بارگذاری صفحهٔ جاری پیام‌ها (صفحه‌بندی سمت سرور).</summary>
+    private async Task LoadNotificationsAsync(bool reset = false)
     {
+        if (reset) { ntfPage = 1; ntfJumpPage = 1; }
+        if (ntfPage < 1) ntfPage = 1;
+        if (ntfPage > NtfTotalPages) ntfPage = NtfTotalPages;
+
+        ntfBusy = true;
         try
         {
-            var skip = reset ? 0 : ntfs.Count;
-            var page = await Http.GetFromJsonAsync<NtfPage>($"/api/notifications/page?take={NtfPageSize}&skip={skip}");
+            var skip = (ntfPage - 1) * ntfPageSize;
+            var page = await Http.GetFromJsonAsync<NtfPage>($"/api/notifications/page?take={ntfPageSize}&skip={skip}");
             if (page == null) return;
 
-            if (reset) ntfs = page.Items;
-            else
-            {
-                var known = ntfs.Select(x => x.Id).ToHashSet();
-                foreach (var item in page.Items.Where(x => !known.Contains(x.Id))) ntfs.Add(item);
-            }
-
+            ntfs = page.Items;
             ntfTotal = page.Total;
             ntfUnread = page.Unread;
-            ntfHasMore = page.HasMore;
+
+            // اگر صفحهٔ جاری بعد از خواندن/پاک‌شدن خالی ماند، یک صفحه عقب برگرد
+            if (ntfs.Count == 0 && ntfPage > 1)
+            {
+                ntfPage--;
+                ntfJumpPage = ntfPage;
+                await LoadNotificationsAsync();
+            }
         }
         catch { /* شکست بارگذاری اعلان‌ها نباید بقیهٔ کارتابل را متوقف کند */ }
+        finally { ntfBusy = false; }
     }
 
-    private async Task LoadMoreNtfAsync()
+    private async Task GoNtfPageAsync(int page)
     {
-        if (ntfLoadingMore || !ntfHasMore) return;
-        ntfLoadingMore = true;
-        try { await LoadNotificationsAsync(reset: false); }
-        finally { ntfLoadingMore = false; }
+        if (page < 1 || page > NtfTotalPages || page == ntfPage) return;
+        ntfPage = page;
+        ntfJumpPage = page;
+        await LoadNotificationsAsync();
+    }
+
+    private async Task OnNtfPageSizeChangedAsync()
+    {
+        ntfPage = 1;
+        ntfJumpPage = 1;
+        await LoadNotificationsAsync();
+    }
+
+    private async Task EnterNtfJumpAsync()
+    {
+        var target = Math.Clamp(ntfJumpPage, 1, NtfTotalPages);
+        ntfJumpPage = target;
+        await GoNtfPageAsync(target);
+    }
+
+    private async Task OnNtfJumpKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter") await EnterNtfJumpAsync();
     }
 
     private async void OnRtChanged(string scope)
@@ -287,9 +395,14 @@ else
 
     private async void OnRtNotify(RtNotification rn)
     {
-        ntfs.Insert(0, new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt });
         ntfTotal++;
         ntfUnread++;
+        // فقط در صفحهٔ اول ردیف تازه را نشان بده (در صفحه‌های بعد ردیف‌ها جابه‌جا می‌شوند)
+        if (ntfPage == 1)
+        {
+            ntfs.Insert(0, new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt });
+            if (ntfs.Count > ntfPageSize) ntfs.RemoveAt(ntfs.Count - 1);
+        }
         await InvokeAsync(StateHasChanged);
     }
 
