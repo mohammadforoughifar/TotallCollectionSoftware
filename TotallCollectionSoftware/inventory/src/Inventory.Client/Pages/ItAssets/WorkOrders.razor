@@ -3885,7 +3885,26 @@ else
                 if (letter != null)
                 {
                     _sourceLabel = $"نامه # {letter.LetterNumber}";
-                    await ShowNewFormAsync(letter.Title, letter.Text ?? "");
+
+                    // سرصفحهٔ نامه + متن نامه به‌صورت HTML امن: اگر متن با ویرایشگر غنی نوشته
+                    // شده باشد قالب سبکش حفظ می‌شود، و اگر متن ساده یا escape‌شده باشد به
+                    // پاراگراف خوانا تبدیل می‌شود — همان قاعدهٔ نامهٔ وارده/صادره تا هیچ‌وقت
+                    // تگ خام (‎&lt;p&gt;‎) در شرح دستور کار دیده نشود.
+                    var sbInner = new System.Text.StringBuilder();
+                    sbInner.Append("<p><b>نامهٔ داخلی: ")
+                           .Append(System.Net.WebUtility.HtmlEncode(letter.Title))
+                           .Append("</b>");
+                    if (!string.IsNullOrWhiteSpace(letter.LetterNumber))
+                        sbInner.Append(" — شماره: ").Append(System.Net.WebUtility.HtmlEncode(letter.LetterNumber));
+                    if (!string.IsNullOrWhiteSpace(letter.SenderName))
+                        sbInner.Append(" — فرستنده: ").Append(System.Net.WebUtility.HtmlEncode(letter.SenderName));
+                    if (letter.DateSabt != default)
+                        sbInner.Append(" — تاریخ: ").Append(letter.DateSabt.ToFaDate());
+                    sbInner.Append("</p>");
+                    if (!string.IsNullOrWhiteSpace(letter.Text))
+                        sbInner.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtml(letter.Text));
+
+                    await ShowNewFormAsync(letter.Title, sbInner.ToString());
 
                     // پیش‌انتخاب گیرندگانِ گردش نامه (گیرنده/ارجاع/هامش) — قابل ویرایش/حذف
                     foreach (var u in letter.ReciversGirande) selTargets.Add(u.UserId);
@@ -3977,7 +3996,7 @@ else
                         sb.Append(" — شماره: ").Append(System.Net.WebUtility.HtmlEncode(letter.LetterNumber));
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Text))
-                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(letter.Text));
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtml(letter.Text));
 
                     await ShowNewFormAsync(letter.Title, sb.ToString());
 

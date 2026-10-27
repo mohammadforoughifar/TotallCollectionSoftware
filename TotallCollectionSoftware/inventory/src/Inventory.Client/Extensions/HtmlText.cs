@@ -76,4 +76,47 @@ public static class HtmlText
         if (text.Length == 0) return "";
         return "<p>" + WebUtility.HtmlEncode(text).Replace("\n", "<br />") + "</p>";
     }
+
+    /// <summary>
+    /// محتوای یک نامه را برای نمایش داخل یک فیلد غنی (مثل شرح دستور کار) آماده می‌کند.
+    /// <para>
+    /// برخلاف <see cref="ToSafeHtml"/> که همیشه متن ساده می‌دهد، اینجا اگر متن نامه واقعاً
+    /// HTML باشد (نامهٔ داخلی/صادره که با ویرایشگر غنی نوشته شده) قالب‌بندی سبک آن حفظ
+    /// می‌شود: تگ‌های خطرناک (script/style/iframe/embed) و هندلرهای رویداد و لینک‌های
+    /// javascript حذف می‌شوند و اگر متن به‌اشتباه escape شده باشد یک‌بار رمزگشایی می‌شود.
+    /// اگر متن هیچ تگی نداشته باشد (متن ساده با شکست خط)، به پاراگراف امن تبدیل می‌شود.
+    /// </para>
+    /// </summary>
+    public static string ToDisplayHtml(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+
+        var s = html;
+
+        // متنِ escape‌شده (مثل &amp;lt;p&amp;gt;) یا دوبار escape‌شده را به HTML واقعی برگردان
+        if (!Regex.IsMatch(s, @"<\s*/?\s*[a-zA-Z][^>]*>"))
+        {
+            if (s.Contains("&lt;") || s.Contains("&gt;") || s.Contains("&amp;lt;"))
+            {
+                s = WebUtility.HtmlDecode(s);
+                if (s.Contains("&lt;") || s.Contains("&amp;")) s = WebUtility.HtmlDecode(s);
+            }
+        }
+
+        // بلوک‌های خطرناک
+        s = Regex.Replace(s, @"<\s*(script|style|iframe|object|embed|head)\b[^>]*>.*?<\s*/\s*\1\s*>", " ",
+                          RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        s = Regex.Replace(s, @"<\s*/?\s*(script|style|iframe|object|embed|head)\b[^>]*>", " ",
+                          RegexOptions.IgnoreCase);
+
+        // هندلرهای رویداد (onclick، onerror، …) و لینک‌های javascript:
+        s = Regex.Replace(s, "\\s+on[a-zA-Z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", "", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, "(href|src)\\s*=\\s*([\"'])\\s*javascript:[^\"']*\\2", "$1=\"#\"", RegexOptions.IgnoreCase);
+
+        // متن سادهٔ بدون تگ: پاراگراف امن با شکست خط
+        if (!Regex.IsMatch(s, @"<\s*/?\s*[a-zA-Z][^>]*>"))
+            return "<p>" + WebUtility.HtmlEncode(s).Replace("\r\n", "\n").Replace("\n", "<br />") + "</p>";
+
+        return s.Trim();
+    }
 }
