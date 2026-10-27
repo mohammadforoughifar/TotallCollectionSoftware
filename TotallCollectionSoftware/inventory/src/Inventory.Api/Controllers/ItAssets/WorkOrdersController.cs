@@ -121,6 +121,28 @@ public class WorkOrdersController : ControllerBase
             .AnyAsync(x => x.Id == sourceId && !x.IsDelete && x.SourceType >= 1 && x.SourceType <= 3);
         if (!isLetter) return 0;
 
+        // ---- دو استثنا که نباید در «دریافتی» ردیف بسازند ----
+        // ۱) خودِ کاربر جاری (سازندهٔ دستور کار / ارجاع‌دهنده): ساختن یا گرفتنِ دستور کار
+        //    روی یک نامه، نباید همان نامه را دوباره در صندوق دریافتی خودش بگذارد؛
+        //    حتی اگر دستور کار را به خودش واگذار کند. این ردیف قبلاً ساخته می‌شد و
+        //    منجر به «نامه در دریافتی من ظاهر شد در حالی که به خودم ارجاع نداده‌ام» بود.
+        // ۲) ثبت‌کننده/ایجادکنندهٔ همان نامه: طبق قاعدهٔ کارتابل، ثبت‌کننده نامهٔ خودش را
+        //    در «دریافتی» نمی‌بیند مگر با ارجاع صریح (مسیر ارجاعِ کارتابل، نه این مسیر).
+        targets = targets.Where(u => u != MyUserId).ToList();
+        if (targets.Count == 0) return 0;
+
+        var letterCreatorId = await _db.LetterSources.AsNoTracking()
+            .Where(x => x.Id == sourceId)
+            .Select(x => x.SourceType == 1
+                ? (x.InnerLetter != null ? x.InnerLetter.CreatorUserId : (int?)null)
+                : x.SourceType == 2
+                    ? (x.OutgoingLetter != null ? x.OutgoingLetter.CreatorUserId : (int?)null)
+                    : (x.IncomingLetter != null ? x.IncomingLetter.CreateUserId : (int?)null))
+            .FirstOrDefaultAsync();
+        if (letterCreatorId is > 0)
+            targets = targets.Where(u => u != letterCreatorId.Value).ToList();
+        if (targets.Count == 0) return 0;
+
         var existing = await _db.Erjas
             .Where(x => x.SourceId == sourceId && !x.IsDelete && targets.Contains(x.ReciverUserId))
             .Select(x => x.ReciverUserId).Distinct().ToListAsync();
@@ -1619,22 +1641,47 @@ public class WorkOrdersController : ControllerBase
     {
         if (!await HasAsync("View")) return Forbid();
 
+        // ---- پاک‌سازی ردیف‌های اشتباهِ قبلی ----
+        // نسخهٔ قبلیِ همین همگام‌سازی، *خودِ کاربر* را در گردش نامه ثبت می‌کرد؛ نتیجه این بود
+        // که بعد از ساختن دستور کار روی یک نامه، همان نامه در «دریافتی» خودش هم ظاهر می‌شد.
+        // ردیف‌های ساختِ همین همگام‌سازی (متن اختصاصی + فرستنده = گیرنده) اگر هنوز خوانده
+        // نشده‌اند حذف می‌شوند تا صندوق کاربر پاک شود. ردیف‌های ارجاع واقعی (فرستنده ≠ گیرنده)
+        // یا خوانده‌شده/پاسخ‌داده‌شده هرگز دست نمی‌خورند.
+        const string autoText = "دسترسی به نامه از طریق دستورکار";
+        var junk = await _db.Erjas
+            .Where(e => e.ReciverUserId == MyUserId && e.SenderUserId == MyUserId
+                        && !e.IsDelete && e.Type == "ارجاع"
+                        && e.MatnErja.StartsWith(autoText)
+                        && !e.IsRead && (e.IsBayegani == null || e.IsBayegani == false)
+                        && (e.Answer == null || e.Answer == "") && e.TypeTaeed == 0
+                        && !e.IsNeshan)
+            .ToListAsync();
+        var removed = junk.Count;
+        if (removed > 0) _db.Erjas.RemoveRange(junk);
+
+        // ---- برقراری دسترسی برای «دیگر گیرندگان» دستورکارهای متصل به نامه ----
+        // فقط افراد دیگر؛ خودِ کاربر جاری هرگز به گردش نامه اضافه نمی‌شود (نه به‌عنوان
+        // دستوردهنده و نه وقتی خودش را گیرنده کند). در متد هسته هم دوباره فیلتر می‌شود.
         var orders = await _db.WorkOrders.AsNoTracking()
             .Where(w => w.DeletedAt == null && w.SourceId != null && w.SourceId > 0
                         && w.SourceModule != null && w.SourceModule != ""
                         && (w.OwnerUserId == MyUserId
                             || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == MyUserId)))
-            .Select(w => new { w.Title, w.Number, SourceId = w.SourceId!.Value, w.OwnerUserId })
+            .Select(w => new
+            {
+                w.Title, w.Number, SourceId = w.SourceId!.Value, w.OwnerUserId,
+                Assignees = _db.WorkOrderAssignees.Where(a => a.OrderId == w.Id && a.UserId != MyUserId)
+                    .Select(a => a.UserId).ToList()
+            })
             .ToListAsync();
-        if (orders.Count == 0) return Ok(new { added = 0, orders = 0 });
 
         var added = 0;
-        foreach (var o in orders)
+        foreach (var o in orders.Where(x => x.Assignees.Count > 0))
         {
             // فرستندهٔ ارجاع، دستوردهندهٔ همان دستور کار است تا ردیف در گردش نامه منطقی بماند
-            added += await EnsureLetterFlowForUsersAsync(o.SourceId, new[] { MyUserId }, o.OwnerUserId, o.Title, o.Number);
+            added += await EnsureLetterFlowForUsersAsync(o.SourceId, o.Assignees, o.OwnerUserId, o.Title, o.Number);
         }
-        if (added > 0)
+        if (added > 0 || removed > 0)
         {
             await _db.SaveChangesAsync();
             // ردیف‌های ارجاعِ تازه، کارتابل و شمارندهٔ نخواندهٔ نامه‌ها را تغییر می‌دهند
@@ -1643,7 +1690,7 @@ public class WorkOrdersController : ControllerBase
             await _notify.BroadcastChangedAsync("incoming-letters");
             await _notify.BroadcastChangedAsync("outgoing-letters");
         }
-        return Ok(new { added, orders = orders.Count });
+        return Ok(new { added, removed, orders = orders.Count });
     }
 
     // ================== بازگشایی دستور کار بسته‌شده و برگشت به گردش ==================

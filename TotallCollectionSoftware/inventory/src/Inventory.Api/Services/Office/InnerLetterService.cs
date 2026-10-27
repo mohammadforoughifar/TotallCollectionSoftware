@@ -253,6 +253,12 @@ public class InnerLetterService : IInnerLetterService
         return source.Id;
     }
 
+    /// <summary>
+    /// متنِ اختصاصیِ ردیف‌هایی که «ساخت دستور کار از نامه» در گردش نامه می‌سازد.
+    /// برای شناسایی و کنار گذاشتنِ ردیف‌های خودارجاعیِ ساختگی به کار می‌رود.
+    /// </summary>
+    private const string AutoFlowText = "دسترسی به نامه از طریق دستورکار";
+
     public async Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
         bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null)
     {
@@ -262,7 +268,12 @@ public class InnerLetterService : IInnerLetterService
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
-                        && e.IsBayegani != true); // نامه‌های بایگانی‌شده در پوشه بایگانی نمایش داده می‌شوند
+                        && e.IsBayegani != true // نامه‌های بایگانی‌شده در پوشه بایگانی نمایش داده می‌شوند
+                        // ردیفِ خودارجاعیِ ساختگیِ «دسترسی از طریق دستورکار» نباید در دریافتی
+                        // دیده شود: ساختن/گرفتن دستور کار روی یک نامه، نامه را دوباره در
+                        // صندوق دریافتی خودِ همان کاربر نمی‌گذارد. (ارجاع واقعیِ دیگران، که
+                        // فرستنده‌اش فرد دیگری است، دست‌نخورده می‌ماند.)
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (unreadOnly == true) q = q.Where(e => !e.IsRead);
 
@@ -337,7 +348,8 @@ public class InnerLetterService : IInnerLetterService
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
-                        && e.IsBayegani == true);
+                        && e.IsBayegani == true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -563,7 +575,8 @@ public class InnerLetterService : IInnerLetterService
         var inbox = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
-                        && e.IsBayegani != true);
+                        && e.IsBayegani != true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         // شمارش بر اساس «ارجاع» است، نه نامهٔ متمایز: اگر نامه دوباره به همین کاربر
         // ارجاع شود، یک ردیف تازه (نخوانده) در کارتابل او ساخته می‌شود و باید هم در

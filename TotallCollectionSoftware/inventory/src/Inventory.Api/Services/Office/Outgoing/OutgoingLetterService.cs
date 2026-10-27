@@ -412,6 +412,9 @@ public class OutgoingLetterService : IOutgoingLetterService
         return source.Id;
     }
 
+    /// <summary>متنِ اختصاصیِ ردیف‌های «دسترسی از طریق دستورکار» — برای کنار گذاشتن خودارجاعی.</summary>
+    private const string AutoFlowText = "دسترسی به نامه از طریق دستورکار";
+
     // ---------- Inbox: شامل ارجاعات + امضا ----------
     public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
         bool? starredOnly = null, bool? attachOnly = null)
@@ -420,7 +423,9 @@ public class OutgoingLetterService : IOutgoingLetterService
         var qErja = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
-                        && e.IsBayegani != true);
+                        && e.IsBayegani != true
+                        // ردیف خودارجاعیِ ساختگیِ «دسترسی از طریق دستورکار» در دریافتی نیاید
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (unreadOnly == true) qErja = qErja.Where(e => !e.IsRead);
 
@@ -679,7 +684,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
-                        && e.IsBayegani == true);
+                        && e.IsBayegani == true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -986,7 +992,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         var inbox = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
-                        && e.IsBayegani != true);
+                        && e.IsBayegani != true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         var signing = _db.OutgoingLetterSigners.AsNoTracking()
             .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete
