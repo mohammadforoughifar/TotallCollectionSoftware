@@ -660,29 +660,6 @@ public class ArchiveService : IArchiveService
         return result;
     }
 
-    /// <summary>همهٔ گره‌های زیرِ یک پوشه (تا هر عمقی) — برای حذف آبشاری پوشه.</summary>
-    private async Task<List<LetterBayegani>> CollectSubtreeAsync(int folderId, int userId)
-    {
-        var all = await _db.LetterBayeganis
-            .Where(x => x.UserId == userId && !x.IsDelete && x.TypeBayegani != TypeOutgoing)
-            .ToListAsync();
-
-        var result = new List<LetterBayegani>();
-        var queue = new Queue<int>();
-        queue.Enqueue(folderId);
-        while (queue.Count > 0)
-        {
-            var current = queue.Dequeue();
-            foreach (var child in all.Where(x => x.ParentId == current))
-            {
-                result.Add(child);
-                if (child.IsFolder) queue.Enqueue(child.BayeganiId);
-            }
-        }
-
-        return result;
-    }
-
     /// <summary>
     /// آزادکردن پرچم‌های بایگانیِ مرتبط با یک گره درخت.
     /// <para>
