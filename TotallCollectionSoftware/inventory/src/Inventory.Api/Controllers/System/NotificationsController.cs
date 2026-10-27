@@ -32,20 +32,66 @@ public class NotificationsController : ControllerBase
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) && v > 0 ? v : 0;
 
+    /// <summary>
+    /// اعلان‌های کاربر جاری (فهرست ساده — سازگار با فراخوان‌های قبلی).
+    /// <paramref name="unreadOnly"/> فقط نخوانده‌ها را برمی‌گرداند و سقف صفحه از ۱۰۰ به ۲۰۰
+    /// رسیده تا مشتری‌هایی که کل فهرست را می‌خواهند، بی‌صدا بریده نشوند.
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> My([FromQuery] int take = 50, [FromQuery] int skip = 0)
+    public async Task<IActionResult> My([FromQuery] int take = 50, [FromQuery] int skip = 0, [FromQuery] bool unreadOnly = false)
     {
         if (MyUserId <= 0) return Unauthorized();
 
-        var list = await _db.AppNotifications.AsNoTracking()
-            .Where(n => n.UserId == MyUserId)
+        var q = _db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId);
+        if (unreadOnly) q = q.Where(n => !n.IsRead);
+
+        var list = await q
             .OrderByDescending(n => n.Id)
             .Skip(Math.Max(0, skip))
-            .Take(Math.Min(take, 100))
+            .Take(Math.Clamp(take, 1, 200))
             .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
             .ToListAsync();
 
         return Ok(list);
+    }
+
+    /// <summary>
+    /// صفحهٔ اعلان‌ها همراه با شمارش‌ها — تا شمارندهٔ زنگوله (که همهٔ نخوانده‌ها را می‌شمارد)
+    /// با فهرست نمایش‌داده‌شده ناهم‌خوان نشود. پیش‌تر فهرست فقط ۵۰/۱۵ ردیف اول را می‌داد و
+    /// کاربر با «+۹۹» فقط چند اعلان می‌دید.
+    /// </summary>
+    [HttpGet("page")]
+    public async Task<IActionResult> Page([FromQuery] int take = 25, [FromQuery] int skip = 0, [FromQuery] bool unreadOnly = false)
+    {
+        if (MyUserId <= 0) return Unauthorized();
+
+        take = Math.Clamp(take, 1, 200);
+        skip = Math.Max(0, skip);
+
+        var q = _db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId);
+        var total = await q.CountAsync();
+        var unread = await q.CountAsync(n => !n.IsRead);
+        if (unreadOnly) q = q.Where(n => !n.IsRead);
+
+        var filteredTotal = unreadOnly ? unread : total;
+
+        var items = await q
+            .OrderByDescending(n => n.Id)
+            .Skip(skip)
+            .Take(take)
+            .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            items,
+            total,
+            unread,
+            filteredTotal,
+            skip,
+            take,
+            hasMore = skip + items.Count < filteredTotal
+        });
     }
 
     [HttpGet("unread-count")]

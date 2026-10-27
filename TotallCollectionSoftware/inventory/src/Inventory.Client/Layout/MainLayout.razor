@@ -115,7 +115,13 @@ else
                         {
                             <div class="ntf-panel shadow-lg">
                                 <div class="ntf-panel-head">
-                                    <span class="fw-700">اعلان‌ها</span>
+                                    <span class="fw-700">
+                                        اعلان‌ها
+                                        @if (ntfTotal > 0)
+                                        {
+                                            <span class="fs-9 text-muted fw-normal">— @ntfTotal.FaDigits() مورد، @unreadCount.FaDigits() نخوانده</span>
+                                        }
+                                    </span>
                                     <div class="d-flex gap-2 align-items-center">
                                         <button type="button" class="btn-close btn-close-sm ms-1" title="بستن اعلان‌ها" aria-label="بستن اعلان‌ها" @onclick="ToggleNtfPanel"></button>
                                         @if (unreadCount > 0)
@@ -422,6 +428,28 @@ else
                                                 <div class="fs-8 text-muted mt-1">@n.Body</div>
                                             }
                                             <div class="fs-9 mt-1"><span class="badge bg-light text-secondary">@n.FormName</span> <span class="text-muted">از: @n.FromName</span></div>
+                                        </div>
+                                    }
+
+                                    @* صفحه‌بندی: شمارندهٔ زنگوله همهٔ نخوانده‌ها را می‌شمارد؛ پس فهرست هم
+                                       باید کامل قابل دیدن باشد، نه فقط چند ردیف اول. *@
+                                    @if (ntfList.Count > 0)
+                                    {
+                                        <div class="ntf-panel-more">
+                                            <span class="fs-9 text-muted">
+                                                @ntfList.Count.FaDigits() از @ntfTotal.FaDigits() اعلان
+                                            </span>
+                                            @if (ntfHasMore)
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-primary fs-9"
+                                                        disabled="@ntfLoadingMore" @onclick="LoadMoreNtfAsync">
+                                                    @if (ntfLoadingMore)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                                                    }
+                                                    <i class="bi bi-chevron-double-down"></i> نمایش اعلان‌های بیشتر
+                                                </button>
+                                            }
                                         </div>
                                     }
                                 </div>
@@ -733,6 +761,12 @@ else
     private bool layoutDisposed;
     private bool showNtfPanel;
     private List<NtfItem> ntfList = new();
+    // صفحه‌بندی اعلان‌ها: شمارندهٔ زنگوله همهٔ نخوانده‌ها را می‌شمارد، پس فهرست هم باید
+    // بتواند تا آخر باز شود؛ وگرنه کاربر «+۹۹» می‌بیند و فقط ۲۵/۵۰ اعلان اول را.
+    private const int NtfPageSize = 25;
+    private int ntfTotal;
+    private bool ntfHasMore;
+    private bool ntfLoadingMore;
     private List<NtfItem> liveToasts = new();
 
     // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
@@ -1012,6 +1046,18 @@ else
         public DateTime CreatedAt { get; set; }
     }
 
+    /// <summary>پاسخ صفحه‌بندی‌شدهٔ اعلان‌ها — همراه با شمارش کل/نخوانده.</summary>
+    public class NtfPage
+    {
+        public List<NtfItem> Items { get; set; } = new();
+        public int Total { get; set; }
+        public int Unread { get; set; }
+        public int FilteredTotal { get; set; }
+        public int Skip { get; set; }
+        public int Take { get; set; }
+        public bool HasMore { get; set; }
+    }
+
     private void SetAuthHeader()
     {
         // HttpClient در WASM در طول نشست مشترک است؛ هنگام خروج نباید Bearer نشست قبلی روی آن بماند.
@@ -1123,12 +1169,40 @@ else
         SetAuthHeader();
         try
         {
-            var res = await Http.GetFromJsonAsync<UnreadRes>("/api/notifications/unread-count");
-            unreadCount = res?.Count ?? 0;
-            ntfList = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new();
+            var page = await Http.GetFromJsonAsync<NtfPage>($"/api/notifications/page?take={NtfPageSize}&skip=0");
+            ntfList = page?.Items ?? new();
+            ntfTotal = page?.Total ?? 0;
+            ntfHasMore = page?.HasMore ?? false;
+            // شمارنده همان چیزی است که سرور می‌شمارد (کل نخوانده‌ها) — نه تعداد ردیف‌های فهرست
+            unreadCount = page?.Unread ?? 0;
             await RefreshChatSummaryAsync();
         }
         catch { }
+    }
+
+    /// <summary>بارگذاری صفحهٔ بعدِ اعلان‌ها و افزودن به انتهای فهرست پنل.</summary>
+    private async Task LoadMoreNtfAsync()
+    {
+        if (ntfLoadingMore || !ntfHasMore) return;
+        ntfLoadingMore = true;
+        try
+        {
+            SetAuthHeader();
+            var page = await Http.GetFromJsonAsync<NtfPage>(
+                $"/api/notifications/page?take={NtfPageSize}&skip={ntfList.Count}");
+            if (page != null)
+            {
+                var known = ntfList.Select(x => x.Id).ToHashSet();
+                foreach (var item in page.Items.Where(x => !known.Contains(x.Id)))
+                    ntfList.Add(item);
+
+                ntfTotal = page.Total;
+                unreadCount = page.Unread;
+                ntfHasMore = page.HasMore;
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { ntfLoadingMore = false; }
     }
 
     private void OnChatMessage(ChatMessageDto message) => OnChatSync();
@@ -1174,6 +1248,8 @@ else
     {
         try { await Http.DeleteAsync("/api/notifications/clear-all"); } catch { }
         ntfList.Clear();
+        ntfTotal = 0;
+        ntfHasMore = false;
         unreadCount = 0;
         liveToasts.Clear();
     }
@@ -1183,6 +1259,8 @@ else
         try { await Http.PostAsync("/api/notifications/read-all", null); } catch { }
         unreadCount = 0;
         foreach (var n in ntfList) n.IsRead = true;
+        // شمارش سرور هم باید صفر شود؛ وگرنه با بستن/باز کردن پنل «+۹۹» برمی‌گردد
+        await RefreshNtf();
     }
 
     private async Task OpenNtf(NtfItem n)
@@ -1516,6 +1594,10 @@ else
     .ntf-panel-body {
         flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto;
         overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    }
+    .ntf-panel-more {
+        position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between;
+        gap: .5rem; padding: .5rem .9rem; background: #f8fafc; border-top: 1px solid #e2e8f0;
     }
     .ntf-item { padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background .12s; }
     .ntf-item:hover { background: #f8fafc; }

@@ -56,13 +56,19 @@ else
                 <div class="card-header">
                     <i class="bi bi-bell text-primary"></i>
                     <span class="card-title">پیام‌های اخیر</span>
+                    @if (ntfTotal > 0)
+                    {
+                        <span class="badge bg-light text-secondary ms-auto fs-9">
+                            @ntfTotal.FaDigits() مورد — @ntfUnread.FaDigits() نخوانده
+                        </span>
+                    }
                 </div>
                 <div class="card-body p-2">
                     @if (ntfs.Count == 0)
                     {
                         <div class="text-center text-muted py-4 fs-8"><i class="bi bi-bell-slash d-block fs-3 mb-1"></i>پیامی ندارید</div>
                     }
-                    @foreach (var n in ntfs.Take(15))
+                    @foreach (var n in ntfs)
                     {
                         <div class="ct-item @(n.IsRead ? "" : "ct-unread")" @onclick="() => OpenNtf(n)">
                             <div class="ct-icon" style="background:#2563eb"><i class="bi bi-envelope"></i></div>
@@ -73,6 +79,26 @@ else
                             @if (!n.IsRead)
                             {
                                 <span class="badge bg-primary rounded-pill fs-9">جدید</span>
+                            }
+                        </div>
+                    }
+
+                    @* شمارندهٔ اعلان‌ها همهٔ نخوانده‌ها را می‌شمارد؛ پس فهرست هم باید کامل
+                       قابل دیدن باشد (قبلاً فقط ۱۵ ردیف اول نمایش داده می‌شد). *@
+                    @if (ntfs.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-2 py-2 border-top mt-1">
+                            <span class="fs-9 text-muted">@ntfs.Count.FaDigits() از @ntfTotal.FaDigits() پیام</span>
+                            @if (ntfHasMore)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-primary fs-9"
+                                        disabled="@ntfLoadingMore" @onclick="LoadMoreNtfAsync">
+                                    @if (ntfLoadingMore)
+                                    {
+                                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                                    }
+                                    <i class="bi bi-chevron-double-down"></i> نمایش پیام‌های بیشتر
+                                </button>
                             }
                         </div>
                     }
@@ -93,6 +119,20 @@ else
 @code {
     private bool loading = true;
     private List<NtfItem> ntfs = new();
+    // صفحه‌بندی پیام‌ها/اعلان‌ها — هم‌خوان با شمارندهٔ زنگوله
+    private const int NtfPageSize = 20;
+    private int ntfTotal;
+    private int ntfUnread;
+    private bool ntfHasMore;
+    private bool ntfLoadingMore;
+
+    private class NtfPage
+    {
+        public List<NtfItem> Items { get; set; } = new();
+        public int Total { get; set; }
+        public int Unread { get; set; }
+        public bool HasMore { get; set; }
+    }
     private List<ActionItem> actions = new();
 
     public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } }
@@ -117,7 +157,7 @@ else
     private async Task ReloadAsync()
     {
         actions = new();
-        try { ntfs = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new(); } catch { }
+        await LoadNotificationsAsync(reset: true);
 
         // ================== موارد منتظر اقدام ==================
         try
@@ -208,6 +248,37 @@ else
     private class AttStatus { public AttStats stats { get; set; } = new(); public List<object> items { get; set; } = new(); }
     private class AttStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } }
 
+    /// <summary>بارگذاری اعلان‌ها با صفحه‌بندی — فهرست کامل، نه فقط چند ردیف اول.</summary>
+    private async Task LoadNotificationsAsync(bool reset)
+    {
+        try
+        {
+            var skip = reset ? 0 : ntfs.Count;
+            var page = await Http.GetFromJsonAsync<NtfPage>($"/api/notifications/page?take={NtfPageSize}&skip={skip}");
+            if (page == null) return;
+
+            if (reset) ntfs = page.Items;
+            else
+            {
+                var known = ntfs.Select(x => x.Id).ToHashSet();
+                foreach (var item in page.Items.Where(x => !known.Contains(x.Id))) ntfs.Add(item);
+            }
+
+            ntfTotal = page.Total;
+            ntfUnread = page.Unread;
+            ntfHasMore = page.HasMore;
+        }
+        catch { /* شکست بارگذاری اعلان‌ها نباید بقیهٔ کارتابل را متوقف کند */ }
+    }
+
+    private async Task LoadMoreNtfAsync()
+    {
+        if (ntfLoadingMore || !ntfHasMore) return;
+        ntfLoadingMore = true;
+        try { await LoadNotificationsAsync(reset: false); }
+        finally { ntfLoadingMore = false; }
+    }
+
     private async void OnRtChanged(string scope)
     {
         await ReloadAsync();
@@ -217,6 +288,8 @@ else
     private async void OnRtNotify(RtNotification rn)
     {
         ntfs.Insert(0, new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt });
+        ntfTotal++;
+        ntfUnread++;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -231,6 +304,7 @@ else
         if (!n.IsRead)
         {
             n.IsRead = true;
+            if (ntfUnread > 0) ntfUnread--;
             try { await Http.PostAsync($"/api/notifications/{n.Id}/read", null); } catch { }
         }
         if (!string.IsNullOrWhiteSpace(n.Link)) Nav.NavigateTo(n.Link);
