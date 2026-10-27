@@ -110,15 +110,15 @@
                        اگر درخت بایگانی خالی بود ولی سرویس «بایگانی» نامه دارد (مثلاً رکورد
                        درختیِ نامه در نسخه‌های قبلی ساخته نشده بود)، فهرست تخت نمایش داده
                        می‌شود تا نامهٔ بایگانی‌شده هیچ‌وقت «گم» نشود. *@
-                    @if (archiveTreeEmpty && letters.Count > 0)
+                    @if (FallbackLetters.Count > 0)
                     {
                         <div class="arv-fallback">
                             <div class="arv-fallback-h">
                                 <i class="bi bi-archive"></i>
-                                نامه‌های بایگانی‌شده (@totalItems.FaDigits())
+                                نامه‌های بایگانی‌شدهٔ بدون پوشه (@FallbackLetters.Count.FaDigits())
                                 <span>— این نامه‌ها در درخت پوشه‌ها ثبت نشده‌اند و اینجا فهرست شده‌اند</span>
                             </div>
-                            @foreach (var item in letters)
+                            @foreach (var item in FallbackLetters)
                             {
                                 var l = item;
                                 <button class="arv-fallback-row" @onclick="() => OpenArchivedLetterFromList(l)">
@@ -374,11 +374,18 @@
                                     <i class="bi bi-pencil-square"></i> ویرایش
                                 </button>
                             }
-                            @if (activeLetter?.ErjaId is > 0 && !activeLetter.IsBayegani)
+                            @if (activeLetter is { IsBayegani: false })
                             {
                                 <button class="lbtn ghost" title="انتخاب پوشه و بایگانی نامه"
-                                        @onclick="() => ArchiveLetterAsync(activeLetter)">
+                                        @onclick="() => ArchiveLetterAsync(activeLetter!)">
                                     <i class="bi bi-archive"></i> انطباق و بایگانی
+                                </button>
+                            }
+                            @if (activeLetter is { IsBayegani: true })
+                            {
+                                <button class="lbtn ghost" title="خروج از بایگانی و بازگشت به دریافتی"
+                                        @onclick="() => ToggleBayeganiAsync(activeLetter!)">
+                                    <i class="bi bi-box-arrow-up"></i> خروج از بایگانی
                                 </button>
                             }
                         </div>
@@ -580,7 +587,6 @@
     private BayeganiFolderPickerModal? folderPicker;
     private BayeganiTree? bayeganiTree;
     /// <summary>درخت بایگانی خالی برگشت (برای نمایش فهرست جایگزین).</summary>
-    private bool archiveTreeEmpty;
     private IncomingLetterViewModal? archiveViewModal;
 
     private string FolderTitle => folder switch
@@ -816,10 +822,19 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    /// <summary>
+    /// نامه‌های بایگانی‌شده‌ای که در درخت پوشه‌ها گره ندارند (بایگانیِ فقط با پرچم، یا دادهٔ
+    /// قدیمی). این فهرست همیشه نمایش داده می‌شود تا نامهٔ بایگانی‌شده هیچ‌وقت از دید کاربر
+    /// ناپدید نشود — همان باگی که باعث می‌شد نامه نه در بایگانی دیده شود نه در دریافتی.
+    /// </summary>
+    private List<IncomingLetterListItemDto> FallbackLetters =>
+        bayeganiTree is null
+            ? letters
+            : letters.Where(l => !bayeganiTree.TreeLetterIds.Contains(l.LetterId)).ToList();
+
     /// <summary>پس از بارگذاری درخت بایگانی: اگر خالی بود، فهرست جایگزین نمایش داده می‌شود.</summary>
     private Task OnArchiveTreeLoaded()
     {
-        archiveTreeEmpty = (bayeganiTree?.NodeCount ?? 0) == 0;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -830,10 +845,18 @@
         if (bayeganiTree != null) await bayeganiTree.ReloadAsync();
     }
 
+    /// <summary>
+    /// بعد از «خروج از بایگانی» در درخت.
+    /// پیش‌تر اینجا دوباره <c>ToggleBayeganiAsync</c> صدا زده می‌شد؛ ولی سرور در همان
+    /// حذف گره، پرچم ارجاع را آزاد کرده بود و این توگلِ دوم پرچم را باز می‌گرداند —
+    /// نتیجه: نامه از درخت بیرون می‌رفت، در بایگانی هم نبود و به «دریافتی» هم برنمی‌گشت.
+    /// حالا فقط داده‌ها و ریدر هم‌گام می‌شوند.
+    /// </summary>
     private async Task OnLetterUnarchived(BayeganiNodeDto node)
     {
-        if (node.ErjaId is { } erjaId) await IncomingSvc.ToggleBayeganiAsync(erjaId);
         await ReloadDataAsync();
+        if (readerOpen && activeLetter != null && node.LetterId is { } letterId && activeLetter.LetterId == letterId)
+            CloseReader();
     }
 
     private void CloseReader()
@@ -1053,13 +1076,24 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    /// <summary>
+    /// بایگانی/خروج از بایگانیِ سریع (بدون انتخاب پوشه).
+    /// اگر نامه ارجاعِ شخصی داشته باشد، پرچم همان ارجاع عوض می‌شود؛ در غیر این صورت
+    /// (ثبت‌کننده/دبیرخانه) پرچم خودِ نامه — پیش‌تر در حالت دوم دکمه هیچ کاری نمی‌کرد.
+    /// </summary>
     private async Task ToggleBayeganiAsync(IncomingLetterListItemDto item)
     {
-        if (!item.ErjaId.HasValue) return;
         try
         {
-            item.IsBayegani = await IncomingSvc.ToggleBayeganiAsync(item.ErjaId.Value);
-            Toast.Success(item.IsBayegani ? "نامه به بایگانی منتقل شد." : "از بایگانی خارج شد.");
+            item.IsBayegani = item.ErjaId is { } erjaId
+                ? await IncomingSvc.ToggleBayeganiAsync(erjaId)
+                : await IncomingSvc.ToggleLetterBayeganiAsync(item.LetterId);
+
+            Toast.Success(item.IsBayegani ? "نامه به بایگانی منتقل شد." : "از بایگانی خارج شد؛ به «دریافتی» برگشت.");
+
+            if (activeDetail != null && activeDetail.LetterId == item.LetterId)
+                activeDetail = await IncomingSvc.GetDetailAsync(item.LetterId);
+
             await ReloadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

@@ -128,6 +128,13 @@
     // (Parameter در بخش پارامترها تعریف شده؛ اینجا فقط وضعیت داخلی است)
     public int NodeCount { get; private set; }
 
+    /// <summary>
+    /// شناسهٔ نامه‌هایی که در درخت (پوشه‌ها) حاضرند. والد از این مجموعه استفاده می‌کند تا
+    /// نامه‌های بایگانی‌شده‌ای که گره درختی ندارند را در «فهرست جایگزین» نشان دهد؛
+    /// وگرنه آن نامه‌ها هیچ‌جا دیده نمی‌شدند و «گم» به‌نظر می‌رسیدند.
+    /// </summary>
+    public HashSet<int> TreeLetterIds { get; private set; } = new();
+
     /// <summary>پس از هر بار بارگذاری (موفق یا ناموفق) والد را باخبر می‌کند.</summary>
     [Parameter] public EventCallback OnLoaded { get; set; }
 
@@ -143,6 +150,7 @@
         finally
         {
             NodeCount = CountNodes(roots);
+            TreeLetterIds = CollectLetterIds(roots);
             loading = false;
             StateHasChanged();
             if (OnLoaded.HasDelegate)
@@ -158,6 +166,17 @@
         var c = nodes.Count;
         foreach (var n in nodes) c += CountNodes(n.Children);
         return c;
+    }
+
+    private static HashSet<int> CollectLetterIds(List<BayeganiNodeDto> nodes)
+    {
+        var set = new HashSet<int>();
+        foreach (var n in nodes)
+        {
+            if (!n.IsFolder && n.LetterId is { } id) set.Add(id);
+            set.UnionWith(CollectLetterIds(n.Children));
+        }
+        return set;
     }
 
     // ==================== فیلتر (فقط موضوع و شماره نامه) ====================

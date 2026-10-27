@@ -315,6 +315,18 @@ public class IncomingLettersController : RbacControllerBase
             if (erja != null) erja.IsBayegani = letter.IsBayegani;
         }
 
+        // خروج از بایگانی: هر گره درختیِ همین نامه/ارجاع برای همین کاربر بسته می‌شود.
+        // پیش‌تر فقط رکوردی که با ErjaId ساخته شده بود بسته می‌شد و گره‌های کلیدخورده با
+        // شناسهٔ نامه (ثبت‌کننده/دبیرخانه) در درخت می‌ماندند — نامه از «دریافتی/ارسالی»
+        // بیرون می‌رفت ولی در بایگانی می‌ماند (یا برعکس، گم می‌شد).
+        if (!letter.IsBayegani)
+        {
+            var letterNodes = await Db.LetterBayeganis
+                .Where(b => b.UserId == MyUserId && !b.IsFolder && !b.IsDelete && b.LetterId == letter.Id)
+                .ToListAsync();
+            foreach (var node in letterNodes) node.IsDelete = true;
+        }
+
         await Db.SaveChangesAsync();
         return Ok(new { isBayegani = letter.IsBayegani });
     }

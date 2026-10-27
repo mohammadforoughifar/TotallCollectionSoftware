@@ -585,11 +585,30 @@ public class ArchiveService : IArchiveService
 
     public async Task UnarchiveByLetterAsync(int letterId, int userId)
     {
-        var node = await _db.LetterBayeganis
-            .FirstOrDefaultAsync(x => x.LetterId == letterId && !x.IsDelete && x.UserId == userId)
-            ?? throw new Exception("این نامه در بایگانی شما نیست.");
+        var nodes = await _db.LetterBayeganis
+            .Where(x => x.LetterId == letterId && !x.IsDelete && x.UserId == userId && !x.IsFolder)
+            .ToListAsync();
 
-        node.IsDelete = true;
+        if (nodes.Count == 0)
+        {
+            // بایگانیِ فقط با پرچم (بدون گره درخت): خودِ پرچم نامه آزاد می‌شود
+            var incoming = await _db.IncomingLetters
+                .FirstOrDefaultAsync(l => l.Id == letterId && l.CreateUserId == userId);
+            var outgoing = incoming == null
+                ? await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId && l.CreatorUserId == userId)
+                : null;
+
+            if (incoming == null && outgoing == null) throw new Exception("این نامه در بایگانی شما نیست.");
+            if (incoming != null) incoming.IsBayegani = false;
+            if (outgoing != null) outgoing.IsArchived = false;
+        }
+
+        foreach (var node in nodes)
+        {
+            node.IsDelete = true;
+            await ClearArchiveFlagsAsync(node, userId);
+        }
+
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
     }
@@ -613,6 +632,68 @@ public class ArchiveService : IArchiveService
 
     // ==================== حذف ====================
 
+    /// <summary>همهٔ گره‌های زیرِ یک پوشه (تا هر عمقی) — برای حذف آبشاری پوشه.</summary>
+    private async Task<List<LetterBayegani>> CollectSubtreeAsync(int folderId, int userId)
+    {
+        var all = await _db.LetterBayeganis
+            .Where(x => x.UserId == userId && !x.IsDelete && x.TypeBayegani != TypeOutgoing)
+            .ToListAsync();
+
+        var result = new List<LetterBayegani>();
+        var queue = new Queue<int>();
+        queue.Enqueue(folderId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in all.Where(x => x.ParentId == current))
+            {
+                result.Add(child);
+                if (child.IsFolder) queue.Enqueue(child.BayeganiId);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// آزادکردن پرچم‌های بایگانیِ مرتبط با یک گره درخت.
+    /// <para>
+    /// نامهٔ وارده دو پرچم مستقل دارد: <c>Erja.IsBayegani</c> (سمت گیرنده) و
+    /// <c>IncomingLetter.IsBayegani</c> (سمت ثبت‌کننده/دبیرخانه)؛ نامهٔ صادرهٔ شخصی هم
+    /// <c>OutgoingLetter.IsArchived</c> دارد. پیش‌تر فقط پرچم ارجاع آزاد می‌شد و نتیجه این بود
+    /// که نامه از درخت بایگانی بیرون می‌رفت ولی به «دریافتی/ارسالی» هم برنمی‌گشت و گم می‌شد.
+    /// </para>
+    /// </summary>
+    private async Task ClearArchiveFlagsAsync(LetterBayegani node, int userId)
+    {
+        if (node.ErjaId is { } erjaId)
+        {
+            var erja = await _db.Erjas.FirstOrDefaultAsync(x => x.ErjaId == erjaId);
+            if (erja != null)
+            {
+                erja.IsBayegani = false;
+
+                // ثبت‌کنندهٔ همان نامهٔ وارده اگر خودِ کاربر باشد، پرچم خود نامه هم آزاد شود
+                var ownIncoming = await _db.IncomingLetters
+                    .FirstOrDefaultAsync(l => l.Id == erja.SourceId && l.CreateUserId == userId);
+                if (ownIncoming != null) ownIncoming.IsBayegani = false;
+            }
+        }
+
+        if (node.LetterId is { } letterId)
+        {
+            // یک شناسه در سه جدول معنی دارد؛ فقط رکوردی که مالکش همین کاربر است و واقعاً
+            // بایگانی است آزاد می‌شود تا نامهٔ بی‌ربط از بایگانی خارج نشود.
+            var incoming = await _db.IncomingLetters
+                .FirstOrDefaultAsync(l => l.Id == letterId && l.CreateUserId == userId && l.IsBayegani);
+            if (incoming != null) incoming.IsBayegani = false;
+
+            var outgoing = await _db.OutgoingLetters
+                .FirstOrDefaultAsync(l => l.Id == letterId && l.CreatorUserId == userId && l.IsArchived);
+            if (outgoing != null) outgoing.IsArchived = false;
+        }
+    }
+
     public async Task DeleteAsync(int bayeganiId, int userId)
     {
         var entity = await GetOwnedAsync(bayeganiId, userId);
@@ -626,22 +707,24 @@ public class ArchiveService : IArchiveService
 
         if (entity.IsFolder)
         {
-            var hasChildren = await _db.LetterBayeganis
-                .AnyAsync(x => x.ParentId == bayeganiId && !x.IsDelete);
+            // حذف پوشه آبشاری است: همان چیزی که پیام تأیید هم می‌گوید («نامه‌های داخل آن از
+            // بایگانی خارج می‌شوند»). پیش‌تر با پوشهٔ پر خطا می‌داد و پرچم نامه‌ها ناهمگام می‌ماند.
+            var subtree = await CollectSubtreeAsync(bayeganiId, userId);
+            foreach (var node in subtree)
+            {
+                if (!node.IsFolder) await ClearArchiveFlagsAsync(node, userId);
+                node.IsDelete = true;
+            }
 
-            if (hasChildren)
-                throw new Exception("این پوشه دارای محتوا یا زیرپوشه است. ابتدا محتویات پوشه را حذف یا منتقل کنید.");
+            entity.IsDelete = true;
+            await _db.SaveChangesAsync();
+            await _notify.BroadcastChangedAsync("letters");
+            return;
         }
 
-        // Soft Delete
+        // نامه: soft delete + آزادسازی همهٔ پرچم‌های بایگانیِ مربوط به آن
         entity.IsDelete = true;
-
-        // اگر نامه است، وضعیت بایگانی ارجاع را آزاد کن
-        if (entity.ErjaId is { } eid)
-        {
-            var erja = await _db.Erjas.SingleOrDefaultAsync(x => x.ErjaId == eid);
-            if (erja != null) erja.IsBayegani = false;
-        }
+        await ClearArchiveFlagsAsync(entity, userId);
 
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
