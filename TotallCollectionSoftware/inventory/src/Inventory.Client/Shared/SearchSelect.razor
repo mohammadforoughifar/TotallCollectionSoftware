@@ -31,16 +31,16 @@
         @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
         <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
         <div class="ss-menu" style="@MenuStyle" @onclick:stopPropagation="true">
-            @if (filtered.Count == 0)
+            @if (matches.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
             }
             else
             {
-                @for (var i = 0; i < filtered.Count; i++)
+                @for (var i = 0; i < matches.Count; i++)
                 {
                     var idx = i;
-                    var it = filtered[idx];
+                    var it = matches[idx];
                     var isSelected = it.Id == Value;
                     var isHighlighted = idx == highlightIndex;
                     <div id="@($"ss-opt-{_uniqueId}-{idx}")"
@@ -51,7 +51,8 @@
                          @onmouseover="@(() => highlightIndex = idx)">
                         @if (!string.IsNullOrWhiteSpace(it.AvatarUrl))
                         {
-                            <img class="user-avatar user-avatar-sm" src="@it.AvatarUrl" alt="" onerror="this.onerror=null;this.src='@Dflt';" />
+                            <img class="user-avatar user-avatar-sm" src="@it.AvatarUrl" alt="" loading="lazy" decoding="async"
+                                 onerror="this.onerror=null;this.src='@Dflt';" />
                         }
                         <span class="ss-item-copy">
                             <span class="ss-item-name">@it.Name</span>
@@ -60,6 +61,14 @@
                                 <small class="ss-item-info">@it.InfoText</small>
                             }
                         </span>
+                    </div>
+                }
+                @if (matchesTotal > matches.Count)
+                {
+                    <div class="ss-more" @onclick:stopPropagation="true">
+                        <i class="bi bi-info-circle"></i>
+                        @matchesTotal.FaDigits() مورد پیدا شد — @matches.Count.FaDigits() مورد اول نمایش داده شده؛
+                        برای رسیدن به بقیه، متن جستجو را دقیق‌تر کنید.
                     </div>
                 }
             }
@@ -83,9 +92,62 @@
     /// <summary>در حالت جستجوی راه‌دور، فیلتر گزینه‌ها را خود سرور انجام داده است.</summary>
     [Parameter] public bool RemoteSearch { get; set; }
 
+    /// <summary>
+    /// حداکثر گزینه‌ای که در منو رندر می‌شود.
+    /// <para>
+    /// چرا لازم است: بعضی کمبوها (مثل «همه پروژه‌ها» در گزارش کار) هزاران گزینه دارند.
+    /// پیش‌تر هنگام فوکوس یا تایپ، همهٔ گزینه‌های منطبق یک‌جا در منو رندر می‌شد و مرورگر
+    /// با ساخت هزاران گره DOM و درخواست آواتار برای هر ردیف، عملاً هنگ می‌کرد.
+    /// اکنون فقط همین تعداد رندر می‌شود و تعداد کلِ منطبق در پایین منو نوشته می‌شود.
+    /// </para>
+    /// </summary>
+    [Parameter] public int MaxVisible { get; set; } = 40;
+
     private string query = "";
     private bool open;
     private int highlightIndex = 0;
+
+    /// <summary>گزینه‌های قابل نمایش در منو (حداکثر <see cref="MaxVisible"/> مورد).</summary>
+    private List<LookupItem> matches = new();
+
+    /// <summary>تعداد کل گزینه‌های منطبق با متن جستجو (ممکن است از تعداد نمایش‌داده‌شده بیشتر باشد).</summary>
+    private int matchesTotal;
+
+    /// <summary>
+    /// بازسازی فهرست نتایج — یک‌بار در هر تغییر متن/گزینه‌ها، نه در هر بار خواندن مقدار
+    /// (پیش‌تر <c>filtered</c> یک property بود و در هر رندر و هر حرکت کلید دوباره روی کل
+    /// لیست LINQ اجرا می‌شد).
+    /// </summary>
+    private void RebuildMatches()
+    {
+        var q = (query ?? "").Trim();
+        var starts = new List<LookupItem>(Math.Min(MaxVisible, 32)); // نامی که با متن شروع می‌شود
+        var contains = new List<LookupItem>(Math.Min(MaxVisible, 32)); // بقیهٔ تطبیق‌ها
+        var total = 0;
+        foreach (var it in Items)
+        {
+            if (!RemoteSearch && q.Length > 0)
+            {
+                var idx = it.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) continue;
+                total++;
+                // نتایجی که نامشان با متن جستجو شروع می‌شود، اول فهرست می‌آیند
+                if (idx == 0) { if (starts.Count < MaxVisible) starts.Add(it); }
+                else if (contains.Count < MaxVisible) contains.Add(it);
+            }
+            else
+            {
+                total++;
+                if (starts.Count < MaxVisible) starts.Add(it);
+            }
+        }
+        if (contains.Count > 0)
+            starts.AddRange(contains.Take(Math.Max(0, MaxVisible - starts.Count)));
+        matches = starts;
+        matchesTotal = total;
+
+        if (highlightIndex >= matches.Count) highlightIndex = Math.Max(0, matches.Count - 1);
+    }
 
     /// <summary>پاک کردن انتخاب فعلی — مقدار صفر (هیچ) به والد برمی‌گردد</summary>
     private async Task ClearSelection()
@@ -93,6 +155,7 @@
         query = "";
         open = false;
         highlightIndex = 0;
+        RebuildMatches();
         if (Value != 0)
         {
             Value = 0;
@@ -107,14 +170,6 @@
     /// مصون از stacking context کارت‌ها و overflow جدول/مودال</summary>
     private string MenuStyle => Popover.FixedStyle(_mTop, _mLeft, _mWidth);
 
-    private List<LookupItem> filtered
-    {
-        get
-        {
-            if (RemoteSearch || string.IsNullOrWhiteSpace(query)) return Items;
-            return Items.Where(i => i.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-    }
 
     protected override void OnParametersSet()
     {
@@ -129,6 +184,7 @@
             var exists = Items.Any(i => i.Name == query);
             if (!exists) query = "";
         }
+        RebuildMatches();
     }
 
     private bool focused;
@@ -144,9 +200,14 @@
             if (sel is not null)
             {
                 query = sel.Name;
-                var idx = filtered.FindIndex(i => i.Id == Value);
+                RebuildMatches(); // فهرست منو با همین متن هم‌خوان شود
+                var idx = matches.FindIndex(i => i.Id == Value);
                 if (idx >= 0) highlightIndex = idx;
             }
+        }
+        else
+        {
+            RebuildMatches(); // منوی خالی: فهرست کامل (محدود به MaxVisible)
         }
 
         if (string.IsNullOrWhiteSpace(query) && SearchChanged.HasDelegate)
@@ -170,6 +231,7 @@
     {
         query = e.Value?.ToString() ?? "";
         highlightIndex = 0;
+        RebuildMatches(); // فهرست فقط یک‌بار برای همین متن ساخته می‌شود (نه در هر رندر)
         if (!open) await OpenMenu();
         if (SearchChanged.HasDelegate) await SearchChanged.InvokeAsync(query);
     }
@@ -187,11 +249,11 @@
             return;
         }
 
-        if (filtered.Count == 0) return;
+        if (matches.Count == 0) return;
 
         if (e.Key == "ArrowDown")
         {
-            if (highlightIndex < filtered.Count - 1)
+            if (highlightIndex < matches.Count - 1)
                 highlightIndex++;
             else
                 highlightIndex = 0;
@@ -203,16 +265,16 @@
             if (highlightIndex > 0)
                 highlightIndex--;
             else
-                highlightIndex = filtered.Count - 1;
+                highlightIndex = matches.Count - 1;
 
             await ScrollHighlightedIntoView();
         }
         else if (e.Key == "Enter")
         {
-            if (filtered.Count > 0)
+            if (matches.Count > 0)
             {
-                var clamped = Math.Clamp(highlightIndex, 0, filtered.Count - 1);
-                await Select(filtered[clamped]);
+                var clamped = Math.Clamp(highlightIndex, 0, matches.Count - 1);
+                await Select(matches[clamped]);
             }
         }
         else if (e.Key == "Escape")
@@ -238,12 +300,14 @@
         // اگر متن انتخابی مطابق نیست، برگرد به نام گزینه انتخاب‌شده
         var sel = Items.FirstOrDefault(i => i.Id == Value);
         query = sel?.Name ?? "";
+        RebuildMatches();
     }
 
     private async Task Select(LookupItem item)
     {
         query = item.Name;
         open = false;
+        RebuildMatches();
         if (Value != item.Id)
         {
             Value = item.Id;

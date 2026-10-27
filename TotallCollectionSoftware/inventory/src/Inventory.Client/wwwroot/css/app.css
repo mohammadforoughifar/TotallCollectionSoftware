@@ -491,6 +491,12 @@ a { text-decoration: none; }
 .ss-item.selected { background: var(--primary); color: #fff; }
 .ss-item.selected.highlighted { background: var(--primary-600, #4338ca) !important; color: #fff !important; }
 .ss-empty { padding: .9rem; color: var(--text-muted); font-size: .85rem; text-align: center; }
+/* یادداشت پایین منو وقتی تعداد نتایج از سقف نمایش بیشتر است (کمبوهای بزرگ مثل «همه پروژه‌ها») */
+.ss-more {
+    position: sticky; bottom: 0; display: flex; gap: .35rem; align-items: flex-start;
+    padding: .45rem .7rem; font-size: .74rem; line-height: 1.5;
+    background: #f8fafc; color: #475569; border-top: 1px solid var(--border);
+}
 
 /* دکمه پاک کردن انتخاب جستجوی انتخاب (کمبوباکس) */
 .ss-clear {
