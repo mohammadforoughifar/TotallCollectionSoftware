@@ -16,8 +16,7 @@
         </div>
         <div class="login-card">
             <div class="text-center mb-4">
-                <div class="login-logo"><i class="bi bi-box2-fill"></i></div>
-                <h4 class="fw-800 mt-3 mb-1">ورود به نرم افزار</h4>
+                <h4 class="fw-800 mb-1">ورود به نرم افزار</h4>
                 <div class="text-muted fs-8">با حساب سازمانی خود وارد شوید</div>
             </div>
 
@@ -25,14 +24,14 @@
                 <label class="form-label">نام کاربری</label>
                 <div class="input-group login-input">
                     <span class="input-group-text"><i class="bi bi-person"></i></span>
-                    <input class="form-control" autocomplete="username" placeholder="نام کاربری را وارد کنید" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" autofocus />
+                    <input class="form-control" name="fld-user" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="نام کاربری را وارد کنید" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" autofocus />
                 </div>
             </div>
             <div class="mb-4">
                 <label class="form-label">رمز عبور</label>
                 <div class="input-group login-input">
                     <span class="input-group-text"><i class="bi bi-key"></i></span>
-                    <input type="@(showPassword ? "text" : "password")" class="form-control" autocomplete="current-password" placeholder="رمز عبور را وارد کنید" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+                    <input type="@(showPassword ? "text" : "password")" class="form-control" name="fld-pass" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="رمز عبور را وارد کنید" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
                     <button type="button" class="btn btn-outline-secondary border-start-0" @onclick="() => showPassword = !showPassword" title="نمایش/پنهان کردن رمز"><i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i></button>
                 </div>
             </div>
