@@ -2343,6 +2343,27 @@ public class WorkOrdersController : ControllerBase
     /// خروجی گرفتن از لیست دستورها — همان فیلترهای لیست + انتخاب تب.
     /// tab: mine | assigned | archive — format: xlsx | pdf
     /// </summary>
+    /// <summary>
+    /// خلاصهٔ «تصمیم دستوردهنده» برای خروجی متنی: تعداد تأیید/رد/بی‌تصمیم و نام افراد.
+    /// تصمیم روی هر پاسخ (WorkOrderAssignee.OwnerDecision) ثبت می‌شود.
+    /// </summary>
+    private static string DecisionSummaryText(List<WorkOrderAssignee> assignees)
+    {
+        if (assignees.Count == 0) return "—";
+        var approved = assignees.Where(a => a.OwnerDecision == "Approved").ToList();
+        var rejected = assignees.Where(a => a.OwnerDecision == "Rejected").ToList();
+        var awaiting = assignees.Where(a => a.RepliedAt != null
+                                            && a.OwnerDecision != "Approved"
+                                            && a.OwnerDecision != "Rejected").ToList();
+        if (approved.Count == 0 && rejected.Count == 0 && awaiting.Count == 0)
+            return "در انتظار پاسخ";
+        var parts = new List<string>();
+        if (approved.Count > 0) parts.Add($"{approved.Count} تأیید ({string.Join("، ", approved.Select(a => a.Name))})");
+        if (rejected.Count > 0) parts.Add($"{rejected.Count} رد ({string.Join("، ", rejected.Select(a => a.Name))})");
+        if (awaiting.Count > 0) parts.Add($"{awaiting.Count} بی‌تصمیم ({string.Join("، ", awaiting.Select(a => a.Name))})");
+        return string.Join(" | ", parts);
+    }
+
     [HttpGet("export")]
     public async Task<IActionResult> Export([FromQuery] string tab = "mine", [FromQuery] string format = "xlsx",
         [FromQuery] ListFilterDto? filter = null)
@@ -2387,6 +2408,8 @@ public class WorkOrdersController : ControllerBase
                 new("پاسخ", Services.Export.ExportValueKind.Text, 50),
                 new("چک‌لیست", Services.Export.ExportValueKind.Text, 55),
                 new("وضعیت", Services.Export.ExportValueKind.Text, 70),
+                // تصمیم دستوردهنده روی پاسخ گیرندگان — همان ستونی که در لیست نمایش داده می‌شود
+                new("تصمیم دستوردهنده", Services.Export.ExportValueKind.Text, 95) { Wrap = true },
             }
         };
 
@@ -2417,7 +2440,8 @@ public class WorkOrdersController : ControllerBase
                 string.Join("، ", list.Select(a => a.Name)),
                 $"{replied} از {list.Count}",
                 cl == null ? "—" : $"{cl.Done} از {cl.Total}",
-                status);
+                status,
+                DecisionSummaryText(list));
             if (status == "گذشته از مهلت") row.Style = Services.Export.ExportRowStyle.Danger;
             else if (status == "انجام به‌موقع") row.Style = Services.Export.ExportRowStyle.Success;
             spec.Rows.Add(row);
