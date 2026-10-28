@@ -164,9 +164,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // PreferTemplateLetterhead خاموش است. پیش‌فرض: فقط ۱۰۰۳ (درخواست کارفرما).
     private readonly int[] _templateLetterheadCompanyIds;
 
-    // رنگ مقدارهای شماره/تاریخ/پیوست. طرح آن‌ها را روشن (سفید) روی نوار آبی گذاشته بود و
-    // روی چاپگر سیاه‌وسفید تقریباً محو می‌شدند؛ پیش‌فرض تیره و خواناست. برای برگشتن به
-    // رنگ خودِ طرح: Reporting:OutgoingLetters:MetaValueColor = "design"
+    // رنگ مقدارهای شماره/تاریخ/پیوست. پیش‌فرض سفید است — همان رنگ برچسب‌های چاپ‌شده روی
+    // نوار آبی و همان چیزی که قبلاً بود. برای رنگ دیگر: مقدار رنگ در
+    // Reporting:OutgoingLetters:MetaValueColor (مثلاً "#111827")، و برای رنگِ تعریف‌شده
+    // در خودِ قالب: "design" (یعنی null و برگشت به field.Color).
     private readonly string? _designMetaColor;
 
     // حاشیه‌ها و فاصله‌های چیدمان «از دل طرح». پیش‌فرض‌ها همان اعداد تأییدشدهٔ سربرگ هومپا
@@ -243,10 +244,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         _designPrint = DesignPrintSettings.Read(configuration);
 
-        var metaColor = configuration?["Reporting:OutgoingLetters:MetaValueColor"];
-        _designMetaColor = string.Equals(metaColor?.Trim(), "design", StringComparison.OrdinalIgnoreCase)
+        var metaColor = configuration?["Reporting:OutgoingLetters:MetaValueColor"]?.Trim();
+        // "design" → رنگ خودِ قالب؛ خالی → پیش‌فرض سفید؛ غیر آن → همان رنگ تنظیم‌شده.
+        _designMetaColor = string.Equals(metaColor, "design", StringComparison.OrdinalIgnoreCase)
             ? null
-            : string.IsNullOrWhiteSpace(metaColor) ? "#111827" : metaColor.Trim();
+            : string.IsNullOrWhiteSpace(metaColor) ? LetterPrintTemplate.MetaValueColor : metaColor;
         _companyTemplateMap = ReadCompanyTemplateMap();
         QuestPDF.Settings.License = LicenseType.Community;
     }
@@ -1175,7 +1177,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         MarkStage("db-signers");
 
         var sematIds = signers.Where(s => s.SematId.HasValue).Select(s => s.SematId!.Value)
-            .Concat(letter.CreatorSematId is int creatorSematId ? new[] { creatorSematId } : Array.Empty<int>())
             .Distinct().ToArray();
         var signerUserIds = signers.Select(s => s.UserId).Distinct().ToArray();
         var sematRows = sematIds.Length == 0 && signerUserIds.Length == 0
@@ -1194,23 +1195,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             .GroupBy(s => s.UserId!.Value)
             .ToDictionary(g => g.Key, g => string.IsNullOrWhiteSpace(g.First().CorrespondenceTitle) ? g.First().Title : g.First().CorrespondenceTitle!);
         MarkStage("db-semat-titles");
-
-        var creator = await _db.Users.AsNoTracking()
-            .Where(u => u.Id == letter.CreatorUserId)
-            .Select(u => new { u.FirstName, u.LastName, u.Username })
-            .FirstOrDefaultAsync();
-        var creatorName = creator == null
-            ? string.Empty
-            : $"{creator.FirstName} {creator.LastName}".Trim();
-        if (string.IsNullOrWhiteSpace(creatorName)) creatorName = creator?.Username ?? string.Empty;
-        var creatorSematTitle = letter.CreatorSematId is int creatorSemat
-                                && sematTitles.TryGetValue(creatorSemat, out var creatorSematValue)
-            ? creatorSematValue
-            : string.Empty;
-        // «سمت، نام» — فقط بخش‌های موجود با ویرگول فارسی جدا می‌شوند.
-        var creatorLine = string.Join("، ", new[] { creatorSematTitle, creatorName }
-            .Where(part => !string.IsNullOrWhiteSpace(part)));
-        MarkStage("db-creator");
 
         var copyTos = withCopy
             ? await _db.OutgoingLetterCopyToes.AsNoTracking()
@@ -1251,7 +1235,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         try
         {
             contentPdf = BuildContentPdf(
-                letter, signers, sematTitles, sematTitlesByUser, printData.AttachmentCount, creatorLine,
+                letter, signers, sematTitles, sematTitlesByUser, printData.AttachmentCount,
                 isA5, withCopy, copyTos,
                 hasLetterhead: letterheadPath != null,
                 letterheadCompanyId: selectedCompanyId,
@@ -1569,7 +1553,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         IReadOnlyDictionary<int, string> sematTitles,
         IReadOnlyDictionary<int, string> sematTitlesByUser,
         int attachmentCount,
-        string creatorLine,
         bool isA5,
         bool withCopy,
         List<OutgoingLetterCopyTo>? copyTos,
@@ -1637,7 +1620,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             var designTimer = Stopwatch.StartNew();
             var designContent = BuildDesignContentPdf(
-                letter, isA5, designLayout, number, date, receiverLine, title, creatorLine,
+                letter, isA5, designLayout, number, date, receiverLine, title,
                 externalReference, attachmentCount, hasLetterhead: hasLetterhead,
                 signerCards: signerCards, copyTos: copyTos, withCopy: withCopy);
             _logger.LogInformation(
@@ -2054,7 +2037,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         string date,
         string receiverLine,
         string title,
-        string creatorLine,
         string externalReference,
         int attachmentCount,
         bool hasLetterhead,
@@ -2098,11 +2080,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var infoFontSize = bodyFontSize;                       // «فونت یکدست و هم‌اندازه»
         var infoSpacing = Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f);
 
-        // پیوست: «ندارد» یا «دارد (تعداد برگ)».
-        var attachment = attachmentCount > 0
-            ? "دارد (" + LetterPrintTemplate.PersianDigits(
-                attachmentCount.ToString(CultureInfo.InvariantCulture)) + " برگ)"
-            : "ندارد";
+        // پیوست: فقط «دارد» یا «ندارد» (درخواست کارفرما: تعداد برگ جلوی آن نوشته نشود)،
+        // دقیقاً مثل نامهٔ داخلی.
+        var attachment = attachmentCount > 0 ? "دارد" : "ندارد";
 
         // رونوشت‌ها فقط در صورت وجود داده، با ویرگول فارسی.
         var copyNames = new List<string>();
@@ -2126,7 +2106,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             new("عنوان نامه", title, BoldValue: true),
             new("گیرنده نامه", receiverLine),
-            new("ایجادکننده", creatorLine),
             new("رونوشت", string.Join("، ", copyNames)),
             new("عطف به شماره", externalReference)
         };
@@ -2254,7 +2233,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // در A5 صفحه باریک است؛ حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
         if (right - left < 44f) left = Math.Max(0f, right - 44f);
         var labelWidth = _designPrint.DrawMetaLabels ? Math.Max(38f, _designPrint.MetaFontSize * 4.4f) : 0f;
-        var color = _designMetaColor ?? LetterPrintTemplate.MetaValueColor;
+        var fallbackColor = _designMetaColor ?? LetterPrintTemplate.MetaValueColor;
         var columnWidth = Math.Max(20f, right - left) - labelWidth;
 
         host.PaddingLeft(Math.Max(0f, left - sideMargin))
@@ -2282,6 +2261,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     // مقادیر بلند (مثل «۲۲۱/۱۴۰۵/IT») با کوچک‌شدن فونت در یک خط جا می‌شوند؛
                     // هیچ‌وقت با فاصله‌گذاری کاراکتری یا بریدن ارقام چیده نمی‌شوند.
                     var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);
+                    // اگر تنظیمات "design" باشد، رنگ اعلام‌شده در خودِ قالب ملاک است.
+                    var color = _designMetaColor
+                        ?? (string.IsNullOrWhiteSpace(field.Color) ? fallbackColor : field.Color);
 
                     table.Cell().Height(rowHeight).AlignMiddle().AlignRight()
                         .Text(LetterPrintTemplate.IsolateMixedText(text))

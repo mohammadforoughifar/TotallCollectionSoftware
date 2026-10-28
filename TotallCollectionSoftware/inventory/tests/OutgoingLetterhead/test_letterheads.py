@@ -849,9 +849,11 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 # هر سه مقدار یک اندازه‌اند؛ مقدار بلند به‌جای بریده‌شدن، فونتش کوچک می‌شود.
                 self.assertIn("FitFontSize(text, columnWidth, _designPrint.MetaFontSize)", service)
                 self.assertIn('.FontFamily("Vazirmatn-Bold")', service)
-                # رنگ تیرهٔ خوانا روی نوار آبی (طرح سفید بود و در چاپگر لیزری محو می‌شد).
+                # رنگ مقدارها مثل قبل و مثل خودِ طرح سفید است (درخواست کارفرما).
                 self.assertIn("_designMetaColor ?? LetterPrintTemplate.MetaValueColor", service)
-                self.assertIn("MetaValueColor = \"#111827\"",
+                self.assertIn('"MetaValueColor": "#FFFFFF"',
+                              (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8"))
+                self.assertIn('MetaValueColor = "#FFFFFF"',
                               (tree / "Inventory.Api" / "Services" / "Office"
                                / "LetterPrintTemplate.cs").read_text(encoding="utf-8"))
 
@@ -928,7 +930,6 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                                  "BuildContentPdf has no printData variable (CS0103)")
                 self.assertIn("int attachmentCount,", body,
                               "تعداد برگ پیوست باید پارامتر BuildContentPdf باشد")
-                self.assertIn("string creatorLine,", body)
                 self.assertIn("externalReference, attachmentCount, hasLetterhead: hasLetterhead", body)
 
     def test_receiver_and_title_rows_have_a_gap_and_hanging_indent(self):

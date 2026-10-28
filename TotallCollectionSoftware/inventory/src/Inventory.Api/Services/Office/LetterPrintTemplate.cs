@@ -38,8 +38,11 @@ internal static class LetterPrintTemplate
     /// <summary>حداقل حاشیهٔ چپ و راست (میلی‌متر) — برابر در دو طرف.</summary>
     internal const float SideMarginMillimeters = 15f;
 
-    /// <summary>رنگ خوانای مقدارهای سربرگ (شماره/تاریخ/پیوست) روی زمینهٔ آبی.</summary>
-    internal const string MetaValueColor = "#111827";
+    /// <summary>
+    /// رنگ مقدارهای سربرگ (شماره/تاریخ/پیوست). مثل قبل و مثل خودِ طرح، **سفید** است تا با
+    /// برچسب‌های سفیدِ چاپ‌شده روی نوار آبی یکدست باشد (درخواست کارفرما).
+    /// </summary>
+    internal const string MetaValueColor = "#FFFFFF";
 
     /// <summary>مقادیر کم‌رنگ سربرگ (پیوست/شماره صفحه).</summary>
     internal const string MutedColor = "#475569";

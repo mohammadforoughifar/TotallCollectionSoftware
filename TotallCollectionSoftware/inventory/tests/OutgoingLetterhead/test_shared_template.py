@@ -169,9 +169,9 @@ class SharedLetterTemplateTests(unittest.TestCase):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
-                self.assertIn('"دارد ("', outgoing)
-                self.assertIn('" برگ)"', outgoing)
-                self.assertIn('"ندارد"', outgoing)
+                # فقط «دارد»/«ندارد» — تعداد برگ جلوی پیوست نوشته نمی‌شود (درخواست کارفرما).
+                self.assertIn('var attachment = attachmentCount > 0 ? "دارد" : "ندارد";', outgoing)
+                self.assertNotIn('" برگ)"', outgoing)
                 self.assertIn('string.Join("، ", copyNames)', outgoing)
 
     def test_persian_date_and_mixed_values_keep_their_order(self):
@@ -184,12 +184,15 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn('"\\u2066" + value + "\\u2069"', template)   # LRI/PDI مثل <bdi>
                 self.assertIn("LetterPrintTemplate.IsolateMixedText(text)", self.outgoing(tree))
 
-    def test_meta_values_are_dark_fit_and_have_optional_labels(self):
+    def test_meta_values_are_white_fit_and_have_optional_labels(self):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
                 template = self.template(tree)
-                self.assertIn('MetaValueColor = "#111827"', template)
+                # رنگ مقدارها مثل قبل و مثل خودِ طرح سفید است (روی نوار آبی سربرگ).
+                self.assertIn('MetaValueColor = "#FFFFFF"', template)
+                self.assertIn('"MetaValueColor": "#FFFFFF"',
+                              (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8"))
                 self.assertIn("var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);", outgoing)
                 self.assertIn("return Math.Max(minimum, preferred * maxWidth / estimated);", outgoing)
                 self.assertIn("DrawMetaLabels", outgoing)
