@@ -329,13 +329,11 @@
         // ایمیل در متن نامه به میزبانِ برنامه می‌خورد و بدون توکن هم ۴۰۱ می‌گیرد.
         var letterBody = await EmailLetterBodyBuilder.BuildAsync(email, EmailSvc);
 
-        description = "<p><b>برگرفته از ایمیل دریافتی</b><br/>"
-                    + "از: " + System.Net.WebUtility.HtmlEncode(email.FromOrTo)
-                    + "<br/>موضوع: " + System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(email.Subject) ? "(بدون موضوع)" : email.Subject)
-                    + "<br/>حساب: " + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
-                    + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
-                    + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + letterBody.Html + "</blockquote>";
+        // متن نامه «مثل خودِ ایمیل دریافتی»: یک خطِ کوتاهِ منبع و سپس بدنه با همان قالب
+        // و تصاویرِ داخل متن (بدون برچسب یا نام فایل).
+        description = "<p style='color:#64748b;font-size:12px;margin:0 0 10px'>"
+                    + $"برگرفته از ایمیل دریافتی — {email.Date.ToFaDateTime()}</p>"
+                    + letterBody.Html;
 
         var transferredImages = letterBody.InlineImages + letterBody.AttachedImages;
         var emailImageCount = email.Attachments.Count(a => a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
@@ -357,6 +355,9 @@
         // نامه ثبت نمی‌شوند؛ فقط پیوست‌های واقعی منتقل می‌شوند.
         foreach (var attachment in email.Attachments.Where(a => !a.IsInline))
         {
+            // تصویری که داخل متن نامه جاسازی شده، دوباره به‌عنوان فایل پیوست ثبت نمی‌شود
+            if (letterBody.EmbeddedIds.Contains(attachment.AttachmentId)) continue;
+
             // ۱) کنترل پیش از دانلود پیوست از ایمیل
             if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
             {

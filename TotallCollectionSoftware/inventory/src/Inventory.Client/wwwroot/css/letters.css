@@ -854,7 +854,7 @@
 .ltx .eml-reader .paper-body img { max-width:100% !important; height:auto !important; display:inline-block; }
 /* تصاویر داخل متن نامه (از جمله تصاویری که از ایمیل منتقل می‌شوند) هم‌عرض کاغذ بمانند */
 .ltx .paper-body img,
-.ltx .letter-body img { max-width:100% !important; height:auto !important; display:block; margin:6px 0; border-radius:6px; }
+.ltx .letter-body img { max-width:100% !important; height:auto !important; margin:6px auto; border-radius:6px; }
 /* جدول‌های منتقل‌شده از ایمیل نباید از کاغذ نامه بیرون بزنند */
 .ltx .paper-body table,
 .ltx .letter-body table { max-width:100% !important; border-collapse:collapse; }

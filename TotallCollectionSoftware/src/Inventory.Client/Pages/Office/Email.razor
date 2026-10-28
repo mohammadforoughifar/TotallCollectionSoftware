@@ -699,30 +699,37 @@
         converting = true;
         try
         {
+            // عنوانِ نامه نباید خالی باشد — ایمیل‌های بدون موضوع جایگزین می‌شوند
+            var title = string.IsNullOrWhiteSpace(openMsg.Subject) ? "(بدون موضوع)" : openMsg.Subject.Trim();
+
+            // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده + تصاویرِ داخل متن و
+            // تصاویرِ پیوستی، همه به‌صورت data URI داخل خودِ متن — بدون برچسب یا نام فایل،
+            // تا متن نامه «مثل خودِ ایمیل دریافتی» دیده شود.
+            var letterContent = await EmailLetterContent.BuildAsync(openMsg, EmailSvc);
+
+            // فقط پیوست‌های واقعیِ غیرتصویری به‌عنوان فایل ضمیمه منتقل می‌شوند؛ تصویری که
+            // داخل متن جاسازی شده دوباره به‌شکل فایل نمی‌آید.
             var files = new List<IBrowserFile>();
             foreach (var a in openMsg.Attachments)
             {
+                if (letterContent.EmbeddedIds.Contains(a.AttachmentId)) continue;
                 var (data, name) = await EmailSvc.DownloadAttachmentAsync(a.AttachmentId);
                 if (data != null && data.Length > 0)
                     files.Add(new MemoryBrowserFile(name, "application/octet-stream", data));
             }
 
-            // عنوانِ نامه نباید خالی باشد — ایمیل‌های بدون موضوع جایگزین می‌شوند
-            var title = string.IsNullOrWhiteSpace(openMsg.Subject) ? "(بدون موضوع)" : openMsg.Subject.Trim();
+            var transferred = letterContent.InlineImages + letterContent.AttachedImages;
+            if (transferred > 0)
+                Toast.Success($"{transferred.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+            if (letterContent.Skipped > 0)
+                Toast.Error($"{letterContent.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
-            // سربرگِ «منبعِ نامه» تا گیرنده بداند این نامه برگرفته از یک ایمیل است
-            var boxName = openMsg.Box == "Sent" ? "ارسالی" : "دریافتی";
-            var from = openMsg.Box == "Sent" ? "به: " + openMsg.FromOrTo : "از: " + openMsg.FromOrTo;
-            var header = "<div style=\"margin:0 0 12px;padding:8px 10px;border-inline-start:3px solid #c7d2fe;"
-                       + "background:#f8fafc;border-radius:8px;font-family:Tahoma;font-size:12px;color:#475569;direction:rtl\">"
-                       + "<b>برگرفته از ایمیل " + boxName + "</b><br/>"
-                       + System.Net.WebUtility.HtmlEncode(from) + "<br/>"
-                       + "موضوع: " + System.Net.WebUtility.HtmlEncode(title) + "<br/>"
-                       + "حساب: " + System.Net.WebUtility.HtmlEncode(openMsg.AccountAddress)
-                       + " — تاریخ: " + openMsg.Date.ToFaDateTime()
-                       + "</div>";
+            // یک خطِ کوتاهِ منبع در بالای متن (نه کادرِ چندخطی) تا نامه مثل خودِ ایمیل بماند
+            var header = "<p style=\"color:#64748b;font-size:12px;margin:0 0 10px\">"
+                       + $"برگرفته از ایمیل {(openMsg.Box == "Sent" ? "ارسالی" : "دریافتی")} — {openMsg.Date.ToFaDateTime()}"
+                       + "</p>";
 
-            letterCompose?.Open(title, header + (openMsg.Body ?? ""), null, files);
+            letterCompose?.Open(title, header + letterContent.Html, null, files);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }

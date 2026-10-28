@@ -313,11 +313,19 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
-        description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
-                    + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
-                    + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
-                    + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + (email.Body ?? "") + "</blockquote>";
+        // متن نامه «مثل خودِ ایمیل دریافتی» ساخته می‌شود: یک خطِ کوتاهِ منبع (تاریخ)،
+        // سپس بدنه با همان قالب و تصاویرِ داخل متن. تصاویر به‌صورت data URI داخل متن
+        // جاسازی می‌شوند (آدرسِ نسبیِ پیوستِ ایمیل در متن نامه کار نمی‌کرد).
+        var letterContent = await EmailLetterContent.BuildAsync(email, EmailSvc);
+        description = "<p style='color:#64748b;font-size:12px;margin:0 0 10px'>"
+                    + $"برگرفته از ایمیل دریافتی — {email.Date.ToFaDateTime()}</p>"
+                    + letterContent.Html;
+
+        var transferred = letterContent.InlineImages + letterContent.AttachedImages;
+        if (transferred > 0)
+            Toast.Success($"{transferred.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+        if (letterContent.Skipped > 0)
+            Toast.Error($"{letterContent.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
         // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
@@ -328,6 +336,10 @@
         var skippedAtt = 0;
         foreach (var attachment in email.Attachments)
         {
+            // تصویری که داخل متن نامه جاسازی شده، «دوباره» به‌عنوان فایل پیوست ثبت
+            // نمی‌شود؛ وگرنه کاربر همان تصویر را هم داخل متن می‌بیند و هم به‌شکل فایل.
+            if (letterContent.EmbeddedIds.Contains(attachment.AttachmentId)) continue;
+
             // ۱) کنترل پیش از دانلود پیوست از ایمیل
             if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
             {
