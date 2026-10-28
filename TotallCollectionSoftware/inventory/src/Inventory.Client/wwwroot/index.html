@@ -18,7 +18,7 @@
     <link rel="mask-icon" href="icon.svg?v=2" color="#e8352a" />
     <link rel="stylesheet" href="css/bootstrap.min.css" />
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
-    <link rel="stylesheet" href="css/app.css?v=15" />
+    <link rel="stylesheet" href="css/app.css?v=16" />
     <link rel="stylesheet" href="css/letters.css?v=9" />
     <link rel="stylesheet" href="Inventory.Client.styles.css" />
     <link href="manifest.webmanifest" rel="manifest" />
@@ -32,10 +32,14 @@
 
 <body>
     <div id="app">
+        <!-- صفحهٔ نخست/بارگذاری: نشان فروغ آریا تا آماده شدن برنامه نمایش داده می‌شود -->
         <div class="app-loading">
             <div class="app-loading-card">
-                <div class="fw-semibold">در حال بارگذاری سامانه…</div>
-                <div class="spinner-border text-primary mt-2" style="width:1.6rem;height:1.6rem" role="status"></div>
+                <img src="images/forough-logo.png" alt="فروغ آریا" class="app-loading-logo"
+                     width="150" height="150" decoding="async" />
+                <div class="app-loading-title">نرم‌افزار یکپارچه فروغ آریا</div>
+                <div class="app-loading-sub">در حال بارگذاری سامانه…</div>
+                <div class="app-loading-bar" role="status" aria-label="در حال بارگذاری"></div>
             </div>
         </div>
     </div>
