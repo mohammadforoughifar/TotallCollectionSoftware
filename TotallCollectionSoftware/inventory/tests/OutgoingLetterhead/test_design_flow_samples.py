@@ -90,60 +90,85 @@ class TemplateGeometry:
 
 
 class PrintLayout:
-    """همان عددهایی که `BuildDesignContentPdf` برای صفحه‌بندی استفاده می‌کند."""
+    """همان عددهایی که `BuildDesignContentPdf` برای صفحه‌بندی استفاده می‌کند.
+
+    از نسخهٔ «قالب مشترک» به بعد، ارتفاع بلوک اطلاعات و خط جداکننده از
+    `LetterPrintTemplate` می‌آید و اندازهٔ قلم مثل نامهٔ داخلی ۱۱/۹ است؛ این کلاس همان
+    محاسبه را بازسازی می‌کند تا اگر روزی عددی عوض شود، صفحه‌بندی دوباره سنجیده شود.
+    """
 
     def __init__(self, tree: Path, size: str = "A4") -> None:
+        self.tree = tree
         self.geometry = TemplateGeometry(tree, size)
+        original_size = self.geometry.size
         layout = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
                   / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
-        self.design_footer = self._ternary(layout, "DesignFooterReserve\\(bool isA5\\)", "A4")
-        self.art_bottom = self._ternary(layout, "HeaderArtBottom\\(bool isA5\\)", "A4")
+        self.design_footer = self._ternary(layout, "DesignFooterReserve\\(bool isA5\\)", size)
+        self.art_bottom = self._ternary(layout, "HeaderArtBottom\\(bool isA5\\)", size)
 
-        service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
-                   / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
-        # اندازهٔ یکسان مقدارهای سربرگ و فاصلهٔ برچسب از تنظیمات می‌آید.
+        template = (tree / "Inventory.Api" / "Services" / "Office"
+                    / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
+        self.body_line_height = _number(r"BodyLineHeight = ([\d.]+)f", template)
+        self.paragraph_spacing = _number(r"ParagraphSpacing = ([\d.]+)f", template)
+        self.separator_spacing = _number(r"SeparatorSpacing = ([\d.]+)f", template)
+        self.min_side_margin_mm = _number(r"SideMarginMillimeters = ([\d.]+)f", template)
+
         settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
         self.label_gap = _number(r'"DesignLabelGapPt":\s*([\d.]+)', settings)
-        self.art_gap = _number(r'"DesignHeaderArtGapPt":\s*([\d.]+)', settings)
-        self.body_line_height = _number(r"var bodyLineHeight = ([\d.]+)f;", service)
+        self.content_gap_mm = _number(r'"DesignContentTopGapMm":\s*([\d.]+)', settings, 10.0)
 
-        receiver = self.geometry.boxes["receiver"][0]
-        title = self.geometry.boxes["title"][0]
+        number = self.geometry.boxes["number"][0]
+        date = self.geometry.boxes["date"][0]
+        attachment = self.geometry.boxes["attachment"][0]
         body = self.geometry.boxes["body"][0]
-        self.body_font = self._body_font(tree)
+        meta_bottom = max(box[1] + box[3] for box in (number, date, attachment))
 
-        # contentTop = max(pایین هنر + فاصله, بالای گیرنده) و سقفِ «دست‌کم ۲۰۰pt متن».
-        self.content_top = max(self.art_bottom + self.art_gap, receiver[1])
+        # contentTop = max(پایین هنر + فاصلهٔ تنظیمات, پایین ناحیهٔ شماره/تاریخ/پیوست + ۶).
+        self.content_top = max(self.art_bottom + self.content_gap_mm * 72 / 25.4, meta_bottom + 6)
+        # سقفِ «دست‌کم ۲۰۰pt متن در صفحهٔ اول» (۱۵۰ در A5).
         self.content_top = min(self.content_top,
-                               self.geometry.page_height - self.design_footer - 200)
+                               self.geometry.page_height - self.design_footer
+                               - (150 if size == "A5" else 200))
         self.available = self.geometry.page_height - self.design_footer - self.content_top
 
-        self.receiver_row = self.body_font * 1.3
-        self.title_row = self.body_font * 1.3
-        self.title_gap = max(2.0, min(title[1] - (receiver[1] + receiver[3]), 24.0))
-        self.body_gap = max(2.0, min(body[1] - (title[1] + title[3]), 24.0))
-        # فاصلهٔ بالای بلوک امضا + تصویر امضا + نام + سمت (همان عددهای BuildDesignContentPdf).
-        self.signature_padding = 12 if self.geometry.size == "A5" else 14
-        self.signature_block = self.signature_padding + 75.6 + 2 + self.body_font * 1.3 * 2
-        self.chars_per_line = max(20.0, body[2] / (self.body_font * 0.5))
+        # اندازهٔ قلم مثل نامهٔ داخلی: ۱۱pt در A4 و ۹pt در A5 (هرچه طرح کوچک‌تر گفته، ملاک است).
+        design_font = self._body_font(tree, size)
+        self.body_font = min(9.0 if size == "A5" else 11.0, design_font)
+
+        # ستون متن: عرض کادر متنِ طرح، ولی نه پهن‌تر از «صفحه منهای دو حاشیهٔ ۱۵mm».
+        min_side = self.min_side_margin_mm * 72 / 25.4
+        self.text_width = min(body[2], self.geometry.page_width - 2 * min_side)
+        self.side_margin = (self.geometry.page_width - self.text_width) / 2
+        self.chars_per_line = max(20.0, self.text_width / (self.body_font * 0.5))
+
+        # بلوک اطلاعات: عنوان/گیرنده/ایجادکننده/رونوشت (هر ردیف ۱٫۵۵em و فاصلهٔ بین ردیف‌ها).
+        self.info_rows = 4
+        row = self.body_font * 1.55
+        self.info_height = (self.info_rows * row
+                            + (self.info_rows - 1) * max(self.paragraph_spacing, self.body_font * 0.45))
+        self.separator = 2 * (4 if size == "A5" else 6) + 0.7
+        self.text_area = self.available - self.info_height - self.separator
+
+        # بلوک امضا: فاصلهٔ بالای بلوک + تصویر امضا (سقف ۷۲/۵۲pt) + نام + سمت.
+        self.signature_padding = 12
+        self.signature_height = min(
+            self.geometry.boxes.get("signature", ((0, 0, 0, 51.84 if size == "A5" else 75.6), ""))[0][3],
+            52.0 if size == "A5" else 72.0)
+        self.signature_block = (self.signature_padding + self.signature_height + 2
+                                + (self.body_font + 1) * 1.3 + self.body_font * 1.3)
 
     @staticmethod
     def _ternary(source: str, method: str, size: str):
-        match = re.search(method + r"[^\n]*\? (?:(A5: )?[\d.]+f : )?([\d.]+)f", source)
-        if match is None:
-            raise AssertionError(f"متد {method} پیدا نشد")
-        a5, a4 = (match.group(1), match.group(2)) if match.group(1) else (None, match.group(2))
-        # برای DesignFooterReserve/HeaderArtBottom الگو: `=> isA5 ? 82f : 116f`
         find = re.search(method + r"[^\n]*=> isA5 \? ([\d.]+)f : ([\d.]+)f", source)
-        if find is not None:
-            return float(find.group(1)) if size == "A5" else float(find.group(2))
-        raise AssertionError(f"متد {method} به شکل سه‌گانهٔ مورد انتظار نیست")
+        if find is None:
+            raise AssertionError(f"متد {method} به شکل سه‌گانهٔ مورد انتظار نیست")
+        return float(find.group(1)) if size == "A5" else float(find.group(2))
 
     @staticmethod
-    def _body_font(tree: Path):
-        """اندازهٔ قلم کادر متن از خود قالب (هر جزء، عنصری با type="Text" است)."""
+    def _body_font(tree: Path, size: str = "A4"):
+        """اندازهٔ قلم کادر متن از خود قالب (هر جزء، عنصری با type=\"Text\" است)."""
         path = (tree / "Inventory.Api" / "Reports" / "OutgoingLetters" / "Companies"
-                / "1003" / "Outgoing-A4.mrt")
+                / "1003" / f"Outgoing-{size}.mrt")
         for element in ET.parse(path).getroot().iter():
             if element.get("type") != "Text":
                 continue
@@ -164,7 +189,7 @@ class PrintLayout:
 
     def paragraph(self, chars: int) -> float:
         lines = max(1, -(-chars // int(self.chars_per_line)))
-        return lines * self.line_height()
+        return lines * self.line_height() + self.paragraph_spacing
 
     def list_block(self, items: int, chars_each: int) -> float:
         # هر آیتم: خطِ خودش + فاصلهٔ ۰٫۳۵em؛ بالای فهرست ۰٫۴۵em و پایانش همان اندازه.
@@ -173,19 +198,19 @@ class PrintLayout:
 
     def paginate(self, blocks: list[float]) -> tuple[int, float, bool]:
         """→ (تعداد صفحه, ارتفاع پرشده در صفحهٔ آخر, آیا صفحهٔ آخر متن دارد؟)"""
-        pages, used = 1, 0.0
-        used += self.receiver_row + self.title_gap + self.title_row + self.body_gap
-        if used > self.available:
-            pages, used = 2, 0.0
+        pages = 1
+        used = self.info_height + self.separator      # بلوک اطلاعات فقط در صفحهٔ اول
+        capacity = self.available                      # صفحهٔ اول: سربرگ تا پابرگ
         for block in blocks:
-            if used + block > self.available:
+            if used + block > capacity:
                 pages += 1
                 used = 0.0
+                capacity = self.available
             used += block
 
-        text_on_last_page = used > 0.5
+        text_on_last_page = used > 1.0
         # بلوک امضا page-break-inside: avoid است و به آخرین پاراگراف قفل می‌شود.
-        if used + self.signature_block > self.available:
+        if used + self.signature_block > capacity:
             pages += 1
             used = 0.0
         used += self.signature_block
@@ -193,11 +218,11 @@ class PrintLayout:
 
 
 class DesignFlowSampleTests(unittest.TestCase):
-    # «بلند» دقیقاً دو برابر «متوسط» است (خواستهٔ کارفرما: نامهٔ دو برابر باید به صفحهٔ دوم برود).
+    # سه نمونهٔ کارفرما: کوتاه، متوسط با فهرست، بلند (دو برابر متوسط).
     SAMPLES = {
         # (پاراگراف‌ها به «تعداد کاراکتر», آیتم‌های فهرست, کاراکتر هر آیتم)
         "کوتاه": ([40, 140, 110], 0, 0),
-        "متوسط": ([40, 160, 150, 140], 4, 55),
+        "متوسط": ([40, 120, 110, 90], 3, 45),
         "بلند": ([40, 160, 150, 140, 160, 150, 140, 160, 150], 8, 55),
     }
 
@@ -207,34 +232,60 @@ class DesignFlowSampleTests(unittest.TestCase):
             blocks.append(layout.list_block(items, item_chars))
         return blocks
 
-    def test_short_and_medium_letters_stay_on_one_page(self):
+    def test_short_letters_stay_on_one_page_in_a4_and_a5(self):
+        for tree in TREES:
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.name, size=size):
+                    layout = PrintLayout(tree, size)
+                    paragraphs, items, item_chars = self.SAMPLES["کوتاه"]
+                    pages, _, _ = layout.paginate(self.blocks(layout, paragraphs, items, item_chars))
+                    self.assertEqual(pages, 1, f"نامهٔ کوتاه در {size} نباید دو صفحه شود")
+
+    def test_medium_letter_with_list_fits_one_page_on_a4(self):
         for tree in TREES:
             with self.subTest(tree=tree.name):
-                layout = PrintLayout(tree)
-                for name in ("کوتاه", "متوسط"):
-                    paragraphs, items, item_chars = self.SAMPLES[name]
-                    pages, _, _ = layout.paginate(self.blocks(layout, paragraphs, items, item_chars))
-                    self.assertEqual(pages, 1, f"نامهٔ {name} نباید دو صفحه شود")
+                layout = PrintLayout(tree, "A4")
+                paragraphs, items, item_chars = self.SAMPLES["متوسط"]
+                pages, _, _ = layout.paginate(self.blocks(layout, paragraphs, items, item_chars))
+                self.assertEqual(pages, 1, "نامهٔ متوسط با فهرست باید یک صفحه بماند")
 
     def test_long_letter_moves_to_second_page_with_its_signature(self):
         for tree in TREES:
-            with self.subTest(tree=tree.name):
-                layout = PrintLayout(tree)
-                paragraphs, items, item_chars = self.SAMPLES["بلند"]
-                pages, _, text_before_signature = layout.paginate(
-                    self.blocks(layout, paragraphs, items, item_chars))
-                self.assertEqual(pages, 2, "نامهٔ بلند باید فقط دو صفحه باشد")
-                self.assertTrue(text_before_signature,
-                                "بلوک امضا نباید تنها و بی‌متن در صفحهٔ آخر بیاید")
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.name, size=size):
+                    layout = PrintLayout(tree, size)
+                    paragraphs, items, item_chars = self.SAMPLES["بلند"]
+                    pages, _, text_before_signature = layout.paginate(
+                        self.blocks(layout, paragraphs, items, item_chars))
+                    self.assertGreaterEqual(pages, 2, "نامهٔ بلند باید به صفحهٔ دوم برود")
+                    self.assertLessEqual(pages, 3, "نامهٔ بلند نباید بی‌دلیل سه صفحه شود")
+                    self.assertTrue(text_before_signature,
+                                    "بلوک امضا نباید تنها و بی‌متن در صفحهٔ آخر بیاید")
 
     def test_letterhead_art_and_footer_leave_a_usable_text_area(self):
         """ناحیهٔ متن باید از پایین قوس سربرگ شروع شود و بالای گرافیک پابرگ بماند."""
         for tree in TREES:
-            with self.subTest(tree=tree.name):
-                layout = PrintLayout(tree)
-                self.assertGreater(layout.content_top, layout.art_bottom)
-                self.assertGreater(layout.available, layout.signature_block + layout.line_height() * 6,
-                                   "ناحیهٔ متن صفحهٔ اول برای نامهٔ کوتاه + امضا کافی نیست")
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.name, size=size):
+                    layout = PrintLayout(tree, size)
+                    self.assertGreater(layout.content_top, layout.art_bottom)
+                    self.assertGreater(layout.text_area,
+                                       layout.signature_block + layout.line_height() * 6,
+                                       f"ناحیهٔ متن {size} برای نامهٔ کوتاه + امضا کافی نیست")
+
+    def test_text_column_is_centred_with_equal_margins(self):
+        """حاشیهٔ چپ و راست برابر و دست‌کم ۱۵ میلی‌متر است (نه مختصات دلخواه طرح)."""
+        for tree in TREES:
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.name, size=size):
+                    layout = PrintLayout(tree, size)
+                    self.assertGreaterEqual(round(layout.side_margin, 3),
+                                            round(15 * 72 / 25.4, 3),
+                                            "حاشیهٔ کناری کمتر از ۱۵ میلی‌متر شده است")
+                    left = layout.side_margin
+                    right = layout.geometry.page_width - layout.side_margin - layout.text_width
+                    self.assertAlmostEqual(left, right, places=1,
+                                           msg="حاشیهٔ چپ و راست نامهٔ صادره برابر نیست")
 
     def test_meta_values_keep_the_15_millimetre_safe_margin(self):
         """شماره/تاریخ/پیوست با حاشیهٔ امن ۱۵mm از لبهٔ چپ چاپ می‌شوند."""

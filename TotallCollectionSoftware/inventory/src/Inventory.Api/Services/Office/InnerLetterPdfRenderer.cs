@@ -27,8 +27,8 @@ internal static class InnerLetterPdfRenderer
         var homepa = homepaBackground is { Length: > 0 };
         var fontSize = a5 ? 9f : 11f;
         var pc = new PersianCalendar();
-        var date = PersianDigits($"{pc.GetYear(data.Date):0000}/{pc.GetMonth(data.Date):00}/{pc.GetDayOfMonth(data.Date):00}");
-        var number = PersianDigits(data.Number);
+        var date = LetterPrintTemplate.PersianDigits($"{pc.GetYear(data.Date):0000}/{pc.GetMonth(data.Date):00}/{pc.GetDayOfMonth(data.Date):00}");
+        var number = LetterPrintTemplate.PersianDigits(data.Number);
         var body = PlainText(data.Body);
 
         void HeaderField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
@@ -87,7 +87,7 @@ internal static class InnerLetterPdfRenderer
                 c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();
                 c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}").AlignRight();
                 c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}").AlignRight();
-                c.Item().PaddingVertical(5).LineHorizontal(0.7f).LineColor("#999999");
+                LetterPrintTemplate.Separator(c);
                 // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.
                 c.Item().Text(body).AlignRight();
                 if (withHamesh && data.Hamesh.Count > 0)
@@ -113,8 +113,6 @@ internal static class InnerLetterPdfRenderer
         text = WebUtility.HtmlDecode(Regex.Replace(text, "<[^>]+>", ""));
         return Regex.Replace(text, @"[^\S\r\n]+", " ").Trim();
     }
-
-    private static string PersianDigits(string value) => new(value.Select(c => c is >= '0' and <= '9' ? "۰۱۲۳۴۵۶۷۸۹"[c - '0'] : c).ToArray());
 
     private static void EnsureFonts(string directory)
     {

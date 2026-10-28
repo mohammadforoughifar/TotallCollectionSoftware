@@ -32,7 +32,8 @@ internal static class RichLetterPdfRenderer
         RegexOptions.Compiled);
 
     internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
-        Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false)
+        Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false,
+        float paragraphSpacing = 0f)
     {
         var root = Parse(RichLetterHtml.Sanitize(html));
         // برای چیدمان «از دل طرح» (شرکت ۱۰۰۳): هر تکهٔ متنی با RLM محصور می‌شود تا جهت پایهٔ
@@ -48,10 +49,12 @@ internal static class RichLetterPdfRenderer
                     trailing.Tag == "div" && !trailing.Children.Any(child => BlockTags.Contains(child.Tag));
                 if (isParagraph && TextLength(trailing) <= 360)
                 {
-                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight);
+                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight,
+                        paragraphSpacing);
                     column.Item().ShowEntire().Column(group =>
                     {
-                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight);
+                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight,
+                            paragraphSpacing);
                         keepWithTrailingText(group);
                     });
                     return true;
@@ -66,7 +69,7 @@ internal static class RichLetterPdfRenderer
                         var prefixItems = trailing.Children.Where(child => child.Tag == "li").Take(items.Count - 2).ToList();
                         var preceding = root.Children.Take(lastIndex).ToList();
                         if (prefixItems.Count > 0) preceding.Add(CloneWithChildren(trailing, prefixItems));
-                        RenderChildren(column, preceding, defaultFontSize, lineHeight);
+                        RenderChildren(column, preceding, defaultFontSize, lineHeight, paragraphSpacing);
                         column.Item().ShowEntire().Column(group =>
                         {
                             RenderListItem(group, items[^2], ordered, items.Count - 1, defaultFontSize, lineHeight);
@@ -79,7 +82,7 @@ internal static class RichLetterPdfRenderer
             }
         }
 
-        RenderChildren(column, root.Children, defaultFontSize, lineHeight);
+        RenderChildren(column, root.Children, defaultFontSize, lineHeight, paragraphSpacing);
         return false;
     }
 
@@ -161,13 +164,18 @@ internal static class RichLetterPdfRenderer
         return root;
     }
 
-    private static void RenderChildren(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize, float lineHeight)
+    private static void RenderChildren(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize,
+        float lineHeight, float paragraphSpacing = 0f)
     {
         var inline = new List<Node>();
+        // فاصلهٔ پاراگراف فقط «بین» بلوک‌ها می‌آید؛ نه قبل از اولین بلوک و نه بعد از آخرین.
+        var emitted = false;
+        float BlockGap() => emitted ? paragraphSpacing : 0f;
         void FlushInline()
         {
             if (inline.Count == 0) return;
-            AddTextBlock(column, inline, fontSize, lineHeight, bold: false, extraTop: 0);
+            AddTextBlock(column, inline, fontSize, lineHeight, bold: false, extraTop: BlockGap());
+            emitted = true;
             inline.Clear();
         }
 
@@ -186,16 +194,19 @@ internal static class RichLetterPdfRenderer
                 {
                     case "ul":
                     case "ol":
-                        RenderList(column, node, fontSize, lineHeight);
+                        RenderList(column, node, fontSize, lineHeight, BlockGap());
+                        emitted = true;
                         break;
                     case "table":
-                        RenderTable(column, node, fontSize, lineHeight);
+                        RenderTable(column, node, fontSize, lineHeight, BlockGap());
+                        emitted = true;
                         break;
                     case "hr":
                         column.Item().PaddingVertical(4).LineHorizontal(0.6f).LineColor("#94a3b8");
+                        emitted = true;
                         break;
                     case "blockquote":
-                        column.Item().PaddingRight(10).Text(text =>
+                        column.Item().PaddingTop(BlockGap()).PaddingRight(10).Text(text =>
                         {
                             text.DefaultTextStyle(style => style
                                 .FontSize(fontSize)
@@ -204,19 +215,29 @@ internal static class RichLetterPdfRenderer
                             text.AlignRight();
                             AppendInline(text, node, new Formatting(), fontSize);
                         });
+                        emitted = true;
                         break;
                     case "div":
                         if (node.Children.Any(child => child.Tag != "#text" && BlockTags.Contains(child.Tag)))
-                            RenderChildren(column, node.Children, fontSize, lineHeight);
+                        {
+                            column.Item().PaddingTop(BlockGap()).Column(nested =>
+                                RenderChildren(nested, node.Children, fontSize, lineHeight, paragraphSpacing));
+                            emitted = true;
+                        }
                         else
-                            AddTextBlock(column, node.Children, fontSize, lineHeight, bold: false, extraTop: 0,
-                                node.Attributes.GetValueOrDefault("style"));
+                        {
+                            AddTextBlock(column, node.Children, fontSize, lineHeight, bold: false,
+                                extraTop: BlockGap(), node.Attributes.GetValueOrDefault("style"));
+                            emitted = true;
+                        }
                         break;
                     default:
                         var heading = node.Tag.Length == 2 && node.Tag[0] == 'h';
                         var headingSize = heading ? Math.Min(fontSize + 2, 20) : fontSize;
-                        AddTextBlock(column, node.Children, headingSize, lineHeight, heading, ExtraTop(node.Tag, fontSize),
+                        AddTextBlock(column, node.Children, headingSize, lineHeight, heading,
+                            Math.Max(ExtraTop(node.Tag, fontSize), BlockGap()),
                             node.Attributes.GetValueOrDefault("style"));
+                        emitted = true;
                         break;
                 }
             }
@@ -262,7 +283,8 @@ internal static class RichLetterPdfRenderer
         });
     }
 
-    private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight)
+    private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight,
+        float topGap = 0f)
     {
         var ordered = list.Tag == "ol";
         var items = list.Children.Where(x => x.Tag == "li").ToList();
@@ -270,7 +292,7 @@ internal static class RichLetterPdfRenderer
 
         // فاصلهٔ عمودی یکسان بالای فهرست، بین آیتم‌ها و بعد از فهرست.
         var spacing = fontSize * 0.35f;
-        column.Item().PaddingVertical(fontSize * 0.45f).Column(box =>
+        column.Item().PaddingTop(topGap).PaddingVertical(fontSize * 0.45f).Column(box =>
         {
             for (var position = 0; position < items.Count; position++)
                 RenderListItem(box, items[position], ordered, position + 1, fontSize, lineHeight,
@@ -316,12 +338,13 @@ internal static class RichLetterPdfRenderer
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
 
-    private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight)
+    private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight,
+        float topGap = 0f)
     {
         var rows = Descendants(tableNode).Where(x => x.Tag == "tr").ToList();
         if (rows.Count == 0) return;
         var columnCount = Math.Max(1, rows.Max(row => row.Children.Count(cell => cell.Tag is "td" or "th")));
-        column.Item().Table(table =>
+        column.Item().PaddingTop(topGap).Table(table =>
         {
             table.ColumnsDefinition(columns =>
             {

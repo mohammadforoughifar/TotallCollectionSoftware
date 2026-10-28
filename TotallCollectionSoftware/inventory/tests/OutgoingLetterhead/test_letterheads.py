@@ -159,8 +159,12 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
         self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
         self.assertNotIn('Text("امضاکنندگان")', source)
-        self.assertNotIn("IDynamicComponent", source)
-        self.assertNotIn(".Dynamic(", source)
+        # مسیر کلاسیک (بقیهٔ شرکت‌ها) هنوز پابرگ ثابت خودش را دارد؛
+        # مسیر ۱۰۰۳ «صفحه X از Y» را از قالب مشترک و فقط وقتی نامه چندصفحه شد می‌گیرد.
+        self.assertIn(".Dynamic(new LetterPrintTemplate.PageNumberFooter(", source)
+        template = (SERVICE.parents[1] / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
+        self.assertIn("if (total <= 1 || total == int.MaxValue)", template,
+                      "شمارهٔ صفحه فقط در نامهٔ چندصفحه‌ای چاپ می‌شود")
         self.assertIn("page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>", source)
         self.assertIn("text.CurrentPageNumber()", source)
         self.assertIn("text.TotalPages()", source)
@@ -817,7 +821,9 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 header = header.split("page.Content()", 1)[0]
                 self.assertNotIn("Slot.Receiver", header)
                 self.assertNotIn("Slot.Title", header)
-                self.assertIn("AddDesignRow(col, design, receiverBox", service)
+                # گیرنده/عنوان در بلوک اطلاعاتِ بدنه می‌آیند (نه در سربرگِ تکراری).
+                self.assertIn("LetterPrintTemplate.InfoBlock(col, infoRows", service)
+                self.assertNotIn("AddDesignRow", service)
 
     def test_letter_content_starts_below_the_letterhead_art(self):
         """کپشن‌های «گیرنده نامه:/عنوان نامه:» نباید روی قوس آبی سربرگ بیفتند."""
@@ -840,11 +846,14 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn("_designPrint.MetaSafeLeft", service)
                 # هر سه مقدار یک اندازه و یک وزن هستند (طرح «پیوست» را ۱۲ و بقیه را ۱۰ داشت).
                 self.assertIn("Reporting:OutgoingLetters:DesignMetaFontSize", service)
-                self.assertIn(".FontSize(_designPrint.MetaFontSize)", service)
+                # هر سه مقدار یک اندازه‌اند؛ مقدار بلند به‌جای بریده‌شدن، فونتش کوچک می‌شود.
+                self.assertIn("FitFontSize(text, columnWidth, _designPrint.MetaFontSize)", service)
                 self.assertIn('.FontFamily("Vazirmatn-Bold")', service)
-                # مقدار به برچسبِ چاپ‌شده روی سربرگ می‌چسبد (تراز راست، مثل پیش‌نمایش طرح).
-                self.assertIn("FontColor(_designMetaColor ?? field.Color)", service)
-                self.assertIn("box = box.AlignRight();", service)
+                # رنگ تیرهٔ خوانا روی نوار آبی (طرح سفید بود و در چاپگر لیزری محو می‌شد).
+                self.assertIn("_designMetaColor ?? LetterPrintTemplate.MetaValueColor", service)
+                self.assertIn("MetaValueColor = \"#111827\"",
+                              (tree / "Inventory.Api" / "Services" / "Office"
+                               / "LetterPrintTemplate.cs").read_text(encoding="utf-8"))
 
     def test_paragraph_direction_is_forced_right_to_left(self):
         """bidi: ویرگول/نقطهٔ پایانی نباید به ابتدای خط پرت شود."""
@@ -861,7 +870,8 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn('"\\u2066" + match.Value + "\\u2069"', renderer)
                 self.assertIn("forceRtlParagraph: true", self.service_text(tree))
                 service = self.service_text(tree)
-                self.assertIn('$"\\u200F{value}\\u200F"', service)
+                # مقدارهای ترکیبی (مثل «۲۲۱/۱۴۰۵/IT») با جداسازی جهت چاپ می‌شوند.
+                self.assertIn("LetterPrintTemplate.IsolateMixedText(text)", service)
                 self.assertIn('$"\\u200F{card.Name}\\u200F"', service)
 
     def test_pdf_gets_searchable_metadata(self):
@@ -916,22 +926,29 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 body = body.split("\n    private ", 1)[0]
                 self.assertNotIn("printData", body,
                                  "BuildContentPdf has no printData variable (CS0103)")
-                self.assertIn("hasAttachment: hasAttachment", body)
+                self.assertIn("int attachmentCount,", body,
+                              "تعداد برگ پیوست باید پارامتر BuildContentPdf باشد")
+                self.assertIn("string creatorLine,", body)
+                self.assertIn("externalReference, attachmentCount, hasLetterhead: hasLetterhead", body)
 
     def test_receiver_and_title_rows_have_a_gap_and_hanging_indent(self):
         """«گیرنده نامهجناب آقای …» نباید چسبیده چاپ شود؛ برچسب و مقدار دو ستون جدا هستند."""
         for tree in self.TREES:
             with self.subTest(tree=tree.parts[-3]):
                 service = self.service_text(tree)
+                template = (tree / "Inventory.Api" / "Services" / "Office"
+                            / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
                 # فاصلهٔ ثابت و قابل تنظیم بین مقدار و برچسب (طرح: ۰٫۱ اینچ = ۷٫۲pt).
                 self.assertIn("Reporting:OutgoingLetters:DesignLabelGapPt", service)
-                self.assertIn("row.ConstantItem(_designPrint.LabelGap);", service)
+                self.assertIn("_designPrint.LabelGap", service)
+                self.assertIn("line.ConstantItem(labelGap);", template)
                 # مقدار در ستون خودش می‌شکند، پس خط دوم زیر برچسب نمی‌رود (hanging indent).
-                self.assertIn("row.RelativeItem().AlignTop().AlignRight()", service)
-                # برچسب با دو نقطه در انتهای خودش، چسبیده به سمت مقدار.
-                self.assertIn(r'}\u200F:"', service)
-                # هم‌نشینی برچسب ۱۲pt با مقدار ۱۴pt روی یک خط.
-                self.assertIn("baselineShift", service)
+                self.assertIn("line.RelativeItem().AlignTop().AlignRight()", template)
+                # برچسب و مقدار هم‌اندازه و روی یک خط؛ دونقطه در انتهای برچسب.
+                self.assertIn('$"{row.Label}:"', template)
+                self.assertIn(".FontSize(fontSize)", template)
+                self.assertNotIn("baselineShift", service,
+                                 "اختلاف اندازهٔ برچسب/مقدار نباید با جابه‌جایی دستی جبران شود")
 
     def test_list_items_put_the_marker_in_its_own_column(self):
         """آیتم‌های فهرست: شماره در ستون راست، متن در ستون خودش، تورفتگی آویزان."""
@@ -943,7 +960,7 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn("row.ConstantItem(markerWidth).Text(text =>", renderer)
                 self.assertIn("RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f)", renderer)
                 # فاصلهٔ یکسان بالای فهرست، بین آیتم‌ها و بعد از آن.
-                self.assertIn("column.Item().PaddingVertical(fontSize * 0.45f).Column(", renderer)
+                self.assertIn("column.Item().PaddingTop(topGap).PaddingVertical(fontSize * 0.45f).Column(", renderer)
                 self.assertIn("float topPadding = 0f)", renderer)
                 # شمارهٔ فارسی با نقطهٔ پایانی، در جهت راست‌به‌چپ: «۱.»
                 self.assertIn('{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."', renderer)
