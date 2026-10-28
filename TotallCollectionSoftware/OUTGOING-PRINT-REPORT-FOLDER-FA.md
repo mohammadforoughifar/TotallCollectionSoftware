@@ -343,10 +343,51 @@ catch (Exception ex)
 * این تغییر در **هر دو درخت** (`src/` و `inventory/src/`) اعمال شد و یک تست هم اضافه شد که
   وجود `Lazy<Task` را در این سرویس ممنوع می‌کند تا خطای ساخت برنگردد.
 
+### ۴-۱۰. خطای ساخت پروژه: `CS0535` — ناهم‌خوانی امضای `GeneratePdfAsync`
+
+```text
+Error CS0535  'OutgoingLetterPrintService' does not implement interface member
+'IOutgoingLetterPrintService.GeneratePdfAsync(int, string, bool, bool, bool, bool)'
+File: inventory/src/Inventory.Api/Services/Office/Outgoing/OutgoingLetterPrintService.cs
+```
+
+علت: سرویس چاپ در دو درخت **دو اینترفیس متفاوت** دارد:
+
+| درخت | امضای اینترفیس |
+|---|---|
+| `src/` | `GeneratePdfAsync(int letterId, string size, bool withCopy = true)` |
+| `inventory/src/` | `GeneratePdfAsync(int letterId, string size, bool withCopy, bool withMargin, bool withLetterhead, bool requireSignatures)` |
+
+هنگام بازنویسی کش رندر (رفع `VSTHRD011`) در هر دو درخت یک امضای سه‌پارامتری نوشته شد؛ در نتیجه
+پیاده‌سازیِ درخت `inventory/` دیگر عضو اینترفیس شش‌پارامتری نبود و کامپایلر `CS0535` داد. دو خطای
+پنهانِ دیگر هم از همین ریشه بود: `CS0103` برای `withMargin`/`withLetterhead`/`requireSignatures`
+و `CS7036` برای فراخوانی `BuildPrintCacheKeyAsync(letterId, size, withCopy)`.
+
+**اصلاح** (فقط درخت `inventory/`):
+
+```csharp
+public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true,
+    bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
+{
+    var cacheKey = await BuildPrintCacheKeyAsync(
+        letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
+    ...
+    var pdf = await GeneratePdfCoreAsync(
+        letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
+```
+
+نکتهٔ مهم دربارهٔ کش: کلید کش باید **همهٔ** گزینه‌های مؤثر در خروجی را ببیند؛ وگرنه نسخهٔ
+«با سربرگ» و «بدون سربرگ» (یا «با امضا» و «بدون امضا») خروجی یکدیگر را از کش برمی‌داشتند.
+
+**جلوگیری از تکرار:** یک تست قراردادی اضافه شد که برای هر دو درخت، هر عضو
+`IOutgoingLetterPrintService` را با پیاده‌سازی‌اش مقایسه می‌کند (تعداد **و نام** پارامترها) و
+همچنین بررسی می‌کند کلید کش همین گزینه‌ها را شامل شود. این تست روی نسخهٔ قبل از اصلاح
+(`interface=6, impl=3`) شکست می‌خورد و روی نسخهٔ فعلی سبز است.
+
 ## ۵) تست‌ها و بررسی‌هایی که انجام شد
 
 ```bash
-python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۵۶ تست، OK
+python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۵۸ تست، OK
 ```
 
 تست‌های تازه (در همان فایل) این‌ها را قفل می‌کنند:
@@ -374,6 +415,8 @@ python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py
   دکمهٔ «تشخیص چاپ» و متد کلاینت.
 * نبود `Lazy<Task`/`render.Value` در سرویس چاپ (قاعدهٔ `VSTHRD011` ساخت پروژه را می‌شکند)
   و استفادهٔ `TaskCompletionSource<byte[]?>` با `RunContinuationsAsynchronously`.
+* هم‌خوانی امضای `GeneratePdfAsync`/`DiagnoseAsync` با اینترفیس در هر دو درخت (جلوگیری از `CS0535`)
+  و حضور همهٔ گزینه‌های خروجی در کلید کش.
 
 تصویر سربرگ‌های همهٔ شرکت‌ها جداگانه decode و پیکسل‌به‌پیکسل اندازه‌گیری شد (جای برچسب‌ها و
 رنگ متن) تا اعداد بالا از روی تصویر واقعی به دست بیاید، نه از حافظه.

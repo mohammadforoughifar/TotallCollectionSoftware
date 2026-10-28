@@ -688,5 +688,67 @@ class LetterheadSourceResolutionTests(unittest.TestCase):
                 self.assertIn("print/diagnose?size=", service)
 
 
+class PrintServiceSignatureTests(unittest.TestCase):
+    """CS0535: امضای متد عمومی سرویس چاپ باید دقیقاً با اینترفیسش یکی باشد.
+
+    هنگام بازنویسی کش رندر، امضای سه‌پارامتریِ درخت `src/` روی پیاده‌سازی درخت
+    `inventory/` نوشته شد؛ اینترفیس آن درخت شش پارامتر دارد و ساخت پروژه با
+    «does not implement interface member» متوقف شد.
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    @staticmethod
+    def _params(text):
+        return [part for part in text.split(",") if part.strip()]
+
+    def test_public_print_methods_match_the_interface(self):
+        import re
+
+        for tree in self.TREES:
+            service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                       / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+            with self.subTest(tree=tree.parts[-3]):
+                interface = re.search(
+                    r"public interface IOutgoingLetterPrintService.*?\n\}", service, re.S)
+                self.assertIsNotNone(interface, "interface IOutgoingLetterPrintService not found")
+                declared = re.findall(
+                    r"^\s*Task<[^>]+(?:\[\])?\??>\s+(\w+)\(([^)]*)\);", interface.group(0), re.M)
+                self.assertGreaterEqual(len(declared), 2)
+
+                for name, parameters in declared:
+                    with self.subTest(method=name):
+                        expected = len(self._params(parameters))
+                        implementation = re.search(
+                            rf"public async Task<[^>]+(?:\[\])?\??>\s+{name}\(([^)]*)\)", service, re.S)
+                        self.assertIsNotNone(implementation, f"{name} is not implemented")
+                        actual = len(self._params(implementation.group(1)))
+                        self.assertEqual(
+                            expected, actual,
+                            f"{name} takes {actual} parameters but the interface declares {expected} "
+                            "(CS0535 / CS7036)")
+                        # نام پارامترها هم باید یکی باشد؛ کلید کش و کش رندر به همین نام‌ها وابسته‌اند.
+                        for parameter in self._params(parameters):
+                            declared_name = parameter.split("=")[0].strip().split()[-1]
+                            self.assertRegex(implementation.group(1), rf"\b{declared_name}\b")
+
+    def test_render_cache_key_sees_every_output_option(self):
+        # اگر کلید کش بعضی گزینه‌ها را نبیند، نسخهٔ «با سربرگ» و «بدون سربرگ» خروجی
+        # یکدیگر را از کش برمی‌دارند.
+        for tree in self.TREES:
+            service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                       / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+            with self.subTest(tree=tree.parts[-3]):
+                wrapper = service.split("public async Task<byte[]?> GeneratePdfAsync", 1)[1]
+                wrapper = wrapper.split("if (cacheKey == null) return null;", 1)[0]
+                signature = wrapper.split(")", 1)[0]
+                key_call = wrapper.split("BuildPrintCacheKeyAsync", 1)[1].split(");", 1)[0]
+                for option in ("withCopy", "withMargin", "withLetterhead", "requireSignatures"):
+                    if option in signature:
+                        self.assertIn(option, key_call,
+                                      f"{option} must take part in the cache key")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -740,9 +740,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// نسخهٔ بدون رونوشت برای تحویل به سازمان مقصد است؛ نسخهٔ با رونوشت
     /// در پروندهٔ دبیرخانه باقی می‌ماند.
     /// </summary>
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true,
+        bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
     {
-        var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy);
+        // کلید کش باید «همهٔ» گزینه‌های مؤثر در خروجی را ببیند، وگرنه چاپ با/بدون سربرگ و
+        // با/بدون امضا خروجی یکدیگر را از کش برمی‌داشت.
+        var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
         if (cacheKey == null) return null;
 
         // رکورد پیش از شروع رندر در فرهنگ لغت منتشر می‌شود تا درخواست‌های هم‌زمان
