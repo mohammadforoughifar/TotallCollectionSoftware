@@ -71,7 +71,7 @@ public interface IOutgoingLetterService
     /// دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, CancellationToken cancellationToken = default);
     /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 }
@@ -360,17 +360,36 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/move-letter", dto);
 
     /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود و نسخهٔ چاپ</summary>
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true,
+        CancellationToken cancellationToken = default)
     {
         var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}";
-        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
+        using var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
 
-        var resp = await _http.SendAsync(req);
+        // ساخت PDF روی سربرگ ممکن است طولانی باشد؛ بودجهٔ زمانی را مسیر چاپ (LetterPrintWorkflow)
+        // تعیین می‌کند، پس توکن لغو تا خود HttpClient ادامه می‌یابد و سقف پیش‌فرض ۱۰۰ ثانیه‌ای
+        // HttpClient دیگر عامل شکست نیست.
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new ApiException("ارتباط با سرور برقرار نشد: " + ex.Message);
+        }
+
+        using (resp)
+        {
         if (!resp.IsSuccessStatusCode)
         {
-            var text = await resp.Content.ReadAsStringAsync();
+            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
             string msg = "دریافت فایل چاپ ناموفق بود.";
             try
             {
@@ -380,6 +399,7 @@ public class OutgoingLetterService : IOutgoingLetterService
             catch { }
             throw new ApiException(msg);
         }
-        return await resp.Content.ReadAsByteArrayAsync();
+        return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
+        }
     }
 }

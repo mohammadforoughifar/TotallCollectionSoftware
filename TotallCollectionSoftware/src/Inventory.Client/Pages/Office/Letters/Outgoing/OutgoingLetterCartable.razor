@@ -1,6 +1,7 @@
 @page "/outgoing-letters"
 @page "/outgoing-letters/{Tab}"
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject ILetterService LetterSvc
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -1175,29 +1176,16 @@
     /// <summary>چاپ نامه روی سربرگ شرکت (A4/A5) — PDF از سرور</summary>
     private async Task PrintPdf(string size)
     {
-        if (selected == null) return;
+        if (selected == null || printingPdf) return;
         printMenuOpen = false;
         printingPdf = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ اگر پس از دریافت PDF باز شود،
-        // مرورگر آن را popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size);
-            var name = $"letter-{(selected.SadereNumber ?? selected.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            var number = selected.SadereNumber ?? selected.LetterNumber ?? selected.LetterId.ToString();
+            var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            // بودجهٔ زمانی، نمایش پیشرفت و بازیابی خطا در LetterPrintWorkflow است.
+            await PrintWorkflow.PrintPdfAsync(
+                ct => OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size, withCopy: true, cancellationToken: ct), name);
         }
         finally { printingPdf = false; }
     }

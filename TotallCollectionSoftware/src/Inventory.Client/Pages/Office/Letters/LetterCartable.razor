@@ -2,6 +2,7 @@
 @page "/letters/{Tab}"
 @using System.Net.Http.Headers
 @inject ILetterService LetterSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -1280,26 +1281,11 @@
         var letterId = selected.LetterId;
         var number = selected.LetterNumber;
         printingPdf = true;
-        string? printId = null;
         try
         {
-            // Open only on the user's explicit with/without-hamesh click, before awaiting the API.
-            printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
-            var bytes = await LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh);
             var name = $"inner-letter-{number}-{size}-{(withHamesh ? "with-hamesh" : "without-hamesh")}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            // بودجهٔ زمانی، نمایش پیشرفت و بازیابی خطا در LetterPrintWorkflow است.
+            await PrintWorkflow.PrintPdfAsync(ct => LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh, ct), name);
         }
         finally { printingPdf = false; }
     }

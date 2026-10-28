@@ -528,6 +528,15 @@ public class OutgoingLettersController : RbacControllerBase
         {
             return StatusCode(500, new { message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            // خطای موتور چاپ (فونت/PDFsharp/QuestPDF/دیتابیس) قبلاً 500 خالی می‌داد و پنجرهٔ
+            // چاپ فقط «خطا» نشان می‌داد؛ اکنون علت واقعی هم لاگ و هم به کاربر می‌رسد.
+            _logger.LogError(ex,
+                "ساخت PDF نامه صادره ناموفق بود. LetterId={LetterId}, Size={Size}, WithCopy={WithCopy}",
+                id, size, withCopy);
+            return StatusCode(500, new { message = $"ساخت PDF نامه ناموفق بود ({ex.GetType().Name}): {ex.Message}" });
+        }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
         var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);

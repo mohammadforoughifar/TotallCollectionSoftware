@@ -69,6 +69,11 @@
     .downloads { display: flex; gap: 8px; flex-wrap: wrap; }
     .pdf-link { color: #175d9f; background: #fff; border: 1px solid #d4e0ec; }
     .pdf-link:hover { background: #f6fbff; border-color: #9ebbd7; }
+    .preview-note {
+      margin: 0; padding: 10px 14px; border-radius: 10px; max-width: 460px;
+      background: #fff7e6; border: 1px solid #f0d29a; color: #7a5a18;
+      font-size: 12px; line-height: 1.9;
+    }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
     .preview-card, .info-card {
       border: 1px solid #d9e2ec; border-radius: 17px; background: rgba(255,255,255,.78);
@@ -146,7 +151,7 @@
         <div class="brand-mark" aria-hidden="true">هـ</div>
         <div>
           <h1>نامهٔ صادره | هومپا</h1>
-          <p class="subtitle">قالب‌های شرکت ۳ — پیش‌نمایش نمونهٔ A5 و A4</p>
+          <p class="subtitle">قالب‌های شرکت ۳ (هومپا) — پیش‌نمایش نمونهٔ A5 و A4</p>
         </div>
       </div>
       <div class="rtl-badge">متن فارسی با جهت راست‌به‌چپ</div>
@@ -157,11 +162,8 @@
         <button type="button" data-size="A5" aria-pressed="true">A5 · ۵٫۸۳ × ۸٫۲۷ اینچ</button>
         <button type="button" data-size="A4" aria-pressed="false">A4 · ۸٫۲۷ × ۱۱٫۶۹ اینچ</button>
       </div>
-      <nav class="downloads" aria-label="دانلود پیش‌نمایش PDF">
-        <a class="pdf-link" href="Report_A5_OutgoingLetter_Preview.pdf" download>PDF پیش‌نمایش A5</a>
-        <a class="pdf-link" href="Report_A4_OutgoingLetter_Preview.pdf" download>PDF پیش‌نمایش A4</a>
-        <a class="pdf-link" href="Preview_OutgoingLetter_Company3_A5_A4.pdf" download>PDF هر دو اندازه</a>
-      </nav>
+      <p class="preview-note">این صفحه فقط پیش‌نمایش مرورگری چیدمان قالب است. PDF نهایی از مسیر
+        «کارتابل نامهٔ صادره ← چاپ A4/A5» ساخته می‌شود؛ فایل PDF آماده‌ای در این پوشه نگه‌داری نمی‌شود.</p>
     </section>
 
     <section class="content-grid">

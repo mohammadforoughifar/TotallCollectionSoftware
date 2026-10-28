@@ -2,6 +2,7 @@
 @using Inventory.Shared.Dtos
 @using Inventory.Client.Pages.Office.Letters.Incoming
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IEmailClientService EmailSvc
 @inject IToastService Toast
 @inject NavigationManager Nav
@@ -770,29 +771,16 @@
     {
         if (printItem == null) return;
         printing = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
-        // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(printItem.LetterId, printSize, printWithCopy);
-            var number = (printItem.SadereNumber ?? printItem.LetterNumber).Replace('/', '-');
+            var item = printItem;
+            var number = (item.SadereNumber ?? item.LetterNumber).Replace('/', '-');
             var version = printWithCopy ? "با-رونوشت" : "بدون-رونوشت";
             var name = $"letter-{number}-{printSize}-{version}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
+            // بودجهٔ زمانی، نمایش پیشرفت و بازیابی خطا در LetterPrintWorkflow است.
+            await PrintWorkflow.PrintPdfAsync(
+                ct => OutgoingSvc.GetPrintPdfAsync(item.LetterId, printSize, printWithCopy, cancellationToken: ct), name);
             printOpen = false;
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
         }
         finally { printing = false; }
     }

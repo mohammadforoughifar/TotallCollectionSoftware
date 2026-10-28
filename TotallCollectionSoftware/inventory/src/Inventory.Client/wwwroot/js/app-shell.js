@@ -462,6 +462,14 @@ window.ltxPrintFail = function (id, message) {
     ltxSetPrintError(session, guidance + String(message || 'خطا در آماده‌سازی چاپ'));
     return true;
 };
+// متن وضعیت را در حین آماده‌سازی به‌روز می‌کند (رندر طولانی PDF سمت سرور).
+window.ltxPrintStatus = function (id, text) {
+    var session = window.ltxPrintSessions[id];
+    if (!session || session.failed) return false;
+    if (!ltxEnsurePrintSurface(session)) return false;
+    ltxSetPrintStatus(session, String(text || 'در حال آماده‌سازی نسخهٔ چاپ…'));
+    return true;
+};
 window.ltxPrintWaitForAction = function (id) {
     var session = window.ltxPrintSessions[id];
     if (!session) return Promise.resolve('close');
