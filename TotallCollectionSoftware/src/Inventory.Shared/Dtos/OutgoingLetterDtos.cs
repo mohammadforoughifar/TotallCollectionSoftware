@@ -666,3 +666,54 @@ public class ReplaceOutgoingLetterCopyTosDto
 {
     public List<SaveOutgoingLetterCopyToDto> Items { get; set; } = new();
 }
+
+/// <summary>
+/// نتیجهٔ «تشخیص چاپ» نامهٔ صادره — فقط خواندن، بدون تولید PDF.
+/// به این پرسش پاسخ می‌دهد: «کدام شرکت انتخاب شد، کدام فایل/قالب خوانده شد،
+/// و اگر طرح پوشهٔ Reports/OutgoingLetters/Companies خوانده نمی‌شود چرا؟»
+/// </summary>
+public class OutgoingLetterPrintDiagnosticsDto
+{
+    public int LetterId { get; set; }
+    public string? LetterNumber { get; set; }
+    public string? Title { get; set; }
+
+    /// <summary>ستون CompanyId خودِ نامه؛ خالی بودنش ریشهٔ چاپ روی طرح شرکت دیگر است.</summary>
+    public int? LetterCompanyId { get; set; }
+
+    /// <summary>شرکت فعال همین درخواست (هدر X-Company-Id).</summary>
+    public int? RequestActiveCompanyId { get; set; }
+
+    public int? EffectiveCompanyId { get; set; }
+
+    /// <summary>Letter | OnlyActiveCompany | RequestActiveCompany | None</summary>
+    public string CompanySource { get; set; } = "None";
+
+    public string? CompanyName { get; set; }
+    public bool CompanyRecordMissing { get; set; }
+    public string? LetterheadFileName { get; set; }
+
+    /// <summary>شناسهٔ پوشهٔ طرح (پس از اعمال CompanyTemplateMap).</summary>
+    public int? TemplateDesignId { get; set; }
+    public bool CompanyTemplateMapApplied { get; set; }
+
+    public string? TemplatePath { get; set; }
+    public int? TemplateImageBytes { get; set; }
+    public string? TemplateError { get; set; }
+    public string? RegisteredLetterheadPath { get; set; }
+
+    public bool PreferTemplateLetterhead { get; set; }
+
+    /// <summary>Template | Registered | None — منبعی که چاپ واقعاً استفاده می‌کند.</summary>
+    public string LetterheadSource { get; set; } = "None";
+
+    public string TemplateRoot { get; set; } = "";
+    public List<string> SearchRoots { get; set; } = new();
+
+    /// <summary>پوشه‌های طرحی که روی سرور موجودند، با نام فایل‌هایشان.</summary>
+    public string AvailableDesigns { get; set; } = "";
+
+    /// <summary>توضیح فارسی علت — قابل نمایش مستقیم به کاربر یا پشتیبان.</summary>
+    public string Hint { get; set; } = "";
+}
+

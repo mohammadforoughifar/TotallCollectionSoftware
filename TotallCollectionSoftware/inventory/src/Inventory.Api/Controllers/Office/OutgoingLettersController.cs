@@ -572,6 +572,24 @@ public class OutgoingLettersController : RbacControllerBase
         return File(pdf, "application/pdf", fileName);
     }
 
+    /// <summary>
+    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و چرا؟
+    /// فقط خواندن؛ برای پشتیبانی «چرا سربرگ شرکت خوانده نمی‌شود» را در یک درخواست روشن می‌کند.
+    /// نمونه: GET api/outgoing-letters/123/print/diagnose?size=A4
+    /// </summary>
+    [HttpGet("{id:int}/print/diagnose")]
+    public async Task<IActionResult> PrintDiagnose(int id, [FromQuery] string size = "A4")
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "گزارش تشخیص چاپ فقط برای دبیرخانه مجاز است." });
+
+        var diagnostics = await _print.DiagnoseAsync(id, size);
+        if (diagnostics == null) return NotFound(new { message = "نامه پیدا نشد." });
+
+        return Ok(diagnostics);
+    }
+
     // ==================== گردش / ارجاع ====================
 
     /// <summary>

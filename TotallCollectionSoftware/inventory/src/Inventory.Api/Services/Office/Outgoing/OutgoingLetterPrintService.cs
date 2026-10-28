@@ -7,6 +7,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Xml.Linq;
 using Inventory.Api.Data;
+using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -52,6 +53,11 @@ public interface IOutgoingLetterPrintService
     /// برای ایجادکننده/دریافت‌کنندهٔ نامه false است تا آن‌ها بتوانند نسخهٔ چاپی بگیرند (جای امضا فقط نام و سِمَت می‌آید).
     /// </param>
     Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true);
+
+    /// <summary>
+    /// تشخیص مسیر سربرگ/طرح یک نامه (فقط خواندن) — برای پاسخ به «چرا طرح شرکت خوانده نمی‌شود؟».
+    /// </summary>
+    Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(int letterId, string size);
 }
 
 /// <summary>Raised when a company-required letterhead cannot be resolved or applied.</summary>
@@ -193,6 +199,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>شرکت فعالِ همان درخواست (اعتبارسنجی‌شده در ActiveCompanyMiddleware).</summary>
+    /// <summary>
+    /// آیا طرح جاسازی‌شده در قالب MRT شرکت (Reports/OutgoingLetters/Companies/{id}) بر فایل
+    /// ثبت‌شده روی رکورد شرکت اولویت دارد؟ پیش‌فرض: نه (رفتار قبلی).
+    /// تنظیم: Reporting:OutgoingLetters:PreferTemplateLetterhead = true
+    /// </summary>
+    private bool PreferTemplateLetterhead
+    {
+        get
+        {
+            var raw = _configuration["Reporting:OutgoingLetters:PreferTemplateLetterhead"];
+            return string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(raw, "yes", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private int ActiveCompanyIdFromContext()
     {
         var ctx = _http?.HttpContext;
@@ -376,38 +398,159 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return null;
     }
 
-    private string? FindCompanyTemplate(int companyId, string size)
+    /// <summary>
+    /// تشخیص مسیر سربرگ یک نامه بدون تولید PDF؛ پاسخ روشن به این پرسش که
+    /// «چرا طرح شرکت در Reports/OutgoingLetters/Companies خوانده نمی‌شود؟»
+    /// </summary>
+    public async Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(int letterId, string size)
     {
-        // The active QuestPDF pipeline must honor the same template-root setting as the legacy renderer.
+        var letter = await _db.OutgoingLetters.AsNoTracking()
+            .Where(l => l.Id == letterId && !l.IsDelete)
+            .Select(l => new { l.Id, l.CompanyId, l.CreatorUserId, l.SadereNumber, l.LetterNumber, l.Title })
+            .FirstOrDefaultAsync();
+
+        if (letter == null) return null;
+
+        var normalizedSize = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase) ? "A5" : "A4";
+        var isA5 = normalizedSize == "A5";
+
+        var activeCompanyIds = await _db.SystemCompanies.AsNoTracking()
+            .Where(c => c.IsActive).Select(c => c.Id).ToListAsync();
+
+        var letterCompanyId = letter.CompanyId is > 0 ? letter.CompanyId : null;
+        var requestCompanyId = ActiveCompanyIdFromContext();
+        var effectiveCompanyId = letterCompanyId;
+        var companySource = letterCompanyId != null ? "Letter" : "None";
+
+        if (effectiveCompanyId == null)
+        {
+            var pickId = activeCompanyIds.Count == 1
+                ? activeCompanyIds[0]
+                : requestCompanyId > 0 && activeCompanyIds.Contains(requestCompanyId) ? requestCompanyId : 0;
+            if (pickId > 0)
+            {
+                effectiveCompanyId = pickId;
+                companySource = activeCompanyIds.Count == 1 ? "OnlyActiveCompany" : "RequestActiveCompany";
+            }
+        }
+
+        var company = effectiveCompanyId is int companyKey
+            ? await _db.SystemCompanies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyKey)
+            : null;
+
+        var designId = effectiveCompanyId is int rawDesignId ? TemplateDesignId(rawDesignId) : (int?)null;
+        var templatePath = effectiveCompanyId is int designCandidate
+            ? FindCompanyTemplate(designCandidate, normalizedSize)
+            : null;
+
+        int? templateImageBytes = null;
+        string? templateError = null;
+        if (templatePath != null)
+        {
+            try
+            {
+                templateImageBytes = ReadTemplateWatermark(templatePath)?.Length ?? 0;
+            }
+            catch (Exception ex)
+            {
+                templateError = $"{ex.GetType().Name}: {ex.Message}";
+            }
+        }
+
+        var registeredPath = company != null ? ResolveRegisteredLetterheadFile(company) : null;
+        var preferTemplate = PreferTemplateLetterhead;
+
+        string letterheadSource;
+        if (preferTemplate && templatePath != null) letterheadSource = "Template";
+        else if (registeredPath != null) letterheadSource = "Registered";
+        else if (templatePath != null) letterheadSource = "Template";
+        else letterheadSource = "None";
+
         var configuredRoot = _configuration["Reporting:Stimulsoft:TemplateRoot"];
         var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
             ? Path.Combine("Reports", "OutgoingLetters", "Companies")
             : configuredRoot.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() }
+            .Distinct().ToList();
 
-        // قالب‌ها با «شناسهٔ عددی» شرکت پیدا می‌شوند و شناسه بین نصب‌ها یکسان نیست: هومپا در
-        // یکی 1003 و در دیگری 3 است. اگر شناسهٔ شرکت با پوشهٔ طرحش یکی نباشد، نامه روی طرح
-        // شرکت دیگری چاپ می‌شود. با CompanyTemplateMap می‌توان صریح گفت «شرکت ۴ از طرح 1003».
-        foreach (var designId in DesignCompanyIds(companyId))
+        var companyRecordMissing = effectiveCompanyId != null && company == null;
+        var hint = BuildDiagnosticsHint(
+            letterCompanyId, companySource, effectiveCompanyId, companyRecordMissing,
+            templatePath, templateError, registeredPath, preferTemplate, letterheadSource);
+
+        return new OutgoingLetterPrintDiagnosticsDto
         {
-            var template = Path.Combine(templateRoot,
-                designId.ToString(CultureInfo.InvariantCulture), $"Outgoing-{size}.mrt");
-            var candidates = Path.IsPathRooted(templateRoot)
-                ? new[] { template }
-                : roots.Select(root => Path.Combine(root, template)).Distinct().ToArray();
-            var found = candidates.FirstOrDefault(File.Exists);
-            if (found == null) continue;
+            LetterId = letter.Id,
+            LetterNumber = letter.SadereNumber ?? letter.LetterNumber,
+            Title = letter.Title,
+            LetterCompanyId = letterCompanyId,
+            RequestActiveCompanyId = requestCompanyId > 0 ? requestCompanyId : null,
+            EffectiveCompanyId = effectiveCompanyId,
+            CompanySource = companySource,
+            CompanyName = company?.Name,
+            CompanyRecordMissing = companyRecordMissing,
+            LetterheadFileName = company?.LetterheadFileName,
+            TemplateDesignId = designId,
+            CompanyTemplateMapApplied = designId != null && effectiveCompanyId != null && designId != effectiveCompanyId,
+            TemplatePath = templatePath,
+            TemplateImageBytes = templateImageBytes,
+            TemplateError = templateError,
+            RegisteredLetterheadPath = registeredPath,
+            PreferTemplateLetterhead = preferTemplate,
+            LetterheadSource = letterheadSource,
+            TemplateRoot = templateRoot,
+            SearchRoots = roots,
+            AvailableDesigns = DescribeAvailableDesigns(templateRoot, roots.ToArray()),
+            Hint = hint
+        };
+    }
 
-            if (designId != companyId)
-                _logger.LogInformation(
-                    "قالب چاپ شرکت {CompanyId} از طرح شرکت {DesignCompanyId} استفاده می‌کند (Reporting:OutgoingLetters:CompanyTemplateMap). Path={Path}, Size={Size}",
-                    companyId, designId, found, size);
-            return found;
+    /// <summary>ساخت جملهٔ علت به فارسی — همان چیزی که در لاگ/پاسخ تشخیص دیده می‌شود.</summary>
+    private static string BuildDiagnosticsHint(
+        int? letterCompanyId,
+        string companySource,
+        int? effectiveCompanyId,
+        bool companyRecordMissing,
+        string? templatePath,
+        string? templateError,
+        string? registeredPath,
+        bool preferTemplate,
+        string letterheadSource)
+    {
+        if (letterCompanyId == null)
+        {
+            var how = companySource switch
+            {
+                "OnlyActiveCompany" => "چون تنها یک شرکت فعال وجود دارد",
+                "RequestActiveCompany" => "بر اساس شرکت فعال انتخاب‌شده در بالای صفحه",
+                _ => "و شرکتی هم قابل انتخاب نبود"
+            };
+            return effectiveCompanyId == null
+                ? "این نامه شرکت صادرکننده (CompanyId) ندارد و هیچ شرکت فعالی هم پیدا نشد؛ طرح شرکت قابل انتخاب نیست."
+                : $"این نامه شرکت صادرکننده (CompanyId) ندارد؛ شرکت {effectiveCompanyId} {how} انتخاب شد. " +
+                  "اگر طرح چاپی متعلق به شرکت دیگری است، نامه را ویرایش کنید و «شرکت صادرکننده» را انتخاب کنید.";
         }
 
-        _logger.LogDebug("قالب سربرگ شرکت یافت نشد. CompanyId={CompanyId}, Size={Size}, TemplateRoot={TemplateRoot}",
-            companyId, size, templateRoot);
-        return null;
+        if (companyRecordMissing)
+            return $"شناسهٔ شرکت این نامه ({effectiveCompanyId}) در جدول SystemCompanies نیست یا غیرفعال است؛ " +
+                   "رکورد شرکت را درست کنید یا شناسه را با CompanyTemplateMap نگاشت کنید.";
+
+        if (templatePath == null)
+            return $"هیچ قالب چاپی برای شرکت {effectiveCompanyId} پیدا نشد؛ پوشهٔ " +
+                   $"Reports/OutgoingLetters/Companies/{effectiveCompanyId} یا فایل Outgoing-A4/A5.mrt را بررسی کنید. " +
+                   "فهرست پوشه‌های موجود در AvailableDesigns آمده است.";
+
+        if (templateError != null)
+            return $"فایل قالب {templatePath} خوانده شد اما تصویر سربرگ آن قابل استخراج نیست ({templateError}).";
+
+        if (registeredPath != null && !preferTemplate)
+            return $"سربرگ چاپ از فایل ثبت‌شدهٔ شرکت استفاده می‌کند ({registeredPath}) و طرح داخل قالب نادیده گرفته می‌شود. " +
+                   "برای چاپ با طرح پوشهٔ Companies یا مقدار Reporting:OutgoingLetters:PreferTemplateLetterhead=true را تنظیم کنید " +
+                   "یا فایل ثبت‌شدهٔ شرکت (LetterheadFileName) را خالی کنید.";
+
+        return letterheadSource == "Template"
+            ? $"سربرگ چاپ از طرح داخل قالب شرکت خوانده می‌شود: {templatePath}"
+            : "سربرگی برای این نامه پیدا نشد؛ چاپ بدون سربرگ خواهد بود.";
     }
 
     /// <summary>
@@ -434,6 +577,101 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             });
         }
         return parsed;
+    }
+
+    private string? FindCompanyTemplate(int companyId, string size)
+    {
+        // The active QuestPDF pipeline must honor the same template-root setting as the legacy renderer.
+        var configuredRoot = _configuration["Reporting:Stimulsoft:TemplateRoot"];
+        var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
+            ? Path.Combine("Reports", "OutgoingLetters", "Companies")
+            : configuredRoot.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
+
+        // شناسهٔ شرکت بین نصب‌ها یکسان نیست (هومپا در یکی 1003 و در دیگری 3)؛ نگاشت صریح
+        // جلوی چاپ روی طرح شرکت دیگر را می‌گیرد.
+        foreach (var designId in DesignCompanyIds(companyId))
+        {
+            var folder = Path.Combine(templateRoot, designId.ToString(CultureInfo.InvariantCulture));
+            var folders = Path.IsPathRooted(templateRoot)
+                ? new[] { folder }
+                : roots.Select(root => Path.Combine(root, folder)).Distinct().ToArray();
+
+            foreach (var candidateFolder in folders)
+            {
+                var found = FindTemplateFile(candidateFolder, size, out var exactName);
+                if (found == null) continue;
+
+                if (designId != companyId)
+                    _logger.LogInformation(
+                        "قالب چاپ شرکت {CompanyId} از طرح شرکت {DesignCompanyId} استفاده می‌کند (Reporting:OutgoingLetters:CompanyTemplateMap). Path={Path}, Size={Size}",
+                        companyId, designId, found, size);
+                if (!exactName)
+                    _logger.LogInformation(
+                        "نام فایل قالب شرکت {CompanyId} مطابق استاندارد نیست؛ انتظار «{Expected}» بود و همین فایل استفاده شد: {Path}",
+                        companyId, $"Outgoing-{size}.mrt", found);
+                return found;
+            }
+        }
+
+        // قبلاً این حالت فقط LogDebug بود و در سطح پیش‌فرض Information هیچ اثری در لاگ نداشت؛
+        // نتیجه: «طرح خوانده نمی‌شود» بدون هیچ سرنخی. اکنون پوشه‌های موجود هم فهرست می‌شوند.
+        _logger.LogWarning(
+            "هیچ قالب چاپی برای شرکت پیدا نشد. CompanyId={CompanyId}, DesignIds={DesignIds}, Size={Size}, " +
+            "TemplateRoot={TemplateRoot}, SearchedRoots={SearchedRoots}, AvailableDesigns={AvailableDesigns}",
+            companyId, string.Join(",", DesignCompanyIds(companyId)), size, templateRoot,
+            string.Join(" | ", roots.Distinct()), DescribeAvailableDesigns(templateRoot, roots));
+        return null;
+    }
+
+    /// <summary>
+    /// یافتن فایل قالب داخل پوشهٔ طرح یک شرکت. اگر نام فایل مطابق استاندارد
+    /// (Outgoing-A4.mrt / Outgoing-A5.mrt) نباشد، همان پوشه بررسی می‌شود تا فایلی که
+    /// طراح با نام دیگری ذخیره کرده «بی‌صدا نادیده» گرفته نشود.
+    /// </summary>
+    private static string? FindTemplateFile(string folder, string size, out bool exactName)
+    {
+        exactName = true;
+        if (!Directory.Exists(folder)) return null;
+
+        var expectedName = $"Outgoing-{size}.mrt";
+        var expected = Path.Combine(folder, expectedName);
+        if (File.Exists(expected)) return expected;
+
+        var files = Directory.EnumerateFiles(folder, "*.mrt")
+            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (files.Length == 0) return null;
+
+        var byName = files.FirstOrDefault(file =>
+            string.Equals(Path.GetFileName(file), expectedName, StringComparison.OrdinalIgnoreCase));
+        if (byName != null) { exactName = false; return byName; }
+
+        var bySize = files.FirstOrDefault(file =>
+            Path.GetFileNameWithoutExtension(file).Contains(size, StringComparison.OrdinalIgnoreCase));
+        if (bySize != null) { exactName = false; return bySize; }
+
+        if (files.Length == 1) { exactName = false; return files[0]; }
+        return null;
+    }
+
+    /// <summary>فهرست پوشه‌های طرح موجود (برای پیام خطای قابل‌فهم در لاگ).</summary>
+    private static string DescribeAvailableDesigns(string templateRoot, string[] roots)
+    {
+        var designs = new List<string>();
+        foreach (var root in roots.Distinct())
+        {
+            var directory = Path.IsPathRooted(templateRoot) ? templateRoot : Path.Combine(root, templateRoot);
+            if (!Directory.Exists(directory)) continue;
+            foreach (var companyDirectory in Directory.EnumerateDirectories(directory)
+                         .OrderBy(entry => entry, StringComparer.OrdinalIgnoreCase))
+            {
+                var files = Directory.EnumerateFiles(companyDirectory, "*.mrt")
+                    .Select(Path.GetFileName);
+                designs.Add($"{Path.GetFileName(companyDirectory)}:[{string.Join(",", files)}] @ {companyDirectory}");
+            }
+        }
+        return designs.Count == 0 ? "هیچ پوشهٔ طرحی پیدا نشد" : string.Join(" | ", designs);
     }
 
     /// <summary>خواندن Watermark.ImageBytes از فایل قالب MRT (XML استیمول‌سافت).</summary>
@@ -654,7 +892,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var templateLetterheadPath = withLetterhead && selectedCompanyId is > 0
             ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
             : null;
-        var letterheadPath = registeredPath ?? templateLetterheadPath;
+        // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
+        // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
+        // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
+        var preferTemplate = PreferTemplateLetterhead;
+        var letterheadPath = preferTemplate && templateLetterheadPath != null
+            ? templateLetterheadPath
+            : registeredPath ?? templateLetterheadPath;
+        if (withLetterhead && !preferTemplate && registeredPath != null && templateLetterheadPath != null)
+            _logger.LogInformation(
+                "فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد. CompanyId={CompanyId}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}. " +
+                "برای چاپ با طرح پوشهٔ Companies مقدار Reporting:OutgoingLetters:PreferTemplateLetterhead=true را تنظیم کنید " +
+                "یا LetterheadFileName شرکت را خالی کنید.",
+                selectedCompanyId, registeredPath, templateLetterheadPath);
         var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
 
         if (withLetterhead && letterheadPath == null && !hasCompanyId)

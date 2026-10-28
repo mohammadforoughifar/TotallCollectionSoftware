@@ -147,14 +147,25 @@
 
             @* ---------- شرکت صادرکننده (سربرگ چاپ) ---------- *@
             <div class="fcard">
-                <label>شرکت صادرکننده (سربرگ چاپ) <span class="opt">فقط شرکت فعال کاربر نمایش داده می‌شود؛ «بدون انتخاب شرکت» = چاپ بدون سربرگ</span></label>
+                <label>
+                    شرکت صادرکننده (سربرگ چاپ)
+                    <span class="opt">سربرگ و طرح چاپ از همین شرکت خوانده می‌شود؛ پیش‌فرض = شرکت فعال شما</span>
+                </label>
                 <select class="tin" @bind="companyId">
-                    <option value="0">— بدون انتخاب شرکت (چاپ بدون سربرگ) —</option>
-                    @if (activeCompany is { } c)
+                    <option value="0">— بدون انتخاب شرکت (چاپ بدون سربرگ شرکت) —</option>
+                    @foreach (var company in CompanyOptions)
                     {
-                        <option value="@c.Id">@c.Name @(c.HasLetterhead ? "📄 سربرگ" : "(بدون سربرگ)")</option>
+                        <option value="@company.Id">
+                            @company.Name @(company.HasLetterhead ? "📄 سربرگ" : "(بدون سربرگ)")@(IsActiveCompany(company) ? " — شرکت فعال" : "")
+                        </option>
                     }
                 </select>
+                @if (CompanyOptions.Count == 0)
+                {
+                    <span class="opt">
+                        هیچ شرکت فعالی برای انتخاب پیدا نشد؛ بدون شرکت، چاپ روی سربرگ شرکت انجام نمی‌شود.
+                    </span>
+                }
             </div>
 
             <div class="row2">
@@ -338,6 +349,13 @@
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
     private LetterCompanyDto? activeCompany;
+    /// <summary>شرکت‌هایی که کاربر می‌تواند نامه را با سربرگشان صادر کند (فعال‌ها).</summary>
+    private List<LetterCompanyDto> companyOptions = new();
+    private List<LetterCompanyDto> CompanyOptions => companyOptions.Count > 0
+        ? companyOptions
+        : (activeCompany is { } only ? new List<LetterCompanyDto> { only } : new List<LetterCompanyDto>());
+
+    private bool IsActiveCompany(LetterCompanyDto company) => activeCompany?.Id == company.Id;
     private int companyId;
 
     private LetterPickCombo? cbRcv, cbErja, cbHamesh, cbSigners;
@@ -445,7 +463,9 @@
     {
         isEditLetter = false; editLetterId = 0; draftId = null;
         title = ""; receiverOrg = ""; receiverName = null; receiverTitle = null; receiverAddress = null; copyRows = new(); externalRef = null;
-        foriat = "عادی"; mahram = "عادی"; pendingBody = ""; companyId = 0;
+        foriat = "عادی"; mahram = "عادی"; pendingBody = "";
+        // پیش‌فرضِ فرم، شرکت فعالِ کاربر است (نه «بدون شرکت»).
+        companyId = activeCompany?.Id ?? (companyOptions.Count == 1 ? companyOptions[0].Id : 0);
         errTitle = errReceiverOrg = errSigners = false; fileErr = "";
         rcvUsers.Clear(); rcvGroups.Clear();
         erjaUsers.Clear(); erjaGroups.Clear();
@@ -469,6 +489,10 @@
             allGroups = await OutgoingSvc.GetGroupsAsync();
             try { signerUsers = await OutgoingSvc.GetAvailableSignersAsync(); } catch { signerUsers = allUsers; }
             try { activeCompany = await OutgoingSvc.GetActiveCompanyAsync(); } catch { activeCompany = null; }
+            // قبلاً فقط «شرکت فعال» در کمبو بود؛ اگر شرکت فعال قابل تشخیص نبود، هیچ شرکتی
+            // قابل انتخاب نبود و نامه بدون CompanyId ذخیره می‌شد (چاپ روی طرح شرکت دیگر).
+            try { companyOptions = await OutgoingSvc.GetCompaniesAsync() ?? new(); } catch { companyOptions = new(); }
+            if (companyOptions.Count == 1 && companyId == 0) companyId = companyOptions[0].Id;
             StateHasChanged();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

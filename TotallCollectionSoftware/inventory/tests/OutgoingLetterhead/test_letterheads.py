@@ -49,8 +49,12 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertLess(source.index("graphics.DrawImage(asset.Pdf, bounds)"), source.index("graphics.DrawImage(contentForm, bounds)"))
         self.assertIn("graphics.DrawImage(asset.Image, bounds)", source)
 
-    def test_registered_file_priority_is_preserved(self):
-        self.assertIn("var letterheadPath = registeredPath ?? templateLetterheadPath;", SERVICE.read_text())
+    def test_registered_file_stays_the_default_source(self):
+        # اولویت پیش‌فرض همان فایل ثبت‌شدهٔ شرکت است؛ طرح قالب با تنظیم
+        # PreferTemplateLetterhead (یا خالی‌کردن LetterheadFileName) اولویت می‌گیرد.
+        source = SERVICE.read_text(encoding="utf-8")
+        self.assertIn(": registeredPath ?? templateLetterheadPath;", source)
+        self.assertIn("var preferTemplate = PreferTemplateLetterhead;", source)
 
     def test_active_service_honors_the_configured_template_root(self):
         source = SERVICE.read_text()
@@ -558,6 +562,115 @@ class BothClientTreesPrintTests(unittest.TestCase):
                 self.assertIn("CancellationToken cancellationToken = default", letters)
                 api = (client / "Services" / "IApiClient.cs").read_text(encoding="utf-8")
                 self.assertIn("GetFileAsync(string path, CancellationToken cancellationToken = default)", api)
+
+
+class LetterheadSourceResolutionTests(unittest.TestCase):
+    """«فایل‌های طرح در Reports/OutgoingLetters/Companies خوانده نمی‌شوند» — سه علت واقعی:
+
+    ۱) اولویت: فایل ثبت‌شده روی رکورد شرکت (SystemCompanies.LetterheadFileName) همیشه بر
+       طرح داخل قالب MRT مقدم بود، پس طرح شرکت هرگز خوانده نمی‌شد.
+    ۲) نامه بدون CompanyId: چاپ «اولین شرکت دارای سربرگ» را انتخاب می‌کرد، نه شرکت نامه.
+    ۳) نام فایل: فقط «Outgoing-A4.mrt» دقیق خوانده می‌شد و هر نام دیگری بی‌صدا نادیده می‌رفت
+       (لاگ آن هم فقط Debug بود و در سطح پیش‌فرض دیده نمی‌شد).
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    def service_text(self, tree):
+        return (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+
+    def test_template_can_win_over_the_registered_file(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("PreferTemplateLetterhead", service)
+                self.assertIn('"Reporting:OutgoingLetters:PreferTemplateLetterhead"', service)
+                self.assertIn("var preferTemplate = PreferTemplateLetterhead;", service)
+                self.assertIn("preferTemplate && templateLetterheadPath != null", service)
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                self.assertIn('"PreferTemplateLetterhead": false', settings)
+
+    def test_shadowing_of_the_design_is_logged(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد", service)
+                self.assertIn("RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}", service)
+
+    def test_missing_template_is_a_loud_warning_with_the_available_folders(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("هیچ قالب چاپی برای شرکت پیدا نشد", service)
+                self.assertIn("AvailableDesigns={AvailableDesigns}", service)
+                self.assertIn("DescribeAvailableDesigns(templateRoot, roots)", service)
+                self.assertNotIn('_logger.LogDebug("قالب سربرگ شرکت یافت نشد', service,
+                                 "debug-level logging hid the reason the design was not read")
+
+    def test_alternate_template_file_names_are_still_read(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("private static string? FindTemplateFile(string folder, string size, out bool exactName)", service)
+                self.assertIn("Contains(size, StringComparison.OrdinalIgnoreCase)", service)
+                self.assertIn("if (files.Length == 1)", service)
+                self.assertIn("نام فایل قالب شرکت {CompanyId} مطابق استاندارد نیست", service)
+
+    def test_letter_without_company_never_picks_another_companys_letterhead(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertNotIn(
+                    '.Where(c => c.IsActive && c.LetterheadFileName != null && c.LetterheadFileName != "")\n                .OrderBy(c => c.Id)',
+                    service,
+                    "the old code printed such letters on the first company's letterhead")
+                self.assertIn("این نامه به هیچ شرکتی متصل نیست", service)
+                self.assertIn("ActiveCompanyIdFromContext()", service)
+
+    def test_letters_store_the_active_company_when_the_form_sends_none(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                           / "OutgoingLetterService.cs").read_text(encoding="utf-8")
+                self.assertIn("private int? DefaultCompanyIdForLetter()", service)
+                self.assertIn("var active = _db.ActiveCompanyId;", service)
+                self.assertEqual(service.count(": DefaultCompanyIdForLetter()"), 2,
+                                 "create and update must both keep a company on the letter")
+                self.assertNotIn("CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null,", service)
+
+    def test_print_diagnostics_are_reachable(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(int letterId, string size);", service)
+                self.assertIn("public async Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(", service)
+                controller = (tree / "Inventory.Api" / "Controllers" / "Office" /
+                              "OutgoingLettersController.cs").read_text(encoding="utf-8")
+                self.assertIn('HttpGet("{id:int}/print/diagnose")', controller)
+                self.assertIn("await _print.DiagnoseAsync(id, size)", controller)
+                dto = (tree / "Inventory.Shared" / "Dtos" / "OutgoingLetterDtos.cs").read_text(encoding="utf-8")
+                self.assertIn("class OutgoingLetterPrintDiagnosticsDto", dto)
+                for field in ("LetterCompanyId", "EffectiveCompanyId", "TemplatePath",
+                              "RegisteredLetterheadPath", "LetterheadSource", "AvailableDesigns", "Hint"):
+                    self.assertIn(f"public ", dto)
+                    self.assertIn(field, dto)
+
+    def test_client_offers_every_company_and_shows_the_diagnosis(self):
+        for client in [self.ROOT / "src" / "Inventory.Client", self.ROOT / "inventory" / "src" / "Inventory.Client"]:
+            with self.subTest(client=client.parts[-4]):
+                compose = (client / "Pages" / "Office" / "Letters" / "Outgoing" /
+                           "ComposeOutgoingModal.razor").read_text(encoding="utf-8")
+                self.assertIn("@foreach (var company in CompanyOptions)", compose)
+                self.assertIn("await OutgoingSvc.GetCompaniesAsync()", compose)
+                self.assertIn("companyId = activeCompany?.Id ??", compose)
+                view = (client / "Pages" / "Office" / "Letters" / "Outgoing" /
+                        "OutgoingLetterView.razor").read_text(encoding="utf-8")
+                self.assertIn("ShowPrintDiagnosticsAsync", view)
+                self.assertIn("تشخیص چاپ", view)
+                service = (client / "Services" / "OutgoingLetterServices.cs").read_text(encoding="utf-8")
+                self.assertIn("print/diagnose?size=", service)
 
 
 if __name__ == "__main__":

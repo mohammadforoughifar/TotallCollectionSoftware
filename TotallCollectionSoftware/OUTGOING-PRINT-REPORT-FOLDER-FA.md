@@ -202,10 +202,84 @@ QuestPDF برای متن و سپس PDFsharp روی تصویر سربرگ ۲۴۸�
 `DirectPage/Cancel`) و همان کش/خطای سرور در `src/Inventory.Api`. چهار صفحهٔ چاپ (نامهٔ داخلی،
 کارتابل صادره، نمایش نامه، دبیرخانه) در هر دو درخت از همین سرویس مشترک استفاده می‌کنند.
 
+### ۴-۸. «سربرگ‌های طراحی‌شده در `Reports/OutgoingLetters/Companies` خوانده نمی‌شوند»
+
+طرح‌ها همان‌جا هستند و فایل‌ها هم با بیلد منتشر می‌شوند؛ پس مشکل در مسیر فایل نیست، در
+**انتخاب شرکت و انتخاب منبع** است. سه علت که هر سه در کد پیدا و اصلاح شدند:
+
+| # | علت | چه اتفاقی می‌افتاد |
+|---|---|---|
+| ۱ | **اولویت فایل ثبت‌شده** | `letterheadPath = registeredPath ?? templateLetterheadPath` — اگر روی رکورد شرکت (`SystemCompanies.LetterheadFileName`) فایلی ثبت شده باشد (مثل `wwwroot/uploads/letterheads/homepa_company1003_letterhead.jpg`)، طرح داخل MRT **هرگز خوانده نمی‌شد**. |
+| ۲ | **نامهٔ بدون شرکت (CompanyId = NULL)** | در فرم نامه، کمبوی «شرکت صادرکننده» فقط «شرکت فعال» را نشان می‌داد و پیش‌فرضش `0` («بدون شرکت») بود. اگر شرکت فعال قابل تشخیص نبود (کاربر بدون ردیف دسترسی شرکت)، هیچ شرکتی قابل انتخاب نبود و نامه با `CompanyId = NULL` ذخیره می‌شد. در چاپ، «اولین شرکت فعالِ دارای سربرگ» انتخاب می‌شد؛ یعنی نامه روی طرح **شرکت دیگر** چاپ می‌شد. |
+| ۳ | **نام فایل قالب** | فقط `Outgoing-A4.mrt` / `Outgoing-A5.mrt` با همان حروف دقیق خوانده می‌شد؛ فایلی با نام دیگر (مثلاً `Report_A4_OutgoingLetter.mrt`) بی‌صدا نادیده می‌رفت و علتش هم فقط در سطح `Debug` لاگ می‌شد (یعنی در سطح پیش‌فرض `Information` هیچ اثری نداشت). |
+
+#### اصلاح‌ها
+
+1. **انتخاب شرکت**
+   * فرم نامه: همهٔ شرکت‌های فعال در کمبو می‌آیند و پیش‌فرض «شرکت فعال» کاربر است
+     (`CompanyOptions` در `ComposeOutgoingModal.razor`).
+   * سرور: اگر کلاینت شرکتی نفرستد، `CompanyId` نامه با «شرکت فعالِ همان درخواست»
+     (`X-Company-Id` اعتبارسنجی‌شده) پر می‌شود — نه `NULL`
+     (`DefaultCompanyIdForLetter` در `OutgoingLetterService`). ویرایش نامه هم دیگر
+     `CompanyId` را پاک نمی‌کند.
+2. **انتخاب منبع سربرگ (پیکربندی)**
+   * کلید تازه: `Reporting:OutgoingLetters:PreferTemplateLetterhead`
+     (`false` = رفتار قبلی، `true` = طرح پوشهٔ `Companies` اولویت دارد).
+   * اگر فایل ثبت‌شده بر طرح مقدم باشد، یک خط `Information` می‌گوید کدام فایل برنده شد و
+     چطور می‌توان طرح را مقدم کرد.
+3. **یافتن فایل قالب**
+   * اگر نام فایل استاندارد نباشد: جست‌وجوی بی‌توجه به بزرگی/کوچکی حروف، سپس نامی که
+     `A4`/`A5` در آن آمده، و اگر تنها یک `.mrt` در پوشه باشد همان استفاده می‌شود (با لاگ).
+   * اگر هیچ قالبی پیدا نشد: **`LogWarning`** با `TemplateRoot`، همهٔ مسیرهای جست‌وجو و
+     فهرست پوشه‌های طرح موجود (`AvailableDesigns`).
+4. **نامهٔ بی‌شرکت در نصب چندشرکتی**
+   * دیگر سربرگ «اولین شرکت» یا «فوروث» را نمی‌گیرد؛ اگر نتوان شرکت را از شرکت فعال یا
+     تک‌شرکتی بودن تشخیص داد، چاپ با پیام فارسی روشن متوقف می‌شود.
+5. **تشخیص چاپ (ابزار تازه)**
+   * دکمهٔ «تشخیص چاپ (چرا سربرگ درست نیست؟)» در منوی چاپ صفحهٔ نامه.
+   * معادل API: `GET api/outgoing-letters/{id}/print/diagnose?size=A4` (فقط دبیرخانه/مدیر).
+   * خروجی: `letterCompanyId`، `effectiveCompanyId`، `companySource`، `templateDesignId`
+     (با اعمال `CompanyTemplateMap`)، `templatePath`، `templateImageBytes`،
+     `registeredLetterheadPath`، `preferTemplateLetterhead`، `letterheadSource`
+     (`Template`/`Registered`/`None`)، `availableDesigns` و `hint` (جملهٔ فارسی علت).
+
+#### سه بررسی سریع روی سرور (پیش از هر تغییر کد)
+
+```sql
+-- ۱) نام و سربرگ ثبت‌شدهٔ شرکت‌ها
+SELECT Id, Name, IsActive, LetterheadFileName FROM SystemCompanies ORDER BY Id;
+
+-- ۲) نامه‌هایی که شرکت ندارند (علت شمارهٔ ۲)
+SELECT COUNT(*) AS NoCompany FROM OutgoingLetters WHERE CompanyId IS NULL;
+
+-- ۳) نامه‌های بدون شرکت را به شرکت درست وصل کنید (با پشتیبان‌گیری!)
+-- UPDATE OutgoingLetters SET CompanyId = 1003 WHERE CompanyId IS NULL;
+```
+
+```text
+# ۴) فایل‌های طرح روی سرور (باید کنار Inventory.Api.dll و در پوشهٔ Reports باشند)
+<deploy>\Reports\OutgoingLetters\Companies\{CompanyId}\Outgoing-A4.mrt
+<deploy>\Reports\OutgoingLetters\Companies\{CompanyId}\Outgoing-A5.mrt
+```
+
+اگر می‌خواهید **طرح داخل پوشهٔ Companies مرجع چاپ باشد** (نه فایل ثبت‌شده روی رکورد شرکت):
+
+```jsonc
+"Reporting": {
+  "OutgoingLetters": {
+    "PreferTemplateLetterhead": true
+  }
+}
+```
+
+یا `SystemCompanies.LetterheadFileName` آن شرکت را خالی کنید. برای شرکت آریا (۱۰۰۵) توجه
+کنید که فایل ثبت‌شده‌اش یک PDF برداری است و طرح داخل MRT یک تصویر JPEG است؛ اگر کیفیت
+برداری را می‌خواهید، همان اولویت پیش‌فرض (`false`) را نگه دارید.
+
 ## ۵) تست‌ها و بررسی‌هایی که انجام شد
 
 ```bash
-python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۴۷ تست، OK
+python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۵۵ تست، OK
 ```
 
 تست‌های تازه (در همان فایل) این‌ها را قفل می‌کنند:
@@ -224,6 +298,13 @@ python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py
 * فونت فارسی غایب، خطای صریح می‌دهد (نه PDF ناخوانا).
 * هر دو درخت کلاینت: ثبت `LetterPrintWorkflow` در `Program.cs`، استفادهٔ چهار صفحه از آن، و کامل بودن
   سطح JS چاپ؛ هیچ صفحه‌ای دیگر PDF را base64 به `ltxPrintReady` نمی‌دهد.
+* منبع سربرگ: کلید `PreferTemplateLetterhead` در هر دو درخت و در `appsettings.json`، و لاگ
+  «فایل ثبت‌شده بر طرح اولویت دارد».
+* یافتن قالب: پذیرش نام‌های غیراستاندارد و هشدار پرحرف (با فهرست پوشه‌های موجود) در نبود قالب.
+* نامهٔ بی‌شرکت: نبود انتخاب «اولین شرکت دارای سربرگ» و وجود پیام توقف در نصب چندشرکتی.
+* ذخیرهٔ `CompanyId` نامه از روی «شرکت فعال درخواست» در ساخت و ویرایش.
+* دسترس‌پذیری تشخیص چاپ: `DiagnoseAsync` + endpoint `print/diagnose` + DTO مشترک +
+  دکمهٔ «تشخیص چاپ» و متد کلاینت.
 
 تصویر سربرگ‌های همهٔ شرکت‌ها جداگانه decode و پیکسل‌به‌پیکسل اندازه‌گیری شد (جای برچسب‌ها و
 رنگ متن) تا اعداد بالا از روی تصویر واقعی به دست بیاید، نه از حافظه.
