@@ -101,6 +101,8 @@
     .richt-body { min-height: 150px; max-height: 320px; overflow: auto; padding: 12px 14px; font-size: 13px; line-height: 2; outline: 0; color: #0f172a; }
     .richt-body:empty::before { content: attr(data-ph); color: #94a3b8; }
     .richt-body a { color: #2563eb; text-decoration: underline; }
+    /* تصاویر (از جمله تصاویرِ منتقل‌شده از ایمیل) نباید از کادر بیرون بزنند */
+    .richt-body img { max-width: 100%; height: auto; border-radius: 6px; }
     .richt-body table { width: 100%; border-collapse: collapse; margin: 8px 0; }
     .richt-body table td, .richt-body table th { border: 1px solid #cbd5e1; padding: 8px; min-width: 30px; }
 </style>

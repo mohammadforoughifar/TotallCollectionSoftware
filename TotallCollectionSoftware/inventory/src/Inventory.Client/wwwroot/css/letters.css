@@ -852,6 +852,9 @@
 .ltx .eml-reader .paper-body td { border:1px solid #e2e8f0; padding:6px 9px; vertical-align:top; }
 .ltx .eml-reader .paper-body th { background:#f8fafc; font-weight:700; }
 .ltx .eml-reader .paper-body img { max-width:100% !important; height:auto !important; display:inline-block; }
+/* تصاویر داخل متن نامه (از جمله تصاویری که از ایمیل منتقل می‌شوند) هم‌عرض کاغذ بمانند */
+.ltx .paper-body img,
+.ltx .letter-body img { max-width:100% !important; height:auto !important; }
 .ltx .eml-reader .paper-body a { color:#2563eb; text-decoration:underline; }
 .ltx .eml-reader .paper-body blockquote { border-inline-start:3px solid #cbd5e1; margin:8px 0; padding:2px 12px; color:#475569; }
 /* یادداشتِ «تصاویر درون متن» — نه فایل پیوست */

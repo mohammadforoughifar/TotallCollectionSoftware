@@ -323,13 +323,24 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
+        // بدنهٔ ایمیل پاک‌سازی و «خوانا» می‌شود (حذف <style> و پس‌زمینهٔ تیره،
+        // تبدیل متن سفید به تیره) تا کادر فرم سیاه نشود و متن ناپیدا نماند.
+        var safeBody = RichLetterHtml.Sanitize(email.Body);
+
+        // تصویرِ درونِ متنِ ایمیل در بدنه با آدرسِ نسبیِ پیوست ارجاع داده شده است؛
+        // در متن نامه آن آدرس به میزبانِ برنامه می‌خورد (نه سرور API) و بدون توکن هم
+        // ۴۰۱ می‌گیرد، پس تصویر در شرح نامه دیده نمی‌شد. این‌جا بایت‌های تصویر داخل
+        // خودِ متن جاسازی می‌شود تا نامه خودکفا بماند (نمایش، چاپ و ذخیرهٔ بعدی).
+        var embedded = await EmailInlineImageEmbedder.EmbedAsync(safeBody, email, EmailSvc);
+
         description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
                     + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
                     + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
                     + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    // بدنهٔ ایمیل پاک‌سازی و «خوانا» می‌شود (حذف <style> و پس‌زمینهٔ تیره،
-                    // تبدیل متن سفید به تیره) تا کادر فرم سیاه نشود و متن ناپیدا نماند.
-                    + RichLetterHtml.Sanitize(email.Body) + "</blockquote>";
+                    + embedded.Html + "</blockquote>";
+
+        if (embedded.Skipped > 0)
+            Toast.Error($"{embedded.Skipped.FaDigits()} تصویر درون متن ایمیل منتقل نشد (حجم یا قالب پشتیبانی‌نشده).");
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
         // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
