@@ -792,13 +792,67 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 # چیدمان قدیمی برای شرکت‌هایی که قالبشان گیرنده/عنوان/متن ندارد باید بماند.
                 self.assertIn("AddSubjectAndFollowingContent", service)
 
-    def test_signers_and_copy_to_are_drawn_from_the_design(self):
+    def test_signers_and_copy_to_flow_after_the_text_instead_of_a_fixed_page_overlay(self):
+        """امضا با موقعیت ثابت پایین صفحه چیده نشود.
+
+        نسخهٔ اول بلوک امضا/رونوشت را در یک صفحهٔ شفاف جدا می‌ساخت و روی «آخرین صفحه»
+        می‌چسباند؛ نتیجه این بود که نامهٔ کوتاه دوصفحه‌ای می‌شد و صفحهٔ دوم تقریباً خالی
+        می‌ماند. حالا امضا در جریان متن (بعد از متن) می‌آید.
+        """
         for tree in self.TREES:
             with self.subTest(tree=tree.parts[-3]):
                 service = self.service_text(tree)
-                self.assertIn("BuildDesignFixedBlocks", service)
+                self.assertNotIn("BuildDesignFixedBlocks", service)
+                self.assertNotIn("CountPdfPages", service)
                 self.assertIn("design.Signatures", service)
-                self.assertIn("design.CopyTo", service)
+                self.assertIn("design.SignerNames", service)
+                self.assertIn("ShowEntire().Row(", service)
+                # گیرنده/عنوان نباید در page.Header باشند (وگرنه در هر صفحه تکرار می‌شوند)
+                header = service.split("page.Header().ContentFromLeftToRight()", 1)[1]
+                header = header.split("page.Content()", 1)[0]
+                self.assertNotIn("Slot.Receiver", header)
+                self.assertNotIn("Slot.Title", header)
+                self.assertIn("AddDesignRow(col, design, receiverBox", service)
+
+    def test_letter_content_starts_below_the_letterhead_art(self):
+        """کپشن‌های «گیرنده نامه:/عنوان نامه:» نباید روی قوس آبی سربرگ بیفتند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("HeaderArtBottom(isA5)", service)
+                layout = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                          / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
+                self.assertIn("HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f", layout)
+
+    def test_meta_values_are_readable_and_inset_from_the_page_edge(self):
+        """شماره/تاریخ/پیوست نباید با رنگ روشن و چسبیده به لبه چاپ شوند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("Reporting:OutgoingLetters:MetaValueColor", service)
+                self.assertIn("leftInset: 8f", service)
+                self.assertIn("FontColor(colorOverride ?? field.Color)", service)
+
+    def test_paragraph_direction_is_forced_right_to_left(self):
+        """bidi: ویرگول/نقطهٔ پایانی نباید به ابتدای خط پرت شود."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                renderer = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                            / "RichLetterPdfRenderer.cs").read_text(encoding="utf-8")
+                # RLM پیش و پس از هر پاراگراف/آیتم فهرست/سلول جدول
+                self.assertGreaterEqual(renderer.count('text.Span("\\u200F");'), 6)
+                service = self.service_text(tree)
+                self.assertIn('$"\\u200F{value}\\u200F"', service)
+                self.assertIn('$"\\u200F{card.Name}\\u200F"', service)
+
+    def test_pdf_gets_searchable_metadata(self):
+        """لایهٔ متنی PDF ناقص است؛ متادیتا برای بایگانی و جست‌وجو پر می‌شود."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("WithDocumentInfo(", service)
+                self.assertIn("document.Info.Subject = PlainTextOf(", service)
+                self.assertIn("document.Info.Keywords =", service)
 
     def test_design_setting_defaults_to_company_1003_and_3(self):
         for tree in self.TREES:

@@ -216,7 +216,12 @@ internal static class RichLetterPdfRenderer
                 case "justify": text.Justify(); break;
                 default: text.AlignRight(); break;
             }
+            // RLM در ابتدا/انتهای هر پاراگراف: جهت پایه را قطعاً راست‌به‌چپ می‌کند. بدون آن،
+            // ویرگول/نقطهٔ پایانی (که کاراکتر «خنثی» است) گاهی به ابتدای خط پرت می‌شد و
+            // «،با سلام» یا «.نمایند» چاپ می‌شد.
+            text.Span("\u200F");
             foreach (var node in nodes) AppendInline(text, node, new Formatting { Bold = bold }, fontSize);
+            text.Span("\u200F");
         });
     }
 
@@ -243,9 +248,11 @@ internal static class RichLetterPdfRenderer
                 .LineHeight(lineHeight)
                 .DirectionFromRightToLeft());
             text.AlignRight();
+            text.Span("\u200F");
             text.Span(marker).Bold();
             foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
                 AppendInline(text, child, new Formatting(), fontSize);
+            text.Span("\u200F");
         });
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
@@ -273,7 +280,9 @@ internal static class RichLetterPdfRenderer
                                 .LineHeight(lineHeight)
                                 .DirectionFromRightToLeft());
                             text.AlignRight();
+                            text.Span("\u200F");
                             AppendInline(text, cell, new Formatting { Bold = cell.Tag == "th" }, fontSize);
+                            text.Span("\u200F");
                         });
                 }
             }

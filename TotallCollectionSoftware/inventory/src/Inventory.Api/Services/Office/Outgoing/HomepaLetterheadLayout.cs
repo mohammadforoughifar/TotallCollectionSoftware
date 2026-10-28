@@ -28,6 +28,12 @@ internal static class HomepaLetterheadLayout
     internal static float FooterReserve(bool isA5) => isA5 ? 82f : 116f;
     internal static float HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f;
 
+    /// <summary>
+    /// پایین گرافیک سربرگ (قوس آبی): ≈۲۳۲pt در A4 و ≈۱۶۳pt در A5. متن و کپشن‌ها باید از
+    /// پایین همین نقطه شروع شوند؛ مختصات قدیمی طرح (y≈۱۷۴) روی قوس می‌افتاد.
+    /// </summary>
+    internal static float HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f;
+
     internal static Field Number(bool isA5) => isA5
         ? new(7.2f, 25.04f, 59.04f, 12.96f)
         : new(14.4f, 36.48f, 82.08f, 14.4f);
