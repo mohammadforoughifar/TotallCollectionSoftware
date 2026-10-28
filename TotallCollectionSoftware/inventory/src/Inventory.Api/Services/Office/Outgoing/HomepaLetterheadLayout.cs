@@ -1,7 +1,10 @@
 namespace Inventory.Api.Services.Office.Outgoing;
 
 /// <summary>
-/// Company 1003 value coordinates relative to QuestPDF's page-header origin.
+/// Homepa value coordinates relative to QuestPDF's page-header origin.
+/// The Homepa artwork is used by company 1003 in the main database and by company 3 in the
+/// sample one (Companies/3 and Companies/1003 embed the same image); both ids therefore
+/// share this layout — see Reporting:OutgoingLetters:HomepaCompanyIds.
 /// Physical artwork coordinates come from the MRT: page margin + ClientRectangle, in points.
 /// Header content begins after Page.MarginTop (24pt on A4 / 16pt on A5), so subtract that
 /// origin to keep values on the matching raster-label row rather than one row too low.

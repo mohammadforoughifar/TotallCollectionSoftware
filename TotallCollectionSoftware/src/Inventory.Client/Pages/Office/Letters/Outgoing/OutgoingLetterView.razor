@@ -1,5 +1,6 @@
 @page "/outgoing-letters/view/{LetterId:int}"
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -42,6 +43,10 @@
                             <div class="mdiv"></div>
                             <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
                             <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                            <div class="mdiv"></div>
+                            <button type="button" @onclick="() => ShowPrintDiagnosticsAsync(SizeA4)">
+                                <i class="bi bi-search"></i> تشخیص چاپ (چرا سربرگ درست نیست؟)
+                            </button>
                         </div>
                     }
                 </span>
@@ -49,10 +54,34 @@
                 {
                     <button class="lbtn grn" @onclick="SignAsync"><i class="bi bi-pen"></i> امضای نامه</button>
                 }
-                <button class="lbtn pri" title="مشاهدهٔ گردش نامه" @onclick="OpenGardesh">
-                    <i class="bi bi-diagram-3"></i> گردش نامه
-                </button>
             </div>
+
+            @if (printDiagnostics is { } diag)
+            {
+                <div class="fcard" style="margin-bottom:12px;border:1px solid #cbd5e1;border-radius:10px;padding:12px;background:#f8fafc">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                        <i class="bi bi-search" style="color:var(--p2)"></i>
+                        <b>تشخیص چاپ — سربرگ و طرح شرکت</b>
+                        <button type="button" class="icb" style="margin-right:auto" title="بستن" @onclick="() => printDiagnostics = null">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div style="font-size:13px;line-height:2">
+                        <div><b>شرکت ثبت‌شده روی نامه:</b> @(diag.LetterCompanyId?.ToString() ?? "— ثبت نشده —")</div>
+                        <div><b>شرکت مؤثر برای چاپ:</b> @(diag.EffectiveCompanyId?.ToString() ?? "—") @(string.IsNullOrWhiteSpace(diag.CompanyName) ? "" : $"({diag.CompanyName})")</div>
+                        <div><b>پوشهٔ طرح:</b> @(diag.TemplateDesignId?.ToString() ?? "—") @(diag.CompanyTemplateMapApplied ? "— با CompanyTemplateMap" : "")</div>
+                        <div><b>فایل قالب:</b> <span style="word-break:break-all">@(diag.TemplatePath ?? "پیدا نشد")</span></div>
+                        <div>
+                            <b>تصویر سربرگ داخل قالب:</b>
+                            @(diag.TemplateImageBytes is > 0 ? $"{diag.TemplateImageBytes} بایت" : (diag.TemplateError ?? "ندارد"))
+                        </div>
+                        <div><b>فایل ثبت‌شدهٔ شرکت:</b> <span style="word-break:break-all">@(diag.RegisteredLetterheadPath ?? "—")</span></div>
+                        <div><b>منبع واقعی چاپ:</b> @diag.LetterheadSource @(diag.PreferTemplateLetterhead ? "(اولویت طرح قالب)" : "(اولویت فایل ثبت‌شده)")</div>
+                        <div><b>پوشه‌های طرح موجود:</b> <span style="word-break:break-all">@diag.AvailableDesigns</span></div>
+                        <div style="margin-top:8px;padding:8px;background:#fff7ed;border-radius:8px"><b>نتیجه:</b> @diag.Hint</div>
+                    </div>
+                </div>
+            }
 
             <div class="paper">
                 <div class="paper-h">
@@ -184,6 +213,20 @@
             string.IsNullOrWhiteSpace(letter.SenderName) ? "شما" : letter.SenderName, letter.DateSabt);
     }
 
+    /// <summary>نتیجهٔ تشخیص چاپ — با دکمهٔ «تشخیص چاپ» در منوی چاپ پر می‌شود.</summary>
+    private OutgoingLetterPrintDiagnosticsDto? printDiagnostics;
+    private bool printDiagnosticsBusy;
+
+    private async Task ShowPrintDiagnosticsAsync(string size)
+    {
+        if (letter == null || printDiagnosticsBusy) return;
+        printDiagnosticsBusy = true;
+        printMenuOpen = false;
+        try { printDiagnostics = await OutgoingSvc.GetPrintDiagnosticsAsync(letter.LetterId, size); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printDiagnosticsBusy = false; }
+    }
+
     private void TogglePrintSelected() => printMenuOpen = !printMenuOpen;
 
     private void ClosePrintMenu() => printMenuOpen = false;
@@ -232,29 +275,17 @@
     /// <summary>چاپ نامه روی سربرگ شرکت — دریافت PDF از سرور و باز کردن صفحهٔ چاپ</summary>
     private async Task PrintPdf(string size)
     {
-        if (letter == null) return;
+        if (letter == null || printing) return;
         printMenuOpen = false;
         printing = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
-        // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size);
-            var name = $"letter-{(letter.SadereNumber ?? letter.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            var number = letter.SadereNumber ?? letter.LetterNumber ?? letter.LetterId.ToString();
+            var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            // بودجهٔ زمانی، نمایش پیشرفت و بازیابی خطا در LetterPrintWorkflow است؛
+            // قبلاً همین‌جا انتظار بی‌سقف روی پاسخ سرور می‌ماند و پنجره «در حال بارگذاری» گیر می‌کرد.
+            await PrintWorkflow.PrintPdfAsync(
+                ct => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true, cancellationToken: ct), name);
         }
         finally { printing = false; }
     }

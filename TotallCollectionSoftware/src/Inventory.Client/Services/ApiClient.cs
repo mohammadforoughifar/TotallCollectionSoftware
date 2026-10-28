@@ -77,25 +77,34 @@ public class ApiClient : IApiClient
     /// دریافت فایل باینری از API. نام فایل از هدر Content-Disposition خوانده می‌شود
     /// و اگر نبود از انتهای مسیر ساخته می‌شود.
     /// </summary>
-    public async Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path)
+    public async Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(
+        string path, CancellationToken cancellationToken = default)
     {
-        var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
+        // توکن لغو از مسیر چاپ می‌آید: ساخت PDF روی سرور ممکن است ده‌ها ثانیه طول بکشد و
+        // پنجرهٔ چاپ باید بتواند با بودجهٔ زمانی خودش (و نه سقف پیش‌فرض HttpClient) تصمیم بگیرد.
+        using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
         AddAuth(req);
         await AddActiveCompanyHeaderAsync(req);
 
         HttpResponseMessage resp;
         try
         {
-            resp = await _http.SendAsync(req);
+            resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             throw new Exception("ارتباط با سرور برقرار نشد: " + ex.Message);
         }
 
+        using (resp)
+        {
         if (!resp.IsSuccessStatusCode)
         {
-            var text = await resp.Content.ReadAsStringAsync();
+            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
             var msg = $"خطای سرور ({(int)resp.StatusCode})";
             if (!string.IsNullOrWhiteSpace(text))
             {
@@ -110,7 +119,7 @@ public class ApiClient : IApiClient
             throw new Exception(msg);
         }
 
-        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        var bytes = await resp.Content.ReadAsByteArrayAsync(cancellationToken);
         var ctype = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
 
         var name = resp.Content.Headers.ContentDisposition?.FileNameStar
@@ -120,6 +129,7 @@ public class ApiClient : IApiClient
             name = path.Split('/').LastOrDefault()?.Split('?').FirstOrDefault() ?? "download";
 
         return (bytes, name, ctype);
+        }
     }
 
     public async Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file", string? contentType = null)

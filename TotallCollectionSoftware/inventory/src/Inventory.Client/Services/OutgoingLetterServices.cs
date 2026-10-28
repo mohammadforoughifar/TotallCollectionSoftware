@@ -65,6 +65,12 @@ public interface IOutgoingLetterService
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
     Task<LetterCompanyDto?> GetActiveCompanyAsync();
 
+    /// <summary>
+    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و اگر طرح شرکت خوانده
+    /// نمی‌شود چرا. فقط خواندن؛ برای پشتیبانی طراحی شده است.
+    /// </summary>
+    Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4");
+
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
     // ==================== بایگانی دبیرخانه ====================
@@ -363,6 +369,11 @@ public class OutgoingLetterService : IOutgoingLetterService
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
     public Task<LetterCompanyDto?> GetActiveCompanyAsync() =>
         _api.GetAsync<LetterCompanyDto?>("api/outgoing-letters/companies/active");
+
+    /// <summary>تشخیص چاپ نامه — مسیر سربرگ/طرح و علت خوانده‌نشدن فایل شرکت.</summary>
+    public Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4") =>
+        _api.GetAsync<OutgoingLetterPrintDiagnosticsDto?>(
+            $"api/outgoing-letters/{letterId}/print/diagnose?size={Uri.EscapeDataString(size)}");
 
     public Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync() =>
         _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/dabirkhane/creators");

@@ -104,6 +104,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         return $"{pc.GetYear(date ?? DateTime.Now)}/ص-{number}";
     }
 
+    /// <summary>
+    /// شرکت پیش‌فرض نامه وقتی انتخاب نشده است: شرکت فعالِ همین درخواست
+    /// (هدر X-Company-Id که میان‌افزار اعتبارسنجی کرده است). عمداً «اولین شرکت پایگاه داده»
+    /// انتخاب نمی‌شود تا نامه روی شرکت دیگر ثبت و چاپ نشود.
+    /// </summary>
+    private int? DefaultCompanyIdForLetter()
+    {
+        var active = _db.ActiveCompanyId;
+        return active is > 0 ? active : null;
+    }
+
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
     {
         SourceId = sourceId,
@@ -268,7 +279,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             ReceiverAddress = dto.ReceiverAddress?.Trim(),
             CopyTo = dto.CopyTo?.Trim(),
             ExternalRefNumber = dto.ExternalRefNumber?.Trim(),
-            CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null,
+            // اگر کاربر شرکتی انتخاب نکرده باشد، شرکت فعالِ همین درخواست ذخیره می‌شود؛
+            // در غیر این صورت CompanyId = NULL می‌ماند و چاپ نمی‌داند روی طرح کدام شرکت برود.
+            CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : DefaultCompanyIdForLetter(),
             Status = signerIds.Count > 0 ? 1 : (allReciverIds.Count > 0 ? 1 : 2),
             IsDelete = false
         };
@@ -1064,7 +1077,9 @@ public class OutgoingLetterService : IOutgoingLetterService
         letter.ReceiverAddress = dto.ReceiverAddress?.Trim();
         letter.CopyTo = dto.CopyTo?.Trim();
         letter.ExternalRefNumber = dto.ExternalRefNumber?.Trim();
-        letter.CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null;
+        // شرکت نامه با ویرایشِ بدون انتخاب شرکت پاک نمی‌شود؛ اگر هیچ شرکتی هم ارسال نشده باشد
+        // شرکت فعال درخواست جایگزین می‌شود (قبلاً NULL می‌شد و چاپ شرکت را گم می‌کرد).
+        letter.CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : DefaultCompanyIdForLetter();
 
         var now = DateTime.Now;
         var rootErjas = await _db.Erjas.Where(e => e.SourceId == letterId && !e.IsDelete && e.ParentErjaId == null).ToListAsync();

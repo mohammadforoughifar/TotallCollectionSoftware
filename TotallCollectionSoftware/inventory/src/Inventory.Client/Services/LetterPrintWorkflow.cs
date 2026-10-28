@@ -3,10 +3,24 @@ using Microsoft.JSInterop;
 
 namespace Inventory.Client.Services;
 
-/// <summary>Shared popup, loading, PDF fallback, and error flow for internal and outgoing letters.</summary>
+/// <summary>
+/// Shared popup, loading, PDF fallback, and error flow for internal and outgoing letters.
+///
+/// بودجهٔ زمانی چاپ: قبلاً کل آماده‌سازی (دریافت PDF + تحویل به مرورگر) سقف ثابت ۱۵ ثانیه داشت.
+/// ساخت PDF نامه روی سربرگ (QuestPDF + PDFsharp روی تصویر ۲۴۸۱×۳۵۰۸) در سرور کند/بار اول
+/// می‌تواند بیشتر طول بکشد؛ نتیجه این بود که صفحهٔ چاپ در حالت «در حال آماده‌سازی» می‌ماند و
+/// بعد از ۱۵ ثانیه با خطا بسته می‌شد، در حالی که سرور داشت کار می‌کرد. اکنون:
+///   • تلاش اول ۹۰ ثانیه (شامل رندر سرد، JIT و فونت‌ها)
+///   • تلاش‌های بعدی ۶۰ ثانیه (کش سرور معمولاً پاسخ را فوری می‌کند)
+///   • تحویل به مرورگر بودجهٔ جدا دارد تا زمان دانلود، از سهم مرورگر کم نشود
+///   • بعد از ۸ ثانیه متن وضعیت به کاربر می‌گوید کار در جریان است (حس «قفل‌کردن» ندهد)
+/// </summary>
 public sealed class LetterPrintWorkflow
 {
-    private static readonly TimeSpan PreparationTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan FirstAttemptTimeout = TimeSpan.FromSeconds(90);
+    private static readonly TimeSpan RetryTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan SlowPreparationHintAfter = TimeSpan.FromSeconds(8);
 
     private readonly IJSRuntime _js;
     private readonly IToastService _toast;
@@ -56,14 +70,29 @@ public sealed class LetterPrintWorkflow
         }
         MarkStage("print-surface-ready");
 
+        var attemptNumber = 0;
         while (true)
         {
+            attemptNumber++;
             var attempt = Stopwatch.StartNew();
-            using var timeout = new CancellationTokenSource(PreparationTimeout);
+            var loadBudget = attemptNumber == 1 ? FirstAttemptTimeout : RetryTimeout;
+
+            // Hint that the server is still rendering: the first print on a fresh deployment
+            // reads the 5 MB template, registers fonts and renders the letterhead image.
+            using var hintCancellation = new CancellationTokenSource();
+            var slowHint = ShowSlowPreparationHintAsync(printId, hintCancellation.Token);
+
             try
             {
-                var pdfBytes = await loadPdf(timeout.Token);
+                // The download and the browser handoff have separate budgets: a slow render must
+                // not eat the time the browser needs to build the print preview.
+                byte[] pdfBytes;
+                using (var loadTimeout = new CancellationTokenSource(loadBudget))
+                {
+                    pdfBytes = await loadPdf(loadTimeout.Token);
+                }
                 MarkStage("pdf-download");
+
                 if (pdfBytes == null || pdfBytes.Length == 0)
                     throw new InvalidOperationException("فایل PDF چاپ خالی است.");
 
@@ -71,9 +100,13 @@ public sealed class LetterPrintWorkflow
                 _logger.LogInformation(
                     "LetterPrintClientTiming Stage=pdf-binary-ready Bytes={Bytes}", pdfBytes.Length);
 
-                var remainingMs = Math.Max(1, (int)(PreparationTimeout - attempt.Elapsed).TotalMilliseconds);
-                var ready = await _js.InvokeAsync<bool>(
-                    "ltxPrintReady", timeout.Token, printId, pdfBytes, fileName, remainingMs);
+                bool ready;
+                using (var handoffTimeout = new CancellationTokenSource(HandoffTimeout))
+                {
+                    ready = await _js.InvokeAsync<bool>(
+                        "ltxPrintReady", handoffTimeout.Token, printId, pdfBytes, fileName,
+                        (int)HandoffTimeout.TotalMilliseconds);
+                }
                 MarkStage("browser-print-handoff");
 
                 if (ready)
@@ -86,12 +119,18 @@ public sealed class LetterPrintWorkflow
             }
             catch (Exception ex)
             {
-                var message = ex is OperationCanceledException
-                    ? "آماده‌سازی چاپ بیش از ۱۵ ثانیه طول کشید. اتصال را بررسی کنید یا دوباره تلاش کنید."
-                    : ex.Message;
+                var cancelledByBudget = ex is OperationCanceledException && attempt.Elapsed >= loadBudget - TimeSpan.FromMilliseconds(500);
+                var message = cancelledByBudget
+                    ? $"ساخت نسخهٔ چاپ بیش از {(int)loadBudget.TotalSeconds} ثانیه طول کشید. " +
+                      "اگر بار اول است، ساخت PDF روی سربرگ کمی کند است؛ «تلاش مجدد» معمولاً خیلی سریع‌تر آماده می‌شود. " +
+                      "در صورت تکرار، لاگ چاپ سرور (OutgoingLetterPrintTiming) را ببینید."
+                    : ex is OperationCanceledException
+                        ? "آماده‌سازی چاپ لغو شد."
+                        : ex.Message;
 
                 _logger.LogWarning(ex,
-                    "LetterPrintClientTiming Stage=preparation-failed TotalMs={TotalMs}", total.ElapsedMilliseconds);
+                    "LetterPrintClientTiming Stage=preparation-failed Attempt={Attempt} TotalMs={TotalMs}",
+                    attemptNumber, total.ElapsedMilliseconds);
                 try { await _js.InvokeVoidAsync("ltxPrintFail", printId, message); }
                 catch (Exception jsEx) { _logger.LogWarning(jsEx, "Could not display the print preparation error."); }
 
@@ -126,6 +165,33 @@ public sealed class LetterPrintWorkflow
                 MarkStage("print-cancelled");
                 return;
             }
+            finally
+            {
+                hintCancellation.Cancel();
+                try { await slowHint; } catch { /* status hint is best-effort */ }
+            }
+        }
+    }
+
+    /// <summary>
+    /// بعد از چند ثانیه متن وضعیت پنجرهٔ چاپ را به‌روز می‌کند تا کاربر فکر نکند صفحه قفل شده است.
+    /// اگر آماده‌سازی سریع تمام شود، توکن لغو می‌شود و هیچ متنی نوشته نمی‌شود.
+    /// </summary>
+    private async Task ShowSlowPreparationHintAsync(string printId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(SlowPreparationHintAfter, cancellationToken);
+            await _js.InvokeVoidAsync("ltxPrintStatus", cancellationToken, printId,
+                "در حال ساخت PDF روی سربرگ شرکت… (بار اول ممکن است تا یک دقیقه طول بکشد)");
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException or TaskCanceledException)
+        {
+            // fast path / navigation: nothing to show
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not update the print status hint.");
         }
     }
 }

@@ -528,6 +528,15 @@ public class OutgoingLettersController : RbacControllerBase
         {
             return StatusCode(500, new { message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            // خطای موتور چاپ (فونت/PDFsharp/QuestPDF/دیتابیس) قبلاً 500 خالی می‌داد و پنجرهٔ
+            // چاپ فقط «خطا» نشان می‌داد؛ اکنون علت واقعی هم لاگ و هم به کاربر می‌رسد.
+            _logger.LogError(ex,
+                "ساخت PDF نامه صادره ناموفق بود. LetterId={LetterId}, Size={Size}, WithCopy={WithCopy}",
+                id, size, withCopy);
+            return StatusCode(500, new { message = $"ساخت PDF نامه ناموفق بود ({ex.GetType().Name}): {ex.Message}" });
+        }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
         var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
@@ -535,6 +544,24 @@ public class OutgoingLettersController : RbacControllerBase
         var version = withCopy ? "با-رونوشت" : "بدون-رونوشت";
         var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}-{version}.pdf";
         return File(pdf, "application/pdf", fileName);
+    }
+
+    /// <summary>
+    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و چرا؟
+    /// فقط خواندن؛ برای پشتیبانی «چرا سربرگ شرکت خوانده نمی‌شود» را در یک درخواست روشن می‌کند.
+    /// نمونه: GET api/outgoing-letters/123/print/diagnose?size=A4
+    /// </summary>
+    [HttpGet("{id:int}/print/diagnose")]
+    public async Task<IActionResult> PrintDiagnose(int id, [FromQuery] string size = "A4")
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "گزارش تشخیص چاپ فقط برای دبیرخانه مجاز است." });
+
+        var diagnostics = await _print.DiagnoseAsync(id, size);
+        if (diagnostics == null) return NotFound(new { message = "نامه پیدا نشد." });
+
+        return Ok(diagnostics);
     }
 
     // ==================== گردش / ارجاع ====================

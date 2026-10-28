@@ -109,6 +109,7 @@ builder.Services.AddScoped<IProjectCartableService, ProjectCartableService>();
 builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
+builder.Services.AddScoped<LetterPrintWorkflow>(); // مسیر مشترک چاپ: پنجره، بودجهٔ زمانی و خطا
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
 builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)
