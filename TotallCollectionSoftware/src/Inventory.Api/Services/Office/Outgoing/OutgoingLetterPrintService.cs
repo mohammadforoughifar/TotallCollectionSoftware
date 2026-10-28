@@ -1475,7 +1475,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var designTimer = Stopwatch.StartNew();
             var designContent = BuildDesignContentPdf(
                 letter, isA5, designLayout, number, date, receiverLine, title, externalReference,
-                hasAttachment: printData.HasAttachment, hasLetterhead: hasLetterhead);
+                hasAttachment: hasAttachment, hasLetterhead: hasLetterhead);
             fixedBlocksPdf = BuildDesignFixedBlocks(designLayout, signerCards, copyTos, letter, isA5, withCopy);
             _logger.LogInformation(
                 "OutgoingLetterPrintTiming LetterId={LetterId} Stage=design-content StageMs={StageMs} Bytes={Bytes} FixedBlocks={FixedBlocks}",

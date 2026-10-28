@@ -822,6 +822,23 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                         / "OutgoingLetterView.razor").read_text(encoding="utf-8")
                 self.assertIn("diag.DesignDriven", view)
 
+    def test_design_branch_only_uses_parameters_that_exist_in_its_method(self):
+        """CS0103: در `BuildContentPdf` متغیری به نام `printData` وجود ندارد.
+
+        `printData` فقط در `GeneratePdfCoreAsync` ساخته می‌شود و مقدارش به‌صورت
+        پارامتر `hasAttachment` به `BuildContentPdf` می‌رسد؛ استفادهٔ مستقیم از آن
+        ساخت پروژه را با «The name 'printData' does not exist in the current context»
+        متوقف می‌کند.
+        """
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                body = service.split("private byte[] BuildContentPdf(", 1)[1]
+                body = body.split("\n    private ", 1)[0]
+                self.assertNotIn("printData", body,
+                                 "BuildContentPdf has no printData variable (CS0103)")
+                self.assertIn("hasAttachment: hasAttachment", body)
+
     def test_company_1003_template_announces_receiver_title_and_body(self):
         for tree in self.TREES:
             for size in ("A4", "A5"):
