@@ -248,6 +248,61 @@
                     <button class="icb" title="بستن" @onclick="CloseReader"><i class="bi bi-x-lg"></i></button>
                 </div>
 
+                @* ---------- نوار عملیات — بالای نامه، هم‌طراز نامهٔ داخلی ----------
+                   دکمه‌ها بیرون از کاغذ نامه و چسبیده به سرصفحهٔ ریدر هستند تا بدون
+                   اسکرول کردن متن، همیشه در دسترس باشند. *@
+                <div class="act-bar">
+                    @if (activeDetail.ActiveErjaId.HasValue)
+                    {
+                        <button class="lbtn pri" @onclick="() => OpenAnswerFromReader(activeDetail.ActiveErjaId.Value, activeDetail.NumberSabt)">
+                            <i class="bi bi-reply-fill"></i> ثبت پاسخ
+                        </button>
+                    }
+                    <button class="lbtn ghost" title="مشاهدهٔ گردش نامه" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
+                        <i class="bi bi-diagram-3"></i> گردش نامه
+                    </button>
+                    <button class="lbtn pri" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
+                        <i class="bi bi-send-fill"></i> ارجاع
+                    </button>
+                    <button class="lbtn ghost" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
+                            @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
+                        <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
+                        @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
+                    </button>
+                    @if (workOrders.Count > 0)
+                    {
+                        <button class="lbtn grn" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
+                            <i class="bi bi-list-task"></i> دستورکار شده (@workOrders.Count.FaDigits())
+                        </button>
+                    }
+                    @if (CanDabirkhane)
+                    {
+                        <button class="lbtn ghost" title="کپی نامه با همهٔ اطلاعات و افراد در گردش" disabled="@copying" @onclick="CopyLetter">
+                            <i class="bi bi-files"></i> کپی نامه
+                        </button>
+                    }
+                    @if (CanEditLetter)
+                    {
+                        <button class="lbtn ghost" title="ویرایش نامه" @onclick="() => OpenEditFromReader()">
+                            <i class="bi bi-pencil-square"></i> ویرایش
+                        </button>
+                    }
+                    @if (activeLetter is { IsBayegani: false })
+                    {
+                        <button class="lbtn ghost" title="انتخاب پوشه و بایگانی نامه"
+                                @onclick="() => ArchiveLetterAsync(activeLetter!)">
+                            <i class="bi bi-archive"></i> انطباق و بایگانی
+                        </button>
+                    }
+                    @if (activeLetter is { IsBayegani: true })
+                    {
+                        <button class="lbtn ghost" title="خروج از بایگانی و بازگشت به دریافتی"
+                                @onclick="() => ToggleBayeganiAsync(activeLetter!)">
+                            <i class="bi bi-box-arrow-up"></i> خروج از بایگانی
+                        </button>
+                    }
+                </div>
+
                 <div class="rd-scroll">
                     <div class="rd-main">
                         @* ---------- برگهٔ نامه ---------- *@
@@ -338,58 +393,6 @@
                             </div>
                         }
 
-                        @* ---------- نوار عملیات ---------- *@
-                        <div class="act-strip">
-                            @if (activeDetail.ActiveErjaId.HasValue)
-                            {
-                                <button class="lbtn pri" @onclick="() => OpenAnswerFromReader(activeDetail.ActiveErjaId.Value, activeDetail.NumberSabt)">
-                                    <i class="bi bi-reply-fill"></i> ثبت پاسخ
-                                </button>
-                            }
-                            <button class="lbtn ghost" title="مشاهدهٔ گردش نامه" @onclick="() => OpenGardeshFromReader(activeDetail.LetterId)">
-                                <i class="bi bi-diagram-3"></i> گردش نامه
-                            </button>
-                            <button class="lbtn pri" @onclick="() => OpenErja(activeDetail.LetterId, activeDetail.NumberSabt)">
-                                <i class="bi bi-send-fill"></i> ارجاع
-                            </button>
-                            <button class="lbtn ghost" title="@(workOrders.Count > 0 ? "افزودن دستورکار جدید از این نامه" : "تبدیل این نامه به دستور کار")"
-                                    @onclick="() => OpenWorkOrder(activeDetail.LetterId)">
-                                <i class="bi @(workOrders.Count > 0 ? "bi-plus-circle" : "bi-list-task")"></i>
-                                @(workOrders.Count > 0 ? "افزودن دستورکار" : "دستورکار")
-                            </button>
-                            @if (workOrders.Count > 0)
-                            {
-                                <button class="lbtn grn" @onclick="() => showWorkOrderReport = !showWorkOrderReport">
-                                    <i class="bi bi-list-task"></i> دستورکار شده (@workOrders.Count.FaDigits())
-                                </button>
-                            }
-                            @if (CanDabirkhane)
-                            {
-                                <button class="lbtn ghost" title="کپی نامه با همهٔ اطلاعات و افراد در گردش" disabled="@copying" @onclick="CopyLetter">
-                                    <i class="bi bi-files"></i> کپی نامه
-                                </button>
-                            }
-                            @if (CanEditLetter)
-                            {
-                                <button class="lbtn ghost" title="ویرایش نامه" @onclick="() => OpenEditFromReader()">
-                                    <i class="bi bi-pencil-square"></i> ویرایش
-                                </button>
-                            }
-                            @if (activeLetter is { IsBayegani: false })
-                            {
-                                <button class="lbtn ghost" title="انتخاب پوشه و بایگانی نامه"
-                                        @onclick="() => ArchiveLetterAsync(activeLetter!)">
-                                    <i class="bi bi-archive"></i> انطباق و بایگانی
-                                </button>
-                            }
-                            @if (activeLetter is { IsBayegani: true })
-                            {
-                                <button class="lbtn ghost" title="خروج از بایگانی و بازگشت به دریافتی"
-                                        @onclick="() => ToggleBayeganiAsync(activeLetter!)">
-                                    <i class="bi bi-box-arrow-up"></i> خروج از بایگانی
-                                </button>
-                            }
-                        </div>
 
                         @if (showWorkOrderReport && workOrders.Count > 0)
                         {
