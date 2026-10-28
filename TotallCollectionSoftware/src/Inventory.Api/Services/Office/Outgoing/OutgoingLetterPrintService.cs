@@ -78,7 +78,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // کش کوتاه‌مدت خروجی چاپ: ساخت PDF روی سربرگ چند ثانیه طول می‌کشد و اگر مرورگر
     // درخواست را قطع کند یا کاربر «تلاش مجدد» بزند، رندر تکرار می‌شد و چاپ آماده نمی‌شد.
     private static readonly TimeSpan RenderedPdfLifetime = TimeSpan.FromSeconds(90);
-    private sealed record CachedRender(DateTime CreatedUtc, Lazy<Task<byte[]?>> Render);
+
+    /// <summary>
+    /// رندرِ مشترکِ درخواست‌های هم‌زمان. عمداً به‌جای <c>Lazy&lt;Task&lt;T&gt;&gt;</c> نوشته شده است:
+    /// خواندن <c>Lazy&lt;Task&lt;T&gt;&gt;.Value</c> قاعدهٔ تحلیل‌گر VSTHRD011 را می‌شکند (خطر deadlock
+    /// در زمینهٔ همگام) و ساخت پروژه را با «Error» متوقف می‌کند. اینجا Task یک‌بار ساخته می‌شود و
+    /// همهٔ فراخوان‌ها فقط آن را await می‌کنند.
+    /// </summary>
+    private sealed class CachedRender
+    {
+        private readonly TaskCompletionSource<byte[]?> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public CachedRender(DateTime createdUtc) => CreatedUtc = createdUtc;
+
+        public DateTime CreatedUtc { get; }
+
+        public Task<byte[]?> Render => _completion.Task;
+
+        public void Complete(byte[]? pdf) => _completion.TrySetResult(pdf);
+
+        public void Fail(Exception error) => _completion.TrySetException(error);
+    }
+
     private static readonly ConcurrentDictionary<string, CachedRender> RenderedPdfs = new(StringComparer.Ordinal);
 
     private static bool _fontsRegistered;
@@ -668,33 +690,58 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy);
         if (cacheKey == null) return null;
 
-        if (RenderedPdfs.TryGetValue(cacheKey, out var cached)
-            && DateTime.UtcNow - cached.CreatedUtc < RenderedPdfLifetime)
+        // رکورد پیش از شروع رندر در فرهنگ لغت منتشر می‌شود تا درخواست‌های هم‌زمان
+        // (دوبار کلیک، تلاش مجدد پس از قطع مرورگر) همان رندر را await کنند.
+        var (cached, startedHere) = RentRenderedPdf(cacheKey);
+        if (!startedHere)
         {
             _logger.LogInformation(
                 "چاپ نامه {LetterId}: خروجی آمادهٔ همین درخواست استفاده شد (کش {AgeMs}ms).",
                 letterId, (int)(DateTime.UtcNow - cached.CreatedUtc).TotalMilliseconds);
-            return await cached.Render.Value;
+            return await cached.Render;
         }
-
-        var render = new Lazy<Task<byte[]?>>(
-            () => GeneratePdfCoreAsync(letterId, size, withCopy),
-            LazyThreadSafetyMode.ExecutionAndPublication);
-
-        PruneRenderedPdfs();
-        RenderedPdfs[cacheKey] = new CachedRender(DateTime.UtcNow, render);
 
         try
         {
-            var pdf = await render.Value;
-            if (pdf == null) RenderedPdfs.TryRemove(cacheKey, out _);
+            var pdf = await GeneratePdfCoreAsync(letterId, size, withCopy);
+            if (pdf == null) RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
+            cached.Complete(pdf);
             return pdf;
         }
-        catch
+        catch (Exception ex)
         {
-            RenderedPdfs.TryRemove(cacheKey, out _);
+            // خطا هرگز کش نمی‌شود؛ تلاش بعدی باید واقعاً دوباره رندر کند.
+            RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
+            cached.Fail(ex);
             throw;
         }
+    }
+
+    /// <summary>
+    /// رکورد رندرِ این کلید را برمی‌گرداند؛ اگر تازه ساخته شد <c>StartedHere=true</c> است و فقط
+    /// همان فراخوان مسئول رندر است. رکورد منقضی با مقایسهٔ خودِ نمونه حذف می‌شود تا رکورد تازهٔ
+    /// درخواست دیگری پاک نشود.
+    /// </summary>
+    private static (CachedRender Render, bool StartedHere) RentRenderedPdf(string cacheKey)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            if (RenderedPdfs.TryGetValue(cacheKey, out var existing))
+            {
+                if (DateTime.UtcNow - existing.CreatedUtc < RenderedPdfLifetime)
+                    return (existing, false);
+
+                RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, existing));
+            }
+
+            PruneRenderedPdfs();
+            var fresh = new CachedRender(DateTime.UtcNow);
+            if (RenderedPdfs.TryAdd(cacheKey, fresh))
+                return (fresh, true);
+        }
+
+        // رقابت شدید و غیرمنتظره: بدون کش رندر می‌کنیم تا درخواست کاربر معلق نماند.
+        return (new CachedRender(DateTime.UtcNow), true);
     }
 
     /// <summary>پاک‌سازی دوره‌ای انقضاشده‌ها تا حافظه با هر چاپ جدید رشد نکند.</summary>

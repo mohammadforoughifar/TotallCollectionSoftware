@@ -468,9 +468,12 @@ class PrintPreparationBudgetTests(unittest.TestCase):
                 source = service.read_text(encoding="utf-8")
                 self.assertIn("RenderedPdfLifetime = TimeSpan.FromSeconds(90)", source)
                 self.assertIn("ConcurrentDictionary<string, CachedRender> RenderedPdfs", source)
-                self.assertIn("LazyThreadSafetyMode.ExecutionAndPublication", source)
-                self.assertIn("RenderedPdfs.TryRemove(cacheKey, out _);", source,
-                              "a failed or missing render must not stay cached")
+                self.assertIn("TaskCompletionSource<byte[]?>", source)
+                self.assertIn("TaskCreationOptions.RunContinuationsAsynchronously", source)
+                self.assertIn(
+                    "RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));",
+                    source, "a failed or missing render must not stay cached")
+                self.assertIn("cached.Fail(ex);", source)
 
     def test_cache_key_covers_letter_signatures_and_copies(self):
         source = SERVICE.read_text(encoding="utf-8")
@@ -481,11 +484,23 @@ class PrintPreparationBudgetTests(unittest.TestCase):
     def test_concurrent_and_repeated_prints_share_one_render(self):
         source = SERVICE.read_text(encoding="utf-8")
         wrapper = source.split("public async Task<byte[]?> GeneratePdfAsync", 1)[1]
-        wrapper = wrapper.split("private async Task<byte[]?> GeneratePdfCoreAsync", 1)[0]
-        self.assertIn("RenderedPdfs[cacheKey] = new CachedRender(DateTime.UtcNow, render);", wrapper)
-        self.assertLess(wrapper.index("RenderedPdfs[cacheKey] = new CachedRender"),
-                        wrapper.index("await render.Value"),
-                        "the in-flight render must be published before awaiting it")
+        wrapper = wrapper.split("private static (CachedRender Render, bool StartedHere) RentRenderedPdf", 1)[0]
+        self.assertIn("var (cached, startedHere) = RentRenderedPdf(cacheKey);", wrapper)
+        self.assertIn("return await cached.Render;", wrapper)
+        helper = source.split("private static (CachedRender Render, bool StartedHere) RentRenderedPdf", 1)[1]
+        self.assertIn("RenderedPdfs.TryAdd(cacheKey, fresh)", helper,
+                      "the in-flight render must be published before it is awaited")
+
+    def test_print_cache_does_not_use_lazy_task(self):
+        """VSTHRD011: خواندن Lazy<Task<T>>.Value می‌تواند deadlock کند و ساخت پروژه را
+        با «Error» متوقف می‌کند (خطای VS روی همین سرویس). رندر مشترک با
+        TaskCompletionSource پیاده شده است."""
+        for service in (SERVICE, Path(__file__).resolve().parents[3] / "src" / "Inventory.Api"
+                        / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"):
+            with self.subTest(service=service.parts[-6]):
+                source = service.read_text(encoding="utf-8")
+                self.assertNotIn("Lazy<Task", source, "VSTHRD011 build break")
+                self.assertNotIn("render.Value", source)
 
     def test_unexpected_print_errors_reach_the_user(self):
         controllers = [

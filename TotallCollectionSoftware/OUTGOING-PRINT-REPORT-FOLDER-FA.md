@@ -189,8 +189,10 @@ QuestPDF برای متن و سپس PDFsharp روی تصویر سربرگ ۲۴۸�
 * کلید کش: `outgoing-print-v2:` + `SHA256(letterId, size, flags, companyId, شماره‌ها, تاریخ‌ها,`
   `عنوان/متن/گیرنده, تعداد و وضعیت امضاها, تعداد رونوشت, تعداد پیوست)`؛ با هر ویرایش نامه کلید
   عوض می‌شود، پس چاپِ بعدی هرگز نسخهٔ کهنه نمی‌دهد.
-* درخواست‌های هم‌زمان (مثلاً دوبار کلیک) یک رندر را با هم استفاده می‌کنند
-  (`Lazy<Task<byte[]?>>` با `ExecutionAndPublication`).
+* درخواست‌های هم‌زمان (مثلاً دوبار کلیک) یک رندر را با هم استفاده می‌کنند: رکورد کش پیش از
+  شروع رندر منتشر می‌شود و همه فقط `await` می‌کنند
+  (`CachedRender` بر پایهٔ `TaskCompletionSource<byte[]?>` با
+  `TaskCreationOptions.RunContinuationsAsynchronously` — **نه** `Lazy<Task<T>>`؛ دلیل در بخش ۴-۹).
 * خروجی `null` و هر استثنا از کش حذف می‌شود؛ خطا هرگز کش نمی‌شود.
 * PDF به‌صورت **باینری (Uint8Array)** به مرورگر می‌رود، نه base64؛ در نتیجه حجم انتقال و زمان
   آماده‌سازی کمتر است.
@@ -276,10 +278,75 @@ SELECT COUNT(*) AS NoCompany FROM OutgoingLetters WHERE CompanyId IS NULL;
 کنید که فایل ثبت‌شده‌اش یک PDF برداری است و طرح داخل MRT یک تصویر JPEG است؛ اگر کیفیت
 برداری را می‌خواهید، همان اولویت پیش‌فرض (`false`) را نگه دارید.
 
+### ۴-۹. خطای ساخت پروژه: `VSTHRD011` روی `Lazy<Task<byte[]?>>`
+
+هنگام اجرا/ساخت پروژه در Visual Studio این خطا گرفته می‌شد:
+
+```text
+Error VSTHRD011  Lazy<Task<T>>.Value can deadlock. Use AsyncLazy<T> instead.
+File: inventory/src/Inventory.Api/Services/Office/Outgoing/OutgoingLetterPrintService.cs
+```
+
+علت: کش رندر چاپ با `Lazy<Task<byte[]?>>` ساخته شده بود و هر دو خواندنِ `cached.Render.Value`
+و `render.Value` را داشت. قاعدهٔ `VSTHRD011` (بستهٔ `Microsoft.VisualStudio.Threading.Analyzers`)
+این الگو را **خطا** می‌داند، چون کارخانهٔ مقدار، زمینهٔ اولین فراخوان را به ارث می‌برد و اگر آن
+زمینه به رشتهٔ اصلی (UI) نیاز داشته باشد، می‌تواند deadlock کند. (توجه: قاعده فقط
+`Lazy<T>` با نوع awaitable را می‌گیرد؛ جای دیگری که در همین سرویس `Lazy<CachedLetterheadAsset>`
+داریم — کش decode تصویر سربرگ — نه awaitable است و نه در کارخانه‌اش
+`JoinableTaskFactory.Run` صدا زده می‌شود، پس مشمول این قاعده نیست.)
+
+**اصلاح:** کش رندر بدون `Lazy` بازنویسی شد و همان رفتار (یک رندر مشترک برای درخواست‌های هم‌زمان)
+حفظ شد:
+
+```csharp
+private sealed class CachedRender
+{
+    private readonly TaskCompletionSource<byte[]?> _completion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public CachedRender(DateTime createdUtc) => CreatedUtc = createdUtc;
+    public DateTime CreatedUtc { get; }
+    public Task<byte[]?> Render => _completion.Task;
+    public void Complete(byte[]? pdf) => _completion.TrySetResult(pdf);
+    public void Fail(Exception error) => _completion.TrySetException(error);
+}
+```
+
+و در `GeneratePdfAsync`:
+
+```csharp
+var (cached, startedHere) = RentRenderedPdf(cacheKey);   // TryAdd پیش از شروع رندر
+if (!startedHere) return await cached.Render;            // فقط await، بدون .Value
+
+try
+{
+    var pdf = await GeneratePdfCoreAsync(...);
+    if (pdf == null) RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
+    cached.Complete(pdf);
+    return pdf;
+}
+catch (Exception ex)
+{
+    RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
+    cached.Fail(ex);   // همهٔ منتظرانِ همان رندر همان خطا را می‌گیرند
+    throw;
+}
+```
+
+نکته‌های رفتار:
+
+* رکورد **قبل** از رندر در `RenderedPdfs` ثبت می‌شود (`TryAdd`)، پس دوبار کلیک = یک رندر.
+* رکورد منقضی با مقایسهٔ **خودِ نمونه** حذف می‌شود
+  (`TryRemove(KeyValuePair<...>)`) تا رکورد تازهٔ درخواست دیگری پاک نشود.
+* `Fail` باعث می‌شود بقیهٔ درخواست‌های در انتظار به‌جای معلق ماندن، خطای واقعی بگیرند.
+* در رقابت شدید (۵ تلاش ناموفق `TryAdd`) بدون کش رندر می‌شود تا درخواست کاربر معلق نماند.
+* این تغییر در **هر دو درخت** (`src/` و `inventory/src/`) اعمال شد و یک تست هم اضافه شد که
+  وجود `Lazy<Task` را در این سرویس ممنوع می‌کند تا خطای ساخت برنگردد.
+
 ## ۵) تست‌ها و بررسی‌هایی که انجام شد
 
 ```bash
-python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۵۵ تست، OK
+python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v   # ۵۶ تست، OK
 ```
 
 تست‌های تازه (در همان فایل) این‌ها را قفل می‌کنند:
@@ -305,6 +372,8 @@ python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py
 * ذخیرهٔ `CompanyId` نامه از روی «شرکت فعال درخواست» در ساخت و ویرایش.
 * دسترس‌پذیری تشخیص چاپ: `DiagnoseAsync` + endpoint `print/diagnose` + DTO مشترک +
   دکمهٔ «تشخیص چاپ» و متد کلاینت.
+* نبود `Lazy<Task`/`render.Value` در سرویس چاپ (قاعدهٔ `VSTHRD011` ساخت پروژه را می‌شکند)
+  و استفادهٔ `TaskCompletionSource<byte[]?>` با `RunContinuationsAsynchronously`.
 
 تصویر سربرگ‌های همهٔ شرکت‌ها جداگانه decode و پیکسل‌به‌پیکسل اندازه‌گیری شد (جای برچسب‌ها و
 رنگ متن) تا اعداد بالا از روی تصویر واقعی به دست بیاید، نه از حافظه.
