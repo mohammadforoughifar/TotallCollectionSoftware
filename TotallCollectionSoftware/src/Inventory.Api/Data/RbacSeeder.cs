@@ -27,7 +27,14 @@ public static class RbacSeeder
         ["Ipam"] = new[] { "View", "Create", "Update", "Delete", "Scan" },
         // سرورهای HPE/iLO — Collect فقط خواندنی است (Health/Inventory از Redfish) و عملیات پاور ندارد.
         ["Servers"] = new[] { "View", "Create", "Update", "Delete", "Collect" },
+        // طرف حساب — ماژول قدیمی «Parties» هر دو نوع را پوشش می‌دهد و برای سازگاری باقی می‌ماند.
+        // برای تفکیک دسترسی «مشتری» از «تأمین‌کننده» این دو ماژول مستقل هم تعریف می‌شوند:
+        //   Customers  = مشتریان (ویزیتور فقط این را می‌گیرد ⇒ تأمین‌کننده‌ها را هرگز نمی‌بیند)
+        //   Suppliers  = تأمین‌کنندگان
+        // کنترلر طرف حساب مجوز را بر اساس نوع سطر از همین دو ماژول می‌سنجد.
         ["Parties"] = CrudActions,
+        ["Customers"] = CrudActions,
+        ["Suppliers"] = CrudActions,
         ["Expenses"] = CrudActions,
         ["Reports"] = CrudActions,
         ["SystemUsers"] = CrudActions,
@@ -94,6 +101,12 @@ public static class RbacSeeder
         ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
         ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
         ["ReferrerPanel"] = new[] { "MyDashboard", "MyProducts", "MyWallet", "MyCard" }, // پنل معرف (هر بخش جدا)
+        // ================== ماژول ویزیتوری (سفارش میدانی) ==================
+        // View: مشاهدهٔ منو و فهرست | Create: ثبت سفارش | Update: ویرایش پیش‌نویس/بازگردانی از «برگشتی»
+        // Submit: ارسال برای تأیید | Cancel: ابطال سفارش خودش
+        // Approve: تأیید/برگشت/رد مدیر فروش | SetDiscountCap: تعیین سقف تخفیف ویزیتور
+        // AssignCustomer: تخصیص مشتری به ویزیتور | FinanceView: صف مالی و ساخت پیش‌نویس فاکتور | Export
+        ["SalesVisit"] = new[] { "View", "Create", "Update", "Submit", "Cancel", "Approve", "SetDiscountCap", "AssignCustomer", "FinanceView", "Export" },
         // ================== منابع انسانی: مرخصی و ماموریت ==================
         // Request: ثبت درخواست شخصی | Approve: تایید/رد درخواست دیگران | Report: گزارش ماهانه
         ["LeaveRequests"] = new[] { "Request", "Approve", "Report" },
@@ -383,7 +396,131 @@ public static class RbacSeeder
         // بوده‌اند و مجوزهای اضافه‌شان محصول seed قدیمی بوده است.
         await RemoveFormerImplicitPermissionsFromMoadianOnlyRolesAsync(db);
 
-// ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
+// ================== نقش‌های ماژول ویزیتوری ==================
+        // SalesVisitor: ویزیتور میدانی — ثبت و ارسال سفارش، مشاهدهٔ سفارش‌های خودش
+        var salesVisitorRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "SalesVisitor");
+        if (salesVisitorRole == null)
+        {
+            salesVisitorRole = new Role
+            {
+                Name = "SalesVisitor",
+                Description = "ویزیتور — ثبت سفارش میدانی، پیگیری سفارش‌های خودش و پورسانت (فقط دادهٔ خودش)",
+                IsActive = true
+            };
+            db.Roles.Add(salesVisitorRole);
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] نقش «SalesVisitor» ساخته شد.");
+        }
+        var visitorIsNew = !await db.RolePermissions.AnyAsync(rp => rp.RoleId == salesVisitorRole.Id);
+        {
+            var wanted = new[] { "View", "Create", "Update", "Submit", "Cancel" };
+            var perms = await db.Permissions
+                .Where(p => p.Module == "SalesVisit" && wanted.Contains(p.Action))
+                .ToListAsync();
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
+            foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+            await db.SaveChangesAsync();
+        }
+        {
+            // ویزیتور «تعریف مشتری» می‌کند — فقط مشتری، هرگز تأمین‌کننده.
+            // فقط یک‌بار (نقش تازه) یا اگر مدیر بعداً آن را برداشته باشد، دوباره اضافه نمی‌شود؛
+            // پس این بلوک با یک رخداد در AuditLog علامت می‌خورد.
+            const string flag = "VisitorCustomerAccessV1";
+            var applied = await db.AuditLogs.AsNoTracking()
+                .AnyAsync(l => l.Module == "RbacSeeder" && l.Action == flag);
+            if (visitorIsNew || !applied)
+            {
+                var wanted = new[] { "Create", "Update" };
+                var perms = await db.Permissions
+                    .Where(p => p.Module == "Customers" && wanted.Contains(p.Action))
+                    .ToListAsync();
+                var has = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+                await db.SaveChangesAsync();
+
+                // نقش‌های ویزیتوری که قبلاً «Parties» کامل داشتند تا این نسخه، دسترسی مشتری/تأمین‌کننده‌شان
+                // نگه داشته می‌شود (رفتار قبلی حفظ می‌شود) — تغییر مسئولیت مدیر نیست.
+                var legacyParties = await db.RolePermissions
+                    .Where(rp => rp.RoleId == salesVisitorRole.Id
+                                 && db.Permissions.Any(p => p.Id == rp.PermissionId && p.Module == "Parties"))
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                if (legacyParties.Count > 0)
+                {
+                    var split = await db.Permissions
+                        .Where(p => p.Module == "Suppliers" || (p.Module == "Customers" && !wanted.Contains(p.Action)))
+                        .ToListAsync();
+                    var hasNow = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                        .Select(rp => rp.PermissionId).ToListAsync();
+                    foreach (var perm in split.Where(p => !hasNow.Contains(p.Id)))
+                        db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+                }
+
+                db.AuditLogs.Add(new AuditLog
+                {
+                    Module = "RbacSeeder",
+                    Action = flag,
+                    Summary = "اعطای مجوز «مشتریان» (بدون تأمین‌کنندگان) به نقش SalesVisitor",
+                    Username = "system"
+                });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // SalesManager: مدیر فروش — تأیید/برگشت سفارش‌ها، تخصیص مشتری، سقف تخفیف و صف مالی
+        var salesManagerRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "SalesManager");
+        if (salesManagerRole == null)
+        {
+            salesManagerRole = new Role
+            {
+                Name = "SalesManager",
+                Description = "مدیر فروش — تأیید سفارش ویزیتورها، تخصیص مشتری و سقف تخفیف، صف مالی (بدون قطعی‌سازی حسابداری)",
+                IsActive = true
+            };
+            db.Roles.Add(salesManagerRole);
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] نقش «SalesManager» ساخته شد.");
+        }
+        {
+            var wanted = new[] { "View", "Approve", "SetDiscountCap", "AssignCustomer", "FinanceView", "Export" };
+            // (مجوزهای مشتری/تأمین‌کننده مدیر فروش پایین‌تر، در بلوک SalesManagerAccess، اضافه می‌شود)
+            var perms = await db.Permissions
+                .Where(p => p.Module == "SalesVisit" && wanted.Contains(p.Action))
+                .ToListAsync();
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == salesManagerRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
+            foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                db.RolePermissions.Add(new RolePermission { RoleId = salesManagerRole.Id, PermissionId = perm.Id });
+            await db.SaveChangesAsync();
+        }
+
+// SalesManager: مجوز «مشتریان» (دیدن/تخصیص همهٔ مشتریان) — بدون تأمین‌کنندگان
+        {
+            const string flag = "ManagerCustomerAccessV1";
+            if (!await db.AuditLogs.AsNoTracking().AnyAsync(l => l.Module == "RbacSeeder" && l.Action == flag))
+            {
+                var perms = await db.Permissions
+                    .Where(p => p.Module == "Customers" && (p.Action == "Read" || p.Action == "Update"))
+                    .ToListAsync();
+                var has = await db.RolePermissions.Where(rp => rp.RoleId == salesManagerRole.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = salesManagerRole.Id, PermissionId = perm.Id });
+                db.AuditLogs.Add(new AuditLog
+                {
+                    Module = "RbacSeeder",
+                    Action = flag,
+                    Summary = "اعطای مجوز «مشتریان» به نقش SalesManager",
+                    Username = "system"
+                });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
         // View/Create/Update/Assign برای کار روزمره؛ Manage/Delete معمولاً فقط Admin
         var devDevRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "DevDeveloper");
         if (devDevRole == null)

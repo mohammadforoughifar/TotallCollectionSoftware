@@ -151,29 +151,10 @@
         }
     }
 
-    /// <summary>
-    /// تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم یا پر کردن از روی ایمیل).
-    /// بعد از ست‌کردن، «نشستنِ محتوا» بررسی می‌شود و در صورت خالی بودن چند بار تلاش
-    /// تکرار می‌شود؛ قبلاً اگر عنصر contenteditable تازه رندر شده بود، innerHTML
-    /// بی‌صدا گم می‌شد و کادر با «این پیام خالی است» می‌ماند.
-    /// </summary>
+    /// <summary>تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم).</summary>
     public async Task SetContentAsync(string html)
     {
-        var value = html ?? "";
-        if (string.IsNullOrWhiteSpace(value)) return;
-
-        for (var attempt = 0; attempt < 4; attempt++)
-        {
-            try
-            {
-                await JS.InvokeVoidAsync("rteSetHtml", Id, value);
-                var length = await JS.InvokeAsync<int>("rteHtmlLength", Id);
-                if (length > 0) return;
-            }
-            catch { }
-            await Task.Delay(80 * (attempt + 1));
-            try { StateHasChanged(); } catch { }
-        }
+        try { await JS.InvokeVoidAsync("rteSetHtml", Id, html ?? ""); } catch { }
     }
 
     /// <summary>خواندن محتوای HTML ادیتور.</summary>

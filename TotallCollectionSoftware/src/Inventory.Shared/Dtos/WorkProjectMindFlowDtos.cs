@@ -116,11 +116,3 @@ public sealed class WorkOrderMindFlowLinkDto
     public string NodeText { get; set; } = "";
     public List<Guid> SubFlowPath { get; set; } = new();
 }
-
-/// <summary>Links a newly created work order to an editable MindFlow node.</summary>
-public sealed class LinkWorkOrderToMindFlowDto
-{
-    public int WorkOrderId { get; set; }
-    public Guid NodeId { get; set; }
-    public List<Guid> SubFlowPath { get; set; } = new();
-}

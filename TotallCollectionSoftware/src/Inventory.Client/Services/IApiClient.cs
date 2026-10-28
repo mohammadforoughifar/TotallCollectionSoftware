@@ -22,5 +22,5 @@ public interface IApiClient
     string BuildUrl(string path);
 
     /// <summary>دریافت فایل باینری (PDF/Excel) به‌همراه نام پیشنهادی سرور.</summary>
-    Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path, CancellationToken cancellationToken = default);
+    Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path);
 }

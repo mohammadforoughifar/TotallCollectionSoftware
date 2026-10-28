@@ -47,6 +47,8 @@ builder.Services.AddScoped<IPartyService, PartyService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IGoodsIssueService, GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
+builder.Services.AddScoped<ISalesVisitApi, SalesVisitApi>(); // ماژول ویزیتوری
+builder.Services.AddScoped<ICartableApi, CartableApi>(); // کارتابل یکپارچه
 builder.Services.AddScoped<IReportService, ReportService>();
 // ---------- ماژول انبارداری ----------
 builder.Services.AddScoped<IInvCategoryService, InvCategoryService>();
@@ -109,7 +111,6 @@ builder.Services.AddScoped<IProjectCartableService, ProjectCartableService>();
 builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
-builder.Services.AddScoped<LetterPrintWorkflow>(); // مسیر مشترک چاپ: پنجره، بودجهٔ زمانی و خطا
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
 builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)

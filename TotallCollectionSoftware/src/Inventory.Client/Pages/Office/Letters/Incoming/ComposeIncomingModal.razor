@@ -313,23 +313,11 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
-        // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده + تصاویرِ داخل متن +
-        // تصاویرِ پیوستی (به‌صورت data URI داخل متن، تا در نمایش/چاپ/ذخیره هم دیده شوند).
-        var letterContent = await EmailLetterContent.BuildAsync(email, EmailSvc);
-
-        description = "<p><b>برگرفته از ایمیل دریافتی</b><br/>"
-                    + "از: " + System.Net.WebUtility.HtmlEncode(email.FromOrTo)
-                    + "<br/>موضوع: " + System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(email.Subject) ? "(بدون موضوع)" : email.Subject)
-                    + "<br/>حساب: " + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
+        description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
+                    + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
                     + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
                     + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + letterContent.Html + "</blockquote>";
-
-        var transferred = letterContent.InlineImages + letterContent.AttachedImages;
-        if (transferred > 0)
-            Toast.Success($"{transferred.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
-        if (letterContent.Skipped > 0)
-            Toast.Error($"{letterContent.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
+                    + (email.Body ?? "") + "</blockquote>";
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
         // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و

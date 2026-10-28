@@ -564,60 +564,6 @@ public class WorkProjectsController : ControllerBase
         return Ok(new { projectId = project.Id, savedAt = DateTime.Now });
     }
 
-    /// <summary>اتصال دستورکار تازه‌ساخته‌شده به گرهٔ جاری، بدون بازنویسی نقشهٔ باز در تب دیگر.</summary>
-    [HttpPost("{id:int}/mindflow/link-workorder")]
-    public async Task<IActionResult> LinkWorkOrderToMindFlow(int id, [FromBody] LinkWorkOrderToMindFlowDto dto)
-    {
-        if (dto is null || dto.WorkOrderId <= 0 || dto.NodeId == Guid.Empty)
-            return BadRequest(new { message = "اطلاعات اتصال دستورکار به نگاشت معتبر نیست." });
-        if (dto.SubFlowPath is null || dto.SubFlowPath.Count > 8 || dto.SubFlowPath.Any(x => x == Guid.Empty))
-            return BadRequest(new { message = "مسیر زیرنگاشت معتبر نیست." });
-
-        var companyId = await ActiveCompanyIdAsync();
-        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
-        var project = await GetProjectAsync(id, companyId.Value);
-        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
-        if (!await CanManageMindFlowAsync(project)) return Forbid();
-        if (project.Status == WorkProjectStatus.Closed) return BadRequest(new { message = "پروژه بسته است و نگاشت آن قابل ویرایش نیست." });
-        if (!await _db.WorkOrders.AnyAsync(w => w.Id == dto.WorkOrderId && w.CompanyId == companyId.Value))
-            return NotFound(new { message = "دستورکار در شرکت فعال پیدا نشد." });
-
-        var root = DeserializeMindFlow(project.MindFlowJson, project.Id, project.Title);
-        if (root is null) return Conflict(new { message = "دادهٔ نگاشت پروژه قابل خواندن نیست." });
-        var current = root;
-        foreach (var parentId in dto.SubFlowPath)
-        {
-            var parent = current.Nodes.FirstOrDefault(n => n.Id == parentId);
-            if (parent?.ChildMindFlow is null) return NotFound(new { message = "مسیر زیرنگاشت پیدا نشد." });
-            current = parent.ChildMindFlow;
-        }
-        var target = current.Nodes.FirstOrDefault(n => n.Id == dto.NodeId);
-        if (target is null) return NotFound(new { message = "گرهٔ انتخاب‌شده پیدا نشد." });
-
-        var existingNode = EnumerateMindFlowNodes(root).FirstOrDefault(n => NodeWorkOrderIds(n).Contains(dto.WorkOrderId));
-        if (existingNode is not null)
-        {
-            if (existingNode.Id == target.Id) return Ok(new { linked = true });
-            return Conflict(new { message = "این دستورکار از قبل به گرهٔ دیگری در همین نگاشت وصل است." });
-        }
-
-        target.WorkOrderIds ??= new();
-        target.WorkOrderIds.Add(dto.WorkOrderId);
-        NormalizeMindFlowMap(root, project.Id);
-        var error = ValidateMindFlow(root);
-        if (error is not null) return BadRequest(new { message = error });
-        error = await ValidateMindFlowLinksAsync(root, project);
-        if (error is not null) return BadRequest(new { message = error });
-        var json = System.Text.Json.JsonSerializer.Serialize(root, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        if (json.Length > 1_000_000) return BadRequest(new { message = "حجم نگاشت از حد مجاز یک مگابایت بیشتر است." });
-
-        project.MindFlowJson = json;
-        Log(project.Id, "MindFlowUpdated", $"دستورکار #{dto.WorkOrderId} به نگاشت متصل شد.");
-        await _db.SaveChangesAsync();
-        await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { linked = true, projectId = project.Id, nodeId = target.Id });
-    }
-
     private async Task<string?> ValidateMindFlowLinksAsync(WorkProjectMindFlowDto dto, WorkProject project)
     {
         var nodes = EnumerateMindFlowNodes(dto).ToList();

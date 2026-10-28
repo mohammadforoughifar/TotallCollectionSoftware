@@ -10,10 +10,6 @@ obj/
 ## Build
 **/wwwroot/_framework/
 
-## Python
-__pycache__/
-*.pyc
-
 ## OS
 .DS_Store
 Thumbs.db

@@ -140,6 +140,12 @@ public class AppDbContext : DbContext
     public DbSet<TransactionLine> TransactionLines => Set<TransactionLine>();
     public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
     public DbSet<GoodsIssueLine> GoodsIssueLines => Set<GoodsIssueLine>();
+
+    // ---------- ماژول ویزیتوری (پیش‌سند فروش) ----------
+    public DbSet<VisOrder> VisOrders => Set<VisOrder>();
+    public DbSet<VisOrderLine> VisOrderLines => Set<VisOrderLine>();
+    public DbSet<VisOrderHistory> VisOrderHistories => Set<VisOrderHistory>();
+    public DbSet<VisCustomerLink> VisCustomerLinks => Set<VisCustomerLink>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<Cheque> Cheques => Set<Cheque>();
@@ -612,6 +618,23 @@ public class AppDbContext : DbContext
         // حذف حواله = حذف سطرهایش (بدون FK به Parties/Products تا حذف طرف حساب یا کالا ممکن بماند)
         mb.Entity<GoodsIssue>().HasMany(g => g.Lines).WithOne()
             .HasForeignKey(l => l.IssueId).OnDelete(DeleteBehavior.Cascade);
+
+        // ==================== سفارش ویزیتور (پیش‌سند فروش) ====================
+        mb.Entity<VisOrder>().HasIndex(o => new { o.CompanyId, o.Number }).IsUnique();
+        mb.Entity<VisOrder>().HasIndex(o => o.Status);
+        mb.Entity<VisOrder>().HasIndex(o => new { o.ReferrerId, o.Date });
+        mb.Entity<VisOrder>().HasIndex(o => o.PartyId);
+        mb.Entity<VisOrder>().HasIndex(o => o.InvoiceId);
+        mb.Entity<VisOrderLine>().HasIndex(l => l.OrderId);
+        mb.Entity<VisOrderLine>().HasIndex(l => l.ProductId);
+        mb.Entity<VisOrderHistory>().HasIndex(h => h.OrderId);
+        mb.Entity<VisCustomerLink>().HasIndex(c => new { c.ReferrerId, c.PartyId }).IsUnique();
+        mb.Entity<VisCustomerLink>().HasIndex(c => c.PartyId);
+        // حذف سفارش = حذف سطرها و گردش آن (بدون FK به Parties/Products/Users)
+        mb.Entity<VisOrder>().HasMany(o => o.Lines).WithOne()
+            .HasForeignKey(l => l.OrderId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<VisOrder>().HasMany(o => o.History).WithOne()
+            .HasForeignKey(h => h.OrderId).OnDelete(DeleteBehavior.Cascade);
 
         // ==================== آرشیو اسناد و مدارک ====================
         // کد مدرک در کل سیستم یکتاست
@@ -1583,6 +1606,10 @@ public class AppDbContext : DbContext
         mb.Entity<TransactionLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssue>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssueLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrderLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrderHistory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisCustomerLink>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Cheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

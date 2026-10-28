@@ -1044,6 +1044,21 @@ a { text-decoration: none; }
 .badge-pay-credit { background: #fef3c7; color: #92400e; }
 .badge-pay-cheque { background: #dbeafe; color: #1e3a8a; }
 .badge-pay-inst { background: #ede9fe; color: #5b21b6; }
+.badge-pay-mixed { background: #e0f2fe; color: #075985; }
+
+/* ---------- نوار خلاصهٔ پرداخت ترکیبی ---------- */
+.pay-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.25rem;
+    align-items: center;
+    padding: .5rem .75rem;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    background: #fff;
+    font-size: .82rem;
+}
+.pay-summary b { font-variant-numeric: tabular-nums; }
 
 /* ---------- پیش‌دریافت نقدی (پرداخت ترکیبی) ---------- */
 .mixed-cash {

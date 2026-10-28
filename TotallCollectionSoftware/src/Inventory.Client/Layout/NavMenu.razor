@@ -456,16 +456,59 @@
                                         <i class="bi bi-building"></i><span>انبارها</span>
                                     </NavLink>
                                 }
-                                @if (Auth.CanSee("Parties"))
+                                @* مشتری و تأمین‌کننده دسترسی مستقل دارند؛ نام آیتم با مجوز کاربر هم‌خوان می‌شود *@
+                                @if (ShowPartiesMenu)
                                 {
                                     <NavLink class="nav-link" href="parties" @onclick="NotifyClose">
-                                        <i class="bi bi-people"></i><span>طرف حساب‌ها</span>
+                                        <i class="bi @(PartiesMenuIcon)"></i><span>@PartiesMenuLabel</span>
                                     </NavLink>
                                 }
                                 @if (Auth.CanSee("Referrers"))
                                 {
                                     <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
                                         <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
+                                    </NavLink>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @* ---------- زیرمنوی فروش و ویزیتوری (سفارش میدانی) — هم‌خانه با اطلاعات پایه و گزارش ---------- *@
+                @if (ShowVisGroup)
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gVis ? "open" : "")" @onclick="() => gVis = !gVis">
+                            <span><i class="bi bi-person-walking"></i>فروش و ویزیتوری</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gVis)
+                        {
+                            <div class="nav-sub-items">
+                                <NavLink class="nav-link" href="sales/visits" @onclick="NotifyClose">
+                                    <i class="bi bi-journal-text"></i><span>سفارش‌های من</span>
+                                </NavLink>
+                                @* ثبت سفارش برای هر کسی که مجوز «SalesVisit.Create» دارد:
+                                   ویزیتور، کارشناس و مدیر سیستم (ادمین). مدیر فروشِ صرف که این
+                                   مجوز را ندارد، هیچ نقطهٔ ورودیِ «ثبت سفارش جدید» نمی‌بیند. *@
+                                @if (Auth.Has("SalesVisit.Create"))
+                                {
+                                    <NavLink class="nav-link" href="sales/visits/new" @onclick="NotifyClose">
+                                        <i class="bi bi-plus-square"></i><span>ثبت سفارش جدید</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.Has("SalesVisit.Approve"))
+                                {
+                                    <NavLink class="nav-link" href="sales/approvals" @onclick="NotifyClose">
+                                        <i class="bi bi-patch-check"></i><span>تأیید سفارش‌ها</span>
+                                    </NavLink>
+                                    <NavLink class="nav-link" href="sales/requests" @onclick="NotifyClose">
+                                        <i class="bi bi-collection"></i><span>همهٔ درخواست‌ها</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.Has("SalesVisit.FinanceView"))
+                                {
+                                    <NavLink class="nav-link" href="sales/finance-queue" @onclick="NotifyClose">
+                                        <i class="bi bi-receipt-cutoff"></i><span>صف مالی سفارش‌ها</span>
                                     </NavLink>
                                 }
                             </div>
@@ -770,6 +813,7 @@
 
     private bool gOpsBase, gOpsReports;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
+    private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل سامانه فروشگاهی
     private bool _hasMindFlowAccess;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
@@ -811,9 +855,23 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
+    // ---------- طرف حساب‌ها: مشتری / تأمین‌کننده با دسترسی جدا ----------
+    private bool CanSeeCustomersMenu => Auth.Has("Parties.Read") || Auth.HasModule("Customers");
+    private bool CanSeeSuppliersMenu => Auth.Has("Parties.Read") || Auth.HasModule("Suppliers");
+    private bool ShowPartiesMenu => CanSeeCustomersMenu || CanSeeSuppliersMenu;
+
+    private string PartiesMenuLabel => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "تأمین‌کنندگان"
+        : CanSeeCustomersMenu && !CanSeeSuppliersMenu ? "مشتریان"
+        : "طرف حساب‌ها";
+
+    private string PartiesMenuIcon => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "bi-truck" : "bi-people";
+
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Referrers") || ShowPartiesMenu;
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
-    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
+    private bool ShowVisGroup => Auth.CanSee("SalesVisit");
+    // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
+    // منوی او کاملاً خالی می‌ماند.
+    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
@@ -850,7 +908,8 @@
                    p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOpsReports = p.StartsWith("operations/reports");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase;
+        gVis = p.StartsWith("sales/");
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase || gVis;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("servers") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||

@@ -12,22 +12,6 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <NoWarn>CS0414</NoWarn>
-
-    <!--
-      رفع خطای بیلد:
-        Failed to convert '…Microsoft.Extensions.DependencyInjection.Abstractions.dll' to webcil:
-        Could not find a part of the path '…\obj\Debug\net8.0\tmp-webcil\<hash>\…wasm'
-      دو علت دارد و هر دو این‌جا پوشش داده شده‌اند:
-      ۱) «مسیر طولانی» ویندوز: پوشهٔ پروژه در مسیری عمیق/با پرانتز است
-         (مثل …\Downloads\TotallCollectionSoftware-main (22)\…). مرحلهٔ تبدیل به webcil
-         فایلِ موقت با نامِ ۳۲ کاراکتری می‌سازد و از سقف ۲۶۰ کاراکتر عبور می‌کند.
-         راه‌حل قطعی: پروژه را در مسیر کوتاه باز کنید (مثل C:\dev\tc) یا Long Paths را
-         در ویندوز فعال کنید. راه‌حلِ کنارِ آن، همان چیزی است که این‌جا آمده:
-      ۲) با false کردنِ webcil، مرحلهٔ تبدیل (و پوشهٔ tmp-webcil) به‌کل حذف می‌شود؛
-         اسمبلی‌ها به شکل معمولِ .dll در خروجی می‌مانند و رفتار برنامه تغییری نمی‌کند.
-         این تنظیم روی .NET 8 و همچنین بیلدِ net8.0 با SDK جدیدتر معتبر است.
-    -->
-    <WasmEnableWebcil>false</WasmEnableWebcil>
   </PropertyGroup>
 
   <ItemGroup>

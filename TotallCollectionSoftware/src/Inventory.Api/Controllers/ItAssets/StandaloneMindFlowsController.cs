@@ -153,54 +153,6 @@ public sealed class StandaloneMindFlowsController : ControllerBase
         return Ok(new { id = map.Id, savedAt = map.UpdatedAt });
     }
 
-    /// <summary>اتصال دستورکار تازه‌ساخته‌شده به گرهٔ نگاشت مستقل، بدون جایگزینی دادهٔ نقشه از سمت مرورگر.</summary>
-    [HttpPost("{id:int}/link-workorder")]
-    public async Task<IActionResult> LinkWorkOrder(int id, [FromBody] LinkWorkOrderToMindFlowDto dto)
-    {
-        if (dto is null || dto.WorkOrderId <= 0 || dto.NodeId == Guid.Empty)
-            return BadRequest(new { message = "اطلاعات اتصال دستورکار به نگاشت معتبر نیست." });
-        if (dto.SubFlowPath is null || dto.SubFlowPath.Count > 8 || dto.SubFlowPath.Any(x => x == Guid.Empty))
-            return BadRequest(new { message = "مسیر زیرنگاشت معتبر نیست." });
-        var result = await GetAccessibleMapAsync(id, requireEdit: true);
-        if (result.Error is not null) return result.Error;
-        var map = result.Map!;
-        if (!await _db.WorkOrders.AnyAsync(w => w.Id == dto.WorkOrderId && w.CompanyId == map.CompanyId))
-            return NotFound(new { message = "دستورکار در شرکت فعال پیدا نشد." });
-        var root = Deserialize(map.MapJson, map.Title);
-        if (root is null) return Conflict(new { message = "دادهٔ نگاشت قابل خواندن نیست." });
-        var current = root;
-        foreach (var parentId in dto.SubFlowPath)
-        {
-            var parent = current.Nodes.FirstOrDefault(n => n.Id == parentId);
-            if (parent?.ChildMindFlow is null) return NotFound(new { message = "مسیر زیرنگاشت پیدا نشد." });
-            current = parent.ChildMindFlow;
-        }
-        var target = current.Nodes.FirstOrDefault(n => n.Id == dto.NodeId);
-        if (target is null) return NotFound(new { message = "گرهٔ انتخاب‌شده پیدا نشد." });
-        var existingNode = WorkProjectsController.EnumerateMindFlowNodes(root)
-            .FirstOrDefault(n => WorkProjectsController.NodeWorkOrderIds(n).Contains(dto.WorkOrderId));
-        if (existingNode is not null)
-        {
-            if (existingNode.Id == target.Id) return Ok(new { linked = true });
-            return Conflict(new { message = "این دستورکار از قبل به گرهٔ دیگری در همین نگاشت وصل است." });
-        }
-        target.WorkOrderIds ??= new();
-        target.WorkOrderIds.Add(dto.WorkOrderId);
-        WorkProjectsController.NormalizeMindFlowMap(root, 0);
-        var error = WorkProjectsController.ValidateMindFlow(root);
-        if (error is not null) return BadRequest(new { message = error });
-        error = await ValidateLinksAsync(root, map.CompanyId);
-        if (error is not null) return BadRequest(new { message = error });
-        var json = System.Text.Json.JsonSerializer.Serialize(root, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        if (json.Length > 1_000_000) return BadRequest(new { message = "حجم نگاشت از حد مجاز یک مگابایت بیشتر است." });
-        map.Title = root.Title;
-        map.MapJson = json;
-        map.UpdatedAt = DateTime.Now;
-        await _db.SaveChangesAsync();
-        await _notify.BroadcastChangedAsync("mindflows");
-        return Ok(new { linked = true, id = map.Id, nodeId = target.Id });
-    }
-
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

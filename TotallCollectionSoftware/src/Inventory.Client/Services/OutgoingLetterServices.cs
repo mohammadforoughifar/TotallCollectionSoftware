@@ -54,12 +54,6 @@ public interface IOutgoingLetterService
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
     Task<LetterCompanyDto?> GetActiveCompanyAsync();
 
-    /// <summary>
-    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و اگر طرح شرکت خوانده
-    /// نمی‌شود چرا. فقط خواندن؛ برای پشتیبانی طراحی شده است.
-    /// </summary>
-    Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4");
-
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
     // ==================== بایگانی دبیرخانه ====================
@@ -77,7 +71,7 @@ public interface IOutgoingLetterService
     /// دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, CancellationToken cancellationToken = default);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true);
     /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 }
@@ -333,11 +327,6 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task<LetterCompanyDto?> GetActiveCompanyAsync() =>
         _api.GetAsync<LetterCompanyDto?>("api/outgoing-letters/companies/active");
 
-    /// <summary>تشخیص چاپ نامه — مسیر سربرگ/طرح و علت خوانده‌نشدن فایل شرکت.</summary>
-    public Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4") =>
-        _api.GetAsync<OutgoingLetterPrintDiagnosticsDto?>(
-            $"api/outgoing-letters/{letterId}/print/diagnose?size={Uri.EscapeDataString(size)}");
-
     public Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync() =>
         _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/dabirkhane/creators");
 
@@ -371,36 +360,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/move-letter", dto);
 
     /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود و نسخهٔ چاپ</summary>
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true,
-        CancellationToken cancellationToken = default)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true)
     {
         var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}";
-        using var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
 
-        // ساخت PDF روی سربرگ ممکن است طولانی باشد؛ بودجهٔ زمانی را مسیر چاپ (LetterPrintWorkflow)
-        // تعیین می‌کند، پس توکن لغو تا خود HttpClient ادامه می‌یابد و سقف پیش‌فرض ۱۰۰ ثانیه‌ای
-        // HttpClient دیگر عامل شکست نیست.
-        HttpResponseMessage resp;
-        try
-        {
-            resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            throw new ApiException("ارتباط با سرور برقرار نشد: " + ex.Message);
-        }
-
-        using (resp)
-        {
+        var resp = await _http.SendAsync(req);
         if (!resp.IsSuccessStatusCode)
         {
-            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
+            var text = await resp.Content.ReadAsStringAsync();
             string msg = "دریافت فایل چاپ ناموفق بود.";
             try
             {
@@ -410,7 +380,6 @@ public class OutgoingLetterService : IOutgoingLetterService
             catch { }
             throw new ApiException(msg);
         }
-        return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
-        }
+        return await resp.Content.ReadAsByteArrayAsync();
     }
 }

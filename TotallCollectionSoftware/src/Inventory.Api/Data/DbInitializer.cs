@@ -112,6 +112,12 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
+                // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
+                await SalesVisitSchemaV1.EnsureAsync(db);
+
+                // طرف حساب: ستون‌های «ثبت‌کننده» (چه ویزیتوری این مشتری را ثبت کرد)
+                await PartyRegistrationSchemaV1.EnsureAsync(db);
+
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
 
