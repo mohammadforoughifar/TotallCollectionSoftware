@@ -143,7 +143,7 @@
                 <div class="col-md-2"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" AllowClear /></div>
                 <div class="col-md-1">
                     <div class="btn-group w-100" role="group">
-                        <button class="btn btn-light" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
+                        <button class="btn btn-light" title="اعمال فیلتر" @onclick="() => Load()"><i class="bi bi-funnel"></i></button>
                         @if (HasAnyFilter)
                         {
                             <button class="btn btn-light" title="پاک کردن متن‌های جستجو و همهٔ فیلترهای بالای صفحه"
@@ -340,7 +340,7 @@
         <div class="col-md-6">
             <label class="form-label">پروژه <span class="text-danger">*</span></label>
             @* فقط پروژه‌های تاییدشدهٔ مدیر — پروژه‌های در انتظار تایید یا ردشده گزارش‌پذیر نیستند *@
-            <SearchSelect Items="formProjectOpts" Value="form.ProjectId ?? 0" ValueChanged="OnFormProjectPicked"
+            <SearchSelect Items="formProjectOpts" Value="form.ProjectId" ValueChanged="OnFormProjectPicked"
                           SearchChanged="OnFormProjectSearch" RemoteSearch="true"
                           Placeholder="جستجو و انتخاب پروژه…" />
             <div class="fs-8 text-muted mt-1">
@@ -436,7 +436,7 @@
         StateHasChanged();
     }
 
-    private void OnFormProjectPicked(int id) => form.ProjectId = id <= 0 ? null : id;
+    private void OnFormProjectPicked(int id) => form.ProjectId = id;
 
     private async Task OnFormProjectSearch(string q)
     {
@@ -447,7 +447,7 @@
         var list = await SearchProjectsDebouncedAsync(q, reportable: true, cts);
         if (list is null) return;
 
-        var keepId = form.ProjectId ?? 0;
+        var keepId = form.ProjectId;
         if (keepId > 0 && list.All(x => x.Id != keepId))
         {
             var known = formProjectOpts.FirstOrDefault(x => x.Id == keepId);

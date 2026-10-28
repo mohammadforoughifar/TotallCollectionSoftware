@@ -418,16 +418,16 @@ public static class DbInitializer
                 var addedAmalgars = 0;
                 foreach (var (title, taeed) in defaultAmalgars)
                 {
-                    var existing = db.Amalgars.FirstOrDefault(a => a.Title == title);
-                    if (existing is null)
+                    var existingAmalgar = db.Amalgars.FirstOrDefault(a => a.Title == title);
+                    if (existingAmalgar is null)
                     {
                         db.Amalgars.Add(new Amalgar { Title = title, TaeedEmza = taeed });
                         addedAmalgars++;
                     }
-                    else if (existing.IsDelete)
+                    else if (existingAmalgar.IsDelete)
                     {
                         // عملگر پیش‌فرضی که قبلاً حذف نرم شده بود، برگردانده می‌شود
-                        existing.IsDelete = false;
+                        existingAmalgar.IsDelete = false;
                         addedAmalgars++;
                     }
                 }

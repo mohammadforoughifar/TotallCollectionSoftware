@@ -69,14 +69,16 @@ public class IncomingLettersController : RbacControllerBase
     private readonly IIncomingLetterService _letters;
     private readonly IErjaService _erja;
     private readonly ILetterGroupService _groups;
+    private readonly IArchiveService _archive;
     private readonly FileStore _store;
 
-    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, ILetterGroupService groups, FileStore store, AppDbContext db)
+    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, ILetterGroupService groups, IArchiveService archive, FileStore store, AppDbContext db)
         : base(db)
     {
         _letters = letters;
         _erja = erja;
         _groups = groups;
+        _archive = archive;
         _store = store;
     }
 
