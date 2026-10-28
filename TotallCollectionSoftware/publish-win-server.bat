@@ -1,14 +1,14 @@
-@echo off
+﻿@echo off
 REM =====================================================================
 REM  ساخت کامل پابلیش (کلاینت + API - یک‌فایلی win-x64) برای ویندوز سرور
-REM  اجرا: این فایل را در ریشهٔ مخزن (کنار پوشهٔ inventory) بگذارید و دابل‌کلیک کنید.
+REM  اجرا: این فایل را در ریشهٔ پروژه (کنار Inventory.sln) اجرا کنید.
 REM  پیش‌نیاز: .NET SDK 8.0 روی سیستم (dotnet --version باید ۸.x بدهد)
 REM  خروجی: پوشهٔ publish-win (کنار همین فایل) شامل Inventory.Api.exe و run-server.bat
 REM =====================================================================
 setlocal
 set "ROOT=%~dp0"
-set "API=%ROOT%inventory\src\Inventory.Api"
-set "CLIENT=%ROOT%inventory\src\Inventory.Client"
+set "API=%ROOT%src\Inventory.Api"
+set "CLIENT=%ROOT%src\Inventory.Client"
 set "OUT=%ROOT%publish-win"
 set "TMP=%ROOT%_client-tmp"
 

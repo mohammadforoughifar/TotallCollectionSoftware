@@ -72,7 +72,7 @@ $env:Database__Provider="Sqlite"; $env:ConnectionStrings__Default="Data Source=i
 ### روش ۱ — تک‌سروره (پیشنهادی برای ویندوز: فقط یک پنجره)
 
 ```powershell
-# در ریشه پروژه (پوشه inventory):
+# در ریشه پروژه (کنار فایل Inventory.sln):
 .\deploy-single.ps1          # پابلیش کلاینت و کپی در wwwroot مربوط به API
 
 cd src\Inventory.Api
