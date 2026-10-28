@@ -167,6 +167,39 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // روی چاپگر سیاه‌وسفید تقریباً محو می‌شدند؛ پیش‌فرض تیره و خواناست. برای برگشتن به
     // رنگ خودِ طرح: Reporting:OutgoingLetters:MetaValueColor = "design"
     private readonly string? _designMetaColor;
+
+    // حاشیه‌ها و فاصله‌های چیدمان «از دل طرح». پیش‌فرض‌ها همان اعداد تأییدشدهٔ سربرگ هومپا
+    // (شرکت ۱۰۰۳) است؛ برای سربرگ شرکتی دیگر همین کد بدون تغییر کار می‌کند:
+    //   Reporting:OutgoingLetters:DesignLabelGapPt       فاصلهٔ برچسب از مقدار (پیش‌فرض ۷٫۲pt)
+    //   Reporting:OutgoingLetters:DesignMetaSafeLeftMm   حاشیهٔ امن شماره/تاریخ/پیوست (۱۵mm)
+    //   Reporting:OutgoingLetters:DesignMetaFontSize     اندازهٔ یکسان مقدارهای سربرگ (۱۰pt)
+    //   Reporting:OutgoingLetters:DesignHeaderArtGapPt   فاصلهٔ متن از پایین قوس سربرگ (۸pt)
+    //   Reporting:OutgoingLetters:DesignFooterReservePt  رزرو پابرگ (پیش‌فرض ۱۴۲/۱۰۰pt)
+    private readonly DesignPrintSettings _designPrint;
+
+    private sealed record DesignPrintSettings(
+        float LabelGap, float MetaSafeLeft, float MetaFontSize, float HeaderArtGap, float? FooterReserve)
+    {
+        internal static DesignPrintSettings Read(IConfiguration? configuration)
+        {
+            static float? Number(IConfiguration? source, string key)
+                => float.TryParse(source?[key], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+                   && parsed > 0f
+                    ? parsed
+                    : null;
+
+            return new DesignPrintSettings(
+                LabelGap: Number(configuration, "Reporting:OutgoingLetters:DesignLabelGapPt") ?? 7.2f,
+                // ۱۵ میلی‌متر حاشیهٔ امن؛ کادرهای شماره/تاریخ/پیوست در طرح ≈۵ میلی‌متر از لبه‌اند.
+                MetaSafeLeft: Number(configuration, "Reporting:OutgoingLetters:DesignMetaSafeLeftMm") is { } safeMm
+                    ? safeMm * 72f / 25.4f
+                    : 15f * 72f / 25.4f,
+                MetaFontSize: Number(configuration, "Reporting:OutgoingLetters:DesignMetaFontSize") ?? 10f,
+                HeaderArtGap: Number(configuration, "Reporting:OutgoingLetters:DesignHeaderArtGapPt") ?? 8f,
+                FooterReserve: Number(configuration, "Reporting:OutgoingLetters:DesignFooterReservePt"));
+        }
+    }
+
     private readonly Dictionary<int, int> _companyTemplateMap;
 
     public OutgoingLetterPrintService(
@@ -190,6 +223,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultDesignDrivenCompanyIds);
         _templateLetterheadCompanyIds = CompanyIdsFor(
             "Reporting:OutgoingLetters:TemplateLetterheadCompanyIds", DefaultDesignDrivenCompanyIds);
+
+        _designPrint = DesignPrintSettings.Read(configuration);
 
         var metaColor = configuration?["Reporting:OutgoingLetters:MetaValueColor"];
         _designMetaColor = string.Equals(metaColor?.Trim(), "design", StringComparison.OrdinalIgnoreCase)
@@ -1966,38 +2001,41 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>
-    /// یک مقدار را در کادرِ مطلقِ طرح می‌گذارد (فقط برای شماره/تاریخ/پیوست که روی خودِ
-    /// فرم چاپ می‌شوند). دو نکتهٔ مهم:
-    /// • RLM در ابتدا و انتهای مقدار: جهت پایهٔ پاراگراف را قطعاً راست‌به‌چپ می‌کند تا
-    ///   ویرگول/نقطهٔ پایانی به ابتدای خط پرت نشود (مشکل bidi).
-    /// • رنگ و فاصله از لبه قابل بازنویسی است؛ رنگ سفیدِ طرح روی چاپ لیزری محو می‌شد.
+    /// مقدار شماره/تاریخ/پیوست را روی برچسب‌هایی می‌گذارد که در خودِ تصویر سربرگ چاپ شده‌اند.
+    /// سه ایراد گزارش‌شدهٔ کارفرما همین‌جا رفع می‌شود:
+    /// • «چسبیدن به لبهٔ چپ»: کادرهای طرح ≈۵ میلی‌متر از لبهٔ برش فاصله دارند و در چاپگر
+    ///   لیزری بریده می‌شدند؛ متن دست‌کم ۱۵ میلی‌متر از لبه می‌نشیند (DesignMetaSafeLeftMm).
+    /// • «کم‌رنگ بودن»: رنگ سفیدِ طرح با رنگ تیرهٔ خوانا جای‌گزین می‌شود (MetaValueColor).
+    /// • «یکی کم‌رنگ و دیگری پررنگ»: هر سه مقدار یک اندازه و یک وزن دارند (DesignMetaFontSize)
+    ///   و مثل پیش‌نمایش خودِ طرح راست‌چین می‌شوند تا به برچسبِ تصویر بچسبند.
+    /// RLM/LRI هم جهت پایه را قطعی می‌کند تا نقطه و ویرگول به ابتدای خط پرت نشوند.
     /// </summary>
-    private static void PlaceDesignText(
-        IContainer host,
-        OutgoingLetterDesignLayout.Box field,
-        string value,
-        string? colorOverride = null,
-        float leftInset = 0f,
-        float verticalNudge = 0f)
+    private void PlaceDesignMetaText(IContainer host, OutgoingLetterDesignLayout.Box field, string value)
     {
-        host.PaddingLeft(Math.Max(0f, field.Left + leftInset))
-            .PaddingTop(Math.Max(0f, field.Top + verticalNudge))
+        // ۴pt فاصله تا برچسبِ چاپ‌شده روی سربرگ، تا مقدار به آن نچسبد.
+        var right = Math.Max(0f, field.Left + field.Width - 4f);
+        // حاشیهٔ امن از لبهٔ چپ؛ اگر خودِ طرح دورتر باشد همان ملاک است. در A5 که صفحه
+        // باریک است، حاشیه فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند (حداقل ۴۴pt عرض).
+        var safeLeft = Math.Min(_designPrint.MetaSafeLeft, Math.Max(0f, right - 44f));
+        var left = Math.Max(Math.Max(0f, field.Left), safeLeft);
+        right = Math.Max(left + 44f, right);
+
+        host.PaddingLeft(left)
+            .PaddingTop(Math.Max(0f, field.Top))
             .Element(cell =>
             {
-                var box = cell.Width(field.Width).Height(field.Height);
+                var box = cell.Width(right - left).Height(field.Height);
                 box = field.AlignMiddle ? box.AlignMiddle() : box.AlignTop();
-                box = field.AlignCenter ? box.AlignCenter()
-                    : field.AlignRight ? box.AlignRight()
-                    : box.AlignLeft();
+                box = box.AlignRight();
 
                 var display = field.IsolateLtr
                     ? $"\u2066{value}\u2069"
                     : $"\u200F{value}\u200F";
                 var text = box.ScaleToFit().Text(display)
-                    .FontFamily(field.Bold || colorOverride != null ? "Vazirmatn-Bold" : "Vazirmatn")
-                    .FontSize(field.FontSize)
-                    .FontColor(colorOverride ?? field.Color)
-                    .LineHeight(1.25f);
+                    .FontFamily("Vazirmatn-Bold")
+                    .FontSize(_designPrint.MetaFontSize)
+                    .FontColor(_designMetaColor ?? field.Color)
+                    .LineHeight(1.2f);
                 if (field.IsolateLtr) text.DirectionFromLeftToRight();
                 else text.DirectionFromRightToLeft();
             });
@@ -2046,13 +2084,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var bodyFontSize = body.FontSize > 0 ? body.FontSize : (isA5 ? 9f : 11f);
         var bodyLeft = Math.Max(0f, body.Left);
         var bodyRight = Math.Max(bodyLeft + 1f, body.Left + body.Width);
-        var footerReserve = HomepaLetterheadLayout.DesignFooterReserve(isA5);
+        // رزرو پابرگ و فاصله از قوس سربرگ از تنظیمات می‌آید (پیش‌فرض‌ها برای سربرگ هومپا).
+        // این رزرو در «همهٔ» صفحه‌ها یکسان است: چون بلوک امضا/رونوشت داخل جریان متن است،
+        // دیگر لازم نیست صفحهٔ اول جای خالی برای آن‌ها نگه دارد؛ همان رزروی که متن را بالای
+        // گرافیک پابرگ نگه می‌دارد کافی است. (رزرو بزرگ‌تر = شکستن بی‌دلیل صفحه.)
+        var footerReserve = _designPrint.FooterReserve ?? HomepaLetterheadLayout.DesignFooterReserve(isA5);
 
         // سربرگ تا پایین قوس آبی کشیده می‌شود و متن از پایین همان‌جا شروع می‌شود؛ مختصات
         // قدیمی طرح (y=174) روی قوس آبی می‌افتاد و کپشن‌ها را ناخوانا می‌کرد.
         var artBottom = hasLetterhead ? HomepaLetterheadLayout.HeaderArtBottom(isA5) : 0f;
         var receiverTop = design.Receiver?.Top ?? design.BodyTop;
-        var contentTop = Math.Max(artBottom + (isA5 ? 6f : 10f), receiverTop);
+        var artGap = isA5 ? Math.Max(4f, _designPrint.HeaderArtGap * 0.6f) : _designPrint.HeaderArtGap;
+        var contentTop = Math.Max(artBottom + artGap, receiverTop);
         // اگر متن جای کمی داشت، دست‌کم ۱۲ سطر باید در صفحهٔ اول جا شود.
         contentTop = Math.Min(contentTop, Math.Max(0f, pageHeight - footerReserve - (isA5 ? 150f : 200f)));
 
@@ -2065,7 +2108,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             ? Math.Clamp(body.Top - (titleBox.Top + titleBox.Height), 2f, 24f)
             : 6f;
 
-        var bodyLineHeight = 1.55f;
+        var bodyLineHeight = 1.45f;
 
         // ── رونوشت‌گیرندگان ──
         var copyLines = new List<string>();
@@ -2104,6 +2147,61 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var fixedSignerColumns = signerCards.Count <= Math.Max(1, design.Signatures.Count);
         var copyWidth = design.CopyTo?.Width ?? (isA5 ? 136f : 180f);
 
+        // ── دنبالهٔ نامه: عطف، رونوشت‌ها و امضاکنندگان — همه در جریان متن، نه با مختصات ──
+        // ثابتِ پایین صفحه؛ به همین دلیل نامهٔ کوتاه یک‌صفحه‌ای می‌ماند و بلوک امضا بی‌دلیل
+        // به صفحهٔ دوم نمی‌پرد.
+        void RenderExternalReference(ColumnDescriptor target)
+        {
+            if (string.IsNullOrWhiteSpace(externalReference)) return;
+            target.Item().PaddingTop(6).Text($"\u200Fعطف به شماره: {externalReference}\u200F")
+                .FontSize(Math.Max(8f, bodyFontSize - 1f)).LineHeight(1.35f)
+                .AlignRight().DirectionFromRightToLeft();
+        }
+
+        void RenderCopyTo(ColumnDescriptor target)
+        {
+            // در طرح این کادر سمت راست، بالای بلوک امضاست.
+            if (copyLines.Count == 0) return;
+            target.Item().PaddingTop(12).AlignRight().Width(copyWidth).Column(box =>
+            {
+                box.Item().Text("\u200Fرونوشت:\u200F")
+                    .FontFamily("Vazirmatn-Bold")
+                    .FontSize(Math.Max(8f, bodyFontSize - 1f))
+                    .LineHeight(1.35f).AlignRight().DirectionFromRightToLeft();
+                foreach (var line in copyLines)
+                {
+                    box.Item().Text($"\u200F{line}\u200F")
+                        .FontSize(Math.Max(7.5f, bodyFontSize - 1.5f))
+                        .LineHeight(1.35f).AlignRight().DirectionFromRightToLeft();
+                }
+            });
+        }
+
+        void RenderSigners(ColumnDescriptor target)
+        {
+            if (signerCards.Count == 0) return;
+            // ShowEntire = page-break-inside: avoid؛ بلوک امضا هیچ‌وقت نصفه نمی‌شود.
+            target.Item().PaddingTop(isA5 ? 12 : 14).ShowEntire().Row(row =>
+            {
+                foreach (var card in signerCards)
+                {
+                    var cell = fixedSignerColumns
+                        ? row.ConstantItem(signerPitch)
+                        : row.RelativeItem();
+                    FillSignerCell(cell, card, signatureWidth, signatureHeight,
+                        nameBox?.FontSize ?? bodyFontSize,
+                        roleBox?.FontSize ?? Math.Max(8f, bodyFontSize - 1.5f));
+                }
+            });
+        }
+
+        void RenderTail(ColumnDescriptor target)
+        {
+            RenderExternalReference(target);
+            RenderCopyTo(target);
+            RenderSigners(target);
+        }
+
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -2141,7 +2239,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                                 _ => hasAttachment ? "دارد" : "ندارد"
                             };
                             if (string.IsNullOrWhiteSpace(value)) continue;
-                            PlaceDesignText(layers.Layer(), field, value, _designMetaColor, leftInset: 8f);
+                            PlaceDesignMetaText(layers.Layer(), field, value);
                         }
                     });
 
@@ -2155,56 +2253,23 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         // ── عنوان ──
                         AddDesignRow(col, design, titleBox, title, titleGap);
                         // ── متن نامه ──
+                        var tailKeptWithText = false;
                         if (!string.IsNullOrWhiteSpace(letter.Text))
                         {
                             col.Item().PaddingTop(bodyGap)
                                 .Column(inner =>
                                 {
-                                    RichLetterPdfRenderer.AddTo(inner, letter.Text, bodyFontSize, bodyLineHeight, forceRtlParagraph: true);
+                                    // اگر آخرین پاراگراف کوتاه باشد، بلوک رونوشت/امضا به آن قفل
+                                    // می‌شود تا امضا تنها به صفحهٔ بعد نرود؛ اگر متن بلند باشد
+                                    // هیچ چیز جابه‌جا نمی‌شود و هر بلوک سرِ جای خودش می‌شکند.
+                                    tailKeptWithText = RichLetterPdfRenderer.AddTo(
+                                        inner, letter.Text, bodyFontSize, bodyLineHeight,
+                                        keepWithTrailingText: RenderTail, forceRtlParagraph: true);
                                 });
                         }
 
-                        if (!string.IsNullOrWhiteSpace(externalReference))
-                        {
-                            col.Item().PaddingTop(6).Text($"\u200Fعطف به شماره: {externalReference}\u200F")
-                                .FontSize(Math.Max(8f, bodyFontSize - 1f)).LineHeight(1.35f)
-                                .AlignRight().DirectionFromRightToLeft();
-                        }
-
-                        // ── رونوشت‌ها: در طرح کادر سمت راست بالای بلوک امضاست ──
-                        if (copyLines.Count > 0)
-                        {
-                            col.Item().PaddingTop(12).AlignRight().Width(copyWidth).Column(box =>
-                            {
-                                box.Item().Text("\u200Fرونوشت:\u200F")
-                                    .FontFamily("Vazirmatn-Bold")
-                                    .FontSize(Math.Max(8f, bodyFontSize - 1f))
-                                    .LineHeight(1.35f).AlignRight().DirectionFromRightToLeft();
-                                foreach (var line in copyLines)
-                                {
-                                    box.Item().Text($"\u200F{line}\u200F")
-                                        .FontSize(Math.Max(7.5f, bodyFontSize - 1.5f))
-                                        .LineHeight(1.35f).AlignRight().DirectionFromRightToLeft();
-                                }
-                            });
-                        }
-
-                        // ── امضاکنندگان: بلافاصله بعد از متن (نه پائین صفحه با مختصات ثابت) ──
-                        if (signerCards.Count > 0)
-                        {
-                            col.Item().PaddingTop(isA5 ? 16 : 22).ShowEntire().Row(row =>
-                            {
-                                foreach (var card in signerCards)
-                                {
-                                    var cell = fixedSignerColumns
-                                        ? row.ConstantItem(signerPitch)
-                                        : row.RelativeItem();
-                                    FillSignerCell(cell, card, signatureWidth, signatureHeight,
-                                        nameBox?.FontSize ?? bodyFontSize,
-                                        roleBox?.FontSize ?? Math.Max(8f, bodyFontSize - 1.5f));
-                                }
-                            });
-                        }
+                        // ── عطف/رونوشت/امضا: در جریان متن، بلافاصله بعد از متن ──
+                        if (!tailKeptWithText) RenderTail(col);
                     });
             });
         });
@@ -2258,8 +2323,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         });
     }
 
-    /// <summary>یک ردیف «کپشن + مقدار» (گیرنده/عنوان) با عرض‌های خودِ طرح.</summary>
-    private static void AddDesignRow(
+    /// <summary>
+    /// یک ردیف «برچسب + مقدار» (گیرنده/عنوان) در دو ستون، دقیقاً مثل خودِ طرح: برچسب در
+    /// ستون راست به عرض کادر طرح، یک فاصلهٔ ثابت (۷٫۲pt در A4)، و مقدار در ستون خودش.
+    /// ستون‌بندی سه ایراد را رفع می‌کند: «گیرنده نامهجناب آقای …» (فاصلهٔ صفر بین برچسب و
+    /// مقدار)، ناهم‌ترازی برچسب‌ها، و رفتن خط دومِ مقدار زیر برچسب (hanging indent).
+    /// </summary>
+    private void AddDesignRow(
         ColumnDescriptor col,
         OutgoingLetterDesignLayout design,
         OutgoingLetterDesignLayout.Box? valueBox,
@@ -2279,16 +2349,26 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             return;
         }
 
-        // چیدمان فیزیکی: کپشن سمت راست، مقدار سمت چپِ آن (مثل خودِ طرح).
+        var labelWidth = Math.Max(28f, caption.Width);
+        // برچسب ۱۲pt و مقدار ۱۴pt است؛ برای هم‌نشینی روی یک baseline اختلاف را با یک
+        // PaddingTop کوچک جبران می‌کنیم (QuestPDF تراز baseline صریح ندارد).
+        var baselineShift = Math.Max(0f, valueBox.FontSize - caption.FontSize) * 0.78f;
+
+        // چیدمان فیزیکی: مقدار سمت چپ، برچسب سمت راست (مثل خودِ طرح).
         item.Row(row =>
         {
-            row.RelativeItem().AlignMiddle().AlignRight()
+            // مقدار ستون اختصاصی خودش را دارد؛ اگر بلند شد در همان ستون می‌شکند و خط دوم
+            // هرگز زیر برچسب نمی‌رود (hanging indent).
+            row.RelativeItem().AlignTop().AlignRight()
                 .Text($"\u200F{value}\u200F")
                 .FontFamily(valueBox.Bold ? "Vazirmatn-Bold" : "Vazirmatn")
                 .FontSize(valueBox.FontSize)
                 .LineHeight(1.3f).DirectionFromRightToLeft();
 
-            row.ConstantItem(caption.Width).AlignMiddle()
+            // فاصلهٔ ثابت و قابل تنظیم بین مقدار و برچسب.
+            row.ConstantItem(_designPrint.LabelGap);
+
+            row.ConstantItem(labelWidth).PaddingTop(baselineShift).AlignTop()
                 .AlignLeft()
                 // دو نقطه در فایل طرح در ابتدای رشته ذخیره شده (RTL)؛ یک‌بار پاک و در
                 // پایان عبارت گذاشته می‌شود تا «گیرنده نامه:» درست بنشیند.

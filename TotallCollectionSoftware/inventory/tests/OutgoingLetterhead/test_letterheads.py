@@ -207,7 +207,9 @@ class LetterheadAssetsTests(unittest.TestCase):
         # رزرو پابرگِ مسیر قدیمی دست‌نخورده مانده (فقط ۱۰۰۳ مسیر تازه را می‌گیرد)؛
         # مسیر «از دل طرح» رزرو بزرگ‌تر خودش را دارد تا متن روی پابرگ نرود.
         self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 90f", layout)
-        self.assertIn("DesignFooterReserve(bool isA5) => isA5 ? 82f : 116f", layout)
+        # رزرو پابرگِ مسیر طرح بر اساس اندازه‌گیری روی تصویر سربرگ: روبان‌های روشن گوشهٔ
+        # پایین-چپ از ≈۶۸۹pt و پله‌های تیره از ≈۷۳۶pt؛ ۱۴۲ متن را تا ۷۰۰pt نگه می‌دارد.
+        self.assertIn("DesignFooterReserve(bool isA5) => isA5 ? 100f : 142f", layout)
         self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f", layout)
         homepa_branch = source.split("else if (isHomepaLetterhead)", 1)[1].split("else if (hasLetterhead)", 1)[0]
         self.assertNotIn("center: true", homepa_branch)
@@ -828,13 +830,21 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn("HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f", layout)
 
     def test_meta_values_are_readable_and_inset_from_the_page_edge(self):
-        """شماره/تاریخ/پیوست نباید با رنگ روشن و چسبیده به لبه چاپ شوند."""
+        """شماره/تاریخ/پیوست نباید کم‌رنگ، ناهم‌وزن و چسبیده به لبهٔ چاپ شوند."""
         for tree in self.TREES:
             with self.subTest(tree=tree.parts[-3]):
                 service = self.service_text(tree)
                 self.assertIn("Reporting:OutgoingLetters:MetaValueColor", service)
-                self.assertIn("leftInset: 8f", service)
-                self.assertIn("FontColor(colorOverride ?? field.Color)", service)
+                # حاشیهٔ امن از لبهٔ چپ (۱۵mm پیش‌فرض) به‌جای ۸pt قبلی.
+                self.assertIn("Reporting:OutgoingLetters:DesignMetaSafeLeftMm", service)
+                self.assertIn("_designPrint.MetaSafeLeft", service)
+                # هر سه مقدار یک اندازه و یک وزن هستند (طرح «پیوست» را ۱۲ و بقیه را ۱۰ داشت).
+                self.assertIn("Reporting:OutgoingLetters:DesignMetaFontSize", service)
+                self.assertIn(".FontSize(_designPrint.MetaFontSize)", service)
+                self.assertIn('.FontFamily("Vazirmatn-Bold")', service)
+                # مقدار به برچسبِ چاپ‌شده روی سربرگ می‌چسبد (تراز راست، مثل پیش‌نمایش طرح).
+                self.assertIn("FontColor(_designMetaColor ?? field.Color)", service)
+                self.assertIn("box = box.AlignRight();", service)
 
     def test_paragraph_direction_is_forced_right_to_left(self):
         """bidi: ویرگول/نقطهٔ پایانی نباید به ابتدای خط پرت شود."""
@@ -845,7 +855,10 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 # هر تکهٔ متنی با RLM محصور می‌شود؛ فقط وقتی فراخوان بخواهد (مسیر ۱۰۰۳)
                 self.assertIn("bool forceRtlParagraph = false", renderer)
                 self.assertIn("if (forceRtlParagraph) MarkRightToLeft(root);", renderer)
-                self.assertIn('node.Text = "\\u200F" + node.Text.Trim() + "\\u200F";', renderer)
+                self.assertIn('node.Text = "\\u200F" + IsolateLatinRuns(node.Text.Trim()) + "\\u200F";', renderer)
+                # متن ترکیبی فارسی/لاتین: واژهٔ لاتین با LRI/PDI جدا می‌شود (معادل <bdi>).
+                self.assertIn("IsolateLatinRuns", renderer)
+                self.assertIn('"\\u2066" + match.Value + "\\u2069"', renderer)
                 self.assertIn("forceRtlParagraph: true", self.service_text(tree))
                 service = self.service_text(tree)
                 self.assertIn('$"\\u200F{value}\\u200F"', service)
@@ -904,6 +917,55 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertNotIn("printData", body,
                                  "BuildContentPdf has no printData variable (CS0103)")
                 self.assertIn("hasAttachment: hasAttachment", body)
+
+    def test_receiver_and_title_rows_have_a_gap_and_hanging_indent(self):
+        """«گیرنده نامهجناب آقای …» نباید چسبیده چاپ شود؛ برچسب و مقدار دو ستون جدا هستند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                # فاصلهٔ ثابت و قابل تنظیم بین مقدار و برچسب (طرح: ۰٫۱ اینچ = ۷٫۲pt).
+                self.assertIn("Reporting:OutgoingLetters:DesignLabelGapPt", service)
+                self.assertIn("row.ConstantItem(_designPrint.LabelGap);", service)
+                # مقدار در ستون خودش می‌شکند، پس خط دوم زیر برچسب نمی‌رود (hanging indent).
+                self.assertIn("row.RelativeItem().AlignTop().AlignRight()", service)
+                # برچسب با دو نقطه در انتهای خودش، چسبیده به سمت مقدار.
+                self.assertIn(r'}\u200F:"', service)
+                # هم‌نشینی برچسب ۱۲pt با مقدار ۱۴pt روی یک خط.
+                self.assertIn("baselineShift", service)
+
+    def test_list_items_put_the_marker_in_its_own_column(self):
+        """آیتم‌های فهرست: شماره در ستون راست، متن در ستون خودش، تورفتگی آویزان."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                renderer = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                            / "RichLetterPdfRenderer.cs").read_text(encoding="utf-8")
+                self.assertIn("var markerWidth = ordered ? fontSize", renderer)
+                self.assertIn("row.ConstantItem(markerWidth).Text(text =>", renderer)
+                self.assertIn("RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f)", renderer)
+                # فاصلهٔ یکسان بالای فهرست، بین آیتم‌ها و بعد از آن.
+                self.assertIn("column.Item().PaddingVertical(fontSize * 0.45f).Column(", renderer)
+                self.assertIn("float topPadding = 0f)", renderer)
+                # شمارهٔ فارسی با نقطهٔ پایانی، در جهت راست‌به‌چپ: «۱.»
+                self.assertIn('{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."', renderer)
+                # نشانگر دیگر داخل همان بلوک متنیِ متن نیست (علت چسبیدن آیتم بعدی).
+                self.assertNotIn("text.Span(marker).Bold();\n            foreach (var child in item.Children",
+                                 renderer)
+
+    def test_print_margins_are_configurable_for_other_letterheads(self):
+        """حاشیه‌ها با تنظیمات قابل تغییرند تا همان کد برای سربرگ شرکت دیگری هم کار کند."""
+        keys = ("DesignLabelGapPt", "DesignMetaSafeLeftMm", "DesignMetaFontSize",
+                "DesignHeaderArtGapPt")
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                service = self.service_text(tree)
+                for key in keys:
+                    self.assertIn(f'"{key}"', settings)
+                    self.assertIn(f"Reporting:OutgoingLetters:{key}", service)
+                self.assertIn("_designPrint.FooterReserve ?? HomepaLetterheadLayout.DesignFooterReserve(isA5)",
+                              service)
+                # حاشیهٔ امن ۱۵ میلی‌متر برای مقدارهای شماره/تاریخ/پیوست.
+                self.assertIn('"DesignMetaSafeLeftMm": 15', settings)
 
     def test_company_1003_template_announces_receiver_title_and_body(self):
         for tree in self.TREES:

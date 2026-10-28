@@ -25,6 +25,12 @@ internal static class RichLetterPdfRenderer
     private static readonly HashSet<string> BlockTags = new(StringComparer.OrdinalIgnoreCase)
         { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
 
+    // واژهٔ لاتین داخل متن فارسی (مثل «Workflow») باید جدا شود، وگرنه نقطه/ویرگول و
+    // پرانتزِ کنارش با آن جابه‌جا می‌شوند؛ LRI/PDI همان کار <bdi> در HTML را می‌کند.
+    private static readonly Regex LatinRun = new(
+        @"[A-Za-z][A-Za-z0-9_@.\-]*[A-Za-z0-9]|[A-Za-z]",
+        RegexOptions.Compiled);
+
     internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
         Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false)
     {
@@ -87,12 +93,21 @@ internal static class RichLetterPdfRenderer
         if (node.Tag == "#text")
         {
             if (!string.IsNullOrWhiteSpace(node.Text))
-                node.Text = "\u200F" + node.Text.Trim() + "\u200F";
+                node.Text = "\u200F" + IsolateLatinRuns(node.Text.Trim()) + "\u200F";
             return;
         }
 
         foreach (var child in node.Children) MarkRightToLeft(child);
     }
+
+    /// <summary>
+    /// واژه‌های لاتین را با LRI/PDI (U+2066/U+2069) جدا می‌کند — معادل <c>&lt;bdi&gt;</c> در
+    /// HTML. بدون این جداسازی، «Workflow» و علائم کنارش در پاراگراف راست‌به‌چپ جابه‌جا
+    /// می‌شوند (آیتم‌های فهرست با واژهٔ لاتین بدترین نمونه بودند).
+    /// </summary>
+    private static string IsolateLatinRuns(string text) => LatinRun.IsMatch(text)
+        ? LatinRun.Replace(text, match => "\u2066" + match.Value + "\u2069")
+        : text;
 
     private static int TextLength(Node node) => node.Tag == "#text"
         ? node.Text.Length
@@ -220,6 +235,13 @@ internal static class RichLetterPdfRenderer
     {
         var item = column.Item();
         if (extraTop > 0) item = item.PaddingTop(extraTop);
+        RenderText(item, nodes, fontSize, lineHeight, bold, style);
+    }
+
+    /// <summary>یک بلوک متنی (پاراگراف) را در هر کادری می‌نویسد؛ برای سلول‌های Row هم استفاده می‌شود.</summary>
+    private static void RenderText(IContainer item, IReadOnlyList<Node> nodes, float fontSize,
+        float lineHeight, bool bold, string? style = null)
+    {
         var blockStyle = ParseStyle(style);
         if (blockStyle.TryGetValue("font-size", out var size) && TryFontSize(size, out var styledSize))
             fontSize = Math.Clamp(styledSize, 6, 30);
@@ -243,29 +265,53 @@ internal static class RichLetterPdfRenderer
     private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight)
     {
         var ordered = list.Tag == "ol";
-        var index = 0;
-        foreach (var item in list.Children.Where(x => x.Tag == "li"))
+        var items = list.Children.Where(x => x.Tag == "li").ToList();
+        if (items.Count == 0) return;
+
+        // فاصلهٔ عمودی یکسان بالای فهرست، بین آیتم‌ها و بعد از فهرست.
+        var spacing = fontSize * 0.35f;
+        column.Item().PaddingVertical(fontSize * 0.45f).Column(box =>
         {
-            index++;
-            RenderListItem(column, item, ordered, index, fontSize, lineHeight);
-        }
+            for (var position = 0; position < items.Count; position++)
+                RenderListItem(box, items[position], ordered, position + 1, fontSize, lineHeight,
+                    position == 0 ? 0f : spacing);
+        });
     }
 
+    /// <summary>
+    /// یک آیتم فهرست در دو ستون: متن در ستون خودش و شماره/گلوله در ستون راست.
+    /// قبلاً شماره و متن در یک بلوک متنی بودند؛ نتیجه این بود که آیتم بلند در خط دوم به
+    /// زیر شماره می‌رفت و شمارهٔ آیتم بعدی به انتهای همان خط می‌چسبید. ستون‌بندی
+    /// (مثل <c>list-style-position: outside</c>) تورفتگی آویزان درست می‌دهد و شماره را
+    /// هرگز از متنش جدا نمی‌کند.
+    /// </summary>
     private static void RenderListItem(ColumnDescriptor column, Node item, bool ordered, int index,
-        float fontSize, float lineHeight)
+        float fontSize, float lineHeight, float topPadding = 0f)
     {
         var nested = item.Children.Where(x => x.Tag is "ol" or "ul").ToList();
-        var marker = ordered ? PersianDigits(index.ToString(CultureInfo.InvariantCulture)) + ". " : "• ";
-        column.Item().Text(text =>
+        var content = item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")).ToList();
+        // RLM در ابتدا و انتها: جهت پایه راست‌به‌چپ قطعی می‌شود و نقطهٔ پایانِ شماره
+        // («۱.») سمت چپ عدد می‌ماند، نه ابتدای خط.
+        var marker = ordered
+            ? $"\u200F{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."
+            : "\u200F•";
+        // شماره‌های دو رقمی ستون پهن‌تری می‌گیرند تا متنشان جابه‌جا نشود.
+        var markerWidth = ordered ? fontSize * (index >= 10 ? 2.1f : 1.5f) : fontSize;
+
+        var element = topPadding > 0 ? column.Item().PaddingTop(topPadding) : column.Item();
+        element.Row(row =>
         {
-            text.DefaultTextStyle(style => style
-                .FontSize(fontSize)
-                .LineHeight(lineHeight)
-                .DirectionFromRightToLeft());
-            text.AlignRight();
-            text.Span(marker).Bold();
-            foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
-                AppendInline(text, child, new Formatting(), fontSize);
+            RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f), content, fontSize, lineHeight,
+                bold: false);
+            row.ConstantItem(markerWidth).Text(text =>
+            {
+                text.DefaultTextStyle(style => style
+                    .FontSize(fontSize)
+                    .LineHeight(lineHeight)
+                    .DirectionFromRightToLeft());
+                text.AlignRight();
+                text.Span(marker).Bold();
+            });
         });
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }

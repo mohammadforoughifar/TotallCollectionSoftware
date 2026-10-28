@@ -26,11 +26,12 @@ internal static class HomepaLetterheadLayout
     internal static float FooterReserve(bool isA5) => isA5 ? 68f : 90f;
 
     /// <summary>
-    /// رزرو پابرگ برای چیدمان «از دل طرح» (فعلاً فقط شرکت ۱۰۰۳). گرافیک پابرگ در A4 از
-    /// ≈۷۲۶pt و در A5 از ≈۵۱۳pt شروع می‌شود، پس ۱۱۶/۸۲ متن را دقیقاً بالای همان هنر
-    /// نگه می‌دارد؛ رزرو قدیمی ۹۰/۶۸ اجازه می‌داد متن ۲۶pt روی پابرگ برود.
+    /// رزرو پابرگ برای چیدمان «از دل طرح» (فعلاً فقط شرکت ۱۰۰۳). اندازه‌گیری روی خودِ تصویر
+    /// سربرگ: روبان‌های روشنِ گوشهٔ پایین-چپ از ≈۶۸۹pt و پله‌های تیره از ≈۷۳۶pt شروع می‌شوند؛
+    /// با ۱۴۲ رزرو، متن و بلوک امضا تا ۷۰۰pt می‌نویسند و ۳۶pt از شکل تزئینی فاصله دارند
+    /// (رزرو قبلی ۹۰/۶۸ اجازه می‌داد نام امضاکنندگان روی همان شکل بیفتد).
     /// </summary>
-    internal static float DesignFooterReserve(bool isA5) => isA5 ? 82f : 116f;
+    internal static float DesignFooterReserve(bool isA5) => isA5 ? 100f : 142f;
     internal static float HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f;
 
     /// <summary>
