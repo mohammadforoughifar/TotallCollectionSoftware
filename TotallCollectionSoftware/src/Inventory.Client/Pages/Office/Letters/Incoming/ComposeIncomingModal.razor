@@ -313,17 +313,13 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
-        // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده + تصاویرِ داخل متن +
-        // تصاویرِ پیوستی (به‌صورت data URI داخل متن، تا در نمایش/چاپ/ذخیره هم دیده شوند).
+        // متن نامه «مثل خودِ ایمیل دریافتی» ساخته می‌شود: یک خطِ کوتاهِ منبع (تاریخ)،
+        // سپس بدنه با همان قالب و تصاویرِ داخل متن. تصاویر به‌صورت data URI داخل متن
+        // جاسازی می‌شوند (آدرسِ نسبیِ پیوستِ ایمیل در متن نامه کار نمی‌کرد).
         var letterContent = await EmailLetterContent.BuildAsync(email, EmailSvc);
-
-        description = "<p><b>برگرفته از ایمیل دریافتی</b><br/>"
-                    + "از: " + System.Net.WebUtility.HtmlEncode(email.FromOrTo)
-                    + "<br/>موضوع: " + System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(email.Subject) ? "(بدون موضوع)" : email.Subject)
-                    + "<br/>حساب: " + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
-                    + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
-                    + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + letterContent.Html + "</blockquote>";
+        description = "<p style='color:#64748b;font-size:12px;margin:0 0 10px'>"
+                    + $"برگرفته از ایمیل دریافتی — {email.Date.ToFaDateTime()}</p>"
+                    + letterContent.Html;
 
         var transferred = letterContent.InlineImages + letterContent.AttachedImages;
         if (transferred > 0)
@@ -340,6 +336,10 @@
         var skippedAtt = 0;
         foreach (var attachment in email.Attachments)
         {
+            // تصویری که داخل متن نامه جاسازی شده، «دوباره» به‌عنوان فایل پیوست ثبت
+            // نمی‌شود؛ وگرنه کاربر همان تصویر را هم داخل متن می‌بیند و هم به‌شکل فایل.
+            if (letterContent.EmbeddedIds.Contains(attachment.AttachmentId)) continue;
+
             // ۱) کنترل پیش از دانلود پیوست از ایمیل
             if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
             {

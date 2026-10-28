@@ -26,6 +26,12 @@ public sealed class EmailLetterBody
 
     /// <summary>بدنهٔ متنیِ ایمیل خالی بوده و محتوا فقط تصویر/پیوست است.</summary>
     public bool BodyWasEmpty { get; set; }
+
+    /// <summary>
+    /// شناسهٔ پیوست‌هایی که «داخل متن نامه» جاسازی شدند؛ این‌ها نباید دوباره به‌عنوان
+    /// فایل پیوستِ نامه ثبت شوند (وگرنه تصویر هم در متن دیده می‌شود و هم به‌شکل فایل).
+    /// </summary>
+    public HashSet<int> EmbeddedIds { get; } = new();
 }
 
 /// <summary>
@@ -114,6 +120,7 @@ public static class EmailLetterBodyBuilder
                 {
                     ctx.InlineIds.Add(id);
                     result.InlineImages++;
+                    result.EmbeddedIds.Add(id);
                     return uri;
                 }
                 result.Skipped++;
@@ -149,13 +156,8 @@ public static class EmailLetterBodyBuilder
             }
 
             result.AttachedImages++;
-            var name = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(attachment.RealName) ? "تصویر" : attachment.RealName);
-            section.Append("<div style=\"margin:10px 0\">")
-                   .Append("<p style=\"margin:0 0 4px;font-size:12px;color:#475569\"><b>تصویر پیوست ایمیل</b> — ")
-                   .Append(name).Append("</p>")
-                   .Append("<img src=\"").Append(uri).Append("\" alt=\"").Append(name)
-                   .Append("\" style=\"max-width:100%;height:auto;margin:6px 0\" />")
-                   .Append("</div>");
+            result.EmbeddedIds.Add(attachment.AttachmentId);
+            AppendImage(section, uri);
         }
 
         // ۴-ب) تضمین نهایی: اگر ایمیل تصویر دارد ولی هیچ تصویری داخل متن ننشست
@@ -171,13 +173,8 @@ public static class EmailLetterBodyBuilder
                 if (uri is null) continue;
 
                 result.AttachedImages++;
-                var name = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(attachment.RealName) ? "تصویر" : attachment.RealName);
-                section.Append("<div style=\"margin:10px 0\">")
-                       .Append("<p style=\"margin:0 0 4px;font-size:12px;color:#475569\"><b>تصویر پیوست ایمیل</b> — ")
-                       .Append(name).Append("</p>")
-                       .Append("<img src=\"").Append(uri).Append("\" alt=\"").Append(name)
-                       .Append("\" style=\"max-width:100%;height:auto;margin:6px 0\" />")
-                       .Append("</div>");
+                result.EmbeddedIds.Add(attachment.AttachmentId);
+                AppendImage(section, uri);
             }
         }
 
@@ -186,19 +183,28 @@ public static class EmailLetterBodyBuilder
         plain = WebUtility.HtmlDecode(plain);
         result.BodyWasEmpty = string.IsNullOrWhiteSpace(plain.Replace("\u00a0", " "));
 
-        if (result.BodyWasEmpty)
-        {
-            var note = result.AttachedImages + result.InlineImages > 0
-                ? "این ایمیل متنِ قابل‌انتقال ندارد؛ محتوای آن تصویر زیر است."
-                : "بدنهٔ متنی این ایمیل خالی است.";
-            html = "<p style=\"color:#64748b;font-size:12px\">" + note + "</p>" + html;
-        }
+        // اگر ایمیل فقط تصویر است هیچ جملهٔ توضیحی اضافه نمی‌شود تا متن نامه دقیقاً
+        // مثل همان ایمیل دیده شود؛ یادداشت فقط برای ایمیلِ کاملاً خالی می‌آید.
+        if (result.BodyWasEmpty && result.AttachedImages + result.InlineImages == 0)
+            html = "<p style=\"color:#64748b;font-size:12px\">بدنهٔ این ایمیل خالی است.</p>" + html;
 
         result.Html = html + section.ToString();
         return result;
     }
 
     // ---------------------------------------------------------------- کمکی‌ها
+
+    /// <summary>
+    /// درج تصویر در متن نامه — بدون برچسب، نام فایل یا جملهٔ توضیحی؛ متن نامه باید
+    /// «مثل خودِ ایمیل دریافتی» دیده شود و کاربر نباید بفهمد تصویر از فایل پیوست آمده.
+    /// </summary>
+    private static void AppendImage(StringBuilder sb, string uri)
+    {
+        sb.Append("<p style=\"margin:8px 0;text-align:center\">")
+          .Append("<img src=\"").Append(uri).Append("\" alt=\"تصویر\"")
+          .Append(" style=\"max-width:100%;height:auto\" />")
+          .Append("</p>");
+    }
 
     private sealed class EmbedContext
     {

@@ -142,12 +142,7 @@
                         </div>
                     </section>
                     <section class="wpmf-inspector-card wpmf-order-card">
-                        <header class="wpmf-card-heading"><i class="bi bi-clipboard-check"></i><span>دستورکارهای این گره</span><b class="wpmf-card-count">@NodeWorkOrderIds(SelectedNode).Count</b>
-                            @if (CanEdit && Auth.Has("WorkOrders.Create"))
-                            {
-                                <button type="button" class="wpmf-create-order-btn" title="ساخت دستورکار جدید و اتصال به این گره" aria-label="ساخت دستورکار جدید" @onclick="OpenWorkOrderCreationAsync" disabled="@_saving"><i class="bi bi-plus-lg"></i></button>
-                            }
-                        </header>
+                        <header class="wpmf-card-heading"><i class="bi bi-clipboard-check"></i><span>دستورکارهای این گره</span><b class="wpmf-card-count">@NodeWorkOrderIds(SelectedNode).Count</b></header>
                         @if (CanEdit)
                         {
                             <button type="button" class="wpmf-add-order-btn" @onclick="ToggleWorkOrderOptions" aria-expanded="@_showWorkOrderOptions" disabled="@_loadingOrders">
@@ -432,7 +427,6 @@
     private string _memberSearch = "", _mindFlowSearch = "", _inviteRole = "Viewer";
     private bool _peopleLoading, _savingMembers, _wasCanManageAccess, _loadingOrders, _showWorkOrderOptions, _showCandidateOptions, _showMindFlowOptions, _mindFlowsLoading;
     private bool _loading = true, _saving, _dirty, _attached, _loadingChecklist, _isFullscreen;
-    private long _changeVersion;
     private string _message = "", _accessMessage = "", _status = "ذخیره نشده", _search = "";
     private double Zoom = 1;
     private bool IsStandalone => StandaloneMapId is > 0;
@@ -553,13 +547,10 @@
             node.WorkOrderId = null;
         }
     }
-    private async Task SaveAsync() => await SaveMapAsync();
-
-    private async Task<bool> SaveMapAsync()
+    private async Task SaveAsync()
     {
-        if (!CanEdit || _saving) return false;
+        if (!CanEdit || _saving) return;
         _saving = true; _message = "";
-        var savingVersion = _changeVersion;
         try
         {
             Normalize();
@@ -567,18 +558,10 @@
             var path = NormalizeSubMindFlowPath(SubFlowPath);
             var url = string.IsNullOrWhiteSpace(path) ? RootMapApiUrl : SubMapApiUrl(path);
             var response = await Http.PutAsJsonAsync(url, _map);
-            if (!response.IsSuccessStatusCode) { _message = await ErrorMessage(response); return false; }
-            if (_changeVersion != savingVersion)
-            {
-                _dirty = true;
-                _status = "تغییرهای تازه هنوز ذخیره نشده‌اند";
-                _message = "در زمان ذخیره، نگاشت دوباره تغییر کرد؛ تغییرهای تازه را ذخیره کن و سپس دستورکار بساز.";
-                return false;
-            }
+            if (!response.IsSuccessStatusCode) { _message = await ErrorMessage(response); return; }
             _dirty = false; _unsavedChildNodeIds.Clear(); _status = $"ذخیره شد · {DateTime.Now:HH:mm}";
-            return true;
         }
-        catch (HttpRequestException) { _message = "ذخیره انجام نشد؛ اتصال به سرور را بررسی کن."; return false; }
+        catch (HttpRequestException) { _message = "ذخیره انجام نشد؛ اتصال به سرور را بررسی کن."; }
         finally { _saving = false; }
     }
     private async Task CreateChildMindFlowAsync()
@@ -645,47 +628,6 @@
         ids.Add(ownerNodeId);
         var pathQuery = Uri.EscapeDataString(string.Join(",", ids));
         return IsStandalone ? $"{rootHref}?subFlowPath={pathQuery}" : $"{rootHref}&subFlowPath={pathQuery}";
-    }
-    private string CreateWorkOrderHref(WorkProjectMindFlowNodeDto? node)
-    {
-        if (node is null) return "/work-orders";
-        var path = NormalizeSubMindFlowPath(SubFlowPath);
-        if (path == "invalid") return "/work-orders";
-        var query = $"mindFlowNodeId={node.Id}&mindFlowSubFlowPath={Uri.EscapeDataString(path)}";
-        return IsStandalone
-            ? $"/work-orders?mindFlowStandaloneId={StandaloneMapId}&{query}"
-            : $"/work-orders?mindFlowProjectId={ProjectId}&{query}";
-    }
-    private async Task OpenWorkOrderCreationAsync()
-    {
-        if (!CanEdit || SelectedNode is null || !Auth.Has("WorkOrders.Create")) return;
-
-        // Open a placeholder synchronously from the click gesture so popup blockers do not
-        // interfere; navigate only after the latest MindFlow state has been saved.
-        string? pendingTab = null;
-        try { pendingTab = await JS.InvokeAsync<string>("inventoryWorkProjectMindFlow.openPendingWorkOrderTab"); }
-        catch (JSException) { }
-        if (string.IsNullOrWhiteSpace(pendingTab))
-        {
-            _message = "مرورگر اجازهٔ بازکردن تب جدید را نداد؛ اجازهٔ پنجرهٔ بازشو را فعال و دوباره تلاش کن.";
-            return;
-        }
-
-        try
-        {
-            if (_dirty && !await SaveMapAsync())
-            {
-                await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.closePendingWorkOrderTab", pendingTab);
-                return;
-            }
-
-            await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.navigatePendingWorkOrderTab", pendingTab, CreateWorkOrderHref(SelectedNode));
-        }
-        catch (JSException)
-        {
-            try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.closePendingWorkOrderTab", pendingTab); } catch (JSException) { }
-            _message = "تب دستورکار باز نشد؛ نگاشت ذخیره‌نشده حفظ شد. دوباره تلاش کن.";
-        }
     }
     private static async Task<string> ErrorMessage(HttpResponseMessage response)
     {
@@ -1054,7 +996,7 @@
         if (_map.Nodes.Any(n => n.Id == id)) await Select(id);
         await InvokeAsync(StateHasChanged);
     }
-    private void Dirty() { _changeVersion++; _dirty = true; _status = "ویرایش نشده"; }
+    private void Dirty() { _dirty = true; _status = "ویرایش نشده"; }
     private void Snapshot() { _undo.Push(JsonSerializer.Serialize(_map)); _redo.Clear(); }
     private void Undo() { if (!CanEdit || _undo.Count == 0) return; _redo.Push(JsonSerializer.Serialize(_map)); Restore(_undo.Pop()); }
     private void Redo() { if (!CanEdit || _redo.Count == 0) return; _undo.Push(JsonSerializer.Serialize(_map)); Restore(_redo.Pop()); }
@@ -1103,35 +1045,6 @@
     private void ZoomOut() => Zoom = Math.Max(.6, Zoom - .1);
     private void Fit() => Zoom = 1;
     private void ToggleFullscreen() => _isFullscreen = !_isFullscreen;
-
-    [JSInvokable]
-    public async Task RefreshAfterReturnAsync()
-    {
-        if (_loading || _saving || _dirty || _loadingOrders || _map.Nodes.Count == 0) return;
-        var selectedId = _selectedId;
-        try
-        {
-            var path = NormalizeSubMindFlowPath(SubFlowPath);
-            if (path == "invalid") return;
-            var url = string.IsNullOrWhiteSpace(path) ? RootMapApiUrl : SubMapApiUrl(path);
-            var latest = await Http.GetFromJsonAsync<WorkProjectMindFlowDto>(url);
-            if (latest?.Nodes is not { Count: > 0 }) return;
-            _map = latest;
-            Normalize();
-            _selectedId = _map.Nodes.Any(n => n.Id == selectedId)
-                ? selectedId : _map.Nodes.FirstOrDefault(n => n.ParentId is null)?.Id ?? Guid.Empty;
-            var linkedIds = NodeWorkOrderIds(SelectedNode);
-            if (_selectedWorkOrderId is not int currentOrderId || !linkedIds.Contains(currentOrderId))
-            {
-                var firstLinkedId = linkedIds.FirstOrDefault();
-                _selectedWorkOrderId = firstLinkedId > 0 ? firstLinkedId : null;
-            }
-            await LoadProjectOrdersAsync();
-            await LoadLinkedChecklistAsync(force: true);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException) { }
-    }
 
     [JSInvokable]
     public Task CommitDrag(Guid rootId, List<DragPoint> points, Guid? targetParentId)

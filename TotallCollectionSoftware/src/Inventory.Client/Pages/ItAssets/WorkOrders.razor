@@ -2728,10 +2728,6 @@ else
     private string _sourceLabel = "";
     private string _sourceDocTitle = "";
     private bool _sourceHandled;
-    private bool _mindFlowCreateHandled;
-    private int? _mindFlowCreateProjectId, _mindFlowCreateStandaloneId;
-    private Guid? _mindFlowCreateNodeId;
-    private List<Guid> _mindFlowCreateSubFlowPath = new();
 
     /// <summary>شماره و عنوان مدرک آرشیوِ متصل به هر دستور کار (برای نمایش کنار «منبع» در جزئیات).</summary>
     private readonly Dictionary<int, (string Code, string Title)> _docRefs = new();
@@ -2880,38 +2876,6 @@ else
         var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
         if (!rel.Equals("work-orders", StringComparison.OrdinalIgnoreCase)) return;
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
-        var hasMindFlowProject = int.TryParse(qs["mindFlowProjectId"], out var mindFlowProjectId) && mindFlowProjectId > 0;
-        var hasMindFlowStandalone = int.TryParse(qs["mindFlowStandaloneId"], out var mindFlowStandaloneId) && mindFlowStandaloneId > 0;
-        if (!_mindFlowCreateHandled && Guid.TryParse(qs["mindFlowNodeId"], out var mindFlowNodeId)
-            && hasMindFlowProject != hasMindFlowStandalone)
-        {
-            _mindFlowCreateHandled = true;
-            if (!access.CanCreate)
-            {
-                Toast.Error("شما مجوز ایجاد دستورکار را ندارید.");
-                return;
-            }
-            var pathIds = new List<Guid>();
-            var rawMindFlowPath = qs["mindFlowSubFlowPath"];
-            if (!string.IsNullOrWhiteSpace(rawMindFlowPath))
-            {
-                foreach (var part in rawMindFlowPath.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    if (!Guid.TryParse(part, out var pathId) || pathId == Guid.Empty || pathIds.Count >= 8)
-                    {
-                        Toast.Error("مسیر زیرنگاشت معتبر نیست.");
-                        return;
-                    }
-                    pathIds.Add(pathId);
-                }
-            }
-            _mindFlowCreateProjectId = hasMindFlowProject ? mindFlowProjectId : null;
-            _mindFlowCreateStandaloneId = hasMindFlowStandalone ? mindFlowStandaloneId : null;
-            _mindFlowCreateNodeId = mindFlowNodeId;
-            _mindFlowCreateSubFlowPath = pathIds;
-            await OpenNew();
-            return;
-        }
         if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
         // باز شدن مستقیم تب آمار با لینک (مثلاً از داشبورد) هم باید داده‌ها را بارگذاری کند.
         if (qs["tab"] == "stats" && tab != "stats") { tab = "stats"; await LoadStats(); }
@@ -3788,39 +3752,7 @@ else
                     ShowSmsSummary(created.Sms);
             }
 
-            var hasMindFlowContext = editingId <= 0 && _mindFlowCreateNodeId.HasValue;
-            var mindFlowLinkFailed = false;
-            if (hasMindFlowContext)
-            {
-                if (created is null) mindFlowLinkFailed = true;
-                else
-                {
-                    var linkDto = new LinkWorkOrderToMindFlowDto
-                    {
-                        WorkOrderId = created.Id,
-                        NodeId = _mindFlowCreateNodeId!.Value,
-                        SubFlowPath = _mindFlowCreateSubFlowPath.ToList()
-                    };
-                    var linkUrl = _mindFlowCreateStandaloneId is int standaloneId
-                        ? $"/api/mindflows/{standaloneId}/link-workorder"
-                        : $"/api/workprojects/{_mindFlowCreateProjectId}/mindflow/link-workorder";
-                    try
-                    {
-                        var linkResponse = await Http.PostAsJsonAsync(linkUrl, linkDto);
-                        mindFlowLinkFailed = !linkResponse.IsSuccessStatusCode;
-                    }
-                    catch (HttpRequestException) { mindFlowLinkFailed = true; }
-                }
-                _mindFlowCreateProjectId = null; _mindFlowCreateStandaloneId = null; _mindFlowCreateNodeId = null;
-                _mindFlowCreateSubFlowPath.Clear();
-            }
-
-            if (hasMindFlowContext && mindFlowLinkFailed)
-                Toast.Error("دستورکار ثبت شد، اما اتصال آن به نگار ذهنی انجام نشد. دسترسی و وضعیت ذخیرهٔ نگاشت را بررسی کن.");
-            else if (hasMindFlowContext)
-                Toast.Success("دستورکار ثبت و به گرهٔ انتخاب‌شده متصل شد.");
-            else
-                Toast.Success(editingId > 0 ? "تغییرات ذخیره شد." : "دستور کار ثبت شد.");
+            Toast.Success(editingId > 0 ? "تغییرات ذخیره شد." : "دستور کار ثبت شد.");
             editingId = 0;
             editingSeries = false;
             showNew = false;

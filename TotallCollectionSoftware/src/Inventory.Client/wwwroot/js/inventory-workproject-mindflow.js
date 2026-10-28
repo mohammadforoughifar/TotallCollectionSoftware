@@ -1,35 +1,4 @@
-const pendingMindFlowWorkOrderTabs = new Map();
-
 window.inventoryWorkProjectMindFlow = {
-  openPendingWorkOrderTab: () => {
-    const tab = window.open('about:blank', '_blank');
-    if (!tab) return '';
-    const token = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    try {
-      tab.document.title = 'در حال آماده‌سازی دستورکار';
-      tab.document.body.innerHTML = '<main dir="rtl" style="font:16px sans-serif;padding:2rem;color:#344054">در حال ذخیرهٔ نگار ذهنی…</main>';
-      tab.opener = null;
-    } catch { /* The tab may already have navigated or be closing. */ }
-    pendingMindFlowWorkOrderTabs.set(token, tab);
-    return token;
-  },
-  navigatePendingWorkOrderTab: (token, relativeUrl) => {
-    const tab = pendingMindFlowWorkOrderTabs.get(token);
-    pendingMindFlowWorkOrderTabs.delete(token);
-    if (!tab || tab.closed) return false;
-    const target = new URL(relativeUrl, window.location.origin);
-    if (target.origin !== window.location.origin || (target.pathname !== '/work-orders' && target.pathname !== '/work-orders/')) {
-      tab.close();
-      throw new Error('Invalid WorkOrder navigation URL');
-    }
-    tab.location.replace(target.href);
-    return true;
-  },
-  closePendingWorkOrderTab: token => {
-    const tab = pendingMindFlowWorkOrderTabs.get(token);
-    pendingMindFlowWorkOrderTabs.delete(token);
-    if (tab && !tab.closed) tab.close();
-  },
   attachDrag: (svgId, dotnet) => {
     const svg = document.getElementById(svgId);
     if (!svg) return;
@@ -40,18 +9,6 @@ window.inventoryWorkProjectMindFlow = {
     const controller = { dotnet };
     svg._wpMindFlowDragController = controller;
     svg.dataset.wpMindFlowDrag = '1';
-    if (!svg._wpMindFlowFocusHandler) {
-      svg._wpMindFlowFocusHandler = () => {
-        if (!svg.isConnected) {
-          window.removeEventListener('focus', svg._wpMindFlowFocusHandler);
-          svg._wpMindFlowFocusHandler = null;
-          return;
-        }
-        const current = svg._wpMindFlowDragController?.dotnet;
-        if (current) current.invokeMethodAsync('RefreshAfterReturnAsync').catch(() => {});
-      };
-      window.addEventListener('focus', svg._wpMindFlowFocusHandler);
-    }
 
     let active = null;
     const groups = () => [...svg.querySelectorAll('.wpmf-node')];

@@ -70,6 +70,9 @@ public class AddOutgoingLetterDto
     /// <summary>کاربران امضا کننده — باید دسترسی OutgoingLetters.Sign داشته باشند</summary>
     public List<int> SignerUserIds { get; set; } = new();
 
+    /// <summary>کاربر به‌همراه سمت انتخاب‌شده برای امضای نامه.</summary>
+    public List<OutgoingSignerSelectionDto> SignerSelections { get; set; } = new();
+
     /// <summary>گروه‌های امضا کننده — اعضای گروه باید دسترسی Sign داشته باشند</summary>
     public List<int> SignerGroupIds { get; set; } = new();
 }
@@ -108,7 +111,15 @@ public class EditOutgoingLetterDto
     public List<RelatedLetterDto> RelatedLetters { get; set; } = new();
 
     public List<int> SignerUserIds { get; set; } = new();
+    public List<OutgoingSignerSelectionDto> SignerSelections { get; set; } = new();
     public List<int> SignerGroupIds { get; set; } = new();
+}
+
+/// <summary>انتخاب امضاکننده با سمت مشخص</summary>
+public sealed class OutgoingSignerSelectionDto
+{
+    public int UserId { get; set; }
+    public int? SematId { get; set; }
 }
 
 /// <summary>امضا کننده نامه صادره</summary>

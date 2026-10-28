@@ -380,6 +380,7 @@
         PaymentMethod.Cash => @<span class="badge badge-pay-cash fs-8" title="@o.TrsAccountName"><i class="bi bi-cash-coin"></i> نقدی @(!string.IsNullOrWhiteSpace(o.TrsAccountName) ? $"({o.TrsAccountName})" : "")</span>,
         PaymentMethod.Credit => @<span class="badge badge-pay-credit fs-8"><i class="bi bi-hourglass-split"></i> نسیه</span>,
         PaymentMethod.Cheque => @<span class="badge badge-pay-cheque fs-8"><i class="bi bi-bank"></i> چک</span>,
+        PaymentMethod.Mixed => @<span class="badge badge-pay-mixed fs-8"><i class="bi bi-pie-chart"></i> ترکیبی</span>,
         _ => @<span class="badge badge-pay-inst fs-8"><i class="bi bi-journal-check"></i> اقساطی</span>
     };
 

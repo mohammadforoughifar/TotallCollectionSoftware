@@ -148,6 +148,9 @@ builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionStr
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<Inventory.Api.Services.Reports.IOperationsReportsService, Inventory.Api.Services.Reports.OperationsReportsService>(); // گزارش‌های بخش عملیات
 builder.Services.AddScoped<Inventory.Api.Services.Catalog.IGoodsIssueService, Inventory.Api.Services.Catalog.GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
+builder.Services.AddScoped<Inventory.Api.Services.SalesVisit.IVisOrderService, Inventory.Api.Services.SalesVisit.VisOrderService>(); // ماژول ویزیتوری (پیش‌سند فروش)
+builder.Services.AddScoped<Inventory.Api.Services.Cartable.ICartableSource, Inventory.Api.Services.Cartable.SalesVisitCartableSource>(); // منبع کارتابل: سفارش ویزیتور
+builder.Services.AddScoped<Inventory.Api.Services.Cartable.ICartableService, Inventory.Api.Services.Cartable.CartableService>(); // کارتابل یکپارچه
 builder.Services.AddScoped<IWarehousingService, WarehousingService>(); // ماژول انبارداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService, Inventory.Api.Services.Accounting.AccountingService>(); // ماژول حسابداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensionService, Inventory.Api.Services.Accounting.AnalyticalDimensionService>(); // ابعاد تحلیلی (مرکز هزینه/شعبه)

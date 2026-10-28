@@ -33,6 +33,12 @@ public class Referrer : ICompanyOwned
     [MaxLength(30)]
     public string? Iban { get; set; }
 
+    /// <summary>
+    /// سقف درصد تخفیف مجاز این ویزیتور/معرف در سفارش میدانی.
+    /// صفر = بدون سقف (تخفیف با نظر مدیر فروش بررسی می‌شود).
+    /// </summary>
+    public decimal MaxDiscountPercent { get; set; }
+
     /// <summary>اجازه مشاهده کالاهای موجود در پنل معرف</summary>
     public bool CanViewProducts { get; set; }
 

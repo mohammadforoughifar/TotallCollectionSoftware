@@ -92,6 +92,7 @@ public class InventoryService : IInventoryService
             CardNumber = r.CardNumber,
             Iban = r.Iban,
             CanViewProducts = r.CanViewProducts,
+                MaxDiscountPercent = r.MaxDiscountPercent,
             IsActive = r.IsActive,
             CreatedAt = r.CreatedAt,
             OrderCount = counts.FirstOrDefault(x => x.Id == r.Id)?.Count ?? 0
@@ -143,6 +144,8 @@ public class InventoryService : IInventoryService
         entity.CardNumber = NullIfEmpty(dto.CardNumber);
         entity.Iban = NullIfEmpty(dto.Iban);
         entity.CanViewProducts = dto.CanViewProducts;
+        // سقف تخفیف مجاز ویزیتور در سفارش میدانی (۰ = بدون سقف)
+        entity.MaxDiscountPercent = Math.Clamp(dto.MaxDiscountPercent, 0, 100);
         entity.IsActive = dto.IsActive;
         await _db.SaveChangesAsync();
 
@@ -193,6 +196,7 @@ public class InventoryService : IInventoryService
         CardNumber = r.CardNumber,
         Iban = r.Iban,
         CanViewProducts = r.CanViewProducts,
+                MaxDiscountPercent = r.MaxDiscountPercent,
         IsActive = r.IsActive,
         CreatedAt = r.CreatedAt,
         OrderCount = orderCount
@@ -1125,9 +1129,18 @@ public class InventoryService : IInventoryService
 
     // =============================== طرف حساب ===============================
 
-    public async Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null)
+    /// <param name="referrerScope">
+    /// اگر مقدار داشته باشد، فقط طرف حساب‌های همین پروندهٔ معرف برگردانده می‌شوند
+    /// (ویزیتوری که مجوز دیدن کل مشتریان را ندارد).
+    /// </param>
+    public async Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null,
+        int? referrerScope = null)
     {
-        var list = await _db.Parties.Where(p => p.Type == type).OrderBy(p => p.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        var q = _db.Parties.Where(p => p.Type == type);
+        if (referrerScope is > 0)
+            q = q.Where(p => p.ReferrerId == referrerScope || p.RegisteredByReferrerId == referrerScope);
+
+        var list = await q.OrderBy(p => p.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var ids = list.Select(p => p.Id).ToList();
         var txns = await _db.Transactions.Where(t => t.PartyId != null && ids.Contains(t.PartyId.Value)).ToListAsync();
         var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
@@ -1145,6 +1158,13 @@ public class InventoryService : IInventoryService
             IsActive = p.IsActive,
             ReferrerId = p.ReferrerId,
             ReferrerName = p.ReferrerId.HasValue && refNames.TryGetValue(p.ReferrerId.Value, out var rn) ? rn : null,
+            // «چه کسی این مشتری را ثبت کرد» — هم نام کاربر و هم نام پروندهٔ معرف
+            RegisteredByUserId = p.RegisteredByUserId,
+            RegisteredByName = p.RegisteredByName,
+            RegisteredByReferrerId = p.RegisteredByReferrerId,
+            RegisteredByReferrerName = p.RegisteredByReferrerId.HasValue
+                                       && refNames.TryGetValue(p.RegisteredByReferrerId.Value, out var rrn) ? rrn : null,
+            RegisteredAt = p.RegisteredAt,
             Balance = txns.Where(t => t.PartyId == p.Id)
                           .Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount)
         }).ToList();
@@ -1171,6 +1191,15 @@ public class InventoryService : IInventoryService
         entity.IsActive = dto.IsActive;
         // معرف فقط برای مشتری معنا دارد؛ مقدار 0/null = بدون معرف
         entity.ReferrerId = dto.Type == PartyType.Customer && dto.ReferrerId is > 0 ? dto.ReferrerId : null;
+
+        // «چه کسی این طرف حساب را ثبت کرد» فقط در ایجاد نوشته می‌شود؛ ویرایش آن را عوض نمی‌کند.
+        if (dto.Id == 0)
+        {
+            entity.RegisteredByUserId = dto.RegisteredByUserId is > 0 ? dto.RegisteredByUserId : null;
+            entity.RegisteredByName = NullIfEmpty(dto.RegisteredByName);
+            entity.RegisteredByReferrerId = dto.RegisteredByReferrerId is > 0 ? dto.RegisteredByReferrerId : null;
+            entity.RegisteredAt = dto.RegisteredAt ?? DateTime.Now;
+        }
 
         await _db.SaveChangesAsync();
         return (await GetPartiesAsync(dto.Type)).First(p => p.Id == entity.Id);
@@ -1790,105 +1819,110 @@ public class InventoryService : IInventoryService
     /// پرداخت ترکیبی: در نسیه/چک/اقساط می‌توان «پیش‌دریافت نقدی» هم داشت؛
     /// در این حالت جمع چک‌ها/اقساط باید برابر «مبلغ فاکتور منهای نقد» باشد.
     /// </summary>
+    /// <summary>
+    /// ثبت پرداخت سند (خرید/فروش) به‌صورت «ترکیبی»:
+    /// هر سند می‌تواند هم‌زمان چند جزء داشته باشد — نقد (پیش‌دریافت) + چند چک + چند قسط.
+    /// اگر جمع اجزا کمتر از مبلغ سند باشد، مابقی «نسیه» با تاریخ سررسید ثبت می‌شود؛
+    /// اگر بیشتر باشد، مازاد همان سود مدت‌دار (چک/اقساط) است و پذیرفته می‌شود.
+    /// روش پرداخت مؤثر خودکار تعیین می‌شود: تک‌جزء ⇒ همان جزء، چندجزء ⇒ Mixed.
+    /// </summary>
     private static void ApplyPayment(Db.Transaction txn, OrderCommand cmd)
     {
         var total = cmd.Lines.Sum(l => l.Quantity * l.Price);
-        txn.PaymentMethod = cmd.PaymentMethod;
+
         txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;
         txn.CashAmount = 0;
         txn.DueDate = null;
+        txn.SettledAmount = 0;
         txn.Cheques.Clear();
         txn.Installments.Clear();
 
-        // پیش‌دریافت نقدی (پرداخت ترکیبی) — برای نسیه/چک/اقساط
-        decimal cash = 0;
-        if (cmd.PaymentMethod != PaymentMethod.Cash && cmd.CashAmount > 0)
+        // ---------- ۱) جزء نقدی ----------
+        // انتخاب صریح «نقدی» یعنی تمام مبلغ نقد است؛ در بقیهٔ روش‌ها نقد یک جزء اختیاری است.
+        var cash = cmd.PaymentMethod == PaymentMethod.Cash ? total : Math.Max(0, cmd.CashAmount);
+        if (cmd.PaymentMethod != PaymentMethod.Cash && cash > 0 && cash >= total && total > 0)
+            throw new InvalidOperationException("پیش‌دریافت نقدی نمی‌تواند برابر یا بیشتر از مبلغ فاکتور باشد؛ در این صورت روش پرداخت را «نقدی» انتخاب کنید.");
+
+        // ---------- ۲) جزء چک ----------
+        var chequeSum = 0m;
+        foreach (var c in cmd.Cheques)
         {
-            cash = cmd.CashAmount;
-            if (cash >= total)
-                throw new InvalidOperationException("پیش‌دریافت نقدی نمی‌تواند برابر یا بیشتر از مبلغ فاکتور باشد؛ در این صورت روش پرداخت را «نقدی» انتخاب کنید.");
+            if (string.IsNullOrWhiteSpace(c.Number))
+                throw new InvalidOperationException("شماره چک را وارد کنید.");
+            if (c.Amount <= 0)
+                throw new InvalidOperationException("مبلغ چک باید بزرگ‌تر از صفر باشد.");
+            if (c.DueDate == default)
+                throw new InvalidOperationException("تاریخ سررسید چک را وارد کنید.");
+            chequeSum += c.Amount;
+            txn.Cheques.Add(new Db.Cheque
+            {
+                Number = c.Number.Trim(),
+                TrsAccountId = c.TrsAccountId > 0 ? c.TrsAccountId : null,
+                BankName = string.IsNullOrWhiteSpace(c.BankName) ? null : c.BankName.Trim(),
+                AccountInfo = string.IsNullOrWhiteSpace(c.AccountInfo) ? null : c.AccountInfo.Trim(),
+                OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),
+                Amount = c.Amount,
+                DueDate = c.DueDate.Date,
+                IsCleared = c.IsCleared,
+                ClearedAt = c.IsCleared ? (c.ClearedAt ?? DateTime.Now) : null,
+                Note = string.IsNullOrWhiteSpace(c.Note) ? null : c.Note.Trim(),
+                CreatedAt = DateTime.Now
+            });
+        }
+        if (cmd.PaymentMethod == PaymentMethod.Cheque && txn.Cheques.Count == 0)
+            throw new InvalidOperationException("حداقل یک چک ثبت کنید.");
+
+        // ---------- ۳) جزء اقساط ----------
+        var instSum = 0m;
+        var no = 1;
+        foreach (var i in cmd.Installments.OrderBy(x => x.DueDate))
+        {
+            if (i.Amount <= 0)
+                throw new InvalidOperationException("مبلغ هر قسط باید بزرگ‌تر از صفر باشد.");
+            if (i.DueDate == default)
+                throw new InvalidOperationException("تاریخ سررسید هر قسط را وارد کنید.");
+            instSum += i.Amount;
+            txn.Installments.Add(new Db.InstallmentLine
+            {
+                No = no++,
+                Amount = i.Amount,
+                DueDate = i.DueDate.Date,
+                IsPaid = i.IsPaid,
+                PaidAt = i.IsPaid ? (i.PaidAt ?? DateTime.Now) : null,
+                CreatedAt = DateTime.Now
+            });
+        }
+        if (cmd.PaymentMethod == PaymentMethod.Installment && txn.Installments.Count == 0)
+            throw new InvalidOperationException("حداقل یک قسط تعریف کنید.");
+
+        // ---------- ۴) باقی‌مانده = نسیه ----------
+        var paid = cash + chequeSum + instSum;
+        var remainder = total - paid;
+        var creditRemainder = remainder > PaymentMix.Tolerance ? remainder : 0;
+
+        if (creditRemainder > 0)
+        {
+            if (!cmd.DueDate.HasValue)
+                throw new InvalidOperationException(
+                    $"جمع پرداخت‌ها ({paid:#,0}) کمتر از مبلغ سند ({total:#,0}) است؛ " +
+                    "برای ثبت مابقی به‌صورت نسیه، تاریخ سررسید نسیه را وارد کنید.");
+            txn.DueDate = cmd.DueDate.Value.Date;
+        }
+
+        // ---------- ۵) ثبت اجزای نقدی و روش مؤثر ----------
+        if (cash > 0)
+        {
             txn.CashAmount = cash;
             txn.CashType = cmd.CashType ?? Inventory.Shared.CashType.Cash;
             txn.SettledAmount = cash; // بخش نقدی همان ابتدا تسویه شده است
         }
-
-        var remaining = total - cash; // مبلغی که باید با نسیه/چک/قسط پوشش داده شود
-
-        switch (cmd.PaymentMethod)
+        else if (cmd.PaymentMethod == PaymentMethod.Cash)
         {
-            case PaymentMethod.Cash:
-                txn.CashType = cmd.CashType ?? Inventory.Shared.CashType.Cash;
-                break;
-
-            case PaymentMethod.Credit:
-                if (!cmd.DueDate.HasValue)
-                    throw new InvalidOperationException("برای سند نسیه، تاریخ سررسید را وارد کنید.");
-                txn.DueDate = cmd.DueDate.Value.Date;
-                break;
-
-            case PaymentMethod.Cheque:
-                if (cmd.Cheques.Count == 0)
-                    throw new InvalidOperationException("حداقل یک چک ثبت کنید.");
-                foreach (var c in cmd.Cheques)
-                {
-                    if (string.IsNullOrWhiteSpace(c.Number))
-                        throw new InvalidOperationException("شماره چک را وارد کنید.");
-                    if (c.Amount <= 0)
-                        throw new InvalidOperationException("مبلغ چک باید بزرگ‌تر از صفر باشد.");
-                    if (c.DueDate == default)
-                        throw new InvalidOperationException("تاریخ سررسید چک را وارد کنید.");
-                    txn.Cheques.Add(new Db.Cheque
-                    {
-                        Number = c.Number.Trim(),
-                        TrsAccountId = c.TrsAccountId > 0 ? c.TrsAccountId : null,
-                        BankName = string.IsNullOrWhiteSpace(c.BankName) ? null : c.BankName.Trim(),
-                        AccountInfo = string.IsNullOrWhiteSpace(c.AccountInfo) ? null : c.AccountInfo.Trim(),
-                        OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),
-                        Amount = c.Amount,
-                        DueDate = c.DueDate.Date,
-                        IsCleared = c.IsCleared,
-                        ClearedAt = c.IsCleared ? (c.ClearedAt ?? DateTime.Now) : null,
-                        Note = string.IsNullOrWhiteSpace(c.Note) ? null : c.Note.Trim(),
-                        CreatedAt = DateTime.Now
-                    });
-                }
-                // جمع چک‌ها نباید کمتر از باقیمانده باشد؛ مازاد = سود مدت‌دار (مجاز)
-                var chequeSum = cmd.Cheques.Sum(c => c.Amount);
-                if (chequeSum < remaining - 1)
-                    throw new InvalidOperationException(cash > 0
-                        ? $"جمع مبلغ چک‌ها ({chequeSum:#,0}) نمی‌تواند کمتر از باقیمانده پس از کسر نقد ({remaining:#,0}) باشد."
-                        : $"جمع مبلغ چک‌ها ({chequeSum:#,0}) نمی‌تواند کمتر از مبلغ فاکتور ({remaining:#,0}) باشد.");
-                break;
-
-            case PaymentMethod.Installment:
-                if (cmd.Installments.Count == 0)
-                    throw new InvalidOperationException("حداقل یک قسط تعریف کنید.");
-                var no = 1;
-                foreach (var i in cmd.Installments.OrderBy(x => x.DueDate))
-                {
-                    if (i.Amount <= 0)
-                        throw new InvalidOperationException("مبلغ هر قسط باید بزرگ‌تر از صفر باشد.");
-                    if (i.DueDate == default)
-                        throw new InvalidOperationException("تاریخ سررسید هر قسط را وارد کنید.");
-                    txn.Installments.Add(new Db.InstallmentLine
-                    {
-                        No = no++,
-                        Amount = i.Amount,
-                        DueDate = i.DueDate.Date,
-                        IsPaid = i.IsPaid,
-                        PaidAt = i.IsPaid ? (i.PaidAt ?? DateTime.Now) : null,
-                        CreatedAt = DateTime.Now
-                    });
-                }
-                // جمع اقساط نباید کمتر از باقیمانده باشد؛ مازاد = سود اقساط (مجاز)
-                var instSum = cmd.Installments.Sum(i => i.Amount);
-                if (instSum < remaining - 1)
-                    throw new InvalidOperationException(cash > 0
-                        ? $"جمع اقساط ({instSum:#,0}) نمی‌تواند کمتر از باقیمانده پس از کسر نقد ({remaining:#,0}) باشد."
-                        : $"جمع اقساط ({instSum:#,0}) نمی‌تواند کمتر از مبلغ فاکتور ({remaining:#,0}) باشد.");
-                break;
+            txn.CashType = cmd.CashType ?? Inventory.Shared.CashType.Cash;
         }
+
+        txn.PaymentMethod = PaymentMix.Derive(cash, chequeSum, instSum, creditRemainder);
     }
 
     public async Task<AdminDashboard> GetAdminDashboardAsync()
@@ -1905,6 +1939,8 @@ public class InventoryService : IInventoryService
         var quarterStart = PersianDate.ToGregorian(jy, quarterFirstMonth, 1);
 
         var sales = await _db.Transactions
+            .Include(t => t.Cheques)
+            .Include(t => t.Installments)
             .Where(t => t.Type == TransactionType.Sale && t.Date >= quarterStart)
             .ToListAsync();
 
@@ -1982,18 +2018,26 @@ public class InventoryService : IInventoryService
             my = ny; mm = nm;
         }
 
-        // تفکیک روش پرداخت (فصل جاری)
-        dash.PayCash = sales.Where(t => t.PaymentMethod == PaymentMethod.Cash).Sum(t => t.Amount)
-                     + sales.Where(t => t.PaymentMethod != PaymentMethod.Cash).Sum(t => t.CashAmount);
-        dash.PayCredit = sales.Where(t => t.PaymentMethod == PaymentMethod.Credit).Sum(t => t.Amount - t.CashAmount);
-        dash.PayCheque = sales.Where(t => t.PaymentMethod == PaymentMethod.Cheque).Sum(t => t.Amount - t.CashAmount);
-        dash.PayInstallment = sales.Where(t => t.PaymentMethod == PaymentMethod.Installment).Sum(t => t.Amount - t.CashAmount);
+        // تفکیک روش پرداخت (فصل جاری) — بر اساس «اجزای واقعی» پرداخت تا اسناد ترکیبی هم درست شمرده شوند
+        static decimal CashOf(Db.Transaction t) => t.PaymentMethod == PaymentMethod.Cash ? t.Amount : t.CashAmount;
+        static decimal ChequeOf(Db.Transaction t) => t.Cheques.Sum(c => c.Amount);
+        static decimal InstOf(Db.Transaction t) => t.Installments.Sum(i => i.Amount);
+        static decimal CreditOf(Db.Transaction t) => Math.Max(0, t.Amount - CashOf(t) - ChequeOf(t) - InstOf(t));
+
+        dash.PayCash = sales.Sum(CashOf);
+        dash.PayCheque = sales.Sum(ChequeOf);
+        dash.PayInstallment = sales.Sum(InstOf);
+        dash.PayCredit = sales.Sum(CreditOf);
 
         var partyNames = await _db.Parties.ToDictionaryAsync(p => p.Id, p => p);
 
         // بدهکاران سررسیدشده: نسیه‌های پرداخت‌نشده + اقساط سررسیدشده
+        // نسیهٔ سررسیدشده — شامل ماندهٔ نسیهٔ اسناد ترکیبی (بعد از کسر نقد/چک/اقساط)
         var creditTxns = await _db.Transactions
-            .Where(t => t.Type == TransactionType.Sale && t.PaymentMethod == PaymentMethod.Credit &&
+            .Include(t => t.Cheques)
+            .Include(t => t.Installments)
+            .Where(t => t.Type == TransactionType.Sale &&
+                        (t.PaymentMethod == PaymentMethod.Credit || t.PaymentMethod == PaymentMethod.Mixed) &&
                         t.DueDate != null && t.DueDate <= today && t.SettledAmount < t.Amount)
             .ToListAsync();
         foreach (var t in creditTxns)
@@ -2007,7 +2051,7 @@ public class InventoryService : IInventoryService
                 Number = t.Number,
                 TransactionId = t.Id,
                 Kind = "نسیه",
-                Amount = t.Amount - t.SettledAmount,
+                Amount = Math.Max(0, t.Amount - CashOf(t) - ChequeOf(t) - InstOf(t) - t.SettledAmount),
                 DueDate = t.DueDate!.Value,
                 DaysOverdue = (int)(today - t.DueDate.Value.Date).TotalDays
             });

@@ -55,7 +55,13 @@ public enum PaymentMethod
     Cheque = 2,
 
     /// <summary>اقساطی با دفترچه اقساط</summary>
-    Installment = 3
+    Installment = 3,
+
+    /// <summary>
+    /// پرداخت ترکیبی — دو یا چند جزء از نقد / چک / اقساط / نسیه در یک سند.
+    /// مقدار عددی ثابت است؛ مبلغ هر جزء در خود سند (CashAmount، Cheques، Installments، DueDate) نگه‌داری می‌شود.
+    /// </summary>
+    Mixed = 4
 }
 
 /// <summary>نوع دریافت نقدی</summary>
@@ -239,7 +245,13 @@ public enum VoucherSource
     Closing = 4,
 
     /// <summary>خودکار از حقوق و دستمزد</summary>
-    Payroll = 5
+    Payroll = 5,
+
+    /// <summary>
+    /// خودکار از «فروش فروشگاه» (سند فروشِ ثبت‌شده از سفارش ویزیتور پس از تأیید مالی).
+    /// جدا از <see cref="Invoice"/> است تا شناسه‌ها با فاکتورهای ماژول فاکتور قاطی نشوند.
+    /// </summary>
+    StoreSale = 6
 }
 
 // ===================== ابعاد تحلیلی، دارایی ثابت، بودجه =====================

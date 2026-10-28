@@ -188,6 +188,14 @@
             </div>
             <div class="fs-8 text-muted mt-1">۲۴ رقم بعد از IR</div>
         </div>
+        <div class="col-md-6">
+            <label class="form-label">سقف تخفیف در سفارش ویزیتوری (٪)</label>
+            <div class="input-group">
+                <input class="form-control num" value="@fDiscountCap" @oninput="@(e => fDiscountCap = e.Value?.ToString() ?? "")" inputmode="decimal" placeholder="0" dir="ltr" />
+                <span class="input-group-text">٪</span>
+            </div>
+            <div class="fs-8 text-muted mt-1">۰ یا خالی = بدون سقف؛ عبور از سقف، سفارش را «نیازمند تأیید ویژه» می‌کند.</div>
+        </div>
         <div class="col-12">
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" id="refCanView" @bind="form.CanViewProducts" />
@@ -240,6 +248,7 @@
 
     private Referrer form = new();
     private string fGoods = "", fService = "";
+    private string fDiscountCap = "";
     private bool showModal, saving;
     private bool editing => form.Id != 0;
 
@@ -285,7 +294,7 @@
     private void OpenNew()
     {
         form = new Referrer { IsActive = true };
-        fGoods = fService = "";
+        fGoods = fService = fDiscountCap = "";
         showModal = true;
     }
 
@@ -297,10 +306,12 @@
             GoodsCommissionPercent = r.GoodsCommissionPercent,
             ServiceCommissionPercent = r.ServiceCommissionPercent,
             CardNumber = r.CardNumber, Iban = r.Iban, CanViewProducts = r.CanViewProducts,
+            MaxDiscountPercent = r.MaxDiscountPercent,
             IsActive = r.IsActive, CreatedAt = r.CreatedAt, OrderCount = r.OrderCount
         };
         fGoods = r.GoodsCommissionPercent.ToString("0.##");
         fService = r.ServiceCommissionPercent.ToString("0.##");
+        fDiscountCap = r.MaxDiscountPercent == 0 ? "" : r.MaxDiscountPercent.ToString("0.##");
         showModal = true;
     }
 
@@ -311,6 +322,7 @@
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام معرف را وارد کنید."); return; }
         form.GoodsCommissionPercent = Fa.ParseDecimal(fGoods);
         form.ServiceCommissionPercent = Fa.ParseDecimal(fService);
+        form.MaxDiscountPercent = Math.Clamp(Fa.ParseDecimal(fDiscountCap), 0, 100);
 
         saving = true;
         try

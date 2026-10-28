@@ -70,12 +70,13 @@ public class OutgoingLettersController : RbacControllerBase
     // ==================== کارتابل — دریافتی (شامل امضا) و ارسالی ====================
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("signing-inbox")]
@@ -97,12 +98,13 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
+        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize, starredOnly, attachOnly));
     }
 
     [HttpGet("stats")]
@@ -118,13 +120,17 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        // کاربر حاضر در گردش نامه (ایجادکننده، امضاکننده یا دارندهٔ ارجاع — از جمله گیرنده‌ای که
+        // از دستور کار به گردش اضافه شده) بدون مجوز عمومی کارتابل هم می‌تواند نامه را باز کند.
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
         // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
         // دیتابیس‌های قدیمی ممکن است جدول رونوشت‌ها را نداشته باشند؛ قبل از
         // خواندن جزئیات، اسکیمای idempotent آن را تضمین می‌کنیم.
         await OutgoingCopyToSchemaV1.EnsureAsync(Db);
+        // ستون‌های IsRead/DateRead امضاکنندگان (خوانده‌شدن مستقل از امضا) برای دیتابیس‌های قدیمی
+        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
         try
         {
             var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
@@ -596,10 +602,10 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
-        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane, pagination), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane || await InFlowAsync(id), pagination), skip, take));
     }
 
     [HttpPost("erja")]
@@ -630,6 +636,19 @@ public class OutgoingLettersController : RbacControllerBase
     {
         await _erja.MarkReadAsync(erjaId, MyUserId);
         return Ok();
+    }
+
+    /// <summary>
+    /// «خوانده شد» برای یک نامهٔ صادره — هم ارجاع‌های همین کاربر و هم ردیف امضای او.
+    /// لازم است چون امضاکننده ممکن است هیچ ارجاعی نداشته باشد و پیش‌تر فقط با امضا
+    /// کردن از فهرست خوانده‌نشده‌ها خارج می‌شد.
+    /// </summary>
+    [HttpPost("{id:int}/read")]
+    public async Task<IActionResult> MarkLetterRead(int id)
+    {
+        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
+        await _letters.MarkReadAsync(id, MyUserId);
+        return Ok(new { message = "نامه خوانده شد." });
     }
 
     [HttpPost("erja/{erjaId:int}/neshan")]
@@ -667,6 +686,19 @@ public class OutgoingLettersController : RbacControllerBase
 
     [HttpGet("amalgars")]
     public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
+
+    /// <summary>افزودن عملگر ارجاع از داخل فرم ارجاع (دکمهٔ «+»)</summary>
+    [HttpPost("amalgars")]
+    public async Task<IActionResult> CreateAmalgar([FromBody] CreateAmalgarDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        try
+        {
+            var created = await _erja.CreateAmalgarAsync(dto?.Title ?? "", dto?.TaeedEmza);
+            return Ok(created);
+        }
+        catch (Exception ex) { return BadRequest(new { message = ex.Message }); }
+    }
 
     // ==================== پیش‌نویس ====================
 
@@ -738,24 +770,27 @@ public class OutgoingLettersController : RbacControllerBase
 
     // ==================== پیوست‌ها ====================
 
-    private async Task<bool> InFlowAsync(int letterId)
+    private Task<bool> InFlowAsync(int letterId)
     {
-        var letter = await Db.OutgoingLetters.AsNoTracking()
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
-        if (letter == null) return false;
-        if (letter.CreatorUserId == MyUserId) return true;
-        if (await Db.Erjas.AnyAsync(e => e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete)) return true;
-        if (await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == letterId && s.UserId == MyUserId && !s.IsDelete)) return true;
-        return false;
+        // Keep authorization semantics but issue one SQL query instead of up to three
+        // sequential round-trips (letter, erja, signer), which delayed print requests.
+        var userId = MyUserId;
+        return Db.OutgoingLetters.AsNoTracking().AnyAsync(letter =>
+            letter.Id == letterId && !letter.IsDelete &&
+            (letter.CreatorUserId == userId ||
+             Db.Erjas.Any(erja => erja.SourceId == letter.Id && erja.ReciverUserId == userId && !erja.IsDelete) ||
+             Db.OutgoingLetterSigners.Any(signer => signer.SourceId == letter.Id && signer.UserId == userId && !signer.IsDelete)));
     }
 
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        }
 
         var list = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == AttachmentModule && a.RefId == id)
@@ -805,6 +840,15 @@ public class OutgoingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // اعلان «پیوست جدید» برای ایجادکننده، امضاکنندگان و گیرندگانی که نامه را رویت کرده‌اند
+        try
+        {
+            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
+        }
+        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 

@@ -718,10 +718,10 @@
 .wo-gardesh-modal .wo-gd-selected { border-color:var(--p,#6941e8) !important; box-shadow:0 0 0 3px rgba(105,65,232,.14); }
 .wo-gardesh-modal .wo-gd-description { border:1px solid #dcd5ff; border-radius:12px; background:#faf9ff; overflow:hidden; }
 
-/* ---------- متن نامه: تصاویر و جدول‌های منتقل‌شده از ایمیل ----------
-   متن نامه HTML است (ادیتور)؛ تصویرِ بزرگ یا جدولِ عریضِ ایمیل نباید از کاغذ
-   بیرون بزند و اسکرول افقی بسازد. */
-.ltx .paper-body img { max-width:100% !important; height:auto !important; display:block; margin:6px 0; border-radius:6px; }
-.ltx .paper-body table { max-width:100% !important; border-collapse:collapse; }
-.ltx .paper-body table td, .ltx .paper-body table th { max-width:100%; }
+/* ---------- متن نامه: تصاویرِ منتقل‌شده از ایمیل ----------
+   تصویر باید مثل خودِ ایمیل، وسط‌چین و هم‌عرض کاغذ دیده شود و از کاغذ بیرون نزند. */
+.ltx .paper-body img,
+.ltx .letter-body img { max-width:100% !important; height:auto !important; margin:6px auto; border-radius:6px; }
+.ltx .paper-body table,
+.ltx .letter-body table { max-width:100% !important; border-collapse:collapse; }
 .ltx .richt-body img { max-width:100%; height:auto; }

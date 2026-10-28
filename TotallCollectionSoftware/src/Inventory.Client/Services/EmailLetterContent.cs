@@ -13,6 +13,13 @@ public sealed class EmailLetterContentResult
     public int AttachedImages { get; set; }
     public int Skipped { get; set; }
     public bool BodyWasEmpty { get; set; }
+
+    /// <summary>
+    /// شناسهٔ پیوست‌هایی که «داخل متن نامه» جاسازی شدند. این‌ها نباید دوباره به
+    /// عنوان فایل پیوستِ نامه ثبت شوند؛ وگرنه همان تصویر هم داخل متن دیده می‌شود
+    /// و هم به‌شکل فایل، و کاربر حس می‌کند تصویر «به‌صورت فایل» آمده است.
+    /// </summary>
+    public HashSet<int> EmbeddedIds { get; } = new();
 }
 
 /// <summary>
@@ -88,6 +95,7 @@ public static class EmailLetterContent
                 {
                     ctx.InlineIds.Add(id);
                     result.InlineImages++;
+                    result.EmbeddedIds.Add(id);
                     return uri;
                 }
                 result.Skipped++;
@@ -116,7 +124,8 @@ public static class EmailLetterContent
                 continue;
             }
             result.AttachedImages++;
-            AppendImageSection(section, uri, attachment.RealName);
+            result.EmbeddedIds.Add(attachment.AttachmentId);
+            AppendImageSection(section, uri);
         }
 
         // ۴-ب) تضمین: اگر ایمیل تصویر دارد ولی هیچ تصویری در متن ننشست، همهٔ تصاویر را بیاور
@@ -127,20 +136,18 @@ public static class EmailLetterContent
                 var uri = await ResolveAsync(ctx, attachment.AttachmentId);
                 if (uri is null) continue;
                 result.AttachedImages++;
-                AppendImageSection(section, uri, attachment.RealName);
+                result.EmbeddedIds.Add(attachment.AttachmentId);
+                AppendImageSection(section, uri);
             }
         }
 
         // ۵) بدنهٔ متنی خالی است؟ (ایمیل فقط-عکس)
         var plain = WebUtility.HtmlDecode(Regex.Replace(html, "<[^>]*>", " "));
         result.BodyWasEmpty = string.IsNullOrWhiteSpace(plain.Replace("\u00a0", " "));
-        if (result.BodyWasEmpty)
-        {
-            var note = result.AttachedImages + result.InlineImages > 0
-                ? "این ایمیل متنِ قابل‌انتقال ندارد؛ محتوای آن تصویر زیر است."
-                : "بدنهٔ متنی این ایمیل خالی است.";
-            html = "<p style=\"color:#64748b;font-size:12px\">" + note + "</p>" + html;
-        }
+        // اگر ایمیل فقط تصویر است، هیچ جملهٔ توضیحی اضافه نمی‌شود تا متن نامه دقیقاً
+        // مثل همان ایمیل دریافتی دیده شود؛ یادداشت فقط برای ایمیلِ کاملاً خالی می‌آید.
+        if (result.BodyWasEmpty && result.AttachedImages + result.InlineImages == 0)
+            html = "<p style=\"color:#64748b;font-size:12px\">بدنهٔ این ایمیل خالی است.</p>" + html;
 
         result.Html = html + section;
         return result;
@@ -157,15 +164,18 @@ public static class EmailLetterContent
         public long UsedBytes;
     }
 
-    private static void AppendImageSection(StringBuilder sb, string uri, string? name)
+    /// <summary>
+    /// افزودن تصویر به متن نامه — بدون هیچ برچسب، نام فایل یا جملهٔ توضیحی؛
+    /// متن نامه باید «شبیه خودِ ایمیل دریافتی» باشد و کاربر نباید بفهمد تصویر
+    /// از یک فایل پیوست آمده است. alt عمداً خالی است و فقط برای دسترس‌پذیری
+    /// نامِ کوتاه «تصویر» می‌ماند.
+    /// </summary>
+    private static void AppendImageSection(StringBuilder sb, string uri)
     {
-        var safeName = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(name) ? "تصویر" : name);
-        sb.Append("<div style=\"margin:10px 0\">")
-          .Append("<p style=\"margin:0 0 4px;font-size:12px;color:#475569\"><b>تصویر پیوست ایمیل</b> — ")
-          .Append(safeName).Append("</p>")
-          .Append("<img src=\"").Append(uri).Append("\" alt=\"").Append(safeName)
-          .Append("\" style=\"max-width:100%;height:auto;margin:6px 0\" />")
-          .Append("</div>");
+        sb.Append("<p style=\"margin:8px 0;text-align:center\">")
+          .Append("<img src=\"").Append(uri).Append("\" alt=\"تصویر\"")
+          .Append(" style=\"max-width:100%;height:auto\" />")
+          .Append("</p>");
     }
 
     private static async Task<string?> ResolveAsync(Ctx ctx, int attachmentId)

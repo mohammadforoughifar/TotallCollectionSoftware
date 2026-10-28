@@ -1821,10 +1821,21 @@ public class WarehousingService : IWarehousingService
         {
             var need = g.Sum(l => l.Quantity);
 
-            // موجودی بدون احتساب همین سند
-            var balance = await _db.InvLedger
-                .Where(e => e.ProductId == g.Key && e.WarehouseId == doc.WarehouseId && e.DocId != doc.Id)
-                .SumAsync(e => (decimal?)(e.QtyIn - e.QtyOut)) ?? 0;
+            // موجودی بدون احتساب همین سند.
+            // SQLite جمعِ decimal را در SQL پشتیبانی نمی‌کند؛ روی SQLite مقدارها خوانده و در حافظه جمع می‌شوند
+            // (همان الگویی که در همین فایل برای بهای تمام‌شده هم به‌کار رفته است).
+            decimal balance;
+            var ledgerQ = _db.InvLedger
+                .Where(e => e.ProductId == g.Key && e.WarehouseId == doc.WarehouseId && e.DocId != doc.Id);
+            if (_db.Database.IsSqlite())
+            {
+                var rows = await ledgerQ.Select(e => new { e.QtyIn, e.QtyOut }).ToListAsync();
+                balance = rows.Sum(x => x.QtyIn - x.QtyOut);
+            }
+            else
+            {
+                balance = await ledgerQ.SumAsync(e => (decimal?)(e.QtyIn - e.QtyOut)) ?? 0;
+            }
 
             if (need > balance)
             {

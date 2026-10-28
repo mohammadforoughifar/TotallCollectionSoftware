@@ -1,0 +1,13 @@
+{
+  "Hosts": [
+    "localhost",
+    "e2b.local",
+    "169.254.0.21"
+  ],
+  "CreatedAtUtc": "2026-10-25T07:36:05.2663825Z",
+  "ServerNotAfterUtc": "2029-10-25T07:36:05Z",
+  "CaNotAfterUtc": "2036-10-25T07:36:05Z",
+  "PfxPassword": "NKi271vvrhC7HQE8D12f0dAQLoPJJ",
+  "CaFingerprint": "81:57:6D:73:56:11:3A:B6:CE:57:67:9D:D1:8A:C9:04:FB:DD:23:DB:F4:6E:7C:1E:B0:D5:FB:89:87:78:4C:DA",
+  "ServerFingerprint": "96:F9:0E:AF:B3:87:3F:41:F9:EE:30:47:84:02:B6:34:C9:EF:5A:B7:B7:50:33:B1:4D:60:D8:9A:E7:34:F7:0C"
+}

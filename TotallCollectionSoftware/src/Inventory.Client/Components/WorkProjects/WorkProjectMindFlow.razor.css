@@ -70,6 +70,3 @@
 .wpmf-fullscreen .wpmf-workarea{grid-template-columns:minmax(0,1fr) 350px}
 @media(max-width:950px){.wpmf-workarea{grid-template-columns:minmax(0,1fr) 285px}}
 @media(max-width:700px){.wpmf-workarea{grid-template-columns:1fr}}
-.wpmf-create-order-btn{display:inline-grid;place-items:center;flex:none;width:27px;height:27px;margin-right:4px;padding:0;border:1px solid #cfd8e6;border-radius:8px;background:#f6f8fc;color:#3f5a87;font:inherit;cursor:pointer;text-decoration:none;transition:all .15s}
-.wpmf-create-order-btn:hover{border-color:#8fa2bd;background:#eaf0f8;color:#263f68;transform:translateY(-1px)}
-.wpmf-create-order-btn i{font-size:13px}

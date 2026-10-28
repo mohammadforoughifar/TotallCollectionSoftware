@@ -1410,9 +1410,19 @@ else
         ("categories",          "Products.",               "گروه‌های کالا"),
         ("units",               "Products.",               "واحدهای شمارش"),
         ("warehouses",          "Warehouses.",             "انبارها"),
-        ("parties",             "Parties.",                "طرف حساب‌ها"),
+        // طرف حساب‌ها: مشتری و تأمین‌کننده دسترسی مستقل دارند؛ داشتن یکی از این سه کافی است.
+        // (گارد عمومی «Parties.» ویزیتورِ فقط‌مشتری را از تعریف مشتری محروم می‌کرد.)
+        ("parties",             "Parties.Customers.Suppliers.", "طرف حساب‌ها"),
         ("referrer-wallets",    "ReferrerWallets.",        "کیف پول معرف‌ها"),
         ("referrers",           "Referrers.",              "معرف‌ها"),
+        // مسیرهای ماژول ویزیتوری تفکیک‌شده‌اند: ویزیتور «مشاهده/ثبت» دارد ولی نباید
+        // صفحهٔ تأیید مدیر یا صف مالی را باز کند (گارد عمومی «sales/» فقط وجود
+        // یکی از مجوزهای ماژول را می‌سنجید و همهٔ زیرمسیرها را باز می‌گذاشت).
+        ("sales/approvals",     "SalesVisit.Approve",      "تأیید سفارش‌های ویزیتور"),
+        ("sales/finance-queue", "SalesVisit.FinanceView",  "صف مالی سفارش‌های ویزیتور"),
+        ("sales/visits/new",    "SalesVisit.Create",       "ثبت سفارش ویزیتوری"),
+        ("sales/requests",      "SalesVisit.Approve",      "همهٔ درخواست‌های سفارش"),
+        ("sales/",              "SalesVisit.",             "فروش و ویزیتوری"),
         ("system-company",      "SystemCompanies.",        "کمپانی‌ها"),
         ("system-department",   "SystemDepartments.",      "واحدها"),
         ("users",               "SystemUsers.",            "کاربران"),
@@ -1478,9 +1488,20 @@ else
         foreach (var (prefix, perm, title) in RouteGuards)
         {
             if (!p.StartsWith(prefix)) continue;
-            var allowed = perm.EndsWith(".")
-                ? Auth.HasModule(perm.TrimEnd('.'))
-                : Auth.Has(perm);
+            bool allowed;
+            if (perm == "Parties.Customers.Suppliers.")
+            {
+                // «مشتری» و «تأمین‌کننده» تفکیک‌شده‌اند: هر کدام مجوز مستقل دارد
+                allowed = Auth.HasModule("Parties") || Auth.HasModule("Customers") || Auth.HasModule("Suppliers");
+            }
+            else if (perm.EndsWith("."))
+            {
+                allowed = Auth.HasModule(perm.TrimEnd('.'));
+            }
+            else
+            {
+                allowed = Auth.Has(perm);
+            }
             if (!allowed) { deniedTitle = title; return false; }
             return true;
         }

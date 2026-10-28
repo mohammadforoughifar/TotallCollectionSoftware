@@ -672,8 +672,11 @@ else
     private bool WillLoseAdminLevel =>
         editing && form.Role == "Admin" && selectedRoleIds.Count > 0 && !SelectedIncludesAdminRole;
 
+    // نقش «ویزیتور میدانی» هم مثل معرف به یک پروندهٔ معرف وصل می‌شود، پس فیلد انتخاب معرف
+    // برای او هم نمایش داده می‌شود؛ در غیر این صورت ویزیتور بدون پرونده ذخیره می‌شد.
     private static bool IsReferrerRole(string n) =>
-        n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف");
+        n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف")
+        || n.Equals("SalesVisitor", StringComparison.OrdinalIgnoreCase) || n.Contains("ویزیتور");
 
     private bool IsReferrerSelected =>
         allRoles.Any(r => selectedRoleIds.Contains(r.Id) && IsReferrerRole(r.Name));

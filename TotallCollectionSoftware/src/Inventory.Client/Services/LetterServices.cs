@@ -9,8 +9,10 @@ namespace Inventory.Client.Services;
 public interface ILetterService
 {
     // کارتابل
-    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
-    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<LetterCartableStatsDto> GetStatsAsync();
     Task<InnerLetterDetailDto> GetDetailAsync(int letterId);
@@ -43,6 +45,9 @@ public interface ILetterService
     Task UnarchiveByErjaAsync(int erjaId);
     Task UnarchiveByLetterAsync(int letterId);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
+
+    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
+    Task<AmalgarDto> CreateAmalgarAsync(string title);
 
     // پیش‌نویس
     Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
@@ -87,18 +92,26 @@ public class LetterService : ILetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
 
-    public Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null, bool? deadlineOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
+        // فیلترهای چیپ کارتابل سمت سرور — وگرنه فقط ۱۵ ردیف صفحهٔ جاری فیلتر می‌شد
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
+        if (deadlineOnly == true) qs.Add("deadlineOnly=true");
         return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    public Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (starredOnly == true) qs.Add("starredOnly=true");
+        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/sent?{string.Join("&", qs)}");
     }
 
@@ -120,8 +133,7 @@ public class LetterService : ILetterService
 
     public Task DeleteAsync(int letterId) => _api.DeleteAsync($"api/letters/{letterId}");
 
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withHamesh = false,
-        CancellationToken cancellationToken = default)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withHamesh = false, CancellationToken cancellationToken = default)
     {
         var path = $"api/letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withHamesh={(withHamesh ? "true" : "false")}";
         // Shared transport supplies both authentication and the selected X-Company-Id header.
@@ -199,6 +211,9 @@ public class LetterService : ILetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/letters/amalgars");
+
+    public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
+        _api.PostAsync<AmalgarDto>("api/letters/amalgars", new CreateAmalgarDto { Title = title });
 
     public Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
         => ListOrPaged.GetPagedAsync<PishnevisDto>(_api, $"api/letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");

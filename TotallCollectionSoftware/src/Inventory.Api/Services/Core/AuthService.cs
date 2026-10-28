@@ -496,7 +496,10 @@ public class AuthService : IAuthService
         }
         entity.BaleChatId = string.IsNullOrWhiteSpace(dto.BaleChatId) ? null : dto.BaleChatId.Trim();
         entity.EitaaChatId = string.IsNullOrWhiteSpace(dto.EitaaChatId) ? null : dto.EitaaChatId.Trim();
-        entity.ReferrerId = dto.Role == "Referrer" ? dto.ReferrerId : null;
+        // پیوند کاربر به «معرف» مستقل از سطح قدیمی است: ویزیتورِ میدانی با نقش RBAC
+        // «SalesVisitor» در سطح قدیمی «اپراتور» می‌شود، ولی باید به معرف خودش وصل بماند
+        // تا سفارش‌هایش در پروندهٔ درست ثبت شود (فقط سطح «مدیر» بی‌نیاز از معرف است).
+        entity.ReferrerId = dto.Role == "Admin" ? null : (dto.ReferrerId is > 0 ? dto.ReferrerId : null);
         entity.IsActive = dto.IsActive;
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
