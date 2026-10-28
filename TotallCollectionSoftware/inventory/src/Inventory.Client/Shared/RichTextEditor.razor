@@ -166,8 +166,23 @@
         if (!_initialized)
         {
             _initialized = true;
-            _syncedValue = Value ?? "";
-            try { await JS.InvokeVoidAsync("rteSetHtml", Id, Value ?? ""); } catch { }
+            var initial = Value ?? "";
+            _syncedValue = initial;
+            if (!string.IsNullOrWhiteSpace(initial))
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("rteSetHtml", Id, initial);
+                    // اگر عنصر تازه رندر شده باشد ممکن است ست نشده باشد؛ یک بار دیگر
+                    var length = await JS.InvokeAsync<int>("rteHtmlLength", Id);
+                    if (length <= 0)
+                    {
+                        await Task.Delay(60);
+                        await JS.InvokeVoidAsync("rteSetHtml", Id, initial);
+                    }
+                }
+                catch { }
+            }
             return;
         }
 
@@ -183,11 +198,37 @@
         }
     }
 
-    /// <summary>تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم).</summary>
-    public async Task SetContentAsync(string html)
+    /// <summary>
+    /// تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم یا پر کردن از روی ایمیل).
+    /// <para>
+    /// تأیید و تلاش مجدد: قبلاً فقط یک بار innerHTML ست می‌شد و اگر عنصر
+    /// contenteditable هنوز در DOM نبود (اولین رندر، مودال تازه باز شده یا رندر
+    /// دیرهنگام Blazor) محتوا «بی‌صدا» گم می‌شد و کادر خالی می‌ماند؛ نشانه‌اش
+    /// همان «این پیام خالی است» در فرم نامه بود. حالا بعد از هر ست، محتوای واقعی
+    /// از ادیتور بازخوانی می‌شود و در صورت خالی بودن تا ۴ بار تلاش تکرار می‌شود.
+    /// </para>
+    /// </summary>
+    /// <returns>true اگر محتوا داخل ادیتور نشست (یا محتوا خالی بود).</returns>
+    public async Task<bool> SetContentAsync(string html)
     {
-        _syncedValue = html ?? "";
-        try { await JS.InvokeVoidAsync("rteSetHtml", Id, html ?? ""); } catch { }
+        var value = html ?? "";
+        _syncedValue = value;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("rteSetHtml", Id, value);
+                var length = await JS.InvokeAsync<int>("rteHtmlLength", Id);
+                if (length > 0) return true;
+            }
+            catch { }
+            // شاید عنصر هنوز رندر نشده است؛ یک تیک صبر و تلاش دوباره
+            await Task.Delay(80 * (attempt + 1));
+            try { StateHasChanged(); } catch { }
+        }
+        return false;
     }
 
     /// <summary>خواندن محتوای HTML ادیتور.</summary>

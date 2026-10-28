@@ -338,8 +338,11 @@
                     + letterBody.Html + "</blockquote>";
 
         var transferredImages = letterBody.InlineImages + letterBody.AttachedImages;
+        var emailImageCount = email.Attachments.Count(a => a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
         if (transferredImages > 0)
             Toast.Success($"{transferredImages.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+        else if (emailImageCount > 0)
+            Toast.Error("هیچ‌یک از تصاویر این ایمیل به متن نامه منتقل نشد؛ پیام اصلی را در پست الکترونیک ببینید.");
         if (letterBody.Skipped > 0)
             Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
@@ -439,7 +442,16 @@
     {
         // یک تیک صبر تا contenteditable رندر شده باشد (مثل InitEditorAsync در فرم نامه).
         await Task.Delay(50);
-        if (_richDesc != null) await _richDesc.SetContentAsync(description);
+        if (_richDesc == null) return;
+
+        // ادیتور خودش «تأیید و تلاش مجدد» دارد؛ این‌جا یک تلاش دیگر پس از رندر مجدد
+        // انجام می‌شود تا متن/تصویر ایمیل هرگز بی‌صدا در کادر خالی نماند.
+        if (await _richDesc.SetContentAsync(description)) return;
+
+        StateHasChanged();
+        await Task.Delay(150);
+        if (!await _richDesc.SetContentAsync(description) && !string.IsNullOrWhiteSpace(description))
+            Toast.Error("متن نامه در کادر ویرایشگر نمایش داده نشد؛ فرم را یک‌بار ببندید و دوباره باز کنید.");
     }
 
     private async Task LoadLookups()

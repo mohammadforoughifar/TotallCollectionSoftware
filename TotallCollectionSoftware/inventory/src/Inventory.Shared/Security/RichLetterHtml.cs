@@ -175,7 +175,7 @@ public static class RichLetterHtml
         var trimmed = WebUtility.HtmlDecode(value).Trim();
         if (trimmed.Length == 0 || trimmed.Any(char.IsControl)) return false;
         if (trimmed.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
-            return Regex.IsMatch(trimmed, @"^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$", RegexOptions.IgnoreCase);
+            return Regex.IsMatch(trimmed, @"^data:image/(png|jpeg|gif|webp|bmp);base64,[A-Za-z0-9+/=]+$", RegexOptions.IgnoreCase);
         if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
             return uri.Scheme is "http" or "https";
         return !trimmed.StartsWith("//", StringComparison.Ordinal) && !trimmed.StartsWith("\\\\", StringComparison.Ordinal);

@@ -158,6 +158,29 @@ public static class EmailLetterBodyBuilder
                    .Append("</div>");
         }
 
+        // ۴-ب) تضمین نهایی: اگر ایمیل تصویر دارد ولی هیچ تصویری داخل متن ننشست
+        //      (مثلاً همهٔ ارجاع‌های بدنه ترمیم نشده بودند)، همهٔ تصاویرِ پیوستی
+        //      دوباره و این بار «بدون توجه به inline بودن» اضافه می‌شوند تا متن
+        //      نامه هرگز بدون تصویر نماند.
+        if (result.AttachedImages == 0 && !html.Contains("<img", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var attachment in email.Attachments.Where(IsImageAttachment)
+                         .Take(MaxAttachedImages - result.AttachedImages).ToList())
+            {
+                var uri = await ResolveAsync(ctx, attachment.AttachmentId);
+                if (uri is null) continue;
+
+                result.AttachedImages++;
+                var name = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(attachment.RealName) ? "تصویر" : attachment.RealName);
+                section.Append("<div style=\"margin:10px 0\">")
+                       .Append("<p style=\"margin:0 0 4px;font-size:12px;color:#475569\"><b>تصویر پیوست ایمیل</b> — ")
+                       .Append(name).Append("</p>")
+                       .Append("<img src=\"").Append(uri).Append("\" alt=\"").Append(name)
+                       .Append("\" style=\"max-width:100%;height:auto;margin:6px 0\" />")
+                       .Append("</div>");
+            }
+        }
+
         // ۵) بدنهٔ متنی خالی است؟ (ایمیل عکس‌محور یا پیامِ بدون متن)
         var plain = Regex.Replace(html ?? "", "<[^>]*>", " ");
         plain = WebUtility.HtmlDecode(plain);
@@ -280,6 +303,7 @@ public static class EmailLetterBodyBuilder
         if (name.EndsWith(".jpg") || name.EndsWith(".jpeg")) return "image/jpeg";
         if (name.EndsWith(".gif")) return "image/gif";
         if (name.EndsWith(".webp")) return "image/webp";
+        if (name.EndsWith(".bmp")) return "image/bmp";
 
         return SniffMime(data);
     }
@@ -293,6 +317,7 @@ public static class EmailLetterBodyBuilder
             "image/jpeg" or "image/jpg" or "image/pjpeg" => "image/jpeg",
             "image/gif" => "image/gif",
             "image/webp" => "image/webp",
+            "image/bmp" or "image/x-ms-bmp" => "image/bmp",
             _ => null
         };
     }
@@ -302,6 +327,8 @@ public static class EmailLetterBodyBuilder
         if (data.Length < 12) return null;
         // PNG: 89 50 4E 47
         if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47) return "image/png";
+        // BMP: "BM"
+        if (data[0] == 0x42 && data[1] == 0x4D) return "image/bmp";
         // JPEG: FF D8 FF
         if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) return "image/jpeg";
         // GIF: GIF8

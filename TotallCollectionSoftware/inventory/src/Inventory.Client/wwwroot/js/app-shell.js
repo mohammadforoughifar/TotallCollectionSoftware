@@ -22,6 +22,14 @@ window.rteExec = function (cmd, value) {
 // یافتن ریشه ادیتور
 window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
 window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
+// طول HTML داخل ادیتور — برای «تأیید نشستن محتوا» پس از rteSetHtml.
+// (برگرداندن خودِ HTML به .NET برای متن‌های چندمگابایتی پرهزینه بود؛ فقط طول برمی‌گردد.)
+window.rteHtmlLength = function (id) {
+    var el = document.getElementById(id);
+    if (!el) return -1;
+    var html = el.innerHTML || "";
+    return html.length;
+};
 window.rteGetEl = function (el) { return el ? el.innerHTML : ""; };
 window.rteSetEl = function (el, html) { if (el) el.innerHTML = html || ""; };
 window.rteExecEl = function (el, cmd, value) {
