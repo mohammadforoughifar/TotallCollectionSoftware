@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;              // Encoding.UTF8 (هشِ مادهٔ چاپ) — بدون این using: خطای CS0103
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Inventory.Api.Data;

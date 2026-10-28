@@ -722,7 +722,17 @@
                        + " — تاریخ: " + openMsg.Date.ToFaDateTime()
                        + "</div>";
 
-            letterCompose?.Open(title, header + (openMsg.Body ?? ""), null, files);
+            // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده + تصاویرِ داخل متن +
+            // تصاویرِ پیوستی (هر دو به‌صورت data URI داخل خودِ متن). آدرسِ تصاویر در بدنهٔ
+            // ایمیل نسبی/نیازمند توکن است و در متن نامه کار نمی‌کرد.
+            var letterContent = await EmailLetterContent.BuildAsync(openMsg, EmailSvc);
+            var transferred = letterContent.InlineImages + letterContent.AttachedImages;
+            if (transferred > 0)
+                Toast.Success($"{transferred.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+            if (letterContent.Skipped > 0)
+                Toast.Error($"{letterContent.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
+
+            letterCompose?.Open(title, header + letterContent.Html, null, files);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }

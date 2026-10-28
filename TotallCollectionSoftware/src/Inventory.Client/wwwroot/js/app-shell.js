@@ -22,6 +22,8 @@ window.rteExec = function (cmd, value) {
 // یافتن ریشه ادیتور
 window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
 window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
+// طول HTML داخل ادیتور — برای تأیید «نشستن محتوا» پس از rteSetHtml (بدون برگرداندن خودِ HTML)
+window.rteHtmlLength = function (id) { var el = document.getElementById(id); return el ? (el.innerHTML || "").length : -1; };
 window.rteGetEl = function (el) { return el ? el.innerHTML : ""; };
 window.rteSetEl = function (el, html) { if (el) el.innerHTML = html || ""; };
 window.rteExecEl = function (el, cmd, value) {
