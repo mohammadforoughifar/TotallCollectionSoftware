@@ -202,7 +202,9 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("HeaderHeight(bool isA5) => isA5 ? 150f : 160f", layout)
         self.assertIn("ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f", layout)
         self.assertIn("SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f", layout)
-        self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 90f", layout)
+        # رزرو پابرگ به بالای گرافیک پابرگ (≈۷۲۶pt در A4 و ≈۵۱۳pt در A5) منتقل شد؛
+        # با ۹۰/۶۸ متن ۲۶pt روی پابرگ می‌رفت.
+        self.assertIn("FooterReserve(bool isA5) => isA5 ? 82f : 116f", layout)
         self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f", layout)
         homepa_branch = source.split("else if (isHomepaLetterhead)", 1)[1].split("else if (hasLetterhead)", 1)[0]
         self.assertNotIn("center: true", homepa_branch)
@@ -605,7 +607,9 @@ class LetterheadSourceResolutionTests(unittest.TestCase):
                 self.assertIn("var preferTemplate = PreferTemplateLetterhead;", service)
                 self.assertIn("preferTemplate && templateLetterheadPath != null", service)
                 settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
-                self.assertIn('"PreferTemplateLetterhead": false', settings)
+                # پیش‌فرض فعلی «طرح قالب بر فایل ثبت‌شده» است؛ وگرنه ویرایش‌های
+                # Report/outgoingletter هرگز به چاپ نمی‌رسند.
+                self.assertIn('"PreferTemplateLetterhead": true', settings)
 
     def test_shadowing_of_the_design_is_logged(self):
         for tree in self.TREES:
@@ -748,6 +752,91 @@ class PrintServiceSignatureTests(unittest.TestCase):
                     if option in signature:
                         self.assertIn(option, key_call,
                                       f"{option} must take part in the cache key")
+
+
+class DesignDrivenLayoutTests(unittest.TestCase):
+    """چیدمان چاپ از دل فایل طرح همان شرکت خوانده می‌شود.
+
+    ویرایش‌های کاربر در Report/outgoingletter (همان MRT داخل
+    Reports/OutgoingLetters/Companies/{Id}) باید بی‌درنگ در چاپ دیده شوند: جای کپشن‌های
+    «گیرنده نامه:/عنوان نامه:»، گیرنده، عنوان، متن، سه ستون امضا و کادر رونوشت.
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    def service_text(self, tree):
+        return (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+
+    def test_reader_reads_the_same_template_the_printer_uses(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                path = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                        / "OutgoingLetterDesignLayout.cs")
+                self.assertTrue(path.exists(), "OutgoingLetterDesignLayout.cs must exist")
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("TryRead", source)
+                self.assertIn("HasFullLayout", source)
+                for slot in ("Receiver", "Title", "Body", "Caption", "CopyTo", "SignerName"):
+                    self.assertIn(slot, source, f"slot {slot} missing")
+
+    def test_printer_uses_the_template_geometry_and_keeps_the_fallback(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("OutgoingLetterDesignLayout.TryRead", service)
+                self.assertIn("UseDesignLayout(", service)
+                self.assertIn("if (design is { HasFullLayout: true } designLayout)", service)
+                self.assertIn("OutgoingLetterDesignLayout.Slot.Caption", service)
+                # چیدمان قدیمی برای شرکت‌هایی که قالبشان گیرنده/عنوان/متن ندارد باید بماند.
+                self.assertIn("AddSubjectAndFollowingContent", service)
+
+    def test_signers_and_copy_to_are_drawn_from_the_design(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("BuildDesignFixedBlocks", service)
+                self.assertIn("design.Signatures", service)
+                self.assertIn("design.CopyTo", service)
+
+    def test_design_setting_defaults_to_company_1003_and_3(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn('"Reporting:OutgoingLetters:DesignDrivenCompanyIds"', service)
+                for company in ("1003", "3"):
+                    self.assertIn(company, service)
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                self.assertIn('"DesignDrivenCompanyIds": "3,1003"', settings)
+
+    def test_diagnostics_say_whether_the_design_was_read(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("DesignDriven =", service)
+                self.assertIn("DesignLayoutSummary =", service)
+                dto = (tree / "Inventory.Shared" / "Dtos" / "OutgoingLetterDtos.cs").read_text(encoding="utf-8")
+                self.assertIn("public bool DesignDriven { get; set; }", dto)
+                view = (tree / "Inventory.Client" / "Pages" / "Office" / "Letters" / "Outgoing"
+                        / "OutgoingLetterView.razor").read_text(encoding="utf-8")
+                self.assertIn("diag.DesignDriven", view)
+
+    def test_company_1003_template_announces_receiver_title_and_body(self):
+        for tree in self.TREES:
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.parts[-3], size=size):
+                    root = ET.parse(tree / "Inventory.Api" / "Reports" / "OutgoingLetters"
+                                    / "Companies" / "1003" / f"Outgoing-{size}.mrt").getroot()
+                    texts = [e for e in root.iter() if e.tag.split("}")[-1] == "Text"]
+                    values = ["".join(e.itertext()) for e in texts]
+                    joined = "\n".join(values)
+                    # در فایل طرح، این کپشن‌ها به‌صورت «:گیرنده نامه» ذخیره شده‌اند
+                    # (نقطهٔ ویرگول را راست‌به‌چپ نشان می‌دهد)، پس فقط خودِ متن مهم است.
+                    self.assertIn("گیرنده نامه", joined)
+                    self.assertIn("عنوان نامه", joined)
+                    # کادر رونوشت با همان فیلدهای DataSource1.Name/Desc شناسایی می‌شود.
+                    self.assertIn("{DataSource1.Desc}", joined)
 
 
 if __name__ == "__main__":

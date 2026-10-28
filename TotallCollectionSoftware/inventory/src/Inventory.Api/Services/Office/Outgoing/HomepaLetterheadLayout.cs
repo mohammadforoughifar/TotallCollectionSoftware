@@ -23,7 +23,9 @@ internal static class HomepaLetterheadLayout
     // Keep roughly 32pt (11mm) clear below it in both formats.
     internal static float ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f;
     internal static float SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f;
-    internal static float FooterReserve(bool isA5) => isA5 ? 68f : 90f;
+    // گرافیک پابرگ در A4 از ≈۷۲۶pt و در A5 از ≈۵۱۳pt شروع می‌شود؛ این رزرو متن را
+    // دقیقاً بالای همان هنر نگه می‌دارد (قبلاً ۹۰/۶۸ بود و متن تا ۲۶pt روی پابرگ می‌رفت).
+    internal static float FooterReserve(bool isA5) => isA5 ? 82f : 116f;
     internal static float HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f;
 
     internal static Field Number(bool isA5) => isA5

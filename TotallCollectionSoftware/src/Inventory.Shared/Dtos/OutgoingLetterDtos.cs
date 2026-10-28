@@ -704,6 +704,15 @@ public class OutgoingLetterPrintDiagnosticsDto
 
     public bool PreferTemplateLetterhead { get; set; }
 
+    /// <summary>
+    /// آیا چیدمان چاپ (جای کپشن‌ها، گیرنده، عنوان، متن، امضاها و رونوشت) مستقیماً از
+    /// فایل طرح شرکت خوانده می‌شود؟ (Reporting:OutgoingLetters:DesignDrivenCompanyIds)
+    /// </summary>
+    public bool DesignDriven { get; set; }
+
+    /// <summary>خلاصهٔ هندسهٔ خوانده‌شده از طرح، برای پاسخ سریع به «طرح واقعاً خوانده شد؟»</summary>
+    public string? DesignLayoutSummary { get; set; }
+
     /// <summary>Template | Registered | None — منبعی که چاپ واقعاً استفاده می‌کند.</summary>
     public string LetterheadSource { get; set; } = "None";
 

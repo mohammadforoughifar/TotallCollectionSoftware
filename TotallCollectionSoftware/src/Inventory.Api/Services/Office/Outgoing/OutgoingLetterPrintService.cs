@@ -1,14 +1,16 @@
-using System.Collections.Concurrent;
 using System.Globalization;
-using System.Net;
+using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Text;
 using System.Security.Cryptography;
-using System.Text;              // Encoding.UTF8 (هشِ مادهٔ چاپ) — بدون این using: خطای CS0103
-using System.Text.RegularExpressions;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using System.Xml.Linq;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -46,7 +48,11 @@ public interface IOutgoingLetterPrintService
     /// false = «بدون رونوشت» (بلوک رونوشت حذف می‌شود — برای نسخه‌ای که به
     /// سازمان مقصد تحویل داده می‌شود و نیازی به اطلاع رونوشت‌گیرندگان ندارد)
     /// </param>
-    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true);
+    /// <param name="requireSignatures">
+    /// وقتی true است (دبیرخانه/مدیر) تا کامل‌شدن امضاها و وجود تصویر امضای همهٔ امضاکنندگان، چاپ انجام نمی‌شود.
+    /// برای ایجادکننده/دریافت‌کنندهٔ نامه false است تا آن‌ها بتوانند نسخهٔ چاپی بگیرند (جای امضا فقط نام و سِمَت می‌آید).
+    /// </param>
+    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true);
 
     /// <summary>
     /// تشخیص مسیر سربرگ/طرح یک نامه (فقط خواندن) — برای پاسخ به «چرا طرح شرکت خوانده نمی‌شود؟».
@@ -63,21 +69,37 @@ public sealed class RequiredCompanyLetterheadPrintException : Exception
     }
 }
 
+public sealed class OutgoingSignaturePrintException : Exception
+{
+    public OutgoingSignaturePrintException(string message) : base(message) { }
+}
+
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
-    // These companies must use their own registered letterheads; never substitute Forough's.
-    private const int HomepaCompanyId = 1003;
-    private const int AriaCompanyId = 1005;
+    private sealed record SignatureSvgData(string Svg, int Width, int Height);
+    private sealed record CachedSignature(SignatureSvgData? Data);
+    private sealed record SematPrintTitle(int SematId, int? UserId, string Title, string? CorrespondenceTitle, bool DefaultSemat, bool IsActive);
+    private sealed class CachedLetterheadAsset
+    {
+        public CachedLetterheadAsset(bool isPdf, XPdfForm? pdf, XImage? image)
+        {
+            IsPdf = isPdf;
+            Pdf = pdf;
+            Image = image;
+        }
 
-    // The same company can have a different id in another installation (Homepa is 1003 in the
-    // main database and 3 in the sample one; Companies/3 and Companies/1003 embed the same
-    // artwork). Without the id, letters fall back to the generic layout and print incorrectly.
-    // Override without a rebuild: Reporting:OutgoingLetters:HomepaCompanyIds = "3,1003".
-    private static readonly int[] DefaultHomepaCompanyIds = { 3, HomepaCompanyId };
-    private static readonly int[] DefaultAriaCompanyIds = { AriaCompanyId };
+        public bool IsPdf { get; }
+        public XPdfForm? Pdf { get; }
+        public XImage? Image { get; }
+        public object DrawLock { get; } = new();
+    }
+    private static readonly ConcurrentDictionary<string, Lazy<CachedLetterheadAsset>> LetterheadAssets = new(StringComparer.OrdinalIgnoreCase);
 
-    // کش کوتاه‌مدت خروجی چاپ: ساخت PDF روی سربرگ چند ثانیه طول می‌کشد و اگر مرورگر
-    // درخواست را قطع کند یا کاربر «تلاش مجدد» بزند، رندر تکرار می‌شد و چاپ آماده نمی‌شد.
+    // ===== کش کوتاه‌مدت خروجی چاپ =====
+    // ساخت PDF (QuestPDF + PDFsharp روی تصویر بزرگ سربرگ) چند ثانیه طول می‌کشد. اگر مرورگر
+    // پیش از پایان، درخواست را قطع کند (مهلت کلاینت) یا کاربر «تلاش مجدد» بزند، بدون این کش
+    // همان رندر سنگین از صفر تکرار می‌شد و چاپ هیچ‌وقت آماده نمی‌شد. اکنون نتیجه ۹۰ ثانیه
+    // نگه داشته می‌شود و درخواست‌های هم‌زمان همان Task را به اشتراک می‌گذارند.
     private static readonly TimeSpan RenderedPdfLifetime = TimeSpan.FromSeconds(90);
 
     /// <summary>
@@ -104,6 +126,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private static readonly ConcurrentDictionary<string, CachedRender> RenderedPdfs = new(StringComparer.Ordinal);
 
+    // These companies must use their own registered letterheads; never substitute Forough's.
+    private const int HomepaCompanyId = 1003;
+    private const int AriaCompanyId = 1005;
+
+    // Companies whose artwork is the Homepa design. The same company can have a different
+    // id in another installation (1003 in the main database, 3 in the sample one), and
+    // Reports/OutgoingLetters/Companies/3 as well as /1003 both embed the Homepa artwork.
+    // When the id is missing from this list, the letter falls back to the generic layout
+    // and its number/date/attachment values land off the printed labels.
+    // Override without a rebuild: Reporting:OutgoingLetters:HomepaCompanyIds = "3,1003".
+    private static readonly int[] DefaultHomepaCompanyIds = { 3, HomepaCompanyId };
+    private static readonly int[] DefaultAriaCompanyIds = { AriaCompanyId };
+
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
 
@@ -111,9 +146,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<OutgoingLetterPrintService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IMemoryCache _cache;
     private readonly IHttpContextAccessor? _http;
     private readonly int[] _homepaCompanyIds;
     private readonly int[] _ariaCompanyIds;
+    private readonly int[] _designDrivenCompanyIds;
     private readonly Dictionary<int, int> _companyTemplateMap;
 
     public OutgoingLetterPrintService(
@@ -121,22 +158,27 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         IWebHostEnvironment env,
         ILogger<OutgoingLetterPrintService> logger,
         IConfiguration? configuration = null,
+        IMemoryCache? cache = null,
         IHttpContextAccessor? http = null)
     {
         _db = db;
         _env = env;
         _logger = logger;
         _configuration = configuration ?? new ConfigurationBuilder().Build();
+        _cache = cache ?? new MemoryCache(new MemoryCacheOptions());
         _http = http;
         _homepaCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:HomepaCompanyIds", DefaultHomepaCompanyIds);
         _ariaCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:AriaCompanyIds", DefaultAriaCompanyIds);
+        // شرکت‌هایی که چیدمان چاپشان «از دل فایل طرح» خوانده می‌شود (پیش‌فرض: همان طرح هومپا).
+        _designDrivenCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultHomepaCompanyIds);
         _companyTemplateMap = ReadCompanyTemplateMap();
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
     /// <summary>
-    /// شناسهٔ شرکت‌هایی که طرح سربرگ هومپا/آریا دارند — با
-    /// <c>Reporting:OutgoingLetters:HomepaCompanyIds</c> بدون تغییر کد قابل تنظیم است.
+    /// فهرست شناسهٔ شرکت‌هایی که طرح سربرگ هومپا/آریا دارند. با تنظیم
+    /// <c>Reporting:OutgoingLetters:HomepaCompanyIds</c> (مثلاً <c>"3,1003"</c>) می‌توان
+    /// شناسهٔ شرکت را روی هر نصب دیگری، بدون تغییر کد، مشخص کرد.
     /// </summary>
     private int[] CompanyIdsFor(string key, int[] fallback)
     {
@@ -148,13 +190,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             .Where(id => id > 0)
             .Distinct()
             .ToArray();
-        return ids.Length == 0 ? fallback : ids;
+        if (ids.Length == 0) return fallback;
+        return ids;
     }
 
     /// <summary>
     /// نگاشت «شناسهٔ شرکتِ پایگاه داده ← شناسهٔ پوشهٔ طرح» از
-    /// <c>Reporting:OutgoingLetters:CompanyTemplateMap</c>؛ تصویر سربرگ و مختصات برچسب‌ها
-    /// هر دو از همان پوشه خوانده می‌شوند.
+    /// <c>Reporting:OutgoingLetters:CompanyTemplateMap</c>.
+    /// تصویر سربرگ و مختصات برچسب‌ها هر دو از همان پوشه خوانده می‌شوند، پس با این نگاشت
+    /// هر شرکتی — با هر شناسه‌ای — روی طرح درست خودش چاپ می‌شود.
     /// </summary>
     private Dictionary<int, int> ReadCompanyTemplateMap()
     {
@@ -168,21 +212,74 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return map;
     }
 
-    /// <summary>
-    /// شناسهٔ «شرکت فعال» همین درخواست (هدر X-Company-Id که میان‌افزار اعتبارسنجی کرده است).
-    /// برای نامه‌هایی که CompanyId ندارند، این نزدیک‌ترین حدس درست است.
-    /// </summary>
-    private int ActiveCompanyIdFromContext()
-    {
-        var ctx = _http?.HttpContext;
-        if (ctx == null) return 0;
-        return ctx.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var value)
-               && value is int id ? id : 0;
-    }
+    /// <summary>شناسهٔ طرحی که این شرکت باید با آن چاپ شود (نگاشت صریح، وگرنه خودش).</summary>
+    private int TemplateDesignId(int companyId) => _companyTemplateMap.TryGetValue(companyId, out var mapped) ? mapped : companyId;
 
     /// <summary>
-    /// آیا طرح جاسازی‌شده در قالب MRT شرکت (پوشهٔ Reports/OutgoingLetters/Companies/{id})
-    /// بر فایل ثبت‌شده روی رکورد شرکت اولویت دارد؟ پیش‌فرض: نه (رفتار قبلی).
+    /// آیا چیدمان چاپ این شرکت از فایل طرح (MRT) خوانده شود؟
+    /// تنظیم: <c>Reporting:OutgoingLetters:DesignDrivenCompanyIds</c> (پیش‌فرض «3,1003»).
+    /// </summary>
+    private bool UseDesignLayout(int companyId) => _designDrivenCompanyIds.Contains(TemplateDesignId(companyId));
+
+    /// <summary>
+    /// خواندن هندسهٔ چاپ از قالب شرکت با کش کوتاه‌مدت؛ کلید کش شامل طول و زمان تغییر فایل است،
+    /// بنابراین ویرایش طرح بلافاصله در چاپ بعدی اثر می‌گذارد.
+    /// </summary>
+    private OutgoingLetterDesignLayout? ReadDesignLayout(int companyId, bool isA5)
+    {
+        var sizes = isA5 ? new[] { "A5", "A4" } : new[] { "A4", "A5" };
+        foreach (var size in sizes)
+        {
+            var templatePath = FindCompanyTemplate(companyId, size);
+            if (templatePath == null) continue;
+
+            try
+            {
+                var info = new FileInfo(templatePath);
+                var cacheKey = $"outgoing-design-layout:{templatePath}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+                if (_cache.TryGetValue(cacheKey, out OutgoingLetterDesignLayout? cached) && cached != null)
+                    return cached;
+
+                var parsed = OutgoingLetterDesignLayout.TryRead(templatePath);
+                if (parsed is not { HasFullLayout: true })
+                {
+                    _logger.LogWarning(
+                        "قالب شرکت اجزای گیرنده/عنوان/متن را اعلام نکرد؛ چیدمان کد استفاده می‌شود. CompanyId={CompanyId}, Path={Path}",
+                        companyId, templatePath);
+                    return null;
+                }
+
+                _cache.Set(cacheKey, parsed, new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+                });
+                _logger.LogInformation(
+                    "چیدمان چاپ از فایل طرح خوانده شد. CompanyId={CompanyId}, Path={Path}, Elements={Elements}, BodyTop={BodyTop}, ContentBottom={ContentBottom}",
+                    companyId, templatePath, parsed.Boxes.Count, parsed.BodyTop, parsed.ContentBottom);
+                return parsed;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "خواندن چیدمان از قالب شرکت ناموفق بود. CompanyId={CompanyId}, Path={Path}", companyId, templatePath);
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>ترتیب جست‌وجوی پوشهٔ قالب: طرح نگاشت‌شده، سپس پوشهٔ هم‌نام خود شرکت.</summary>
+    private IEnumerable<int> DesignCompanyIds(int companyId)
+    {
+        var designId = TemplateDesignId(companyId);
+        if (designId != companyId) yield return designId;
+        yield return companyId;
+    }
+
+    /// <summary>شرکت فعالِ همان درخواست (اعتبارسنجی‌شده در ActiveCompanyMiddleware).</summary>
+    /// <summary>
+    /// آیا طرح جاسازی‌شده در قالب MRT شرکت (Reports/OutgoingLetters/Companies/{id}) بر فایل
+    /// ثبت‌شده روی رکورد شرکت اولویت دارد؟ پیش‌فرض: نه (رفتار قبلی).
     /// تنظیم: Reporting:OutgoingLetters:PreferTemplateLetterhead = true
     /// </summary>
     private bool PreferTemplateLetterhead
@@ -196,15 +293,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
     }
 
-    /// <summary>شناسهٔ طرحی که این شرکت باید با آن چاپ شود (نگاشت صریح، وگرنه خودش).</summary>
-    private int TemplateDesignId(int companyId) => _companyTemplateMap.TryGetValue(companyId, out var mapped) ? mapped : companyId;
-
-    /// <summary>ترتیب جست‌وجوی پوشهٔ قالب: طرح نگاشت‌شده، سپس پوشهٔ هم‌نام خود شرکت.</summary>
-    private IEnumerable<int> DesignCompanyIds(int companyId)
+    private int ActiveCompanyIdFromContext()
     {
-        var designId = TemplateDesignId(companyId);
-        if (designId != companyId) yield return designId;
-        yield return companyId;
+        var ctx = _http?.HttpContext;
+        if (ctx == null) return 0;
+        return ctx.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var v)
+               && v is int id ? id : 0;
     }
 
     // ==================== فونت فارسی ====================
@@ -220,10 +314,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var reg = Path.Combine(FontDir, "Vazirmatn-Regular.ttf");
             var bold = Path.Combine(FontDir, "Vazirmatn-Bold.ttf");
 
-            // فونت غایب قبلاً بی‌صدا نادیده گرفته می‌شد و PDF با فونت جانشین ناخوانا چاپ می‌شد.
+            // فونت غایب قبلاً بی‌صدا نادیده گرفته می‌شد و بعد QuestPDF با فونت جانشین، متن
+            // فارسی را ناخوانا/بریده چاپ می‌کرد (یا خطای مبهم می‌داد). اکنون علت روشن است.
             if (!File.Exists(reg))
                 throw new InvalidOperationException(
-                    $"فونت چاپ فارسی پیدا نشد: {reg}. پوشهٔ Resources/fonts را همراه خروجی API منتشر کنید.");
+                    $"فونت چاپ فارسی پیدا نشد: {reg}. پوشهٔ Resources/fonts را همراه خروجی API منتشر کنید " +
+                    "(در csproj با «Content Include=\"Resources/fonts/**/*\"» کپی می‌شود).");
 
             using (var regularStream = File.OpenRead(reg))
                 FontManager.RegisterFontWithCustomName("Vazirmatn", regularStream);
@@ -330,6 +426,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
             try
             {
+                var templateInfo = new FileInfo(templatePath);
+                var cacheKey = $"outgoing-letterhead:{templatePath}:{templateInfo.Length}:{templateInfo.LastWriteTimeUtc.Ticks}";
+                if (_cache.TryGetValue(cacheKey, out string? cachedPath) && cachedPath != null && File.Exists(cachedPath))
+                {
+                    _logger.LogDebug("سربرگ MRT از کش آماده است. CompanyId={CompanyId}, TemplateSize={Size}", companyId, templateSize);
+                    return cachedPath;
+                }
+
                 var watermarkBytes = ReadTemplateWatermark(templatePath);
                 if (watermarkBytes is not { Length: > 0 })
                 {
@@ -339,36 +443,36 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     continue;
                 }
 
+                var templateIdentity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(templatePath))))[..16].ToLowerInvariant();
                 var cachePath = Path.Combine(
                     Path.GetTempPath(), "totall-letterheads",
-                    $"company-{companyId}-outgoing-{templateSize.ToLowerInvariant()}.jpg");
+                    $"company-{companyId}-outgoing-{templateSize.ToLowerInvariant()}-{templateIdentity}-{templateInfo.Length}-{templateInfo.LastWriteTimeUtc.Ticks}.jpg");
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-                try
+                if (!File.Exists(cachePath))
                 {
-                    File.WriteAllBytes(cachePath, watermarkBytes);
+                    var temporaryPath = cachePath + $".{Guid.NewGuid():N}.tmp";
+                    File.WriteAllBytes(temporaryPath, watermarkBytes);
+                    try { File.Move(temporaryPath, cachePath, overwrite: true); }
+                    finally { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
                 }
-                catch (IOException)
+                _cache.Set(cacheKey, cachePath, new MemoryCacheEntryOptions
                 {
-                    // چاپ هم‌زمان دو نامه: فایل کش ممکن است در استفاده باشد — با نام یکتا بنویس.
-                    cachePath = Path.Combine(
-                        Path.GetDirectoryName(cachePath)!,
-                        $"company-{companyId}-outgoing-{templateSize.ToLowerInvariant()}-{Guid.NewGuid():N}.jpg");
-                    File.WriteAllBytes(cachePath, watermarkBytes);
-                }
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12),
+                    Size = watermarkBytes.Length
+                });
 
                 _logger.LogInformation(
-                    "سربرگ طراحی‌شده از قالب MRT شرکت استخراج شد. CompanyId={CompanyId}, TemplateSize={TemplateSize}, TemplatePath={TemplatePath}, Bytes={Bytes}",
-                    companyId, templateSize, templatePath, watermarkBytes.Length);
+                    "سربرگ MRT بارگذاری و کش شد. CompanyId={CompanyId}, TemplateSize={TemplateSize}, Bytes={Bytes}",
+                    companyId, templateSize, watermarkBytes.Length);
                 return cachePath;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "استخراج سربرگ از قالب MRT شرکت ناموفق بود. CompanyId={CompanyId}, Path={Path}",
+                    "استخراج سربرگ از قالب MRT ناموفق بود. CompanyId={CompanyId}, Path={Path}",
                     companyId, templatePath);
             }
         }
-
         return null;
     }
 
@@ -447,6 +551,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() }
             .Distinct().ToList();
 
+        // آیا چیدمان چاپ از همین فایل طرح خوانده می‌شود؟
+        var designLayout = effectiveCompanyId is int designCompanyId
+            && UseDesignLayout(designCompanyId)
+            && string.Equals(letterheadSource, "Template", StringComparison.OrdinalIgnoreCase)
+            ? ReadDesignLayout(designCompanyId, isA5)
+            : null;
+
         var companyRecordMissing = effectiveCompanyId != null && company == null;
         var hint = BuildDiagnosticsHint(
             letterCompanyId, companySource, effectiveCompanyId, companyRecordMissing,
@@ -472,6 +583,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             RegisteredLetterheadPath = registeredPath,
             PreferTemplateLetterhead = preferTemplate,
             LetterheadSource = letterheadSource,
+            DesignDriven = designLayout is { HasFullLayout: true },
+            DesignLayoutSummary = designLayout is { HasFullLayout: true } layout
+                ? $"از فایل طرح خوانده شد: {layout.Boxes.Count} جزء، بالای متن {layout.BodyTop:0.#}pt، " +
+                  $"پایین متن {layout.ContentBottom:0.#}pt، ستون امضا {layout.Signatures.Count}، " +
+                  $"کپشن‌ها {layout.HeaderBoxes.Count(box => box.Slot == OutgoingLetterDesignLayout.Slot.Caption)}"
+                : null,
             TemplateRoot = templateRoot,
             SearchRoots = roots,
             AvailableDesigns = DescribeAvailableDesigns(templateRoot, roots.ToArray()),
@@ -525,6 +642,32 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return letterheadSource == "Template"
             ? $"سربرگ چاپ از طرح داخل قالب شرکت خوانده می‌شود: {templatePath}"
             : "سربرگی برای این نامه پیدا نشد؛ چاپ بدون سربرگ خواهد بود.";
+    }
+
+    /// <summary>
+    /// مختصات/رنگ سه مقدار شماره، تاریخ و پیوست از قالب خود شرکت — با کش کوتاه‌مدت،
+    /// چون هر چاپ یک فایل XML بزرگ را می‌خواند. کلید کش شامل طول و زمان تغییر فایل است،
+    /// بنابراین ویرایش قالب بلافاصله اثر می‌گذارد.
+    /// </summary>
+    private LetterheadMetaFields? ReadDeclaredMetaFields(string? templatePath)
+    {
+        if (string.IsNullOrWhiteSpace(templatePath)) return null;
+
+        var info = new FileInfo(templatePath);
+        if (!info.Exists) return null;
+
+        var cacheKey = $"outgoing-meta-fields:{templatePath}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+        if (_cache.TryGetValue(cacheKey, out LetterheadMetaFields? cached) && cached != null) return cached;
+
+        var parsed = LetterheadMetaFields.TryRead(templatePath);
+        if (parsed != null)
+        {
+            _cache.Set(cacheKey, parsed, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+            });
+        }
+        return parsed;
     }
 
     private string? FindCompanyTemplate(int companyId, string size)
@@ -635,26 +778,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return Convert.FromBase64String(imageBytesValue);
     }
 
-    // ==================== تبدیل HTML ادیتور به متن ساده ====================
-
-    /// <summary>متن نامه در ادیتور غنی HTML است — برای PDF به متن ساده با حفظ پاراگراف‌ها تبدیل می‌شود</summary>
-    private static string HtmlToPlainText(string? html)
-    {
-        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
-        var text = html;
-        text = Regex.Replace(text, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"</\s*(p|div|li|h[1-6]|tr)\s*>", "\n", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"<\s*li[^>]*>", "• ", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, "<[^>]+>", string.Empty);
-        text = WebUtility.HtmlDecode(text);
-        text = text.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\u00a0', ' ')
-            .Replace("\u00ad", string.Empty).Replace("\u200b", string.Empty);
-        text = Regex.Replace(text, @"[ \t]+\n", "\n");
-        text = Regex.Replace(text, @"\n{3,}", "\n\n");
-        // Keep U+200C (ZWNJ) intact for Persian half-spaces; convert all digits for output.
-        return ToPersianDigits(text.Trim());
-    }
-
     private static string ToPersianDigits(string? value)
     {
         if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
@@ -686,9 +809,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// نسخهٔ بدون رونوشت برای تحویل به سازمان مقصد است؛ نسخهٔ با رونوشت
     /// در پروندهٔ دبیرخانه باقی می‌ماند.
     /// </summary>
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true,
+        bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
     {
-        var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy);
+        // کلید کش باید «همهٔ» گزینه‌های مؤثر در خروجی را ببیند، وگرنه چاپ با/بدون سربرگ و
+        // با/بدون امضا خروجی یکدیگر را از کش برمی‌داشت.
+        var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
         if (cacheKey == null) return null;
 
         // رکورد پیش از شروع رندر در فرهنگ لغت منتشر می‌شود تا درخواست‌های هم‌زمان
@@ -704,7 +830,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         try
         {
-            var pdf = await GeneratePdfCoreAsync(letterId, size, withCopy);
+            var pdf = await GeneratePdfCoreAsync(letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
             if (pdf == null) RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
             cached.Complete(pdf);
             return pdf;
@@ -757,28 +883,47 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
     }
 
-    /// <summary>اثر انگشت دادهٔ مؤثر در چاپ؛ با هر ویرایش نامه کلید عوض می‌شود.</summary>
-    private async Task<string?> BuildPrintCacheKeyAsync(int letterId, string size, bool withCopy)
+    /// <summary>
+    /// اثر انگشت (hash) دادهٔ مؤثر در چاپ: خود نامه، امضاکنندگان، رونوشت‌ها و پیوست‌ها.
+    /// با هر ویرایش نامه/امضا، کلید عوض می‌شود و خروجی کهنه چاپ نمی‌شود.
+    /// </summary>
+    private async Task<string?> BuildPrintCacheKeyAsync(int letterId, string size, bool withCopy, bool withMargin, bool withLetterhead, bool requireSignatures)
     {
         var row = await _db.OutgoingLetters.AsNoTracking()
             .Where(l => l.Id == letterId && !l.IsDelete)
             .Select(l => new
             {
-                l.CompanyId, l.SadereNumber, l.LetterNumber, l.DateSadere, l.DateSabt, l.Title, l.Text,
-                l.ReceiverOrganization, l.ReceiverName, l.ReceiverTitle, l.CopyTo, l.ExternalRefNumber,
+                l.CompanyId,
+                l.SadereNumber,
+                l.LetterNumber,
+                l.DateSadere,
+                l.DateSabt,
+                l.Title,
+                l.Text,
+                l.ReceiverOrganization,
+                l.ReceiverName,
+                l.ReceiverTitle,
+                l.CopyTo,
+                l.ExternalRefNumber,
                 SignerCount = _db.OutgoingLetterSigners.Count(s => s.SourceId == l.Id && !s.IsDelete),
                 SignedCount = _db.OutgoingLetterSigners.Count(s => s.SourceId == l.Id && !s.IsDelete && s.IsSigned),
+                SignerOrderSum = _db.OutgoingLetterSigners.Where(s => s.SourceId == l.Id && !s.IsDelete).Sum(s => (int?)s.Order) ?? 0,
                 CopyToCount = _db.OutgoingLetterCopyToes.Count(c => c.OutgoingLetterId == l.Id && !c.IsDelete),
+                CopyToLastId = _db.OutgoingLetterCopyToes.Where(c => c.OutgoingLetterId == l.Id && !c.IsDelete).Max(c => (int?)c.Id) ?? 0,
                 AttachmentCount = _db.AppAttachments.Count(a => a.Module == "OutgoingLetters" && a.RefId == l.Id)
             })
             .FirstOrDefaultAsync();
 
-        if (row == null) return null;
+        if (row == null)
+        {
+            _logger.LogInformation("چاپ نامه {LetterId}: نامه پیدا نشد.", letterId);
+            return null;
+        }
 
         var material = string.Join('\u001f',
             letterId.ToString(CultureInfo.InvariantCulture),
             size.ToUpperInvariant(),
-            withCopy ? "1" : "0",
+            withCopy ? "1" : "0", withMargin ? "1" : "0", withLetterhead ? "1" : "0", requireSignatures ? "1" : "0",
             row.CompanyId?.ToString(CultureInfo.InvariantCulture) ?? "-",
             row.SadereNumber, row.LetterNumber,
             row.DateSadere?.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
@@ -787,121 +932,138 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             row.CopyTo, row.ExternalRefNumber,
             row.SignerCount.ToString(CultureInfo.InvariantCulture),
             row.SignedCount.ToString(CultureInfo.InvariantCulture),
+            row.SignerOrderSum.ToString(CultureInfo.InvariantCulture),
             row.CopyToCount.ToString(CultureInfo.InvariantCulture),
+            row.CopyToLastId.ToString(CultureInfo.InvariantCulture),
             row.AttachmentCount.ToString(CultureInfo.InvariantCulture));
 
         return "outgoing-print-v2:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
     }
 
-    /// <summary>رندر واقعی نامه (بدون کش).</summary>
-    private async Task<byte[]?> GeneratePdfCoreAsync(int letterId, string size, bool withCopy = true)
+    /// <summary>رندر واقعی نامه (بدون کش) — همان پیاده‌سازی قبلی GeneratePdfAsync.</summary>
+    private async Task<byte[]?> GeneratePdfCoreAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
     {
-        // Resolve the letter and its company-registered letterhead before rendering.
-        var letter = await _db.OutgoingLetters.AsNoTracking()
-            .Include(l => l.Creator)
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
-        if (letter == null) return null;
+        var total = Stopwatch.StartNew();
+        long lastStageMs = 0;
+        void MarkStage(string stage)
+        {
+            var elapsed = total.ElapsedMilliseconds;
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage={Stage} StageMs={StageMs} TotalMs={TotalMs}",
+                letterId, stage, elapsed - lastStageMs, elapsed);
+            lastStageMs = elapsed;
+        }
 
+        // One query returns the letter, its company record (when set), and attachment existence.
+        var printData = await (
+            from l in _db.OutgoingLetters.AsNoTracking()
+            join c in _db.SystemCompanies.AsNoTracking() on l.CompanyId equals (int?)c.Id into companies
+            from c in companies.DefaultIfEmpty()
+            where l.Id == letterId && !l.IsDelete
+            select new
+            {
+                Letter = l,
+                Company = c,
+                HasAttachment = _db.AppAttachments.AsNoTracking()
+                    .Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id)
+            }).FirstOrDefaultAsync();
+        MarkStage("db-letter-company-attachments");
+        if (printData == null)
+        {
+            MarkStage("complete-not-found");
+            return null;
+        }
+
+        var letter = printData.Letter;
         var letterCompanyId = letter.CompanyId;
         var hasCompanyId = letterCompanyId is > 0;
+        var company = printData.Company;
         var activeCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
             .Select(c => new { c.Id, c.LetterheadFileName }).ToListAsync();
-
-        SystemCompany? company;
-        if (hasCompanyId)
+        if (!hasCompanyId)
         {
-            company = await _db.SystemCompanies.AsNoTracking()
-                .FirstOrDefaultAsync(c => c.Id == letterCompanyId);
-        }
-        else
-        {
-            // نامهٔ بدون شرکت (دادهٔ قدیمی): انتخاب خودکار فقط وقتی مجاز است که «تنها یک شرکت
-            // فعال» وجود داشته باشد یا «شرکت فعال همین درخواست» مشخص باشد.
-            // قبلاً اولین شرکتِ دارای سربرگ انتخاب می‌شد؛ در نصب چندشرکتی نتیجه این بود که نامه
-            // روی سربرگ شرکت دیگری چاپ می‌شد و به‌نظر می‌رسید «فایل‌های طرح خوانده نمی‌شوند».
-            var requestCompanyId = ActiveCompanyIdFromContext();
+            // نامهٔ بدون شرکت (دادهٔ قدیمی): فقط وقتی مجاز به انتخاب خودکار هستیم که
+            // «تنها یک شرکت فعال» وجود داشته باشد یا شرکت فعالِ درخواست مشخص باشد.
+            // پیش‌تر اولین شرکتِ دارای سربرگ انتخاب می‌شد و روی نصب چندشرکتی، نامه روی
+            // سربرگ شرکت دیگری چاپ می‌شد.
+            var activeCompanyId = ActiveCompanyIdFromContext();
             var pickId = activeCompanies.Count == 1
                 ? activeCompanies[0].Id
-                : requestCompanyId > 0 && activeCompanies.Any(c => c.Id == requestCompanyId)
-                    ? requestCompanyId
+                : activeCompanyId > 0 && activeCompanies.Any(c => c.Id == activeCompanyId)
+                    ? activeCompanyId
                     : 0;
             company = pickId > 0
                 ? await _db.SystemCompanies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == pickId)
                 : null;
-
+            MarkStage("db-default-company");
             _logger.LogWarning(
-                "نامه {LetterId} شرکت صادرکننده (CompanyId) ندارد؛ شرکت انتخابی برای چاپ: {SelectedCompanyId} " +
-                "(شرکت‌های فعال: {ActiveCount}، شرکت فعال درخواست: {RequestCompanyId}). " +
-                "برای چاپ روی طرح درست، «شرکت صادرکننده» را در فرم نامه انتخاب کنید.",
-                letterId, company?.Id, activeCompanies.Count, requestCompanyId);
+                "نامه {LetterId} CompanyId ندارد؛ شرکت انتخابی برای چاپ: {SelectedCompanyId} (شرکت‌های فعال: {ActiveCount}, شرکت فعال درخواست: {RequestCompanyId}).",
+                letterId, company?.Id, activeCompanies.Count, activeCompanyId);
         }
 
         var selectedCompanyId = company?.Id ?? letterCompanyId;
         var companyRecordMissing = hasCompanyId && company == null;
-        bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
+        var isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        // زنجیرهٔ منبع سربرگ:
-        // ۱) فایل ثبت‌شده روی رکورد شرکت
-        var registeredPath = companyRecordMissing ? null : ResolveRegisteredLetterheadFile(company);
-
-        // ۲) طرح سربرگ جاسازی‌شده در قالب MRT خود شرکت (Reports/OutgoingLetters/Companies/{id})
-        //    — هم استخراج می‌شود تا اگر فایل ثبت‌شده خراب بود هم جایگزین باشد.
-        var templateLetterheadPath = selectedCompanyId is > 0
+        var registeredPath = withLetterhead && !companyRecordMissing ? ResolveRegisteredLetterheadFile(company) : null;
+        var templateLetterheadPath = withLetterhead && selectedCompanyId is > 0
             ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
             : null;
-        // اولویت منبع سربرگ:
-        //   • پیش‌فرض همان رفتار قبلی است: «فایل ثبت‌شدهٔ شرکت» (SystemCompanies.LetterheadFileName)،
-        //     و اگر نبود، طرح جاسازی‌شده در قالب MRT همان شرکت.
-        //   • اگر Reporting:OutgoingLetters:PreferTemplateLetterhead=true باشد، طرح داخل
-        //     Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد — همان جایی که طرح‌ها
-        //     طراحی و نگهداری می‌شوند.
+        // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
+        // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
+        // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
         var preferTemplate = PreferTemplateLetterhead;
         var letterheadPath = preferTemplate && templateLetterheadPath != null
             ? templateLetterheadPath
             : registeredPath ?? templateLetterheadPath;
-        if (!preferTemplate && registeredPath != null && templateLetterheadPath != null)
+        if (withLetterhead && !preferTemplate && registeredPath != null && templateLetterheadPath != null)
             _logger.LogInformation(
                 "فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد. CompanyId={CompanyId}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}. " +
                 "برای چاپ با طرح پوشهٔ Companies مقدار Reporting:OutgoingLetters:PreferTemplateLetterhead=true را تنظیم کنید " +
                 "یا LetterheadFileName شرکت را خالی کنید.",
                 selectedCompanyId, registeredPath, templateLetterheadPath);
-
         var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
 
-        // ۳) سربرگ فوروث / لوگوی HR — فقط برای نصب تک‌شرکتیِ بدون رکورد شرکت.
-        if (letterheadPath == null && !hasCompanyId && activeCompanies.Count == 0)
+        // چیدمان چاپ از فایل طرح همان شرکت (اگر قالبش گیرنده/عنوان/متن را اعلام کند).
+        var designLayout = withLetterhead && selectedCompanyId is > 0 && UseDesignLayout(selectedCompanyId.Value)
+            ? ReadDesignLayout(selectedCompanyId.Value, isA5)
+            : null;
+        if (designLayout != null)
+            _logger.LogInformation(
+                "چاپ نامه {LetterId} با چیدمان فایل طرح انجام می‌شود. CompanyId={CompanyId}, BodyTop={BodyTop}, ContentBottom={ContentBottom}",
+                letterId, selectedCompanyId, designLayout.BodyTop, designLayout.ContentBottom);
+
+        if (withLetterhead && letterheadPath == null && !hasCompanyId)
         {
-            letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
-            if (letterheadPath == null)
+            // فقط نصب‌های تک‌شرکتیِ بدون رکورد شرکت: هیچ شرکت دیگری وجود ندارد که
+            // اشتباهاً سربرگش استفاده شود. در نصب چندشرکتی هرگز سربرگ نمی‌گذاریم و
+            // پایین‌تر خطای روشن داده می‌شود.
+            if (activeCompanies.Count == 0)
             {
-                var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
-                    .Select(c => c.LogoPath)
-                    .FirstOrDefaultAsync();
-                letterheadPath = ResolveLetterheadPath(hrLogoPath);
+                letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+                if (letterheadPath == null)
+                {
+                    var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
+                        .Select(c => c.LogoPath)
+                        .FirstOrDefaultAsync();
+                    MarkStage("db-hr-letterhead-logo");
+                    letterheadPath = ResolveLetterheadPath(hrLogoPath);
+                }
             }
         }
+        MarkStage("letterhead-resolution-cache");
 
-        // در نصب چندشرکتی، نامهٔ بی‌شرکت نباید سربرگ شرکت دیگر (یا فوروث) را بگیرد؛
-        // پیام روشن بهتر از چاپ روی سربرگ اشتباه است.
-        if (letterheadPath == null && !hasCompanyId && activeCompanies.Count > 0)
+        if (withLetterhead && letterheadPath == null && !hasCompanyId && activeCompanies.Count > 0)
         {
             _logger.LogError(
-                "چاپ نامه {LetterId} متوقف شد: نامه به هیچ شرکتی متصل نیست و سامانه چند شرکت فعال دارد (تعداد: {ActiveCount}).",
+                "چاپ نامه {LetterId} متوقف شد: نامه به هیچ شرکتی متصل نیست و نصب چندشرکتی است (شرکت‌های فعال: {ActiveCount}).",
                 letterId, activeCompanies.Count);
             throw new RequiredCompanyLetterheadPrintException(
                 "این نامه به هیچ شرکتی متصل نیست و سامانه چند شرکت فعال دارد؛ برای جلوگیری از چاپ روی سربرگ شرکت دیگر، " +
-                "ابتدا شرکت صادرکننده را در فرم نامه انتخاب کنید (یا از بالای صفحه شرکت درست را برگزینید) و دوباره چاپ کنید.");
+                "ابتدا شرکتِ نامه را مشخص کنید (ویرایش نامه ← شرکت) یا از بالای صفحه شرکت درست را انتخاب و دوباره چاپ کنید.");
         }
 
-        _logger.LogInformation(
-            "سربرگ نامه انتخاب شد. LetterId={LetterId}, LetterCompanyId={LetterCompanyId}, SelectedCompanyId={SelectedCompanyId}, ConfiguredPath={ConfiguredPath}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, FinalPath={FinalPath}, FromTemplate={FromTemplate}, WebRoot={WebRoot}, ContentRoot={ContentRoot}",
-            letterId, letterCompanyId, selectedCompanyId, company?.LetterheadFileName, registeredPath,
-            templateLetterheadPath, letterheadPath, letterheadFromTemplate, _env.WebRootPath, _env.ContentRootPath);
-
-        // قاعدهٔ سخت‌گیرانه: نامه‌ای که «شرکت» دارد هرگز بدون سربرگ چاپ نمی‌شود.
-        // اگر هیچ سربرگی (فایل ثبت‌شده یا طرح قالب MRT) پیدا نشد، چاپ با پیام دقیق متوقف می‌شود
-        // تا به‌جای نامهٔ سفید، علت واقعی دیده شود.
-        if (letterheadPath == null && hasCompanyId)
+        if (withLetterhead && letterheadPath == null && hasCompanyId)
         {
             var companyName = string.IsNullOrWhiteSpace(company?.Name)
                 ? letterCompanyId?.ToString(CultureInfo.InvariantCulture) ?? "شرکت"
@@ -913,12 +1075,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     : TryResolveAnyPath(company?.LetterheadFileName) is { } existing
                         ? $"فایل ثبت‌شده یافت شد ({existing}) اما نوع قابل‌چاپ نیست؛ فقط PDF/تصویر مجاز است"
                         : "فایل ثبت‌شده روی سرور پیدا نشد";
-            var templateStatus = templateLetterheadPath != null
-                ? "طرح قالب خوانده شد"
-                : "قالب MRT شرکت یافت نشد یا سربرگ جاسازی‌شده ندارد";
             var message =
                 $"سربرگ شرکت «{companyName}» پیدا نشد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. " +
-                $"وضعیت: {configuredStatus}؛ قالب: {templateStatus}. " +
+                $"وضعیت: {configuredStatus}؛ قالب MRT شرکت یافت نشد یا سربرگ جاسازی‌شده ندارد. " +
                 $"مسیرهای جستجوی قالب: {_env.ContentRootPath} | {AppContext.BaseDirectory}";
             _logger.LogError(
                 "چاپ نامه {LetterId} متوقف شد: سربرگ شرکت {CompanyId} یافت نشد. Configured={Configured}, ContentRoot={ContentRoot}, BaseDirectory={BaseDirectory}, WebRoot={WebRoot}",
@@ -927,117 +1086,130 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             throw new RequiredCompanyLetterheadPrintException(message);
         }
 
-        // Outgoing letters always use QuestPDF. This avoids Stimulsoft trial marks
-        // and keeps all Persian shaping/layout on one rendering path.
         var signers = await _db.OutgoingLetterSigners.AsNoTracking()
             .Include(s => s.User)
             .Where(s => s.SourceId == letterId && !s.IsDelete)
             .OrderBy(s => s.Order).ThenBy(s => s.Id)
             .ToListAsync();
+        MarkStage("db-signers");
 
-        var sematIds = signers.Where(s => s.SematId.HasValue)
-            .Select(s => s.SematId!.Value)
-            .Distinct()
-            .ToList();
-        var sematTitles = sematIds.Count == 0
-            ? new Dictionary<int, string>()
+        var sematIds = signers.Where(s => s.SematId.HasValue).Select(s => s.SematId!.Value).Distinct().ToArray();
+        var signerUserIds = signers.Select(s => s.UserId).Distinct().ToArray();
+        var sematRows = sematIds.Length == 0 && signerUserIds.Length == 0
+            ? new List<SematPrintTitle>()
             : await _db.Semats.AsNoTracking()
-                .Where(s => sematIds.Contains(s.SematId) && !s.IsDelete)
-                .ToDictionaryAsync(
-                    s => s.SematId,
-                    s => string.IsNullOrWhiteSpace(s.OnvanMokatebati) ? s.Title : s.OnvanMokatebati!,
-                    cancellationToken: default);
+                .Where(s => !s.IsDelete &&
+                    (sematIds.Contains(s.SematId) ||
+                     (s.UserId != null && signerUserIds.Contains(s.UserId.Value) && s.IsActive)))
+                .OrderByDescending(s => s.DefaultSemat).ThenBy(s => s.SematId)
+                .Select(s => new SematPrintTitle(s.SematId, s.UserId, s.Title, s.OnvanMokatebati, s.DefaultSemat, s.IsActive))
+                .ToListAsync();
+        var sematTitles = sematRows.Where(s => sematIds.Contains(s.SematId))
+            .GroupBy(s => s.SematId)
+            .ToDictionary(g => g.Key, g => string.IsNullOrWhiteSpace(g.First().CorrespondenceTitle) ? g.First().Title : g.First().CorrespondenceTitle!);
+        var sematTitlesByUser = sematRows.Where(s => s.UserId.HasValue && s.IsActive)
+            .GroupBy(s => s.UserId!.Value)
+            .ToDictionary(g => g.Key, g => string.IsNullOrWhiteSpace(g.First().CorrespondenceTitle) ? g.First().Title : g.First().CorrespondenceTitle!);
+        MarkStage("db-semat-titles");
 
-        // نامه‌های قدیمی ممکن است سمتِ ثبت‌شده نداشته باشند؛ در این حالت
-        // سمتِ فعالِ فعلیِ کاربر (سمتِ پیش‌فرض) نمایش داده می‌شود.
-        var signerUserIds = signers.Select(s => s.UserId).Distinct().ToList();
-        var sematTitlesByUser = signerUserIds.Count == 0
-            ? new Dictionary<int, string>()
-            : (await _db.Semats.AsNoTracking()
-                    .Where(s => s.UserId != null && signerUserIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
-                    .OrderByDescending(s => s.DefaultSemat)
-                    .ThenBy(s => s.SematId)
-                    .Select(s => new { s.UserId, s.Title, s.OnvanMokatebati })
-                    .ToListAsync())
-                .GroupBy(s => s.UserId!.Value)
-                .ToDictionary(
-                    g => g.Key,
-                    g => string.IsNullOrWhiteSpace(g.First().OnvanMokatebati) ? g.First().Title : g.First().OnvanMokatebati!);
+        var copyTos = withCopy
+            ? await _db.OutgoingLetterCopyToes.AsNoTracking()
+                .Where(c => c.OutgoingLetterId == letterId && !c.IsDelete)
+                .OrderBy(c => c.RowNo).ThenBy(c => c.Id)
+                .ToListAsync()
+            : new List<OutgoingLetterCopyTo>();
+        MarkStage("db-copy-to");
 
-        // رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای چاپ «با رونوشت».
-        // برای نامه‌های قدیمی که ردیفی در این جدول ندارند، ستون متنی CopyTo به کار می‌رود.
-        var copyTos = await _db.OutgoingLetterCopyToes.AsNoTracking()
-            .Where(c => c.OutgoingLetterId == letterId && !c.IsDelete)
-            .OrderBy(c => c.RowNo).ThenBy(c => c.Id)
-            .ToListAsync();
+        var missingSignatures = new List<string>();
+        foreach (var signer in signers)
+        {
+            var name = FullName(signer.User);
+            if (!signer.IsSigned || string.IsNullOrWhiteSpace(signer.User?.SignaturePath) ||
+                GetCachedSignatureSvg(signer.User.SignaturePath) == null)
+                missingSignatures.Add(string.IsNullOrWhiteSpace(name) ? $"کاربر {signer.UserId}" : name);
+        }
+        MarkStage("signature-read-decode-cache");
+        if (missingSignatures.Count > 0)
+        {
+            if (requireSignatures)
+                throw new OutgoingSignaturePrintException(
+                    $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignatures)}. " +
+                    "این محدودیت مربوط به وضعیت امضای نامه است (نه دسترسی شما)؛ پس از تکمیل امضاها چاپ روی سربرگ انجام می‌شود.");
 
-        var hasAttachment = await _db.AppAttachments.AsNoTracking()
-            .AnyAsync(a => a.Module == "OutgoingLetters" && a.RefId == letterId);
+            // ایجادکننده/دریافت‌کنندهٔ نامه (کاربران غیر دبیرخانه) هم باید بتوانند نسخهٔ چاپی بگیرند؛
+            // در این حالت جای امضای ناقص خالی/با نام و سِمَت چاپ می‌شود و چاپ متوقف نمی‌شود.
+            _logger.LogWarning(
+                "چاپ بدون اعتبارسنجی امضا انجام شد (کاربر غیر دبیرخانه). LetterId={LetterId} امضاکنندگان ناقص: {Missing}",
+                letterId, string.Join("، ", missingSignatures));
+        }
 
-        // Keep the content PDF transparent; the company letterhead (registered
-        // file or the design embedded in the company's print template) is
-        // placed underneath it by OverlayOnLetterhead below.
-        var contentPdf = BuildContentPdf(
-            letter, signers, sematTitles, sematTitlesByUser, hasAttachment, isA5, withCopy, copyTos,
-            hasLetterhead: letterheadPath != null,
-            letterheadCompanyId: selectedCompanyId);
+        _logger.LogInformation(
+            "سربرگ نامه انتخاب شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
+            letterId, selectedCompanyId, letterheadPath, letterheadFromTemplate);
 
-        // Use the same company record and letterhead path for all rendered pages.
+        byte[] contentPdf;
+        byte[]? fixedBlocksPdf;
+        try
+        {
+            contentPdf = BuildContentPdf(
+                letter, signers, sematTitles, sematTitlesByUser, printData.HasAttachment, isA5, withCopy, copyTos,
+                hasLetterhead: letterheadPath != null,
+                letterheadCompanyId: selectedCompanyId,
+                withMargin: withMargin,
+                design: designLayout,
+                out fixedBlocksPdf);
+        }
+        finally
+        {
+            MarkStage("questpdf-compose-and-render");
+        }
+
         if (letterheadPath == null)
         {
-            // فقط نامه‌های «بدون شرکت» به اینجا می‌رسند (سربرگ فوروث/HR هم موجود نیست)
-            // — همان حالت قدیمی: هدر مشکی چاپ می‌شود.
-            _logger.LogWarning(
-                "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
-                letterId,
-                company?.Id ?? letterCompanyId,
-                company?.Name,
-                company?.LetterheadFileName,
-                _env.ContentRootPath,
-                _env.WebRootPath,
-                AppContext.BaseDirectory);
+            if (withLetterhead)
+                _logger.LogWarning("سربرگ نامه پیدا نشد؛ PDF بدون سربرگ ساخته شد. LetterId={LetterId}", letterId);
+            MarkStage("complete");
             return contentPdf;
         }
 
         try
         {
-            _logger.LogInformation(
-                "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
-                letterId, company?.Id ?? letterCompanyId, size, letterheadPath, letterheadFromTemplate);
-            var overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath);
-            _logger.LogInformation(
-                "سربرگ روی PDF نامه اعمال شد. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, PdfBytes={PdfBytes}",
-                letterId, company?.Id ?? letterCompanyId, size, overlaidPdf.Length);
+            byte[] overlaidPdf;
+            try
+            {
+                overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath, letterId, fixedBlocksPdf);
+            }
+            finally
+            {
+                MarkStage("pdfsharp-letterhead-overlay");
+            }
+            MarkStage("complete");
             return overlaidPdf;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "قرار دادن سربرگ روی نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
-                letterId, company?.Id ?? letterCompanyId, letterheadPath, letterheadFromTemplate);
+                "قرار دادن سربرگ نامه ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
+                letterId, selectedCompanyId, letterheadPath, letterheadFromTemplate);
 
-            // اگر فایل سربرگ انتخاب‌شده (مثلاً فایل ثبت‌شدهٔ شرکت) قابل رندر نبود،
-            // طرح سربرگ جاسازی‌شده در قالب خودِ شرکت را امتحان کن تا نامه بی‌سربرگ نماند.
             if (templateLetterheadPath != null && !letterheadFromTemplate)
             {
                 try
                 {
-                    var retriedPdf = OverlayOnLetterhead(contentPdf, templateLetterheadPath);
-                    _logger.LogInformation(
-                        "سربرگ قالب MRT شرکت جایگزین شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={TemplatePath}",
-                        letterId, company?.Id ?? letterCompanyId, templateLetterheadPath);
+                    var retriedPdf = OverlayOnLetterhead(contentPdf, templateLetterheadPath, letterId, fixedBlocksPdf);
+                    MarkStage("pdfsharp-template-fallback-overlay");
+                    MarkStage("complete");
                     return retriedPdf;
                 }
                 catch (Exception retryEx)
                 {
                     _logger.LogError(retryEx,
                         "اعمال سربرگ قالب MRT شرکت هم ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={TemplatePath}",
-                        letterId, company?.Id ?? letterCompanyId, templateLetterheadPath);
+                        letterId, selectedCompanyId, templateLetterheadPath);
                     ex = retryEx;
                 }
             }
 
-            // نامهٔ دارای شرکت هرگز بدون سربرگ تحویل نمی‌شود — خطای شفاف به کاربر.
             if (hasCompanyId)
             {
                 var companyName = string.IsNullOrWhiteSpace(company?.Name)
@@ -1046,24 +1218,185 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 throw new RequiredCompanyLetterheadPrintException(
                     $"اعمال سربرگ شرکت «{companyName}» ناموفق بود؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. جزئیات: {ex.Message}", ex);
             }
+            MarkStage("complete-overlay-failed");
             return contentPdf;
         }
     }
 
-    private byte[]? TryReadSignature(string? relativePath)
+    private string? ResolveSignaturePath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..", StringComparison.Ordinal)) return null;
         var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
-        var path = new[]
+        return new[]
         {
             Path.Combine(webRoot, clean),
             Path.Combine(webRoot, "uploads", clean),
             Path.Combine(_env.ContentRootPath, clean),
             Path.Combine(AppContext.BaseDirectory, clean)
         }.FirstOrDefault(File.Exists);
-        return path == null ? null : File.ReadAllBytes(path);
+    }
+
+    private byte[]? TryReadSignature(string? relativePath)
+    {
+        var path = ResolveSignaturePath(relativePath);
+        if (path == null) return null;
+        var info = new FileInfo(path);
+        var key = $"outgoing-signature-bytes:{path}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+        return _cache.GetOrCreate(key, entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+            entry.Size = info.Length;
+            return File.ReadAllBytes(path);
+        });
+    }
+
+    private SignatureSvgData? GetCachedSignatureSvg(string? relativePath)
+    {
+        var path = ResolveSignaturePath(relativePath);
+        if (path == null) return null;
+        var info = new FileInfo(path);
+        var key = $"outgoing-signature-svg:{path}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+        var cacheTimer = Stopwatch.StartNew();
+        var cacheHit = _cache.TryGetValue(key, out CachedSignature? cached);
+        if (!cacheHit)
+        {
+            cached = _cache.GetOrCreate(key, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+                entry.Size = Math.Max(info.Length, 1);
+                return new CachedSignature(TryReadSignatureSvg(TryReadSignature(relativePath)));
+            });
+        }
+
+        if (!cacheHit || cacheTimer.ElapsedMilliseconds >= 100)
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming Stage=signature-svg-cache CacheHit={CacheHit} InputBytes={InputBytes} SvgChars={SvgChars} StageMs={StageMs}",
+                cacheHit, info.Length, cached?.Data?.Svg.Length ?? 0, cacheTimer.ElapsedMilliseconds);
+        return cached?.Data;
+    }
+
+    /// <summary>
+    /// تبدیل امضا به مسیرهای SVG بدون پس‌زمینه. این مسیر چاپی عمداً PNG را به‌عنوان
+    /// Image XObject در PDF نمی‌گذارد تا مشکل SMask/alpha در PDFsharp و درایور چاپگر حذف شود.
+    /// </summary>
+    private static SignatureSvgData? TryReadSignatureSvg(byte[]? pngBytes)
+    {
+        if (pngBytes is not { Length: > 0 }) return null;
+        try
+        {
+            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(pngBytes);
+            // Trim legacy uploads at render time too, so printing remains tight even before
+            // the one-time disk migration has been run. Keep a four-pixel transparent border.
+            var left = image.Width;
+            var top = image.Height;
+            var right = -1;
+            var bottom = -1;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        var px = row[x];
+                        var inkAlpha = (int)((255 - Math.Min(px.R, Math.Min(px.G, px.B))) * px.A / 255);
+                        if (inkAlpha < 24) continue;
+                        left = Math.Min(left, x);
+                        top = Math.Min(top, y);
+                        right = Math.Max(right, x);
+                        bottom = Math.Max(bottom, y);
+                    }
+                }
+            });
+            if (right < left || bottom < top) return null;
+            var crop = new SixLabors.ImageSharp.Rectangle(left, top, right - left + 1, bottom - top + 1);
+            image.Mutate(ctx => ctx.Crop(crop).Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
+            // Resize only after trimming; otherwise a large transparent canvas would reduce ink resolution.
+            if (image.Width > 1200 || image.Height > 480)
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,
+                    Size = new SixLabors.ImageSharp.Size(1200, 480),
+                    Sampler = KnownResamplers.Lanczos3
+                }));
+
+            long red = 0, green = 0, blue = 0, weight = 0;
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    foreach (var px in row)
+                    {
+                        var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                        var inkAlpha = (int)((255 - min) * px.A / 255);
+                        if (inkAlpha < 24) continue; // eliminate white/near-white paper pixels
+                        red += (long)px.R * inkAlpha;
+                        green += (long)px.G * inkAlpha;
+                        blue += (long)px.B * inkAlpha;
+                        weight += inkAlpha;
+                    }
+                }
+            });
+            if (weight == 0) return null;
+
+            // Eight opacity bands retain antialiased edges without relying on a raster alpha mask.
+            // Classify every pixel once, then close/open horizontal runs as the band changes.
+            // The previous implementation rescanned every row eight times (once per opacity band).
+            var paths = Enumerable.Range(0, 9).Select(_ => new StringBuilder()).ToArray();
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    var activeLevel = 0;
+                    var runStart = -1;
+                    for (var x = 0; x <= row.Length; x++)
+                    {
+                        var pixelLevel = 0;
+                        if (x < row.Length)
+                        {
+                            var px = row[x];
+                            var min = Math.Min(px.R, Math.Min(px.G, px.B));
+                            var alpha = (int)((255 - min) * px.A / 255);
+                            if (alpha >= 24) pixelLevel = Math.Clamp((alpha + 15) / 32, 1, 8);
+                        }
+
+                        if (pixelLevel == activeLevel) continue;
+                        if (activeLevel > 0 && runStart >= 0)
+                        {
+                            var length = x - runStart;
+                            paths[activeLevel].Append('M').Append(runStart).Append(' ').Append(y)
+                                .Append('h').Append(length).Append("v1h-").Append(length).Append('z');
+                        }
+
+                        activeLevel = pixelLevel;
+                        runStart = pixelLevel > 0 ? x : -1;
+                    }
+                }
+            });
+
+            var color = $"#{(byte)(red / weight):X2}{(byte)(green / weight):X2}{(byte)(blue / weight):X2}";
+            var svg = new StringBuilder(256);
+            svg.Append("<svg xmlns='http://www.w3.org/2000/svg' width='").Append(image.Width)
+                .Append("px' height='").Append(image.Height).Append("px' viewBox='0 0 ")
+                .Append(image.Width).Append(' ').Append(image.Height).Append("'>");
+            for (var level = 1; level <= 8; level++)
+            {
+                if (paths[level].Length == 0) continue;
+                svg.Append("<path fill='").Append(color).Append("' fill-opacity='")
+                    .Append((level / 8d).ToString("0.###", CultureInfo.InvariantCulture))
+                    .Append("' d='").Append(paths[level]).Append("'/>");
+            }
+            svg.Append("</svg>");
+            return new SignatureSvgData(svg.ToString(), image.Width, image.Height);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>ساخت محتوای نامه با RTL صریح، فونت وزیرمتن و سربرگ ثبت‌شده.</summary>
@@ -1077,17 +1410,24 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         bool withCopy,
         List<OutgoingLetterCopyTo>? copyTos,
         bool hasLetterhead,
-        int? letterheadCompanyId)
+        int? letterheadCompanyId,
+        bool withMargin,
+        OutgoingLetterDesignLayout? design,
+        out byte[]? fixedBlocksPdf)
     {
+        fixedBlocksPdf = null;
+        var fontTimer = Stopwatch.StartNew();
         EnsureFonts();
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=font-registration-or-cache StageMs={StageMs}",
+            letter.Id, fontTimer.ElapsedMilliseconds);
 
         var fontSize = isA5 ? 8f : 10.5f;
         var titleFontSize = isA5 ? 9.5f : 12f;
         var smallFontSize = isA5 ? 7f : 9f;
         var lineHeight = isA5 ? 1.3f : 1.35f;
 
-        // Print the authored body as-is; do not append a generated closing phrase.
-        var bodyText = HtmlToPlainText(letter.Text);
+        // The rich-text body is kept as sanitized HTML and rendered structurally below.
 
         var number = ToPersianDigits(
             string.IsNullOrWhiteSpace(letter.SadereNumber)
@@ -1110,6 +1450,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         var title = ToPersianDigits(letter.Title);
         var externalReference = ToPersianDigits(letter.ExternalRefNumber);
+        // The layout follows the *design* (template folder), not the raw database id, so a
+        // company mapped to another installation's folder gets that design's spacing too.
+        var designCompanyId = letterheadCompanyId is int designSource ? TemplateDesignId(designSource) : 0;
+        var isHomepaLetterhead = hasLetterhead && _homepaCompanyIds.Contains(designCompanyId);
+        var isAriaLetterhead = hasLetterhead && _ariaCompanyIds.Contains(designCompanyId);
         var signerCards = signers.Select(s =>
         {
             var role = s.SematId is int sematId && sematTitles.TryGetValue(sematId, out var sematTitle)
@@ -1118,63 +1463,130 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             return (
                 Name: ToPersianDigits(FullName(s.User)),
                 Role: ToPersianDigits(role),
-                Signature: s.IsSigned ? TryReadSignature(s.User?.SignaturePath) : null);
+                Signature: s.IsSigned ? GetCachedSignatureSvg(s.User?.SignaturePath) : null);
         }).ToList();
 
-        // ── بلوکِ امضاکنندگان ─────────────────────────────────────────────
-        // نام، سمت و امضای امضاکننده در سمتِ چپِ انتهای نامه قرار می‌گیرد و
-        // تصویرِ امضا دقیقاً روی نام و سمتِ امضاکننده می‌افتد (Overlap).
-        var signerBlockWidth = isA5 ? 140f : 200f;
-        var signerBlockHeight = isA5 ? 54f : 72f;
-        var signatureBoxWidth = isA5 ? 96f : 132f;
-        var signatureBoxHeight = isA5 ? 30f : 40f;
-
-        void AddSignerCard(IContainer container, (string Name, string Role, byte[]? Signature) signer)
+        // ────────────────────────────────────────────────────────────────────
+        // اگر قالب شرکت اعلام کرده باشد که گیرنده/عنوان/متن کجا می‌نشینند، همه‌چیز
+        // با مختصات خودِ همان فایل طرح چاپ می‌شود (کپشن‌ها، مقادیر، متن، امضاها، رونوشت).
+        // ────────────────────────────────────────────────────────────────────
+        if (design is { HasFullLayout: true } designLayout)
         {
-            container.Height(signerBlockHeight).Layers(layers =>
-            {
-                // لایهٔ اصلی: نام و سمتِ امضاکننده (چسبیده به پایینِ بلوک).
-                // اندازهٔ این لایه، اندازهٔ کلِ بلوک را تعیین می‌کند.
-                layers.PrimaryLayer().AlignBottom().Column(textColumn =>
-                {
-                    textColumn.Item().Text(signer.Name)
-                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
-                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
-                    textColumn.Item().Text(signer.Role)
-                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
-                        .LineHeight(1.2f).AlignRight().DirectionFromRightToLeft();
-                });
+            var designTimer = Stopwatch.StartNew();
+            var designContent = BuildDesignContentPdf(
+                letter, isA5, designLayout, number, date, receiverLine, title, externalReference,
+                hasAttachment: printData.HasAttachment, hasLetterhead: hasLetterhead);
+            fixedBlocksPdf = BuildDesignFixedBlocks(designLayout, signerCards, copyTos, letter, isA5, withCopy);
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=design-content StageMs={StageMs} Bytes={Bytes} FixedBlocks={FixedBlocks}",
+                letter.Id, designTimer.ElapsedMilliseconds, designContent.Length, fixedBlocksPdf?.Length ?? 0);
+            return designContent;
+        }
 
-                // لایهٔ رویی: تصویرِ امضا که روی نام و سمت قرار می‌گیرد.
-                // چون بعد از لایهٔ اصلی تعریف شده، روی متن رسم می‌شود.
-                if (signer.Signature is { Length: > 0 })
+        // ── بلوک امضا: هر نفر یک ستونِ مستقل، تصویر سپس نام و سمت با فاصلهٔ کم ──
+        var signerBlockWidth = isA5 ? 150f : 220f;
+        var maxSignatureWidth = isA5 ? 138f : 205f;
+        var maxSignatureHeight = isA5 ? 68f : 72f; // 91–96 CSS px at 96 dpi
+        var signerColumns = signerCards.Count == 1 ? 1 : 2;
+
+        void AddSignerCard(IContainer container, (string Name, string Role, SignatureSvgData? Signature) signer)
+        {
+            container.Width(signerBlockWidth).Column(card =>
+            {
+                if (signer.Signature is { } signature)
                 {
-                    layers.Layer().AlignBottom().AlignRight()
-                        .Width(signatureBoxWidth).Height(signatureBoxHeight)
-                        .Image(signer.Signature).FitArea();
+                    var scale = Math.Min(maxSignatureWidth / signature.Width, maxSignatureHeight / signature.Height);
+                    var imageWidth = signature.Width * scale;
+                    var imageHeight = signature.Height * scale;
+                    card.Item().AlignCenter().Width(imageWidth).Height(imageHeight)
+                        .Svg(signature.Svg).FitArea();
+                    card.Item().PaddingTop(2).Text(signer.Name)
+                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                    card.Item().Text(signer.Role)
+                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                }
+                else
+                {
+                    card.Item().Text(signer.Name)
+                        .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
+                    card.Item().Text(signer.Role)
+                        .FontFamily("Vazirmatn").FontSize(smallFontSize)
+                        .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
                 }
             });
         }
 
-        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
+        void AddSignerBlock(ColumnDescriptor target)
         {
+            var signerTopPadding = isHomepaLetterhead ? (isA5 ? 4 : 6) : (isA5 ? 8 : 12);
+            var tableTopPadding = isHomepaLetterhead ? (isA5 ? 2 : 3) : (isA5 ? 4 : 6);
+            var cellPadding = isHomepaLetterhead ? 2 : 4;
+
+            // Keep the complete signer block at the physical lower-left of the flowing letter
+            // for every company; individual cards remain centered within their own columns.
+            target.Item().PaddingTop(signerTopPadding)
+                .AlignLeft().Width(signerBlockWidth * signerColumns)
+                .Column(block =>
+                {
+                    block.Item().PaddingTop(tableTopPadding).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            for (var i = 0; i < signerColumns; i++)
+                                columns.RelativeColumn();
+                        });
+
+                        foreach (var signer in signerCards)
+                            table.Cell().Padding(cellPadding).ShowEntire().AlignCenter()
+                                .Element(card => AddSignerCard(card, signer));
+                    });
+                });
+        }
+
+        void AddAriaField(IContainer container, AriaLetterheadLayout.Field field, string value,
+            float fieldFontSize, bool isolateLtr = false)
+        {
+            // Place values in fixed page-coordinate boxes over the printed dotted fields.
+            // ScaleToFit prevents long dates/numbers from extending beyond each line.
+            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
             var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
-                .Width(field.Width).Height(field.Height).AlignMiddle();
-            // The enclosing header is physically left-to-right; only the field text is RTL.
-            // Do not allow a long letter number to push the date/attachment down a flowing column.
-            box = center ? box.AlignCenter() : box.AlignRight();
-            box.ScaleToFit().Text(value)
-                .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                .FontColor(Colors.White).LineHeight(1.2f)
-                .DirectionFromRightToLeft();
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+            var text = box.ScaleToFit().Text(displayValue)
+                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
+                .FontColor("#666666").LineHeight(1.05f);
+            if (isolateLtr)
+                text.DirectionFromLeftToRight();
+            else
+                text.DirectionFromRightToLeft();
+        }
+
+        void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
+            float fieldFontSize, bool isolateLtr = false)
+        {
+            // Captions are part of the enhanced company artwork, so only values are painted.
+            // Keep date/number runs isolated in LTR and preserve their fixed row alignment.
+            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+            var text = box.ScaleToFit().Text(displayValue)
+                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
+                .FontColor(Colors.White).LineHeight(1.05f);
+            if (isolateLtr)
+                text.DirectionFromLeftToRight();
+            else
+                text.DirectionFromRightToLeft();
         }
 
         void AddDeclaredField(IContainer container, LetterheadMetaFields.Field field, string value,
             float pageHeaderOrigin)
         {
-            // Values are painted where the company template says: rectangle, colour, font size and
-            // alignment all come from the MRT, so a light letterhead no longer gets invisible white
-            // values and a dark band keeps its white values. pageHeaderOrigin is the page top margin.
+            // The company template stores physical page coordinates (page margin + ClientRectangle)
+            // and the colour/size/alignment the designer set, so any company — not only the two
+            // calibrated ones — prints its values on the labels of its own artwork.
+            // page.Header() starts after Page.MarginTop, hence the subtraction.
             var left = Math.Max(0f, field.Left);
             var top = Math.Max(0f, field.Top - pageHeaderOrigin);
             var displayValue = field.IsolateLtr ? $"\u2066{value}\u2069" : value;
@@ -1190,17 +1602,119 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 text.DirectionFromRightToLeft();
         }
 
+        void AddSubjectAndFollowingContent(ColumnDescriptor col, float subjectTopPadding = 0f)
+        {
+            col.Spacing(isA5 ? 4 : 6);
+
+            col.Item().PaddingTop(subjectTopPadding).Text($"موضوع: {title}")
+                .FontFamily("Vazirmatn-Bold").FontSize(titleFontSize).LineHeight(lineHeight)
+                .AlignRight().DirectionFromRightToLeft();
+
+            if (!string.IsNullOrWhiteSpace(externalReference))
+            {
+                col.Item().Text($"عطف به شماره: {externalReference}")
+                    .FontSize(smallFontSize).LineHeight(lineHeight)
+                    .AlignRight().DirectionFromRightToLeft();
+            }
+
+            col.Item().PaddingVertical(isA5 ? 3 : 5)
+                .LineHorizontal(0.7f).LineColor("#999999");
+
+            var signersKeptWithTrailingParagraph = false;
+            if (!string.IsNullOrWhiteSpace(letter.Text))
+            {
+                // On 1003, keep a short final paragraph with signatures if pagination would otherwise strand them.
+                // Other companies retain their existing body flow and signature placement.
+                signersKeptWithTrailingParagraph = isHomepaLetterhead && signerCards.Count > 0
+                    ? RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight, AddSignerBlock)
+                    : RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight);
+            }
+
+            if (signerCards.Count > 0 && !signersKeptWithTrailingParagraph)
+            {
+                if (isHomepaLetterhead)
+                {
+                    // Keep heading and all signer cards as one pagination unit, and compact only 1003's block.
+                    col.Item().ShowEntire().Column(AddSignerBlock);
+                }
+                else
+                {
+                    AddSignerBlock(col);
+                }
+            }
+
+            if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
+            {
+                col.Item().PaddingTop(isA5 ? 8 : 12)
+                    .LineHorizontal(0.5f).LineColor("#cbd5e1");
+                col.Item().Text("رونوشت:")
+                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
+                    .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
+
+                if (copyTos is { Count: > 0 })
+                {
+                    foreach (var copyTo in copyTos)
+                    {
+                        var details = new[] { copyTo.Desc, copyTo.RefNo }
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Select(ToPersianDigits)
+                            .ToArray();
+                        var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
+                        col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
+                            .FontSize(smallFontSize).LineHeight(lineHeight)
+                            .AlignRight().DirectionFromRightToLeft();
+                    }
+                }
+                else
+                {
+                    col.Item().Text(ToPersianDigits(letter.CopyTo))
+                        .FontSize(smallFontSize).LineHeight(lineHeight)
+                        .AlignRight().DirectionFromRightToLeft();
+                }
+            }
+        }
+
+        // QuestPDF starts page.Header() after Page.MarginTop. The template coordinates are
+        // physical page coordinates, so the value renderer has to know this origin.
+        var pageTopMargin = isHomepaLetterhead || isAriaLetterhead
+            ? (isA5 ? 16f : 24f)
+            : (withMargin ? (isA5 ? 16f : 24f) : 0f);
+
         var document = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+
+                // ────────────────────────────────────────────────────────────────
+                // چیدمان از دل فایل طرح شرکت (MRT)
+                // برای شرکت‌هایی که قالبشان گیرنده/عنوان/متن را اعلام می‌کند (پیش‌فرض: 3 و 1003)
+                // این مسیر در ابتدای همین متد و پیش از ساخت سند انتخاب می‌شود.
+                // ────────────────────────────────────────────────────────────────
+                // Keep the 1003/1005 header coordinates stable even when body margins are toggled;
+                // all other companies retain their previous margin behavior.
+                page.MarginTop(pageTopMargin);
                 // QuestPDF defaults to an opaque white page. When this PDF is drawn OVER the
                 // company background by PDFsharp, that white fill would hide the entire letterhead.
                 page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
-                page.MarginTop(0);
-                // Reserve the printed company footer area on every page.
-                page.MarginBottom(isA5 ? 52 : 90);
+                // Keep content clear of company 1003's lower artwork; leave other companies unchanged.
+                page.MarginBottom(isHomepaLetterhead
+                    ? HomepaLetterheadLayout.FooterReserve(isA5)
+                    : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
+                if (isHomepaLetterhead)
+                    page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(style => style
+                            .FontFamily("Vazirmatn")
+                            .FontSize(8)
+                            .LineHeight(1.1f)
+                            .FontColor("#475569")
+                            .DirectionFromRightToLeft());
+                        text.Span("صفحه ");
+                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                        text.Span(" از ");
+                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
+                    });
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -1210,87 +1724,77 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .LineHeight(lineHeight)
                     .DirectionFromRightToLeft());
 
-                // چیدمان بر اساس «طرح» (پوشهٔ قالب) انتخاب می‌شود، نه شناسهٔ خام پایگاه داده.
-                var designCompanyId = letterheadCompanyId is int designSource ? TemplateDesignId(designSource) : 0;
-                var isAriaLetterhead = hasLetterhead && _ariaCompanyIds.Contains(designCompanyId);
-                var isHomepaLetterhead = hasLetterhead && _homepaCompanyIds.Contains(designCompanyId);
-                var contentTopPadding = isAriaLetterhead
-                    ? (isA5 ? 26f : 36f)
-                    : (isA5 ? 30f : 30f); // در A5 بدنه نامه از بالاتر شروع شود
+                // This offset belongs only to the flowing body. The company 1003
+                // metadata fields remain in the separately positioned page header.
+                // QuestPDF repeats both regions on every page.
+                var contentTopPadding = isHomepaLetterhead
+                    ? HomepaLetterheadLayout.ReceiverTopPadding(isA5)
+                    : isAriaLetterhead
+                        ? AriaLetterheadLayout.BodyTopPadding(isA5)
+                        : (withMargin || hasLetterhead ? 30f : 0f);
 
                 if (isAriaLetterhead)
                 {
-                    // Aria's registered PDF has its labels printed in one gray row.
-                    // Fill the existing dotted fields (date, number, attachment) without
-                    // repeating labels, keeping the logo and company details untouched.
-                    var fieldScale = isA5 ? 0.704f : 1f;
-                    var fieldWidth = 90f * fieldScale;
-                    var dateFieldInset = 13f * fieldScale;
-                    var numberFieldInset = 27f * fieldScale;
-                    var attachmentFieldInset = 21f * fieldScale;
-                    page.Header()
-                        .Height(isA5 ? 94 : 134)
-                        .PaddingTop(isA5 ? 64 : 90)
-                        .AlignLeft()
-                        .Width(fieldWidth * 3)
-                        .Row(fields =>
+                    // The artwork already contains all three captions and dotted lines.
+                    // Paint each value in its own fixed box; these coordinates are independent
+                    // of the body start offset and are repeated by QuestPDF on every page.
+                    page.Header().ContentFromLeftToRight()
+                        .Height(AriaLetterheadLayout.HeaderHeight(isA5))
+                        .Layers(layers =>
                         {
-                            fields.ConstantItem(fieldWidth).PaddingRight(dateFieldInset)
-                                .AlignRight().Text(date)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(numberFieldInset)
-                                .AlignRight().Text(number)
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
-                            fields.ConstantItem(fieldWidth).PaddingRight(attachmentFieldInset)
-                                .AlignRight().Text(hasAttachment ? "دارد" : "ندارد")
-                                .FontFamily("Vazirmatn-Bold").FontSize(isA5 ? 6 : 8)
-                                .FontColor("#666666").LineHeight(1.2f)
-                                .DirectionFromRightToLeft();
+                            layers.PrimaryLayer().Extend();
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
+                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
+                                hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
                         });
                 }
                 else if (isHomepaLetterhead)
                 {
                     // Match company 1003's MRT rectangles, not the RTL body's default right edge.
-                    // Preserve the existing reserved header height so body/signature layout does not move.
+                    // Header fields retain their fixed height/coordinates; only page.Content receives the larger gap.
                     page.Header().ContentFromLeftToRight()
-                        .Height(isA5 ? 150 : 160)
+                        .Height(HomepaLetterheadLayout.HeaderHeight(isA5))
                         .Layers(layers =>
                         {
                             layers.PrimaryLayer().Extend();
-                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number);
-                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number,
+                                HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
+                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date,
+                                HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
                             AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Attachment(isA5),
-                                hasAttachment ? "دارد" : "ندارد", center: true);
+                                hasAttachment ? "دارد" : "ندارد", HomepaLetterheadLayout.HeaderValueFontSize(isA5));
                         });
                 }
                 else if (hasLetterhead)
                 {
-                    // Number/date/attachment are placed where the company template declares them
-                    // (rectangle, colour, font size, alignment), so every company — not only the
-                    // two calibrated ones — prints on the labels of its own artwork.
-                    var declared = letterheadCompanyId is > 0
-                        ? LetterheadMetaFields.TryRead(FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4"))
-                        : null;
+                    // Company templates that declare number/date/attachment (rectangle, colour,
+                    // font, alignment) drive the print themselves. The letterhead artwork is read
+                    // from the same MRT, so the values land exactly on its printed labels — this is
+                    // what makes companies other than the two calibrated ones print correctly
+                    // (previously a hard-coded white column hid the values on light letterheads).
+                    var declared = ReadDeclaredMetaFields(
+                        letterheadCompanyId is > 0
+                            ? FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")
+                            : null);
 
                     if (declared != null)
                     {
                         _logger.LogDebug(
-                            "مقادیر شماره/تاریخ/پیوست از قالب شرکت خوانده شد. CompanyId={CompanyId}, Size={Size}, Color={Color}",
-                            letterheadCompanyId, isA5 ? "A5" : "A4", declared.Number.Color);
+                            "مقادیر شماره/تاریخ/پیوست از قالب شرکت خوانده شد. CompanyId={CompanyId}, Size={Size}, Color={Color}, FontSize={FontSize}",
+                            letterheadCompanyId, isA5 ? "A5" : "A4", declared.Number.Color, declared.Number.FontSize);
 
                         page.Header().ContentFromLeftToRight()
                             .Height(isA5 ? 150 : 160)
                             .Layers(layers =>
                             {
                                 layers.PrimaryLayer().Extend();
-                                AddDeclaredField(layers.Layer(), declared.Number, number, 0f);
-                                AddDeclaredField(layers.Layer(), declared.Date, date, 0f);
+                                AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);
+                                AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);
                                 AddDeclaredField(layers.Layer(), declared.Attachment,
-                                    hasAttachment ? "دارد" : "ندارد", 0f);
+                                    hasAttachment ? "دارد" : "ندارد", pageTopMargin);
                             });
                     }
                     else
@@ -1342,89 +1846,292 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         });
                 }
 
-                // One shared padded body column keeps receiver, subject, paragraphs,
-                // signature block on identical left/right margins.
-                page.Content().PaddingTop(contentTopPadding)
-                    .PaddingHorizontal(isA5 ? 48 : 68).Column(col =>
+                // Header values live in page.Header with fixed template coordinates.
+                // For company 1003, keep the recipient at its existing top offset and
+                // add the extra space only before subject/body and all following items.
+                // Keep the PDF content transparent on 1003 so the per-page letterhead image remains visible beneath it.
+                var contentContainer = isHomepaLetterhead
+                    ? page.Content().Background(Colors.Transparent)
+                    : page.Content();
+                contentContainer.PaddingTop(contentTopPadding)
+                    .PaddingHorizontal(withMargin ? (isA5 ? 48 : 68) : 0).Column(col =>
                 {
                     col.Spacing(isA5 ? 4 : 6);
-
                     col.Item().Text($"به: {receiverLine}")
                         .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
                         .AlignRight().DirectionFromRightToLeft();
+                    AddSubjectAndFollowingContent(col,
+                        isHomepaLetterhead ? HomepaLetterheadLayout.SubjectBodyGap(isA5) : 0f);
+                });
+            });
+        });
 
-                    col.Item().Text($"موضوع: {title}")
-                        .FontFamily("Vazirmatn-Bold").FontSize(titleFontSize).LineHeight(lineHeight)
-                        .AlignRight().DirectionFromRightToLeft();
+        var renderTimer = Stopwatch.StartNew();
+        var generatedPdf = document.GeneratePdf();
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=questpdf-generate-pdf StageMs={StageMs} Bytes={Bytes}",
+            letter.Id, renderTimer.ElapsedMilliseconds, generatedPdf.Length);
 
-                    if (!string.IsNullOrWhiteSpace(externalReference))
-                    {
-                        col.Item().Text($"عطف به شماره: {externalReference}")
-                            .FontSize(smallFontSize).LineHeight(lineHeight)
-                            .AlignRight().DirectionFromRightToLeft();
-                    }
 
-                    col.Item().PaddingVertical(isA5 ? 3 : 5)
-                        .LineHorizontal(0.7f).LineColor("#999999");
+        return generatedPdf;
+    }
 
-                    if (!string.IsNullOrWhiteSpace(bodyText))
-                    {
-                        // Right-align; never justify. Newlines and ZWNJ are preserved,
-                        // and normal word wrapping avoids clipping/splitting words.
-                        col.Item().Text(bodyText)
-                            .FontFamily("Vazirmatn").FontSize(fontSize).LineHeight(lineHeight)
-                            .AlignRight().DirectionFromRightToLeft();
-                    }
+    /// <summary>
+    /// یک مقدار/متن را در کادر مشخص‌شدهٔ طرح می‌گذارد. مختصات، نقطهٔ مطلق صفحه است
+    /// (چون حاشیهٔ صفحه صفر شده)؛ padding فقط جابه‌جا می‌کند و کادر داخلی اندازهٔ ثابت
+    /// خودش را می‌گیرد تا متن هرگز از مستطیل طرح بیرون نزند.
+    /// </summary>
+    private static void PlaceDesignText(
+        IContainer host,
+        OutgoingLetterDesignLayout.Box field,
+        string value,
+        bool allowWrap = false)
+    {
+        host.PaddingLeft(Math.Max(0f, field.Left))
+            .PaddingTop(Math.Max(0f, field.Top))
+            .Element(cell =>
+            {
+                var box = cell.Width(field.Width);
+                if (!allowWrap) box = box.Height(field.Height);
+                box = field.AlignMiddle ? box.AlignMiddle() : box.AlignTop();
+                box = field.AlignCenter ? box.AlignCenter()
+                    : field.AlignRight ? box.AlignRight()
+                    : box.AlignLeft();
 
-                    if (signerCards.Count > 0)
-                    {
-                        // بلوکِ امضاکنندگان در سمتِ چپِ انتهای نامه قرار می‌گیرد.
-                        // در صفحهٔ راست‌به‌چپ، آیتمِ نسبیِ اول در سمتِ راست و
-                        // آیتمِ ثابتِ بعدی در سمتِ چپ می‌نشیند.
-                        col.Item().PaddingTop(isA5 ? 8 : 12).ShowEntire().Row(signersRow =>
+                var display = field.IsolateLtr ? $"\u2066{value}\u2069" : value;
+                // مقدارهای تک‌خطی (شماره/تاریخ/گیرنده/عنوان/نام/سمت) کوچک می‌شوند تا کامل بمانند؛
+                // کادر رونوشت چندخطی است و باید بچرخد.
+                var text = (allowWrap ? box : box.ScaleToFit()).Text(display)
+                    .FontFamily(field.Bold ? "Vazirmatn-Bold" : "Vazirmatn")
+                    .FontSize(field.FontSize)
+                    .FontColor(field.Color)
+                    .LineHeight(field.IsolateLtr ? 1.05f : 1.3f);
+                if (field.IsolateLtr) text.DirectionFromLeftToRight();
+                else text.DirectionFromRightToLeft();
+            });
+    }
+
+    /// <summary>
+    /// متن نامه با چیدمان خودِ فایل طرح: کادر متن، فاصله از لبه‌ها و محدودهٔ عمودی همه از
+    /// MRT می‌آید. اگر نامه یک صفحه باشد، متن دقیقاً پیش از بلوک امضا/رونوشت تمام می‌شود؛
+    /// اگر بلندتر باشد، صفحه‌های میانی تا بالای گرافیک پابرگ پر می‌شوند و فقط صفحهٔ آخر
+    /// جای بلوک ثابت را خالی می‌گذارد (دو پاس رندر، همان خروجی کش‌شده).
+    /// </summary>
+    private byte[] BuildDesignContentPdf(
+        OutgoingLetter letter,
+        bool isA5,
+        OutgoingLetterDesignLayout design,
+        string number,
+        string date,
+        string receiverLine,
+        string title,
+        string externalReference,
+        bool hasAttachment,
+        bool hasLetterhead)
+    {
+        var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
+        var pageHeight = design.PageHeight > 0 ? design.PageHeight : (isA5 ? 595.28f : 841.89f);
+        var body = design.Body!;
+        var bodyLeft = Math.Max(0f, body.Left);
+        var bodyRight = Math.Max(bodyLeft + 1f, body.Left + body.Width);
+        var bodyFontSize = body.FontSize > 0 ? body.FontSize : (isA5 ? 9f : 11f);
+
+        // صفحهٔ آخر باید پیش از بلوک امضا/رونوشت تمام شود؛ صفحه‌های دیگر می‌توانند تا
+        // بالای گرافیک پابرگ پر شوند، پس بلوک ثابت با یک «فاصلهٔ پایانی» رزرو می‌شود.
+        var strictReserve = Math.Max(0f, pageHeight - design.ContentBottom);
+        var footerReserve = Math.Min(strictReserve,
+            hasLetterhead ? HomepaLetterheadLayout.FooterReserve(isA5) : 0f);
+        var trailingSpacer = Math.Max(0f, strictReserve - footerReserve);
+
+        byte[] Render(float bottomReserve, float spacer)
+        {
+            var document = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                    page.Margin(0);
+                    page.MarginBottom(bottomReserve);
+                    // اگر سربرگ از طرح روی کاغذ کشیده می‌شود، صفحه نباید سفید پر شود.
+                    page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
+                    page.ContentFromLeftToRight();
+                    page.DefaultTextStyle(style => style
+                        .FontFamily("Vazirmatn")
+                        .FontSize(bodyFontSize)
+                        .LineHeight(1.45f)
+                        .DirectionFromRightToLeft());
+
+                    page.Header().ContentFromLeftToRight()
+                        .Height(Math.Max(1f, design.BodyTop))
+                        .Layers(layers =>
                         {
-                            signersRow.RelativeItem();
-                            signersRow.ConstantItem(signerBlockWidth).Column(signerColumn =>
+                            layers.PrimaryLayer().Extend();
+                            foreach (var field in design.HeaderBoxes)
                             {
-                                signerColumn.Item().Text("امضاکنندگان")
-                                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                                    .AlignCenter().DirectionFromRightToLeft();
-
-                                foreach (var signer in signerCards)
-                                    AddSignerCard(signerColumn.Item().PaddingTop(isA5 ? 4 : 6), signer);
-                            });
-                        });
-                    }
-
-                    if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
-                    {
-                        col.Item().PaddingTop(isA5 ? 8 : 12)
-                            .LineHorizontal(0.5f).LineColor("#cbd5e1");
-                        col.Item().Text("رونوشت:")
-                            .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                            .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-
-                        if (copyTos is { Count: > 0 })
-                        {
-                            foreach (var copyTo in copyTos)
-                            {
-                                var details = new[] { copyTo.Desc, copyTo.RefNo }
-                                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                                    .Select(ToPersianDigits)
-                                    .ToArray();
-                                var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
-                                col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
-                                    .FontSize(smallFontSize).LineHeight(lineHeight)
-                                    .AlignRight().DirectionFromRightToLeft();
+                                var value = field.Slot switch
+                                {
+                                    OutgoingLetterDesignLayout.Slot.Number => number,
+                                    OutgoingLetterDesignLayout.Slot.Date => date,
+                                    OutgoingLetterDesignLayout.Slot.Attachment => hasAttachment ? "دارد" : "ندارد",
+                                    OutgoingLetterDesignLayout.Slot.Receiver => receiverLine,
+                                    OutgoingLetterDesignLayout.Slot.Title => title,
+                                    _ => field.Text
+                                };
+                                if (string.IsNullOrWhiteSpace(value)) continue;
+                                PlaceDesignText(layers.Layer(), field, value);
                             }
-                        }
-                        else
+                        });
+
+                    page.Content()
+                        .PaddingLeft(bodyLeft)
+                        .PaddingRight(Math.Max(0f, pageWidth - bodyRight))
+                        .Column(col =>
                         {
-                            col.Item().Text(ToPersianDigits(letter.CopyTo))
-                                .FontSize(smallFontSize).LineHeight(lineHeight)
-                                .AlignRight().DirectionFromRightToLeft();
+                            col.Spacing(isA5 ? 4 : 6);
+                            // «عطف به شماره» در طرح جای مشخصی ندارد؛ برای گم‌نشدن داده،
+                            // یک سطر کوچک در ابتدای متن چاپ می‌شود.
+                            if (!string.IsNullOrWhiteSpace(externalReference))
+                            {
+                                col.Item().Text($"عطف به شماره: {externalReference}")
+                                    .FontSize(isA5 ? 8f : 9f).LineHeight(1.3f)
+                                    .AlignRight().DirectionFromRightToLeft();
+                                col.Item().PaddingVertical(isA5 ? 2 : 4)
+                                    .LineHorizontal(0.5f).LineColor("#cbd5e1");
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(letter.Text))
+                                RichLetterPdfRenderer.AddTo(col, letter.Text, bodyFontSize, 1.5f);
+
+                            if (spacer > 0.5f) col.Item().Height(spacer);
+                        });
+                });
+            });
+
+            var bytes = document.GeneratePdf();
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=design-content-pass BottomReserve={BottomReserve} Spacer={Spacer} Bytes={Bytes}",
+                letter.Id, bottomReserve, spacer, bytes.Length);
+            return bytes;
+        }
+
+        var singlePage = Render(strictReserve, 0f);
+        if (trailingSpacer < 1f) return singlePage;
+
+        var singlePages = CountPdfPages(singlePage);
+        if (singlePages <= 1) return singlePage;
+
+        var relaxed = Render(footerReserve, trailingSpacer);
+        var relaxedPages = CountPdfPages(relaxed);
+        _logger.LogInformation(
+            "چیدمان از فایل طرح: نامه {LetterId} در یک صفحه جا نشد ({SinglePages} صفحه)؛ نسخهٔ {RelaxedPages}صفحه‌ای با رزرو بلوک امضا انتخاب شد.",
+            letter.Id, singlePages, relaxedPages);
+        return relaxedPages <= singlePages ? relaxed : singlePage;
+    }
+
+    /// <summary>تعداد صفحه‌های یک PDF — برای انتخاب بین چیدمان تنگ و چیدمان چندصفحه‌ای.</summary>
+    private static int CountPdfPages(byte[] pdf)
+    {
+        if (pdf.Length == 0) return 0;
+        try
+        {
+            using var stream = new MemoryStream(pdf);
+            using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+            return document.PageCount;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// بلوک‌های ثابت انتهای صفحه — تصویر امضا، نام و سمت هر امضاکننده و کادر رونوشت —
+    /// دقیقاً روی مختصات همان فایل طرح، در یک PDF یک‌صفحه‌ایِ شفاف. این صفحه بعداً فقط روی
+    /// «آخرین صفحهٔ» نامه چسبانده می‌شود تا در نامه‌های چندصفحه‌ای یک‌بار و در جای درست بیاید.
+    /// </summary>
+    private byte[]? BuildDesignFixedBlocks(
+        OutgoingLetterDesignLayout design,
+        IReadOnlyList<(string Name, string Role, SignatureSvgData? Signature)> signerCards,
+        IReadOnlyList<OutgoingLetterCopyTo>? copyTos,
+        OutgoingLetter letter,
+        bool isA5,
+        bool withCopy)
+    {
+        var signatures = design.Signatures.OrderBy(box => box.Index).ToList();
+        var names = design.SignerNames.OrderBy(box => box.Index).ToList();
+        var roles = design.SignerRoles.OrderBy(box => box.Index).ToList();
+
+        var copyLines = new List<string>();
+        if (withCopy)
+        {
+            if (copyTos is { Count: > 0 })
+            {
+                foreach (var copyTo in copyTos)
+                {
+                    var name = ToPersianDigits(copyTo.Name);
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    var details = new[] { copyTo.Desc, copyTo.RefNo }
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Select(ToPersianDigits)
+                        .ToArray();
+                    copyLines.Add(details.Length == 0
+                        ? $"• {name}"
+                        : $"• {name} — {string.Join("، ", details)}");
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(letter.CopyTo))
+            {
+                copyLines.AddRange(ToPersianDigits(letter.CopyTo!)
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+        }
+
+        var hasSignerContent = signerCards.Count > 0
+            && (signatures.Count > 0 || names.Count > 0 || roles.Count > 0);
+        if (!hasSignerContent && (copyLines.Count == 0 || design.CopyTo == null)) return null;
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                page.Margin(0);
+                page.PageColor(Colors.Transparent);
+                page.ContentFromLeftToRight();
+                page.DefaultTextStyle(style => style
+                    .FontFamily("Vazirmatn").FontSize(10).DirectionFromRightToLeft());
+
+                page.Content().Layers(layers =>
+                {
+                    layers.PrimaryLayer().Extend();
+
+                    for (var index = 0; index < signerCards.Count; index++)
+                    {
+                        var card = signerCards[index];
+                        if (index < signatures.Count && card.Signature is { } signature)
+                        {
+                            var slot = signatures[index];
+                            var scale = Math.Min(slot.Width / Math.Max(1f, signature.Width),
+                                                 slot.Height / Math.Max(1f, signature.Height));
+                            var imageWidth = Math.Max(1f, signature.Width * scale);
+                            var imageHeight = Math.Max(1f, signature.Height * scale);
+                            layers.Layer()
+                                .PaddingLeft(Math.Max(0f, slot.Left))
+                                .PaddingTop(Math.Max(0f, slot.Top))
+                                .Element(host => host.Width(slot.Width).Height(slot.Height)
+                                    .AlignMiddle().AlignCenter()
+                                    .Element(inner => inner.Width(imageWidth).Height(imageHeight)
+                                        .Svg(signature.Svg).FitArea()));
                         }
+
+                        if (index < roles.Count && !string.IsNullOrWhiteSpace(card.Role))
+                            PlaceDesignText(layers.Layer(), roles[index], card.Role);
+                        if (index < names.Count && !string.IsNullOrWhiteSpace(card.Name))
+                            PlaceDesignText(layers.Layer(), names[index], card.Name);
                     }
+
+                    if (copyLines.Count > 0 && design.CopyTo is { } copyBox)
+                        PlaceDesignText(layers.Layer(), copyBox, string.Join("\n", copyLines), allowWrap: true);
                 });
             });
         });
@@ -1440,48 +2147,70 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>قرار دادن صفحات نامه روی سربرگ یا لوگوی شرکت (PDF یا تصویر)</summary>
-    private static byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath)
+    private byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath, int letterId, byte[]? fixedBlocksPdf = null)
     {
         using var contentStream = new MemoryStream(contentPdf);
         using var contentDoc = PdfReader.Open(contentStream, PdfDocumentOpenMode.Import);
-
         using var output = new PdfDocument();
 
-        var isPdf = letterheadPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-        using var letterheadForm = isPdf ? XPdfForm.FromFile(letterheadPath) : null;
-        using var letterheadImg = !isPdf ? XImage.FromFile(letterheadPath) : null;
+        var fullPath = Path.GetFullPath(letterheadPath);
+        var info = new FileInfo(fullPath);
+        var cacheKey = $"{fullPath}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+        var assetTimer = Stopwatch.StartNew();
+        var asset = LetterheadAssets.GetOrAdd(cacheKey, _ => new Lazy<CachedLetterheadAsset>(() =>
+        {
+            var isPdf = fullPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            return isPdf
+                ? new CachedLetterheadAsset(true, XPdfForm.FromFile(fullPath), null)
+                : new CachedLetterheadAsset(false, null, XImage.FromFile(fullPath));
+        }, LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=letterhead-image-pdf-cache-open StageMs={StageMs} AssetType={AssetType}",
+            letterId, assetTimer.ElapsedMilliseconds, asset.IsPdf ? "PDF" : "Image");
 
         using var contentFormStream = new MemoryStream(contentPdf);
         using var contentForm = XPdfForm.FromStream(contentFormStream);
 
-        for (int i = 0; i < contentDoc.PageCount; i++)
+        // بلوک‌های ثابت (امضا/رونوشت) از دل طرح؛ فقط روی آخرین صفحه چاپ می‌شوند.
+        using var fixedBlocksStream = fixedBlocksPdf is { Length: > 0 } ? new MemoryStream(fixedBlocksPdf) : null;
+        using var fixedBlocksForm = fixedBlocksStream != null ? XPdfForm.FromStream(fixedBlocksStream) : null;
+
+        // PDFsharp forms have mutable page selection. Serialize drawing through this cached
+        // source while reusing its decoded pages/pixels across concurrent print requests.
+        lock (asset.DrawLock)
         {
-            var srcPage = contentDoc.Pages[i];
-            var page = output.AddPage();
-            page.Width = srcPage.Width;
-            page.Height = srcPage.Height;
-
-            using var gfx = XGraphics.FromPdfPage(page);
-            var rect = new XRect(0, 0, page.Width.Point, page.Height.Point);
-
-            // 1) سربرگ یا لوگوی شرکت به‌عنوان پس‌زمینه
-            if (isPdf && letterheadForm != null)
+            for (var index = 0; index < contentDoc.PageCount; index++)
             {
-                letterheadForm.PageNumber = 1;
-                gfx.DrawImage(letterheadForm, rect);
-            }
-            else if (letterheadImg != null)
-            {
-                gfx.DrawImage(letterheadImg, rect);
-            }
+                var sourcePage = contentDoc.Pages[index];
+                var page = output.AddPage();
+                page.Width = sourcePage.Width;
+                page.Height = sourcePage.Height;
 
-            // 2) متن نامه روی سربرگ
-            contentForm.PageNumber = i + 1;
-            gfx.DrawImage(contentForm, rect);
+                using var graphics = XGraphics.FromPdfPage(page);
+                var bounds = new XRect(0, 0, page.Width.Point, page.Height.Point);
+                if (asset.IsPdf && asset.Pdf != null)
+                {
+                    asset.Pdf.PageNumber = 1;
+                    graphics.DrawImage(asset.Pdf, bounds);
+                }
+                else if (asset.Image != null)
+                {
+                    graphics.DrawImage(asset.Image, bounds);
+                }
+
+                contentForm.PageNumber = index + 1;
+                graphics.DrawImage(contentForm, bounds);
+
+                if (fixedBlocksForm != null && index == contentDoc.PageCount - 1)
+                {
+                    fixedBlocksForm.PageNumber = 1;
+                    graphics.DrawImage(fixedBlocksForm, bounds);
+                }
+            }
         }
 
-        using var ms = new MemoryStream();
-        output.Save(ms);
-        return ms.ToArray();
+        using var outputStream = new MemoryStream();
+        output.Save(outputStream);
+        return outputStream.ToArray();
     }
 }

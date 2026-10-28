@@ -5,6 +5,7 @@ using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 using System.IO.Compression;
 
 namespace Inventory.Api.Controllers.Office;
@@ -484,63 +485,82 @@ public class OutgoingLettersController : RbacControllerBase
     /// • withCopy=false → «بدون رونوشت» (نسخه‌ای که تحویل سازمان مقصد می‌شود)
     /// </summary>
     [HttpGet("{id:int}/print")]
-    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true)
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
+        [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        // چاپ نامه صادره فقط برای کاربران دبیرخانه مجاز است.
-        if (!await HasDabirkhaneAsync())
-            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه مجاز است." });
+        var accessTimer = Stopwatch.StartNew();
+        // چه کسانی می‌توانند چاپ بگیرند؟
+        //   • دبیرخانهٔ نامهٔ صادره و مدیر (بدون قید)
+        //   • ایجادکنندهٔ نامه، امضاکنندگان و هر کاربری که نامه به او ارجاع شده (دریافت‌کننده)
+        // برای گروه دوم، داشتن مجوز «خواندن» الزامی نیست تا کاربری که نامه را ساخته یا
+        // دریافت کرده ولی مجوز کارتابل ندارد هم بتواند نسخهٔ چاپی بگیرد.
+        var isAdmin = await IsAdminAsync();
+        // HasDabirkhaneAsync also checks Admin. We already evaluated that permission above,
+        // so avoid repeating the two RBAC database checks for the same request.
+        var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane");
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
+        {
+            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه، مدیر، ایجادکننده و دریافت‌کنندگان نامه مجاز است." });
+        }
 
         if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
-        // چاپ نامه صادره فقط زمانی مجاز است که همه امضاکنندگان، امضای خود را ثبت کرده باشند
-        // و تصویر امضای آن‌ها نیز برای درج در سربرگ موجود باشد.
-        var signers = await Db.OutgoingLetterSigners.AsNoTracking()
-            .Include(x => x.User)
-            .Where(x => x.SourceId == id && !x.IsDelete)
-            .OrderBy(x => x.Order).ThenBy(x => x.Id)
-            .ToListAsync();
-        var missingSignature = signers
-            .Where(x => !x.IsSigned || string.IsNullOrWhiteSpace(x.User?.SignaturePath)
-                || _store.ReadBytes(x.User.SignaturePath) is not { Length: > 0 })
-            .Select(x =>
-            {
-                var name = x.User == null
-                    ? $"کاربر {x.UserId}"
-                    : ($"{x.User.FirstName} {x.User.LastName}").Trim();
-                return string.IsNullOrWhiteSpace(name) ? $"کاربر {x.UserId}" : name;
-            })
-            .ToList();
-        if (missingSignature.Count > 0)
-            return BadRequest(new
-            {
-                message = $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignature)}"
-            });
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-access-checks StageMs={StageMs}",
+            id, accessTimer.ElapsedMilliseconds);
 
         byte[]? pdf;
+        var generationTimer = Stopwatch.StartNew();
         try
         {
-            pdf = await _print.GeneratePdfAsync(id, size, withCopy);
+            // دبیرخانه و مدیر: چاپ فقط با امضای کامل همهٔ امضاکنندگان.
+            // ایجادکننده/دریافت‌کننده (کاربران غیر دبیرخانه): چاپ ممکن است و جای امضا با نام و سِمَت پر می‌شود.
+            pdf = await _print.GeneratePdfAsync(id, size, withCopy, withMargin, withLetterhead,
+                requireSignatures: hasDabirkhane || isAdmin);
         }
         catch (RequiredCompanyLetterheadPrintException ex)
         {
             return StatusCode(500, new { message = ex.Message });
         }
+        catch (OutgoingSignaturePrintException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
-            // خطای موتور چاپ (فونت/PDFsharp/QuestPDF/دیتابیس) قبلاً 500 خالی می‌داد و پنجرهٔ
-            // چاپ فقط «خطا» نشان می‌داد؛ اکنون علت واقعی هم لاگ و هم به کاربر می‌رسد.
+            // هر خطای دیگری از موتور چاپ (فونت، PDFsharp، QuestPDF، قطع اتصال دیتابیس) قبلاً
+            // به‌صورت 500 خالی به مرورگر می‌رفت و پنجرهٔ چاپ فقط «خطا» نشان می‌داد. اکنون
+            // علت واقعی هم در لاگ و هم در پیام کاربر می‌آید.
             _logger.LogError(ex,
-                "ساخت PDF نامه صادره ناموفق بود. LetterId={LetterId}, Size={Size}, WithCopy={WithCopy}",
-                id, size, withCopy);
-            return StatusCode(500, new { message = $"ساخت PDF نامه ناموفق بود ({ex.GetType().Name}): {ex.Message}" });
+                "ساخت PDF نامه صادره ناموفق بود. LetterId={LetterId}, Size={Size}, WithCopy={WithCopy}, WithMargin={WithMargin}, WithLetterhead={WithLetterhead}",
+                id, size, withCopy, withMargin, withLetterhead);
+            return StatusCode(500, new
+            {
+                message = $"ساخت PDF نامه ناموفق بود ({ex.GetType().Name}): {ex.Message}"
+            });
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-pdf-generation StageMs={StageMs}",
+                id, generationTimer.ElapsedMilliseconds);
         }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
-        var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
-        var number = letter?.SadereNumber ?? letter?.LetterNumber ?? id.ToString();
+        // Preserve the established human-readable download filename, while selecting only
+        // the two small number fields rather than materializing the letter again.
+        var filenameTimer = Stopwatch.StartNew();
+        var number = await Db.OutgoingLetters.AsNoTracking()
+            .Where(l => l.Id == id)
+            .Select(l => l.SadereNumber ?? l.LetterNumber)
+            .FirstOrDefaultAsync();
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=db-filename StageMs={StageMs}",
+            id, filenameTimer.ElapsedMilliseconds);
+        number ??= id.ToString();
         var version = withCopy ? "با-رونوشت" : "بدون-رونوشت";
         var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}-{version}.pdf";
         return File(pdf, "application/pdf", fileName);
