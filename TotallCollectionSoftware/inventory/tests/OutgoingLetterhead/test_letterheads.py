@@ -54,7 +54,9 @@ class LetterheadAssetsTests(unittest.TestCase):
         # PreferTemplateLetterhead (یا خالی‌کردن LetterheadFileName) اولویت می‌گیرد.
         source = SERVICE.read_text(encoding="utf-8")
         self.assertIn(": registeredPath ?? templateLetterheadPath;", source)
-        self.assertIn("var preferTemplate = PreferTemplateLetterhead;", source)
+        # شرکت‌های فهرست‌شده (فعلاً ۱۰۰۳) طرح قالب را می‌گیرند، بقیه همان فایل ثبت‌شده را.
+        self.assertIn("var preferTemplate = PreferTemplateLetterhead", source)
+        self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", source)
 
     def test_active_service_honors_the_configured_template_root(self):
         source = SERVICE.read_text()
@@ -202,9 +204,10 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("HeaderHeight(bool isA5) => isA5 ? 150f : 160f", layout)
         self.assertIn("ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f", layout)
         self.assertIn("SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f", layout)
-        # رزرو پابرگ به بالای گرافیک پابرگ (≈۷۲۶pt در A4 و ≈۵۱۳pt در A5) منتقل شد؛
-        # با ۹۰/۶۸ متن ۲۶pt روی پابرگ می‌رفت.
-        self.assertIn("FooterReserve(bool isA5) => isA5 ? 82f : 116f", layout)
+        # رزرو پابرگِ مسیر قدیمی دست‌نخورده مانده (فقط ۱۰۰۳ مسیر تازه را می‌گیرد)؛
+        # مسیر «از دل طرح» رزرو بزرگ‌تر خودش را دارد تا متن روی پابرگ نرود.
+        self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 90f", layout)
+        self.assertIn("DesignFooterReserve(bool isA5) => isA5 ? 82f : 116f", layout)
         self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f", layout)
         homepa_branch = source.split("else if (isHomepaLetterhead)", 1)[1].split("else if (hasLetterhead)", 1)[0]
         self.assertNotIn("center: true", homepa_branch)
@@ -604,12 +607,12 @@ class LetterheadSourceResolutionTests(unittest.TestCase):
                 service = self.service_text(tree)
                 self.assertIn("PreferTemplateLetterhead", service)
                 self.assertIn('"Reporting:OutgoingLetters:PreferTemplateLetterhead"', service)
-                self.assertIn("var preferTemplate = PreferTemplateLetterhead;", service)
+                self.assertIn("var preferTemplate = PreferTemplateLetterhead", service)
                 self.assertIn("preferTemplate && templateLetterheadPath != null", service)
                 settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
-                # پیش‌فرض فعلی «طرح قالب بر فایل ثبت‌شده» است؛ وگرنه ویرایش‌های
-                # Report/outgoingletter هرگز به چاپ نمی‌رسند.
-                self.assertIn('"PreferTemplateLetterhead": true', settings)
+                # طرح قالب برای شرکت ۱۰۰۳ جداگانه اولویت دارد (کلید عمومی خاموش است).
+                self.assertIn('"TemplateLetterheadCompanyIds": "1003"', settings)
+                self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", service)
 
     def test_shadowing_of_the_design_is_logged(self):
         for tree in self.TREES:
@@ -839,8 +842,11 @@ class DesignDrivenLayoutTests(unittest.TestCase):
             with self.subTest(tree=tree.parts[-3]):
                 renderer = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
                             / "RichLetterPdfRenderer.cs").read_text(encoding="utf-8")
-                # RLM پیش و پس از هر پاراگراف/آیتم فهرست/سلول جدول
-                self.assertGreaterEqual(renderer.count('text.Span("\\u200F");'), 6)
+                # هر تکهٔ متنی با RLM محصور می‌شود؛ فقط وقتی فراخوان بخواهد (مسیر ۱۰۰۳)
+                self.assertIn("bool forceRtlParagraph = false", renderer)
+                self.assertIn("if (forceRtlParagraph) MarkRightToLeft(root);", renderer)
+                self.assertIn('node.Text = "\\u200F" + node.Text.Trim() + "\\u200F";', renderer)
+                self.assertIn("forceRtlParagraph: true", self.service_text(tree))
                 service = self.service_text(tree)
                 self.assertIn('$"\\u200F{value}\\u200F"', service)
                 self.assertIn('$"\\u200F{card.Name}\\u200F"', service)
@@ -850,19 +856,25 @@ class DesignDrivenLayoutTests(unittest.TestCase):
         for tree in self.TREES:
             with self.subTest(tree=tree.parts[-3]):
                 service = self.service_text(tree)
-                self.assertIn("WithDocumentInfo(", service)
+                self.assertIn("WithDocumentInfoIfDesignDriven(", service)
                 self.assertIn("document.Info.Subject = PlainTextOf(", service)
                 self.assertIn("document.Info.Keywords =", service)
+                # فقط مسیر ۱۰۰۳ متادیتا می‌گیرد؛ بقیهٔ شرکت‌ها دقیقاً مثل قبل
+                self.assertIn("design is { HasFullLayout: true } ? WithDocumentInfo(pdf, letter) : pdf", service)
 
-    def test_design_setting_defaults_to_company_1003_and_3(self):
+    def test_design_layout_defaults_to_company_1003_only(self):
+        """درخواست کارفرما: اصلاح‌های چیدمان فقط برای ۱۰۰۳ باشد."""
         for tree in self.TREES:
             with self.subTest(tree=tree.parts[-3]):
                 service = self.service_text(tree)
                 self.assertIn('"Reporting:OutgoingLetters:DesignDrivenCompanyIds"', service)
-                for company in ("1003", "3"):
-                    self.assertIn(company, service)
+                self.assertIn("DefaultDesignDrivenCompanyId = 1003", service)
+                self.assertIn("DefaultDesignDrivenCompanyIds = { DefaultDesignDrivenCompanyId }", service)
+                # شرکت ۳ نباید در مسیر جدید باشد (چاپش مثل قبل می‌ماند)
+                self.assertNotIn("DefaultDesignDrivenCompanyIds = { 3", service)
                 settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
-                self.assertIn('"DesignDrivenCompanyIds": "3,1003"', settings)
+                self.assertIn('"DesignDrivenCompanyIds": "1003"', settings)
+                self.assertNotIn('"DesignDrivenCompanyIds": "3,1003"', settings)
 
     def test_diagnostics_say_whether_the_design_was_read(self):
         for tree in self.TREES:

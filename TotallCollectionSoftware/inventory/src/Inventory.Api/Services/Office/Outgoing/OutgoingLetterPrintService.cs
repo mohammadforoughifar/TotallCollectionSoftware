@@ -137,6 +137,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // and its number/date/attachment values land off the printed labels.
     // Override without a rebuild: Reporting:OutgoingLetters:HomepaCompanyIds = "3,1003".
     private static readonly int[] DefaultHomepaCompanyIds = { 3, HomepaCompanyId };
+
+    // چیدمان چاپ «از دل فایل طرح» و اولویت «طرح قالب بر فایل ثبت‌شدهٔ شرکت» فعلاً فقط برای
+    // شرکت ۱۰۰۳ فعال است (درخواست کارفرما: اصلاح‌ها فقط برای همان شرکت). برای فعال‌کردن
+    // در شرکت دیگر، شناسه‌اش را در Reporting:OutgoingLetters:DesignDrivenCompanyIds /
+    // TemplateLetterheadCompanyIds اضافه کنید — بدون تغییر کد.
+    private const int DefaultDesignDrivenCompanyId = 1003;
+    private static readonly int[] DefaultDesignDrivenCompanyIds = { DefaultDesignDrivenCompanyId };
     private static readonly int[] DefaultAriaCompanyIds = { AriaCompanyId };
 
     private static bool _fontsRegistered;
@@ -151,6 +158,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly int[] _homepaCompanyIds;
     private readonly int[] _ariaCompanyIds;
     private readonly int[] _designDrivenCompanyIds;
+
+    // شرکت‌هایی که «طرح قالب» بر «فایل ثبت‌شدهٔ شرکت» اولویت دارد، حتی وقتی
+    // PreferTemplateLetterhead خاموش است. پیش‌فرض: فقط ۱۰۰۳ (درخواست کارفرما).
+    private readonly int[] _templateLetterheadCompanyIds;
 
     // رنگ مقدارهای شماره/تاریخ/پیوست. طرح آن‌ها را روشن (سفید) روی نوار آبی گذاشته بود و
     // روی چاپگر سیاه‌وسفید تقریباً محو می‌شدند؛ پیش‌فرض تیره و خواناست. برای برگشتن به
@@ -175,7 +186,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         _homepaCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:HomepaCompanyIds", DefaultHomepaCompanyIds);
         _ariaCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:AriaCompanyIds", DefaultAriaCompanyIds);
         // شرکت‌هایی که چیدمان چاپشان «از دل فایل طرح» خوانده می‌شود (پیش‌فرض: همان طرح هومپا).
-        _designDrivenCompanyIds = CompanyIdsFor("Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultHomepaCompanyIds);
+        _designDrivenCompanyIds = CompanyIdsFor(
+            "Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultDesignDrivenCompanyIds);
+        _templateLetterheadCompanyIds = CompanyIdsFor(
+            "Reporting:OutgoingLetters:TemplateLetterheadCompanyIds", DefaultDesignDrivenCompanyIds);
 
         var metaColor = configuration?["Reporting:OutgoingLetters:MetaValueColor"];
         _designMetaColor = string.Equals(metaColor?.Trim(), "design", StringComparison.OrdinalIgnoreCase)
@@ -546,7 +560,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
 
         var registeredPath = company != null ? ResolveRegisteredLetterheadFile(company) : null;
-        var preferTemplate = PreferTemplateLetterhead;
+        // همان قاعدهٔ خودِ چاپ: طرح قالب یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (۱۰۰۳).
+        var preferTemplate = PreferTemplateLetterhead
+            || (effectiveCompanyId is int preferCompany
+                && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
 
         string letterheadSource;
         if (preferTemplate && templatePath != null) letterheadSource = "Template";
@@ -1022,7 +1039,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
         // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
         // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
-        var preferTemplate = PreferTemplateLetterhead;
+        // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳).
+        var preferTemplate = PreferTemplateLetterhead
+            || (selectedCompanyId is int preferCompany && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
         var letterheadPath = preferTemplate && templateLetterheadPath != null
             ? templateLetterheadPath
             : registeredPath ?? templateLetterheadPath;
@@ -1177,7 +1196,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             if (withLetterhead)
                 _logger.LogWarning("سربرگ نامه پیدا نشد؛ PDF بدون سربرگ ساخته شد. LetterId={LetterId}", letterId);
             MarkStage("complete");
-            return WithDocumentInfo(contentPdf, letter);
+            return WithDocumentInfoIfDesignDriven(contentPdf, letter, designLayout);
         }
 
         try
@@ -1192,7 +1211,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 MarkStage("pdfsharp-letterhead-overlay");
             }
             MarkStage("complete");
-            return WithDocumentInfo(overlaidPdf, letter);
+            return WithDocumentInfoIfDesignDriven(overlaidPdf, letter, designLayout);
         }
         catch (Exception ex)
         {
@@ -1207,7 +1226,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     var retriedPdf = OverlayOnLetterhead(contentPdf, templateLetterheadPath, letterId);
                     MarkStage("pdfsharp-template-fallback-overlay");
                     MarkStage("complete");
-                    return WithDocumentInfo(retriedPdf, letter);
+                    return WithDocumentInfoIfDesignDriven(retriedPdf, letter, designLayout);
                 }
                 catch (Exception retryEx)
                 {
@@ -1227,7 +1246,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     $"اعمال سربرگ شرکت «{companyName}» ناموفق بود؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. جزئیات: {ex.Message}", ex);
             }
             MarkStage("complete-overlay-failed");
-            return WithDocumentInfo(contentPdf, letter);
+            return WithDocumentInfoIfDesignDriven(contentPdf, letter, designLayout);
         }
     }
 
@@ -1238,6 +1257,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// فهرست‌بندی و آرشیو را سالم نگه می‌دارد. هر خطایی اینجا نادیده گرفته می‌شود چون
     /// چاپ هرگز نباید به‌خاطر متادیتا متوقف شود.
     /// </summary>
+    private static byte[] WithDocumentInfoIfDesignDriven(
+        byte[] pdf, OutgoingLetter letter, OutgoingLetterDesignLayout? design)
+        // فقط برای شرکت‌هایی که چاپشان از طرح خوانده می‌شود (فعلاً ۱۰۰۳)؛ بقیهٔ شرکت‌ها
+        // دقیقاً مثل قبل چاپ می‌شوند.
+        => design is { HasFullLayout: true } ? WithDocumentInfo(pdf, letter) : pdf;
+
     private static byte[] WithDocumentInfo(byte[] pdf, OutgoingLetter letter)
     {
         if (pdf.Length == 0) return pdf;
@@ -2021,7 +2046,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var bodyFontSize = body.FontSize > 0 ? body.FontSize : (isA5 ? 9f : 11f);
         var bodyLeft = Math.Max(0f, body.Left);
         var bodyRight = Math.Max(bodyLeft + 1f, body.Left + body.Width);
-        var footerReserve = HomepaLetterheadLayout.FooterReserve(isA5);
+        var footerReserve = HomepaLetterheadLayout.DesignFooterReserve(isA5);
 
         // سربرگ تا پایین قوس آبی کشیده می‌شود و متن از پایین همان‌جا شروع می‌شود؛ مختصات
         // قدیمی طرح (y=174) روی قوس آبی می‌افتاد و کپشن‌ها را ناخوانا می‌کرد.
@@ -2135,7 +2160,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             col.Item().PaddingTop(bodyGap)
                                 .Column(inner =>
                                 {
-                                    RichLetterPdfRenderer.AddTo(inner, letter.Text, bodyFontSize, bodyLineHeight);
+                                    RichLetterPdfRenderer.AddTo(inner, letter.Text, bodyFontSize, bodyLineHeight, forceRtlParagraph: true);
                                 });
                         }
 

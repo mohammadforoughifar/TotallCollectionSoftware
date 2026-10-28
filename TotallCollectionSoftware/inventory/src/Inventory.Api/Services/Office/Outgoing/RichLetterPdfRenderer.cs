@@ -13,7 +13,7 @@ internal static class RichLetterPdfRenderer
     private sealed class Node
     {
         public string Tag { get; init; } = "#root";
-        public string Text { get; init; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
         public Dictionary<string, string> Attributes { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<Node> Children { get; } = new();
     }
@@ -26,9 +26,12 @@ internal static class RichLetterPdfRenderer
         { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
 
     internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
-        Action<ColumnDescriptor>? keepWithTrailingText = null)
+        Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false)
     {
         var root = Parse(RichLetterHtml.Sanitize(html));
+        // برای چیدمان «از دل طرح» (شرکت ۱۰۰۳): هر تکهٔ متنی با RLM محصور می‌شود تا جهت پایهٔ
+        // پاراگراف قطعاً راست‌به‌چپ باشد و ویرگول/نقطهٔ پایانی به ابتدای خط پرت نشود.
+        if (forceRtlParagraph) MarkRightToLeft(root);
         if (keepWithTrailingText != null)
         {
             var lastIndex = root.Children.FindLastIndex(node => node.Tag != "#text" || !string.IsNullOrWhiteSpace(node.Text));
@@ -72,6 +75,23 @@ internal static class RichLetterPdfRenderer
 
         RenderChildren(column, root.Children, defaultFontSize, lineHeight);
         return false;
+    }
+
+    /// <summary>
+    /// هر تکهٔ متنی را با RLM (U+200F) می‌پوشاند: کاراکتر «قویِ راست‌به‌چپ» در ابتدا، جهت پایهٔ
+    /// پاراگراف را قطعی می‌کند و نسخهٔ پایانی، علائم نگارشی خنثی را داخل همان اجر (run) RTL
+    /// نگه می‌دارد؛ نتیجه: «،با سلام و احترام» و «.نمایند» دیگر جابه‌جا نمی‌شوند.
+    /// </summary>
+    private static void MarkRightToLeft(Node node)
+    {
+        if (node.Tag == "#text")
+        {
+            if (!string.IsNullOrWhiteSpace(node.Text))
+                node.Text = "\u200F" + node.Text.Trim() + "\u200F";
+            return;
+        }
+
+        foreach (var child in node.Children) MarkRightToLeft(child);
     }
 
     private static int TextLength(Node node) => node.Tag == "#text"
@@ -216,12 +236,7 @@ internal static class RichLetterPdfRenderer
                 case "justify": text.Justify(); break;
                 default: text.AlignRight(); break;
             }
-            // RLM در ابتدا/انتهای هر پاراگراف: جهت پایه را قطعاً راست‌به‌چپ می‌کند. بدون آن،
-            // ویرگول/نقطهٔ پایانی (که کاراکتر «خنثی» است) گاهی به ابتدای خط پرت می‌شد و
-            // «،با سلام» یا «.نمایند» چاپ می‌شد.
-            text.Span("\u200F");
             foreach (var node in nodes) AppendInline(text, node, new Formatting { Bold = bold }, fontSize);
-            text.Span("\u200F");
         });
     }
 
@@ -248,11 +263,9 @@ internal static class RichLetterPdfRenderer
                 .LineHeight(lineHeight)
                 .DirectionFromRightToLeft());
             text.AlignRight();
-            text.Span("\u200F");
             text.Span(marker).Bold();
             foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
                 AppendInline(text, child, new Formatting(), fontSize);
-            text.Span("\u200F");
         });
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
@@ -280,9 +293,7 @@ internal static class RichLetterPdfRenderer
                                 .LineHeight(lineHeight)
                                 .DirectionFromRightToLeft());
                             text.AlignRight();
-                            text.Span("\u200F");
                             AppendInline(text, cell, new Formatting { Bold = cell.Tag == "th" }, fontSize);
-                            text.Span("\u200F");
                         });
                 }
             }
