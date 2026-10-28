@@ -923,18 +923,18 @@
             // بدنهٔ ایمیل قبل از ریختن در ادیتور نامه پاک‌سازی و «خوانا» می‌شود:
             // تگ <style> ایمیل‌های تبلیغاتی به کل صفحه اعمال می‌شد و کادر فرم را سیاه
             // می‌کرد؛ رنگ متن سفید هم روی کاغذ سفید نامه ناپیدا بود.
-            var body = RichLetterHtml.Sanitize(openMsg.Body);
+            // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده + تصاویرِ داخل متن +
+            // تصاویرِ پیوستی. آدرسِ تصاویر در بدنهٔ ایمیل نسبی است و در متن نامه کار
+            // نمی‌کرد (میزبانِ متفاوت + نیاز به توکن)، و ایمیل‌های «عکس‌محور» هیچ متنی
+            // نداشتند؛ هر دو حالت این‌جا حل می‌شود (تصویر به‌صورت data URI در متن).
+            var letterBody = await EmailLetterBodyBuilder.BuildAsync(openMsg, EmailSvc);
+            var images = letterBody.InlineImages + letterBody.AttachedImages;
+            if (images > 0)
+                Toast.Success($"{images.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+            if (letterBody.Skipped > 0)
+                Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
-            // تصاویرِ درونِ متنِ ایمیل با آدرسِ نسبیِ پیوست به بدنه ارجاع داده شده‌اند؛
-            // در متن نامه آن آدرس کار نمی‌کند (میزبانِ متفاوت + نیاز به توکن) و تصویر
-            // دیده نمی‌شد. این‌جا بایت‌های تصویر داخل خودِ متن جاسازی می‌شود.
-            var embedded = await EmailInlineImageEmbedder.EmbedAsync(body, openMsg, EmailSvc);
-            if (embedded.Embedded > 0)
-                Toast.Success($"{embedded.Embedded.FaDigits()} تصویر درون متن ایمیل به متن نامه منتقل شد.");
-            if (embedded.Skipped > 0)
-                Toast.Error($"{embedded.Skipped.FaDigits()} تصویر درون متن ایمیل منتقل نشد (حجم یا قالب پشتیبانی‌نشده).");
-
-            letterCompose?.Open(title, header + embedded.Html, null, files);
+            letterCompose?.Open(title, header + letterBody.Html, null, files);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }

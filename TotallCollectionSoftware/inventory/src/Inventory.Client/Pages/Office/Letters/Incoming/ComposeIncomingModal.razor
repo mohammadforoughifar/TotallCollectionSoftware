@@ -323,24 +323,25 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
-        // بدنهٔ ایمیل پاک‌سازی و «خوانا» می‌شود (حذف <style> و پس‌زمینهٔ تیره،
-        // تبدیل متن سفید به تیره) تا کادر فرم سیاه نشود و متن ناپیدا نماند.
-        var safeBody = RichLetterHtml.Sanitize(email.Body);
+        // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده و «خوانا» (حذف <style>
+        // و پس‌زمینهٔ تیره، تبدیل متن سفید به تیره) + تصاویرِ داخل متن + تصاویرِ پیوستی.
+        // تصاویر به‌صورت data URI داخل خودِ متن جاسازی می‌شوند، چون آدرسِ نسبیِ پیوستِ
+        // ایمیل در متن نامه به میزبانِ برنامه می‌خورد و بدون توکن هم ۴۰۱ می‌گیرد.
+        var letterBody = await EmailLetterBodyBuilder.BuildAsync(email, EmailSvc);
 
-        // تصویرِ درونِ متنِ ایمیل در بدنه با آدرسِ نسبیِ پیوست ارجاع داده شده است؛
-        // در متن نامه آن آدرس به میزبانِ برنامه می‌خورد (نه سرور API) و بدون توکن هم
-        // ۴۰۱ می‌گیرد، پس تصویر در شرح نامه دیده نمی‌شد. این‌جا بایت‌های تصویر داخل
-        // خودِ متن جاسازی می‌شود تا نامه خودکفا بماند (نمایش، چاپ و ذخیرهٔ بعدی).
-        var embedded = await EmailInlineImageEmbedder.EmbedAsync(safeBody, email, EmailSvc);
-
-        description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
-                    + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
+        description = "<p><b>برگرفته از ایمیل دریافتی</b><br/>"
+                    + "از: " + System.Net.WebUtility.HtmlEncode(email.FromOrTo)
+                    + "<br/>موضوع: " + System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(email.Subject) ? "(بدون موضوع)" : email.Subject)
+                    + "<br/>حساب: " + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
                     + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
                     + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
-                    + embedded.Html + "</blockquote>";
+                    + letterBody.Html + "</blockquote>";
 
-        if (embedded.Skipped > 0)
-            Toast.Error($"{embedded.Skipped.FaDigits()} تصویر درون متن ایمیل منتقل نشد (حجم یا قالب پشتیبانی‌نشده).");
+        var transferredImages = letterBody.InlineImages + letterBody.AttachedImages;
+        if (transferredImages > 0)
+            Toast.Success($"{transferredImages.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+        if (letterBody.Skipped > 0)
+            Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
         // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
         // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
