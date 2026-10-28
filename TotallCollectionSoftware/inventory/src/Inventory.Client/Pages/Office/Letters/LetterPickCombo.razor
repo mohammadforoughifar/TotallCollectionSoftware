@@ -20,7 +20,8 @@
     }
 
     <div class="combo @(open ? "open" : "")">
-        <button type="button" class="combo-btn" @onclick="Toggle" @onclick:stopPropagation="true">
+        <button type="button" class="combo-btn" @onclick="Toggle" @onclick:stopPropagation="true"
+                @onkeydown="OnKeyDown" aria-haspopup="listbox" aria-expanded="@(open ? "true" : "false")">
             <i class="bi @Icon"></i>
             <span>@(mode == "user" ? "انتخاب کاربران" : "انتخاب گروه‌ها")</span>
             @if (Count > 0) { <span class="cnt">@Count.FaDigits()</span> }
@@ -28,9 +29,14 @@
         </button>
         @if (open)
         {
+            @* پوشش نامرئی تمام‌صفحه: هر کلیک بیرون از پنل (هر جای صفحه، حتی روی خودِ شیت
+               ارجاع) پنل را می‌بندد. پیش‌تر بستن فقط با کلیک روی خودِ دکمهٔ کمبو ممکن بود
+               و در شیت ارجاعِ نامهٔ وارده، کلیک بیرون هیچ کاری نمی‌کرد. *@
+            <div class="cpcombo-overlay" @onclick="ClosePanel" @onclick:stopPropagation="true"></div>
             <div class="cpanel" @onclick:stopPropagation="true">
                 <div class="cpanel-tools">
-                    <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput" />
+                    <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput"
+                           @onkeydown="OnKeyDown" />
                     @if (AllowSelectAll && mode == "user" && FilteredUsers.Count > 0)
                     {
                         <button type="button" class="select-all" @onclick="SelectAllUsers">
@@ -162,6 +168,19 @@
     }
 
     public void Close() { if (open) { open = false; StateHasChanged(); } }
+
+    /// <summary>بستن پنل با کلیک بیرون از آن (پوشش نامرئی).</summary>
+    private void ClosePanel() => Close();
+
+    /// <summary>بستن پنل با کلید Escape — هم روی دکمهٔ کمبو، هم روی کادر جستجو.</summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            // جلوگیری از بسته‌شدن ناخواستهٔ خودِ شیت ارجاع با همان Escape
+            if (open) Close();
+        }
+    }
 
     private void SetMode(string m)
     {
