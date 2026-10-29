@@ -2024,9 +2024,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     /// <summary>
     /// محتوای نامهٔ صادره با همان ساختار چاپ «نامهٔ داخلی» روی سربرگ شرکت:
-    /// بلوک اطلاعات (عنوان/گیرنده/ایجادکننده/رونوشت) ← خط جداکنندهٔ نازک خاکستری ← متن ← امضا.
+    /// بلوک اطلاعات (گیرنده بدون برچسب ← «موضوع:» و عنوان ← رونوشت/عطف) ← متن ← امضا.
     /// فقط ابعاد صفحه، حاشیهٔ امن سربرگ و ناحیهٔ شماره/تاریخ/پیوست از فایل طرح شرکت خوانده
-    /// می‌شود؛ رنگ، فونت، فاصله‌ها و خط جداکننده از <see cref="LetterPrintTemplate"/> می‌آید
+    /// می‌شود؛ رنگ، فونت و فاصله‌ها از <see cref="LetterPrintTemplate"/> می‌آید
     /// تا با نامهٔ داخلی یکدست بماند.
     /// </summary>
     private byte[] BuildDesignContentPdf(
@@ -2102,10 +2102,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
+        // بلوک اطلاعات ۱۰۰۳ (درخواست کارفرما):
+        //   خط اول: گیرنده — بدون برچسب «گیرنده نامه:» و تمام‌عرض
+        //   خط دوم: «موضوع:» و روبه‌رویش عنوان نامه
+        //   سپس رونوشت / عطف به شماره، فقط اگر داده‌ای داشته باشند.
+        // برچسب «عنوان نامه:» دیگر چاپ نمی‌شود؛ نقشش را «موضوع:» گرفته است.
         var infoRows = new List<LetterPrintTemplate.InfoRow>
         {
-            new("عنوان نامه", title, BoldValue: true),
-            new("گیرنده نامه", receiverLine),
+            new(string.Empty, receiverLine, HideLabel: true),
+            new("موضوع", title, BoldValue: true),
             new("رونوشت", string.Join("، ", copyNames)),
             new("عطف به شماره", externalReference)
         };
@@ -2175,12 +2180,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,
                     attachment, sideMargin));
 
-                // ── بدنه: بلوک اطلاعات ← خط جداکننده ← متن ← امضا ──
+                // ── بدنه: بلوک اطلاعات ← فاصلهٔ خالی ← متن ← امضا ──
                 page.Content().Column(col =>
                 {
                     LetterPrintTemplate.InfoBlock(col, infoRows, infoFontSize, infoSpacing,
                         _designPrint.LabelGap);
-                    LetterPrintTemplate.Separator(col, isA5 ? 4f : 6f);
+                    // خط جداکنندهٔ خاکستری بین بلوک اطلاعات و متن، به‌درخواست
+                    // کارفرما برداشته شد؛ فقط همان فاصلهٔ بالا/پایینِ خط به‌صورت
+                    // فضای خالی می‌ماند تا متن به «موضوع» نچسبد.
+                    LetterPrintTemplate.Spacer(col, isA5 ? 10f : 12f);
 
                     var tailKeptWithText = false;
                     if (!string.IsNullOrWhiteSpace(letter.Text))
@@ -2210,10 +2218,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>
-    /// شماره/تاریخ/پیوست در یک جدول دوستونه (برچسب | مقدار): ردیف‌ها با ارتفاع یکسان،
-    /// مقدار راست‌چین و برچسب سمت راستش، همه با یک اندازه و وزن و رنگ تیرهٔ خوانا.
-    /// چون هر سه مقدار داخل یک جدول‌اند، هیچ‌کدام «یک ردیف بالاتر از برچسبش» نمی‌افتد
-    /// (ایراد نامهٔ داخلی) و چیزی با فاصله‌گذاری کاراکتری یا مختصات دستی چیده نمی‌شود.
+    /// شماره/تاریخ/پیوست: هر مقدار با `Top` خودش از فایل طرح (لایهٔ Foreground صفحه)،
+    /// همه با یک اندازه/وزن/رنگ سفید. چون ردیف‌ها پیوستهٔ یک جدول نیستند، فاصلهٔ عمودیِ
+    /// خودِ قالب حفظ می‌شود و هیچ‌کدام «یک ردیف بالاتر از برچسبش» نمی‌افتد؛ نه فاصله‌گذاری
+    /// کاراکتری و نه جدول.
     /// برچسب‌های شرکت ۱۰۰۳ روی خودِ تصویر سربرگ چاپ شده‌اند؛ در آن حالت ستون برچسب
     /// خالی می‌ماند و فقط مقدارها نوشته می‌شوند (DesignMetaLabels = "drawn" برای سربرگ
     /// بدون برچسب).

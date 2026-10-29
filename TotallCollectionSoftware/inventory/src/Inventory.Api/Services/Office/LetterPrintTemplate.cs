@@ -49,8 +49,15 @@ internal static class LetterPrintTemplate
 
     internal static float MmToPoints(float millimeters) => millimeters * 72f / 25.4f;
 
-    /// <summary>یک ردیف از بلوک اطلاعات نامه («برچسب» + «مقدار»).</summary>
-    internal sealed record InfoRow(string Label, string Value, bool BoldValue = false);
+    /// <summary>
+    /// یک ردیف از بلوک اطلاعات نامه («برچسب» + «مقدار»).
+    /// <paramref name="HideLabel"/> یعنی مقدار بدون برچسب چاپ شود (مثل ردیف بالای گیرنده).
+    /// </summary>
+    internal sealed record InfoRow(
+        string Label,
+        string Value,
+        bool BoldValue = false,
+        bool HideLabel = false);
 
     /// <summary>
     /// بلوک اطلاعات نامه (عنوان، گیرنده، ایجادکننده، رونوشت، موضوع) در دو ستون:
@@ -69,7 +76,12 @@ internal static class LetterPrintTemplate
 
         // عرض ستون برچسب از بلندترین برچسب تخمین زده می‌شود (QuestPDF عرض متن را از پیش
         // نمی‌دهد) و یک حاشیهٔ اطمینان می‌گیرد تا برچسب هرگز نشکند.
-        var labelWidth = visible.Max(row => row.Label.Length) * fontSize * 0.58f + fontSize;
+        // ردیف‌های بدون برچسب (مثل گیرنده) در عرض ستون برچسب شریک نیستند تا مقدارشان
+        // تمام عرض ستون متن را بگیرد.
+        var labelled = visible.Where(row => !row.HideLabel).ToList();
+        var labelWidth = labelled.Count == 0
+            ? 0f
+            : labelled.Max(row => row.Label.Length) * fontSize * 0.58f + fontSize;
 
         var first = true;
         foreach (var row in visible)
@@ -91,6 +103,9 @@ internal static class LetterPrintTemplate
                     var span = text.Span(row.Value);
                     if (bold) span.Bold();
                 });
+
+                // ردیف بدون برچسب: همین‌جا تمام می‌شود (گیرنده تمام‌عرض، بدون «گیرنده نامه:»).
+                if (row.HideLabel || labelWidth <= 0f) return;
 
                 // فاصلهٔ ثابت بین مقدار و برچسب (همان «یک فاصله» بعد از دونقطه).
                 line.ConstantItem(labelGap);
@@ -117,6 +132,14 @@ internal static class LetterPrintTemplate
             .PaddingVertical(spacing)
             .LineHorizontal(SeparatorThickness)
             .LineColor(SeparatorColor);
+
+    /// <summary>
+    /// فاصلهٔ خالی داخل ستون (بدون هیچ خطی). نامهٔ صادرهٔ ۱۰۰۳ به‌درخواست کارفرما خط جداکننده
+    /// ندارد؛ فقط همان فاصلهٔ بالا/پایینِ خط به‌صورت خالی نگه داشته می‌شود تا متن به بلوک
+    /// اطلاعات نچسبد.
+    /// </summary>
+    internal static void Spacer(ColumnDescriptor column, float height)
+        => column.Item().Height(Math.Max(0f, height));
 
     /// <summary>«صفحه ۲ از ۲» — فقط وقتی نامه از یک صفحه بیشتر است و روی هر صفحه.</summary>
     internal sealed class PageNumberFooter : IDynamicComponent

@@ -149,7 +149,14 @@ class PrintLayout:
         row = self.body_font * 1.55
         self.info_height = (self.info_rows * row
                             + (self.info_rows - 1) * max(self.paragraph_spacing, self.body_font * 0.45))
-        self.separator = 2 * (4 if size == "A5" else 6) + 0.7
+        # خط جداکنندهٔ خاکستری از چاپ ۱۰۰۳ برداشته شده؛ به‌جایش فقط فضای خالی
+        # (LetterPrintTemplate.Spacer) می‌ماند — عددش را از خودِ سرویس می‌خوانیم.
+        service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                   / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+        spacer = re.search(r"Spacer\(col, isA5 \? ([\d.]+)f : ([\d.]+)f\)", service)
+        if spacer is None:
+            raise AssertionError("Spacer(col, isA5 ? … : …) در سرویس چاپ پیدا نشد")
+        self.separator = float(spacer.group(1)) if size == "A5" else float(spacer.group(2))
         self.text_area = self.available - self.info_height - self.separator
 
         # بلوک امضا: فاصلهٔ بالای بلوک + تصویر امضا (سقف ۷۲/۵۲pt) + نام + سمت.

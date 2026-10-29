@@ -44,7 +44,7 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("LetterPrintTemplate.PersianDigits(", inner)
                 # نامهٔ صادره: بلوک اطلاعات و خط جداکننده از همان قالب.
                 self.assertIn("LetterPrintTemplate.InfoBlock(", outgoing)
-                self.assertIn("LetterPrintTemplate.Separator(col", outgoing)
+                self.assertIn("LetterPrintTemplate.Spacer(col", outgoing)
                 self.assertIn("LetterPrintTemplate.PageNumberFooter(", outgoing)
                 # نامهٔ داخلی و مسیر جدید نامهٔ صادره عدد/رنگ جداکننده را دوباره هارد‌کد
                 # نمی‌کنند (مسیر کلاسیک بقیهٔ شرکت‌ها دست‌نخورده می‌ماند و جداکنندهٔ خودش را دارد).
@@ -85,6 +85,33 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 # نامهٔ داخلی از این پس شمارهٔ صفحه چاپ نمی‌کند (رفتار قبلی حفظ می‌شود).
                 self.assertNotIn("page.Footer()", inner)
 
+    def test_outgoing_info_block_drops_the_title_and_receiver_labels(self):
+        """بلوک اطلاعات ۱۰۰۳: گیرنده بدون برچسب در بالا، بعد «موضوع:» و عنوان.
+
+        کارفرما خواست «عنوان نامه:» و «گیرنده نامه:» چاپ نشوند، گیرنده در خط اول و
+        بدون برچسب بیاید و زیرش «موضوع:» با عنوان نامه روبه‌رویش بنشیند.
+        """
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                outgoing = self.outgoing(tree)
+                template = self.template(tree)
+                design = outgoing.split("private byte[] BuildDesignContentPdf(", 1)[1]
+                design = design.split("private static float FitFontSize", 1)[0]
+                # هیچ‌کدام از این دو برچسب دیگر در چاپ ۱۰۰۳ نیست.
+                self.assertNotIn('new("عنوان نامه"', design)
+                self.assertNotIn('new("گیرنده نامه"', design)
+                # گیرنده: ردیف اول، بدون برچسب.
+                self.assertIn("new(string.Empty, receiverLine, HideLabel: true)", design)
+                # موضوع با عنوان نامه، پشت سر گیرنده.
+                self.assertIn('new("موضوع", title, BoldValue: true)', design)
+                receiver_at = design.index("new(string.Empty, receiverLine, HideLabel: true)")
+                subject_at = design.index('new("موضوع", title, BoldValue: true)')
+                self.assertLess(receiver_at, subject_at, "گیرنده باید بالای «موضوع» باشد")
+                # قالب مشترک باید ردیف بدون برچسب را پشتیبانی کند.
+                self.assertIn("bool HideLabel = false", template)
+                self.assertIn("if (row.HideLabel || labelWidth <= 0f) return;", template)
+                self.assertIn("var labelled = visible.Where(row => !row.HideLabel).ToList();", template)
+
     def test_info_block_is_a_two_column_grid_with_a_hanging_indent(self):
         """«گیرنده نامه: جناب آقای …» با فاصله، و خط دوم زیر مقدار (نه زیر برچسب)."""
         for tree in TREES:
@@ -101,14 +128,25 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn(".FontSize(fontSize)", template)
                 self.assertNotIn("baselineShift", template)
 
-    def test_separator_spans_the_text_column_only(self):
-        """خط جداکننده داخل ستون/حاشیهٔ متن رسم می‌شود، نه به عرض کل صفحه."""
+    def test_outgoing_has_no_separator_line_but_keeps_the_spacing(self):
+        """خط جداکنندهٔ خاکستری از چاپ نامهٔ صادره برداشته شد (درخواست کارفرما).
+
+        نامهٔ داخلی همان خط را از قالب مشترک می‌گیرد و دست‌نخورده است؛ در نامهٔ صادره
+        فقط فاصلهٔ خالی (`Spacer`) می‌ماند تا متن به «موضوع» نچسبد.
+        """
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
                 content = outgoing.split("page.Content().Column(col =>", 1)[1]
-                self.assertIn("LetterPrintTemplate.Separator(col", content,
-                              "خط جداکننده باید در همان ستون متن باشد")
+                content = content.split("PageNumberFooter", 1)[0]
+                self.assertNotIn("LetterPrintTemplate.Separator(col", content,
+                                 "خط جداکننده نباید در چاپ ۱۰۰۳ رسم شود")
+                self.assertNotIn("LineHorizontal(", content,
+                                 "خط جداکننده نباید دستی هم رسم شود")
+                self.assertIn("LetterPrintTemplate.Spacer(col, isA5 ? 10f : 12f)", content,
+                              "فاصلهٔ خالی جای خط جداکننده")
+                # نامهٔ داخلی خط جداکنندهٔ خودش را نگه می‌دارد.
+                self.assertIn("LetterPrintTemplate.Separator(c)", self.inner(tree))
 
     def test_page_number_is_persian_and_only_on_overflow(self):
         """«صفحه ۲ از ۲» فقط وقتی نامه از یک صفحه بیشتر شد، با ارقام فارسی."""
