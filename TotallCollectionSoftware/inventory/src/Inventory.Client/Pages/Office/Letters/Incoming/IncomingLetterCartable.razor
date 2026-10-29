@@ -243,8 +243,8 @@
                     <span class="t"><i class="bi bi-hourglass-split"></i> در حال بارگذاری نامه…</span>
                     <button class="icb" title="بستن" @onclick="CloseReader"><i class="bi bi-x-lg"></i></button>
                 </div>
-                <div style="padding:20px; display:flex; flex-direction:column; gap:12px">
-                    <div class="text-muted" style="font-size:13px">در حال دریافت متن و اطلاعات نامه…</div>
+                <LoadProgressBar Value="progress.Value" Text="در حال دریافت متن و اطلاعات نامه…" />
+                <div style="padding:14px 20px 20px; display:flex; flex-direction:column; gap:12px">
                     <div style="height:14px; border-radius:6px; background:#eef2f7"></div>
                     <div style="height:14px; border-radius:6px; background:#eef2f7; width:88%"></div>
                     <div style="height:14px; border-radius:6px; background:#eef2f7; width:72%"></div>
@@ -256,6 +256,11 @@
         @if (readerOpen && activeDetail != null)
         {
             <aside class="reader rd-full" style="overflow-y:auto">
+                @* نوار پیشرفت تا لحظهٔ رسیدن به ۱۰۰٪ بالای نامه می‌ماند و بعد محو می‌شود *@
+                @if (progress.IsActive)
+                {
+                    <LoadProgressBar Value="progress.Value" Text="نامه دریافت شد" Compact="true" />
+                }
                 <div class="rd-top">
                     <button class="icb rd-back" title="بازگشت به فهرست" @onclick="CloseReader"><i class="bi bi-arrow-right"></i></button>
                     <span class="t"><i class="bi bi-envelope-paper-fill" style="color:var(--p)"></i> @activeDetail.Title</span>
@@ -611,6 +616,9 @@
 
     // «جزئیات نامه در حال دریافت است» — برای نمایش اسکلت بارگذاری در ریدر.
     private bool detailLoading;
+
+    // نوار پیشرفت باز کردن نامه: درصد تخمینی تا لحظهٔ رسیدن پاسخ سرور.
+    private readonly LoadProgress progress;
     private IncomingLetterViewModal? viewModal;
     private IncomingErjaSheet? erjaSheet;
     private IncomingGardeshModal? gardeshModal;
@@ -635,6 +643,12 @@
     // فهرست نمایش‌داده‌شده همان نتیجهٔ سرور است؛ فیلتر دوبارهٔ سمت کلاینت حذف شد
     // (قبلاً بعد از فیلترِ سروری دوباره روی صفحهٔ جاری فیلتر می‌شد و ردیف‌ها «گم» می‌شدند).
 
+    public IncomingLetterCartable()
+    {
+        // InvokeAsync(StateHasChanged) از تیک تایمرِ نوار پیشرفت هم امن است.
+        progress = new LoadProgress(() => InvokeAsync(StateHasChanged));
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
@@ -649,6 +663,7 @@
             readerOpen = true;
             detailLoading = true;
             safeBody.Reset();
+            progress.Start();
             StateHasChanged();
             try
             {
@@ -656,8 +671,13 @@
                 await LoadWorkOrdersAsync(openId);
                 activeLetter = letters.FirstOrDefault(x => x.LetterId == openId);
             }
-            catch (Exception ex) { Toast.Error(ex.Message); }
-            finally { detailLoading = false; StateHasChanged(); }
+            catch (Exception ex) { progress.Reset(); Toast.Error(ex.Message); }
+            finally
+            {
+                detailLoading = false;
+                StateHasChanged();
+                if (activeDetail != null) await progress.FinishAsync();
+            }
         }
     }
 
@@ -828,6 +848,7 @@
         // رندر می‌شود. پیش‌تر تا پایان درخواست، صفحه بی‌واکنش به‌نظر می‌رسید.
         detailLoading = true;
         safeBody.Reset();
+        progress.Start();
         StateHasChanged();
         try
         {
@@ -836,12 +857,15 @@
         }
         catch (Exception ex)
         {
+            progress.Reset();
             Toast.Error(ex.Message);
         }
         finally
         {
             detailLoading = false;
             StateHasChanged();
+            // نوار تا ۱۰۰٪ می‌رود و بعد محو می‌شود (فقط اگر درخواست موفق بوده باشد).
+            if (activeDetail != null) await progress.FinishAsync();
         }
     }
 
@@ -912,6 +936,7 @@
         activeLetter = null;
         activeDetail = null;
         detailLoading = false;
+        progress.Reset();
         // کش متن پاک‌سازی‌شده آزاد شود؛ متن نامهٔ سنگین در حافظهٔ مرورگر نمی‌ماند.
         safeBody.Reset();
     }

@@ -24,7 +24,14 @@
         <div class="sheet-b">
             @if (loading)
             {
-                <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+                @* نوار پیشرفت + اسکلت: تا رسیدن جزئیات، کاربر می‌داند درخواست در جریان است *@
+                <LoadProgressBar Value="progress.Value" Text="در حال بارگذاری جزئیات نامه…" />
+                <div style="padding:14px 20px 24px; display:flex; flex-direction:column; gap:12px">
+                    <div style="height:16px; border-radius:6px; background:#eef2f7; width:55%"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7; width:86%"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7; width:70%"></div>
+                </div>
             }
             else if (letter == null)
             {
@@ -192,11 +199,21 @@
     // پاک‌سازی متن نامه یک‌بار در هر باز شدن انجام می‌شود (نه در هر رندر).
     private readonly SanitizedLetterBody safeBody = new();
 
+    // نوار پیشرفت بارگذاری جزئیات (درصد تخمینی تا رسیدن پاسخ سرور).
+    private readonly LoadProgress progress;
+
+    public IncomingLetterViewModal()
+    {
+        progress = new LoadProgress(() => InvokeAsync(StateHasChanged));
+    }
+
     public async Task Open(int letterId)
     {
         visible = true;
         loading = true;
         letter = null;
+        safeBody.Reset();
+        progress.Start();
 
         try
         {
@@ -204,16 +221,22 @@
         }
         catch (Exception ex)
         {
+            progress.Reset();
             Toast.Error(ex.Message);
         }
         finally
         {
             loading = false;
             StateHasChanged();
+            if (letter != null) await progress.FinishAsync();
         }
     }
 
-    private void Close() => visible = false;
+    private void Close()
+    {
+        visible = false;
+        progress.Reset();
+    }
 
     private string MahramanegiTitle(int m) => m switch
     {
