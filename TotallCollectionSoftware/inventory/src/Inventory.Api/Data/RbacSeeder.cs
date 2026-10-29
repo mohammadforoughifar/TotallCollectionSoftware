@@ -357,11 +357,14 @@ public static class RbacSeeder
                 var grantPermIds = sectionPermIds.Concat(mindFlowPermIds).Distinct().ToList();
                 if (rolesWithView.Count > 0 && grantPermIds.Count > 0)
                 {
-                    var existing = await db.RolePermissions
+                    // نام متغیر عمداً «existingGrants» است: در همین متد یک «existing» سطح‌متد
+                    // برای همگام‌سازی مجوزها وجود دارد و اعلان دوباره در بلوک تودرتو
+                    // خطای CS0136 می‌داد.
+                    var existingGrants = await db.RolePermissions
                         .Where(rp => rolesWithView.Contains(rp.RoleId) && grantPermIds.Contains(rp.PermissionId))
                         .Select(rp => new { rp.RoleId, rp.PermissionId })
                         .ToListAsync();
-                    var have = existing.Select(x => (x.RoleId, x.PermissionId)).ToHashSet();
+                    var have = existingGrants.Select(x => (x.RoleId, x.PermissionId)).ToHashSet();
 
                     var toGrant = new List<RolePermission>();
                     foreach (var roleId in rolesWithView)
