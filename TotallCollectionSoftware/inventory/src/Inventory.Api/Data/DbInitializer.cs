@@ -160,6 +160,9 @@ public static class DbInitializer
                 // پیوست‌ها (با ستون فایل) را اسکن می‌کرد و کند بود.
                 await AttachmentIndexSchemaV1.EnsureAsync(db);
 
+                // شرحِ بلند دستور کار (تصاویر inline نامه) — جدول جانبی
+                await WorkOrderDescriptionSchemaV1.EnsureAsync(db);
+
                 // رونوشت‌گیرندگان نامه صادره — این Schema قبلاً تعریف شده بود اما در
                 // راه‌اندازی فراخوانی نمی‌شد و ثبت نامه دارای رونوشت با 400 شکست می‌خورد.
                 await OutgoingCopyToSchemaV1.EnsureAsync(db);

@@ -131,4 +131,72 @@ public static class HtmlText
 
         return s.Trim();
     }
+
+    /// <summary>مقدارِ data URI داخل src — همان چیزی که هم متن را سنگین می‌کند و هم پاک‌سازی regex را فریب می‌دهد.</summary>
+    private static readonly Regex DataUriValue = new(
+        @"data:[A-Za-z0-9+/=;,:._\-]{20,}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// همان <see cref="ToDisplayHtml"/> ولی با «بودجهٔ حجم» — برای محتوایی که در فیلد
+    /// غنی دیگری (مثل شرح دستور کار) کپی می‌شود.
+    /// <para>
+    /// چرا: متن نامهٔ ساخته‌شده از ایمیل، تصاویر را به‌صورت data URI <b>داخل خود متن</b>
+    /// نگه می‌دارد (تنها راهی که تصویر بدون هدر Bearer هم نمایش داده شود). یک تصویر
+    /// معمولی می‌تواند چند صد کیلوبایت base64 شود؛ اگر بدون سقف کپی شوند، شرح دستور کار
+    /// چند مگابایتی می‌شود. اینجا تصاویر از بزرگ به کوچک حذف می‌شوند تا محتوا در بودجه
+    /// بماند و در انتها یک یادداشت فارسی اضافه می‌شود.
+    /// </para>
+    /// <para>
+    /// نکتهٔ مهم امنیتی/کیفی: پیش از پاک‌سازی، خودِ دادهٔ base64 موقتاً کنار گذاشته می‌شود؛
+    /// وگرنه قواعد «حذف هندلرهای رویداد» ممکن است توالی‌هایی مثل <c>on…=</c> را وسط
+    /// base64 ببینند و تصویر را خراب کنند.
+    /// </para>
+    /// </summary>
+    /// <param name="html">HTML مبدأ (متن نامه)</param>
+    /// <param name="maxChars">سقف طول خروجی (پیش‌فرض ۴۰۰٬۰۰۰ نویسه)</param>
+    public static string ToDisplayHtmlWithinBudget(string? html, int maxChars = 400_000)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+
+        // ۱) دادهٔ base64 را موقتاً با یک نشانهٔ کوتاه عوض کن
+        var stash = new List<string>();
+        var shielded = DataUriValue.Replace(html, m =>
+        {
+            stash.Add(m.Value);
+            return "\u0001" + (stash.Count - 1).ToString() + "\u0001";
+        });
+
+        // ۲) پاک‌سازی معمول روی متنِ سبک‌شده
+        var s = ToDisplayHtml(shielded);
+
+        // ۳) تصاویر را برگردان
+        for (var i = 0; i < stash.Count; i++)
+            s = s.Replace("\u0001" + i.ToString() + "\u0001", stash[i]);
+
+        if (s.Length <= maxChars) return s;
+
+        // ۴) اگر از بودجه بزرگ‌تر است، تصاویر را از بزرگ به کوچک حذف کن
+        var dropped = 0;
+        var dataImg = new Regex(@"<img\b[^>]*?src\s*=\s*[""']data:[^""']*[""'][^>]*>",
+                                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        while (s.Length > maxChars)
+        {
+            var matches = dataImg.Matches(s);
+            if (matches.Count == 0) break;
+            var largest = matches.Cast<Match>().OrderByDescending(m => m.Length).First();
+            s = s.Remove(largest.Index, largest.Length);
+            dropped++;
+        }
+
+        if (dropped > 0)
+            s += "<p style=\"color:#64748b;font-size:12px\">"
+               + $"({dropped} تصویر نامه به‌دلیل حجم زیاد در شرح درج نشد؛ تصاویر کامل در پیوست‌های نامه موجود است.)"
+               + "</p>";
+
+        // ۵) اگر باز هم بلندتر از سقف است (متن خیلی طولانی بدون تصویر) از انتها کوتاه کن
+        if (s.Length > maxChars + 400)
+            s = s[..maxChars] + "… <span class=\"fs-9 text-muted\">(متن نامه کوتاه شد)</span>";
+
+        return s;
+    }
 }

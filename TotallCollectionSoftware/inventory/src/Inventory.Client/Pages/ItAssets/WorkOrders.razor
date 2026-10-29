@@ -2012,6 +2012,10 @@ else
     .rte-toolbar button { border: 0; background: transparent; border-radius: 8px; width: 32px; height: 30px; color: #475569; cursor: pointer; }
     .rte-toolbar button:hover { background: #e2e8f0; color: #2563eb; }
     .rte-editor { border: 1px solid #e2e8f0; border-radius: 0 0 10px 10px; min-height: 110px; padding: .6rem .8rem; font-size: .9rem; background: #fff; }
+    /* تصاویر نامه که داخل شرح کپی می‌شوند نباید از عرض ادیتور بیرون بزنند */
+    .rte-editor img, .wo-block-body img { max-width: 100%; height: auto; }
+    /* جای‌نگهدارِ تصویر در «پیش‌نمایش کوتاه» شرح (فهرست‌ها) */
+    .wo-desc-img-note { color: #64748b; font-size: .78rem; }
     .ms-combo { position: relative; }
     .ms-combo-control { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; min-height: 42px; cursor: pointer; padding-left: 2rem; }
     .ms-combo-control.focus { border-color: #2563eb; }
@@ -4019,9 +4023,28 @@ else
         await OpenEditFromDetail();
     }
 
+    /// <summary>
+    /// خواندن متن کامل شرح از سرور (فقط وقتی سرور علامت HasFullDescription داده است).
+    /// بدون این، جزئیات فقط پیش‌نمایش کوتاه را نشان می‌داد و تصاویر نامه دیده نمی‌شدند.
+    /// </summary>
+    private async Task LoadFullDescription(WoItem w)
+    {
+        if (!w.HasFullDescription) return;
+        try
+        {
+            var r = await Http.GetFromJsonAsync<DescResult>($"/api/workorders/{w.Id}/description");
+            if (r is null) return;
+            w.Description = r.Description ?? w.Description;
+            if (detail?.Id == w.Id) { detail.Description = w.Description; StateHasChanged(); }
+        }
+        catch { /* نمایشِ پیش‌نمایش بهتر از خطا است */ }
+    }
+
     private async Task OpenEditFromDetail()
     {
         if (detail == null) return;
+        // ویرایش باید روی متن کامل انجام شود، وگرنه ذخیرهٔ فرم تصاویر نامه را پاک می‌کند.
+        if (detail.HasFullDescription) await LoadFullDescription(detail);
         editingId = detail.Id;
         _sourceModule = detail.SourceModule;
         _sourceId = detail.SourceId;
@@ -4107,7 +4130,9 @@ else
                         sbInner.Append(" — تاریخ: ").Append(letter.DateSabt.ToFaDate());
                     sbInner.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Text))
-                        sbInner.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtml(letter.Text));
+                        // نامهٔ داخلی هم اگر تصویر درون‌متن داشته باشد (مثلاً چسبانده‌شده)
+                        // حفظ می‌شود؛ بودجهٔ حجم مانع شرح‌های چندمگابایتی می‌شود.
+                        sbInner.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtmlWithinBudget(letter.Text));
 
                     await ShowNewFormAsync(letter.Title, sbInner.ToString());
 
@@ -4154,10 +4179,16 @@ else
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Description))
                     {
-                        // شرح نامهٔ وارده (و بدنهٔ ایمیلی که از آن ساخته شده) خودش HTML است؛
-                        // اگر encode خام شود، همهٔ تگ‌ها به شکل &lt;p&gt; روی صفحه می‌آیند.
-                        // اول به متن خوانا تبدیل، بعد به HTML امن برمی‌گردانیم.
-                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(letter.Description));
+                        // شرح نامهٔ وارده (و بدنهٔ ایمیلی که از آن ساخته شده) خودش HTML است.
+                        //
+                        // باگ گزارش‌شده: «تصویر نامه در شرح دستور کار قرار نمی‌گیرد». دلیلش
+                        // این بود که ToSafeHtml اول HTML را به «متن ساده» تبدیل می‌کند و
+                        // تگ <img> را کامل دور می‌ریزد؛ برای نامهٔ ساخته‌شده از ایمیل،
+                        // تصویر به‌صورت data URI داخل همان متن است و باید حفظ شود.
+                        // حالا با ToDisplayHtml قالب و تصاویر حفظ می‌شوند (تگ‌های خطرناک
+                        // حذف می‌شوند) و اگر حجم از بودجه بیشتر شد، بزرگ‌ترین تصاویر حذف
+                        // و یادداشت «تصاویر در پیوست‌های نامه» اضافه می‌شود.
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtmlWithinBudget(letter.Description));
                     }
 
                     await ShowNewFormAsync(letter.Title, sb.ToString());
@@ -4201,7 +4232,7 @@ else
                         sb.Append(" — شماره: ").Append(System.Net.WebUtility.HtmlEncode(letter.LetterNumber));
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(letter.Text))
-                        sb.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtml(letter.Text));
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtmlWithinBudget(letter.Text));
 
                     await ShowNewFormAsync(letter.Title, sb.ToString());
 
@@ -4242,7 +4273,9 @@ else
                         sb.Append($" (مشتری: {System.Net.WebUtility.HtmlEncode(doc.CustomerCode)})");
                     sb.Append("</p>");
                     if (!string.IsNullOrWhiteSpace(doc.Description))
-                        sb.Append(Inventory.Client.Extensions.HtmlText.ToSafeHtml(doc.Description));
+                        // مثل نامهٔ وارده/صادره: قالب و تصویر مدرک حفظ می‌شود (ToSafeHtml
+                        // همهٔ تگ‌ها از جمله <img> را دور می‌ریخت).
+                        sb.Append(Inventory.Client.Extensions.HtmlText.ToDisplayHtmlWithinBudget(doc.Description));
                     await ShowNewFormAsync(title, sb.ToString());
                 }
                 else await ShowNewFormAsync("", "");
@@ -4480,6 +4513,8 @@ else
     private async Task OpenDetail(WoItem w)
     {
         detail = w;
+        // شرح بلند (تصاویر نامه) در فهرست نمی‌آید تا فهرست سبک بماند؛ همین‌جا کامل خوانده می‌شود.
+        _ = LoadFullDescription(w).ContinueWith(_ => InvokeAsync(StateHasChanged));
         detailTab = "overview";
         chatMenuOpen = false;
         gardeshOpen = false;
@@ -4692,6 +4727,13 @@ else
         public int Page { get; set; }
         public int PageSize { get; set; }
     }
+    /// <summary>پاسخ اندپوینت «شرح کامل دستور کار».</summary>
+    public class DescResult
+    {
+        public string? Description { get; set; }
+        public bool Full { get; set; }
+    }
+
     public class WoItem
     {
         public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = "";
@@ -4715,5 +4757,11 @@ else
         public int? ProjectId { get; set; } public string? ProjectCode { get; set; } public string? ProjectName { get; set; }
         public int Weight { get; set; } = 1; public int OrderProgress { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
+        /// <summary>
+        /// شرح این دستور کار بلندتر از سقف ستون اصلی است (مثل دستور کارِ ساخته‌شده از
+        /// نامهٔ دارای تصویر) و متن کامل در جدول جانبی نگهداری می‌شود؛ جزئیات آن را
+        /// با یک درخواست جدا می‌خواند.
+        /// </summary>
+        public bool HasFullDescription { get; set; }
     }
 }

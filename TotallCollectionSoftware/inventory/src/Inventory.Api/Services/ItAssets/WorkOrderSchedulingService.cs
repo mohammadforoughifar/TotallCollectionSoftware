@@ -36,9 +36,14 @@ public sealed class WorkOrderSchedulingService(AppDbContext db)
         db.WorkOrders.AddRange(orders);
         await db.SaveChangesAsync();
         var pc = new PersianCalendar();
+        // نوبت‌های بعدی سری، فقط «پیش‌نمایش» شرح را به ارث می‌برند (ستون اصلی). متن کامل
+        // (تصاویر نامهٔ مبدأ) هم کپی می‌شود تا نوبت‌های بعدی هم تصویر داشته باشند.
+        var fullDescription = await WorkOrderDescriptionStore.GetAsync(db, first.Id);
         foreach (var order in orders)
         {
             order.Number = $"WO/{pc.GetYear(order.CreatedAt)}/{order.Id}";
+            if (fullDescription != null)
+                await WorkOrderDescriptionStore.SaveAsync(db, order.Id, fullDescription);
             foreach (var a in assignees)
                 db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = order.Id, UserId = a.UserId, Name = a.Name });
             foreach (var c in checklist)

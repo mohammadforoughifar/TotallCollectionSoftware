@@ -551,7 +551,9 @@ public class WorkOrdersController : ControllerBase
 
         var wo = new WorkOrder
         {
-            Title = dto.Title.Trim(), Description = dto.Description ?? "",
+            // شرحِ بلند (مثلاً دستور کارِ ساخته‌شده از نامهٔ دارای تصویر) در جدول جانبی
+            // ذخیره می‌شود و ستون اصلی فقط پیش‌نمایش کوتاه می‌گیرد.
+            Title = dto.Title.Trim(), Description = WorkOrderDescriptionStore.Preview(dto.Description),
             CompanyId = companyId.Value,
             OwnerUserId = MyUserId, OwnerName = await MyDisplayNameAsync(), DueAt = dto.DueAt,
             Priority = dto.Priority, Recurrence = dto.Recurrence, SourceModule = dto.SourceModule,
@@ -560,6 +562,8 @@ public class WorkOrdersController : ControllerBase
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
+        // متن کامل شرح (با تصاویر نامه) در جدول جانبی — شناسه پس از SaveChanges معلوم است.
+        await WorkOrderDescriptionStore.SaveAsync(_db, wo.Id, dto.Description);
         // The database identity prevents number reuse after a deletion and count-based races.
         wo.Number = $"WO/{new PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
         foreach (var u in users)
@@ -704,7 +708,9 @@ public class WorkOrdersController : ControllerBase
         }
 
         wo.Title = dto.Title.Trim();
-        wo.Description = dto.Description ?? "";
+        wo.Description = WorkOrderDescriptionStore.Preview(dto.Description);
+        // متن کامل (تصاویر نامه) هم به‌روزرسانی می‌شود؛ اگر شرح کوتاه شد، ردیف جانبی حذف می‌شود.
+        await WorkOrderDescriptionStore.SaveAsync(_db, wo.Id, dto.Description);
         wo.DueAt = dto.DueAt;
         wo.Priority = dto.Priority;
         wo.Recurrence = dto.Recurrence;
@@ -1028,6 +1034,10 @@ public class WorkOrdersController : ControllerBase
             .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(x => x.IsDone) }).ToListAsync();
         var cmCounts = await _db.WorkOrderComments.Where(c => ids.Contains(c.OrderId) && !c.IsDeleted)
             .GroupBy(c => c.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
+        // دستور کارهایی که شرحشان «بلند» است و متن کامل در جدول جانبی نگهداری می‌شود
+        // (مثل دستور کارِ ساخته‌شده از نامهٔ دارای تصویر). فهرست فقط همین علامت را
+        // می‌گیرد و متن کامل هنگام باز کردن جزئیات جداگانه خوانده می‌شود.
+        var longDescIds = await WorkOrderDescriptionStore.LongIdsAsync(_db, ids);
 
         // ارجاع زنجیره‌ای: شماره/عنوان والدها + خلاصهٔ زیر-دستورها
         var parentIds = orders.Where(w => w.ParentOrderId is > 0).Select(w => w.ParentOrderId!.Value).Distinct().ToList();
@@ -1061,6 +1071,7 @@ public class WorkOrdersController : ControllerBase
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
+            HasFullDescription = longDescIds.Contains(w.Id),
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
             w.SourceModule, w.SourceId, w.SourceRefId,
@@ -1280,6 +1291,26 @@ public class WorkOrdersController : ControllerBase
         if (!await HasAsync("View") && !await CanSeeOrderAsync(id)) return Forbid();
         var list = await BuildList(_db.WorkOrders.Where(w => w.Id == id && w.CompanyId == companyId.Value));
         return list.Count == 0 ? NotFound() : Ok(list[0]);
+    }
+
+    /// <summary>
+    /// متن کامل شرح دستور کار — برای شرح‌های بلند (دستور کارِ ساخته‌شده از نامهٔ دارای تصویر)
+    /// که ستون اصلی فقط پیش‌نمایش کوتاه دارد. فهرست‌ها این را نمی‌خوانند؛ فقط جزئیات.
+    /// </summary>
+    [HttpGet("{id:int}/description")]
+    public async Task<IActionResult> Description(int id)
+    {
+        if (!await HasAsync("View") && !await CanSeeOrderAsync(id)) return Forbid();
+        var full = await WorkOrderDescriptionStore.GetAsync(_db, id);
+        if (full is null)
+        {
+            // شرح کوتاه — همان ستونی که در فهرست آمده است
+            var wo = await _db.WorkOrders.AsNoTracking().Where(w => w.Id == id)
+                .Select(w => new { w.Description }).FirstOrDefaultAsync();
+            if (wo is null) return NotFound();
+            return Ok(new { description = wo.Description ?? "", full = false });
+        }
+        return Ok(new { description = full, full = true });
     }
 
     /// <summary>تقویم شمسی — دستورهای بازه زمانی (بند ۱۳).</summary>
@@ -2370,7 +2401,9 @@ public class WorkOrdersController : ControllerBase
 
         var tpl = existing ?? new WorkOrderTemplate { OwnerUserId = MyUserId, Name = name };
         tpl.Title = dto.Title.Trim();
-        tpl.Description = dto.Description ?? "";
+        // قالب هم سقف طول دارد؛ اگر شرح بلند (با تصویر نامه) از فرم آمده باشد،
+        // همان پیش‌نمایش کوتاه ذخیره می‌شود تا ثبت قالب با خطای طول نشکند.
+        tpl.Description = WorkOrderDescriptionStore.Preview(dto.Description);
         tpl.Priority = dto.Priority;
         tpl.Recurrence = dto.Recurrence;
         tpl.AssigneeUserIds = dto.AssigneeUserIds.Count > 0 ? string.Join(",", dto.AssigneeUserIds.Distinct()) : null;
