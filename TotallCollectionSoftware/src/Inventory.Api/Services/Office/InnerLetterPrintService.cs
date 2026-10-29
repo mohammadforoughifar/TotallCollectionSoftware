@@ -76,9 +76,12 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         {
             // This exact inner-letter template is required; never silently substitute another company's art.
             var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5);
+            // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب داخلی خوانده می‌شود تا مقادیر درست روی
+            // خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
+            var meta = InnerLetterheadTemplates.LoadHomepaMetaLayout(_env.ContentRootPath, AppContext.BaseDirectory, a5);
             try
             {
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts);
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts, meta);
                 _log.LogInformation("چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}",
                     letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5));
                 return pdf;

@@ -42,6 +42,36 @@ internal static class InnerLetterheadTemplates
         return bytes.Length == 0 ? null : bytes;
     }
 
+    /// <summary>
+    /// هندسهٔ کادرهای شماره/تاریخ/پیوست از خودِ قالب نامهٔ داخلی همان شرکت (همان کادرهای
+    /// قالب صادره که در این فایل تکرار شده‌اند). خواندن فقط XML است؛ موتور Stimulsoft اجرا
+    /// نمی‌شود. اگر قالب نصب‌شده این کادرها را نداشته باشد <c>null</c> برمی‌گردد و رندر از
+    /// مختصات کالیبرهٔ <see cref="Outgoing.HomepaLetterheadLayout"/> استفاده می‌کند.
+    /// </summary>
+    internal static Outgoing.OutgoingLetterDesignLayout? TryLoadMetaLayout(
+        string contentRoot, string baseDirectory, int companyId, bool a5)
+    {
+        if (companyId <= 0) return null;
+        var paths = new[]
+        {
+            CompanyTemplatePath(contentRoot, companyId, a5),
+            CompanyTemplatePath(baseDirectory, companyId, a5)
+        }.Distinct();
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path)) continue;
+            var layout = Outgoing.OutgoingLetterDesignLayout.TryRead(path);
+            if (layout == null) continue;
+            var hasMeta = layout.HeaderBoxes.Any(box => box.Slot
+                is Outgoing.OutgoingLetterDesignLayout.Slot.Number
+                or Outgoing.OutgoingLetterDesignLayout.Slot.Date
+                or Outgoing.OutgoingLetterDesignLayout.Slot.Attachment);
+            if (hasMeta) return layout;
+        }
+
+        return null;
+    }
+
     internal static byte[] LoadHomepa(string contentRoot, string baseDirectory, bool a5)
     {
         var paths = new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct().ToArray();

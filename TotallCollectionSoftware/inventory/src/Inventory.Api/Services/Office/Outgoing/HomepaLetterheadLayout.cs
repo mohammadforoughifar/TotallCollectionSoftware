@@ -68,4 +68,22 @@ internal static class HomepaLetterheadLayout
     internal static Field Attachment(bool isA5) => isA5
         ? new(4.2f, 50.4848f, 59.04f, 12.96f)
         : new(10.4f, 71.9976f, 82.08f, 14.4f);
+
+    // ── مختصات **مطلق صفحه** (از گوشهٔ بالا-چپ کاغذ) ──
+    // همان کادرهای شماره/تاریخ/پیوستِ قالب ۱۰۰۳: (حاشیهٔ صفحه + ClientRectangle) در point.
+    // نامهٔ داخلی این مقدارها را در لایهٔ Foreground و با همین مختصات مطلق چاپ می‌کند؛ پس
+    // مبدأ page.Header (۲۴pt در A4 و ۱۶pt در A5) از آن‌ها کسر نمی‌شود — کسر شدنش همان
+    // ایرادی بود که مقادیر را یک ردیف بالاتر از برچسب‌ها می‌نشاند.
+    // مرکز برچسب‌های چاپ‌شده روی تصویر: ۶۶٫۵ / ۸۴٫۵ / ۱۰۳٫۲pt در A4.
+    internal static Field AbsoluteNumber(bool isA5) => isA5
+        ? new(7.2f, 40.5216f, 59.04f, 12.96f)
+        : new(14.4f, 59.2776f, 82.08f, 14.4f);
+
+    internal static Field AbsoluteDate(bool isA5) => isA5
+        ? new(7.2f, 53.2512f, 59.04f, 12.96f)
+        : new(14.4f, 77.2776f, 82.08f, 14.4f);
+
+    internal static Field AbsoluteAttachment(bool isA5) => isA5
+        ? new(7.2f, 66.4848f, 59.04f, 12.96f)
+        : new(14.4f, 95.9976f, 82.08f, 14.4f);
 }

@@ -72,20 +72,28 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("LineHorizontal(SeparatorThickness)", separator)
                 self.assertIn("LineColor(SeparatorColor)", separator)
 
-    def test_inner_letter_layout_is_untouched(self):
-        """نامهٔ داخلی: ساختار، فونت و حاشیه‌هایش دست‌نخورده مانده است."""
+    def test_inner_letter_uses_the_outgoing_1003_layout_without_signatures(self):
+        """نامهٔ داخلی ۱۰۰۳ = همان چیدمان نامهٔ صادره، فقط بدون امضا (درخواست کارفرما).
+
+        سربرگ: شماره/تاریخ/پیوست در مختصات مطلق صفحه، روی همان خط برچسب‌های چاپ‌شده.
+        بدنه: از پایین نوار آبی + ۹۷pt شروع می‌شود و خط جداکنندهٔ خاکستری ندارد.
+        """
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 inner = self.inner(tree)
-                self.assertIn("void HeaderField(IContainer container, HomepaLetterheadLayout.Field field", inner)
-                self.assertIn("page.Header().ContentFromLeftToRight().Height(a5 ? 112 : 160)", inner)
-                self.assertIn('c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();', inner)
-                self.assertIn('c.Item().Text($"گیرندگان: ', inner)
-                self.assertIn('c.Item().Text($"ایجادکننده: ', inner)
-                self.assertIn("content = content.PaddingTop(a5 ? 12 : 16).PaddingHorizontal(a5 ? 32 : 46);", inner)
+                # مقادیر سربرگ: لایهٔ سراسری صفحه با مختصات مطلق (نه مبدأ page.Header).
+                self.assertIn("page.Foreground().Element(host => DrawMetaRows(host, metaRows))", inner)
+                self.assertIn("page.MarginTop(0);", inner)
+                self.assertIn("HomepaLetterheadLayout.ContentTop(a5)", inner)
+                self.assertNotIn("void HeaderField(IContainer container", inner)
+                # بلوک اطلاعات مشترک با نامهٔ صادره؛ برچسب «موضوع» و گیرندگان بدون برچسب.
+                self.assertIn("LetterPrintTemplate.InfoBlock(c, rows, infoFontSize", inner)
+                self.assertIn('new LetterPrintTemplate.InfoRow("موضوع"', inner)
                 self.assertIn("var fontSize = a5 ? 9f : 11f;", inner)
-                # نامهٔ داخلی از این پس شمارهٔ صفحه چاپ نمی‌کند (رفتار قبلی حفظ می‌شود).
+                # نامهٔ داخلی امضا/شمارهٔ صفحه ندارد و چیدمان بدون سربرگ هم دست‌نخورده است.
                 self.assertNotIn("page.Footer()", inner)
+                self.assertIn('c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();', inner)
+                self.assertIn("content = content.PaddingTop(a5 ? 12 : 16).PaddingHorizontal(a5 ? 32 : 46);", inner)
 
     def test_outgoing_info_block_drops_the_title_and_receiver_labels(self):
         """بلوک اطلاعات ۱۰۰۳: گیرنده بدون برچسب در بالا، بعد «موضوع:» و عنوان.

@@ -12,6 +12,30 @@ internal static class InnerLetterheadTemplates
     internal static string HomepaPath(string contentRoot, bool a5) => Path.Combine(contentRoot,
         "Reports", "InnerLetters", "Companies", "1003", $"Inner-{(a5 ? "A5" : "A4")}.mrt");
 
+    /// <summary>
+    /// هندسهٔ کادرهای شماره/تاریخ/پیوست از خودِ قالب نامهٔ داخلی (همان کادرهای قالب صادرهٔ
+    /// ۱۰۰۳ که در این فایل تکرار شده‌اند). خواندن فقط XML است؛ موتور Stimulsoft اجرا نمی‌شود.
+    /// اگر قالب نصب‌شده این کادرها را نداشته باشد <c>null</c> برمی‌گردد و رندر از مختصات
+    /// کالیبرهٔ <see cref="Outgoing.HomepaLetterheadLayout"/> استفاده می‌کند.
+    /// </summary>
+    internal static Outgoing.OutgoingLetterDesignLayout? LoadHomepaMetaLayout(
+        string contentRoot, string baseDirectory, bool a5)
+    {
+        foreach (var path in new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct())
+        {
+            if (!File.Exists(path)) continue;
+            var layout = Outgoing.OutgoingLetterDesignLayout.TryRead(path);
+            if (layout == null) continue;
+            var hasMeta = layout.HeaderBoxes.Any(box => box.Slot
+                is Outgoing.OutgoingLetterDesignLayout.Slot.Number
+                or Outgoing.OutgoingLetterDesignLayout.Slot.Date
+                or Outgoing.OutgoingLetterDesignLayout.Slot.Attachment);
+            if (hasMeta) return layout;
+        }
+
+        return null;
+    }
+
     internal static byte[] LoadHomepa(string contentRoot, string baseDirectory, bool a5)
     {
         var paths = new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct().ToArray();
