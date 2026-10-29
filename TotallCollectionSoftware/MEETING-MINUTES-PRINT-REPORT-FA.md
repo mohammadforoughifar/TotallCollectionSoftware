@@ -97,7 +97,7 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
   `Number` و متد کمکی `Number` هم‌نام بودند؛ متد به `ParseNumber` تغییر نام داد).
 
 اجرای کل مجموعه: `cd inventory/tests/OutgoingLetterhead && python3 -m unittest discover -p "test_*.py"`
-→ **۱۲۶ تست سبز** (۹۶ تست قبلی + ۳۰ تست جدید).
+→ **۱۲۵ تست سبز**.
 
 ## ۵. پیش‌نمایش
 
@@ -106,18 +106,18 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
 - تولید دوباره: `python3 preview/render_minutes.py`
 - پیش‌نمایش زنده روی سرور محلی همین سندباکس (پورت ۸۰۹۰) سرو می‌شود.
 
-## ۵-۱. پابرگ «صفحه X از Y» و خطای A5
+## ۵-۱. شمارهٔ صفحه
 
-پابرگ با جزء پویای QuestPDF ساخته می‌شود. اگر محتوای جزء در فضای در دسترس پابرگ جا نشود،
-QuestPDF کل سند را با «Dynamic component generated content that does not fit on a single
-page» رد می‌کند. بنابراین:
+به‌درخواست کارفرما («شماره صفحه را حذف کن») صورتجلسه **شمارهٔ صفحه چاپ نمی‌کند**:
+نه در مسیر قالب (`Minutes-{A4,A5}.mrt`) و نه در مسیر قدیمیِ بدون قالب. در مسیر قدیمی،
+پابرگ فقط نام شرکت را نشان می‌دهد.
 
-- پیش از چاپ، `context.AvailableSize` بررسی می‌شود؛ اگر یک خط جا نشود شمارهٔ صفحه چاپ **نمی‌شود**
-  (به‌جای اینکه چاپ بشکند) و اگر عرض کم باشد قلم کوچک می‌شود.
-- سند به‌صورت `ComposeDocument(bool withPageNumbers)` ساخته می‌شود؛ در صورت
-  `DocumentLayoutException` یک بار دیگر بدون شمارهٔ صفحه تولید می‌شود.
+این حذف یک خطای واقعی چاپ را هم برطرف کرد: پابرگ با جزء پویای QuestPDF ساخته می‌شد و اگر
+محتوایش در فضای در دسترس آن کادر جا نمی‌شد، QuestPDF کل سند را با
+«Dynamic component generated content that does not fit on a single page» رد می‌کرد
+(در A5 دیده شد). اکنون هیچ `Dynamic` در سرویس چاپ نیست.
 
-همین اصلاح در چاپ نامهٔ صادره هم اعمال شد (جزئیات: `OUTGOING-PRINT-REPORT-FOLDER-FA.md` §۴-۱۳).
+جزئیات کامل: `OUTGOING-PRINT-REPORT-FOLDER-FA.md` §۴-۱۳.
 
 ## ۶. آنچه انجام نشده
 

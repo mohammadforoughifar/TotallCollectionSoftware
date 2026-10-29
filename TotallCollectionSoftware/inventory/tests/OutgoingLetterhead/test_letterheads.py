@@ -162,7 +162,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", branch)
         self.assertIn("HomepaLetterheadLayout.Number(isA5)", branch, "fixed metadata positions are independent of body spacing")
 
-    def test_1003_signer_block_alignment_and_multpage_footer_are_conditional(self):
+    def test_1003_signer_block_alignment_and_no_page_footer(self):
         source = SERVICE.read_text()
         self.assertIn("col.Item().ShowEntire().Column(AddSignerBlock)", source)
         self.assertIn("var signerTopPadding = isHomepaLetterhead", source)
@@ -170,16 +170,14 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
         self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
         self.assertNotIn('Text("امضاکنندگان")', source)
-        # مسیر کلاسیک (بقیهٔ شرکت‌ها) هنوز پابرگ ثابت خودش را دارد؛
-        # مسیر ۱۰۰۳ «صفحه X از Y» را از قالب مشترک و فقط وقتی نامه چندصفحه شد می‌گیرد.
-        self.assertIn(".Dynamic(new LetterPrintTemplate.PageNumberFooter(", source)
+        # شمارهٔ صفحه به‌درخواست کارفرما در هیچ مسیری چاپ نمی‌شود (نه مسیر طرح، نه کلاسیک).
+        self.assertNotIn("PageNumberFooter", source)
+        self.assertNotIn("CurrentPageNumber()", source)
+        self.assertNotIn("TotalPages()", source)
+        self.assertNotIn(".Dynamic(", source)
         template = (SERVICE.parents[1] / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
-        self.assertIn("if (total <= 1 || total == int.MaxValue)", template,
-                      "شمارهٔ صفحه فقط در نامهٔ چندصفحه‌ای چاپ می‌شود")
-        self.assertIn("page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>", source)
-        self.assertIn("text.CurrentPageNumber()", source)
-        self.assertIn("text.TotalPages()", source)
-        self.assertIn(".FontSize(8)\n                            .LineHeight(1.1f)", source)
+        self.assertNotIn("PageNumberFooter", template)
+        self.assertNotIn("IDynamicComponent", template)
         overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
         self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
         self.assertLess(overlay.index("graphics.DrawImage(asset.Image, bounds)"),

@@ -880,47 +880,31 @@ host.AlignLeft().AlignTop().Column(column =>
 و اینکه هیچ حلقه‌ای `.Element(` را روی کانتینر ثابت صدا نمی‌زند. (روی کد قبل از اصلاح، این
 تست‌ها شکست می‌خورند.)
 
-### ۴-۱۳. خطای چاپ A5: `DocumentLayoutException` روی جزء پویای «صفحه X از Y»
+### ۴-۱۳. حذف کامل شمارهٔ صفحه (و رفع خطای A5 با آن)
 
-**پیام:** «ساخت PDF نامه ناموفق بود (DocumentLayoutException): Dynamic component generated
-content that does not fit on a single page.»
+**درخواست کارفرما:** «شماره صفحه را حذف کن. نیازی نیست شماره صفحه داشته باشد.»
 
-**منشأ در خود QuestPDF:** در `DynamicHost.Measure` اگر محتوایی که جزء پویا ساخته در فضای
-در دسترس جا نشود (نتیجهٔ `Wrap` یا `PartialRender`)، کل سند با همین پیام رد می‌شود. در مسیر
-چاپ ما تنها جزء پویا، پابرگ «صفحه ۲ از ۲» است (`LetterPrintTemplate.PageNumberFooter`).
-حاشیهٔ پایین، ارتفاع پابرگ و اندازهٔ قلم در A5 کوچک‌ترند؛ اگر یک خط در کادر پابرگ جا نشود
-(یا عرض برای یک خط کافی نباشد و متن بشکند)، چاپ **کل نامه** از دست می‌رفت — یعنی یک شمارهٔ
-صفحه، نامه را بلاک می‌کرد.
+**وضعیت پیشین:** «صفحه X از Y» در سه جا چاپ می‌شد — مسیر طرح نامهٔ صادره (جزء پویا)، مسیر
+کلاسیک نامهٔ صادره برای سربرگ هومپا (`Text` با `CurrentPageNumber`/`TotalPages`) و چاپ
+صورتجلسه. همین جزء پویا در A5 خطای زیر را می‌داد:
 
-**دو لایه اصلاح:**
+> ساخت PDF نامه ناموفق بود (DocumentLayoutException): Dynamic component generated content
+> that does not fit on a single page.
 
-1. **خودِ جزء پویا (ریشه):** پیش از ساختن متن، `context.AvailableSize` بررسی می‌شود:
-   - `available.Height < fontSize * 1.8` → هیچ چاپی (`NoContent`)
-   - `available.Width < fontSize * 6` → هیچ چاپی
-   - اگر عرض کم بود، قلم کوچک می‌شود (`fontSize * available.Width / estimated`، کف ۵pt) تا
-     متن هرگز به خط دوم نشکند؛ `LineHeight` هم از ۱٫۲ به ۱٫۱ کم شد.
+علت: در `DynamicHost.Measure` اگر محتوایی که جزء پویا می‌سازد در فضای در دسترس جا نشود
+(`Wrap`/`PartialRender`)، QuestPDF **کل سند** را رد می‌کند.
 
-   ```csharp
-   var available = context.AvailableSize;
-   if (available.Height > 0f && available.Height < fontSize * 1.8f) return NoContent(context);
-   if (available.Width  > 0f && available.Width  < fontSize * 6f)   return NoContent(context);
-   ```
+**اکنون:**
 
-2. **مسیر چاپ (تور اطمینان):** سند به‌صورت تابع محلی `ComposeDocument(bool withPageNumbers)`
-   ساخته می‌شود؛ اگر `GeneratePdf()` با `DocumentLayoutException` شکست خورد، همان نامه یک بار
-   دیگر **بدون شمارهٔ صفحه** ساخته می‌شود و علت در لاگ می‌ماند:
+- کلاس `LetterPrintTemplate.PageNumberFooter` (تنها `IDynamicComponent` پروژه) **حذف** شد.
+- پابرگ هر دو مسیر نامهٔ صادره برداشته شد؛ در مسیر کلاسیک فقط بلوک `Text` شمارهٔ صفحه حذف شد
+  و بقیهٔ چیدمان (رزرو پایین صفحه برای هنر سربرگ، حاشیه‌ها) دست‌نخورده است.
+- چاپ صورتجلسه هم شمارهٔ صفحه ندارد؛ در مسیر قدیمی (بدون قالب) فقط نام شرکت در پابرگ ماند.
+- نتیجهٔ جانبی: چون هیچ `Dynamic` در سرویس‌های چاپ نمانده، خطای
+  «does not fit on a single page» دیگر ممکن نیست.
 
-   ```csharp
-   try { return ComposeDocument(true).GeneratePdf(); }
-   catch (DocumentLayoutException ex)
-   {
-       _logger.LogWarning(ex, "شمارهٔ صفحه در پابرگ جا نشد؛ …", letter.Id, isA5 ? "A5" : "A4");
-       return ComposeDocument(false).GeneratePdf();
-   }
-   ```
-
-   همین الگو در `MeetingMinutesPrintService` (چاپ صورتجلسه) هم اعمال شد.
-
-**تست‌ها:** `inventory/tests/OutgoingLetterhead/test_page_footer_safety.py` (۷ تست) — بررسی
-فضای در دسترس، یک‌نقطه‌ای بودن حالت «هیچ چاپ نشود»، کوچک‌شدن قلم به‌جای شکستن خط، و وجود
-تور اطمینان در هر دو سرویس. مجموع: **۱۲۶ تست سبز**.
+**تست‌ها:** `inventory/tests/OutgoingLetterhead/test_no_page_numbers.py` (۶ تست) — نبودِ
+`PageNumberFooter`/`CurrentPageNumber`/`TotalPages`/`.Dynamic(` در هر سه فایل و در هر دو درخت،
+و اینکه بلوک‌های دیگر قالب مشترک (InfoBlock/CopyToBlock/Spacer/PersianDigits) سرجایشان‌اند.
+تست‌های قبلی که وجود شمارهٔ صفحه را تأیید می‌کردند به «نبودِ آن» تغییر کردند.
+مجموع: **۱۲۵ تست سبز**.

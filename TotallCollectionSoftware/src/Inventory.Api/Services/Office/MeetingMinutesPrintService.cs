@@ -10,7 +10,6 @@ using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Drawing;
-using QuestPDF.Drawing.Exceptions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -368,10 +367,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var cursor = new float[1];
         cursor[0] = headerReserve;
 
-        // چاپ با/بدون شمارهٔ صفحه؛ اگر جزء پویا در این کاغذ جا نشود، نسخهٔ بدون شماره دوباره
-        // ساخته می‌شود تا صورتجلسه از دست نرود (خطای A5: «Dynamic component generated
-        // content that does not fit on a single page»).
-        Document ComposeDocument(bool withPageNumbers) => Document.Create(container =>
+        // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما)؛ بنابراین هیچ جزء پویایی در چاپ نیست.
+        var doc = Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -446,25 +443,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                         Signatures(col, attendees, signatureImages, isA5, flowWidth);
                     }
                 });
-
-                // «صفحه ۲ از ۲» — فقط وقتی صورتجلسه از یک صفحه بیشتر شد.
-                if (withPageNumbers)
-                    page.Footer().Height(16).AlignTop().AlignCenter()
-                        .Dynamic(new LetterPrintTemplate.PageNumberFooter(8f));
             });
         });
 
         _ = companyName; // نام شرکت روی خودِ سربرگ چاپ شده است؛ در متن تکرار نمی‌شود
 
-        try
-        {
-            return ComposeDocument(true).GeneratePdf();
-        }
-        catch (DocumentLayoutException)
-        {
-            // شمارهٔ صفحه در پابرگ جا نشد؛ صورتجلسه بدون شمارهٔ صفحه چاپ می‌شود.
-            return ComposeDocument(false).GeneratePdf();
-        }
+        return doc.GeneratePdf();
 
         // ── فاصلهٔ خالی به اندازهٔ اختلاف مختصات قالب ──
         static void Space(ColumnDescriptor col, float height)
@@ -889,21 +873,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     }
                 });
 
+                // پابرگ: فقط نام شرکت؛ شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما).
                 page.Footer().PaddingHorizontal(reserveLetterhead ? 0 : 28).Column(f =>
                 {
                     f.Item().LineHorizontal(0.7f).LineColor(Line);
-                    f.Item().PaddingTop(5).Row(r =>
-                    {
-                        r.RelativeItem().AlignMiddle().Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
-                            .FontSize(8).FontColor("#94a3b8");
-                        r.AutoItem().AlignMiddle().Text(t =>
-                        {
-                            t.Span("صفحه ").FontSize(8).FontColor("#94a3b8");
-                            t.CurrentPageNumber().FontSize(8).FontColor("#64748b").Format(n => FaDigits(n?.ToString() ?? "0"));
-                            t.Span(" از ").FontSize(8).FontColor("#94a3b8");
-                            t.TotalPages().FontSize(8).FontColor("#64748b").Format(n => FaDigits(n?.ToString() ?? "0"));
-                        });
-                    });
+                    f.Item().PaddingTop(5).Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
+                        .FontSize(8).FontColor("#94a3b8");
                 });
             });
         });

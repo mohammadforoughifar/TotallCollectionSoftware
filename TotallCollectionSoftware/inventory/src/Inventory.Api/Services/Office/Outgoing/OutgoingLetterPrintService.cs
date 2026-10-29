@@ -16,7 +16,6 @@ using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Drawing;
-using QuestPDF.Drawing.Exceptions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -1846,20 +1845,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 page.MarginBottom(isHomepaLetterhead
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
                     : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
-                if (isHomepaLetterhead)
-                    page.Footer().Height(20).AlignTop().AlignCenter().Text(text =>
-                    {
-                        text.DefaultTextStyle(style => style
-                            .FontFamily("Vazirmatn")
-                            .FontSize(8)
-                            .LineHeight(1.1f)
-                            .FontColor("#475569")
-                            .DirectionFromRightToLeft());
-                        text.Span("صفحه ");
-                        text.CurrentPageNumber().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                        text.Span(" از ");
-                        text.TotalPages().Format(number => ToPersianDigits(number?.ToString() ?? "0"));
-                    });
+                // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما) — حتی در نامهٔ چندصفحه‌ای.
                 page.MarginHorizontal(0);
 
                 page.ContentFromRightToLeft();
@@ -2170,9 +2156,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             RenderSigners(target);
         }
 
-        // چاپ با/بدون شمارهٔ صفحه؛ اگر جزء پویای پابرگ در کاغذ A5 جا نشود، نسخهٔ بدون
-        // شمارهٔ صفحه دوباره ساخته می‌شود تا خودِ نامه از دست نرود.
-        Document ComposeDocument(bool withPageNumbers) => Document.Create(container =>
+        // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما)؛ بنابراین هیچ جزء پویایی در چاپ نیست.
+        var document = Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -2232,11 +2217,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         RenderSigners(col);
                     }
                 });
-
-                // ── شمارهٔ صفحه: فقط اگر نامه به صفحهٔ دوم رفت («صفحه ۲ از ۲») ──
-                if (withPageNumbers)
-                    page.Footer().Height(16).AlignTop().AlignCenter()
-                        .Dynamic(new LetterPrintTemplate.PageNumberFooter(Math.Max(7f, bodyFontSize - 4f)));
             });
         });
 
@@ -2244,18 +2224,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "چاپ نامهٔ صادره با چیدمان نامهٔ داخلی. LetterId={LetterId}, Size={Size}, SideMargin={SideMargin}, ContentTop={ContentTop}",
             letter.Id, isA5 ? "A5" : "A4", sideMargin, contentTop);
 
-        try
-        {
-            return ComposeDocument(true).GeneratePdf();
-        }
-        catch (DocumentLayoutException ex)
-        {
-            // جزء پویای «صفحه X از Y» در این کاغذ جا نشد؛ نامه بدون شمارهٔ صفحه چاپ می‌شود.
-            _logger.LogWarning(ex,
-                "شمارهٔ صفحه در پابرگ جا نشد؛ چاپ بدون شمارهٔ صفحه تکرار می‌شود. LetterId={LetterId}, Size={Size}",
-                letter.Id, isA5 ? "A5" : "A4");
-            return ComposeDocument(false).GeneratePdf();
-        }
+        return document.GeneratePdf();
     }
 
     /// <summary>

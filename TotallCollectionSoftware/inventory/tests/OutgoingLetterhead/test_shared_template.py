@@ -45,7 +45,9 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 # نامهٔ صادره: بلوک اطلاعات و خط جداکننده از همان قالب.
                 self.assertIn("LetterPrintTemplate.InfoBlock(", outgoing)
                 self.assertIn("LetterPrintTemplate.Spacer(col", outgoing)
-                self.assertIn("LetterPrintTemplate.PageNumberFooter(", outgoing)
+                # شمارهٔ صفحه به‌درخواست کارفرما از هر سه چاپ حذف شده است.
+                self.assertNotIn("PageNumberFooter", outgoing)
+                self.assertNotIn("PageNumberFooter", template)
                 # نامهٔ داخلی و مسیر جدید نامهٔ صادره عدد/رنگ جداکننده را دوباره هارد‌کد
                 # نمی‌کنند (مسیر کلاسیک بقیهٔ شرکت‌ها دست‌نخورده می‌ماند و جداکنندهٔ خودش را دارد).
                 self.assertNotIn('LineHorizontal(0.7f).LineColor("#999999")', inner,
@@ -138,7 +140,7 @@ class SharedLetterTemplateTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
                 content = outgoing.split("page.Content().Column(col =>", 1)[1]
-                content = content.split("PageNumberFooter", 1)[0]
+                content = content.split("    }\n\n    /// <summary>", 1)[0]
                 self.assertNotIn("LetterPrintTemplate.Separator(col", content,
                                  "خط جداکننده نباید در چاپ ۱۰۰۳ رسم شود")
                 self.assertNotIn("LineHorizontal(", content,
@@ -148,17 +150,28 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 # نامهٔ داخلی خط جداکنندهٔ خودش را نگه می‌دارد.
                 self.assertIn("LetterPrintTemplate.Separator(c)", self.inner(tree))
 
-    def test_page_number_is_persian_and_only_on_overflow(self):
-        """«صفحه ۲ از ۲» فقط وقتی نامه از یک صفحه بیشتر شد، با ارقام فارسی."""
+    def test_no_page_numbers_are_printed(self):
+        """شمارهٔ صفحه (صفحه X از Y) در هیچ‌کدام از چاپ‌ها وجود ندارد.
+
+        درخواست کارفرما: «شماره صفحه را حذف کن، نیازی نیست شماره صفحه داشته باشد.»
+        حذف آن یک فایدهٔ جانبی هم دارد: پابرگ پویا در A5 باعث `DocumentLayoutException`
+        («Dynamic component generated content that does not fit on a single page») می‌شد.
+        """
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 template = self.template(tree)
-                footer = template.split("internal sealed class PageNumberFooter", 1)[1]
-                self.assertIn("if (total <= 1 || total == int.MaxValue)", footer)
-                self.assertIn("صفحه ", footer)
-                self.assertIn(" از ", footer)
-                self.assertIn("PersianDigits(context.PageNumber.ToString(CultureInfo.InvariantCulture))", footer)
-                self.assertIn("PersianDigits(total.ToString(CultureInfo.InvariantCulture))", footer)
+                outgoing = self.outgoing(tree)
+                inner = self.inner(tree)
+                self.assertNotIn("PageNumberFooter", template)
+                self.assertNotIn("IDynamicComponent", template)
+                for name, source in (("نامهٔ صادره", outgoing), ("نامهٔ داخلی", inner)):
+                    self.assertNotIn("CurrentPageNumber()", source, name)
+                    self.assertNotIn("TotalPages()", source, name)
+                    self.assertNotIn(".Dynamic(", source, name)
+                    # متن شمارهٔ صفحه (نه واژهٔ «صفحه» در توضیحات)
+                    self.assertNotIn('Span("صفحه ")', source, name)
+                    self.assertNotIn('Text($"صفحه ', source, name)
+                    self.assertNotIn('" از "', source, name)
 
     def test_second_page_repeats_only_number_date_and_attachment(self):
         """عنوان و گیرنده در صفحهٔ دوم تکرار نمی‌شوند؛ شماره/تاریخ/پیوست تکرار می‌شوند."""
