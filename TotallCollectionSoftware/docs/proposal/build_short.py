@@ -472,16 +472,6 @@ def page_price(c):
         CellFlow(rev[3], font="VazirB", size=8.6, leading=13, align="center", pad=4),
     ])
 
-    after = ["", "با احتساب پشتیبانی سال اول", "۴٬۲۵۰٬۰۰۰٬۰۰۰ + ۶۳۷٬۵۰۰٬۰۰۰",
-             "۴٬۸۸۷٬۵۰۰٬۰۰۰"]
-    rev = list(reversed(after))
-    data.append([
-        CellFlow(rev[0], font="VazirB", size=8.2, leading=12.6, align="center", pad=4),
-        CellFlow(rev[1], font="VazirB", size=8.2, leading=12.4, align="right", pad=6),
-        CellFlow(rev[2], size=7.6, leading=11.6, align="right", pad=4),
-        CellFlow(rev[3], font="VazirB", size=8.4, leading=12.8, align="center", pad=4),
-    ])
-
     t = Table(data, colWidths=[CONTENT_W * x for x in reversed(widths)], hAlign="LEFT")
     style = [("BACKGROUND", (0, 0), (-1, 0), NAVY),
              ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -489,7 +479,6 @@ def page_price(c):
              ("BACKGROUND", (0, 2), (-1, 2), BG_SOFT),
              ("BACKGROUND", (0, 4), (-1, 4), BG_SOFT),
              ("BACKGROUND", (0, 5), (-1, 5), BG_WARM),
-             ("BACKGROUND", (0, 6), (-1, 6), BG_BLUE),
              ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
     t.setStyle(TableStyle(style))
     t.wrapOn(c, CONTENT_W, 10000)
