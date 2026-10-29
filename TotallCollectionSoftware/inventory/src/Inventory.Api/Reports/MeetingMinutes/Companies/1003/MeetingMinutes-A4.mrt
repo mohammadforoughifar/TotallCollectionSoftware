@@ -1,0 +1,909 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<StiSerializer version="1.02" type="Net" application="StiReport">
+  <Dictionary Ref="1" type="Dictionary" isKey="true">
+    <BusinessObjects isList="true" count="0" />
+    <Databases isList="true" count="0" />
+    <DataSources isList="true" count="2">
+      <MinutesItems Ref="20" type="DataTableSource" isKey="true">
+        <Alias>MinutesItems</Alias>
+        <Columns isList="true" count="7">
+          <value>RowNo,System.String</value>
+          <value>Description,System.String</value>
+          <value>Resp,System.String</value>
+          <value>DueDate,System.String</value>
+          <value>FollowUp,System.String</value>
+          <value>FollowUpDate,System.String</value>
+          <value>Status,System.String</value>
+        </Columns>
+        <Dictionary isRef="1" />
+        <Name>MinutesItems</Name>
+        <NameInSource>MinutesData.MinutesItems</NameInSource>
+      </MinutesItems>
+      <MinutesAttendees Ref="21" type="DataTableSource" isKey="true">
+        <Alias>MinutesAttendees</Alias>
+        <Columns isList="true" count="3">
+          <value>Name,System.String</value>
+          <value>StateFa,System.String</value>
+          <value>Signature,System.String</value>
+        </Columns>
+        <Dictionary isRef="1" />
+        <Name>MinutesAttendees</Name>
+        <NameInSource>MinutesData.MinutesAttendees</NameInSource>
+      </MinutesAttendees>
+    </DataSources>
+    <Relations isList="true" count="0" />
+    <Report isRef="0" />
+    <Resources isList="true" count="0" />
+    <Variables isList="true" count="13">
+      <value>,ReportTitle,ReportTitle,,System.String,,False,False,False,False</value>
+      <value>,MinutesNo,MinutesNo,,System.String,,False,False,False,False</value>
+      <value>,MeetingDateFa,MeetingDateFa,,System.String,,False,False,False,False</value>
+      <value>,RegDateFa,RegDateFa,,System.String,,False,False,False,False</value>
+      <value>,StatusFa,StatusFa,,System.String,,False,False,False,False</value>
+      <value>,MetaLine,MetaLine,,System.String,,False,False,False,False</value>
+      <value>,HeadHint,HeadHint,,System.String,,False,False,False,False</value>
+      <value>,CompanyName,CompanyName,,System.String,,False,False,False,False</value>
+      <value>,AttendCountFa,AttendCountFa,,System.String,,False,False,False,False</value>
+      <value>,AbsentList,AbsentList,,System.String,,False,False,False,False</value>
+      <value>,TailNote,TailNote,,System.String,,False,False,False,False</value>
+      <value>,TailSign,TailSign,,System.String,,False,False,False,False</value>
+      <value>,AttachmentsFa,AttachmentsFa,,System.String,,False,False,False,False</value>
+    </Variables>
+  </Dictionary>
+  <EngineVersion>EngineV2</EngineVersion>
+  <GlobalizationStrings isList="true" count="0" />
+  <MetaTags isList="true" count="0" />
+  <Pages isList="true" count="1">
+    <Page1 Ref="900" type="Page" isKey="true">
+      <Border>None;Black;1;Solid;False;4;Black</Border>
+      <Brush>Transparent</Brush>
+      <Components isList="true" count="8">
+        <PageHeaderBand1 Ref="304" type="PageHeaderBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanBreak>False</CanBreak>
+          <ClientRectangle>0,0,7.0866,2.2835</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>f81591fc31a3b3609b40ca58378c5eca</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="3">
+            <TxtMinutesNo Ref="301" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>1.8307,0.8228,2.2835,0.2047</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,9.5,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{MinutesNo}</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtMinutesNo</Name>
+              <Page isRef="900" />
+              <Parent isRef="304" />
+            </TxtMinutesNo>
+            <TxtMeetingDate Ref="302" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>1.8307,1.0748,2.2835,0.2047</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,9.5,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{MeetingDateFa}</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtMeetingDate</Name>
+              <Page isRef="900" />
+              <Parent isRef="304" />
+            </TxtMeetingDate>
+            <TxtAttachments Ref="303" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>1.8307,1.3307,2.2835,0.2047</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,9.5,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{AttachmentsFa}</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtAttachments</Name>
+              <Page isRef="900" />
+              <Parent isRef="304" />
+            </TxtAttachments>
+          </Components>
+          <Name>PageHeaderBand1</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </PageHeaderBand1>
+        <ReportTitleBand1 Ref="311" type="ReportTitleBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanBreak>False</CanBreak>
+          <ClientRectangle>0,2.2835,7.0866,1.0236</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>2136fb563ef88a7c6e19bcf7ca1ca2bf</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="6">
+            <RectTitleBar Ref="305" type="RectanglePrimitive" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>[41:98:181]</Brush>
+              <ClientRectangle>4.9606,0.0157,0.0945,0.5748</ClientRectangle>
+              <Name>RectTitleBar</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </RectTitleBar>
+            <TxtEyebrow Ref="306" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.0039,4.7874,0.1811</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.5,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>صورتجلسه</Text>
+              <TextBrush>[41:98:181]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtEyebrow</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </TxtEyebrow>
+            <TxtTitle Ref="307" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.1969,4.7874,0.4724</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,13.5,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{ReportTitle}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <ShrinkFontToFit>True</ShrinkFontToFit>
+              <ShrinkFontToFitMinimumSize>9</ShrinkFontToFitMinimumSize>
+              <Name>TxtTitle</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </TxtTitle>
+            <TxtMeta Ref="308" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.6929,4.9606,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.8</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{MetaLine}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtMeta</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </TxtMeta>
+            <LineTitle Ref="309" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[214:223:236]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0,0.9134,7.0866,0.0079</ClientRectangle>
+              <Name>LineTitle</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </LineTitle>
+            <TxtHint Ref="310" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.937,7.0866,0.1496</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{HeadHint}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtHint</Name>
+              <Page isRef="900" />
+              <Parent isRef="311" />
+            </TxtHint>
+          </Components>
+          <Name>ReportTitleBand1</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </ReportTitleBand1>
+        <HeaderBand1 Ref="320" type="HeaderBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanBreak>False</CanBreak>
+          <ClientRectangle>0,3.3071,7.0866,0.3701</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>8401cec25ecdb5e45a7d6c78d35d8113</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="8">
+            <RectColHead Ref="312" type="RectanglePrimitive" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>[233:240:249]</Brush>
+              <ClientRectangle>0,0,7.0866,0.3701</ClientRectangle>
+              <Name>RectColHead</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </RectColHead>
+            <TxtColHeadRowNo Ref="313" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>6.6929,0,0.3937,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>ردیف</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadRowNo</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadRowNo>
+            <TxtColHeadDescription Ref="314" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>3.937,0,2.7559,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>شرح مصوبه / اقدام</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadDescription</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadDescription>
+            <TxtColHeadResp Ref="315" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>3.0315,0,0.9055,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>مسئول اجرا</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadResp</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadResp>
+            <TxtColHeadDueDate Ref="316" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>2.2441,0,0.7874,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>تاریخ انجام</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadDueDate</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadDueDate>
+            <TxtColHeadFollowUp Ref="317" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>1.3386,0,0.9055,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>مسئول پیگیری</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadFollowUp</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadFollowUp>
+            <TxtColHeadFollowUpDate Ref="318" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0.5512,0,0.7874,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>تاریخ پیگیری</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadFollowUpDate</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadFollowUpDate>
+            <TxtColHeadStatus Ref="319" type="Text" isKey="true">
+              <Border>All;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0,0.5512,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4,Bold</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.02,0,0.02,0</Margins>
+              <Text>وضعیت</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtColHeadStatus</Name>
+              <Page isRef="900" />
+              <Parent isRef="320" />
+            </TxtColHeadStatus>
+          </Components>
+          <Name>HeaderBand1</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </HeaderBand1>
+        <DataBandItems Ref="328" type="DataBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanShrink>True</CanShrink>
+          <CanGrow>True</CanGrow>
+          <ClientRectangle>0,3.6772,7.0866,0.3701</ClientRectangle>
+          <KeepDetailsTogether>True</KeepDetailsTogether>
+          <DataSourceName>MinutesItems</DataSourceName>
+          <Filters isList="true" count="0" />
+          <Conditions isList="true" count="0" />
+          <Guid>29b8b69c806745f4c5557d57044bda49</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="7">
+            <TxtItemRowNo Ref="321" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>6.6929,0,0.3937,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2,Bold</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.RowNo}</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemRowNo</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemRowNo>
+            <TxtItemDescription Ref="322" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>3.937,0,2.7559,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.Description}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemDescription</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemDescription>
+            <TxtItemResp Ref="323" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>3.0315,0,0.9055,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.Resp}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemResp</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemResp>
+            <TxtItemDueDate Ref="324" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>2.2441,0,0.7874,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.DueDate}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemDueDate</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemDueDate>
+            <TxtItemFollowUp Ref="325" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>1.3386,0,0.9055,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.FollowUp}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemFollowUp</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemFollowUp>
+            <TxtItemFollowUpDate Ref="326" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>0.5512,0,0.7874,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.FollowUpDate}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemFollowUpDate</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemFollowUpDate>
+            <TxtItemStatus Ref="327" type="Text" isKey="true">
+              <Border>Bottom;[214:223:236];0.5;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <CanGrow>True</CanGrow>
+              <ClientRectangle>0,0,0.5512,0.3701</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.2</Font>
+              <GrowToHeight>True</GrowToHeight>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0.04,0.03,0.04,0.03</Margins>
+              <Text>{MinutesItems.Status}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtItemStatus</Name>
+              <Page isRef="900" />
+              <Parent isRef="328" />
+            </TxtItemStatus>
+          </Components>
+          <Name>DataBandItems</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </DataBandItems>
+        <HeaderBand2 Ref="333" type="HeaderBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanBreak>False</CanBreak>
+          <ClientRectangle>0,4.0473,7.0866,0.5906</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>76b229ba9d326e30deae792a5681796f</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="4">
+            <LineSectTop Ref="329" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[214:223:236]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0,0.0945,7.0866,0.0079</ClientRectangle>
+              <Name>LineSectTop</Name>
+              <Page isRef="900" />
+              <Parent isRef="333" />
+            </LineSectTop>
+            <RectSectBar Ref="330" type="RectanglePrimitive" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>[41:98:181]</Brush>
+              <ClientRectangle>6.9921,0.2047,0.0945,0.2441</ClientRectangle>
+              <Name>RectSectBar</Name>
+              <Page isRef="900" />
+              <Parent isRef="333" />
+            </RectSectBar>
+            <TxtSectTitle Ref="331" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.185,6.9055,0.2756</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,10,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>حاضرین و امضای الکترونیکی</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtSectTitle</Name>
+              <Page isRef="900" />
+              <Parent isRef="333" />
+            </TxtSectTitle>
+            <TxtSectMeta Ref="332" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.4409,6.9055,0.1417</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.4</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{AttendCountFa}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtSectMeta</Name>
+              <Page isRef="900" />
+              <Parent isRef="333" />
+            </TxtSectMeta>
+          </Components>
+          <Name>HeaderBand2</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </HeaderBand2>
+        <DataBandAttendees Ref="341" type="DataBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanShrink>True</CanShrink>
+          <ClientRectangle>0,4.6379,7.0866,0.4961</ClientRectangle>
+          <KeepDetailsTogether>True</KeepDetailsTogether>
+          <DataSourceName>MinutesAttendees</DataSourceName>
+          <Filters isList="true" count="0" />
+          <Conditions isList="true" count="0" />
+          <Guid>78f07d0d9f086a847e3b5be69fd3a568</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="7">
+            <RectSigBg Ref="334" type="RectanglePrimitive" isKey="true">
+              <Border>All;[233:239:247];0.5;Solid;False;4;Black</Border>
+              <Brush>[249:251:254]</Brush>
+              <ClientRectangle>0,0.0472,7.0866,0.3937</ClientRectangle>
+              <Name>RectSigBg</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </RectSigBg>
+            <TxtSigName Ref="335" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>2.5984,0.1024,2.0472,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,9,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0.04,0,0.04,0</Margins>
+              <Text>{MinutesAttendees.Name}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtSigName</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </TxtSigName>
+            <TxtSigState Ref="336" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>2.5984,0.2756,2.0472,0.1339</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.2</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0.04,0,0.04,0</Margins>
+              <Text>{MinutesAttendees.StateFa}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtSigState</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </TxtSigState>
+            <ImgSignature Ref="337" type="Image" isKey="true">
+              <AspectRatio>True</AspectRatio>
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0.1575,0.0866,2.2047,0.2913</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <HorAlignment>Center</HorAlignment>
+              <ImageData>{MinutesAttendees.Signature}</ImageData>
+              <Margins>0,0,0,0</Margins>
+              <Stretch>True</Stretch>
+              <VertAlignment>Center</VertAlignment>
+              <Name>ImgSignature</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </ImgSignature>
+            <LineSig Ref="338" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[203:213:227]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0.1575,0.3858,2.2047,0.0079</ClientRectangle>
+              <Name>LineSig</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </LineSig>
+            <TxtSigCaption Ref="339" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0.1575,0.3898,2.2047,0.0866</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,6.4</Font>
+              <HorAlignment>Center</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>امضا</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtSigCaption</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </TxtSigCaption>
+            <LineSigVer Ref="340" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[214:223:236]</Color>
+              <Size>1</Size>
+              <ClientRectangle>2.4409,0.1102,0.0079,0.2756</ClientRectangle>
+              <Name>LineSigVer</Name>
+              <Page isRef="900" />
+              <Parent isRef="341" />
+            </LineSigVer>
+          </Components>
+          <Name>DataBandAttendees</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </DataBandAttendees>
+        <ReportSummaryBand1 Ref="349" type="ReportSummaryBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanShrink>True</CanShrink>
+          <CanGrow>True</CanGrow>
+          <ClientRectangle>0,5.134,7.0866,1.3386</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>c78fdae52271f11ce998750d423505cb</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="7">
+            <LineTail Ref="342" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[214:223:236]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0,0.1181,7.0866,0.0079</ClientRectangle>
+              <Name>LineTail</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </LineTail>
+            <TxtAbsentLbl Ref="343" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>5.6693,0.2047,1.4173,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8,Bold</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>غایبین جلسه:</Text>
+              <TextBrush>[21:52:104]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtAbsentLbl</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </TxtAbsentLbl>
+            <TxtAbsent Ref="344" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.2047,5.6299,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{AbsentList}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtAbsent</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </TxtAbsent>
+            <TxtTailNote Ref="345" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.5354,7.0866,0.3543</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.8</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{TailNote}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=True, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <Name>TxtTailNote</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </TxtTailNote>
+            <TxtTailSign Ref="346" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>3.5433,1.0236,3.5433,0.2126</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.4</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{TailSign}</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtTailSign</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </TxtTailSign>
+            <TxtTailApprove Ref="347" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>2.3622,1.0236,2.3622,0.2126</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,8.4</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>تأیید مدیریت:</Text>
+              <TextBrush>[18:35:61]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtTailApprove</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </TxtTailApprove>
+            <LineApprove Ref="348" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[150:163:180]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0.2362,1.1969,2.0472,0.0079</ClientRectangle>
+              <Name>LineApprove</Name>
+              <Page isRef="900" />
+              <Parent isRef="349" />
+            </LineApprove>
+          </Components>
+          <Name>ReportSummaryBand1</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </ReportSummaryBand1>
+        <PageFooterBand1 Ref="353" type="PageFooterBand" isKey="true">
+          <Border>None;Black;1;Solid;False;4;Black</Border>
+          <Brush>Transparent</Brush>
+          <CanBreak>False</CanBreak>
+          <ClientRectangle>0,0,7.0866,0.2441</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Guid>b17f23521ac5d123c5a16ea7d208cd7a</Guid>
+          <Sort isList="true" count="0" />
+          <Components isList="true" count="3">
+            <LineFoot Ref="350" type="HorizontalLinePrimitive" isKey="true">
+              <Color>[214:223:236]</Color>
+              <Size>1</Size>
+              <ClientRectangle>0,0,7.0866,0.0079</ClientRectangle>
+              <Name>LineFoot</Name>
+              <Page isRef="900" />
+              <Parent isRef="353" />
+            </LineFoot>
+            <TxtFootCompany Ref="351" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>0,0.0551,4.5669,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.2</Font>
+              <HorAlignment>Right</HorAlignment>
+              <Margins>0,0,0,0</Margins>
+              <Text>{CompanyName}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtFootCompany</Name>
+              <Page isRef="900" />
+              <Parent isRef="353" />
+            </TxtFootCompany>
+            <TxtFootPage Ref="352" type="Text" isKey="true">
+              <Border>None;Black;1;Solid;False;4;Black</Border>
+              <Brush>Transparent</Brush>
+              <ClientRectangle>4.6457,0.0551,2.4409,0.1732</ClientRectangle>
+              <Conditions isList="true" count="0" />
+              <Expressions isList="true" count="0" />
+              <Font>Vazirmatn,7.2</Font>
+              <Margins>0,0,0,0</Margins>
+              <Text>صفحه {PageNumber} از {TotalPageCount}</Text>
+              <TextBrush>[100:116:139]</TextBrush>
+              <TextOptions>HotkeyPrefix=None, LineLimit=False, RightToLeft=True, Trimming=None, WordWrap=False, Angle=0, FirstTabOffset=40, DistanceBetweenTabs=20,</TextOptions>
+              <Type>Expression</Type>
+              <VertAlignment>Center</VertAlignment>
+              <Name>TxtFootPage</Name>
+              <Page isRef="900" />
+              <Parent isRef="353" />
+            </TxtFootPage>
+          </Components>
+          <Name>PageFooterBand1</Name>
+          <Page isRef="900" />
+          <Parent isRef="900" />
+        </PageFooterBand1>
+      </Components>
+      <Conditions isList="true" count="0" />
+      <Expressions isList="true" count="0" />
+      <Guid>484d016e34a5f272f96b267801a7dcfa</Guid>
+      <Margins>0.5906,0.5906,0,1.4803</Margins>
+      <Name>Page1</Name>
+      <PageHeight>11.69</PageHeight>
+      <PageWidth>8.27</PageWidth>
+      <PaperSize>A4</PaperSize>
+      <Report isRef="0" />
+    </Page1>
+  </Pages>
+  <ReportAlias>Report</ReportAlias>
+  <ReportName>HomepaMeetingMinutesA4</ReportName>
+  <ReportUnit>Inches</ReportUnit>
+  <ReportVersion>2026.2.4.0</ReportVersion>
+  <ScriptLanguage>CSharp</ScriptLanguage>
+  <Styles isList="true" count="0" />
+</StiSerializer>

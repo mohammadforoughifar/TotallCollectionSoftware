@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -9,13 +10,21 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SkiaSharp;
+using Stimulsoft.Base;
+using Stimulsoft.Report;
+using Stimulsoft.Report.Export;
 
 namespace Inventory.Api.Services.Office;
 
 // ============================================================
-//  قالب چاپی صورتجلسه با سربرگ شرکت — A4
-//  • سربرگ اختیاری است. اگر فایل سربرگ نباشد، صورتجلسه با حاشیهٔ عادی چاپ می‌شود.
-//  • امضای الکترونیکی حاضرین به‌صورت تصویر در صفحهٔ چاپ درج می‌شود.
+//  قالب چاپی صورتجلسه روی سربرگ شرکت — A4
+//  • موتور اصلی: Stimulsoft + قالب MRT اختصاصی هر شرکت
+//      Reports/MeetingMinutes/Companies/{CompanyId}/MeetingMinutes-A4.mrt
+//    قالب شرکت با «شرکت فعال» همان لحظهٔ چاپ انتخاب می‌شود و فایل سربرگ همان شرکت
+//    (SystemCompanies.LetterheadFileName) زیر متن قرار می‌گیرد.
+//  • اگر قالب MRT شرکت موجود نباشد یا موتور Stimulsoft خاموش باشد، نسخهٔ قبلی
+//    QuestPDF به‌عنوان fallback اجرا می‌شود تا چاپ هرگز قطع نشود.
+//  • امضای الکترونیکی حاضرین به‌صورت تصویر (base64) در ردیف همان شخص چاپ می‌شود.
 // ============================================================
 
 public interface IMeetingMinutesPrintService
@@ -32,12 +41,23 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<MeetingMinutesPrintService> _logger;
+    private static int _stimulsoftFontsRegistered;
+    private static int _stimulsoftLicenseApplied;
 
-    public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor http)
+    public MeetingMinutesPrintService(
+        AppDbContext db,
+        IWebHostEnvironment env,
+        IHttpContextAccessor http,
+        IConfiguration configuration,
+        ILogger<MeetingMinutesPrintService> logger)
     {
         _db = db;
         _env = env;
         _http = http;
+        _configuration = configuration;
+        _logger = logger;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -143,11 +163,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         // سربرگ اختیاری است. نبودن شرکت، ستون سربرگ، یا خودِ فایل نباید چاپ را متوقف کند.
         string? companyName = null;
         string? letterheadPath = null;
+        int companyId = 0;
         try
         {
             // شرکت فعال باید از میان‌افزار ActiveCompanyMiddleware خوانده شود، نه از هدر خام؛
             // هدر خام اعتبارسنجی دسترسی نمی‌شود و می‌توانست سربرگ شرکت دیگری را چاپ کند.
-            var companyId = _http.HttpContext?.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var resolved) == true
+            companyId = _http.HttpContext?.Items.TryGetValue(Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey, out var resolved) == true
                             && resolved is int resolvedId && resolvedId > 0
                 ? resolvedId
                 : 0;
@@ -165,6 +186,39 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             letterheadPath = null;
         }
 
+        // ==================== ۱) مسیر اصلی: قالب MRT شرکت + Stimulsoft ====================
+        // قالب MRT برای چاپ «روی سربرگ همان شرکت» کالیبره شده است؛ پس بدون فایل سربرگ
+        // از مسیر قبلی (QuestPDF) استفاده می‌کنیم تا متن روی کاغذ سفید جابه‌جا نشود.
+        if (companyId > 0 && IsStimulsoftEnabled())
+        {
+            if (letterheadPath == null)
+            {
+                _logger.LogWarning(
+                    "چاپ MRT صورتجلسه {MinutesId} انجام نشد: برای شرکت {CompanyId} فایل سربرگ ثبت نشده است؛ چاپ با چیدمان عادی انجام می‌شود.",
+                    minutesId, companyId);
+            }
+            else
+            {
+                var stimulsoftPdf = TryRenderWithStimulsoft(m, parts, items, companyId, companyName);
+                if (stimulsoftPdf is { Length: > 0 })
+                {
+                    try
+                    {
+                        return OverlayOnLetterhead(stimulsoftPdf, letterheadPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        // فایل سربرگ خراب است؛ متن صورتجلسه نباید از بین برود.
+                        _logger.LogWarning(ex,
+                            "قرار دادن صورتجلسه {MinutesId} روی سربرگ {Letterhead} ناموفق بود؛ خروجی بدون سربرگ برگردانده شد.",
+                            minutesId, letterheadPath);
+                        return stimulsoftPdf;
+                    }
+                }
+            }
+        }
+
+        // ==================== ۲) fallback: QuestPDF (رفتار قبلی) ====================
         byte[] contentPdf;
         try
         {
@@ -189,6 +243,206 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             try { return BuildContentPdf(m, parts, items, false, companyName); }
             catch { return BuildFallbackPdf(m, parts, items, companyName); }
         }
+    }
+
+    // ============================================================
+    //  رندر صورتجلسه با Stimulsoft و قالب MRT شرکت
+    // ============================================================
+
+    private bool IsStimulsoftEnabled()
+    {
+        var engine = _configuration["Reporting:MeetingMinutes:Engine"];
+        return string.IsNullOrWhiteSpace(engine)
+               || engine.Equals("Stimulsoft", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>مسیر قالب MRT شرکت — نمونه: Reports/MeetingMinutes/Companies/1003/MeetingMinutes-A4.mrt</summary>
+    private string? ResolveMinutesTemplatePath(int companyId)
+    {
+        var root = _configuration["Reporting:MeetingMinutes:TemplateRoot"] ?? "Reports/MeetingMinutes/Companies";
+        var relative = Path.Combine(root, companyId.ToString(CultureInfo.InvariantCulture), "MeetingMinutes-A4.mrt");
+        var candidates = new[]
+        {
+            Path.Combine(_env.ContentRootPath ?? "", relative),
+            Path.Combine(AppContext.BaseDirectory, relative)
+        };
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    /// <summary>
+    /// قالب شرکت را با دادهٔ همین صورتجلسه رندر می‌کند.
+    /// دادهٔ بندها و حاضرین از پایگاه داده خوانده و به‌صورت DataSet در قالب تزریق می‌شود؛
+    /// هیچ اتصال مستقیم SQL از داخل فایل MRT استفاده نمی‌شود.
+    /// </summary>
+    private byte[]? TryRenderWithStimulsoft(
+        MeetingMinutes m,
+        List<MeetingMinutesParticipant> parts,
+        List<MeetingMinutesItem> items,
+        int companyId,
+        string? companyName)
+    {
+        var templatePath = ResolveMinutesTemplatePath(companyId);
+        if (templatePath == null)
+        {
+            _logger.LogWarning(
+                "قالب MRT صورتجلسه برای شرکت {CompanyId} پیدا نشد؛ چاپ با QuestPDF انجام می‌شود. مسیر مورد انتظار: {Root}/{CompanyId}/MeetingMinutes-A4.mrt",
+                companyId,
+                _configuration["Reporting:MeetingMinutes:TemplateRoot"] ?? "Reports/MeetingMinutes/Companies",
+                companyId);
+            return null;
+        }
+
+        try
+        {
+            RegisterStimulsoftFonts();
+            ApplyStimulsoftLicense();
+
+            using var report = new StiReport();
+            report.Load(templatePath);
+            report.Dictionary.Databases.Clear();
+
+            var attendees = parts.Where(p => p.Kind == MinutesParticipantKind.Attendee).ToList();
+            var absent = parts.Where(p => p.Kind == MinutesParticipantKind.Absent).ToList();
+
+            var dataSet = BuildMinutesDataSet(attendees, items);
+            report.RegData("MinutesData", dataSet);
+
+            foreach (var (key, value) in BuildMinutesVariables(m, attendees, absent, items, companyName))
+            {
+                // مقدار متغیرها با ایندکسر گزارش ست می‌شود تا تبدیل نوع (String/Image) خودکار انجام شود.
+                if (report.Dictionary.Variables[key] != null) report[key] = value;
+            }
+
+            report.Render(false);
+            using var output = new MemoryStream();
+            var settings = new StiPdfExportSettings { EmbeddedFonts = true };
+            report.ExportDocument(StiExportFormat.Pdf, output, settings);
+
+            _logger.LogInformation(
+                "صورتجلسه {MinutesId} با Stimulsoft و قالب {Template} برای شرکت {CompanyId} رندر شد.",
+                m.Id, templatePath, companyId);
+            return output.ToArray();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "رندر Stimulsoft صورتجلسه ناموفق بود. MinutesId={MinutesId}, CompanyId={CompanyId}, Template={Template}",
+                m.Id, companyId, templatePath);
+            return null;
+        }
+    }
+
+    private static DataSet BuildMinutesDataSet(
+        List<MeetingMinutesParticipant> attendees,
+        List<MeetingMinutesItem> items)
+    {
+        var itemTable = new DataTable("MinutesItems");
+        itemTable.Columns.Add("RowNo", typeof(string));
+        itemTable.Columns.Add("Description", typeof(string));
+        itemTable.Columns.Add("Resp", typeof(string));
+        itemTable.Columns.Add("DueDate", typeof(string));
+        itemTable.Columns.Add("FollowUp", typeof(string));
+        itemTable.Columns.Add("FollowUpDate", typeof(string));
+        itemTable.Columns.Add("Status", typeof(string));
+
+        var row = 0;
+        foreach (var it in items)
+        {
+            row++;
+            itemTable.Rows.Add(
+                (it.RowNo > 0 ? it.RowNo : row).ToString(CultureInfo.InvariantCulture),
+                it.Description ?? string.Empty,
+                string.IsNullOrWhiteSpace(it.ResponsibleName) ? "—" : it.ResponsibleName,
+                FaDate(it.DueDate),
+                string.IsNullOrWhiteSpace(it.FollowUpName) ? "—" : it.FollowUpName,
+                FaDate(it.FollowUpDate),
+                MinutesItemStatus.ToFa(it.ItemStatus));
+        }
+
+        var attendeeTable = new DataTable("MinutesAttendees");
+        attendeeTable.Columns.Add("Name", typeof(string));
+        attendeeTable.Columns.Add("StateFa", typeof(string));
+        attendeeTable.Columns.Add("Signature", typeof(string));
+
+        foreach (var p in attendees)
+        {
+            var signature = TryDecodeSignaturePng(p.SignatureData);
+            attendeeTable.Rows.Add(
+                p.Name ?? string.Empty,
+                p.SignedAt != null ? "امضا شد در " + FaDate(p.SignedAt) : "در انتظار امضا",
+                signature is { Length: > 0 }
+                    ? "data:image/png;base64," + Convert.ToBase64String(signature)
+                    : DBNull.Value);
+        }
+
+        var dataSet = new DataSet("MinutesData");
+        dataSet.Tables.Add(itemTable);
+        dataSet.Tables.Add(attendeeTable);
+        return dataSet;
+    }
+
+    private static List<KeyValuePair<string, object?>> BuildMinutesVariables(
+        MeetingMinutes m,
+        List<MeetingMinutesParticipant> attendees,
+        List<MeetingMinutesParticipant> absent,
+        List<MeetingMinutesItem> items,
+        string? companyName)
+    {
+        var signed = attendees.Count(p => p.SignedAt != null);
+        var done = items.Count(i => i.ItemStatus == MinutesItemStatus.Done);
+        var number = m.Id.ToString(CultureInfo.InvariantCulture);
+        var meetingDate = FaDate(m.MeetingDate);
+        var regDate = FaDate(m.DateRegistered);
+
+        var variables = new List<KeyValuePair<string, object?>>
+        {
+            new("ReportTitle", string.IsNullOrWhiteSpace(m.Title) ? "صورتجلسه" : m.Title),
+            new("MinutesNo", number),
+            new("MeetingDateFa", meetingDate),
+            new("RegDateFa", regDate),
+            new("StatusFa", MeetingMinutesStatus.ToFa(m.Status)),
+            new("MetaLine", $"شماره {number}   ·   جلسه {meetingDate}   ·   ثبت {regDate}   ·   وضعیت: {MeetingMinutesStatus.ToFa(m.Status)}"),
+            new("HeadHint", $"تنظیم‌کننده: {m.CreatedByName}"),
+            new("CompanyName", companyName ?? string.Empty),
+            new("AttendCountFa", $"{signed} از {attendees.Count} نفر امضا کرده‌اند   ·   مجموع بندها: {items.Count}   ·   انجام‌شده: {done}"),
+            new("AbsentList", absent.Count == 0 ? "ندارد" : string.Join("، ", absent.Select(p => p.Name))),
+            new("TailNote", "مصوبات این صورتجلسه برای همهٔ واحدهای درگیر لازم‌الاجراست. مسئولان اجرا موظف‌اند نتیجهٔ اقدام را تا تاریخ تعیین‌شده به مسئول پیگیری اعلام کنند."),
+            new("TailSign", $"تنظیم‌کننده صورتجلسه: {m.CreatedByName}"),
+            new("AttachmentsFa", "—")
+        };
+        return variables;
+    }
+
+    private void RegisterStimulsoftFonts()
+    {
+        if (Interlocked.Exchange(ref _stimulsoftFontsRegistered, 1) != 0) return;
+        foreach (var dir in new[]
+                 {
+                     Path.Combine(AppContext.BaseDirectory, "Resources", "fonts"),
+                     Path.Combine(_env.ContentRootPath ?? "", "Resources", "fonts")
+                 })
+        {
+            foreach (var file in new[] { "Vazirmatn-Regular.ttf", "Vazirmatn-Bold.ttf" })
+            {
+                var path = Path.Combine(dir, file);
+                if (File.Exists(path)) StiFontCollection.AddFontFile(path);
+            }
+        }
+    }
+
+    /// <summary>کلید لایسنس فقط از تنظیمات/متغیر محیطی خوانده می‌شود و در مخزن ذخیره نمی‌شود.</summary>
+    private void ApplyStimulsoftLicense()
+    {
+        if (Interlocked.Exchange(ref _stimulsoftLicenseApplied, 1) != 0) return;
+        var key = _configuration["Reporting:Stimulsoft:LicenseKey"];
+        if (string.IsNullOrWhiteSpace(key))
+            key = Environment.GetEnvironmentVariable("STIMULSOFT_LICENSE_KEY");
+        if (string.IsNullOrWhiteSpace(key))
+            _logger.LogWarning(
+                "کلید لایسنس Stimulsoft تنظیم نشده است (Reporting:Stimulsoft:LicenseKey یا متغیر محیطی STIMULSOFT_LICENSE_KEY)؛ " +
+                "خروجی چاپ صورتجلسه در نسخهٔ آزمایشی واترمارک Stimulsoft دارد.");
+        else
+            StiLicense.Key = key;
     }
 
     private const string Ink = "#0f172a";

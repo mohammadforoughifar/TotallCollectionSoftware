@@ -402,9 +402,16 @@ public class MeetingMinutesController : RbacControllerBase
 
     // ================== قالب چاپی — سربرگ اختیاری است ==================
 
+    /// <summary>
+    /// چاپ صورتجلسه روی سربرگ شرکت فعال (قالب Stimulsoft شرکت + فایل سربرگ همان شرکت).
+    /// <para>
+    /// <c>preview=1</c> فایل را بدون هدر Content-Disposition برمی‌گرداند تا مرورگر همان
+    /// PDF را نمایش دهد (پیش‌نمایش زنده) و دانلود اجباری نشود.
+    /// </para>
+    /// </summary>
     [HttpGet("{id:int}/print")]
     [HttpGet("{id:int}/print.pdf")]
-    public async Task<IActionResult> Print(int id)
+    public async Task<IActionResult> Print(int id, [FromQuery] bool preview = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Print") is { } f) return f;
         // چاپ هم فقط برای صورتجلسه‌های در گردش کاربر (جلوگیری از دانلود PDF با حدس شناسه)
@@ -413,6 +420,12 @@ public class MeetingMinutesController : RbacControllerBase
         {
             var pdf = await _print.GeneratePdfAsync(id);
             if (pdf is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+            if (preview)
+            {
+                // نمایش درون‌مرورگری: بدون نام فایل، بدون دانلود
+                Response.Headers["Content-Disposition"] = $"inline; filename*=UTF-8''{Uri.EscapeDataString($"صورتجلسه-{id}.pdf")}";
+                return File(pdf, "application/pdf");
+            }
             var fileName = $"صورتجلسه-{id}.pdf";
             return File(pdf, "application/pdf", fileName);
         }

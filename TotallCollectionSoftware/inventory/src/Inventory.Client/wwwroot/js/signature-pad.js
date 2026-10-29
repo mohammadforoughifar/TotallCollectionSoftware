@@ -90,6 +90,28 @@ window.downloadBase64 = function (fileName, dataBase64, mime) {
     }
 };
 
+// پیش‌نمایش زندهٔ PDF در تب جدید (بدون دانلود) — برای «چاپ صورتجلسه روی سربرگ»
+window.previewBase64 = function (fileName, dataBase64, mime) {
+    try {
+        var bytes = atob(dataBase64);
+        var arr = new Uint8Array(bytes.length);
+        for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        var blob = new Blob([arr], { type: mime || 'application/pdf' });
+        var url = URL.createObjectURL(blob);
+        var win = window.open(url, '_blank');
+        if (!win) {
+            // اگر مرورگر پاپ‌آپ را بست، در همان صفحه باز می‌شود تا کاربر PDF را ببیند
+            window.location.href = url;
+        } else if (fileName) {
+            try { win.document.title = fileName; } catch (e) { }
+        }
+        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+        return true;
+    } catch (e) {
+        return false;
+    }
+};
+
 // ==================== PWA آرشیو — امضای ترسیمی سبک + WebAuthn بیومتریک (B2/PWA) ====================
 (function(){
   let padCanvas=null, ctx=null, drawing=false, hasStroke=false;
