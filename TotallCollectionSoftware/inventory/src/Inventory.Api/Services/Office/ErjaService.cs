@@ -214,8 +214,18 @@ public class ErjaService : IErjaService
         if (erja.ReciverUserId != userId)
             throw new Exception("فقط گیرنده‌ی ارجاع می‌تواند پاسخ ثبت کند.");
 
+        // پاسخ خالی نباید ثبت شود: قرارداد «پاسخ داده نشده» در کل کدبیس Answer == ""
+        // است (ActiveErjaId و گردش و شمارنده‌ها با همین شرط کار می‌کنند). پیش‌تر متن
+        // خالی هم ذخیره می‌شد، تاریخ پاسخ می‌خورد و اعلانِ خالی ارسال می‌شد، در حالی
+        // که نامه عملاً «بدون پاسخ» می‌ماند — یعنی کاربر فکر می‌کرد پاسخ ثبت شده است.
+        var answerText = (dto.Answer ?? "").Trim();
+        if (answerText.Length == 0)
+            throw new Exception("متن پاسخ نمی‌تواند خالی باشد.");
+        if (answerText.Length > 4000)
+            throw new Exception("متن پاسخ حداکثر ۴۰۰۰ کاراکتر است.");
+
         var now = DateTime.Now;
-        erja.Answer = dto.Answer?.Trim() ?? "";
+        erja.Answer = answerText;
         erja.ShowForAll = dto.ShowForAll;
         erja.TypeTaeed = dto.TypeTaeed;
         erja.DateAnswer = now;

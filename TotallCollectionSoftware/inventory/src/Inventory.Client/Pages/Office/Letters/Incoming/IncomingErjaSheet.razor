@@ -139,6 +139,9 @@
         this.selGroups.Clear();
         this.errRcv = false;
         this.errAmal = false;
+        // تأیید «ارسال تکراری» مربوط به همین ارجاع است؛ اگر ریست نشود، از ارجاع
+        // بعدی به بعد بی‌صدا اجازهٔ ارسال تکراری داده می‌شود و هشدار نمایش نمی‌یابد.
+        this.allowDuplicateRecipients = false;
 
         visible = true;
         await LoadLookups();
@@ -227,12 +230,20 @@
         }
         else
         {
+            // پاسخ خالی ثبت نمی‌شود (سرور هم همین را رد می‌کند؛ این‌جا برای پیام فوری‌تر)
+            var answerText = (matn ?? "").Trim();
+            if (answerText.Length == 0)
+            {
+                Toast.Error("متن پاسخ را وارد کنید.");
+                return;
+            }
+
             saving = true;
             try
             {
                 var dto = new AnswerErjaDto
                 {
-                    MatnPasokh = matn.Trim()
+                    MatnPasokh = answerText
                 };
                 await IncomingSvc.AnswerAsync(erjaId, dto);
                 Toast.Success("پاسخ به ارجاع ثبت گردید.");

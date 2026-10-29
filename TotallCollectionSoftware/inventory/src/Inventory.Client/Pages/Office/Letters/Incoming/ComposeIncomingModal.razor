@@ -31,7 +31,7 @@
             <div class="row2">
                 <div class="fcard @(errTitle ? "err" : "")">
                     <label>موضوع / عنوان نامه <span class="req">*</span></label>
-                    <input class="tin" placeholder="عنوان یا موضوع نامه وارده…" @bind="title" @bind:event="oninput" />
+                    <input class="tin" maxlength="200" placeholder="عنوان یا موضوع نامه وارده…" @bind="title" @bind:event="oninput" />
                     @if (errTitle)
                     {
                         <div class="ferr"><i class="bi bi-exclamation-circle"></i> موضوع نامه الزامی است</div>
@@ -39,7 +39,7 @@
                 </div>
                 <div class="fcard @(errFerestande ? "err" : "")">
                     <label>فرستنده (سازمان / شخص مبدأ) <span class="req">*</span></label>
-                    <input class="tin" placeholder="نام شرکت، اداره یا شخص فرستنده…" @bind="ferestande" @bind:event="oninput" />
+                    <input class="tin" maxlength="200" placeholder="نام شرکت، اداره یا شخص فرستنده…" @bind="ferestande" @bind:event="oninput" />
                     @if (errFerestande)
                     {
                         <div class="ferr"><i class="bi bi-exclamation-circle"></i> فرستنده نامه الزامی است</div>
@@ -82,7 +82,16 @@
                 </div>
                 <div class="fcard">
                     <label>شماره اندیکاتور / رزرو شده</label>
-                    @if (reservations.Count > 0)
+                    @if (editLetterId > 0)
+                    {
+                        @* در ویرایش، شمارهٔ اندیکاتور تغییر نمی‌کند (EditIncomingLetterDto این
+                           فیلد را ندارد). پیش‌تر کمبوی رزرو فعال بود و کاربر شماره را عوض
+                           می‌کرد ولی ذخیره نمی‌شد — یک «کار بی‌اثر» بی‌هیچ پیامی. *@
+                        <input class="tin num" value="@selectedSabt" disabled
+                               title="شمارهٔ اندیکاتور پس از ثبت نامه تغییر نمی‌کند" />
+                        <small class="text-muted" style="font-size:11px">شمارهٔ اندیکاتور پس از ثبت تغییر نمی‌کند.</small>
+                    }
+                    else if (reservations.Count > 0)
                     {
                         <select class="tin" @bind="selectedSabt">
                             <option value="0">خودکار (اولین شماره آزاد)</option>
@@ -580,22 +589,38 @@
                     Foriat = foriat,
                     Description = description
                 };
-                // ترتیب عمدی: اول پیوست‌های تازه، بعد ذخیرهٔ فیلدها.
-                // دلیل: سرور در پایانِ EditAsync به کسانی که نامه را دیده‌اند اعلانِ
-                // «نامه ویرایش شد» می‌فرستد؛ اگر پیوست‌ها بعد از آن آپلود می‌شدند،
-                // اعلان پیش از تکمیلِ ذخیره ارسال می‌شد و ممکن بود آپلود شکست بخورد.
+                // ترتیب عمدی: اول پیوست‌های تازه، بعد ذخیرهٔ فیلدها — چون سرور در پایانِ
+                // EditAsync به کسانی که نامه را دیده‌اند اعلانِ «نامه ویرایش شد» می‌فرستد و
+                // باید همهٔ تغییرات (از جمله پیوست‌ها) پیش از اعلان ذخیره شده باشند.
+                //
+                // نکتهٔ مهم: خطای یک پیوست «نباید» ذخیرهٔ فیلدهای فرم را متوقف کند —
+                // پیش‌تر استثنا باعث می‌شد هیچ‌کدام از تغییرات متن/عنوان ذخیره نشود و
+                // کاربر فقط یک پیام خطا می‌دید (کارِ انجام‌شده از دست می‌رفت).
+                var failedAttachments = new List<string>();
                 foreach (var f in pendingFiles)
                 {
-                    using var stream = f.OpenReadStream(long.MaxValue);
-                    await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
+                    try
+                    {
+                        using var stream = f.OpenReadStream(long.MaxValue);
+                        await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
+                    }
+                    catch (Exception upEx)
+                    {
+                        failedAttachments.Add($"{f.Name} — {upEx.Message}");
+                    }
                 }
 
                 // Finalize در ویرایش صدا زده نمی‌شود (اعلانِ «نامهٔ جدید» یک‌بار در ثبت است)؛
                 // تنها اعلانی که ویرایش می‌فرستد «نامه ویرایش شد» برای بینندگان قبلی است.
                 var editNotified = await IncomingSvc.EditAsync(editLetterId, dto);
+
                 Toast.Success(editNotified > 0
                     ? $"تغییرات نامه وارده ذخیره شد؛ اعلان «نامه ویرایش شد» برای {editNotified.FaDigits()} نفر از کسانی که نامه را دیده بودند ارسال شد."
                     : "تغییرات نامه وارده ذخیره شد.");
+
+                if (failedAttachments.Count > 0)
+                    Toast.Error($"{failedAttachments.Count.FaDigits()} پیوست بارگذاری نشد (تغییرات متن ذخیره شد): "
+                                + string.Join("، ", failedAttachments.Take(3)));
             }
 
             visible = false;

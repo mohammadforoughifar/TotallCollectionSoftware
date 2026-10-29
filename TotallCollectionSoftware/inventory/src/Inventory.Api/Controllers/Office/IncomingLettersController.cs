@@ -270,8 +270,19 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> ToggleLetterNeshan(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var isNeshan = await _letters.ToggleLetterNeshanAsync(id, MyUserId);
-        return Ok(new { isNeshan });
+        // پیش‌تر هیچ بررسی‌ای نبود: هر کاربری با مجوز «مشاهدهٔ ماژول» می‌توانست با
+        // پیمایش شناسه، نشانِ نامهٔ دیگران را عوض کند.
+        if (!await CanAccessLetterAsync(id))
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        try
+        {
+            var isNeshan = await _letters.ToggleLetterNeshanAsync(id, MyUserId);
+            return Ok(new { isNeshan });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
     }
 
     [HttpPost("{id:int}/bayegani")]
@@ -433,10 +444,17 @@ public class IncomingLettersController : RbacControllerBase
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دیدن پیوست‌های آن را ندارید." });
 
+        // ⚠ ستون Data (بایت‌های فایل) عمداً select نمی‌شود؛ فقط طول آن در SQL حساب
+        // می‌شود. قبلاً فهرست پیوست‌ها همهٔ فایل‌های یک نامه را به حافظه می‌آورد.
         var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == Module && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
+            .Select(a => new
+            {
+                a.Id, a.FileName, a.ContentType, a.FilePath,
+                DataLength = a.Data == null ? 0 : a.Data.Length,
+                a.UploaderName, a.UploaderUserId, a.UploadedAt
+            })
             .ToPageListAsync(pagination);
 
         var list = rows.Select(a => new LetterAttachmentDto
@@ -444,7 +462,7 @@ public class IncomingLettersController : RbacControllerBase
             Id = a.Id,
             FileName = a.FileName,
             ContentType = a.ContentType,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength,
             UploaderName = a.UploaderName,
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt
@@ -462,12 +480,13 @@ public class IncomingLettersController : RbacControllerBase
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
-        // سقف مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت — با احتساب پیوست‌های قبلیِ همین نامه
+        // سقف مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت — با احتساب پیوست‌های قبلیِ همین نامه.
+        // حجم پیوست‌های قبلی بدون خواندن بایت‌ها محاسبه می‌شود (فقط طول ستون در SQL).
         var existingSize = (await Db.AppAttachments.AsNoTracking()
                 .Where(a => a.Module == Module && a.RefId == id)
-                .Select(a => new { a.FilePath, a.Data })
+                .Select(a => new { a.FilePath, DataLength = a.Data == null ? 0 : a.Data.Length })
                 .ToListAsync())
-            .Sum(a => a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length);
+            .Sum(a => a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength);
         if (existingSize + file.Length > 100L * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم مجموع پیوست‌های هر نامه ۱۰۰ مگابایت است." });
 
@@ -523,23 +542,46 @@ public class IncomingLettersController : RbacControllerBase
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
 
+        // فهرست بدون ستون Data؛ فایلِ رکوردهای قدیمی (که داخل دیتابیس است) تک‌تک
+        // و فقط هنگام نوشتن در ZIP خوانده می‌شود — پیش‌تر همهٔ بایت‌ها یک‌جا در
+        // حافظه بار می‌شدند و همان‌ها دوباره داخل ZIP کپی می‌شدند.
         var attachments = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == Module && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data })
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath })
             .ToListAsync();
 
         if (attachments.Count == 0)
             return NotFound(new { message = "پیوستی یافت نشد." });
 
         using var ms = new MemoryStream();
+        // نام تکراری در ZIP: اگر دو پیوست همنام باشند، ورودی دوم با پسوند شماره‌دار
+        // نوشته می‌شود؛ وگرنه بعضی برنامه‌های فشرده‌ساز هنگام استخراج یکی را حذف می‌کنند.
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, true))
         {
             foreach (var att in attachments)
             {
-                var bytes = (att.FilePath is not null ? _store.ReadBytes(att.FilePath) : null) ?? (att.Data is { Length: > 0 } ? att.Data : null);
-                if (bytes == null) continue;
-                var entry = zip.CreateEntry(att.FileName);
+                var bytes = att.FilePath is not null
+                    ? _store.ReadBytes(att.FilePath)
+                    : await Db.AppAttachments.AsNoTracking()
+                        .Where(x => x.Id == att.Id)
+                        .Select(x => x.Data)
+                        .FirstOrDefaultAsync();
+                if (bytes is not { Length: > 0 }) continue;
+
+                var entryName = string.IsNullOrWhiteSpace(att.FileName) ? $"attachment-{att.Id}" : att.FileName;
+                if (!usedNames.Add(entryName))
+                {
+                    var dot = entryName.LastIndexOf('.');
+                    var stem = dot > 0 ? entryName[..dot] : entryName;
+                    var ext = dot > 0 ? entryName[dot..] : "";
+                    var n = 2;
+                    while (!usedNames.Add($"{stem} ({n}){ext}")) n++;
+                    entryName = $"{stem} ({n}){ext}";
+                }
+
+                var entry = zip.CreateEntry(entryName);
                 using var entryStream = entry.Open();
                 await entryStream.WriteAsync(bytes);
             }

@@ -428,7 +428,13 @@ public class IncomingLetterService : IIncomingLetterService
             CreatorName = creatorName,
             Mahramanegi = letter.Mahramanegi,
             Foriat = letter.Foriat,
-            IsNeshan = letter.IsNeshan,
+            // نشان (ستاره) دو سطح دارد و قبلاً این‌جا اشتباه خوانده می‌شد:
+            //   • فهرست کارتابل و فیلتر «نشان‌شده» روی Erja.IsNeshan کار می‌کنند (به‌ازای هر کاربر)
+            //   • ستون IncomingLetter.IsNeshan فقط نشانِ ثبت‌کننده/نامه است
+            // پیش‌تر جزئیات همیشه مقدار نامه را برمی‌گرداند؛ نتیجه: گیرنده در ریدر ستارهٔ
+            // خاموش می‌دید (یا با هر بار باز شدن، ستاره‌اش «برمی‌گشت»). حالا اگر ارجاعی
+            // برای کاربر جاری وجود دارد، همان ملاک است.
+            IsNeshan = myErjas.Count > 0 ? myErjas.Any(e => e.IsNeshan) : letter.IsNeshan,
             IsMine = letter.CreateUserId == userId,
             CurrentErja = curErja,
             Erjas = allErjas,
@@ -630,7 +636,9 @@ public class IncomingLetterService : IIncomingLetterService
         _db.IncomingLetters.Add(letter);
 
         // اضافه کردن خود ثبت‌کننده یا گیرندگان اولیه در جدول Erja
-        var recivers = dto.InitialReciverUserIds.Distinct().ToList();
+        // گیرندگان اولیه می‌توانند نال برسند (کلاینت قدیمی یا JSON بدون این فیلد)؛
+        // پیش‌تر Distinct() روی نال استثنا می‌داد و ثبت نامه با 400 مبهم شکست می‌خورد.
+        var recivers = (dto.InitialReciverUserIds ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
         if (!recivers.Contains(userId)) recivers.Insert(0, userId);
 
         foreach (var rId in recivers)
@@ -819,8 +827,17 @@ public class IncomingLetterService : IIncomingLetterService
     {
         var letter = await _db.IncomingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
         if (letter == null) return false;
+
+        // فقط کسانی که به نامه دسترسی دارند (ثبت‌کننده یا حاضر در گردش) می‌توانند
+        // نشانِ نامه را عوض کنند؛ بررسی دقیق‌ترِ مجوز در کنترلر انجام می‌شود.
+        var inFlow = letter.CreateUserId == userId ||
+                     await _db.Erjas.AnyAsync(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete);
+        if (!inFlow) throw new UnauthorizedAccessException("شما در گردش این نامه نیستید.");
+
         letter.IsNeshan = !letter.IsNeshan;
         await _db.SaveChangesAsync();
+        // پیش‌تر هیچ broadcast‌ای نبود و فهرست «نشان‌شده» تا رفرش دستی کهنه می‌ماند.
+        await _notify.BroadcastChangedAsync("incoming-letters");
         return letter.IsNeshan;
     }
 
