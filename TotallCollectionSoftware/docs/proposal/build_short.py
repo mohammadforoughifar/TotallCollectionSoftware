@@ -44,7 +44,7 @@ META_STEP = 26.6
 
 DOC = {
     "date_fa": "۱۴۰۵/۰۸/۰۷",
-    "doc_no": "۱۴۰۵/M/۰۸",
+    "doc_no": "۱۴۰۵/M/۰۷",
     "attachment": "ندارد",
     "vendor": "شرکت فروغ آریا",
 }
