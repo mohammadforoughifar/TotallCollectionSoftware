@@ -172,7 +172,10 @@
                             var rr = r;
                             <span class="rl-pill">
                                 <b>@(rr.Related == 2 ? "عطف به" : "پیرو")</b>
-                                <span class="num"># @rr.RelateLetterNumber.FaDigits()</span>
+                                @if (!string.IsNullOrWhiteSpace(rr.RelateLetterNumber))
+                                {
+                                    <span class="num"># @rr.RelateLetterNumber.FaDigits()</span>
+                                }
                                 <span class="rl-pill-ttl">@rr.RelateLetterTitle</span>
                                 <button type="button" class="rl-pill-x" @onclick="() => RemoveRel(rr)" title="حذف رابطه"><i class="bi bi-x-lg"></i></button>
                             </span>
