@@ -126,14 +126,8 @@ class PrintLayout:
 
         # contentTop = max(HomepaLetterheadLayout.ContentTop, پایین ناحیهٔ شماره/تاریخ/پیوست + ۶).
         # ContentTop خودش = پایین نوار آبی + فاصلهٔ تأییدشده (۹۷/۷۲) است.
-        content_top_line = re.search(
-            r"ContentTop\(bool isA5\) => BandBottom\(isA5\) \+ \(isA5 \? ([\d.]+)f : ([\d.]+)f\)",
-            layout)
-        if content_top_line is None:
-            raise AssertionError("ContentTop با الگوی BandBottom + فاصله پیدا نشد")
-        content_top_declared = self.band_bottom + float(
-            content_top_line.group(1) if size == "A5" else content_top_line.group(2))
-        self.content_top = max(content_top_declared, meta_bottom + 6)
+        gap = _number(r"ContentStartGap = ([\d.]+)f", layout)
+        self.content_top = max(self.band_bottom + gap, meta_bottom + 6)
         # سقفِ «دست‌کم ۲۰۰pt متن در صفحهٔ اول» (۱۵۰ در A5).
         self.content_top = min(self.content_top,
                                self.geometry.page_height - self.design_footer
@@ -290,8 +284,8 @@ class DesignFlowSampleTests(unittest.TestCase):
                     self.assertGreater(layout.content_top, layout.band_bottom,
                                        "متن نباید روی نوار آبی بیفتد")
                     gap = layout.content_top - layout.band_bottom
-                    self.assertGreaterEqual(gap, 60 if size == "A4" else 50,
-                                            "فاصلهٔ متن از نوار آبی همان تأییدشدهٔ کارفرما باشد")
+                    self.assertAlmostEqual(gap, 97, delta=0.5,
+                                           msg=f"فاصلهٔ متن از نوار آبی در {size} باید ۹۷pt باشد")
                     self.assertGreater(layout.text_area,
                                        layout.signature_block + layout.line_height() * 6,
                                        f"ناحیهٔ متن {size} برای نامهٔ کوتاه + امضا کافی نیست")

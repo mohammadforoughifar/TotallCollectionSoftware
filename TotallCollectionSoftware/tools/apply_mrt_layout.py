@@ -41,13 +41,13 @@ def content_top() -> dict[str, float]:
     """پایین نوار آبی + فاصلهٔ شروع متن، از خودِ کلاس چیدمان."""
     source = LAYOUT.read_text(encoding="utf-8")
     band = re.search(r"BandBottom\(bool isA5\) => isA5 \? ([\d.]+)f : ([\d.]+)f", source)
-    gap = re.search(r"ContentTop\(bool isA5\) => BandBottom\(isA5\) \+ \(isA5 \? ([\d.]+)f : ([\d.]+)f\)",
-                    source)
+    gap = re.search(r"ContentStartGap = ([\d.]+)f", source)
     if band is None or gap is None:
-        raise SystemExit("BandBottom/ContentTop در HomepaLetterheadLayout پیدا نشد")
+        raise SystemExit("BandBottom/ContentStartGap در HomepaLetterheadLayout پیدا نشد")
+    offset = float(gap.group(1))
     return {
-        "A5": float(band.group(1)) + float(gap.group(1)),
-        "A4": float(band.group(2)) + float(gap.group(2)),
+        "A5": float(band.group(1)) + offset,
+        "A4": float(band.group(2)) + offset,
     }
 
 

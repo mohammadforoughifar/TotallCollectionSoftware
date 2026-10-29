@@ -48,9 +48,12 @@ internal static class HomepaLetterheadLayout
 
     /// <summary>
     /// شروع بلوک اطلاعات (گیرنده/موضوع/متن). کارفرما خواست متن کمی پایین‌تر از نوار آبی باشد؛
-    /// درخواست نهایی: دو خط + دو خط زیر نوار = ۹۷pt در A4 و ۷۲pt در A5.
+    /// درخواست نهایی: **۹۷pt در هر دو کاغذ** (A4 و A5) از پایین نوار آبی.
     /// </summary>
-    internal static float ContentTop(bool isA5) => BandBottom(isA5) + (isA5 ? 72f : 97f);
+    internal static float ContentTop(bool isA5) => BandBottom(isA5) + ContentStartGap;
+
+    /// <summary>فاصلهٔ شروع متن از پایین نوار آبی — یکی برای A4 و A5 (۹۷pt).</summary>
+    internal const float ContentStartGap = 97f;
 
     // Top دقیقاً برابر «MRT منهای مبدأ page.Header» است تا هم چاپ نامهٔ داخلی و هم نامهٔ صادره
     // روی خط برچسبِ چاپ‌شده بنشینند (مرکز برچسب‌ها روی تصویر: ۶۶٫۵ / ۸۴٫۵ / ۱۰۳٫۲pt در A4).

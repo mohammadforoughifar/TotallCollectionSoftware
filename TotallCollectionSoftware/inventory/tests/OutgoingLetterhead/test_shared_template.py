@@ -344,7 +344,10 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 outgoing = self.outgoing(tree)
                 layout = (office(tree) / "Outgoing" / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
                 self.assertIn("internal static float BandBottom(bool isA5) => isA5 ? 79.4f : 112.8f;", layout)
-                self.assertIn("internal static float ContentTop(bool isA5) => BandBottom(isA5) + (isA5 ? 72f : 97f);", layout)
+                # فاصلهٔ شروع متن برای A4 و A5 یکی است: ۹۷pt (درخواست کارفرما)
+                self.assertIn("internal static float ContentTop(bool isA5) => BandBottom(isA5) + ContentStartGap;",
+                              layout)
+                self.assertIn("internal const float ContentStartGap = 97f;", layout)
                 self.assertIn("Math.Max(HomepaLetterheadLayout.ContentTop(isA5), metaBottom + 6f)", outgoing)
                 # مسیر بدون سربرگ همان رفتار قبلی را نگه می‌دارد.
                 self.assertIn("Math.Max(artBottom + artGap, metaBottom + 6f)", outgoing)
