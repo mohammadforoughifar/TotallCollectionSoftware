@@ -273,14 +273,28 @@ class H2Band(RT):
 
 
 
-def meta_line(c, lbl, val, y, size=8.3, color=None):
-    """خط «برچسب : مقدار» راست‌چین در بلوک شمال‌غربی سربرگ، بدون بیرون‌زدگی از کادر."""
-    txt = visual(f"{lbl} : {val}")
+META_X = 83.7      # ستون نقطه‌چین‌های سربرگ (۸۶ در صفحهٔ ۶۱۲pt)
+META_Y0 = 803.5    # مبنای خط اول «تاریخ»
+META_STEP = 26.6   # فاصلهٔ سه خط سربرگ
+
+
+def header_fields(c, fields=None, size=8.3, color=None):
+    """سه خط «تاریخ / شماره / پیوست» دقیقاً در جای نقطه‌چین‌های سربرگ رسمی."""
+    if fields is None:
+        fields = [("تاریخ", C.DOC["date_fa"]),
+                  ("شماره", C.DOC["doc_no"]),
+                  ("پیوست", C.DOC.get("attachment", "ندارد"))]
+    color = color or colors.HexColor("#333B4A")
+    texts = [visual(f"{lbl} : {val}") for lbl, val in fields]
     c.setFont("Vazir", size)
-    width = w(txt, "Vazir", size)
-    x_right = max(104.0, width + 10.0)
-    c.setFillColor(color or colors.HexColor("#5C6474"))
-    c.drawRightString(x_right, y, txt)
+    widest = max(w(t, "Vazir", size) for t in texts)
+    x_right = max(META_X, widest + 10.0)
+    y = META_Y0
+    for t in texts:
+        c.setFillColor(color)
+        c.setFont("Vazir", size)
+        c.drawRightString(x_right, y, t)
+        y -= META_STEP
 
 
 # ------------------------------------------------------------------ page deco
@@ -294,14 +308,8 @@ def on_cover(c, doc):
     c.saveState()
     draw_letterhead(c)
 
-    # سرصفحهٔ شمال‌غربی: تاریخ / شماره / نسخه (هم‌سبک با سربرگ)
-    meta = [("تاریخ", C.DOC["date_fa"]),
-            ("شماره", C.DOC["doc_no"]),
-            ("نسخه", C.DOC["version"])]
-    y = PAGE_H - 26
-    for lbl, val in meta:
-        meta_line(c, lbl, val, y)
-        y -= 25
+    # سه خط سربرگ: تاریخ / شماره / پیوست
+    header_fields(c)
 
     c.setFillColor(RED)
     c.setFont("VazirB", 11.5)
@@ -373,11 +381,8 @@ def on_body(c, doc):
     c.saveState()
     draw_letterhead(c)
 
-    # بلوک تاریخ/شماره در گوشهٔ آزاد سربرگ (محل نقطه‌چین‌های سربرگ)
-    y = PAGE_H - 26
-    for lbl, val in (("تاریخ", C.DOC["date_fa"]), ("شماره", C.DOC["doc_no"])):
-        meta_line(c, lbl, val, y)
-        y -= 25
+    # سه خط سربرگ: تاریخ / شماره / پیوست
+    header_fields(c)
 
     # پاصفحه در ناحیهٔ روشن پایین-چپ (مثلث‌های سربرگ در پایین-راست‌اند)
     total = getattr(doc, "total_pages", None)
@@ -438,14 +443,8 @@ def draw_price_sheet(c):
     """صفحهٔ پیشنهاد قیمت روی سربرگ کامل شرکت (الگوی نمونهٔ یارکو)."""
     draw_letterhead(c)
 
-    # تاریخ / شماره / پیوست (جای نقطه‌چین‌های سربرگ)
-    meta = [("تاریخ", C.DOC["date_fa"]),
-            ("شماره", C.DOC["doc_no"]),
-            ("پیوست", "ندارد")]
-    y = PAGE_H - 26
-    for lbl, val in meta:
-        meta_line(c, lbl, val, y, color=colors.HexColor("#334155"))
-        y -= 25
+    # سه خط سربرگ: تاریخ / شماره / پیوست
+    header_fields(c)
 
     # عنوان
     c.setFillColor(NAVY)
@@ -530,7 +529,7 @@ def id_page():
         ["موضوع", "معرفی چهار ماژول: اطلاعات پایه، اتوماسیون اداری، دستور کار، آرشیو اسناد و مدارک"],
         ["تهیه‌کننده", "شرکت فروغ آریا"],
         ["تاریخ صدور", f"{C.DOC['date_fa']}   —   میلادی: {C.DOC['date_en'].replace('-', '/')}"],
-        ["شمارهٔ سند", C.DOC["doc_no"]],
+        ["شمارهٔ سند", f"{C.DOC['doc_no']}   (کد داخلی: {C.DOC['doc_ref']})"],
         ["نسخه", C.DOC["version"]],
         ["وضعیت", "نسخهٔ ارائه به کارفرما — مبالغ صفحهٔ پایانی نیازمند تکمیل توسط واحد بازرگانی است"],
         ["مبنای محتوا", "استخراج مستقیم از کد پروژه: کنترلرها، موجودیت‌های داده، صفحات رابط کاربری و سرویس‌ها"],
