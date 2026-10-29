@@ -358,8 +358,14 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
         var footerReserve = hasLetterhead ? HomepaLetterheadLayout.DesignFooterReserve(isA5) : (isA5 ? 24f : 32f);
         var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
+
+        // سربرگ هر صفحه (نوار آبی) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب تنظیم
+        // می‌شود، ولی صفحهٔ دوم به بعد باید از زیر نوار آبی شروع کند، وگرنه متن روی سربرگ می‌رود.
+        var headerReserve = hasLetterhead ? HomepaLetterheadLayout.BandBottom(isA5) + 24f : 0f;
+
         // مکان عمودی جاری (point) — با مختصات قالب جلو می‌رود تا فاصله‌ها همان فاصله‌های MRT باشد.
         var cursor = new float[1];
+        cursor[0] = headerReserve;
 
         var doc = Document.Create(container =>
         {
@@ -378,6 +384,9 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     .FontColor(Ink)
                     .LineHeight(1.6f)
                     .DirectionFromRightToLeft());
+
+                // یک نوار خالی هم‌اندازهٔ ناحیهٔ سربرگ؛ روی همهٔ صفحه‌ها تکرار می‌شود.
+                page.Header().Height(headerReserve);
 
                 page.ContentFromRightToLeft();
                 page.Content().Column(col =>

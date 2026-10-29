@@ -198,6 +198,15 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 self.assertIn("بدون عنوان", service)          # عنوان خالی هم چاپ می‌شود
                 self.assertIn('"بندها و تصمیمات"', service)    # برچسب پیش‌فرض فارسی بندها
 
+    def test_second_page_starts_below_the_letterhead_band(self):
+        """صورتجلسهٔ بلند: صفحهٔ دوم نباید زیر نوار آبی سربرگ برود."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("HomepaLetterheadLayout.BandBottom(isA5) + 24f", service)
+                self.assertIn("page.Header().Height(headerReserve)", service)
+                self.assertIn("cursor[0] = headerReserve;", service)
+
     def test_falls_back_when_template_is_missing(self):
         for tree in TREES:
             with self.subTest(tree=tree.name):
