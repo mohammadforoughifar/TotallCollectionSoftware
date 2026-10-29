@@ -84,10 +84,11 @@ def header_fields(c):
 
 
 def footer(c, page, total=5):
-    c.setFont("Vazir", 7.6)
-    c.setFillColor(GRAY_LIGHT)
-    c.drawString(LM, 46, visual("شرکت فروغ آریا — محرمانه"))
-    c.drawString(LM, 33, visual(f"صفحهٔ {fa_digits(page)} از {fa_digits(total)}"))
+    c.setFillColor(GRAY)
+    c.setFont("VazirB", 8.8)
+    c.drawCentredString(PAGE_W / 2, 50, visual("شرکت فروغ آریا"))
+    c.setFont("Vazir", 8.4)
+    c.drawCentredString(PAGE_W / 2, 35, visual(f"صفحهٔ {fa_digits(page)} از {fa_digits(total)}"))
 
 
 def footer_note(c, text):
@@ -220,7 +221,7 @@ def page_cover(c):
     draw_letterhead(c)
     header_fields(c)
 
-    y = TOP - 150
+    y = TOP - 122
     c.setFillColor(NAVY)
     c.setFont("VazirB", 24)
     c.drawCentredString(PAGE_W / 2, y, visual("معرفی چهار ماژول نرم‌افزاری"))
@@ -229,11 +230,6 @@ def page_cover(c):
     c.setLineWidth(2.4)
     c.line(PAGE_W / 2 - 96, y - 14, PAGE_W / 2 + 96, y - 14)
 
-    rt = RT("برای مدیرعاملی که می‌خواهد گردش مکاتبات، تعهدات کاری و مدارک سازمان را در یک "
-            "سامانه، با یک ورود و یک سطح دسترسی ببیند.",
-            size=11.6, leading=21, align="center", color="#3A4353")
-    rt.wrap(CONTENT_W - 60, 200)
-    rt.drawOn(c, LM + 30, y - 44 - rt._h)
 
     # خط پایانی: شرکت و تاریخ
     y2 = BOTTOM + 78
@@ -242,9 +238,7 @@ def page_cover(c):
     c.line(LM + CONTENT_W * 0.16, y2, LM + CONTENT_W * 0.84, y2)
     c.setFillColor(GRAY_LIGHT)
     c.setFont("Vazir", 9.2)
-    c.drawCentredString(PAGE_W / 2, y2 - 20, visual(f"{DOC['vendor']}  •  {DOC['date_fa']}"))
-    c.setFont("Vazir", 8.0)
-    c.drawCentredString(PAGE_W / 2, y2 - 36, visual("محرمانه — ویژهٔ مدیرعامل"))
+    c.drawCentredString(PAGE_W / 2, y2 - 20, visual(DOC["date_fa"]))
 
     footer(c, 1)
 
