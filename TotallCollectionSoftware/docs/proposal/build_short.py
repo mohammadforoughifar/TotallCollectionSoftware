@@ -216,82 +216,112 @@ def kpi_strip(c, y, items, height=44.0):
 
 # ------------------------------------------------------------------ page 1
 def page_cover(c):
+    """جلد: عنوان سند، فهرست چهار ماژول با یک خط توضیح، و جملهٔ تعهد."""
     draw_letterhead(c)
     header_fields(c)
 
-    y = TOP - 62
-    c.setFillColor(RED)
-    c.setFont("VazirB", 10.5)
-    c.drawCentredString(PAGE_W / 2, y, visual("راهکار یکپارچهٔ اداری سازمان"))
-    y -= 46
-
+    y = TOP - 160
     c.setFillColor(NAVY)
-    c.setFont("VazirB", 30)
-    c.drawCentredString(PAGE_W / 2, y, visual("دفتر کار دیجیتال"))
-    y -= 44
+    c.setFont("VazirB", 22)
+    c.drawCentredString(PAGE_W / 2, y, visual("معرفی چهار ماژول نرم‌افزاری"))
 
     c.setStrokeColor(RED)
     c.setLineWidth(2.2)
-    c.line(PAGE_W / 2 - 104, y + 12, PAGE_W / 2 + 104, y + 12)
+    c.line(PAGE_W / 2 - 92, y - 12, PAGE_W / 2 + 92, y - 12)
 
     c.setFillColor(GRAY)
-    c.setFont("Vazir", 11.5)
-    c.drawCentredString(PAGE_W / 2, y - 22,
+    c.setFont("Vazir", 10.6)
+    c.drawCentredString(PAGE_W / 2, y - 32,
                         visual("مکاتبات، دستور کار و اسناد سازمان در یک سامانه"))
 
-    # چهار ماژول
-    mods = ["اطلاعات پایه", "اتوماسیون اداری", "دستور کار", "آرشیو اسناد و مدارک"]
+    # برچسب بخش
+    c.setFillColor(GRAY_LIGHT)
+    c.setFont("Vazir", 8.2)
+    c.drawRightString(LM + CONTENT_W, y - 66, visual("ماژول‌های پیشنهادی"))
+    lbl_w = w(visual("ماژول‌های پیشنهادی"), "Vazir", 8.2)
+    c.setStrokeColor(colors.HexColor("#E3E7ED"))
+    c.setLineWidth(0.6)
+    c.line(LM, y - 64, LM + CONTENT_W - lbl_w - 12, y - 64)
+
+    # چهار ماژول با یک خط توضیح
+    mods = [
+        ("اطلاعات پایه", "سازمان، کاربران، نقش‌ها و دسترسی‌ها"),
+        ("اتوماسیون اداری", "نامهٔ داخلی، وارده و صادره، دبیرخانه"),
+        ("دستور کار", "ارجاع، مهلت، پیگیری و گزارش عملکرد"),
+        ("آرشیو اسناد و مدارک", "بایگانی، نسخه‌گذاری، تأیید و جستجو"),
+    ]
     y -= 78
-    bw, gap = (CONTENT_W - 3 * 8) / 4, 8
-    for i, m in enumerate(mods):
+    gap = 9.0
+    bw = (CONTENT_W - 3 * gap) / 4
+    bh = 86.0
+    for i, (name, desc) in enumerate(mods):
         x = LM + (3 - i) * (bw + gap)
         c.setFillColor(colors.white)
-        c.setStrokeColor(colors.HexColor("#DDE2E9"))
-        c.setLineWidth(0.7)
-        c.rect(x, y - 30, bw, 30, stroke=1, fill=1)
+        c.setStrokeColor(colors.HexColor("#DCE1E8"))
+        c.setLineWidth(0.8)
+        c.roundRect(x, y - bh, bw, bh, 2.5, stroke=1, fill=1)
         c.setFillColor(RED)
-        c.rect(x + bw - 2.4, y - 30, 2.4, 30, stroke=0, fill=1)
-        c.setFillColor(NAVY)
-        c.setFont("VazirB", 8.4)
-        c.drawCentredString(x + bw / 2 - 2, y - 18.5, visual(m))
+        c.rect(x + bw - 2.6, y - bh + 8, 2.6, bh - 16, stroke=0, fill=1)
 
-    # کارت مشخصات
-    y -= 62
-    h = 70.0
-    c.setFillColor(colors.white)
-    c.setStrokeColor(colors.HexColor("#E1E5EB"))
-    c.setLineWidth(0.8)
-    c.roundRect(LM, y - h, CONTENT_W, h, 3, stroke=1, fill=1)
-    rows = [("تهیه‌کننده", DOC["vendor"]),
-            ("مخاطب", "مدیرعامل محترم شرکت ................................"),
-            ("دامنه", "چهار ماژول — ارائه، راه‌اندازی و آموزش کاربران")]
-    yy = y - 17
-    for lbl, val in rows:
-        c.setFillColor(GRAY_LIGHT)
-        c.setFont("Vazir", 7.8)
-        c.drawRightString(PAGE_W - RM - 14, yy, visual(lbl))
         c.setFillColor(NAVY)
         c.setFont("VazirB", 9.0)
-        c.drawRightString(PAGE_W - RM - 62, yy, visual(val))
-        yy -= 21.5
+        c.drawCentredString(x + bw / 2 - 1.5, y - 23, visual(name))
 
-    y -= h + 34
-    y = kpi_strip(c, y, [("۴", "ماژول"), ("۳۵۶", "جدول داده"),
-                         ("۱۵۹۷", "سرویس وب"), ("۲۹۴", "صفحهٔ کاربری")], height=50)
+        c.setStrokeColor(colors.HexColor("#EDEFF3"))
+        c.setLineWidth(0.6)
+        c.line(x + 10, y - 31, x + bw - 12, y - 31)
 
-    # نوار سه مزیت کلیدی
-    y -= 26
-    perks = ["بدون کاغذ", "پیگیری مهلت‌دار", "دسترسی کنترل‌شده", "جستجوی چندثانیه‌ای"]
-    pw = CONTENT_W / len(perks)
-    for i, t in enumerate(perks):
-        x = LM + (len(perks) - 1 - i) * pw
-        c.setFillColor(RED)
-        c.circle(x + pw / 2 + w(visual(t), "Vazir", 8.6) / 2 + 7, y - 3, 1.9, stroke=0, fill=1)
-        c.setFillColor(NAVY_SOFT)
-        c.setFont("VazirB", 8.6)
-        c.drawCentredString(x + pw / 2, y - 6, visual(t))
+        rt = RT(desc, size=7.4, leading=11.4, align="center", color="#5B6472")
+        rt.wrap(bw - 18, 100)
+        rt.drawOn(c, x + 9, y - 34 - rt._h)
 
-    footer_note(c, f"{DOC['vendor']}  •  {DOC['date_fa']}  •  محرمانه")
+    # جملهٔ تعهد
+    y -= bh + 56
+    c.setFillColor(NAVY_SOFT)
+    c.setFont("Vazir", 10.2)
+    c.drawCentredString(PAGE_W / 2, y, visual("یک سامانه، یک پایگاه داده و یک مدل دسترسی"))
+    y -= 19
+    c.setFillColor(GRAY)
+    c.setFont("Vazir", 9.4)
+    c.drawCentredString(PAGE_W / 2, y,
+                        visual("برای گردش مکاتبات، پیگیری تعهدات و نگهداری امن مدارک"))
+
+    # فهرست سند
+    y -= 30
+    c.setFillColor(GRAY_LIGHT)
+    c.setFont("Vazir", 7.9)
+    c.drawRightString(LM + CONTENT_W, y, visual("در این سند"))
+    y -= 15
+    items = [("خلاصهٔ مدیریتی و تصمیم‌های مورد انتظار", "۲"),
+             ("معرفی چهار ماژول، گردش کار و دسترسی‌ها", "۳"),
+             ("اجرا، امنیت و دامنهٔ تحویل", "۴"),
+             ("پیشنهاد قیمت و شرایط پرداخت", "۵")]
+    for title, page in items:
+        c.setFillColor("#3A4353")
+        c.setFont("Vazir", 8.4)
+        c.drawRightString(LM + CONTENT_W, y, visual(title))
+        c.setFillColor(GRAY_LIGHT)
+        c.setFont("Vazir", 8.0)
+        c.drawString(LM, y, page)
+        tw = w(visual(title), "Vazir", 8.4)
+        c.setStrokeColor(colors.HexColor("#DDE2E9"))
+        c.setLineWidth(0.5)
+        c.setDash(0.8, 2.2)
+        c.line(LM + 16, y + 2.4, LM + CONTENT_W - tw - 8, y + 2.4)
+        c.setDash()
+        y -= 15
+
+    # خط پایانی
+    y -= 74
+    c.setStrokeColor(colors.HexColor("#E1E5EB"))
+    c.setLineWidth(0.7)
+    c.line(LM + CONTENT_W * 0.18, y, LM + CONTENT_W * 0.82, y)
+    c.setFillColor(GRAY_LIGHT)
+    c.setFont("Vazir", 8.6)
+    c.drawCentredString(PAGE_W / 2, y - 16,
+                        visual(f"{DOC['vendor']}  •  {DOC['date_fa']}"))
+
+    footer(c, 1)
 
 
 # ------------------------------------------------------------------ page 2
@@ -321,14 +351,13 @@ def page_summary(c):
     y -= 14
 
     y = box(c, y, "یک سامانه، یک منبع داده، یک مدل دسترسی",
-            "دسترسی به شکل «ماژول.عملیات» تعریف و به نقش تخصیص داده می‌شود (مثلاً "
-            "WorkOrders.AssignOthers یا DocArchive.Export) و هم در سرویس‌های سرور و هم در منو "
-            "و صفحات اعمال می‌شود. هر عملیات حساس در لاگ ثبت می‌شود.")
+            "دسترسی بر پایهٔ نقش تعریف می‌شود: هر نقش دقیقاً همان کارهایی را می‌بیند که باید؛ "
+            "هم در فهرست‌ها و هم در خود رکورد اعمال می‌شود و هر عملیات حساس در سابقهٔ سامانه "
+            "ثبت می‌ماند.")
     y -= 12
 
-    y = para(c, y, "در نسخهٔ امروز کد، سامانه ۳۵۶ جدول داده، حدود ۱٬۶۰۰ سرویس وب و ۲۹۴ صفحهٔ "
-                   "کاربری دارد؛ این چهار ماژول بخشی از یک محصول آزموده‌شده است، نه یک نمونهٔ "
-                   "اولیه.")
+    y = para(c, y, "این چهار ماژول بخشی از یک محصول آزموده‌شده‌اند که امروز در بهره‌برداری "
+                   "است؛ بنابراین پروژه با نمونهٔ اولیه شروع نمی‌شود.")
     y -= 4
     y = para(c, y, "چرا این چهار ماژول، به این ترتیب", font="VazirB", size=9.4, color=NAVY,
              align="right")
@@ -422,8 +451,8 @@ def page_delivery(c):
     y -= 9
 
     y = table(c, y, ["امنیت و کنترل دسترسی", "توضیح"], [
-        ["احراز هویت", "ورود با نام کاربری و رمز؛ توکن JWT با اعتبارسنجی در هر درخواست"],
-        ["دسترسی نقش‌محور", "مجوز «ماژول.عملیات» به نقش تخصیص می‌یابد و در سرور بررسی می‌شود"],
+        ["احراز هویت", "ورود با نام کاربری و رمز؛ اعتبارسنجی نشست در هر درخواست"],
+        ["دسترسی نقش‌محور", "هر مجوز به نقش تخصیص می‌یابد و پیش از اجرا در سرور بررسی می‌شود"],
         ["لاگ عملیات", "ثبت کاربر، زمان، عملیات، مسیر و نتیجه؛ پوشاندن مقادیر حساس"],
         ["دسترسی مدرک", "چهار سطح پوشه با زنجیرهٔ ارثبری، مجوز دانلود جدا و واترمارک چاپ"],
     ], widths=[0.24, 0.76], size=8.0, leading=12.4, first_col_bold=True)
