@@ -839,3 +839,43 @@ dotnet build Inventory.sln -c Debug            # اگر از درخت ریشه �
   `test_content_starts_below_the_blue_band_not_below_the_whole_art` و
   `test_company_1003_template_announces_receiver_title_and_body` (ترتیب عمودی واقعی در MRT:
   گیرنده ← موضوع ← متن ← رونوشت ← کادر امضا).
+
+### ۴-۱۲. خطای چاپ: `DocumentComposeException` — «You should not assign multiple child elements…»
+
+**نشانه:** هنگام چاپ نامه، پاسخ سرور: «ساخت PDF نامه ناموفق بود (DocumentComposeException):
+You should not assign multiple child elements to a single-child container…».
+
+**علت:** در `AddDesignMetaGrid` (شماره/تاریخ/پیوست روی سربرگ شرکت ۱۰۰۳) داخل یک `foreach`
+روی همان `host` — که تنها فرزندِ لایهٔ `page.Foreground()` است — هر بار زنجیرهٔ `.Element(...)`
+صدا زده می‌شد. سه مقدار ⇒ سه فرزند روی یک کانتینر تک‌فرزند. QuestPDF عمداً همین را استثنا
+می‌کند، چون یعنی بخشی از چیدمان دارد بازنویسی می‌شود.
+
+**اصلاح:** یک فرزندِ واحد برای آن لایه ساخته می‌شود و هر مقدار داخل همان ستون با فاصلهٔ
+عمودیِ خودش می‌نشیند:
+
+```csharp
+host.AlignLeft().AlignTop().Column(column =>
+{
+    var cursor = 0f;
+    foreach (var field in fields)               // مرتب بر اساس Top قالب
+    {
+        var gap = Math.Max(0f, field.Top) - cursor;
+        if (gap > 0.5f) column.Item().Height(gap);
+        column.Item().Height(rowHeight).Row(row => { … });   // مقدار + برچسب
+        cursor = Math.Max(0f, field.Top) + rowHeight;
+    }
+});
+```
+
+مختصات همان مختصات مطلق صفحه می‌ماند (ستون از گوشهٔ بالا-چپ لایهٔ Foreground شروع می‌شود)،
+پس جای شماره/تاریخ/پیوست و فاصلهٔ عمودی قالب هیچ تغییری نمی‌کند.
+
+**قاعدهٔ کلی برای این پروژه:** هر کانتینر QuestPDF فقط یک فرزند می‌گیرد. چند مقدار کنار هم
+یعنی `Column`/`Row`/`Table`/`Layers`؛ و در حلقه همیشه از `column.Item()`، `row.RelativeItem()`،
+`row.ConstantItem()`، `table.Cell()` یا `layers.Layer()` استفاده شود — نه `.Element(` روی یک
+متغیرِ ثابت.
+
+**تست نگهبان:** `inventory/tests/OutgoingLetterhead/test_design_flow_samples.py::ComposeSafetyTests`
+سه چیز را می‌سنجد: فقط یک `page.Foreground()` در مسیر طرح، تنها یک فرزند برای لایهٔ سربرگ،
+و اینکه هیچ حلقه‌ای `.Element(` را روی کانتینر ثابت صدا نمی‌زند. (روی کد قبل از اصلاح، این
+تست‌ها شکست می‌خورند.)

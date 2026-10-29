@@ -2288,46 +2288,62 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // علت: کادرهای شماره/تاریخ/پیوست در قالب شرکت فاصلهٔ عمودی دارند (۶۰٫۵ / ۷۷ / ۹۶pt)؛
         // چیدن پیوسته آن فاصله‌ها را حذف می‌کرد و مقدار «پیوست» تا ۶٫۷pt بالاتر از برچسبش
         // می‌نشست (همان ایراد «پیوست جای درستش نیست»).
-        foreach (var field in fields)
+        //
+        // نکتهٔ مهم (رفع خطای چاپ): کانتینرِ `page.Foreground()` تک‌فرزند است؛ اگر داخل حلقه
+        // چند بار روی همان `host` زنجیرهٔ `.Element(...)` صدا زده شود، QuestPDF استثنای
+        // «You should not assign multiple child elements to a single-child container» می‌دهد.
+        // پس یک ستون به‌عنوان تنها فرزند ساخته می‌شود و فاصلهٔ عمودیِ هر مقدار با Height
+        // تأمین می‌گردد؛ مختصات همان مختصات مطلق صفحه می‌ماند.
+        host.AlignLeft().AlignTop().Column(column =>
         {
-            if (!values.TryGetValue(field.Slot, out var content)) continue;
-            var text = string.IsNullOrWhiteSpace(content.Text) ? "—" : content.Text;
-            var rowHeight = Math.Max(10f, field.Height);
-            // مقادیر بلند (مثل «۲۲۱/۱۴۰۵/IT») با کوچک‌شدن فونت در یک خط جا می‌شوند؛
-            // هیچ‌وقت با فاصله‌گذاری کاراکتری یا بریدن ارقام چیده نمی‌شوند.
-            var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);
-            // اگر تنظیمات "design" باشد، رنگ اعلام‌شده در خودِ قالب ملاک است.
-            var color = _designMetaColor
-                ?? (string.IsNullOrWhiteSpace(field.Color) ? fallbackColor : field.Color);
-            var display = LetterPrintTemplate.IsolateMixedText(text);
-            var label = content.Label;
+            var cursor = 0f;
+            foreach (var field in fields)
+            {
+                if (!values.TryGetValue(field.Slot, out var content)) continue;
+                var text = string.IsNullOrWhiteSpace(content.Text) ? "—" : content.Text;
+                var rowHeight = Math.Max(10f, field.Height);
+                // مقادیر بلند (مثل «۲۲۱/۱۴۰۵/IT») با کوچک‌شدن فونت در یک خط جا می‌شوند؛
+                // هیچ‌وقت با فاصله‌گذاری کاراکتری یا بریدن ارقام چیده نمی‌شوند.
+                var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);
+                // اگر تنظیمات "design" باشد، رنگ اعلام‌شده در خودِ قالب ملاک است.
+                var color = _designMetaColor
+                    ?? (string.IsNullOrWhiteSpace(field.Color) ? fallbackColor : field.Color);
+                var display = LetterPrintTemplate.IsolateMixedText(text);
+                var label = content.Label;
 
-            // مختصات مطلق صفحه (لایهٔ Foreground): از حاشیه‌ها مستقل است.
-            host.AlignLeft().AlignTop()
-                .PaddingLeft(left)
-                .PaddingTop(Math.Max(0f, field.Top))
-                .Element(cell => cell.Width(Math.Max(20f, right - left)).Height(rowHeight).Row(row =>
+                var gap = Math.Max(0f, field.Top) - cursor;
+                if (gap > 0.5f) column.Item().Height(gap);
+
+                column.Item().Height(rowHeight).Row(row =>
                 {
-                    row.RelativeItem().AlignMiddle().AlignRight()
-                        .Text(display)
-                        .FontFamily("Vazirmatn-Bold")
-                        .FontSize(fontSize)
-                        .FontColor(color)
-                        .LineHeight(1.15f)
-                        .AlignRight()
-                        .DirectionFromRightToLeft();
-
-                    if (labelWidth > 0f)
-                        row.ConstantItem(labelWidth).AlignMiddle().AlignLeft()
-                            .Text($"{label}:")
+                    // مختصات مطلق صفحه: ستون از گوشهٔ بالا-چپ صفحه شروع می‌شود.
+                    if (left > 0.5f) row.ConstantItem(left);
+                    row.ConstantItem(Math.Max(20f, right - left)).Row(cell =>
+                    {
+                        cell.RelativeItem().AlignMiddle().AlignRight()
+                            .Text(display)
                             .FontFamily("Vazirmatn-Bold")
                             .FontSize(fontSize)
                             .FontColor(color)
                             .LineHeight(1.15f)
-                            .AlignLeft()
+                            .AlignRight()
                             .DirectionFromRightToLeft();
-                }));
-        }
+
+                        if (labelWidth > 0f)
+                            cell.ConstantItem(labelWidth).AlignMiddle().AlignLeft()
+                                .Text($"{label}:")
+                                .FontFamily("Vazirmatn-Bold")
+                                .FontSize(fontSize)
+                                .FontColor(color)
+                                .LineHeight(1.15f)
+                                .AlignLeft()
+                                .DirectionFromRightToLeft();
+                    });
+                });
+
+                cursor = Math.Max(0f, field.Top) + rowHeight;
+            }
+        });
     }
 
     /// <summary>

@@ -321,5 +321,62 @@ class DesignFlowSampleTests(unittest.TestCase):
                                     "کادر طرح به لبه می‌چسبد؛ همین‌جا حاشیهٔ امن لازم است")
 
 
+class ComposeSafetyTests(unittest.TestCase):
+    """QuestPDF هر کانتینر را تک‌فرزند می‌داند.
+
+    اگر یک کانتینر (مثلاً نتیجهٔ `page.Foreground()`) در حلقه چند بار با `.Element(...)`
+    پر شود، چاپ با `DocumentComposeException`: «You should not assign multiple child
+    elements to a single-child container» شکست می‌خورد. این تست همان الگو را در کد
+    نامهٔ صادره می‌گیرد (خطای واقعیِ گزارش‌شدهٔ کارفرما هنگام چاپ).
+    """
+
+    def service(self, tree: Path) -> str:
+        return (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+
+    @staticmethod
+    def method_body(source: str, signature: str) -> str:
+        start = source.index(signature)
+        end = source.index("\n    /// <summary>", start)
+        return source[start:end]
+
+    def test_foreground_container_is_filled_exactly_once(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = self.service(tree)
+                design = self.method_body(source, "private byte[] BuildDesignContentPdf(")
+                self.assertEqual(design.count("page.Foreground()"), 1,
+                                 "چاپ صفحه باید فقط یک لایهٔ Foreground داشته باشد")
+                self.assertRegex(design, r"page\.Foreground\(\)\.Element\(fg =>")
+
+    def test_meta_values_share_one_child_container(self):
+        """شماره/تاریخ/پیوست: یک ستون، نه چند `.Element` روی همان کانتینر."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                body = self.method_body(self.service(tree), "private void AddDesignMetaGrid(")
+                # فقط یک فرزند برای لایهٔ Foreground
+                self.assertIn("host.AlignLeft().AlignTop().Column(", body)
+                # و هیچ .Element( روی همان host — فقط توضیح در کامنت مجاز است
+                code_lines = [line for line in body.splitlines()
+                              if not line.lstrip().startswith("//")]
+                code = "\n".join(code_lines)
+                self.assertNotIn(".Element(", code,
+                                 "روی کانتینر تک‌فرزند نمی‌شود چند بار Element زنجیره کرد")
+                # فاصلهٔ عمودی هنوز از Top هر کادر قالب می‌آید
+                self.assertIn("field.Top", code)
+
+    def test_no_container_element_call_inside_loops(self):
+        """هیچ حلقه‌ای روی یک کانتینر ثابت `.Element` صدا نمی‌زند."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = self.service(tree)
+                for match in re.finditer(r"foreach[^\n]*\n\s*\{", source):
+                    block_end = source.find("\n                }", match.end())
+                    block = source[match.end():block_end if block_end > 0 else match.end() + 500]
+                    # `row.ConstantItem(...)`, `table.Cell()` و `column.Item()` فرزند تازه می‌سازند؛
+                    # ولی `.Element(` روی یک متغیر ثابت، همان کانتینر را دو بار پر می‌کند.
+                    self.assertNotRegex(block, r"\bhost\.\w+\([^)]*\)\s*\n?\s*\.Element\(")
+
+
 if __name__ == "__main__":
     unittest.main()

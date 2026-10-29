@@ -295,7 +295,10 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 outgoing = self.outgoing(tree)
                 grid = outgoing.split("private void AddDesignMetaGrid(", 1)[1]
                 grid = grid.split("private static float FitFontSize", 1)[0]
-                self.assertIn(".PaddingTop(Math.Max(0f, field.Top))", grid)
+                # هر مقدار با Top خودش: فاصلهٔ خالی تا آن Top، بعد یک ردیف به ارتفاع کادرِ قالب.
+                self.assertIn("Math.Max(0f, field.Top)", grid)
+                self.assertIn("column.Item().Height(gap)", grid)
+                self.assertIn("column.Item().Height(rowHeight)", grid)
                 self.assertNotIn(".Table(", grid,
                                  "ردیف‌های پیوستهٔ جدول فاصلهٔ عمودی قالب را حذف می‌کنند")
 
