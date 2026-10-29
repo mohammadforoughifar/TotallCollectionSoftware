@@ -16,11 +16,12 @@ public interface IIncomingLetterService
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15,
         bool? starredOnly = null, bool? attachOnly = null);
-    Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
+    Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<int> AddAsync(AddIncomingLetterDto dto, int userId);
     Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin);
-    Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin);
+    /// <summary>ویرایش نامهٔ وارده؛ خروجی = تعداد کسانی که نامه را دیده بودند و اعلانِ ویرایش گرفتند.</summary>
+    Task<int> EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin, bool canDabirkhane = false);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
     Task<PagedResult<IncomingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 15);
@@ -332,7 +333,7 @@ public class IncomingLetterService : IIncomingLetterService
         };
     }
 
-    public async Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
+    public async Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false)
     {
         var letter = await _db.IncomingLetters
             .Include(l => l.Source)
@@ -445,9 +446,13 @@ public class IncomingLetterService : IIncomingLetterService
                 .OrderBy(e => e.Date)
                 .LastOrDefault()?.ErjaId,
 
-            // قابل ویرایش: ثبت‌کننده (یا مدیر) و هنوز هیچ گیرنده‌ای نامه را نخوانده باشد —
-            // دقیقاً همان قاعدهٔ InnerLetterService:476 تا رفتار دو ماژول یکی باشد.
-            CanEdit = (letter.CreateUserId == userId || isAdmin) && !allErjas.Any(e => e.IsRead),
+            // قابل ویرایش: ثبت‌کننده، مدیر، یا هر کاربرِ دبیرخانه (مجوز IncomingLetters.Dabirkhane).
+            //
+            // پیش‌تر شرطِ «هنوز هیچ گیرنده‌ای نامه را نخوانده باشد» هم داشت (هم‌قاعده با نامهٔ
+            // داخلی) و نتیجه‌اش این بود که به‌محضِ رویت نامه توسط یک نفر، دکمهٔ «ویرایش» برای
+            // همیشه از کارتابل دبیرخانه غیب می‌شد. حالا ویرایش در همهٔ مراحل ممکن است و
+            // EditAsync خودش به کسانی که نامه را دیده‌اند اعلانِ «ویرایش نامه» می‌فرستد.
+            CanEdit = letter.CreateUserId == userId || isAdmin || canDabirkhane,
 
             // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
             // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
@@ -713,12 +718,33 @@ public class IncomingLetterService : IIncomingLetterService
         return pendingIds.Count;
     }
 
-    public async Task EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin)
+    public async Task<int> EditAsync(int letterId, EditIncomingLetterDto dto, int userId, bool isAdmin, bool canDabirkhane = false)
     {
         var letter = await _db.IncomingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
         if (letter == null) throw new InvalidOperationException("نامه یافت نشد.");
-        if (letter.CreateUserId != userId && !isAdmin)
-            throw new UnauthorizedAccessException("فقط ثبت‌کننده یا مدیر می‌تواند نامه را ویرایش کند.");
+        if (letter.CreateUserId != userId && !isAdmin && !canDabirkhane)
+            throw new UnauthorizedAccessException("فقط ثبت‌کننده، دبیرخانه یا مدیر می‌تواند نامه را ویرایش کند.");
+
+        // ---------- چه کسانی باید از ویرایش باخبر شوند؟ ----------
+        // فقط کسانی که نامه در گردششان هست «و آن را دیده‌اند» (Erja.IsRead). کسی که
+        // هنوز نامه را باز نکرده، اعلانِ «نامهٔ جدید» خودش را دارد و اعلان تکراری
+        // نمی‌گیرد. خودِ ویرایش‌کننده هم اعلان نمی‌گیرد.
+        // این فهرست «قبل از» تغییر فیلدها خوانده می‌شود تا مستقل از تغییرات باشد.
+        var seenUserIds = await _db.Erjas.AsNoTracking()
+            .Where(e => e.SourceId == letterId && !e.IsDelete && e.IsRead)
+            .Select(e => e.ReciverUserId)
+            .Distinct()
+            .ToListAsync();
+
+        // ثبت‌کنندهٔ نامه هم نامه را دیده است (حتی اگر ردیف ارجاعی با IsRead نداشته باشد)؛
+        // اگر دبیرخانه یا مدیر نامه را ویرایش کند، ثبت‌کننده هم باید باخبر شود.
+        // همین قاعده در LetterAttachmentNotifier برای «پیوست جدید» استفاده شده است.
+        if (letter.CreateUserId > 0) seenUserIds.Add(letter.CreateUserId);
+
+        // خودِ ویرایش‌کننده اعلان نمی‌گیرد.
+        seenUserIds = seenUserIds.Where(id => id > 0 && id != userId).Distinct().ToList();
+
+        var titleBefore = letter.Title;
 
         letter.Title = dto.Title.Trim();
         letter.Ferestande = dto.Ferestande.Trim();
@@ -732,7 +758,37 @@ public class IncomingLetterService : IIncomingLetterService
         letter.Foriat = dto.Foriat;
 
         await _db.SaveChangesAsync();
+
+        // ---------- اعلان «به‌روزرسانی نامه» به افرادِ در گردش که نامه را دیده‌اند ----------
+        // عنوانِ اعلان صریحاً می‌گوید نامه ویرایش شده تا کاربر بداند باید نسخهٔ تازه را
+        // ببیند؛ متنِ اعلان می‌گوید چه چیزی عوض شده و چه کسی ویرایش کرده. لینک همان
+        // قراردادِ اعلانِ نامهٔ جدید است («incoming-letters?open={id}») تا کلیک روی اعلان
+        // همان نامه را در کارتابل باز کند.
+        if (seenUserIds.Count > 0)
+        {
+            var editor = await _db.Users.AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.FirstName, u.LastName, u.Username })
+                .FirstOrDefaultAsync();
+            var byName = editor == null
+                ? "دبیرخانه"
+                : (string.IsNullOrWhiteSpace((editor.FirstName ?? "") + (editor.LastName ?? ""))
+                    ? editor.Username
+                    : $"{editor.FirstName} {editor.LastName}".Trim());
+
+            var titleChanged = !string.Equals(titleBefore ?? "", letter.Title ?? "", StringComparison.Ordinal);
+            var body = titleChanged
+                ? $"شماره {letter.LetterNumber} — عنوان به «{letter.Title}» تغییر کرد؛ ویرایش توسط {byName}"
+                : $"شماره {letter.LetterNumber} — محتوای نامه ویرایش شد؛ ویرایش توسط {byName}";
+
+            await _notify.SendManyAsync(seenUserIds,
+                $"نامه وارده ویرایش شد: {letter.Title}",
+                body,
+                byName, "نامه وارده", $"incoming-letters?open={letterId}");
+        }
+
         await _notify.BroadcastChangedAsync("incoming-letters");
+        return seenUserIds.Count;
     }
 
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)

@@ -124,7 +124,9 @@ public class IncomingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         try
         {
-            var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
+            // پرچمِ «دبیرخانه» هم پاس می‌شود تا همکارِ دبیرخانه بتواند نامهٔ ثبت‌شده توسط
+            // دیگری را (حتی پس از رویتِ گیرندگان) ویرایش کند.
+            var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync(), await HasDabirkhaneAsync());
             if (detail == null) return NotFound(new { message = "نامه وارده یافت نشد." });
             return Ok(detail);
         }
@@ -184,11 +186,14 @@ public class IncomingLettersController : RbacControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Edit(int id, [FromBody] EditIncomingLetterDto dto)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        // ویرایش با مجوز ثبت یا دبیرخانهٔ همین ماژول مجاز است؛ خودِ سرویس هم دوباره
+        // بررسی می‌کند که کاربر ثبت‌کننده، مدیر یا کاربرِ دبیرخانه باشد.
+        if (!await HasAsync(Module, "Create") && !await HasAsync(Module, "Dabirkhane"))
+            return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
         try
         {
-            await _letters.EditAsync(id, dto, MyUserId, await IsAdminAsync());
-            return Ok(new { message = "نامه وارده ویرایش شد." });
+            var notified = await _letters.EditAsync(id, dto, MyUserId, await IsAdminAsync(), await HasDabirkhaneAsync());
+            return Ok(new { message = "نامه وارده ویرایش شد.", notified });
         }
         catch (UnauthorizedAccessException ex)
         {

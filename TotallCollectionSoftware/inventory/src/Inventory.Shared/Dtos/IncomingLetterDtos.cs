@@ -80,7 +80,11 @@ public class IncomingLetterDetailDto
     /// <summary>ارجاعی که کاربر جاری باید به آن پاسخ دهد</summary>
     public int? ActiveErjaId { get; set; }
 
-    /// <summary>آیا کاربر جاری مجاز به ویرایش است (ثبت‌کننده یا مدیر)</summary>
+    /// <summary>
+    /// آیا کاربر جاری مجاز به ویرایش است: ثبت‌کننده، مدیر، یا کاربرِ دبیرخانه
+    /// (مجوز IncomingLetters.Dabirkhane). ویرایش پس از رویتِ گیرندگان هم مجاز است و
+    /// در آن حالت به همهٔ کسانی که نامه را دیده‌اند اعلان «ویرایش نامه» می‌رود.
+    /// </summary>
     public bool CanEdit { get; set; }
 
     /// <summary>آیا نامه نزد کاربر جاری بایگانی شده</summary>

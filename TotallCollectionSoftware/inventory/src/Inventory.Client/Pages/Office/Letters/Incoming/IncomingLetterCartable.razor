@@ -936,7 +936,11 @@
     private void OpenAnswerFromReader(int erjaId, int sabtNumber) => erjaSheet?.OpenAnswer(erjaId, sabtNumber);
 
     // ==================== ریدر کامل (هم‌طراز نامه داخلی) ====================
-    /// <summary>کاربر جاری مجاز به افزودن پیوست/ویرایش این نامه است (ثبت‌کننده یا مدیر)</summary>
+    /// <summary>
+    /// کاربر جاری مجاز به افزودن پیوست/ویرایش این نامه است. CanEdit را سرور می‌دهد:
+    /// ثبت‌کننده، مدیر یا کاربرِ دبیرخانه — و دیگر به «رویت‌نشده بودن» نامه وابسته نیست،
+    /// چون ویرایش پس از رویت هم باید ممکن باشد و به بینندگان اعلان می‌رود.
+    /// </summary>
     private bool CanEditLetter => activeDetail?.CanEdit == true || Auth.IsAdmin;
 
     /// <summary>نشان‌کردن/برداشتن نشان از داخل ریدر — روی همان ردیف فهرست هم اعمال می‌شود</summary>

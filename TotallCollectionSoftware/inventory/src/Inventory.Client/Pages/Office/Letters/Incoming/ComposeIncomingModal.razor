@@ -580,16 +580,22 @@
                     Foriat = foriat,
                     Description = description
                 };
-                await IncomingSvc.EditAsync(editLetterId, dto);
-
-                // در ویرایش فقط پیوست‌های تازه بارگذاری می‌شوند؛ اعلان دوباره
-                // ارسال نمی‌شود و Finalize صدا زده نمی‌شود (اعلانِ ثبت یک‌بار است).
+                // ترتیب عمدی: اول پیوست‌های تازه، بعد ذخیرهٔ فیلدها.
+                // دلیل: سرور در پایانِ EditAsync به کسانی که نامه را دیده‌اند اعلانِ
+                // «نامه ویرایش شد» می‌فرستد؛ اگر پیوست‌ها بعد از آن آپلود می‌شدند،
+                // اعلان پیش از تکمیلِ ذخیره ارسال می‌شد و ممکن بود آپلود شکست بخورد.
                 foreach (var f in pendingFiles)
                 {
                     using var stream = f.OpenReadStream(long.MaxValue);
                     await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
                 }
-                Toast.Success("تغییرات نامه وارده ذخیره شد.");
+
+                // Finalize در ویرایش صدا زده نمی‌شود (اعلانِ «نامهٔ جدید» یک‌بار در ثبت است)؛
+                // تنها اعلانی که ویرایش می‌فرستد «نامه ویرایش شد» برای بینندگان قبلی است.
+                var editNotified = await IncomingSvc.EditAsync(editLetterId, dto);
+                Toast.Success(editNotified > 0
+                    ? $"تغییرات نامه وارده ذخیره شد؛ اعلان «نامه ویرایش شد» برای {editNotified.FaDigits()} نفر از کسانی که نامه را دیده بودند ارسال شد."
+                    : "تغییرات نامه وارده ذخیره شد.");
             }
 
             visible = false;

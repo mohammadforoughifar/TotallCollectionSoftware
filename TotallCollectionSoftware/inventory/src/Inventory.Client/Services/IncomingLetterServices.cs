@@ -18,7 +18,8 @@ public interface IIncomingLetterService
     /// اولیه فقط از این مسیر و فقط یک‌بار ارسال می‌شود. خروجی: تعداد اعلان‌های ارسال‌شده.
     /// </summary>
     Task<int> FinalizeAsync(int letterId);
-    Task EditAsync(int letterId, EditIncomingLetterDto dto);
+    /// <summary>ویرایش نامهٔ وارده؛ خروجی = تعداد گیرندگانی که نامه را دیده بودند و اعلان ویرایش گرفتند.</summary>
+    Task<int> EditAsync(int letterId, EditIncomingLetterDto dto);
     Task DeleteAsync(int letterId);
     Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleNeshanAsync(int erjaId);
@@ -115,8 +116,8 @@ public class IncomingLetterService : IIncomingLetterService
     public async Task<int> FinalizeAsync(int letterId) =>
         (await _api.PostAsync<FinalizeResponse>($"api/incoming-letters/{letterId}/finalize")).Notified;
 
-    public Task EditAsync(int letterId, EditIncomingLetterDto dto) =>
-        _api.PutAsync<object>($"api/incoming-letters/{letterId}", dto);
+    public async Task<int> EditAsync(int letterId, EditIncomingLetterDto dto) =>
+        (await _api.PutAsync<FinalizeResponse>($"api/incoming-letters/{letterId}", dto)).Notified;
 
     public Task DeleteAsync(int letterId) =>
         _api.DeleteAsync($"api/incoming-letters/{letterId}");
