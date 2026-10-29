@@ -9,7 +9,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Flowable, Table, TableStyle
 
-from rtltext import RT, fa_digits, visual, w
+from bidi.algorithm import get_display
+
+from rtltext import RT, fa_digits, shape, visual, w
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = "/home/user/TotallCollectionSoftware/TotallCollectionSoftware/src/Inventory.Api/Resources/fonts"
@@ -42,7 +44,7 @@ META_STEP = 26.6
 
 DOC = {
     "date_fa": "۱۴۰۵/۰۸/۰۷",
-    "doc_no": "۱۴۰۵/۰۸-۰۱-پ",
+    "doc_no": "۱۴۰۵/M/۰۸",
     "attachment": "ندارد",
     "vendor": "شرکت فروغ آریا",
 }
@@ -69,17 +71,33 @@ def draw_letterhead(c):
 
 
 def header_fields(c):
-    texts = [visual(f"تاریخ : {DOC['date_fa']}"),
-             visual(f"شماره : {DOC['doc_no']}"),
-             visual(f"پیوست : {DOC['attachment']}")]
+    """تاریخ/شماره/پیوست روی جای نقطه‌چین سربرگ؛ شمارهٔ سند چپ‌به‌راست خوانده می‌شود."""
+    c.setFillColor(colors.HexColor("#333B4A"))
     c.setFont("Vazir", 8.3)
-    widest = max(w(t, "Vazir", 8.3) for t in texts)
+    rows = [("تاریخ : ", DOC["date_fa"], "R"),
+            ("شماره : ", DOC["doc_no"], "L"),
+            ("پیوست : ", DOC["attachment"], "R")]
+
+    plans = []
+    for label, value, base in rows:
+        lab = visual(label)
+        if base == "R":
+            val = visual(value)
+        else:   # شمارهٔ سند با حروف لاتین: ترتیب دقیقاً همان‌طور که نوشته شده
+            val = get_display(shape(value), base_dir="L")
+        plans.append((lab, val, base))
+
+    widest = max(w(lab, "Vazir", 8.3) + w(val, "Vazir", 8.3) for lab, val, _ in plans)
     x_right = max(META_X, widest + 10)
     y = META_Y0
-    for t in texts:
-        c.setFillColor(colors.HexColor("#333B4A"))
+    for lab, val, base in plans:
         c.setFont("Vazir", 8.3)
-        c.drawRightString(x_right, y, t)
+        c.drawRightString(x_right, y, lab)
+        x_val = x_right - w(lab, "Vazir", 8.3) - 3
+        if base == "L":
+            c.drawRightString(x_val, y, val)
+        else:
+            c.drawRightString(x_val, y, val)
         y -= META_STEP
 
 
@@ -422,17 +440,16 @@ def page_price(c):
     rows = [
         ["۱", "اطلاعات پایه",
          "سازمان و شرکت‌ها، کاربران و نقش‌ها، ساختار شمارهٔ نامه، تنظیمات و سابقهٔ عملیات",
-         "۴۳۰٬۰۰۰٬۰۰۰", "۱۳۰٬۰۰۰٬۰۰۰", "۳۰۰٬۰۰۰٬۰۰۰"],
+         "۳۰۰٬۰۰۰٬۰۰۰"],
         ["۲", "اتوماسیون اداری", "نامهٔ داخلی، وارده و صادره، ارجاع، امضا و دبیرخانه",
-         "۱٬۰۰۰٬۰۰۰٬۰۰۰", "—", "۱٬۰۰۰٬۰۰۰٬۰۰۰"],
+         "۱٬۰۰۰٬۰۰۰٬۰۰۰"],
         ["۳", "دستور کار", "ثبت، ارجاع، مهلت، چک‌لیست، پروژه و گزارش عملکرد",
-         "۴۵۰٬۰۰۰٬۰۰۰", "—", "۴۵۰٬۰۰۰٬۰۰۰"],
+         "۴۵۰٬۰۰۰٬۰۰۰"],
         ["۴", "آرشیو اسناد و مدارک", "بایگانی، دسترسی، نسخه‌گذاری، گردش تأیید و جستجو",
-         "۲٬۵۰۰٬۰۰۰٬۰۰۰", "—", "۲٬۵۰۰٬۰۰۰٬۰۰۰"],
+         "۲٬۵۰۰٬۰۰۰٬۰۰۰"],
     ]
-    headers = ["ردیف", "ماژول", "شرح خدمات", "مبلغ پایه (ریال)", "تخفیف (ریال)",
-               "مبلغ نهایی (ریال)"]
-    widths = [0.07, 0.17, 0.33, 0.16, 0.13, 0.14]
+    headers = ["ردیف", "ماژول", "شرح خدمات", "مبلغ (ریال)"]
+    widths = [0.08, 0.20, 0.50, 0.22]
 
     from build_short import _Cell as CellFlow
     data = [[CellFlow(h, font="VazirB", size=7.7, leading=11.5, align="center",
@@ -442,33 +459,27 @@ def page_price(c):
         data.append([
             CellFlow(rev[0], font="VazirB", size=8.3, leading=12.6, align="center", pad=4),
             CellFlow(rev[1], font="VazirB", size=7.8, leading=11.6, align="center", pad=4),
-            CellFlow(rev[2], size=7.6, leading=12.0, align="right", pad=4),
-            CellFlow(rev[3], size=7.7, leading=12.4, align="center", pad=4),
-            CellFlow(rev[4], size=7.7, leading=12.4, align="center", pad=4),
-            CellFlow(rev[5], font="VazirB", size=7.9, leading=12.4, align="center", pad=4),
+            CellFlow(rev[2], size=7.7, leading=12.2, align="right", pad=4),
+            CellFlow(rev[3], font="VazirB", size=7.9, leading=12.6, align="center", pad=4),
         ])
 
-    totals = ["", "جمع کل", "جمع مبالغ چهار ماژول", "۴٬۳۸۰٬۰۰۰٬۰۰۰", "۱۳۰٬۰۰۰٬۰۰۰", "۴٬۲۵۰٬۰۰۰٬۰۰۰"]
+    totals = ["", "جمع کل", "جمع مبالغ چهار ماژول", "۴٬۲۵۰٬۰۰۰٬۰۰۰"]
     rev = list(reversed(totals))
     data.append([
         CellFlow(rev[0], font="VazirB", size=8.4, leading=13, align="center", pad=4),
         CellFlow(rev[1], font="VazirB", size=8.4, leading=13, align="right", pad=6),
-        CellFlow(rev[2], size=7.8, leading=12, align="right", pad=4),
-        CellFlow(rev[3], size=7.8, leading=12.4, align="center", pad=4),
-        CellFlow(rev[4], size=7.8, leading=12.4, align="center", pad=4),
-        CellFlow(rev[5], font="VazirB", size=8.6, leading=13, align="center", pad=4),
+        CellFlow(rev[2], size=7.9, leading=12.2, align="right", pad=4),
+        CellFlow(rev[3], font="VazirB", size=8.6, leading=13, align="center", pad=4),
     ])
 
-    after = ["", "با احتساب پشتیبانی سال اول", "۴٬۲۵۰٬۰۰۰٬۰۰۰ + ۶۳۷٬۵۰۰٬۰۰۰", "—", "—",
+    after = ["", "با احتساب پشتیبانی سال اول", "۴٬۲۵۰٬۰۰۰٬۰۰۰ + ۶۳۷٬۵۰۰٬۰۰۰",
              "۴٬۸۸۷٬۵۰۰٬۰۰۰"]
     rev = list(reversed(after))
     data.append([
         CellFlow(rev[0], font="VazirB", size=8.2, leading=12.6, align="center", pad=4),
-        CellFlow(rev[1], font="VazirB", size=8.0, leading=12.0, align="right", pad=6),
-        CellFlow(rev[2], size=7.4, leading=11.2, align="right", pad=4),
-        CellFlow(rev[3], size=7.8, leading=12.4, align="center", pad=4),
-        CellFlow(rev[4], size=7.8, leading=12.4, align="center", pad=4),
-        CellFlow(rev[5], font="VazirB", size=8.4, leading=12.8, align="center", pad=4),
+        CellFlow(rev[1], font="VazirB", size=8.2, leading=12.4, align="right", pad=6),
+        CellFlow(rev[2], size=7.6, leading=11.6, align="right", pad=4),
+        CellFlow(rev[3], font="VazirB", size=8.4, leading=12.8, align="center", pad=4),
     ])
 
     t = Table(data, colWidths=[CONTENT_W * x for x in reversed(widths)], hAlign="LEFT")
@@ -485,10 +496,11 @@ def page_price(c):
     t.drawOn(c, LM, y - t._height)
     y -= t._height + 6
 
-    y = para(c, y, "تخفیف ۳۰٪ به مناسبت خرید بستهٔ چهار ماژول، یکجا و بر مبلغ پایهٔ ماژول "
-                   "اطلاعات پایه اعمال شده است (۱۳۰٬۰۰۰٬۰۰۰ ریال). مجوز استفاده سازمانی و بدون "
-                   "محدودیت تعداد کاربر است؛ پشتیبانی سالانه معادل ۱۵٪ مبلغ نرم‌افزار "
-                   "(۶۳۷٬۵۰۰٬۰۰۰ ریال) و سال اول اختیاری است.", size=7.5, color=GRAY)
+    y = para(c, y, "مبلغ ماژول اطلاعات پایه با ۳۰٪ تخفیف ۳۰ میلیون تومان (۳۰۰٬۰۰۰٬۰۰۰ ریال) "
+                   "اعلام شده است و مبالغ سایر ماژول‌ها بر پایهٔ تعرفهٔ جاری و بدون تخفیف است. "
+                   "مجوز استفاده سازمانی و بدون محدودیت تعداد کاربر است؛ پشتیبانی سالانه معادل "
+                   "۱۵٪ مبلغ نرم‌افزار (۶۳۷٬۵۰۰٬۰۰۰ ریال) و سال اول اختیاری است.",
+             size=7.5, color=GRAY)
     y -= 8
 
     y = para(c, y, "جمع کل به حروف : چهار میلیارد و دویست و پنجاه میلیون ریال",
