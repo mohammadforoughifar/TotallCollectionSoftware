@@ -49,8 +49,6 @@ internal sealed class MeetingMinutesDesignLayout
         bool AlignMiddle,
         bool Wrap);
 
-    private const string DataSource = "DataSource1";
-
     internal float PageWidth { get; private init; }
     internal float PageHeight { get; private init; }
     internal IReadOnlyList<Box> Boxes { get; private init; } = Array.Empty<Box>();
@@ -119,8 +117,8 @@ internal sealed class MeetingMinutesDesignLayout
             if (page == null) return null;
 
             var (marginLeft, marginTop) = ParseMargins(Value(page, "Margins"));
-            var pageWidth = Number(Value(page, "PageWidth")) * factor;
-            var pageHeight = Number(Value(page, "PageHeight")) * factor;
+            var pageWidth = ParseNumber(Value(page, "PageWidth")) * factor;
+            var pageHeight = ParseNumber(Value(page, "PageHeight")) * factor;
             if (pageWidth <= 0 || pageHeight <= 0) return null;
 
             var boxes = new List<Box>();
@@ -217,7 +215,7 @@ internal sealed class MeetingMinutesDesignLayout
     private static string? Value(XElement parent, string name)
         => parent.Elements().FirstOrDefault(element => element.Name.LocalName == name)?.Value;
 
-    private static float Number(string? value)
+    private static float ParseNumber(string? value)
         => float.TryParse((value ?? string.Empty).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : 0f;
@@ -237,7 +235,7 @@ internal sealed class MeetingMinutesDesignLayout
     {
         var parts = (value ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(part => Number(part))
+            .Select(part => ParseNumber(part))
             .ToArray();
         return parts.Length switch
         {
@@ -307,7 +305,7 @@ internal sealed class MeetingMinutesDesignLayout
             {
                 var channels = new int[4];
                 for (var index = 0; index < 4; index++)
-                    int.TryParse(Number(parts[index]).ToString(CultureInfo.InvariantCulture).Split('.')[0],
+                    int.TryParse(ParseNumber(parts[index]).ToString(CultureInfo.InvariantCulture).Split('.')[0],
                         NumberStyles.Integer, CultureInfo.InvariantCulture, out channels[index]);
                 return $"#{(byte)channels[1]:X2}{(byte)channels[2]:X2}{(byte)channels[3]:X2}";
             }

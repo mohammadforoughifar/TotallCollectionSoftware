@@ -225,6 +225,43 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 self.assertIn("HasRequiredSlots", layout)
                 self.assertIn("RightToLeft=True", layout)  # آینه‌کردن تراز در قالب RTL
 
+    def test_no_member_name_collides_in_the_layout_reader(self):
+        """CS0102: دو عضو هم‌نام در یک کلاس (مثل property «Number» و متد کمکی «Number»).
+
+        این خطای واقعیِ بیلد بود؛ چون سندباکس کامپایلر C# ندارد، این‌جا اعلان‌های سطح کلاس
+        استخراج و یکتایی نامشان بررسی می‌شود.
+        """
+        # فقط اعلان‌های سطح کلاس: دقیقاً ۴ فاصله تودرتویی و یکی از modifierهای دسترسی.
+        # هر خط حداکثر یک عضو اعلان می‌کند: property (=>/{)، متد (() یا فیلد (=/;).
+        declaration = re.compile(
+            r"^ {4}(?:internal|private|protected|public)\s+"
+            r"(?:(?:static|readonly|const|async|override|sealed)\s+)*"
+            r"[A-Za-z_][\w.<>\[\]?, ]*?\s+(?P<name>[A-Za-z_]\w*)\s*(?:\(|\{|=|;)")
+
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                names: dict[str, int] = {}
+                for line in self.layout(tree).splitlines():
+                    if line.lstrip().startswith(("//", "///", "*", "/*")):
+                        continue
+                    # اعضای enum و پارامترهای record (مثل «        Number,») اعلان کلاس نیستند.
+                    if line.rstrip().endswith(","):
+                        continue
+                    match = declaration.match(line)
+                    if match is None:
+                        continue
+                    name = match.group("name")
+                    if name in {"float", "string", "bool", "int", "void", "Box", "Slot",
+                                "MeetingMinutesDesignLayout", "XElement", "IReadOnlyList"}:
+                        continue
+                    names[name] = names.get(name, 0) + 1
+
+                duplicates = {name: count for name, count in names.items() if count > 1}
+                self.assertEqual(duplicates, {},
+                                 f"نام‌های تکراری در کلاس (CS0102): {duplicates}")
+                # خودِ متد خواندن قالب هم باید شناسایی شود تا تست بی‌اثر نباشد.
+                self.assertIn("TryRead", names)
+
     def test_layout_reader_is_mirrored_in_both_trees(self):
         first, second = (office(tree) / "MeetingMinutesDesignLayout.cs" for tree in TREES)
         self.assertEqual(first.read_bytes(), second.read_bytes())

@@ -392,12 +392,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 page.Content().Column(col =>
                 {
                     // ── عنوان صورتجلسه (سرصفحهٔ وسط‌چین قالب) ──
-                    if (titleBox != null)
+                    if (titleBox is { } title)
                     {
-                        Space(col, titleBox.Top - cursor[0]);
-                        col.Item().MinHeight(titleBox.Height).Element(cell => Write(cell, titleBox,
+                        Space(col, title.Top - cursor[0]);
+                        col.Item().MinHeight(title.Height).Element(cell => Write(cell, title,
                             string.IsNullOrWhiteSpace(m.Title) ? "بدون عنوان" : m.Title, isA5));
-                        cursor[0] = titleBox.Top + titleBox.Height;
+                        cursor[0] = title.Top + title.Height;
                     }
 
                     // ── شماره صورتجلسه و تاریخ جلسه: برچسب کنارِ مقدار، هر دو از قالب ──
@@ -409,12 +409,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     Pair(col, MeetingMinutesDesignLayout.Slot.Absentees, absentText, isA5);
 
                     // ── بندها و تصمیمات ──
-                    if (itemsCaption != null)
+                    if (itemsCaption is { } itemsLabel)
                     {
-                        Space(col, itemsCaption.Top - cursor[0]);
-                        col.Item().Height(Math.Max(12f, itemsCaption.Height)).Element(cell =>
-                            Write(cell, itemsCaption, NormalizeCaption(itemsCaption.Text), isA5));
-                        cursor[0] = itemsCaption.Top + itemsCaption.Height;
+                        Space(col, itemsLabel.Top - cursor[0]);
+                        col.Item().Height(Math.Max(12f, itemsLabel.Height)).Element(cell =>
+                            Write(cell, itemsLabel, NormalizeCaption(itemsLabel.Text), isA5));
+                        cursor[0] = itemsLabel.Top + itemsLabel.Height;
                     }
                     else
                     {
@@ -485,14 +485,15 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         // ── برچسب + مقدار: برچسب از قالب (اگر بود)، مقدار در همان ردیف ──
         void Pair(ColumnDescriptor col, MeetingMinutesDesignLayout.Slot slot, string value, bool small)
         {
-            var valueBox = slot switch
+            var found = slot switch
             {
                 MeetingMinutesDesignLayout.Slot.Number => design.Number,
                 MeetingMinutesDesignLayout.Slot.MeetingDate => design.MeetingDate,
                 MeetingMinutesDesignLayout.Slot.Attendees => design.Attendees,
                 _ => design.Absentees
             };
-            if (valueBox == null) return;
+            // متغیر الگو (غیرnullable) تا داخل lambda هم هشدار nullable ندهد.
+            if (found is not { } valueBox) return;
 
             Space(col, valueBox.Top - cursor[0]);
             var caption = design.Caption(slot);
@@ -501,12 +502,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             col.Item().Row(row =>
             {
                 // در Row راست‌به‌چپ، نخستین آیتم سمت راست صفحه می‌نشیند = محل برچسب در قالب.
-                if (caption != null)
+                if (caption is { } captionBox)
                 {
-                    row.ConstantItem(Math.Max(20f, caption.Width)).Element(cell =>
-                        Write(cell, caption, NormalizeCaption(caption.Text), small));
+                    row.ConstantItem(Math.Max(20f, captionBox.Width)).Element(cell =>
+                        Write(cell, captionBox, NormalizeCaption(captionBox.Text), small));
                     // فاصلهٔ افقی بین مقدار و برچسب، همان فاصلهٔ قالب
-                    var gap = Math.Max(0f, caption.Left - (valueBox.Left + valueBox.Width));
+                    var gap = Math.Max(0f, captionBox.Left - (valueBox.Left + valueBox.Width));
                     var inset = Math.Max(0f, valueBox.Left - flowLeft);
                     row.RelativeItem().PaddingRight(gap).PaddingLeft(inset).Element(cell =>
                         cell.MinHeight(Math.Max(10f, rowHeight)).Element(inner => Write(inner, valueBox, value, small)));

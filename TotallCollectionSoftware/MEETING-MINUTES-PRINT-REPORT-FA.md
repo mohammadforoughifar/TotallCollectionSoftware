@@ -85,7 +85,7 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
 
 ## ۴. تست‌ها
 
-`inventory/tests/OutgoingLetterhead/test_minutes_template.py` — ۱۹ تست:
+`inventory/tests/OutgoingLetterhead/test_minutes_template.py` — ۲۰ تست:
 
 - وجود قالب برای ۱۰۰۳ (و ۳) در هر دو اندازه و **یکسان‌بودن بایت‌به‌بایت** دو درخت.
 - `PaperSize`/`PageWidth`/`PageHeight`/`Margins` درست، `Watermark.ImageBytes` موجود.
@@ -93,9 +93,11 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
 - شروع محتوا روی `BandBottom + 97` برای هر دو کاغذ؛ همهٔ متن‌ها RTL و داخل صفحه.
 - سرویس: شرکت از `m.CompanyId` (و نه از درخواست)، سربرگ اول از قالب، پشتیبانی A4/A5،
   مسیرهای جانشین، و اینکه `MeetingMinutesDesignLayout` هرگز استثنا نمی‌دهد.
+- یکتایی نام اعضای کلاس `MeetingMinutesDesignLayout` (خطای واقعی بیلد `CS0102`: property
+  `Number` و متد کمکی `Number` هم‌نام بودند؛ متد به `ParseNumber` تغییر نام داد).
 
 اجرای کل مجموعه: `cd inventory/tests/OutgoingLetterhead && python3 -m unittest discover -p "test_*.py"`
-→ **۱۱۵ تست سبز** (۹۶ تست قبلی + ۱۹ تست جدید).
+→ **۱۱۹ تست سبز** (۹۶ تست قبلی + ۲۳ تست جدید).
 
 ## ۵. پیش‌نمایش
 
