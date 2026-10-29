@@ -60,7 +60,7 @@ else
                 <div class="col-md-3">
                     <label class="form-label">شمارهٔ فاکتور</label>
                     <input class="form-control num fw-bold text-primary" readonly
-                           value="@(IsNewLike ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.NoGroup()) : (vm.NumberInvoice?.NoGroup() ?? "—"))" />
+                           value="@(IsNewLike ? (nextInvoiceNo is null ? "—" : nextInvoiceNo.Value.Num()) : (vm.NumberInvoice?.Num() ?? "—"))" />
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">موضوع</label>
@@ -543,7 +543,7 @@ else
                 var saved = MoadianService.As<InvoiceVM>(r);
                 Toast.Success(Mode == FormMode.Eslahi
                     ? "صورتحساب اصلاحی ثبت شد."
-                    : $"صورتحساب شمارهٔ {(saved?.NumberInvoice)?.NoGroup() ?? "—"} ثبت شد — برای ارسال به سامانه از صفحهٔ جزئیات استفاده کنید.");
+                    : $"صورتحساب شمارهٔ {(saved?.NumberInvoice)?.Num() ?? "—"} ثبت شد — برای ارسال به سامانه از صفحهٔ جزئیات استفاده کنید.");
                 Nav.NavigateTo(saved?.Id > 0 ? $"moadian/invoices/{saved!.Id}" : "moadian/invoices");
             }
             else Toast.Error(r.Message ?? "خطا در ثبت صورتحساب.");

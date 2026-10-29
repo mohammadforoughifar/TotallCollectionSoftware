@@ -978,6 +978,7 @@ public sealed class RsRowSource : IRsRowSource
         PaymentMethod.Credit => "نسیه",
         PaymentMethod.Cheque => "چک",
         PaymentMethod.Installment => "اقساطی",
+        PaymentMethod.Mixed => "ترکیبی",
         _ => "نامشخص"
     };
 

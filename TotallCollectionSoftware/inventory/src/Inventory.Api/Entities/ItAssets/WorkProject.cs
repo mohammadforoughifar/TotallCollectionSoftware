@@ -34,6 +34,9 @@ public class WorkProject
     [MaxLength(4000)]
     public string? Description { get; set; }
 
+    /// <summary>ساختار نقشهٔ ذهنی پروژه (JSON نسخه‌دار؛ دادهٔ پیشرفت پروژه را تغییر نمی‌دهد).</summary>
+    public string? MindFlowJson { get; set; }
+
     /// <summary>مدیر پروژه (سازنده).</summary>
     public int OwnerUserId { get; set; }
 
@@ -71,6 +74,7 @@ public class WorkProject
 
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
     public ICollection<WorkProjectMember> Members { get; set; } = new List<WorkProjectMember>();
+    public ICollection<WorkProjectMindFlowMember> MindFlowMembers { get; set; } = new List<WorkProjectMindFlowMember>();
     public ICollection<WorkProjectLog> Logs { get; set; } = new List<WorkProjectLog>();
 }
 

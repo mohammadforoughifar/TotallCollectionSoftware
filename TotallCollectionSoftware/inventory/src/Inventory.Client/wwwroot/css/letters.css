@@ -926,3 +926,6 @@
 .ltx .arv-fallback-row .t { font-size:12px; font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ltx .arv-fallback-row .n { font-size:11px; color:var(--p2); }
 .ltx .arv-fallback-row .s { font-size:10.5px; color:var(--sub); margin-inline-start:auto; }
+
+/* Root editor image sizing retained alongside canonical rich-text/mobile/email rules. */
+.ltx .richt-body img { max-width:100%; height:auto; }

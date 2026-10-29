@@ -19,6 +19,8 @@ public class WorkProjectsController : ControllerBase
 {
     private const string Module = "WorkProjects";
     private const int MaxExtension = 5;
+    private static readonly HashSet<string> MindFlowColors = new(StringComparer.OrdinalIgnoreCase)
+    { "#596cf3", "#e28b4d", "#32a783", "#ae6fc7", "#d85d75", "#318eae" };
 
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
@@ -79,6 +81,19 @@ public class WorkProjectsController : ControllerBase
     /// <summary>ویرایش/تمدید/بستن/اعضا: مالک (مدیر پروژه) همیشه مجاز است، بقیه با مجوز Update.</summary>
     private async Task<bool> CanManageAsync(WorkProject p)
         => p.OwnerUserId == MyUserId || IsLegacyAdmin || await HasAsync("Update");
+
+    /// <summary>پروژه‌گردان‌ها، مدیر پروژه یا دعوت‌شدهٔ مستقیم به همین MindFlow.</summary>
+    private async Task<bool> CanViewMindFlowAsync(WorkProject p)
+        => p.OwnerUserId == MyUserId
+            || await _db.WorkProjectMembers.AnyAsync(m => m.ProjectId == p.Id && m.UserId == MyUserId)
+            || await _db.WorkProjectMindFlowMembers.AnyAsync(m => m.ProjectId == p.Id && m.UserId == MyUserId);
+
+    private async Task<bool> CanManageMindFlowAsync(WorkProject p)
+    {
+        var inProject = p.OwnerUserId == MyUserId
+            || await _db.WorkProjectMembers.AnyAsync(m => m.ProjectId == p.Id && m.UserId == MyUserId);
+        return inProject && await CanManageAsync(p);
+    }
 
     private void Log(int projectId, string action, string? text) =>
         _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = projectId, ActorName = MyUsername, Action = action, Text = text });
@@ -263,6 +278,8 @@ public class WorkProjectsController : ControllerBase
         var members = ids.Count == 0 ? new() : await _db.WorkProjectMembers.AsNoTracking()
             .Where(m => ids.Contains(m.ProjectId)).ToListAsync();
         var myMemberIds = members.Where(m => m.UserId == MyUserId).Select(m => m.ProjectId).ToHashSet();
+        var myMindFlowMemberIds = ids.Count == 0 ? new HashSet<int>() : (await _db.WorkProjectMindFlowMembers.AsNoTracking()
+            .Where(m => m.UserId == MyUserId && ids.Contains(m.ProjectId)).Select(m => m.ProjectId).ToListAsync()).ToHashSet();
         var lastLogs = ids.Count == 0 ? new() : await _db.WorkProjectLogs.AsNoTracking()
             .Where(l => ids.Contains(l.ProjectId))
             .GroupBy(l => l.ProjectId)
@@ -272,6 +289,8 @@ public class WorkProjectsController : ControllerBase
 
         var items = projects.Select(p => ToListItem(p, stats[p.Id], members, myMemberIds,
             lastByProject.TryGetValue(p.Id, out var l) ? l : null, MyUserId, today)).ToList();
+        foreach (var item in items)
+            item.CanViewMindFlow = item.OwnerUserId == MyUserId || item.IsMember || myMindFlowMemberIds.Contains(item.Id);
 
         items = (sort ?? "due") switch
         {
@@ -323,13 +342,418 @@ public class WorkProjectsController : ControllerBase
             MemberCount = item.MemberCount, MemberNames = item.MemberNames,
             DaysLeft = item.DaysLeft, IsOverdue = item.IsOverdue,
             IsMine = item.IsMine, IsMember = item.IsMember,
+            CanViewMindFlow = await CanViewMindFlowAsync(p),
             LastActivityAt = item.LastActivityAt, LastActivityText = item.LastActivityText,
             Description = p.Description, Tags = TagsToList(p.Tags),
             CloseNote = p.CloseNote, ClosedAt = p.ClosedAt,
             Members = members.Select(m => new WorkProjectMemberDto
                 { Id = m.Id, UserId = m.UserId, Name = m.Name, AddedAt = m.AddedAt }).ToList(),
-            CanManage = await CanManageAsync(p)
+            CanManage = await CanManageAsync(p),
+            CanManageMindFlow = await CanManageMindFlowAsync(p)
         });
+    }
+
+    // ================== MindFlow پروژه ==================
+
+    /// <summary>پروژه‌هایی که کاربر به MindFlow آن‌ها دسترسی دارد؛ بدون افشای پروژه‌های دیگر شرکت.</summary>
+    [HttpGet("mindflow/accessible")]
+    public async Task<IActionResult> AccessibleMindFlows([FromQuery] string? q)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var query = _db.WorkProjects.AsNoTracking().Where(p => p.CompanyId == companyId.Value
+            && (p.OwnerUserId == MyUserId
+                || _db.WorkProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == MyUserId)
+                || _db.WorkProjectMindFlowMembers.Any(m => m.ProjectId == p.Id && m.UserId == MyUserId)));
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(p => EF.Functions.Like(p.Title, $"%{term}%") || EF.Functions.Like(p.Number, $"%{term}%"));
+        }
+        var rows = await query.OrderBy(p => p.Status == WorkProjectStatus.Closed).ThenBy(p => p.DueAt)
+            .Select(p => new { p.Id, p.Number, p.Title, p.Status, p.OwnerUserId,
+                IsProjectMember = _db.WorkProjectMembers.Any(m => m.ProjectId == p.Id && m.UserId == MyUserId) }).ToListAsync();
+        var canUpdate = await HasAsync("Update");
+        return Ok(rows.Select(p => new WorkProjectMindFlowAccessibleProjectDto
+        {
+            ProjectId = p.Id, Number = p.Number, Title = p.Title, Status = p.Status,
+            CanManage = p.OwnerUserId == MyUserId || (p.IsProjectMember && (IsLegacyAdmin || canUpdate))
+        }).ToList());
+    }
+
+    /// <summary>گرفتن نقشهٔ پروژه؛ فقط مدیر، عضو پروژه یا دعوت‌شدهٔ مستقیم MindFlow.</summary>
+    [HttpGet("{id:int}/mindflow")]
+    public async Task<IActionResult> GetMindFlow(int id)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await _db.WorkProjects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanViewMindFlowAsync(project)) return Forbid();
+
+        WorkProjectMindFlowDto? map = null;
+        if (!string.IsNullOrWhiteSpace(project.MindFlowJson))
+        {
+            try { map = System.Text.Json.JsonSerializer.Deserialize<WorkProjectMindFlowDto>(project.MindFlowJson, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+            catch (System.Text.Json.JsonException) { return Conflict(new { message = "دادهٔ نقشهٔ این پروژه قابل خواندن نیست." }); }
+        }
+        map ??= new WorkProjectMindFlowDto { ProjectId = project.Id, Title = project.Title };
+        map.Title = string.IsNullOrWhiteSpace(map.Title) ? project.Title : map.Title;
+        NormalizeMindFlowMap(map, project.Id);
+        return Ok(map);
+    }
+
+    /// <summary>خواندن زیرمایندفلو با مسیر شناسه‌های گرهٔ مالک؛ مجوز همان پروژه اعمال می‌شود.</summary>
+    [HttpGet("{id:int}/mindflow/sub")]
+    public async Task<IActionResult> GetSubMindFlow(int id, [FromQuery] string? path)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await _db.WorkProjects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanViewMindFlowAsync(project)) return Forbid();
+        if (!TryParseSubMindFlowPath(path, out var pathIds)) return BadRequest(new { message = "مسیر زیرمایندفلو معتبر نیست." });
+
+        var root = DeserializeMindFlow(project.MindFlowJson, project.Id, project.Title);
+        if (root is null) return Conflict(new { message = "دادهٔ نگاشت اصلی قابل خواندن نیست." });
+        var sub = FindSubMindFlow(root, pathIds);
+        return sub is null ? NotFound(new { message = "زیرمایندفلو پیدا نشد." }) : Ok(sub);
+    }
+
+    /// <summary>ذخیرهٔ زیرمایندفلو بدون جایگزینی نگاشت اصلی یا بستن صفحهٔ والد.</summary>
+    [HttpPut("{id:int}/mindflow/sub")]
+    public async Task<IActionResult> SaveSubMindFlow(int id, [FromQuery] string? path, [FromBody] WorkProjectMindFlowDto dto)
+    {
+        if (dto is null) return BadRequest(new { message = "دادهٔ زیرمایندفلو ارسال نشده است." });
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        if (project.Status == WorkProjectStatus.Closed) return BadRequest(new { message = "پروژه بسته شده است و زیرمایندفلو قابل ویرایش نیست." });
+        if (!TryParseSubMindFlowPath(path, out var pathIds)) return BadRequest(new { message = "مسیر زیرمایندفلو معتبر نیست." });
+
+        var root = DeserializeMindFlow(project.MindFlowJson, project.Id, project.Title);
+        if (root is null) return Conflict(new { message = "دادهٔ نگاشت اصلی قابل خواندن نیست." });
+        if (root.Nodes.Count == 0) return NotFound(new { message = "نگاشت اصلی هنوز ذخیره نشده است." });
+        var current = root;
+        WorkProjectMindFlowNodeDto? owner = null;
+        for (var index = 0; index < pathIds.Count; index++)
+        {
+            owner = current.Nodes.FirstOrDefault(n => n.Id == pathIds[index]);
+            if (owner is null) return NotFound(new { message = "گرهٔ والد زیرمایندفلو پیدا نشد." });
+            if (index < pathIds.Count - 1)
+            {
+                if (owner.ChildMindFlow is null) return NotFound(new { message = "زیرمایندفلو در مسیر پیدا نشد." });
+                current = owner.ChildMindFlow;
+            }
+        }
+        if (owner is null) return BadRequest(new { message = "مسیر زیرمایندفلو خالی است." });
+        var error = ValidateMindFlow(dto);
+        if (error is not null) return BadRequest(new { message = error });
+        if (owner.ChildMindFlow is not null) PreserveSavedSubMindFlows(owner.ChildMindFlow, dto);
+        NormalizeMindFlowMap(dto, project.Id);
+        owner.ChildMindFlow = dto;
+
+        error = ValidateMindFlow(root);
+        if (error is not null) return BadRequest(new { message = error });
+        var linkError = await ValidateMindFlowLinksAsync(root, project);
+        if (linkError is not null) return BadRequest(new { message = linkError });
+        var json = System.Text.Json.JsonSerializer.Serialize(root, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        if (json.Length > 1_000_000) return BadRequest(new { message = "حجم نقشه از حد مجاز یک مگابایت بیشتر است." });
+        project.MindFlowJson = json;
+        Log(project.Id, "MindFlowUpdated", "زیرمایندفلو به‌روزرسانی شد.");
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workprojects");
+        return Ok(new { projectId = project.Id, savedAt = DateTime.Now });
+    }
+
+    /// <summary>اعضای دعوت‌شدهٔ مستقیم (فقط مدیر پروژه/دارای مجوز Update).</summary>
+    [HttpGet("{id:int}/mindflow/members")]
+    public async Task<IActionResult> MindFlowMembers(int id)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        var rows = await _db.WorkProjectMindFlowMembers.AsNoTracking().Where(m => m.ProjectId == id)
+            .Join(_db.Users.AsNoTracking(), m => m.UserId, u => u.Id, (m, u) => new { Member = m, User = u })
+            .OrderBy(x => x.User.FirstName).ThenBy(x => x.User.LastName).ToListAsync();
+        return Ok(rows.Select(x => new WorkProjectMindFlowMemberDto
+        { UserId = x.User.Id, Name = UserDisplay.Name(x.User), AddedAt = x.Member.AddedAt }).ToList());
+    }
+
+    /// <summary>کاربران فعال شرکت برای دعوت فقط‌خواندنی به MindFlow.</summary>
+    [HttpGet("{id:int}/mindflow/candidates")]
+    public async Task<IActionResult> MindFlowCandidates(int id, [FromQuery] string? q, [FromQuery] int? take)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        var query = _db.Users.AsNoTracking().Where(u => u.IsActive
+            && _db.UserCompanyAccesses.Any(a => a.UserId == u.Id && a.CompanyId == companyId.Value)
+            && u.Id != project.OwnerUserId
+            && !_db.WorkProjectMembers.Any(m => m.ProjectId == id && m.UserId == u.Id)
+            && !_db.WorkProjectMindFlowMembers.Any(m => m.ProjectId == id && m.UserId == u.Id));
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(u => EF.Functions.Like(u.Username, $"%{term}%")
+                || EF.Functions.Like(u.FirstName, $"%{term}%") || EF.Functions.Like(u.LastName, $"%{term}%"));
+        }
+        var count = Math.Clamp(take is > 0 ? take.Value : 50, 1, 100);
+        var users = await query.OrderBy(u => u.FirstName).ThenBy(u => u.LastName).Take(count).ToListAsync();
+        return Ok(users.Select(u => new WorkProjectMindFlowUserDto { UserId = u.Id, Name = UserDisplay.Name(u) }).ToList());
+    }
+
+    [HttpPost("{id:int}/mindflow/members")]
+    public async Task<IActionResult> AddMindFlowMembers(int id, [FromBody] AddWorkProjectMindFlowMembersDto dto)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        if (project.Status == WorkProjectStatus.Closed) return BadRequest(new { message = "پروژه بسته شده است؛ تغییر دسترسی نگاشت ممکن نیست." });
+        var userIds = (dto?.UserIds ?? new()).Where(x => x > 0).Distinct().ToList();
+        if (userIds.Count == 0) return BadRequest(new { message = "حداقل یک کاربر را انتخاب کنید." });
+        var validIds = await _db.Users.Where(u => userIds.Contains(u.Id) && u.IsActive
+                && _db.UserCompanyAccesses.Any(a => a.UserId == u.Id && a.CompanyId == companyId.Value))
+            .Select(u => u.Id).ToListAsync();
+        if (validIds.Count != userIds.Count) return BadRequest(new { message = "همهٔ افراد انتخاب‌شده کاربر فعال همین شرکت نیستند." });
+        var projectMemberIds = await _db.WorkProjectMembers.Where(m => m.ProjectId == id).Select(m => m.UserId).ToListAsync();
+        if (userIds.Any(uid => uid == project.OwnerUserId || projectMemberIds.Contains(uid)))
+            return BadRequest(new { message = "مدیر و اعضای پروژه از قبل به نگاشت دسترسی دارند." });
+        var existing = await _db.WorkProjectMindFlowMembers.Where(m => m.ProjectId == id && userIds.Contains(m.UserId))
+            .Select(m => m.UserId).ToListAsync();
+        var now = DateTime.Now;
+        _db.WorkProjectMindFlowMembers.AddRange(userIds.Except(existing).Select(uid => new WorkProjectMindFlowMember
+        { ProjectId = id, UserId = uid, AddedByUserId = MyUserId, AddedAt = now }));
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workprojects");
+        return Ok(new { count = userIds.Except(existing).Count() });
+    }
+
+    [HttpDelete("{id:int}/mindflow/members/{userId:int}")]
+    public async Task<IActionResult> RemoveMindFlowMember(int id, int userId)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        if (project.Status == WorkProjectStatus.Closed) return BadRequest(new { message = "پروژه بسته شده است؛ تغییر دسترسی نگاشت ممکن نیست." });
+        var member = await _db.WorkProjectMindFlowMembers.FirstOrDefaultAsync(m => m.ProjectId == id && m.UserId == userId);
+        if (member is null) return NotFound(new { message = "فرد در دسترسی‌های مستقیم این نگاشت نیست." });
+        _db.WorkProjectMindFlowMembers.Remove(member);
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workprojects");
+        return Ok();
+    }
+
+    /// <summary>ذخیرهٔ ساختار MindFlow روی پروژهٔ کاری؛ فقط مدیر پروژه/دارای مجوز Update.</summary>
+    [HttpPut("{id:int}/mindflow")]
+    public async Task<IActionResult> SaveMindFlow(int id, [FromBody] WorkProjectMindFlowDto dto)
+    {
+        if (dto is null) return BadRequest(new { message = "دادهٔ نقشه ارسال نشده است." });
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await GetProjectAsync(id, companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (!await CanManageMindFlowAsync(project)) return Forbid();
+        if (project.Status == WorkProjectStatus.Closed)
+            return BadRequest(new { message = "پروژه بسته شده است؛ برای ویرایش نقشه ابتدا آن را بازگشایی کنید." });
+
+        var error = ValidateMindFlow(dto);
+        if (error is not null) return BadRequest(new { message = error });
+        if (!string.IsNullOrWhiteSpace(project.MindFlowJson))
+        {
+            var savedMap = DeserializeMindFlow(project.MindFlowJson, project.Id, project.Title);
+            if (savedMap is null) return Conflict(new { message = "دادهٔ نگاشت قبلی قابل خواندن نیست." });
+            PreserveSavedSubMindFlows(savedMap, dto);
+        }
+        NormalizeMindFlowMap(dto, project.Id);
+        error = ValidateMindFlow(dto);
+        if (error is not null) return BadRequest(new { message = error });
+        var linkError = await ValidateMindFlowLinksAsync(dto, project);
+        if (linkError is not null) return BadRequest(new { message = linkError });
+        var json = System.Text.Json.JsonSerializer.Serialize(dto, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        if (json.Length > 1_000_000) return BadRequest(new { message = "حجم نقشه از حد مجاز یک مگابایت بیشتر است." });
+
+        project.MindFlowJson = json;
+        Log(project.Id, "MindFlowUpdated", "ساختار نقشهٔ ذهنی پروژه ذخیره شد.");
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workprojects");
+        return Ok(new { projectId = project.Id, savedAt = DateTime.Now });
+    }
+
+    private async Task<string?> ValidateMindFlowLinksAsync(WorkProjectMindFlowDto dto, WorkProject project)
+    {
+        var nodes = EnumerateMindFlowNodes(dto).ToList();
+        var orderIds = nodes.SelectMany(NodeWorkOrderIds).Distinct().ToList();
+        if (orderIds.Count > 0)
+        {
+            var validOrders = await _db.WorkOrders.CountAsync(w => orderIds.Contains(w.Id) && w.CompanyId == project.CompanyId);
+            if (validOrders != orderIds.Count) return "فقط دستورهای کاریِ همین شرکت قابل اتصال‌اند.";
+        }
+
+        var childMapIds = nodes.Where(n => n.LinkedMindFlowProjectId.HasValue)
+            .Select(n => n.LinkedMindFlowProjectId!.Value).Distinct().ToList();
+        if (childMapIds.Contains(project.Id)) return "نقشه نمی‌تواند به خودش وصل شود.";
+        if (childMapIds.Count > 0)
+        {
+            var validMaps = await _db.WorkProjects.CountAsync(p => childMapIds.Contains(p.Id) && p.CompanyId == project.CompanyId);
+            if (validMaps != childMapIds.Count) return "فقط نگاشت‌های پروژه‌های همین شرکت قابل اتصال‌اند.";
+        }
+        return null;
+    }
+
+    private static WorkProjectMindFlowDto? DeserializeMindFlow(string? json, int projectId, string title)
+    {
+        WorkProjectMindFlowDto map;
+        if (string.IsNullOrWhiteSpace(json)) map = new WorkProjectMindFlowDto { ProjectId = projectId, Title = title };
+        else
+        {
+            try { map = System.Text.Json.JsonSerializer.Deserialize<WorkProjectMindFlowDto>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!; }
+            catch (System.Text.Json.JsonException) { return null; }
+            if (map is null) return null;
+        }
+        map.Title = string.IsNullOrWhiteSpace(map.Title) ? title : map.Title;
+        NormalizeMindFlowMap(map, projectId);
+        return map;
+    }
+
+    internal static bool TryParseSubMindFlowPath(string? path, out List<Guid> ids)
+    {
+        ids = new();
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var pieces = path.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (pieces.Length is 0 or > 8) return false;
+        foreach (var piece in pieces)
+        {
+            if (!Guid.TryParse(piece, out var id) || id == Guid.Empty) return false;
+            ids.Add(id);
+        }
+        return true;
+    }
+
+    private static WorkProjectMindFlowDto? FindSubMindFlow(WorkProjectMindFlowDto root, List<Guid> path)
+    {
+        var current = root;
+        foreach (var ownerId in path)
+        {
+            var owner = current.Nodes.FirstOrDefault(n => n.Id == ownerId);
+            if (owner?.ChildMindFlow is null) return null;
+            current = owner.ChildMindFlow;
+        }
+        return current;
+    }
+
+    internal static void PreserveSavedSubMindFlows(WorkProjectMindFlowDto existing, WorkProjectMindFlowDto incoming)
+    {
+        foreach (var node in incoming.Nodes)
+        {
+            var saved = existing.Nodes.FirstOrDefault(n => n.Id == node.Id);
+            if (saved?.ChildMindFlow is not null) node.ChildMindFlow = saved.ChildMindFlow;
+        }
+    }
+
+    internal static IEnumerable<WorkProjectMindFlowNodeDto> EnumerateMindFlowNodes(WorkProjectMindFlowDto map)
+    {
+        if (map.Nodes is null) yield break;
+        foreach (var node in map.Nodes)
+        {
+            if (node is null) continue;
+            yield return node;
+            if (node.ChildMindFlow is not null)
+                foreach (var child in EnumerateMindFlowNodes(node.ChildMindFlow)) yield return child;
+        }
+    }
+
+    internal static IEnumerable<int> NodeWorkOrderIds(WorkProjectMindFlowNodeDto node)
+    {
+        var ids = node.WorkOrderIds ?? new List<int>();
+        return ids.Concat(node.WorkOrderId is int legacy ? new[] { legacy } : Array.Empty<int>())
+            .Where(id => id > 0).Distinct();
+    }
+
+    internal static void NormalizeMindFlowMap(WorkProjectMindFlowDto map, int projectId)
+    {
+        map.ProjectId = projectId;
+        map.Nodes ??= new();
+        foreach (var node in map.Nodes)
+        {
+            if (node is null) continue;
+            node.Note ??= "";
+            node.Color = MindFlowColors.Contains(node.Color ?? "") ? node.Color : "#596cf3";
+            node.WorkOrderIds ??= new();
+            if (node.WorkOrderId is int legacyOrderId && legacyOrderId > 0 && !node.WorkOrderIds.Contains(legacyOrderId))
+                node.WorkOrderIds.Insert(0, legacyOrderId);
+            node.WorkOrderIds = node.WorkOrderIds.Where(id => id > 0).Distinct().ToList();
+            node.WorkOrderId = null;
+            if (node.ChildMindFlow is not null)
+            {
+                node.ChildMindFlow.Title = string.IsNullOrWhiteSpace(node.ChildMindFlow.Title) ? node.Text : node.ChildMindFlow.Title;
+                NormalizeMindFlowMap(node.ChildMindFlow, projectId);
+            }
+        }
+    }
+
+    internal static string? ValidateMindFlow(WorkProjectMindFlowDto dto)
+    {
+        var globalNodeIds = new HashSet<Guid>();
+        var totalNodes = 0;
+        return ValidateMindFlowTree(dto, 0, globalNodeIds, ref totalNodes);
+    }
+
+    internal static string? ValidateMindFlowTree(WorkProjectMindFlowDto dto, int depth, HashSet<Guid> globalNodeIds, ref int totalNodes)
+    {
+        if (depth > 8) return "زیرمایندفلو حداکثر ۸ سطح می‌تواند تو در تو باشد.";
+        if (string.IsNullOrWhiteSpace(dto.Title) || dto.Title.Length > 200) return "عنوان هر نگاشت باید بین ۱ تا ۲۰۰ نویسه باشد.";
+        if (dto.Nodes is null || dto.Nodes.Count is 0 or > 1000) return "هر نگاشت باید بین ۱ تا ۱۰۰۰ گره داشته باشد.";
+        if (dto.Nodes.Any(n => n is null)) return "ساختار گره‌های نقشه معتبر نیست.";
+        totalNodes += dto.Nodes.Count;
+        if (totalNodes > 5000) return "مجموع گره‌های اصلی و زیرمایندفلوها از ۵۰۰۰ بیشتر است.";
+        if (dto.Nodes.Any(n => n.Id == Guid.Empty || string.IsNullOrWhiteSpace(n.Text) || n.Text.Length > 200 || (n.Note?.Length ?? 0) > 2000))
+            return "عنوان هر گره حداکثر ۲۰۰ و یادداشت حداکثر ۲۰۰۰ نویسه باشد.";
+        if (dto.Nodes.Any(n => !MindFlowColors.Contains(n.Color ?? ""))) return "رنگ گره معتبر نیست.";
+        if (dto.Nodes.Any(n => (n.Width.HasValue && (n.Width.Value < 120 || n.Width.Value > 420))
+            || (n.Height.HasValue && (n.Height.Value < 50 || n.Height.Value > 180))))
+            return "اندازهٔ هر گره باید در محدودهٔ عرض ۱۲۰ تا ۴۲۰ و ارتفاع ۵۰ تا ۱۸۰ باشد.";
+        if (dto.Nodes.Any(n => n.WorkOrderIds is not null && (n.WorkOrderIds.Any(id => id <= 0) || n.WorkOrderIds.Distinct().Count() != n.WorkOrderIds.Count)))
+            return "فهرست دستورکارهای متصل معتبر نیست.";
+        var mapOrderIds = dto.Nodes.SelectMany(NodeWorkOrderIds).ToList();
+        if (mapOrderIds.Distinct().Count() != mapOrderIds.Count)
+            return "هر دستورکار فقط می‌تواند به یک گره در همان نگاشت وصل باشد.";
+        if (dto.Nodes.Any(n => n.ChildMindFlow is not null && n.LinkedMindFlowProjectId.HasValue))
+            return "برای هر گره فقط یک زیرمایندفلو انتخاب یا ساخته شود.";
+        foreach (var node in dto.Nodes)
+            if (!globalNodeIds.Add(node.Id)) return "شناسهٔ گره‌ها در کل درخت مایندفلو باید یکتا باشد.";
+
+        var localIds = dto.Nodes.Select(n => n.Id).ToHashSet();
+        if (dto.Nodes.Count(n => n.ParentId is null) != 1 || dto.Nodes.Any(n => n.ParentId is Guid p && !localIds.Contains(p)))
+            return "ساختار گره‌های نقشه معتبر نیست.";
+        var byId = dto.Nodes.ToDictionary(n => n.Id);
+        foreach (var node in dto.Nodes)
+        {
+            var seen = new HashSet<Guid> { node.Id };
+            var parent = node.ParentId;
+            while (parent is Guid parentId)
+            {
+                if (!seen.Add(parentId)) return "درخت نقشه نمی‌تواند حلقه داشته باشد.";
+                parent = byId[parentId].ParentId;
+            }
+            if (node.ChildMindFlow is not null)
+            {
+                var childError = ValidateMindFlowTree(node.ChildMindFlow, depth + 1, globalNodeIds, ref totalNodes);
+                if (childError is not null) return childError;
+            }
+        }
+        return null;
     }
 
     // ================== ساخت/ویرایش ==================

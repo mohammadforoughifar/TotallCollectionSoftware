@@ -54,13 +54,9 @@ public class IncomingLetterService : IIncomingLetterService
     /// date: تاریخ ورود/ثبت نامه (DateErsal) — مبنای جزء «سال». پیش‌تر سال از
     /// DateTime.Now گرفته می‌شد و نامهٔ backdate‌شده شمارهٔ سالِ امروز را می‌گرفت.
     /// </summary>
-    /// <param name="userId">
-    /// شناسهٔ کاربری که نامه را ثبت می‌کند — مبنای جزء «واحد» در شمارهٔ نامه.
-    /// پیش از این پاس داده نمی‌شد و همیشه کد واحد پیش‌فرض شرکت در شماره می‌نشست.
-    /// </param>
-    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date, int? userId = null)
+    private async Task<string> BuildLetterNumberAsync(int numberSabt, DateTime date)
     {
-        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date, userId: userId);
+        var s = await _strature.TotalNumberAsync(numberSabt, typeForm: 3, date: date);
         if (!string.IsNullOrEmpty(s)) return s;
 
         var pc = new PersianCalendar();
@@ -73,13 +69,8 @@ public class IncomingLetterService : IIncomingLetterService
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
-        // «دریافتی» فقط نامه‌هایی است که «به کاربر ارسال شده»؛ نه نامه‌هایی که خودش ثبت کرده.
-        // از این پس AddAsync برای ثبت‌کننده ردیف ارجاع نمی‌سازد؛ این شرط (Sender != Reciver)
-        // برای دادهٔ قدیمیِ باقی‌مانده هم جلوی نمایش ردیف خودکارِ «ثبت‌کننده = گیرنده» را می‌گیرد.
-        // اگر نامه بعداً توسط شخص دیگری به همین کاربر ارجاع شود، ارجاع جدید با فرستندهٔ متفاوت
-        // ساخته می‌شود و در دریافتی دیده می‌شود.
         var q = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani != true);
 
@@ -165,9 +156,8 @@ public class IncomingLetterService : IIncomingLetterService
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
-        // همان قاعدهٔ «دریافتی»: ردیف خودکارِ خودِ ثبت‌کننده در بایگانی هم نمایش داده نمی‌شود.
         var q = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani == true);
 
@@ -305,15 +295,11 @@ public class IncomingLetterService : IIncomingLetterService
 
     public async Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId)
     {
-        // شمارندهٔ «دریافتی/خوانده‌نشده» باید با فهرست هم‌خوان باشد؛ پس ردیف خودکارِ
-        // خودِ ثبت‌کننده اینجا هم کنار گذاشته می‌شود.
         var inboxQuery = _db.Erjas.AsNoTracking()
-            .Where(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+            .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                         && e.IsBayegani != true);
 
-        // هر ارجاع یک قلم جدا در «دریافتی» است؛ ارجاع دوبارهٔ یک نامه هم ردیف و
-        // شمارندهٔ تازه دارد (مطابق فهرست).
         var totalInbox = await inboxQuery.CountAsync();
         var unreadCount = await inboxQuery.CountAsync(e => !e.IsRead);
 
@@ -321,7 +307,7 @@ public class IncomingLetterService : IIncomingLetterService
             .CountAsync(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete);
 
         var totalArchive = await _db.Erjas.AsNoTracking()
-            .CountAsync(e => e.ReciverUserId == userId && e.SenderUserId != userId && !e.IsDelete && !e.Source.IsDelete
+            .CountAsync(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                              && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                              && e.IsBayegani == true);
 
@@ -390,12 +376,8 @@ public class IncomingLetterService : IIncomingLetterService
             ? (string.IsNullOrEmpty(creator.FirstName + creator.LastName) ? creator.Username : $"{creator.FirstName} {creator.LastName}".Trim())
             : "ثبت‌کننده سیستم";
 
-        // ردیف‌های خودکارِ قدیمی (ثبت‌کننده = گیرنده، Type=گیرنده) که پیش‌تر هنگام ثبت
-        // ساخته می‌شدند، در گردش و فهرست گیرندگان نمایش داده نمی‌شوند؛ ثبت‌کننده فقط
-        // وقتی در گردش است که ارجاع واقعی از شخص دیگری گرفته باشد.
         var allErjas = await _db.Erjas.AsNoTracking()
-            .Where(e => e.SourceId == letterId && !e.IsDelete
-                        && !(e.SenderUserId == e.ReciverUserId && e.Type == "گیرنده"))
+            .Where(e => e.SourceId == letterId && !e.IsDelete)
             .OrderBy(e => e.ErjaId)
             .Select(e => new ErjaDto
             {
@@ -597,7 +579,7 @@ public class IncomingLetterService : IIncomingLetterService
             throw new Exception($"شمارهٔ اندیکاتور {numberSabt} پیش‌تر برای نامهٔ واردهٔ دیگری ثبت شده است. لطفاً شمارهٔ دیگری وارد کنید یا فیلد شماره را خالی بگذارید تا خودکار تخصیص یابد.");
 
         // شمارهٔ اندیکاتور از ساختار پیکربندی‌شده در «تنظیمات ← ساختار شماره نامه»
-        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate, userId);
+        var letterNumber = await BuildLetterNumberAsync(numberSabt, entryDate);
 
         var source = new LetterSource
         {
@@ -633,12 +615,9 @@ public class IncomingLetterService : IIncomingLetterService
 
         _db.IncomingLetters.Add(letter);
 
-        // ثبت‌کننده در گردش نامه قرار نمی‌گیرد؛ فقط «گیرندگان اولیه» ردیف ارجاع می‌گیرند.
-        // (کاربر دبیرخانه که نامه را ثبت می‌کند فقط «ایجادکننده» است و در «دریافتی» خودش
-        //  دیده نمی‌شود. اگر بعداً شخص دیگری نامه را به او ارجاع دهد، ارجاع واقعی ساخته
-        //  می‌شود و از آن لحظه در گردش و کارتابل او قرار می‌گیرد.)
+        // اضافه کردن خود ثبت‌کننده یا گیرندگان اولیه در جدول Erja
         var recivers = dto.InitialReciverUserIds.Distinct().ToList();
-        recivers.Remove(userId);
+        if (!recivers.Contains(userId)) recivers.Insert(0, userId);
 
         foreach (var rId in recivers)
         {
@@ -651,8 +630,8 @@ public class IncomingLetterService : IIncomingLetterService
                 Type = "گیرنده",
                 MatnErja = string.IsNullOrWhiteSpace(dto.InitialMatnErja) ? "ثبت نامه وارده" : dto.InitialMatnErja.Trim(),
                 MohlatPasokh = dto.InitialMohlatPasokh,
-                IsRead = false,
-                DateRead = null
+                IsRead = rId == userId,
+                DateRead = rId == userId ? DateTime.Now : null
             });
         }
 

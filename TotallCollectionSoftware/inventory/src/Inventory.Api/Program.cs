@@ -14,10 +14,26 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+Console.InputEncoding = System.Text.Encoding.UTF8;
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    Console.Error.WriteLine("[STARTUP ERROR] برنامه متوقف شد؛ گزارش خطا در startup-log.txt ذخیره می‌شود.");
+    Console.Error.WriteLine(e.ExceptionObject);
+};
 // Update both contexts using this installation's configuration, without starting the web server.
 var updateDatabaseOnly = args.Any(a => a.Equals("--update-database", StringComparison.OrdinalIgnoreCase));
 args = args.Where(a => !a.Equals("--update-database", StringComparison.OrdinalIgnoreCase)).ToArray();
 var builder = WebApplication.CreateBuilder(args);
+var schemaVerbose = string.Equals(Environment.GetEnvironmentVariable("DB_SCHEMA_VERBOSE"), "true", StringComparison.OrdinalIgnoreCase);
+var schemaInitializing = true;
+if (!schemaVerbose)
+{
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", level => !schemaInitializing && level >= LogLevel.Warning);
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Model.Validation", LogLevel.Error);
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Query", LogLevel.Error);
+}
+
 
 // ================== تشخیص میزبانی پشت IIS ==================
 // ماژول ASP.NET Core در IIS (ANCM) این متغیرها را برای پروسهٔ برنامه تنظیم می‌کند. پشت IIS آدرس/پورت شنود را
@@ -148,6 +164,9 @@ builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionStr
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<Inventory.Api.Services.Reports.IOperationsReportsService, Inventory.Api.Services.Reports.OperationsReportsService>(); // گزارش‌های بخش عملیات
 builder.Services.AddScoped<Inventory.Api.Services.Catalog.IGoodsIssueService, Inventory.Api.Services.Catalog.GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
+builder.Services.AddScoped<Inventory.Api.Services.SalesVisit.IVisOrderService, Inventory.Api.Services.SalesVisit.VisOrderService>(); // ماژول ویزیتوری (پیش‌سند فروش)
+builder.Services.AddScoped<Inventory.Api.Services.Cartable.ICartableSource, Inventory.Api.Services.Cartable.SalesVisitCartableSource>(); // منبع کارتابل: سفارش ویزیتور
+builder.Services.AddScoped<Inventory.Api.Services.Cartable.ICartableService, Inventory.Api.Services.Cartable.CartableService>(); // کارتابل یکپارچه
 builder.Services.AddScoped<IWarehousingService, WarehousingService>(); // ماژول انبارداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService, Inventory.Api.Services.Accounting.AccountingService>(); // ماژول حسابداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensionService, Inventory.Api.Services.Accounting.AnalyticalDimensionService>(); // ابعاد تحلیلی (مرکز هزینه/شعبه)
@@ -615,7 +634,7 @@ if (!ocrOptions.IsConfigured && ocrOptions.AutoDetect)
 }
 if (ocrOptions.IsConfigured)
     app.Logger.LogInformation("[OcrService] اتصال به سرویس OCR: {Base}", ocrOptions.BaseUrl);
-else
+else if (schemaVerbose)
     app.Logger.LogWarning("[OcrService] سرویس OCR پایتون تنظیم/شناسایی نشد — OCR فقط با موتور محلی (tesseract/poppler روی سرور) تلاش می‌شود.");
 
 // ساخت دیتابیس و داده اولیه (نه در زمان ابزارهای EF)
@@ -624,6 +643,7 @@ if (!EF.IsDesignTime)
 
 // اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
 await app.InitializeRadisHrAsync(EF.IsDesignTime);
+schemaInitializing = false;
 
 // سازماندهی پیوست‌ها در پوشه‌های اختصاصی هر پروژه (کد پروژه ← تصاویر/مستندات) — فقط فایل‌های قدیمیِ بدون‌پوشه
 if (!EF.IsDesignTime)
@@ -815,6 +835,20 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
         }
         await next();
     });
+    // Upstream disables Webcil: serve public managed client DLLs ONLY under _framework.
+    var managedFrameworkRoot = Path.Combine(clientRoot, "_framework");
+    if (Directory.Exists(managedFrameworkRoot))
+    {
+        var managedFrameworkTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+        managedFrameworkTypes.Mappings[".dll"] = "application/octet-stream";
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(managedFrameworkRoot),
+            RequestPath = "/_framework",
+            ContentTypeProvider = managedFrameworkTypes,
+            OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate"
+        });
+    }
     app.UseDefaultFiles();
     var previewContentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
     previewContentTypes.Mappings[".bcmap"] = "application/octet-stream";

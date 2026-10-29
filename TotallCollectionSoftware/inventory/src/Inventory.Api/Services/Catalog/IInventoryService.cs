@@ -54,7 +54,8 @@ public interface IInventoryService
     Task DeleteWarehouseAsync(int id);
 
     // ---------------- طرف حساب ----------------
-    Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null);
+    /// <param name="referrerScope">محدودکردن به پروندهٔ یک معرف (ویزیتور بدون مجوز دیدن کل مشتریان).</param>
+    Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null, int? referrerScope = null);
     Task<Party> SavePartyAsync(Party dto);
     Task DeletePartyAsync(int id);
 

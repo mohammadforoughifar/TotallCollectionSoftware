@@ -1,3 +1,5 @@
+> **سورس مرجع:** `inventory/Inventory.sln` و `inventory/src`. ابتدا [CANONICAL-SOURCE-FA.md](CANONICAL-SOURCE-FA.md) را بخوانید.
+
 # سامانه جامع انبار و فروش
 
 نرم‌افزار مدیریت انبار، خرید و فروش — ساخته‌شده با **.NET 8** و **Blazor WebAssembly (PWA)** به همراه **Web API** و پایگاه داده **SQL Server**.

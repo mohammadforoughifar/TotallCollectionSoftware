@@ -121,10 +121,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetDetail(int id)
     {
-        // کاربر حاضر در گردش نامه (ایجادکننده یا دارندهٔ ارجاع — از جمله گیرندهٔ افزوده‌شده از
-        // دستور کار) حتی بدون مجوز عمومی کارتابل باید بتواند نامه را باز کند.
-        if (!await CanAccessLetterAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
-            return forbid;
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         try
         {
             var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
@@ -229,7 +226,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/gardesh")]
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (!await CanAccessLetterAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take));
     }
 
@@ -341,10 +338,10 @@ public class IncomingLettersController : RbacControllerBase
     /// همین کاربر برای این نامه آزاد می‌شود تا نامه بی‌چون‌وچرا به فهرست برگردد.
     /// </summary>
     [HttpPost("{id:int}/unarchive")]
-    public async Task<IActionResult> UnarchiveLetter(int id)
+    public async Task<IActionResult> UnarchiveLetter(int id, [FromServices] IArchiveService archive)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var closed = await _archive.UnarchiveIncomingLetterAsync(id, MyUserId);
+        var closed = await archive.UnarchiveIncomingLetterAsync(id, MyUserId);
         return Ok(new { isBayegani = false, closedNodes = closed });
     }
 
@@ -426,6 +423,7 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         // مجوز ماژول به‌تنهایی کافی نیست — باید در گردشِ همین نامه هم باشد
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دیدن پیوست‌های آن را ندارید." });
@@ -488,15 +486,6 @@ public class IncomingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
-
-        // اعلان «پیوست جدید» برای همهٔ افرادی که در گردش این نامه‌اند و آن را رویت کرده‌اند
-        try
-        {
-            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
-                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
-        }
-        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
-
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
@@ -525,6 +514,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/attachments/download-zip")]
     public async Task<IActionResult> DownloadAttachmentsZip(int id)
     {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await CanAccessLetterAsync(id))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
 

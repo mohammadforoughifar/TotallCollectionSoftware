@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Deployment size: retain Persian and English satellite resources; other third-party cultures fall back to English. -->
+    <SatelliteResourceLanguages>en;fa</SatelliteResourceLanguages>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- کاهش حجم پابلیش: بدون فایل دیباگ (pdb) در خروجی Release -->
@@ -27,7 +29,7 @@
 
   <ItemGroup>
     <!-- Maintenance command travels with every publish, including Visual Studio/IIS publishes. -->
-    <Content Include="../../../update-database.bat" Link="update-database.bat"
+    <Content Include="../../update-database.bat" Link="update-database.bat"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
              ExcludeFromSingleFile="true" />
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
@@ -96,6 +98,11 @@
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <!-- پایش SNMP ماشین‌های اداری (فقط‌خواندنی، v1/v2c/v3) — لایسنس MIT -->
     <PackageReference Include="Lextm.SharpSnmpLib" Version="12.5.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="App_Data/**;wwwroot/uploads/projects/.key;wwwroot/SecureFiles/.key" />
+    <None Remove="App_Data/**;wwwroot/uploads/projects/.key;wwwroot/SecureFiles/.key" />
   </ItemGroup>
 
   <!-- حذف فونت Lato از خروجی انتشار: برنامه فقط از وزیرمتن استفاده می‌کند (۱۲ مگ صرفه‌جویی) -->

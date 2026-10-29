@@ -11,9 +11,8 @@ namespace Inventory.Api.Services;
 //  جزء «واحد» در طرح مرجع از چارت سازمانی گرفته می‌شود:
 //      GetOrganizationNameUniqAsync(sematId)  ←  Organization.NameUniq
 //  اینجا همان منطق با IOrganizationServices پیاده شده است:
-//    • اولویت اول: واحدِ اختصاصی خودِ سازندهٔ نامه (Users.OrganizationId)
-//    • اولویت دوم: NameUniq سازمانِ سمت صادرکننده (CreatorSematId)
-//    • اولویت سوم: سازمانِ پیش‌فرض شرکت فعال (تنظیم‌شده در «تنظیمات ← ساختار شماره نامه»)
+//    • اگر سمت صادرکننده (CreatorSematId) موجود باشد → NameUniq سازمانِ آن سمت
+//    • وگرنه → سازمانِ پیش‌فرض (تنظیم‌شده در صفحه‌ی «تنظیمات ← ساختار شماره نامه»)
 //  مقدار ثابت appsettings (Letters:UnitCode) فقط برای «سید سازمان اولیه» استفاده می‌شود.
 // ============================================================
 
@@ -68,18 +67,10 @@ public class LetterStratureService : ILetterStratureService
         var pc = new PersianCalendar();
         var year = pc.GetYear(date ?? DateTime.Now);
 
-        // «واحد» — اولویت اول: واحدِ اختصاصی خودِ کاربری که نامه را می‌سازد.
-        // پیش از این ابتدا سازمانِ سمت/پیش‌فرض خوانده می‌شد و چون همیشه مقداری برمی‌گرداند،
-        // واحدِ کاربر هرگز استفاده نمی‌شد؛ نتیجه: در شمارهٔ نامه، کد اختصاری دیگری می‌نشست.
-        string? unit = null;
-        if (userId is > 0)
-            unit = await _org.GetUserOrganizationNameUniqAsync(userId);
-
-        // اولویت دوم: سازمانِ سمتِ صادرکننده (نامهٔ صادره) — و در نهایت سازمانِ پیش‌فرض.
-        if (string.IsNullOrEmpty(unit) && sematId is > 0)
-            unit = await _org.GetOrganizationNameUniqAsync(sematId);
-        if (string.IsNullOrEmpty(unit))
-            unit = await _org.GetOrganizationNameUniqAsync(null);
+        // «واحد» — از سازمانِ سمتِ صادرکننده، وگرنه سازمانِ کاربر، وگرنه سازمانِ پیش‌فرض
+        var unit = await _org.GetOrganizationNameUniqAsync(sematId);
+        if (string.IsNullOrEmpty(unit) && userId is > 0)
+            unit = await _org.GetOrganizationNameUniqByUserIdAsync(userId);
 
         var parts = new List<string>();
         foreach (var item in structure)

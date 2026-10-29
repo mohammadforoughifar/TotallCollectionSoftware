@@ -1323,6 +1323,29 @@ else
                                 </div>
                             }
                         </div>
+                    @if (_mindFlowLinks.Count > 0)
+                    {
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title"><i class="bi bi-diagram-3"></i> نگاشت‌های ذهنی متصل</div>
+                            <div class="wo-block-body">
+                                @foreach (var link in _mindFlowLinks)
+                                {
+                                    var pathQuery = Uri.EscapeDataString(string.Join(",", link.SubFlowPath));
+                                    var mindFlowHref = link.StandaloneMindFlowId is int standaloneId
+                                        ? $"/mindflows/{standaloneId}?nodeId={link.NodeId}&subFlowPath={pathQuery}"
+                                        : $"/work-projects/mindflow?projectId={link.ProjectId}&nodeId={link.NodeId}&subFlowPath={pathQuery}";
+                                    <div class="wo-chain-row">
+                                        <i class="bi bi-diagram-2 text-primary"></i>
+                                        <a class="wo-chain-link" href="@mindFlowHref" target="_blank" rel="noopener noreferrer">
+                                            @if (link.StandaloneMindFlowId is not null) { <span>نگاشت مستقل · @link.MapTitle</span> }
+                                            else { <span>@link.ProjectNumber — @link.ProjectTitle</span> }
+                                            / @link.NodeText
+                                        </a>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
                     @if (!string.IsNullOrWhiteSpace(detail.Description))
                     {
                         <div class="wo-block mb-3">
@@ -2527,6 +2550,18 @@ else
 }
 
 @code {
+    private List<WorkOrderMindFlowLinkDto> _mindFlowLinks = new();
+    private async Task LoadMindFlowLinks(int orderId)
+    {
+        try
+        {
+            var rows = await Http.GetFromJsonAsync<List<WorkOrderMindFlowLinkDto>>($"/api/workorders/{orderId}/mindflows") ?? new();
+            if (detail?.Id == orderId) _mindFlowLinks = rows;
+        }
+        catch { if (detail?.Id == orderId) _mindFlowLinks = new(); }
+    }
+
+
     private bool loading = true, busy;
     private string tab = "mine", formError = "", apiBase = "";
     private readonly PersianCalendar pc = new();
@@ -3980,6 +4015,7 @@ else
     private async Task OpenEditFromList(WoItem w)
     {
         detail = w;
+        _ = LoadMindFlowLinks(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
         await OpenEditFromDetail();
     }
 

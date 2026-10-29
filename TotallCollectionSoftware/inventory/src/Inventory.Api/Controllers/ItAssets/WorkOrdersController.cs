@@ -2704,4 +2704,179 @@ public class WorkOrdersController : ControllerBase
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
         return File(bytes, att.ContentType, att.FileName);
     }
+    /// <summary>همهٔ دستورهای متصل به گره‌های نگار ذهنی یک پروژه، همراه با عنوان گره و مسیر زیرنگاشت.</summary>
+    [HttpGet("by-project/{projectId:int}/mindflow-linked")]
+    public async Task<IActionResult> MindFlowLinkedByProject(int projectId)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var project = await _db.WorkProjects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == projectId && p.CompanyId == companyId.Value);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        var canViewMindFlow = project.OwnerUserId == MyUserId
+            || await _db.WorkProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == MyUserId)
+            || await _db.WorkProjectMindFlowMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == MyUserId);
+        if (!canViewMindFlow) return Forbid();
+        if (string.IsNullOrWhiteSpace(project.MindFlowJson)) return Ok(new List<WorkProjectMindFlowLinkedOrderDto>());
+
+        WorkProjectMindFlowDto? map;
+        try { map = System.Text.Json.JsonSerializer.Deserialize<WorkProjectMindFlowDto>(project.MindFlowJson, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+        catch (System.Text.Json.JsonException) { return Conflict(new { message = "دادهٔ نگار ذهنی این پروژه قابل خواندن نیست." }); }
+        if (map?.Nodes is null) return Ok(new List<WorkProjectMindFlowLinkedOrderDto>());
+
+        var links = EnumerateMindFlowNodes(map)
+            .SelectMany(x => WorkProjectsController.NodeWorkOrderIds(x.Node).Select(orderId => new { OrderId = orderId, x.Node.Id, x.Node.Text, x.Path }))
+            .ToList();
+        if (links.Count == 0) return Ok(new List<WorkProjectMindFlowLinkedOrderDto>());
+        var orderIds = links.Select(x => x.OrderId).Distinct().ToList();
+        var orders = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.CompanyId == companyId.Value && orderIds.Contains(w.Id))
+            .ToDictionaryAsync(w => w.Id);
+        var linkedProjectIds = orders.Values.Where(w => w.ProjectId.HasValue).Select(w => w.ProjectId!.Value).Distinct().ToList();
+        var linkedProjects = new Dictionary<int, (string Number, string Title)>();
+        if (linkedProjectIds.Count > 0)
+            linkedProjects = await _db.WorkProjects.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => p.CompanyId == companyId.Value && linkedProjectIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.Number, p.Title })
+                .ToDictionaryAsync(p => p.Id, p => (Number: p.Number, Title: p.Title));
+
+        var result = new List<WorkProjectMindFlowLinkedOrderDto>();
+        foreach (var link in links)
+        {
+            if (!orders.TryGetValue(link.OrderId, out var order)) continue;
+            linkedProjects.TryGetValue(order.ProjectId ?? 0, out var linkedProject);
+            result.Add(new WorkProjectMindFlowLinkedOrderDto
+            {
+                Id = order.Id, Number = order.Number, Title = order.Title, OwnerName = order.OwnerName,
+                Status = order.Status, DueAt = order.DueAt, Priority = order.Priority, Weight = order.Weight,
+                ProjectId = order.ProjectId, ProjectNumber = linkedProject.Number, ProjectTitle = linkedProject.Title,
+                NodeId = link.Id, NodeTitle = link.Text, SubFlowPath = string.Join(",", link.Path)
+            });
+        }
+        return Ok(result.OrderByDescending(x => x.Priority).ThenBy(x => x.DueAt).ThenBy(x => x.Number).ToList());
+    }
+
+    /// <summary>فهرست دستورهای شرکت برای اتصال به گره‌های MindFlow؛ فقط کاربران دارای مجوز مشاهدهٔ دستورکار.</summary>
+    [HttpGet("mindflow-lookup")]
+    public async Task<IActionResult> MindFlowLookup([FromQuery] string? q, [FromQuery] int? take, [FromQuery] int skip = 0)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var query = _db.WorkOrders.Where(w => w.CompanyId == companyId.Value);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(w => EF.Functions.Like(w.Number, $"%{term}%") || EF.Functions.Like(w.Title, $"%{term}%"));
+        }
+        var n = Math.Clamp(take is > 0 ? take.Value : 200, 1, 500);
+        var offset = Math.Max(0, skip);
+        return Ok(await BuildList(query.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).Skip(offset).Take(n)));
+    }
+
+    /// <summary>MindFlowهایی که این دستور به آن‌ها وصل است و کاربر مجاز به دیدنشان است.</summary>
+    [HttpGet("{id:int}/mindflows")]
+    public async Task<IActionResult> MindFlowsForOrder(int id)
+    {
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var orderExists = await _db.WorkOrders.AsNoTracking().AnyAsync(w => w.Id == id && w.CompanyId == companyId.Value);
+        if (!orderExists) return NotFound(new { message = "دستور کار پیدا نشد." });
+
+        var projects = await _db.WorkProjects.AsNoTracking()
+            .Where(p => p.CompanyId == companyId.Value && p.MindFlowJson != null)
+            .Select(p => new { p.Id, p.Number, p.Title, p.OwnerUserId, p.MindFlowJson }).ToListAsync();
+        var projectMemberIds = await _db.WorkProjectMembers.AsNoTracking()
+            .Where(m => m.UserId == MyUserId).Select(m => m.ProjectId).ToListAsync();
+        var directMemberIds = await _db.WorkProjectMindFlowMembers.AsNoTracking()
+            .Where(m => m.UserId == MyUserId).Select(m => m.ProjectId).ToListAsync();
+        var result = new List<WorkOrderMindFlowLinkDto>();
+        foreach (var project in projects)
+        {
+            if (project.OwnerUserId != MyUserId && !projectMemberIds.Contains(project.Id) && !directMemberIds.Contains(project.Id)) continue;
+            WorkProjectMindFlowDto? map;
+            try { map = System.Text.Json.JsonSerializer.Deserialize<WorkProjectMindFlowDto>(project.MindFlowJson!, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+            catch (System.Text.Json.JsonException) { continue; }
+            if (map is null) continue;
+            foreach (var (node, path) in EnumerateMindFlowNodes(map))
+            {
+                if (node.WorkOrderId != id && !(node.WorkOrderIds?.Contains(id) ?? false)) continue;
+                result.Add(new WorkOrderMindFlowLinkDto
+                {
+                    ProjectId = project.Id, ProjectNumber = project.Number, ProjectTitle = project.Title,
+                    MapTitle = map.Title, NodeId = node.Id, NodeText = node.Text, SubFlowPath = path
+                });
+            }
+        }
+
+        var standaloneMaps = await _db.StandaloneMindFlows.AsNoTracking()
+            .Where(m => m.CompanyId == companyId.Value && (m.OwnerUserId == MyUserId
+                || _db.StandaloneMindFlowMembers.Any(s => s.MindFlowId == m.Id && s.UserId == MyUserId)))
+            .Select(m => new { m.Id, m.Title, m.MapJson }).ToListAsync();
+        foreach (var standalone in standaloneMaps)
+        {
+            WorkProjectMindFlowDto? map;
+            try { map = System.Text.Json.JsonSerializer.Deserialize<WorkProjectMindFlowDto>(standalone.MapJson, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+            catch (System.Text.Json.JsonException) { continue; }
+            if (map is null) continue;
+            foreach (var (node, path) in EnumerateMindFlowNodes(map))
+            {
+                if (node.WorkOrderId != id && !(node.WorkOrderIds?.Contains(id) ?? false)) continue;
+                result.Add(new WorkOrderMindFlowLinkDto
+                {
+                    StandaloneMindFlowId = standalone.Id, ProjectNumber = "مستقل", ProjectTitle = standalone.Title,
+                    MapTitle = standalone.Title, NodeId = node.Id, NodeText = node.Text, SubFlowPath = path
+                });
+            }
+        }
+        return Ok(result);
+    }
+
+    private static IEnumerable<(WorkProjectMindFlowNodeDto Node, List<Guid> Path)> EnumerateMindFlowNodes(
+        WorkProjectMindFlowDto map, List<Guid>? path = null)
+    {
+        path ??= new();
+        if (map.Nodes is null) yield break;
+        foreach (var node in map.Nodes)
+        {
+            if (node is null) continue;
+            yield return (node, path);
+            if (node.ChildMindFlow is not null)
+            {
+                var childPath = new List<Guid>(path) { node.Id };
+                foreach (var child in EnumerateMindFlowNodes(node.ChildMindFlow, childPath)) yield return child;
+            }
+        }
+    }
+
+
+    public class ChecklistReorderDto { public List<int> ItemIds { get; set; } = new(); }
+
+    /// <summary>تغییر ترتیب آیتم‌های چک‌لیست اصلی — فقط دستوردهنده و فقط تا وقتی دستور باز است.</summary>
+    [HttpPost("{id:int}/checklist/reorder")]
+    public async Task<IActionResult> ChecklistReorder(int id, [FromBody] ChecklistReorderDto dto)
+    {
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
+        if (dto?.ItemIds is null) return BadRequest(new { message = "فهرست ترتیب ارسال نشده است." });
+
+        var items = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id).ToListAsync();
+        if (dto.ItemIds.Count != items.Count || dto.ItemIds.Distinct().Count() != items.Count
+            || !dto.ItemIds.ToHashSet().SetEquals(items.Select(i => i.Id)))
+            return BadRequest(new { message = "فهرست باید شامل تمام آیتم‌های فعلی چک‌لیست، بدون تکرار باشد." });
+
+        var byId = items.ToDictionary(i => i.Id);
+        for (var index = 0; index < dto.ItemIds.Count; index++)
+            byId[dto.ItemIds[index]].SortOrder = index;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { count = items.Count });
+    }
+
+
 }

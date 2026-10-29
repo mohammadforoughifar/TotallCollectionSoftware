@@ -60,6 +60,9 @@ public class InvoicingService : IInvoicingService
 
         var total = await q.CountAsync();
 
+        // توجه: جمع ستون decimal درون SQL توسط SQLite پشتیبانی نمی‌شود
+        // (SQLite cannot apply aggregate operator 'Sum' on expressions of type 'decimal').
+        // پس فقط شمارش سطرها از دیتابیس گرفته می‌شود و مجموع مقدار کالاها در حافظه محاسبه می‌شود.
         var rows = await q
             .OrderByDescending(i => i.Date).ThenByDescending(i => i.Number)
             .Skip((page - 1) * pageSize).Take(pageSize)
@@ -68,10 +71,17 @@ public class InvoicingService : IInvoicingService
                 Inv = i,
                 PartyName = i.Party != null ? i.Party.Name : null,
                 WarehouseName = i.Warehouse != null ? i.Warehouse.Name : null,
-                LineCount = i.Lines.Count,
-                Qty = i.Lines.Sum(l => (decimal?)l.Quantity) ?? 0
+                LineCount = i.Lines.Count
             })
             .ToListAsync();
+
+        var pageIds = rows.Select(r => r.Inv.Id).ToList();
+        var qtyRows = await _db.FacInvoiceLines.AsNoTracking()
+            .Where(l => pageIds.Contains(l.InvoiceId))
+            .Select(l => new { l.InvoiceId, l.Quantity })
+            .ToListAsync();
+        var qtyMap = qtyRows.GroupBy(x => x.InvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
         var docIds = rows.Where(r => r.Inv.InvDocId is not null).Select(r => r.Inv.InvDocId!.Value).ToList();
         var docNumbers = await _db.InvDocs.AsNoTracking().Where(d => docIds.Contains(d.Id))
@@ -81,7 +91,8 @@ public class InvoicingService : IInvoicingService
         var vNumbers = await _db.AccVouchers.AsNoTracking().Where(v => vIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, v => v.Number);
 
-        var items = rows.Select(r => Map(r.Inv, r.PartyName, r.WarehouseName, r.LineCount, r.Qty,
+        var items = rows.Select(r => Map(r.Inv, r.PartyName, r.WarehouseName, r.LineCount,
+            qtyMap.TryGetValue(r.Inv.Id, out var qty) ? qty : 0m,
             r.Inv.InvDocId is not null && docNumbers.ContainsKey(r.Inv.InvDocId.Value) ? docNumbers[r.Inv.InvDocId.Value] : null,
             r.Inv.VoucherId is not null && vNumbers.ContainsKey(r.Inv.VoucherId.Value) ? vNumbers[r.Inv.VoucherId.Value] : null))
             .ToList();
@@ -704,6 +715,141 @@ public class InvoicingService : IInvoicingService
         await _db.SaveChangesAsync();
         return voucher.Id;
     }
+
+    // =====================================================================
+    // ۴-ب) سند خودکار «فروش فروشگاه» (سفارش ویزیتور پس از تأیید مالی)
+    // =====================================================================
+
+    /// <summary>
+    /// سند حسابداری سند فروش فروشگاه:
+    /// <code>
+    /// نقدی:      صندوق/بانک (یا پیش‌دریافت نقدی)      بدهکار | فروش کالا بستانکار
+    /// چک/اقساط: حساب دریافتنی طرف حساب                بدهکار | فروش کالا بستانکار
+    /// </code>
+    /// چک‌ها و اقساط در خود سند فروش ثبت می‌شوند (همان رفتار ماژول فروش).
+    /// </summary>
+    public async Task<int?> PostStoreSaleVoucherAsync(int saleId, string? user)
+    {
+        var existing = await _db.AccVouchers.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);
+        if (existing is not null) return existing.Id;
+
+        var sale = await _db.Transactions.Include(t => t.Lines)
+            .FirstOrDefaultAsync(t => t.Id == saleId)
+            ?? throw new InvalidOperationException("سند فروش یافت نشد.");
+        if (sale.Type != TransactionType.Sale)
+            throw new InvalidOperationException("سند حسابداری خودکار فقط برای فروش صادر می‌شود.");
+        if (sale.Amount <= 0) return null;
+
+        var rule = await _db.FacRules.AsNoTracking().FirstOrDefaultAsync(r => r.Kind == InvoiceKind.Sale);
+        if (rule is not { IsActive: true, AutoVoucher: true }) return null;
+
+        var mainAccount = rule.MainAccountId
+            ?? throw new InvalidOperationException("حساب «فروش کالا» در قاعدهٔ فاکتور فروش تعیین نشده است.");
+        var receivableAccount = rule.PartyAccountId
+            ?? throw new InvalidOperationException("حساب دریافتنی (طرف حساب) در قاعدهٔ فاکتور فروش تعیین نشده است.");
+        var cashAccount = rule.CashAccountId ?? receivableAccount;
+
+        // بخش نقدی: فاکتور نقدی تمام مبلغ، در پرداخت ترکیبی فقط پیش‌دریافت
+        var cashPart = sale.PaymentMethod == PaymentMethod.Cash ? sale.Amount : sale.CashAmount;
+        if (cashPart < 0) cashPart = 0;
+        if (cashPart > sale.Amount) cashPart = sale.Amount;
+        var creditPart = sale.Amount - cashPart;
+
+        var year = await _db.AccFiscalYears.FirstOrDefaultAsync(f => f.IsCurrent)
+                   ?? await _db.AccFiscalYears.OrderByDescending(f => f.StartDate).FirstOrDefaultAsync()
+                   ?? throw new InvalidOperationException("هیچ سال مالی تعریف نشده است.");
+
+        var maxNumber = await _db.AccVouchers.Where(v => v.FiscalYearId == year.Id)
+            .Select(v => (int?)v.Number).MaxAsync() ?? 0;
+
+        var title = $"فروش شماره {sale.Number}";
+
+        var voucher = new Db.AccVoucher
+        {
+            FiscalYearId = year.Id,
+            Number = maxNumber + 1,
+            Date = sale.Date.Date,
+            Description = $"سند خودکار — {title}",
+            Status = VoucherStatus.Confirmed,
+            Source = VoucherSource.StoreSale,
+            SourceId = sale.Id,
+            SourceTitle = title,
+            RefNumber = sale.Number,
+            CreatedBy = user,
+            CreatedAt = DateTime.Now,
+            ConfirmedBy = user,
+            ConfirmedAt = DateTime.Now
+        };
+
+        var row = 1;
+        if (cashPart > 0)
+        {
+            voucher.Lines.Add(new Db.AccVoucherLine
+            {
+                RowNo = row++,
+                AccountId = cashAccount,
+                PartyId = sale.PartyId,
+                Description = sale.PaymentMethod == PaymentMethod.Cash ? title : $"پیش‌دریافت نقدی — {title}",
+                RefNumber = sale.Number,
+                Debit = cashPart,
+                Credit = 0
+            });
+        }
+        if (creditPart > 0)
+        {
+            voucher.Lines.Add(new Db.AccVoucherLine
+            {
+                RowNo = row++,
+                AccountId = receivableAccount,
+                PartyId = sale.PartyId,
+                Description = $"{PaymentFa(sale.PaymentMethod)} — {title}",
+                RefNumber = sale.Number,
+                Debit = creditPart,
+                Credit = 0
+            });
+        }
+
+        voucher.Lines.Add(new Db.AccVoucherLine
+        {
+            RowNo = row,
+            AccountId = mainAccount,
+            PartyId = sale.PartyId,
+            Description = title,
+            RefNumber = sale.Number,
+            Debit = 0,
+            Credit = sale.Amount
+        });
+
+        voucher.TotalDebit = voucher.Lines.Sum(l => l.Debit);
+        voucher.TotalCredit = voucher.Lines.Sum(l => l.Credit);
+        if (voucher.TotalDebit != voucher.TotalCredit)
+            throw new InvalidOperationException("سند حسابداری فروش تراز نشد.");
+
+        _db.AccVouchers.Add(voucher);
+        await _db.SaveChangesAsync();
+        return voucher.Id;
+    }
+
+    public async Task UnpostStoreSaleVoucherAsync(int saleId)
+    {
+        var voucher = await _db.AccVouchers.Include(v => v.Lines)
+            .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);
+        if (voucher is null) return;
+        _db.AccVoucherLines.RemoveRange(voucher.Lines);
+        _db.AccVouchers.Remove(voucher);
+        await _db.SaveChangesAsync();
+    }
+
+    private static string PaymentFa(PaymentMethod m) => m switch
+    {
+        PaymentMethod.Cash => "نقدی",
+        PaymentMethod.Credit => "نسیه",
+        PaymentMethod.Cheque => "چک",
+        PaymentMethod.Installment => "اقساطی",
+        PaymentMethod.Mixed => "ترکیبی",
+        _ => "پرداخت"
+    };
 
     // =====================================================================
     // ۵) قواعد فاکتور

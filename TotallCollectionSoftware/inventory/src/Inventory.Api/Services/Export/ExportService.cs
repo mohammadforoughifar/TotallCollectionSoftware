@@ -885,6 +885,7 @@ public class ExportService : IExportService
     {
         VoucherSource.InventoryDoc => "سند انبار",
         VoucherSource.Invoice => "فاکتور",
+        VoucherSource.StoreSale => "فروش فروشگاه",
         VoucherSource.Opening => "افتتاحیه",
         VoucherSource.Closing => "اختتامیه",
         _ => "دستی"

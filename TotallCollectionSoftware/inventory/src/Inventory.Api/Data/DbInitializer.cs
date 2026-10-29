@@ -112,6 +112,12 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
+                // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
+                await SalesVisitSchemaV1.EnsureAsync(db);
+
+                // طرف حساب: ستون‌های «ثبت‌کننده» (چه ویزیتوری این مشتری را ثبت کرد)
+                await PartyRegistrationSchemaV1.EnsureAsync(db);
+
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
 
@@ -129,6 +135,7 @@ public static class DbInitializer
                 await PushDeliverySchema.EnsureAsync(db);
                 // مدت نمایش اعلان‌ها/پیام‌ها (سراسری، مدیر سامانه) — ستون‌های AppSettings
                 await AppSettingsSchemaV1.EnsureAsync(db);
+                await MeetingMinutesSchemaV1.EnsureAsync(db);
                 await CompanyAccessSchemaV1.EnsureAsync(db);
                 await AiSchemaV1.EnsureAsync(db);
                 // گاوصندوق رمزهای تجهیزات (سرور، سوییچ، میکروتیک، فایروال، سامانه‌ها) — به تفکیک شرکت
@@ -151,8 +158,6 @@ public static class DbInitializer
                 // رونوشت‌گیرندگان نامه صادره — این Schema قبلاً تعریف شده بود اما در
                 // راه‌اندازی فراخوانی نمی‌شد و ثبت نامه دارای رونوشت با 400 شکست می‌خورد.
                 await OutgoingCopyToSchemaV1.EnsureAsync(db);
-
-                // وضعیت «خوانده شدن» امضاکنندگان نامه صادره (مستقل از امضا)
                 await OutgoingSignerReadSchemaV1.EnsureAsync(db);
 
                 // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
@@ -160,6 +165,9 @@ public static class DbInitializer
 
                 // پروژه کاری سبک داخل دستور کار (جدول‌های WorkProject* + ستون‌های WorkOrders)
                 await WorkProjectSchemaV1.EnsureAsync(db);
+                await WorkProjectMindFlowSchemaV1.EnsureAsync(db);
+                await WorkProjectMindFlowSchemaV2.EnsureAsync(db);
+                await StandaloneMindFlowSchemaV1.EnsureAsync(db);
 
                 // میز کار توسعه — مدیریت تیم نرم‌افزار (تسک/مشکل/changelog/گیت)
                 await DevTeamSchemaV1.EnsureAsync(db);
@@ -605,7 +613,9 @@ public static class DbInitializer
                     Console.WriteLine("     در appsettings.json مقدار Server=. را به Server=.\\SQLEXPRESS تغییر دهید.");
                     Console.WriteLine("  3) پروتکل TCP/IP یا Shared Memory در SQL Server Configuration Manager فعال باشد.");
                     Console.WriteLine("  4) رشته اتصال فعلی:");
-                    Console.WriteLine($"     {config.GetConnectionString("Default")}");
+                    var safeConnection = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(config.GetConnectionString("Default"));
+                    safeConnection.Password = "***";
+                    Console.WriteLine($"     {safeConnection.ConnectionString}");
                     Console.WriteLine("  5) برای تست بدون SQL Server، در appsettings.json مقدار");
                     Console.WriteLine("     Database:Provider را روی \"Sqlite\" و ConnectionStrings:Default را روی");
                     Console.WriteLine("     \"Data Source=inventory.db\" بگذارید.");
@@ -675,17 +685,11 @@ AND (
     {
         try { db.Database.ExecuteSqlRaw(@"IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', N'SignaturePath') IS NULL ALTER TABLE dbo.Users ADD SignaturePath nvarchar(300) NULL;"); }
         catch (Exception ex) { Console.WriteLine($"[DB] هشدار: افزودن ستون SignaturePath: {ex.Message}"); }
-
-        // واحد سازمانیِ کاربر — برای جزء «واحد» در شمارهٔ نامه و تخصیص از فرم «کاربران»
-        try { db.Database.ExecuteSqlRaw(@"IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', N'OrganizationId') IS NULL ALTER TABLE dbo.Users ADD OrganizationId int NULL;"); }
-        catch (Exception ex) { Console.WriteLine($"[DB] هشدار: افزودن ستون OrganizationId: {ex.Message}"); }
     }
 
     private static void EnsureSqliteUserSignatureColumn(AppDbContext db)
     {
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN SignaturePath TEXT NULL;"); } catch { }
-        // واحد سازمانیِ کاربر (SQLite: خطای «ستون تکراری» پذیرفته می‌شود)
-        try { db.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN OrganizationId INTEGER NULL;"); } catch { }
     }
 
     private static void EnsureSystemUserPhoneColumn(AppDbContext db)

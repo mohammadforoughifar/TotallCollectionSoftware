@@ -1,4 +1,5 @@
 @page "/work-projects"
+@using Inventory.Client.Components.WorkProjects
 @implements IDisposable
 @inject HttpClient Http
 @inject IAuthState Auth
@@ -162,6 +163,10 @@ else
                     <div class="wp-foot">
                         <span class="wp-activity" title="@p.LastActivityText"><i class="bi bi-clock-history"></i> @(p.LastActivityAt != null ? $"{p.LastActivityText} · {p.LastActivityAt.Value.ToFa()}" : "بدون فعالیت")</span>
                         <div class="wp-actions" @onclick:stopPropagation="true">
+                            @if (p.CanViewMindFlow)
+                            {
+                                <a href="@($"/work-projects/mindflow?projectId={p.Id}")" target="_blank" rel="noopener noreferrer" title="باز کردن نگار ذهنی همین پروژه"><i class="bi bi-diagram-3"></i></a>
+                            }
                             @if (p.Status == "Open" && (p.IsMine || access.CanUpdate))
                             {
                                 <button type="button" title="تمدید مهلت" @onclick="() => OpenExtend(p)"><i class="bi bi-hourglass-split"></i></button>
@@ -272,6 +277,12 @@ else
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
+                                    @if (p.CanViewMindFlow)
+                                    {
+                                        <a class="btn btn-outline-success" title="نگار ذهنی همین پروژه" href="@($"/work-projects/mindflow?projectId={p.Id}")" target="_blank" rel="noopener noreferrer">
+                                            <i class="bi bi-diagram-3"></i>
+                                        </a>
+                                    }
                                     <button class="btn btn-outline-primary" title="جزئیات" @onclick="() => OpenDetail(p.Id)">
                                         <i class="bi bi-eye"></i>
                                     </button>
@@ -407,6 +418,14 @@ else
                         دستورها <span class="badge bg-light text-dark num">@d.OrderCount.Num()</span>
                     </button>
                 </li>
+                @if (d.CanViewMindFlow)
+                {
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(detailTab == "mindflow" ? "active" : "")" @onclick='() => detailTab = "mindflow"'>
+                            <i class="bi bi-diagram-3"></i> نگار ذهنی
+                        </button>
+                    </li>
+                }
                 <li class="nav-item">
                     <button type="button" class="nav-link @(detailTab == "members" ? "active" : "")" @onclick='() => detailTab = "members"'>
                         اعضا <span class="badge bg-light text-dark num">@d.Members.Count.Num()</span>
@@ -465,6 +484,50 @@ else
                         <i class="bi bi-plus-lg"></i> دستور جدید برای این پروژه
                     </button>
                 </div>
+                @if (d.CanViewMindFlow)
+                {
+                    <section class="border rounded p-3 mb-3 bg-light-subtle">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                            <strong><i class="bi bi-diagram-3 text-primary"></i> دستورهای متصل به گره‌های نگار ذهنی</strong>
+                            <span class="badge bg-primary-subtle text-primary border">@FilteredMindFlowOrders.Count</span>
+                        </div>
+                        <div class="small text-muted mb-2">همهٔ دستورهای متصل در هر سطح از نقشه؛ از جمله دستورهای پروژه‌های دیگر یا بدون پروژه.</div>
+                        @if (mindFlowOrdersLoading)
+                        {
+                            <div class="small text-muted"><span class="spinner-border spinner-border-sm"></span> در حال بارگذاری دستورهای متصل…</div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(mindFlowOrdersError))
+                        {
+                            <div class="alert alert-warning py-2 mb-0">@mindFlowOrdersError</div>
+                        }
+                        else if (FilteredMindFlowOrders.Count == 0)
+                        {
+                            <div class="small text-muted">در این نگار ذهنی، دستوری به گره‌ها وصل نشده است.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead><tr><th>گره</th><th>شماره</th><th>عنوان دستور</th><th>پروژهٔ دستور</th><th>وضعیت</th><th>مهلت</th><th></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var linkedOrder in FilteredMindFlowOrders)
+                                        {
+                                            <tr>
+                                                <td class="small"><a href="@MindFlowNodeHref(linkedOrder)" target="_blank" rel="noopener noreferrer">@linkedOrder.NodeTitle</a></td>
+                                                <td class="num small">@linkedOrder.Number</td>
+                                                <td class="small">@linkedOrder.Title</td>
+                                                <td class="small">@(linkedOrder.ProjectId is null ? "بدون پروژه" : string.IsNullOrWhiteSpace(linkedOrder.ProjectTitle) ? "پروژهٔ دیگر" : $"{linkedOrder.ProjectNumber} — {linkedOrder.ProjectTitle}")</td>
+                                                <td><span class="badge @(linkedOrder.Status == "Closed" ? "bg-secondary-subtle text-secondary border" : "bg-success-subtle text-success border")">@(linkedOrder.Status == "Closed" ? "بسته" : "باز")</span></td>
+                                                <td class="num small">@linkedOrder.DueAt.ToFa()</td>
+                                                <td><a class="btn btn-sm btn-outline-primary" title="بازکردن دستور کار" href="@($"/work-orders?open={linkedOrder.Id}")" target="_blank" rel="noopener noreferrer"><i class="bi bi-box-arrow-up-left"></i></a></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </section>
+                }
                 @if (!string.IsNullOrWhiteSpace(ordersError))
                 {
                     <div class="alert alert-warning py-2">@ordersError</div>
@@ -528,6 +591,10 @@ else
                         </table>
                     </div>
                 }
+            }
+            else if (detailTab == "mindflow" && d.CanViewMindFlow)
+            {
+                <WorkProjectMindFlow ProjectId="@d.Id" ProjectTitle="@d.Title" CanEdit="@(d.CanManageMindFlow && d.Status == "Open")" CanManageAccess="@(d.CanManageMindFlow && d.Status == "Open")" />
             }
             else if (detailTab == "members")
             {
@@ -764,10 +831,10 @@ else
     .wp-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: auto -1.2rem 0; padding: .55rem 1.2rem; border-top: 1px solid #eef1f5; min-height: 46px; min-width: 0; }
     .wp-activity { font-size: .72rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .wp-actions { display: flex; gap: .2rem; flex-shrink: 0; }
-    .wp-actions button { width: 30px; height: 30px; border: 0; background: transparent; color: #64748b; border-radius: 8px; display: inline-grid; place-items: center; transition: background .15s, color .15s; }
-    .wp-actions button:hover { background: #eef2ff; color: #4338ca; }
-    .wp-actions button.is-danger:hover { background: #fee2e2; color: #b91c1c; }
-    .wp-actions button:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
+    .wp-actions button, .wp-actions a { width: 30px; height: 30px; border: 0; background: transparent; color: #64748b; border-radius: 8px; display: inline-grid; place-items: center; transition: background .15s, color .15s; text-decoration: none; }
+    .wp-actions button:hover, .wp-actions a:hover { background: #eef2ff; color: #4338ca; }
+    .wp-actions button.is-danger:hover, .wp-actions a.is-danger:hover { background: #fee2e2; color: #b91c1c; }
+    .wp-actions button:focus-visible, .wp-actions a:focus-visible { outline: 2px solid #6366f1; outline-offset: 1px; }
     @@media (hover: hover) and (min-width: 768px) {
         .wp-actions { opacity: .55; transition: opacity .15s; }
         .wp-card:hover .wp-actions, .wp-actions:focus-within { opacity: 1; }
@@ -828,8 +895,15 @@ else
     private WorkProjectDetailDto? detail;
     private string detailTab = "summary";
     private List<ProjOrder> orders = new();
-    private bool ordersLoading;
-    private string ordersError = "", ordStatus = "";
+    private List<WorkProjectMindFlowLinkedOrderDto> mindFlowOrders = new();
+    private bool ordersLoading, mindFlowOrdersLoading;
+    private string ordersError = "", mindFlowOrdersError = "", ordStatus = "";
+    private List<WorkProjectMindFlowLinkedOrderDto> FilteredMindFlowOrders => ordStatus switch
+    {
+        "open" => mindFlowOrders.Where(x => x.Status == "Open").ToList(),
+        "closed" => mindFlowOrders.Where(x => x.Status == "Closed").ToList(),
+        _ => mindFlowOrders
+    };
     private List<int> addMemberIds = new();
     private bool memberBusy;
     private List<WorkProjectLogDto> activity = new();
@@ -881,7 +955,7 @@ else
             if (detail != null)
             {
                 await RefreshDetail(silent: true);
-                if (detailTab == "orders") await LoadOrders(silent: true);
+                if (detailTab == "orders") await Task.WhenAll(LoadOrders(silent: true), LoadMindFlowLinkedOrders(silent: true));
             }
             StateHasChanged();
         });
@@ -1023,12 +1097,17 @@ else
         finally { saveBusy = false; }
     }
 
+    // ================== ذهن‌نگار مستقیمِ پروژه ==================
+
+    private void OpenMindFlow(int id) => Nav.NavigateTo($"/work-projects/mindflow?projectId={id}");
+
     // ================== جزئیات ==================
 
     private async Task OpenDetail(int id)
     {
         detailTab = "summary";
         orders = new(); ordersError = ""; ordStatus = "";
+        mindFlowOrders = new(); mindFlowOrdersError = ""; mindFlowOrdersLoading = false;
         activity = new(); activitySkip = 0; activityHasMore = false;
         addMemberIds = new();
         try
@@ -1059,13 +1138,41 @@ else
     private async Task OpenOrdersTab()
     {
         detailTab = "orders";
-        await LoadOrders();
+        await Task.WhenAll(LoadOrders(), LoadMindFlowLinkedOrders());
     }
 
     private async Task SetOrdStatus(string s)
     {
         ordStatus = s;
-        await LoadOrders();
+        await Task.WhenAll(LoadOrders(), LoadMindFlowLinkedOrders());
+    }
+
+    private async Task LoadMindFlowLinkedOrders(bool silent = false)
+    {
+        if (detail is null || !detail.CanViewMindFlow)
+        {
+            mindFlowOrders = new(); mindFlowOrdersError = ""; mindFlowOrdersLoading = false;
+            return;
+        }
+        mindFlowOrdersError = "";
+        if (!silent) mindFlowOrdersLoading = true;
+        try
+        {
+            mindFlowOrders = await Http.GetFromJsonAsync<List<WorkProjectMindFlowLinkedOrderDto>>($"/api/workorders/by-project/{detail.Id}/mindflow-linked") ?? new();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            mindFlowOrders = new();
+            mindFlowOrdersError = "بارگذاری دستورهای متصل به گره‌های نگار ذهنی انجام نشد.";
+        }
+        finally { if (!silent) mindFlowOrdersLoading = false; }
+    }
+
+    private string MindFlowNodeHref(WorkProjectMindFlowLinkedOrderDto order)
+    {
+        if (detail is null) return "/work-projects/mindflow";
+        var href = $"/work-projects/mindflow?projectId={detail.Id}&nodeId={order.NodeId}";
+        return string.IsNullOrWhiteSpace(order.SubFlowPath) ? href : $"{href}&subFlowPath={Uri.EscapeDataString(order.SubFlowPath)}";
     }
 
     private async Task LoadOrders(bool silent = false)

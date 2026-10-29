@@ -175,25 +175,6 @@ BEGIN
 END
 ELSE IF COL_LENGTH(N'dbo.Oto_TBL_EmailAttachments', N'Attachment_FilePath') IS NULL
     ALTER TABLE dbo.Oto_TBL_EmailAttachments ADD Attachment_FilePath nvarchar(300) NULL;");
-
-        // ---------- ایندکس‌های کاراییِ فهرست ایمیل ----------
-        // بدون این ایندکس‌ها هر بار باز شدنِ صندوق یا اعمالِ فیلترِ تاریخ، یک اسکن + مرتب‌سازیِ
-        // کاملِ جدول (با ستونِ سنگینِ Body) لازم داشت و صفحه چند ثانیه معطل می‌ماند.
-        await SafeAsync(db, @"
-IF OBJECT_ID(N'dbo.Oto_TBL_Inbox', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBL_Inbox_Email_Date' AND object_id = OBJECT_ID(N'dbo.Oto_TBL_Inbox'))
-    CREATE INDEX [IX_Oto_TBL_Inbox_Email_Date] ON [dbo].[Oto_TBL_Inbox] ([Email_Id], [Date] DESC)
-        INCLUDE ([Subject], [From_Address], [Is_Read], [Is_Neshan], [Is_Attachment], [IsInFolder], [Is_Spam]);
-IF OBJECT_ID(N'dbo.Oto_TBL_Inbox', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBL_Inbox_Email_Folder' AND object_id = OBJECT_ID(N'dbo.Oto_TBL_Inbox'))
-    CREATE INDEX [IX_Oto_TBL_Inbox_Email_Folder] ON [dbo].[Oto_TBL_Inbox] ([Email_Id], [IsInFolder], [Is_Spam], [Is_Read]);
-IF OBJECT_ID(N'dbo.Oto_TBL_Inbox', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBL_Inbox_Email_Spam' AND object_id = OBJECT_ID(N'dbo.Oto_TBL_Inbox'))
-    CREATE INDEX [IX_Oto_TBL_Inbox_Email_Spam] ON [dbo].[Oto_TBL_Inbox] ([Email_Id], [Is_Spam]);
-IF OBJECT_ID(N'dbo.Oto_TBL_Sent', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBL_Sent_Email_Date' AND object_id = OBJECT_ID(N'dbo.Oto_TBL_Sent'))
-    CREATE INDEX [IX_Oto_TBL_Sent_Email_Date] ON [dbo].[Oto_TBL_Sent] ([Email_Id], [Date] DESC)
-        INCLUDE ([Subject], [To_Display], [Is_Neshan], [Is_Attachment], [IsInFolder]);
-IF OBJECT_ID(N'dbo.Oto_TBL_Sent', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBL_Sent_Email_Folder' AND object_id = OBJECT_ID(N'dbo.Oto_TBL_Sent'))
-    CREATE INDEX [IX_Oto_TBL_Sent_Email_Folder] ON [dbo].[Oto_TBL_Sent] ([Email_Id], [IsInFolder]);
-IF OBJECT_ID(N'dbo.Oto_TBl_EmailFolder', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Oto_TBl_EmailFolder_User_Folder' AND object_id = OBJECT_ID(N'dbo.Oto_TBl_EmailFolder'))
-    CREATE INDEX [IX_Oto_TBl_EmailFolder_User_Folder] ON [dbo].[Oto_TBl_EmailFolder] ([UserId], [IsFolder]);");
     }
 
     // ==================== SQLite ====================
@@ -283,13 +264,6 @@ IF OBJECT_ID(N'dbo.Oto_TBl_EmailFolder', N'U') IS NOT NULL AND NOT EXISTS (SELEC
     Attachment_Real_Name TEXT NOT NULL DEFAULT '',
     Attachment_Saved_Name TEXT NOT NULL DEFAULT '',
     Attachment_FilePath TEXT NULL);");
-
-        // ---------- ایندکس‌های کاراییِ فهرست ایمیل ----------
-        await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Inbox_Email_Date ON Oto_TBL_Inbox (Email_Id, Date);");
-        await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Inbox_Email_Folder ON Oto_TBL_Inbox (Email_Id, IsInFolder, Is_Spam, Is_Read);");
-        await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Sent_Email_Date ON Oto_TBL_Sent (Email_Id, Date);");
-        await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Sent_Email_Folder ON Oto_TBL_Sent (Email_Id, IsInFolder);");
-        await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBl_EmailFolder_User_Folder ON Oto_TBl_EmailFolder (UserId, IsFolder);");
     }
 
     /// <summary>اجرای امن — خطای «ستون/جدول از قبل هست» را می‌پذیریم</summary>

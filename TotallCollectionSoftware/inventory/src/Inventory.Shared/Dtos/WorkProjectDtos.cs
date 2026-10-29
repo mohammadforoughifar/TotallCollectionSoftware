@@ -58,6 +58,7 @@ public class WorkProjectLogDto
         "OrderAdded" => "اتصال دستور کار",
         "OrderRemoved" => "جدا شدن دستور کار",
         "OrderClosed" => "بسته شدن دستور کار",
+        "MindFlowUpdated" => "به‌روزرسانی نقشهٔ ذهنی",
         _ => "فعالیت"
     };
 }
@@ -95,6 +96,7 @@ public class WorkProjectListItemDto
     public bool IsOverdue { get; set; }
     public bool IsMine { get; set; }
     public bool IsMember { get; set; }
+    public bool CanViewMindFlow { get; set; }
 
     public DateTime? LastActivityAt { get; set; }
     public string? LastActivityText { get; set; }
@@ -111,6 +113,8 @@ public class WorkProjectDetailDto : WorkProjectListItemDto
 
     /// <summary>آیا کاربر جاری می‌تواند ویرایش/تمدید/بستن/اعضا انجام دهد؟ (مالک یا مجوز Update)</summary>
     public bool CanManage { get; set; }
+    /// <summary>اختیار ویرایش ذهن‌نگار؛ دعوت مستقیم به MindFlow به‌تنهایی فقط‌خواندنی است.</summary>
+    public bool CanManageMindFlow { get; set; }
 }
 
 /// <summary>صفحه‌بندی لیست پروژه‌ها</summary>

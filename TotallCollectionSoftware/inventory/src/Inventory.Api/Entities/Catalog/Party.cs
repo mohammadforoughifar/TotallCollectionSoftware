@@ -34,4 +34,19 @@ public class Party : ICompanyOwned
 
     /// <summary>معرف پیش‌فرض مشتری (اختیاری — null = بدون معرف)</summary>
     public int? ReferrerId { get; set; }
+
+    // ---------- ثبت‌کننده (چه کسی این طرف حساب را ساخت) ----------
+
+    /// <summary>کاربری که این طرف حساب را ثبت کرده است (۰ = ثبت سیستمی/قدیمی)</summary>
+    public int? RegisteredByUserId { get; set; }
+
+    /// <summary>نام ثبت‌کننده در لحظهٔ ثبت — snapshot؛ تغییر نام/حذف کاربر سابقه را نمی‌شکند</summary>
+    [MaxLength(150)]
+    public string? RegisteredByName { get; set; }
+
+    /// <summary>پروندهٔ معرفی که این مشتری از طریق آن ثبت شده (ویزیتور)</summary>
+    public int? RegisteredByReferrerId { get; set; }
+
+    /// <summary>زمان ثبت</summary>
+    public DateTime? RegisteredAt { get; set; }
 }

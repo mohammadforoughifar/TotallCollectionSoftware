@@ -1,4 +1,5 @@
 @inject IAuthState Auth
+@inject HttpClient Http
 @inject NavigationManager NavManager
 @implements IDisposable
 
@@ -129,7 +130,7 @@
     }
 
     @* ============ دستور کار (ماژول مستقل — فقط با مجوز مشاهده) ============ *@
-    @if (Auth.CanSee("WorkOrders") || Auth.CanSee("WorkProjects"))
+    @if (Auth.CanSee("WorkOrders") || Auth.CanSee("WorkProjects") || _hasMindFlowAccess || Auth.IsLoggedIn)
     {
         <div class="nav-group group-wo">
             <button type="button" class="nav-section-title nav-toggle @(gWo ? "open" : "")" @onclick="() => gWo = !gWo">
@@ -139,16 +140,25 @@
             @if (gWo)
             {
                 <div class="nav-group-items">
-                    <NavLink class="nav-link" href="work-orders" @onclick="NotifyClose">
-                        <i class="bi bi-card-checklist"></i><span>دستورهای کار</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="work-orders?tab=calendar" @onclick="NotifyClose">
-                        <i class="bi bi-calendar-week-fill"></i><span>تقویم دستور کار</span>
-                    </NavLink>
+                    @if (Auth.CanSee("WorkOrders"))
+                    {
+                        <NavLink class="nav-link" href="work-orders" @onclick="NotifyClose">
+                            <i class="bi bi-card-checklist"></i><span>دستورهای کار</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="work-orders?tab=calendar" @onclick="NotifyClose">
+                            <i class="bi bi-calendar-week-fill"></i><span>تقویم دستور کار</span>
+                        </NavLink>
+                    }
                     @if (Auth.CanSee("WorkProjects"))
                     {
-                        <NavLink class="nav-link" href="work-projects" @onclick="NotifyClose">
+                        <NavLink class="nav-link" href="work-projects" Match="NavLinkMatch.All" @onclick="NotifyClose">
                             <i class="bi bi-briefcase"></i><span>پروژه‌های کاری</span>
+                        </NavLink>
+                    }
+                    @if (Auth.IsLoggedIn)
+                    {
+                        <NavLink class="nav-link" href="work-projects/mindflow" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-3"></i><span>نگار ذهنی</span>
                         </NavLink>
                     }
                 </div>
@@ -304,14 +314,9 @@
                         <NavLink class="nav-link" href="office/email" @onclick="NotifyClose">
                             <i class="bi bi-envelope-at"></i><span>ایمیل سازمانی</span>
                         </NavLink>
-                        @* «ایمیل شخصی» مجوز جدا دارد (Email.Personal)؛ بدون آن، سرور
-                            همهٔ درخواست‌های این صفحه را 403 می‌دهد. *@
-                        @if (Auth.Has("Email.Personal"))
-                        {
-                            <NavLink class="nav-link" href="office/personal-email" @onclick="NotifyClose">
-                                <i class="bi bi-person-badge"></i><span>ایمیل شخصی</span>
-                            </NavLink>
-                        }
+                        <NavLink class="nav-link" href="office/personal-email" @onclick="NotifyClose">
+                            <i class="bi bi-person-badge"></i><span>ایمیل شخصی</span>
+                        </NavLink>
                     }
                 </div>
             }
@@ -457,16 +462,59 @@
                                         <i class="bi bi-building"></i><span>انبارها</span>
                                     </NavLink>
                                 }
-                                @if (Auth.CanSee("Parties"))
+                                @* مشتری و تأمین‌کننده دسترسی مستقل دارند؛ نام آیتم با مجوز کاربر هم‌خوان می‌شود *@
+                                @if (ShowPartiesMenu)
                                 {
                                     <NavLink class="nav-link" href="parties" @onclick="NotifyClose">
-                                        <i class="bi bi-people"></i><span>طرف حساب‌ها</span>
+                                        <i class="bi @(PartiesMenuIcon)"></i><span>@PartiesMenuLabel</span>
                                     </NavLink>
                                 }
                                 @if (Auth.CanSee("Referrers"))
                                 {
                                     <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
                                         <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
+                                    </NavLink>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @* ---------- زیرمنوی فروش و ویزیتوری (سفارش میدانی) — هم‌خانه با اطلاعات پایه و گزارش ---------- *@
+                @if (ShowVisGroup)
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gVis ? "open" : "")" @onclick="() => gVis = !gVis">
+                            <span><i class="bi bi-person-walking"></i>فروش و ویزیتوری</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gVis)
+                        {
+                            <div class="nav-sub-items">
+                                <NavLink class="nav-link" href="sales/visits" @onclick="NotifyClose">
+                                    <i class="bi bi-journal-text"></i><span>سفارش‌های من</span>
+                                </NavLink>
+                                @* ثبت سفارش برای هر کسی که مجوز «SalesVisit.Create» دارد:
+                                   ویزیتور، کارشناس و مدیر سیستم (ادمین). مدیر فروشِ صرف که این
+                                   مجوز را ندارد، هیچ نقطهٔ ورودیِ «ثبت سفارش جدید» نمی‌بیند. *@
+                                @if (Auth.Has("SalesVisit.Create"))
+                                {
+                                    <NavLink class="nav-link" href="sales/visits/new" @onclick="NotifyClose">
+                                        <i class="bi bi-plus-square"></i><span>ثبت سفارش جدید</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.Has("SalesVisit.Approve"))
+                                {
+                                    <NavLink class="nav-link" href="sales/approvals" @onclick="NotifyClose">
+                                        <i class="bi bi-patch-check"></i><span>تأیید سفارش‌ها</span>
+                                    </NavLink>
+                                    <NavLink class="nav-link" href="sales/requests" @onclick="NotifyClose">
+                                        <i class="bi bi-collection"></i><span>همهٔ درخواست‌ها</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.Has("SalesVisit.FinanceView"))
+                                {
+                                    <NavLink class="nav-link" href="sales/finance-queue" @onclick="NotifyClose">
+                                        <i class="bi bi-receipt-cutoff"></i><span>صف مالی سفارش‌ها</span>
                                     </NavLink>
                                 }
                             </div>
@@ -764,17 +812,7 @@
 </div>
 
 @code {
-    /// <summary>
-    /// نمایش آیتم منوی بن‌سازه: مجوز کل ماژول، مجوز همان بخش، یا مجوز تفکیکی معادل.
-    /// بخش «ورود اطلاعات» با هر یک از مجوزهای افزودن/ویرایش پرسنل هم دیده می‌شود.
-    /// </summary>
-    private bool CanSeeBonHrSection(string section)
-    {
-        if (Auth.Has("RadisHr.Access")) return true;
-        if (Auth.Has("RadisHr." + section)) return true;
-        return section == "EmployeeEntry"
-               && (Auth.Has("RadisHr.EmployeeCreate") || Auth.Has("RadisHr.EmployeeUpdate"));
-    }
+    private bool CanSeeBonHrSection(string section) => Auth.Has("RadisHr.Access") || Auth.Has("RadisHr."+section) || (section=="EmployeeEntry" && (Auth.Has("RadisHr.EmployeeCreate") || Auth.Has("RadisHr.EmployeeUpdate")));
 
     [Parameter] public int ReorderCount { get; set; }
     [Parameter] public int NewSystemsCount { get; set; }
@@ -783,6 +821,8 @@
 
     private bool gOpsBase, gOpsReports;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
+    private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل سامانه فروشگاهی
+    private bool _hasMindFlowAccess;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
     private HrNavigation.Entry[] FaHrItems = [];
@@ -799,13 +839,14 @@
         => _ = InvokeAsync(() =>
         {
             RefreshFaHr();
+            _ = RefreshMindFlowAccessAsync();
             var path = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
             gPersonal = path.StartsWith("personal-settings");
             gMisc = path.StartsWith("misc");
             if (path.StartsWith("trs/vouchers")) gOps = true;
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
-            // «سامانه مودیان» یک گروه مستقل است و نباید گروه «سامانه فروشگاهی» را باز کند.
-            if (path.StartsWith("moadian")) gMoadian = true;
+            if (path.StartsWith("moadian")) gOps = true;
+            if (path.StartsWith("moadian/settings")) gOpsBase = true;
             StateHasChanged();
         });
 
@@ -822,15 +863,30 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
+    // ---------- طرف حساب‌ها: مشتری / تأمین‌کننده با دسترسی جدا ----------
+    private bool CanSeeCustomersMenu => Auth.Has("Parties.Read") || Auth.HasModule("Customers");
+    private bool CanSeeSuppliersMenu => Auth.Has("Parties.Read") || Auth.HasModule("Suppliers");
+    private bool ShowPartiesMenu => CanSeeCustomersMenu || CanSeeSuppliersMenu;
+
+    private string PartiesMenuLabel => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "تأمین‌کنندگان"
+        : CanSeeCustomersMenu && !CanSeeSuppliersMenu ? "مشتریان"
+        : "طرف حساب‌ها";
+
+    private string PartiesMenuIcon => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "bi-truck" : "bi-people";
+
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Referrers") || ShowPartiesMenu;
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
-    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
+    private bool ShowVisGroup => Auth.CanSee("SalesVisit");
+    // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
+    // منوی او کاملاً خالی می‌ماند.
+    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers", "ShopGuide");
+
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
-                                                         "SystemCompanies", "SystemDepartments", "SystemOrganizations");
+                                                         "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");
 
     /// <summary>ورود به بخش تنظیمات — فقط مدیر و با مجوز مشاهدهٔ ماژول تنظیمات.</summary>
@@ -842,7 +898,9 @@
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
         NavManager.LocationChanged += OnLocationChanged;
+        Auth.Changed += OnAuthChanged;
         RefreshFaHr();
+        _ = RefreshMindFlowAccessAsync();
 
         gChat = p.StartsWith("chat");
         gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
@@ -856,12 +914,11 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOpsReports = p.StartsWith("operations/reports");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || gOpsReports || gOpsBase;
-        // گروه «سامانه مودیان» مستقل از «سامانه فروشگاهی» است.
-        gMoadian = p.StartsWith("moadian");
+        gVis = p.StartsWith("sales/");
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase || gVis;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("servers") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||
@@ -870,7 +927,25 @@
         
     }
 
+    private void OnAuthChanged() => _ = InvokeAsync(RefreshMindFlowAccessAsync);
+
+    private async Task RefreshMindFlowAccessAsync()
+    {
+        if (!Auth.IsLoggedIn) { _hasMindFlowAccess = false; await InvokeAsync(StateHasChanged); return; }
+        try
+        {
+            var maps = await Http.GetFromJsonAsync<List<WorkProjectMindFlowAccessibleProjectDto>>("/api/workprojects/mindflow/accessible") ?? new();
+            _hasMindFlowAccess = maps.Count > 0;
+        }
+        catch { _hasMindFlowAccess = false; }
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task NotifyClose() => await OnNavigate.InvokeAsync();
 
-    public void Dispose() => NavManager.LocationChanged -= OnLocationChanged;
+    public void Dispose()
+    {
+        NavManager.LocationChanged -= OnLocationChanged;
+        Auth.Changed -= OnAuthChanged;
+    }
 }

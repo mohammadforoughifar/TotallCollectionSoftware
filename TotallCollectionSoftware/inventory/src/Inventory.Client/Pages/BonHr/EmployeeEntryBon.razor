@@ -8,47 +8,18 @@
 @inject LayoutState Layout
 
 <PageTitle>ورود اطلاعات پرسنل</PageTitle>
-<BonHrGuard Section="EmployeeEntry" AlsoPermissions='@(new[] { "EmployeeCreate", "EmployeeUpdate" })'>
+<BonHrGuard Section="EmployeeEntry">
 <BonHrShell Title="ورود اطلاعات پرسنل" Sub="ثبت و ویرایش پرونده پرسنلی">
     <Actions>
-        @* دکمه‌ها بر پایهٔ مجوز تفکیکی: «افزودن پرسنل» و «ویرایش پرسنل» جداگانه کنترل می‌شوند *@
-        @if (_editingId.HasValue)
-        {
-            @if (CanUpdateEmp)
-            {
-                <button class="btn btn-primary" type="button" @onclick="OpenForm">
-                    <i class="bi bi-pencil-square"></i> ویرایش پرونده
-                </button>
-            }
-        }
-        else if (CanCreateEmp)
-        {
-            <button class="btn btn-primary" type="button" @onclick="OpenForm">
-                <i class="bi bi-plus-lg"></i> پرسنل جدید
-            </button>
-            <button class="btn btn-light" type="button" @onclick="() => _showImport = true">ورود گروهی</button>
-        }
+        <button class="btn btn-primary" type="button" @onclick="OpenForm">
+            <i class="bi bi-plus-lg"></i> @(_editingId.HasValue ? "ویرایش پرونده" : "پرسنل جدید")
+        </button>
+        <button class="btn btn-light" type="button" @onclick="() => _showImport = true">ورود گروهی</button>
     </Actions>
 </BonHrShell>
 
 
-    @if (!FormAllowed)
-    {
-        <div class="alert alert-warning d-flex align-items-center gap-2">
-            <i class="bi bi-shield-lock"></i>
-            <div>
-                @if (_editingId.HasValue)
-                {
-                    <span>مجوز «ویرایش پروندهٔ پرسنلی» (<span dir="ltr">RadisHr.EmployeeUpdate</span>) به نقش شما داده نشده است.</span>
-                }
-                else
-                {
-                    <span>مجوز «افزودن پرسنل جدید» (<span dir="ltr">RadisHr.EmployeeCreate</span>) به نقش شما داده نشده است.</span>
-                }
-            </div>
-        </div>
-    }
-    <Modal Size="modal-xl" Visible="@(_showForm && FormAllowed)" Title="@(_editingId.HasValue ? "ویرایش پرونده پرسنلی" : "ثبت پرسنل جدید")" OnClose="CloseForm">
+    <Modal Size="modal-xl" Visible="_showForm" Title="@(_editingId.HasValue ? "ویرایش پرونده پرسنلی" : "ثبت پرسنل جدید")" OnClose="CloseForm">
         <ChildContent>
         <form id="bon-emp-form" class="employee-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
             <ul class="nav nav-pills flex-wrap gap-1 mb-3" role="tablist">
@@ -216,12 +187,7 @@
             <p class="text-muted">فایل CSV با ستون‌های کد، نام، نام خانوادگی، کد ملی، واحد، حقوق پایه و تاریخ جذب.</p>
             <InputFile class="form-control" OnChange="OnImportSelected" accept=".csv" />
             <label style="margin-top:12px">
-                <input class="form-control" type="checkbox" @bind="_overwrite" disabled="@(!CanUpdateEmp)" />
-                بازنویسی پرونده‌های موجود
-                @if (!CanUpdateEmp)
-                {
-                    <small class="text-muted d-block">بدون مجوز «ویرایش پرسنل» فقط ردیف‌های جدید ثبت می‌شوند.</small>
-                }
+                <input class="form-control" type="checkbox" @bind="_overwrite" /> بازنویسی پرونده‌های موجود
             </label>
             <button class="btn btn-light" type="button" @onclick="ImportAsync" disabled="@(_importRows.Count == 0)">
                 ثبت @BonFa.N(_importRows.Count) ردیف
@@ -254,17 +220,6 @@
 
     private string _tab = "identity";
     private bool _showForm = true;
-
-    // ---------- مجوزهای تفکیکی پرسنل (تنظیمات ← نقش‌ها و دسترسی‌ها ← منابع انسانی بن‌سازه) ----------
-    // RadisHr.EmployeeCreate = افزودن پرسنل جدید (+ ورود گروهی)
-    // RadisHr.EmployeeUpdate = ویرایش پروندهٔ پرسنلی
-    // RadisHr.EmployeeEntry (قدیمی) و RadisHr.Access هر دو عمل را مجاز می‌کنند.
-    private bool CanCreateEmp => Auth.IsAdmin || Auth.Has("RadisHr.Access")
-                                 || Auth.Has("RadisHr.EmployeeCreate") || Auth.Has("RadisHr.EmployeeEntry");
-    private bool CanUpdateEmp => Auth.IsAdmin || Auth.Has("RadisHr.Access")
-                                 || Auth.Has("RadisHr.EmployeeUpdate") || Auth.Has("RadisHr.EmployeeEntry");
-    /// <summary>فرم فقط وقتی باز است که کاربر برای همان عمل (افزودن یا ویرایش) مجوز داشته باشد.</summary>
-    private bool FormAllowed => _editingId.HasValue ? CanUpdateEmp : CanCreateEmp;
     private bool _showImport;
     private string _message = "";
     private bool _ok, _busy, _overwrite = true;
@@ -354,17 +309,6 @@
 
     private async Task SaveAsync()
     {
-        // سد سمت کلاینت (سرور هم ۴۰۳ می‌دهد): ایجاد و ویرایش دو مجوز جدا دارند
-        if (_editingId.HasValue && !CanUpdateEmp)
-        {
-            Toast.Error("برای ویرایش پروندهٔ پرسنلی مجوز «ویرایش پرسنل» لازم است.");
-            return;
-        }
-        if (!_editingId.HasValue && !CanCreateEmp)
-        {
-            Toast.Error("برای ثبت پرسنل جدید مجوز «افزودن پرسنل» لازم است.");
-            return;
-        }
         _busy = true;
         _model.Contracts = _contracts.Where(c => !string.IsNullOrEmpty(c.Name) || !string.IsNullOrEmpty(c.Month))
             .Select(c => new EmployeeContract { Name = c.Name, Month = c.Month, FileId = c.FileId }).ToList();
@@ -433,13 +377,6 @@
 
     private async Task ImportAsync()
     {
-        if (!CanCreateEmp)
-        {
-            Toast.Error("برای ورود گروهی پرسنل مجوز «افزودن پرسنل» لازم است.");
-            return;
-        }
-        // بازنویسی پرونده‌های موجود «ویرایش» است؛ بدون مجوز آن، فقط ثبت جدید انجام می‌شود
-        if (_overwrite && !CanUpdateEmp) _overwrite = false;
         _importResult = await Api.PostAsync<ImportEmployeesResult>("api/employees/import",
             new ImportEmployeesRequest(_importRows, _overwrite));
         if (_importResult != null)

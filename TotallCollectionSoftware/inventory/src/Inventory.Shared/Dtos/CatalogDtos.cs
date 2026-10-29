@@ -88,6 +88,12 @@ public class Referrer
     /// <summary>اجازه مشاهده کالاهای موجود در پنل معرف</summary>
     public bool CanViewProducts { get; set; }
 
+    /// <summary>
+    /// سقف درصد تخفیف مجاز این ویزیتور در سفارش میدانی.
+    /// صفر = بدون سقف (تخفیف فقط با نظر مدیر فروش بررسی می‌شود).
+    /// </summary>
+    public decimal MaxDiscountPercent { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
 
@@ -270,6 +276,21 @@ public class Party
     /// <summary>معرف پیش‌فرض مشتری (اختیاری — null = بدون معرف)</summary>
     public int? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
+
+    /// <summary>کاربری که این طرف حساب را ثبت کرده است</summary>
+    public int? RegisteredByUserId { get; set; }
+
+    /// <summary>نام ثبت‌کننده (ویزیتور/کاربر) — «این مشتری را چه کسی ثبت کرد»</summary>
+    public string? RegisteredByName { get; set; }
+
+    /// <summary>پروندهٔ معرف ثبت‌کننده</summary>
+    public int? RegisteredByReferrerId { get; set; }
+
+    /// <summary>نام معرفِ ثبت‌کننده (برای نمایش در فهرست)</summary>
+    public string? RegisteredByReferrerName { get; set; }
+
+    /// <summary>زمان ثبت</summary>
+    public DateTime? RegisteredAt { get; set; }
 
     /// <summary>مانده حساب (پر شده توسط سرور)</summary>
     public decimal Balance { get; set; }

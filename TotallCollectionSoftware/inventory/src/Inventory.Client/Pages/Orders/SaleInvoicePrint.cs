@@ -137,6 +137,7 @@ public static class SaleInvoicePrint
         PaymentMethod.Cash => "نقدی",
         PaymentMethod.Credit => "نسیه",
         PaymentMethod.Cheque => "چک",
+        PaymentMethod.Mixed => "ترکیبی",
         _ => "اقساطی"
     };
 

@@ -28,8 +28,8 @@ BEGIN
     CREATE INDEX [IX_UserCompanyAccesses_CompanyId] ON [UserCompanyAccesses]([CompanyId]);
 END
 
-IF COL_LENGTH(N'dbo.WorkOrders', N'CompanyId') IS NULL ALTER TABLE [WorkOrders] ADD [CompanyId] int NULL;
-IF COL_LENGTH(N'dbo.MeetingMinutes', N'CompanyId') IS NULL ALTER TABLE [MeetingMinutes] ADD [CompanyId] int NULL;
+IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'CompanyId') IS NULL ALTER TABLE [WorkOrders] ADD [CompanyId] int NULL;
+IF OBJECT_ID(N'dbo.MeetingMinutes', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.MeetingMinutes', N'CompanyId') IS NULL ALTER TABLE [MeetingMinutes] ADD [CompanyId] int NULL;
 ");
     }
 }

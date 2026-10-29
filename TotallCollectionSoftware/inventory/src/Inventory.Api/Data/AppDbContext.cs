@@ -140,6 +140,12 @@ public class AppDbContext : DbContext
     public DbSet<TransactionLine> TransactionLines => Set<TransactionLine>();
     public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
     public DbSet<GoodsIssueLine> GoodsIssueLines => Set<GoodsIssueLine>();
+
+    // ---------- ماژول ویزیتوری (پیش‌سند فروش) ----------
+    public DbSet<VisOrder> VisOrders => Set<VisOrder>();
+    public DbSet<VisOrderLine> VisOrderLines => Set<VisOrderLine>();
+    public DbSet<VisOrderHistory> VisOrderHistories => Set<VisOrderHistory>();
+    public DbSet<VisCustomerLink> VisCustomerLinks => Set<VisCustomerLink>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<Cheque> Cheques => Set<Cheque>();
@@ -194,6 +200,9 @@ public class AppDbContext : DbContext
     // ================== پروژه کاری (داخل دستور کار) ==================
     public DbSet<WorkProject> WorkProjects => Set<WorkProject>();
     public DbSet<WorkProjectMember> WorkProjectMembers => Set<WorkProjectMember>();
+    public DbSet<WorkProjectMindFlowMember> WorkProjectMindFlowMembers => Set<WorkProjectMindFlowMember>();
+    public DbSet<StandaloneMindFlow> StandaloneMindFlows => Set<StandaloneMindFlow>();
+    public DbSet<StandaloneMindFlowMember> StandaloneMindFlowMembers => Set<StandaloneMindFlowMember>();
     public DbSet<WorkProjectLog> WorkProjectLogs => Set<WorkProjectLog>();
 
     // ================== بایگانی و پیوست جامع (عمومی) ==================
@@ -550,6 +559,12 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+        configurationBuilder.Properties<decimal>().HavePrecision(18, 4);
+    }
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -609,6 +624,23 @@ public class AppDbContext : DbContext
         // حذف حواله = حذف سطرهایش (بدون FK به Parties/Products تا حذف طرف حساب یا کالا ممکن بماند)
         mb.Entity<GoodsIssue>().HasMany(g => g.Lines).WithOne()
             .HasForeignKey(l => l.IssueId).OnDelete(DeleteBehavior.Cascade);
+
+        // ==================== سفارش ویزیتور (پیش‌سند فروش) ====================
+        mb.Entity<VisOrder>().HasIndex(o => new { o.CompanyId, o.Number }).IsUnique();
+        mb.Entity<VisOrder>().HasIndex(o => o.Status);
+        mb.Entity<VisOrder>().HasIndex(o => new { o.ReferrerId, o.Date });
+        mb.Entity<VisOrder>().HasIndex(o => o.PartyId);
+        mb.Entity<VisOrder>().HasIndex(o => o.InvoiceId);
+        mb.Entity<VisOrderLine>().HasIndex(l => l.OrderId);
+        mb.Entity<VisOrderLine>().HasIndex(l => l.ProductId);
+        mb.Entity<VisOrderHistory>().HasIndex(h => h.OrderId);
+        mb.Entity<VisCustomerLink>().HasIndex(c => new { c.ReferrerId, c.PartyId }).IsUnique();
+        mb.Entity<VisCustomerLink>().HasIndex(c => c.PartyId);
+        // حذف سفارش = حذف سطرها و گردش آن (بدون FK به Parties/Products/Users)
+        mb.Entity<VisOrder>().HasMany(o => o.Lines).WithOne()
+            .HasForeignKey(l => l.OrderId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<VisOrder>().HasMany(o => o.History).WithOne()
+            .HasForeignKey(h => h.OrderId).OnDelete(DeleteBehavior.Cascade);
 
         // ==================== آرشیو اسناد و مدارک ====================
         // کد مدرک در کل سیستم یکتاست
@@ -1023,6 +1055,14 @@ public class AppDbContext : DbContext
         mb.Entity<WorkProjectMember>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
         mb.Entity<WorkProjectMember>().HasOne(m => m.Project).WithMany(p => p.Members)
             .HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WorkProjectMindFlowMember>().HasIndex(m => new { m.ProjectId, m.UserId }).IsUnique();
+        mb.Entity<WorkProjectMindFlowMember>().HasOne(m => m.Project).WithMany(p => p.MindFlowMembers)
+            .HasForeignKey(m => m.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<StandaloneMindFlow>().HasIndex(m => new { m.CompanyId, m.OwnerUserId });
+        mb.Entity<StandaloneMindFlowMember>().HasIndex(m => new { m.MindFlowId, m.UserId }).IsUnique();
+        mb.Entity<StandaloneMindFlowMember>().HasIndex(m => m.UserId);
+        mb.Entity<StandaloneMindFlowMember>().HasOne(m => m.MindFlow).WithMany(m => m.Members)
+            .HasForeignKey(m => m.MindFlowId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<WorkProjectLog>().HasIndex(l => l.ProjectId);
         mb.Entity<WorkProjectLog>().HasOne(l => l.Project).WithMany(p => p.Logs)
             .HasForeignKey(l => l.ProjectId).OnDelete(DeleteBehavior.Cascade);
@@ -1572,6 +1612,10 @@ public class AppDbContext : DbContext
         mb.Entity<TransactionLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssue>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssueLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrderLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisOrderHistory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<VisCustomerLink>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Cheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject LayoutState Layout
 @inject RealtimeService Rt
+@inject ICartableApi CartableApi
 @implements IDisposable
 
 <PageTitle>کارتابل من</PageTitle>
@@ -23,6 +24,44 @@
 else
 {
     <div class="row g-3">
+        @* ================== کارتابل یکپارچه (منابع از API) ================== *@
+        @if (unified.Count > 0)
+        {
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-inbox-fill text-primary"></i>
+                        <span class="card-title">کارتابل یکپارچه</span>
+                        @if (unifiedActionable > 0)
+                        {
+                            <span class="badge bg-danger rounded-pill ms-auto fs-9">@Fa.Digits(unifiedActionable) منتظر اقدام</span>
+                        }
+                    </div>
+                    <div class="card-body p-2">
+                        @foreach (var u in unified)
+                        {
+                            <div class="ct-item" @onclick="@(() => OpenUnified(u))">
+                                <div class="ct-icon" style="background:@u.Color"><i class="bi @u.Icon"></i></div>
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="fw-600 fs-8">@u.Title</div>
+                                    <div class="fs-9 text-muted">@u.Subtitle</div>
+                                </div>
+                                @if (!u.Actionable)
+                                {
+                                    <span class="badge bg-secondary rounded-pill fs-9">اطلاع</span>
+                                }
+                                else if (u.BadgeCount is > 0)
+                                {
+                                    <span class="badge bg-primary rounded-pill fs-9">@Fa.Digits(u.BadgeCount.Value)</span>
+                                }
+                                <i class="bi bi-chevron-left text-muted"></i>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
         @* ================== موارد منتظر اقدام ================== *@
         <div class="col-12 col-lg-6">
             <div class="card h-100">
@@ -174,6 +213,8 @@ else
 
 @code {
     private bool loading = true;
+    private List<CartableItemDto> unified = new();
+    private int unifiedActionable => unified.Count(u => u.Actionable);
     private List<NtfItem> ntfs = new();
     // ================== صفحه‌بندی پیام‌ها (سمت سرور) ==================
     // شمارندهٔ زنگوله همهٔ اعلان‌ها را می‌شمارد؛ پس فهرست هم صفحه‌به‌صفحه و کامل دیده می‌شود.
@@ -240,6 +281,14 @@ else
         actions = new();
         // بدون reset: با هر رفرش بلادرنگ، کاربر از صفحهٔ جاری‌اش بیرون نمی‌افتد
         await LoadNotificationsAsync();
+
+        // کارتابل یکپارچه: منابع ماژول‌ها (ویزیتوری و …) از یک قرارداد واحد
+        try
+        {
+            var res = await CartableApi.MineAsync();
+            unified = res?.Items ?? new();
+        }
+        catch { unified = new(); }
 
         // ================== موارد منتظر اقدام ==================
         try
@@ -410,6 +459,11 @@ else
     {
         Rt.DataChanged -= OnRtChanged;
         Rt.NotifyReceived -= OnRtNotify;
+    }
+
+    private void OpenUnified(CartableItemDto u)
+    {
+        if (!string.IsNullOrWhiteSpace(u.Link)) Nav.NavigateTo(u.Link);
     }
 
     private async Task OpenNtf(NtfItem n)

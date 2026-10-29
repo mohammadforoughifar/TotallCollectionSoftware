@@ -27,16 +27,19 @@ public static class RbacSeeder
         ["Ipam"] = new[] { "View", "Create", "Update", "Delete", "Scan" },
         // سرورهای HPE/iLO — Collect فقط خواندنی است (Health/Inventory از Redfish) و عملیات پاور ندارد.
         ["Servers"] = new[] { "View", "Create", "Update", "Delete", "Collect" },
+        // طرف حساب — ماژول قدیمی «Parties» هر دو نوع را پوشش می‌دهد و برای سازگاری باقی می‌ماند.
+        // برای تفکیک دسترسی «مشتری» از «تأمین‌کننده» این دو ماژول مستقل هم تعریف می‌شوند:
+        //   Customers  = مشتریان (ویزیتور فقط این را می‌گیرد ⇒ تأمین‌کننده‌ها را هرگز نمی‌بیند)
+        //   Suppliers  = تأمین‌کنندگان
+        // کنترلر طرف حساب مجوز را بر اساس نوع سطر از همین دو ماژول می‌سنجد.
         ["Parties"] = CrudActions,
+        ["Customers"] = CrudActions,
+        ["Suppliers"] = CrudActions,
         ["Expenses"] = CrudActions,
         ["Reports"] = CrudActions,
         ["SystemUsers"] = CrudActions,
         ["SystemCompanies"] = CrudActions,   // کمپانی‌ها
         ["SystemDepartments"] = CrudActions, // واحدها (دپارتمان‌ها)
-        // واحدهای سازمانیِ هر شرکت (مبنای جزء «واحد» در شمارهٔ نامه و واحدِ کاربر).
-        // بدون تعریفِ این ماژول، هیچ مجوزی برایش ساخته نمی‌شد و آیتم منو
-        // «تعریف واحدهای سازمانی» حتی برای مدیر کل هم دیده نمی‌شد.
-        ["SystemOrganizations"] = CrudActions,
         // ================== درخواست خدمت آی‌تی ==================
         // Create: ثبت درخواست | ViewCompany: دیدن سیستم‌های کل شرکت | ViewDepartment: دیدن سیستم‌های واحد خود
         // Expert: کارشناس آی‌تی (دریافت ارجاع) | Manage: مدیر آی‌تی (ارجاع و تایید)
@@ -100,6 +103,12 @@ public static class RbacSeeder
         ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
         ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
         ["ReferrerPanel"] = new[] { "MyDashboard", "MyProducts", "MyWallet", "MyCard" }, // پنل معرف (هر بخش جدا)
+        // ================== ماژول ویزیتوری (سفارش میدانی) ==================
+        // View: مشاهدهٔ منو و فهرست | Create: ثبت سفارش | Update: ویرایش پیش‌نویس/بازگردانی از «برگشتی»
+        // Submit: ارسال برای تأیید | Cancel: ابطال سفارش خودش
+        // Approve: تأیید/برگشت/رد مدیر فروش | SetDiscountCap: تعیین سقف تخفیف ویزیتور
+        // AssignCustomer: تخصیص مشتری به ویزیتور | FinanceView: صف مالی و ساخت پیش‌نویس فاکتور | Export
+        ["SalesVisit"] = new[] { "View", "Create", "Update", "Submit", "Cancel", "Approve", "SetDiscountCap", "AssignCustomer", "FinanceView", "Export" },
         // ================== منابع انسانی: مرخصی و ماموریت ==================
         // Request: ثبت درخواست شخصی | Approve: تایید/رد درخواست دیگران | Report: گزارش ماهانه
         ["LeaveRequests"] = new[] { "Request", "Approve", "Report" },
@@ -110,10 +119,7 @@ public static class RbacSeeder
         // ================== سامانه کامل RADIS-HR V019 ==================
         // HrTalent و جذب/استعداد فعلاً زیرمجموعهٔ HrCore هستند؛ بنابراین permission مستقل HrTalent تعریف نمی‌شود.
         // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
-        // EmployeeCreate / EmployeeUpdate: تفکیک «افزودن» از «ویرایش» پرسنل (در EmployeesController و صفحات
-        // پرسنل چک می‌شوند). EmployeeEntry به‌عنوان مجوز قدیمی حفظ شده و هم‌ارز Create+Update رفتار می‌کند
-        // تا دسترسی نقش‌های موجود با ارتقا قطع نشود.
-        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "EmployeeCreate", "EmployeeUpdate", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
+        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
         // ================== دسترسی به ازای هر داشبورد ==================
         ["Dashboards"] = new[] { "Financial", "Management", "Hardware" },
         // ================== دسترسی به ازای هر گزارش ==================
@@ -266,43 +272,6 @@ public static class RbacSeeder
             Console.WriteLine($"[RBAC] {newPermissions.Count} پرمیشن جدید اضافه شد (داشبوردها/گزارش‌ها/معرف).");
         }
 
-        // ================== رادیس‌اچ‌آر: تفکیک «افزودن پرسنل» از «ویرایش پرسنل» ==================
-        // نقش‌هایی که پیش‌تر مجوز قدیمی RadisHr.EmployeeEntry را داشتند، هر دو مجوز تازه را هم
-        // می‌گیرند تا با ارتقا دسترسی کسی قطع نشود؛ از این پس مدیر سیستم می‌تواند آن‌ها را
-        // جداگانه به نقش‌ها بدهد یا بگیرد.
-        var legacyEntry = await db.Permissions
-            .FirstOrDefaultAsync(p => p.Module == "RadisHr" && p.Action == "EmployeeEntry");
-        var splitPerms = await db.Permissions
-            .Where(p => p.Module == "RadisHr" && (p.Action == "EmployeeCreate" || p.Action == "EmployeeUpdate"))
-            .ToListAsync();
-        if (legacyEntry != null && splitPerms.Count > 0)
-        {
-            var roleIdsWithLegacy = await db.RolePermissions
-                .Where(rp => rp.PermissionId == legacyEntry.Id)
-                .Select(rp => rp.RoleId)
-                .ToListAsync();
-            if (roleIdsWithLegacy.Count > 0)
-            {
-                var splitPermIds = splitPerms.Select(p => p.Id).ToArray();
-                var already = await db.RolePermissions
-                    .Where(rp => roleIdsWithLegacy.Contains(rp.RoleId) && splitPermIds.Contains(rp.PermissionId))
-                    .Select(rp => new { rp.RoleId, rp.PermissionId })
-                    .ToListAsync();
-                var existingPairs = already.Select(a => $"{a.RoleId}:{a.PermissionId}").ToHashSet();
-                var toAdd = new List<RolePermission>();
-                foreach (var roleId in roleIdsWithLegacy.Distinct())
-                    foreach (var perm in splitPerms)
-                        if (existingPairs.Add($"{roleId}:{perm.Id}"))
-                            toAdd.Add(new RolePermission { RoleId = roleId, PermissionId = perm.Id });
-                if (toAdd.Count > 0)
-                {
-                    db.RolePermissions.AddRange(toAdd);
-                    await db.SaveChangesAsync();
-                    Console.WriteLine($"[RBAC] تفکیک مجوز پرسنل رادیس‌اچ‌آر: {toAdd.Count} دسترسی برای نقش‌های موجود اضافه شد.");
-                }
-            }
-        }
-
         // ================== مهاجرت مودیان: تفکیک مجوزهای قدیمی به جدید ==================
         // نگاشت قدیم → جدید (برای DBهای موجود که قبلاً با ۸ مجوز مودیان کار می‌کردند)
         var moadianMigrationMap = new Dictionary<string, string[]>
@@ -429,7 +398,131 @@ public static class RbacSeeder
         // بوده‌اند و مجوزهای اضافه‌شان محصول seed قدیمی بوده است.
         await RemoveFormerImplicitPermissionsFromMoadianOnlyRolesAsync(db);
 
-// ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
+// ================== نقش‌های ماژول ویزیتوری ==================
+        // SalesVisitor: ویزیتور میدانی — ثبت و ارسال سفارش، مشاهدهٔ سفارش‌های خودش
+        var salesVisitorRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "SalesVisitor");
+        if (salesVisitorRole == null)
+        {
+            salesVisitorRole = new Role
+            {
+                Name = "SalesVisitor",
+                Description = "ویزیتور — ثبت سفارش میدانی، پیگیری سفارش‌های خودش و پورسانت (فقط دادهٔ خودش)",
+                IsActive = true
+            };
+            db.Roles.Add(salesVisitorRole);
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] نقش «SalesVisitor» ساخته شد.");
+        }
+        var visitorIsNew = !await db.RolePermissions.AnyAsync(rp => rp.RoleId == salesVisitorRole.Id);
+        {
+            var wanted = new[] { "View", "Create", "Update", "Submit", "Cancel" };
+            var perms = await db.Permissions
+                .Where(p => p.Module == "SalesVisit" && wanted.Contains(p.Action))
+                .ToListAsync();
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
+            foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+            await db.SaveChangesAsync();
+        }
+        {
+            // ویزیتور «تعریف مشتری» می‌کند — فقط مشتری، هرگز تأمین‌کننده.
+            // فقط یک‌بار (نقش تازه) یا اگر مدیر بعداً آن را برداشته باشد، دوباره اضافه نمی‌شود؛
+            // پس این بلوک با یک رخداد در AuditLog علامت می‌خورد.
+            const string flag = "VisitorCustomerAccessV1";
+            var applied = await db.AuditLogs.AsNoTracking()
+                .AnyAsync(l => l.Module == "RbacSeeder" && l.Action == flag);
+            if (visitorIsNew || !applied)
+            {
+                var wanted = new[] { "Create", "Update" };
+                var perms = await db.Permissions
+                    .Where(p => p.Module == "Customers" && wanted.Contains(p.Action))
+                    .ToListAsync();
+                var has = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+                await db.SaveChangesAsync();
+
+                // نقش‌های ویزیتوری که قبلاً «Parties» کامل داشتند تا این نسخه، دسترسی مشتری/تأمین‌کننده‌شان
+                // نگه داشته می‌شود (رفتار قبلی حفظ می‌شود) — تغییر مسئولیت مدیر نیست.
+                var legacyParties = await db.RolePermissions
+                    .Where(rp => rp.RoleId == salesVisitorRole.Id
+                                 && db.Permissions.Any(p => p.Id == rp.PermissionId && p.Module == "Parties"))
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                if (legacyParties.Count > 0)
+                {
+                    var split = await db.Permissions
+                        .Where(p => p.Module == "Suppliers" || (p.Module == "Customers" && !wanted.Contains(p.Action)))
+                        .ToListAsync();
+                    var hasNow = await db.RolePermissions.Where(rp => rp.RoleId == salesVisitorRole.Id)
+                        .Select(rp => rp.PermissionId).ToListAsync();
+                    foreach (var perm in split.Where(p => !hasNow.Contains(p.Id)))
+                        db.RolePermissions.Add(new RolePermission { RoleId = salesVisitorRole.Id, PermissionId = perm.Id });
+                }
+
+                db.AuditLogs.Add(new AuditLog
+                {
+                    Module = "RbacSeeder",
+                    Action = flag,
+                    Summary = "اعطای مجوز «مشتریان» (بدون تأمین‌کنندگان) به نقش SalesVisitor",
+                    Username = "system"
+                });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // SalesManager: مدیر فروش — تأیید/برگشت سفارش‌ها، تخصیص مشتری، سقف تخفیف و صف مالی
+        var salesManagerRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "SalesManager");
+        if (salesManagerRole == null)
+        {
+            salesManagerRole = new Role
+            {
+                Name = "SalesManager",
+                Description = "مدیر فروش — تأیید سفارش ویزیتورها، تخصیص مشتری و سقف تخفیف، صف مالی (بدون قطعی‌سازی حسابداری)",
+                IsActive = true
+            };
+            db.Roles.Add(salesManagerRole);
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] نقش «SalesManager» ساخته شد.");
+        }
+        {
+            var wanted = new[] { "View", "Approve", "SetDiscountCap", "AssignCustomer", "FinanceView", "Export" };
+            // (مجوزهای مشتری/تأمین‌کننده مدیر فروش پایین‌تر، در بلوک SalesManagerAccess، اضافه می‌شود)
+            var perms = await db.Permissions
+                .Where(p => p.Module == "SalesVisit" && wanted.Contains(p.Action))
+                .ToListAsync();
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == salesManagerRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
+            foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                db.RolePermissions.Add(new RolePermission { RoleId = salesManagerRole.Id, PermissionId = perm.Id });
+            await db.SaveChangesAsync();
+        }
+
+// SalesManager: مجوز «مشتریان» (دیدن/تخصیص همهٔ مشتریان) — بدون تأمین‌کنندگان
+        {
+            const string flag = "ManagerCustomerAccessV1";
+            if (!await db.AuditLogs.AsNoTracking().AnyAsync(l => l.Module == "RbacSeeder" && l.Action == flag))
+            {
+                var perms = await db.Permissions
+                    .Where(p => p.Module == "Customers" && (p.Action == "Read" || p.Action == "Update"))
+                    .ToListAsync();
+                var has = await db.RolePermissions.Where(rp => rp.RoleId == salesManagerRole.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in perms.Where(p => !has.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = salesManagerRole.Id, PermissionId = perm.Id });
+                db.AuditLogs.Add(new AuditLog
+                {
+                    Module = "RbacSeeder",
+                    Action = flag,
+                    Summary = "اعطای مجوز «مشتریان» به نقش SalesManager",
+                    Username = "system"
+                });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
         // View/Create/Update/Assign برای کار روزمره؛ Manage/Delete معمولاً فقط Admin
         var devDevRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "DevDeveloper");
         if (devDevRole == null)
