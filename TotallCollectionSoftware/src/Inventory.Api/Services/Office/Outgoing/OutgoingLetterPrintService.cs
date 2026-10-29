@@ -2114,9 +2114,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var nameBox = design.SignerNames.OrderBy(box => box.Index).FirstOrDefault();
         var roleBox = design.SignerRoles.OrderBy(box => box.Index).FirstOrDefault();
         var signatureWidth = signatureSlot?.Width ?? (isA5 ? 70f : 104f);
-        // ارتفاع تصویر امضا سقف دارد (۷۲pt در A4 و ۵۲pt در A5): امضای ۱٫۰۵ اینچی طرح
+        // ارتفاع تصویر امضا سقف دارد (۵۲pt در A4 و ۴۰pt در A5): امضای ۱٫۰۵ اینچی طرح
         // بلوک امضا را آن‌قدر بلند می‌کرد که نامهٔ متوسط بی‌دلیل به صفحهٔ دوم می‌رفت.
-        var signatureHeight = Math.Min(signatureSlot?.Height ?? (isA5 ? 52f : 72f), isA5 ? 52f : 72f);
+        // نسبت تصویر حفظ می‌شود (FillSignerCell با min(scaleX, scaleY) کوچک می‌کند).
+        var signatureHeight = Math.Min(signatureSlot?.Height ?? (isA5 ? 40f : 52f), isA5 ? 40f : 52f);
         // فاصلهٔ ستون‌های امضا از خود طرح (A4: ≈۱۱۸٫۸pt) تا سه امضا همان‌جا بنشینند.
         var signerPitch = design.Signatures.Count >= 2
             ? Math.Max(signatureWidth, design.Signatures[1].Left - design.Signatures[0].Left)

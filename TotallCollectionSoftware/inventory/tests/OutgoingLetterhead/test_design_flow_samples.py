@@ -129,7 +129,10 @@ class PrintLayout:
         self.content_top = min(self.content_top,
                                self.geometry.page_height - self.design_footer
                                - (150 if size == "A5" else 200))
-        self.available = self.geometry.page_height - self.design_footer - self.content_top
+        # page.Footer().Height(16) داخل ناحیهٔ محتوا (بالای حاشیهٔ پایین) جا می‌گیرد.
+        self.footer_height = 16
+        self.available = (self.geometry.page_height - self.design_footer - self.content_top
+                          - self.footer_height)
 
         # اندازهٔ قلم مثل نامهٔ داخلی: ۱۱pt در A4 و ۹pt در A5 (هرچه طرح کوچک‌تر گفته، ملاک است).
         design_font = self._body_font(tree, size)
@@ -153,7 +156,7 @@ class PrintLayout:
         self.signature_padding = 12
         self.signature_height = min(
             self.geometry.boxes.get("signature", ((0, 0, 0, 51.84 if size == "A5" else 75.6), ""))[0][3],
-            52.0 if size == "A5" else 72.0)
+            40.0 if size == "A5" else 52.0)
         self.signature_block = (self.signature_padding + self.signature_height + 2
                                 + (self.body_font + 1) * 1.3 + self.body_font * 1.3)
 
