@@ -94,20 +94,31 @@ class LetterheadAssetsTests(unittest.TestCase):
                                     "values must stay in the physical left third, not the RTL right edge")
 
     def test_1003_header_values_match_the_label_rows_and_use_ltr_isolation(self):
+        """مقدارها روی خط برچسب‌های چاپ‌شده بنشینند و جهت‌شان LTR ایزوله باشد.
+
+        عددها از خود قالب (MRT) مشتق می‌شوند تا با هر بازکالیبراسیون قالب هم‌تراز بمانند؛
+        فقط «مرکز کادر = مرکز برچسب» بررسی می‌شود.
+        """
         source = SERVICE.read_text()
         layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
         self.assertIn("Header content begins after Page.MarginTop", layout)
         self.assertIn("text.DirectionFromLeftToRight()", source)
         self.assertIn('isolateLtr ? $"\\u2066{value}\\u2069" : value', source)
-        for is_a5, expected in ((False, (36.48, 53.04, 69.6)), (True, (25.04, 36.56, 48.08))):
-            fields = [re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
-                      for name in ("Number", "Date", "Attachment")]
-            actual = []
-            for field in fields:
-                variants = re.findall(r"new\(([^)]+)\)", field)
-                size_index = 0 if is_a5 else 1
-                actual.append(float(variants[size_index].split(",")[1].strip().removesuffix("f")))
-            self.assertEqual(tuple(actual), expected)
+
+        # مرکز عمودی برچسب‌های چاپ‌شده روی تصویر سربرگ A4 (اندازه‌گیری پیکسلی)
+        label_centers = {"number": 66.48, "date": 84.48, "attachment": 103.20}
+        for is_a5, size in ((True, "A5"), (False, "A4")):
+            root = ET.parse(TEMPLATES / "1003" / f"Outgoing-{size}.mrt").getroot()
+            page = root.find("./Pages/Page1")
+            margins = [float(v) for v in page.findtext("Margins").split(",")]
+            scale = 1.0 if size == "A4" else 595.28 / 841.89
+            for token, key in (("LetterNumber", "number"), ("DateShams", "date"), ("Peyvast", "attachment")):
+                component = next(e for e in page.iter() if e.findtext("Text") == "{DataSource1." + token + "}")
+                _, y, _, height = [float(v) for v in component.findtext("ClientRectangle").split(",")]
+                center = (margins[2] + y + height / 2) * 72
+                with self.subTest(size=size, field=key):
+                    self.assertAlmostEqual(center, label_centers[key] * scale, delta=0.35,
+                                           msg="مرکز کادر مقدار باید روی مرکز برچسب چاپ‌شده باشد")
 
     def test_aria_fields_and_body_start_are_fixed_independently_for_a4_and_a5(self):
         source = SERVICE.read_text()

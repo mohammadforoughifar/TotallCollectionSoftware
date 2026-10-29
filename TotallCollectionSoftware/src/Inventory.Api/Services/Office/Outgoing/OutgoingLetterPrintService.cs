@@ -2234,51 +2234,48 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             .ToList();
         if (fields.Count == 0) return;
 
-        var top = fields[0].Top;
         // ۴pt فاصله تا برچسبِ چاپ‌شده روی سربرگ؛ مقدارها راست‌چین در همین ستون می‌نشینند.
         var right = fields.Min(box => box.Left + box.Width) - 4f;
-        // حاشیهٔ امن ۱۵mm، ولی هرگز دورتر از کادر خود طرح.
-        var left = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);
-        // در A5 که صفحه باریک است، حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند
-        // (۴۴pt) — همان توازنی که در نسخهٔ قبلی هم بود.
+        var safeLeft = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);
+        // در A5 که صفحه باریک است، حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
+        var left = safeLeft;
         if (right - left < 44f) left = Math.Max(0f, right - 44f);
         var labelWidth = _designPrint.DrawMetaLabels ? Math.Max(38f, _designPrint.MetaFontSize * 4.4f) : 0f;
         var fallbackColor = _designMetaColor ?? LetterPrintTemplate.MetaValueColor;
         var columnWidth = Math.Max(20f, right - left) - labelWidth;
+        var values = new Dictionary<OutgoingLetterDesignLayout.Slot, (string Label, string Text)>
+        {
+            [OutgoingLetterDesignLayout.Slot.Number] = ("شماره", number),
+            [OutgoingLetterDesignLayout.Slot.Date] = ("تاریخ", date),
+            [OutgoingLetterDesignLayout.Slot.Attachment] = ("پیوست", attachment)
+        };
 
-        // مختصات مطلق صفحه (لایهٔ Foreground): از حاشیه‌ها مستقل است.
-        host.AlignLeft().AlignTop()
-            .PaddingLeft(Math.Max(0f, left))
-            .PaddingTop(Math.Max(0f, top))
-            .Element(cell => cell.Width(Math.Max(20f, right - left)).Table(table =>
-            {
-                table.ColumnsDefinition(columns =>
+        // هر مقدار با «Top خودش» چاپ می‌شود، نه به‌صورت ردیف‌های پیوستهٔ یک جدول.
+        // علت: کادرهای شماره/تاریخ/پیوست در قالب شرکت فاصلهٔ عمودی دارند (۶۰٫۵ / ۷۷ / ۹۶pt)؛
+        // چیدن پیوسته آن فاصله‌ها را حذف می‌کرد و مقدار «پیوست» تا ۶٫۷pt بالاتر از برچسبش
+        // می‌نشست (همان ایراد «پیوست جای درستش نیست»).
+        foreach (var field in fields)
+        {
+            if (!values.TryGetValue(field.Slot, out var content)) continue;
+            var text = string.IsNullOrWhiteSpace(content.Text) ? "—" : content.Text;
+            var rowHeight = Math.Max(10f, field.Height);
+            // مقادیر بلند (مثل «۲۲۱/۱۴۰۵/IT») با کوچک‌شدن فونت در یک خط جا می‌شوند؛
+            // هیچ‌وقت با فاصله‌گذاری کاراکتری یا بریدن ارقام چیده نمی‌شوند.
+            var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);
+            // اگر تنظیمات "design" باشد، رنگ اعلام‌شده در خودِ قالب ملاک است.
+            var color = _designMetaColor
+                ?? (string.IsNullOrWhiteSpace(field.Color) ? fallbackColor : field.Color);
+            var display = LetterPrintTemplate.IsolateMixedText(text);
+            var label = content.Label;
+
+            // مختصات مطلق صفحه (لایهٔ Foreground): از حاشیه‌ها مستقل است.
+            host.AlignLeft().AlignTop()
+                .PaddingLeft(left)
+                .PaddingTop(Math.Max(0f, field.Top))
+                .Element(cell => cell.Width(Math.Max(20f, right - left)).Height(rowHeight).Row(row =>
                 {
-                    columns.RelativeColumn();
-                    if (labelWidth > 0f) columns.ConstantColumn(labelWidth);
-                });
-
-                foreach (var field in fields)
-                {
-                    var (label, value) = field.Slot switch
-                    {
-                        OutgoingLetterDesignLayout.Slot.Number => ("شماره", number),
-                        OutgoingLetterDesignLayout.Slot.Date => ("تاریخ", date),
-                        _ => ("پیوست", attachment)
-                    };
-                    var text = string.IsNullOrWhiteSpace(value) ? "—" : value;
-                    // ارتفاع هر ردیف = ارتفاع همان کادر در طرح، پس مقدار دقیقاً روی خط
-                    // برچسبِ چاپ‌شده می‌نشیند (نه یک ردیف بالاتر/پایین‌تر).
-                    var rowHeight = Math.Max(10f, field.Height);
-                    // مقادیر بلند (مثل «۲۲۱/۱۴۰۵/IT») با کوچک‌شدن فونت در یک خط جا می‌شوند؛
-                    // هیچ‌وقت با فاصله‌گذاری کاراکتری یا بریدن ارقام چیده نمی‌شوند.
-                    var fontSize = FitFontSize(text, columnWidth, _designPrint.MetaFontSize);
-                    // اگر تنظیمات "design" باشد، رنگ اعلام‌شده در خودِ قالب ملاک است.
-                    var color = _designMetaColor
-                        ?? (string.IsNullOrWhiteSpace(field.Color) ? fallbackColor : field.Color);
-
-                    table.Cell().Height(rowHeight).AlignMiddle().AlignRight()
-                        .Text(LetterPrintTemplate.IsolateMixedText(text))
+                    row.RelativeItem().AlignMiddle().AlignRight()
+                        .Text(display)
                         .FontFamily("Vazirmatn-Bold")
                         .FontSize(fontSize)
                         .FontColor(color)
@@ -2287,7 +2284,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         .DirectionFromRightToLeft();
 
                     if (labelWidth > 0f)
-                        table.Cell().Height(rowHeight).AlignMiddle().AlignLeft()
+                        row.ConstantItem(labelWidth).AlignMiddle().AlignLeft()
                             .Text($"{label}:")
                             .FontFamily("Vazirmatn-Bold")
                             .FontSize(fontSize)
@@ -2295,8 +2292,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             .LineHeight(1.15f)
                             .AlignLeft()
                             .DirectionFromRightToLeft();
-                }
-            }));
+                }));
+        }
     }
 
     /// <summary>

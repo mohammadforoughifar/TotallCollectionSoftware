@@ -203,7 +203,48 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("var rowHeight = Math.Max(10f, field.Height);", outgoing)
                 # مختصات مطلق صفحه، نه داخل حاشیه‌ها (وگرنه در A5 مقدارها روی برچسب می‌افتند).
                 self.assertIn("host.AlignLeft().AlignTop()", outgoing)
-                self.assertIn("var left = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);", outgoing)
+                self.assertIn("var safeLeft = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);", outgoing)
+
+    def test_each_meta_value_sits_on_its_own_template_row(self):
+        """«پیوست» باید روی خط برچسب خودش بنشیند؛ ردیف‌های پیوسته فاصلهٔ قالب را حذف می‌کردند.
+
+        کادرهای شماره/تاریخ/پیوست در قالب ۱۰۰۳ فاصلهٔ عمودی دارند (A4: ۶۰٫۵ / ۷۷ / ۹۶pt).
+        اگر به‌صورت یک جدول پیوسته چیده شوند، خطا جمع می‌شود و «پیوست» تا ۶٫۷pt بالاتر
+        از برچسبش می‌افتد. اکنون هر مقدار با Top خودش در لایهٔ سراسری چاپ می‌شود.
+        """
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                outgoing = self.outgoing(tree)
+                grid = outgoing.split("private void AddDesignMetaGrid(", 1)[1]
+                grid = grid.split("private static float FitFontSize", 1)[0]
+                self.assertIn(".PaddingTop(Math.Max(0f, field.Top))", grid)
+                self.assertNotIn(".Table(", grid,
+                                 "ردیف‌های پیوستهٔ جدول فاصلهٔ عمودی قالب را حذف می‌کنند")
+
+                # قالب: مرکز کادر مقدار باید نزدیک مرکز برچسب چاپ‌شده باشد.
+                import xml.etree.ElementTree as ET
+                for size, margin, label_centers in (
+                        ("A4", 0.39, {"number": 66.5, "date": 84.5, "attachment": 103.2}),
+                        ("A5", 0.39, {"number": 46.9, "date": 59.5, "attachment": 72.7})):
+                    path = (tree / "Inventory.Api" / "Reports" / "OutgoingLetters" / "Companies"
+                            / "1003" / f"Outgoing-{size}.mrt")
+                    root = ET.parse(path).getroot()
+                    centers = {}
+                    for element in root.iter():
+                        if element.get("type") != "Text":
+                            continue
+                        text = "".join(e.text or "" for e in element if e.tag == "Text")
+                        for token, slot in (("LetterNumber", "number"), ("DateShams", "date"),
+                                            ("Peyvast", "attachment")):
+                            if f"DataSource1.{token}" in text:
+                                rect = next((e.text or "" for e in element
+                                             if e.tag == "ClientRectangle"), "")
+                                _, y, _, h = [float(v) for v in rect.split(",")[:4]]
+                                centers[slot] = (margin + y) * 72 + h * 72 / 2
+                    self.assertEqual(len(centers), 3, f"{size}: سه مقدار قالب پیدا نشد")
+                    for slot, center in centers.items():
+                        self.assertAlmostEqual(center, label_centers[slot], delta=1.5,
+                                               msg=f"{size}/{slot}: مقدار روی خط برچسب نیست")
 
     def test_a4_and_a5_scale_like_the_inner_letter(self):
         for tree in TREES:

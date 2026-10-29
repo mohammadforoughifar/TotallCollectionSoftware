@@ -40,15 +40,17 @@ internal static class HomepaLetterheadLayout
     /// </summary>
     internal static float HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f;
 
+    // Top دقیقاً برابر «MRT منهای مبدأ page.Header» است تا هم چاپ نامهٔ داخلی و هم نامهٔ صادره
+    // روی خط برچسبِ چاپ‌شده بنشینند (مرکز برچسب‌ها روی تصویر: ۶۶٫۵ / ۸۴٫۵ / ۱۰۳٫۲pt در A4).
     internal static Field Number(bool isA5) => isA5
-        ? new(7.2f, 25.04f, 59.04f, 12.96f)
-        : new(14.4f, 36.48f, 82.08f, 14.4f);
+        ? new(7.2f, 24.5216f, 59.04f, 12.96f)
+        : new(14.4f, 35.2776f, 82.08f, 14.4f);
 
     internal static Field Date(bool isA5) => isA5
-        ? new(4.2f, 36.56f, 59.04f, 12.96f)
-        : new(10.4f, 53.04f, 82.08f, 14.4f);
+        ? new(4.2f, 37.2512f, 59.04f, 12.96f)
+        : new(10.4f, 53.2776f, 82.08f, 14.4f);
 
     internal static Field Attachment(bool isA5) => isA5
-        ? new(4.2f, 48.08f, 59.04f, 12.96f)
-        : new(10.4f, 69.6f, 82.08f, 14.4f);
+        ? new(4.2f, 50.4848f, 59.04f, 12.96f)
+        : new(10.4f, 71.9976f, 82.08f, 14.4f);
 }

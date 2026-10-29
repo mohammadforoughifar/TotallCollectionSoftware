@@ -130,7 +130,7 @@
         <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions><ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>8</ShrinkFontToFitMinimumSize><CanGrow>False</CanGrow></Text8>
         <Text1 Ref="9" type="Text" isKey="true">
           <Brush>Transparent</Brush>
-          <ClientRectangle>-0.29,0.34,0.82,0.18</ClientRectangle>
+          <ClientRectangle>-0.29,0.3496,0.82,0.18</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,10</Font>
@@ -144,7 +144,7 @@
         <ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>8</ShrinkFontToFitMinimumSize></Text1>
         <Text2 Ref="10" type="Text" isKey="true">
           <Brush>Transparent</Brush>
-          <ClientRectangle>-0.29,0.18,0.82,0.18</ClientRectangle>
+          <ClientRectangle>-0.29,0.1728,0.82,0.18</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,10</Font>
@@ -158,7 +158,7 @@
         <ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>8</ShrinkFontToFitMinimumSize></Text2>
         <Text3 Ref="11" type="Text" isKey="true">
           <Brush>Transparent</Brush>
-          <ClientRectangle>-0.29,0.5,0.82,0.18</ClientRectangle>
+          <ClientRectangle>-0.29,0.5334,0.82,0.18</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,12</Font>
