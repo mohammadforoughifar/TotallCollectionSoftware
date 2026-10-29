@@ -75,7 +75,7 @@
                         }
                         else
                         {
-                            @((MarkupString)RichLetterHtml.Sanitize(letter.Description))
+                            @safeBody.Get(letter.Description)
                         }
                     </div>
                 </div>
@@ -188,6 +188,9 @@
     private bool visible = false;
     private bool loading = false;
     private IncomingLetterDetailDto? letter;
+
+    // پاک‌سازی متن نامه یک‌بار در هر باز شدن انجام می‌شود (نه در هر رندر).
+    private readonly SanitizedLetterBody safeBody = new();
 
     public async Task Open(int letterId)
     {

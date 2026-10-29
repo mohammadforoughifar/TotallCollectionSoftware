@@ -673,6 +673,13 @@ public class AppDbContext : DbContext
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.DocumentId, l.Module, l.EntityId });
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.Module, l.EntityId });
 
+        // پیوست‌ها: هر «باز کردن نامه/مدرک» و هر ردیف فهرست، یک EXISTS روی
+        // (Module, RefId) می‌زند. بدون این ایندکس، آن جست‌وجو «اسکن کل جدول» بود و
+        // چون جدول ستون varbinary(max) دارد (پیوست‌های قدیمی)، خواندن یک نامه
+        // به‌طور محسوسی سنگین می‌شد. رکوردهای تازه‌تر فایل را روی دیسک دارند و
+        // همین ستون را در همان ردیف خالی نگه می‌دارند.
+        mb.Entity<AppAttachment>().HasIndex(a => new { a.Module, a.RefId });
+
         // لاگ دسترسی به پیوست‌ها (گردانه دانلود/مشاهده)
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => new { l.Module, l.RefId });
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.AttachmentId);

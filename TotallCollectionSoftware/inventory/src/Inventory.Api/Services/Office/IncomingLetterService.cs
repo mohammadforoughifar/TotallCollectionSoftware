@@ -460,13 +460,22 @@ public class IncomingLetterService : IIncomingLetterService
         };
 
         // پیوست‌های نامه — بدون این، بخش «پیوست‌های نامه» در پانل خواننده همیشه خالی بود.
-        // حجم فایل باید «پس از» materialize شدن حساب شود چون _store.Size یک متد سمت کلاینت
-        // است و در projection ترجمه‌پذیر به SQL نیست. همان الگوی endpoint پیوست‌ها در
-        // IncomingLettersController، تا عدد حجم در دو جا یکسان بماند.
+        //
+        // ⚠ کارایی: قبلاً ستون `Data` (خودِ بایت‌های فایل، از نوع varbinary(max)) هم
+        // select می‌شد فقط برای اینکه `a.Data.Length` حساب شود. یعنی برای «باز کردن»
+        // یک نامه، همهٔ فایل‌های پیوست از دیتابیس خوانده و در حافظهٔ سرور نگه داشته
+        // می‌شدند (نامهٔ دارای چند پیوست چند ده مگابایت) و پاسخ هم کند می‌شد.
+        // حالا فقط «طول» ستون در SQL محاسبه می‌شود (DATALENGTH در SQL Server و
+        // length() در SQLite) و بایت‌ها هرگز به حافظه نمی‌آیند.
         var attRows = await _db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == "IncomingLetters" && a.RefId == letterId)
             .OrderBy(a => a.Id)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
+            .Select(a => new
+            {
+                a.Id, a.FileName, a.ContentType, a.FilePath,
+                DataLength = a.Data == null ? 0 : a.Data.Length,
+                a.UploaderName, a.UploaderUserId, a.UploadedAt
+            })
             .ToListAsync();
 
         dto.Attachments = attRows.Select(a => new LetterAttachmentDto
@@ -474,7 +483,7 @@ public class IncomingLetterService : IIncomingLetterService
             Id = a.Id,
             FileName = a.FileName,
             ContentType = a.ContentType,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength,
             UploaderName = a.UploaderName,
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt

@@ -8,6 +8,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
@@ -449,6 +450,23 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 {
     o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
 });
+
+// ================== فشرده‌سازی پاسخ‌ها (Brotli/Gzip) ==================
+// پاسخ‌های JSON نامه‌ها — به‌ویژه متن نامه‌هایی که تصویر درون‌متن دارند — چند
+// مگابایت می‌شوند و بدون فشرده‌سازی روی شبکهٔ داخلی هم کند منتقل می‌شدند.
+// لیست پیش‌فرض MIME شامل application/json و text/* است و فایل‌های باینری
+// (octet-stream/zip/wasm) را فشرده نمی‌کند؛ واریانت‌های ازپیش‌فشردهٔ
+// Blazor هم Content-Encoding دارند و میدل‌ور دوباره فشرده‌شان نمی‌کند.
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.Providers.Add<BrotliCompressionProvider>();
+    o.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(
+    o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(
+    o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
 builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
 builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.Api.Hubs.ChatRealtimeNotifier>();
@@ -690,6 +708,9 @@ if (!runningUnderIis && httpsCerts.Enabled && httpsCerts.RedirectHttp)
         await next();
     });
 }
+
+// فشرده‌سازی باید پیش از هر چیزی که پاسخ را می‌نویسد ثبت شود.
+app.UseResponseCompression();
 
 app.UseCors("wasm");
 

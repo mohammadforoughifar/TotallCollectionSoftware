@@ -155,6 +155,11 @@ public static class DbInitializer
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.
                 await DabirkhaneSchemaV1.EnsureAsync(db);
 
+                // ایندکس (Module, RefId) روی AppAttachments — باز کردن نامه و
+                // «دارای پیوست» در فهرست کارتابل‌ها بدون این ایندکس کل جدولِ
+                // پیوست‌ها (با ستون فایل) را اسکن می‌کرد و کند بود.
+                await AttachmentIndexSchemaV1.EnsureAsync(db);
+
                 // رونوشت‌گیرندگان نامه صادره — این Schema قبلاً تعریف شده بود اما در
                 // راه‌اندازی فراخوانی نمی‌شد و ثبت نامه دارای رونوشت با 400 شکست می‌خورد.
                 await OutgoingCopyToSchemaV1.EnsureAsync(db);

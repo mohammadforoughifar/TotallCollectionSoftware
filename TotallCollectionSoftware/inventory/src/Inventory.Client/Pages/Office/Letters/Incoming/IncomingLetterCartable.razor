@@ -233,6 +233,26 @@
         </section>
 
         @* ---------- ستون پانل خواندن و جزییات کامل نامه ---------- *@
+        @* اسکلت بارگذاری: تا وقتی جزئیات نامه از سرور نرسیده، کاربر جای خالی نمی‌بیند.
+           متن نامه‌های برگرفته از ایمیل می‌تواند چند مگابایت باشد و دریافتش زمان می‌برد. *@
+        @if (readerOpen && activeDetail == null && detailLoading)
+        {
+            <aside class="reader rd-full" style="overflow-y:auto">
+                <div class="rd-top">
+                    <button class="icb rd-back" title="بازگشت به فهرست" @onclick="CloseReader"><i class="bi bi-arrow-right"></i></button>
+                    <span class="t"><i class="bi bi-hourglass-split"></i> در حال بارگذاری نامه…</span>
+                    <button class="icb" title="بستن" @onclick="CloseReader"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div style="padding:20px; display:flex; flex-direction:column; gap:12px">
+                    <div class="text-muted" style="font-size:13px">در حال دریافت متن و اطلاعات نامه…</div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7; width:88%"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7; width:72%"></div>
+                    <div style="height:14px; border-radius:6px; background:#eef2f7; width:80%"></div>
+                </div>
+            </aside>
+        }
+
         @if (readerOpen && activeDetail != null)
         {
             <aside class="reader rd-full" style="overflow-y:auto">
@@ -332,7 +352,7 @@
                                 }
                                 else
                                 {
-                                    @((MarkupString)RichLetterHtml.Sanitize(activeDetail.Description))
+                                    @safeBody.Get(activeDetail.Description)
                                 }
                             </div>
 
@@ -584,6 +604,13 @@
     private void OpenWorkOrderReport(int id) => Nav.NavigateTo($"/work-orders?open={id}");
 
     private ComposeIncomingModal? composeModal;
+
+    // پاک‌سازی HTML متن نامه فقط یک‌بار (به‌ازای هر نامه) انجام می‌شود؛ پیش‌تر در هر
+    // رندر دوباره اجرا می‌شد و برای نامه‌های چندمگابایتی، صفحه را کند می‌کرد.
+    private readonly SanitizedLetterBody safeBody = new();
+
+    // «جزئیات نامه در حال دریافت است» — برای نمایش اسکلت بارگذاری در ریدر.
+    private bool detailLoading;
     private IncomingLetterViewModal? viewModal;
     private IncomingErjaSheet? erjaSheet;
     private IncomingGardeshModal? gardeshModal;
@@ -619,14 +646,18 @@
         _openingFromLink = false;
         if (int.TryParse(qs["open"], out var openId) && openId > 0)
         {
+            readerOpen = true;
+            detailLoading = true;
+            safeBody.Reset();
+            StateHasChanged();
             try
             {
                 activeDetail = await IncomingSvc.GetDetailAsync(openId);
                 await LoadWorkOrdersAsync(openId);
                 activeLetter = letters.FirstOrDefault(x => x.LetterId == openId);
-                readerOpen = true;
             }
             catch (Exception ex) { Toast.Error(ex.Message); }
+            finally { detailLoading = false; StateHasChanged(); }
         }
     }
 
@@ -791,6 +822,13 @@
     {
         activeLetter = l;
         readerOpen = true;
+        activeDetail = null;
+
+        // ریدر بلافاصله با اسکلت بارگذاری باز می‌شود؛ متن نامه پس از رسیدن از سرور
+        // رندر می‌شود. پیش‌تر تا پایان درخواست، صفحه بی‌واکنش به‌نظر می‌رسید.
+        detailLoading = true;
+        safeBody.Reset();
+        StateHasChanged();
         try
         {
             activeDetail = await IncomingSvc.GetDetailAsync(l.LetterId);
@@ -799,6 +837,11 @@
         catch (Exception ex)
         {
             Toast.Error(ex.Message);
+        }
+        finally
+        {
+            detailLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -868,6 +911,9 @@
         readerOpen = false;
         activeLetter = null;
         activeDetail = null;
+        detailLoading = false;
+        // کش متن پاک‌سازی‌شده آزاد شود؛ متن نامهٔ سنگین در حافظهٔ مرورگر نمی‌ماند.
+        safeBody.Reset();
     }
 
     private void ToggleRowMenu(int letterId)
