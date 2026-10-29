@@ -1,6 +1,7 @@
 @inject IIncomingLetterService IncomingSvc
 @inject IToastService Toast
 @inject IJSRuntime JS
+@inject IAuthState Auth
 
 @* ============================================================
    شیت ارجاع و پاسخ به نامه وارده
@@ -32,6 +33,17 @@
                                  Users="users" Groups="groups"
                                  SelectedUsers="selUsers" SelectedGroups="selGroups"
                                  HasError="errRcv" Changed="OnRcvChanged" />
+
+                @if (CanSelfErja)
+                {
+                    <div class="self-erja-hint">
+                        <i class="bi bi-person-check-fill"></i>
+                        <span>
+                            شما مسئول دبیرخانه هستید؛ می‌توانید این نامه را <b>به خودتان هم ارجاع</b> دهید
+                            (در فهرست گیرندگان با برچسب «خودم — دبیرخانه» دیده می‌شوید).
+                        </span>
+                    </div>
+                }
 
                 <div class="fcard @(errAmal ? "err" : "")">
                     <div class="fhd">
@@ -119,6 +131,9 @@
     private List<AmalgarDto> amalgars = new();
     private HashSet<int> selUsers = new();
     private HashSet<int> selGroups = new();
+
+    /// <summary>مسئول دبیرخانه: می‌تواند نامه را به خودش هم ارجاع دهد (سرور هم همین را اجازه می‌دهد).</summary>
+    private bool CanSelfErja => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
 
     private string matn = "";
     private DateTime? mohlatPasokh;

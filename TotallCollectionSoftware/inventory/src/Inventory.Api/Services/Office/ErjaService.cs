@@ -15,7 +15,11 @@ namespace Inventory.Api.Services;
 
 public interface IErjaService
 {
-    Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName);
+    /// <summary>
+    /// ثبت ارجاع/هامش. <paramref name="allowSelfReferral"/> فقط برای مسئول دبیرخانه
+    /// (مجوز Dabirkhane) true است تا بتواند نامه را به «خودش» هم ارجاع دهد.
+    /// </summary>
+    Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName, bool allowSelfReferral = false);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto, int userId, string userName);
     Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null);
     Task MarkReadAsync(int erjaId, int userId);
@@ -41,7 +45,7 @@ public class ErjaService : IErjaService
         _groups = groups;
     }
 
-    public async Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName)
+    public async Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName, bool allowSelfReferral = false)
     {
         // ---------- باز کردن گروه‌ها (منطق Reciver_GroupsErja/Hamesh کارفرما) ----------
         var allGroupIds = dto.GroupsGirandegan.Concat(dto.GroupsHamesh).Distinct().ToList();
@@ -53,9 +57,14 @@ public class ErjaService : IErjaService
         var hameshIds = dto.ReciversHamesh
             .Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
 
-        // خود فرستنده اگر عضو گروه بود، حذف می‌شود
-        girandegan.Remove(senderUserId);
-        hameshIds.Remove(senderUserId);
+        // خود فرستنده اگر عضو گروه بود، حذف می‌شود — به‌جز مسئول دبیرخانه که باید
+        // بتواند نامه را به خودش هم ارجاع دهد (درخواست: «مسئول دبیرخانه علاوه بر
+        // دیگران بتواند به خودش هم ارجاع دهد»).
+        if (!allowSelfReferral)
+        {
+            girandegan.Remove(senderUserId);
+            hameshIds.Remove(senderUserId);
+        }
 
         // فرم واحد ارجاع/هامش: بسته به انتخاب کاربر ممکن است فقط گیرنده ارجاع یا فقط گیرنده هامش داشته باشیم
         if (girandegan.Count == 0 && hameshIds.Count == 0)
@@ -97,7 +106,10 @@ public class ErjaService : IErjaService
         if (!amalgarOk) throw new Exception("عملگر ارجاع نامعتبر است.");
 
         var allIds = girandegan.Concat(hameshIds).Distinct().ToList();
-        if (allIds.Contains(senderUserId))
+        if (allIds.Count == 0)
+            throw new Exception("حداقل یک گیرنده باید انتخاب شود.");
+        // خودارجاعی فقط برای مسئول دبیرخانه مجاز است (allowSelfReferral).
+        if (!allowSelfReferral && allIds.Contains(senderUserId))
             throw new Exception("ارجاع نامه به خودتان امکان‌پذیر نیست.");
 
         var validUsers = await _db.Users
@@ -108,9 +120,17 @@ public class ErjaService : IErjaService
 
         // گیرنده تکراری باید قبل از ایجاد گردش به کاربر اعلام شود؛ ثبت تکراری
         // فقط با AllowDuplicateRecipients که از تأیید صریح فرم می‌آید مجاز است.
-        var duplicateIds = await _db.Erjas
-            .Where(e => e.SourceId == dto.LetterId && !e.IsDelete && allIds.Contains(e.ReciverUserId))
-            .Select(e => e.ReciverUserId).Distinct().ToListAsync();
+        // در خودارجاعی، ردیف «گیرندهٔ» خودکارِ ثبت نامه (SenderUserId == ReciverUserId)
+        // باعث می‌شد نامه «تکراری» تشخیص داده شود و مسئول دبیرخانه هرگز نتواند به خودش
+        // ارجاع دهد؛ پس در این حالت خودِ فرستنده از بررسی تکراری مستثنی می‌شود.
+        var duplicateCheckIds = allowSelfReferral
+            ? allIds.Where(id => id != senderUserId).ToList()
+            : allIds;
+        var duplicateIds = duplicateCheckIds.Count == 0
+            ? new List<int>()
+            : await _db.Erjas
+                .Where(e => e.SourceId == dto.LetterId && !e.IsDelete && duplicateCheckIds.Contains(e.ReciverUserId))
+                .Select(e => e.ReciverUserId).Distinct().ToListAsync();
         if (duplicateIds.Count > 0 && !dto.AllowDuplicateRecipients)
         {
             var duplicateNames = await _db.Users.Where(u => duplicateIds.Contains(u.Id))
@@ -195,6 +215,9 @@ public class ErjaService : IErjaService
         var link = isIncoming
             ? $"incoming-letters?open={dto.LetterId}"
             : $"{routeBase}/view/{dto.LetterId}";
+        // در خودارجاعی، اعلان «ارجاع نامه» به خودِ فرستنده فرستاده نمی‌شود (نامه از قبل
+        // در کارتابل خودش است) ولی ردیف ارجاع ساخته می‌شود.
+        seen.Remove(senderUserId);
         await _notify.SendManyAsync(seen,
             $"ارجاع نامه: {letterTitle}",
             string.IsNullOrWhiteSpace(dto.TextErja) ? $"شماره {letterNumber}" : dto.TextErja,
@@ -326,7 +349,11 @@ public class ErjaService : IErjaService
         var receivedBy = new Dictionary<int, List<int>>(); // userId → ارجاع‌هایی که به او رسیده
         foreach (var e in erjas.OrderBy(x => x.ErjaId))
         {
-            if (e.SenderUserId == e.ReciverUserId) continue; // ردیف خودکار/خودارجاعی
+            // ردیف «گیرندهٔ» خودکارِ ثبت نامه (ثبت‌کننده = گیرنده) نباید والد بقیه شود؛
+            // اما خودارجاعیِ واقعیِ دبیرخانه (Type = ارجاع/هامش) یک گام گردش است و باید
+            // هم در درخت دیده شود و هم بتواند والد گام بعدی باشد.
+            if (e.SenderUserId == e.ReciverUserId && string.Equals(e.Type, "گیرنده", StringComparison.Ordinal))
+                continue;
             if (!receivedBy.ContainsKey(e.ReciverUserId))
                 receivedBy[e.ReciverUserId] = new List<int>();
             receivedBy[e.ReciverUserId].Add(e.ErjaId);

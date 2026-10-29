@@ -224,7 +224,8 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Erja([FromBody] AddErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Erja") is { } forbid) return forbid;
-        await _erja.AddErjaAsync(dto, MyUserId, await MyDisplayNameAsync());
+        // مسئول دبیرخانه می‌تواند نامه را به خودش هم ارجاع دهد (علاوه بر دیگران).
+        await _erja.AddErjaAsync(dto, MyUserId, await MyDisplayNameAsync(), await HasDabirkhaneAsync());
         return Ok(new { message = "ارجاع نامه انجام شد." });
     }
 
@@ -389,15 +390,21 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Recivers([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // مسئول دبیرخانه خودش هم در فهرست گیرندگان دیده می‌شود تا بتواند به خودش
+        // ارجاع دهد؛ برای بقیهٔ کاربران مثل قبل حذف می‌شود.
+        var canSelf = await HasDabirkhaneAsync();
+        var meId = MyUserId;
+        const string selfSuffix = " (خودم — دبیرخانه)";
         var users = Db.Users.AsNoTracking()
-            .Where(u => u.IsActive && u.Id != MyUserId)
+            .Where(u => u.IsActive && (u.Id != meId || canSelf))
             .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
-                FullName = string.IsNullOrEmpty(u.FirstName + u.LastName)
+                FullName = (string.IsNullOrEmpty(u.FirstName + u.LastName)
                     ? u.Username
-                    : (u.FirstName + " " + u.LastName).Trim()
+                    : (u.FirstName + " " + u.LastName).Trim())
+                    + (u.Id == meId ? selfSuffix : "")
             });
         return Ok(await Paging.ResultAsync(users, skip, take));
     }
