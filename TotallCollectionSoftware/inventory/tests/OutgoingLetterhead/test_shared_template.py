@@ -93,6 +93,8 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("line.RelativeItem().AlignTop().AlignRight()", template)
                 self.assertIn("line.ConstantItem(labelGap);", template)
                 self.assertIn('$"{row.Label}:"', template)
+                # برچسب چسبیده به لبهٔ راست متن (مثل نامهٔ داخلی)، نه شناور وسط صفحه.
+                self.assertIn("line.ConstantItem(labelWidth).AlignTop().AlignRight()", template)
                 # ردیف‌های خالی (مثل رونوشت بدون داده) اصلاً چاپ نمی‌شوند.
                 self.assertIn("rows.Where(row => !string.IsNullOrWhiteSpace(row.Value))", template)
                 # برچسب و مقدار هم‌اندازه‌اند: یک fontSize برای هر دو.
@@ -127,6 +129,8 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 outgoing = self.outgoing(tree)
                 header = outgoing.split("private void AddDesignMetaGrid(", 1)[1]
                 header = header.split("private static float FitFontSize", 1)[0]
+                self.assertIn("page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,", outgoing,
+                              "لایهٔ سراسری = تکرار خودکار روی همهٔ صفحه‌ها")
                 self.assertIn("Slot.Number", header)
                 self.assertIn("Slot.Date", header)
                 self.assertIn("Slot.Attachment", header)
@@ -197,6 +201,9 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("return Math.Max(minimum, preferred * maxWidth / estimated);", outgoing)
                 self.assertIn("DrawMetaLabels", outgoing)
                 self.assertIn("var rowHeight = Math.Max(10f, field.Height);", outgoing)
+                # مختصات مطلق صفحه، نه داخل حاشیه‌ها (وگرنه در A5 مقدارها روی برچسب می‌افتند).
+                self.assertIn("host.AlignLeft().AlignTop()", outgoing)
+                self.assertIn("var left = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);", outgoing)
 
     def test_a4_and_a5_scale_like_the_inner_letter(self):
         for tree in TREES:

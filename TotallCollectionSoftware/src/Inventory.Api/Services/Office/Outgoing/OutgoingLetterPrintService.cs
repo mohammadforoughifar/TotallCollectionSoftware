@@ -2163,9 +2163,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .DirectionFromRightToLeft());
 
                 // ── سربرگ (روی هر صفحه): جدول دوستونهٔ شماره/تاریخ/پیوست ──
-                page.Header().ContentFromLeftToRight().Height(contentTop)
-                    .Element(header => AddDesignMetaGrid(header, design, number, date,
-                        attachment, sideMargin));
+                // سربرگ فقط ارتفاع ناحیهٔ بالای صفحه را رزرو می‌کند (تا متن روی قوس آبی نرود)؛
+                // خودِ مقدارها در لایهٔ Foreground با مختصات مطلق صفحه چاپ می‌شوند.
+                page.Header().ContentFromLeftToRight().Height(contentTop);
+
+                // ── شماره/تاریخ/پیوست در لایهٔ سراسری صفحه (روی هر صفحه) ──
+                // مختصات از گوشهٔ بالا-چپ «خودِ صفحه» است، نه داخل حاشیه‌ها؛ وگرنه در A5 که
+                // برچسب‌های چاپ‌شده نزدیک لبه‌اند، مقدارها به سمت راست رانده می‌شدند و روی
+                // برچسب‌ها می‌افتادند.
+                page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,
+                    attachment, sideMargin));
 
                 // ── بدنه: بلوک اطلاعات ← خط جداکننده ← متن ← امضا ──
                 page.Content().Column(col =>
@@ -2227,16 +2234,20 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         if (fields.Count == 0) return;
 
         var top = fields[0].Top;
-        // ۴pt فاصله تا برچسبِ چاپ‌شده روی سربرگ.
+        // ۴pt فاصله تا برچسبِ چاپ‌شده روی سربرگ؛ مقدارها راست‌چین در همین ستون می‌نشینند.
         var right = fields.Min(box => box.Left + box.Width) - 4f;
-        var left = Math.Max(_designPrint.MetaSafeLeft, sideMargin);
-        // در A5 صفحه باریک است؛ حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
+        // حاشیهٔ امن ۱۵mm، ولی هرگز دورتر از کادر خود طرح.
+        var left = Math.Max(fields.Min(box => box.Left), _designPrint.MetaSafeLeft);
+        // در A5 که صفحه باریک است، حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند
+        // (۴۴pt) — همان توازنی که در نسخهٔ قبلی هم بود.
         if (right - left < 44f) left = Math.Max(0f, right - 44f);
         var labelWidth = _designPrint.DrawMetaLabels ? Math.Max(38f, _designPrint.MetaFontSize * 4.4f) : 0f;
         var fallbackColor = _designMetaColor ?? LetterPrintTemplate.MetaValueColor;
         var columnWidth = Math.Max(20f, right - left) - labelWidth;
 
-        host.PaddingLeft(Math.Max(0f, left - sideMargin))
+        // مختصات مطلق صفحه (لایهٔ Foreground): از حاشیه‌ها مستقل است.
+        host.AlignLeft().AlignTop()
+            .PaddingLeft(Math.Max(0f, left))
             .PaddingTop(Math.Max(0f, top))
             .Element(cell => cell.Width(Math.Max(20f, right - left)).Table(table =>
             {

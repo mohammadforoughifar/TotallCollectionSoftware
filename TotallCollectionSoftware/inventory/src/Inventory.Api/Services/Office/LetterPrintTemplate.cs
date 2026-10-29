@@ -95,13 +95,14 @@ internal static class LetterPrintTemplate
                 // فاصلهٔ ثابت بین مقدار و برچسب (همان «یک فاصله» بعد از دونقطه).
                 line.ConstantItem(labelGap);
 
-                // برچسب: هم‌اندازه و هم‌خط با مقدار، دونقطه در انتهای خودش.
-                line.ConstantItem(labelWidth).AlignTop().AlignLeft()
+                // برچسب: هم‌اندازه و هم‌خط با مقدار، چسبیده به لبهٔ راستِ متن (مثل نامهٔ داخلی)
+                // و دونقطه در انتهای خودش (سمت مقدار).
+                line.ConstantItem(labelWidth).AlignTop().AlignRight()
                     .Text($"{row.Label}:")
                     .FontFamily("Vazirmatn-Bold")
                     .FontSize(fontSize)
                     .LineHeight(1.55f)
-                    .AlignLeft()
+                    .AlignRight()
                     .DirectionFromRightToLeft();
             });
         }
