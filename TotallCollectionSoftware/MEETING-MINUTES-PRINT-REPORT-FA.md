@@ -97,7 +97,7 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
   `Number` و متد کمکی `Number` هم‌نام بودند؛ متد به `ParseNumber` تغییر نام داد).
 
 اجرای کل مجموعه: `cd inventory/tests/OutgoingLetterhead && python3 -m unittest discover -p "test_*.py"`
-→ **۱۱۹ تست سبز** (۹۶ تست قبلی + ۲۳ تست جدید).
+→ **۱۲۶ تست سبز** (۹۶ تست قبلی + ۳۰ تست جدید).
 
 ## ۵. پیش‌نمایش
 
@@ -105,6 +105,19 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
 - `preview/minutes-mrt.html` — **فایل خام MRT** با شمارهٔ خط.
 - تولید دوباره: `python3 preview/render_minutes.py`
 - پیش‌نمایش زنده روی سرور محلی همین سندباکس (پورت ۸۰۹۰) سرو می‌شود.
+
+## ۵-۱. پابرگ «صفحه X از Y» و خطای A5
+
+پابرگ با جزء پویای QuestPDF ساخته می‌شود. اگر محتوای جزء در فضای در دسترس پابرگ جا نشود،
+QuestPDF کل سند را با «Dynamic component generated content that does not fit on a single
+page» رد می‌کند. بنابراین:
+
+- پیش از چاپ، `context.AvailableSize` بررسی می‌شود؛ اگر یک خط جا نشود شمارهٔ صفحه چاپ **نمی‌شود**
+  (به‌جای اینکه چاپ بشکند) و اگر عرض کم باشد قلم کوچک می‌شود.
+- سند به‌صورت `ComposeDocument(bool withPageNumbers)` ساخته می‌شود؛ در صورت
+  `DocumentLayoutException` یک بار دیگر بدون شمارهٔ صفحه تولید می‌شود.
+
+همین اصلاح در چاپ نامهٔ صادره هم اعمال شد (جزئیات: `OUTGOING-PRINT-REPORT-FOLDER-FA.md` §۴-۱۳).
 
 ## ۶. آنچه انجام نشده
 

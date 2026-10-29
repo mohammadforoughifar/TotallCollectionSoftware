@@ -212,26 +212,52 @@ internal static class LetterPrintTemplate
             // چاپ نمی‌شود تا شمارهٔ صفحه با عدد ساختگی در خروجی ظاهر نشود.
             var total = context.TotalPages;
             if (total <= 1 || total == int.MaxValue)
-                return new DynamicComponentComposeResult
-                {
-                    Content = context.CreateElement(_ => { }),
-                    HasMoreContent = false
-                };
+                return NoContent(context);
+
+            // اگر کادر پابرگ برای یک خط جا نداشته باشد، شمارهٔ صفحه اصلاً چاپ نمی‌شود.
+            // علت: اگر محتوای جزء پویا در فضای در دسترس جا نشود، QuestPDF کل چاپ را با
+            // «Dynamic component generated content that does not fit on a single page»
+            // رد می‌کند (خطای واقعی چاپ A5) — یک شمارهٔ صفحه نباید چاپ نامه را متوقف کند.
+            var available = context.AvailableSize;
+            var fontSize = _fontSize;
+            if (available.Height > 0f && available.Height < fontSize * 1.8f)
+                return NoContent(context);
+            // عرض هم بررسی می‌شود: اگر حتی یک واژه در کادر جا نشود، متن می‌شکند (Wrap) و
+            // همان استثنا را می‌دهد؛ در آن حالت شمارهٔ صفحه چاپ نمی‌شود.
+            if (available.Width > 0f && available.Width < fontSize * 6f)
+                return NoContent(context);
 
             var label = $"صفحه {PersianDigits(context.PageNumber.ToString(CultureInfo.InvariantCulture))}"
                         + $" از {PersianDigits(total.ToString(CultureInfo.InvariantCulture))}";
+
+            // اگر عرض کافی نبود، قلم کوچک می‌شود تا در یک خط بماند (هرگز به خط دوم نشکند).
+            if (available.Width > 0f)
+            {
+                var estimated = label.Length * fontSize * 0.55f;
+                if (estimated > available.Width)
+                    fontSize = Math.Max(5f, fontSize * available.Width / estimated);
+            }
+
             var content = context.CreateElement(container => container
                 .AlignTop()
                 .AlignCenter()
                 .Text(label)
                 .FontFamily("Vazirmatn")
-                .FontSize(_fontSize)
-                .LineHeight(1.2f)
+                .FontSize(fontSize)
+                .LineHeight(1.1f)
                 .FontColor(_color)
                 .DirectionFromRightToLeft());
 
             return new DynamicComponentComposeResult { Content = content, HasMoreContent = false };
         }
+
+        /// <summary>هیچ محتوایی چاپ نمی‌شود (نه شمارهٔ صفحه، نه خطا).</summary>
+        private static DynamicComponentComposeResult NoContent(DynamicContext context)
+            => new()
+            {
+                Content = context.CreateElement(_ => { }),
+                HasMoreContent = false
+            };
     }
 
     /// <summary>ارقام لاتین و عربی → ارقام فارسی (۴ ۵ ۶ نه ٤ ٥ ٦ و نه 456).</summary>

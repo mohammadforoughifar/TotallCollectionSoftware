@@ -16,6 +16,7 @@ using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Drawing;
+using QuestPDF.Drawing.Exceptions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -2169,7 +2170,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             RenderSigners(target);
         }
 
-        var document = Document.Create(container =>
+        // چاپ با/بدون شمارهٔ صفحه؛ اگر جزء پویای پابرگ در کاغذ A5 جا نشود، نسخهٔ بدون
+        // شمارهٔ صفحه دوباره ساخته می‌شود تا خودِ نامه از دست نرود.
+        Document ComposeDocument(bool withPageNumbers) => Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -2231,8 +2234,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 });
 
                 // ── شمارهٔ صفحه: فقط اگر نامه به صفحهٔ دوم رفت («صفحه ۲ از ۲») ──
-                page.Footer().Height(16).AlignTop().AlignCenter()
-                    .Dynamic(new LetterPrintTemplate.PageNumberFooter(Math.Max(7f, bodyFontSize - 4f)));
+                if (withPageNumbers)
+                    page.Footer().Height(16).AlignTop().AlignCenter()
+                        .Dynamic(new LetterPrintTemplate.PageNumberFooter(Math.Max(7f, bodyFontSize - 4f)));
             });
         });
 
@@ -2240,7 +2244,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "چاپ نامهٔ صادره با چیدمان نامهٔ داخلی. LetterId={LetterId}, Size={Size}, SideMargin={SideMargin}, ContentTop={ContentTop}",
             letter.Id, isA5 ? "A5" : "A4", sideMargin, contentTop);
 
-        return document.GeneratePdf();
+        try
+        {
+            return ComposeDocument(true).GeneratePdf();
+        }
+        catch (DocumentLayoutException ex)
+        {
+            // جزء پویای «صفحه X از Y» در این کاغذ جا نشد؛ نامه بدون شمارهٔ صفحه چاپ می‌شود.
+            _logger.LogWarning(ex,
+                "شمارهٔ صفحه در پابرگ جا نشد؛ چاپ بدون شمارهٔ صفحه تکرار می‌شود. LetterId={LetterId}, Size={Size}",
+                letter.Id, isA5 ? "A5" : "A4");
+            return ComposeDocument(false).GeneratePdf();
+        }
     }
 
     /// <summary>

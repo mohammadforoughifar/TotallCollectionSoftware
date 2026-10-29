@@ -879,3 +879,48 @@ host.AlignLeft().AlignTop().Column(column =>
 سه چیز را می‌سنجد: فقط یک `page.Foreground()` در مسیر طرح، تنها یک فرزند برای لایهٔ سربرگ،
 و اینکه هیچ حلقه‌ای `.Element(` را روی کانتینر ثابت صدا نمی‌زند. (روی کد قبل از اصلاح، این
 تست‌ها شکست می‌خورند.)
+
+### ۴-۱۳. خطای چاپ A5: `DocumentLayoutException` روی جزء پویای «صفحه X از Y»
+
+**پیام:** «ساخت PDF نامه ناموفق بود (DocumentLayoutException): Dynamic component generated
+content that does not fit on a single page.»
+
+**منشأ در خود QuestPDF:** در `DynamicHost.Measure` اگر محتوایی که جزء پویا ساخته در فضای
+در دسترس جا نشود (نتیجهٔ `Wrap` یا `PartialRender`)، کل سند با همین پیام رد می‌شود. در مسیر
+چاپ ما تنها جزء پویا، پابرگ «صفحه ۲ از ۲» است (`LetterPrintTemplate.PageNumberFooter`).
+حاشیهٔ پایین، ارتفاع پابرگ و اندازهٔ قلم در A5 کوچک‌ترند؛ اگر یک خط در کادر پابرگ جا نشود
+(یا عرض برای یک خط کافی نباشد و متن بشکند)، چاپ **کل نامه** از دست می‌رفت — یعنی یک شمارهٔ
+صفحه، نامه را بلاک می‌کرد.
+
+**دو لایه اصلاح:**
+
+1. **خودِ جزء پویا (ریشه):** پیش از ساختن متن، `context.AvailableSize` بررسی می‌شود:
+   - `available.Height < fontSize * 1.8` → هیچ چاپی (`NoContent`)
+   - `available.Width < fontSize * 6` → هیچ چاپی
+   - اگر عرض کم بود، قلم کوچک می‌شود (`fontSize * available.Width / estimated`، کف ۵pt) تا
+     متن هرگز به خط دوم نشکند؛ `LineHeight` هم از ۱٫۲ به ۱٫۱ کم شد.
+
+   ```csharp
+   var available = context.AvailableSize;
+   if (available.Height > 0f && available.Height < fontSize * 1.8f) return NoContent(context);
+   if (available.Width  > 0f && available.Width  < fontSize * 6f)   return NoContent(context);
+   ```
+
+2. **مسیر چاپ (تور اطمینان):** سند به‌صورت تابع محلی `ComposeDocument(bool withPageNumbers)`
+   ساخته می‌شود؛ اگر `GeneratePdf()` با `DocumentLayoutException` شکست خورد، همان نامه یک بار
+   دیگر **بدون شمارهٔ صفحه** ساخته می‌شود و علت در لاگ می‌ماند:
+
+   ```csharp
+   try { return ComposeDocument(true).GeneratePdf(); }
+   catch (DocumentLayoutException ex)
+   {
+       _logger.LogWarning(ex, "شمارهٔ صفحه در پابرگ جا نشد؛ …", letter.Id, isA5 ? "A5" : "A4");
+       return ComposeDocument(false).GeneratePdf();
+   }
+   ```
+
+   همین الگو در `MeetingMinutesPrintService` (چاپ صورتجلسه) هم اعمال شد.
+
+**تست‌ها:** `inventory/tests/OutgoingLetterhead/test_page_footer_safety.py` (۷ تست) — بررسی
+فضای در دسترس، یک‌نقطه‌ای بودن حالت «هیچ چاپ نشود»، کوچک‌شدن قلم به‌جای شکستن خط، و وجود
+تور اطمینان در هر دو سرویس. مجموع: **۱۲۶ تست سبز**.

@@ -10,6 +10,7 @@ using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using QuestPDF.Drawing;
+using QuestPDF.Drawing.Exceptions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -367,7 +368,10 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var cursor = new float[1];
         cursor[0] = headerReserve;
 
-        var doc = Document.Create(container =>
+        // چاپ با/بدون شمارهٔ صفحه؛ اگر جزء پویا در این کاغذ جا نشود، نسخهٔ بدون شماره دوباره
+        // ساخته می‌شود تا صورتجلسه از دست نرود (خطای A5: «Dynamic component generated
+        // content that does not fit on a single page»).
+        Document ComposeDocument(bool withPageNumbers) => Document.Create(container =>
         {
             container.Page(page =>
             {
@@ -444,13 +448,23 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 });
 
                 // «صفحه ۲ از ۲» — فقط وقتی صورتجلسه از یک صفحه بیشتر شد.
-                page.Footer().Height(16).AlignTop().AlignCenter()
-                    .Dynamic(new LetterPrintTemplate.PageNumberFooter(8f));
+                if (withPageNumbers)
+                    page.Footer().Height(16).AlignTop().AlignCenter()
+                        .Dynamic(new LetterPrintTemplate.PageNumberFooter(8f));
             });
         });
 
         _ = companyName; // نام شرکت روی خودِ سربرگ چاپ شده است؛ در متن تکرار نمی‌شود
-        return doc.GeneratePdf();
+
+        try
+        {
+            return ComposeDocument(true).GeneratePdf();
+        }
+        catch (DocumentLayoutException)
+        {
+            // شمارهٔ صفحه در پابرگ جا نشد؛ صورتجلسه بدون شمارهٔ صفحه چاپ می‌شود.
+            return ComposeDocument(false).GeneratePdf();
+        }
 
         // ── فاصلهٔ خالی به اندازهٔ اختلاف مختصات قالب ──
         static void Space(ColumnDescriptor col, float height)
