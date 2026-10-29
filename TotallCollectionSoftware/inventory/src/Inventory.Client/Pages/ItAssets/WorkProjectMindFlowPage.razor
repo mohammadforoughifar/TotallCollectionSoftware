@@ -9,6 +9,15 @@
 <PageTitle>نگار ذهنی</PageTitle>
 
 <div class="mf-page" dir="rtl">
+    @if (!Auth.Has("MindFlow.View") && !Auth.Has("WorkProjects.MindFlow"))
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-shield-lock"></i>
+            به «نگار ذهنی» دسترسی ندارید. مدیر سامانه می‌تواند از
+            «تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی» مجوز «نگار ذهنی» (ماژول نگار ذهنی)
+            یا مجوز «بخش نگار ذهنی پروژه» را بدهد.
+        </div>
+    }
     <div class="mf-page-head">
         <div>
             <div class="mf-eyebrow">دستور کار</div>
@@ -16,7 +25,10 @@
             <p>نگاشت پروژه‌ها را ببین یا یک نگاشت مستقل بساز و طراحی کن.</p>
         </div>
         <div class="mf-head-actions">
-            <button type="button" class="btn btn-primary btn-sm" @onclick="ToggleStandaloneCreate"><i class="bi bi-plus-lg"></i> ساخت نگاشت مستقل</button>
+            @if (Auth.Has("MindFlow.Create"))
+            {
+                <button type="button" class="btn btn-primary btn-sm" @onclick="ToggleStandaloneCreate"><i class="bi bi-plus-lg"></i> ساخت نگاشت مستقل</button>
+            }
             @if (Auth.CanSee("WorkProjects"))
             {
                 <a class="btn btn-outline-secondary btn-sm" href="/work-projects"><i class="bi bi-briefcase"></i> فهرست پروژه‌ها</a>
@@ -66,7 +78,10 @@
                             <a class="btn btn-sm @(map.CanEdit ? "btn-outline-primary" : "btn-outline-secondary")" href="@($"/mindflows/{map.Id}")"><i class="bi @(map.CanEdit ? "bi-pencil-square" : "bi-eye")"></i> @(map.CanEdit ? "طراحی" : "مشاهده")</a>
                             @if (map.IsOwner)
                             {
-                                <button type="button" class="btn btn-sm btn-outline-danger" title="حذف نگاشت" @onclick="() => DeleteStandaloneAsync(map)"><i class="bi bi-trash"></i></button>
+                                @if (Auth.Has("MindFlow.Delete"))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-danger" title="حذف نگاشت" @onclick="() => DeleteStandaloneAsync(map)"><i class="bi bi-trash"></i></button>
+                                }
                             }
                         </div>
                     </article>

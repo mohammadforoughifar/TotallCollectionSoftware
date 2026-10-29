@@ -51,7 +51,25 @@ public static class RbacSeeder
         // ================== پروژه کاری (داخل دستور کار) ==================
         // View: مشاهده و منو | Create: ساخت پروژه
         // Update: ویرایش/تمدید/بستن/مدیریت اعضا برای غیرمالک (مالک همیشه مجاز است) | Delete: حذف
-        ["WorkProjects"] = new[] { "View", "Create", "Update", "Delete" },
+        //
+        // اکشن‌های بخشی (هر «قسمت» پروژه جداگانه): دسترسی به تب‌های صفحهٔ پروژه را
+        // کنترل می‌کنند تا مدیر بتواند مثلاً فقط «خلاصه» و «دستورها» را بدهد و
+        // «نگار ذهنی» یا «اعضا» را ندهد:
+        //   Summary  → تب خلاصه (اطلاعات، تاریخ‌ها، وضعیت)
+        //   Orders   → تب دستورهای کار پروژه
+        //   MindFlow → تب نگار ذهنی همان پروژه
+        //   Members  → تب اعضا (فهرست اعضای پروژه)
+        //   Activity → تب فعالیت‌ها (تاریخچهٔ تغییرات)
+        ["WorkProjects"] = new[] { "View", "Create", "Update", "Delete", "Summary", "Orders", "MindFlow", "Members", "Activity" },
+        // ================== نگار ذهنی (نقشهٔ ذهنی) ==================
+        // نگار ذهنی دو جا دیده می‌شود: تب داخل پروژهٔ کاری (با مجوز بخشی WorkProjects.MindFlow)
+        // و صفحهٔ مستقل «نگار ذهنی» (نگاشت‌های مستقل). این ماژول دومی را کنترل می‌کند:
+        //   View    → دیدن صفحهٔ نگار ذهنی، فهرست نگاشت‌های مجاز و نمایش در منو
+        //   Create  → ساخت نگاشت مستقل تازه
+        //   Update  → ویرایش محتوای نگاشت (گره/رابط/جابه‌جایی) — همچنان نیازمند نقش ویرایشگر
+        //   Delete  → حذف نگاشت (فقط سازنده) — بدون این مجوز، دکمهٔ حذف کار نمی‌کند
+        //   Members → مدیریت دسترسی و اعضای نگاشت (فقط سازنده)
+        ["MindFlow"] = new[] { "View", "Create", "Update", "Delete", "Members" },
         // ================== میز کار توسعه (مدیریت تیم نرم‌افزار) ==================
         // View: منو و مشاهده | Create: تسک/مشکل/changelog | Update: ویرایش و جابجایی وضعیت
         // Delete: حذف | Manage: تنظیم وضعیت‌ها/ماژول‌ها/اسپرینت | Assign: تخصیص به دیگران
@@ -308,6 +326,56 @@ public static class RbacSeeder
                 await db.RolePermissions.AddRangeAsync(toAdd);
                 await db.SaveChangesAsync();
                 Console.WriteLine($"[RBAC] مهاجرت مودیان: {toAdd.Count} دسترسی جدید از نگاشت قدیمی→جدید به نقش‌ها اعطا شد.");
+            }
+        }
+
+        // ================== مهاجرت «پروژه‌های کاری / نگار ذهنی» به مجوزهای بخشی ==================
+        // مجوزهای بخشی تازه (Summary/Orders/MindFlow/Members/Activity و کل ماژول MindFlow)
+        // «الزامی» هستند؛ اگر برای نقش‌های موجود اعطا نشوند، کاربرانی که امروز به این
+        // بخش‌ها دسترسی دارند بعد از به‌روزرسانی دسترسی‌شان را از دست می‌دهند.
+        // قاعدهٔ ارتقا: هر نقشی که «مشاهدهٔ پروژه‌های کاری» دارد، مجوزهای بخشی پروژه و
+        // همهٔ مجوزهای نگار ذهنی را هم می‌گیرد؛ پس رفتار فعلی حفظ می‌شود و مدیر از این
+        // پس می‌تواند تک‌تک بخش‌ها را بردارد.
+        {
+            var projViewPerm = await db.Permissions
+                .Where(p => p.Module == "WorkProjects" && p.Action == "View")
+                .Select(p => p.Id).FirstOrDefaultAsync();
+            if (projViewPerm > 0)
+            {
+                var sectionActions = new[] { "Summary", "Orders", "MindFlow", "Members", "Activity" };
+                var sectionPermIds = await db.Permissions
+                    .Where(p => p.Module == "WorkProjects" && sectionActions.Contains(p.Action))
+                    .Select(p => p.Id).ToListAsync();
+                var mindFlowPermIds = await db.Permissions
+                    .Where(p => p.Module == "MindFlow")
+                    .Select(p => p.Id).ToListAsync();
+
+                var rolesWithView = await db.RolePermissions
+                    .Where(rp => rp.PermissionId == projViewPerm)
+                    .Select(rp => rp.RoleId).Distinct().ToListAsync();
+
+                var grantPermIds = sectionPermIds.Concat(mindFlowPermIds).Distinct().ToList();
+                if (rolesWithView.Count > 0 && grantPermIds.Count > 0)
+                {
+                    var existing = await db.RolePermissions
+                        .Where(rp => rolesWithView.Contains(rp.RoleId) && grantPermIds.Contains(rp.PermissionId))
+                        .Select(rp => new { rp.RoleId, rp.PermissionId })
+                        .ToListAsync();
+                    var have = existing.Select(x => (x.RoleId, x.PermissionId)).ToHashSet();
+
+                    var toGrant = new List<RolePermission>();
+                    foreach (var roleId in rolesWithView)
+                        foreach (var permId in grantPermIds)
+                            if (!have.Contains((roleId, permId)))
+                                toGrant.Add(new RolePermission { RoleId = roleId, PermissionId = permId });
+
+                    if (toGrant.Count > 0)
+                    {
+                        await db.RolePermissions.AddRangeAsync(toGrant);
+                        await db.SaveChangesAsync();
+                        Console.WriteLine($"[RBAC] {toGrant.Count} دسترسی بخشی «پروژه‌های کاری / نگار ذهنی» به {rolesWithView.Count} نقش اعطا شد (حفظ دسترسی فعلی).");
+                    }
+                }
             }
         }
 

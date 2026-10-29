@@ -1516,6 +1516,7 @@ else
         ("ip-management",       "Ipam.View",               "مدیریت آی‌پی"),
         ("settings/it-client-companies", "Settings.ItClientCompanies.", "شرکت‌های راه‌دور"),
         ("settings/it-remote",  "Settings.ItRemoteSettings.", "اتصال به واحد IT مرکزی"),
+        ("work-projects",       "WorkProjects.View",        "پروژه‌های کاری"),
         ("work-orders",         "WorkOrders.View",         "دستور کار"),
         ("work-calendar",       "Attendance.ManageShifts", "تقویم کاری"),
         ("letters",             "InnerLetters.",           "کارتابل نامه‌های داخلی"),
@@ -1552,6 +1553,23 @@ else
         {
             var allowed = Auth.CanSee("Orders") || Auth.CanSee("Repairs");
             if (!allowed) deniedTitle = "داشبورد جامع عملیات";
+            return allowed;
+        }
+
+        // نگار ذهنی دو مسیر دارد: نگاشت پروژه‌ها (با مجوز بخشی WorkProjects.MindFlow) و
+        // نگاشت‌های مستقل (با ماژول MindFlow). این بررسی باید «پیش از» گارد
+        // work-projects بیاید، وگرنه کاربری که فقط مجوز نگار ذهنی دارد رد می‌شود.
+        if (p.StartsWith("work-projects/mindflow"))
+        {
+            // تب نگار ذهنی پروژه‌ها با مجوز بخشی، صفحهٔ مستقل با ماژول نگار ذهنی.
+            var allowed = Auth.Has("MindFlow.View") || Auth.Has("WorkProjects.MindFlow");
+            if (!allowed) deniedTitle = "نگار ذهنی";
+            return allowed;
+        }
+        if (p.StartsWith("mindflows"))
+        {
+            var allowed = Auth.Has("MindFlow.View");
+            if (!allowed) deniedTitle = "نگار ذهنی";
             return allowed;
         }
 

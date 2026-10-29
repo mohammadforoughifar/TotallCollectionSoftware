@@ -155,7 +155,9 @@
                             <i class="bi bi-briefcase"></i><span>پروژه‌های کاری</span>
                         </NavLink>
                     }
-                    @if (Auth.IsLoggedIn)
+                    @* «نگار ذهنی» حالا مجوز مستقل خودش را دارد (تمیمات ← نقش‌ها ← نگار ذهنی).
+                       پیش‌تر هر کاربر لاگین‌کرده این منو را می‌دید. *@
+                    @if (Auth.Has("MindFlow.View"))
                     {
                         <NavLink class="nav-link" href="work-projects/mindflow" @onclick="NotifyClose">
                             <i class="bi bi-diagram-3"></i><span>نگار ذهنی</span>

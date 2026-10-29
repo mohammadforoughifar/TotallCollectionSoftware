@@ -50,9 +50,33 @@ public sealed class StandaloneMindFlowsController : ControllerBase
 
     private static bool CanEditRole(string? role) => role is "Owner" or Editor;
 
+    // ================== مجوزهای ماژول «نگار ذهنی» ==================
+    // نگار ذهنی تا امروز فقط بر پایهٔ «دعوت/مالکیت همان نگاشت» کنترل می‌شد و هیچ
+    // کلیدی در «تنظیمات ← نقش‌ها» نداشت. حالا دو لایه داریم:
+    //   ۱) مجوز ماژول MindFlow (View/Create/Update/Delete/Members) — سیاست کلی شرکت
+    //   ۲) نقش روی همان نگاشت (Owner/Editor/Viewer) — سیاست هر نگاشت
+    // برای دیدن/ویرایش هر دو لازم است؛ «حذف» و «مدیریت اعضا» همچنان فقط سازنده.
+    /// <summary>بررسی مجوز RBAC؛ هم‌قاعده با WorkProjects (مدیر قدیمی همه‌چیز، اپراتور قدیمی مشاهده/ساخت/ویرایش).</summary>
+    private async Task<bool> HasAsync(string action)
+    {
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
+        if (!hasRoles)
+        {
+            var legacy = User.FindFirstValue(ClaimTypes.Role);
+            if (legacy == "Admin") return true;
+            if (legacy == "Operator") return action is "View" or "Create" or "Update";
+            return false;
+        }
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .AnyAsync(p => p.Module == "MindFlow" && p.Action == action);
+    }
+
     [HttpGet]
     public async Task<IActionResult> List()
     {
+        if (!await HasAsync("View")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var maps = await _db.StandaloneMindFlows.AsNoTracking()
@@ -78,6 +102,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStandaloneMindFlowDto dto)
     {
+        if (!await HasAsync("Create")) return Forbid();
         if (dto is null || string.IsNullOrWhiteSpace(dto.Title) || dto.Title.Trim().Length > 200)
             return BadRequest(new { message = "نام نگاشت باید بین ۱ تا ۲۰۰ نویسه باشد." });
         var companyId = await ActiveCompanyIdAsync();
@@ -115,6 +140,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
+        if (!await HasAsync("View")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var map = await FindMapAsync(id, companyId.Value);
@@ -127,6 +153,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Save(int id, [FromBody] WorkProjectMindFlowDto dto)
     {
+        if (!await HasAsync("Update")) return Forbid();
         if (dto is null) return BadRequest(new { message = "دادهٔ نگاشت ارسال نشده است." });
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
@@ -156,6 +183,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
+        if (!await HasAsync("Delete")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var map = await FindMapAsync(id, companyId.Value);
@@ -170,6 +198,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpGet("{id:int}/sub")]
     public async Task<IActionResult> GetSub(int id, [FromQuery] string? path)
     {
+        if (!await HasAsync("View")) return Forbid();
         var result = await GetAccessibleMapAsync(id);
         if (result.Error is not null) return result.Error;
         if (!WorkProjectsController.TryParseSubMindFlowPath(path, out var pathIds))
@@ -189,6 +218,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpPut("{id:int}/sub")]
     public async Task<IActionResult> SaveSub(int id, [FromQuery] string? path, [FromBody] WorkProjectMindFlowDto dto)
     {
+        if (!await HasAsync("Update")) return Forbid();
         if (dto is null) return BadRequest(new { message = "دادهٔ زیرنگاشت ارسال نشده است." });
         var result = await GetAccessibleMapAsync(id, requireEdit: true);
         if (result.Error is not null) return result.Error;
@@ -231,6 +261,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpGet("{id:int}/members")]
     public async Task<IActionResult> Members(int id)
     {
+        if (!await HasAsync("Members")) return Forbid();
         var result = await GetAccessibleMapAsync(id, requireOwner: true);
         if (result.Error is not null) return result.Error;
         var rows = await _db.StandaloneMindFlowMembers.AsNoTracking().Where(m => m.MindFlowId == id)
@@ -243,6 +274,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpGet("{id:int}/candidates")]
     public async Task<IActionResult> Candidates(int id, [FromQuery] string? q, [FromQuery] int? take)
     {
+        if (!await HasAsync("Members")) return Forbid();
         var result = await GetAccessibleMapAsync(id, requireOwner: true);
         if (result.Error is not null) return result.Error;
         var map = result.Map!;
@@ -264,6 +296,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpPost("{id:int}/members")]
     public async Task<IActionResult> AddMembers(int id, [FromBody] AddWorkProjectMindFlowMembersDto dto)
     {
+        if (!await HasAsync("Members")) return Forbid();
         if (dto is null) return BadRequest(new { message = "اطلاعات دعوت ارسال نشده است." });
         var result = await GetAccessibleMapAsync(id, requireOwner: true);
         if (result.Error is not null) return result.Error;
@@ -289,6 +322,7 @@ public sealed class StandaloneMindFlowsController : ControllerBase
     [HttpDelete("{id:int}/members/{userId:int}")]
     public async Task<IActionResult> RemoveMember(int id, int userId)
     {
+        if (!await HasAsync("Members")) return Forbid();
         var result = await GetAccessibleMapAsync(id, requireOwner: true);
         if (result.Error is not null) return result.Error;
         var member = await _db.StandaloneMindFlowMembers.FirstOrDefaultAsync(m => m.MindFlowId == id && m.UserId == userId);

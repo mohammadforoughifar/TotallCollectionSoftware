@@ -409,15 +409,23 @@ else
                     <span class="badge bg-warning-subtle text-warning border num">تمدید @d.ExtensionCount.Num() از ۵</span>
                 }
             </div>
+            @* هر تب مجوز مستقل خودش را دارد (تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی)
+               و پرچم‌ها از سرور می‌آیند تا نقش‌های قدیمی هم درست دیده شوند. *@
             <ul class="nav nav-tabs mb-3">
-                <li class="nav-item">
-                    <button type="button" class="nav-link @(detailTab == "summary" ? "active" : "")" @onclick='() => detailTab = "summary"'>خلاصه</button>
-                </li>
-                <li class="nav-item">
-                    <button type="button" class="nav-link @(detailTab == "orders" ? "active" : "")" @onclick="OpenOrdersTab">
-                        دستورها <span class="badge bg-light text-dark num">@d.OrderCount.Num()</span>
-                    </button>
-                </li>
+                @if (d.CanViewSummary)
+                {
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(detailTab == "summary" ? "active" : "")" @onclick='() => detailTab = "summary"'>خلاصه</button>
+                    </li>
+                }
+                @if (d.CanViewOrders)
+                {
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(detailTab == "orders" ? "active" : "")" @onclick="OpenOrdersTab">
+                            دستورها <span class="badge bg-light text-dark num">@d.OrderCount.Num()</span>
+                        </button>
+                    </li>
+                }
                 @if (d.CanViewMindFlow)
                 {
                     <li class="nav-item">
@@ -426,15 +434,28 @@ else
                         </button>
                     </li>
                 }
-                <li class="nav-item">
-                    <button type="button" class="nav-link @(detailTab == "members" ? "active" : "")" @onclick='() => detailTab = "members"'>
-                        اعضا <span class="badge bg-light text-dark num">@d.Members.Count.Num()</span>
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button type="button" class="nav-link @(detailTab == "activity" ? "active" : "")" @onclick="OpenActivityTab">فعالیت‌ها</button>
-                </li>
+                @if (d.CanViewMembers)
+                {
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(detailTab == "members" ? "active" : "")" @onclick='() => detailTab = "members"'>
+                            اعضا <span class="badge bg-light text-dark num">@d.Members.Count.Num()</span>
+                        </button>
+                    </li>
+                }
+                @if (d.CanViewActivity)
+                {
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(detailTab == "activity" ? "active" : "")" @onclick="OpenActivityTab">فعالیت‌ها</button>
+                    </li>
+                }
             </ul>
+            @if (!d.CanViewSummary && !d.CanViewOrders && !d.CanViewMindFlow && !d.CanViewMembers && !d.CanViewActivity)
+            {
+                <div class="alert alert-warning py-2">
+                    برای هیچ‌کدام از بخش‌های این پروژه مجوز ندارید. مدیر سامانه می‌تواند از
+                    «تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی» بخش‌های لازم را بدهد.
+                </div>
+            }
 
             @if (detailTab == "summary")
             {
@@ -1113,7 +1134,11 @@ else
         try
         {
             detail = await Http.GetFromJsonAsync<WorkProjectDetailDto>($"/api/workprojects/{id}");
-            if (detail != null) await EnsureUsersAsync();
+            if (detail != null)
+            {
+                detailTab = FirstAllowedTab(detail);
+                await EnsureUsersAsync();
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -1135,8 +1160,20 @@ else
         catch (Exception ex) { if (!silent) Toast.Error(ex.Message); }
     }
 
+    /// <summary>اولین تبی که کاربر مجوز آن را دارد؛ اگر هیچ‌کدام نبود، «summary» می‌ماند و هشدار نشان داده می‌شود.</summary>
+    private static string FirstAllowedTab(WorkProjectDetailDto d)
+    {
+        if (d.CanViewSummary) return "summary";
+        if (d.CanViewOrders) return "orders";
+        if (d.CanViewMindFlow) return "mindflow";
+        if (d.CanViewMembers) return "members";
+        if (d.CanViewActivity) return "activity";
+        return "summary";
+    }
+
     private async Task OpenOrdersTab()
     {
+        if (detail is { CanViewOrders: false }) return;
         detailTab = "orders";
         await Task.WhenAll(LoadOrders(), LoadMindFlowLinkedOrders());
     }
@@ -1235,6 +1272,7 @@ else
 
     private async Task OpenActivityTab()
     {
+        if (detail is { CanViewActivity: false }) return;
         detailTab = "activity";
         if (activity.Count == 0)
         {

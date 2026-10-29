@@ -69,7 +69,10 @@ public class WorkProjectsController : ControllerBase
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
             if (legacy == "Admin") return true;
-            if (legacy == "Operator") return action is "Create" or "View";
+            // اپراتور قدیمی: مثل قبل ساخت/مشاهده — به‌علاوهٔ همهٔ «بخش»های پروژه،
+            // وگرنه بعد از افزودن مجوزهای بخشی، تب‌های پروژه برای این نقش‌ها غیب می‌شدند.
+            if (legacy == "Operator") return action is "Create" or "View"
+                or "Summary" or "Orders" or "MindFlow" or "Members" or "Activity";
             return false;
         }
         return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
@@ -77,6 +80,12 @@ public class WorkProjectsController : ControllerBase
             .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == Module && p.Action == action);
     }
+
+    /// <summary>
+    /// دسترسی به یکی از «قسمت»های صفحهٔ پروژه: Summary / Orders / MindFlow / Members / Activity.
+    /// این مجوزها در «تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی» جداگانه اعطا می‌شوند.
+    /// </summary>
+    private Task<bool> CanSeeSectionAsync(string action) => HasAsync(action);
 
     /// <summary>ویرایش/تمدید/بستن/اعضا: مالک (مدیر پروژه) همیشه مجاز است، بقیه با مجوز Update.</summary>
     private async Task<bool> CanManageAsync(WorkProject p)
@@ -287,10 +296,15 @@ public class WorkProjectsController : ControllerBase
             .ToListAsync();
         var lastByProject = lastLogs.Where(l => l != null).ToDictionary(l => l!.ProjectId);
 
+        // مجوز «بخش نگار ذهنی» جدا از عضویت پروژه است؛ دکمهٔ میان‌بر نگار ذهنی در فهرست
+        // هم فقط با همین مجوز دیده می‌شود.
+        var canMindFlowSection = await CanSeeSectionAsync("MindFlow");
+
         var items = projects.Select(p => ToListItem(p, stats[p.Id], members, myMemberIds,
             lastByProject.TryGetValue(p.Id, out var l) ? l : null, MyUserId, today)).ToList();
         foreach (var item in items)
-            item.CanViewMindFlow = item.OwnerUserId == MyUserId || item.IsMember || myMindFlowMemberIds.Contains(item.Id);
+            item.CanViewMindFlow = canMindFlowSection
+                && (item.OwnerUserId == MyUserId || item.IsMember || myMindFlowMemberIds.Contains(item.Id));
 
         items = (sort ?? "due") switch
         {
@@ -331,6 +345,16 @@ public class WorkProjectsController : ControllerBase
             ? new HashSet<int> { p.Id } : new HashSet<int>();
 
         var item = ToListItem(p, stats[p.Id], members, myMemberIds, lastLog, MyUserId, DateTime.Today);
+
+        // ---------- دسترسی «هر قسمت» ----------
+        // هر تب مجوز مستقل دارد؛ فهرست اعضا هم فقط با مجوز همان بخش برمی‌گردد تا
+        // با پنهان‌کردن تب، داده‌اش در پاسخ API لو نرود.
+        var canSummary = await CanSeeSectionAsync("Summary");
+        var canOrders = await CanSeeSectionAsync("Orders");
+        var canMindFlow = await CanSeeSectionAsync("MindFlow") && await CanViewMindFlowAsync(p);
+        var canMembers = await CanSeeSectionAsync("Members");
+        var canActivity = await CanSeeSectionAsync("Activity");
+
         return Ok(new WorkProjectDetailDto
         {
             Id = item.Id, Number = item.Number, Title = item.Title,
@@ -342,12 +366,16 @@ public class WorkProjectsController : ControllerBase
             MemberCount = item.MemberCount, MemberNames = item.MemberNames,
             DaysLeft = item.DaysLeft, IsOverdue = item.IsOverdue,
             IsMine = item.IsMine, IsMember = item.IsMember,
-            CanViewMindFlow = await CanViewMindFlowAsync(p),
+            CanViewMindFlow = canMindFlow,
+            CanViewSummary = canSummary, CanViewOrders = canOrders,
+            CanViewMembers = canMembers, CanViewActivity = canActivity,
             LastActivityAt = item.LastActivityAt, LastActivityText = item.LastActivityText,
             Description = p.Description, Tags = TagsToList(p.Tags),
             CloseNote = p.CloseNote, ClosedAt = p.ClosedAt,
-            Members = members.Select(m => new WorkProjectMemberDto
-                { Id = m.Id, UserId = m.UserId, Name = m.Name, AddedAt = m.AddedAt }).ToList(),
+            Members = canMembers
+                ? members.Select(m => new WorkProjectMemberDto
+                    { Id = m.Id, UserId = m.UserId, Name = m.Name, AddedAt = m.AddedAt }).ToList()
+                : new List<WorkProjectMemberDto>(),
             CanManage = await CanManageAsync(p),
             CanManageMindFlow = await CanManageMindFlowAsync(p)
         });
@@ -359,6 +387,9 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("mindflow/accessible")]
     public async Task<IActionResult> AccessibleMindFlows([FromQuery] string? q)
     {
+        // فهرست نگار ذهنی هم به مجوز همان بخش گره خورده است؛ وگرنه کاربری که مجوز
+        // «نگار ذهنی» را ندارد، از همین مسیر نام و شمارهٔ پروژه‌ها را می‌دید.
+        if (!await CanSeeSectionAsync("MindFlow")) return Ok(Array.Empty<WorkProjectMindFlowAccessibleProjectDto>());
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var query = _db.WorkProjects.AsNoTracking().Where(p => p.CompanyId == companyId.Value
@@ -385,6 +416,7 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("{id:int}/mindflow")]
     public async Task<IActionResult> GetMindFlow(int id)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await _db.WorkProjects.AsNoTracking()
@@ -408,6 +440,7 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("{id:int}/mindflow/sub")]
     public async Task<IActionResult> GetSubMindFlow(int id, [FromQuery] string? path)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await _db.WorkProjects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id && p.CompanyId == companyId.Value);
@@ -425,6 +458,7 @@ public class WorkProjectsController : ControllerBase
     [HttpPut("{id:int}/mindflow/sub")]
     public async Task<IActionResult> SaveSubMindFlow(int id, [FromQuery] string? path, [FromBody] WorkProjectMindFlowDto dto)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         if (dto is null) return BadRequest(new { message = "دادهٔ زیرمایندفلو ارسال نشده است." });
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
@@ -473,6 +507,7 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("{id:int}/mindflow/members")]
     public async Task<IActionResult> MindFlowMembers(int id)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await GetProjectAsync(id, companyId.Value);
@@ -489,6 +524,7 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("{id:int}/mindflow/candidates")]
     public async Task<IActionResult> MindFlowCandidates(int id, [FromQuery] string? q, [FromQuery] int? take)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await GetProjectAsync(id, companyId.Value);
@@ -513,6 +549,7 @@ public class WorkProjectsController : ControllerBase
     [HttpPost("{id:int}/mindflow/members")]
     public async Task<IActionResult> AddMindFlowMembers(int id, [FromBody] AddWorkProjectMindFlowMembersDto dto)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await GetProjectAsync(id, companyId.Value);
@@ -541,6 +578,7 @@ public class WorkProjectsController : ControllerBase
     [HttpDelete("{id:int}/mindflow/members/{userId:int}")]
     public async Task<IActionResult> RemoveMindFlowMember(int id, int userId)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var project = await GetProjectAsync(id, companyId.Value);
@@ -559,6 +597,7 @@ public class WorkProjectsController : ControllerBase
     [HttpPut("{id:int}/mindflow")]
     public async Task<IActionResult> SaveMindFlow(int id, [FromBody] WorkProjectMindFlowDto dto)
     {
+        if (!await CanSeeSectionAsync("MindFlow")) return Forbid();
         if (dto is null) return BadRequest(new { message = "دادهٔ نقشه ارسال نشده است." });
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
@@ -992,6 +1031,9 @@ public class WorkProjectsController : ControllerBase
         var p = await GetProjectAsync(id, companyId.Value);
         if (p is null) return NotFound(new { message = "پروژه پیدا نشد." });
         if (!await CanManageAsync(p)) return Forbid();
+        // مثل قبل: مجوز Update (یا مالک/مدیر) برای مدیریت اعضا کافی است؛ مجوز مستقل
+        // «Members» هم همین اجازه را می‌دهد تا نقش «مدیر اعضا» بدون حق ویرایش پروژه بسازیم.
+        if (!await CanSeeSectionAsync("Members") && !await HasAsync("Update")) return Forbid();
         if (p.Status == WorkProjectStatus.Closed)
             return BadRequest(new { message = "پروژه بسته شده است." });
 
@@ -1050,7 +1092,7 @@ public class WorkProjectsController : ControllerBase
     [HttpGet("{id:int}/activity")]
     public async Task<IActionResult> Activity(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (!await HasAsync("View")) return Forbid();
+        if (!await CanSeeSectionAsync("Activity")) return Forbid();
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var exists = await _db.WorkProjects.AsNoTracking()

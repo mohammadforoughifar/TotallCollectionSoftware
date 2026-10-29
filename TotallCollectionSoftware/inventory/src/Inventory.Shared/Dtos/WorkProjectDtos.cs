@@ -115,6 +115,15 @@ public class WorkProjectDetailDto : WorkProjectListItemDto
     public bool CanManage { get; set; }
     /// <summary>اختیار ویرایش ذهن‌نگار؛ دعوت مستقیم به MindFlow به‌تنهایی فقط‌خواندنی است.</summary>
     public bool CanManageMindFlow { get; set; }
+
+    // ---------- دسترسی «هر قسمت» صفحهٔ پروژه ----------
+    // همان مجوزهای WorkProjects.Summary/Orders/MindFlow/Members/Activity که در
+    // «تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی» جداگانه اعطا می‌شوند.
+    // کلاینت تب‌ها را با همین پرچم‌ها نشان می‌دهد؛ سرویس هم همان‌ها را الزام می‌کند.
+    public bool CanViewSummary { get; set; }
+    public bool CanViewOrders { get; set; }
+    public bool CanViewMembers { get; set; }
+    public bool CanViewActivity { get; set; }
 }
 
 /// <summary>صفحه‌بندی لیست پروژه‌ها</summary>

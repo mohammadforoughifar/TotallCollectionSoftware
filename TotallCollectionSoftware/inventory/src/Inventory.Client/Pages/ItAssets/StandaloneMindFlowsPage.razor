@@ -3,6 +3,7 @@
 @inject HttpClient Http
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IAuthState Auth
 
 <PageTitle>نگار ذهنی</PageTitle>
 
@@ -19,12 +20,21 @@
         }
     </header>
 
+    @if (!Auth.Has("MindFlow.View"))
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-shield-lock"></i>
+            به «نگار ذهنی» دسترسی ندارید. مجوز آن در «تنظیمات ← نقش‌ها ← دستور کار، پروژه‌ها و نگار ذهنی»
+            قابل اعطاست.
+        </div>
+    }
+
     @if (!string.IsNullOrWhiteSpace(_error))
     {
         <div class="alert alert-warning py-2">@_error</div>
     }
 
-    @if (MapId is not > 0)
+    @if (MapId is not > 0 && Auth.Has("MindFlow.Create"))
     {
         <section class="smf-create card border-0 shadow-sm">
             <div class="card-body">
@@ -68,7 +78,10 @@
                                 </a>
                                 @if (map.IsOwner)
                                 {
-                                    <button type="button" class="btn btn-sm btn-outline-danger" title="حذف نگاشت" @onclick="() => DeleteAsync(map)"><i class="bi bi-trash"></i></button>
+                                    @if (Auth.Has("MindFlow.Delete"))
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" title="حذف نگاشت" @onclick="() => DeleteAsync(map)"><i class="bi bi-trash"></i></button>
+                                    }
                                 }
                             </div>
                         </article>

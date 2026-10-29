@@ -512,7 +512,7 @@
         // (View/Create/Update/Delete). پیش‌تر این ماژول در فهرست تنظیمات نبود و مجوزهایش
         // فقط در گروه «سایر» با نام لاتین دیده می‌شد؛ یعنی مدیر نمی‌توانست آگاهانه و در
         // جای درست، دسترسی بخش پروژه را به نقش بدهد.
-        new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects" } },
+        new() { Title = "دستور کار، پروژه‌ها و نگار ذهنی", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects", "MindFlow" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
         new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
         new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } },
@@ -545,6 +545,7 @@
         ["ItRequests"] = "درخواست خدمت IT",
         ["WorkOrders"] = "دستور کار",
         ["WorkProjects"] = "پروژه‌های کاری (بخش پروژهٔ دستور کار)",
+        ["MindFlow"] = "نگار ذهنی (نقشهٔ ذهنی پروژه‌ها و نگاشت‌های مستقل) 🧠",
         ["SystemDepartments"] = "واحدها",
         ["Settings"] = "تنظیمات",
         ["Warehouses"] = "انبارها",
@@ -699,6 +700,18 @@
         ["WorkProjects.Create"] = "ساخت پروژهٔ کاری",
         ["WorkProjects.Update"] = "ویرایش/تمدید/بستن و مدیریت اعضای پروژه (مالک پروژه همیشه مجاز است)",
         ["WorkProjects.Delete"] = "حذف پروژهٔ کاری",
+        // دسترسی «هر قسمت» صفحهٔ پروژه — هر تب جداگانه اعطا می‌شود
+        ["WorkProjects.Summary"] = "بخش «خلاصه» پروژه (اطلاعات، تاریخ‌ها و وضعیت)",
+        ["WorkProjects.Orders"] = "بخش «دستورها» — فهرست دستور کارهای همان پروژه",
+        ["WorkProjects.MindFlow"] = "بخش «نگار ذهنی» پروژه (نقشهٔ ذهنی)",
+        ["WorkProjects.Members"] = "بخش «اعضا» — دیدن فهرست اعضای پروژه",
+        ["WorkProjects.Activity"] = "بخش «فعالیت‌ها» — تاریخچهٔ تغییرات پروژه",
+        // نگار ذهنی (صفحهٔ مستقل و منو)
+        ["MindFlow.View"] = "دیدن صفحهٔ نگار ذهنی، نگاشت‌های مجاز و نمایش در منو",
+        ["MindFlow.Create"] = "ساخت نگاشت ذهنی مستقل تازه",
+        ["MindFlow.Update"] = "ویرایش محتوای نگاشت (گره/رابط) — با نقش ویرایشگرِ همان نگاشت",
+        ["MindFlow.Delete"] = "حذف نگاشت ذهنی (فقط سازندهٔ نگاشت)",
+        ["MindFlow.Members"] = "مدیریت دسترسی و اعضای نگاشت ذهنی (فقط سازندهٔ نگاشت)",
         ["ItRequests.Manage"] = "مدیر IT (ارجاع و تایید)",
         ["ProjectCartable.Expert"] = "اتمام کارشناسی (تکمیل پروژه)",
         ["DocArchive.Manage"] = "مدیریت آرشیو (حذف و تغییر دسترسی‌ها)",
