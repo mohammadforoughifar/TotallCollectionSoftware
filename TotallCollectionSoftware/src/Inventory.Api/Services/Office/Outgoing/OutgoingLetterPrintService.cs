@@ -1776,6 +1776,34 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     : RichLetterPdfRenderer.AddTo(col, letter.Text, fontSize, lineHeight);
             }
 
+            // «رونوشت» زیر متن و بالای امضا (برای همهٔ شرکت‌ها) — با شکستن خط برای هر رونوشت.
+            var classicCopyNames = new List<string>();
+            if (withCopy)
+            {
+                if (copyTos is { Count: > 0 })
+                {
+                    classicCopyNames.AddRange(copyTos
+                        .Select(copyTo =>
+                        {
+                            var details = new[] { copyTo.Desc, copyTo.RefNo }
+                                .Where(value => !string.IsNullOrWhiteSpace(value))
+                                .Select(ToPersianDigits)
+                                .ToArray();
+                            var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
+                            return $"{ToPersianDigits(copyTo.Name)}{suffix}";
+                        })
+                        .Where(name => !string.IsNullOrWhiteSpace(name)));
+                }
+                else if (!string.IsNullOrWhiteSpace(letter.CopyTo))
+                {
+                    classicCopyNames.AddRange(ToPersianDigits(letter.CopyTo!)
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                }
+            }
+
+            LetterPrintTemplate.CopyToBlock(col, classicCopyNames, smallFontSize,
+                LetterPrintTemplate.SeparatorSpacing, isA5 ? 8f : 12f);
+
             if (signerCards.Count > 0 && !signersKeptWithTrailingParagraph)
             {
                 if (isHomepaLetterhead)
@@ -1786,36 +1814,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 else
                 {
                     AddSignerBlock(col);
-                }
-            }
-
-            if (withCopy && ((copyTos?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(letter.CopyTo)))
-            {
-                col.Item().PaddingTop(isA5 ? 8 : 12)
-                    .LineHorizontal(0.5f).LineColor("#cbd5e1");
-                col.Item().Text("رونوشت:")
-                    .FontFamily("Vazirmatn-Bold").FontSize(smallFontSize)
-                    .LineHeight(lineHeight).AlignRight().DirectionFromRightToLeft();
-
-                if (copyTos is { Count: > 0 })
-                {
-                    foreach (var copyTo in copyTos)
-                    {
-                        var details = new[] { copyTo.Desc, copyTo.RefNo }
-                            .Where(value => !string.IsNullOrWhiteSpace(value))
-                            .Select(ToPersianDigits)
-                            .ToArray();
-                        var suffix = details.Length == 0 ? string.Empty : $" — {string.Join("، ", details)}";
-                        col.Item().Text($"• {ToPersianDigits(copyTo.Name)}{suffix}")
-                            .FontSize(smallFontSize).LineHeight(lineHeight)
-                            .AlignRight().DirectionFromRightToLeft();
-                    }
-                }
-                else
-                {
-                    col.Item().Text(ToPersianDigits(letter.CopyTo))
-                        .FontSize(smallFontSize).LineHeight(lineHeight)
-                        .AlignRight().DirectionFromRightToLeft();
                 }
             }
         }
@@ -2044,6 +2042,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         IReadOnlyList<OutgoingLetterCopyTo>? copyTos,
         bool withCopy)
     {
+        // فهرست رونوشت بلند (بیش از ۶ مورد) نباید با امضا در یک گروه «نشکن» بماند؛ وگرنه
+        // گروه از ارتفاع صفحه بزرگ‌تر می‌شود. در آن حالت رونوشت‌ها جدا و روان چاپ می‌شوند
+        // (هر مورد خط خودش، شکست صفحهٔ طبیعی) و فقط بلوک امضا نشکن می‌ماند.
+        const int CopyGroupLimit = 6;
+
         var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
         var pageHeight = design.PageHeight > 0 ? design.PageHeight : (isA5 ? 595.28f : 841.89f);
         var body = design.Body!;
@@ -2069,7 +2072,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // فاصلهٔ زیر هنر سربرگ: کلید تازهٔ میلی‌متری (DesignContentTopGapMm) و کلید قدیمی
         // نقطه‌ای (DesignHeaderArtGapPt) هر دو پذیرفته می‌شوند؛ بزرگ‌ترشان ملاک است.
         var artGap = Math.Max(_designPrint.ContentTopGap, _designPrint.HeaderArtGap);
-        var contentTop = Math.Max(artBottom + artGap, metaBottom + 6f);
+        // شروع بلوک اطلاعات: با سربرگ واقعی، پایین «نوار آبی» + فاصلهٔ تأییدشدهٔ کارفرما
+        // (۲۳۲/۱۶۳ پایینِ کلِ گرافیک است و متن را بی‌دلیل پایین می‌انداخت).
+        var contentTop = hasLetterhead
+            ? Math.Max(HomepaLetterheadLayout.ContentTop(isA5), metaBottom + 6f)
+            : Math.Max(artBottom + artGap, metaBottom + 6f);
         contentTop = Math.Min(contentTop,
             Math.Max(0f, pageHeight - footerReserve - (isA5 ? 150f : 200f)));
 
@@ -2111,7 +2118,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             new(string.Empty, receiverLine, HideLabel: true),
             new("موضوع", title, BoldValue: true),
-            new("رونوشت", string.Join("، ", copyNames)),
             new("عطف به شماره", externalReference)
         };
 
@@ -2128,6 +2134,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             ? Math.Max(signatureWidth, design.Signatures[1].Left - design.Signatures[0].Left)
             : signatureWidth + (isA5 ? 12f : 14.4f);
         var fixedSignerColumns = signerCards.Count <= Math.Max(1, design.Signatures.Count);
+
+        // «رونوشت» زیر متن و بالای امضا (درخواست کارفرما، برای همهٔ شرکت‌ها).
+        // هر رونوشت در خط خودش؛ فهرست بلند خودکار به خطوط بعد می‌رود.
+        void RenderCopyTo(ColumnDescriptor target)
+            => LetterPrintTemplate.CopyToBlock(target, copyNames, infoFontSize,
+                _designPrint.LabelGap, isA5 ? 8f : 12f);
 
         // امضا، نام و سمت در پایانِ متن و در جریان آن (هیچ‌وقت مختصات ثابت پایین صفحه).
         void RenderSigners(ColumnDescriptor target)
@@ -2148,6 +2160,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         Math.Min(roleBox?.FontSize ?? bodyFontSize, bodyFontSize));
                 }
             });
+        }
+
+        // دنبالهٔ نامه: رونوشت ← امضا؛ به‌صورت یک گروه با آخرین پاراگراف قفل می‌شود.
+        void RenderTail(ColumnDescriptor target)
+        {
+            RenderCopyTo(target);
+            RenderSigners(target);
         }
 
         var document = Document.Create(container =>
@@ -2195,13 +2214,20 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     {
                         // آخرین پاراگراف کوتاه به بلوک امضا «قفل» می‌شود تا امضا تنها به
                         // صفحهٔ بعد نرود؛ متن بلند عادی می‌شکند.
+                        var copySplitsFreely = copyNames.Count > CopyGroupLimit;
                         tailKeptWithText = RichLetterPdfRenderer.AddTo(
                             col, letter.Text, bodyFontSize, LetterPrintTemplate.BodyLineHeight,
-                            keepWithTrailingText: RenderSigners, forceRtlParagraph: true,
+                            keepWithTrailingText: copySplitsFreely ? null : RenderTail,
+                            forceRtlParagraph: true,
                             paragraphSpacing: LetterPrintTemplate.ParagraphSpacing);
                     }
 
-                    if (!tailKeptWithText) RenderSigners(col);
+                    if (!tailKeptWithText)
+                    {
+                        // فهرست بلند رونوشت بیرون از گروه امضا می‌ماند تا صفحه‌بندی طبیعی داشته باشد.
+                        if (copyNames.Count > CopyGroupLimit) RenderCopyTo(col);
+                        RenderSigners(col);
+                    }
                 });
 
                 // ── شمارهٔ صفحه: فقط اگر نامه به صفحهٔ دوم رفت («صفحه ۲ از ۲») ──

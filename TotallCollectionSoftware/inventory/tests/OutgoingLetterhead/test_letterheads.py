@@ -997,20 +997,41 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn('"DesignMetaSafeLeftMm": 15', settings)
 
     def test_company_1003_template_announces_receiver_title_and_body(self):
+        """قالب ۱۰۰۳ گیرنده/موضوع/متن را اعلام می‌کند و برچسب‌های قدیمی را ندارد.
+
+        کارفرما خواست «گیرنده نامه:» و «عنوان نامه:» چاپ نشوند؛ در قالب، برچسب گیرنده
+        خالی شده و برچسب عنوان به «موضوع» تغییر کرده است.
+        """
         for tree in self.TREES:
             for size in ("A4", "A5"):
                 with self.subTest(tree=tree.parts[-3], size=size):
                     root = ET.parse(tree / "Inventory.Api" / "Reports" / "OutgoingLetters"
                                     / "Companies" / "1003" / f"Outgoing-{size}.mrt").getroot()
+                    page = root.find("./Pages/Page1")
                     texts = [e for e in root.iter() if e.tag.split("}")[-1] == "Text"]
-                    values = ["".join(e.itertext()) for e in texts]
-                    joined = "\n".join(values)
-                    # در فایل طرح، این کپشن‌ها به‌صورت «:گیرنده نامه» ذخیره شده‌اند
-                    # (نقطهٔ ویرگول را راست‌به‌چپ نشان می‌دهد)، پس فقط خودِ متن مهم است.
-                    self.assertIn("گیرنده نامه", joined)
-                    self.assertIn("عنوان نامه", joined)
+                    joined = "\n".join("".join(e.itertext()) for e in texts)
+                    # گیرنده/عنوان/متن با همان فیلدهای DataSource1 شناسایی می‌شوند.
+                    self.assertIn("{DataSource1.GirandeAsli}", joined)
+                    self.assertIn("{DataSource1.TitleLetter}", joined)
+                    self.assertIn("{DataSource1.TextLetter}", joined)
                     # کادر رونوشت با همان فیلدهای DataSource1.Name/Desc شناسایی می‌شود.
                     self.assertIn("{DataSource1.Desc}", joined)
+                    # برچسب‌های قدیمی: «گیرنده نامه» دیگر وجود ندارد و «عنوان نامه» شده «موضوع».
+                    self.assertNotIn("گیرنده نامه", joined)
+                    self.assertNotIn("عنوان نامه", joined)
+                    self.assertIn(":موضوع", joined)
+
+                    # ترتیب عمودی: گیرنده ← موضوع ← متن ← رونوشت ← کادر امضا
+                    tops = {}
+                    for component in page.find("Components"):
+                        name = component.findtext("Name")
+                        rect = component.findtext("ClientRectangle")
+                        if name in ("Text8", "Text5", "Text7", "Text11", "Image1") and rect:
+                            tops[name] = float(rect.split(",")[1])
+                    self.assertLess(tops["Text8"], tops["Text5"], "گیرنده باید بالای موضوع باشد")
+                    self.assertLess(tops["Text5"], tops["Text7"], "موضوع باید بالای متن باشد")
+                    self.assertLess(tops["Text7"], tops["Text11"], "رونوشت باید زیر متن باشد")
+                    self.assertLess(tops["Text11"], tops["Image1"], "رونوشت باید بالای کادر امضا باشد")
 
 
 if __name__ == "__main__":

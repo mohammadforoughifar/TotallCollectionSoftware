@@ -40,6 +40,18 @@ internal static class HomepaLetterheadLayout
     /// </summary>
     internal static float HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f;
 
+    /// <summary>
+    /// پایین «نوار آبی» سربرگ، اندازه‌گیری‌شده روی خودِ تصویر: ۱۱۲٫۸pt در A4 و ۷۹٫۴pt در A5.
+    /// (مقدار ۲۳۲/۱۶۳ برای «پایین کل گرافیک» است، نه پایین نوار؛ متن نباید از آن‌جا شروع شود.)
+    /// </summary>
+    internal static float BandBottom(bool isA5) => isA5 ? 79.4f : 112.8f;
+
+    /// <summary>
+    /// شروع بلوک اطلاعات (گیرنده/موضوع/متن). کارفرما خواست متن کمی پایین‌تر از نوار آبی باشد؛
+    /// درخواست نهایی: دو خط + دو خط زیر نوار = ۹۷pt در A4 و ۷۲pt در A5.
+    /// </summary>
+    internal static float ContentTop(bool isA5) => BandBottom(isA5) + (isA5 ? 72f : 97f);
+
     // Top دقیقاً برابر «MRT منهای مبدأ page.Header» است تا هم چاپ نامهٔ داخلی و هم نامهٔ صادره
     // روی خط برچسبِ چاپ‌شده بنشینند (مرکز برچسب‌ها روی تصویر: ۶۶٫۵ / ۸۴٫۵ / ۱۰۳٫۲pt در A4).
     internal static Field Number(bool isA5) => isA5

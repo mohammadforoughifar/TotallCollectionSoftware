@@ -214,7 +214,47 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 # فقط «دارد»/«ندارد» — تعداد برگ جلوی پیوست نوشته نمی‌شود (درخواست کارفرما).
                 self.assertIn('var attachment = attachmentCount > 0 ? "دارد" : "ندارد";', outgoing)
                 self.assertNotIn('" برگ)"', outgoing)
-                self.assertIn('string.Join("، ", copyNames)', outgoing)
+                # رونوشت دیگر ردیفِ بلوک اطلاعات نیست؛ بلوک جداگانه است.
+                self.assertNotIn('new("رونوشت"', outgoing)
+                self.assertIn("LetterPrintTemplate.CopyToBlock(", outgoing)
+
+    def test_copy_to_goes_after_the_text_and_before_the_signatures(self):
+        """«رونوشت» زیر متن و بالای امضا می‌آید (برای همهٔ شرکت‌ها) و هر رونوشت خط خودش را دارد."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                outgoing = self.outgoing(tree)
+                template = self.template(tree)
+
+                # قالب مشترک: هر رونوشت یک آیتم مستقل است تا فهرست بلند به خط بعد برود.
+                block = template.split("internal static void CopyToBlock(", 1)[1].split("\n    }", 1)[0]
+                self.assertIn("values.Item().Text(text =>", block)
+                self.assertIn("for (var index = 0; index < visible.Count; index++)", block)
+                self.assertIn("visible.Count", block)
+                # مقدار در ستون خودش می‌شکند (تورفتگی آویزان)، برچسب جدا و راست‌چین.
+                self.assertIn("line.RelativeItem().AlignTop().AlignRight().Column(values =>", block)
+                self.assertIn("line.ConstantItem(labelWidth).AlignTop().AlignRight()", block)
+                self.assertIn('const string label = "رونوشت:";', block)
+
+                # مسیر طرح: تابع دنباله = رونوشت ← امضا.
+                design = outgoing.split("private byte[] BuildDesignContentPdf(", 1)[1]
+                design = design.split("private static float FitFontSize", 1)[0]
+                self.assertIn("void RenderTail(ColumnDescriptor target)", design)
+                tail = design.split("void RenderTail(ColumnDescriptor target)", 1)[1].split("}", 1)[0]
+                self.assertLess(tail.index("RenderCopyTo(target)"), tail.index("RenderSigners(target)"),
+                                "رونوشت باید قبل از امضا چاپ شود")
+                # گروه «آخرین پاراگراف + رونوشت + امضا»؛ ولی فهرست بلند از گروه جدا می‌شود
+                # تا ارتفاع گروه از صفحه بیشتر نشود.
+                self.assertIn("keepWithTrailingText: copySplitsFreely ? null : RenderTail", design)
+                self.assertIn("const int CopyGroupLimit = 6;", design)
+                self.assertIn("if (copyNames.Count > CopyGroupLimit) RenderCopyTo(col);", design)
+                self.assertIn("RenderSigners(col);", design)
+
+                # مسیر کلاسیک: هم‌ترتیب و با همان بلوک مشترک.
+                classic = outgoing.split("void AddSubjectAndFollowingContent(", 1)[1]
+                classic = classic.split("// QuestPDF starts page.Header()", 1)[0]
+                self.assertLess(classic.index("LetterPrintTemplate.CopyToBlock("),
+                                classic.index("AddSignerBlock(col);"),
+                                "در مسیر کلاسیک هم رونوشت باید قبل از امضا بیاید")
 
     def test_persian_date_and_mixed_values_keep_their_order(self):
         """تاریخ شمسی با ارقام فارسی و مقدار ترکیبی با جداسازی جهت (bdi)."""
@@ -293,13 +333,21 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 self.assertIn("var bodyFontSize = body.FontSize > 0 ? Math.Min(likeInnerLetter, body.FontSize) : likeInnerLetter;", outgoing)
                 self.assertIn("page.MarginBottom(footerReserve);", outgoing)
 
-    def test_content_starts_below_the_letterhead_art(self):
+    def test_content_starts_below_the_blue_band_not_below_the_whole_art(self):
+        """متن از پایین «نوار آبی» شروع می‌شود (درخواست کارفرما)، نه از پایین کل گرافیک.
+
+        قبلاً `HeaderArtBottom` (۲۳۲pt در A4) ملاک بود و متن بی‌دلیل پایین می‌افتاد؛
+        اختلاف اندازه‌گیری‌شده تا پایین نوار ۱۱۹pt بود.
+        """
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
-                self.assertIn("var artBottom = hasLetterhead ? HomepaLetterheadLayout.HeaderArtBottom(isA5) : 0f;", outgoing)
-                self.assertIn("var artGap = Math.Max(_designPrint.ContentTopGap, _designPrint.HeaderArtGap);", outgoing)
-                self.assertIn("var contentTop = Math.Max(artBottom + artGap, metaBottom + 6f);", outgoing)
+                layout = (office(tree) / "Outgoing" / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
+                self.assertIn("internal static float BandBottom(bool isA5) => isA5 ? 79.4f : 112.8f;", layout)
+                self.assertIn("internal static float ContentTop(bool isA5) => BandBottom(isA5) + (isA5 ? 72f : 97f);", layout)
+                self.assertIn("Math.Max(HomepaLetterheadLayout.ContentTop(isA5), metaBottom + 6f)", outgoing)
+                # مسیر بدون سربرگ همان رفتار قبلی را نگه می‌دارد.
+                self.assertIn("Math.Max(artBottom + artGap, metaBottom + 6f)", outgoing)
 
     def test_settings_are_synchronised_between_the_two_trees(self):
         """هر دو درخت باید همان کلیدها و همان مقادیر را داشته باشند."""

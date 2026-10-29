@@ -105,6 +105,7 @@ class PrintLayout:
                   / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
         self.design_footer = self._ternary(layout, "DesignFooterReserve\\(bool isA5\\)", size)
         self.art_bottom = self._ternary(layout, "HeaderArtBottom\\(bool isA5\\)", size)
+        self.band_bottom = self._ternary(layout, "BandBottom\\(bool isA5\\)", size)
 
         template = (tree / "Inventory.Api" / "Services" / "Office"
                     / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
@@ -123,8 +124,16 @@ class PrintLayout:
         body = self.geometry.boxes["body"][0]
         meta_bottom = max(box[1] + box[3] for box in (number, date, attachment))
 
-        # contentTop = max(پایین هنر + فاصلهٔ تنظیمات, پایین ناحیهٔ شماره/تاریخ/پیوست + ۶).
-        self.content_top = max(self.art_bottom + self.content_gap_mm * 72 / 25.4, meta_bottom + 6)
+        # contentTop = max(HomepaLetterheadLayout.ContentTop, پایین ناحیهٔ شماره/تاریخ/پیوست + ۶).
+        # ContentTop خودش = پایین نوار آبی + فاصلهٔ تأییدشده (۹۷/۷۲) است.
+        content_top_line = re.search(
+            r"ContentTop\(bool isA5\) => BandBottom\(isA5\) \+ \(isA5 \? ([\d.]+)f : ([\d.]+)f\)",
+            layout)
+        if content_top_line is None:
+            raise AssertionError("ContentTop با الگوی BandBottom + فاصله پیدا نشد")
+        content_top_declared = self.band_bottom + float(
+            content_top_line.group(1) if size == "A5" else content_top_line.group(2))
+        self.content_top = max(content_top_declared, meta_bottom + 6)
         # سقفِ «دست‌کم ۲۰۰pt متن در صفحهٔ اول» (۱۵۰ در A5).
         self.content_top = min(self.content_top,
                                self.geometry.page_height - self.design_footer
@@ -145,7 +154,7 @@ class PrintLayout:
         self.chars_per_line = max(20.0, self.text_width / (self.body_font * 0.5))
 
         # بلوک اطلاعات: عنوان/گیرنده/ایجادکننده/رونوشت (هر ردیف ۱٫۵۵em و فاصلهٔ بین ردیف‌ها).
-        self.info_rows = 4
+        self.info_rows = 3        # گیرنده (بدون برچسب) + موضوع + عطف به شماره (رونوشت رفته پایین)
         row = self.body_font * 1.55
         self.info_height = (self.info_rows * row
                             + (self.info_rows - 1) * max(self.paragraph_spacing, self.body_font * 0.45))
@@ -273,12 +282,16 @@ class DesignFlowSampleTests(unittest.TestCase):
                                     "بلوک امضا نباید تنها و بی‌متن در صفحهٔ آخر بیاید")
 
     def test_letterhead_art_and_footer_leave_a_usable_text_area(self):
-        """ناحیهٔ متن باید از پایین قوس سربرگ شروع شود و بالای گرافیک پابرگ بماند."""
+        """متن از پایین نوار آبی شروع می‌شود (نه از پایین کل گرافیک) و بالای پابرگ می‌ماند."""
         for tree in TREES:
             for size in ("A4", "A5"):
                 with self.subTest(tree=tree.name, size=size):
                     layout = PrintLayout(tree, size)
-                    self.assertGreater(layout.content_top, layout.art_bottom)
+                    self.assertGreater(layout.content_top, layout.band_bottom,
+                                       "متن نباید روی نوار آبی بیفتد")
+                    gap = layout.content_top - layout.band_bottom
+                    self.assertGreaterEqual(gap, 60 if size == "A4" else 50,
+                                            "فاصلهٔ متن از نوار آبی همان تأییدشدهٔ کارفرما باشد")
                     self.assertGreater(layout.text_area,
                                        layout.signature_block + layout.line_height() * 6,
                                        f"ناحیهٔ متن {size} برای نامهٔ کوتاه + امضا کافی نیست")

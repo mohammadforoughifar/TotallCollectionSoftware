@@ -124,6 +124,59 @@ internal static class LetterPrintTemplate
     }
 
     /// <summary>
+    /// بلوک «رونوشت:» — زیر متن نامه و بالای بلوک امضا (درخواست کارفرما، برای همهٔ شرکت‌ها).
+    /// هر رونوشت در خط خودش می‌آید؛ اگر تعدادشان زیاد باشد خودکار به خطوط بعد می‌رود
+    /// (بدون بریدگی و بدون فشرده‌کردن فونت) و خط دومِ هر رونوشت زیر خودش (تورفتگی آویزان)
+    /// می‌نشیند، نه زیر برچسب.
+    /// </summary>
+    internal static void CopyToBlock(
+        ColumnDescriptor column,
+        IReadOnlyList<string> copies,
+        float fontSize,
+        float labelGap,
+        float topPadding)
+    {
+        var visible = copies
+            .Where(copy => !string.IsNullOrWhiteSpace(copy))
+            .Select(copy => copy.Trim())
+            .ToList();
+        if (visible.Count == 0) return;
+
+        const string label = "رونوشت:";
+        var labelWidth = label.Length * fontSize * 0.58f + fontSize;
+        column.Item().PaddingTop(topPadding).Row(line =>
+        {
+            // هر رونوشت یک آیتم مستقل: با زیاد شدن تعداد، به خطوط بعد می‌رود.
+            line.RelativeItem().AlignTop().AlignRight().Column(values =>
+            {
+                for (var index = 0; index < visible.Count; index++)
+                {
+                    values.Item().Text(text =>
+                    {
+                        text.DefaultTextStyle(style => style
+                            .FontFamily("Vazirmatn")
+                            .FontSize(fontSize)
+                            .LineHeight(1.55f)
+                            .DirectionFromRightToLeft());
+                        text.AlignRight();
+                        text.Span(visible[index]);
+                    });
+                }
+            });
+
+            line.ConstantItem(labelGap);
+
+            line.ConstantItem(labelWidth).AlignTop().AlignRight()
+                .Text(label)
+                .FontFamily("Vazirmatn-Bold")
+                .FontSize(fontSize)
+                .LineHeight(1.55f)
+                .AlignRight()
+                .DirectionFromRightToLeft();
+        });
+    }
+
+    /// <summary>
     /// خط افقی نازک و خاکستری بین بلوک اطلاعات و متن نامه. عرض آن خودکار برابر عرض
     /// ناحیهٔ متن است (چون داخل همان ستون/حاشیه رسم می‌شود) و فاصلهٔ بالا/پایینش یکسان است.
     /// </summary>
