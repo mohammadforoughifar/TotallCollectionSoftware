@@ -482,7 +482,23 @@
                                 {
                                     <div class="kv">
                                         <b>@(r.Related == 2 ? "عطف به" : "پیرو")</b>
-                                        <span class="num" title="@r.RelateLetterTitle">@(string.IsNullOrWhiteSpace(r.RelateLetterNumber) ? r.RelateLetterNumber : r.RelateLetterNumber)</span>
+                                        @* پیش‌تر فقط شماره چاپ می‌شد و عنوان در title پنهان بود؛
+                                           عبارت شرطی هم دو شاخهٔ یکسان داشت (بی‌اثر). حالا
+                                           شماره و عنوان کنار هم دیده می‌شوند. *@
+                                        <span>
+                                            @if (!string.IsNullOrWhiteSpace(r.RelateSourceTitle))
+                                            {
+                                                <span class="tg">@r.RelateSourceTitle</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(r.RelateLetterNumber))
+                                            {
+                                                <span class="num"># @r.RelateLetterNumber.FaDigits()</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(r.RelateLetterTitle))
+                                            {
+                                                <span title="@r.RelateLetterTitle"> — @r.RelateLetterTitle</span>
+                                            }
+                                        </span>
                                     </div>
                                 }
                             </div>

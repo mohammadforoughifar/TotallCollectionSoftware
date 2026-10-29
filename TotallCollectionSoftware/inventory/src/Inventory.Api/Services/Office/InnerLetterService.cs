@@ -536,8 +536,17 @@ public class InnerLetterService : IInnerLetterService
                 Id = r.Id,
                 Related = r.Related,
                 RelateLetterId = r.RelateLetterId,
-                RelateLetterNumber = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.LetterNumber : "",
-                RelateLetterTitle = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.Title : ""
+                // نامهٔ مرتبط می‌تواند از هر سه دفتر باشد (داخلی/صادره/وارده)؛ پیش‌تر فقط
+                // داخلی خوانده می‌شد و برای بقیه، شماره و عنوان خالی برمی‌گشت.
+                RelateLetterNumber = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.LetterNumber
+                                   : r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber
+                                   : r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.LetterNumber
+                                   : "",
+                RelateLetterTitle = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.Title
+                                  : r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title
+                                  : r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.Title
+                                  : "",
+                RelateSourceType = r.RelateLetter.SourceType
             })
             .ToListAsync();
 

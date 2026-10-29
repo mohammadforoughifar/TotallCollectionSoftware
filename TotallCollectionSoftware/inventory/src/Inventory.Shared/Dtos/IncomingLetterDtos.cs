@@ -124,10 +124,20 @@ public class AddIncomingLetterDto
     /// <summary>متن ارجاع اولیه</summary>
     public string? InitialMatnErja { get; set; }
 
-    /// <summary>مهلت پاسخ ارجاع اولیه</summary>
+    /// <summary>مهلت پاسخ ارجاع اولیه (مهلت رسیدگی گیرندهٔ اول)</summary>
     public DateTime? InitialMohlatPasokh { get; set; }
 
-    /// <summary>شناسه‌های نامه‌های مرتبط (عطف/پیرو)</summary>
+    /// <summary>
+    /// نامه‌های مرتبط (عطف / پیرو). Related = 2 یعنی «عطف»، 1 یعنی «پیرو».
+    /// تا پیش از این هیچ ورودی UI و هیچ ذخیره‌سازی‌ای برای آن نبود.
+    /// </summary>
+    public List<RelatedLetterDto> RelatedLetters { get; set; } = new();
+
+    /// <summary>
+    /// سازگاری با نسخه‌های قبلی کلاینت: شناسهٔ LetterSource نامه‌های مرتبط.
+    /// چون نوع رابطه در این فیلد مشخص نیست، همه به‌صورت «پیرو» ثبت می‌شوند.
+    /// کلاینت جدید از RelatedLetters استفاده می‌کند.
+    /// </summary>
     public List<int> RelatedSourceIds { get; set; } = new();
 }
 
@@ -150,6 +160,12 @@ public class EditIncomingLetterDto
     public string? Description { get; set; }
     public int Mahramanegi { get; set; }
     public int Foriat { get; set; }
+
+    /// <summary>
+    /// نامه‌های مرتبط (عطف/پیرو) — فهرست کامل و جایگزین‌شونده.
+    /// null یعنی «دست نزن»؛ فهرست خالی یعنی «همهٔ رابطه‌ها حذف شوند».
+    /// </summary>
+    public List<RelatedLetterDto>? RelatedLetters { get; set; }
 }
 
 /// <summary>آمار کارتابل نامه وارده</summary>

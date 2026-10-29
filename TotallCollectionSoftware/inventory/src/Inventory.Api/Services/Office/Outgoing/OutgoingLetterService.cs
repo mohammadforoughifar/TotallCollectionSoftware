@@ -948,9 +948,12 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Related = r.Related,
                 RelateLetterId = r.RelateLetterId,
                 RelateLetterNumber = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.LetterNumber :
-                                     r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.LetterNumber : "",
+                                     r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.LetterNumber :
+                                     r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber : "",
                 RelateLetterTitle = r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.Title :
-                                    r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.Title : ""
+                                    r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.Title :
+                                    r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title : "",
+                RelateSourceType = r.RelateLetter.SourceType
             }).ToListAsync();
 
         if (myErja != null)

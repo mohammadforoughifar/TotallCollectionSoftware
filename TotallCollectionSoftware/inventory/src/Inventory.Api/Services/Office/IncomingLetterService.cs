@@ -503,8 +503,17 @@ public class IncomingLetterService : IIncomingLetterService
                 Id = r.Id,
                 Related = r.Related,
                 RelateLetterId = r.RelateLetterId,
-                RelateLetterNumber = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber : "",
-                RelateLetterTitle = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title : ""
+                // نامهٔ مرتبط می‌تواند از هر سه دفتر باشد (وارده/داخلی/صادره)؛ پیش‌تر فقط
+                // نامهٔ وارده خوانده می‌شد و برای بقیه، شماره و عنوان خالی برمی‌گشت.
+                RelateLetterNumber = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.LetterNumber
+                                   : r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.LetterNumber
+                                   : r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.LetterNumber
+                                   : "",
+                RelateLetterTitle = r.RelateLetter.IncomingLetter != null ? r.RelateLetter.IncomingLetter.Title
+                                  : r.RelateLetter.InnerLetter != null ? r.RelateLetter.InnerLetter.Title
+                                  : r.RelateLetter.OutgoingLetter != null ? r.RelateLetter.OutgoingLetter.Title
+                                  : "",
+                RelateSourceType = r.RelateLetter.SourceType
             })
             .ToListAsync();
 
@@ -657,6 +666,36 @@ public class IncomingLetterService : IIncomingLetterService
             });
         }
 
+        // ---------- عطف / پیرو (نامه‌های مرتبط) ----------
+        // AddIncomingLetterDto.RelatedSourceIds از قبل وجود داشت ولی هیچ‌جا ذخیره نمی‌شد؛
+        // نتیجه این بود که بخش «نامه‌های مرتبط» در ریدر کارتابل همیشه خالی می‌ماند.
+        // حالا هم فهرست نوع‌دار (RelatedLetters) و هم فیلد قدیمی (RelatedSourceIds ⇒ پیرو)
+        // پشتیبانی می‌شود.
+        var relSeeds = new List<(int Id, int Type)>();
+        foreach (var rel in dto.RelatedLetters ?? new List<RelatedLetterDto>())
+            if (rel.RelateLetterId > 0) relSeeds.Add((rel.RelateLetterId, rel.Related == 2 ? 2 : 1));
+        foreach (var relId in dto.RelatedSourceIds ?? new List<int>())
+            if (relId > 0) relSeeds.Add((relId, 1));
+
+        foreach (var seed in relSeeds
+                     .Where(x => x.Id != source.Id)     // نامه به خودش عطف/پیرو نمی‌شود
+                     .GroupBy(x => x.Id)                // یک رابطه به ازای هر نامه
+                     .Select(g => g.First()))
+        {
+            // نامهٔ مقصد باید واقعاً وجود داشته باشد و نرم‌حذف نشده باشد.
+            var exists = await _db.LetterSources.AnyAsync(x => x.Id == seed.Id && !x.IsDelete);
+            if (!exists) continue;
+
+            _db.RelatedLetters.Add(new RelatedLetter
+            {
+                Related = seed.Type,
+                LetterId = source.Id,
+                RelateLetterId = seed.Id,
+                UserId = userId,
+                IsDelete = false
+            });
+        }
+
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
@@ -774,6 +813,54 @@ public class IncomingLetterService : IIncomingLetterService
         letter.Mahramanegi = dto.Mahramanegi;
         letter.Foriat = dto.Foriat;
 
+        // ---------- همگام‌سازی نامه‌های مرتبط (عطف/پیرو) ----------
+        // همان الگوی InnerLetterService.EditAsync: ردیف‌های قبلی نرم‌حذف و ردیف‌های
+        // باقی‌مانده «زنده» می‌شوند تا رکورد تکراری ساخته نشود. null یعنی دست نزن؛
+        // فهرست خالی یعنی همهٔ رابطه‌ها حذف شوند.
+        var relatedChanged = false;
+        if (dto.RelatedLetters is not null)
+        {
+            var oldRels = await _db.RelatedLetters
+                .Where(r => r.LetterId == letterId && !r.IsDelete)
+                .ToListAsync();
+
+            var wanted = dto.RelatedLetters
+                .Where(x => x.RelateLetterId > 0 && x.RelateLetterId != letterId)
+                .GroupBy(x => x.RelateLetterId)
+                .Select(g => (Id: g.Key, Type: g.First().Related == 2 ? 2 : 1))
+                .ToList();
+
+            // مقایسه «قبل از» تغییر ردیف‌ها انجام می‌شود؛ وگرنه نوعِ عطف↔پیرو هم‌سان
+            // می‌شد و تغییر رابطه در متن اعلان دیده نمی‌شد.
+            var oldSnapshot = oldRels.Select(o => (Id: o.RelateLetterId, Type: o.Related)).ToList();
+
+            foreach (var r in oldRels) r.IsDelete = true;
+
+            foreach (var w in wanted)
+            {
+                var keep = oldRels.FirstOrDefault(o => o.RelateLetterId == w.Id);
+                if (keep != null)
+                {
+                    keep.IsDelete = false;
+                    keep.Related = w.Type;
+                    continue;
+                }
+                var exists = await _db.LetterSources.AnyAsync(x => x.Id == w.Id && !x.IsDelete);
+                if (!exists) continue;
+                _db.RelatedLetters.Add(new RelatedLetter
+                {
+                    Related = w.Type,
+                    LetterId = letterId,
+                    RelateLetterId = w.Id,
+                    UserId = userId,
+                    IsDelete = false
+                });
+            }
+
+            relatedChanged = oldSnapshot.Count != wanted.Count
+                             || oldSnapshot.Any(o => !wanted.Any(w => w.Id == o.Id && w.Type == o.Type));
+        }
+
         await _db.SaveChangesAsync();
 
         // ---------- اعلان «به‌روزرسانی نامه» به افرادِ در گردش که نامه را دیده‌اند ----------
@@ -797,6 +884,7 @@ public class IncomingLetterService : IIncomingLetterService
             var body = titleChanged
                 ? $"شماره {letter.LetterNumber} — عنوان به «{letter.Title}» تغییر کرد؛ ویرایش توسط {byName}"
                 : $"شماره {letter.LetterNumber} — محتوای نامه ویرایش شد؛ ویرایش توسط {byName}";
+            if (relatedChanged) body += " · نامه‌های مرتبط (عطف/پیرو) هم به‌روزرسانی شد";
 
             await _notify.SendManyAsync(seenUserIds,
                 $"نامه وارده ویرایش شد: {letter.Title}",

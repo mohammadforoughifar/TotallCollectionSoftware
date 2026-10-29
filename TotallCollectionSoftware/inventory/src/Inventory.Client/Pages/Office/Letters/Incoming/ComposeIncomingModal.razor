@@ -1,5 +1,7 @@
 @using Inventory.Shared.Security
 @inject IIncomingLetterService IncomingSvc
+@inject ILetterService LetterSvc
+@inject IOutgoingLetterService OutgoingSvc
 @inject IEmailClientService EmailSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
@@ -146,11 +148,97 @@
                                      Users="users" Groups="groups"
                                      SelectedUsers="selUsers" SelectedGroups="selGroups" />
 
-                    <div style="display:flex; gap:10px; margin-top:10px">
-                        <input class="tin" style="flex:1" placeholder="دستور / متن ارجاع اولیه (پاراف)…" @bind="initialMatnErja" />
+                    <div style="display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap">
+                        <input class="tin" style="flex:1; min-width:220px" placeholder="دستور / متن ارجاع اولیه (پاراف)…" @bind="initialMatnErja" />
+                        <div style="width:200px">
+                            <DatePicker Value="initialMohlat" ValueChanged="d => initialMohlat = d" AllowClear="true" Placeholder="مهلت پاسخ" />
+                        </div>
                     </div>
+                    <small class="text-muted" style="display:block; margin-top:6px; font-size:11px">
+                        مهلت پاسخ فقط روی ارجاع اولیه ثبت می‌شود؛ خالی گذاشتن آن یعنی بدون مهلت.
+                    </small>
                 </div>
             }
+
+            @* ---------- نامه‌های مرتبط (عطف / پیرو) ---------- *@
+            <div class="fcard" style="margin-top:8px">
+                <label><i class="bi bi-link-45deg" style="color:var(--p)"></i> نامه‌های مرتبط (عطف / پیرو) <span class="opt">اختیاری</span></label>
+
+                @if (related.Count > 0)
+                {
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px">
+                        @foreach (var r in related)
+                        {
+                            var rr = r;
+                            <span class="rl-pill">
+                                <b>@(rr.Related == 2 ? "عطف به" : "پیرو")</b>
+                                <span class="num"># @rr.RelateLetterNumber.FaDigits()</span>
+                                <span class="rl-pill-ttl">@rr.RelateLetterTitle</span>
+                                <button type="button" class="rl-pill-x" @onclick="() => RemoveRel(rr)" title="حذف رابطه"><i class="bi bi-x-lg"></i></button>
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:12px; color:#64748b; margin-bottom:8px">
+                        اگر این نامه پاسخ/پیگیری نامهٔ دیگری است، آن را به‌عنوان «عطف» یا «پیرو» ثبت کنید.
+                    </div>
+                }
+
+                <div style="display:flex; gap:6px; flex-wrap:wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenRel(2)">
+                        <i class="bi bi-arrow-90deg-right"></i> افزودن عطف
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenRel(1)">
+                        <i class="bi bi-arrow-return-left"></i> افزودن پیرو
+                    </button>
+                </div>
+
+                @if (relOpen)
+                {
+                    <div class="rl-panel">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px">
+                            @foreach (var tab in new[] { (3, "وارده"), (1, "داخلی"), (2, "صادره") })
+                            {
+                                <button type="button" class="@RelTabCls(tab.Item1)" @onclick="() => relSourceType = tab.Item1">@tab.Item2</button>
+                            }
+                            <span style="flex:1"></span>
+                            <span style="font-size:11px; color:#64748b">
+                                نوع رابطه: <b>@(relType == 2 ? "عطف به" : "پیرو")</b>
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseRel"><i class="bi bi-x-lg"></i> بستن</button>
+                        </div>
+
+                        <input class="tin" placeholder="جستجوی شماره یا عنوان نامه…" @bind="relSearch" @bind:event="oninput" @bind:after="SearchRel" />
+
+                        <div class="rl-list">
+                            @if (relBusy)
+                            {
+                                <div class="rl-empty"><span class="spinner-border spinner-border-sm"></span> در حال جستجو…</div>
+                            }
+                            else if (!relResults.Any(x => x.SourceType == relSourceType))
+                            {
+                                <div class="rl-empty">نامه‌ای برای افزودن پیدا نشد (یا همهٔ نتایج پیش‌تر افزوده شده‌اند).</div>
+                            }
+                            else
+                            {
+                                @foreach (var rl in relResults.Where(x => x.SourceType == relSourceType))
+                                {
+                                    var pick = rl;
+                                    <div class="rl-row" @onclick="() => AddRel(pick)">
+                                        <i class="bi bi-plus-circle"></i>
+                                        <div style="flex:1">
+                                            <b>@pick.Title</b>
+                                            <small class="num"># @pick.LetterNumber.FaDigits() · @pick.Date.ToFa()</small>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
 
             @* ---------- پنل پیشرفته پیوست‌ها (اسکن + سیستم) ---------- *@
             <div class="fcard" style="margin-top:8px">
@@ -274,6 +362,27 @@
     private List<LetterNumberReservationDto> reservations = new();
     private List<IBrowserFile> pendingFiles = new();
 
+    // ---------- مهلت پاسخ ارجاع اولیه ----------
+    private DateTime? initialMohlat;
+
+    // ---------- نامه‌های مرتبط (عطف / پیرو) ----------
+    private List<RelatedLetterDto> related = new();
+    private bool relOpen = false;
+    private int relType = 2;          // 2 = عطف، 1 = پیرو
+    private int relSourceType = 3;    // 3 = وارده، 1 = داخلی، 2 = صادره
+    private string relSearch = "";
+    private bool relBusy = false;
+    private List<RelatedPick> relResults = new();
+
+    private sealed class RelatedPick
+    {
+        public int LetterId { get; set; }
+        public string LetterNumber { get; set; } = "";
+        public string Title { get; set; } = "";
+        public DateTime Date { get; set; }
+        public int SourceType { get; set; }
+    }
+
     public async Task OpenCreate()
     {
         editLetterId = 0;
@@ -283,6 +392,8 @@
         typeErsal = "دستی / پیک"; deliveryName = ""; selectedSabt = 0;
         mahramanegi = 0; foriat = 0; description = "";
         selUsers.Clear(); selGroups.Clear(); initialMatnErja = "";
+        initialMohlat = null;
+        related.Clear(); relOpen = false; relSearch = ""; relResults = new(); relType = 2; relSourceType = 3;
         pendingFiles.Clear();
         errTitle = false; errFerestande = false;
         visible = true;
@@ -309,6 +420,20 @@
         mahramanegi = letter.Mahramanegi;
         foriat = letter.Foriat;
         description = letter.Description ?? "";
+        // عطف/پیرو فرم ویرایش باید وضعیت فعلی نامه را نشان دهد؛ وگرنه ذخیرهٔ ویرایش
+        // (که فهرست کامل رابطه‌ها را جایگزین می‌کند) رابطه‌های موجود را پاک می‌کرد.
+        initialMohlat = null;
+        related = (letter.RelatedLetters ?? new List<RelatedLetterDto>())
+            .Where(r => r.RelateLetterId > 0)
+            .Select(r => new RelatedLetterDto
+            {
+                Related = r.Related,
+                RelateLetterId = r.RelateLetterId,
+                RelateLetterNumber = r.RelateLetterNumber,
+                RelateLetterTitle = r.RelateLetterTitle
+            })
+            .ToList();
+        relOpen = false; relSearch = ""; relResults = new(); relType = 2; relSourceType = 3;
         pendingFiles.Clear();
         errTitle = false; errFerestande = false;
         visible = true;
@@ -549,7 +674,9 @@
                     Foriat = foriat,
                     Description = description,
                     InitialReciverUserIds = recUserIds,
-                    InitialMatnErja = initialMatnErja
+                    InitialMatnErja = initialMatnErja,
+                    InitialMohlatPasokh = initialMohlat,
+                    RelatedLetters = RelatedPayload()
                 };
                 letterId = await IncomingSvc.AddAsync(dto);
 
@@ -587,7 +714,8 @@
                     DeliveryName = deliveryName.Trim(),
                     Mahramanegi = mahramanegi,
                     Foriat = foriat,
-                    Description = description
+                    Description = description,
+                    RelatedLetters = RelatedPayload()
                 };
                 // ترتیب عمدی: اول پیوست‌های تازه، بعد ذخیرهٔ فیلدها — چون سرور در پایانِ
                 // EditAsync به کسانی که نامه را دیده‌اند اعلانِ «نامه ویرایش شد» می‌فرستد و
@@ -643,6 +771,118 @@
             !await JS.InvokeAsync<bool>("confirm", "اطلاعات فرم وارد شده است. فرم بسته شود؟")) return;
         visible = false;
     }
+
+    // ==================== عطف / پیرو (نامه‌های مرتبط) ====================
+
+    private string RelTabCls(int t) => relSourceType == t
+        ? "btn btn-sm btn-primary"
+        : "btn btn-sm btn-outline-secondary";
+
+    private async Task OpenRel(int type)
+    {
+        relType = type == 1 ? 1 : 2;
+        relOpen = true;
+        await SearchRel();
+    }
+
+    private void CloseRel() => relOpen = false;
+
+    /// <summary>
+    /// جستجوی نامه برای عطف/پیرو در سه دفتر: وارده، داخلی و صادره.
+    /// هر سرویس try/catch مستقل دارد؛ خطای یکی (مثلاً نداشتن مجوز) بقیه را از کار نمی‌اندازد.
+    /// </summary>
+    private async Task SearchRel()
+    {
+        if (relBusy) return;
+        relBusy = true;
+        StateHasChanged();
+        try
+        {
+            var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch.Trim();
+            var all = new List<RelatedPick>();
+
+            try
+            {
+                var res = await IncomingSvc.PickAsync(term, 1, 30);
+                all.AddRange(res.Items.Select(x => new RelatedPick
+                {
+                    LetterId = x.SourceId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 3
+                }));
+            }
+            catch { }
+
+            try
+            {
+                var items = await LetterSvc.PickAsync(term);
+                all.AddRange(items.Select(x => new RelatedPick
+                {
+                    LetterId = x.LetterId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 1
+                }));
+            }
+            catch { }
+
+            try
+            {
+                var items = await OutgoingSvc.PickAsync(term);
+                all.AddRange(items.Select(x => new RelatedPick
+                {
+                    LetterId = x.LetterId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 2
+                }));
+            }
+            catch { }
+
+            relResults = all
+                .Where(x => x.LetterId > 0 && x.LetterId != editLetterId)          // نامه به خودش
+                .Where(x => related.All(r => r.RelateLetterId != x.LetterId))      // تکراری
+                .GroupBy(x => x.LetterId).Select(g => g.First())
+                .OrderByDescending(x => x.Date)
+                .ToList();
+        }
+        finally
+        {
+            relBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddRel(RelatedPick p)
+    {
+        if (p == null || p.LetterId <= 0) return;
+        if (related.Any(r => r.RelateLetterId == p.LetterId)) return;
+        related.Add(new RelatedLetterDto
+        {
+            Related = relType,
+            RelateLetterId = p.LetterId,
+            RelateLetterNumber = p.LetterNumber,
+            RelateLetterTitle = p.Title
+        });
+        relResults = relResults.Where(x => x.LetterId != p.LetterId).ToList();
+    }
+
+    private void RemoveRel(RelatedLetterDto r) => related.Remove(r);
+
+    private List<RelatedLetterDto> RelatedPayload() => related
+        .Where(r => r.RelateLetterId > 0)
+        .Select(r => new RelatedLetterDto
+        {
+            Related = r.Related == 2 ? 2 : 1,
+            RelateLetterId = r.RelateLetterId,
+            RelateLetterNumber = r.RelateLetterNumber,
+            RelateLetterTitle = r.RelateLetterTitle
+        })
+        .ToList();
 
     private string FmtSize(long sz) =>
         sz switch
