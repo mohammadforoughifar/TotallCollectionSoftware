@@ -1166,10 +1166,13 @@ public class EmailService : IEmailService
 
                 if (data.Length == 0) continue;
                 name = Path.GetFileName(name);
-                var duplicate = await _db.OtoEmailAttachments.AnyAsync(x =>
-                    x.EmailId == messageId && x.Type == box && x.UId == uid &&
-                    x.AttachmentRealName == name);
-                if (duplicate) continue;
+
+                // ⚠️ قبلاً این‌جا پیوست‌هایی که «نام یکسان» داشتند حذف می‌شدند
+                // (x.AttachmentRealName == name ⇒ continue). نتیجه: اگر ایمیل دو فایل
+                // هم‌نام داشت (مثلاً دو «image.png» یا دو «scan.jpg»)، فقط اولی ذخیره
+                // می‌شد و دومی در «تبدیل به نامه» هم غایب بود. رفع: تکرارِ نام مجاز است
+                // (روی دیسک با GUID ذخیره می‌شود) و کنترل تکرارِ واقعی سمت فراخوان انجام
+                // می‌شود (مسیر ترمیم، فقط وقتی هیچ پیوستی برای پیام ثبت نشده باشد).
 
                 Directory.CreateDirectory(dir);
                 var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";

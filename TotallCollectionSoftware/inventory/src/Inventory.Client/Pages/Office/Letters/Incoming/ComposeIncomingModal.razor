@@ -344,42 +344,56 @@
         if (letterBody.Skipped > 0)
             Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
-        // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
-        // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
-        // یک‌بار با طول واقعی «پس از دانلود». ContentType هم از DTO می‌آید (سمت سرور
-        // از پسوند فایل استنباط شده) تا همهٔ فایل‌ها application/octet-stream نباشند.
+        // ---------- همهٔ پیوست‌های ایمیل، با هر فرمتی ----------
+        // هر فایلی که در ایمیل هست (تصویر، PDF، Word، Excel، PowerPoint، ZIP/RAR، صدا،
+        // ویدیو، متن و هر پسوند دیگری) به صف پیوست‌های نامه وارده منتقل می‌شود — بدون
+        // هیچ فیلترِ نوع/پسوند. تصاویرِ درونِ متن هم علاوه بر دیده‌شدن در متن، به‌عنوان
+        // فایل پیوست نامه ثبت می‌شوند (خواستهٔ صریح: هر پیوستی باید ضمیمه شود).
+        // کنترل حجم دو بار انجام می‌شود: با Sizeِ اعلامی «پیش از دانلود» و با طول واقعی
+        // «پس از دانلود»، مطابق سقف سرور (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع).
         pendingFiles.Clear();
         long totalAttBytes = 0;
-        var skippedAtt = 0;
-        // تصاویرِ درونِ متنِ ایمیل (IsInline) بخشی از بدنه‌اند و به‌عنوان فایل پیوست
-        // نامه ثبت نمی‌شوند؛ فقط پیوست‌های واقعی منتقل می‌شوند.
-        foreach (var attachment in email.Attachments.Where(a => !a.IsInline))
-        {
-            // تصویری که داخل متن نامه جاسازی شده، دوباره به‌عنوان فایل پیوست ثبت نمی‌شود
-            if (letterBody.EmbeddedIds.Contains(attachment.AttachmentId)) continue;
+        var tooBigNames = new List<string>();
+        var failedNames = new List<string>();
 
-            // ۱) کنترل پیش از دانلود پیوست از ایمیل
+        foreach (var attachment in email.Attachments)
+        {
+            var displayName = string.IsNullOrWhiteSpace(attachment.RealName) ? "پیوست" : attachment.RealName;
+
+            // ۱) کنترل پیش از دانلود
             if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
             {
-                skippedAtt++;
+                tooBigNames.Add(displayName);
                 continue;
             }
 
-            var (data, name) = await EmailSvc.DownloadAttachmentAsync(attachment.AttachmentId);
-            if (data is not { Length: > 0 }) continue;
+            // ۲) دانلود واقعی فایل از ایمیل
+            byte[] data;
+            string name;
+            try { (data, name) = await EmailSvc.DownloadAttachmentAsync(attachment.AttachmentId); }
+            catch { failedNames.Add(displayName); continue; }
+            if (data is not { Length: > 0 }) { failedNames.Add(displayName); continue; }
 
-            // ۲) کنترل پس از دانلود واقعی فایل (Size اعلامی ممکن است دقیق نباشد)
+            // ۳) کنترل حجم پس از دانلود (Size اعلامی ممکن است دقیق نباشد)
             if (data.Length > MaxFileBytes || totalAttBytes + data.Length > MaxTotalBytes)
             {
-                skippedAtt++;
+                tooBigNames.Add(displayName);
                 continue;
             }
 
             totalAttBytes += data.Length;
-            pendingFiles.Add(new MemoryBrowserFile(name, attachment.ContentType, data));
+            if (string.IsNullOrWhiteSpace(name)) name = displayName;
+            pendingFiles.Add(new MemoryBrowserFile(name, NormalizeContentType(attachment.ContentType, name), data));
         }
-        if (skippedAtt > 0)
-            Toast.Error($"{skippedAtt} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد.");
+
+        if (pendingFiles.Count > 0)
+            Toast.Success($"{pendingFiles.Count.FaDigits()} پیوست ایمیل به نامه اضافه شد.");
+        if (tooBigNames.Count > 0)
+            Toast.Error($"{tooBigNames.Count.FaDigits()} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد: "
+                        + string.Join("، ", tooBigNames.Take(5)));
+        if (failedNames.Count > 0)
+            Toast.Error($"دریافت {failedNames.Count.FaDigits()} پیوست از سرور ایمیل ناموفق بود: "
+                        + string.Join("، ", failedNames.Take(5)));
 
         // بدنهٔ ایمیل باید «داخل» ادیتور هم نوشته شود؛ فقط ست‌کردن متغیر description
         // کافی نیست، چون contenteditable خودکار پر نمی‌شود و اگر کاربر ذخیره کند،
@@ -453,6 +467,47 @@
         await Task.Delay(150);
         if (!await _richDesc.SetContentAsync(description) && !string.IsNullOrWhiteSpace(description))
             Toast.Error("متن نامه در کادر ویرایشگر نمایش داده نشد؛ فرم را یک‌بار ببندید و دوباره باز کنید.");
+    }
+
+    /// <summary>
+    /// نوع MIME پیوست را برای ارسال امن آماده می‌کند. اگر نوعِ اعلامیِ سرور ایمیل
+    /// غیراستاندارد/خالی/دارای پارامتر باشد، از پسوند فایل استنباط می‌شود و در نهایت
+    /// application/octet-stream می‌ماند؛ این‌طور «هر فرمتی» منتقل می‌شود و ساخت
+    /// StreamContent هیچ‌وقت با MediaType نامعتبر خطا نمی‌دهد.
+    /// </summary>
+    private static string NormalizeContentType(string? contentType, string fileName)
+    {
+        var raw = (contentType ?? "").Split(';')[0].Trim();
+        if (raw.Length > 0 && raw.Contains('/') && raw.All(c => c > 32 && c < 127))
+            return raw;
+
+        var ext = (System.IO.Path.GetExtension(fileName) ?? "").ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ppt" => "application/vnd.ms-powerpoint",
+            ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".txt" => "text/plain",
+            ".csv" => "text/csv",
+            ".zip" => "application/zip",
+            ".rar" => "application/vnd.rar",
+            ".7z" => "application/x-7z-compressed",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".heic" => "image/heic",
+            ".mp3" => "audio/mpeg",
+            ".wav" => "audio/wav",
+            ".mp4" => "video/mp4",
+            ".mov" => "video/quicktime",
+            _ => "application/octet-stream"
+        };
     }
 
     private async Task LoadLookups()
