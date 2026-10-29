@@ -9,7 +9,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (BaseDocTemplate, CondPageBreak, Flowable, Frame,
-                                NextPageTemplate, PageBreak, PageTemplate, Spacer,
+                                KeepTogether, NextPageTemplate, PageBreak, PageTemplate, Spacer,
                                 Table, TableStyle)
 
 import content as C
@@ -38,9 +38,10 @@ BG_BLUE = colors.HexColor("#F1F5F9")
 BG_WARM = colors.HexColor("#FFF1F2")
 
 PAGE_W, PAGE_H = A4            # 595.27 x 841.89
-LM, RM = 52.0, 35.0            # مطابق سربرگ نمونه
-TM, BM = 72.0, 40.0
+LM, RM = 52.0, 56.0            # مطابق سربرگ نمونه
+TM, BM = 178.0, 152.0
 CONTENT_W = PAGE_W - LM - RM   # 508.27
+FRAME_H = PAGE_H - TM - BM
 
 TOC = []
 TOC_NOW = []
@@ -363,42 +364,28 @@ def on_cover(c, doc):
             c.line(x0 + 4, 208, x0 + 4, 232)
 
     c.setFillColor(GRAY_LIGHT)
-    c.setFont("Vazir", 7.8)
-    c.drawRightString(PAGE_W - RM, 26,
-                      visual("محرمانه — این سند برای مخاطب تعیین‌شده تهیه شده است"))
-    c.drawString(LM, 26, C.DOC["date_en"])
+    c.setFont("Vazir", 7.6)
+    c.drawString(LM, 30, C.DOC["date_en"])
     c.restoreState()
 
 
 def on_body(c, doc):
     c.saveState()
-    # نشان و سرصفحهٔ سبک برای صفحات داخلی
-    lw = 56.0
-    c.drawImage(ImageReader(LOGO), PAGE_W - RM - lw, PAGE_H - 62, width=lw, height=lw * 238 / 292,
-                mask="auto")
+    draw_letterhead(c)
 
-    c.setFillColor(GRAY)
-    c.setFont("Vazir", 8.2)
-    c.drawString(LM, PAGE_H - 40, visual(f"{C.DOC['doc_no']}  •  {C.DOC['date_fa']}"))
-    c.setFillColor(GRAY_LIGHT)
-    c.setFont("Vazir", 7.9)
-    c.drawString(LM, PAGE_H - 52, visual("پروپوزال فنی و تجاری — نرم‌افزار یکپارچه فروغ آریا"))
+    # بلوک تاریخ/شماره در گوشهٔ آزاد سربرگ (محل نقطه‌چین‌های سربرگ)
+    y = PAGE_H - 26
+    for lbl, val in (("تاریخ", C.DOC["date_fa"]), ("شماره", C.DOC["doc_no"])):
+        meta_line(c, lbl, val, y)
+        y -= 25
 
-    c.setStrokeColor(LINE_SOFT)
-    c.setLineWidth(0.6)
-    c.line(LM, PAGE_H - 66, PAGE_W - RM, PAGE_H - 66)
-    c.setFillColor(RED)
-    c.rect(PAGE_W - RM - 60, PAGE_H - 67.6, 60, 1.6, stroke=0, fill=1)
-
-    c.setStrokeColor(LINE_SOFT)
-    c.setLineWidth(0.5)
-    c.line(LM, 30, PAGE_W - RM, 30)
-    c.setFillColor(GRAY_LIGHT)
-    c.setFont("Vazir", 7.8)
-    c.drawString(LM, 19, visual("محرمانه — شرکت فروغ آریا"))
+    # پاصفحه در ناحیهٔ روشن پایین-چپ (مثلث‌های سربرگ در پایین-راست‌اند)
     total = getattr(doc, "total_pages", None)
     label = f"صفحهٔ {fa_digits(doc.page)}" + (f" از {fa_digits(total)}" if total else "")
-    c.drawRightString(PAGE_W - RM, 19, visual(label))
+    c.setFillColor(GRAY_LIGHT)
+    c.setFont("Vazir", 7.8)
+    c.drawString(LM, 46, visual("پروپوزال فنی و تجاری — سامانهٔ یکپارچه فروغ آریا"))
+    c.drawString(LM, 32, visual(f"محرمانه  •  {label}"))
     c.restoreState()
 
 
@@ -414,7 +401,7 @@ PRICE_DESC = {
 
 def price_table(c):
     """جدول قیمت با هندسهٔ دقیقاً مطابق نمونهٔ سربرگ‌دار."""
-    cols_lr = [135.0, 225.0, 108.0, CONTENT_W - 468.0]  # مبلغ | شرح | ماژول | ردیف
+    cols_lr = [126.0, 214.0, 100.0, CONTENT_W - 440.0]  # مبلغ | شرح | ماژول | ردیف
     head_lr = ["مبلغ پیشنهادی\n(ریال)", "شرح خدمات", "ماژول", "ردیف"]
     data = [[_CellFlow(h, font="VazirB", size=7.7, leading=11.5, align="center",
                        color=colors.white, pad=5) for h in head_lr]]
@@ -444,7 +431,7 @@ def price_table(c):
     ]
     t.setStyle(TableStyle(style))
     t.wrapOn(c, CONTENT_W, PAGE_H)
-    t.drawOn(c, LM, PAGE_H - 277 - sum(heights))
+    t.drawOn(c, LM, PAGE_H - 290 - sum(heights))
 
 
 def draw_price_sheet(c):
@@ -463,42 +450,42 @@ def draw_price_sheet(c):
     # عنوان
     c.setFillColor(NAVY)
     c.setFont("VazirB", 15)
-    c.drawCentredString(PAGE_W / 2, PAGE_H - 152, visual("پیشنهاد قیمت و ارائه ماژول‌های نرم‌افزار"))
+    c.drawCentredString(PAGE_W / 2, PAGE_H - 172, visual("پیشنهاد قیمت و ارائه ماژول‌های نرم‌افزار"))
     c.setStrokeColor(RED)
     c.setLineWidth(1.3)
-    c.line(180, PAGE_H - 158, 432, PAGE_H - 158)
+    c.line(196, PAGE_H - 180, 360, PAGE_H - 180)
 
     rtext(c, "مدیریت محترم شرکت ................................", size=10.5,
-          y_top=PAGE_H - 172, font="VazirB", color=NAVY)
-    rtext(c, "با سلام و احترام،", size=10, y_top=PAGE_H - 196)
+          y_top=PAGE_H - 198, font="VazirB", color=NAVY)
+    rtext(c, "با سلام و احترام،", size=10, y_top=PAGE_H - 222)
     rtext(c, "پیرو درخواست آن شرکت محترم، پیشنهاد قیمت ماژول‌های مورد نیاز به شرح زیر تقدیم می‌گردد.",
-          size=9.2, y_top=PAGE_H - 219)
+          size=9.2, y_top=PAGE_H - 245)
     rtext(c, "دامنهٔ خدمات شامل ارائهٔ نرم‌افزار، راه‌اندازی اولیه و آموزش کاربران است.",
-          size=9.2, y_top=PAGE_H - 236)
+          size=9.2, y_top=PAGE_H - 262)
 
     price_table(c)
 
     rtext(c, "جمع کل به حروف : ..............................................................................",
-          size=9.2, y_top=PAGE_H - 500, color="#334155")
+          size=9.2, y_top=PAGE_H - 516, color="#334155")
 
     # جعبهٔ اعتبار پیشنهاد
-    box_top, box_h = PAGE_H - 535, 52.0
+    box_top, box_h = PAGE_H - 548, 46.0
     c.setFillColor(colors.HexColor("#F8FAFC"))
     c.setStrokeColor(LINE)
     c.setLineWidth(0.65)
     c.rect(LM, box_top - box_h, CONTENT_W - 4, box_h, stroke=1, fill=1)
-    rtext(c, "اعتبار پیشنهاد:", size=9.2, y_top=box_top - 10, right=PAGE_W - RM - 16,
+    rtext(c, "اعتبار پیشنهاد:", size=9.2, y_top=box_top - 9, right=PAGE_W - RM - 16,
           font="VazirB", color=NAVY)
     rtext(c, "این پیشنهاد از تاریخ درج، به مدت ........ روز اعتبار دارد. مبالغ فوق به ریال درج شده‌اند.",
-          size=8.5, y_top=box_top - 30, right=PAGE_W - RM - 16, color="#334155")
+          size=8.5, y_top=box_top - 28, right=PAGE_W - RM - 16, color="#334155")
 
-    rtext(c, "با احترام،", size=10, y_top=PAGE_H - 600, right=PAGE_W - 85)
-    rtext(c, "مدیرعامل شرکت فروغ آریا", size=10.5, y_top=PAGE_H - 622, right=PAGE_W - 85,
+    rtext(c, "با احترام،", size=10, y_top=PAGE_H - 612, right=PAGE_W - 118)
+    rtext(c, "مدیرعامل شرکت فروغ آریا", size=10.5, y_top=PAGE_H - 634, right=PAGE_W - 118,
           font="VazirB", color=NAVY)
     c.setStrokeColor(LINE)
     c.setLineWidth(0.55)
-    c.line(360, PAGE_H - 679, 525, PAGE_H - 679)
-    rtext(c, "محل مهر و امضا", size=7.5, y_top=PAGE_H - 686, right=PAGE_W - 132,
+    c.line(372, PAGE_H - 676, 518, PAGE_H - 676)
+    rtext(c, "محل مهر و امضا", size=7.5, y_top=PAGE_H - 684, right=PAGE_W - 160,
           color=GRAY_LIGHT)
 
 
@@ -586,7 +573,6 @@ def summary_page():
     out.append(P("معیار انتخاب این چهار ماژول، بیشترین اثر روزمره بر جریان کار سازمان است: هر نامه، "
                  "دستور کار و مدرک آرشیوی که در سامانه ثبت می‌شود، در یک پایگاه داده و زیر یک مدل "
                  "دسترسی واحد قرار می‌گیرد.", space_after=8))
-    out.append(Spacer(1, 6))
     out.append(callout_box(
         "جمع‌بندی",
         "هر چهار ماژول روی یک پایگاه داده و یک مدل دسترسی مشترک کار می‌کنند؛ بنابراین گزارش‌های "
@@ -596,21 +582,44 @@ def summary_page():
     out.append(Spacer(1, 10))
     out.append(P("توجه: مبالغ پیشنهاد در صفحهٔ پایانی عمداً خالی گذاشته شده است تا توسط واحد "
                  "بازرگانی تکمیل و تأیید شود.", size=8, color=GRAY, align="right"))
+    out.append(PageBreak())
+    return out
+
+
+
+def guide_page():
+    """صفحهٔ راهنمای مطالعه + شاخص‌های اجرایی (ادامهٔ خلاصهٔ مدیریتی)."""
+    out = [H1Band("راهنمای مطالعهٔ سند و شاخص‌های اجرایی", CONTENT_W), Spacer(1, 10)]
+    out.append(P("این سند برای دو مخاطب نوشته شده است: تصمیم‌گیرندهٔ کسب‌وکار که به دامنه، گردش کار و "
+                 "ارزش هر ماژول نیاز دارد، و تیم فنی که جزئیات مدل داده، دسترسی و معماری را می‌خواهد. "
+                 "جدول زیر مسیر پیشنهادی مطالعه را نشان می‌دهد.", space_after=8))
+    out.append(KV(
+        ["بخش", "چه چیزی در آن آمده است", "مخاطب اصلی"],
+        [
+            ["بخش ۱", "معرفی کلی سامانه، دامنهٔ این سند، روش تدوین و اصول مشترک چهار ماژول", "هر دو"],
+            ["بخش‌های ۲ تا ۵", "هر ماژول در یک بخش مستقل: هدف، قابلیت‌ها، گردش کار، نقش‌ها و دسترسی، "
+                              "گزارش‌ها و ارتباط با سایر ماژول‌ها", "کسب‌وکار"],
+            ["بخش ۶", "معماری، پشتهٔ فناوری، مدل داده، امنیت و کنترل دسترسی، استقرار و مقیاس‌پذیری", "فنی"],
+            ["بخش ۷ و ۸", "دامنهٔ خدمات و آموزش، و فهرست مواردی که پیش از قرارداد نیازمند تأیید کارفرماست",
+             "هر دو"],
+            ["صفحهٔ پایانی", "پیشنهاد قیمت چهار ماژول، جمع کل، اعتبار پیشنهاد و محل امضا", "مدیریت"],
+        ],
+        [0.17, 0.6, 0.23]))
     out.append(Spacer(1, 14))
-    out.append(RT("راهنمای مطالعهٔ سند", font="VazirB", size=10.6, leading=18, align="right",
+    out.append(RT("شاخص‌های اجرایی سامانه", font="VazirB", size=10.6, leading=18, align="right",
                   color="#1F2937", space_after=4))
     out.append(Spacer(1, 4))
-    out.append(KV(
-        ["بخش", "چه چیزی در آن آمده است"],
-        [
-            ["بخش ۱", "معرفی کلی سامانه، دامنهٔ این سند، روش تدوین و اصول مشترک چهار ماژول"],
-            ["بخش‌های ۲ تا ۵", "هر ماژول در یک بخش مستقل: هدف، قابلیت‌ها، گردش کار، نقش‌ها و دسترسی، "
-                              "گزارش‌ها و ارتباط با سایر ماژول‌ها"],
-            ["بخش ۶", "معماری، پشتهٔ فناوری، مدل داده، امنیت و کنترل دسترسی، استقرار و مقیاس‌پذیری"],
-            ["بخش ۷ و ۸", "دامنهٔ خدمات و آموزش، و فهرست مواردی که پیش از قرارداد نیازمند تأیید کارفرماست"],
-            ["صفحهٔ پایانی", "پیشنهاد قیمت چهار ماژول، جمع کل، اعتبار پیشنهاد و محل امضا"],
-        ],
-        [0.18, 0.82]))
+    out.append(kpi_row([("۳۵۶", "جدول داده در پایگاه داده"), ("۱۵۹۷", "سرویس وب در دسترس"),
+                        ("۱۱۱", "کنترلر API"), ("۲۹۴", "صفحهٔ رابط کاربری")]))
+    out.append(Spacer(1, 14))
+    out.append(P("این اعداد از شمارش واقعی مخزن کد استخراج شده‌اند (DbSetها، مسیرهای HTTP، "
+                 "کنترلرها و صفحات Blazor) و نشان‌دهندهٔ گسترهٔ سامانه‌ای است که این چهار ماژول "
+                 "بخشی از آن هستند.", space_after=10))
+    out.append(callout_box(
+        "نکتهٔ مهم دربارهٔ اعداد و ادعاها",
+        "هر عدد و قابلیت این سند از کد پروژه استخراج شده است؛ جایی که رفتار نهایی نیازمند تصمیم "
+        "کارفرما یا تکمیل توسعه است، صریحاً با عبارت «نیازمند تأیید» علامت‌گذاری شده و در بخش ۸ "
+        "فهرست شده است. هیچ قابلیتی بر پایهٔ فرض یا تبلیغات نوشته نشده است.", "warn"))
     out.append(PageBreak())
     return out
 
@@ -622,7 +631,7 @@ def _block_flows(blk):
     if kind == "h1":
         band = H1Band(blk[1], CONTENT_W)
         band._tocmark = (0, blk[1])
-        out += [CondPageBreak(165), Spacer(1, 8), band, Spacer(1, 11)]
+        out += [CondPageBreak(126), Spacer(1, 8), band, Spacer(1, 11)]
     elif kind == "h2":
         band = H2Band(blk[1], CONTENT_W)
         band._tocmark = (1, blk[1])
@@ -636,19 +645,32 @@ def _block_flows(blk):
         out.append(P(blk[1], font="VazirB", size=10.4, leading=18, color="#5C6474",
                      align="right", space_after=8))
     elif kind == "bullets":
-        for it in blk[1]:
-            out.append(RT(it, size=9.4, leading=16.2, align="justify", bullet="•",
-                          indent=11, space_after=4))
-        out.append(Spacer(1, 3))
+        items = [RT(it, size=9.4, leading=16.2, align="justify", bullet="•",
+                    indent=11, space_after=4) for it in blk[1]]
+        h = sum(f.wrap(CONTENT_W, PAGE_H)[1] for f in items)
+        if h <= 0.45 * FRAME_H:
+            out += [KeepTogether(items), Spacer(1, 3)]
+        else:
+            out += items + [Spacer(1, 3)]
     elif kind == "table":
         _, headers, rows, opt = blk
-        out += [KV(headers, rows, opt["widths"]), Spacer(1, 9)]
+        t = KV(headers, rows, opt["widths"])
+        h = t.wrap(CONTENT_W, PAGE_H)[1]
+        if h <= 0.55 * FRAME_H:      # جدول‌های کوچک تک‌تکه می‌مانند تا ردیف تنها نماند
+            out += [KeepTogether([t]), Spacer(1, 9)]
+        else:
+            out += [t, Spacer(1, 9)]
     elif kind == "callout":
         out += [Spacer(1, 4), callout_box(blk[1], blk[2], blk[3]), Spacer(1, 8)]
     elif kind == "kpis":
         out += [Spacer(1, 3), kpi_row(blk[1]), Spacer(1, 10)]
     elif kind == "steps":
-        out += [steps_table(blk[1]), Spacer(1, 9)]
+        st = steps_table(blk[1])
+        h = st.wrap(CONTENT_W, PAGE_H)[1]
+        if h <= 0.5 * FRAME_H:
+            out += [KeepTogether([st]), Spacer(1, 9)]
+        else:
+            out += [st, Spacer(1, 9)]
     elif kind == "pagebreak":
         out.append(PageBreak())
     return out
@@ -662,8 +684,17 @@ def body_story():
     while i < len(blocks):
         blk = blocks[i]
         if blk[0] in ("h2", "h3"):
-            out.append(CondPageBreak(92 if blk[0] == "h2" else 74))
-            out.extend(_block_flows(blk))
+            head = _block_flows(blk)
+            if (i + 1 < len(blocks) and blocks[i + 1][0] == "bullets"):
+                items = [RT(tt, size=9.4, leading=16.2, align="justify", bullet="•",
+                            indent=11, space_after=4) for tt in blocks[i + 1][1]]
+                hh = sum(f.wrap(CONTENT_W, PAGE_H)[1] for f in items)
+                if hh + 40 < 0.5 * FRAME_H:   # عنوان + فهرست کوتاه، یکجا
+                    out.append(KeepTogether(head + items + [Spacer(1, 3)]))
+                    i += 2
+                    continue
+            out.append(CondPageBreak(76 if blk[0] == "h2" else 62))
+            out.extend(head)
             i += 1
             continue
         out.extend(_block_flows(blk))
@@ -680,6 +711,7 @@ def render(path, total_pages=None, toc_entries=None):
     story = [Spacer(1, 1), NextPageTemplate("body"), PageBreak()]
     story.extend(id_page())
     story.extend(summary_page())
+    story.extend(guide_page())
     story.extend(body_story())
     story.append(NextPageTemplate("price"))
     story.append(PageBreak())
