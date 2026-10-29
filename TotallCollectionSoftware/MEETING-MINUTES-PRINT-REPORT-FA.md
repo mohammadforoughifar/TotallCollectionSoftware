@@ -97,7 +97,7 @@ GET api/office/meeting-minutes/{id}/print?size=A5    → A5
   `Number` و متد کمکی `Number` هم‌نام بودند؛ متد به `ParseNumber` تغییر نام داد).
 
 اجرای کل مجموعه: `cd inventory/tests/OutgoingLetterhead && python3 -m unittest discover -p "test_*.py"`
-→ **۱۲۵ تست سبز**.
+→ **۱۳۳ تست سبز**.
 
 ## ۵. پیش‌نمایش
 

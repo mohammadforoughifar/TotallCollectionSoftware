@@ -121,7 +121,8 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 template = self.template(tree)
                 self.assertIn("line.RelativeItem().AlignTop().AlignRight()", template)
                 self.assertIn("line.ConstantItem(labelGap);", template)
-                self.assertIn('$"{row.Label}:"', template)
+                # دونقطه از کمک‌تابع مشترک می‌آید تا همیشه سمت چپ کلمه («موضوع:») بنشیند.
+                self.assertIn(".Text(RtlLabel(row.Label))", template)
                 # برچسب چسبیده به لبهٔ راست متن (مثل نامهٔ داخلی)، نه شناور وسط صفحه.
                 self.assertIn("line.ConstantItem(labelWidth).AlignTop().AlignRight()", template)
                 # ردیف‌های خالی (مثل رونوشت بدون داده) اصلاً چاپ نمی‌شوند.
@@ -246,7 +247,7 @@ class SharedLetterTemplateTests(unittest.TestCase):
                 # مقدار در ستون خودش می‌شکند (تورفتگی آویزان)، برچسب جدا و راست‌چین.
                 self.assertIn("line.RelativeItem().AlignTop().AlignRight().Column(values =>", block)
                 self.assertIn("line.ConstantItem(labelWidth).AlignTop().AlignRight()", block)
-                self.assertIn('const string label = "رونوشت:";', block)
+                self.assertIn('var label = RtlLabel("رونوشت");', block)
 
                 # مسیر طرح: تابع دنباله = رونوشت ← امضا.
                 design = outgoing.split("private byte[] BuildDesignContentPdf(", 1)[1]

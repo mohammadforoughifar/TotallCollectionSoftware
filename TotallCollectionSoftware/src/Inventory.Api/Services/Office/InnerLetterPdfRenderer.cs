@@ -92,7 +92,7 @@ internal static class InnerLetterPdfRenderer
                 c.Item().Text(body).AlignRight();
                 if (withHamesh && data.Hamesh.Count > 0)
                 {
-                    c.Item().PaddingTop(8).Text("هامش:").Bold().AlignRight();
+                    c.Item().PaddingTop(8).Text(LetterPrintTemplate.RtlLabel("هامش")).Bold().AlignRight();
                     foreach (var row in data.Hamesh)
                     {
                         var details = new[] { PlainText(row.Action), PlainText(row.Instruction) }

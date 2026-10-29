@@ -954,8 +954,9 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 self.assertIn("line.ConstantItem(labelGap);", template)
                 # مقدار در ستون خودش می‌شکند، پس خط دوم زیر برچسب نمی‌رود (hanging indent).
                 self.assertIn("line.RelativeItem().AlignTop().AlignRight()", template)
-                # برچسب و مقدار هم‌اندازه و روی یک خط؛ دونقطه در انتهای برچسب.
-                self.assertIn('$"{row.Label}:"', template)
+                # برچسب و مقدار هم‌اندازه و روی یک خط؛ دونقطه از RtlLabel (با RLM) می‌آید
+                # تا «موضوع:» و نه «:موضوع» چاپ شود.
+                self.assertIn(".Text(RtlLabel(row.Label))", template)
                 self.assertIn(".FontSize(fontSize)", template)
                 self.assertNotIn("baselineShift", service,
                                  "اختلاف اندازهٔ برچسب/مقدار نباید با جابه‌جایی دستی جبران شود")

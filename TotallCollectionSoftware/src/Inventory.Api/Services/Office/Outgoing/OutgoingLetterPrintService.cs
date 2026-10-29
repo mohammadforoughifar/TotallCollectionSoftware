@@ -2315,7 +2315,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                         if (labelWidth > 0f)
                             cell.ConstantItem(labelWidth).AlignMiddle().AlignLeft()
-                                .Text($"{label}:")
+                                // دونقطه با RLM محصور شده تا «شماره:» و نه «:شماره» چاپ شود.
+                                .Text(LetterPrintTemplate.RtlLabel(label))
                                 .FontFamily("Vazirmatn-Bold")
                                 .FontSize(fontSize)
                                 .FontColor(color)

@@ -49,6 +49,42 @@ internal static class LetterPrintTemplate
 
     internal static float MmToPoints(float millimeters) => millimeters * 72f / 25.4f;
 
+    /// <summary>علامت راست‌به‌چپ (Right-to-Left Mark) — یک کاراکتر قویِ RTL و بی‌عرض.</summary>
+    internal const string Rlm = "\u200F";
+
+    /// <summary>
+    /// برچسب فارسی با دونقطه در پایانِ منطقی، محصور در RLM (U+200F) از دو طرف.
+    ///
+    /// چرا؟ دونقطه (:) کاراکتر «خنثی» (neutral) است. وقتی آخرین کاراکترِ یک متن باشد، جهت
+    /// نمایشش را از جهت پایهٔ پاراگراف می‌گیرد؛ نتیجه این بود که برچسب «موضوع:» به‌صورت
+    /// «:موضوع» چاپ می‌شد (دونقطه سمت راست کلمه، یعنی قبل از آن). با گذاشتن RLM بعد از
+    /// دونقطه، دونقطه بین دو کاراکتر قویِ راست‌به‌چپ می‌نشیند و همیشه سمت چپ کلمه — یعنی
+    /// همان «پس از کلمه» — چاپ می‌شود. RLM ابتدای متن هم جهت پایهٔ پاراگراف را قطعی
+    /// می‌کند؛ همان روشی که <c>RichLetterPdfRenderer</c> برای متن نامه به کار می‌برد.
+    /// RLM عرض ندارد، پس چیدمان و عرض برچسب تغییری نمی‌کند.
+    ///
+    /// برچسب‌هایی که دونقطه را ابتدا دارند (مثل «:حاضرین» در فایل‌های MRT) هم همین‌جا
+    /// اصلاح می‌شوند تا دوبار دونقطه نشود.
+    /// </summary>
+    /// <param name="label">متن برچسب.</param>
+    /// <param name="ensureTrailingColon">
+    /// اگر true باشد (پیش‌فرض) همیشه یک دونقطه در پایان گذاشته می‌شود؛ برای برچسب‌هایی که
+    /// در متن خودشان دونقطه ندارند ولی باید داشته باشند («موضوع»، «رونوشت»).
+    /// اگر false باشد فقط دونقطه‌های موجود جابه‌جا/محصور می‌شوند (برچسب‌های آمادهٔ قالب MRT).
+    /// </param>
+    internal static string RtlLabel(string? label, bool ensureTrailingColon = true)
+    {
+        var value = (label ?? string.Empty).Trim();
+        if (value.Length == 0) return string.Empty;
+        if (value.StartsWith(':') || value.StartsWith('\uFF1A')) value = value[1..].Trim();
+        var hadColon = value.EndsWith(':') || value.EndsWith('\uFF1A');
+        value = value.TrimEnd(':', '\uFF1A').TrimEnd();
+        if (value.Length == 0) return string.Empty;
+        return hadColon || ensureTrailingColon
+            ? Rlm + value + ":" + Rlm
+            : Rlm + value + Rlm;
+    }
+
     /// <summary>
     /// یک ردیف از بلوک اطلاعات نامه («برچسب» + «مقدار»).
     /// <paramref name="HideLabel"/> یعنی مقدار بدون برچسب چاپ شود (مثل ردیف بالای گیرنده).
@@ -113,7 +149,7 @@ internal static class LetterPrintTemplate
                 // برچسب: هم‌اندازه و هم‌خط با مقدار، چسبیده به لبهٔ راستِ متن (مثل نامهٔ داخلی)
                 // و دونقطه در انتهای خودش (سمت مقدار).
                 line.ConstantItem(labelWidth).AlignTop().AlignRight()
-                    .Text($"{row.Label}:")
+                    .Text(RtlLabel(row.Label))
                     .FontFamily("Vazirmatn-Bold")
                     .FontSize(fontSize)
                     .LineHeight(1.55f)
@@ -142,8 +178,9 @@ internal static class LetterPrintTemplate
             .ToList();
         if (visible.Count == 0) return;
 
-        const string label = "رونوشت:";
-        var labelWidth = label.Length * fontSize * 0.58f + fontSize;
+        // دونقطهٔ پایان برچسب با RLM محصور می‌شود تا «رونوشت:» و نه «:رونوشت» چاپ شود.
+        var label = RtlLabel("رونوشت");
+        var labelWidth = "رونوشت:".Length * fontSize * 0.58f + fontSize;
         column.Item().PaddingTop(topPadding).Row(line =>
         {
             // هر رونوشت یک آیتم مستقل: با زیاد شدن تعداد، به خطوط بعد می‌رود.

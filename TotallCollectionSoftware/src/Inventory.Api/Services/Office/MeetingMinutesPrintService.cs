@@ -419,7 +419,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     }
                     else
                     {
-                        col.Item().PaddingTop(4).Text("بندها و تصمیمات:")
+                        col.Item().PaddingTop(4).Text(LetterPrintTemplate.RtlLabel("بندها و تصمیمات"))
                             .FontFamily(FntBold).FontSize(10f).FontColor(BrandDark);
                         cursor[0] = design.ContentEnd;
                     }
@@ -438,7 +438,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     // ── امضای حاضرین ──
                     if (attendees.Count > 0)
                     {
-                        col.Item().PaddingTop(12).Text("امضای حاضرین:")
+                        col.Item().PaddingTop(12).Text(LetterPrintTemplate.RtlLabel("امضای حاضرین"))
                             .FontFamily(FntBold).FontSize(10f).FontColor(BrandDark);
                         Signatures(col, attendees, signatureImages, isA5, flowWidth);
                     }
@@ -636,13 +636,14 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         }
     }
 
-    /// <summary>برچسب ذخیره‌شده در قالب («:حاضرین») → متن قابل چاپ («حاضرین:»).</summary>
-    private static string NormalizeCaption(string text)
-    {
-        var value = (text ?? string.Empty).Trim();
-        if (value.StartsWith(':') || value.StartsWith('：')) value = value[1..].Trim() + ":";
-        return value;
-    }
+    /// <summary>
+    /// برچسب ذخیره‌شده در قالب («:حاضرین») → متن قابل چاپ («حاضرین:»).
+    /// دونقطه در پایانِ منطقی می‌نشیند و با RLM محصور می‌شود تا در چاپ «:حاضرین» دیده نشود
+    /// (ایراد کارفرما: «موضوع:» به‌صورت «:موضوع» چاپ می‌شد). دونقطه‌ای که در طرح نبوده
+    /// اضافه نمی‌شود؛ فقط ترتیب نمایش اصلاح می‌شود.
+    /// </summary>
+    private static string NormalizeCaption(string text) =>
+        LetterPrintTemplate.RtlLabel(text, ensureTrailingColon: false);
 
     private const string Ink = "#0f172a";
     private const string Muted = "#64748b";
