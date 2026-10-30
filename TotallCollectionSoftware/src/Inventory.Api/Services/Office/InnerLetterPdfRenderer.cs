@@ -47,9 +47,23 @@ internal static class InnerLetterPdfRenderer
 
         // مقادیر سربرگ: از قالب داخلی (اگر کادرها را داشته باشد) یا مختصات کالیبرهٔ ۱۰۰۳.
         var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5) : new List<MetaRow>();
-        // شروع متن: پایین «نوار آبی» + ۹۷pt تأییدشدهٔ کارفرما (دقیقاً مثل نامهٔ صادرهٔ ۱۰۰۳)؛
-        // هرگز روی کادرهای شماره/تاریخ/پیوست نمی‌افتد.
-        var contentTop = HomepaLetterheadLayout.ContentTop(a5);
+        // هندسهٔ بلوک اطلاعات (گیرنده/موضوع) از خودِ قالب MRT خوانده می‌شود؛ جابه‌جا کردن کادرها
+        // در Stimulsoft Designer مستقیماً روی چاپ اثر می‌گذارد. اگر قالب این کادرها را نداشته
+        // باشد، به مختصات کالیبرهٔ نامهٔ صادرهٔ ۱۰۰۳ (پایین نوار آبی + ۹۷pt) برمی‌گردد.
+        var designTop = new[] { meta?.Receiver?.Top ?? 0f, meta?.Title?.Top ?? 0f }
+            .Where(top => top > 0f).DefaultIfEmpty(0f).Min();
+        // عرض ستون برچسب و فاصلهٔ برچسب↔مقدار هم از قالب: کادر «موضوع:» و کادر مقدارش.
+        var captionBox = meta?.HeaderBoxes
+            .Where(box => box.Slot == OutgoingLetterDesignLayout.Slot.Caption)
+            .OrderBy(box => box.Top).FirstOrDefault();
+        var titleBox = meta?.Title;
+        var labelWidth = captionBox is { Width: > 12f } ? captionBox.Width : (float?)null;
+        var labelGap = captionBox is not null && titleBox is not null
+            ? captionBox.Left - (titleBox.Left + titleBox.Width)
+            : 0f;
+        if (captionBox is null || titleBox is null || labelGap is <= 0f or > 24f) labelGap = InfoLabelGap;
+        // شروع متن: از قالب MRT، وگرنه پایین «نوار آبی» + ۹۷pt تأییدشدهٔ کارفرما.
+        var contentTop = designTop > 0f ? designTop : HomepaLetterheadLayout.ContentTop(a5);
         if (metaRows.Count > 0)
             contentTop = Math.Max(contentTop, metaRows.Max(row => row.Top + row.Height) + 6f);
         var sideMargin = LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters);
@@ -103,7 +117,7 @@ internal static class InnerLetterPdfRenderer
             if (!homepa) content = content.PaddingTop(a5 ? 12 : 16).PaddingHorizontal(a5 ? 32 : 46);
             content.Column(c =>
             {
-                if (homepa) AddHomepaBody(c, data, body, withHamesh, a5);
+                if (homepa) AddHomepaBody(c, data, body, withHamesh, a5, labelWidth, labelGap);
                 else AddPlainBody(c, data, body, withHamesh, a5);
             });
         })).GeneratePdf();
@@ -114,8 +128,10 @@ internal static class InnerLetterPdfRenderer
     /// (نامهٔ داخلی است): خط اول گیرندگان بدون برچسب، خط دوم «موضوع:» به‌همراه عنوان،
     /// سپس متن نامه و در پایان هامش.
     /// </summary>
+    /// <param name="labelWidth">عرض ستون برچسب از قالب MRT (null = تخمین از طول برچسب).</param>
+    /// <param name="labelGap">فاصلهٔ برچسب↔مقدار از قالب MRT.</param>
     private static void AddHomepaBody(ColumnDescriptor c, InnerLetterPrintData data, string body,
-        bool withHamesh, bool a5)
+        bool withHamesh, bool a5, float? labelWidth, float labelGap)
     {
         var infoFontSize = a5 ? 9f : 11f;
         // ترتیب دقیقاً مثل نامهٔ صادرهٔ ۱۰۰۳ (درخواست کارفرما):
@@ -130,7 +146,7 @@ internal static class InnerLetterPdfRenderer
             string.IsNullOrWhiteSpace(data.Title) ? "—" : data.Title, BoldValue: true));
 
         LetterPrintTemplate.InfoBlock(c, rows, infoFontSize,
-            Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f), InfoLabelGap);
+            Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f), labelGap, labelWidth);
         // خط جداکنندهٔ خاکستری، مثل نامهٔ صادرهٔ ۱۰۰۳، برداشته شده؛ فقط همان فاصله می‌ماند.
         LetterPrintTemplate.Spacer(c, a5 ? 10f : 12f);
         // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.

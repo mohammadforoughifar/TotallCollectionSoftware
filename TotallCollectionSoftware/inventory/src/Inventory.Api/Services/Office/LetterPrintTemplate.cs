@@ -100,12 +100,18 @@ internal static class LetterPrintTemplate
     /// برچسب سمت راست و مقدار کنارش. مقدار بلند در ستون خودش می‌شکند و خط دوم زیر
     /// برچسب نمی‌رود (تورفتگی آویزان). ردیف‌های خالی اصلاً چاپ نمی‌شوند.
     /// </summary>
+    /// <param name="fixedLabelWidth">
+    /// عرض ستون برچسب. اگر داده شود (مثلاً از هندسهٔ قالب MRT)، همان ملاک است و تخمین
+    /// بر اساس طول برچسب انجام نمی‌شود؛ یعنی جابه‌جایی برچسب در Stimulsoft Designer
+    /// مستقیماً روی چاپ اثر می‌گذارد.
+    /// </param>
     internal static void InfoBlock(
         ColumnDescriptor column,
         IReadOnlyList<InfoRow> rows,
         float fontSize,
         float rowSpacing,
-        float labelGap)
+        float labelGap,
+        float? fixedLabelWidth = null)
     {
         var visible = rows.Where(row => !string.IsNullOrWhiteSpace(row.Value)).ToList();
         if (visible.Count == 0) return;
@@ -115,9 +121,11 @@ internal static class LetterPrintTemplate
         // ردیف‌های بدون برچسب (مثل گیرنده) در عرض ستون برچسب شریک نیستند تا مقدارشان
         // تمام عرض ستون متن را بگیرد.
         var labelled = visible.Where(row => !row.HideLabel).ToList();
-        var labelWidth = labelled.Count == 0
-            ? 0f
-            : labelled.Max(row => row.Label.Length) * fontSize * 0.58f + fontSize;
+        var labelWidth = fixedLabelWidth is > 0f
+            ? fixedLabelWidth.Value
+            : labelled.Count == 0
+                ? 0f
+                : labelled.Max(row => row.Label.Length) * fontSize * 0.58f + fontSize;
 
         var first = true;
         foreach (var row in visible)

@@ -32,9 +32,12 @@ class InnerPrintingTests(unittest.TestCase):
                 template = API / "Reports/InnerLetters/Companies/1003" / f"Inner-{size}.mrt"
                 root = ET.parse(template).getroot()
                 self.assertEqual(root.findtext("./Pages/Page1/PaperSize"), size)
-                # سه کادر شماره/تاریخ/پیوست مثل قالب صادرهٔ ۱۰۰۳ (مختصات مطلق، چون حاشیهٔ
-                # صفحه صفر است) تا مقادیر روی همان خط برچسب‌های چاپ‌شده بنشینند.
-                self.assertEqual(root.find("./Pages/Page1/Components").get("count"), "3")
+                # قالب اصلی (ساخته‌شده با Stimulsoft) همهٔ کادرهای نامه را دارد:
+                #   ۳ کادر شماره/تاریخ/پیوست + گیرنده + برچسب «موضوع:» + عنوان + متن + هامش
+                # مختصات مطلق است چون حاشیهٔ صفحه صفر است.
+                components = root.find("./Pages/Page1/Components")
+                self.assertEqual(components.get("count"), str(len(list(components))))
+                self.assertEqual(len(list(components)), 8)
                 self.assertEqual(root.find("./Dictionary/Databases").get("count"), "0")
                 self.assertEqual(root.find("./Dictionary/DataSources").get("count"), "0")
                 value = root.findtext(".//Watermark/ImageBytes")
@@ -98,6 +101,76 @@ class InnerPrintingTests(unittest.TestCase):
         # مسیر شرکت‌های دیگر هم تاریخ ارجاع چاپ نمی‌کند (فقط در مدل داده می‌ماند).
         self.assertNotIn('Text($"تاریخ ارجاع', source)
 
+    # ── قالب اصلی Stimulsoft: تغییرات داخل .mrt است و چاپ هم از همان خوانده می‌شود ──────
+
+    BLOCK_COMPONENTS = {
+        "GirandeAsli": "گیرنده",
+        "TitleLetter": "عنوان (موضوع)",
+        "TextLetter": "متن نامه",
+        "Hamesh": "هامش",
+    }
+
+    def inner_template(self, size: str, tree: Path | None = None):
+        tree = tree or API
+        return (tree / "Reports/InnerLetters/Companies/1003" / f"Inner-{size}.mrt")
+
+    def test_stimulsoft_template_contains_the_whole_letter_block(self):
+        """قالب اصلی (Stimulsoft) خودش کادرهای گیرنده/موضوع/متن/هامش را دارد."""
+        for size in ("A4", "A5"):
+            root = ET.parse(self.inner_template(size)).getroot()
+            texts = {component.findtext("Name"): (component.findtext("Text") or "")
+                     for component in root.find("./Pages/Page1/Components")}
+            for token, label in self.BLOCK_COMPONENTS.items():
+                self.assertTrue(any(token in text for text in texts.values()),
+                                f"کادر «{label}» ({token}) در قالب {size} نیست")
+            # برچسب «موضوع:» هم مثل نامهٔ صادره در قالب تعریف شده است.
+            self.assertTrue(any("موضوع" in text for text in texts.values()),
+                            f"برچسب «موضوع:» در قالب {size} نیست")
+            # حذف‌شده‌ها نباید در قالب کادر داشته باشند.
+            for removed in ("ReferralDates", "Creator", "تاریخ ارجاع", "ایجادکننده"):
+                self.assertFalse(any(removed in text for text in texts.values()),
+                                 f"«{removed}» نباید در قالب {size} باشد")
+
+    def test_template_block_geometry_matches_the_printed_layout(self):
+        """مختصات کادرهای بلوک اطلاعات در قالب = همان چیزی که چاپ می‌شود."""
+        for size, gap, row in (("A4", 97.0, 23.05), ("A5", 97.0, 19.95)):
+            root = ET.parse(self.inner_template(size)).getroot()
+            boxes = {component.findtext("Name"): [float(v) for v in component.findtext("ClientRectangle").split(",")]
+                     for component in root.find("./Pages/Page1/Components")}
+            receiver_top = boxes["Text13"][1] * 72
+            subject_top = boxes["Text15"][1] * 72
+            body_top = boxes["Text16"][1] * 72
+            band = 112.8 if size == "A4" else 79.4
+            # شروع بلوک = پایین نوار آبی + ۹۷pt (همان عدد تأییدشدهٔ کارفرما)
+            self.assertAlmostEqual(receiver_top, band + gap, delta=1.0,
+                                   msg=f"گیرنده در {size} از پایین نوار آبی + ۹۷pt شروع نمی‌شود")
+            # موضوع یک ردیف پایین‌تر و متن پایین‌تر از موضوع
+            self.assertAlmostEqual(subject_top - receiver_top, row, delta=3.0)
+            self.assertGreater(body_top, subject_top + 15.0)
+            # عرض متن = عرض کاغذ منهای دو حاشیهٔ ۱۵ میلی‌متری
+            page_width = {"A4": 595.28, "A5": 419.53}[size]
+            self.assertAlmostEqual(boxes["Text16"][2] * 72, page_width - 2 * 42.52, delta=1.0)
+            self.assertAlmostEqual((boxes["Text16"][0]) * 72, 42.52, delta=1.0)
+
+    def test_renderer_reads_block_geometry_from_the_template(self):
+        """رندر نامهٔ داخلی شروع بلوک و عرض/فاصلهٔ برچسب را از طرح می‌خواند (نه اعداد ثابت)."""
+        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        self.assertIn("meta?.Receiver?.Top", source)
+        self.assertIn("meta?.Title?.Top", source)
+        self.assertIn("designTop > 0f ? designTop : HomepaLetterheadLayout.ContentTop(a5)", source)
+        self.assertIn("OutgoingLetterDesignLayout.Slot.Caption", source)
+        self.assertIn("captionBox.Left - (titleBox.Left + titleBox.Width)", source)
+        self.assertIn("InfoBlock(c, rows, infoFontSize", source)
+        self.assertIn("labelGap, labelWidth)", source)
+
+    def test_shared_info_block_accepts_the_template_label_width(self):
+        shared = (OFFICE / "LetterPrintTemplate.cs").read_text()
+        self.assertIn("float? fixedLabelWidth = null", shared)
+        self.assertIn("var labelWidth = fixedLabelWidth is > 0f", shared)
+        # نامهٔ صادره بدون تغییر: پارامتر اختیاری است و فراخوان فعلی دست‌نخورده می‌ماند.
+        outgoing = (OFFICE / "Outgoing" / "OutgoingLetterPrintService.cs").read_text()
+        self.assertIn("LetterPrintTemplate.InfoBlock(col, infoRows, infoFontSize, infoSpacing,", outgoing)
+
     def test_hamesh_is_printed_after_the_letter_text(self):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
         body = source.split("private static void AddHomepaBody", 1)[1].split("AddPlainBody", 1)[0]
@@ -114,7 +187,10 @@ class InnerPrintingTests(unittest.TestCase):
         for size, centers, box_right in (("A4", (66.5, 84.5, 103.2), 96.48),
                                          ("A5", (47.0, 59.8, 73.0), 66.24)):
             root = ET.parse(API / "Reports/InnerLetters/Companies/1003" / f"Inner-{size}.mrt").getroot()
-            components = list(root.find("./Pages/Page1/Components"))
+            # فقط سه کادر سربرگ (شماره/تاریخ/پیوست)؛ بقیهٔ کادرها مربوط به بلوک اطلاعات‌اند.
+            components = [component for component in root.find("./Pages/Page1/Components")
+                          if any(token in (component.findtext("Text") or "")
+                                 for token in ("LetterNumber", "DateShams", "Peyvast"))]
             self.assertEqual(len(components), 3)
             for component, center in zip(components, centers):
                 rect = [float(v) for v in component.findtext("ClientRectangle").split(",")]
@@ -130,7 +206,9 @@ class InnerPrintingTests(unittest.TestCase):
             # حاشیهٔ صفر دارد و مستطیل‌ها مطلق‌اند ⇒ بعد از جمع با حاشیه باید یکی شوند.
             margin = [float(v) for v in (outgoing.findtext("./Pages/Page1/Margins") or "0,0,0,0").split(",")]
             inner_rects = sorted(tuple(round(float(v), 4) for v in c.findtext("ClientRectangle").split(","))
-                                 for c in inner.find("./Pages/Page1/Components"))
+                                 for c in inner.find("./Pages/Page1/Components")
+                                 if any(token in (c.findtext("Text") or "")
+                                        for token in ("LetterNumber", "DateShams", "Peyvast")))
             outgoing_rects = sorted(
                 (round(float((c.findtext("ClientRectangle") or "").split(",")[0]) + margin[0], 4),
                  round(float((c.findtext("ClientRectangle") or "").split(",")[1]) + margin[2], 4),
