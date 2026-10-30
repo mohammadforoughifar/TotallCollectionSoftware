@@ -36,8 +36,114 @@ internal static class InnerLetterheadTemplates
     /// <summary>کیفیت JPEG خروجی آماده‌سازی — بالاتر از ۹۰ عملاً حجم را زیاد می‌کند و سودی ندارد.</summary>
     private const int ArtworkJpegQuality = 88;
 
+    /// <summary>شناسهٔ شرکتی که قالب اختصاصی نامهٔ داخلی‌اش شناخته شده است (۱۰۰۳).</summary>
+    internal const int HomepaCompanyId = 1003;
+
     internal static string HomepaPath(string contentRoot, bool a5) => Path.Combine(contentRoot,
         "Reports", "InnerLetters", "Companies", "1003", $"Inner-{(a5 ? "A5" : "A4")}.mrt");
+
+    /// <summary>
+    /// همهٔ جاهایی که قالب نامهٔ داخلی ۱۰۰۳ ممکن است باشد، به ترتیب اولویت:
+    /// <list type="number">
+    ///   <item>مسیر صریح تنظیمات: <c>Reporting:InnerLetters:TemplateRoot</c></item>
+    ///   <item>همان فایل داخل مخزن: <c>inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003</c>
+    ///         — منبعِ ویرایش قالب؛ تغییر فایل بدون بیلد مجدد دیده می‌شود.</item>
+    ///   <item>کپی کنار برنامه (ContentRoot) — حالت <c>dotnet run</c> از پوشهٔ پروژه.</item>
+    ///   <item>کپی خروجی بیلد (BaseDirectory) — حالت نصب/انتشار.</item>
+    /// </list>
+    /// </summary>
+    internal static string[] HomepaCandidates(string contentRoot, string baseDirectory, bool a5,
+        string? templateRoot = null)
+        => CompanyCandidates(contentRoot, baseDirectory, HomepaCompanyId, a5, templateRoot);
+
+    /// <summary>
+    /// مسیر واقعیِ فایلی که چاپ از آن خوانده می‌شود (null = هیچ نسخه‌ای پیدا نشد).
+    /// همین مسیر در لاگ چاپ هم ثبت می‌شود تا معلوم باشد از کدام فایل خوانده شده است.
+    /// </summary>
+    internal static string? ResolveHomepaPath(string contentRoot, string baseDirectory, bool a5,
+        string? templateRoot = null)
+        => HomepaCandidates(contentRoot, baseDirectory, a5, templateRoot).FirstOrDefault(File.Exists);
+
+    private static string[] CompanyCandidates(string contentRoot, string baseDirectory, int companyId,
+        bool a5, string? templateRoot)
+    {
+        var file = $"Inner-{(a5 ? "A5" : "A4")}.mrt";
+        var list = new List<string>();
+
+        void AddFolder(string? folder)
+        {
+            if (!string.IsNullOrWhiteSpace(folder)) list.Add(Path.Combine(folder!, file));
+        }
+
+        AddFolder(ConfiguredFolder(templateRoot, contentRoot, companyId));
+        AddFolder(RepositoryCompanyFolder(contentRoot, baseDirectory, companyId));
+        var company = companyId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        AddFolder(Path.Combine(contentRoot, "Reports", "InnerLetters", "Companies", company));
+        AddFolder(Path.Combine(baseDirectory, "Reports", "InnerLetters", "Companies", company));
+
+        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    /// <summary>
+    /// پوشهٔ قالب از تنظیمات. مقدار می‌تواند پوشهٔ خودِ شرکت (…/1003) یا پوشهٔ Companies باشد؛
+    /// مسیر نسبی هم نسبت به ContentRoot خوانده می‌شود.
+    /// </summary>
+    private static string? ConfiguredFolder(string? templateRoot, string contentRoot, int companyId)
+    {
+        var value = (templateRoot ?? string.Empty).Trim();
+        if (value.Length == 0) return null;
+
+        var folder = Path.IsPathRooted(value) ? value : Path.Combine(contentRoot, value);
+        var leaf = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var company = companyId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // اگر انتهای مسیر خودِ پوشهٔ شرکت است، دیگر نام شرکت را تکرار نکن.
+        return string.Equals(leaf, company, StringComparison.OrdinalIgnoreCase) ? folder : Path.Combine(folder, company);
+    }
+
+    private static readonly ConcurrentDictionary<string, string?> RepositoryFolderCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// پوشهٔ قالب داخل مخزن سورس (…/inventory/src/Inventory.Api/Reports/InnerLetters/Companies/{id}).
+    /// با بالا رفتن از پوشهٔ اجرا/پروژه پیدا می‌شود؛ روی سرورِ بدون سورس چیزی پیدا نمی‌شود و
+    /// مسیرهای بعدی (ContentRoot/BaseDirectory) استفاده می‌شوند.
+    /// </summary>
+    private static string? RepositoryCompanyFolder(string contentRoot, string baseDirectory, int companyId)
+    {
+        var key = $"{contentRoot}|{baseDirectory}|{companyId}";
+        if (RepositoryFolderCache.TryGetValue(key, out var cached)) return cached;
+
+        var folder = FindRepositoryCompanyFolder(contentRoot, baseDirectory, companyId);
+        RepositoryFolderCache[key] = folder;
+        return folder;
+    }
+
+    private static string? FindRepositoryCompanyFolder(string contentRoot, string baseDirectory, int companyId)
+    {
+        var company = companyId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var starts = new[] { baseDirectory, contentRoot, Directory.GetCurrentDirectory() };
+        foreach (var start in starts.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            DirectoryInfo? directory;
+            try
+            {
+                directory = new DirectoryInfo(Path.GetFullPath(start));
+            }
+            catch
+            {
+                continue;
+            }
+
+            for (var depth = 0; directory != null && depth < 12; depth++, directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, "inventory", "src", "Inventory.Api",
+                    "Reports", "InnerLetters", "Companies", company);
+                if (Directory.Exists(candidate)) return candidate;
+            }
+        }
+
+        return null;
+    }
 
     private sealed record ArtworkEntry(long Length, DateTime WriteUtc, byte[] Bytes);
     private sealed record LayoutEntry(long Length, DateTime WriteUtc, Outgoing.OutgoingLetterDesignLayout? Layout);
@@ -55,9 +161,9 @@ internal static class InnerLetterheadTemplates
     /// نتیجهٔ تفسیر برای هر نسخهٔ فایل کش می‌شود (قبلاً در هر چاپ، فایل دوباره پارس می‌شد).
     /// </summary>
     internal static Outgoing.OutgoingLetterDesignLayout? LoadHomepaMetaLayout(
-        string contentRoot, string baseDirectory, bool a5)
+        string contentRoot, string baseDirectory, bool a5, string? templateRoot = null)
     {
-        foreach (var path in new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct())
+        foreach (var path in HomepaCandidates(contentRoot, baseDirectory, a5, templateRoot))
         {
             if (!File.Exists(path)) continue;
             var layout = TryLoadLayout(path);
@@ -70,11 +176,12 @@ internal static class InnerLetterheadTemplates
 
     /// <summary>تصویر آمادهٔ سربرگ (کش‌شده). در صورت نبود/خرابی قالب، استثنای روشن می‌دهد.</summary>
     internal static byte[] LoadHomepa(string contentRoot, string baseDirectory, bool a5,
-        int dpi = DefaultArtworkDpi)
+        int dpi = DefaultArtworkDpi, string? templateRoot = null)
     {
-        var paths = new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct().ToArray();
+        var paths = HomepaCandidates(contentRoot, baseDirectory, a5, templateRoot);
         var path = paths.FirstOrDefault(File.Exists)
-            ?? throw new InnerLetterPrintException($"قالب سربرگ نامه داخلی شرکت ۱۰۰۳ پیدا نشد: {string.Join(" | ", paths)}");
+            ?? throw new InnerLetterPrintException(
+                $"قالب سربرگ نامه داخلی شرکت ۱۰۰۳ پیدا نشد. مسیرهای بررسی‌شده: {string.Join(" | ", paths)}");
         try
         {
             return TryLoadArtwork(path, a5, dpi)

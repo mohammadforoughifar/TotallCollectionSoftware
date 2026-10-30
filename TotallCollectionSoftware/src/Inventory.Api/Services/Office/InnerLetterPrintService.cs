@@ -22,12 +22,14 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
     private readonly int _letterheadDpi;
+    private readonly string? _templateRoot;
 
     public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
         IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
         _letterheadDpi = ReadLetterheadDpi(configuration);
+        _templateRoot = configuration?["Reporting:InnerLetters:TemplateRoot"];
     }
 
     /// <summary>
@@ -96,18 +98,25 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             // تصویر و هندسهٔ سربرگ برای هر نسخهٔ فایل کش می‌شوند؛ چاپ دوم به بعد فایل ۶۲۰KB را
             // نمی‌خواند و تصویر ۸٫۷ مگاپیکسلی را دوباره دیکد نمی‌کند.
             var timing = Stopwatch.StartNew();
+            // مسیر قالب به ترتیب اولویت: تنظیمات → فایل داخل مخزن (inventory/src/…) → ContentRoot → BaseDirectory.
+            // یعنی ویرایش قالب در «inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003»
+            // مستقیماً مبنای چاپ است و نیازی به کپی/بیلد مجدد ندارد.
+            var templatePath = InnerLetterheadTemplates.ResolveHomepaPath(
+                                   _env.ContentRootPath, AppContext.BaseDirectory, a5, _templateRoot)
+                               ?? InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5);
             var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5,
-                _letterheadDpi);
+                _letterheadDpi, _templateRoot);
             // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب داخلی خوانده می‌شود تا مقادیر درست روی
             // خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
-            var meta = InnerLetterheadTemplates.LoadHomepaMetaLayout(_env.ContentRootPath, AppContext.BaseDirectory, a5);
+            var meta = InnerLetterheadTemplates.LoadHomepaMetaLayout(_env.ContentRootPath, AppContext.BaseDirectory, a5,
+                _templateRoot);
             var loadMs = timing.ElapsedMilliseconds;
             try
             {
                 var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts, meta);
                 _log.LogInformation(
                     "چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
-                    letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5),
+                    letterId, size, withHamesh, templatePath,
                     loadMs, timing.ElapsedMilliseconds - loadMs, background.Length / 1024, _letterheadDpi,
                     pdf.Length / 1024);
                 return pdf;

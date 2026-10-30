@@ -22,12 +22,14 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
     private readonly int _letterheadDpi;
+    private readonly string? _templateRoot;
 
     public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
         IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
         _letterheadDpi = ReadLetterheadDpi(configuration);
+        _templateRoot = configuration?["Reporting:InnerLetters:TemplateRoot"];
     }
 
     /// <summary>
@@ -98,9 +100,16 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         // تصویر و هندسهٔ سربرگ برای هر نسخهٔ فایل کش می‌شوند؛ چاپ دوم به بعد فایل ۶۲۰KB را
         // نمی‌خواند و تصویر ۸٫۷ مگاپیکسلی را دوباره دیکد نمی‌کند.
         var timing = Stopwatch.StartNew();
+        // مسیر قالب به ترتیب اولویت: تنظیمات → فایل داخل مخزن (inventory/src/…) → ContentRoot → BaseDirectory.
+        // یعنی ویرایش قالب در «inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003»
+        // مستقیماً مبنای چاپ است و نیازی به کپی/بیلد مجدد ندارد.
+        var templatePath = company is null ? null
+            : InnerLetterheadTemplates.ResolveCompanyTemplatePath(
+                  _env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5, _templateRoot)
+              ?? InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company.Id, a5);
         var companyArt = company is null ? null
             : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5,
-                _letterheadDpi);
+                _letterheadDpi, _templateRoot);
         if (companyArt != null)
         {
             var loadMs = timing.ElapsedMilliseconds;
@@ -109,11 +118,11 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب همان شرکت خوانده می‌شود تا مقادیر
                 // دقیقاً روی خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
                 var meta = InnerLetterheadTemplates.TryLoadMetaLayout(
-                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5);
+                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
                 var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts, meta);
                 _log.LogInformation(
                     "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
-                    letterId, company!.Id, InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company!.Id, a5),
+                    letterId, company!.Id, templatePath,
                     loadMs, timing.ElapsedMilliseconds - loadMs, companyArt.Length / 1024, _letterheadDpi,
                     pdf.Length / 1024);
                 return pdf;

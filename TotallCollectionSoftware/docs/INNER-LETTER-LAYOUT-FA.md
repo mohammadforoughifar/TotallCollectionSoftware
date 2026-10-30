@@ -65,3 +65,24 @@ python3 inventory/tests/InnerLetterPrinting/test_inner_printing.py
 `test_info_block_is_only_receiver_then_subject`، `test_hamesh_is_printed_after_the_letter_text`،
 `test_meta_values_are_placed_next_to_the_printed_labels`،
 `test_inner_template_keeps_the_outgoing_header_box_geometry`.
+
+## چاپ از کدام فایل قالب خوانده می‌شود؟
+
+`InnerLetterheadTemplates` مسیر قالب را با این اولویت بررسی می‌کند و **اولین فایل موجود** را
+می‌خواند؛ همان مسیر در لاگ چاپ با `Template=…` ثبت می‌شود:
+
+1. `Reporting:InnerLetters:TemplateRoot` (اختیاری؛ پوشهٔ `…/Companies/1003` یا `…/Companies`).
+2. **فایل داخل مخزن**: `inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003/Inner-{A4|A5}.mrt`
+   → ویرایش همین فایل مستقیماً مبنای چاپ است؛ نیازی به کپی در خروجی بیلد یا بیلد مجدد نیست.
+   (پوشهٔ مخزن با بالا رفتن از `ContentRoot`/`BaseDirectory`/پوشهٔ جاری پیدا می‌شود.)
+3. `ContentRoot/Reports/InnerLetters/Companies/1003/…` — `dotnet run` از پوشهٔ پروژه.
+4. `BaseDirectory/Reports/InnerLetters/Companies/1003/…` — نسخهٔ منتشرشده روی سرور بدون سورس.
+
+نکته‌ها:
+
+- نسخهٔ `src/Inventory.Api/Reports/…` و `inventory/src/Inventory.Api/Reports/…` باید یکسان بمانند؛
+  تست `test_both_source_trees_share_the_same_inner_template` همین را (و یکسانی رندر) بررسی می‌کند.
+- خودِ `.mrt` تصویر سربرگ و هندسهٔ سه کادر شماره/تاریخ/پیوست را می‌دهد؛ ترتیب «گیرنده ← موضوع ←
+  متن ← هامش» در `InnerLetterPdfRenderer.cs` ساخته می‌شود (قالب Stimulsoft اجرا نمی‌شود).
+- برای برگشت به رفتار قبلی (خواندن از خروجی بیلد): `TemplateRoot` را روی
+  `Reports/InnerLetters/Companies` بگذارید.

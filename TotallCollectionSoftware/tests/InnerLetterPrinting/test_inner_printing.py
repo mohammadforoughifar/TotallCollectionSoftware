@@ -167,6 +167,83 @@ class InnerPrintingTests(unittest.TestCase):
         for generated in ('Text("با تشکر")', 'Text("مهر")', 'Signer(', "SignatureImage"):
             self.assertNotIn(generated, source)
 
+    # ── مسیر قالب: چاپ باید از فایل داخل مخزن (inventory/src/…) خوانده شود ──────────────
+
+    def test_print_reads_the_repository_inventory_template_first(self):
+        """اولویت مسیرها: تنظیمات → فایل داخل مخزن → ContentRoot → BaseDirectory."""
+        source = (OFFICE / "InnerLetterheadTemplates.cs").read_text()
+        candidates = source.split("CompanyCandidates(string contentRoot", 1)[1].split("return list.Distinct", 1)[0]
+        order = [
+            candidates.index("AddFolder(ConfiguredFolder("),
+            candidates.index("AddFolder(RepositoryCompanyFolder("),
+            candidates.index('Path.Combine(contentRoot, "Reports"'),
+            candidates.index('Path.Combine(baseDirectory, "Reports"'),
+        ]
+        self.assertEqual(order, sorted(order), "ترتیب اولویت مسیرهای قالب به‌هم خورده است")
+        # پوشهٔ داخل مخزن دقیقاً همان مسیری است که کارفرما گفته است.
+        self.assertIn('"inventory", "src", "Inventory.Api"', source)
+        self.assertIn('"Reports", "InnerLetters", "Companies", company', source)
+
+    def test_repository_template_is_discoverable_from_a_build_output_folder(self):
+        """از پوشهٔ خروجی بیلد (bin/Debug/...) با بالا رفتن، پوشهٔ قالب داخل مخزن پیدا می‌شود."""
+        start = ROOT / "src" / "Inventory.Api" / "bin" / "Debug" / "net8.0"
+        found = None
+        for parent in [start, *start.parents][:12]:
+            candidate = (parent / "inventory" / "src" / "Inventory.Api" / "Reports"
+                         / "InnerLetters" / "Companies" / "1003")
+            if candidate.is_dir():
+                found = candidate
+                break
+        self.assertIsNotNone(found, "پوشهٔ قالب داخل مخزن باید از خروجی بیلد قابل discovery باشد")
+        self.assertTrue((found / "Inner-A4.mrt").is_file())
+        self.assertTrue((found / "Inner-A5.mrt").is_file())
+
+    @staticmethod
+    def repository_root() -> Path:
+        """ریشهٔ مخزن، مستقل از این‌که تست از کدام درخت اجرا شود.
+
+        پوشهٔ inventory خودش یک Inventory.sln دارد؛ پس معیار «هر دو درخت کنار هم» است.
+        """
+        for parent in Path(__file__).resolve().parents:
+            if ((parent / "src" / "Inventory.Api").is_dir()
+                    and (parent / "inventory" / "src" / "Inventory.Api").is_dir()):
+                return parent
+        return ROOT
+
+    def test_both_source_trees_share_the_same_inner_template(self):
+        """نسخهٔ src و نسخهٔ inventory باید یکی بمانند؛ وگرنه چاپ از یک نسخه و ویرایش روی دیگری است."""
+        repo = self.repository_root()
+        primary_dir = repo / "src" / "Inventory.Api"
+        mirror_dir = repo / "inventory" / "src" / "Inventory.Api"
+        self.assertNotEqual(primary_dir, mirror_dir)
+        for size in ("A4", "A5"):
+            with self.subTest(size=size):
+                name = f"Inner-{size}.mrt"
+                primary = primary_dir / "Reports" / "InnerLetters" / "Companies" / "1003" / name
+                mirror = mirror_dir / "Reports" / "InnerLetters" / "Companies" / "1003" / name
+                self.assertTrue(primary.is_file() and mirror.is_file(), f"فایل {name} در یکی از درخت‌ها نیست")
+                self.assertEqual(primary.read_bytes(), mirror.read_bytes(),
+                                 f"{name} در دو درخت یکی نیست")
+        renderer = primary_dir / "Services" / "Office" / "InnerLetterPdfRenderer.cs"
+        mirror_renderer = mirror_dir / "Services" / "Office" / "InnerLetterPdfRenderer.cs"
+        self.assertEqual(renderer.read_bytes(), mirror_renderer.read_bytes(),
+                         "رندر نامهٔ داخلی در دو درخت یکی نیست")
+
+    def test_configured_template_root_wins_and_is_documented(self):
+        service = (OFFICE / "InnerLetterPrintService.cs").read_text()
+        self.assertIn('configuration?["Reporting:InnerLetters:TemplateRoot"]', service)
+        settings = (API / "appsettings.json").read_text()
+        self.assertIn('"TemplateRoot": ""', settings)
+        self.assertIn('"LetterheadDpi": 200', settings)
+
+    def test_print_log_names_the_template_file_that_was_read(self):
+        service = (OFFICE / "InnerLetterPrintService.cs").read_text()
+        self.assertIn("Template={Template}", service)
+        self.assertIn("var templatePath =", service)
+        # لاگ باید مسیر واقعیِ خوانده‌شده را ثبت کند، نه مسیر پیش‌فرض ContentRoot را.
+        log = service.split("Template={Template}", 1)[1]
+        self.assertIn("templatePath", log.split(");", 1)[0])
+        self.assertNotIn("HomepaPath(_env.ContentRootPath, a5),\n                    loadMs", service)
     def test_service_reads_meta_geometry_from_the_inner_template(self):
         service = (OFFICE / "InnerLetterPrintService.cs").read_text()
         self.assertIn("MetaLayout(", service)
