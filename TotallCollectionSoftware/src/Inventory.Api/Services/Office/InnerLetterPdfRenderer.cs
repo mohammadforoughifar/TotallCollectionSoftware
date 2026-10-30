@@ -59,7 +59,11 @@ internal static class InnerLetterPdfRenderer
             page.Size(a5 ? PageSizes.A5 : PageSizes.A4);
             // Non-Homepa backgrounds are overlaid by PDFsharp after rendering.
             page.PageColor(Colors.Transparent);
-            page.ContentFromRightToLeft();
+            // جهت چیدمان مثل نامهٔ صادرهٔ ۱۰۰۳: چپ‌به‌راست. با راست‌به‌چپ، QuestPDF ترتیب
+            // فرزندانِ Row را آینه می‌کرد؛ نتیجه‌اش همان ایراد گزارش‌شده بود: برچسب‌های
+            // «موضوع/ایجادکننده/تاریخ ارجاع» به لبهٔ چپ می‌رفتند و مقدارها به لبهٔ راست.
+            // متن نامه همچنان راست‌چین و راست‌به‌چپ است (DirectionFromRightToLeft روی خودِ متن).
+            page.ContentFromLeftToRight();
             page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(fontSize)
                 .LineHeight(LetterPrintTemplate.BodyLineHeight).DirectionFromRightToLeft());
             if (homepa)
@@ -78,7 +82,9 @@ internal static class InnerLetterPdfRenderer
                 page.Header().Height(contentTop);
                 // شماره/تاریخ/پیوست در لایهٔ سراسری صفحه و با مختصات مطلق، روی خط برچسب‌های
                 // چاپ‌شدهٔ سربرگ («موضوع:»/«تاریخ:»/«پیوست:») — روی همهٔ صفحه‌ها.
-                if (metaRows.Count > 0) page.Foreground().Element(host => DrawMetaRows(host, metaRows));
+                if (metaRows.Count > 0)
+                    page.Foreground().ContentFromLeftToRight()
+                        .Element(host => DrawMetaRows(host, metaRows));
             }
             else
             {
@@ -89,7 +95,6 @@ internal static class InnerLetterPdfRenderer
                 {
                     c.Item().Text($"شماره نامه: {number}");
                     c.Item().Text($"تاریخ ثبت: {date}");
-                    c.Item().Text($"تاریخ ارجاع: {(string.IsNullOrWhiteSpace(data.ReferralDates) ? "—" : data.ReferralDates)}");
                     c.Item().Text($"پیوست: {attachmentText}");
                 });
             }
@@ -113,16 +118,16 @@ internal static class InnerLetterPdfRenderer
         bool withHamesh, bool a5)
     {
         var infoFontSize = a5 ? 9f : 11f;
+        // ترتیب دقیقاً مثل نامهٔ صادرهٔ ۱۰۰۳ (درخواست کارفرما):
+        //   خط اول  → گیرنده، بدون برچسب و تمام‌عرض
+        //   خط دوم  → «موضوع:» و روبه‌رویش عنوان نامه
+        //   سپس     → متن نامه و در پایان «هامش» (اگر خواسته شده باشد)
+        // ردیف‌های «ایجادکننده» و «تاریخ ارجاع» در نامهٔ داخلی چاپ نمی‌شوند (درخواست کارفرما).
         var rows = new List<LetterPrintTemplate.InfoRow>();
         if (!string.IsNullOrWhiteSpace(data.Receivers))
             rows.Add(new LetterPrintTemplate.InfoRow("گیرندگان", data.Receivers, HideLabel: true));
         rows.Add(new LetterPrintTemplate.InfoRow("موضوع",
             string.IsNullOrWhiteSpace(data.Title) ? "—" : data.Title, BoldValue: true));
-        if (!string.IsNullOrWhiteSpace(data.Creator))
-            rows.Add(new LetterPrintTemplate.InfoRow("ایجادکننده", data.Creator));
-        // «تاریخ ارجاع» فقط وقتی داده‌ای دارد چاپ می‌شود (ردیف خالی چاپ نمی‌شود).
-        if (!string.IsNullOrWhiteSpace(data.ReferralDates))
-            rows.Add(new LetterPrintTemplate.InfoRow("تاریخ ارجاع", data.ReferralDates));
 
         LetterPrintTemplate.InfoBlock(c, rows, infoFontSize,
             Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f), InfoLabelGap);
@@ -209,6 +214,8 @@ internal static class InnerLetterPdfRenderer
     {
         if (rows.Count == 0) return;
 
+        // ستون مقدارها: لبهٔ راستِ کادر ۴pt پیش از برچسبِ چاپ‌شده روی سربرگ تمام می‌شود
+        // (همان قاعدهٔ نامهٔ صادرهٔ ۱۰۰۳).
         var right = rows.Min(row => row.Left + row.Width) - 4f;
         var left = Math.Max(rows.Min(row => row.Left),
             LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters));
@@ -216,7 +223,11 @@ internal static class InnerLetterPdfRenderer
         if (right - left < 44f) left = Math.Max(0f, right - 44f);
         var width = Math.Max(20f, right - left);
 
-        host.AlignLeft().AlignTop().Column(column =>
+        // مختصات افقی با PaddingLeft + Width تعیین می‌شود، نه با Row.
+        // چرا؟ در چیدمان راست‌به‌چپ، QuestPDF ترتیب فرزندان Row را آینه می‌کند و مقدارها
+        // از برچسب‌های چاپ‌شدهٔ سربرگ فاصله می‌گرفتند (ایراد گزارش‌شدهٔ کارفرما). با عرض
+        // ثابت، جای هر مقدار مطلق و مستقل از جهت چیدمان است.
+        host.AlignTop().Column(column =>
         {
             var cursor = 0f;
             foreach (var row in rows.OrderBy(row => row.Top))
@@ -225,18 +236,19 @@ internal static class InnerLetterPdfRenderer
                 if (gap > 0.5f) column.Item().Height(gap);
                 var height = Math.Max(10f, row.Height);
                 var text = string.IsNullOrWhiteSpace(row.Value) ? "—" : row.Value;
-                column.Item().Height(height).Row(line =>
-                {
-                    if (left > 0.5f) line.ConstantItem(left);
-                    line.ConstantItem(width).AlignMiddle().AlignRight()
-                        .Text(LetterPrintTemplate.IsolateMixedText(text))
-                        .FontFamily("Vazirmatn-Bold")
-                        .FontSize(FitMetaFontSize(text, width))
-                        .FontColor(row.Color)
-                        .LineHeight(1.15f)
-                        .AlignRight()
-                        .DirectionFromRightToLeft();
-                });
+                column.Item().Height(height)
+                    .PaddingLeft(Math.Max(0f, left))
+                    .AlignLeft()
+                    .Width(width)
+                    .AlignMiddle()
+                    .AlignRight()
+                    .Text(LetterPrintTemplate.IsolateMixedText(text))
+                    .FontFamily("Vazirmatn-Bold")
+                    .FontSize(FitMetaFontSize(text, width))
+                    .FontColor(row.Color)
+                    .LineHeight(1.15f)
+                    .AlignRight()
+                    .DirectionFromRightToLeft();
                 cursor = row.Top + height;
             }
         });

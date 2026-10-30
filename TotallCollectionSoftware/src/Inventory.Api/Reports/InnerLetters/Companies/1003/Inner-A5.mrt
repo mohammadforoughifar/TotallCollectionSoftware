@@ -15,7 +15,6 @@
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,10</Font>
-          <HorAlignment>Right</HorAlignment>
           <Margins>0,0,0,0</Margins>
           <Name>Text10</Name>
           <Page isRef="2" />
@@ -35,7 +34,6 @@
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,10</Font>
-          <HorAlignment>Right</HorAlignment>
           <Margins>0,0,0,0</Margins>
           <Name>Text11</Name>
           <Page isRef="2" />
@@ -55,7 +53,7 @@
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazirmatn,12</Font>
-          <HorAlignment>Right</HorAlignment>
+          <HorAlignment>Center</HorAlignment>
           <Margins>0,0,0,0</Margins>
           <Name>Text12</Name>
           <Page isRef="2" />

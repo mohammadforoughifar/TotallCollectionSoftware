@@ -75,11 +75,80 @@ class InnerPrintingTests(unittest.TestCase):
                 self.assertAlmostEqual(found[slot], center, delta=1.5,
                                        msg=f"{slot} در {size} روی خط برچسب نیست")
 
+    def test_page_direction_matches_the_outgoing_1003_layout(self):
+        """چیدمان مثل نامهٔ صادرهٔ ۱۰۰۳ چپ‌به‌راست است.
+
+        با راست‌به‌چپ، QuestPDF ترتیب فرزندان Row را آینه می‌کند: برچسب‌های
+        «موضوع/ایجادکننده/تاریخ ارجاع» به لبهٔ چپ می‌رفتند و مقدارها به لبهٔ راست.
+        """
+        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        self.assertIn("page.ContentFromLeftToRight();", source)
+        self.assertNotIn("page.ContentFromRightToLeft();", source)
+        outgoing = (OFFICE / "Outgoing" / "OutgoingLetterPrintService.cs").read_text()
+        self.assertIn("page.ContentFromLeftToRight();", outgoing)
+
+    def test_info_block_is_only_receiver_then_subject(self):
+        """خط اول گیرنده، خط دوم «موضوع:»؛ ایجادکننده و تاریخ ارجاع چاپ نمی‌شوند."""
+        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        body = source.split("private static void AddHomepaBody", 1)[1].split("AddPlainBody", 1)[0]
+        self.assertLess(body.index('"گیرندگان"'), body.index('"موضوع"'),
+                        "گیرنده باید خط اول باشد و موضوع خط دوم")
+        for removed in ('InfoRow("ایجادکننده"', 'InfoRow("تاریخ ارجاع"'):
+            self.assertNotIn(removed, source, f"ردیف «{removed}» نباید در نامهٔ داخلی چاپ شود")
+        # مسیر شرکت‌های دیگر هم تاریخ ارجاع چاپ نمی‌کند (فقط در مدل داده می‌ماند).
+        self.assertNotIn('Text($"تاریخ ارجاع', source)
+
+    def test_hamesh_is_printed_after_the_letter_text(self):
+        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        body = source.split("private static void AddHomepaBody", 1)[1].split("AddPlainBody", 1)[0]
+        text_at = body.index("c.Item().Text(body)")
+        hamesh_at = body.index("AddHamesh(c, data, withHamesh);")
+        self.assertLess(text_at, hamesh_at, "هامش باید بعد از متن نامه بیاید")
+
+    def test_meta_values_are_placed_next_to_the_printed_labels(self):
+        """لبهٔ راستِ مقدارها ۴pt قبل از برچسب‌های چاپ‌شده و روی مرکز همان ردیف‌ها."""
+        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        self.assertIn("rows.Min(row => row.Left + row.Width) - 4f", source)
+        self.assertIn(".PaddingLeft(Math.Max(0f, left))", source)
+        # لبهٔ راستِ خودِ کادر ۴pt جلوتر از لبهٔ راستِ مقدار است (رندر ۴pt کم می‌کند).
+        for size, centers, box_right in (("A4", (66.5, 84.5, 103.2), 96.48),
+                                         ("A5", (47.0, 59.8, 73.0), 66.24)):
+            root = ET.parse(API / "Reports/InnerLetters/Companies/1003" / f"Inner-{size}.mrt").getroot()
+            components = list(root.find("./Pages/Page1/Components"))
+            self.assertEqual(len(components), 3)
+            for component, center in zip(components, centers):
+                rect = [float(v) for v in component.findtext("ClientRectangle").split(",")]
+                self.assertAlmostEqual((rect[1] + rect[3] / 2) * 72.0, center, delta=2.0)
+                self.assertAlmostEqual((rect[0] + rect[2]) * 72.0, box_right, delta=2.0)
+
+    def test_inner_template_keeps_the_outgoing_header_box_geometry(self):
+        """هندسهٔ کادرهای سربرگ نامهٔ داخلی = همان کادرهای قالب نامهٔ صادرهٔ ۱۰۰۳."""
+        for size in ("A4", "A5"):
+            inner = ET.parse(API / "Reports/InnerLetters/Companies/1003" / f"Inner-{size}.mrt").getroot()
+            outgoing = ET.parse(API / "Reports/OutgoingLetters/Companies/1003" / f"Outgoing-{size}.mrt").getroot()
+            # قالب نامهٔ صادره حاشیهٔ صفحه دارد و مستطیل‌ها نسبت به آن‌اند؛ قالب داخلی
+            # حاشیهٔ صفر دارد و مستطیل‌ها مطلق‌اند ⇒ بعد از جمع با حاشیه باید یکی شوند.
+            margin = [float(v) for v in (outgoing.findtext("./Pages/Page1/Margins") or "0,0,0,0").split(",")]
+            inner_rects = sorted(tuple(round(float(v), 4) for v in c.findtext("ClientRectangle").split(","))
+                                 for c in inner.find("./Pages/Page1/Components"))
+            outgoing_rects = sorted(
+                (round(float((c.findtext("ClientRectangle") or "").split(",")[0]) + margin[0], 4),
+                 round(float((c.findtext("ClientRectangle") or "").split(",")[1]) + margin[2], 4),
+                 round(float((c.findtext("ClientRectangle") or "").split(",")[2]), 4),
+                 round(float((c.findtext("ClientRectangle") or "").split(",")[3]), 4))
+                for c in outgoing.find("./Pages/Page1/Components")
+                if (c.findtext("Text") or "").strip() in
+                ("{DataSource1.LetterNumber}", "{DataSource1.DateShams}", "{DataSource1.Peyvast}"))
+            self.assertEqual(inner_rects, outgoing_rects, f"کادرهای سربرگ {size} باید یکی باشند")
+
     def test_renderer_uses_absolute_foreground_and_starts_body_below_the_band(self):
         """مقادیر سربرگ در لایهٔ Foreground مطلق؛ متن از پایین نوار آبی + ۹۷pt شروع می‌شود."""
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
         self.assertIn("page.MarginTop(0);", source)
-        self.assertIn("page.Foreground().Element(host => DrawMetaRows(host, metaRows))", source)
+        # مقادیر سربرگ در لایهٔ سراسری صفحه (مختصات مطلق) و با جهت چپ‌به‌راست،
+        # وگرنه جهت راست‌به‌چپِ صفحه ترتیب Row را آینه می‌کرد و مقادیر از برچسب‌ها دور می‌افتادند.
+        self.assertIn("page.Foreground().ContentFromLeftToRight()", source)
+        self.assertIn("DrawMetaRows(host, metaRows)", source)
         self.assertIn("HomepaLetterheadLayout.ContentTop(a5)", source)
         self.assertIn("page.Header().Height(contentTop);", source)
         # کادرها با مختصات مطلق‌اند؛ کسر مبدأ page.Header همان ایراد «یک ردیف بالاتر» بود.

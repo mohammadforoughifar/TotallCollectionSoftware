@@ -82,7 +82,8 @@ class SharedLetterTemplateTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 inner = self.inner(tree)
                 # مقادیر سربرگ: لایهٔ سراسری صفحه با مختصات مطلق (نه مبدأ page.Header).
-                self.assertIn("page.Foreground().Element(host => DrawMetaRows(host, metaRows))", inner)
+                self.assertIn("DrawMetaRows(host, metaRows)", inner)
+                self.assertIn("page.Foreground().ContentFromLeftToRight()", inner)
                 self.assertIn("page.MarginTop(0);", inner)
                 self.assertIn("HomepaLetterheadLayout.ContentTop(a5)", inner)
                 self.assertNotIn("void HeaderField(IContainer container", inner)
