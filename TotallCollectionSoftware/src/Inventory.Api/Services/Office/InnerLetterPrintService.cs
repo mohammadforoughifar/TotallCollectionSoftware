@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Infrastructure;
@@ -20,10 +21,27 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
+    private readonly int _letterheadDpi;
 
-    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
+    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
+        IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
+        _letterheadDpi = ReadLetterheadDpi(configuration);
+    }
+
+    /// <summary>
+    /// DPI سربرگ برای چاپ. پیش‌فرض ۲۰۰ (تصویر اصلی ۳۰۰dpi و ۸٫۷ مگاپیکسل است؛ همان تصویر
+    /// در چاپ نهایی به حدود ۲۰۰dpi نیاز دارد). صفر = تصویر اصلی بدون تغییر.
+    /// کلید: Reporting:InnerLetters:LetterheadDpi
+    /// </summary>
+    private static int ReadLetterheadDpi(IConfiguration? configuration)
+    {
+        var raw = configuration?["Reporting:InnerLetters:LetterheadDpi"];
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dpi)
+               && dpi is >= 0 and <= 600
+            ? dpi
+            : InnerLetterheadTemplates.DefaultArtworkDpi;
     }
 
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default, bool withHamesh = false)
@@ -75,15 +93,23 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         if (company?.Id == 1003)
         {
             // This exact inner-letter template is required; never silently substitute another company's art.
-            var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5);
+            // تصویر و هندسهٔ سربرگ برای هر نسخهٔ فایل کش می‌شوند؛ چاپ دوم به بعد فایل ۶۲۰KB را
+            // نمی‌خواند و تصویر ۸٫۷ مگاپیکسلی را دوباره دیکد نمی‌کند.
+            var timing = Stopwatch.StartNew();
+            var background = InnerLetterheadTemplates.LoadHomepa(_env.ContentRootPath, AppContext.BaseDirectory, a5,
+                _letterheadDpi);
             // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب داخلی خوانده می‌شود تا مقادیر درست روی
             // خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
             var meta = InnerLetterheadTemplates.LoadHomepaMetaLayout(_env.ContentRootPath, AppContext.BaseDirectory, a5);
+            var loadMs = timing.ElapsedMilliseconds;
             try
             {
                 var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, background, hasAttachment, fonts, meta);
-                _log.LogInformation("چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}",
-                    letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5));
+                _log.LogInformation(
+                    "چاپ نامه داخلی ۱۰۰۳. LetterId={LetterId}, Size={Size}, WithHamesh={WithHamesh}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
+                    letterId, size, withHamesh, InnerLetterheadTemplates.HomepaPath(_env.ContentRootPath, a5),
+                    loadMs, timing.ElapsedMilliseconds - loadMs, background.Length / 1024, _letterheadDpi,
+                    pdf.Length / 1024);
                 return pdf;
             }
             catch (Exception ex)

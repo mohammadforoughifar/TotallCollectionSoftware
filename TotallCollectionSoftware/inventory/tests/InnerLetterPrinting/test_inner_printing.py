@@ -105,7 +105,9 @@ class InnerPrintingTests(unittest.TestCase):
 
     def test_background_is_a_repeating_page_background_and_body_can_flow(self):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
-        self.assertIn("page.Background().Image(homepaBackground!).FitUnproportionally();", source)
+        # تصویر سربرگ یک بار در InnerLetterheadTemplates آماده می‌شود؛ اینجا دست‌نخورده
+        # در PDF گذاشته می‌شود تا هر چاپ یک بار دیگر resize/encode نشود.
+        self.assertIn("page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();", source)
         self.assertIn("page.Size(a5 ? PageSizes.A5 : PageSizes.A4)", source)
         self.assertIn("c.Item().Text(body).AlignRight();", source)
         self.assertNotIn(".ShowEntire(", source)
@@ -149,8 +151,17 @@ class InnerPrintingTests(unittest.TestCase):
         # به سربرگ شرکت دیگر برنمی‌گردد.
         self.assertIn("InnerLetterheadTemplates.", service)
         self.assertIn("throw new InnerLetterPrintException", service)
-        company_branch = service.split("InnerLetterheadTemplates.", 1)[1]
-        self.assertNotIn("forough", company_branch.split("return pdf;", 1)[0])
+        # شاخهٔ سربرگ اختصاصی شرکت هرگز به سربرگ نمونهٔ شرکت دیگر برنمی‌گردد.
+        # دو درخت دو نسخهٔ این سرویس دارند (۱۰۰۳ اختصاصی / هر شرکتی که قالب دارد)؛ هر دو
+        # سربرگ را فقط از قالب خودِ شرکت می‌خوانند و در صورت خطا چاپ بی‌سربرگ نمی‌کنند.
+        if "var companyArt =" in service:
+            company_branch = service.split("var companyArt =", 1)[1].split("var header = company?", 1)[0]
+            self.assertIn("InnerLetterheadTemplates.TryLoadForCompany(", company_branch)
+        else:
+            company_branch = service.split("if (company?.Id == 1003)", 1)[1].split("var header = company?", 1)[0]
+            self.assertIn("InnerLetterheadTemplates.LoadHomepa(", company_branch)
+        self.assertNotIn("forough", company_branch)
+        self.assertIn("throw new InnerLetterPrintException", company_branch)
         loader = (OFFICE / "InnerLetterheadTemplates.cs").read_text()
         self.assertIn('"Reports", "InnerLetters", "Companies", "1003"', loader)
         self.assertIn('Inner-{(a5 ? "A5" : "A4")}.mrt', loader)

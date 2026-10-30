@@ -69,7 +69,10 @@ internal static class InnerLetterPdfRenderer
                 page.MarginHorizontal(sideMargin);
                 page.MarginBottom(HomepaLetterheadLayout.DesignFooterReserve(a5));
                 // QuestPDF's page background and header are repeated on EVERY page, including overflow.
-                page.Background().Image(homepaBackground!).FitUnproportionally();
+                // UseOriginalImage: تصویر در InnerLetterheadTemplates یک بار آماده شده است؛
+                // اگر اینجا هم تغییر اندازه/کدگذاری شود، QuestPDF در هر چاپ یک نسخهٔ
+                // ۲۳۸۱×۳۳۶۷ را از نو می‌سازد (چند صد میلی‌ثانیه CPU و ده‌ها مگابایت حافظه).
+                page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();
                 // ناحیهٔ سربرگ فقط تا شروع متن رزرو می‌شود (نه یک ارتفاع ثابت ۱۶۰pt)؛ بدنه
                 // دقیقاً از پایین نوار آبی + ۹۷pt شروع می‌شود.
                 page.Header().Height(contentTop);
