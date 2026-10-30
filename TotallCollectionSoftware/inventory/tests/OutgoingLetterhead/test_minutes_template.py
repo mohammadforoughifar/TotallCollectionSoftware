@@ -4,7 +4,9 @@
 
 • قالب `Reports/MeetingMinutes/Companies/{1003,3}/Minutes-{A4,A5}.mrt` وجود دارد و
   همان ساختار قالب نامهٔ صادره را دارد (StiSerializer، ReportUnit، Watermark.ImageBytes).
-• هر پنج جزء الزامی روی قالب هست: عنوان، شماره صورتجلسه، تاریخ جلسه، حاضرین، غایبین.
+• هر شش جزء روی قالب هست: عنوان، شماره، تاریخ جلسه، پیوست، حاضرین، غایبین؛ شماره/تاریخ/پیوست
+  در کادرهای چاپ‌شدهٔ سربرگ (بالای صفحه) می‌نشینند و بدنه از عنوان شروع می‌شود — عنوان ۱۹۳pt
+  در A4 و ۱۳۹pt در A5، زیر مستطیل آبی و راست‌چین.
 • سرویس چاپ سربرگ را از شرکتِ خودِ صورتجلسه می‌گیرد (MeetingMinutes.CompanyId) و نه از
   شرکت فعال در درخواست؛ فقط برای صورتجلسه‌های قدیمیِ بدون شرکت، هدر X-Company-Id جایگزین است.
 • هندسهٔ چاپ از خودِ MRT خوانده می‌شود (`MeetingMinutesDesignLayout`) و هر دو اندازهٔ A4/A5
@@ -25,7 +27,17 @@ COMPANIES = ("1003", "3")
 SIZES = ("A4", "A5")
 PAGE_MARGIN_INCH = 0.39
 BAND_BOTTOM = {"A4": 112.8, "A5": 79.4}
-CONTENT_GAP = 97.0
+# جای عنوان زیر مستطیل/روبان آبی سربرگ (پایین‌ترین پیکسل آبی: ۱۸۴pt در A4 و ≈۱۳۰pt در A5).
+TITLE_TOP = {"A4": 193.0, "A5": 139.0}
+# شروع بدنه (حاضرین) — ۳۹pt زیر عنوان در A4 و ۲۵pt در A5.
+BODY_TOP = {"A4": 232.0, "A5": 164.0}
+# کادرهای شماره/تاریخ/پیوست = همان برچسب‌های چاپ‌شدهٔ سربرگ ۱۰۰۳ (مثل قالب نامهٔ صادره).
+META_BOX = {
+    "A4": {"Number": (14.4, 59.2776, 82.08, 14.4), "MeetingDate": (14.4, 77.2776, 82.08, 14.4),
+           "Attachment": (14.4, 95.9976, 82.08, 14.4)},
+    "A5": {"Number": (7.2, 40.5216, 59.04, 12.96), "MeetingDate": (7.2, 53.2512, 59.04, 12.96),
+           "Attachment": (7.2, 66.4848, 59.04, 12.96)},
+}
 
 
 def reports(tree: Path) -> Path:
@@ -91,7 +103,7 @@ class MinutesTemplateFileTests(unittest.TestCase):
 
     def test_data_source_declares_every_changeable_value(self):
         expected = {"Number", "Title", "MeetingDate", "Attendees", "Absentees", "Items",
-                    "CompanyName", "Status"}
+                    "CompanyName", "Status", "Attachment"}
         for size in SIZES:
             with self.subTest(size=size):
                 root = ET.parse(template(TREES[0], "1003", size)).getroot()
@@ -101,12 +113,13 @@ class MinutesTemplateFileTests(unittest.TestCase):
                 columns = {value.text.split(",")[0] for value in declare.find("Columns")}
                 self.assertEqual(columns, expected)
 
-    def test_five_mandatory_parts_are_placed_in_the_template(self):
-        """عنوان، شماره صورتجلسه، تاریخ جلسه، حاضرین و غایبین — همه به‌صورت کادر مستقل."""
+    def test_mandatory_parts_are_placed_in_the_template(self):
+        """عنوان، شماره، تاریخ، پیوست، حاضرین و غایبین — همه به‌صورت کادر مستقل."""
         required = {
             "Title": "{DataSource1.Title}",
             "Number": "{DataSource1.Number}",
             "MeetingDate": "{DataSource1.MeetingDate}",
+            "Attachment": "{DataSource1.Attachment}",
             "Attendees": "{DataSource1.Attendees}",
             "Absentees": "{DataSource1.Absentees}",
         }
@@ -116,16 +129,43 @@ class MinutesTemplateFileTests(unittest.TestCase):
                 for name, expression in required.items():
                     self.assertIn(f"{name}Value", by_name, f"کادر {name} در قالب نیست")
                     self.assertEqual(by_name[f"{name}Value"].findtext("Text"), expression)
-                    if name != "Title":  # عنوان، سرصفحهٔ وسط‌چین است و برچسب نمی‌خواهد
-                        self.assertIn(f"{name}Caption", by_name, f"برچسب {name} در قالب نیست")
+                # برچسب فقط برای بخش‌های بدنه؛ شماره/تاریخ/پیوست برچسبِ چاپ‌شدهٔ سربرگ را
+                # دارند و برچسبشان نباید دوباره در متن صورتجلسه بیاید.
+                for name in ("Attendees", "Absentees", "Items"):
+                    self.assertIn(f"{name}Caption", by_name, f"برچسب {name} در قالب نیست")
+                for name in ("Number", "MeetingDate", "Attachment"):
+                    self.assertNotIn(f"{name}Caption", by_name,
+                                     f"برچسب {name} نباید در متن تکرار شود")
 
-    def test_content_starts_after_the_letterhead_band(self):
-        """نخستین کادر چاپی درست پایین نوار سربرگ (۱۱۲٫۸ + ۹۷ برای A4، ۷۹٫۴ + ۹۷ برای A5)."""
+    def test_number_date_and_attachment_sit_on_the_printed_header_labels(self):
+        """شماره/تاریخ/پیوست در کادرهای سفید بالای سربرگ، با متن سفید."""
         for size in SIZES:
             with self.subTest(size=size):
-                element = next(c for c in components(TREES[0], "1003", size) if c.tag == "TitleValue")
-                _, top, _, _ = rect_pt(element)
-                self.assertAlmostEqual(top, BAND_BOTTOM[size] + CONTENT_GAP, places=1)
+                by_name = {component.tag: component for component in components(TREES[0], "1003", size)}
+                for name, expected in META_BOX[size].items():
+                    component = by_name[f"{name}Value"]
+                    actual = rect_pt(component)
+                    for got, wanted in zip(actual, expected):
+                        self.assertAlmostEqual(got, wanted, places=1, msg=f"{size} {name}")
+                    self.assertEqual(component.findtext("TextBrush"), "White", f"{size} {name}")
+                # «پیوست» درشت‌تر از شماره/تاریخ است (مثل قالب نامهٔ صادره).
+                self.assertEqual(by_name["AttachmentValue"].findtext("Font"), "Vazirmatn,12")
+
+    def test_content_starts_after_the_letterhead_band(self):
+        """عنوان زیر مستطیل/روبان آبی و بدنه (حاضرین) پایین‌تر از آن — درخواست کارفرما."""
+        for size in SIZES:
+            with self.subTest(size=size):
+                by_name = {component.tag: component for component in components(TREES[0], "1003", size)}
+                left, title_top, width, title_height = rect_pt(by_name["TitleValue"])
+                _, body_top, _, _ = rect_pt(by_name["AttendeesValue"])
+                self.assertAlmostEqual(title_top, TITLE_TOP[size], places=1)
+                self.assertGreater(title_top, BAND_BOTTOM[size])       # پایین‌تر از نوار آبی
+                self.assertAlmostEqual(body_top, BODY_TOP[size], places=1)
+                self.assertAlmostEqual(title_top + title_height, BODY_TOP[size], places=1)
+                # عنوان کل عرض متن را دارد تا از سمت راست شروع شود (نه وسط‌چین با عرض کم).
+                self.assertAlmostEqual(left, 28.08, places=1)
+                self.assertAlmostEqual(width, {"A4": 529.2, "A5": 345.6}[size], places=1)
+                self.assertEqual(by_name["TitleValue"].findtext("HorAlignment"), "Right")
 
     def test_all_texts_are_right_to_left_and_inside_the_page(self):
         for size in SIZES:
@@ -187,16 +227,73 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 for size in SIZES:
                     self.assertIn(size, service)
 
-    def test_five_mandatory_values_are_always_written(self):
+    def test_mandatory_values_are_always_written(self):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
-                # چهار بخش «برچسب‌دار» از Slot می‌آیند؛ عنوان از design.Title.
-                for slot in ("Number", "MeetingDate", "Attendees", "Absentees"):
+                # متای سربرگ از کادرهای خودِ قالب خوانده می‌شود.
+                for box in ("design.Number", "design.MeetingDate", "design.Attachment"):
+                    self.assertIn(box, service)
+                # حاضرین/غایبین: برچسب + مقدار از Slot.
+                for slot in ("Attendees", "Absentees"):
                     self.assertIn(f"MeetingMinutesDesignLayout.Slot.{slot}", service)
                 self.assertIn("design.Title", service)
                 self.assertIn("بدون عنوان", service)          # عنوان خالی هم چاپ می‌شود
                 self.assertIn('"بندها و تصمیمات"', service)    # برچسب پیش‌فرض فارسی بندها
+
+    def test_header_meta_is_drawn_as_an_absolute_layer(self):
+        """شماره/تاریخ/پیوست با مختصات مطلق روی برچسب‌های سربرگ، در لایهٔ Foreground."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("page.Foreground()", service)
+                self.assertIn("DrawHeaderMeta(host, metaRows)", service)
+                self.assertIn("BuildHeaderMetaRows(design, number, meetingDate, attachmentText", service)
+                self.assertIn("HeaderMetaRow", service)
+
+    def test_attachment_flag_comes_from_registered_attachments(self):
+        """صورتجلسه فیلد پیوست ندارد؛ «دارد/ندارد» از AppAttachments شمرده می‌شود."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn('a.Module == "MeetingMinutes" && a.RefId == minutesId', service)
+                self.assertIn('attachmentCount > 0 ? "دارد" : "ندارد"', service)
+
+    def test_items_are_a_numbered_plain_list_not_a_table(self):
+        """درخواست کارفرما: «اون حالت جدول برای بند ها و تصمیمات را بردار»."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("void ItemRow(ColumnDescriptor col, MeetingMinutesItem item)", service)
+                self.assertIn("مسئول: ", service)
+                self.assertIn("پیگیری: ", service)
+                self.assertNotIn("ItemsTable", service)   # جدول بندها برداشته شد
+
+    def test_signature_block_is_sized_for_manual_signature(self):
+        """کادر ۵۲pt (A5: ۴۴) برای امضای دستی، ۳ نفر در ردیف (A5: ۲) و یکجا در صفحه."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("var perRow = isA5 ? 2 : 3;", service)
+                self.assertIn("var boxHeight = isA5 ? 44f : 52f;", service)
+                self.assertIn("var cellWidth = isA5 ? (flowWidth - cellGap * (perRow - 1)) / perRow : 168f;",
+                              service)
+                self.assertIn("ShowEntire()", service)      # بلوک امضا نصفه نمی‌شود
+                self.assertIn("محل امضای دستی", service)     # کادر خالی برای امضای روی برگه
+
+    def test_pending_signature_text_is_not_printed_by_the_template_path(self):
+        """«در انتظار امضا» مخصوص گردش دیجیتال است و روی کاغذ نمی‌آید.
+
+        فقط مسیر قالب (BuildTemplateContentPdf) بررسی می‌شود؛ مسیر پشتیبان قدیمی دست‌نخورده است.
+        """
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                start = service.index("private byte[] BuildTemplateContentPdf(")
+                end = service.index("private sealed record HeaderMetaRow(")
+                template_path = service[start:end]
+                self.assertNotIn('"در انتظار امضا"', template_path)
+                self.assertIn("person.SignedAt != null", template_path)   # فقط تاریخ امضا
 
     def test_second_page_starts_below_the_letterhead_band(self):
         """صورتجلسهٔ بلند: صفحهٔ دوم نباید زیر نوار آبی سربرگ برود."""
@@ -205,7 +302,8 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 service = self.service(tree)
                 self.assertIn("HomepaLetterheadLayout.BandBottom(isA5) + 24f", service)
                 self.assertIn("page.Header().Height(headerReserve)", service)
-                self.assertIn("cursor[0] = headerReserve;", service)
+                # بدنه با فاصلهٔ خودِ قالب از زیر نوار آبی شروع می‌شود.
+                self.assertIn("Space(col, titleTop - headerReserve)", service)
 
     def test_falls_back_when_template_is_missing(self):
         for tree in TREES:
@@ -220,7 +318,8 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 layout = self.layout(tree)
                 self.assertIn("internal static MeetingMinutesDesignLayout? TryRead(string? templatePath)", layout)
                 self.assertIn("catch", layout)
-                for slot in ("Title", "Number", "MeetingDate", "Attendees", "Absentees", "Items"):
+                for slot in ("Title", "Number", "MeetingDate", "Attachment", "Attendees",
+                             "Absentees", "Items"):
                     self.assertRegex(layout, rf"\n        {slot},?\n")
                 self.assertIn("HasRequiredSlots", layout)
                 self.assertIn("RightToLeft=True", layout)  # آینه‌کردن تراز در قالب RTL

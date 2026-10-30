@@ -18,6 +18,8 @@ namespace Inventory.Api.Services.Office;
 /// • جزءهای <c>Enabled=False</c> نادیده گرفته می‌شوند.
 /// • هر برچسب (متن ثابت مثل «:حاضرین») به کادری وصل می‌شود که ردیفش با آن یکی است؛ پس
 ///   برچسب‌ها هم از قالب می‌آیند و در کد هارد‌کد نمی‌شوند.
+/// • شماره/تاریخ/پیوست در کادرهای سربرگِ چاپ‌شده می‌نشینند (بالای صفحه)، پس «بدنه» از عنوان
+///   شروع می‌شود و این سه کادر فقط برای لایهٔ متای سربرگ خوانده می‌شوند.
 /// • این خواننده هرگز استثنا نمی‌دهد؛ قالب ناقص/خراب → <c>null</c> و چاپ به مسیر قبلی برمی‌گردد.
 /// </summary>
 internal sealed class MeetingMinutesDesignLayout
@@ -28,6 +30,7 @@ internal sealed class MeetingMinutesDesignLayout
         Title,
         Number,
         MeetingDate,
+        Attachment,
         Attendees,
         Absentees,
         Items
@@ -56,6 +59,9 @@ internal sealed class MeetingMinutesDesignLayout
     internal Box? Title => First(Slot.Title);
     internal Box? Number => First(Slot.Number);
     internal Box? MeetingDate => First(Slot.MeetingDate);
+
+    /// <summary>کادر «پیوست: دارد/ندارد» روی برچسب چاپ‌شدهٔ سربرگ (ممکن است در قالب نباشد).</summary>
+    internal Box? Attachment => First(Slot.Attachment);
     internal Box? Attendees => First(Slot.Attendees);
     internal Box? Absentees => First(Slot.Absentees);
     internal Box? Items => First(Slot.Items);
@@ -87,7 +93,7 @@ internal sealed class MeetingMinutesDesignLayout
     {
         get
         {
-            var boxes = new[] { Title, Number, MeetingDate, Attendees, Absentees, Items }
+            var boxes = new[] { Title, Attendees, Absentees, Items }
                 .Where(box => box != null)
                 .Select(box => box!)
                 .ToList();
@@ -189,6 +195,8 @@ internal sealed class MeetingMinutesDesignLayout
     {
         if (text.Contains('{'))
         {
+            // پیوست پیش از بقیه: نام ستون در قالب‌های قدیمی «Peyvast» است.
+            if (Contains(text, "Attachment") || Contains(text, "Peyvast")) return Slot.Attachment;
             if (Contains(text, "MeetingDate") || Contains(text, "DateMeeting")) return Slot.MeetingDate;
             if (Contains(text, "Attendees") || Contains(text, "Hazerin")) return Slot.Attendees;
             if (Contains(text, "Absentees") || Contains(text, "Ghayebin")) return Slot.Absentees;

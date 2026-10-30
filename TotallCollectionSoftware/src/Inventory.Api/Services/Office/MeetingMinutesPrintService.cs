@@ -21,11 +21,15 @@ namespace Inventory.Api.Services.Office;
 //  قالب چاپی صورتجلسه روی سربرگ شرکت — A4 / A5
 //  • چاپ روی سربرگ «همان شرکتی» انجام می‌شود که صورتجلسه برایش ثبت شده است
 //    (MeetingMinutes.CompanyId؛ اگر خالی باشد، شرکت فعال در هدر درخواست).
-//  • جای عنوان، شماره صورتجلسه، تاریخ جلسه، حاضرین و غایبین از خودِ فایل طرح شرکت
-//    خوانده می‌شود: Reports/MeetingMinutes/Companies/{CompanyId}/Minutes-{A4|A5}.mrt
+//  • جای عنوان، شماره صورتجلسه، تاریخ جلسه، پیوست، حاضرین و غایبین از خودِ فایل طرح
+//    شرکت خوانده می‌شود: Reports/MeetingMinutes/Companies/{CompanyId}/Minutes-{A4|A5}.mrt
 //    (همان کاری که برای نامهٔ داخلی و نامهٔ صادره انجام شد).
+//  • شماره/تاریخ/پیوست در کادرهای چاپ‌شدهٔ سربرگ می‌نشینند (لایهٔ Foreground، مختصات مطلق)
+//    و بدنه از عنوان شروع می‌شود: عنوان زیر مستطیل آبی و راست‌چین، سپس حاضرین، غایبین و
+//    بندها به‌صورت فهرست شماره‌دار (بدون جدول).
 //  • اگر قالب نبود، چیدمان قبلی کد استفاده می‌شود؛ اگر سربرگی هم نبود، نسخهٔ ساده.
-//  • امضای الکترونیکی حاضرین به‌صورت تصویر در صفحهٔ چاپ درج می‌شود.
+//  • امضای حاضرین: تصویر امضای ثبت‌شده در پنجرهٔ canvas اگر کاربر امضا کرده باشد، وگرنه
+//    کادر خالی برای امضای دستی روی برگه («در انتظار امضا» روی کاغذ نمی‌آید).
 // ============================================================
 
 public interface IMeetingMinutesPrintService
@@ -158,6 +162,10 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             .Where(i => i.MinutesId == minutesId)
             .OrderBy(i => i.RowNo).ThenBy(i => i.Id)
             .ToListAsync();
+        // صورتجلسه فیلد «پیوست» ندارد؛ «دارد/ندارد» از پیوست‌های ثبت‌شدهٔ همین صورتجلسه
+        // (AppAttachments با Module=MeetingMinutes) شمرده می‌شود — همان قاعدهٔ فهرست صورتجلسه‌ها.
+        var attachmentCount = await _db.AppAttachments.AsNoTracking()
+            .CountAsync(a => a.Module == "MeetingMinutes" && a.RefId == minutesId);
 
         var isA5 = string.Equals(size?.Trim(), "A5", StringComparison.OrdinalIgnoreCase);
 
@@ -204,7 +212,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         {
             contentPdf = design is { HasRequiredSlots: true } templateLayout
                 ? BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
-                    letterheadPath != null)
+                    letterheadPath != null, attachmentCount)
                 : BuildContentPdf(m, parts, items, letterheadPath != null, companyName);
         }
         catch
@@ -317,9 +325,17 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     }
 
     /// <summary>
-    /// چاپ صورتجلسه با هندسهٔ قالب شرکت: هر بخش در جای خودش (همان فاصله‌ها و عرضی که طراح در
-    /// Stimulsoft گذاشته) و بندها/امضاها به‌صورت جاری بعد از آن. چون همه‌چیز در جریان عادی
-    /// صفحه است، صورتجلسهٔ بلند به صفحهٔ دوم می‌رود و سربرگ/عنوان دوباره تکرار نمی‌شود.
+    /// چاپ صورتجلسه با هندسهٔ قالب شرکت:
+    /// • شماره، تاریخ جلسه و «پیوست» داخل کادرهای چاپ‌شدهٔ سربرگ (بالای صفحه) می‌نشینند —
+    ///   در لایهٔ Foreground و با مختصات مطلقِ خودِ قالب.
+    /// • عنوان صورتجلسه زیر مستطیل/روبان آبی سربرگ و راست‌چین است (درخواست کارفرما).
+    /// • حاضرین، غایبین و بندها به‌صورت جاری بعد از عنوان؛ برچسب هر بخش چسبیده به مقدار و
+    ///   بندها فهرستِ شماره‌دار ساده، بدون جدول.
+    /// • امضای حاضرین در جریان صفحه (نه چسبیده به پایین) و یکجا (ShowEntire) می‌ماند؛ اگر
+    ///   کاربر در پنجرهٔ canvas امضا کرده باشد همان تصویر چاپ می‌شود، وگرنه کادر خالی برای
+    ///   امضای دستی. متن «در انتظار امضا» روی کاغذ نمی‌آید.
+    /// چون همه‌چیز در جریان عادی صفحه است، صورتجلسهٔ بلند به صفحه‌های بعد می‌رود و متن از
+    /// زیر نوار آبی/بالای پابرگ بیرون نمی‌زند.
     /// </summary>
     private byte[] BuildTemplateContentPdf(
         MeetingMinutes m,
@@ -328,7 +344,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         MeetingMinutesDesignLayout design,
         bool isA5,
         string? companyName,
-        bool hasLetterhead)
+        bool hasLetterhead,
+        int attachmentCount)
     {
         EnsureFonts();
 
@@ -342,6 +359,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var absentText = absent.Count > 0
             ? string.Join("، ", absent.Select(p => p.Name))
             : "—";
+        // صورتجلسه فیلد پیوست ندارد؛ شمارش از AppAttachments می‌آید (Module=MeetingMinutes).
+        var attachmentText = attachmentCount > 0 ? "دارد" : "ندارد";
 
         var signatureImages = new Dictionary<int, byte[]>();
         foreach (var p in attendees)
@@ -352,20 +371,32 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
         var titleBox = design.Title;
         var itemsCaption = design.Caption(MeetingMinutesDesignLayout.Slot.Items);
+
+        var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
         var flowBox = design.Items ?? design.Absentees;
         var flowLeft = flowBox?.Left ?? 28f;
-        var flowWidth = flowBox?.Width ?? (design.PageWidth - 2f * flowLeft);
+        var flowWidth = flowBox?.Width ?? (pageWidth - 2f * flowLeft);
 
         var footerReserve = hasLetterhead ? HomepaLetterheadLayout.DesignFooterReserve(isA5) : (isA5 ? 24f : 32f);
-        var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
-
         // سربرگ هر صفحه (نوار آبی) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب تنظیم
         // می‌شود، ولی صفحهٔ دوم به بعد باید از زیر نوار آبی شروع کند، وگرنه متن روی سربرگ می‌رود.
         var headerReserve = hasLetterhead ? HomepaLetterheadLayout.BandBottom(isA5) + 24f : 0f;
 
-        // مکان عمودی جاری (point) — با مختصات قالب جلو می‌رود تا فاصله‌ها همان فاصله‌های MRT باشد.
-        var cursor = new float[1];
-        cursor[0] = headerReserve;
+        // ── متای سربرگ: شماره / تاریخ / پیوست روی برچسب‌های چاپ‌شدهٔ سربرگ ──
+        var metaRows = BuildHeaderMetaRows(design, number, meetingDate, attachmentText, hasLetterhead);
+        var metaBottom = metaRows.Count == 0 ? 0f : metaRows.Max(row => row.Top + row.Height);
+
+        // عنوان: از قالب (۱۹۳pt در A4). بدون سربرگ، متا بالای صفحه است و عنوان بعد از آن می‌آید.
+        var titleTop = titleBox?.Top ?? 96f;
+        if (!hasLetterhead) titleTop = Math.Max(24f, metaBottom + 24f);
+
+        // فاصلهٔ هر بخش تا بخش بعدی از دل قالب خوانده می‌شود؛ مقادیر جای‌گزین برای قالب‌های ناقص.
+        var fallbackGap = isA5 ? 3f : 4f;
+        var captionGap = isA5 ? 4f : 5f;
+        var itemGap = isA5 ? 3f : 4f;
+        var attendeesGap = GapAfter(design.Attendees, design.Absentees);
+        var absenteesGap = GapAfter(design.Absentees, itemsCaption);
+        var itemsGap = itemsCaption != null ? GapAfter(itemsCaption, design.Items) : fallbackGap;
 
         // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما)؛ بنابراین هیچ جزء پویایی در چاپ نیست.
         var doc = Document.Create(container =>
@@ -386,62 +417,56 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     .LineHeight(1.6f)
                     .DirectionFromRightToLeft());
 
-                // یک نوار خالی هم‌اندازهٔ ناحیهٔ سربرگ؛ روی همهٔ صفحه‌ها تکرار می‌شود.
+                // یک نوار خالی هم‌اندازهٔ ناحیهٔ سربرگ؛ روی صفحه‌های دوم به بعد متن را از زیر
+                // نوار آبی دور نگه می‌دارد.
                 page.Header().Height(headerReserve);
+
+                // مقادیر سربرگ در لایهٔ سراسری صفحه و با مختصات مطلق، روی برچسب‌های چاپ‌شده.
+                page.Foreground().ContentFromLeftToRight().Element(host => DrawHeaderMeta(host, metaRows));
 
                 page.ContentFromRightToLeft();
                 page.Content().Column(col =>
                 {
-                    // ── عنوان صورتجلسه (سرصفحهٔ وسط‌چین قالب) ──
+                    // ── عنوان صورتجلسه: راست‌چین، درست زیر مستطیل آبی سربرگ ──
+                    Space(col, titleTop - headerReserve);
                     if (titleBox is { } title)
                     {
-                        Space(col, title.Top - cursor[0]);
-                        col.Item().MinHeight(title.Height).Element(cell => Write(cell, title,
-                            string.IsNullOrWhiteSpace(m.Title) ? "بدون عنوان" : m.Title, isA5));
-                        cursor[0] = title.Top + title.Height;
+                        var titleText = string.IsNullOrWhiteSpace(m.Title) ? "بدون عنوان" : m.Title;
+                        col.Item().MinHeight(title.Height).Element(cell => Write(cell, title, titleText));
                     }
 
-                    // ── شماره صورتجلسه و تاریخ جلسه: برچسب کنارِ مقدار، هر دو از قالب ──
-                    Pair(col, MeetingMinutesDesignLayout.Slot.Number, number, isA5);
-                    Pair(col, MeetingMinutesDesignLayout.Slot.MeetingDate, meetingDate, isA5);
+                    // ── حاضرین و غایبین: برچسب چسبیده به نام‌ها، بدون ستون پهن ──
+                    Pair(col, MeetingMinutesDesignLayout.Slot.Attendees, attendeeText, attendeesGap);
+                    Pair(col, MeetingMinutesDesignLayout.Slot.Absentees, absentText, absenteesGap);
 
-                    // ── حاضرین و غایبین ──
-                    Pair(col, MeetingMinutesDesignLayout.Slot.Attendees, attendeeText, isA5);
-                    Pair(col, MeetingMinutesDesignLayout.Slot.Absentees, absentText, isA5);
-
-                    // ── بندها و تصمیمات ──
+                    // ── بندها و تصمیمات: فهرست شماره‌دار ساده (بدون جدول) ──
                     if (itemsCaption is { } itemsLabel)
                     {
-                        Space(col, itemsLabel.Top - cursor[0]);
-                        col.Item().Height(Math.Max(12f, itemsLabel.Height)).Element(cell =>
-                            Write(cell, itemsLabel, NormalizeCaption(itemsLabel.Text), isA5));
-                        cursor[0] = itemsLabel.Top + itemsLabel.Height;
+                        col.Item().PaddingBottom(itemsGap)
+                            .MinHeight(Math.Max(12f, itemsLabel.Height))
+                            .Element(cell => Write(cell, itemsLabel, NormalizeCaption(itemsLabel.Text)));
                     }
                     else
                     {
-                        col.Item().PaddingTop(4).Text(LetterPrintTemplate.RtlLabel("بندها و تصمیمات"))
-                            .FontFamily(FntBold).FontSize(10f).FontColor(BrandDark);
-                        cursor[0] = design.ContentEnd;
+                        col.Item().PaddingBottom(itemsGap)
+                            .Text(LetterPrintTemplate.RtlLabel("بندها و تصمیمات"))
+                            .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
+                            .DirectionFromRightToLeft();
                     }
-
-                    if (design.Items != null) Space(col, design.Items.Top - cursor[0]);
 
                     if (items.Count == 0)
                     {
-                        col.Item().PaddingTop(2).Text("بندی ثبت نشده است.").FontSize(9f).FontColor(Muted);
+                        col.Item().Text("بندی ثبت نشده است.")
+                            .FontSize(isA5 ? 8f : 9f).FontColor(Muted)
+                            .DirectionFromRightToLeft();
                     }
                     else
                     {
-                        col.Item().Width(flowWidth).Table(table => ItemsTable(table, items, isA5));
+                        foreach (var item in items) ItemRow(col, item);
                     }
 
-                    // ── امضای حاضرین ──
-                    if (attendees.Count > 0)
-                    {
-                        col.Item().PaddingTop(12).Text(LetterPrintTemplate.RtlLabel("امضای حاضرین"))
-                            .FontFamily(FntBold).FontSize(10f).FontColor(BrandDark);
-                        Signatures(col, attendees, signatureImages, isA5, flowWidth);
-                    }
+                    // ── محل امضای حاضرین ──
+                    SignatureBlock(col, attendees, signatureImages);
                 });
             });
         });
@@ -456,184 +481,251 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             if (height > 0.5f) col.Item().Height(height);
         }
 
-        // ── یک کادر متنی با فونت/رنگ/ترازِ قالب ──
-        void Write(IContainer cell, MeetingMinutesDesignLayout.Box box, string value, bool small)
+        // ── فاصلهٔ پیش‌بینی‌شده در طرح بین دو کادر (۲ تا ۲۴pt) ──
+        float GapAfter(MeetingMinutesDesignLayout.Box? current, MeetingMinutesDesignLayout.Box? next)
         {
-            var target = cell;
-            target = box.AlignCenter ? target.AlignCenter()
-                : box.AlignRight ? target.AlignRight()
-                : target.AlignLeft();
-
-            target.AlignTop().Text(text =>
-            {
-                text.DefaultTextStyle(style => style
-                    .FontFamily(box.Bold ? FntBold : Fnt)
-                    .FontSize(box.FontSize)
-                    .FontColor(box.Color)
-                    .LineHeight(1.6f)
-                    .DirectionFromRightToLeft());
-                if (box.AlignCenter) text.AlignCenter();
-                else if (box.AlignRight) text.AlignRight();
-                else text.AlignLeft();
-                text.Span(value);
-            });
-            _ = small;
+            if (current == null || next == null) return fallbackGap;
+            return Math.Clamp(next.Top - (current.Top + current.Height), 2f, 24f);
         }
 
-        // ── برچسب + مقدار: برچسب از قالب (اگر بود)، مقدار در همان ردیف ──
-        void Pair(ColumnDescriptor col, MeetingMinutesDesignLayout.Slot slot, string value, bool small)
+        // ── یک کادر متنی با فونت/رنگ/اندازهٔ قالب ──
+        // تراز افقی در چیدمان راست‌به‌چپِ استیمول‌سافت آینه می‌شود و با آنچه روی کاغذ می‌بینیم
+        // یکی نیست؛ چون کارفرما «راست‌چین بودن» را صریح خواسته، تراز را خودِ چاپ تعیین می‌کند.
+        void Write(IContainer cell, MeetingMinutesDesignLayout.Box box, string value)
+        {
+            var family = box.Bold ? FntBold : Fnt;
+            cell.AlignMiddle().Text(text =>
+            {
+                text.DefaultTextStyle(style => style
+                    .FontFamily(family)
+                    .FontSize(box.FontSize)
+                    .FontColor(box.Color)
+                    .LineHeight(1.5f)
+                    .DirectionFromRightToLeft());
+                text.AlignRight();
+                text.Span(value);
+            });
+        }
+
+        // ── برچسب + مقدار: برچسب به عرض طبیعیِ متنِ خودش (نه ستون ثابت) ──
+        void Pair(ColumnDescriptor col, MeetingMinutesDesignLayout.Slot slot, string value, float gapAfter)
         {
             var found = slot switch
             {
-                MeetingMinutesDesignLayout.Slot.Number => design.Number,
-                MeetingMinutesDesignLayout.Slot.MeetingDate => design.MeetingDate,
                 MeetingMinutesDesignLayout.Slot.Attendees => design.Attendees,
                 _ => design.Absentees
             };
             // متغیر الگو (غیرnullable) تا داخل lambda هم هشدار nullable ندهد.
             if (found is not { } valueBox) return;
 
-            Space(col, valueBox.Top - cursor[0]);
             var caption = design.Caption(slot);
-            var rowHeight = Math.Max(valueBox.Height, caption?.Height ?? 0f);
+            var line = col.Item().PaddingBottom(gapAfter).MinHeight(Math.Max(10f, valueBox.Height));
 
-            col.Item().Row(row =>
+            if (caption is { } captionBox)
             {
-                // در Row راست‌به‌چپ، نخستین آیتم سمت راست صفحه می‌نشیند = محل برچسب در قالب.
-                if (caption is { } captionBox)
+                line.Row(row =>
                 {
-                    row.ConstantItem(Math.Max(20f, captionBox.Width)).Element(cell =>
-                        Write(cell, captionBox, NormalizeCaption(captionBox.Text), small));
-                    // فاصلهٔ افقی بین مقدار و برچسب، همان فاصلهٔ قالب
-                    var gap = Math.Max(0f, captionBox.Left - (valueBox.Left + valueBox.Width));
-                    var inset = Math.Max(0f, valueBox.Left - flowLeft);
-                    row.RelativeItem().PaddingRight(gap).PaddingLeft(inset).Element(cell =>
-                        cell.MinHeight(Math.Max(10f, rowHeight)).Element(inner => Write(inner, valueBox, value, small)));
-                }
-                else
-                {
-                    row.RelativeItem().Element(cell =>
-                        cell.MinHeight(Math.Max(10f, rowHeight)).Element(inner => Write(inner, valueBox, value, small)));
-                }
-            });
-
-            cursor[0] = valueBox.Top + rowHeight;
-        }
-
-        // ── جدول بندها ──
-        void ItemsTable(TableDescriptor table, List<MeetingMinutesItem> rows, bool small)
-        {
-            table.ColumnsDefinition(columns =>
-            {
-                columns.ConstantColumn(small ? 20 : 24);
-                columns.RelativeColumn(3.4f);
-                columns.RelativeColumn(1.35f);
-                columns.RelativeColumn(1.35f);
-                columns.ConstantColumn(small ? 48 : 58);
-            });
-
-            table.Header(header =>
-            {
-                void Head(string text) => header.Cell()
-                    .Background(BrandDark).PaddingVertical(5).PaddingHorizontal(4)
-                    .AlignCenter().AlignMiddle()
-                    .Text(text).FontFamily(FntBold).FontSize(7.5f).FontColor("#ffffff")
-                    .DirectionFromRightToLeft();
-                Head("ردیف");
-                Head("شرح تصمیم");
-                Head("مسئول انجام");
-                Head("پیگیری");
-                Head("وضعیت");
-            });
-
-            for (var n = 0; n < rows.Count; n++)
-            {
-                var item = rows[n];
-                var background = n % 2 == 0 ? "#ffffff" : "#f8fafc";
-                var statusBackground = item.ItemStatus == MinutesItemStatus.Done ? "#dcfce7"
-                    : item.ItemStatus == MinutesItemStatus.Rejected ? "#fee2e2" : "#eef2ff";
-                var statusColor = item.ItemStatus == MinutesItemStatus.Done ? "#166534"
-                    : item.ItemStatus == MinutesItemStatus.Rejected ? "#991b1b" : BrandDark;
-
-                table.Cell().Background(background).BorderBottom(0.6f).BorderColor(Line)
-                    .PaddingVertical(5).AlignCenter().AlignMiddle()
-                    .Text(LetterPrintTemplate.PersianDigits(item.RowNo.ToString(CultureInfo.InvariantCulture)))
-                    .FontFamily(FntBold).FontSize(8.5f).FontColor(Brand);
-                table.Cell().Background(background).BorderBottom(0.6f).BorderColor(Line)
-                    .PaddingVertical(5).PaddingHorizontal(5).AlignMiddle()
-                    .Text(item.Description ?? string.Empty)
-                    .FontSize(8.5f).LineHeight(1.5f).FontColor(Ink)
-                    .DirectionFromRightToLeft();
-
-                void Person(string? name, DateTime? date)
-                {
-                    table.Cell().Background(background).BorderBottom(0.6f).BorderColor(Line)
-                        .PaddingVertical(4).PaddingHorizontal(3).AlignCenter().AlignMiddle()
-                        .Column(cell =>
-                        {
-                            cell.Item().AlignCenter()
-                                .Text(string.IsNullOrWhiteSpace(name) ? "—" : name)
-                                .FontFamily(FntBold).FontSize(7.5f).FontColor(Ink)
-                                .DirectionFromRightToLeft();
-                            cell.Item().PaddingTop(1).AlignCenter()
-                                .Text(LetterPrintTemplate.PersianDigits(FaDate(date)))
-                                .FontSize(7f).FontColor(Muted);
-                        });
-                }
-
-                Person(item.ResponsibleName, item.DueDate);
-                Person(item.FollowUpName, item.FollowUpDate);
-
-                table.Cell().Background(statusBackground).BorderBottom(0.6f).BorderColor(Line)
-                    .PaddingVertical(4).AlignCenter().AlignMiddle()
-                    .Text(MinutesItemStatus.ToFa(item.ItemStatus))
-                    .FontFamily(FntBold).FontSize(7f).FontColor(statusColor);
-            }
-        }
-
-        // ── امضای حاضرین، سه در هر ردیف ──
-        void Signatures(ColumnDescriptor col, List<MeetingMinutesParticipant> people,
-            Dictionary<int, byte[]> images, bool small, float width)
-        {
-            const int perRow = 3;
-            for (var i = 0; i < people.Count; i += perRow)
-            {
-                var group = people.Skip(i).Take(perRow).ToList();
-                col.Item().PaddingTop(2).Row(row =>
-                {
-                    for (var k = 0; k < perRow; k++)
-                    {
-                        var index = k;
-                        row.RelativeItem().Padding(3).Element(box =>
-                        {
-                            if (index >= group.Count) return;
-                            var person = group[index];
-                            box.Border(0.7f).BorderColor(Line).Background("#fcfcfd")
-                                .Padding(6).Column(cell =>
-                                {
-                                    if (images.TryGetValue(person.Id, out var signature))
-                                        cell.Item().Height(small ? 34 : 42).AlignCenter().AlignMiddle()
-                                            .Image(signature).FitArea();
-                                    else
-                                        cell.Item().Height(small ? 34 : 42).AlignBottom()
-                                            .PaddingHorizontal(12).PaddingBottom(6)
-                                            .LineHorizontal(0.7f).LineColor("#cbd5e1");
-                                    cell.Item().PaddingTop(3).AlignCenter().Text(person.Name)
-                                        .FontFamily(FntBold).FontSize(8f).FontColor(Ink)
-                                        .DirectionFromRightToLeft();
-                                    cell.Item().AlignCenter()
-                                        .Text(person.SignedAt != null
-                                            ? LetterPrintTemplate.PersianDigits(FaDate(person.SignedAt))
-                                            : "در انتظار امضا")
-                                        .FontSize(7f)
-                                        .FontColor(person.SignedAt != null ? "#166534" : Muted);
-                                });
-                        });
-                    }
+                    // در Row راست‌به‌چپ، نخستین آیتم سمت راست صفحه می‌نشیند = جای برچسب در قالب.
+                    row.AutoItem().PaddingLeft(captionGap)
+                        .Element(cell => Write(cell, captionBox, NormalizeCaption(captionBox.Text)));
+                    row.RelativeItem().Element(cell => Write(cell, valueBox, value));
                 });
             }
-            _ = width;
+            else
+            {
+                line.Element(cell => Write(cell, valueBox, value));
+            }
         }
+
+        // ── یک بند: شماره + شرح + مسئول/پیگیری/وضعیت، در جریان عادی متن ──
+        void ItemRow(ColumnDescriptor col, MeetingMinutesItem item)
+        {
+            var details = new List<string>();
+            if (!string.IsNullOrWhiteSpace(item.ResponsibleName))
+                details.Add($"مسئول: {item.ResponsibleName}");
+            if (!string.IsNullOrWhiteSpace(item.FollowUpName))
+                details.Add($"پیگیری: {item.FollowUpName}");
+
+            var status = MinutesItemStatus.ToFa(item.ItemStatus);
+            var statusColor = item.ItemStatus == MinutesItemStatus.Done ? "#166534"
+                : item.ItemStatus == MinutesItemStatus.Rejected ? "#991b1b" : BrandDark;
+            var numberText = LetterPrintTemplate.PersianDigits(item.RowNo.ToString(CultureInfo.InvariantCulture));
+
+            col.Item().PaddingBottom(itemGap).Row(line =>
+            {
+                line.ConstantItem(isA5 ? 13f : 15f).AlignTop()
+                    .Text(numberText + ".")
+                    .FontFamily(FntBold).FontSize(isA5 ? 8f : 9f).FontColor(Brand);
+
+                line.RelativeItem().Text(text =>
+                {
+                    text.DefaultTextStyle(style => style
+                        .FontFamily(Fnt)
+                        .FontSize(isA5 ? 8.5f : 9.5f)
+                        .FontColor(Ink)
+                        .LineHeight(1.75f)
+                        .DirectionFromRightToLeft());
+                    text.AlignRight();
+                    text.Span(item.Description ?? string.Empty);
+                    if (details.Count > 0)
+                        text.Span(" — " + string.Join("، ", details))
+                            .FontSize(isA5 ? 7.5f : 8.5f).FontColor(Muted);
+                    text.Span(" " + status)
+                        .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f).FontColor(statusColor);
+                });
+            });
+        }
+
+        // ── محل امضای حاضرین: کادر خالی برای امضای دستی، تصویر امضا برای امضاشده‌ها ──
+        void SignatureBlock(ColumnDescriptor col, List<MeetingMinutesParticipant> people,
+            Dictionary<int, byte[]> images)
+        {
+            if (people.Count == 0) return;
+
+            var perRow = isA5 ? 2 : 3;
+            var boxHeight = isA5 ? 44f : 52f;
+            var cellGap = isA5 ? 6f : 8f;
+            // A4: سه کادر ۱۶۸pt در ردیف؛ A5 باریک‌تر است: دو کادر با عرض مساوی.
+            var cellWidth = isA5 ? (flowWidth - cellGap * (perRow - 1)) / perRow : 168f;
+
+            // ShowEntire = page-break-inside: avoid؛ بلوک امضا نصفه به صفحهٔ بعد نمی‌رود.
+            col.Item().PaddingTop(isA5 ? 10f : 14f).ShowEntire().Column(block =>
+            {
+                block.Item().PaddingBottom(isA5 ? 4f : 6f)
+                    .Text(LetterPrintTemplate.RtlLabel("محل امضای حاضرین"))
+                    .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
+                    .DirectionFromRightToLeft();
+
+                for (var start = 0; start < people.Count; start += perRow)
+                {
+                    var group = people.Skip(start).Take(perRow).ToList();
+                    block.Item().PaddingBottom(cellGap).Row(cells =>
+                    {
+                        for (var index = 0; index < perRow; index++)
+                        {
+                            var position = index;
+                            cells.ConstantItem(Math.Max(60f, cellWidth)).Element(cell =>
+                            {
+                                if (position >= group.Count) return;
+                                var person = group[position];
+                                cell.PaddingLeft(position == perRow - 1 ? 0f : cellGap)
+                                    .Column(card =>
+                                    {
+                                        if (images.TryGetValue(person.Id, out var signature))
+                                        {
+                                            // امضای ثبت‌شده در پنجرهٔ canvas: خودِ تصویر، بدون کادر.
+                                            card.Item().Height(boxHeight).AlignCenter().AlignMiddle()
+                                                .Image(signature).FitArea();
+                                        }
+                                        else
+                                        {
+                                            // کادر خالی برای امضای دستی روی برگه.
+                                            card.Item().Height(boxHeight)
+                                                .Border(0.5f).BorderColor("#cbd5e1").Background(Colors.White)
+                                                .AlignCenter().AlignMiddle()
+                                                .Text("محل امضای دستی")
+                                                .FontSize(isA5 ? 6.5f : 7.5f).FontColor("#b6c2d2")
+                                                .DirectionFromRightToLeft();
+                                        }
+
+                                        card.Item().PaddingTop(3).AlignCenter().Text(person.Name)
+                                            .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f)
+                                            .FontColor(Ink).DirectionFromRightToLeft();
+
+                                        // «در انتظار امضا» روی کاغذ نمی‌آید؛ فقط تاریخ امضای
+                                        // ثبت‌شده می‌ماند (سندِ امضای الکترونیکی در گردش کار).
+                                        if (person.SignedAt != null)
+                                        {
+                                            card.Item().AlignCenter()
+                                                .Text("امضا شد: " + LetterPrintTemplate.PersianDigits(
+                                                    FaDate(person.SignedAt)))
+                                                .FontSize(isA5 ? 6.5f : 7f).FontColor("#166534");
+                                        }
+                                    });
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    /// <summary>یک کادر متای سربرگ با مقدار نهایی‌اش (مختصات مطلق صفحه، point).</summary>
+    private sealed record HeaderMetaRow(float Left, float Top, float Width, float Height, string Value,
+        string Color, float FontSize);
+
+    /// <summary>
+    /// کادرهای شماره/تاریخ/پیوست از خودِ قالب: مقدار در همان جای برچسبِ چاپ‌شدهٔ سربرگ
+    /// («شماره»، «تاریخ»، «پیوست») می‌نشیند. اگر قالب کادر پیوست را نداشته باشد، پیوست چاپ
+    /// نمی‌شود (قالب‌های قدیمیِ نصب‌شده نباید چاپ را بشکنند).
+    /// </summary>
+    private static List<HeaderMetaRow> BuildHeaderMetaRows(MeetingMinutesDesignLayout design,
+        string number, string date, string attachment, bool hasLetterhead)
+    {
+        var rows = new List<HeaderMetaRow>();
+
+        void Add(MeetingMinutesDesignLayout.Box? box, string value)
+        {
+            if (box == null || string.IsNullOrWhiteSpace(value)) return;
+            rows.Add(new HeaderMetaRow(box.Left, box.Top, box.Width, box.Height, value,
+                hasLetterhead ? box.Color : Ink, box.FontSize));
+        }
+
+        Add(design.Number, number);
+        Add(design.MeetingDate, date);
+        Add(design.Attachment, attachment);
+        return rows.OrderBy(row => row.Top).ToList();
+    }
+
+    /// <summary>
+    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه (لایهٔ Foreground) — همان روش نامهٔ داخلی/صادرهٔ
+    /// ۱۰۰۳: ستون مقدارها راست‌چین است و ۴pt پیش از برچسب چاپ‌شده تمام می‌شود. عرض ستون با
+    /// PaddingLeft + Width تعیین می‌شود (نه Row) تا در چیدمان راست‌به‌چپ آینه نشود.
+    /// </summary>
+    private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows)
+    {
+        if (rows.Count == 0) return;
+
+        var right = rows.Min(row => row.Left + row.Width) - 4f;
+        var left = Math.Max(rows.Min(row => row.Left),
+            LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters));
+        // در A5 که صفحه باریک است، ستون امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
+        if (right - left < 44f) left = Math.Max(0f, right - 44f);
+        var width = Math.Max(20f, right - left);
+
+        host.AlignTop().Column(column =>
+        {
+            var cursor = 0f;
+            foreach (var row in rows.OrderBy(row => row.Top))
+            {
+                var gap = row.Top - cursor;
+                if (gap > 0.5f) column.Item().Height(gap);
+
+                var height = Math.Max(10f, row.Height);
+                column.Item().Height(height)
+                    .PaddingLeft(Math.Max(0f, left))
+                    .AlignLeft()
+                    .Width(width)
+                    .AlignMiddle()
+                    .AlignRight()
+                    .Text(LetterPrintTemplate.IsolateMixedText(row.Value))
+                    .FontFamily(FntBold)
+                    .FontSize(FitMetaFontSize(row.Value, width, row.FontSize))
+                    .FontColor(row.Color)
+                    .LineHeight(1.15f)
+                    .AlignRight()
+                    .DirectionFromRightToLeft();
+                cursor = row.Top + height;
+            }
+        });
+    }
+
+    /// <summary>بزرگ‌ترین اندازه‌ای که مقدار سربرگ در یک خط جا می‌شود (کف ۷pt، مثل نامهٔ صادره).</summary>
+    private static float FitMetaFontSize(string text, float maxWidth, float preferred, float minimum = 7f)
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0f || preferred <= 0f) return preferred > 0f ? preferred : 10f;
+        var estimated = text.Length * preferred * 0.58f;
+        return estimated <= maxWidth ? preferred : Math.Max(minimum, preferred * maxWidth / estimated);
     }
 
     /// <summary>

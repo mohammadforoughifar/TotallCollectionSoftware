@@ -103,9 +103,10 @@ class LabelColonPlacementTests(unittest.TestCase):
                 minutes = self.minutes(tree)
                 self.assertIn("ensureTrailingColon: false", minutes)
                 self.assertIn('LetterPrintTemplate.RtlLabel("بندها و تصمیمات")', minutes)
-                self.assertIn('LetterPrintTemplate.RtlLabel("امضای حاضرین")', minutes)
+                # بلوک امضا برای امضای دستی روی برگه است، پس برچسبش «محل امضای حاضرین» شد.
+                self.assertIn('LetterPrintTemplate.RtlLabel("محل امضای حاضرین")', minutes)
                 self.assertNotIn('Text("بندها و تصمیمات:")', minutes)
-                self.assertNotIn('Text("امضای حاضرین:")', minutes)
+                self.assertNotIn('Text("محل امضای حاضرین:")', minutes)
 
     def test_inner_letter_hamesh_uses_the_helper(self):
         for tree in TREES:

@@ -3,11 +3,21 @@
 قالب با Stimulsoft طراحی می‌شود و از قالب نامهٔ صادره به‌عنوان «اهداکنندهٔ» استفاده می‌کند تا
 سربرگ جاسازی‌شده (Watermark.ImageBytes) و تنظیمات صفحه عیناً همان باشد؛ فقط اجزا عوض می‌شوند:
 
-    عنوان صورتجلسه · شماره صورتجلسه · تاریخ جلسه · حاضرین · غایبین · بندها و تصمیمات
+    عنوان صورتجلسه · شماره · تاریخ جلسه · پیوست (روی برچسب‌های چاپ‌شدهٔ سربرگ)
+    حاضرین · غایبین · بندها و تصمیمات (بدنه)
 
-هر مقدار یک کادر مستقل با `ClientRectangle` (اینچ، نسبت به حاشیهٔ صفحه) دارد و برچسبش هم
-یک کادر جدا روی همان ردیف است؛ پس طراح می‌تواند هر کدام را در Stimulsoft جابه‌جا/تغییر دهد و
-کد چاپ همان مختصات را می‌خواند (`MeetingMinutesDesignLayout`).
+تصمیم‌های چیدمان (تأیید کارفرما):
+• شماره/تاریخ/پیوست **در کادرهای سفیدِ سربرگ** می‌نشینند، پس برچسب فارسی‌شان از متن حذف شده
+  و مقادیر با متن سفید چاپ می‌شوند (کد آن‌ها را در لایهٔ Foreground با مختصات مطلق می‌کشد).
+• عنوان صورتجلسه **زیر مستطیل/روبان آبی** و **راست‌چین** است (نه وسط‌چین): ۱۹۳pt در A4 و
+  ۱۳۹pt در A5، یعنی ۹pt پایین‌تر از پایین‌ترین پیکسل آبی سربرگ (۱۸۴pt در A4).
+• بدنه از حاضرین شروع می‌شود (۲۳۲pt در A4 / ۱۶۴pt در A5) و بندها فهرست شماره‌دار ساده‌اند.
+• برچسب حاضرین/غایبین به عرض طبیعی خودش است (نه ستون ۱۱۰pt) تا به نام‌ها بچسبد؛ کد چاپ
+  عرض را از متن می‌گیرد و این عدد فقط برای نمایش درست در Stimulsoft است.
+
+هر مقدار یک کادر مستقل با `ClientRectangle` (اینچ، نسبت به حاشیهٔ صفحه) دارد؛ طراح می‌تواند
+هر کدام را در Stimulsoft جابه‌جا کند و کد چاپ همان مختصات را می‌خواند
+(`MeetingMinutesDesignLayout`).
 
 اجرای دوباره بی‌خطر است (idempotent): خروجی همیشه از روی قالب نامهٔ صادره بازسازی می‌شود.
 """
@@ -29,46 +39,57 @@ COMPANIES = ("1003", "3")
 SIZES = ("A4", "A5")
 SOURCE = Path("src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt")
 
-# فاصلهٔ شروع محتوا از پایین نوار آبی — همان ۹۷pt نامه‌ها (A4 و A5)
-BAND_BOTTOM = {"A4": 112.8, "A5": 79.4}
-CONTENT_GAP = 97.0
+# کاغذ: حاشیهٔ صفحه ۰٫۳۹ اینچ؛ عرض متن ۵۲۹٫۲pt در A4 و ۳۴۵٫۶pt در A5.
 PAGE_MARGIN_INCH = 0.39
+TEXT_LEFT = 28.08
+TEXT_WIDTH = {"A4": 529.2, "A5": 345.6}
 
-# اندازه‌های چیدمان هر کاغذ (نقطه)
+# مختصات **مطلق صفحه** (point از گوشهٔ بالا-چپ کاغذ) — همان برچسب‌های چاپ‌شدهٔ سربرگ ۱۰۰۳
+# که در قالب نامهٔ صادره/داخلی هم استفاده شده‌اند (HomepaLetterheadLayout).
+META_BOX = {
+    "A4": {"number": (14.4, 59.2776, 82.08, 14.4),
+           "date": (14.4, 77.2776, 82.08, 14.4),
+           "attachment": (14.4, 95.9976, 82.08, 14.4)},
+    "A5": {"number": (7.2, 40.5216, 59.04, 12.96),
+           "date": (7.2, 53.2512, 59.04, 12.96),
+           "attachment": (7.2, 66.4848, 59.04, 12.96)},
+}
+META_FONT = 10.0
+ATTACHMENT_FONT = 12.0
+
+# چیدمان بدنه: عنوان زیر روبان آبی، سپس حاضرین/غایبین/بندها.
 LAYOUT = {
     "A4": {
-        "title": (28.08, 34.0, 14.0),
-        "row": 20.0,
-        "caption": 110.0,
-        "attendees_h": 62.0,
-        "absentees_h": 34.0,
-        "items_h": 226.0,
-        "gap": 5.0,
-        "font": 10.5,
-        "title_font": 14.5,
+        "title": (28.08, 193.0, 529.2, 39.0), "title_font": 14.0,
+        "row": 20.0, "font": 10.5,
+        "attendees": (28.08, 232.0, 445.0, 20.0), "attendees_caption": (478.08, 232.0, 79.2, 20.0),
+        "absentees": (28.08, 256.0, 445.0, 20.0), "absentees_caption": (478.08, 256.0, 79.2, 20.0),
+        "items_caption": (440.64, 280.0, 116.64, 20.0),
+        "items": (28.08, 306.0, 529.2, 226.0),
     },
     "A5": {
-        "title": (28.08, 26.0, 11.5),
-        "row": 16.0,
-        "caption": 86.0,
-        "attendees_h": 50.0,
-        "absentees_h": 28.0,
-        "items_h": 150.0,
-        "gap": 4.0,
-        "font": 9.0,
-        "title_font": 11.5,
+        "title": (28.08, 139.0, 345.6, 25.0), "title_font": 11.5,
+        "row": 16.0, "font": 9.0,
+        "attendees": (28.08, 164.0, 288.0, 16.0), "attendees_caption": (326.16, 164.0, 47.52, 16.0),
+        "absentees": (28.08, 182.0, 288.0, 16.0), "absentees_caption": (326.16, 182.0, 47.52, 16.0),
+        "items_caption": (280.08, 200.0, 93.6, 16.0),
+        "items": (28.08, 222.0, 345.6, 150.0),
     },
 }
 
 
-def text_inch(pt: float) -> float:
-    return round(pt / 72 - PAGE_MARGIN_INCH, 4)
+def to_inch(pt: float) -> float:
+    """مختصات مطلق (point از گوشهٔ کاغذ) → اینچِ نسبی به حاشیهٔ صفحه (قالب MRT)."""
+    return round(pt / 72 - PAGE_MARGIN_INCH, 7)
 
 
 def component(name: str, ref: int, rect: tuple[float, float, float, float],
               text: str, font: float, bold: bool = False,
-              align: str = "Right", brush: str = "Black", wrap: bool = False) -> str:
-    x, y, width, height = rect
+              align: str = "None", brush: str = "Black", wrap: bool = False,
+              valign: str = "Center", shrink_min: int = 7) -> str:
+    # ورودی‌ها مطلق (point) هستند؛ قالب اینچِ نسبی به حاشیهٔ صفحه می‌خواهد.
+    x, y, width, height = (to_inch(rect[0]), to_inch(rect[1]),
+                           round(rect[2] / 72, 7), round(rect[3] / 72, 7))
     font_name = "Vazirmatn-Bold" if bold else "Vazirmatn"
     options = ",,RightToLeft=True,,WordWrap=True,A=0" if wrap else ",,RightToLeft=True,,,A=0"
     return f"""        <{name} Ref="{ref}" type="Text" isKey="true">
@@ -85,72 +106,54 @@ def component(name: str, ref: int, rect: tuple[float, float, float, float],
           <Text>{text}</Text>
           <TextBrush>{brush}</TextBrush>
           <Type>Expression</Type>
-          <VertAlignment>Center</VertAlignment>
-        <CanGrow>False</CanGrow><TextOptions>{options}</TextOptions><ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize></{name}>"""
+          <VertAlignment>{valign}</VertAlignment>
+        <CanGrow>False</CanGrow><TextOptions>{options}</TextOptions><ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>{shrink_min}</ShrinkFontToFitMinimumSize></{name}>"""
 
 
 def build_components(size: str, start_ref: int) -> tuple[str, list[str]]:
     spec = LAYOUT[size]
-    _, title_h, title_font = spec["title"]
-    left = 28.08
-    text_width = 529.2 if size == "A4" else 345.6
-    right = left + text_width
-    row = spec["row"]
-    caption_w = spec["caption"]
-    gap = spec["gap"]
-    font = spec["font"]
-
-    y = BAND_BOTTOM[size] + CONTENT_GAP
+    meta = META_BOX[size]
     blocks: list[str] = []
     names: list[str] = []
     ref = start_ref
 
-    def add(name: str, rect, text, size_pt, bold=False, wrap=False, align="Right"):
+    def add(name: str, rect, text, size_pt, bold=False, wrap=False, align="Right",
+            brush="Black", valign="Center", shrink_min=7):
         nonlocal ref
-        blocks.append(component(name, ref, rect, text, size_pt, bold, align, wrap=wrap))
+        blocks.append(component(name, ref, rect, text, size_pt, bold, align, brush,
+                                wrap=wrap, valign=valign, shrink_min=shrink_min))
         names.append(name)
         ref += 1
 
-    # عنوان صورتجلسه — سرصفحهٔ وسط‌چین
-    add("TitleValue", (text_inch(left), text_inch(y), round(text_width / 72, 4), round(title_h / 72, 4)),
-        "{DataSource1.Title}", title_font, bold=True, wrap=True, align="Center")
-    y += title_h + 6
+    # عنوان صورتجلسه: زیر مستطیل آبی سربرگ و راست‌چین (درخواست کارفرما)
+    add("TitleValue", spec["title"], "{DataSource1.Title}", spec["title_font"],
+        bold=True, wrap=True, align="Right")
 
-    # شماره و تاریخ جلسه: برچسب سمت راست، مقدار کنارش (هم‌ردیف)
+    # شماره / تاریخ / پیوست: کادرهای سفیدِ سربرگ، متن سفید (برچسبشان روی سربرگ چاپ شده)
+    add("NumberValue", meta["number"], "{DataSource1.Number}", META_FONT, align="None",
+        brush="White", valign="None")
+    add("MeetingDateValue", meta["date"], "{DataSource1.MeetingDate}", META_FONT, align="None",
+        brush="White", valign="None")
+    add("AttachmentValue", meta["attachment"], "{DataSource1.Attachment}", ATTACHMENT_FONT,
+        align="None", brush="White", valign="None", shrink_min=8)
+
+    # حاضرین / غایبین: برچسب به عرض طبیعی، چسبیده به مقدار (کد چاپ عرض را از متن می‌گیرد)
     for name, caption, token in (
-        ("Number", ":شماره صورتجلسه", "{DataSource1.Number}"),
-        ("MeetingDate", ":تاریخ جلسه", "{DataSource1.MeetingDate}"),
+        ("Attendees", ":حاضرین", "{DataSource1.Attendees}"),
+        ("Absentees", ":غایبین", "{DataSource1.Absentees}"),
     ):
-        value_width = text_width - caption_w - gap
-        add(f"{name}Value", (text_inch(left), text_inch(y), round(value_width / 72, 4), round(row / 72, 4)),
-            token, font)
-        add(f"{name}Caption", (text_inch(right - caption_w), text_inch(y), round(caption_w / 72, 4),
-                               round(row / 72, 4)), caption, font, bold=True)
-        y += row + 2
+        add(f"{name}Value", spec[name.lower()], token, spec["font"], wrap=True)
+        add(f"{name}Caption", spec[f"{name.lower()}_caption"], caption, spec["font"], bold=True, wrap=True)
 
-    # حاضرین / غایبین: برچسب سمت راست، کادر مقدار سمت چپِ همان ردیف
-    for name, caption, token, height in (
-        ("Attendees", ":حاضرین", "{DataSource1.Attendees}", spec["attendees_h"]),
-        ("Absentees", ":غایبین", "{DataSource1.Absentees}", spec["absentees_h"]),
-    ):
-        value_width = text_width - caption_w - gap
-        add(f"{name}Value", (text_inch(left), text_inch(y), round(value_width / 72, 4),
-                             round(height / 72, 4)), token, font, wrap=True)
-        add(f"{name}Caption", (text_inch(right - caption_w), text_inch(y), round(caption_w / 72, 4),
-                               round(row / 72, 4)), caption, font, bold=True)
-        y += height + 8
-
-    # بندها: برچسب در ردیف مستقل بالای جدول، چون جدول تمام عرض متن را می‌گیرد
-    add("ItemsCaption", (text_inch(right - caption_w), text_inch(y), round(caption_w / 72, 4),
-                         round(row / 72, 4)), ":بندها و تصمیمات", font, bold=True)
-    y += row + 3
-    add("ItemsValue", (text_inch(left), text_inch(y), round(text_width / 72, 4),
-                       round(spec["items_h"] / 72, 4)), "{DataSource1.Items}", font, wrap=True)
+    # بندها: برچسب در ردیف مستقل و سپس فهرست شماره‌دار (کد آن را در جریان صفحه می‌چیند)
+    add("ItemsCaption", spec["items_caption"], ":بندها و تصمیمات", spec["font"], bold=True, wrap=True)
+    add("ItemsValue", spec["items"], "{DataSource1.Items}", spec["font"], wrap=True)
 
     return "\n".join(blocks), names
 
 
-COLUMNS = ("Number", "Title", "MeetingDate", "Attendees", "Absentees", "Items", "CompanyName", "Status")
+COLUMNS = ("Number", "Title", "MeetingDate", "Attendees", "Absentees", "Items",
+           "CompanyName", "Status", "Attachment")
 
 
 def build(size: str, company: str) -> str:
