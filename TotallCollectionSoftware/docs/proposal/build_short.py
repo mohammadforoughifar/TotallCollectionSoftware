@@ -46,7 +46,7 @@ DOC = {
     "date_fa": "۱۴۰۵/۰۸/۰۷",
     "doc_no": "۱۴۰۵/M/۰۷",
     "attachment": "ندارد",
-    "vendor": "شرکت فروغ آریا",
+    "vendor": "شرکت فروغ آریا پارسیان",
 }
 
 
@@ -104,7 +104,7 @@ def header_fields(c):
 def footer(c, page, total=5):
     c.setFillColor(GRAY)
     c.setFont("VazirB", 8.8)
-    c.drawCentredString(PAGE_W / 2, 50, visual("شرکت فروغ آریا"))
+    c.drawCentredString(PAGE_W / 2, 50, visual("شرکت فروغ آریا پارسیان"))
     c.setFont("Vazir", 8.4)
     c.drawCentredString(PAGE_W / 2, 35, visual(f"صفحهٔ {fa_digits(page)} از {fa_digits(total)}"))
 
@@ -487,7 +487,7 @@ def page_price(c):
     y = 205
     c.setFillColor(NAVY)
     c.setFont("VazirB", 9.4)
-    c.drawRightString(LM + 210, y, visual("با احترام، مدیرعامل شرکت فروغ آریا"))
+    c.drawRightString(LM + 210, y, visual("با احترام، مدیرعامل شرکت فروغ آریا پارسیان"))
     c.setStrokeColor(LINE)
     c.setLineWidth(0.6)
     c.line(LM + 6, y - 34, LM + 210, y - 34)
@@ -502,8 +502,8 @@ def main():
     from reportlab.pdfgen import canvas as pdfcanvas
 
     c = pdfcanvas.Canvas(OUT_PDF, pagesize=A4)
-    c.setTitle("معرفی چهار ماژول نرم‌افزاری | شرکت فروغ آریا")
-    c.setAuthor("شرکت فروغ آریا")
+    c.setTitle("معرفی چهار ماژول نرم‌افزاری | شرکت فروغ آریا پارسیان")
+    c.setAuthor("شرکت فروغ آریا پارسیان")
     c.setSubject("اطلاعات پایه، اتوماسیون اداری، دستور کار، آرشیو اسناد و مدارک")
     c.setCreator("Forough Arya")
 
