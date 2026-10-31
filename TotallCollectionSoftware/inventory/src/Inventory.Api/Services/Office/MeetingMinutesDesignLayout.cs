@@ -50,7 +50,11 @@ internal sealed class MeetingMinutesDesignLayout
         bool AlignCenter,
         bool AlignRight,
         bool AlignMiddle,
-        bool Wrap);
+        bool Wrap,
+        // پس‌زمینهٔ کادر؛ «null» یعنی شفاف (روی تصویر سربرگ، بدون پوشاندن چیزی).
+        // شرکت ۱ سربرگش نقطه‌چین دارد و در قالب <Brush>White</Brush> اعلام می‌کند تا چاپ
+        // یک نوار سفید پشت مقدار بکشد و نقطه‌ها متن را ناخوانا نکنند.
+        string? Fill = null);
 
     internal float PageWidth { get; private init; }
     internal float PageHeight { get; private init; }
@@ -171,7 +175,8 @@ internal sealed class MeetingMinutesDesignLayout
                     horizontal.Equals("Right", StringComparison.OrdinalIgnoreCase),
                     (Value(component, "VertAlignment") ?? string.Empty)
                         .Equals("Center", StringComparison.OrdinalIgnoreCase),
-                    options.Contains("WordWrap=True", StringComparison.OrdinalIgnoreCase)));
+                    options.Contains("WordWrap=True", StringComparison.OrdinalIgnoreCase),
+                    ParseFill(Value(component, "Brush"))));
             }
 
             if (boxes.Count == 0) return null;
@@ -296,6 +301,20 @@ internal sealed class MeetingMinutesDesignLayout
         }
 
         return (size, bold);
+    }
+
+    /// <summary>
+    /// پس‌زمینهٔ کادر از قالب: <c>Transparent</c> (یا خالی) یعنی «هیچ»، و رنگ اعلام‌شده یعنی
+    /// چاپ یک مستطیل همرنگ پشت مقدار. سربرگ شرکت ۱ نقطه‌چین دارد، پس قالبش
+    /// <c>&lt;Brush&gt;White&lt;/Brush&gt;</c> می‌گذارد تا مقدار خوانا بماند؛ قالب ۱۰۰۳ شفاف است
+    /// و بنابراین همان چاپ قبلی (متن سفید روی نوار آبی) دست‌نخورده می‌ماند.
+    /// </summary>
+    private static string? ParseFill(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length == 0) return null;
+        if (text.Equals("Transparent", StringComparison.OrdinalIgnoreCase)) return null;
+        return ParseColor(text);
     }
 
     /// <summary>رنگ متنِ اعلام‌شده در قالب؛ ناشناخته‌ها با مشکی (خوانا روی کاغذ سفید) چاپ می‌شوند.</summary>

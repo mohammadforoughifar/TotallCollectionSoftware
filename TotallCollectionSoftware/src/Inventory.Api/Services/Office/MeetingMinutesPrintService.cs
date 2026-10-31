@@ -200,6 +200,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
         // ── قالب طرح همان شرکت: Reports/MeetingMinutes/Companies/{CompanyId}/Minutes-{A4|A5}.mrt ──
         var templatePath = companyId is int templateCompanyId ? FindTemplate(templateCompanyId, isA5) : null;
+        // اعداد «کاغذ» (رزرو پابرگ/سربرگ، ستون متا، چیدمان امضا) به‌ازای طرح سربرگ همان شرکت.
+        var letterheadProfile = MinutesLetterheadProfile.For(companyId, isA5);
         var design = MeetingMinutesDesignLayout.TryRead(templatePath);
 
         // سربرگ: اول تصویر جاسازی‌شده در خودِ قالب (پس چاپ به فایل‌های wwwroot وابسته نیست)،
@@ -212,7 +214,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         {
             contentPdf = design is { HasRequiredSlots: true } templateLayout
                 ? BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
-                    letterheadPath != null, attachmentCount)
+                    letterheadPath != null, attachmentCount, letterheadProfile)
                 : BuildContentPdf(m, parts, items, letterheadPath != null, companyName);
         }
         catch
@@ -345,7 +347,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         bool isA5,
         string? companyName,
         bool hasLetterhead,
-        int attachmentCount)
+        int attachmentCount,
+        MinutesLetterheadProfile letterheadProfile)
     {
         EnsureFonts();
 
@@ -377,10 +380,11 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var flowLeft = flowBox?.Left ?? 28f;
         var flowWidth = flowBox?.Width ?? (pageWidth - 2f * flowLeft);
 
-        var footerReserve = hasLetterhead ? HomepaLetterheadLayout.DesignFooterReserve(isA5) : (isA5 ? 24f : 32f);
-        // سربرگ هر صفحه (نوار آبی) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب تنظیم
-        // می‌شود، ولی صفحهٔ دوم به بعد باید از زیر نوار آبی شروع کند، وگرنه متن روی سربرگ می‌رود.
-        var headerReserve = hasLetterhead ? HomepaLetterheadLayout.BandBottom(isA5) + 24f : 0f;
+        // رزرو پابرگ/سربرگ از پروفایل همان طرح سربرگ می‌آید (شرکت ۱: ۲۰۶/۱۲۱pt در A4).
+        var footerReserve = hasLetterhead ? letterheadProfile.FooterReserve : (isA5 ? 24f : 32f);
+        // سربرگ هر صفحه (نوار آبی/تصویر) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب
+        // تنظیم می‌شود، ولی صفحهٔ دوم به بعد باید از زیر سربرگ شروع کند، وگرنه متن روی آن می‌رود.
+        var headerReserve = hasLetterhead ? letterheadProfile.HeaderReserve : 0f;
 
         // ── متای سربرگ: شماره / تاریخ / پیوست روی برچسب‌های چاپ‌شدهٔ سربرگ ──
         var metaRows = BuildHeaderMetaRows(design, number, meetingDate, attachmentText, hasLetterhead);
@@ -422,7 +426,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 page.Header().Height(headerReserve);
 
                 // مقادیر سربرگ در لایهٔ سراسری صفحه و با مختصات مطلق، روی برچسب‌های چاپ‌شده.
-                page.Foreground().ContentFromLeftToRight().Element(host => DrawHeaderMeta(host, metaRows));
+                page.Foreground().ContentFromLeftToRight()
+                    .Element(host => DrawHeaderMeta(host, metaRows, letterheadProfile.MetaColumnLeft));
 
                 page.ContentFromRightToLeft();
                 page.Content().Column(col =>
@@ -582,10 +587,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         {
             if (people.Count == 0) return;
 
-            var perRow = isA5 ? 2 : 3;
-            var boxHeight = isA5 ? 44f : 52f;
+            // چیدمان کادرهای امضا از پروفایل طرح سربرگ: ۱۰۰۳ در A5 دو کادر، شرکت ۱ در هر دو
+            // کاغذ سه کادر (A5: ۱۱۱×۳۸pt) تا پنج حاضر در یک صفحه جا شوند.
+            var perRow = letterheadProfile.SignatureColumns;
+            var boxHeight = letterheadProfile.SignatureBoxHeight;
             var cellGap = isA5 ? 6f : 8f;
-            // A4: سه کادر ۱۶۸pt در ردیف؛ A5 باریک‌تر است: دو کادر با عرض مساوی.
+            // A4: سه کادر ۱۶۸pt در ردیف؛ A5 باریک‌تر است و کادرها عرض مساوی می‌گیرند.
             var cellWidth = isA5 ? (flowWidth - cellGap * (perRow - 1)) / perRow : 168f;
 
             // ShowEntire = page-break-inside: avoid؛ بلوک امضا نصفه به صفحهٔ بعد نمی‌رود.
@@ -652,7 +659,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
     /// <summary>یک کادر متای سربرگ با مقدار نهایی‌اش (مختصات مطلق صفحه، point).</summary>
     private sealed record HeaderMetaRow(float Left, float Top, float Width, float Height, string Value,
-        string Color, float FontSize);
+        string Color, float FontSize, string? Fill);
 
     /// <summary>
     /// کادرهای شماره/تاریخ/پیوست از خودِ قالب: مقدار در همان جای برچسبِ چاپ‌شدهٔ سربرگ
@@ -668,7 +675,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         {
             if (box == null || string.IsNullOrWhiteSpace(value)) return;
             rows.Add(new HeaderMetaRow(box.Left, box.Top, box.Width, box.Height, value,
-                hasLetterhead ? box.Color : Ink, box.FontSize));
+                hasLetterhead ? box.Color : Ink, box.FontSize, box.Fill));
         }
 
         Add(design.Number, number);
@@ -682,13 +689,15 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     /// ۱۰۰۳: ستون مقدارها راست‌چین است و ۴pt پیش از برچسب چاپ‌شده تمام می‌شود. عرض ستون با
     /// PaddingLeft + Width تعیین می‌شود (نه Row) تا در چیدمان راست‌به‌چپ آینه نشود.
     /// </summary>
-    private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows)
+    private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows,
+        float columnFloor = 0f)
     {
         if (rows.Count == 0) return;
 
         var right = rows.Min(row => row.Left + row.Width) - 4f;
-        var left = Math.Max(rows.Min(row => row.Left),
-            LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters));
+        // لبهٔ چپ ستون: کادرِ اعلام‌شده در قالب، ولی نه نزدیک‌تر از «کف» طرح (برای ۱۰۰۳ همان
+        // حاشیهٔ ۱۵ میلی‌متری قبلی است؛ شرکت ۱ کادر پهن‌ترِ خودش را روی نقطه‌چین دارد).
+        var left = Math.Max(rows.Min(row => row.Left), columnFloor);
         // در A5 که صفحه باریک است، ستون امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
         if (right - left < 44f) left = Math.Max(0f, right - 44f);
         var width = Math.Max(20f, right - left);
@@ -702,11 +711,14 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 if (gap > 0.5f) column.Item().Height(gap);
 
                 var height = Math.Max(10f, row.Height);
-                column.Item().Height(height)
+                var cell = column.Item().Height(height)
                     .PaddingLeft(Math.Max(0f, left))
                     .AlignLeft()
-                    .Width(width)
-                    .AlignMiddle()
+                    .Width(width);
+                // قالب اگر رنگ پس‌زمینه اعلام کرده باشد (شرکت ۱: سفید)، همان نوار پشت مقدار
+                // کشیده می‌شود تا نقطه‌چین سربرگ متن را ناخوانا نکند.
+                if (!string.IsNullOrWhiteSpace(row.Fill)) cell = cell.Background(row.Fill!);
+                cell.AlignMiddle()
                     .AlignRight()
                     .Text(LetterPrintTemplate.IsolateMixedText(row.Value))
                     .FontFamily(FntBold)
