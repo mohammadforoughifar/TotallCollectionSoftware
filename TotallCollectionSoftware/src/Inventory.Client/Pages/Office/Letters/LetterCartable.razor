@@ -1,7 +1,9 @@
 @page "/letters"
+@using Inventory.Shared.Security
 @page "/letters/{Tab}"
 @using System.Net.Http.Headers
 @inject ILetterService LetterSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -28,7 +30,8 @@
             <button class="compose" title="نامه جدید" @onclick="OpenCompose"><i class="bi bi-plus-lg"></i></button>
             <div style="height:8px"></div>
 
-            <button class="@(folder == "inbox" ? "on" : "")" title="دریافتی" @onclick='() => SetFolder("inbox")'>
+            @* عدد روی «دریافتی» = تعداد نامه‌های خوانده‌نشده (متمایز، بدون احتساب نامه‌های بایگانی‌شده) *@
+            <button class="@(folder == "inbox" ? "on" : "")" title="@($"دریافتی — {stats.InboxUnread.FaDigits()} نامهٔ خوانده‌نشده")" aria-label="@($"دریافتی، {stats.InboxUnread.FaDigits()} نامهٔ خوانده‌نشده")" @onclick='() => SetFolder("inbox")'>
                 <i class="bi bi-inbox-fill"></i>
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
@@ -74,17 +77,20 @@
                 @if (folder != "archive")
                 {
                 <div class="chips">
-                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@BaseItems.Count.FaDigits()</span></button>
+                    <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@ChipAllCount.FaDigits()</span></button>
                     @if (folder != "draft")
                     {
                         @if (folder == "inbox")
                         {
-                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")'>خوانده‌نشده <span class="n">@BaseItems.Count(l => !l.IsRead).FaDigits()</span></button>
+                            <button class="chip @(filter == "unread" ? "on" : "")" @onclick='() => SetFilter("unread")' title="فقط نامه‌های خوانده‌نشده (روی همهٔ صفحات)">خوانده‌نشده <span class="n">@stats.InboxUnread.FaDigits()</span></button>
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
-                        <button class="chip @(filter == "deadline" ? "on" : "")" @onclick='() => SetFilter("deadline")'><i class="bi bi-clock" style="font-size:10px"></i> مهلت‌دار</button>
+                        @if (folder != "sent")
+                        {
+                            <button class="chip @(filter == "deadline" ? "on" : "")" @onclick='() => SetFilter("deadline")' title="نامه‌های دارای مهلت پاسخ (روی همهٔ صفحات)"><i class="bi bi-clock" style="font-size:10px"></i> مهلت‌دار</button>
+                        }
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
-                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")'><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
+                    <button class="chip @(filter == "workorder" ? "on" : "")" @onclick='() => SetFilter("workorder")' title="نامه‌هایی که دستور کار دارند (در صفحهٔ جاری)"><i class="bi bi-list-task" style="font-size:10px"></i> دستورکارشده</button>
                         @if (selectedErjaIds.Count > 0)
                         {
                             <button class="chip on" style="background:#f59e0b;color:#fff;border-color:#d97706;" @onclick="OpenBatchBayeganiModal">
@@ -175,6 +181,11 @@
                                 </div>
                                 <div class="mail-tt">@ll.Title</div>
                                 <div class="tags">
+                                    @* لیبل «خوانده‌نشده» — علاوه بر بولد شدن عنوان، وضعیت را صریح نشان می‌دهد *@
+                                    @if (folder == "inbox" && !ll.IsRead)
+                                    {
+                                        <span class="tg unread" title="این نامه هنوز خوانده نشده است"><i class="bi bi-envelope-fill"></i> خوانده‌نشده</span>
+                                    }
                                     <span class="tg purple num"># @ll.LetterNumber.FaDigits()</span>
                                     @if (ll.Foriat != "عادی") { <span class="tg red">! @ll.Foriat</span> }
                                     @if (ll.Mahramanegi != "عادی") { <span class="tg dark"><i class="bi bi-lock-fill"></i> @ll.Mahramanegi</span> }
@@ -214,11 +225,11 @@
                                         @if (printMenuOpen && printMenuLetterId == ll.LetterId)
                                         {
                                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                                 <div class="mdiv"></div>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                                <button @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                                <button data-ltx-print-option @onclick="async () => { await PrintRow(ll, SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                                             </div>
                                         }
                                         <button class="warn" @onclick="() => ToggleArchive(ll)">
@@ -274,11 +285,11 @@
                         @if (printMenuOpen)
                         {
                             <div class="ltmenu" @onclick:stopPropagation="true">
-                                <button @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, false); }"><i class="bi bi-file-earmark"></i> A4 — بدون هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA4, true); }"><i class="bi bi-file-earmark"></i> A4 — با هامش</button>
                                 <div class="mdiv"></div>
-                                <button @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
-                                <button @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, false); }"><i class="bi bi-file-earmark"></i> A5 — بدون هامش</button>
+                                <button data-ltx-print-option @onclick="async () => { await PrintSelected(SizeA5, true); }"><i class="bi bi-file-earmark"></i> A5 — با هامش</button>
                             </div>
                         }
                     </span>
@@ -358,7 +369,7 @@
                                     <div class="dt">@selected.DateSabt.ToFaDateTime()</div>
                                 </div>
                             </div>
-                            <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
+                            <div class="paper-body letter-body">@((MarkupString)RichLetterHtml.Sanitize(selected.Text ?? "—"))</div>
                             @* بخش پیوست‌ها باید «همیشه» برای هر کاربرِ حاضر در گردش (فرستنده/گیرنده) یا مدیر
                                دیده شود — حتی اگر نامه هنوز پیوستی نداشته باشد تا دکمه افزودن در دسترس بماند *@
                             @if (attachments.Count > 0 || selected.IsMine || selected.MyErja != null || Auth.IsAdmin)
@@ -745,23 +756,28 @@
     private List<InnerLetterListItemDto> BaseItems =>
         folder == "starred" ? items.Where(l => l.IsNeshan).ToList() : items;
 
+    /// <summary>
+    /// فیلترهای «خوانده‌نشده / نشان‌شده / مهلت‌دار / پیوست‌دار» <b>سمت سرور</b> اعمال می‌شوند
+    /// (روی همهٔ نامه‌های کاربر، نه فقط ۱۵ ردیف صفحهٔ جاری). پیش‌تر این فیلترها فقط روی
+    /// صفحهٔ بارگذاری‌شده کار می‌کردند و نامه‌های بقیهٔ صفحه‌ها بی‌صدا ناپدید می‌شدند؛
+    /// کاربر با جستجو همان نامه را پیدا می‌کرد و فکر می‌کرد نامه از کارتابل حذف شده است.
+    /// تنها «دستورکارشده» در همین صفحه فیلتر می‌شود، چون فهرست شناسه‌های آن از ماژول
+    /// دستور کار می‌آید و پارامتر سروری ندارد.
+    /// </summary>
     private List<InnerLetterListItemDto> Filtered
     {
         get
         {
             var arr = BaseItems;
-            arr = filter switch
-            {
-                "unread" => arr.Where(l => !l.IsRead).ToList(),
-                "starred" => arr.Where(l => l.IsNeshan).ToList(),
-                "deadline" => arr.Where(l => l.MohlatPasokh != null).ToList(),
-                "attach" => arr.Where(l => l.HasAttachment).ToList(),
-                "workorder" => arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList(),
-                _ => arr
-            };
+            if (filter == "workorder") arr = arr.Where(l => workOrderLetterIds.Contains(l.LetterId)).ToList();
             return arr;
         }
     }
+
+    /// <summary>عدد چیپ «همه» — برای دریافتی از شمارندهٔ سرور و برای بقیهٔ پوشه‌ها از تعداد کل سرور (نه ۱۵ ردیف صفحه).</summary>
+    private int ChipAllCount => filter == "all"
+        ? (folder == "inbox" ? stats.InboxTotal : totalServerCount)
+        : BaseItems.Count;
 
     private List<PishnevisDto> FilteredDrafts => drafts;
 
@@ -811,10 +827,14 @@
         if (!string.IsNullOrEmpty(Tab) && Tab is "inbox" or "sent" or "draft" or "starred" or "archive" or "guide")
             folder = Tab;
 
+        // باز کردن مستقیم یک نامه (لینک نوتیفیکیشن یا «نامه» در دستور کار): letters?open=ID
+        // اگر کاربر در گردش همین نامه باشد ولی مجوز عمومی کارتابل را نداشته باشد،
+        // بارگذاری فهرست خطا می‌دهد؛ در این حالت پیام خطا نمایش داده نمی‌شود و نامه باز می‌شود.
+        var hasOpenParam = int.TryParse(qs["open"], out var openId) && openId > 0;
+        _openingFromLink = hasOpenParam;
         await ReloadAsync();
-
-        // باز کردن مستقیم یک نامه (لینک نوتیفیکیشن): letters?open=ID
-        if (int.TryParse(qs["open"], out var openId) && openId > 0)
+        _openingFromLink = false;
+        if (hasOpenParam)
             await OpenById(openId);
 
         if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
@@ -825,6 +845,8 @@
     }
 
     private bool _composeHandled;
+    /// <summary>در حال باز کردن نامه از لینک مستقیم هستیم — خطای فهرست بی‌صدا رد می‌شود.</summary>
+    private bool _openingFromLink;
     private async Task OpenComposeFromMinutesAsync(int minutesId, int? itemId)
     {
         try
@@ -899,6 +921,9 @@
 
             var s = string.IsNullOrWhiteSpace(search) ? null : search;
             var unread = filter == "unread" ? (bool?)true : null;
+            var starredOnly = filter == "starred" ? (bool?)true : null;
+            var attachOnly = filter == "attach" ? (bool?)true : null;
+            var deadlineOnly = filter == "deadline" ? (bool?)true : null;
             if (folder == "draft")
             {
                 var draftPage = await LetterSvc.GetPishnevisPageAsync((page - 1) * PageSize, PageSize, s);
@@ -911,14 +936,14 @@
                 switch (folder)
                 {
                     case "sent":
-                        res = await LetterSvc.GetSentAsync(s, page, PageSize);
+                        res = await LetterSvc.GetSentAsync(s, page, PageSize, starredOnly, attachOnly);
                         break;
                     case "archive":
                         res = await LetterSvc.GetArchiveAsync(s, page, PageSize);
                         break;
                     case "starred":
-                        var starredInbox = await LetterSvc.GetInboxAsync(s, null, page, PageSize);
-                        var starredSent = await LetterSvc.GetSentAsync(s, page, PageSize);
+                        var starredInbox = await LetterSvc.GetInboxAsync(s, null, page, PageSize, starredOnly: true);
+                        var starredSent = await LetterSvc.GetSentAsync(s, page, PageSize, starredOnly: true);
                         res = new PagedResult<InnerLetterListItemDto>
                         {
                             Items = starredInbox.Items.Concat(starredSent.Items).Where(x => x.IsNeshan).ToList(),
@@ -927,7 +952,7 @@
                         };
                         break;
                     default:
-                        res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize);
+                        res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize, starredOnly, attachOnly, deadlineOnly);
                         break;
                 }
                 items = res.Items;
@@ -941,7 +966,7 @@
                 selectedItem = items.FirstOrDefault(l => l.LetterId == selected.LetterId) ?? selectedItem;
             }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { if (!_openingFromLink) Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 
@@ -968,14 +993,16 @@
 
     private void ApplySort()
     {
+        // ترتیب نمایش باید با ترتیب بریدگی صفحه در سرور یکی باشد (تاریخ، سپس شناسه)؛
+        // وگرنه ردیف‌ها بین صفحه‌ها جابه‌جا می‌شوند و بعضی نامه‌ها عملاً پیدا نمی‌شوند.
         items = sortKey switch
         {
-            "date-asc" => items.OrderBy(x => x.Date).ToList(),
+            "date-asc" => items.OrderBy(x => x.Date).ThenBy(x => x.LetterId).ToList(),
             "title-asc" => items.OrderBy(x => x.Title).ToList(),
             "title-desc" => items.OrderByDescending(x => x.Title).ToList(),
             "number-asc" => items.OrderBy(x => x.LetterNumber).ToList(),
             "number-desc" => items.OrderByDescending(x => x.LetterNumber).ToList(),
-            _ => items.OrderByDescending(x => x.Date).ToList()
+            _ => items.OrderByDescending(x => x.Date).ThenByDescending(x => x.LetterId).ToList()
         };
     }
 
@@ -993,12 +1020,21 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f)
+    private async Task SetFilter(string f)
     {
-        // فیلترهای نشان‌شده، مهلت‌دار و خوانده‌نشده روی دادهٔ همین صفحه اعمال می‌شوند؛
-        // درخواست دوباره باعث loading طولانی و هم‌پوشانی درخواست‌ها می‌شد.
+        // همهٔ چیپ‌ها «سمت سرور» اعمال می‌شوند؛ وگرنه فیلتر فقط روی همان ۱۵ ردیف
+        // بارگذاری‌شده کار می‌کرد، نامه‌های صفحات بعد هرگز دیده نمی‌شدند و
+        // شماره‌گذاری صفحه‌ها هم با فهرست هم‌خوان نبود. تنها استثنا «دستورکارشده» است
+        // که فهرست شناسه‌هایش از ماژول دستور کار می‌آید.
+        var needsServer = folder != "guide" && f != "workorder" && filter != "workorder";
         filter = f;
         page = 1;
+        if (needsServer)
+        {
+            await ReloadAsync(keepSelection: true, resetPage: true);
+            return;
+        }
+        // «دستورکارشده» روی دادهٔ همین صفحه اعمال می‌شود.
         loading = false;
         StateHasChanged();
     }
@@ -1280,26 +1316,10 @@
         var letterId = selected.LetterId;
         var number = selected.LetterNumber;
         printingPdf = true;
-        string? printId = null;
         try
         {
-            // Open only on the user's explicit with/without-hamesh click, before awaiting the API.
-            printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
-            var bytes = await LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh);
             var name = $"inner-letter-{number}-{size}-{(withHamesh ? "with-hamesh" : "without-hamesh")}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
-        }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
+            await PrintWorkflow.PrintPdfAsync(ct => LetterSvc.GetPrintPdfAsync(letterId, size, withHamesh, ct), name);
         }
         finally { printingPdf = false; }
     }

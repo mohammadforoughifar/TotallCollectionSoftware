@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Infrastructure;
@@ -20,10 +21,29 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
+    private readonly int _letterheadDpi;
+    private readonly string? _templateRoot;
 
-    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
+    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
+        IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
+        _letterheadDpi = ReadLetterheadDpi(configuration);
+        _templateRoot = configuration?["Reporting:InnerLetters:TemplateRoot"];
+    }
+
+    /// <summary>
+    /// DPI سربرگ برای چاپ. پیش‌فرض ۲۰۰ (تصویر اصلی ۳۰۰dpi و ۸٫۷ مگاپیکسل است؛ همان تصویر
+    /// در چاپ نهایی به حدود ۲۰۰dpi نیاز دارد). صفر = تصویر اصلی بدون تغییر.
+    /// کلید: Reporting:InnerLetters:LetterheadDpi
+    /// </summary>
+    private static int ReadLetterheadDpi(IConfiguration? configuration)
+    {
+        var raw = configuration?["Reporting:InnerLetters:LetterheadDpi"];
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dpi)
+               && dpi is >= 0 and <= 600
+            ? dpi
+            : InnerLetterheadTemplates.DefaultArtworkDpi;
     }
 
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default, bool withHamesh = false)
@@ -77,16 +97,34 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         // جانشین نمی‌شود. پیش‌تر شناسه‌های ۱۰۰۳ و ۱۰۰۵ در کد ثابت بودند و در نبود سربرگ،
         // فایل نمونهٔ «forough-letterhead.pdf» به‌صورت بی‌صدا استفاده می‌شد؛ نتیجه این بود
         // که روی نصب مشتری، نامه‌ها روی سربرگ شرکتی دیگر چاپ می‌شدند.
+        // تصویر و هندسهٔ سربرگ برای هر نسخهٔ فایل کش می‌شوند؛ چاپ دوم به بعد فایل ۶۲۰KB را
+        // نمی‌خواند و تصویر ۸٫۷ مگاپیکسلی را دوباره دیکد نمی‌کند.
+        var timing = Stopwatch.StartNew();
+        // مسیر قالب به ترتیب اولویت: تنظیمات → فایل داخل مخزن (inventory/src/…) → ContentRoot → BaseDirectory.
+        // یعنی ویرایش قالب در «inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003»
+        // مستقیماً مبنای چاپ است و نیازی به کپی/بیلد مجدد ندارد.
+        var templatePath = company is null ? null
+            : InnerLetterheadTemplates.ResolveCompanyTemplatePath(
+                  _env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5, _templateRoot)
+              ?? InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company.Id, a5);
         var companyArt = company is null ? null
-            : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5);
+            : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5,
+                _letterheadDpi, _templateRoot);
         if (companyArt != null)
         {
+            var loadMs = timing.ElapsedMilliseconds;
             try
             {
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts);
+                // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب همان شرکت خوانده می‌شود تا مقادیر
+                // دقیقاً روی خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
+                var meta = InnerLetterheadTemplates.TryLoadMetaLayout(
+                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts, meta);
                 _log.LogInformation(
-                    "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}",
-                    letterId, company!.Id, InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company!.Id, a5));
+                    "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
+                    letterId, company!.Id, templatePath,
+                    loadMs, timing.ElapsedMilliseconds - loadMs, companyArt.Length / 1024, _letterheadDpi,
+                    pdf.Length / 1024);
                 return pdf;
             }
             catch (Exception ex)

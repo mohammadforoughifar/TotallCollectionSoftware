@@ -7,7 +7,166 @@
   </Dictionary>
   <Pages isList="true" count="1">
     <Page1 Ref="2" type="Page" isKey="true">
-      <Components isList="true" count="0" />
+      <Components isList="true" count="8">
+        <Text10 Ref="10" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.2,0.8233,1.14,0.2</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,10</Font>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text10</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.LetterNumber}</Text>
+          <TextBrush>White</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text10>
+        <Text11 Ref="11" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.2,1.0733,1.14,0.2</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,10</Font>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text11</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.DateShams}</Text>
+          <TextBrush>White</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text11>
+        <Text12 Ref="12" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.2,1.3333,1.14,0.2</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12</Font>
+          <HorAlignment>Center</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text12</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.Peyvast}</Text>
+          <TextBrush>White</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text12>
+        <Text13 Ref="13" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.5906,2.9139,7.0888,0.28</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12</Font>
+          <HorAlignment>Left</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text13</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.GirandeAsli}</Text>
+          <TextBrush>Black</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text13>
+        <Text14 Ref="14" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>6.9774,3.234,0.7,0.3</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12,Bold</Font>
+          <HorAlignment>Right</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text14</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>:موضوع</Text>
+          <TextBrush>Black</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>Text</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text14>
+        <Text15 Ref="15" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.5906,3.234,6.3,0.3</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12</Font>
+          <HorAlignment>Left</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text15</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.TitleLetter}</Text>
+          <TextBrush>Black</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text15>
+        <Text16 Ref="16" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.5906,3.6375,7.0888,3.75</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12</Font>
+          <HorAlignment>Left</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text16</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.TextLetter}</Text>
+          <TextBrush>Black</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text16>
+        <Text17 Ref="17" type="Text" isKey="true">
+          <Brush>Transparent</Brush>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.5906,7.42,7.0888,0.9</ClientRectangle>
+          <Conditions isList="true" count="0" />
+          <Expressions isList="true" count="0" />
+          <Font>Vazirmatn,12</Font>
+          <HorAlignment>Left</HorAlignment>
+          <Margins>0,0,0,0</Margins>
+          <Name>Text17</Name>
+          <Page isRef="2" />
+          <Parent isRef="2" />
+          <Text>{DataSource1.Hamesh}</Text>
+          <TextBrush>Black</TextBrush>
+          <TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions>
+          <Type>DataColumn</Type>
+          <VertAlignment>Center</VertAlignment>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>7</ShrinkFontToFitMinimumSize>
+        </Text17>
+      </Components>
       <Margins>0,0,0,0</Margins>
       <Name>Page1</Name>
       <PageWidth>8.27</PageWidth>

@@ -112,6 +112,8 @@ builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
+// جریان چاپ نامه (پنجرهٔ چاپ، بودجهٔ زمانی، نمایش پیشرفت) — همان سرویس مشترک هر چهار صفحه
+builder.Services.AddScoped<LetterPrintWorkflow>();
 builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)
 // ---------- فرم‌های متفرقه — صورتجلسه ----------

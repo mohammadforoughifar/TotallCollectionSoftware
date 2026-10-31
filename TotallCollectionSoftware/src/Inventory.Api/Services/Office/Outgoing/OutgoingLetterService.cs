@@ -20,10 +20,15 @@ namespace Inventory.Api.Services.Office.Outgoing;
 public interface IOutgoingLetterService
 {
     Task<int> AddOutgoingLetterAsync(AddOutgoingLetterDto dto, int creatorUserId, string creatorName);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null);
     Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly, int page = 1, int pageSize = 20);
+
+    /// <summary>علامت‌گذاری «خوانده شد» برای ارجاع‌ها و ردیف امضای همین کاربر (بدون نیاز به امضا).</summary>
+    Task MarkReadAsync(int letterId, int userId);
     Task<OutgoingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20);
@@ -91,6 +96,25 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     /// <summary>
+    /// شناسهٔ سمتِ پیش‌فرضِ یک کاربر (SematId — نه OrganizationId) برای fallback جزء «واحد»
+    /// در شمارهٔ نامه، وقتی کاربر واحد سازمانی اختصاصی ندارد.
+    /// </summary>
+    private async Task<int?> DefaultSematIdAsync(int userId)
+    {
+        if (userId <= 0) return null;
+        return await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId == userId && s.DefaultSemat && s.IsActive && !s.IsDelete
+                        && s.OrganizationId > 0)
+            .Select(s => (int?)s.SematId)
+            .FirstOrDefaultAsync()
+            ?? await _db.Semats.AsNoTracking()
+                .Where(s => s.UserId == userId && s.IsActive && !s.IsDelete && s.OrganizationId > 0)
+                .OrderBy(s => s.SematId)
+                .Select(s => (int?)s.SematId)
+                .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
     /// ساخت شماره نامه صادره از ساختار پیکربندی‌شده (TypeForm=2) — قابل تنظیم از
     /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
     /// «سال/ص-شماره» (مثل 1404/ص-5) حفظ می‌شود تا رفتار قدیمی نشکند.
@@ -102,6 +126,17 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var pc = new PersianCalendar();
         return $"{pc.GetYear(date ?? DateTime.Now)}/ص-{number}";
+    }
+
+    /// <summary>
+    /// شرکت پیش‌فرض نامه وقتی انتخاب نشده است: شرکت فعالِ همین درخواست
+    /// (هدر X-Company-Id که میان‌افزار اعتبارسنجی کرده است). عمداً «اولین شرکت پایگاه داده»
+    /// انتخاب نمی‌شود تا نامه روی شرکت دیگر ثبت و چاپ نشود.
+    /// </summary>
+    private int? DefaultCompanyIdForLetter()
+    {
+        var active = _db.ActiveCompanyId;
+        return active is > 0 ? active : null;
     }
 
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
@@ -198,7 +233,12 @@ public class OutgoingLetterService : IOutgoingLetterService
         var girande = dto.ReciversGirande.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsGirande)).Distinct().ToList();
         var erjaIds = dto.ReciversErja.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsErja)).Distinct().ToList();
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
-        var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
+        var signerIds = await ResolveSignersAsync(
+            dto.SignerSelections.Select(x => x.UserId).Concat(dto.SignerUserIds).Distinct().ToList(), dto.SignerGroupIds);
+        var requestedSignerSemats = await ResolveRequestedSignerSematsAsync(dto.SignerSelections);
+        var permittedSignerIds = await GetUsersWithSignPermissionAsync();
+        if (signerIds.Any(id => !permittedSignerIds.Contains(id)))
+            throw new Exception("فقط کاربران دارای مجوز امضای نامه صادره می‌توانند امضاکننده باشند.");
 
         // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
         if (signerIds.Count == 0)
@@ -253,7 +293,10 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = await BuildLetterNumberAsync(number, now, userId: creatorUserId),
+            // جزء «واحد»: اول واحدِ اختصاصی خودِ سازندهٔ نامه، بعد سازمانِ سمتِ پیش‌فرض او
+            // و در نهایت واحد پیش‌فرض شرکت فعال (منطق در LetterStratureService).
+            LetterNumber = await BuildLetterNumberAsync(number, now,
+                sematId: await DefaultSematIdAsync(creatorUserId), userId: creatorUserId),
             // هر دو ستون برای سازگاری دیتابیس‌های جدید و قدیمی مقداردهی می‌شوند.
             CreatorUserId = creatorUserId,
             CreatorId = creatorUserId,
@@ -268,7 +311,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             ReceiverAddress = dto.ReceiverAddress?.Trim(),
             CopyTo = dto.CopyTo?.Trim(),
             ExternalRefNumber = dto.ExternalRefNumber?.Trim(),
-            CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null,
+            // اگر کاربر شرکتی انتخاب نکرده باشد، شرکت فعالِ همین درخواست ذخیره می‌شود؛
+            // در غیر این صورت CompanyId = NULL می‌ماند و چاپ نمی‌داند روی طرح کدام شرکت برود.
+            CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : DefaultCompanyIdForLetter(),
             Status = signerIds.Count > 0 ? 1 : (allReciverIds.Count > 0 ? 1 : 2),
             IsDelete = false
         };
@@ -293,7 +338,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 SourceId = source.Id,
                 UserId = uid,
-                SematId = signerSematIds.TryGetValue(uid, out var sid) ? sid : null,
+                SematId = requestedSignerSemats.TryGetValue(uid, out var selectedSematId)
+                    ? selectedSematId
+                    : signerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = order++,
                 IsSigned = false,
                 IsDelete = false
@@ -378,16 +425,27 @@ public class OutgoingLetterService : IOutgoingLetterService
         return source.Id;
     }
 
+    /// <summary>متنِ اختصاصیِ ردیف‌های «دسترسی از طریق دستورکار» — برای کنار گذاشتن خودارجاعی.</summary>
+    private const string AutoFlowText = "دسترسی به نامه از طریق دستورکار";
+
     // ---------- Inbox: شامل ارجاعات + امضا ----------
-    public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         // بخش 1: ارجاعات
         var qErja = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
-                        && e.IsBayegani != true);
+                        && e.IsBayegani != true
+                        // ردیف خودارجاعیِ ساختگیِ «دسترسی از طریق دستورکار» در دریافتی نیاید
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (unreadOnly == true) qErja = qErja.Where(e => !e.IsRead);
+
+        // چیپ‌های کارتابل «سمت سرور» — فیلتر سمت کلاینت فقط صفحهٔ جاری را می‌دید
+        if (starredOnly == true) qErja = qErja.Where(e => e.IsNeshan);
+        if (attachOnly == true)
+            qErja = qErja.Where(e => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == e.SourceId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -413,8 +471,15 @@ public class OutgoingLetterService : IOutgoingLetterService
         }
         if (unreadOnly == true)
         {
-            qSign = qSign.Where(s => !s.IsSigned);
+            // «خوانده‌نشده» برای امضاکننده یعنی نامه را باز نکرده؛ نه یعنی امضا نکرده.
+            // نامهٔ امضاشده هم به‌طور طبیعی خوانده‌شده است (سازگاری با دادهٔ قبل از این ستون).
+            qSign = qSign.Where(s => !s.IsRead && !s.IsSigned);
         }
+
+        // همان فیلترهای کارتابل برای ردیف‌های «امضایی» (بدون ارجاع)
+        if (starredOnly == true) qSign = qSign.Where(sg => sg.Source.OutgoingLetter!.IsNeshan);
+        if (attachOnly == true)
+            qSign = qSign.Where(sg => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == sg.SourceId));
 
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -484,13 +549,16 @@ public class OutgoingLetterService : IOutgoingLetterService
                 SenderUserId = s.Source.OutgoingLetter!.CreatorUserId,
                 ReceiverOrganization = s.Source.OutgoingLetter!.ReceiverOrganization,
                 ReceiverName = s.Source.OutgoingLetter!.ReceiverName,
-                Date = s.Source.OutgoingLetter!.DateSabt,
+                // تاریخ نمایش = تاریخ ارجاع به همین کاربر (اگر ارجاعی نباشد، تاریخ ثبت نامه)
+                Date = _db.Erjas
+                    .Where(e => e.SourceId == s.SourceId && e.ReciverUserId == userId && !e.IsDelete)
+                    .Max(e => (DateTime?)e.Date) ?? s.Source.OutgoingLetter!.DateSabt,
                 Mahramanegi = s.Source.OutgoingLetter!.Mahramanegi,
                 Foriat = s.Source.OutgoingLetter!.Foriat,
                 ErjaType = "امضا",
                 MatnErja = s.SignNote,
                 IsNeshan = false,
-                IsRead = s.IsSigned, // امضا شده = خوانده شده تلقی شود
+                IsRead = s.IsRead || s.IsSigned, // خوانده‌شدن مستقل از امضاست
                 TypeTaeed = 0,
                 HasAnswer = s.IsSigned,
                 ReciverCount = s.Source.Erjas.Count(x => !x.IsDelete),
@@ -518,6 +586,8 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 existing.IsSigner = true;
                 existing.IsSigned = item.IsSigned;
+                // اگر از هر یک از دو مسیر (ارجاع یا امضا) خوانده شده باشد، خوانده‌شده است
+                existing.IsRead = existing.IsRead || item.IsRead;
                 existing.CanSign = item.CanSign;
                 existing.SignersTotal = item.SignersTotal;
                 existing.SignersSigned = item.SignersSigned;
@@ -565,7 +635,16 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(s => s.Id)
+        // ترتیب «امضایی‌های من»:
+        //   ۱) نامه‌هایی که هنوز امضا نشده‌اند (نیاز به امضا) بالاتر از امضاشده‌ها؛
+        //   ۲) در هر گروه، جدیدترین «تاریخ ارجاع به این کاربر» اول؛ اگر نامه ارجاعی
+        //      به کاربر نداشته باشد، تاریخ ثبت نامه ملاک است.
+        var items = await q
+            .OrderBy(s => s.IsSigned)
+            .ThenByDescending(s => _db.Erjas
+                .Where(e => e.SourceId == s.SourceId && e.ReciverUserId == userId && !e.IsDelete)
+                .Max(e => (DateTime?)e.Date) ?? s.Source.OutgoingLetter!.DateSabt)
+            .ThenByDescending(s => s.SourceId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(s => new OutgoingLetterListItemDto
@@ -586,7 +665,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Foriat = s.Source.OutgoingLetter!.Foriat,
                 ErjaType = "امضا",
                 IsNeshan = false,
-                IsRead = s.IsSigned,
+                IsRead = s.IsRead || s.IsSigned,
                 TypeTaeed = 0,
                 HasAnswer = s.IsSigned,
                 ReciverCount = s.Source.Erjas.Count(x => !x.IsDelete),
@@ -618,7 +697,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
-                        && e.IsBayegani == true);
+                        && e.IsBayegani == true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -630,7 +710,9 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(e => e.ErjaId)
+        var items = await q
+            .OrderByDescending(e => e.Date)
+            .ThenByDescending(e => e.ErjaId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new OutgoingLetterListItemDto
@@ -673,7 +755,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         };
     }
 
-    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20,
+        bool? starredOnly = null, bool? attachOnly = null)
     {
         page = Math.Max(1, page);
         pageSize = pageSize <= 0 ? 20 : pageSize;
@@ -687,9 +770,17 @@ public class OutgoingLetterService : IOutgoingLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.ReceiverOrganization.Contains(s) || (l.SadereNumber ?? "").Contains(s));
         }
 
+        // چیپ‌های کارتابل «ارسالی» سمت سرور (روی کل نامه‌ها، نه صفحهٔ جاری)
+        if (starredOnly == true) q = q.Where(l => l.IsNeshan);
+        if (attachOnly == true)
+            q = q.Where(l => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id));
+
         var totalCount = await q.CountAsync();
 
-        var items = await q.OrderByDescending(l => l.Id)
+        var items = await q
+            // ترتیب بریدگی صفحه = ترتیب نمایش (تاریخ ثبت، سپس شناسه)
+            .OrderByDescending(l => l.DateSabt)
+            .ThenByDescending(l => l.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(l => new OutgoingLetterListItemDto
@@ -909,9 +1000,13 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public async Task<OutgoingLetterCartableStatsDto> GetStatsAsync(int userId)
     {
+        // بج «دریافتی» = تعداد نخوانده‌های همان فهرست؛ پس نامه‌های بایگانی‌شده
+        // (IsBayegani) نباید شمرده شوند، همان‌طور که GetInboxAsync آن‌ها را نشان نمی‌دهد.
         var inbox = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
-                        && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete);
+                        && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
+                        && e.IsBayegani != true
+                        && !(e.SenderUserId == userId && e.MatnErja.StartsWith(AutoFlowText)));
 
         var signing = _db.OutgoingLetterSigners.AsNoTracking()
             .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete
@@ -920,12 +1015,28 @@ public class OutgoingLetterService : IOutgoingLetterService
         var soon = DateTime.Now.AddDays(2);
         return new OutgoingLetterCartableStatsDto
         {
-            InboxUnread = await inbox.CountAsync(e => !e.IsRead) + await signing.CountAsync(s => !s.IsSigned),
+            InboxUnread = await inbox.CountAsync(e => !e.IsRead) + await signing.CountAsync(s => !s.IsRead && !s.IsSigned),
             InboxTotal = await inbox.CountAsync() + await signing.CountAsync(),
             SentTotal = await _db.OutgoingLetters.CountAsync(l => l.CreatorUserId == userId && !l.IsDelete),
             PishnevisTotal = await _db.OutgoingPishnevisLetters.CountAsync(p => p.UserId == userId && !p.IsDelete),
             DeadlineSoon = await inbox.CountAsync(e => e.MohlatPasokh != null && e.Answer == "" && e.MohlatPasokh <= soon)
         };
+    }
+
+    public async Task MarkReadAsync(int letterId, int userId)
+    {
+        var now = DateTime.Now;
+        var erjas = await _db.Erjas
+            .Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete && !e.IsRead)
+            .ToListAsync();
+        foreach (var e in erjas) { e.IsRead = true; e.DateRead = now; }
+
+        var signers = await _db.OutgoingLetterSigners
+            .Where(s => s.SourceId == letterId && s.UserId == userId && !s.IsDelete && !s.IsRead)
+            .ToListAsync();
+        foreach (var s in signers) { s.IsRead = true; s.DateRead = now; }
+
+        if (erjas.Count > 0 || signers.Count > 0) await _db.SaveChangesAsync();
     }
 
     public async Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20)
@@ -1027,7 +1138,12 @@ public class OutgoingLetterService : IOutgoingLetterService
         var girande = dto.ReciversGirande.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsGirande)).Distinct().ToList();
         var erjaIds = dto.ReciversErja.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsErja)).Distinct().ToList();
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
-        var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
+        var signerIds = await ResolveSignersAsync(
+            dto.SignerSelections.Select(x => x.UserId).Concat(dto.SignerUserIds).Distinct().ToList(), dto.SignerGroupIds);
+        var requestedSignerSemats = await ResolveRequestedSignerSematsAsync(dto.SignerSelections);
+        var permittedSignerIds = await GetUsersWithSignPermissionAsync();
+        if (signerIds.Any(id => !permittedSignerIds.Contains(id)))
+            throw new Exception("فقط کاربران دارای مجوز امضای نامه صادره می‌توانند امضاکننده باشند.");
 
         // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
         if (signerIds.Count == 0)
@@ -1064,7 +1180,9 @@ public class OutgoingLetterService : IOutgoingLetterService
         letter.ReceiverAddress = dto.ReceiverAddress?.Trim();
         letter.CopyTo = dto.CopyTo?.Trim();
         letter.ExternalRefNumber = dto.ExternalRefNumber?.Trim();
-        letter.CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null;
+        // شرکت نامه با ویرایشِ بدون انتخاب شرکت پاک نمی‌شود؛ اگر هیچ شرکتی هم ارسال نشده باشد
+        // شرکت فعال درخواست جایگزین می‌شود (قبلاً NULL می‌شد و چاپ شرکت را گم می‌کرد).
+        letter.CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : DefaultCompanyIdForLetter();
 
         var now = DateTime.Now;
         var rootErjas = await _db.Erjas.Where(e => e.SourceId == letterId && !e.IsDelete && e.ParentErjaId == null).ToListAsync();
@@ -1112,6 +1230,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             if (!wantedSignerIds.Contains(es.UserId))
                 es.IsDelete = true;
+            else if (requestedSignerSemats.TryGetValue(es.UserId, out var selectedSematId))
+                es.SematId = selectedSematId;
         }
         int maxOrder = existingSigners.Any() ? existingSigners.Max(s => s.Order) : 0;
         var newSignerIds = wantedSignerIds.Where(id => !existingUserIds.Contains(id)).ToList();
@@ -1122,7 +1242,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 SourceId = letterId,
                 UserId = uid,
-                SematId = newSignerSematIds.TryGetValue(uid, out var sid) ? sid : null,
+                SematId = requestedSignerSemats.TryGetValue(uid, out var selectedSematId)
+                    ? selectedSematId
+                    : newSignerSematIds.TryGetValue(uid, out var sid) ? sid : null,
                 Order = ++maxOrder,
                 IsSigned = false,
                 IsDelete = false
@@ -1283,17 +1405,15 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         var q = _db.Users.AsNoTracking().Where(u => u.IsActive);
 
-        if (allowed.Count > 0)
-        {
-            q = q.Where(u => allowed.Contains(u.Id));
-        }
+        q = q.Where(u => allowed.Contains(u.Id));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
             // جستجو هم با نام و هم با عنوانِ سمتِ کاربر کار می‌کند
             q = q.Where(u => u.Username.Contains(s) || (u.FirstName + " " + u.LastName).Contains(s) || (u.FirstName ?? "").Contains(s) || (u.LastName ?? "").Contains(s)
-                || _db.Semats.Any(x => x.UserId == u.Id && !x.IsDelete && x.IsActive && x.Title.Contains(s)));
+                || _db.Semats.Any(x => x.UserId == u.Id && !x.IsDelete && x.IsActive
+                    && (x.Title.Contains(s) || (x.OnvanMokatebati ?? "").Contains(s))));
         }
 
         var list = await q.OrderBy(u => u.Username).ThenBy(x => x.Id)
@@ -1306,12 +1426,15 @@ public class OutgoingLetterService : IOutgoingLetterService
         // سمت‌های فعالِ هر امضاکننده (هر کاربر می‌تواند چند سمت داشته باشد)
         var userIds = list.Select(x => x.UserId).ToList();
         var positions = await UserPositionMapAsync(userIds);
+        var positionOptions = await UserPositionOptionsMapAsync(userIds);
         var defaultSematIds = await DefaultSematIdsAsync(userIds);
         var defaultSematTitles = await SematTitleMapAsync(defaultSematIds.Values.ToList());
         foreach (var item in list)
         {
             if (positions.TryGetValue(item.UserId, out var titles) && titles.Count > 0)
                 item.Positions = titles;
+            if (positionOptions.TryGetValue(item.UserId, out var options))
+                item.PositionOptions = options;
             if (defaultSematIds.TryGetValue(item.UserId, out var sematId))
             {
                 item.SematId = sematId;
@@ -1343,6 +1466,45 @@ public class OutgoingLetterService : IOutgoingLetterService
             }
             if (!list.Any(t => string.Equals(t, title, StringComparison.OrdinalIgnoreCase)))
                 list.Add(title);
+        }
+        return map;
+    }
+
+    private async Task<Dictionary<int, int?>> ResolveRequestedSignerSematsAsync(List<OutgoingSignerSelectionDto> selections)
+    {
+        var result = new Dictionary<int, int?>();
+        foreach (var selection in selections.Where(x => x.UserId > 0))
+            result[selection.UserId] = selection.SematId;
+        var sematIds = result.Values.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToList();
+        if (sematIds.Count == 0) return result;
+        var userIds = result.Keys.ToList();
+        var valid = await _db.Semats.AsNoTracking()
+            .Where(s => sematIds.Contains(s.SematId) && s.UserId != null && userIds.Contains(s.UserId.Value)
+                && !s.IsDelete && s.IsActive)
+            .Select(s => new { s.SematId, UserId = s.UserId!.Value })
+            .ToListAsync();
+        var validPairs = valid.Select(x => (x.UserId, (int?)x.SematId)).ToHashSet();
+        foreach (var uid in result.Keys.ToList())
+            if (result[uid] is int sid && !validPairs.Contains((uid, (int?)sid)))
+                throw new Exception("سمت انتخاب‌شده برای یکی از امضاکنندگان معتبر یا فعال نیست.");
+        return result;
+    }
+
+    private async Task<Dictionary<int, List<LetterPositionDto>>> UserPositionOptionsMapAsync(List<int> userIds)
+    {
+        var map = new Dictionary<int, List<LetterPositionDto>>();
+        if (userIds.Count == 0) return map;
+        var rows = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId != null && userIds.Contains(s.UserId.Value) && !s.IsDelete && s.IsActive)
+            .OrderBy(s => s.SematId)
+            .Select(s => new { UserId = s.UserId!.Value, s.SematId, s.Title, s.OnvanMokatebati })
+            .ToListAsync();
+        foreach (var row in rows)
+        {
+            var title = string.IsNullOrWhiteSpace(row.OnvanMokatebati) ? row.Title?.Trim() : row.OnvanMokatebati.Trim();
+            if (string.IsNullOrWhiteSpace(title)) continue;
+            if (!map.TryGetValue(row.UserId, out var list)) map[row.UserId] = list = new();
+            list.Add(new LetterPositionDto { SematId = row.SematId, Title = title });
         }
         return map;
     }

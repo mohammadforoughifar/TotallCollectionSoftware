@@ -2,12 +2,12 @@
 @using Inventory.Shared.Dtos
 @using Inventory.Client.Pages.Office.Letters.Incoming
 @inject IOutgoingLetterService OutgoingSvc
+@inject LetterPrintWorkflow PrintWorkflow
 @inject IEmailClientService EmailSvc
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject LayoutState Layout
 @inject RealtimeService Rt
-@inject IJSRuntime JS
 @implements IDisposable
 
 @* ============================================================
@@ -135,7 +135,7 @@
             <div class="search" style="flex:1;min-width:220px">
                 <i class="bi bi-search"></i>
                 <input placeholder="جستجو: شماره صادره، عنوان، سازمان مقصد، نام تحویل گیرنده، کد رهگیری…"
-                       @bind="fText" @bind:event="oninput" @bind:after="ReloadAsync" />
+                       @bind="fText" @bind:event="oninput" @bind:after="ReloadFromFilterAsync" />
             </div>
             <button class="lbtn ghost" @onclick="() => showFilters = !showFilters">
                 <i class="bi bi-funnel@(showFilters ? "-fill" : "")"></i> جستجوی پیشرفته
@@ -150,7 +150,7 @@
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
                     <div>
                         <label style="font-size:12px;color:#64748b">روش ارسال</label>
-                        <select class="tin" @bind="fMethod" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fMethod" @bind:after="ReloadFromFilterAsync">
                             <option value="">— همه روش‌ها —</option>
                             @foreach (var m in LetterSendMethods.All)
                             {
@@ -160,7 +160,7 @@
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">فرستنده (ثبت‌کننده)</label>
-                        <select class="tin" @bind="fCreatorId" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fCreatorId" @bind:after="ReloadFromFilterAsync">
                             <option value="0">— همه —</option>
                             @foreach (var u in creators)
                             {
@@ -170,7 +170,7 @@
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">شرکت (سربرگ)</label>
-                        <select class="tin" @bind="fCompanyId" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fCompanyId" @bind:after="ReloadFromFilterAsync">
                             <option value="0">— همه —</option>
                             @foreach (var c in companies)
                             {
@@ -180,11 +180,11 @@
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">سازمان مقصد</label>
-                        <input class="tin" placeholder="بخشی از نام سازمان…" @bind="fOrg" @bind:event="oninput" @bind:after="ReloadAsync" />
+                        <input class="tin" placeholder="بخشی از نام سازمان…" @bind="fOrg" @bind:event="oninput" @bind:after="ReloadFromFilterAsync" />
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">محرمانگی</label>
-                        <select class="tin" @bind="fMahramanegi" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fMahramanegi" @bind:after="ReloadFromFilterAsync">
                             <option value="">— همه —</option>
                             <option value="عادی">عادی</option>
                             <option value="محرمانه">محرمانه</option>
@@ -193,7 +193,7 @@
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">فوریت</label>
-                        <select class="tin" @bind="fForiat" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fForiat" @bind:after="ReloadFromFilterAsync">
                             <option value="">— همه —</option>
                             <option value="عادی">عادی</option>
                             <option value="فوری">فوری</option>
@@ -203,16 +203,16 @@
                     <div>
                         <label style="font-size:12px;color:#64748b">از تاریخ صدور</label>
                         @* تقویم شمسی — همسان با سایر بخش‌ها (جایگزین type="date" میلادی) *@
-                        <DatePicker @bind-Value="fFrom" @bind:after="ReloadAsync" AllowClear="true" CssClass="tin" />
+                        <DatePicker @bind-Value="fFrom" @bind:after="ReloadFromFilterAsync" AllowClear="true" CssClass="tin" />
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">تا تاریخ صدور</label>
                         @* تقویم شمسی — همسان با سایر بخش‌ها (جایگزین type="date" میلادی) *@
-                        <DatePicker @bind-Value="fTo" @bind:after="ReloadAsync" AllowClear="true" CssClass="tin" />
+                        <DatePicker @bind-Value="fTo" @bind:after="ReloadFromFilterAsync" AllowClear="true" CssClass="tin" />
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">پیوست</label>
-                        <select class="tin" @bind="fAttachment" @bind:after="ReloadAsync">
+                        <select class="tin" @bind="fAttachment" @bind:after="ReloadFromFilterAsync">
                             <option value="">— فرقی ندارد —</option>
                             <option value="true">فقط پیوست‌دار</option>
                             <option value="false">بدون پیوست</option>
@@ -221,7 +221,7 @@
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:10px">
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:#4338ca">
-                        <input type="checkbox" @bind="searchAllScopes" @bind:after="ReloadAsync" />
+                        <input type="checkbox" @bind="searchAllScopes" @bind:after="ReloadFromFilterAsync" />
                         <i class="bi bi-globe2"></i> جستجو در همه نامه‌ها (صرف‌نظر از تب جاری)
                     </label>
                     <button class="lbtn ghost" @onclick="ClearFilters"><i class="bi bi-x-circle"></i> پاک کردن فیلترها</button>
@@ -333,6 +333,22 @@
                 </div>
             }
         }
+            @* ---------- صفحه‌بندی (سمت سرور) ---------- *@
+            @if (DabirPageCount > 1)
+            {
+                <div class="lt-pager" style="border-top:none;margin-top:6px">
+                    <button class="pgbtn" disabled="@(dabirPage <= 1)" @onclick="() => GoDabirPage(1)" title="صفحهٔ اول"><i class="bi bi-chevron-double-right"></i></button>
+                    <button class="pgbtn" disabled="@(dabirPage <= 1)" @onclick="() => GoDabirPage(dabirPage - 1)" title="قبلی"><i class="bi bi-chevron-right"></i></button>
+                    @foreach (var p in DabirPageNumbers)
+                    {
+                        var pp = p;
+                        <button class="pgbtn @(pp == dabirPage ? "on" : "")" @onclick="() => GoDabirPage(pp)">@pp.FaDigits()</button>
+                    }
+                    <button class="pgbtn" disabled="@(dabirPage >= DabirPageCount)" @onclick="() => GoDabirPage(dabirPage + 1)" title="بعدی"><i class="bi bi-chevron-left"></i></button>
+                    <button class="pgbtn" disabled="@(dabirPage >= DabirPageCount)" @onclick="() => GoDabirPage(DabirPageCount)" title="صفحهٔ آخر"><i class="bi bi-chevron-double-left"></i></button>
+                    <span class="pginfo">@dabirTotal.FaDigits() نامه — صفحهٔ @dabirPage.FaDigits() از @DabirPageCount.FaDigits()</span>
+                </div>
+            }
         } @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
     </div>
         </section>
@@ -570,7 +586,7 @@
 
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
                     <button class="lbtn ghost" @onclick="() => printOpen = false">انصراف</button>
-                    <button class="lbtn pri" disabled="@printing" @onclick="DoPrint">
+                    <button class="lbtn pri" data-ltx-print-option disabled="@printing" @onclick="DoPrint">
                         <i class="bi bi-printer"></i> @(printing ? "در حال آماده‌سازی…" : "چاپ PDF")
                     </button>
                 </div>
@@ -592,6 +608,22 @@
     private bool loading = true;
     private string tab = "pending";
     private string dabirType = "sadere";
+
+    // ---------- صفحه‌بندی سمت سرور برای فهرست دبیرخانه (skip/take) ----------
+    private const int DabirPageSize = 15;
+    private int dabirPage = 1;
+    private int dabirTotal;
+    private int DabirPageCount => Math.Max(1, (int)Math.Ceiling(dabirTotal / (double)DabirPageSize));
+    private IEnumerable<int> DabirPageNumbers
+    {
+        get
+        {
+            var from = Math.Max(1, dabirPage - 2);
+            var to = Math.Min(DabirPageCount, from + 4);
+            from = Math.Max(1, to - 4);
+            return Enumerable.Range(from, to - from + 1);
+        }
+    }
     private IntegratedIncomingPanel? incomingPanel;
     private bool showFilters;
 
@@ -704,6 +736,21 @@
     {
         showGuide = false;
         tab = t;
+        dabirPage = 1;
+        await ReloadAsync();
+    }
+
+    /// <summary>تغییر فیلترها همیشه از صفحهٔ اول شروع می‌شود.</summary>
+    private async Task ReloadFromFilterAsync()
+    {
+        dabirPage = 1;
+        await ReloadAsync();
+    }
+
+    private async Task GoDabirPage(int p)
+    {
+        if (p < 1 || p > DabirPageCount || p == dabirPage) return;
+        dabirPage = p;
         await ReloadAsync();
     }
 
@@ -729,7 +776,11 @@
         loading = true;
         try
         {
-            items = await OutgoingSvc.GetDabirkhaneAsync(BuildFilter());
+            var pageRes = await OutgoingSvc.GetDabirkhanePageAsync(BuildFilter(), dabirPage, DabirPageSize);
+            items = pageRes.Items;
+            dabirTotal = pageRes.TotalCount;
+            // اگر بعد از تغییر فیلتر صفحهٔ جاری از محدوده خارج شد، به آخرین صفحه برگرد
+            if (dabirPage > DabirPageCount) dabirPage = DabirPageCount;
             stats = await OutgoingSvc.GetDabirkhaneStatsAsync();
             if (tab == "archived" && !searchAllScopes)
             {
@@ -745,6 +796,7 @@
     {
         fMethod = ""; fCreatorId = 0; fCompanyId = 0; fOrg = "";
         fMahramanegi = ""; fForiat = ""; fAttachment = ""; fFrom = null; fTo = null;
+        dabirPage = 1;
         await ReloadAsync();
     }
 
@@ -770,30 +822,18 @@
     {
         if (printItem == null) return;
         printing = true;
-        // پنجرهٔ چاپ باید «هم‌زمان با کلیک» باز شود؛ در غیر این صورت مرورگر آن را
-        // popup محسوب و مسدود می‌کند و فایل به‌جای صفحهٔ چاپ دانلود می‌شود.
-        var printId = await JS.InvokeAsync<string?>("ltxPrintBegin");
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(printItem.LetterId, printSize, printWithCopy);
-            var number = (printItem.SadereNumber ?? printItem.LetterNumber).Replace('/', '-');
+            var item = printItem;
+            var number = (item.SadereNumber ?? item.LetterNumber).Replace('/', '-');
             var version = printWithCopy ? "با-رونوشت" : "بدون-رونوشت";
             var name = $"letter-{number}-{printSize}-{version}.pdf";
-            var payload = Convert.ToBase64String(bytes);
-            if (printId != null)
-                _ = await JS.InvokeAsync<bool>("ltxPrintReady", printId, payload, name);
-            else
-            {
-                Toast.Info("پنجرهٔ چاپ توسط مرورگر مسدود شد؛ نسخهٔ PDF دانلود شد.");
-                await JS.InvokeVoidAsync("ltxOpenPdf", payload, name);
-            }
+            await PrintWorkflow.PrintPdfAsync(
+                ct => OutgoingSvc.GetPrintPdfAsync(item.LetterId, printSize, printWithCopy,
+                    cancellationToken: ct), name);
             printOpen = false;
         }
-        catch (Exception ex)
-        {
-            if (printId != null) await JS.InvokeVoidAsync("ltxPrintFail", printId, ex.Message);
-            Toast.Error(ex.Message);
-        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
         finally { printing = false; }
     }
 

@@ -70,6 +70,9 @@ public class AddOutgoingLetterDto
     /// <summary>کاربران امضا کننده — باید دسترسی OutgoingLetters.Sign داشته باشند</summary>
     public List<int> SignerUserIds { get; set; } = new();
 
+    /// <summary>کاربر به‌همراه سمت انتخاب‌شده برای امضای نامه.</summary>
+    public List<OutgoingSignerSelectionDto> SignerSelections { get; set; } = new();
+
     /// <summary>گروه‌های امضا کننده — اعضای گروه باید دسترسی Sign داشته باشند</summary>
     public List<int> SignerGroupIds { get; set; } = new();
 }
@@ -108,7 +111,15 @@ public class EditOutgoingLetterDto
     public List<RelatedLetterDto> RelatedLetters { get; set; } = new();
 
     public List<int> SignerUserIds { get; set; } = new();
+    public List<OutgoingSignerSelectionDto> SignerSelections { get; set; } = new();
     public List<int> SignerGroupIds { get; set; } = new();
+}
+
+/// <summary>انتخاب امضاکننده با سمت مشخص</summary>
+public sealed class OutgoingSignerSelectionDto
+{
+    public int UserId { get; set; }
+    public int? SematId { get; set; }
 }
 
 /// <summary>امضا کننده نامه صادره</summary>
@@ -666,3 +677,63 @@ public class ReplaceOutgoingLetterCopyTosDto
 {
     public List<SaveOutgoingLetterCopyToDto> Items { get; set; } = new();
 }
+
+/// <summary>
+/// نتیجهٔ «تشخیص چاپ» نامهٔ صادره — فقط خواندن، بدون تولید PDF.
+/// به این پرسش پاسخ می‌دهد: «کدام شرکت انتخاب شد، کدام فایل/قالب خوانده شد،
+/// و اگر طرح پوشهٔ Reports/OutgoingLetters/Companies خوانده نمی‌شود چرا؟»
+/// </summary>
+public class OutgoingLetterPrintDiagnosticsDto
+{
+    public int LetterId { get; set; }
+    public string? LetterNumber { get; set; }
+    public string? Title { get; set; }
+
+    /// <summary>ستون CompanyId خودِ نامه؛ خالی بودنش ریشهٔ چاپ روی طرح شرکت دیگر است.</summary>
+    public int? LetterCompanyId { get; set; }
+
+    /// <summary>شرکت فعال همین درخواست (هدر X-Company-Id).</summary>
+    public int? RequestActiveCompanyId { get; set; }
+
+    public int? EffectiveCompanyId { get; set; }
+
+    /// <summary>Letter | OnlyActiveCompany | RequestActiveCompany | None</summary>
+    public string CompanySource { get; set; } = "None";
+
+    public string? CompanyName { get; set; }
+    public bool CompanyRecordMissing { get; set; }
+    public string? LetterheadFileName { get; set; }
+
+    /// <summary>شناسهٔ پوشهٔ طرح (پس از اعمال CompanyTemplateMap).</summary>
+    public int? TemplateDesignId { get; set; }
+    public bool CompanyTemplateMapApplied { get; set; }
+
+    public string? TemplatePath { get; set; }
+    public int? TemplateImageBytes { get; set; }
+    public string? TemplateError { get; set; }
+    public string? RegisteredLetterheadPath { get; set; }
+
+    public bool PreferTemplateLetterhead { get; set; }
+
+    /// <summary>
+    /// آیا چیدمان چاپ (جای کپشن‌ها، گیرنده، عنوان، متن، امضاها و رونوشت) مستقیماً از
+    /// فایل طرح شرکت خوانده می‌شود؟ (Reporting:OutgoingLetters:DesignDrivenCompanyIds)
+    /// </summary>
+    public bool DesignDriven { get; set; }
+
+    /// <summary>خلاصهٔ هندسهٔ خوانده‌شده از طرح، برای پاسخ سریع به «طرح واقعاً خوانده شد؟»</summary>
+    public string? DesignLayoutSummary { get; set; }
+
+    /// <summary>Template | Registered | None — منبعی که چاپ واقعاً استفاده می‌کند.</summary>
+    public string LetterheadSource { get; set; } = "None";
+
+    public string TemplateRoot { get; set; } = "";
+    public List<string> SearchRoots { get; set; } = new();
+
+    /// <summary>پوشه‌های طرحی که روی سرور موجودند، با نام فایل‌هایشان.</summary>
+    public string AvailableDesigns { get; set; } = "";
+
+    /// <summary>توضیح فارسی علت — قابل نمایش مستقیم به کاربر یا پشتیبان.</summary>
+    public string Hint { get; set; } = "";
+}
+
