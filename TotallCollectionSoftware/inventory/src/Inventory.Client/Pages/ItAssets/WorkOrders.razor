@@ -685,7 +685,14 @@ else
                         <tr>
                             <th style="width:44px"></th>
                             <th style="width:36px"><input type="checkbox" title="انتخاب همه" @onclick="ToggleSelectAll" /></th>
-                            <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
+                            <th>شماره</th><th>عنوان</th>
+                            @* در تب «دستورهای من» دستوردهنده همیشه خودِ کاربر است، پس این ستون
+                               تکرار بی‌فایده بود و فضا می‌گرفت؛ فقط در «محول به من» و
+                               «بایگانی» که دستوردهنده می‌تواند شخص دیگری باشد نمایش داده می‌شود. *@
+                            @if (tab != "mine")
+                            {
+                                <th>دستوردهنده</th>
+                            }
                             <th>مهلت</th>
                             <th title="چه کسانی این دستور کار را دریافت کرده‌اند — حلقهٔ رنگی، وضعیت هر نفر را نشان می‌دهد؛ «جزئیات» فهرست کامل را باز می‌کند">گیرندگان</th>
                             <th>دستورهای مرتبط</th><th>وضعیت</th>
@@ -725,7 +732,10 @@ else
                                         <span class="wo-tag wo-tag-sm" title="فیلتر با این برچسب" @onclick="() => SetTagFilter(t2)" @onclick:stopPropagation="true">@t2</span>
                                     }
                                 </td>
-                                <td>@w.OwnerName</td>
+                                @if (tab != "mine")
+                                {
+                                    <td>@w.OwnerName</td>
+                                }
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
                                 <td class="wo-who-cell">
                                     @* ---------- گیرندگان: آواتار + شمارنده + نوار پاسخ‌ها ----------
@@ -820,7 +830,9 @@ else
                             {
                                 <tr class="wo-subrow">
                                     <td></td>
-                                    <td colspan="10">
+                                    @* تعداد ستون‌ها در تب «دستورهای من» یکی کمتر است (ستون
+                                       دستوردهنده حذف شده)؛ colspan باید همان‌قدر کم شود. *@
+                                    <td colspan='@(tab == "mine" ? 9 : 10)'>
                                         <table class="table table-sm mb-0 wo-subtable">
                                             <thead>
                                                 <tr>
@@ -898,7 +910,15 @@ else
                     </div>
                 }
                 <div class="d-flex justify-content-between align-items-center">
-                    <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
+                    @* در «دستورهای من» دستوردهنده خودِ کاربر است و تکرار نمی‌شود (مثل جدول دسکتاپ) *@
+                    <div class="fs-8 d-flex align-items-center gap-1">
+                        @if (tab != "mine")
+                        {
+                            <UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" />
+                            <span>@w.OwnerName —</span>
+                        }
+                        <span class="num">@w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</span>
+                    </div>
                     <div class="d-flex gap-1" @onclick:stopPropagation="true">
                         @if (CanEdit(w))
                         {
