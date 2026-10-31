@@ -22,6 +22,7 @@ public static class ExcelWriter
     private const string BorderColor = "#D8D4EE";
     private const string DangerBg = "#FDECEC";
     private const string SuccessBg = "#E9F8F0";
+    private const string InfoBg = "#EAF2FF";
 
     private const string MoneyFormat = "#,##0;[Red]-#,##0";
     private const string NumberFormat = "#,##0.###;[Red]-#,##0.###";
@@ -256,6 +257,7 @@ public static class ExcelWriter
             ExportRowStyle.Total or ExportRowStyle.Subtotal => TotalBg,
             ExportRowStyle.Danger => DangerBg,
             ExportRowStyle.Success => SuccessBg,
+            ExportRowStyle.Info => InfoBg,
             _ => stripe ? StripeBg : null
         };
 

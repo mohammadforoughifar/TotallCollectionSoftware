@@ -27,6 +27,7 @@ public static class PdfWriter
     private const string TotalBg = "#E8E3FF";
     private const string DangerBg = "#FDECEC";
     private const string SuccessBg = "#E9F8F0";
+    private const string InfoBg = "#EAF2FF";
     private const string BorderColor = "#D8D4EE";
     private const string Muted = "#777777";
 
@@ -295,6 +296,7 @@ public static class PdfWriter
         ExportRowStyle.Total or ExportRowStyle.Subtotal => TotalBg,
         ExportRowStyle.Danger => DangerBg,
         ExportRowStyle.Success => SuccessBg,
+        ExportRowStyle.Info => InfoBg,
         ExportRowStyle.Muted => SoftBg,
         _ => index % 2 == 0 ? StripeBg : null
     };

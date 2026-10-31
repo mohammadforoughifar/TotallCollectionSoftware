@@ -2659,7 +2659,9 @@ public class WorkOrdersController : ControllerBase
                 status,
                 DecisionSummaryText(list));
             if (status == "گذشته از مهلت") row.Style = Services.Export.ExportRowStyle.Danger;
-            else if (status == "انجام به‌موقع") row.Style = Services.Export.ExportRowStyle.Success;
+            // «انجام به‌موقع» در فهرست آبی است؛ در خروجی اکسل/PDF هم آبی می‌شود تا خروجی و
+            // صفحه یک رنگ داشته باشند (Success/سبز برای «تأیید» رزرو شده است).
+            else if (status == "انجام به‌موقع") row.Style = Services.Export.ExportRowStyle.Info;
             spec.Rows.Add(row);
         }
 

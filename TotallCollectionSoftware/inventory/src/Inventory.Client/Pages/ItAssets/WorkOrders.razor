@@ -865,7 +865,7 @@ else
                                                         <td>
                                                             @if (a.OwnerDecision == "Approved")
                                                             {
-                                                                <span class="badge bg-primary-subtle text-primary border">تایید ✔</span>
+                                                                <span class="badge bg-success-subtle text-success border">تایید ✔</span>
                                                             }
                                                             else if (a.OwnerDecision == "Rejected")
                                                             {
@@ -1548,7 +1548,7 @@ else
                                             }
                                             @if (a.OwnerDecision == "Approved")
                                             {
-                                                <span class="badge bg-primary-subtle text-primary border">تأیید</span>
+                                                <span class="badge bg-success-subtle text-success border">تأیید</span>
                                             }
                                             else if (a.OwnerDecision == "Rejected")
                                             {
@@ -1957,11 +1957,13 @@ else
     .wo-row td:nth-child(2) { border-right: 4px solid transparent; }
     .wo-tone-late td:nth-child(2) { border-right-color: #ef4444; }      /* گذشته و انجام نشده — قرمز */
     .wo-tone-today td:nth-child(2) { border-right-color: #f59e0b; }     /* مهلت امروز — زرد */
-    .wo-tone-ontime td:nth-child(2) { border-right-color: #22c55e; }    /* انجام به‌موقع — سبز */
+    /* انجام به‌موقع — آبی. سبز به «تأیید» اختصاص یافت تا در کل سامانه یک معنی داشته باشد
+       (مرخصی/تنظیمات پرسنلی/شناسنامهٔ سیستم هم «تأییدشده» را سبز نشان می‌دهند). */
+    .wo-tone-ontime td:nth-child(2) { border-right-color: #3b82f6; }
     .wo-tone-latedone td:nth-child(2) { border-right-color: #a855f7; }  /* انجام با تاخیر — بنفش */
     .wo-tone-late { background: #fef2f2 !important; }
     .wo-tone-today { background: #fffbeb !important; }
-    .wo-tone-ontime { background: #f0fdf4 !important; }
+    .wo-tone-ontime { background: #eff6ff !important; }
     .wo-tone-latedone { background: #faf5ff !important; }
 
     .wo-expander { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #dbe3ee; background: #fff; color: #2563eb; cursor: pointer; font-size: .75rem; }
@@ -1974,7 +1976,7 @@ else
     .wo-mcard { background: #fff; border: 1px solid #e8edf3; border-right-width: 5px; border-radius: 14px; padding: .8rem 1rem; display: flex; flex-direction: column; gap: .35rem; cursor: pointer; }
     .wo-mcard.wo-tone-late { border-right-color: #ef4444; }
     .wo-mcard.wo-tone-today { border-right-color: #f59e0b; }
-    .wo-mcard.wo-tone-ontime { border-right-color: #22c55e; }
+    .wo-mcard.wo-tone-ontime { border-right-color: #3b82f6; background: #eff6ff; }
     .wo-mcard.wo-tone-latedone { border-right-color: #a855f7; }
 
     /* ===== مودال و بلاک‌ها ===== */
@@ -2390,7 +2392,9 @@ else
     .wo-detail-body .wo-block-body img { max-width:100%; height:auto; }
     .wo-related-cell { min-width:145px; max-width:240px; }
     /* ستون «تصمیم دستوردهنده» — نشان‌ها کوتاه و بدون شکست خط بمانند */
-    .wo-dec-approved.active { background:#dbeafe !important; color:#1d4ed8 !important; border-color:#93b5ed !important; }
+    /* چیپ «تأییدشده» سبز است — همان رنگ نشان «✔ تأیید» داخل جدول (قبلاً آبی بود و با ستون ناهمخوان) */
+    .wo-dec-approved { color:#047857; }
+    .wo-dec-approved.active { background:#dcfce7 !important; color:#047857 !important; border-color:#a7f3d0 !important; }
     .wo-dec-rejected.active { background:#fee2e2 !important; color:#b91c1c !important; border-color:#fca5a5 !important; }
     .wo-dec-pending.active { background:#fef3c7 !important; color:#92400e !important; border-color:#fcd34d !important; }
     .wo-dec-awaiting.active { background:#f1f5f9 !important; color:#334155 !important; border-color:#cbd5e1 !important; }
@@ -4021,7 +4025,9 @@ else
     {
         "late" => @<span class="badge bg-danger-subtle text-danger border">⏰ گذشته از مهلت</span>,
         "today" => @<span class="badge bg-warning-subtle text-warning border">📅 مهلت امروز</span>,
-        "ontime" => @<span class="badge bg-success-subtle text-success border">✅ انجام به‌موقع</span>,
+        // آبی: «انجام به‌موقع» یک وضعیت زمانی/اطلاعی است؛ سبز برای تأیید دستوردهنده رزرو شده
+        // تا در فهرست و بقیهٔ سامانه یک معنی ثابت داشته باشد.
+        "ontime" => @<span class="badge bg-primary-subtle text-primary border">✅ انجام به‌موقع</span>,
         "latedone" => @<span class="badge" style="background:#faf5ff;color:#a855f7;border:1px solid #e9d5ff">🕓 انجام با تاخیر</span>,
         _ => w.Status == "Closed"
             ? @<span class="badge bg-secondary-subtle text-secondary border">بسته شده 🔒</span>
@@ -4077,7 +4083,7 @@ else
         if (d.Approved > 0)
         {
             var title = Enc("تأییدشده: " + d.ApprovedNames);
-            sb.Append("<span class=\"badge bg-primary-subtle text-primary border fs-9 num\" title=\"").Append(title).Append("\">✔ ")
+            sb.Append("<span class=\"badge bg-success-subtle text-success border fs-9 num\" title=\"").Append(title).Append("\">✔ ")
               .Append(d.Approved.FaDigits()).Append(" تأیید</span>");
         }
         if (d.Rejected > 0)
