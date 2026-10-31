@@ -686,7 +686,9 @@ else
                             <th style="width:44px"></th>
                             <th style="width:36px"><input type="checkbox" title="انتخاب همه" @onclick="ToggleSelectAll" /></th>
                             <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
-                            <th>مهلت</th><th>گیرندگان</th><th>دستورهای مرتبط</th><th>وضعیت</th>
+                            <th>مهلت</th>
+                            <th title="چه کسانی این دستور کار را دریافت کرده‌اند — حلقهٔ رنگی، وضعیت هر نفر را نشان می‌دهد؛ «جزئیات» فهرست کامل را باز می‌کند">گیرندگان</th>
+                            <th>دستورهای مرتبط</th><th>وضعیت</th>
                             <th title="نتیجهٔ تصمیم دستوردهنده روی پاسخ گیرندگان">تصمیم دستوردهنده</th>
                             <th class="text-end">عملیات</th>
                         </tr>
@@ -725,9 +727,73 @@ else
                                 </td>
                                 <td>@w.OwnerName</td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
-                                <td>
-                                    <span class="badge bg-light text-dark border" title="تعداد گیرندگان این دستور کار">@w.Assignees.Count گیرنده</span>
-                                    <span class="fs-8 text-muted">(@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</span>
+                                <td class="wo-who-cell">
+                                    @* ---------- گیرندگان: آواتار + شمارنده + نوار پاسخ‌ها ----------
+                                       قبلاً این ستون فقط «۳ گیرنده (۱ پاسخ)» نشان می‌داد و معلوم نبود
+                                       چه کسانی‌اند. حالا چهره‌ها/حروف اول نام‌ها با رنگ وضعیت هر نفر
+                                       دیده می‌شود، تعداد آواتار خودکار با عرض صفحه تنظیم می‌شود و
+                                       شمارندهٔ کنار آن همیشه کل گیرندگان را می‌گوید. *@
+                                    @if (w.Assignees.Count == 0)
+                                    {
+                                        <span class="wo-who-empty">— بدون گیرنده</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="wo-who">
+                                            <div class="wo-who-top">
+                                                <div class="wo-avstack" role="button" tabindex="0"
+                                                     title="فهرست کامل گیرندگان و وضعیت هر نفر"
+                                                     @onclick="() => ToggleWho(w.Id)" @onclick:stopPropagation="true"
+                                                     @onkeydown="OnWhoKeyDown">
+                                                    @foreach (var a in w.Assignees)
+                                                    {
+                                                        <span class="av @AvClass(a.UserId) @AsgState(a)" title="@($"{a.Name} — {AsgStateFa(a)}")">@Initials(a.Name)</span>
+                                                    }
+                                                    <span class="wo-avcnt num" title="تعداد کل گیرندگان">@w.Assignees.Count</span>
+                                                </div>
+                                                <button type="button" class="wo-who-btn"
+                                                        title="فهرست کامل گیرندگان و وضعیت هر نفر"
+                                                        @onclick="() => ToggleWho(w.Id)" @onclick:stopPropagation="true"
+                                                        @onkeydown="OnWhoKeyDown">
+                                                    جزئیات
+                                                </button>
+                                            </div>
+                                            <div class="wo-who-bar" title="@WhoBarTitle(w)">
+                                                <i class="d" style="width:@DonePct(w)%"></i><i class="b" style="width:@FailPct(w)%"></i>
+                                            </div>
+                                            <div class="wo-who-sub num">
+                                                @RepliedCount(w) از @w.Assignees.Count پاسخ داد
+                                                @if (PendingCount(w) > 0)
+                                                {
+                                                    <span> · @PendingCount(w) در انتظار</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        @if (whoOpenId == w.Id)
+                                        {
+                                            <div class="pop-overlay" @onclick="CloseWho" @onclick:stopPropagation="true"></div>
+                                            <div class="wo-who-pop" @onclick:stopPropagation="true">
+                                                <div class="wo-who-pop-head">
+                                                    <span>گیرندگان (@w.Assignees.Count نفر)</span>
+                                                    <span class="sp"></span>
+                                                    <span class="num">@RepliedCount(w) پاسخ</span>
+                                                    <button type="button" class="btn btn-sm btn-light py-0 px-2" title="بستن" @onclick="CloseWho">
+                                                        <i class="bi bi-x-lg fs-8"></i>
+                                                    </button>
+                                                </div>
+                                                <ul>
+                                                    @foreach (var a in WhoSorted(w))
+                                                    {
+                                                        <li>
+                                                            <span class="av @AvClass(a.UserId) @AsgState(a)">@Initials(a.Name)</span>
+                                                            <span class="nm" title="@a.Name">@a.Name</span>
+                                                            <span class="wo-who-st @AsgState(a)">@AsgStateFa(a)</span>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    }
                                 </td>
                                 <td class="wo-related-cell">@RelatedOrderLinks(w)</td>
                                 <td>@ToneBadge(w, tone)</td>
@@ -2016,6 +2082,71 @@ else
     .rte-editor img, .wo-block-body img { max-width: 100%; height: auto; }
     /* جای‌نگهدارِ تصویر در «پیش‌نمایش کوتاه» شرح (فهرست‌ها) */
     .wo-desc-img-note { color: #64748b; font-size: .78rem; }
+
+    /* ---------- ستون «گیرندگان» (طرح ۴: آواتار + شمارنده + نوار پاسخ‌ها) ----------
+       هدف: با یک نگاه معلوم باشد «چه کسانی» دستور کار را گرفته‌اند و چقدر از کار
+       پیش رفته است — حتی وقتی گیرندگان بیش از سه نفرند. تعداد آواتارِ نمایش‌داده‌شده
+       خودکار به عرض صفحه بستگی دارد (پایین‌تر) و شمارندهٔ کنار آن همیشه «کل گیرندگان»
+       را می‌گوید؛ فهرست کامل با کلیک روی آواتار/«جزئیات» باز می‌شود. */
+    .wo-who-cell { position: relative; min-width: 196px; }
+    .wo-who { display: flex; flex-direction: column; gap: 4px; }
+    .wo-who-top { display: flex; align-items: center; gap: 6px; }
+    .wo-avstack { display: flex; align-items: center; cursor: pointer; padding-inline-end: 2px; }
+    .wo-avstack:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; border-radius: 999px; }
+    .wo-avstack > .av { margin-inline-start: -7px; }
+    .wo-avstack > .av:first-child { margin-inline-start: 0; }
+    .wo-who .av {
+        width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center;
+        font-size: 10px; font-weight: 700; color: #fff; flex: 0 0 auto;
+        box-shadow: 0 0 0 2px #fff; font-family: inherit; letter-spacing: 0;
+    }
+    /* رنگ حلقه = وضعیت همان نفر (سبز=انجام شد، قرمز=انجام نشد، آبی=دیده بی‌پاسخ، خاکستری=نخوانده) */
+    .wo-who .av.done { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #86efac; }
+    .wo-who .av.bad { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fca5a5; }
+    .wo-who .av.seen { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #bfdbfe; }
+    .wo-who .av.new { opacity: .78; }
+    .wo-who .av.c1 { background: #2563eb; } .wo-who .av.c2 { background: #0891b2; }
+    .wo-who .av.c3 { background: #7c3aed; } .wo-who .av.c4 { background: #db2777; }
+    .wo-who .av.c5 { background: #059669; } .wo-who .av.c6 { background: #d97706; }
+    .wo-who .av.c7 { background: #475569; } .wo-who .av.c8 { background: #dc2626; }
+    .wo-avcnt {
+        min-width: 22px; height: 22px; padding: 0 4px; border-radius: 999px; margin-inline-start: 1px;
+        background: #eef2f7; border: 1px solid #e2e8f0; color: #334155;
+        font-size: 10.5px; font-weight: 700; display: inline-grid; place-items: center; box-shadow: 0 0 0 2px #fff;
+    }
+    .wo-who-btn {
+        border: 1px solid #bfdbfe; background: #e8f0ff; color: #1d4ed8; border-radius: 999px;
+        padding: 0 8px; font-size: 10.5px; font-weight: 700; line-height: 19px; cursor: pointer; font-family: inherit;
+    }
+    .wo-who-btn:hover { background: #dbeafe; }
+    .wo-who-bar { display: flex; height: 6px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+    .wo-who-bar > i { display: block; height: 100%; }
+    .wo-who-bar > i.d { background: #059669; }
+    .wo-who-bar > i.b { background: #dc2626; }
+    .wo-who-sub { font-size: 10.5px; color: #64748b; }
+    /* تعداد آواتارِ نمایش‌داده‌شده = خودکار بر اساس عرض صفحه (بقیه در شمارنده و پنل) */
+    .wo-avstack > .av:nth-child(n+4) { display: none; }
+    @@media (max-width: 1199.98px) { .wo-avstack > .av:nth-child(n+3) { display: none; } }
+    @@media (max-width: 767.98px) { .wo-avstack > .av:nth-child(n+2) { display: none; } .wo-who-btn { display: none; } }
+    /* پنل فهرست کامل گیرندگان — باید از کادر جدول بیرون بزند، پس تا وقتی باز است
+       اسکرول افقیِ جدول موقتاً آزاد می‌شود (الگوی :has در همین پروژه استفاده شده). */
+    .table-responsive:has(.wo-who-pop) { overflow: visible; }
+    .wo-who-pop {
+        position: absolute; top: calc(100% + 6px); inset-inline-start: 0; z-index: 4500;
+        width: 290px; max-width: 92vw; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        box-shadow: 0 14px 32px rgba(15,23,42,.18); padding: 8px;
+    }
+    .wo-who-pop-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 8px; border-bottom: 1px solid #f1f5f9; font-size: 11.5px; color: #475569; }
+    .wo-who-pop-head .sp { flex: 1; }
+    .wo-who-pop ul { list-style: none; margin: 4px 0 0; padding: 0; max-height: 250px; overflow: auto; }
+    .wo-who-pop li { display: flex; align-items: center; gap: 7px; padding: 4px 5px; border-radius: 8px; font-size: 12px; }
+    .wo-who-pop li:hover { background: #f8fafc; }
+    .wo-who-pop .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wo-who-st { font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; white-space: nowrap; }
+    .wo-who-st.done { background: #dcfce7; border-color: #a7f3d0; color: #047857; }
+    .wo-who-st.bad { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+    .wo-who-st.seen { background: #dbeafe; border-color: #bfdbfe; color: #1d4ed8; }
+    .wo-who-empty { font-size: 11px; color: #94a3b8; }
     .ms-combo { position: relative; }
     .ms-combo-control { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; min-height: 42px; cursor: pointer; padding-left: 2rem; }
     .ms-combo-control.focus { border-color: #2563eb; }
@@ -4013,6 +4144,73 @@ else
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
     }
+
+    // ================== ستون «گیرندگان» در فهرست ==================
+    // پنل فهرست کامل گیرندگان: هر بار فقط یک ردیف باز است (شناسهٔ همان دستور کار).
+    private int whoOpenId;
+
+    private void ToggleWho(int id)
+    {
+        whoOpenId = whoOpenId == id ? 0 : id;
+    }
+
+    private void CloseWho() => whoOpenId = 0;
+
+    /// <summary>بستن پنل با کلید Escape — هم روی آواتارها، هم روی دکمهٔ «جزئیات».</summary>
+    private void OnWhoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && whoOpenId != 0) CloseWho();
+    }
+
+    /// <summary>
+    /// وضعیت یک گیرنده برای رنگ‌آمیزی: <c>bad</c>=انجام‌نشده، <c>done</c>=انجام‌شده/پاسخ داده،
+    /// <c>seen</c>=دیده ولی بی‌پاسخ، <c>new</c>=نخوانده.
+    /// </summary>
+    private static string AsgState(AsgItem a) =>
+        a.Done == false ? "bad"
+        : a.Done == true ? "done"
+        : a.RepliedAt != null ? "done"
+        : a.SeenAt != null ? "seen"
+        : "new";
+
+    private static string AsgStateFa(AsgItem a) => AsgState(a) switch
+    {
+        "bad" => "انجام نشد",
+        "done" => "انجام شد",
+        "seen" => "دیده، بی‌پاسخ",
+        _ => "نخوانده"
+    };
+
+    /// <summary>حروف اول نام برای آواتار (مثلاً «مریم احمدی» ⇒ «م ا»).</summary>
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "؟";
+        if (parts.Length == 1) return parts[0].Length >= 2 ? parts[0][..2] : parts[0];
+        return $"{parts[0][0]} {parts[^1][0]}";
+    }
+
+    /// <summary>رنگ ثابتِ هر کاربر (بر اساس شناسه) تا در همهٔ ردیف‌ها یک نفر یک رنگ باشد.</summary>
+    private static string AvClass(int userId) => "c" + ((userId <= 0 ? 0 : (userId - 1) % 8) + 1);
+
+    private static int RepliedCount(WoItem w) => w.Assignees.Count(a => a.RepliedAt != null);
+    private static int DoneCount(WoItem w) => w.Assignees.Count(a => AsgState(a) == "done");
+    private static int FailCount(WoItem w) => w.Assignees.Count(a => AsgState(a) == "bad");
+    private static int PendingCount(WoItem w) => w.Assignees.Count(a => a.RepliedAt == null);
+
+    private static int Pct(int part, int total) => total <= 0 ? 0 : Math.Clamp(part * 100 / total, 0, 100);
+    private static int DonePct(WoItem w) => Pct(DoneCount(w), w.Assignees.Count);
+    private static string WhoBarTitle(WoItem w) =>
+        $"{DoneCount(w)} انجام‌شده · {FailCount(w)} انجام‌نشده · {PendingCount(w)} در انتظار";
+    private static int FailPct(WoItem w) => Pct(FailCount(w), w.Assignees.Count);
+
+    /// <summary>
+    /// ترتیب داخل پنل: اول موارد نیازمند پیگیری (انجام‌نشده → دیده بی‌پاسخ → نخوانده) و
+    /// آخر انجام‌شده‌ها؛ در هر گروه به ترتیب نام. با ۸ گیرنده، نفر مهم همیشه بالا است.
+    /// </summary>
+    private static IEnumerable<AsgItem> WhoSorted(WoItem w) => w.Assignees
+        .OrderBy(a => AsgState(a) switch { "bad" => 0, "seen" => 1, "new" => 2, _ => 3 })
+        .ThenBy(a => a.Name, StringComparer.CurrentCulture);
 
     private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId && !w.Assignees.Any(a => a.SeenAt != null || a.RepliedAt != null);
 
