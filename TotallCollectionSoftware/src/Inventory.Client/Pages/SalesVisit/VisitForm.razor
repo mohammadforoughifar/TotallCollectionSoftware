@@ -61,12 +61,12 @@ else
 {
     <div class="row g-3">
         @* ---------------- ستون فرم ---------------- *@
-        <div class="col-12 col-lg-8">
+        <div class="col-12 col-xl-8">
             <div class="card">
                 <div class="card-header"><i class="bi bi-person-vcard"></i><span class="card-title">مشخصات سفارش</span></div>
                 <div class="card-body">
                     <div class="row g-2">
-                        <div class="col-md-6">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">مشتری <span class="text-danger">*</span></label>
                             @* جستجو داخل خود کمبو است: نام، موبایل یا تلفن را تایپ کنید (فیلتر سمت سرور) *@
                             <div class="d-flex gap-2">
@@ -91,7 +91,7 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">انبار <span class="text-danger">*</span></label>
                             <select class="form-select" @bind="model.WarehouseId" @bind:after="ReloadProductLookupAsync">
                                 <option value="0">— انتخاب انبار —</option>
@@ -123,14 +123,14 @@ else
                                 </div>
                             </div>
                             <div class="row g-2 mt-1">
-                                <div class="col-md-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="form-label">
                                         تاریخ دریافت محصول <span class="text-danger">*</span>
                                         <i class="bi bi-info-circle text-muted" title="تاریخ تحویل مورد نظر شما؛ مدیر می‌تواند تاریخ نهایی را تغییر دهد و هر دو تاریخ در سابقه می‌ماند."></i>
                                     </label>
                                     <DatePicker @bind-Value="deliveryDate" />
                                 </div>
-                                <div class="col-md-6 d-flex align-items-end">
+                                <div class="col-12 col-sm-6 d-flex align-items-end">
                                     @if (deliveryDate.HasValue)
                                     {
                                         <div class="alert alert-info py-2 px-2 fs-8 mb-0 w-100">
@@ -255,10 +255,12 @@ else
                                                 }
                                             </td>
                                             <td>
-                                                @* مبلغ سه‌رقمی‌سه‌رقمی حین تایپ جدا می‌شود (MoneyInput) *@
+                                                @* قیمت واحد برای ویزیتور خاکستری و غیرقابل ویرایش است (فقط خواندنی) *@
                                                 <MoneyInput Value="l.UnitPrice"
                                                             ValueChanged="v => SetPrice(l, v)"
-                                                            CssClass="form-control form-control-sm text-center num" />
+                                                            Disabled="@(me?.CanApprove != true && me?.IsAdmin != true)"
+                                                            ReadOnly="@(me?.CanApprove != true && me?.IsAdmin != true)"
+                                                            CssClass="@($"form-control form-control-sm text-center num {(me?.CanApprove != true && me?.IsAdmin != true ? "bg-light text-muted" : "")}")" />
                                             </td>
                                             <td>
                                                 @* دو حالته: تا ۹۹ = درصد، از ۱۰۰ به بالا = مبلغ ریالی *@
@@ -298,10 +300,16 @@ else
                         </div>
                     }
 
-                    @if (me?.MaxDiscountPercent > 0)
+                    @if (me?.CanApprove == true || me?.IsAdmin == true)
                     {
-                        <div class="form-text mt-2">
-                            سقف تخفیف مجاز شما: <b>@Fa.Digits(me.MaxDiscountPercent) درصد</b>
+                        <div class="badge bg-info-subtle text-info border border-info-subtle p-2 mt-2 d-inline-flex align-items-center gap-1">
+                            <i class="bi bi-shield-check"></i> دسترسی مدیر: شما مجاز به اعمال هر مقدار تخفیف بدون محدودیت سقف هستید.
+                        </div>
+                    }
+                    else if (me?.MaxDiscountPercent > 0)
+                    {
+                        <div class="form-text mt-2 text-warning-emphasis">
+                            <i class="bi bi-info-circle ms-1"></i> سقف تخفیف مجاز شما: <b>@Fa.Digits(me.MaxDiscountPercent) درصد</b> (تخفیف بالاتر نیازمند تأیید مدیر است).
                         </div>
                     }
                 </div>
@@ -309,7 +317,7 @@ else
         </div>
 
         @* ---------------- ستون جمع‌بندی ---------------- *@
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-xl-4">
             <div class="card sticky-top" style="top:.75rem">
                 <div class="card-header"><i class="bi bi-calculator"></i><span class="card-title">جمع سفارش</span></div>
                 <div class="card-body">
@@ -320,8 +328,12 @@ else
                         <span>تخفیف</span><span class="text-danger">@Fa.Money(Discount) ریال</span>
                     </div>
                     <hr class="my-2" />
-                    <div class="d-flex justify-content-between fw-700">
-                        <span>قابل پرداخت</span><span>@Fa.Money(Net) ریال</span>
+                    <div class="d-flex justify-content-between align-items-baseline p-2 mt-2 rounded bg-light border">
+                        <span class="fw-bold fs-7 text-dark">مبلغ نهایی سفارش:</span>
+                        <div class="text-start">
+                            <span class="fw-900 fs-4 text-primary num">@Fa.Money(Net)</span>
+                            <small class="fs-8 text-secondary ms-1">ریال</small>
+                        </div>
                     </div>
 
                     @if (OverLimit)
@@ -468,7 +480,8 @@ else
     private decimal Gross => model.Lines.Sum(l => l.Quantity * l.UnitPrice);
     private decimal Discount => model.Lines.Sum(LineDiscount);
     private decimal Net => Gross - Discount;
-    private bool OverLimit => me?.MaxDiscountPercent > 0
+    private bool OverLimit => me?.CanApprove != true && me?.IsAdmin != true
+                              && me?.MaxDiscountPercent > 0
                               && model.Lines.Any(l => l.DiscountPercent > me.MaxDiscountPercent);
 
     protected override async Task OnInitializedAsync()
@@ -505,9 +518,14 @@ else
                     Nav.NavigateTo("/sales/visits");
                     return;
                 }
-                if (o.Status is not (VisOrderStatus.Draft or VisOrderStatus.Returned))
+                // ویزیتور فقط پیش‌نویس، برگشتی یا ارسال‌شده را می‌تواند ویرایش کند؛ مدیر در هر وضعیتی قبل از فاکتورشدن حق ویرایش دارد
+                var canEditThis = me.CanApprove || me.IsAdmin
+                    ? o.Status is VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned or VisOrderStatus.Approved
+                    : o.Status is VisOrderStatus.Draft or VisOrderStatus.Returned or VisOrderStatus.Submitted;
+
+                if (!canEditThis)
                 {
-                    Toast.Error("فقط سفارش پیش‌نویس یا برگشتی قابل ویرایش است.");
+                    Toast.Error("این سفارش در وضعیتی نیست که قابل ویرایش باشد.");
                     Nav.NavigateTo($"/sales/visits/{o.Id}");
                     return;
                 }
@@ -834,6 +852,17 @@ else
         if (model.Lines.Any(l => l.ProductId <= 0)) { Toast.Error("در هر سطر یک کالا انتخاب کنید (یا سطر خالی را حذف کنید)."); return; }
         if (model.Lines.Any(l => l.Quantity <= 0)) { Toast.Error("مقدار هر سطر باید بزرگ‌تر از صفر باشد."); return; }
         if (deliveryDate is null) { Toast.Error("تاریخ دریافت محصول را انتخاب کنید."); return; }
+
+        // محدودیت سقف تخفیف برای ویزیتور (مدیر محدودیت ندارد)
+        if (me?.CanApprove != true && me?.IsAdmin != true && me?.MaxDiscountPercent > 0)
+        {
+            var invalidLine = model.Lines.FirstOrDefault(l => l.DiscountPercent > me.MaxDiscountPercent);
+            if (invalidLine is not null)
+            {
+                Toast.Error($"درصد تخفیف سطر «{invalidLine.ProductName}» ({Fa.Digits(invalidLine.DiscountPercent)}٪) بیش از سقف مجاز شما ({Fa.Digits(me.MaxDiscountPercent)}٪) است.");
+                return;
+            }
+        }
 
         // آلارم کسری موجودی: کاربر باید صریحاً تأیید کند، وگرنه ثبت متوقف می‌شود
         if (ShortLines.Count > 0)

@@ -55,8 +55,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -98,8 +102,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت

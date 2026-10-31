@@ -107,8 +107,8 @@ public class ProductService : IProductService
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/products/{id}");
 
-    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName)
-        => _api.PostFileAsync<ExcelImportResult>("api/products/import", fileStream, fileName);
+    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId)
+        => _api.PostFileAsync<ExcelImportResult>($"api/products/import?warehouseId={warehouseId}", fileStream, fileName);
 
     public Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync()
         => _api.GetFileAsync("api/products/import/template");
@@ -302,11 +302,44 @@ public class DashboardService : IDashboardService
     public Task ClearChequeAsync(int chequeId)
         => _api.PostAsync<object>($"api/dashboard/cheques/{chequeId}/clear");
 
+    public Task BounceChequeAsync(int chequeId, string? reason = null)
+    {
+        var url = $"api/dashboard/cheques/{chequeId}/bounce";
+        if (!string.IsNullOrWhiteSpace(reason)) url += $"?reason={Uri.EscapeDataString(reason)}";
+        return _api.PostAsync<object>(url);
+    }
+
+    public Task ResetChequeAsync(int chequeId)
+        => _api.PostAsync<object>($"api/dashboard/cheques/{chequeId}/reset");
+
     public Task PayInstallmentAsync(int installmentId)
         => _api.PostAsync<object>($"api/dashboard/installments/{installmentId}/pay");
 
+    public Task UnpayInstallmentAsync(int installmentId)
+        => _api.PostAsync<object>($"api/dashboard/installments/{installmentId}/unpay");
+
     public Task SettleCreditAsync(int transactionId, decimal amount)
         => _api.PostAsync<object>($"api/dashboard/credits/{transactionId}/settle?amount={amount}");
+
+    public Task<ShopCreditSummary> GetShopCreditSummaryAsync()
+        => _api.GetAsync<ShopCreditSummary>("api/dashboard/shop-credit/summary");
+
+    public Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status = null, TransactionType? txnType = null, string? search = null)
+    {
+        var q = "api/dashboard/shop-credit/cheques?";
+        if (status.HasValue) q += $"status={(int)status.Value}&";
+        if (txnType.HasValue) q += $"txnType={(int)txnType.Value}&";
+        if (!string.IsNullOrWhiteSpace(search)) q += $"search={Uri.EscapeDataString(search)}&";
+        return _api.GetAsync<List<ShopChequeItem>>(q.TrimEnd('?', '&'));
+    }
+
+    public Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid = null, string? search = null)
+    {
+        var q = "api/dashboard/shop-credit/installments?";
+        if (isPaid.HasValue) q += $"isPaid={isPaid.Value}&";
+        if (!string.IsNullOrWhiteSpace(search)) q += $"search={Uri.EscapeDataString(search)}&";
+        return _api.GetAsync<List<ShopInstallmentItem>>(q.TrimEnd('?', '&'));
+    }
 }
 
 /// <summary>پیاده‌سازی سرویس تعمیرات سمت کلاینت.</summary>

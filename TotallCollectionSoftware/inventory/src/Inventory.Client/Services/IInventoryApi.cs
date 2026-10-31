@@ -64,7 +64,7 @@ public interface IProductService
     Task DeleteAsync(int id);
 
     /// <summary>ورود گروهی کالا از فایل اکسل.</summary>
-    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName);
+    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId);
 
     /// <summary>دانلود فایل اکسل نمونه (با توکن احراز هویت؛ مرورگر را از صفحه خارج نمی‌کند).</summary>
     Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync();
@@ -129,8 +129,16 @@ public interface IDashboardService
     Task<List<RecentActivity>> GetRecentAsync(int count = 8);
     Task<AdminDashboard> GetAdminDashboardAsync();
     Task ClearChequeAsync(int chequeId);
+    Task BounceChequeAsync(int chequeId, string? reason = null);
+    Task ResetChequeAsync(int chequeId);
     Task PayInstallmentAsync(int installmentId);
+    Task UnpayInstallmentAsync(int installmentId);
     Task SettleCreditAsync(int transactionId, decimal amount);
+
+    // مدیریت اقساط و چک‌های فروشگاهی
+    Task<ShopCreditSummary> GetShopCreditSummaryAsync();
+    Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status = null, TransactionType? txnType = null, string? search = null);
+    Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid = null, string? search = null);
 }
 
 /// <summary>سرویس اعلان‌ها (Toast).</summary>
@@ -140,6 +148,7 @@ public interface IToastService
     event Action? OnChange;
     void Success(string message);
     void Error(string message);
+    void Warning(string message);
     void Info(string message);
     void Remove(Guid id);
 }

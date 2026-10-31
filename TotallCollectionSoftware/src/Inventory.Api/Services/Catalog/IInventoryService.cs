@@ -37,7 +37,7 @@ public interface IInventoryService
     Task DeleteUnitAsync(int id);
 
     // ---------------- ورود اکسل کالا ----------------
-    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream);
+    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null);
     byte[] BuildProductTemplate();
 
     // ---------------- کالا ----------------
@@ -71,8 +71,16 @@ public interface IInventoryService
     // ---------------- داشبورد ادمین و پرداخت ----------------
     Task<AdminDashboard> GetAdminDashboardAsync();
     Task ClearChequeAsync(int chequeId);
+    Task BounceChequeAsync(int chequeId, string? reason);
+    Task ResetChequeAsync(int chequeId);
     Task PayInstallmentAsync(int installmentId);
+    Task UnpayInstallmentAsync(int installmentId);
     Task SettleCreditAsync(int transactionId, decimal amount);
+
+    // ---------------- مدیریت چک و اقساط فروشگاهی ----------------
+    Task<ShopCreditSummary> GetShopCreditSummaryAsync();
+    Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status, TransactionType? txnType, string? search);
+    Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid, string? search);
 
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
     Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false, Paging.Request? pagination = null);

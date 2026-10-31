@@ -41,6 +41,16 @@ public class Cheque : ICompanyOwned
     /// <summary>تاریخ پاس شدن</summary>
     public DateTime? ClearedAt { get; set; }
 
+    /// <summary>وضعیت چک: در جریان / وصول‌شده / برگشتی</summary>
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+
+    /// <summary>تاریخ برگشت چک</summary>
+    public DateTime? BouncedAt { get; set; }
+
+    /// <summary>علت برگشت چک</summary>
+    [MaxLength(200)]
+    public string? BounceReason { get; set; }
+
     [MaxLength(300)]
     public string? Note { get; set; }
 

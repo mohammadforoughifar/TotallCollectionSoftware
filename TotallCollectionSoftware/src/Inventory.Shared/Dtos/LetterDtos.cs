@@ -29,15 +29,6 @@ public class LetterReciverDto
     /// در کمبو باکسِ انتخابِ امضاکننده نمایش داده می‌شود و جستجو با آن هم کار می‌کند.
     /// </summary>
     public List<string>? Positions { get; set; }
-
-    /// <summary>شناسه و عنوانِ هر سمت فعال برای انتخاب سمتِ مشخصِ امضاکننده.</summary>
-    public List<LetterPositionDto>? PositionOptions { get; set; }
-}
-
-public sealed class LetterPositionDto
-{
-    public int SematId { get; set; }
-    public string Title { get; set; } = "";
 }
 
 /// <summary>ثبت/ویرایش نامه داخلی — معادل VMInnerLetrer.AddInner</summary>
@@ -294,15 +285,6 @@ public class AmalgarDto
     public int AmalgarId { get; set; }
     public string Title { get; set; } = "";
     public string TaeedEmza { get; set; } = "";
-}
-
-/// <summary>افزودن عملگر ارجاع تازه از فرم ارجاع</summary>
-public class CreateAmalgarDto
-{
-    public string Title { get; set; } = "";
-
-    /// <summary>خالی = بدون نیاز به تایید/امضا</summary>
-    public string? TaeedEmza { get; set; }
 }
 
 /// <summary>آمار کارتابل (شمارنده‌های منو)</summary>

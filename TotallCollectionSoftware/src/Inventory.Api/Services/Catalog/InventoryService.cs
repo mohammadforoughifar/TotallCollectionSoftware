@@ -446,29 +446,47 @@ public class InventoryService : IInventoryService
         var productIds = order.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
+        // واکشی فاکتور در دیتابیس برای دسترسی به Snapshotهای ثبت‌شده روی سطرهای TransactionLine
+        var dbTxn = await _db.Transactions.Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == order.Id);
+        var snapshotMap = dbTxn?.Lines.ToDictionary(l => l.Id, l => l.UnitCostSnapshot) 
+                          ?? new Dictionary<int, decimal?>();
+
         foreach (var pid in productIds)
         {
             if (!products.TryGetValue(pid, out var product)) continue;
+            var productLines = order.Lines.Where(x => x.ProductId == pid).ToList();
+
             if (product.IsService)
             {
-                // خدمات عادی هزینهٔ صفر دارند؛ سطرِ فاکتور تعمیر می‌تواند بهای تمام‌شدهٔ ثبت‌شده داشته باشد.
-                foreach (var l in order.Lines.Where(x => x.ProductId == pid))
+                // خدمات / اجرت تعمیرات:
+                // سود خالص = مبلغ کل سطر (پس از تخفیف) − (هزینه/دستمزد تعمیرکار × تعداد)
+                foreach (var l in productLines)
                 {
                     l.IsService = true;
-                    var unitCost = l.UnitCost ?? 0m;
+                    // بهای تمام‌شده/دستمزد اگر روی سطر نباشد از دیتابیس (UnitCostSnapshot) خوانده می‌شود
+                    var unitCost = l.UnitCost ?? (snapshotMap.TryGetValue(l.Id, out var sn) && sn.HasValue ? sn.Value : 0m);
                     l.UnitCost = decimal.Round(unitCost, 2);
-                    l.Profit = decimal.Round((l.Price - unitCost) * l.Quantity, 2);
+                    // سود دقیق با کسر تخفیف و کسر دستمزد تعمیرکار:
+                    l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
                 }
                 continue;
             }
 
-            var productLines = order.Lines.Where(x => x.ProductId == pid).ToList();
+            foreach (var l in productLines)
+            {
+                if (!l.UnitCost.HasValue && snapshotMap.TryGetValue(l.Id, out var sn) && sn.HasValue)
+                {
+                    l.UnitCost = sn.Value;
+                }
+            }
+
             foreach (var l in productLines.Where(x => x.UnitCost.HasValue))
             {
-                // بهای ذخیره‌شده روی خود سطر (مثل بهای داخلیِ ردیف تعمیر) بر روش عمومی قیمت‌گذاری اولویت دارد.
+                // بهای ذخیره‌شده روی خود سطر (مثل بهای قطعه تعمیری) بر روش عمومی اولویت دارد.
+                // سود دقیق = مبلغ کل سطر (پس از تخفیف) − (بهای تمام‌شده × تعداد)
                 var unitCost = l.UnitCost!.Value;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round((l.Price - unitCost) * l.Quantity, 2);
+                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
             }
 
             var linesNeedingCost = productLines.Where(x => !x.UnitCost.HasValue).ToList();
@@ -485,7 +503,7 @@ public class InventoryService : IInventoryService
             {
                 var unitCost = costs.TryGetValue(l.Id, out var c) ? c : product.PurchasePrice;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round((l.Price - unitCost) * l.Quantity, 2);
+                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
             }
         }
 
@@ -501,14 +519,17 @@ public class InventoryService : IInventoryService
             {
                 foreach (var l in order.Lines)
                 {
-                    if (l.IsService)
-                        l.Commission = decimal.Round(l.Total * referrer.ServiceCommissionPercent / 100m, 2);
+                    // پورسانت بر اساس سود خالص سطر (نه کل مبلغ ناخالص):
+                    // سود پس از کسر تخفیف و کسر بهای قطعه و دستمزد
+                    var profit = l.Profit ?? 0;
+                    if (profit > 0)
+                    {
+                        var percent = l.IsService ? referrer.ServiceCommissionPercent : referrer.GoodsCommissionPercent;
+                        l.Commission = decimal.Round(profit * percent / 100m, 2);
+                    }
                     else
                     {
-                        var profit = l.Profit ?? 0;
-                        l.Commission = profit > 0
-                            ? decimal.Round(profit * referrer.GoodsCommissionPercent / 100m, 2)
-                            : 0;
+                        l.Commission = 0;
                     }
                 }
                 order.CommissionAmount = order.Lines.Sum(l => l.Commission ?? 0);
@@ -769,7 +790,7 @@ public class InventoryService : IInventoryService
     // =============================== ورود اکسل کالا ===============================
 
     /// <summary>ستون‌های فایل اکسل: کد کالا | نام کالا | گروه | واحد | قیمت خرید | قیمت فروش | نقطه سفارش | حداکثر موجودی | بارکد | توضیحات</summary>
-    public async Task<ExcelImportResult> ImportProductsAsync(Stream excelStream)
+    public async Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null)
     {
         var result = new ExcelImportResult();
 
@@ -816,6 +837,7 @@ public class InventoryService : IInventoryService
                     MaxStock = maxStock,
                     Barcode = string.IsNullOrWhiteSpace(barcode) ? null : barcode,
                     Description = string.IsNullOrWhiteSpace(desc) ? null : desc,
+                    WarehouseId = warehouseId is > 0 ? warehouseId : null,
                     IsActive = true
                 });
 
@@ -1142,31 +1164,43 @@ public class InventoryService : IInventoryService
 
         var list = await q.OrderBy(p => p.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var ids = list.Select(p => p.Id).ToList();
-        var txns = await _db.Transactions.Where(t => t.PartyId != null && ids.Contains(t.PartyId.Value)).ToListAsync();
+        var txns = await _db.Transactions.Include(t => t.Cheques).Include(t => t.Installments)
+            .Where(t => t.PartyId != null && ids.Contains(t.PartyId.Value)).ToListAsync();
         var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
-        return list.Select(p => new Party
+        var today = DateTime.Today;
+
+        return list.Select(p =>
         {
-            Id = p.Id,
-            Type = p.Type,
-            Name = p.Name,
-            Phone = p.Phone,
-            Mobile = p.Mobile,
-            Address = p.Address,
-            TaxId = p.TaxId,
-            PostalCode = p.PostalCode,
-            Note = p.Note,
-            IsActive = p.IsActive,
-            ReferrerId = p.ReferrerId,
-            ReferrerName = p.ReferrerId.HasValue && refNames.TryGetValue(p.ReferrerId.Value, out var rn) ? rn : null,
-            // «چه کسی این مشتری را ثبت کرد» — هم نام کاربر و هم نام پروندهٔ معرف
-            RegisteredByUserId = p.RegisteredByUserId,
-            RegisteredByName = p.RegisteredByName,
-            RegisteredByReferrerId = p.RegisteredByReferrerId,
-            RegisteredByReferrerName = p.RegisteredByReferrerId.HasValue
-                                       && refNames.TryGetValue(p.RegisteredByReferrerId.Value, out var rrn) ? rrn : null,
-            RegisteredAt = p.RegisteredAt,
-            Balance = txns.Where(t => t.PartyId == p.Id)
-                          .Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount)
+            var pTxns = txns.Where(t => t.PartyId == p.Id).ToList();
+            var bounced = pTxns.SelectMany(t => t.Cheques).Where(c => c.Status == ChequeStatus.Bounced).ToList();
+            var overdueInst = pTxns.SelectMany(t => t.Installments).Where(i => !i.IsPaid && i.DueDate.Date < today).ToList();
+
+            return new Party
+            {
+                Id = p.Id,
+                Type = p.Type,
+                Name = p.Name,
+                Phone = p.Phone,
+                Mobile = p.Mobile,
+                Address = p.Address,
+                TaxId = p.TaxId,
+                PostalCode = p.PostalCode,
+                Note = p.Note,
+                IsActive = p.IsActive,
+                ReferrerId = p.ReferrerId,
+                ReferrerName = p.ReferrerId.HasValue && refNames.TryGetValue(p.ReferrerId.Value, out var rn) ? rn : null,
+                RegisteredByUserId = p.RegisteredByUserId,
+                RegisteredByName = p.RegisteredByName,
+                RegisteredByReferrerId = p.RegisteredByReferrerId,
+                RegisteredByReferrerName = p.RegisteredByReferrerId.HasValue
+                                           && refNames.TryGetValue(p.RegisteredByReferrerId.Value, out var rrn) ? rrn : null,
+                RegisteredAt = p.RegisteredAt,
+                Balance = pTxns.Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount),
+                BouncedChequesCount = bounced.Count,
+                BouncedChequesTotal = bounced.Sum(c => c.Amount),
+                OverdueInstallmentsCount = overdueInst.Count,
+                OverdueInstallmentsTotal = overdueInst.Sum(i => i.Amount)
+            };
         }).ToList();
     }
 
@@ -1356,14 +1390,31 @@ public class InventoryService : IInventoryService
 
         foreach (var l in cmd.Lines)
         {
+            var gross = l.Quantity * l.Price;
+            decimal discAmount = 0;
+            decimal discPercent = 0;
+            if (l.DiscountIsAmount)
+            {
+                discAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
+                discPercent = gross > 0 ? Math.Round(discAmount * 100m / gross, 2) : 0;
+            }
+            else if (l.DiscountPercent > 0)
+            {
+                discPercent = Math.Clamp(l.DiscountPercent, 0, 100);
+                discAmount = Math.Round(gross * discPercent / 100m, 0);
+            }
+
             txn.Lines.Add(new Db.TransactionLine
             {
                 ProductId = l.ProductId,
                 Quantity = l.Quantity,
                 Price = l.Price,
+                DiscountPercent = discPercent,
+                DiscountAmount = discAmount,
+                DiscountIsAmount = l.DiscountIsAmount,
                 UnitCostSnapshot = l.UnitCostSnapshot
             });
-            txn.Amount += l.Quantity * l.Price;
+            txn.Amount += Math.Max(0, gross - discAmount);
         }
 
         await using var trx = await _db.Database.BeginTransactionAsync();
@@ -1475,6 +1526,9 @@ public class InventoryService : IInventoryService
                 IsService = products.TryGetValue(l.ProductId, out var p3) && p3.IsService,
                 Quantity = l.Quantity,
                 Price = l.Price,
+                DiscountPercent = l.DiscountPercent,
+                DiscountAmount = l.DiscountAmount,
+                DiscountIsAmount = l.DiscountIsAmount,
                 UnitCost = l.UnitCostSnapshot
             }).ToList()
         };
@@ -1553,14 +1607,32 @@ public class InventoryService : IInventoryService
             var unitCostSnapshot = existingLineCosts.TryGetValue(l.Id, out var oldCost) && oldCost.ProductId == l.ProductId
                 ? oldCost.UnitCostSnapshot
                 : l.UnitCostSnapshot;
+
+            var gross = l.Quantity * l.Price;
+            decimal discAmount = 0;
+            decimal discPercent = 0;
+            if (l.DiscountIsAmount)
+            {
+                discAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
+                discPercent = gross > 0 ? Math.Round(discAmount * 100m / gross, 2) : 0;
+            }
+            else if (l.DiscountPercent > 0)
+            {
+                discPercent = Math.Clamp(l.DiscountPercent, 0, 100);
+                discAmount = Math.Round(gross * discPercent / 100m, 0);
+            }
+
             txn.Lines.Add(new Db.TransactionLine
             {
                 ProductId = l.ProductId,
                 Quantity = l.Quantity,
                 Price = l.Price,
+                DiscountPercent = discPercent,
+                DiscountAmount = discAmount,
+                DiscountIsAmount = l.DiscountIsAmount,
                 UnitCostSnapshot = unitCostSnapshot
             });
-            txn.Amount += l.Quantity * l.Price;
+            txn.Amount += Math.Max(0, gross - discAmount);
         }
         await _db.SaveChangesAsync();
 
@@ -2084,20 +2156,21 @@ public class InventoryService : IInventoryService
         }
         dash.OverdueDebtors = dash.OverdueDebtors.OrderByDescending(d => d.DaysOverdue).ThenByDescending(d => d.Amount).ToList();
 
-        // چک‌های امروز (و عقب‌افتاده پاس‌نشده)
-        var todayCheques = await _db.Cheques
-            .Where(c => !c.IsCleared && c.DueDate <= today)
+        // چک‌های دریافتی از مشتری و چک‌های پرداختی ما (شامل سررسید امروز/گذشته یا برگشتی‌ها)
+        var uncleanedCheques = await _db.Cheques
+            .Where(c => (!c.IsCleared && c.DueDate <= today) || c.Status == ChequeStatus.Bounced)
             .OrderBy(c => c.DueDate)
             .ToListAsync();
-        if (todayCheques.Count > 0)
+
+        if (uncleanedCheques.Count > 0)
         {
-            var chTxnIds = todayCheques.Select(c => c.TransactionId).Distinct().ToList();
+            var chTxnIds = uncleanedCheques.Select(c => c.TransactionId).Distinct().ToList();
             var chTxns = await _db.Transactions.Where(t => chTxnIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id);
-            foreach (var c in todayCheques)
+            foreach (var c in uncleanedCheques)
             {
                 chTxns.TryGetValue(c.TransactionId, out var t);
                 var party = t?.PartyId != null && partyNames.TryGetValue(t.PartyId.Value, out var pp) ? pp : null;
-                dash.TodayCheques.Add(new ChequeAlertItem
+                var alertItem = new ChequeAlertItem
                 {
                     ChequeId = c.Id,
                     Number = c.Number,
@@ -2106,8 +2179,21 @@ public class InventoryService : IInventoryService
                     PartyName = party?.Name ?? "—",
                     OrderNumber = t?.Number ?? "",
                     Amount = c.Amount,
-                    DueDate = c.DueDate
-                });
+                    DueDate = c.DueDate,
+                    Status = c.Status,
+                    BounceReason = c.BounceReason
+                };
+
+                if (t != null && t.Type == TransactionType.Purchase)
+                {
+                    // چک پرداختی ما به فروشنده/تأمین‌کننده
+                    dash.IssuedCheques.Add(alertItem);
+                }
+                else
+                {
+                    // چک دریافتی از مشتری (فروش)
+                    dash.TodayCheques.Add(alertItem);
+                }
             }
         }
 
@@ -2154,6 +2240,35 @@ public class InventoryService : IInventoryService
             ?? throw new InvalidOperationException("چک یافت نشد.");
         c.IsCleared = true;
         c.ClearedAt = DateTime.Now;
+        c.Status = ChequeStatus.Cleared;
+        c.BouncedAt = null;
+        c.BounceReason = null;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>برگشت زدن چک.</summary>
+    public async Task BounceChequeAsync(int chequeId, string? reason)
+    {
+        var c = await _db.Cheques.FindAsync(chequeId)
+            ?? throw new InvalidOperationException("چک یافت نشد.");
+        c.IsCleared = false;
+        c.ClearedAt = null;
+        c.Status = ChequeStatus.Bounced;
+        c.BouncedAt = DateTime.Now;
+        c.BounceReason = string.IsNullOrWhiteSpace(reason) ? "عدم موجودی کافی" : reason.Trim();
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>بازگردانی وضعیت چک به در جریان (InHand).</summary>
+    public async Task ResetChequeAsync(int chequeId)
+    {
+        var c = await _db.Cheques.FindAsync(chequeId)
+            ?? throw new InvalidOperationException("چک یافت نشد.");
+        c.IsCleared = false;
+        c.ClearedAt = null;
+        c.Status = ChequeStatus.InHand;
+        c.BouncedAt = null;
+        c.BounceReason = null;
         await _db.SaveChangesAsync();
     }
 
@@ -2162,12 +2277,30 @@ public class InventoryService : IInventoryService
     {
         var i = await _db.Installments.FindAsync(installmentId)
             ?? throw new InvalidOperationException("قسط یافت نشد.");
-        i.IsPaid = true;
-        i.PaidAt = DateTime.Now;
-        // مبلغ تسویه‌شده سند
-        var t = await _db.Transactions.FindAsync(i.TransactionId);
-        if (t is not null) t.SettledAmount += i.Amount;
-        await _db.SaveChangesAsync();
+        if (!i.IsPaid)
+        {
+            i.IsPaid = true;
+            i.PaidAt = DateTime.Now;
+            // مبلغ تسویه‌شده سند
+            var t = await _db.Transactions.FindAsync(i.TransactionId);
+            if (t is not null) t.SettledAmount += i.Amount;
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>لغو پرداخت قسط (برگشت به حالت پرداخت‌نشده / بدهکار).</summary>
+    public async Task UnpayInstallmentAsync(int installmentId)
+    {
+        var i = await _db.Installments.FindAsync(installmentId)
+            ?? throw new InvalidOperationException("قسط یافت نشد.");
+        if (i.IsPaid)
+        {
+            i.IsPaid = false;
+            i.PaidAt = null;
+            var t = await _db.Transactions.FindAsync(i.TransactionId);
+            if (t is not null) t.SettledAmount = Math.Max(0, t.SettledAmount - i.Amount);
+            await _db.SaveChangesAsync();
+        }
     }
 
     /// <summary>تسویه سند نسیه.</summary>
@@ -2250,4 +2383,175 @@ public class InventoryService : IInventoryService
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    // ================== مدیریت اقساط و چک‌های سامانه فروشگاهی ==================
+
+    public async Task<ShopCreditSummary> GetShopCreditSummaryAsync()
+    {
+        var today = DateTime.Today;
+        var cheques = await _db.Cheques.AsNoTracking().ToListAsync();
+        var installments = await _db.Installments.AsNoTracking().ToListAsync();
+
+        var inHand = cheques.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced).ToList();
+        var cleared = cheques.Where(c => c.IsCleared || c.Status == ChequeStatus.Cleared).ToList();
+        var bounced = cheques.Where(c => c.Status == ChequeStatus.Bounced).ToList();
+
+        var pendingInst = installments.Where(i => !i.IsPaid).ToList();
+        var paidInst = installments.Where(i => i.IsPaid).ToList();
+        var overdueInst = installments.Where(i => !i.IsPaid && i.DueDate.Date < today).ToList();
+
+        return new ShopCreditSummary
+        {
+            InHandChequesCount = inHand.Count,
+            InHandChequesTotal = inHand.Sum(x => x.Amount),
+            ClearedChequesCount = cleared.Count,
+            ClearedChequesTotal = cleared.Sum(x => x.Amount),
+            BouncedChequesCount = bounced.Count,
+            BouncedChequesTotal = bounced.Sum(x => x.Amount),
+
+            PendingInstallmentsCount = pendingInst.Count,
+            PendingInstallmentsTotal = pendingInst.Sum(x => x.Amount),
+            PaidInstallmentsCount = paidInst.Count,
+            PaidInstallmentsTotal = paidInst.Sum(x => x.Amount),
+            OverdueInstallmentsCount = overdueInst.Count,
+            OverdueInstallmentsTotal = overdueInst.Sum(x => x.Amount)
+        };
+    }
+
+    public async Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status, TransactionType? txnType, string? search)
+    {
+        var today = DateTime.Today;
+        var q = _db.Cheques.AsNoTracking().AsQueryable();
+
+        if (status.HasValue)
+        {
+            if (status.Value == ChequeStatus.Cleared)
+                q = q.Where(c => c.IsCleared || c.Status == ChequeStatus.Cleared);
+            else if (status.Value == ChequeStatus.Bounced)
+                q = q.Where(c => c.Status == ChequeStatus.Bounced);
+            else
+                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced);
+        }
+
+        var list = await q.OrderBy(c => c.DueDate).ToListAsync();
+        if (list.Count == 0) return new List<ShopChequeItem>();
+
+        var txnIds = list.Select(c => c.TransactionId).Distinct().ToList();
+        var txns = await _db.Transactions.AsNoTracking()
+            .Where(t => txnIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id);
+
+        var partyIds = txns.Values.Where(t => t.PartyId.HasValue).Select(t => t.PartyId!.Value).Distinct().ToList();
+        var parties = await _db.Parties.AsNoTracking()
+            .Where(p => partyIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        var result = new List<ShopChequeItem>();
+        foreach (var c in list)
+        {
+            txns.TryGetValue(c.TransactionId, out var t);
+            if (txnType.HasValue && t != null && t.Type != txnType.Value) continue;
+
+            Db.Party? party = null;
+            if (t?.PartyId.HasValue == true) parties.TryGetValue(t.PartyId.Value, out party);
+
+            var item = new ShopChequeItem
+            {
+                Id = c.Id,
+                TransactionId = c.TransactionId,
+                OrderNumber = t?.Number ?? "—",
+                TransactionType = t?.Type ?? TransactionType.Sale,
+                PartyId = t?.PartyId ?? 0,
+                PartyName = party?.Name ?? (c.OwnerName ?? "—"),
+                PartyMobile = party?.Mobile,
+                Number = c.Number,
+                BankName = c.BankName,
+                AccountInfo = c.AccountInfo,
+                OwnerName = c.OwnerName,
+                Amount = c.Amount,
+                DueDate = c.DueDate,
+                IsCleared = c.IsCleared || c.Status == ChequeStatus.Cleared,
+                ClearedAt = c.ClearedAt,
+                Status = c.Status,
+                BouncedAt = c.BouncedAt,
+                BounceReason = c.BounceReason,
+                Note = c.Note,
+                DaysOverdue = c.DueDate.Date < today ? (int)(today - c.DueDate.Date).TotalDays : 0
+            };
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim().ToLower();
+                bool match = item.Number.ToLower().Contains(s) ||
+                             item.PartyName.ToLower().Contains(s) ||
+                             (item.BankName != null && item.BankName.ToLower().Contains(s)) ||
+                             item.OrderNumber.ToLower().Contains(s);
+                if (!match) continue;
+            }
+
+            result.Add(item);
+        }
+
+        return result;
+    }
+
+    public async Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid, string? search)
+    {
+        var today = DateTime.Today;
+        var q = _db.Installments.AsNoTracking().AsQueryable();
+
+        if (isPaid.HasValue)
+            q = q.Where(i => i.IsPaid == isPaid.Value);
+
+        var list = await q.OrderBy(i => i.DueDate).ToListAsync();
+        if (list.Count == 0) return new List<ShopInstallmentItem>();
+
+        var txnIds = list.Select(i => i.TransactionId).Distinct().ToList();
+        var txns = await _db.Transactions.AsNoTracking()
+            .Where(t => txnIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id);
+
+        var partyIds = txns.Values.Where(t => t.PartyId.HasValue).Select(t => t.PartyId!.Value).Distinct().ToList();
+        var parties = await _db.Parties.AsNoTracking()
+            .Where(p => partyIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        var result = new List<ShopInstallmentItem>();
+        foreach (var i in list)
+        {
+            txns.TryGetValue(i.TransactionId, out var t);
+            Db.Party? party = null;
+            if (t?.PartyId.HasValue == true) parties.TryGetValue(t.PartyId.Value, out party);
+
+            var item = new ShopInstallmentItem
+            {
+                Id = i.Id,
+                TransactionId = i.TransactionId,
+                OrderNumber = t?.Number ?? "—",
+                PartyId = t?.PartyId ?? 0,
+                PartyName = party?.Name ?? "—",
+                PartyMobile = party?.Mobile,
+                No = i.No,
+                Amount = i.Amount,
+                DueDate = i.DueDate,
+                IsPaid = i.IsPaid,
+                PaidAt = i.PaidAt,
+                DaysOverdue = !i.IsPaid && i.DueDate.Date < today ? (int)(today - i.DueDate.Date).TotalDays : 0
+            };
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim().ToLower();
+                bool match = item.PartyName.ToLower().Contains(s) ||
+                             item.OrderNumber.ToLower().Contains(s) ||
+                             (item.PartyMobile != null && item.PartyMobile.Contains(s));
+                if (!match) continue;
+            }
+
+            result.Add(item);
+        }
+
+        return result;
+    }
+
 }

@@ -106,12 +106,7 @@
                     <i class="bi bi-clipboard-data-fill"></i><span>گزارش‌ساز</span>
                 </NavLink>
                 }
-                @if (Auth.Has("Dashboards.Financial"))
-                {
-                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="NotifyClose">
-                        <i class="bi bi-speedometer2"></i><span>داشبورد مالی</span>
-                    </NavLink>
-                }
+
                 @if (Auth.Has("Dashboards.Management"))
                 {
                     <NavLink class="nav-link" href="dashboard-cctv" @onclick="NotifyClose">
@@ -355,6 +350,34 @@
         @if (gOps)
         {
             <div class="nav-group-items">
+                @* ---------- زیرمنوی داشبورد (داخل سامانه فروشگاهی) ---------- *@
+                @if (ShowOpsDashSub)
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gOpsDash ? "open" : "")" @onclick="() => gOpsDash = !gOpsDash">
+                            <span><i class="bi bi-speedometer2"></i>داشبورد</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gOpsDash)
+                        {
+                            <div class="nav-sub-items">
+                                @if (Auth.Has("Dashboards.Financial"))
+                                {
+                                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                                        <i class="bi bi-cash-coin"></i><span>داشبورد مالی</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.CanSee("Orders") || Auth.CanSee("Repairs"))
+                                {
+                                    <NavLink class="nav-link" href="operations/reports/dashboard" @onclick="NotifyClose">
+                                        <i class="bi bi-bar-chart-line"></i><span>داشبورد عملیاتی (خرید، فروش و تعمیرات)</span>
+                                    </NavLink>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
                 @if (Auth.CanSee("Orders"))
                 {
                     <NavLink class="nav-link" href="orders/purchase" @onclick="NotifyClose">
@@ -380,6 +403,12 @@
                 {
                     <NavLink class="nav-link" href="expenses" @onclick="NotifyClose">
                         <i class="bi bi-cash-coin"></i><span>هزینه‌ها</span>
+                    </NavLink>
+                }
+                @if (Auth.CanSee("Orders") || Auth.CanSee("TrsVouchers"))
+                {
+                    <NavLink class="nav-link" href="shop/credit-management" @onclick="NotifyClose">
+                        <i class="bi bi-wallet2"></i><span>مدیریت اقساط و چک‌ها</span>
                     </NavLink>
                 }
                 @if (Auth.CanSee("TrsVouchers"))
@@ -424,12 +453,7 @@
                                         <i class="bi bi-cart-check"></i><span>گزارش فروش</span>
                                     </NavLink>
                                 }
-                                @if (Auth.CanSee("Orders") || Auth.CanSee("Repairs"))
-                                {
-                                    <NavLink class="nav-link" href="operations/reports/dashboard" @onclick="NotifyClose">
-                                        <i class="bi bi-speedometer2"></i><span>داشبورد خرید، فروش، تعمیرات و معرف</span>
-                                    </NavLink>
-                                }
+
                             </div>
                         }
                     </div>
@@ -475,6 +499,12 @@
                                 {
                                     <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
                                         <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.CanSee("TrsAccounts"))
+                                {
+                                    <NavLink class="nav-link" href="trs/accounts" @onclick="NotifyClose">
+                                        <i class="bi bi-wallet2"></i><span>بانک، صندوق و کارتخوان (POS)</span>
                                     </NavLink>
                                 }
                             </div>
@@ -821,7 +851,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gOpsBase, gOpsReports;
+    private bool gOpsBase, gOpsReports, gOpsDash;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
     private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل سامانه فروشگاهی
     private bool _hasMindFlowAccess;
@@ -845,7 +875,8 @@
             var path = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
             gPersonal = path.StartsWith("personal-settings");
             gMisc = path.StartsWith("misc");
-            if (path.StartsWith("trs/vouchers")) gOps = true;
+            if (path.StartsWith("trs/vouchers") || path.StartsWith("shop/credit-management")) gOps = true;
+            if (path == "" || path.StartsWith("operations/reports/dashboard")) { gOps = true; gOpsDash = true; }
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
             if (path.StartsWith("moadian")) gOps = true;
             if (path.StartsWith("moadian/settings")) gOpsBase = true;
@@ -859,8 +890,7 @@
     private bool CanSeeMyArchive => Auth.CanSee("MyArchive");
     private bool CanSeeMyDashboards => Auth.CanSee("MyDashboards");
     private bool CanSeeReportStudio => Auth.CanSee("ReportStudio");
-    private bool CanSeeAnyDashboard => Auth.Has("Dashboards.Financial")
-                                    || Auth.Has("Dashboards.Management")
+    private bool CanSeeAnyDashboard => Auth.Has("Dashboards.Management")
                                     || Auth.Has("Dashboards.Hardware");
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
@@ -876,12 +906,13 @@
 
     private string PartiesMenuIcon => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "bi-truck" : "bi-people";
 
-    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Referrers") || ShowPartiesMenu;
-    private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Referrers", "TrsAccounts") || ShowPartiesMenu;
+    private bool ShowOpsDashSub => Auth.Has("Dashboards.Financial") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
+    private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders");
     private bool ShowVisGroup => Auth.CanSee("SalesVisit");
     // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
     // منوی او کاملاً خالی می‌ماند.
-    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
+    private bool ShowOpsGroup => ShowOpsDashSub || ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers", "ShopGuide");
 
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
@@ -916,11 +947,12 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("trs/accounts") || p.StartsWith("moadian/settings") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
+        gOpsDash = p == "" || p.StartsWith("operations/reports/dashboard");
         gOpsReports = p.StartsWith("operations/reports");
         gVis = p.StartsWith("sales/");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase || gVis;
+        gOps = p == "" || p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("shop/credit-management") || p.StartsWith("moadian") || gOpsReports || gOpsBase || gVis || gOpsDash;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("servers") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||

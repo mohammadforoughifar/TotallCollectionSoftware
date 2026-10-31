@@ -373,13 +373,17 @@ public class VisOrderService : IVisOrderService
             if (!actor.CanSeeAll && entity.ReferrerId != (actor.ReferrerId ?? 0))
                 throw new InvalidOperationException("این سفارش متعلق به شما نیست.");
 
-            // پنجرهٔ ویرایش ویزیتور: تا زمانی که **مدیر تأیید نکرده**.
-            // پیش‌نویس، ارسال‌شده (در انتظار تأیید) و برگشتی قابل ویرایش‌اند؛ از «تأییدشده» به بعد نه.
-            if (entity.Status is not (VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned))
+            // پنجرهٔ ویرایش: ویزیتور تا قبل از تأیید مدیر (پیش‌نویس، ارسال‌شده، برگشتی) حق ویرایش دارد؛
+            // مدیر (Approve/Admin) در کارتابل و پنل خود در وضعیت تأییدشده هم می‌تواند تخفیف یا اقلام را اصلاح کند (تا قبل از فاکتورشدن نهایی).
+            var allowedStatus = (actor.CanApprove || actor.IsAdmin)
+                ? (entity.Status is VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned or VisOrderStatus.Approved)
+                : (entity.Status is VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned);
+
+            if (!allowedStatus)
                 throw new InvalidOperationException(entity.Status switch
                 {
-                    VisOrderStatus.Approved => "این سفارش توسط مدیر تأیید شده و دیگر قابل ویرایش نیست.",
-                    VisOrderStatus.Invoiced => "این سفارش فروش شده و قابل ویرایش نیست.",
+                    VisOrderStatus.Approved => "این سفارش تأیید شده و فقط توسط مدیر قابل ویرایش است.",
+                    VisOrderStatus.Invoiced => "این سفارش فاکتور و ثبت فروش شده و قابل ویرایش نیست.",
                     VisOrderStatus.Rejected => "این سفارش رد شده است؛ برای ثبت مجدد، سفارش جدید بسازید.",
                     VisOrderStatus.Canceled => "این سفارش ابطال شده و قابل ویرایش نیست.",
                     _ => "این سفارش در وضعیتی نیست که قابل ویرایش باشد."
@@ -447,10 +451,15 @@ public class VisOrderService : IVisOrderService
 
         Recalculate(entity);
 
-        // سقف تخفیف ویزیتور مالک سفارش (نه کاربر جاری) سنجیده می‌شود
+        // کنترل سقف تخفیف ویزیتور: ویزیتور نمی‌تواند بیش از سقف تعیین‌شده توسط مدیر تخفیف دهد، ولی مدیر/ادمین محدودیت ندارد
         var cap = await _db.Referrers.IgnoreQueryFilters().Where(r => r.Id == entity.ReferrerId)
             .Select(r => r.MaxDiscountPercent).FirstOrDefaultAsync();
         entity.DiscountOverLimit = cap > 0 && entity.Lines.Any(l => l.DiscountPercent > cap);
+
+        if (!actor.CanApprove && !actor.IsAdmin && entity.DiscountOverLimit)
+        {
+            throw new InvalidOperationException($"درصد تخفیف واردشده بیش از سقف مجاز ویزیتور ({cap}٪) است.");
+        }
 
         await _db.SaveChangesAsync();
 

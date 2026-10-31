@@ -16,6 +16,7 @@ public class ToastService : IToastService
 
     public void Success(string message) => Show(message, "success");
     public void Error(string message) => Show(message, "error");
+    public void Warning(string message) => Show(message, "warning");
     public void Info(string message) => Show(message, "info");
 
     public void Show(string message, string kind)

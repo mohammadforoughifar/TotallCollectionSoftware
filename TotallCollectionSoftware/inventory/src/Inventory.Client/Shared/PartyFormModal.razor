@@ -137,12 +137,15 @@
 
     private bool IsEdit => party.Id != 0;
 
+    private PartyType _prevType;
+
     protected override void OnParametersSet()
     {
-        // فرم با هر باز شدن از دادهٔ تازه ساخته می‌شود (تا ویرایشِ لغوشده روی بعدی اثر نگذارد)
+        // با تغییر وضعیت نمایش یا تغییر نوع (مثلاً از فروش به خرید)، فرم باید از نو مقداردهی شود
         if (!Visible) { loadedForKey = false; return; }
-        if (loadedForKey) return;
+        if (loadedForKey && _prevType == Type) return;
         loadedForKey = true;
+        _prevType = Type;
 
         var src = Model;
         party = new Party

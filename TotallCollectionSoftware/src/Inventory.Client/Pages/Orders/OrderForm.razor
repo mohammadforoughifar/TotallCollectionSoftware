@@ -3,6 +3,7 @@
 @inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
 @inject IProductService ProductSvc
+@inject IStockService StockSvc
 @inject IReferrerService ReferrerSvc
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
@@ -25,7 +26,12 @@
                     <SearchSelect Items="whLookup" Value="warehouseId" ValueChanged="OnWarehouseChanged" Placeholder="انتخاب انبار…" />
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده") <span class="text-danger">*</span></label>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده") <span class="text-danger">*</span></label>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold" @onclick="() => showNewPartyModal = true">
+                            <i class="bi bi-plus-circle-fill text-success"></i> @(Type == TransactionType.Sale ? "مشتری جدید" : "تأمین‌کننده جدید")
+                        </button>
+                    </div>
                     <SearchSelect Items="partyLookup" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب…" />
                 </div>
                 <div class="col-md-4">
@@ -327,10 +333,11 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
-                            <th style="width: @(Type == TransactionType.Sale ? "36%" : "42%")">کالا</th>
-                            <th style="width: 13%">مقدار (تا ۲ رقم اعشار)</th>
-                            <th style="width: 20%">قیمت واحد (ریال)</th>
-                            <th class="text-start">جمع</th>
+                            <th style="width: @(Type == TransactionType.Sale ? "30%" : "35%")">کالا</th>
+                            <th style="width: 12%">مقدار (تا ۲ رقم اعشار)</th>
+                            <th style="width: 18%">قیمت واحد (ریال)</th>
+                            <th style="width: 16%">تخفیف (تا ۱۰۰=٪، بالا=ریال)</th>
+                            <th class="text-start">مبلغ کل</th>
                             @if (Type == TransactionType.Sale)
                             {
                                 @if (CanSeeProfit)
@@ -354,19 +361,55 @@
                                                   Value="l.ProductId"
                                                   ValueChanged="id => OnProductPicked(l, id)"
                                                   Placeholder="جستجوی کالا…" />
-                                    @if (!string.IsNullOrEmpty(l.Unit))
+                                    @if (!string.IsNullOrEmpty(l.Unit) || l.ProductId > 0)
                                     {
-                                        <div class="fs-8 text-muted mt-1">واحد: @l.Unit</div>
+                                        <div class="fs-8 text-muted mt-1 d-flex gap-2 flex-wrap">
+                                            @if (!string.IsNullOrEmpty(l.Unit))
+                                            {
+                                                <span>واحد: @l.Unit</span>
+                                            }
+                                            @if (l.ProductId > 0 && warehouseId > 0 && !IsServiceProduct(l.ProductId))
+                                            {
+                                                var avail = warehouseStocks.TryGetValue(l.ProductId, out var q) ? q : 0m;
+                                                <span class="@(avail <= 0 ? "text-danger" : "text-success")">
+                                                    · موجودی انبار: <b class="num">@avail.ToString("0.##")</b>
+                                                </span>
+                                            }
+                                        </div>
                                     }
                                 </td>
                                 <td>
                                     <input class="form-control num" inputmode="decimal" dir="ltr" placeholder="1.25"
                                            title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
-                                           value="@l.QtyText" @oninput="@(e => l.QtyText = FormatQuantity(e.Value))" />
+                                           value="@l.QtyText" @oninput="@(e => { l.QtyText = FormatQuantity(e.Value); RecalcDiscount(l); })" />
                                 </td>
                                 <td>
                                     <input class="form-control num" inputmode="decimal" dir="ltr"
-                                           value="@l.PriceText" @oninput="@(e => l.PriceText = FormatNum(e.Value))" />
+                                           value="@l.PriceText" @oninput="@(e => { l.PriceText = FormatNum(e.Value); RecalcDiscount(l); })" />
+                                </td>
+                                <td>
+                                    <div class="input-group input-group-sm">
+                                        <input class="form-control form-control-sm text-center num"
+                                               value="@l.DiscountText"
+                                               @oninput="e => OnLineDiscountInput(l, e.Value?.ToString())"
+                                               @onblur="() => OnLineDiscountBlur(l)"
+                                               placeholder="0" inputmode="numeric" dir="ltr" />
+                                        <span class="input-group-text @(l.DiscountIsAmount ? "text-primary" : "")"
+                                              style="font-size:0.75rem;min-width:32px;justify-content:center;"
+                                              title="@(l.DiscountIsAmount ? "مبلغ ریالی" : "درصد")">
+                                            @(l.DiscountIsAmount ? "ریال" : "٪")
+                                        </span>
+                                    </div>
+                                    @if (l.DiscountAmount > 0)
+                                    {
+                                        <div class="fs-9 mt-1 text-danger num text-start">
+                                            @l.DiscountAmount.Money() ریال
+                                            @if (l.DiscountIsAmount)
+                                            {
+                                                <span class="text-muted">(@l.DiscountPercent.ToString("0.##")٪)</span>
+                                            }
+                                        </div>
+                                    }
                                 </td>
                                 <td class="text-start num fw-500">@l.Total.Money()</td>
                                 @if (Type == TransactionType.Sale)
@@ -413,43 +456,84 @@
                             </tr>
                         }
                     </tbody>
+                    <tfoot class="border-top-2 table-light" style="border-top: 2px solid #cbd5e1;">
+                        <tr class="align-middle">
+                            <td class="fw-bold text-secondary">
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis px-2 py-1 fs-8">جمع اقلام فاکتور</span>
+                                <span class="fs-8 text-muted ms-1">(@lines.Count.Num() سطر)</span>
+                            </td>
+                            <td class="text-center fw-600 num fs-8 text-muted">
+                                @lines.Sum(l => l.Qty).ToString("0.##")
+                            </td>
+                            @* ناخالص زیر ستون قیمت واحد *@
+                            <td class="text-center p-2">
+                                <div class="fs-9 text-muted mb-1">جمع ناخالص:</div>
+                                <div class="fw-bold fs-7 num text-dark">@totalGross.Money()</div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @* تخفیف کل اقلام زیر ستون تخفیف *@
+                            <td class="text-center p-2">
+                                <div class="fs-9 text-muted mb-1">تخفیف کل اقلام:</div>
+                                <div class="fw-bold fs-7 num @(totalLineDiscount > 0 ? "text-danger" : "text-muted")">
+                                    @(totalLineDiscount > 0 ? $"- {totalLineDiscount.Money()}" : "۰")
+                                </div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @* مبلغ نهایی فاکتور زیر ستون مبلغ کل *@
+                            <td class="text-start p-2">
+                                <div class="fs-9 text-muted mb-1">مبلغ نهایی فاکتور:</div>
+                                <div class="fw-900 fs-5 text-primary num" style="letter-spacing:-0.5px;">@grandTotal.Money()</div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @if (Type == TransactionType.Sale)
+                            {
+                                @if (CanSeeProfit)
+                                {
+                                    <td class="text-start p-2">
+                                        <div class="fs-9 text-muted mb-1">سود کل:</div>
+                                        <div class="fw-bold fs-7 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</div>
+                                    </td>
+                                }
+                                @if (referrerId > 0)
+                                {
+                                    <td class="text-start p-2">
+                                        <div class="fs-9 text-muted mb-1">پورسانت:</div>
+                                        <div class="fw-bold fs-7 num text-primary">@totalCommission.Money()</div>
+                                    </td>
+                                }
+                            }
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mt-3 p-2 px-3 rounded-3" style="background:#f8fafc">
-                <span class="text-muted fs-8">@lines.Count سطر</span>
-                <div class="d-flex align-items-center flex-wrap gap-3">
-                    @if (Type == TransactionType.Sale)
+            @if (Type == TransactionType.Sale && (CanSeeProfit || referrerId > 0))
+            {
+                <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mt-2 p-2 px-3 rounded-3 border bg-light fs-8">
+                    @if (CanSeeProfit)
                     {
+                        <div>
+                            <span class="text-muted ms-1">سود تخمینی:</span>
+                            <span class="fw-700 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</span> ریال
+                        </div>
+                    }
+                    @if (referrerId > 0)
+                    {
+                        <div>
+                            <span class="text-muted ms-1">پورسانت معرف:</span>
+                            <span class="fw-700 num text-primary">@totalCommission.Money()</span> ریال
+                        </div>
                         @if (CanSeeProfit)
                         {
                             <div>
-                                <span class="text-muted ms-1 fs-8">سود تخمینی:</span>
-                                <span class="fw-700 fs-7 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</span>
+                                <span class="text-muted ms-1">سود خالص:</span>
+                                <span class="fw-700 num @(netProfit >= 0 ? "text-success" : "text-danger")">@netProfit.Money()</span> ریال
                             </div>
-                        }
-                        @if (referrerId > 0)
-                        {
-                            <div>
-                                <span class="text-muted ms-1 fs-8">جمع پورسانت:</span>
-                                <span class="fw-700 fs-7 num text-primary">@totalCommission.Money()</span>
-                            </div>
-                            @if (CanSeeProfit)
-                            {
-                                <div>
-                                    <span class="text-muted ms-1 fs-8">سود خالص:</span>
-                                    <span class="fw-700 fs-7 num @(netProfit >= 0 ? "text-success" : "text-danger")">@netProfit.Money()</span>
-                                </div>
-                            }
                         }
                     }
-                    <div>
-                        <span class="text-muted ms-2 fs-7">جمع کل:</span>
-                        <span class="fw-800 fs-5 text-primary num">@grandTotal.Money()</span>
-                        <span class="fs-8 text-muted">ریال</span>
-                    </div>
                 </div>
-            </div>
+            }
         }
     </ChildContent>
 
@@ -618,7 +702,49 @@
                 DefaultKind="quickBankDefaultKind"
                 OnAccountCreated="OnQuickBankCreated" />
 
+
+@* فرم سریع ایجاد مشتری / تأمین‌کننده و انتخاب خودکار در سند *@
+<PartyFormModal Visible="showNewPartyModal"
+                Type="@(Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier)"
+                AllowReferrerPicker="@(Type == TransactionType.Sale)"
+                OnSaved="OnQuickPartyCreated"
+                OnCancel="() => showNewPartyModal = false" />
+
 @code {
+    private bool showNewPartyModal;
+
+    private async Task OnQuickPartyCreated(Party newParty)
+    {
+        showNewPartyModal = false;
+        try
+        {
+            if (Type == TransactionType.Sale)
+            {
+                customers = await PartySvc.GetAsync(PartyType.Customer);
+                partyLookup = customers.Where(c => c.IsActive)
+                    .Select(c => new LookupItem
+                    {
+                        Id = c.Id,
+                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
+                            ? $"{c.Name} — بدون معرف"
+                            : $"{c.Name} — معرف: {c.ReferrerName}"
+                    }).ToList();
+            }
+            else
+            {
+                partyLookup = await PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
+            }
+
+            // انتخاب خودکار طرف حساب جدید در کمبوباکس
+            OnPartyChanged(newParty.Id);
+            Toast.Success($"{(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده")} «{newParty.Name}» افزوده و انتخاب شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
     /// <summary>دسترسی «مشاهده سود» — Orders.ViewProfit از بخش نقش‌ها و دسترسی‌ها</summary>
     private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
 
@@ -644,9 +770,14 @@
         public string QtyText { get; set; } = "1";
         public string PriceText { get; set; } = "";
         public string Unit { get; set; } = "";
+        public string DiscountText { get; set; } = "";
+        public decimal DiscountPercent { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public bool DiscountIsAmount { get; set; }
         public decimal Qty => Fa.ParseDecimal(QtyText);
         public decimal Price => Fa.ParseDecimal(PriceText);
-        public decimal Total => Qty * Price;
+        public decimal Gross => Qty * Price;
+        public decimal Total => Math.Max(0, Gross - DiscountAmount);
     }
 
     private List<LineVm> lines = new() { new LineVm() };
@@ -654,6 +785,7 @@
     private List<LookupItem> whLookup = new();
     private List<LookupItem> partyLookup = new();
     private List<Product> products = new();
+    private Dictionary<int, decimal> warehouseStocks = new();
     private int warehouseId, partyId, referrerId;
     private DateTime? date;
     private string description = "";
@@ -1020,13 +1152,16 @@
     }
 
     /// <summary>سود تخمینی سطر: (قیمت فروش − بهای تمام‌شده میانگین) × مقدار. خدمات = کل مبلغ.</summary>
+    private decimal totalGross => lines.Sum(l => l.Gross);
+    private decimal totalLineDiscount => lines.Sum(l => l.DiscountAmount);
+
     private decimal LineProfit(LineVm l)
     {
         var p = products.FirstOrDefault(x => x.Id == l.ProductId);
         if (p is null) return 0;
         if (p.IsService) return l.Total;
         var cost = p.AvgCost > 0 ? p.AvgCost : p.PurchasePrice;
-        return (l.Price - cost) * l.Qty;
+        return l.Total - (cost * l.Qty);
     }
 
     protected override async Task OnInitializedAsync()
@@ -1054,6 +1189,7 @@
             products = prods.Items
                 .Where(p => p.IsActive && (Type == TransactionType.Sale || !p.IsService))
                 .ToList();
+            await LoadWarehouseStocksAsync();
             RebuildProductLookup();
 
             if (Type == TransactionType.Sale)
@@ -1109,14 +1245,26 @@
                 instAmounts = o.Installments.Select(i => Fa.FormatTyping(i.Amount.ToString("0"))).ToList();
                 instDates = o.Installments.Select(i => (DateTime?)i.DueDate).ToList();
                 instCount = Math.Max(1, installments.Count);
-                lines = o.Lines.Select(l => new LineVm
+                lines = o.Lines.Select(l =>
                 {
-                    Id = l.Id,
-                    ProductId = l.ProductId,
-                    OriginalQty = l.Quantity,
-                    QtyText = FormatQuantity(l.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)),
-                    PriceText = FormatNum(l.Price.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
-                    Unit = l.Unit
+                    var vm = new LineVm
+                    {
+                        Id = l.Id,
+                        ProductId = l.ProductId,
+                        OriginalQty = l.Quantity,
+                        QtyText = FormatQuantity(l.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)),
+                        PriceText = FormatNum(l.Price.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
+                        Unit = l.Unit,
+                        DiscountPercent = l.DiscountPercent,
+                        DiscountAmount = l.DiscountAmount,
+                        DiscountIsAmount = l.DiscountIsAmount
+                    };
+                    if (vm.DiscountIsAmount)
+                        vm.DiscountText = vm.DiscountAmount > 0 ? FormatNum(((long)vm.DiscountAmount).ToString()) : "";
+                    else
+                        vm.DiscountText = vm.DiscountPercent > 0 ? vm.DiscountPercent.ToString("0.##") : "";
+                    RecalcDiscount(vm);
+                    return vm;
                 }).ToList();
                 if (lines.Count == 0) lines.Add(new LineVm());
 
@@ -1148,32 +1296,136 @@
         }
     }
 
-    /// <summary>بازسازی فهرست کالاها بر اساس انبار انتخاب‌شده: فقط کالاهای همان انبار + بدون انبار + خدمات.</summary>
+    private async Task LoadWarehouseStocksAsync()
+    {
+        warehouseStocks.Clear();
+        if (warehouseId > 0)
+        {
+            try
+            {
+                var res = await StockSvc.GetStockAsync(warehouseId: warehouseId, page: 1, pageSize: 10000);
+                if (res?.Items != null)
+                {
+                    warehouseStocks = res.Items.ToDictionary(s => s.ProductId, s => s.Quantity);
+                }
+            }
+            catch
+            {
+                warehouseStocks = new();
+            }
+        }
+    }
+
+    /// <summary>بازسازی فهرست کالاها بر اساس انبار انتخاب‌شده: تفکیک دقیق کالاهای موجود در انبار + نمایش موجودی در منوی انتخاب.</summary>
     private void RebuildProductLookup()
     {
+        // فیلتر کالاها بر اساس انبار:
+        // در فروش: کالاهای دارای موجودی در این انبار + خدمات (یا کالاهای اختصاص‌یافته به این انبار)
+        // در خرید: کالاهای این انبار یا بدون انبار اختصاصی
         var filtered = warehouseId > 0
-            ? products.Where(p => p.IsService || p.WarehouseId is null || p.WarehouseId == warehouseId).ToList()
+            ? products.Where(p =>
+            {
+                if (p.IsService) return Type == TransactionType.Sale;
+                if (p.WarehouseId is > 0 && p.WarehouseId != warehouseId) return false;
+                if (Type == TransactionType.Sale)
+                {
+                    // در فروش: کالاهایی که در این انبار رکورد موجودی دارند یا به این انبار تعلق دارند
+                    return p.WarehouseId == warehouseId || warehouseStocks.ContainsKey(p.Id);
+                }
+                return p.WarehouseId is null || p.WarehouseId == warehouseId;
+            }).ToList()
             : products;
+
         productLookup = filtered
-            .Select(p => new LookupItem { Id = p.Id, Name = p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}" })
+            .Select(p =>
+            {
+                var stockText = "";
+                if (p.IsService)
+                {
+                    stockText = "خدمات";
+                }
+                else if (warehouseId > 0)
+                {
+                    var qty = warehouseStocks.TryGetValue(p.Id, out var q) ? q : 0m;
+                    stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}";
+                }
+                return new LookupItem
+                {
+                    Id = p.Id,
+                    Name = p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}",
+                    InfoText = stockText
+                };
+            })
             .ToList();
     }
 
-    private void OnWarehouseChanged(int v)
+    private async Task OnWarehouseChanged(int v)
     {
         warehouseId = v;
+        await LoadWarehouseStocksAsync();
         RebuildProductLookup();
 
-        // سطرهایی که کالایشان متعلق به انبار دیگری است، پاک می‌شوند
+        // سطرهایی که کالایشان دیگر در فهرست مجاز این انبار نیست، پاک می‌شوند
+        var validProductIds = productLookup.Select(x => x.Id).ToHashSet();
         foreach (var l in lines.Where(x => x.ProductId > 0).ToList())
         {
-            var p = products.FirstOrDefault(x => x.Id == l.ProductId);
-            if (p is not null && !p.IsService && p.WarehouseId is > 0 && p.WarehouseId != warehouseId)
+            if (!validProductIds.Contains(l.ProductId))
             {
+                var p = products.FirstOrDefault(x => x.Id == l.ProductId);
                 l.ProductId = 0;
                 l.Unit = "";
-                Toast.Info($"کالای «{p.Name}» مخصوص انبار دیگری است و از سطرها حذف شد.");
+                l.PriceText = "";
+                l.DiscountText = "";
+                l.DiscountAmount = 0;
+                l.DiscountPercent = 0;
+                Toast.Info($"کالای «{p?.Name ?? "انتخاب‌شده"}» در این انبار موجود/مجاز نیست و از سطرها حذف شد.");
             }
+        }
+    }
+
+    private static void RecalcDiscount(LineVm l)
+    {
+        var gross = l.Gross;
+        if (l.DiscountIsAmount)
+        {
+            l.DiscountAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
+            l.DiscountPercent = gross > 0 ? Math.Round(l.DiscountAmount * 100m / gross, 2) : 0;
+        }
+        else
+        {
+            l.DiscountPercent = Math.Clamp(l.DiscountPercent, 0, 100);
+            l.DiscountAmount = Math.Round(gross * l.DiscountPercent / 100m, 0);
+        }
+    }
+
+    private void OnLineDiscountInput(LineVm l, string? raw)
+    {
+        l.DiscountText = raw ?? "";
+        var val = Math.Max(0, Fa.ParseDecimal(raw));
+        if (val <= 100)
+        {
+            l.DiscountIsAmount = false;
+            l.DiscountPercent = val;
+            l.DiscountAmount = 0;
+        }
+        else
+        {
+            l.DiscountIsAmount = true;
+            l.DiscountAmount = val;
+        }
+        RecalcDiscount(l);
+    }
+
+    private void OnLineDiscountBlur(LineVm l)
+    {
+        RecalcDiscount(l);
+        if (l.DiscountIsAmount)
+        {
+            l.DiscountText = l.DiscountAmount > 0 ? FormatNum(((long)l.DiscountAmount).ToString()) : "";
+        }
+        else
+        {
+            l.DiscountText = l.DiscountPercent > 0 ? l.DiscountPercent.ToString("0.##") : "";
         }
     }
 
@@ -1319,7 +1571,16 @@
             Date = date.Value,
             Description = description,
             ReferrerId = Type == TransactionType.Sale && referrerId > 0 ? referrerId : null,
-            Lines = validLines.Select(l => new OrderLineInput { Id = l.Id, ProductId = l.ProductId, Quantity = l.Qty, Price = l.Price }).ToList()
+            Lines = validLines.Select(l => new OrderLineInput
+            {
+                Id = l.Id,
+                ProductId = l.ProductId,
+                Quantity = l.Qty,
+                Price = l.Price,
+                DiscountPercent = l.DiscountPercent,
+                DiscountAmount = l.DiscountAmount,
+                DiscountIsAmount = l.DiscountIsAmount
+            }).ToList()
         };
 
         // اطلاعات پرداخت (خرید و فروش)

@@ -1,3 +1,4 @@
+using Inventory.Shared;
 using System.Text.Json.Serialization;
 
 namespace Inventory.Shared.Dtos;
@@ -11,7 +12,10 @@ public class OrderLine
     public string Unit { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
-    public decimal Total => Quantity * Price;
+    public decimal DiscountPercent { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public bool DiscountIsAmount { get; set; }
+    public decimal Total => Math.Max(0, (Quantity * Price) - DiscountAmount);
 
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
@@ -120,6 +124,9 @@ public class ChequeDto
     public DateTime DueDate { get; set; }
     public bool IsCleared { get; set; }
     public DateTime? ClearedAt { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public DateTime? BouncedAt { get; set; }
+    public string? BounceReason { get; set; }
     public string? Note { get; set; }
 }
 
@@ -140,6 +147,9 @@ public class OrderLineInput
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
+    public decimal DiscountPercent { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public bool DiscountIsAmount { get; set; }
 
     /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
     [JsonIgnore]
@@ -243,6 +253,9 @@ public class AdminDashboard
     /// <summary>چک‌هایی که امروز باید پاس شوند</summary>
     public List<ChequeAlertItem> TodayCheques { get; set; } = new();
 
+    /// <summary>چک‌های پرداختی ما (صادره به تأمین‌کننده) که سررسید شده یا امروز سررسید دارند</summary>
+    public List<ChequeAlertItem> IssuedCheques { get; set; } = new();
+
     /// <summary>روند فروش/سود ۳۰ روز اخیر (برای نمودار)</summary>
     public List<TrendPoint> DailyTrend { get; set; } = new();
 
@@ -294,6 +307,8 @@ public class ChequeAlertItem
     public string OrderNumber { get; set; } = "";
     public decimal Amount { get; set; }
     public DateTime DueDate { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public string? BounceReason { get; set; }
 }
 
 /// <summary>آیتم فعالیت اخیر برای داشبورد</summary>
@@ -354,4 +369,63 @@ public class ExpenseDto
 
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>مدل مدیریت چک در سامانه فروشگاهی (دریافتی و پرداختی)</summary>
+public class ShopChequeItem
+{
+    public int Id { get; set; }
+    public int TransactionId { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public TransactionType TransactionType { get; set; }
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? PartyMobile { get; set; }
+    public string Number { get; set; } = "";
+    public string? BankName { get; set; }
+    public string? AccountInfo { get; set; }
+    public string? OwnerName { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime DueDate { get; set; }
+    public bool IsCleared { get; set; }
+    public DateTime? ClearedAt { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public DateTime? BouncedAt { get; set; }
+    public string? BounceReason { get; set; }
+    public string? Note { get; set; }
+    public int DaysOverdue { get; set; }
+}
+
+/// <summary>مدل مدیریت اقساط در سامانه فروشگاهی</summary>
+public class ShopInstallmentItem
+{
+    public int Id { get; set; }
+    public int TransactionId { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? PartyMobile { get; set; }
+    public int No { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime DueDate { get; set; }
+    public bool IsPaid { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public int DaysOverdue { get; set; }
+}
+
+/// <summary>آمار و خلاصه وضعیت چک‌ها و اقساط فروشگاهی</summary>
+public class ShopCreditSummary
+{
+    public int InHandChequesCount { get; set; }
+    public decimal InHandChequesTotal { get; set; }
+    public int ClearedChequesCount { get; set; }
+    public decimal ClearedChequesTotal { get; set; }
+    public int BouncedChequesCount { get; set; }
+    public decimal BouncedChequesTotal { get; set; }
+    public int PendingInstallmentsCount { get; set; }
+    public decimal PendingInstallmentsTotal { get; set; }
+    public int PaidInstallmentsCount { get; set; }
+    public decimal PaidInstallmentsTotal { get; set; }
+    public int OverdueInstallmentsCount { get; set; }
+    public decimal OverdueInstallmentsTotal { get; set; }
 }

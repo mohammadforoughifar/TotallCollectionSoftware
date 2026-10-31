@@ -5,7 +5,6 @@ using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Diagnostics;
 using System.IO.Compression;
 
 namespace Inventory.Api.Controllers.Office;
@@ -70,13 +69,12 @@ public class OutgoingLettersController : RbacControllerBase
     // ==================== کارتابل — دریافتی (شامل امضا) و ارسالی ====================
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
-        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize, starredOnly, attachOnly));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
     [HttpGet("signing-inbox")]
@@ -98,13 +96,12 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
-        [FromQuery] bool? starredOnly = null, [FromQuery] bool? attachOnly = null)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         page = Paging.ToPage(skip, take, page);
         pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize, starredOnly, attachOnly));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("stats")]
@@ -120,17 +117,13 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        // کاربر حاضر در گردش نامه (ایجادکننده، امضاکننده یا دارندهٔ ارجاع — از جمله گیرنده‌ای که
-        // از دستور کار به گردش اضافه شده) بدون مجوز عمومی کارتابل هم می‌تواند نامه را باز کند.
-        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
         // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
         // دیتابیس‌های قدیمی ممکن است جدول رونوشت‌ها را نداشته باشند؛ قبل از
         // خواندن جزئیات، اسکیمای idempotent آن را تضمین می‌کنیم.
         await OutgoingCopyToSchemaV1.EnsureAsync(Db);
-        // ستون‌های IsRead/DateRead امضاکنندگان (خوانده‌شدن مستقل از امضا) برای دیتابیس‌های قدیمی
-        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
         try
         {
             var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
@@ -491,103 +484,57 @@ public class OutgoingLettersController : RbacControllerBase
     /// • withCopy=false → «بدون رونوشت» (نسخه‌ای که تحویل سازمان مقصد می‌شود)
     /// </summary>
     [HttpGet("{id:int}/print")]
-    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true,
-        [FromQuery] bool withMargin = true, [FromQuery] bool withLetterhead = true)
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true)
     {
-        var accessTimer = Stopwatch.StartNew();
-        // چه کسانی می‌توانند چاپ بگیرند؟
-        //   • دبیرخانهٔ نامهٔ صادره و مدیر (بدون قید)
-        //   • ایجادکنندهٔ نامه، امضاکنندگان و هر کاربری که نامه به او ارجاع شده (دریافت‌کننده)
-        // برای گروه دوم، داشتن مجوز «خواندن» الزامی نیست تا کاربری که نامه را ساخته یا
-        // دریافت کرده ولی مجوز کارتابل ندارد هم بتواند نسخهٔ چاپی بگیرد.
-        var isAdmin = await IsAdminAsync();
-        // HasDabirkhaneAsync also checks Admin. We already evaluated that permission above,
-        // so avoid repeating the two RBAC database checks for the same request.
-        var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane");
-        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
-        {
-            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه، مدیر، ایجادکننده و دریافت‌کنندگان نامه مجاز است." });
-        }
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        // چاپ نامه صادره فقط برای کاربران دبیرخانه مجاز است.
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه مجاز است." });
 
         if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
-        _logger.LogInformation(
-            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-access-checks StageMs={StageMs}",
-            id, accessTimer.ElapsedMilliseconds);
+        // چاپ نامه صادره فقط زمانی مجاز است که همه امضاکنندگان، امضای خود را ثبت کرده باشند
+        // و تصویر امضای آن‌ها نیز برای درج در سربرگ موجود باشد.
+        var signers = await Db.OutgoingLetterSigners.AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.SourceId == id && !x.IsDelete)
+            .OrderBy(x => x.Order).ThenBy(x => x.Id)
+            .ToListAsync();
+        var missingSignature = signers
+            .Where(x => !x.IsSigned || string.IsNullOrWhiteSpace(x.User?.SignaturePath)
+                || _store.ReadBytes(x.User.SignaturePath) is not { Length: > 0 })
+            .Select(x =>
+            {
+                var name = x.User == null
+                    ? $"کاربر {x.UserId}"
+                    : ($"{x.User.FirstName} {x.User.LastName}").Trim();
+                return string.IsNullOrWhiteSpace(name) ? $"کاربر {x.UserId}" : name;
+            })
+            .ToList();
+        if (missingSignature.Count > 0)
+            return BadRequest(new
+            {
+                message = $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignature)}"
+            });
 
         byte[]? pdf;
-        var generationTimer = Stopwatch.StartNew();
         try
         {
-            // دبیرخانه و مدیر: چاپ فقط با امضای کامل همهٔ امضاکنندگان.
-            // ایجادکننده/دریافت‌کننده (کاربران غیر دبیرخانه): چاپ ممکن است و جای امضا با نام و سِمَت پر می‌شود.
-            pdf = await _print.GeneratePdfAsync(id, size, withCopy, withMargin, withLetterhead,
-                requireSignatures: hasDabirkhane || isAdmin);
+            pdf = await _print.GeneratePdfAsync(id, size, withCopy);
         }
         catch (RequiredCompanyLetterheadPrintException ex)
         {
             return StatusCode(500, new { message = ex.Message });
         }
-        catch (OutgoingSignaturePrintException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            // هر خطای دیگری از موتور چاپ (فونت، PDFsharp، QuestPDF، قطع اتصال دیتابیس) قبلاً
-            // به‌صورت 500 خالی به مرورگر می‌رفت و پنجرهٔ چاپ فقط «خطا» نشان می‌داد. اکنون
-            // علت واقعی هم در لاگ و هم در پیام کاربر می‌آید.
-            _logger.LogError(ex,
-                "ساخت PDF نامه صادره ناموفق بود. LetterId={LetterId}, Size={Size}, WithCopy={WithCopy}, WithMargin={WithMargin}, WithLetterhead={WithLetterhead}",
-                id, size, withCopy, withMargin, withLetterhead);
-            return StatusCode(500, new
-            {
-                message = $"ساخت PDF نامه ناموفق بود ({ex.GetType().Name}): {ex.Message}"
-            });
-        }
-        finally
-        {
-            _logger.LogInformation(
-                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=controller-pdf-generation StageMs={StageMs}",
-                id, generationTimer.ElapsedMilliseconds);
-        }
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
-        // Preserve the established human-readable download filename, while selecting only
-        // the two small number fields rather than materializing the letter again.
-        var filenameTimer = Stopwatch.StartNew();
-        var number = await Db.OutgoingLetters.AsNoTracking()
-            .Where(l => l.Id == id)
-            .Select(l => l.SadereNumber ?? l.LetterNumber)
-            .FirstOrDefaultAsync();
-        _logger.LogInformation(
-            "OutgoingLetterPrintTiming LetterId={LetterId} Stage=db-filename StageMs={StageMs}",
-            id, filenameTimer.ElapsedMilliseconds);
-        number ??= id.ToString();
+        var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+        var number = letter?.SadereNumber ?? letter?.LetterNumber ?? id.ToString();
         var version = withCopy ? "با-رونوشت" : "بدون-رونوشت";
         var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}-{version}.pdf";
         return File(pdf, "application/pdf", fileName);
-    }
-
-    /// <summary>
-    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و چرا؟
-    /// فقط خواندن؛ برای پشتیبانی «چرا سربرگ شرکت خوانده نمی‌شود» را در یک درخواست روشن می‌کند.
-    /// نمونه: GET api/outgoing-letters/123/print/diagnose?size=A4
-    /// </summary>
-    [HttpGet("{id:int}/print/diagnose")]
-    public async Task<IActionResult> PrintDiagnose(int id, [FromQuery] string size = "A4")
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        if (!await HasDabirkhaneAsync())
-            return StatusCode(403, new { message = "گزارش تشخیص چاپ فقط برای دبیرخانه مجاز است." });
-
-        var diagnostics = await _print.DiagnoseAsync(id, size);
-        if (diagnostics == null) return NotFound(new { message = "نامه پیدا نشد." });
-
-        return Ok(diagnostics);
     }
 
     // ==================== گردش / ارجاع ====================
@@ -602,10 +549,10 @@ public class OutgoingLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         var hasDabirkhane = await HasDabirkhaneAsync();
 
-        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id) && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
-        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane || await InFlowAsync(id), pagination), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane, pagination), skip, take));
     }
 
     [HttpPost("erja")]
@@ -636,19 +583,6 @@ public class OutgoingLettersController : RbacControllerBase
     {
         await _erja.MarkReadAsync(erjaId, MyUserId);
         return Ok();
-    }
-
-    /// <summary>
-    /// «خوانده شد» برای یک نامهٔ صادره — هم ارجاع‌های همین کاربر و هم ردیف امضای او.
-    /// لازم است چون امضاکننده ممکن است هیچ ارجاعی نداشته باشد و پیش‌تر فقط با امضا
-    /// کردن از فهرست خوانده‌نشده‌ها خارج می‌شد.
-    /// </summary>
-    [HttpPost("{id:int}/read")]
-    public async Task<IActionResult> MarkLetterRead(int id)
-    {
-        await OutgoingSignerReadSchemaV1.EnsureAsync(Db);
-        await _letters.MarkReadAsync(id, MyUserId);
-        return Ok(new { message = "نامه خوانده شد." });
     }
 
     [HttpPost("erja/{erjaId:int}/neshan")]
@@ -686,19 +620,6 @@ public class OutgoingLettersController : RbacControllerBase
 
     [HttpGet("amalgars")]
     public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
-
-    /// <summary>افزودن عملگر ارجاع از داخل فرم ارجاع (دکمهٔ «+»)</summary>
-    [HttpPost("amalgars")]
-    public async Task<IActionResult> CreateAmalgar([FromBody] CreateAmalgarDto dto)
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        try
-        {
-            var created = await _erja.CreateAmalgarAsync(dto?.Title ?? "", dto?.TaeedEmza);
-            return Ok(created);
-        }
-        catch (Exception ex) { return BadRequest(new { message = ex.Message }); }
-    }
 
     // ==================== پیش‌نویس ====================
 
@@ -770,27 +691,24 @@ public class OutgoingLettersController : RbacControllerBase
 
     // ==================== پیوست‌ها ====================
 
-    private Task<bool> InFlowAsync(int letterId)
+    private async Task<bool> InFlowAsync(int letterId)
     {
-        // Keep authorization semantics but issue one SQL query instead of up to three
-        // sequential round-trips (letter, erja, signer), which delayed print requests.
-        var userId = MyUserId;
-        return Db.OutgoingLetters.AsNoTracking().AnyAsync(letter =>
-            letter.Id == letterId && !letter.IsDelete &&
-            (letter.CreatorUserId == userId ||
-             Db.Erjas.Any(erja => erja.SourceId == letter.Id && erja.ReciverUserId == userId && !erja.IsDelete) ||
-             Db.OutgoingLetterSigners.Any(signer => signer.SourceId == letter.Id && signer.UserId == userId && !signer.IsDelete)));
+        var letter = await Db.OutgoingLetters.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) return false;
+        if (letter.CreatorUserId == MyUserId) return true;
+        if (await Db.Erjas.AnyAsync(e => e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete)) return true;
+        if (await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == letterId && s.UserId == MyUserId && !s.IsDelete)) return true;
+        return false;
     }
 
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
-        {
-            if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
-        }
 
         var list = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == AttachmentModule && a.RefId == id)
@@ -840,15 +758,6 @@ public class OutgoingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
-
-        // اعلان «پیوست جدید» برای ایجادکننده، امضاکنندگان و گیرندگانی که نامه را رویت کرده‌اند
-        try
-        {
-            await Inventory.Api.Services.Office.LetterAttachmentNotifier.NotifyNewAttachmentAsync(
-                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
-        }
-        catch { /* اعلان نباید بارگذاری پیوست را fail کند */ }
-
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 

@@ -1500,22 +1500,17 @@ body {
    بالاتر از کارت‌های هم‌سطح نگه داشته می‌شود. (منوهای اصلیِ تقویم/کمبو از این
    به بعد «شناور» هستند و اصلاً به این شبکه نیاز ندارند؛ این فقط حافظِ
    منوهای inline دیگر است.) */
-.app-content > *:not(.modal):has(.dp-popover),
-.app-content > *:not(.modal):has(.ss-menu),
-.app-content > *:not(.modal):has(.ms-combo-menu),
-.app-content > *:not(.modal):has(.om-combo-menu),
-/* صفحاتِ داخل تب‌ها یک لایه عمیق‌ترند (main.app-content > .tabpane > صفحه) */
-.tabpane > *:not(.modal):has(.dp-popover),
-.tabpane > *:not(.modal):has(.ss-menu),
-.tabpane > *:not(.modal):has(.ms-combo-menu),
-.tabpane > *:not(.modal):has(.om-combo-menu) {
-    position: relative;
-    z-index: 10;
-}
+/* توجه: منوهای شناور (pop-overlay با z=4490 و ss-menu با z=4500) به‌صورت position:fixed
+   در سطح viewport رندر می‌شوند و نیازی به z-index دادن به کانتینر والد ندارند.
+   اعمال z-index روی والدها باعث ایجاد stacking context ناخواسته و در نتیجه افتادن
+   هدر/سایدبار روی عناصر دیگر در رزولوشن‌های متوسط و لپ‌تاپ می‌شد؛ بنابراین این قاعده خنثی شد. */
 
 /* مودال‌ها بالاتر از همه‌ی کارت‌ها باشند (منوهای شناور ۴۵۰۰ بالاتر از مودال می‌مانند) */
-.modal { z-index: 1050; }
-.modal-backdrop { z-index: 1040; }
+/* مودال‌ها و بک‌دراپ باید بالاتر از هدر و سایدبار و اعلان‌ها باشند (z > 2100)
+   تا هیچ هدر، اعلان، منوی کناری یا نوار بالایی روی مودال قرار نگیرد.
+   منوهای شناور کمبو و تقویم نیز با z-index برابر ۴۵۰۰ بالای مودال نمایش داده می‌شوند. */
+.modal { z-index: 3500 !important; }
+.modal-backdrop { z-index: 3490 !important; }
 
 /* کارت‌های داخل مودال نباید overflow:hidden داشته باشند */
 .modal .card { overflow: visible; }

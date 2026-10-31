@@ -13,7 +13,7 @@ internal static class RichLetterPdfRenderer
     private sealed class Node
     {
         public string Tag { get; init; } = "#root";
-        public string Text { get; set; } = string.Empty;
+        public string Text { get; init; } = string.Empty;
         public Dictionary<string, string> Attributes { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<Node> Children { get; } = new();
     }
@@ -25,20 +25,10 @@ internal static class RichLetterPdfRenderer
     private static readonly HashSet<string> BlockTags = new(StringComparer.OrdinalIgnoreCase)
         { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
 
-    // واژهٔ لاتین داخل متن فارسی (مثل «Workflow») باید جدا شود، وگرنه نقطه/ویرگول و
-    // پرانتزِ کنارش با آن جابه‌جا می‌شوند؛ LRI/PDI همان کار <bdi> در HTML را می‌کند.
-    private static readonly Regex LatinRun = new(
-        @"[A-Za-z][A-Za-z0-9_@.\-]*[A-Za-z0-9]|[A-Za-z]",
-        RegexOptions.Compiled);
-
     internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
-        Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false,
-        float paragraphSpacing = 0f)
+        Action<ColumnDescriptor>? keepWithTrailingText = null)
     {
         var root = Parse(RichLetterHtml.Sanitize(html));
-        // برای چیدمان «از دل طرح» (شرکت ۱۰۰۳): هر تکهٔ متنی با RLM محصور می‌شود تا جهت پایهٔ
-        // پاراگراف قطعاً راست‌به‌چپ باشد و ویرگول/نقطهٔ پایانی به ابتدای خط پرت نشود.
-        if (forceRtlParagraph) MarkRightToLeft(root);
         if (keepWithTrailingText != null)
         {
             var lastIndex = root.Children.FindLastIndex(node => node.Tag != "#text" || !string.IsNullOrWhiteSpace(node.Text));
@@ -49,12 +39,10 @@ internal static class RichLetterPdfRenderer
                     trailing.Tag == "div" && !trailing.Children.Any(child => BlockTags.Contains(child.Tag));
                 if (isParagraph && TextLength(trailing) <= 360)
                 {
-                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight,
-                        paragraphSpacing);
+                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight);
                     column.Item().ShowEntire().Column(group =>
                     {
-                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight,
-                            paragraphSpacing);
+                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight);
                         keepWithTrailingText(group);
                     });
                     return true;
@@ -69,7 +57,7 @@ internal static class RichLetterPdfRenderer
                         var prefixItems = trailing.Children.Where(child => child.Tag == "li").Take(items.Count - 2).ToList();
                         var preceding = root.Children.Take(lastIndex).ToList();
                         if (prefixItems.Count > 0) preceding.Add(CloneWithChildren(trailing, prefixItems));
-                        RenderChildren(column, preceding, defaultFontSize, lineHeight, paragraphSpacing);
+                        RenderChildren(column, preceding, defaultFontSize, lineHeight);
                         column.Item().ShowEntire().Column(group =>
                         {
                             RenderListItem(group, items[^2], ordered, items.Count - 1, defaultFontSize, lineHeight);
@@ -82,35 +70,9 @@ internal static class RichLetterPdfRenderer
             }
         }
 
-        RenderChildren(column, root.Children, defaultFontSize, lineHeight, paragraphSpacing);
+        RenderChildren(column, root.Children, defaultFontSize, lineHeight);
         return false;
     }
-
-    /// <summary>
-    /// هر تکهٔ متنی را با RLM (U+200F) می‌پوشاند: کاراکتر «قویِ راست‌به‌چپ» در ابتدا، جهت پایهٔ
-    /// پاراگراف را قطعی می‌کند و نسخهٔ پایانی، علائم نگارشی خنثی را داخل همان اجر (run) RTL
-    /// نگه می‌دارد؛ نتیجه: «،با سلام و احترام» و «.نمایند» دیگر جابه‌جا نمی‌شوند.
-    /// </summary>
-    private static void MarkRightToLeft(Node node)
-    {
-        if (node.Tag == "#text")
-        {
-            if (!string.IsNullOrWhiteSpace(node.Text))
-                node.Text = "\u200F" + IsolateLatinRuns(node.Text.Trim()) + "\u200F";
-            return;
-        }
-
-        foreach (var child in node.Children) MarkRightToLeft(child);
-    }
-
-    /// <summary>
-    /// واژه‌های لاتین را با LRI/PDI (U+2066/U+2069) جدا می‌کند — معادل <c>&lt;bdi&gt;</c> در
-    /// HTML. بدون این جداسازی، «Workflow» و علائم کنارش در پاراگراف راست‌به‌چپ جابه‌جا
-    /// می‌شوند (آیتم‌های فهرست با واژهٔ لاتین بدترین نمونه بودند).
-    /// </summary>
-    private static string IsolateLatinRuns(string text) => LatinRun.IsMatch(text)
-        ? LatinRun.Replace(text, match => "\u2066" + match.Value + "\u2069")
-        : text;
 
     private static int TextLength(Node node) => node.Tag == "#text"
         ? node.Text.Length
@@ -164,18 +126,13 @@ internal static class RichLetterPdfRenderer
         return root;
     }
 
-    private static void RenderChildren(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize,
-        float lineHeight, float paragraphSpacing = 0f)
+    private static void RenderChildren(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize, float lineHeight)
     {
         var inline = new List<Node>();
-        // فاصلهٔ پاراگراف فقط «بین» بلوک‌ها می‌آید؛ نه قبل از اولین بلوک و نه بعد از آخرین.
-        var emitted = false;
-        float BlockGap() => emitted ? paragraphSpacing : 0f;
         void FlushInline()
         {
             if (inline.Count == 0) return;
-            AddTextBlock(column, inline, fontSize, lineHeight, bold: false, extraTop: BlockGap());
-            emitted = true;
+            AddTextBlock(column, inline, fontSize, lineHeight, bold: false, extraTop: 0);
             inline.Clear();
         }
 
@@ -194,19 +151,16 @@ internal static class RichLetterPdfRenderer
                 {
                     case "ul":
                     case "ol":
-                        RenderList(column, node, fontSize, lineHeight, BlockGap());
-                        emitted = true;
+                        RenderList(column, node, fontSize, lineHeight);
                         break;
                     case "table":
-                        RenderTable(column, node, fontSize, lineHeight, BlockGap());
-                        emitted = true;
+                        RenderTable(column, node, fontSize, lineHeight);
                         break;
                     case "hr":
                         column.Item().PaddingVertical(4).LineHorizontal(0.6f).LineColor("#94a3b8");
-                        emitted = true;
                         break;
                     case "blockquote":
-                        column.Item().PaddingTop(BlockGap()).PaddingRight(10).Text(text =>
+                        column.Item().PaddingRight(10).Text(text =>
                         {
                             text.DefaultTextStyle(style => style
                                 .FontSize(fontSize)
@@ -215,29 +169,19 @@ internal static class RichLetterPdfRenderer
                             text.AlignRight();
                             AppendInline(text, node, new Formatting(), fontSize);
                         });
-                        emitted = true;
                         break;
                     case "div":
                         if (node.Children.Any(child => child.Tag != "#text" && BlockTags.Contains(child.Tag)))
-                        {
-                            column.Item().PaddingTop(BlockGap()).Column(nested =>
-                                RenderChildren(nested, node.Children, fontSize, lineHeight, paragraphSpacing));
-                            emitted = true;
-                        }
+                            RenderChildren(column, node.Children, fontSize, lineHeight);
                         else
-                        {
-                            AddTextBlock(column, node.Children, fontSize, lineHeight, bold: false,
-                                extraTop: BlockGap(), node.Attributes.GetValueOrDefault("style"));
-                            emitted = true;
-                        }
+                            AddTextBlock(column, node.Children, fontSize, lineHeight, bold: false, extraTop: 0,
+                                node.Attributes.GetValueOrDefault("style"));
                         break;
                     default:
                         var heading = node.Tag.Length == 2 && node.Tag[0] == 'h';
                         var headingSize = heading ? Math.Min(fontSize + 2, 20) : fontSize;
-                        AddTextBlock(column, node.Children, headingSize, lineHeight, heading,
-                            Math.Max(ExtraTop(node.Tag, fontSize), BlockGap()),
+                        AddTextBlock(column, node.Children, headingSize, lineHeight, heading, ExtraTop(node.Tag, fontSize),
                             node.Attributes.GetValueOrDefault("style"));
-                        emitted = true;
                         break;
                 }
             }
@@ -256,13 +200,6 @@ internal static class RichLetterPdfRenderer
     {
         var item = column.Item();
         if (extraTop > 0) item = item.PaddingTop(extraTop);
-        RenderText(item, nodes, fontSize, lineHeight, bold, style);
-    }
-
-    /// <summary>یک بلوک متنی (پاراگراف) را در هر کادری می‌نویسد؛ برای سلول‌های Row هم استفاده می‌شود.</summary>
-    private static void RenderText(IContainer item, IReadOnlyList<Node> nodes, float fontSize,
-        float lineHeight, bool bold, string? style = null)
-    {
         var blockStyle = ParseStyle(style);
         if (blockStyle.TryGetValue("font-size", out var size) && TryFontSize(size, out var styledSize))
             fontSize = Math.Clamp(styledSize, 6, 30);
@@ -283,68 +220,42 @@ internal static class RichLetterPdfRenderer
         });
     }
 
-    private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight,
-        float topGap = 0f)
+    private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight)
     {
         var ordered = list.Tag == "ol";
-        var items = list.Children.Where(x => x.Tag == "li").ToList();
-        if (items.Count == 0) return;
-
-        // فاصلهٔ عمودی یکسان بالای فهرست، بین آیتم‌ها و بعد از فهرست.
-        var spacing = fontSize * 0.35f;
-        column.Item().PaddingTop(topGap).PaddingVertical(fontSize * 0.45f).Column(box =>
+        var index = 0;
+        foreach (var item in list.Children.Where(x => x.Tag == "li"))
         {
-            for (var position = 0; position < items.Count; position++)
-                RenderListItem(box, items[position], ordered, position + 1, fontSize, lineHeight,
-                    position == 0 ? 0f : spacing);
-        });
+            index++;
+            RenderListItem(column, item, ordered, index, fontSize, lineHeight);
+        }
     }
 
-    /// <summary>
-    /// یک آیتم فهرست در دو ستون: متن در ستون خودش و شماره/گلوله در ستون راست.
-    /// قبلاً شماره و متن در یک بلوک متنی بودند؛ نتیجه این بود که آیتم بلند در خط دوم به
-    /// زیر شماره می‌رفت و شمارهٔ آیتم بعدی به انتهای همان خط می‌چسبید. ستون‌بندی
-    /// (مثل <c>list-style-position: outside</c>) تورفتگی آویزان درست می‌دهد و شماره را
-    /// هرگز از متنش جدا نمی‌کند.
-    /// </summary>
     private static void RenderListItem(ColumnDescriptor column, Node item, bool ordered, int index,
-        float fontSize, float lineHeight, float topPadding = 0f)
+        float fontSize, float lineHeight)
     {
         var nested = item.Children.Where(x => x.Tag is "ol" or "ul").ToList();
-        var content = item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")).ToList();
-        // RLM در ابتدا و انتها: جهت پایه راست‌به‌چپ قطعی می‌شود و نقطهٔ پایانِ شماره
-        // («۱.») سمت چپ عدد می‌ماند، نه ابتدای خط.
-        var marker = ordered
-            ? $"\u200F{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."
-            : "\u200F•";
-        // شماره‌های دو رقمی ستون پهن‌تری می‌گیرند تا متنشان جابه‌جا نشود.
-        var markerWidth = ordered ? fontSize * (index >= 10 ? 2.1f : 1.5f) : fontSize;
-
-        var element = topPadding > 0 ? column.Item().PaddingTop(topPadding) : column.Item();
-        element.Row(row =>
+        var marker = ordered ? PersianDigits(index.ToString(CultureInfo.InvariantCulture)) + ". " : "• ";
+        column.Item().Text(text =>
         {
-            RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f), content, fontSize, lineHeight,
-                bold: false);
-            row.ConstantItem(markerWidth).Text(text =>
-            {
-                text.DefaultTextStyle(style => style
-                    .FontSize(fontSize)
-                    .LineHeight(lineHeight)
-                    .DirectionFromRightToLeft());
-                text.AlignRight();
-                text.Span(marker).Bold();
-            });
+            text.DefaultTextStyle(style => style
+                .FontSize(fontSize)
+                .LineHeight(lineHeight)
+                .DirectionFromRightToLeft());
+            text.AlignRight();
+            text.Span(marker).Bold();
+            foreach (var child in item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")))
+                AppendInline(text, child, new Formatting(), fontSize);
         });
         foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
     }
 
-    private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight,
-        float topGap = 0f)
+    private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight)
     {
         var rows = Descendants(tableNode).Where(x => x.Tag == "tr").ToList();
         if (rows.Count == 0) return;
         var columnCount = Math.Max(1, rows.Max(row => row.Children.Count(cell => cell.Tag is "td" or "th")));
-        column.Item().PaddingTop(topGap).Table(table =>
+        column.Item().Table(table =>
         {
             table.ColumnsDefinition(columns =>
             {

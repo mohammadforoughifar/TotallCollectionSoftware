@@ -149,9 +149,14 @@ else
                                             <i class="bi bi-x-octagon"></i> رد
                                         </button>
                                     </div>
-                                    <button class="btn btn-link btn-sm" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}"))">
-                                        مشاهدهٔ جزئیات و گردش
-                                    </button>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-primary btn-sm flex-fill" title="ویرایش تخفیف و اقلام سفارش توسط مدیر بدون محدودیت سقف" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}/edit"))">
+                                            <i class="bi bi-pencil-square"></i> ویرایش / تغییر تخفیف
+                                        </button>
+                                        <button class="btn btn-link btn-sm text-decoration-none" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}"))">
+                                            جزئیات و گردش
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

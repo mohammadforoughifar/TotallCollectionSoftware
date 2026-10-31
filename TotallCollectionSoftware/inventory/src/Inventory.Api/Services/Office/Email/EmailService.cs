@@ -1538,36 +1538,15 @@ public class EmailService : IEmailService
         return spam;
     }
 
-    /// <summary>نامِ خودساختهٔ تصاویر درون‌متن در بیشتر کلاینت‌ها: image001.png، image002.jpg…</summary>
-    private static readonly System.Text.RegularExpressions.Regex GeneratedInlineName = new(
-        @"^image\d{3}\.(png|jpe?g|gif|bmp|webp)$",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
-
     /// <summary>
     /// علامت‌زدنِ «تصویر درونِ متن»: هر پیوستی که آدرسش داخل بدنه آمده، بخشی از
     /// بدنه است و نباید به‌عنوان فایل پیوست نمایش/منتقل شود.
-    /// <para>
-    /// حالتِ دوم (ایمیل‌های قدیمی/ترمیم‌نشده): بدنه هنوز <c>cid:</c> دارد و آدرسِ
-    /// پیوست در آن نیست، ولی تصویرِ درون‌متن ذخیره شده است. اگر بدنه تصویر دارد و نام
-    /// فایل «نامِ خودساختهٔ کلاینت» و حجمش کوچک است، همان تصویرِ درون‌متن (لوگو/امضا)
-    /// است؛ عکسِ واقعیِ پیوستی معمولاً نام و حجمِ دیگری دارد.
-    /// </para>
     /// </summary>
     private static void MarkInlineAttachments(List<EmailAttachmentDto> atts, string? body)
     {
-        var bodyHasImage = body is not null &&
-            body.Contains("<img", StringComparison.OrdinalIgnoreCase);
-
         foreach (var a in atts)
-        {
-            a.IsInline =
-                body != null && body.Contains($"/api/email/attachments/{a.AttachmentId}/download", StringComparison.OrdinalIgnoreCase)
-                // تصویرِ درون‌متنی که آدرسش داخل بدنه ترمیم نشده است
-                || (bodyHasImage
-                    && a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                    && a.Size is >= 0 and <= 262_144
-                    && GeneratedInlineName.IsMatch(System.IO.Path.GetFileName(a.RealName ?? "")));
-        }
+            a.IsInline = body != null &&
+                body.Contains($"/api/email/attachments/{a.AttachmentId}/download", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

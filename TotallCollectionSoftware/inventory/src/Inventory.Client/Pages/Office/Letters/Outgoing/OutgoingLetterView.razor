@@ -80,10 +80,6 @@
                         </div>
                         <div><b>فایل ثبت‌شدهٔ شرکت:</b> <span style="word-break:break-all">@(diag.RegisteredLetterheadPath ?? "—")</span></div>
                         <div><b>منبع واقعی چاپ:</b> @diag.LetterheadSource @(diag.PreferTemplateLetterhead ? "(اولویت طرح قالب)" : "(اولویت فایل ثبت‌شده)")</div>
-                        <div>
-                            <b>چیدمان از فایل طرح:</b>
-                            @(diag.DesignDriven ? $"بله — {diag.DesignLayoutSummary}" : "نه (چیدمان کدِ ثابت)")
-                        </div>
                         <div><b>پوشه‌های طرح موجود:</b> <span style="word-break:break-all">@diag.AvailableDesigns</span></div>
                         <div style="margin-top:8px;padding:8px;background:#fff7ed;border-radius:8px"><b>نتیجه:</b> @diag.Hint</div>
                     </div>

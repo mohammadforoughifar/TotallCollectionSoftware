@@ -48,7 +48,3 @@ sql/legacy-aria/
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.pdf
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.png
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.jpg
-
-# پایتون (تست‌های قراردادی)
-__pycache__/
-*.pyc

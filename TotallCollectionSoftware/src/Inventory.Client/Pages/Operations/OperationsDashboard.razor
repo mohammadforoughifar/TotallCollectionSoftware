@@ -21,11 +21,7 @@ else
             <h1>داشبورد جامع فروشگاهی</h1>
                     </div>
         <div class="ms-auto d-flex flex-wrap gap-2">
-            @if (Auth.CanSee("Orders"))
-            {
-                <a class="btn btn-outline-primary" href="/operations/reports/orders/sale"><i class="bi bi-cart-check"></i> گزارش فروش</a>
-                <a class="btn btn-outline-primary" href="/operations/reports/orders/purchase"><i class="bi bi-bag-check"></i> گزارش خرید</a>
-            }
+
             <button class="btn btn-outline-secondary" disabled="@loading" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
         </div>
     </div>

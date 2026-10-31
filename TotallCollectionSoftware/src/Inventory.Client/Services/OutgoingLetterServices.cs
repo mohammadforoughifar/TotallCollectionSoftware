@@ -6,10 +6,8 @@ public interface IOutgoingLetterService
 {
     /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
     Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
-        bool? starredOnly = null, bool? attachOnly = null);
-    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
-        bool? starredOnly = null, bool? attachOnly = null);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync();
     Task<OutgoingLetterDetailDto> GetDetailAsync(int letterId);
@@ -21,9 +19,6 @@ public interface IOutgoingLetterService
     Task AddErjaAsync(AddErjaDto dto);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
     Task MarkReadAsync(int erjaId);
-
-    /// <summary>«خوانده شد» برای کل نامه: ارجاع‌های من + ردیف امضای من (بدون نیاز به امضا).</summary>
-    Task MarkLetterReadAsync(int letterId);
     Task<bool> ToggleNeshanAsync(int erjaId);
 
     /// <summary>نشان‌کردن (ستاره) نامه صادره ارسالی توسط فرستنده — روی خود نامه</summary>
@@ -31,9 +26,6 @@ public interface IOutgoingLetterService
     Task<bool> ToggleBayeganiAsync(int erjaId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
-
-    /// <summary>افزودن عملگر ارجاع تازه (دکمهٔ «+» در فرم ارجاع)</summary>
-    Task<AmalgarDto> CreateAmalgarAsync(string title);
     Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
     Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null);
     Task<OutgoingPishnevisDto> GetPishnevisAsync(int id);
@@ -55,21 +47,12 @@ public interface IOutgoingLetterService
 
     // ==================== دبیرخانه نامه صادره ====================
     Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null);
-
-    /// <summary>فهرست دبیرخانهٔ نامهٔ صادره با صفحه‌بندی سمت سرور (skip/take).</summary>
-    Task<PagedResult<DabirkhaneListItemDto>> GetDabirkhanePageAsync(DabirkhaneSearchDto? filter = null, int page = 1, int pageSize = 15);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
 
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
     Task<LetterCompanyDto?> GetActiveCompanyAsync();
-
-    /// <summary>
-    /// تشخیص چاپ: کدام شرکت/طرح برای این نامه انتخاب می‌شود و اگر طرح شرکت خوانده
-    /// نمی‌شود چرا. فقط خواندن؛ برای پشتیبانی طراحی شده است.
-    /// </summary>
-    Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4");
 
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
@@ -88,8 +71,7 @@ public interface IOutgoingLetterService
     /// دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5
     /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
     /// </summary>
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, CancellationToken cancellationToken = default);
-    Task<string?> GetUserSignatureDataUrlAsync(int userId);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true);
     /// <summary>دانلود کلی پیوست‌های نامهٔ صادره به‌صورت ZIP — پیاده‌سازی آن در همین سرویس وجود داشت و اعلان اینترفیس جا افتاده بود.</summary>
     Task<byte[]> DownloadAttachmentsZipAsync(int letterId);
 }
@@ -117,24 +99,18 @@ public class OutgoingLetterService : IOutgoingLetterService
             $"api/outgoing-letters/{letterId}/copy-tos",
             new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
-        bool? starredOnly = null, bool? attachOnly = null)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
-        if (starredOnly == true) qs.Add("starredOnly=true");
-        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
-        bool? starredOnly = null, bool? attachOnly = null)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
     {
         var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
-        if (starredOnly == true) qs.Add("starredOnly=true");
-        if (attachOnly == true) qs.Add("attachOnly=true");
         return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/sent?{string.Join("&", qs)}");
     }
 
@@ -174,9 +150,6 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task MarkReadAsync(int erjaId) =>
         _api.PostAsync<object>($"api/outgoing-letters/erja/{erjaId}/read");
 
-    public Task MarkLetterReadAsync(int letterId) =>
-        _api.PostAsync<object>($"api/outgoing-letters/{letterId}/read");
-
     public async Task<bool> ToggleNeshanAsync(int erjaId) =>
         (await _api.PostAsync<NeshanResponse>($"api/outgoing-letters/erja/{erjaId}/neshan")).IsNeshan;
 
@@ -197,9 +170,6 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/outgoing-letters/amalgars");
-
-    public Task<AmalgarDto> CreateAmalgarAsync(string title) =>
-        _api.PostAsync<AmalgarDto>("api/outgoing-letters/amalgars", new CreateAmalgarDto { Title = title });
 
     public Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
         => ListOrPaged.GetPagedAsync<OutgoingPishnevisDto>(_api, $"api/outgoing-letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
@@ -310,20 +280,6 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     /// <summary>لیست دبیرخانه با جستجوی پیشرفته — فیلترها به‌صورت پارامتر کوئری ارسال می‌شوند</summary>
     public Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null)
-        => ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{BuildDabirkhaneQuery(filter)}");
-
-    public Task<PagedResult<DabirkhaneListItemDto>> GetDabirkhanePageAsync(DabirkhaneSearchDto? filter = null, int page = 1, int pageSize = 15)
-    {
-        page = Math.Max(1, page);
-        pageSize = pageSize <= 0 ? 15 : pageSize;
-        var q = BuildDabirkhaneQuery(filter);
-        var sep = q.Length > 0 ? "&" : "?";
-        return ListOrPaged.GetPagedAsync<DabirkhaneListItemDto>(_api,
-            $"api/outgoing-letters/dabirkhane{q}{sep}skip={(page - 1) * pageSize}&take={pageSize}");
-    }
-
-    /// <summary>ساخت رشتهٔ کوئری فیلترهای جستجوی پیشرفتهٔ دبیرخانه (مشترک بین فهرست کامل و صفحه‌بندی‌شده).</summary>
-    private static string BuildDabirkhaneQuery(DabirkhaneSearchDto? filter)
     {
         var qs = new List<string>();
         if (filter != null)
@@ -354,7 +310,8 @@ public class OutgoingLetterService : IOutgoingLetterService
                 qs.Add($"toDate={Uri.EscapeDataString(filter.ToDate.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
         }
 
-        return qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+        return ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{q}");
     }
 
     public Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync() =>
@@ -369,11 +326,6 @@ public class OutgoingLetterService : IOutgoingLetterService
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
     public Task<LetterCompanyDto?> GetActiveCompanyAsync() =>
         _api.GetAsync<LetterCompanyDto?>("api/outgoing-letters/companies/active");
-
-    /// <summary>تشخیص چاپ نامه — مسیر سربرگ/طرح و علت خوانده‌نشدن فایل شرکت.</summary>
-    public Task<OutgoingLetterPrintDiagnosticsDto?> GetPrintDiagnosticsAsync(int letterId, string size = "A4") =>
-        _api.GetAsync<OutgoingLetterPrintDiagnosticsDto?>(
-            $"api/outgoing-letters/{letterId}/print/diagnose?size={Uri.EscapeDataString(size)}");
 
     public Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync() =>
         _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/dabirkhane/creators");
@@ -408,28 +360,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/move-letter", dto);
 
     /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود و نسخهٔ چاپ</summary>
-    public async Task<string?> GetUserSignatureDataUrlAsync(int userId)
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true)
     {
-        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/auth/users/signature/{userId}"));
-        if (!string.IsNullOrWhiteSpace(_auth.Token))
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
-        using var resp = await _http.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) return null;
-        var bytes = await resp.Content.ReadAsByteArrayAsync();
-        return bytes.Length == 0 ? null : $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
-    }
-
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true, bool withMargin = true, bool withLetterhead = true, CancellationToken cancellationToken = default)
-    {
-        var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}&withMargin={(withMargin ? "true" : "false")}&withLetterhead={(withLetterhead ? "true" : "false")}";
-        using var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
+        var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}";
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
 
-        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var resp = await _http.SendAsync(req);
         if (!resp.IsSuccessStatusCode)
         {
-            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
+            var text = await resp.Content.ReadAsStringAsync();
             string msg = "دریافت فایل چاپ ناموفق بود.";
             try
             {
@@ -439,6 +380,6 @@ public class OutgoingLetterService : IOutgoingLetterService
             catch { }
             throw new ApiException(msg);
         }
-        return await resp.Content.ReadAsByteArrayAsync(cancellationToken);
+        return await resp.Content.ReadAsByteArrayAsync();
     }
 }

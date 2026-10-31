@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using System.Text.RegularExpressions;
 using Inventory.Api.Services.Office.Outgoing;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
@@ -17,86 +19,51 @@ internal static class InnerLetterPdfRenderer
     private static readonly object FontLock = new();
     private static bool _fontsRegistered;
 
-    /// <summary>
-    /// یک کادر شماره/تاریخ/پیوست با مختصات مطلق صفحه (از گوشهٔ بالا-چپ کاغذ) و مقدار نهایی آن.
-    /// </summary>
-    private readonly record struct MetaRow(
-        float Left, float Top, float Width, float Height, string Value, string Color);
-
-    /// <param name="meta">
-    /// هندسهٔ خوانده‌شده از خودِ قالب MRT نامهٔ داخلی (همان کادرهای شماره/تاریخ/پیوست قالب
-    /// صادرهٔ ۱۰۰۳). اگر قالبِ نصب‌شده روی سرور قدیمی باشد و این کادرها را نداشته باشد، از
-    /// مختصات مطلق کالیبرهٔ <see cref="HomepaLetterheadLayout"/> استفاده می‌شود.
-    /// </param>
     internal static byte[] Render(InnerLetterPrintData data, bool a5, bool withHamesh,
-        byte[]? homepaBackground, bool attachment, string fontDirectory,
-        OutgoingLetterDesignLayout? meta = null)
+        byte[]? homepaBackground, bool attachment, string fontDirectory)
     {
         EnsureFonts(fontDirectory);
         QuestPDF.Settings.License = LicenseType.Community;
         var homepa = homepaBackground is { Length: > 0 };
-        // اندازهٔ قلم مثل نامهٔ صادرهٔ ۱۰۰۳: ۱۱pt در A4 و ۹pt در A5 (یکدستی دو چاپ).
         var fontSize = a5 ? 9f : 11f;
         var pc = new PersianCalendar();
-        var date = LetterPrintTemplate.PersianDigits($"{pc.GetYear(data.Date):0000}/{pc.GetMonth(data.Date):00}/{pc.GetDayOfMonth(data.Date):00}");
-        var number = LetterPrintTemplate.PersianDigits(data.Number);
+        var date = PersianDigits($"{pc.GetYear(data.Date):0000}/{pc.GetMonth(data.Date):00}/{pc.GetDayOfMonth(data.Date):00}");
+        var number = PersianDigits(data.Number);
         var body = PlainText(data.Body);
-        var attachmentText = attachment ? "دارد" : "ندارد";
 
-        // مقادیر سربرگ: از قالب داخلی (اگر کادرها را داشته باشد) یا مختصات کالیبرهٔ ۱۰۰۳.
-        var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5) : new List<MetaRow>();
-        // هندسهٔ بلوک اطلاعات (گیرنده/موضوع) از خودِ قالب MRT خوانده می‌شود؛ جابه‌جا کردن کادرها
-        // در Stimulsoft Designer مستقیماً روی چاپ اثر می‌گذارد. اگر قالب این کادرها را نداشته
-        // باشد، به مختصات کالیبرهٔ نامهٔ صادرهٔ ۱۰۰۳ (پایین نوار آبی + ۹۷pt) برمی‌گردد.
-        var designTop = new[] { meta?.Receiver?.Top ?? 0f, meta?.Title?.Top ?? 0f }
-            .Where(top => top > 0f).DefaultIfEmpty(0f).Min();
-        // عرض ستون برچسب و فاصلهٔ برچسب↔مقدار هم از قالب: کادر «موضوع:» و کادر مقدارش.
-        var captionBox = meta?.HeaderBoxes
-            .Where(box => box.Slot == OutgoingLetterDesignLayout.Slot.Caption)
-            .OrderBy(box => box.Top).FirstOrDefault();
-        var titleBox = meta?.Title;
-        var labelWidth = captionBox is { Width: > 12f } ? captionBox.Width : (float?)null;
-        var labelGap = captionBox is not null && titleBox is not null
-            ? captionBox.Left - (titleBox.Left + titleBox.Width)
-            : 0f;
-        if (captionBox is null || titleBox is null || labelGap is <= 0f or > 24f) labelGap = InfoLabelGap;
-        // شروع متن: از قالب MRT، وگرنه پایین «نوار آبی» + ۹۷pt تأییدشدهٔ کارفرما.
-        var contentTop = designTop > 0f ? designTop : HomepaLetterheadLayout.ContentTop(a5);
-        if (metaRows.Count > 0)
-            contentTop = Math.Max(contentTop, metaRows.Max(row => row.Top + row.Height) + 6f);
-        var sideMargin = LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters);
+        void HeaderField(IContainer container, HomepaLetterheadLayout.Field field, string value, bool center = false)
+        {
+            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
+                .Width(field.Width).Height(field.Height).AlignMiddle();
+            box = center ? box.AlignCenter() : box.AlignRight();
+            box.ScaleToFit().Text(value).FontFamily("Vazirmatn-Bold").FontSize(a5 ? 7 : 9)
+                .FontColor(Colors.White).LineHeight(1.2f).DirectionFromRightToLeft();
+        }
 
         return Document.Create(root => root.Page(page =>
         {
             page.Size(a5 ? PageSizes.A5 : PageSizes.A4);
             // Non-Homepa backgrounds are overlaid by PDFsharp after rendering.
             page.PageColor(Colors.Transparent);
-            // جهت چیدمان مثل نامهٔ صادرهٔ ۱۰۰۳: چپ‌به‌راست. با راست‌به‌چپ، QuestPDF ترتیب
-            // فرزندانِ Row را آینه می‌کرد؛ نتیجه‌اش همان ایراد گزارش‌شده بود: برچسب‌های
-            // «موضوع/ایجادکننده/تاریخ ارجاع» به لبهٔ چپ می‌رفتند و مقدارها به لبهٔ راست.
-            // متن نامه همچنان راست‌چین و راست‌به‌چپ است (DirectionFromRightToLeft روی خودِ متن).
-            page.ContentFromLeftToRight();
+            page.ContentFromRightToLeft();
             page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(fontSize)
-                .LineHeight(LetterPrintTemplate.BodyLineHeight).DirectionFromRightToLeft());
+                .LineHeight(1.3f).DirectionFromRightToLeft());
             if (homepa)
             {
-                // سربرگ ۱۰۰۳: مختصات مطلق صفحه، بدون حاشیهٔ بالا، مثل مسیر «از دل طرح» نامهٔ صادره.
                 page.MarginTop(0);
-                page.MarginHorizontal(sideMargin);
-                page.MarginBottom(HomepaLetterheadLayout.DesignFooterReserve(a5));
+                page.MarginHorizontal(0);
+                page.MarginBottom(a5 ? 64 : 90);
                 // QuestPDF's page background and header are repeated on EVERY page, including overflow.
-                // UseOriginalImage: تصویر در InnerLetterheadTemplates یک بار آماده شده است؛
-                // اگر اینجا هم تغییر اندازه/کدگذاری شود، QuestPDF در هر چاپ یک نسخهٔ
-                // ۲۳۸۱×۳۳۶۷ را از نو می‌سازد (چند صد میلی‌ثانیه CPU و ده‌ها مگابایت حافظه).
-                page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();
-                // ناحیهٔ سربرگ فقط تا شروع متن رزرو می‌شود (نه یک ارتفاع ثابت ۱۶۰pt)؛ بدنه
-                // دقیقاً از پایین نوار آبی + ۹۷pt شروع می‌شود.
-                page.Header().Height(contentTop);
-                // شماره/تاریخ/پیوست در لایهٔ سراسری صفحه و با مختصات مطلق، روی خط برچسب‌های
-                // چاپ‌شدهٔ سربرگ («موضوع:»/«تاریخ:»/«پیوست:») — روی همهٔ صفحه‌ها.
-                if (metaRows.Count > 0)
-                    page.Foreground().ContentFromLeftToRight()
-                        .Element(host => DrawMetaRows(host, metaRows));
+                page.Background().Image(homepaBackground!).FitUnproportionally();
+                page.Header().ContentFromLeftToRight().Height(a5 ? 112 : 160).Layers(layers =>
+                {
+                    layers.PrimaryLayer().Extend();
+                    // پیوند/پیوست هم‌سطح با شماره و تاریخ باشد (Right) و در یک خط بماند؛
+                    // ScaleToFit اندازهсниازک می‌کند تا خط شکسته نشود و کادر عمودی بزرگ نشود.
+                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Number(a5), number);
+                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Date(a5), date);
+                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Attachment(a5), attachment ? "دارد" : "ندارد", false);
+                });
             }
             else
             {
@@ -107,183 +74,47 @@ internal static class InnerLetterPdfRenderer
                 {
                     c.Item().Text($"شماره نامه: {number}");
                     c.Item().Text($"تاریخ ثبت: {date}");
-                    c.Item().Text($"پیوست: {attachmentText}");
+                    c.Item().Text($"تاریخ ارجاع: {(string.IsNullOrWhiteSpace(data.ReferralDates) ? "—" : data.ReferralDates)}");
+                    c.Item().Text($"پیوست: {(attachment ? "دارد" : "ندارد")}");
                 });
             }
 
             var content = page.Content();
-            if (!homepa) content = content.PaddingTop(a5 ? 12 : 16).PaddingHorizontal(a5 ? 32 : 46);
+            if (homepa) content = content.PaddingTop(a5 ? 12 : 16).PaddingHorizontal(a5 ? 32 : 46);
             content.Column(c =>
             {
-                if (homepa) AddHomepaBody(c, data, body, withHamesh, a5, labelWidth, labelGap);
-                else AddPlainBody(c, data, body, withHamesh, a5);
+                c.Spacing(a5 ? 5 : 7);
+                c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();
+                c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}").AlignRight();
+                c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}").AlignRight();
+                c.Item().PaddingVertical(5).LineHorizontal(0.7f).LineColor("#999999");
+                // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.
+                c.Item().Text(body).AlignRight();
+                if (withHamesh && data.Hamesh.Count > 0)
+                {
+                    c.Item().PaddingTop(8).Text("هامش:").Bold().AlignRight();
+                    foreach (var row in data.Hamesh)
+                    {
+                        var details = new[] { PlainText(row.Action), PlainText(row.Instruction) }
+                            .Where(x => !string.IsNullOrWhiteSpace(x));
+                        var detail = string.Join(" — ", details);
+                        c.Item().Text($"• {row.Receiver}{(detail.Length > 0 ? " — " + detail : "")}").AlignRight();
+                    }
+                }
+                // No automatic closing, signatory section, stamp, or generated footer below internal letters.
             });
         })).GeneratePdf();
     }
 
-    /// <summary>
-    /// بلوک اطلاعات و متن، دقیقاً با همان چیدمان نامهٔ صادرهٔ ۱۰۰۳ و **بدون بلوک امضا**
-    /// (نامهٔ داخلی است): خط اول گیرندگان بدون برچسب، خط دوم «موضوع:» به‌همراه عنوان،
-    /// سپس متن نامه و در پایان هامش.
-    /// </summary>
-    /// <param name="labelWidth">عرض ستون برچسب از قالب MRT (null = تخمین از طول برچسب).</param>
-    /// <param name="labelGap">فاصلهٔ برچسب↔مقدار از قالب MRT.</param>
-    private static void AddHomepaBody(ColumnDescriptor c, InnerLetterPrintData data, string body,
-        bool withHamesh, bool a5, float? labelWidth, float labelGap)
+    internal static string PlainText(string? html)
     {
-        var infoFontSize = a5 ? 9f : 11f;
-        // ترتیب دقیقاً مثل نامهٔ صادرهٔ ۱۰۰۳ (درخواست کارفرما):
-        //   خط اول  → گیرنده، بدون برچسب و تمام‌عرض
-        //   خط دوم  → «موضوع:» و روبه‌رویش عنوان نامه
-        //   سپس     → متن نامه و در پایان «هامش» (اگر خواسته شده باشد)
-        // ردیف‌های «ایجادکننده» و «تاریخ ارجاع» در نامهٔ داخلی چاپ نمی‌شوند (درخواست کارفرما).
-        var rows = new List<LetterPrintTemplate.InfoRow>();
-        if (!string.IsNullOrWhiteSpace(data.Receivers))
-            rows.Add(new LetterPrintTemplate.InfoRow("گیرندگان", data.Receivers, HideLabel: true));
-        rows.Add(new LetterPrintTemplate.InfoRow("موضوع",
-            string.IsNullOrWhiteSpace(data.Title) ? "—" : data.Title, BoldValue: true));
-
-        LetterPrintTemplate.InfoBlock(c, rows, infoFontSize,
-            Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f), labelGap, labelWidth);
-        // خط جداکنندهٔ خاکستری، مثل نامهٔ صادرهٔ ۱۰۰۳، برداشته شده؛ فقط همان فاصله می‌ماند.
-        LetterPrintTemplate.Spacer(c, a5 ? 10f : 12f);
-        // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.
-        c.Item().Text(body).LineHeight(LetterPrintTemplate.BodyLineHeight).AlignRight();
-        AddHamesh(c, data, withHamesh);
+        var text = Regex.Replace(html ?? "", @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</\s*(p|div|li|h[1-6]|tr)\s*>", "\n", RegexOptions.IgnoreCase);
+        text = WebUtility.HtmlDecode(Regex.Replace(text, "<[^>]+>", ""));
+        return Regex.Replace(text, @"[^\S\r\n]+", " ").Trim();
     }
 
-    /// <summary>چیدمان پیش‌فرض شرکت‌های دیگر (بدون قالب ۱۰۰۳) — دست‌نخورده.</summary>
-    private static void AddPlainBody(ColumnDescriptor c, InnerLetterPrintData data, string body,
-        bool withHamesh, bool a5)
-    {
-        c.Spacing(a5 ? 5 : 7);
-        c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();
-        c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}").AlignRight();
-        c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}").AlignRight();
-        LetterPrintTemplate.Separator(c);
-        c.Item().Text(body).AlignRight();
-        AddHamesh(c, data, withHamesh);
-    }
-
-    /// <summary>«با هامش» فقط ردیف‌های هامش را اضافه می‌کند؛ امضا/مهر/عبارت پایانی چاپ نمی‌شود.</summary>
-    private static void AddHamesh(ColumnDescriptor c, InnerLetterPrintData data, bool withHamesh)
-    {
-        if (!withHamesh || data.Hamesh.Count == 0) return;
-        c.Item().PaddingTop(8).Text(LetterPrintTemplate.RtlLabel("هامش")).Bold().AlignRight();
-        foreach (var row in data.Hamesh)
-        {
-            var details = new[] { PlainText(row.Action), PlainText(row.Instruction) }
-                .Where(x => !string.IsNullOrWhiteSpace(x));
-            var detail = string.Join(" — ", details);
-            c.Item().Text($"• {row.Receiver}{(detail.Length > 0 ? " — " + detail : "")}").AlignRight();
-        }
-    }
-
-    /// <summary>فاصلهٔ برچسب↔مقدار در بلوک اطلاعات — همان مقدار نامهٔ صادره («یک فاصله بعد از دونقطه»).</summary>
-    internal const float InfoLabelGap = 7.2f;
-
-    /// <summary>
-    /// کادرهای شماره/تاریخ/پیوست با مقدار نهایی‌شان. اولویت با هندسهٔ خودِ قالب MRT است؛
-    /// اگر قالب (نسخهٔ قدیمی نصب‌شده) آن کادرها را نداشته باشد، مختصات مطلق کالیبرهٔ ۱۰۰۳.
-    /// </summary>
-    private static List<MetaRow> BuildMetaRows(OutgoingLetterDesignLayout? meta, string number,
-        string date, string attachment, bool a5)
-    {
-        var rows = new List<MetaRow>();
-        var boxes = meta?.HeaderBoxes
-            .Where(box => box.Slot is OutgoingLetterDesignLayout.Slot.Number
-                or OutgoingLetterDesignLayout.Slot.Date
-                or OutgoingLetterDesignLayout.Slot.Attachment)
-            .ToList() ?? new List<OutgoingLetterDesignLayout.Box>();
-
-        foreach (var box in boxes)
-        {
-            var (value, color) = box.Slot switch
-            {
-                OutgoingLetterDesignLayout.Slot.Number => (number, box.Color),
-                OutgoingLetterDesignLayout.Slot.Date => (date, box.Color),
-                _ => (attachment, box.Color)
-            };
-            rows.Add(new MetaRow(box.Left, box.Top, box.Width, box.Height, value,
-                string.IsNullOrWhiteSpace(color) ? "#FFFFFF" : color));
-        }
-
-        if (rows.Count > 0) return rows;
-
-        // نسخهٔ پشتیبان: همان کادرهای قالب صادره، در مختصات مطلق صفحه.
-        static MetaRow Fallback(HomepaLetterheadLayout.Field field, string value)
-            => new(field.Left, field.Top, field.Width, field.Height, value, "#FFFFFF");
-
-        rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteNumber(a5), number));
-        rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteDate(a5), date));
-        rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteAttachment(a5), attachment));
-        return rows;
-    }
-
-    /// <summary>
-    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه؛ راست‌چین در ستونی که ۴pt پیش از برچسب چاپ‌شده
-    /// تمام می‌شود (همان قاعدهٔ مسیر «از دل طرح» نامهٔ صادره).
-    /// </summary>
-    private static void DrawMetaRows(IContainer host, IReadOnlyList<MetaRow> rows)
-    {
-        if (rows.Count == 0) return;
-
-        // ستون مقدارها: لبهٔ راستِ کادر ۴pt پیش از برچسبِ چاپ‌شده روی سربرگ تمام می‌شود
-        // (همان قاعدهٔ نامهٔ صادرهٔ ۱۰۰۳).
-        var right = rows.Min(row => row.Left + row.Width) - 4f;
-        var left = Math.Max(rows.Min(row => row.Left),
-            LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters));
-        // در A5 که صفحه باریک است، حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
-        if (right - left < 44f) left = Math.Max(0f, right - 44f);
-        var width = Math.Max(20f, right - left);
-
-        // مختصات افقی با PaddingLeft + Width تعیین می‌شود، نه با Row.
-        // چرا؟ در چیدمان راست‌به‌چپ، QuestPDF ترتیب فرزندان Row را آینه می‌کند و مقدارها
-        // از برچسب‌های چاپ‌شدهٔ سربرگ فاصله می‌گرفتند (ایراد گزارش‌شدهٔ کارفرما). با عرض
-        // ثابت، جای هر مقدار مطلق و مستقل از جهت چیدمان است.
-        host.AlignTop().Column(column =>
-        {
-            var cursor = 0f;
-            foreach (var row in rows.OrderBy(row => row.Top))
-            {
-                var gap = row.Top - cursor;
-                if (gap > 0.5f) column.Item().Height(gap);
-                var height = Math.Max(10f, row.Height);
-                var text = string.IsNullOrWhiteSpace(row.Value) ? "—" : row.Value;
-                column.Item().Height(height)
-                    .PaddingLeft(Math.Max(0f, left))
-                    .AlignLeft()
-                    .Width(width)
-                    .AlignMiddle()
-                    .AlignRight()
-                    .Text(LetterPrintTemplate.IsolateMixedText(text))
-                    .FontFamily("Vazirmatn-Bold")
-                    .FontSize(FitMetaFontSize(text, width))
-                    .FontColor(row.Color)
-                    .LineHeight(1.15f)
-                    .AlignRight()
-                    .DirectionFromRightToLeft();
-                cursor = row.Top + height;
-            }
-        });
-    }
-
-    /// <summary>بزرگ‌ترین اندازه‌ای که مقدار سربرگ در یک خط جا می‌شود (کف ۷pt، مثل نامهٔ صادره).</summary>
-    private static float FitMetaFontSize(string text, float maxWidth, float preferred = 10f,
-        float minimum = 7f)
-    {
-        if (string.IsNullOrEmpty(text) || maxWidth <= 0f) return preferred;
-        var estimated = text.Length * preferred * 0.58f;
-        if (estimated <= maxWidth) return preferred;
-        return Math.Max(minimum, preferred * maxWidth / estimated);
-    }
-
-    /// <summary>
-    /// بدنهٔ HTML نامه → متن چاپی. جزئیات و چرایی در <see cref="OfficeHtmlText"/>:
-    /// سرِ سند (head/style/xml و کامنت‌های شرطی Word) با محتوایش حذف می‌شود و شکست‌خط‌های
-    /// سورس HTML پاک می‌شوند تا نه متن انگلیسی روی کاغذ بیاید و نه صفحهٔ خالی.
-    /// </summary>
-    internal static string PlainText(string? html) => OfficeHtmlText.ToPlainText(html);
+    private static string PersianDigits(string value) => new(value.Select(c => c is >= '0' and <= '9' ? "۰۱۲۳۴۵۶۷۸۹"[c - '0'] : c).ToArray());
 
     private static void EnsureFonts(string directory)
     {

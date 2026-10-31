@@ -110,8 +110,22 @@
                                         }
                                     </td>
                                 }
-                                <td class="text-start num @(p.Balance > 0 ? "text-success fw-700" : "text-danger fw-700")">
-                                    @p.Balance.Money()
+                                <td class="text-start">
+                                    <div class="num @(p.Balance > 0 ? "text-success fw-700" : "text-danger fw-700")">
+                                        @p.Balance.Money()
+                                    </div>
+                                    @if (p.BouncedChequesCount > 0)
+                                    {
+                                        <div class="badge badge-soft-danger fs-8 mt-1" title="مشتری دارای چک برگشتی فعال است!">
+                                            <i class="bi bi-x-octagon"></i> @p.BouncedChequesCount.Num() چک برگشتی (@p.BouncedChequesTotal.Money())
+                                        </div>
+                                    }
+                                    @if (p.OverdueInstallmentsCount > 0)
+                                    {
+                                        <div class="badge badge-soft-warning fs-8 mt-1" title="مشتری دارای اقساط معوق پرداخت نشده است!">
+                                            <i class="bi bi-clock-history"></i> @p.OverdueInstallmentsCount.Num() قسط معوق (@p.OverdueInstallmentsTotal.Money())
+                                        </div>
+                                    }
                                 </td>
                                 <td>
                                     @if (p.IsActive)
@@ -173,6 +187,14 @@
                             <div class="text-end">
                                 <div class="fs-8 text-muted">مانده حساب</div>
                                 <div class="num fw-800 @(p.Balance > 0 ? "text-success" : p.Balance < 0 ? "text-danger" : "")">@p.Balance.Money()</div>
+                                @if (p.BouncedChequesCount > 0)
+                                {
+                                    <div class="badge badge-soft-danger fs-9 mt-1"><i class="bi bi-x-octagon"></i> @p.BouncedChequesCount.Num() چک برگشتی</div>
+                                }
+                                @if (p.OverdueInstallmentsCount > 0)
+                                {
+                                    <div class="badge badge-soft-warning fs-9 mt-1"><i class="bi bi-clock-history"></i> @p.OverdueInstallmentsCount.Num() قسط معوق</div>
+                                }
                             </div>
                         </div>
                         <div class="m-card-actions">

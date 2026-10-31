@@ -57,12 +57,15 @@ public class ProductsController : ApiControllerBase
     /// <summary>ورود گروهی کالا از فایل اکسل (xlsx).</summary>
     [HttpPost("import")]
     [DisableRequestSizeLimit]
-    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file)
+    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file, [FromQuery] int? warehouseId = null)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { message = "فایل اکسل انتخاب نشده است." });
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "فقط فایل با فرمت xlsx پشتیبانی می‌شود." });
+
+        if (warehouseId is null or <= 0)
+            return BadRequest(new { message = "انتخاب انبار برای ورود اکسل الزامی است." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
@@ -72,7 +75,7 @@ public class ProductsController : ApiControllerBase
         await _store.SaveAsync("catalog", 0, ms, file.FileName, "imports");
         ms.Position = 0;
 
-        return Ok(await _service.ImportProductsAsync(ms));
+        return Ok(await _service.ImportProductsAsync(ms, warehouseId));
     }
 
     /// <summary>
