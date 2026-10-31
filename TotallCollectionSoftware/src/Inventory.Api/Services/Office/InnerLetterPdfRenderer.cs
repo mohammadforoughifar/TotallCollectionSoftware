@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Net;
-using System.Text.RegularExpressions;
 using Inventory.Api.Services.Office.Outgoing;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
@@ -280,13 +278,12 @@ internal static class InnerLetterPdfRenderer
         return Math.Max(minimum, preferred * maxWidth / estimated);
     }
 
-    internal static string PlainText(string? html)
-    {
-        var text = Regex.Replace(html ?? "", @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"</\s*(p|div|li|h[1-6]|tr)\s*>", "\n", RegexOptions.IgnoreCase);
-        text = WebUtility.HtmlDecode(Regex.Replace(text, "<[^>]+>", ""));
-        return Regex.Replace(text, @"[^\S\r\n]+", " ").Trim();
-    }
+    /// <summary>
+    /// بدنهٔ HTML نامه → متن چاپی. جزئیات و چرایی در <see cref="OfficeHtmlText"/>:
+    /// سرِ سند (head/style/xml و کامنت‌های شرطی Word) با محتوایش حذف می‌شود و شکست‌خط‌های
+    /// سورس HTML پاک می‌شوند تا نه متن انگلیسی روی کاغذ بیاید و نه صفحهٔ خالی.
+    /// </summary>
+    internal static string PlainText(string? html) => OfficeHtmlText.ToPlainText(html);
 
     private static void EnsureFonts(string directory)
     {

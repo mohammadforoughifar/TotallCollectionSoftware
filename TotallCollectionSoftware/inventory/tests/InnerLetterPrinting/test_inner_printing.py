@@ -1,5 +1,7 @@
 """Offline asset and source-contract checks, not a substitute for the .NET PDF render tests."""
 import base64
+import html as html_module
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -403,6 +405,210 @@ class InnerPrintingTests(unittest.TestCase):
         method = ui.split("private async Task PrintPdf(string size, bool withHamesh)", 1)[1]
         self.assertIn("GetPrintPdfAsync(letterId, size, withHamesh, ct)", method)
         self.assertIn("PrintWorkflow.PrintPdfAsync(", method)
+
+# ── بدنهٔ نامه: HTML کاملِ Word/Outlook (head + style + کامنت شرطی) ──
+# گزارش کارفرما: «در چندین صفحه متن های انگلیسی دارد و چند صفحه خالی وجود داره».
+# علت: PlainText قدیمی فقط تگ‌ها را حذف می‌کرد؛ محتوای <head>/<style>/<xml> متن بود و
+# شکست‌خط‌های خودِ سورس هم خط چاپی می‌شد. این تست الگوهای **خودِ کد** را می‌خواند و همان
+# زنجیره را روی یک بدنهٔ واقعیِ Word اجرا می‌کند، پس با تغییر کد از هم جدا نمی‌شود.
+
+WORD_BODY = """<html xmlns:v="urn:schemas-microsoft-com:vml"
+xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:w="urn:schemas-microsoft-com:office:word">
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=utf-8">
+<meta name=Generator content="Microsoft Word 15 (filtered medium)">
+<!--[if !mso]>
+<style>
+v\\:* {behavior:url(#default#VML);}
+</style>
+<![endif]--><style>
+<!--
+ /* Font Definitions */
+ @font-face
+\t{font-family:"Cambria Math";
+\tpanose-1:2 4 5 3 5 4 6 3 2 4;
+\tmso-font-charset:0;}
+ /* Style Definitions */
+ p.MsoNormal
+\t{mso-style-name:"Normal";
+\tmso-fareast-language:EN-US;
+\tfont-family:"Calibri",sans-serif;}
+ table.MsoNormalTable
+\t{mso-style-name:"Table Normal";
+\tmso-tstyle-rowband-size:0;}
+-->
+</style>
+<!--[if gte mso 9]><xml>
+ <o:OfficeDocumentSettings>
+  <o:AllowPNG/>
+ </o:OfficeDocumentSettings>
+</xml><![endif]--><!--[if gte mso 9]><xml>
+ <w:WordDocument>
+  <w:View>Normal</w:View>
+  <w:Zoom>0</w:Zoom>
+  <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+</xml><![endif]-->
+<style>
+<!--
+ @page WordSection1
+\t{size:595.3pt 841.9pt;
+\tmso-paper-source:0;}
+-->
+</style>
+</head>
+<body lang=FA link=blue vlink="#954F72" style='tab-interval:21.0pt'>
+<div class=WordSection1>
+<p class=MsoNormal dir=RTL><span lang=FA>سلام<o:p></o:p></span></p>
+<p class=MsoNormal dir=RTL><span lang=FA>و احترام،<o:p></o:p></span></p>
+<p class=MsoNormal dir=RTL><span lang=FA>&nbsp;<o:p></o:p></span></p>
+<p class=MsoNormal dir=RTL><span lang=FA>بدین‌وسیله گزارش کارهای انجام‌شده به شرح ذیل می‌باشد:<o:p></o:p></span></p>
+</div>
+</body>
+</html>"""
+
+# چیزهایی که «سرِ سند» است و هرگز نباید روی کاغذ بیاید.
+DOCUMENT_HEAD_JUNK = ("mso-", "Mso", "Style Definitions", "@font-face", "panose",
+                      "EN-US", "X-NONE", "AR-SA", "behavior:url", "WordSection1",
+                      "OfficeDocumentSettings", "AllowPNG", "DoNotOptimizeForBrowser",
+                      "Normal", "false", "Table Normal")
+
+REGEX_FIELD = re.compile(
+    r"private static readonly Regex (?P<name>\w+) = new\(\s*@\"(?P<pattern>(?:[^\"]|\"\")*)\"",
+    re.S)
+
+
+def office_html_patterns(office: Path) -> dict[str, str]:
+    """الگوهای همین کد (verbatim stringهای C#) را برای اجرای آینه‌ای برمی‌گرداند."""
+    source = (office / "OfficeHtmlText.cs").read_text(encoding="utf-8")
+    found = {m.group("name"): m.group("pattern").replace('""', '"')
+             for m in REGEX_FIELD.finditer(source)}
+    return found
+
+
+def mirror_plain_text(html: str, patterns: dict[str, str]) -> str:
+    """همان ترتیب OfficeHtmlText.ToPlainText، با الگوهای خوانده‌شده از خودِ کد."""
+    break_mark = "\u0001"
+    flags = re.I | re.S
+
+    def sub(name: str, replacement: str, flags_: int) -> None:
+        nonlocal html
+        html = re.sub(patterns[name], replacement, html, flags=flags_)
+
+    # متنی که هیچ تگی ندارد، متن ساده است و شکست‌خط‌های خودش می‌ماند.
+    plain_input = re.search(patterns["AnyTag"], html) is None
+    sub("Comments", " ", flags)
+    for _ in range(2):
+        before = html
+        sub("DroppedBlocks", " ", flags)
+        if html == before:
+            break
+    sub("DroppedOpenTags", " ", flags)
+    if plain_input:
+        sub("NewLines", break_mark, 0)
+    sub("LineBreaks", break_mark, re.I)
+    sub("CellEnds", " ", re.I)
+    sub("BlockEnds", break_mark, re.I)
+    sub("AnyTag", " ", flags)
+    html = html_module.unescape(html)
+    html = re.sub(patterns["AnyTag"], " ", html, flags=flags)
+    html = html_module.unescape(html)
+    html = re.sub(patterns["MachineBlob"], " ", html)
+    html = re.sub(r"\s+", " ", html)
+    html = re.sub(r" ?\u0001[ \u0001]*", "\n", html)
+    lines, blanks, out = html.split("\n"), 0, []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            blanks += 1
+            if blanks > 1:
+                continue
+        else:
+            blanks = 0
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+class LetterBodyPlainTextTests(unittest.TestCase):
+    """بدنهٔ HTML → متن چاپی: نه متن انگلیسی سرِ سند، نه صفحهٔ خالی."""
+
+    # دو درخت پروژه: ریشهٔ مخزن و پوشهٔ inventory (ROOT همین inventory است).
+    TREES = {"main": ROOT.parent / "src", "inventory": ROOT / "src"}
+
+    def test_helper_exists_identically_in_both_trees(self):
+        first = (OFFICE / "OfficeHtmlText.cs").read_text(encoding="utf-8")
+        second = (self.TREES["inventory"] / "Inventory.Api/Services/Office/OfficeHtmlText.cs") \
+            .read_text(encoding="utf-8")
+        self.assertEqual(first, second)
+        self.assertIn("internal static string ToPlainText(string? html)", first)
+
+    def test_print_path_uses_the_shared_helper(self):
+        for name, tree in self.TREES.items():
+            renderer = (tree / "Inventory.Api/Services/Office/InnerLetterPdfRenderer.cs") \
+                .read_text(encoding="utf-8")
+            with self.subTest(tree=name):
+                self.assertIn("internal static string PlainText(string? html) => OfficeHtmlText.ToPlainText(html);",
+                              renderer)
+                # هیچ نسخهٔ محلیِ «تگ را بردار» نباید برگردد.
+                self.assertNotIn("Regex.Replace(text, \"<[^>]+>\", \"\")", renderer)
+
+    def test_document_head_and_conditional_comments_are_dropped(self):
+        source = (OFFICE / "OfficeHtmlText.cs").read_text(encoding="utf-8")
+        # (۱) کامنت‌ها با محتوایشان — همان‌جا که <w:View>Normal</w:View> و mso-* پنهان است.
+        self.assertIn("@\"<!--.*?-->\"", source)
+        # (۲) بلوک‌های غیرمتنی با محتوایشان، نه فقط تگشان.
+        dropped = office_html_patterns(OFFICE)["DroppedBlocks"]
+        for tag in ("head", "style", "script", "title", "xml"):
+            self.assertIn(tag, dropped)
+        self.assertIn(".*?", dropped)          # محتوا هم حذف می‌شود
+        # (۳) ترتیب: اول sanitize، بعد شکست‌های ساختاری، بعد جمع‌کردن فضای سفید.
+        self.assertLess(source.index("RichLetterHtml.Sanitize"), source.index("LineBreaks.Replace"))
+        self.assertIn('Regex.Replace(s, @"\\s+", " ")', source)
+        self.assertNotIn("[^\\S\\r\\n]+", source)   # نشتی قبلی: \r\n حفظ می‌شد
+
+    def test_word_document_body_prints_only_the_letter(self):
+        result = mirror_plain_text(WORD_BODY, office_html_patterns(OFFICE))
+        with self.subTest(output=result):
+            self.assertEqual(result,
+                             "سلام\nو احترام،\nبدین‌وسیله گزارش کارهای انجام‌شده به شرح ذیل می‌باشد:")
+            for junk in DOCUMENT_HEAD_JUNK:
+                self.assertNotIn(junk, result)
+            self.assertEqual([l for l in result.split("\n") if not l.strip()], [],
+                             "خط خالی یعنی صفحهٔ خالی در چاپ")
+
+    def test_old_algorithm_is_what_produced_the_junk(self):
+        """اثبات رگرسیون: الگوریتم قبلی روی همین بدنه، سرِ سند و ۲۰+ خط خالی می‌ساخت."""
+        legacy = re.sub(r"<[^>]+>", "", WORD_BODY)
+        legacy = html_module.unescape(legacy)
+        legacy = re.sub(r"[^\S\r\n]+", " ", legacy).strip()
+        self.assertIn("Normal", legacy)
+        self.assertIn("behavior:url", legacy)
+        self.assertGreater(sum(1 for line in legacy.split("\n") if not line.strip()), 10)
+
+    def test_structure_and_entities_survive(self):
+        patterns = office_html_patterns(OFFICE)
+        # پاراگراف‌ها و <br> شکست خط می‌دهند (قرارداد قبلی حفظ می‌شود).
+        self.assertEqual(mirror_plain_text("<p>الف</p><p>ب<br>ج</p>", patterns), "الف\nب\nج")
+        # موجودیت‌ها رمزگشایی می‌شوند و متنِ دوبار-encode هم سالم می‌آید.
+        self.assertEqual(mirror_plain_text("&lt;p&gt;سلام&lt;/p&gt;", patterns), "سلام")
+        self.assertEqual(mirror_plain_text("<p>الف &amp; ب</p>", patterns), "الف & ب")
+        # نیم‌فاصله باید بماند؛ فاصلهٔ نشکن به فاصلهٔ معمولی تبدیل می‌شود.
+        self.assertIn("\u200c", mirror_plain_text("<p>می\u200cشود</p>", patterns))
+        self.assertEqual(mirror_plain_text("<p>الف\u00a0ب</p>", patterns), "الف ب")
+        # سلول‌های جدول در یک خط می‌مانند و ردیف‌ها جدا می‌شوند.
+        self.assertEqual(mirror_plain_text("<table><tr><td>الف</td><td>ب</td></tr>"
+                                           "<tr><td>ج</td><td>د</td></tr></table>", patterns),
+                         "الف ب\nج د")
+        # رشتهٔ چسبیدهٔ ماشینی (base64) چاپ نمی‌شود.
+        self.assertEqual(mirror_plain_text("<p>" + "A" * 300 + "</p>", patterns), "")
+        # متن ساده (بدون تگ) شکست‌خط خودش را حفظ می‌کند: ردیف‌های هامش/ارجاع به هم نمی‌چسبند.
+        # خط خالیِ تکراری به یک شکست تبدیل می‌شود (صفحهٔ خالی در چاپ ممنوع است).
+        self.assertEqual(mirror_plain_text("خط اول\nخط دوم\n\nخط سوم", patterns),
+                         "خط اول\nخط دوم\nخط سوم")
+        self.assertEqual(mirror_plain_text("<p>الف</p>\n\n\n<p>ب</p>", patterns), "الف\nب")
+        # ورودی خالی/None هم خطا نمی‌دهد.
+        self.assertEqual(mirror_plain_text("", patterns), "")
 
     def test_publish_rule_includes_inner_templates(self):
         project = ET.parse(API / "Inventory.Api.csproj")
