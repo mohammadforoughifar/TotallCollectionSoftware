@@ -96,12 +96,16 @@ class LabelColonPlacementTests(unittest.TestCase):
                 self.assertIn(".Text(LetterPrintTemplate.RtlLabel(label))", outgoing)
                 self.assertNotIn('.Text($"{label}:")', outgoing)
 
-    def test_minutes_captions_do_not_gain_a_colon(self):
-        """برچسب‌های آمادهٔ قالب MRT («حاضرین») فقط محصور می‌شوند، دونقطه اضافه نمی‌گیرند."""
+    def test_minutes_captions_keep_the_colon_that_the_template_declares(self):
+        """برچسب قالب MRT («:حاضرین») باید با دونقطه چاپ شود، نه بدون آن.
+
+        RtlLabel دونقطهٔ ابتدای متن را برمی‌دارد؛ با ensureTrailingColon:false دونقطه هیچ‌جا
+        چاپ نمی‌شد و خروجی واقعی «حاضرین» بدون «:» بود (ایراد کارفرما).
+        """
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 minutes = self.minutes(tree)
-                self.assertIn("ensureTrailingColon: false", minutes)
+                self.assertIn("ensureTrailingColon: true", minutes)
                 self.assertIn('LetterPrintTemplate.RtlLabel("بندها و تصمیمات")', minutes)
                 # بلوک امضا برای امضای دستی روی برگه است، پس برچسبش «محل امضای حاضرین» شد.
                 self.assertIn('LetterPrintTemplate.RtlLabel("محل امضای حاضرین")', minutes)

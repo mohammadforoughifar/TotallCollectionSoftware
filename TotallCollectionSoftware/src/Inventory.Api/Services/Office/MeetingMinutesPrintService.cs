@@ -380,7 +380,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var flowLeft = flowBox?.Left ?? 28f;
         var flowWidth = flowBox?.Width ?? (pageWidth - 2f * flowLeft);
 
-        // رزرو پابرگ/سربرگ از پروفایل همان طرح سربرگ می‌آید (شرکت ۱: ۲۰۶/۱۲۱pt در A4).
+        // رزرو پابرگ/سربرگ از پروفایل همان طرح سربرگ می‌آید (شرکت ۱: ۱۷۴/۱۲۱pt در A4).
         var footerReserve = hasLetterhead ? letterheadProfile.FooterReserve : (isA5 ? 24f : 32f);
         // سربرگ هر صفحه (نوار آبی/تصویر) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب
         // تنظیم می‌شود، ولی صفحهٔ دوم به بعد باید از زیر سربرگ شروع کند، وگرنه متن روی آن می‌رود.
@@ -582,75 +582,95 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         }
 
         // ── محل امضای حاضرین: کادر خالی برای امضای دستی، تصویر امضا برای امضاشده‌ها ──
+        // درخواست کارفرما: «امضا باید همیشه بلافاصله بعد از پایان متن بیاید، نه در صفحهٔ دیگر.»
+        // پیش‌تر کل بلوک یک‌جا ShowEntire بود؛ چون ۷pt جا کم می‌آمد، همه‌اش به صفحهٔ بعد می‌رفت.
+        // اکنون هر ردیف جداگانه کامل می‌ماند، برچسب به ردیف اولش چسبیده است و بلوک چندردیفی
+        // کادرهای جمع‌وجورتری می‌گیرد تا در همان صفحهٔ متن بنشیند.
         void SignatureBlock(ColumnDescriptor col, List<MeetingMinutesParticipant> people,
             Dictionary<int, byte[]> images)
         {
             if (people.Count == 0) return;
 
-            // چیدمان کادرهای امضا از پروفایل طرح سربرگ: ۱۰۰۳ در A5 دو کادر، شرکت ۱ در هر دو
-            // کاغذ سه کادر (A5: ۱۱۱×۳۸pt) تا پنج حاضر در یک صفحه جا شوند.
-            var perRow = letterheadProfile.SignatureColumns;
-            var boxHeight = letterheadProfile.SignatureBoxHeight;
+            // حداکثر کادر در ردیف از پروفایل طرح سربرگ (شرکت ۱: ۵، شرکت ۱۰۰۳: ۳ و در A5: ۲).
+            // با کمتر از سه نفر، ردیف با همان تعداد پر می‌شود تا کادرها بی‌دلیل پهن نشوند.
+            var maxColumns = Math.Max(1, letterheadProfile.SignatureColumns);
+            var perRow = Math.Clamp(people.Count, Math.Min(3, maxColumns), maxColumns);
+            var rowCount = (people.Count + perRow - 1) / perRow;
+            // چند ردیفی → کادر جمع‌وجورتر (فقط طرح‌هایی که این ارتفاع را اعلام کرده‌اند).
+            var boxHeight = rowCount > 1 && letterheadProfile.SignatureCompactBoxHeight > 0f
+                ? letterheadProfile.SignatureCompactBoxHeight
+                : letterheadProfile.SignatureBoxHeight;
             var cellGap = isA5 ? 6f : 8f;
-            // A4: سه کادر ۱۶۸pt در ردیف؛ A5 باریک‌تر است و کادرها عرض مساوی می‌گیرند.
-            var cellWidth = isA5 ? (flowWidth - cellGap * (perRow - 1)) / perRow : 168f;
+            // عرض ثابت پروفایل (مثل ۱۶۸pt شرکت ۱۰۰۳) یا تقسیم عرض متن بین ستون‌ها.
+            var cellWidth = letterheadProfile.SignatureCellWidth > 0f && perRow == maxColumns
+                ? letterheadProfile.SignatureCellWidth
+                : (flowWidth - cellGap * (perRow - 1)) / perRow;
 
-            // ShowEntire = page-break-inside: avoid؛ بلوک امضا نصفه به صفحهٔ بعد نمی‌رود.
-            col.Item().PaddingTop(isA5 ? 10f : 14f).ShowEntire().Column(block =>
+            col.Item().PaddingTop(letterheadProfile.SignatureTopPadding).Column(block =>
             {
-                block.Item().PaddingBottom(isA5 ? 4f : 6f)
-                    .Text(LetterPrintTemplate.RtlLabel("محل امضای حاضرین"))
-                    .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
-                    .DirectionFromRightToLeft();
-
                 for (var start = 0; start < people.Count; start += perRow)
                 {
                     var group = people.Skip(start).Take(perRow).ToList();
-                    block.Item().PaddingBottom(cellGap).Row(cells =>
+                    var isFirstRow = start == 0;
+
+                    // ShowEntire روی هر ردیف = هیچ ردیفی نصفه به صفحهٔ بعد نمی‌رود و برچسب
+                    // «محل امضای حاضرین» هم هیچ‌وقت از ردیف اولش جدا نمی‌شود.
+                    block.Item().PaddingBottom(cellGap).ShowEntire().Column(rowBlock =>
                     {
-                        for (var index = 0; index < perRow; index++)
+                        if (isFirstRow)
                         {
-                            var position = index;
-                            cells.ConstantItem(Math.Max(60f, cellWidth)).Element(cell =>
-                            {
-                                if (position >= group.Count) return;
-                                var person = group[position];
-                                cell.PaddingLeft(position == perRow - 1 ? 0f : cellGap)
-                                    .Column(card =>
-                                    {
-                                        if (images.TryGetValue(person.Id, out var signature))
-                                        {
-                                            // امضای ثبت‌شده در پنجرهٔ canvas: خودِ تصویر، بدون کادر.
-                                            card.Item().Height(boxHeight).AlignCenter().AlignMiddle()
-                                                .Image(signature).FitArea();
-                                        }
-                                        else
-                                        {
-                                            // کادر خالی برای امضای دستی روی برگه.
-                                            card.Item().Height(boxHeight)
-                                                .Border(0.5f).BorderColor("#cbd5e1").Background(Colors.White)
-                                                .AlignCenter().AlignMiddle()
-                                                .Text("محل امضای دستی")
-                                                .FontSize(isA5 ? 6.5f : 7.5f).FontColor("#b6c2d2")
-                                                .DirectionFromRightToLeft();
-                                        }
-
-                                        card.Item().PaddingTop(3).AlignCenter().Text(person.Name)
-                                            .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f)
-                                            .FontColor(Ink).DirectionFromRightToLeft();
-
-                                        // «در انتظار امضا» روی کاغذ نمی‌آید؛ فقط تاریخ امضای
-                                        // ثبت‌شده می‌ماند (سندِ امضای الکترونیکی در گردش کار).
-                                        if (person.SignedAt != null)
-                                        {
-                                            card.Item().AlignCenter()
-                                                .Text("امضا شد: " + LetterPrintTemplate.PersianDigits(
-                                                    FaDate(person.SignedAt)))
-                                                .FontSize(isA5 ? 6.5f : 7f).FontColor("#166534");
-                                        }
-                                    });
-                            });
+                            rowBlock.Item().PaddingBottom(isA5 ? 4f : 6f)
+                                .Text(LetterPrintTemplate.RtlLabel("محل امضای حاضرین"))
+                                .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
+                                .DirectionFromRightToLeft();
                         }
+
+                        rowBlock.Item().Row(cells =>
+                        {
+                            for (var index = 0; index < perRow; index++)
+                            {
+                                var position = index;
+                                cells.ConstantItem(Math.Max(60f, cellWidth)).Element(cell =>
+                                {
+                                    if (position >= group.Count) return;
+                                    var person = group[position];
+                                    cell.PaddingLeft(position == perRow - 1 ? 0f : cellGap)
+                                        .Column(card =>
+                                        {
+                                            if (images.TryGetValue(person.Id, out var signature))
+                                            {
+                                                // امضای ثبت‌شده در پنجرهٔ canvas: خودِ تصویر، بدون کادر.
+                                                card.Item().Height(boxHeight).AlignCenter().AlignMiddle()
+                                                    .Image(signature).FitArea();
+                                            }
+                                            else
+                                            {
+                                                // کادر خالی برای امضای دستی روی برگه.
+                                                card.Item().Height(boxHeight)
+                                                    .Border(0.5f).BorderColor("#cbd5e1").Background(Colors.White)
+                                                    .AlignCenter().AlignMiddle()
+                                                    .Text("محل امضای دستی")
+                                                    .FontSize(isA5 ? 6.5f : 7.5f).FontColor("#b6c2d2")
+                                                    .DirectionFromRightToLeft();
+                                            }
+
+                                            card.Item().PaddingTop(3).AlignCenter().Text(person.Name)
+                                                .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f)
+                                                .FontColor(Ink).DirectionFromRightToLeft();
+
+                                            // «در انتظار امضا» روی کاغذ نمی‌آید؛ فقط تاریخ امضای
+                                            // ثبت‌شده می‌ماند (سندِ امضای الکترونیکی در گردش کار).
+                                            if (person.SignedAt != null)
+                                            {
+                                                card.Item().AlignCenter()
+                                                    .Text("امضا شد: " + LetterPrintTemplate.PersianDigits(
+                                                        FaDate(person.SignedAt)))
+                                                    .FontSize(isA5 ? 6.5f : 7f).FontColor("#166534");
+                                            }
+                                        });
+                                });
+                            }
+                        });
                     });
                 }
             });
@@ -747,7 +767,11 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     /// اضافه نمی‌شود؛ فقط ترتیب نمایش اصلاح می‌شود.
     /// </summary>
     private static string NormalizeCaption(string text) =>
-        LetterPrintTemplate.RtlLabel(text, ensureTrailingColon: false);
+        // قالب MRT برچسب را به‌صورت «:حاضرین» ذخیره می‌کند (دونقطه پیش از متن، در ترتیب منطقی).
+        // RtlLabel دونقطهٔ ابتدای متن را برمی‌دارد؛ اگر ensureTrailingColon:false باشد، دونقطه
+        // هیچ‌جا چاپ نمی‌شود و برچسب «حاضرین» بدون «:» می‌آید (دیده‌شده در خروجی واقعی چاپ).
+        // پس همان دونقطه‌ای که در طرح بود، در پایانِ منطقی برمی‌گردد: «حاضرین: …».
+        LetterPrintTemplate.RtlLabel(text, ensureTrailingColon: true);
 
     private const string Ink = "#0f172a";
     private const string Muted = "#64748b";

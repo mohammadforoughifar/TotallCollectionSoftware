@@ -58,10 +58,13 @@ ARIA_BODY_TOP = {"A4": 279.0, "A5": 196.6}
 ARIA_META_FONT = {"A4": "Vazirmatn,10", "A5": "Vazirmatn,7.5"}
 # پایین الگوی خاکستری سربرگ شرکت ۱؛ عنوان باید زیر آن باشد.
 GRAY_PATTERN_BOTTOM = 231.5
-# مرز پابرگ: شروع مثلث قرمز ۶۴۱٫۵pt در A4 (→ رزرو ۲۰۶) و ۴۴۸٫۲pt در A5 (→ رزرو ۱۴۷).
-ARIA_FOOTER_RESERVE = {"A4": 206.0, "A5": 147.0}
+# مرز محتوا: مثلث قرمز از ۶۴۱٫۵pt شروع می‌شود ولی شیبش تا y≈۶۸۲ به ستون متن (x<۵۵۸)
+# نمی‌رسد؛ پس مرز ۶۶۸pt (رزرو ۱۷۴) امن است و ۳۲pt بیشتر از مرز قبلی (۶۳۶) جا می‌دهد.
+# A5 همان نسبت: مرز ۴۸۰٫۳pt (رزرو ۱۱۵).
+ARIA_FOOTER_RESERVE = {"A4": 174.0, "A5": 115.0}
 ARIA_HEADER_RESERVE = {"A4": 121.0, "A5": 85.0}
-ARIA_SIGNATURE = {"A4": (3, 52.0), "A5": (3, 38.0)}
+# حداکثر پنج کادر در ردیف؛ ارتفاع کادر یک‌ردیفی و چندردیفی (جمع‌وجور).
+ARIA_SIGNATURE = {"A4": (5, 46.0, 34.0), "A5": (5, 38.0, 29.0)}
 
 
 def reports(tree: Path) -> Path:
@@ -302,16 +305,20 @@ class MinutesPrintServiceTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
                 profile = self.profile(tree)
-                self.assertIn("var perRow = letterheadProfile.SignatureColumns;", service)
-                self.assertIn("var boxHeight = letterheadProfile.SignatureBoxHeight;", service)
-                self.assertIn("var cellWidth = isA5 ? (flowWidth - cellGap * (perRow - 1)) / perRow : 168f;",
+                self.assertIn("var maxColumns = Math.Max(1, letterheadProfile.SignatureColumns);", service)
+                self.assertIn("var perRow = Math.Clamp(people.Count, Math.Min(3, maxColumns), maxColumns);",
                               service)
-                self.assertIn("ShowEntire()", service)      # بلوک امضا نصفه نمی‌شود
+                self.assertIn("var boxHeight = rowCount > 1 && letterheadProfile.SignatureCompactBoxHeight > 0f",
+                              service)
+                self.assertIn("ShowEntire()", service)      # هیچ ردیفی نصفه نمی‌شود
                 self.assertIn("محل امضای دستی", service)     # کادر خالی برای امضای روی برگه
                 # چیدمان پیش‌فرض (۱۰۰۳/۳) همان قبلی است: A4 سه‌نفره ۵۲pt، A5 دونفره ۴۴pt.
                 self.assertIn("SignatureColumns: 2,", profile)
                 self.assertIn("SignatureBoxHeight: 44f", profile)
                 self.assertIn("SignatureBoxHeight: 52f", profile)
+                self.assertIn("SignatureCellWidth: 168f,", profile)
+                # ۱۰۰۳ فشرده‌سازی چندردیفی ندارد (۰) تا چیدمان تأییدشده‌اش دست‌نخورده بماند.
+                self.assertIn("SignatureCompactBoxHeight: 0f,", profile)
 
     def test_pending_signature_text_is_not_printed_by_the_template_path(self):
         """«در انتظار امضا» مخصوص گردش دیجیتال است و روی کاغذ نمی‌آید.
@@ -489,7 +496,7 @@ class CompanyOneMinutesTemplateTests(unittest.TestCase):
 
     def test_content_stays_above_the_red_triangle(self):
         """محتوا نباید روی مثلث قرمز پایین-راست بیفتد (مرز ۶۳۶pt در A4 و ۴۴۸٫۲ در A5)."""
-        limit = {"A4": 636.0, "A5": 448.2}
+        limit = {"A4": 668.0, "A5": 480.3}
         page_height = {"A4": 841.89, "A5": 595.28}
         for size in SIZES:
             with self.subTest(size=size):
@@ -508,9 +515,12 @@ class CompanyOneMinutesTemplateTests(unittest.TestCase):
                     self.assertIn(f"FooterReserve: {reserve:g}f", profile, size)
                 for size, reserve in ARIA_HEADER_RESERVE.items():
                     self.assertIn(f"HeaderReserve: {reserve:g}f", profile, size)
-                # در هر دو کاغذ سه کادر امضا در ردیف.
-                self.assertIn("SignatureColumns: 3,", profile)
+                # تا پنج کادر امضا در ردیف + کادر جمع‌وجورتر برای حالت چندردیفی.
+                self.assertIn("SignatureColumns: 5,", profile)
+                self.assertIn("SignatureBoxHeight: 46f", profile)
                 self.assertIn("SignatureBoxHeight: 38f", profile)
+                self.assertIn("SignatureCompactBoxHeight: 34f", profile)
+                self.assertIn("SignatureCompactBoxHeight: 29f", profile)
 
     def test_layout_reader_reads_the_white_backing_from_the_template(self):
         """قالب رنگ پس‌زمینه را اعلام می‌کند و خوانندهٔ چیدمان آن را می‌خواند."""
@@ -530,6 +540,72 @@ class CompanyOneMinutesTemplateTests(unittest.TestCase):
         self.assertIn("ARIA_META_BOX", script)
         self.assertIn("ARIA_LAYOUT", script)
         self.assertIn('meta_fill": "White"', script)
+
+
+class SignatureFollowsTheTextTests(unittest.TestCase):
+    """درخواست کارفرما: «امضا باید همیشه بلافاصله بعد از پایان متن بیاید، نه در صفحهٔ دیگر.»
+
+    خروجی واقعی صورتجلسهٔ ۲۰۳۵ روی سربرگ شرکت ۱ دو صفحه شد: متن تا y≈۵۳۷٫۷pt آمد و بلوک امضا
+    (که کل بلوک یک‌جا ShowEntire بود و ≈۱۱۱pt ارتفاع داشت) با ۷pt کم‌آوردن به صفحهٔ دوم پرید.
+    """
+
+    # پایان متن در همان PDF واقعی (page 1) و مرز محتوای شرکت ۱ در A4.
+    REAL_CONTENT_END = 537.7
+    A4_LIMIT = 841.89 - ARIA_FOOTER_RESERVE["A4"]
+
+    def service(self, tree: Path) -> str:
+        return (office(tree) / "MeetingMinutesPrintService.cs").read_text(encoding="utf-8")
+
+    def test_signature_block_is_not_split_off_as_one_piece(self):
+        """نه کل بلوک، بلکه هر ردیف یک واحد است؛ برچسب هم به ردیف اولش چسبیده."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                # بلوک بیرونی ShowEntire ندارد (همان چیزی که کل امضا را به صفحهٔ بعد می‌انداخت).
+                self.assertIn("col.Item().PaddingTop(letterheadProfile.SignatureTopPadding).Column(block =>",
+                              service)
+                # هر ردیف جداگانه کامل می‌ماند.
+                self.assertIn("block.Item().PaddingBottom(cellGap).ShowEntire().Column(rowBlock =>", service)
+                # برچسب داخل ردیف اول است، پس هیچ‌وقت تنها نمی‌ماند.
+                caption_at = service.index('LetterPrintTemplate.RtlLabel("محل امضای حاضرین")')
+                first_row_at = service.index("if (isFirstRow)")
+                self.assertGreater(caption_at, first_row_at)
+
+    def test_compact_single_row_fits_right_after_the_real_text(self):
+        """با اعداد فعلی، بلوک امضای همین صورتجلسه در همان صفحهٔ اول جا می‌شود."""
+        columns, box_height, compact = ARIA_SIGNATURE["A4"]
+        # ارتفاع بلوک: فاصله از متن + برچسب + ردیف (کادر، نام، تاریخ امضا) + فاصلهٔ پایانی.
+        top_padding, caption_bottom, name_padding, gap = 6.0, 6.0, 3.0, 8.0
+        caption = 10.5 * 1.6
+        name = 8.5 * 1.6
+        signed = 7.0 * 1.6
+        block = top_padding + caption + caption_bottom + box_height + name_padding + name + signed + gap
+        self.assertLessEqual(self.REAL_CONTENT_END + block, self.A4_LIMIT,
+                             "بلوک امضا در صفحهٔ اول جا نمی‌شود → دوباره به صفحهٔ دوم می‌رود")
+        # مرز قبلی (رزرو ۲۰۶ → ۶۳۶pt) برای همین بلوک کافی نبود؛ این رگرسیون نباید برگردد.
+        self.assertGreater(self.REAL_CONTENT_END + block, 841.89 - 206.0)
+        # دو نفر → یک ردیف سه‌ستونه (کادرها بی‌دلیل پهن نمی‌شوند، ردیف دوم هم لازم نیست).
+        per_row = min(max(2, min(3, columns)), columns)
+        self.assertEqual(per_row, 3)
+        row_count = -(-2 // per_row)
+        self.assertEqual(row_count, 1)
+        self.assertLess(compact, box_height)          # کادر حالت چندردیفی جمع‌وجورتر است
+
+    def test_triangle_never_reaches_the_text_column(self):
+        """مرز ۶۶۸pt امن است: مثلث قرمز تا y≈۶۸۲ به ستون متن (x<۵۵۸) نمی‌رسد."""
+        self.assertAlmostEqual(self.A4_LIMIT, 667.89, places=2)
+        self.assertLess(self.A4_LIMIT, 682.0)
+
+    def test_other_companies_keep_their_calibrated_signature_layout(self):
+        """۱۰۰۳/۳ دست‌نخورده: A4 سه کادر ۱۶۸×۵۲ و A5 دو کادر ۴۴، بدون فشرده‌سازی."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                profile = (office(tree) / "MinutesLetterheadProfile.cs").read_text(encoding="utf-8")
+                self.assertIn("FooterReserve: HomepaLetterheadLayout.DesignFooterReserve(true)", profile)
+                self.assertIn("SignatureCellWidth: 168f,", profile)
+                self.assertIn("SignatureCompactBoxHeight: 0f,", profile)
+                self.assertIn("SignatureTopPadding: 10f)", profile)
+                self.assertIn("SignatureTopPadding: 14f)", profile)
 
 
 class MinutesPrintRouteTests(unittest.TestCase):
