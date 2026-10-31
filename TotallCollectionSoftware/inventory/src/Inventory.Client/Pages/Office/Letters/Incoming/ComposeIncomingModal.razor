@@ -481,10 +481,11 @@
         if (letterBody.Skipped > 0)
             Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
-        // ---------- همهٔ پیوست‌های ایمیل، با هر فرمتی ----------
+        // ---------- پیوست‌های واقعیِ ایمیل، با هر فرمتی ----------
         // منطقِ برداشت پیوست‌ها یک‌جا در EmailAttachmentTransferService است تا «تبدیل به
         // نامهٔ وارده» و «تبدیل به نامهٔ داخلی» دقیقاً یک رفتار داشته باشند: هیچ فیلتری
-        // روی نوع/پسوند، تصویر هم داخل متن دیده می‌شود و هم فایل ضمیمه است.
+        // روی نوع/پسوند نیست، ولی تصویر/لوگوی «درونِ متن» (inline) فایل ضمیمه نمی‌شود —
+        // فقط داخل متن نامه می‌آید.
         pendingFiles.Clear();
         var transfer = await EmailAttachmentTransferService.CollectAsync(
             email.Attachments, EmailSvc, MaxFileBytes, MaxTotalBytes);
@@ -492,6 +493,8 @@
 
         if (transfer.Count > 0)
             Toast.Success($"{transfer.Count.FaDigits()} پیوست ایمیل به نامه اضافه شد.");
+        if (transfer.InlineCount > 0)
+            Toast.Info($"{transfer.InlineCount.FaDigits()} تصویر/لوگوی داخل متن ایمیل فقط در متن نامه قرار گرفت و به‌عنوان فایل ضمیمه نشد.");
         if (transfer.TooBig.Count > 0)
             Toast.Error($"{transfer.TooBig.Count.FaDigits()} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد: "
                         + string.Join("، ", transfer.TooBig.Take(5)));
