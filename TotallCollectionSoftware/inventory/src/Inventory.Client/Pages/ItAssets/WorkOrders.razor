@@ -4198,7 +4198,8 @@ else
     private static int FailCount(WoItem w) => w.Assignees.Count(a => AsgState(a) == "bad");
     private static int PendingCount(WoItem w) => w.Assignees.Count(a => a.RepliedAt == null);
 
-    private static int Pct(int part, int total) => total <= 0 ? 0 : Math.Clamp(part * 100 / total, 0, 100);
+    // درصد از یک کمکی مشترک می‌آید: Pct(value, max) در بالای همین بخش. تعریف دوبارهٔ آن با
+    // امضای یکسان خطای CS0111 می‌داد («Type 'WorkOrders' already defines a member called 'Pct'»).
     private static int DonePct(WoItem w) => Pct(DoneCount(w), w.Assignees.Count);
     private static string WhoBarTitle(WoItem w) =>
         $"{DoneCount(w)} انجام‌شده · {FailCount(w)} انجام‌نشده · {PendingCount(w)} در انتظار";
