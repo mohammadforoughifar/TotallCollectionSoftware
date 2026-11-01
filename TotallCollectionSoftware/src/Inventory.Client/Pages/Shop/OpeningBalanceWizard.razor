@@ -479,6 +479,7 @@
     private List<LookupItem> customersLookup = new();
     private List<LookupItem> suppliersLookup = new();
     private Product? openingServiceProduct;
+    private Product? openingGoodsProduct;
     private List<LookupItem> warehouseLookup = new();
     private List<LookupItem> productLookup = new();
     private List<TrsCheque> chequesList = new();
@@ -539,7 +540,7 @@
                 .ToList();
 
             // دریافت یا ساخت خدمت افتتاح حساب (چون خدمات موجودی انبار نمی‌خواهد و خطا نمی‌دهد)
-            await EnsureOpeningServiceProductAsync();
+            await EnsureOpeningProductsAsync();
 
             warehouseLookup = await WarehouseSvc.GetLookupsAsync(activeOnly: true);
             if (warehouseLookup.Count > 0) stockWarehouseId = warehouseLookup[0].Id;
@@ -576,10 +577,11 @@
         if (p != null) partyBalance.PartyName = p.Name;
     }
 
-    private async Task EnsureOpeningServiceProductAsync()
+    private async Task EnsureOpeningProductsAsync()
     {
         try
         {
+            // ۱) خدمت افتتاحیه برای فروش (طلب ما از مشتری)
             var res = await ProductSvc.GetProductsAsync(search: "مانده افتتاح حساب", pageSize: 10);
             openingServiceProduct = res.Items.FirstOrDefault(p => p.IsService && p.Name.Contains("افتتاح"));
             if (openingServiceProduct == null)
@@ -592,14 +594,32 @@
                     IsActive = true,
                     PurchasePrice = 0,
                     SalePrice = 0,
-                    Description = "خدمت سیستمی برای ثبت مانده‌های افتتاحیه اول دوره اشخاص"
+                    Description = "خدمت سیستمی برای ثبت مانده‌های افتتاحیه طلب از مشتریان"
                 };
                 openingServiceProduct = await ProductSvc.SaveAsync(newProd);
+            }
+
+            // ۲) کالای عمومی افتتاحیه برای خرید (بدهی ما به تأمین‌کننده)
+            var resGoods = await ProductSvc.GetProductsAsync(search: "مانده بستانکاری افتتاحیه", pageSize: 10);
+            openingGoodsProduct = resGoods.Items.FirstOrDefault(p => !p.IsService && p.Name.Contains("افتتاح"));
+            if (openingGoodsProduct == null)
+            {
+                var newGoods = new Product
+                {
+                    Code = "OPN-GDS",
+                    Name = "مانده بستانکاری افتتاحیه (کالا)",
+                    IsService = false,
+                    IsActive = true,
+                    PurchasePrice = 0,
+                    SalePrice = 0,
+                    Description = "آیتم سیستمی برای ثبت مانده‌های افتتاحیه بدهی به تأمین‌کنندگان"
+                };
+                openingGoodsProduct = await ProductSvc.SaveAsync(newGoods);
             }
         }
         catch
         {
-            // در صورت بروز خطا، از لیست کالاها استفاده می‌شود
+            // نادیده‌گیری خطا
         }
     }
 
@@ -612,8 +632,14 @@
         try
         {
             var isSale = partyBalance.IsDebtor;
-            if (openingServiceProduct == null) await EnsureOpeningServiceProductAsync();
-            var svcProdId = openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
+            if (openingServiceProduct == null || openingGoodsProduct == null) await EnsureOpeningProductsAsync();
+
+            // در فروش (طلب ما از مشتری) از رکورد خدمات استفاده می‌شود تا موجودی انبار منفی نشود
+            // در خرید (بدهی ما به تأمین‌کننده) چون قانون سیستم اجازه خرید خدمات نمی‌دهد، از رکورد کالا استفاده می‌شود
+            var targetProdId = isSale
+                ? (openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1))
+                : (openingGoodsProduct?.Id ?? (productLookup.FirstOrDefault(x => !x.Name.Contains("خدمات"))?.Id ?? 1));
+
             var dummyWh = warehouseLookup.FirstOrDefault();
 
             var cmd = new OrderCommand
@@ -628,7 +654,7 @@
                 {
                     new()
                     {
-                        ProductId = svcProdId,
+                        ProductId = targetProdId,
                         Quantity = 1,
                         Price = partyBalance.Amount
                     }
@@ -699,7 +725,7 @@
         saving = true;
         try
         {
-            if (openingServiceProduct == null) await EnsureOpeningServiceProductAsync();
+            if (openingServiceProduct == null) await EnsureOpeningProductsAsync();
             var svcProdId = openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
             var dummyWh = warehouseLookup.FirstOrDefault();
             var eachAmount = Math.Round(instTotalAmount / instCount, 0);
