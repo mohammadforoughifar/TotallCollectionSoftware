@@ -149,7 +149,7 @@
                                                     </span>
                                                 </td>
                                                 <td class="text-start fw-bold num @(item.IsDebtor ? "text-danger" : "text-success")">@item.Amount.Money()</td>
-                                                <td class="num text-muted">@item.Date.ToFa()</td>
+                                                <td class="num text-muted">@(item.Date.HasValue ? item.Date.Value.ToFa() : "—")</td>
                                             </tr>
                                         }
                                     }
@@ -201,11 +201,11 @@
                             <div class="row g-2 mb-2">
                                 <div class="col-6">
                                     <label class="form-label fs-8">شماره چک</label>
-                                    <input class="form-control form-control-sm num text-center" @bind="newCheque.ChequeNumber" placeholder="مثال: ۱۲۳۴۵۶" />
+                                    <input class="form-control form-control-sm num text-center" @bind="newCheque.Number" placeholder="مثال: ۱۲۳۴۵۶" />
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label fs-8">شناسه صیادی (۱۶ رقم)</label>
-                                    <input class="form-control form-control-sm num text-center" maxlength="16" @bind="newCheque.SayadNumber" placeholder="کد صیاد" />
+                                    <input class="form-control form-control-sm num text-center" maxlength="16" @bind="newCheque.SayadId" placeholder="کد صیاد" />
                                 </div>
                             </div>
 
@@ -268,11 +268,11 @@
                                                     </span>
                                                 </td>
                                                 <td class="fw-bold">@ch.PartyName</td>
-                                                <td>@ch.BankName - @ch.ChequeNumber</td>
+                                                <td>@ch.BankName - @ch.Number</td>
                                                 <td class="num">@ch.DueDate.ToFa()</td>
                                                 <td class="text-start fw-bold num">@ch.Amount.Money()</td>
                                                 <td>
-                                                    <span class="badge bg-secondary-subtle text-secondary">@ch.StatusName</span>
+                                                    <span class="badge bg-secondary-subtle text-secondary">@GetChequeStatusName(ch.Status)</span>
                                                 </td>
                                             </tr>
                                         }
@@ -507,6 +507,16 @@
         await LoadDataAsync();
     }
 
+    private static string GetChequeStatusName(ChequeStatus status) => status switch
+    {
+        ChequeStatus.InHand => "نزد صندوق",
+        ChequeStatus.InCollection => "در جریان وصول",
+        ChequeStatus.Cleared => "وصول شده",
+        ChequeStatus.Bounced => "برگشتی",
+        ChequeStatus.Endorsed => "خرج شده",
+        _ => "ابطال شده"
+    };
+
     private async Task LoadDataAsync()
     {
         loading = true;
@@ -557,8 +567,7 @@
         saving = true;
         try
         {
-            // ثبت فاکتور/سند افتتاح حساب برای طرف حساب
-            var isSale = partyBalance.IsDebtor; // اگر بدهکار باشد یعنی طلب داریم (مانند فروش نسیه)
+            var isSale = partyBalance.IsDebtor;
             var dummyProd = productLookup.FirstOrDefault();
             var dummyWh = warehouseLookup.FirstOrDefault();
 
@@ -568,15 +577,15 @@
                 PartyId = partyBalance.PartyId,
                 WarehouseId = dummyWh?.Id ?? 1,
                 Date = partyBalance.Date ?? DateTime.Today,
-                PaymentMethod = PaymentMethod.Credit, // نسیه برای ثبت بدهکاری/بستانکاری
+                PaymentMethod = PaymentMethod.Credit,
                 Description = string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description,
-                Lines = new List<OrderLineCommand>
+                Lines = new List<OrderLineInput>
                 {
                     new()
                     {
                         ProductId = dummyProd?.Id ?? 1,
                         Quantity = 1,
-                        UnitPrice = partyBalance.Amount
+                        Price = partyBalance.Amount
                     }
                 }
             };
@@ -619,7 +628,7 @@
             newCheque.Status = ChequeStatus.InHand;
 
             var saved = await ChequeSvc.SaveAsync(newCheque);
-            Toast.Success($"چک شماره {saved.ChequeNumber} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
+            Toast.Success($"چک شماره {saved.Number} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
             
             var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
             chequesList = chqRes.Items;
@@ -649,19 +658,18 @@
             var dummyWh = warehouseLookup.FirstOrDefault();
             var eachAmount = Math.Round(instTotalAmount / instCount, 0);
 
-            var insts = new List<InstallmentCommand>();
+            var insts = new List<InstallmentDto>();
             var startDate = instFirstDueDate ?? DateTime.Today.AddMonths(1);
 
             for (int i = 0; i < instCount; i++)
             {
                 var dueDate = startDate.AddMonths(i * instIntervalMonths);
-                // قسط آخر مابه‌التفاوت گرد کردن را پوشش می‌دهد
                 var amt = (i == instCount - 1) ? (instTotalAmount - (eachAmount * (instCount - 1))) : eachAmount;
-                insts.Add(new InstallmentCommand
+                insts.Add(new InstallmentDto
                 {
+                    No = i + 1,
                     DueDate = dueDate,
-                    Amount = amt,
-                    Description = $"قسط {i + 1} از {instCount} — بدهی افتتاحیه"
+                    Amount = amt
                 });
             }
 
@@ -673,13 +681,13 @@
                 Date = DateTime.Today,
                 PaymentMethod = PaymentMethod.Installment,
                 Description = instNote,
-                Lines = new List<OrderLineCommand>
+                Lines = new List<OrderLineInput>
                 {
                     new()
                     {
                         ProductId = dummyProd?.Id ?? 1,
                         Quantity = 1,
-                        UnitPrice = instTotalAmount
+                        Price = instTotalAmount
                     }
                 },
                 Installments = insts
@@ -712,19 +720,19 @@
         {
             var cmd = new OrderCommand
             {
-                Type = TransactionType.Purchase, // خرید/رسید با بهای تمام شده برای ورود موجودی به انبار
+                Type = TransactionType.Purchase,
                 PartyId = allPartiesLookup.FirstOrDefault()?.Id ?? 1,
                 WarehouseId = stockWarehouseId,
                 Date = DateTime.Today,
                 PaymentMethod = PaymentMethod.Cash,
                 Description = stockDescription,
-                Lines = new List<OrderLineCommand>
+                Lines = new List<OrderLineInput>
                 {
                     new()
                     {
                         ProductId = stockProductId,
                         Quantity = stockQuantity,
-                        UnitPrice = stockUnitPrice
+                        Price = stockUnitPrice
                     }
                 }
             };
