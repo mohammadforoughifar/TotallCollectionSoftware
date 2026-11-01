@@ -61,90 +61,13 @@ internal static class InnerLetterheadTemplates
     /// </summary>
     internal static string[] CompanyCandidates(string contentRoot, string baseDirectory, int companyId,
         bool a5, string? templateRoot = null)
-    {
-        var file = $"Inner-{(a5 ? "A5" : "A4")}.mrt";
-        var company = companyId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var list = new List<string>();
-
-        void AddFolder(string? folder)
-        {
-            if (!string.IsNullOrWhiteSpace(folder)) list.Add(Path.Combine(folder!, file));
-        }
-
-        AddFolder(ConfiguredFolder(templateRoot, contentRoot, company));
-        AddFolder(RepositoryCompanyFolder(contentRoot, baseDirectory, company));
-        AddFolder(Path.Combine(contentRoot, "Reports", "InnerLetters", "Companies", company));
-        AddFolder(Path.Combine(baseDirectory, "Reports", "InnerLetters", "Companies", company));
-
-        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-
-    /// <summary>
-    /// مسیر واقعیِ فایلی که چاپ از آن خوانده می‌شود (null = هیچ نسخه‌ای پیدا نشد).
-    /// همین مسیر در لاگ چاپ هم ثبت می‌شود تا معلوم باشد از کدام فایل خوانده شده است.
-    /// </summary>
-    internal static string? ResolveCompanyTemplatePath(string contentRoot, string baseDirectory,
-        int companyId, bool a5, string? templateRoot = null)
-        => CompanyCandidates(contentRoot, baseDirectory, companyId, a5, templateRoot).FirstOrDefault(File.Exists);
-
-    /// <summary>
-    /// پوشهٔ قالب از تنظیمات. مقدار می‌تواند پوشهٔ خودِ شرکت (…/1003) یا پوشهٔ Companies باشد؛
-    /// مسیر نسبی هم نسبت به ContentRoot خوانده می‌شود.
-    /// </summary>
-    private static string? ConfiguredFolder(string? templateRoot, string contentRoot, string company)
-    {
-        var value = (templateRoot ?? string.Empty).Trim();
-        if (value.Length == 0) return null;
-
-        var folder = Path.IsPathRooted(value) ? value : Path.Combine(contentRoot, value);
-        var leaf = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        // اگر انتهای مسیر خودِ پوشهٔ شرکت است، دیگر نام شرکت را تکرار نکن.
-        return string.Equals(leaf, company, StringComparison.OrdinalIgnoreCase) ? folder : Path.Combine(folder, company);
-    }
-
-    private static readonly ConcurrentDictionary<string, string?> RepositoryFolderCache =
-        new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// پوشهٔ قالب داخل مخزن سورس (…/inventory/src/Inventory.Api/Reports/InnerLetters/Companies/{id}).
-    /// با بالا رفتن از پوشهٔ اجرا/پروژه پیدا می‌شود؛ روی سرورِ بدون سورس چیزی پیدا نمی‌شود و
-    /// مسیرهای بعدی (ContentRoot/BaseDirectory) استفاده می‌شوند.
-    /// </summary>
-    private static string? RepositoryCompanyFolder(string contentRoot, string baseDirectory, string company)
-    {
-        var key = $"{contentRoot}|{baseDirectory}|{company}";
-        if (RepositoryFolderCache.TryGetValue(key, out var cached)) return cached;
-
-        var folder = FindRepositoryCompanyFolder(contentRoot, baseDirectory, company);
-        RepositoryFolderCache[key] = folder;
-        return folder;
-    }
-
-    private static string? FindRepositoryCompanyFolder(string contentRoot, string baseDirectory, string company)
-    {
-        var starts = new[] { baseDirectory, contentRoot, Directory.GetCurrentDirectory() };
-        foreach (var start in starts.Where(value => !string.IsNullOrWhiteSpace(value)))
-        {
-            DirectoryInfo? directory;
-            try
-            {
-                directory = new DirectoryInfo(Path.GetFullPath(start));
-            }
-            catch
-            {
-                continue;
-            }
-
-            for (var depth = 0; directory != null && depth < 12; depth++, directory = directory.Parent)
-            {
-                var candidate = Path.Combine(directory.FullName, "inventory", "src", "Inventory.Api",
-                    "Reports", "InnerLetters", "Companies", company);
-                if (Directory.Exists(candidate)) return candidate;
-            }
-        }
-
-        return null;
-    }
+        // یک قاعده برای هر سه چاپ: تنظیمات → پوشهٔ داخل مخزن → ContentRoot → BaseDirectory.
+        // (قبلاً فقط نامهٔ داخلی پوشهٔ مخزن را می‌گشت و صورتجلسه/نامهٔ صادره قالب تازهٔ مخزن را
+        // تا اولین Publish کامل نمی‌دیدند.)
+        => PrintAssetResolver.TemplateCandidates(
+                PrintAssetResolver.InnerLetters, companyId, $"Inner-{(a5 ? "A5" : "A4")}.mrt",
+                templateRoot, contentRoot, baseDirectory)
+            .ToArray();
 
     private sealed record ArtworkEntry(long Length, DateTime WriteUtc, byte[] Bytes);
     private sealed record LayoutEntry(long Length, DateTime WriteUtc, Outgoing.OutgoingLetterDesignLayout? Layout);

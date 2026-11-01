@@ -46,8 +46,12 @@ class LetterheadAssetsTests(unittest.TestCase):
     def test_content_pdf_does_not_cover_the_underlaid_letterhead(self):
         source = SERVICE.read_text()
         self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
-        self.assertLess(source.index("graphics.DrawImage(asset.Pdf, bounds)"), source.index("graphics.DrawImage(contentForm, bounds)"))
-        self.assertIn("graphics.DrawImage(asset.Image, bounds)", source)
+        # سربرگ پیش از متن رسم می‌شود (وگرنه زیر آن پنهان می‌شد) و با مستطیل
+        # «حفظ نسبت» رسم می‌شود تا سربرگِ بدابعاد، نقطه‌چین‌ها را جابه‌جا نکند.
+        self.assertLess(source.index("graphics.DrawImage(asset.Pdf, artBounds)"),
+                        source.index("graphics.DrawImage(contentForm, bounds)"))
+        self.assertIn("graphics.DrawImage(asset.Image, artBounds)", source)
+        self.assertIn("PrintAssetResolver.LetterheadRect(", source)
 
     def test_registered_file_stays_the_default_source(self):
         # اولویت پیش‌فرض همان فایل ثبت‌شدهٔ شرکت است؛ طرح قالب با تنظیم
@@ -223,7 +227,7 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertNotIn("IDynamicComponent", template)
         overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
         self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
-        self.assertLess(overlay.index("graphics.DrawImage(asset.Image, bounds)"),
+        self.assertLess(overlay.index("graphics.DrawImage(asset.Image, artBounds)"),
                         overlay.index("graphics.DrawImage(contentForm, bounds)"))
         self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
         self.assertIn("page.Content().Background(Colors.Transparent)", source)

@@ -256,19 +256,26 @@ class InnerPrintingTests(unittest.TestCase):
     # ── مسیر قالب: چاپ باید از فایل داخل مخزن (inventory/src/…) خوانده شود ──────────────
 
     def test_print_reads_the_repository_inventory_template_first(self):
-        """اولویت مسیرها: تنظیمات → فایل داخل مخزن → ContentRoot → BaseDirectory."""
+        """اولویت مسیرها: تنظیمات → فایل داخل مخزن → ContentRoot → BaseDirectory.
+
+        قاعده از این پس در `PrintAssetResolver` است تا نامهٔ داخلی، نامهٔ صادره و صورتجلسه
+        یکسان رفتار کنند (قبلاً فقط نامهٔ داخلی پوشهٔ مخزن را می‌گشت و دو چاپ دیگر قالب تازهٔ
+        مخزن را تا اولین Publish کامل نمی‌دیدند).
+        """
         source = (OFFICE / "InnerLetterheadTemplates.cs").read_text()
-        candidates = source.split("CompanyCandidates(string contentRoot", 1)[1].split("return list.Distinct", 1)[0]
+        self.assertIn("PrintAssetResolver.TemplateCandidates(", source)
+        self.assertIn("PrintAssetResolver.InnerLetters", source)
+
+        resolver = (OFFICE / "PrintAssetResolver.cs").read_text()
         order = [
-            candidates.index("AddFolder(ConfiguredFolder("),
-            candidates.index("AddFolder(RepositoryCompanyFolder("),
-            candidates.index('Path.Combine(contentRoot, "Reports"'),
-            candidates.index('Path.Combine(baseDirectory, "Reports"'),
+            resolver.index("// ۱) مسیر صریح تنظیمات"),
+            resolver.index("// ۲) خودِ مخزن سورس"),
+            resolver.index("// ۳) ریشه‌های اجرا"),
         ]
         self.assertEqual(order, sorted(order), "ترتیب اولویت مسیرهای قالب به‌هم خورده است")
         # پوشهٔ داخل مخزن دقیقاً همان مسیری است که کارفرما گفته است.
-        self.assertIn('"inventory", "src", "Inventory.Api"', source)
-        self.assertIn('"Reports", "InnerLetters", "Companies", company', source)
+        self.assertIn('"inventory", "src", "Inventory.Api", "Reports", kind, "Companies", company', resolver)
+        self.assertIn('"Reports", kind, "Companies", company', resolver)
 
     def test_repository_template_is_discoverable_from_a_build_output_folder(self):
         """از پوشهٔ خروجی بیلد (bin/Debug/...) با بالا رفتن، پوشهٔ قالب داخل مخزن پیدا می‌شود."""

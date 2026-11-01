@@ -300,6 +300,31 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private bool UseDesignLayout(int companyId) => _designDrivenCompanyIds.Contains(TemplateDesignId(companyId));
 
     /// <summary>
+    /// آیا فایل ثبت‌شده روی رکورد شرکت، سربرگ «شرکت دیگری» است؟
+    /// ریشهٔ خطای «نامهٔ شرکت ۱۰۰۵ با سربرگ شرکت ۱ چاپ شد» همین بود: SystemCompanies.LetterheadFileName
+    /// می‌توانست به فایل شرکت دیگری اشاره کند و کد فقط «وجود فایل» را بررسی می‌کرد.
+    /// نام فایل‌های شرکت‌ها/خانواده‌ها را می‌شناسیم (homepa = ۳ و ۱۰۰۳، aria = ۱۰۰۵،
+    /// forough = شرکت ۱) و اگر فایل با خانوادهٔ شرکت نخواند، آن را رد می‌کنیم.
+    /// </summary>
+    private bool RegisteredLetterheadBelongsToAnotherCompany(int companyId, string? resolvedPath)
+    {
+        if (string.IsNullOrWhiteSpace(resolvedPath)) return false;
+
+        var name = Path.GetFileNameWithoutExtension(resolvedPath).ToLowerInvariant();
+        if (name.Length == 0) return false;
+
+        var designId = TemplateDesignId(companyId);
+        bool In(int[] ids) => ids.Select(TemplateDesignId).Contains(designId);
+
+        if (name.Contains("homepa", StringComparison.Ordinal)) return !In(_homepaCompanyIds);
+        if (name.Contains("aria", StringComparison.Ordinal)) return !In(_ariaCompanyIds);
+        if (name.Contains("forough", StringComparison.Ordinal)) return designId != 1;
+
+        // فایل بدون نشانهٔ شرکت (مثلاً company-{id}-{guid}.pdf از مسیر بارگذاری): خنثی است.
+        return false;
+    }
+
+    /// <summary>
     /// خواندن هندسهٔ چاپ از قالب شرکت با کش کوتاه‌مدت؛ کلید کش شامل طول و زمان تغییر فایل است،
     /// بنابراین ویرایش طرح بلافاصله در چاپ بعدی اثر می‌گذارد.
     /// </summary>
@@ -421,35 +446,26 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         if (clean.Contains("..")) return null;
 
         var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
-        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
-            ? clean["uploads/".Length..]
-            : clean;
 
-        var uploadFileName = Path.GetFileName(uploadClean);
-        var candidates = new[]
+        // قاعدهٔ مشترک هر سه چاپ (PrintAssetResolver): مقدار ثبت‌شده ممکن است
+        // «uploads/letterheads/x.pdf»، «letterheads/x.pdf» یا فقط «x.pdf» باشد؛ در حالت
+        // نامِ تنها فایل داخل wwwroot/uploads/letterheads — و اگر نبود، داخل مخزن سورس —
+        // جست‌وجو می‌شود (با نادیده‌گرفتن تفاوت ي/ك عربی و نیم‌فاصله).
+        var found = PrintAssetResolver.Letterhead(clean, webRoot, _env.ContentRootPath, AppContext.BaseDirectory);
+
+        if (found == null)
         {
-            // Supports canonical values such as uploads/letterheads/name.pdf.
-            Path.Combine(webRoot, "uploads", uploadClean),
-            // Older company records may store only the filename. Letterheads live
-            // in this subfolder, not directly under wwwroot/uploads.
-            Path.Combine(webRoot, "uploads", "letterheads", uploadFileName),
-            Path.Combine(webRoot, clean),
-            Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "letterheads", uploadFileName),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
-            Path.Combine(AppContext.BaseDirectory, "wwwroot", "uploads", "letterheads", uploadFileName),
-            Path.Combine(AppContext.BaseDirectory, clean),
-            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
-        };
+            _logger.LogWarning(
+                "فایل سربرگ نامه صادره پیدا نشد. Value={Value}, Searched={Searched}",
+                fileName, PrintAssetResolver.Describe(
+                    PrintAssetResolver.LetterheadCandidates(clean, webRoot, _env.ContentRootPath,
+                        AppContext.BaseDirectory)));
+            return null;
+        }
 
-        var found = candidates.FirstOrDefault(File.Exists);
-        if (found == null) return null;
-
-        // Only renderable letterhead files (PDF/image) are accepted. Values that
-        // point at an MRT report template or any other file type are ignored —
-        // the template's embedded design is used through ExtractTemplateLetterhead.
-        var extension = Path.GetExtension(found).ToLowerInvariant();
-        return extension is ".pdf" or ".png" or ".jpg" or ".jpeg" ? found : null;
+        // فقط PDF/تصویر؛ مقدارهایی که به قالب MRT یا فایل دیگر اشاره می‌کنند نادیده گرفته
+        // می‌شوند تا طرح جاسازی‌شده در قالب همان شرکت جایگزین شود.
+        return PrintAssetResolver.IsRenderable(found) ? found : null;
     }
 
     /// <summary>
@@ -758,16 +774,20 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
             ? Path.Combine("Reports", "OutgoingLetters", "Companies")
             : configuredRoot.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
-        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() };
+
+        // همان قاعدهٔ نامهٔ داخلی و صورتجلسه: تنظیمات → پوشهٔ داخل مخزن
+        // (inventory/src/Inventory.Api/Reports/OutgoingLetters/Companies/{id}) → ContentRoot →
+        // BaseDirectory → پوشهٔ جاری. پیش از این پوشهٔ مخزن بررسی نمی‌شد و قالب تازهٔ یک شرکت
+        // (مثلاً ۱۰۰۵) تا اولین Publish کامل «وجود نداشت» و چاپ با خطای «سربرگ پیدا نشد» متوقف می‌شد.
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory };
 
         // شناسهٔ شرکت بین نصب‌ها یکسان نیست (هومپا در یکی 1003 و در دیگری 3)؛ نگاشت صریح
         // جلوی چاپ روی طرح شرکت دیگر را می‌گیرد.
         foreach (var designId in DesignCompanyIds(companyId))
         {
-            var folder = Path.Combine(templateRoot, designId.ToString(CultureInfo.InvariantCulture));
-            var folders = Path.IsPathRooted(templateRoot)
-                ? new[] { folder }
-                : roots.Select(root => Path.Combine(root, folder)).Distinct().ToArray();
+            var folders = PrintAssetResolver
+                .TemplateFolders(PrintAssetResolver.OutgoingLetters, designId, templateRoot, roots)
+                .ToList();
 
             foreach (var candidateFolder in folders)
             {
@@ -786,13 +806,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             }
         }
 
+        // آخرین جای جست‌وجو: پوشهٔ طراحی قالب‌ها در ریشهٔ مخزن (Report/outgoingletter/{id}).
+        var designFile = PrintAssetResolver.FirstExisting(
+            PrintAssetResolver.DesignFolderCandidates("outgoingletter", TemplateDesignId(companyId),
+                $"Report_{size}_OutgoingLetter.mrt", roots));
+        if (designFile != null) return designFile;
+
         // قبلاً این حالت فقط LogDebug بود و در سطح پیش‌فرض Information هیچ اثری در لاگ نداشت؛
         // نتیجه: «طرح خوانده نمی‌شود» بدون هیچ سرنخی. اکنون پوشه‌های موجود هم فهرست می‌شوند.
         _logger.LogWarning(
             "هیچ قالب چاپی برای شرکت پیدا نشد. CompanyId={CompanyId}, DesignIds={DesignIds}, Size={Size}, " +
-            "TemplateRoot={TemplateRoot}, SearchedRoots={SearchedRoots}, AvailableDesigns={AvailableDesigns}",
+            "TemplateRoot={TemplateRoot}, SearchedRoots={SearchedRoots}, Searched={Searched}, AvailableDesigns={AvailableDesigns}",
             companyId, string.Join(",", DesignCompanyIds(companyId)), size, templateRoot,
-            string.Join(" | ", roots.Distinct()), DescribeAvailableDesigns(templateRoot, roots));
+            string.Join(" | ", roots.Distinct()),
+            PrintAssetResolver.Describe(PrintAssetResolver.TemplateFolders(
+                PrintAssetResolver.OutgoingLetters, TemplateDesignId(companyId), templateRoot, roots)),
+            DescribeAvailableDesigns(templateRoot, roots));
         return null;
     }
 
@@ -1096,6 +1125,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳).
         var preferTemplate = PreferTemplateLetterhead
             || (selectedCompanyId is int preferCompany && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
+        // گارد «سربرگ شرکت دیگر»: اگر فایل ثبت‌شده از آنِ شرکت دیگری باشد و قالب طرح
+        // سربرگ شرکتِ درست را داشته باشد، فایل ثبت‌شده نادیده گرفته می‌شود.
+        if (registeredPath != null && RegisteredLetterheadBelongsToAnotherCompany(selectedCompanyId ?? 0, registeredPath))
+        {
+            var replacement = templateLetterheadPath;
+            _logger.LogWarning(
+                "فایل ثبت‌شدهٔ شرکت {CompanyId} سربرگ شرکت دیگری است و نادیده گرفته شد. RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, Fallback={Fallback}",
+                selectedCompanyId, registeredPath, templateLetterheadPath,
+                replacement != null ? "طرح قالب" : "همان فایل ثبت‌شده (قالب جایگزین ندارد)");
+            if (replacement != null) registeredPath = null;
+        }
+
         var letterheadPath = preferTemplate && templateLetterheadPath != null
             ? templateLetterheadPath
             : registeredPath ?? templateLetterheadPath;
@@ -1158,10 +1199,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     : TryResolveAnyPath(company?.LetterheadFileName) is { } existing
                         ? $"فایل ثبت‌شده یافت شد ({existing}) اما نوع قابل‌چاپ نیست؛ فقط PDF/تصویر مجاز است"
                         : "فایل ثبت‌شده روی سرور پیدا نشد";
+            var searchedTemplates = PrintAssetResolver.TemplateCandidates(
+                PrintAssetResolver.OutgoingLetters, TemplateDesignId(selectedCompanyId ?? 0),
+                $"Outgoing-{(isA5 ? "A5" : "A4")}.mrt",
+                _configuration["Reporting:Stimulsoft:TemplateRoot"], _env.ContentRootPath, AppContext.BaseDirectory);
             var message =
                 $"سربرگ شرکت «{companyName}» پیدا نشد؛ چاپ متوقف شد تا نامه روی صفحهٔ سفید چاپ نشود. " +
                 $"وضعیت: {configuredStatus}؛ قالب MRT شرکت یافت نشد یا سربرگ جاسازی‌شده ندارد. " +
-                $"مسیرهای جستجوی قالب: {_env.ContentRootPath} | {AppContext.BaseDirectory}";
+                $"مسیرهای بررسی‌شدهٔ قالب: {PrintAssetResolver.Describe(searchedTemplates)} | " +
+                $"فایل‌های سربرگ ثبت‌شده: {PrintAssetResolver.Describe(PrintAssetResolver.LetterheadCandidates(company?.LetterheadFileName, _env.WebRootPath, _env.ContentRootPath, AppContext.BaseDirectory), 6)}";
             _logger.LogError(
                 "چاپ نامه {LetterId} متوقف شد: سربرگ شرکت {CompanyId} یافت نشد. Configured={Configured}, ContentRoot={ContentRoot}, BaseDirectory={BaseDirectory}, WebRoot={WebRoot}",
                 letterId, selectedCompanyId, company?.LetterheadFileName,
@@ -2414,6 +2460,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         });
     }
 
+    /// <summary>مستطیل رسم سربرگ با حفظ نسبت (جزئیات در <see cref="PrintAssetResolver.LetterheadRect"/>).</summary>
+    private static XRect ArtRect(PdfSharp.Pdf.PdfPage page, double assetWidth, double assetHeight)
+    {
+        var (x, y, width, height) = PrintAssetResolver.LetterheadRect(
+            page.Width.Point, page.Height.Point, assetWidth, assetHeight);
+        return new XRect(x, y, width, height);
+    }
+
     private static string FullName(User? user)
     {
         if (user == null) return string.Empty;
@@ -2460,14 +2514,21 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                 using var graphics = XGraphics.FromPdfPage(page);
                 var bounds = new XRect(0, 0, page.Width.Point, page.Height.Point);
+                // سربرگِ با نسبت نامناسب بی‌کشیدگی رسم می‌شود تا شماره/تاریخ/پیوست که روی
+                // نقطه‌چین‌های چاپ‌شده کالیبره شده‌اند جابه‌جا نشوند.
+                var artBounds = asset.IsPdf && asset.Pdf != null
+                    ? ArtRect(page, asset.Pdf.PointWidth, asset.Pdf.PointHeight)
+                    : asset.Image != null
+                        ? ArtRect(page, asset.Image.PointWidth, asset.Image.PointHeight)
+                        : bounds;
                 if (asset.IsPdf && asset.Pdf != null)
                 {
                     asset.Pdf.PageNumber = 1;
-                    graphics.DrawImage(asset.Pdf, bounds);
+                    graphics.DrawImage(asset.Pdf, artBounds);
                 }
                 else if (asset.Image != null)
                 {
-                    graphics.DrawImage(asset.Image, bounds);
+                    graphics.DrawImage(asset.Image, artBounds);
                 }
 
                 contentForm.PageNumber = index + 1;

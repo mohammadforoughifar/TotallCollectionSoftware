@@ -6,6 +6,7 @@ using System.Xml.Linq;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Office.Outgoing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -50,17 +51,20 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
     private readonly IConfiguration _configuration;
+    // برای لاگ‌کردن «کدام مسیر سربرگ/قالب بررسی شد» — بدون این، خطای «چاپ نشد» هیچ سرنخی ندارد.
+    private readonly ILogger _log;
 
     // مسیر سربرگِ استخراج‌شده از قالب MRT، به‌ازای (مسیر قالب + اندازهٔ فایل + زمان تغییر).
     private static readonly ConcurrentDictionary<string, string> TemplateLetterheads = new(StringComparer.Ordinal);
 
     public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor http,
-        IConfiguration configuration)
+        IConfiguration configuration, ILogger<MeetingMinutesPrintService>? logger = null)
     {
         _db = db;
         _env = env;
         _http = http;
         _configuration = configuration;
+        _log = logger ?? NullLogger<MeetingMinutesPrintService>.Instance;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -111,22 +115,22 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var clean = fileName.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..")) return null;
 
-        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
-        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
-            ? clean["uploads/".Length..]
-            : clean;
+        // قاعدهٔ مشترک هر سه چاپ: مقدار ثبت‌شده ممکن است مسیر نسبی کامل باشد یا فقط نام فایل؛
+        // در حالت دوم فایل داخل wwwroot/uploads/letterheads جست‌وجو می‌شود (قبلاً فقط
+        // wwwroot/<همان متن> بررسی می‌شد و سربرگ‌هایی مثل «aria-1005-letterhead.pdf» پیدا
+        // نمی‌شدند و صورتجلسه بدون سربرگ چاپ می‌شد).
+        var found = PrintAssetResolver.Letterhead(clean,
+            _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"),
+            _env.ContentRootPath, AppContext.BaseDirectory);
 
-        var candidates = new[]
-        {
-            Path.Combine(webRoot, "uploads", uploadClean),
-            Path.Combine(webRoot, clean),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
-            Path.Combine(AppContext.BaseDirectory, clean),
-            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
-        };
+        if (found == null)
+            _log.LogWarning(
+                "فایل سربرگ ثبت‌شدهٔ شرکت پیدا نشد. Value={Value}, Searched={Searched}",
+                fileName, PrintAssetResolver.Describe(
+                    PrintAssetResolver.LetterheadCandidates(clean, _env.WebRootPath, _env.ContentRootPath,
+                        AppContext.BaseDirectory)));
 
-        return candidates.FirstOrDefault(File.Exists);
+        return PrintAssetResolver.IsRenderable(found) ? found : null;
     }
 
     private static string FaDate(DateTime? d)
@@ -207,7 +211,13 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         // سربرگ: اول تصویر جاسازی‌شده در خودِ قالب (پس چاپ به فایل‌های wwwroot وابسته نیست)،
         // بعد فایل سربرگ ثبت‌شدهٔ شرکت.
         var letterheadPath = templatePath != null ? ExtractTemplateLetterhead(templatePath) : null;
+        var letterheadSource = letterheadPath != null ? "قالب MRT (Watermark.ImageBytes)"
+            : registeredLetterhead != null ? "فایل ثبت‌شدهٔ شرکت"
+            : "هیچ (چاپ بدون سربرگ)";
         letterheadPath ??= registeredLetterhead;
+        _log.LogInformation(
+            "صورتجلسه {MinutesId} شرکت {CompanyId}: قالب={Template} | سربرگ={LetterheadSource} ({LetterheadPath})",
+            m.Id, companyId, templatePath ?? "یافت نشد", letterheadSource, letterheadPath ?? "—");
 
         byte[] contentPdf;
         try
@@ -260,26 +270,39 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     private string? FindTemplate(int companyId, bool isA5)
     {
         var size = isA5 ? "A5" : "A4";
-        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory, Directory.GetCurrentDirectory() }
-            .Where(root => !string.IsNullOrWhiteSpace(root))
-            .Distinct();
-        var folder = Path.Combine(TemplateRoot, companyId.ToString(CultureInfo.InvariantCulture));
+        var fileName = $"Minutes-{size}.mrt";
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory };
 
-        foreach (var root in roots)
+        // همان قاعدهٔ نامهٔ داخلی و نامهٔ صادره (PrintAssetResolver): تنظیمات → پوشهٔ داخل مخزن
+        // (inventory/src/Inventory.Api/Reports/…، همان مسیری که قالب‌ها ویرایش می‌شوند) →
+        // ContentRoot → BaseDirectory → پوشهٔ جاری، و در پایان پوشهٔ طراحی «Report/».
+        // پیش از این فقط ContentRoot/BaseDirectory/CWD بررسی می‌شد؛ نتیجه: قالب تازهٔ یک شرکت
+        // (مثلاً ۱۰۰۵) تا اولین Publish کامل دیده نمی‌شد و صورتجلسه بدون سربرگ چاپ می‌شد.
+        var candidates = PrintAssetResolver.TemplateCandidates(
+                PrintAssetResolver.MeetingMinutes, companyId, fileName, TemplateRoot, roots)
+            .Concat(PrintAssetResolver.DesignFolderCandidates("meetingminutes", companyId,
+                $"Report_{size}_MeetingMinutes.mrt", roots))
+            .ToArray();
+
+        var exact = PrintAssetResolver.FirstExisting(candidates);
+        if (exact != null) return exact;
+
+        // نام فایل استاندارد نیست (طراح با نام دیگری ذخیره کرده): همان پوشه‌ها با هر فایل MRT
+        // که اندازه در نامش باشد بررسی می‌شوند.
+        foreach (var folder in PrintAssetResolver.TemplateFolders(
+                     PrintAssetResolver.MeetingMinutes, companyId, TemplateRoot, roots))
         {
-            var directory = Path.IsPathRooted(folder) ? folder : Path.Combine(root, folder);
-            if (!Directory.Exists(directory)) continue;
-
-            var expected = Path.Combine(directory, $"Minutes-{size}.mrt");
-            if (File.Exists(expected)) return expected;
-
-            var fallback = Directory.EnumerateFiles(directory, "*.mrt")
+            if (!Directory.Exists(folder)) continue;
+            var fallback = Directory.EnumerateFiles(folder, "*.mrt")
                 .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault(file => Path.GetFileNameWithoutExtension(file)
                     .Contains(size, StringComparison.OrdinalIgnoreCase));
             if (fallback != null) return fallback;
         }
 
+        _log.LogWarning(
+            "قالب صورتجلسه پیدا نشد. CompanyId={CompanyId}, Size={Size}, TemplateRoot={TemplateRoot}, Searched={Searched}",
+            companyId, size, TemplateRoot, PrintAssetResolver.Describe(candidates));
         return null;
     }
 
@@ -1090,14 +1113,22 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             using var gfx = XGraphics.FromPdfPage(page);
             var rect = new XRect(0, 0, page.Width.Point, page.Height.Point);
 
+            // سربرگی که با ارتفاع/عرض اشتباه ذخیره شده، بی‌کشیدگی رسم می‌شود تا نقطه‌چین‌ها
+            // جابه‌جا نشوند (PrintAssetResolver.LetterheadRect).
+            var artRect = isPdf && letterheadForm != null
+                ? ArtRect(page, letterheadForm.PointWidth, letterheadForm.PointHeight)
+                : letterheadImg != null
+                    ? ArtRect(page, letterheadImg.PointWidth, letterheadImg.PointHeight)
+                    : rect;
+
             if (isPdf && letterheadForm != null)
             {
                 letterheadForm.PageNumber = 1;
-                gfx.DrawImage(letterheadForm, rect);
+                gfx.DrawImage(letterheadForm, artRect);
             }
             else if (letterheadImg != null)
             {
-                gfx.DrawImage(letterheadImg, rect);
+                gfx.DrawImage(letterheadImg, artRect);
             }
 
             contentForm.PageNumber = i + 1;
@@ -1107,5 +1138,13 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         using var ms = new MemoryStream();
         output.Save(ms);
         return ms.ToArray();
+    }
+
+    /// <summary>مستطیل رسم سربرگ با حفظ نسبت (جزئیات در <see cref="PrintAssetResolver.LetterheadRect"/>).</summary>
+    private static XRect ArtRect(PdfSharp.Pdf.PdfPage page, double assetWidth, double assetHeight)
+    {
+        var (x, y, width, height) = PrintAssetResolver.LetterheadRect(
+            page.Width.Point, page.Height.Point, assetWidth, assetHeight);
+        return new XRect(x, y, width, height);
     }
 }

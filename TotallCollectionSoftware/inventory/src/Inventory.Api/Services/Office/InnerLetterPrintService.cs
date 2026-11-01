@@ -131,7 +131,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             catch (Exception ex)
             {
                 throw new InnerLetterPrintException(
-                    $"تولید PDF نامه داخلی روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ چاپ بدون سربرگ انجام نشد.", ex);
+                    $"تولید PDF نامه داخلی روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ چاپ بدون سربرگ انجام نشد. " +
+                    $"علت: {ex.Message} | قالب: {templatePath ?? "—"} | فایل سربرگ: {company.LetterheadFileName ?? "—"}", ex);
             }
         }
 
@@ -161,9 +162,13 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 _log.LogError(
                     "چاپ نامه داخلی متوقف شد: سربرگ شرکت {CompanyId} ({CompanyName}) تنظیم نشده. Status={Status}",
                     company!.Id, company!.Name, status);
+                var searchedTemplates = InnerLetterheadTemplates.CompanyCandidates(
+                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
                 throw new InnerLetterPrintException(
                     $"سربرگ شرکت «{company!.Name}» تنظیم نشده است؛ چاپ متوقف شد تا نامه روی سربرگ شرکت دیگری چاپ نشود. " +
-                    $"وضعیت: {status}. از مسیر «سیستم ← شرکت‌ها» فایل PDF سربرگ این شرکت را بارگذاری کنید.");
+                    $"وضعیت: {status}. از مسیر «سیستم ← شرکت‌ها» فایل PDF سربرگ این شرکت را بارگذاری کنید. " +
+                    $"مسیرهای بررسی‌شدهٔ قالب: {PrintAssetResolver.Describe(searchedTemplates)} | " +
+                    $"پوشه‌های سربرگ: {PrintAssetResolver.Describe(PrintAssetResolver.LetterheadFolders(_env.WebRootPath, _env.ContentRootPath, AppContext.BaseDirectory), 6)}");
             }
             _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
             return content;
@@ -191,15 +196,26 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         var clean = value.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..", StringComparison.Ordinal)) return null;
         var noUploads = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase) ? clean["uploads/".Length..] : clean;
-        var candidates = new[]
-        {
-            _files.ToFull(clean), _files.ToFull(noUploads),
-            Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), clean),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(AppContext.BaseDirectory, clean),
-            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
-        };
-        return candidates.FirstOrDefault(x => x != null && File.Exists(x));
+
+        // مسیرهای فایل‌های ثبت‌شده در خودِ برنامه (FileStore) اول، بعد قاعدهٔ مشترک چاپ:
+        // مقدار می‌تواند مسیر نسبی کامل یا فقط نام فایل باشد و فایل در
+        // wwwroot/uploads/letterheads (یا در مخزن سورس) باشد.
+        var direct = new[] { _files.ToFull(clean), _files.ToFull(noUploads) }
+            .FirstOrDefault(path => path != null && File.Exists(path));
+        if (direct != null) return direct;
+
+        var found = PrintAssetResolver.Letterhead(clean,
+            _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"),
+            _env.ContentRootPath, AppContext.BaseDirectory);
+
+        if (found == null)
+            _log.LogWarning(
+                "فایل سربرگ نامه داخلی پیدا نشد. Value={Value}, Searched={Searched}",
+                value, PrintAssetResolver.Describe(
+                    PrintAssetResolver.LetterheadCandidates(clean, _env.WebRootPath, _env.ContentRootPath,
+                        AppContext.BaseDirectory)));
+
+        return found;
     }
 
     private async Task<int?> ActiveCompanyIdAsync(int userId, CancellationToken ct)
@@ -223,7 +239,19 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     {
         using var input = new MemoryStream(content); using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import); using var output = new PdfDocument();
         var isPdf = headerPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase); using var form = isPdf ? XPdfForm.FromFile(headerPath) : null; using var image = !isPdf ? XImage.FromFile(headerPath) : null; using var cs = new MemoryStream(content); using var contentForm = XPdfForm.FromStream(cs);
-        for (var i = 0; i < source.PageCount; i++) { var sp = source.Pages[i]; var p = output.AddPage(); p.Width = sp.Width; p.Height = sp.Height; using var g = XGraphics.FromPdfPage(p); var r = new XRect(0, 0, p.Width.Point, p.Height.Point); if (form != null) { form.PageNumber = 1; g.DrawImage(form, r); } else if (image != null) g.DrawImage(image, r); contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
+        for (var i = 0; i < source.PageCount; i++) { var sp = source.Pages[i]; var p = output.AddPage(); p.Width = sp.Width; p.Height = sp.Height; using var g = XGraphics.FromPdfPage(p); var r = new XRect(0, 0, p.Width.Point, p.Height.Point);
+            // سربرگِ با نسبت نامناسب، بی‌کشیدگی رسم می‌شود (نقطه‌چین‌ها جابه‌جا نشوند).
+            var art = form != null ? ArtRect(p, form.PointWidth, form.PointHeight)
+                : image != null ? ArtRect(p, image.PointWidth, image.PointHeight) : r;
+            if (form != null) { form.PageNumber = 1; g.DrawImage(form, art); } else if (image != null) g.DrawImage(image, art); contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
         using var ms = new MemoryStream(); output.Save(ms); return ms.ToArray();
+    }
+
+    /// <summary>مستطیل رسم سربرگ با حفظ نسبت (جزئیات در <see cref="PrintAssetResolver.LetterheadRect"/>).</summary>
+    private static XRect ArtRect(PdfSharp.Pdf.PdfPage page, double assetWidth, double assetHeight)
+    {
+        var (x, y, width, height) = PrintAssetResolver.LetterheadRect(
+            page.Width.Point, page.Height.Point, assetWidth, assetHeight);
+        return new XRect(x, y, width, height);
     }
 }
