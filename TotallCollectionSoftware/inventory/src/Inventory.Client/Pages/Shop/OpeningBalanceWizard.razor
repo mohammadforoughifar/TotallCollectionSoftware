@@ -642,13 +642,15 @@
 
             var dummyWh = warehouseLookup.FirstOrDefault();
 
+            var docDate = partyBalance.Date ?? DateTime.Today;
             var cmd = new OrderCommand
             {
                 Type = isSale ? TransactionType.Sale : TransactionType.Purchase,
                 PartyId = partyBalance.PartyId,
                 WarehouseId = dummyWh?.Id ?? 1,
-                Date = partyBalance.Date ?? DateTime.Today,
+                Date = docDate,
                 PaymentMethod = PaymentMethod.Credit,
+                DueDate = docDate.AddMonths(1), // تاریخ سررسید نسیه برای اعتبارسنجی سرور
                 Description = string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description,
                 Lines = new List<OrderLineInput>
                 {
