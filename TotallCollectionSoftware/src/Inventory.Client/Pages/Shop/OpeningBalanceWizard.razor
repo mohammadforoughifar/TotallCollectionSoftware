@@ -172,19 +172,24 @@
                                 <label class="form-label fs-8">نوع چک <span class="text-danger">*</span></label>
                                 <div class="d-flex gap-3">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="chqKind" id="chqRec" checked="@(newCheque.Kind == ChequeKind.Received)" @onchange="() => newCheque.Kind = ChequeKind.Received" />
+                                        <input class="form-check-input" type="radio" name="chqKind" id="chqRec" checked="@(newCheque.Kind == ChequeKind.Received)" @onchange="() => OnChequeKindChanged(ChequeKind.Received)" />
                                         <label class="form-check-label fs-8 text-primary fw-bold" for="chqRec">دریافتی از مشتری</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="chqKind" id="chqIss" checked="@(newCheque.Kind == ChequeKind.Issued)" @onchange="() => newCheque.Kind = ChequeKind.Issued" />
+                                        <input class="form-check-input" type="radio" name="chqKind" id="chqIss" checked="@(newCheque.Kind == ChequeKind.Issued)" @onchange="() => OnChequeKindChanged(ChequeKind.Issued)" />
                                         <label class="form-check-label fs-8 text-danger fw-bold" for="chqIss">پرداختی به تأمین‌کننده</label>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="mb-2">
-                                <label class="form-label fs-8">طرف حساب <span class="text-danger">*</span></label>
-                                <SearchSelect Items="allPartiesLookup" Value="newCheque.PartyId ?? 0" ValueChanged="id => newCheque.PartyId = id" Placeholder="انتخاب شخص صادرکننده/گیرنده…" />
+                                <label class="form-label fs-8">
+                                    @(newCheque.Kind == ChequeKind.Received ? "مشتری (صادرکننده چک)" : "تأمین‌کننده (گیرنده چک)") <span class="text-danger">*</span>
+                                </label>
+                                <SearchSelect Items="@(newCheque.Kind == ChequeKind.Received ? customersLookup : suppliersLookup)"
+                                              Value="newCheque.PartyId ?? 0"
+                                              ValueChanged="id => newCheque.PartyId = id"
+                                              Placeholder="@(newCheque.Kind == ChequeKind.Received ? "انتخاب مشتری…" : "انتخاب تأمین‌کننده…")" />
                             </div>
 
                             <div class="row g-2 mb-2">
@@ -472,6 +477,8 @@
 
     private List<LookupItem> allPartiesLookup = new();
     private List<LookupItem> customersLookup = new();
+    private List<LookupItem> suppliersLookup = new();
+    private Product? openingServiceProduct;
     private List<LookupItem> warehouseLookup = new();
     private List<LookupItem> productLookup = new();
     private List<TrsCheque> chequesList = new();
@@ -526,9 +533,13 @@
             var supps = await PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
 
             customersLookup = custs;
+            suppliersLookup = supps;
             allPartiesLookup = custs.Select(c => new LookupItem { Id = c.Id, Name = $"مشتری: {c.Name}" })
                 .Concat(supps.Select(s => new LookupItem { Id = s.Id, Name = $"تأمین‌کننده: {s.Name}" }))
                 .ToList();
+
+            // دریافت یا ساخت خدمت افتتاح حساب (چون خدمات موجودی انبار نمی‌خواهد و خطا نمی‌دهد)
+            await EnsureOpeningServiceProductAsync();
 
             warehouseLookup = await WarehouseSvc.GetLookupsAsync(activeOnly: true);
             if (warehouseLookup.Count > 0) stockWarehouseId = warehouseLookup[0].Id;
@@ -552,11 +563,44 @@
         }
     }
 
+    private void OnChequeKindChanged(ChequeKind k)
+    {
+        newCheque.Kind = k;
+        newCheque.PartyId = 0;
+    }
+
     private void OnPartySelected(int id)
     {
         partyBalance.PartyId = id;
         var p = allPartiesLookup.FirstOrDefault(x => x.Id == id);
         if (p != null) partyBalance.PartyName = p.Name;
+    }
+
+    private async Task EnsureOpeningServiceProductAsync()
+    {
+        try
+        {
+            var res = await ProductSvc.GetProductsAsync(search: "مانده افتتاح حساب", pageSize: 10);
+            openingServiceProduct = res.Items.FirstOrDefault(p => p.IsService && p.Name.Contains("افتتاح"));
+            if (openingServiceProduct == null)
+            {
+                var newProd = new Product
+                {
+                    Code = "OPN-SVC",
+                    Name = "مانده افتتاح حساب (خدمات)",
+                    IsService = true,
+                    IsActive = true,
+                    PurchasePrice = 0,
+                    SalePrice = 0,
+                    Description = "خدمت سیستمی برای ثبت مانده‌های افتتاحیه اول دوره اشخاص"
+                };
+                openingServiceProduct = await ProductSvc.SaveAsync(newProd);
+            }
+        }
+        catch
+        {
+            // در صورت بروز خطا، از لیست کالاها استفاده می‌شود
+        }
     }
 
     private async Task SavePartyBalanceAsync()
@@ -568,7 +612,8 @@
         try
         {
             var isSale = partyBalance.IsDebtor;
-            var dummyProd = productLookup.FirstOrDefault();
+            if (openingServiceProduct == null) await EnsureOpeningServiceProductAsync();
+            var svcProdId = openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
             var dummyWh = warehouseLookup.FirstOrDefault();
 
             var cmd = new OrderCommand
@@ -583,7 +628,7 @@
                 {
                     new()
                     {
-                        ProductId = dummyProd?.Id ?? 1,
+                        ProductId = svcProdId,
                         Quantity = 1,
                         Price = partyBalance.Amount
                     }
@@ -654,7 +699,8 @@
         saving = true;
         try
         {
-            var dummyProd = productLookup.FirstOrDefault();
+            if (openingServiceProduct == null) await EnsureOpeningServiceProductAsync();
+            var svcProdId = openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
             var dummyWh = warehouseLookup.FirstOrDefault();
             var eachAmount = Math.Round(instTotalAmount / instCount, 0);
 
@@ -685,7 +731,7 @@
                 {
                     new()
                     {
-                        ProductId = dummyProd?.Id ?? 1,
+                        ProductId = svcProdId,
                         Quantity = 1,
                         Price = instTotalAmount
                     }
