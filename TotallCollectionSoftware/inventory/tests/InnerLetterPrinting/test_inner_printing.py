@@ -159,7 +159,8 @@ class InnerPrintingTests(unittest.TestCase):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
         self.assertIn("meta?.Receiver?.Top", source)
         self.assertIn("meta?.Title?.Top", source)
-        self.assertIn("designTop > 0f ? designTop : HomepaLetterheadLayout.ContentTop(a5)", source)
+        # اعداد «کاغذ» هر شرکت: ۱۰۰۳ مثل قبل، ۱۰۰۵ با هنر خودش (۱۳۳pt).
+        self.assertIn("designTop > 0f ? designTop : InnerLetterPaperProfile.ContentTop(companyId, a5)", source)
         self.assertIn("OutgoingLetterDesignLayout.Slot.Caption", source)
         self.assertIn("captionBox.Left - (titleBox.Left + titleBox.Width)", source)
         self.assertIn("InfoBlock(c, rows, infoFontSize", source)
@@ -182,9 +183,13 @@ class InnerPrintingTests(unittest.TestCase):
 
     def test_meta_values_are_placed_next_to_the_printed_labels(self):
         """لبهٔ راستِ مقدارها ۴pt قبل از برچسب‌های چاپ‌شده و روی مرکز همان ردیف‌ها."""
-        source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
-        self.assertIn("rows.Min(row => row.Left + row.Width) - 4f", source)
-        self.assertIn(".PaddingLeft(Math.Max(0f, left))", source)
+        # ترازِ مقدارها (ستونی برای ۱۰۰۳/۱، ردیفی برای ۱۰۰۵) در نقاش مشترک است.
+        renderer = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
+        painter = (OFFICE / "HeaderMetaPainter.cs").read_text()
+        self.assertIn("HeaderMetaPainter.Draw(host, metaRows", renderer)
+        self.assertIn("cells.Min(cell => cell.Left + cell.Width) - 4f", painter)
+        self.assertIn(".PaddingLeft(Math.Max(0f, cell.Left))", painter)
+        self.assertIn("MinimumColumnWidth", painter)
         # لبهٔ راستِ خودِ کادر ۴pt جلوتر از لبهٔ راستِ مقدار است (رندر ۴pt کم می‌کند).
         for size, centers, box_right in (("A4", (66.5, 84.5, 103.2), 96.48),
                                          ("A5", (47.0, 59.8, 73.0), 66.24)):
@@ -228,8 +233,9 @@ class InnerPrintingTests(unittest.TestCase):
         # مقادیر سربرگ در لایهٔ سراسری صفحه (مختصات مطلق) و با جهت چپ‌به‌راست،
         # وگرنه جهت راست‌به‌چپِ صفحه ترتیب Row را آینه می‌کرد و مقادیر از برچسب‌ها دور می‌افتادند.
         self.assertIn("page.Foreground().ContentFromLeftToRight()", source)
-        self.assertIn("DrawMetaRows(host, metaRows)", source)
-        self.assertIn("HomepaLetterheadLayout.ContentTop(a5)", source)
+        self.assertIn("HeaderMetaPainter.Draw(host, metaRows", source)
+        self.assertIn("InnerLetterPaperProfile.ContentTop(companyId, a5)", source)
+        self.assertIn("InnerLetterPaperProfile.FooterReserve(companyId, a5)", source)
         self.assertIn("page.Header().Height(contentTop);", source)
         # کادرها با مختصات مطلق‌اند؛ کسر مبدأ page.Header همان ایراد «یک ردیف بالاتر» بود.
         self.assertNotIn("HeaderField(", source)
@@ -327,7 +333,8 @@ class InnerPrintingTests(unittest.TestCase):
     def test_service_reads_meta_geometry_from_the_inner_template(self):
         service = (OFFICE / "InnerLetterPrintService.cs").read_text()
         self.assertIn("MetaLayout(", service)
-        self.assertIn("hasAttachment, fonts, meta)", service)
+        # شناسهٔ شرکت هم به رندر می‌رود تا «اعداد کاغذ» همان طرح انتخاب شود (۱۰۰۵ ≠ ۱۰۰۳).
+        self.assertIn("hasAttachment, fonts,\n                    meta, company!.Id);", service)
 
     def test_background_is_a_repeating_page_background_and_body_can_flow(self):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()

@@ -5,6 +5,10 @@
 • ۱ — طرح «فروغ آریا»: شماره/تاریخ/پیوست با متن **تیره** روی نقطه‌چین‌های خودِ سربرگ و با
   پس‌زمینهٔ سفید (`Brush=White`) تا نقطه‌ها زیر مقدار خوانایی را کم نکنند. هر مقدار روی
   **خط پایهٔ برچسب چاپ‌شدهٔ همان ردیف** می‌نشیند (۳۵٫۸ / ۶۳٫۵ / ۹۰٫۵pt در A4).
+• ۱۰۰۵ — طرح «آریا همیار ژنراتور»: مثل شرکت ۱ ولی **ردیف افقی**: سه نقطه‌چین کنار هم در
+  y≈۹۷٫۶pt (A4)، خط‌چین‌ها تا x = ۶۴٫۳ / ۱۵۶٫۷ / ۲۵۲٫۱ و مقدار راست‌چین با لبهٔ راستِ
+  ۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ — پررنگ (۹pt Bold) و با پلاک سفید. عنوان از ۱۲۸pt و بدنه از ۱۷۶pt؛
+  مرز محتوا ۷۴۵pt (رزرو پابرگ ۹۷pt، چون نوار تیره/زرد سربرگ از ۷۶۲pt شروع می‌شود).
 
 قالب با Stimulsoft طراحی می‌شود و از قالب نامهٔ صادره به‌عنوان «اهداکنندهٔ» استفاده می‌کند تا
 سربرگ جاسازی‌شده (Watermark.ImageBytes) و تنظیمات صفحه عیناً همان باشد؛ فقط اجزا عوض می‌شوند:
@@ -41,7 +45,7 @@ for parent in Path(__file__).resolve().parents:
 if ROOT is None:
     raise SystemExit("پوشهٔ پروژه پیدا نشد")
 
-COMPANIES = ("1003", "3", "1")
+COMPANIES = ("1003", "3", "1", "1005")
 SIZES = ("A4", "A5")
 SOURCE = Path("src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt")
 # شرکت ۱ (فروغ آریا) با همان قاعده از قالب نامهٔ صادرهٔ خودش سربرگ می‌گیرد.
@@ -104,6 +108,42 @@ ARIA_LAYOUT = {
     },
 }
 
+# ── شرکت ۱۰۰۵ (آریا همیار ژنراتور) ─────────────────────────────────────
+# هنر سربرگ: سه نقطه‌چین افقی در y≈۹۷٫۶pt (A4) و ۶۹٫۰pt (A5)؛ خط‌چین‌ها تا
+# x = ۶۴٫۳ / ۱۵۶٫۷ / ۲۵۲٫۱ و دونقطهٔ برچسب‌ها روی ۶۶٫۲ / ۱۵۸٫۶ / ۲۵۴٫۰.
+# مقدار راست‌چین با لبهٔ راستِ ۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ روی خط می‌نشیند (۲pt سمت چپِ دونقطه)،
+# پررنگ و با پلاک سفید (`Brush=White`) تا خط‌چین از میان رقم‌ها رد نشود.
+# عنوان از ۱۲۸pt (زیر خط تماس سربرگ که تا ≈۱۰۹pt می‌آید)، بدنه از ۱۷۶pt.
+# مرز محتوا ۷۴۵pt: نوار تیره/زرد پایین کاغذ از ۷۶۲pt شروع می‌شود.
+ARIA_ART_META_BOX = {
+    "A4": {"number": (110.0, 90.8, 43.5, 13.7),
+           "date": (202.0, 90.8, 47.5, 13.7),
+           "attachment": (21.0, 90.8, 41.0, 13.7)},
+    "A5": {"number": (77.7, 64.2, 30.8, 9.7),
+           "date": (142.8, 64.2, 33.6, 9.7),
+           "attachment": (14.8, 64.2, 29.0, 9.7)},
+}
+ARIA_ART_META_FONT = {"A4": 9.0, "A5": 6.5}
+
+ARIA_ART_LAYOUT = {
+    "A4": {
+        "title": (28.08, 128.0, 529.2, 40.0), "title_font": 14.0,
+        "row": 24.0, "font": 10.5,
+        "attendees": (28.08, 176.0, 445.0, 20.0), "attendees_caption": (478.08, 176.0, 79.2, 20.0),
+        "absentees": (28.08, 200.0, 445.0, 20.0), "absentees_caption": (478.08, 200.0, 79.2, 20.0),
+        "items_caption": (440.64, 224.0, 116.64, 20.0),
+        "items": (28.08, 248.0, 529.2, 400.0),
+    },
+    "A5": {
+        "title": (28.08, 90.5, 345.6, 28.0), "title_font": 11.5,
+        "row": 16.0, "font": 9.0,
+        "attendees": (28.08, 124.0, 288.0, 16.0), "attendees_caption": (326.16, 124.0, 47.52, 16.0),
+        "absentees": (28.08, 142.0, 288.0, 16.0), "absentees_caption": (326.16, 142.0, 47.52, 16.0),
+        "items_caption": (280.08, 160.0, 93.6, 16.0),
+        "items": (28.08, 178.0, 345.6, 250.0),
+    },
+}
+
 # چیدمان بدنه: عنوان زیر روبان آبی، سپس حاضرین/غایبین/بندها.
 LAYOUT = {
     "A4": {
@@ -159,6 +199,17 @@ def component(name: str, ref: int, rect: tuple[float, float, float, float],
 
 # چیدمان و رنگِ هر شرکت: «هومپا» (۱۰۰۳ و ۳) و «فروغ آریا» (۱).
 def company_spec(company: str, size: str) -> dict:
+    if company == "1005":
+        return {
+            "layout": ARIA_ART_LAYOUT[size],
+            "meta": ARIA_ART_META_BOX[size],
+            "meta_font": ARIA_ART_META_FONT[size],
+            "attachment_font": ARIA_ART_META_FONT[size],
+            "meta_text_brush": "Black",
+            "meta_fill": "White",
+            # مقدارها روی نقطه‌چین راست‌چین‌اند (نه وسط‌چین و نه بدون تراز).
+            "meta_align": "Right",
+        }
     if company == "1":
         return {
             "layout": ARIA_LAYOUT[size],
@@ -167,6 +218,7 @@ def company_spec(company: str, size: str) -> dict:
             "attachment_font": ARIA_META_FONT[size],
             "meta_text_brush": "Black",
             "meta_fill": "White",
+            "meta_align": "None",
         }
     return {
         "layout": LAYOUT[size],
@@ -175,6 +227,7 @@ def company_spec(company: str, size: str) -> dict:
         "attachment_font": ATTACHMENT_FONT,
         "meta_text_brush": "White",
         "meta_fill": "Transparent",
+        "meta_align": "None",
     }
 
 
@@ -200,13 +253,14 @@ def build_components(size: str, start_ref: int, company: str = "1003") -> tuple[
 
     # شماره / تاریخ / پیوست: کادرهای سفیدِ سربرگ، متن سفید (برچسبشان روی سربرگ چاپ شده)
     add("NumberValue", meta["number"], "{DataSource1.Number}", company_layout["meta_font"],
-        align="None", brush=company_layout["meta_text_brush"], valign="None",
+        align=company_layout["meta_align"], brush=company_layout["meta_text_brush"], valign="None",
         fill=company_layout["meta_fill"])
     add("MeetingDateValue", meta["date"], "{DataSource1.MeetingDate}", company_layout["meta_font"],
-        align="None", brush=company_layout["meta_text_brush"], valign="None",
+        align=company_layout["meta_align"], brush=company_layout["meta_text_brush"], valign="None",
         fill=company_layout["meta_fill"])
     add("AttachmentValue", meta["attachment"], "{DataSource1.Attachment}",
-        company_layout["attachment_font"], align="None", brush=company_layout["meta_text_brush"],
+        company_layout["attachment_font"], align=company_layout["meta_align"],
+        brush=company_layout["meta_text_brush"],
         valign="None", shrink_min=8, fill=company_layout["meta_fill"])
 
     # حاضرین / غایبین: برچسب به عرض طبیعی، چسبیده به مقدار (کد چاپ عرض را از متن می‌گیرد)
@@ -268,7 +322,7 @@ def build(size: str, company: str) -> str:
     text = text.replace("<Key>2ef1c17fbf9d48f582c4958a96e39b51</Key>",
                         "<Key>6f2c19d1a4b34d1e9c1e5f0d7a21b8c3</Key>")
     # فقط قالب شرکت ۱ (که پرچم‌ها را ندارد) اصلاح می‌شود؛ قالب‌های تأییدشدهٔ ۱۰۰۳/۳ دست‌نخورده می‌مانند.
-    return ensure_watermark_flags(text) if company == "1" else text
+    return ensure_watermark_flags(text) if company in ("1", "1005") else text
 
 
 def main(argv: list[str] | None = None) -> None:

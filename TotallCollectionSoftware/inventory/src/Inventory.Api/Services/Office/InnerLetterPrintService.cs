@@ -119,7 +119,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 // دقیقاً روی خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
                 var meta = InnerLetterheadTemplates.TryLoadMetaLayout(
                     _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts, meta);
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
+                    meta, company!.Id);
                 _log.LogInformation(
                     "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
                     letterId, company!.Id, templatePath,

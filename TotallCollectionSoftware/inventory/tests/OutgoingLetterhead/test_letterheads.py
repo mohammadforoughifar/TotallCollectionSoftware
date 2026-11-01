@@ -123,10 +123,12 @@ class LetterheadAssetsTests(unittest.TestCase):
     def test_aria_fields_and_body_start_are_fixed_independently_for_a4_and_a5(self):
         source = SERVICE.read_text()
         layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
+        # مختصات تأییدشدهٔ کارفرما: مقدارها راست‌چین و لبهٔ راستشان ۲pt سمت چپِ دونقطهٔ
+        # برچسب روی همان خط نقطه‌چین (۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ در A4).
         expected = {
-            "Date": ((142.2, 47, 35.9, 10), (202, 66, 51, 14)),
-            "Number": ((77.4, 47, 34.5, 10), (110, 66, 49, 14)),
-            "Attachment": ((7, 47, 35.2, 10), (10, 66, 50, 14)),
+            "Date": ((142.8, 48.2, 33.6, 9.7), (202, 66.8, 47.5, 13.7)),
+            "Number": ((77.7, 48.2, 30.8, 9.7), (110, 66.8, 43.5, 13.7)),
+            "Attachment": ((14.8, 48.2, 29, 9.7), (21, 66.8, 41, 13.7)),
         }
         for name, sizes in expected.items():
             method = re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
@@ -138,7 +140,10 @@ class LetterheadAssetsTests(unittest.TestCase):
                     self.assertEqual(actual, size)
 
         self.assertIn("HeaderHeight(bool isA5) => isA5 ? 70f : 95f", layout)
-        self.assertIn("BodyTopPadding(bool isA5) => isA5 ? 13f : 12f", layout)
+        # بدنه از همان جایی شروع می‌شود که طرح برای «گیرنده» دارد (۱۶۵٫۶ / ۱۱۶٫۶pt).
+        self.assertIn("ContentTop(bool isA5) => isA5 ? 116.64f : 165.6f", layout)
+        self.assertIn("BodyTopPadding(bool isA5) => isA5 ? 30.64f : 46.6f", layout)
+        self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 97f", layout)
         self.assertIn(r'isolateLtr ? $"\u2066{value}\u2069" : value', source)
         self.assertIn("text.DirectionFromLeftToRight();", source)
         self.assertIn("var pageTopMargin = isHomepaLetterhead || isAriaLetterhead", source)
@@ -149,6 +154,44 @@ class LetterheadAssetsTests(unittest.TestCase):
         for field in expected:
             self.assertIn(f"AriaLetterheadLayout.{field}(isA5)", aria_branch)
         self.assertIn("? AriaLetterheadLayout.BodyTopPadding(isA5)", source)
+
+    def test_company_1005_meta_row_sits_on_its_own_dotted_line(self):
+        """۱۰۰۵: سه مقدار در یک ردیف افقی، راست‌چین روی خط‌چین، پررنگ و با پلاک سفید.
+
+        اعداد از یک منبع می‌آیند: `AriaLetterheadLayout` (چاپ) و همان‌ها در قالب MRT نوشته
+        می‌شوند (`tools/sync_aria_meta_rows.py`). اگر یکی جابه‌جا شود، این تست می‌شکند.
+        """
+        layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
+        for size, origin in (("A5", 16.0), ("A4", 24.0)):
+            with self.subTest(size=size):
+                fields = declared_meta_fields(1005, size)
+                for name, slot in (("Number", "Number"), ("Date", "Date"), ("Attachment", "Attachment")):
+                    field = fields[name]
+                    # مرکز عمودی کادرها روی خط نقطه‌چین: ۹۷٫۶pt در A4 و ۶۹٫۰pt در A5.
+                    centre = field["top"] + field["height"] / 2
+                    self.assertAlmostEqual(centre, 97.65 if size == "A4" else 69.05, delta=0.2,
+                                           msg=f"{size} {name} باید روی خط نقطه‌چین بنشیند")
+                    self.assertEqual(field["color"], "Black", f"{size} {name} باید پررنگ/تیره باشد")
+                # همان سه ردیف افقی: هر سه کادر یک بالا و یک ارتفاع دارند.
+                tops = {round(fields[name]["top"], 2) for name in ("Number", "Date", "Attachment")}
+                self.assertEqual(len(tops), 1, "سه مقدار باید در یک ردیف افقی باشند")
+                # لبهٔ راست هر مقدار = انتهای خط‌چین (۲pt سمت چپِ دونقطهٔ برچسب).
+                rights = {name: round(fields[name]["left"] + fields[name]["width"], 1)
+                          for name in ("Attachment", "Number", "Date")}
+                self.assertEqual(rights, {"Attachment": 62.0, "Number": 153.5, "Date": 249.5}
+                                 if size == "A4" else
+                                 {"Attachment": 43.8, "Number": 108.5, "Date": 176.4})
+                # قلم: ۹pt در A4 و ۶٫۴pt در A5، همه توپُر، و پلاک سفید پشت مقدار.
+                font = "Vazirmatn,9,Bold" if size == "A4" else "Vazirmatn,6.4,Bold"
+                root = ET.parse(TEMPLATES / "1005" / f"Outgoing-{size}.mrt").getroot()
+                components = list(root.find("./Pages/Page1/Components"))
+                for token in ("LetterNumber", "DateShams", "Peyvast"):
+                    component = next(c for c in components
+                                     if token in (c.findtext("Text") or ""))
+                    self.assertEqual(component.findtext("Font"), font, token)
+                    self.assertEqual(component.findtext("Brush"), "White", token)
+                    self.assertEqual(component.findtext("HorAlignment"), "Right", token)
+        self.assertIn('ValueColor => "#000000"', layout)
 
     def test_homepa_header_is_left_anchored_and_fields_are_independent(self):
         source = SERVICE.read_text()
@@ -381,7 +424,8 @@ class LetterheadMetaValuesTests(unittest.TestCase):
 
     def test_renderer_reads_the_company_template_instead_of_a_white_guess(self):
         source = SERVICE.read_text()
-        self.assertIn("var declared = ReadDeclaredMetaFields(", source)
+        self.assertIn("var declared = hasLetterhead", source)
+        self.assertIn("? ReadDeclaredMetaFields(", source)
         self.assertIn("var parsed = LetterheadMetaFields.TryRead(templatePath);", source)
         self.assertIn('FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")', source)
         self.assertIn("AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);", source)

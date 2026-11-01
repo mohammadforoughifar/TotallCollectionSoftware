@@ -1697,12 +1697,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             // Place values in fixed page-coordinate boxes over the printed dotted fields.
             // ScaleToFit prevents long dates/numbers from extending beyond each line.
+            // «پلاک سفید» پشت مقدار: خط‌چینِ چاپ‌شده نباید از میان رقم‌ها رد شود (سربرگ ۱۰۰۵).
             var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
             var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
-                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight();
+                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight()
+                .Background(Colors.White);
             var text = box.ScaleToFit().Text(displayValue)
                 .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
-                .FontColor("#666666").LineHeight(1.05f);
+                .FontColor(AriaLetterheadLayout.ValueColor).LineHeight(1.05f);
             if (isolateLtr)
                 text.DirectionFromLeftToRight();
             else
@@ -1739,6 +1741,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var box = container.PaddingLeft(left).PaddingTop(top)
                 .Width(field.Width).Height(field.Height).AlignMiddle();
             box = field.Center ? box.AlignCenter() : box.AlignRight();
+            // Brush قالب: پلاک سفید پشت مقدار، تا نقطه‌چین سربرگ متن را ناخوانا نکند.
+            if (!string.IsNullOrWhiteSpace(field.Fill)) box = box.Background(field.Fill!);
             var text = box.ScaleToFit().Text(displayValue)
                 .FontFamily(field.Bold ? "Vazirmatn-Bold" : "Vazirmatn").FontSize(field.FontSize)
                 .FontColor(field.Color).LineHeight(1.05f);
@@ -1844,7 +1848,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // Keep content clear of company 1003's lower artwork; leave other companies unchanged.
                 page.MarginBottom(isHomepaLetterhead
                     ? HomepaLetterheadLayout.FooterReserve(isA5)
-                    : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
+                    : isAriaLetterhead
+                        ? AriaLetterheadLayout.FooterReserve(isA5)
+                        : hasLetterhead ? (isA5 ? 52 : 90) : withMargin ? (isA5 ? 18 : 28) : 0);
                 // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما) — حتی در نامهٔ چندصفحه‌ای.
                 page.MarginHorizontal(0);
 
@@ -1864,22 +1870,44 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         ? AriaLetterheadLayout.BodyTopPadding(isA5)
                         : (withMargin || hasLetterhead ? 30f : 0f);
 
+                // مقادیر اعلام‌شدهٔ قالب (مستطیل، فونت، رنگ، پس‌زمینه) یک‌بار خوانده می‌شوند:
+                // اگر طراح جای شماره/تاریخ/پیوست را در Stimulsoft عوض کند، همان در چاپ دیده
+                // می‌شود. برای ۱۰۰۵ هم همین مسیر ملاک است و مختصات کالیبرهٔ
+                // AriaLetterheadLayout فقط وقتی به کار می‌آید که قالب این سه کادر را نداشته باشد
+                // (نسخهٔ قدیمیِ نصب‌شده روی سرور).
+                var declared = hasLetterhead
+                    ? ReadDeclaredMetaFields(letterheadCompanyId is > 0
+                        ? FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")
+                        : null)
+                    : null;
+
                 if (isAriaLetterhead)
                 {
-                    // The artwork already contains all three captions and dotted lines.
-                    // Paint each value in its own fixed box; these coordinates are independent
-                    // of the body start offset and are repeated by QuestPDF on every page.
+                    // The artwork already contains all three captions and dotted lines, so only
+                    // the values are painted — on the dotted lines of the artwork.
                     page.Header().ContentFromLeftToRight()
                         .Height(AriaLetterheadLayout.HeaderHeight(isA5))
                         .Layers(layers =>
                         {
                             layers.PrimaryLayer().Extend();
-                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
-                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
-                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
-                                AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
-                            AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
-                                hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
+                            if (declared != null)
+                            {
+                                // هندسه/اندازه/رنگ/پلاک از خودِ قالب همان شرکت (پیش‌فرض).
+                                AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);
+                                AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);
+                                AddDeclaredField(layers.Layer(), declared.Attachment,
+                                    hasAttachment ? "دارد" : "ندارد", pageTopMargin);
+                            }
+                            else
+                            {
+                                // قالب این سه کادر را اعلام نکرده: مختصات کالیبرهٔ همان هنر.
+                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
+                                    AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
+                                    AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
+                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
+                                    hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
+                            }
                         });
                 }
                 else if (isHomepaLetterhead)
@@ -1906,11 +1934,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     // from the same MRT, so the values land exactly on its printed labels — this is
                     // what makes companies other than the two calibrated ones print correctly
                     // (previously a hard-coded white column hid the values on light letterheads).
-                    var declared = ReadDeclaredMetaFields(
-                        letterheadCompanyId is > 0
-                            ? FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")
-                            : null);
-
                     if (declared != null)
                     {
                         _logger.LogDebug(

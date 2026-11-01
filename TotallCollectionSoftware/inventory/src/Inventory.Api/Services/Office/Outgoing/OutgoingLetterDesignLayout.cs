@@ -57,7 +57,10 @@ internal sealed class OutgoingLetterDesignLayout
         bool AlignRight,
         bool AlignCenter,
         bool AlignMiddle,
-        bool IsolateLtr);
+        bool IsolateLtr,
+        // پس‌زمینهٔ کادر؛ «null» یعنی شفاف. سربرگ‌های نقطه‌چین‌دار (۱۰۰۵ و ۱) آن را White
+        // اعلام می‌کنند تا خط‌چین از پشت رقم‌ها رد نشود.
+        string? Fill = null);
 
     private const string DataSource = "DataSource1";
 
@@ -154,7 +157,7 @@ internal sealed class OutgoingLetterDesignLayout
                 {
                     var imageIndex = TrailingIndex(name);
                     boxes.Add(new Box(Slot.SignatureImage, imageIndex, left, top, boxWidth, boxHeight,
-                        string.Empty, "Vazirmatn", 8f, false, "#000000", false, true, true, false));
+                        string.Empty, "Vazirmatn", 8f, false, "#000000", false, true, true, false, null));
                     continue;
                 }
 
@@ -194,7 +197,8 @@ internal sealed class OutgoingLetterDesignLayout
                     horizontal.Equals("Right", StringComparison.OrdinalIgnoreCase),
                     horizontal.Equals("Center", StringComparison.OrdinalIgnoreCase),
                     vertical.Equals("Center", StringComparison.OrdinalIgnoreCase),
-                    slot is Slot.Number or Slot.Date));
+                    slot is Slot.Number or Slot.Date,
+                    ParseFill(Value(component, "Brush"))));
             }
 
             if (boxes.Count == 0) return null;
@@ -362,6 +366,20 @@ internal sealed class OutgoingLetterDesignLayout
         var first = (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .FirstOrDefault()?.Trim();
         return string.IsNullOrWhiteSpace(first) ? "Vazirmatn" : first;
+    }
+
+    /// <summary>
+    /// پس‌زمینهٔ کادر از تگ <c>Brush</c> قالب. فقط رنگ‌های صریح پذیرفته می‌شوند؛
+    /// <c>Transparent</c> (پیش‌فرض) یعنی «پلاک نکش».
+    /// </summary>
+    private static string? ParseFill(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length == 0) return null;
+        if (text.Equals("Transparent", StringComparison.OrdinalIgnoreCase)) return null;
+        // گرادیان/الگو در قالب‌های فعلی نیست؛ اگر آمد، بی‌صدا شفاف می‌ماند.
+        if (text.Contains('<') || text.Contains('>')) return null;
+        return ParseColor(text);
     }
 
     /// <summary>رنگ متنِ اعلام‌شده در قالب؛ ناشناخته‌ها با مشکی (خوانا روی کاغذ سفید) چاپ می‌شوند.</summary>

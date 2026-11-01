@@ -705,59 +705,20 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     }
 
     /// <summary>
-    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه (لایهٔ Foreground) — همان روش نامهٔ داخلی/صادرهٔ
-    /// ۱۰۰۳: ستون مقدارها راست‌چین است و ۴pt پیش از برچسب چاپ‌شده تمام می‌شود. عرض ستون با
-    /// PaddingLeft + Width تعیین می‌شود (نه Row) تا در چیدمان راست‌به‌چپ آینه نشود.
+    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه (لایهٔ Foreground) — همان روش نامهٔ داخلی/صادره.
+    /// خودِ رسم در <see cref="HeaderMetaPainter"/> است تا هر سه چاپ (داخلی، صادره، صورتجلسه)
+    /// یک قاعده را دنبال کنند: سربرگ ستونی (۱۰۰۳/۳/۱) مقدارها را زیر هم و راست‌چین می‌چیند و
+    /// سربرگ ردیفی (۱۰۰۵) هر مقدار را روی نقطه‌چینِ خودش می‌نشاند.
     /// </summary>
     private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows,
         float columnFloor = 0f)
     {
         if (rows.Count == 0) return;
 
-        var right = rows.Min(row => row.Left + row.Width) - 4f;
-        // لبهٔ چپ ستون: کادرِ اعلام‌شده در قالب، ولی نه نزدیک‌تر از «کف» طرح (برای ۱۰۰۳ همان
-        // حاشیهٔ ۱۵ میلی‌متری قبلی است؛ شرکت ۱ کادر پهن‌ترِ خودش را روی نقطه‌چین دارد).
-        var left = Math.Max(rows.Min(row => row.Left), columnFloor);
-        // در A5 که صفحه باریک است، ستون امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
-        if (right - left < 44f) left = Math.Max(0f, right - 44f);
-        var width = Math.Max(20f, right - left);
-
-        host.AlignTop().Column(column =>
-        {
-            var cursor = 0f;
-            foreach (var row in rows.OrderBy(row => row.Top))
-            {
-                var gap = row.Top - cursor;
-                if (gap > 0.5f) column.Item().Height(gap);
-
-                var height = Math.Max(10f, row.Height);
-                var cell = column.Item().Height(height)
-                    .PaddingLeft(Math.Max(0f, left))
-                    .AlignLeft()
-                    .Width(width);
-                // قالب اگر رنگ پس‌زمینه اعلام کرده باشد (شرکت ۱: سفید)، همان نوار پشت مقدار
-                // کشیده می‌شود تا نقطه‌چین سربرگ متن را ناخوانا نکند.
-                if (!string.IsNullOrWhiteSpace(row.Fill)) cell = cell.Background(row.Fill!);
-                cell.AlignMiddle()
-                    .AlignRight()
-                    .Text(LetterPrintTemplate.IsolateMixedText(row.Value))
-                    .FontFamily(FntBold)
-                    .FontSize(FitMetaFontSize(row.Value, width, row.FontSize))
-                    .FontColor(row.Color)
-                    .LineHeight(1.15f)
-                    .AlignRight()
-                    .DirectionFromRightToLeft();
-                cursor = row.Top + height;
-            }
-        });
-    }
-
-    /// <summary>بزرگ‌ترین اندازه‌ای که مقدار سربرگ در یک خط جا می‌شود (کف ۷pt، مثل نامهٔ صادره).</summary>
-    private static float FitMetaFontSize(string text, float maxWidth, float preferred, float minimum = 7f)
-    {
-        if (string.IsNullOrEmpty(text) || maxWidth <= 0f || preferred <= 0f) return preferred > 0f ? preferred : 10f;
-        var estimated = text.Length * preferred * 0.58f;
-        return estimated <= maxWidth ? preferred : Math.Max(minimum, preferred * maxWidth / estimated);
+        HeaderMetaPainter.Draw(host,
+            rows.Select(row => new HeaderMetaCell(row.Left, row.Top, row.Width, row.Height, row.Value,
+                row.Color, row.FontSize, row.Fill)).ToList(),
+            columnFloor);
     }
 
     /// <summary>

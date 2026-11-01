@@ -43,12 +43,19 @@ internal readonly record struct MinutesLetterheadProfile(
     /// <summary>شناسهٔ شرکت «فروغ آریا» (همان شرکتی که درخواست این طرح از او بود).</summary>
     private const int AriaCompanyId = 1;
 
+    /// <summary>شناسهٔ شرکت «آریا همیار ژنراتور» — سربرگش سه نقطه‌چین افقی دارد.</summary>
+    private const int AriaArtworkCompanyId = 1005;
+
     /// <summary>
     /// پروفایل چاپ صورتجلسهٔ همان شرکت. شرکت‌های بدون ردیف، چیدمان کالیبره‌شدهٔ هومپا
     /// (۱۰۰۳/۳) را می‌گیرند — رفتار قبلی هیچ شرکتی عوض نمی‌شود.
     /// </summary>
-    internal static MinutesLetterheadProfile For(int? companyId, bool isA5)
-        => companyId == AriaCompanyId ? Aria(isA5) : Homepa(isA5);
+    internal static MinutesLetterheadProfile For(int? companyId, bool isA5) => companyId switch
+    {
+        AriaCompanyId => Aria(isA5),
+        AriaArtworkCompanyId => AriaArtwork(isA5),
+        _ => Homepa(isA5)
+    };
 
     /// <summary>طرح ۱۰۰۳/۳ — دقیقاً همان اعدادی که پیش از این در سرویس چاپ بود.</summary>
     private static MinutesLetterheadProfile Homepa(bool isA5) => isA5
@@ -70,6 +77,32 @@ internal readonly record struct MinutesLetterheadProfile(
             SignatureCellWidth: 168f,
             SignatureCompactBoxHeight: 0f,
             SignatureTopPadding: 14f);
+
+    /// <summary>
+    /// طرح شرکت ۱۰۰۵ (آریا همیار ژنراتور) — اعداد اندازه‌گیری‌شده روی خودِ هنر سربرگ:
+    /// نوار تیره/زرد پایین کاغذ از y≈۷۶۲pt شروع می‌شود، پس مرز محتوا ۷۴۵pt (رزرو ۹۷) و
+    /// ناحیهٔ تماس تا ≈۱۰۹pt می‌آید، پس صفحهٔ دوم از ۱۱۸pt شروع می‌شود (همان «+۶pt» امن).
+    /// امضا: سه کادر در یک ردیف (۱۶۸×۴۶pt در A4) — مثل ۱۰۰۳، ولی حجم کاغذ ۱۰۰۵ بیشتر است.
+    /// </summary>
+    private static MinutesLetterheadProfile AriaArtwork(bool isA5) => isA5
+        ? new MinutesLetterheadProfile(
+            FooterReserve: 62f,
+            HeaderReserve: 84f,
+            MetaColumnLeft: 14f,
+            SignatureColumns: 3,
+            SignatureBoxHeight: 34f,
+            SignatureCellWidth: 108f,
+            SignatureCompactBoxHeight: 26f,
+            SignatureTopPadding: 4f)
+        : new MinutesLetterheadProfile(
+            FooterReserve: 97f,
+            HeaderReserve: 118f,
+            MetaColumnLeft: 18f,
+            SignatureColumns: 3,
+            SignatureBoxHeight: 46f,
+            SignatureCellWidth: 168f,
+            SignatureCompactBoxHeight: 34f,
+            SignatureTopPadding: 6f);
 
     /// <summary>طرح شرکت ۱ (فروغ آریا) — اعداد اندازه‌گیری‌شده روی خودِ تصویر سربرگ.</summary>
     private static MinutesLetterheadProfile Aria(bool isA5) => isA5

@@ -17,20 +17,17 @@ internal static class InnerLetterPdfRenderer
     private static readonly object FontLock = new();
     private static bool _fontsRegistered;
 
-    /// <summary>
-    /// یک کادر شماره/تاریخ/پیوست با مختصات مطلق صفحه (از گوشهٔ بالا-چپ کاغذ) و مقدار نهایی آن.
-    /// </summary>
-    private readonly record struct MetaRow(
-        float Left, float Top, float Width, float Height, string Value, string Color);
-
     /// <param name="meta">
     /// هندسهٔ خوانده‌شده از خودِ قالب MRT نامهٔ داخلی (همان کادرهای شماره/تاریخ/پیوست قالب
     /// صادرهٔ ۱۰۰۳). اگر قالبِ نصب‌شده روی سرور قدیمی باشد و این کادرها را نداشته باشد، از
     /// مختصات مطلق کالیبرهٔ <see cref="HomepaLetterheadLayout"/> استفاده می‌شود.
     /// </param>
+    /// <param name="companyId">
+    /// شرکت صادرکننده؛ فقط برای انتخاب «اعداد کاغذ» همان طرح (رزرو پابرگ و شروع متن) لازم است.
+    /// </param>
     internal static byte[] Render(InnerLetterPrintData data, bool a5, bool withHamesh,
         byte[]? homepaBackground, bool attachment, string fontDirectory,
-        OutgoingLetterDesignLayout? meta = null)
+        OutgoingLetterDesignLayout? meta = null, int? companyId = null)
     {
         EnsureFonts(fontDirectory);
         QuestPDF.Settings.License = LicenseType.Community;
@@ -44,7 +41,8 @@ internal static class InnerLetterPdfRenderer
         var attachmentText = attachment ? "دارد" : "ندارد";
 
         // مقادیر سربرگ: از قالب داخلی (اگر کادرها را داشته باشد) یا مختصات کالیبرهٔ ۱۰۰۳.
-        var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5) : new List<MetaRow>();
+        // ۱۰۰۵ سه مقدار را در یک ردیف افقی اعلام می‌کند؛ HeaderMetaPainter هر دو شکل را می‌فهمد.
+        var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5) : new List<HeaderMetaCell>();
         // هندسهٔ بلوک اطلاعات (گیرنده/موضوع) از خودِ قالب MRT خوانده می‌شود؛ جابه‌جا کردن کادرها
         // در Stimulsoft Designer مستقیماً روی چاپ اثر می‌گذارد. اگر قالب این کادرها را نداشته
         // باشد، به مختصات کالیبرهٔ نامهٔ صادرهٔ ۱۰۰۳ (پایین نوار آبی + ۹۷pt) برمی‌گردد.
@@ -60,8 +58,9 @@ internal static class InnerLetterPdfRenderer
             ? captionBox.Left - (titleBox.Left + titleBox.Width)
             : 0f;
         if (captionBox is null || titleBox is null || labelGap is <= 0f or > 24f) labelGap = InfoLabelGap;
-        // شروع متن: از قالب MRT، وگرنه پایین «نوار آبی» + ۹۷pt تأییدشدهٔ کارفرما.
-        var contentTop = designTop > 0f ? designTop : HomepaLetterheadLayout.ContentTop(a5);
+        // شروع متن: از قالب MRT، وگرنه اعداد همان طرح (۱۰۰۳: پایین «نوار آبی» + ۹۷pt،
+        // ۱۰۰۵: ۱۳۳pt زیر خط تماس سربرگ).
+        var contentTop = designTop > 0f ? designTop : InnerLetterPaperProfile.ContentTop(companyId, a5);
         if (metaRows.Count > 0)
             contentTop = Math.Max(contentTop, metaRows.Max(row => row.Top + row.Height) + 6f);
         var sideMargin = LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters);
@@ -83,7 +82,8 @@ internal static class InnerLetterPdfRenderer
                 // سربرگ ۱۰۰۳: مختصات مطلق صفحه، بدون حاشیهٔ بالا، مثل مسیر «از دل طرح» نامهٔ صادره.
                 page.MarginTop(0);
                 page.MarginHorizontal(sideMargin);
-                page.MarginBottom(HomepaLetterheadLayout.DesignFooterReserve(a5));
+                // رزرو پابرگ هر شرکت جداگانه است؛ ۱۰۰۵ نوار تیره/زرد پایین کاغذ دارد.
+                page.MarginBottom(InnerLetterPaperProfile.FooterReserve(companyId, a5));
                 // QuestPDF's page background and header are repeated on EVERY page, including overflow.
                 // UseOriginalImage: تصویر در InnerLetterheadTemplates یک بار آماده شده است؛
                 // اگر اینجا هم تغییر اندازه/کدگذاری شود، QuestPDF در هر چاپ یک نسخهٔ
@@ -96,7 +96,10 @@ internal static class InnerLetterPdfRenderer
                 // چاپ‌شدهٔ سربرگ («موضوع:»/«تاریخ:»/«پیوست:») — روی همهٔ صفحه‌ها.
                 if (metaRows.Count > 0)
                     page.Foreground().ContentFromLeftToRight()
-                        .Element(host => DrawMetaRows(host, metaRows));
+                        // حاشیهٔ امن ۱۵mm همان قاعدهٔ قبلی نامهٔ داخلی است؛ برای سربرگ ردیفی
+                        // (۱۰۰۵) مختصات مطلقِ خود کادرها ملاک است و این کف اثری ندارد.
+                        .Element(host => HeaderMetaPainter.Draw(host, metaRows,
+                            LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters)));
             }
             else
             {
@@ -183,13 +186,14 @@ internal static class InnerLetterPdfRenderer
     internal const float InfoLabelGap = 7.2f;
 
     /// <summary>
-    /// کادرهای شماره/تاریخ/پیوست با مقدار نهایی‌شان. اولویت با هندسهٔ خودِ قالب MRT است؛
-    /// اگر قالب (نسخهٔ قدیمی نصب‌شده) آن کادرها را نداشته باشد، مختصات مطلق کالیبرهٔ ۱۰۰۳.
+    /// کادرهای شماره/تاریخ/پیوست با مقدار نهایی‌شان. اولویت با هندسه و ظاهرِ خودِ قالب MRT است
+    /// (مستطیل، اندازهٔ قلم، رنگ، پس‌زمینه)؛ اگر قالب (نسخهٔ قدیمی نصب‌شده) آن کادرها را نداشته
+    /// باشد، مختصات مطلق کالیبرهٔ ۱۰۰۳ با متن سفید.
     /// </summary>
-    private static List<MetaRow> BuildMetaRows(OutgoingLetterDesignLayout? meta, string number,
+    private static List<HeaderMetaCell> BuildMetaRows(OutgoingLetterDesignLayout? meta, string number,
         string date, string attachment, bool a5)
     {
-        var rows = new List<MetaRow>();
+        var rows = new List<HeaderMetaCell>();
         var boxes = meta?.HeaderBoxes
             .Where(box => box.Slot is OutgoingLetterDesignLayout.Slot.Number
                 or OutgoingLetterDesignLayout.Slot.Date
@@ -198,84 +202,33 @@ internal static class InnerLetterPdfRenderer
 
         foreach (var box in boxes)
         {
-            var (value, color) = box.Slot switch
+            var value = box.Slot switch
             {
-                OutgoingLetterDesignLayout.Slot.Number => (number, box.Color),
-                OutgoingLetterDesignLayout.Slot.Date => (date, box.Color),
-                _ => (attachment, box.Color)
+                OutgoingLetterDesignLayout.Slot.Number => number,
+                OutgoingLetterDesignLayout.Slot.Date => date,
+                _ => attachment
             };
-            rows.Add(new MetaRow(box.Left, box.Top, box.Width, box.Height, value,
-                string.IsNullOrWhiteSpace(color) ? "#FFFFFF" : color));
+            rows.Add(new HeaderMetaCell(
+                box.Left,
+                box.Top,
+                box.Width,
+                box.Height,
+                value,
+                string.IsNullOrWhiteSpace(box.Color) ? "#000000" : box.Color,
+                box.FontSize,
+                box.Fill));
         }
 
         if (rows.Count > 0) return rows;
 
-        // نسخهٔ پشتیبان: همان کادرهای قالب صادره، در مختصات مطلق صفحه.
-        static MetaRow Fallback(HomepaLetterheadLayout.Field field, string value)
-            => new(field.Left, field.Top, field.Width, field.Height, value, "#FFFFFF");
+        // نسخهٔ پشتیبان: همان کادرهای قالب صادرهٔ ۱۰۰۳، در مختصات مطلق صفحه.
+        static HeaderMetaCell Fallback(HomepaLetterheadLayout.Field field, string value)
+            => new(field.Left, field.Top, field.Width, field.Height, value, LetterPrintTemplate.MetaValueColor, 10f);
 
         rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteNumber(a5), number));
         rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteDate(a5), date));
         rows.Add(Fallback(HomepaLetterheadLayout.AbsoluteAttachment(a5), attachment));
         return rows;
-    }
-
-    /// <summary>
-    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه؛ راست‌چین در ستونی که ۴pt پیش از برچسب چاپ‌شده
-    /// تمام می‌شود (همان قاعدهٔ مسیر «از دل طرح» نامهٔ صادره).
-    /// </summary>
-    private static void DrawMetaRows(IContainer host, IReadOnlyList<MetaRow> rows)
-    {
-        if (rows.Count == 0) return;
-
-        // ستون مقدارها: لبهٔ راستِ کادر ۴pt پیش از برچسبِ چاپ‌شده روی سربرگ تمام می‌شود
-        // (همان قاعدهٔ نامهٔ صادرهٔ ۱۰۰۳).
-        var right = rows.Min(row => row.Left + row.Width) - 4f;
-        var left = Math.Max(rows.Min(row => row.Left),
-            LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters));
-        // در A5 که صفحه باریک است، حاشیهٔ امن فقط تا جایی بزرگ می‌شود که مقدار خوانا بماند.
-        if (right - left < 44f) left = Math.Max(0f, right - 44f);
-        var width = Math.Max(20f, right - left);
-
-        // مختصات افقی با PaddingLeft + Width تعیین می‌شود، نه با Row.
-        // چرا؟ در چیدمان راست‌به‌چپ، QuestPDF ترتیب فرزندان Row را آینه می‌کند و مقدارها
-        // از برچسب‌های چاپ‌شدهٔ سربرگ فاصله می‌گرفتند (ایراد گزارش‌شدهٔ کارفرما). با عرض
-        // ثابت، جای هر مقدار مطلق و مستقل از جهت چیدمان است.
-        host.AlignTop().Column(column =>
-        {
-            var cursor = 0f;
-            foreach (var row in rows.OrderBy(row => row.Top))
-            {
-                var gap = row.Top - cursor;
-                if (gap > 0.5f) column.Item().Height(gap);
-                var height = Math.Max(10f, row.Height);
-                var text = string.IsNullOrWhiteSpace(row.Value) ? "—" : row.Value;
-                column.Item().Height(height)
-                    .PaddingLeft(Math.Max(0f, left))
-                    .AlignLeft()
-                    .Width(width)
-                    .AlignMiddle()
-                    .AlignRight()
-                    .Text(LetterPrintTemplate.IsolateMixedText(text))
-                    .FontFamily("Vazirmatn-Bold")
-                    .FontSize(FitMetaFontSize(text, width))
-                    .FontColor(row.Color)
-                    .LineHeight(1.15f)
-                    .AlignRight()
-                    .DirectionFromRightToLeft();
-                cursor = row.Top + height;
-            }
-        });
-    }
-
-    /// <summary>بزرگ‌ترین اندازه‌ای که مقدار سربرگ در یک خط جا می‌شود (کف ۷pt، مثل نامهٔ صادره).</summary>
-    private static float FitMetaFontSize(string text, float maxWidth, float preferred = 10f,
-        float minimum = 7f)
-    {
-        if (string.IsNullOrEmpty(text) || maxWidth <= 0f) return preferred;
-        var estimated = text.Length * preferred * 0.58f;
-        if (estimated <= maxWidth) return preferred;
-        return Math.Max(minimum, preferred * maxWidth / estimated);
     }
 
     /// <summary>

@@ -15,6 +15,10 @@
 • شرکت ۱ (فروغ آریا) قالب مخصوص خودش را دارد: سربرگ تصویری با **نقطه‌چین**، مقدارها با متن
   تیره روی نوار سفید (`Brush=White`) و روی **خط پایهٔ برچسب‌های خودِ سربرگ** (۳۵٫۸/۶۳٫۵/۹۰٫۵pt
   در A4)؛ عنوان ۲۴۰pt (زیر الگوی خاکستری که تا ۲۳۱٫۵pt می‌آید) و بدنه از ۲۷۹pt.
+• شرکت ۱۰۰۵ (آریا همیار ژنراتور) هم قالب خودش را دارد، با سربرگ **خودِ ۱۰۰۵** (قبلاً تصویر
+  سربرگ شرکت ۱ داخل قالبش بود و صورتجلسه با سربرگ شرکت دیگر چاپ می‌شد): سه نقطه‌چین در یک
+  ردیف افقی (y≈۹۷٫۶pt در A4)، مقدار راست‌چین و پررنگ با پلاک سفید، عنوان ۱۲۸pt و بدنه ۱۷۶pt؛
+  مرز محتوا ۷۴۵pt (رزرو پابرگ ۹۷pt، چون نوار تیره/زرد پایین کاغذ از ۷۶۲pt شروع می‌شود).
 """
 
 from __future__ import annotations
@@ -530,15 +534,137 @@ class CompanyOneMinutesTemplateTests(unittest.TestCase):
                 self.assertIn('Value(component, "Brush")', layout)
                 self.assertIn("string? Fill", layout)
                 service = (office(tree) / "MeetingMinutesPrintService.cs").read_text(encoding="utf-8")
-                self.assertIn("cell.Background(row.Fill!", service)
+                # پلاک سفید پشت مقدار در نقاش مشترک کشیده می‌شود (همان کدی که نامهٔ صادره و
+                # نامهٔ داخلی هم از آن استفاده می‌کنند).
+                self.assertIn("HeaderMetaPainter.Draw(", service)
+                painter = (office(tree) / "HeaderMetaPainter.cs").read_text(encoding="utf-8")
+                self.assertIn("box.Background(value.Fill!", painter)
+                self.assertIn("Fill = null", painter)
                 # مرزهای کاغذ شرکت ۱ از پروفایل، نه از اعداد ثابت داخل سرویس.
                 self.assertIn("MinutesLetterheadProfile.For(companyId, isA5)", service)
 
     def test_builder_script_knows_company_one(self):
         script = (ROOT / "tools" / "build_minutes_mrt.py").read_text(encoding="utf-8")
-        self.assertIn('COMPANIES = ("1003", "3", "1")', script)
+        self.assertIn('COMPANIES = ("1003", "3", "1", "1005")', script)
         self.assertIn("ARIA_META_BOX", script)
         self.assertIn("ARIA_LAYOUT", script)
+        self.assertIn('meta_fill": "White"', script)
+        self.assertIn("ARIA_ART_META_BOX", script, "هندسهٔ ردیف افقی ۱۰۰۵")
+        self.assertIn("ARIA_ART_LAYOUT", script)
+
+
+ARIA_ART = "1005"
+# ردیف افقی شماره/تاریخ/پیوست روی خط‌چین‌های هنر سربرگ ۱۰۰۵ (نقطه، مطلق صفحه).
+ARIA_ART_META_BOX = {
+    "A4": {"Number": (110.0, 90.8, 43.5, 13.7), "MeetingDate": (202.0, 90.8, 47.5, 13.7),
+           "Attachment": (21.0, 90.8, 41.0, 13.7)},
+    "A5": {"Number": (77.7, 64.2, 30.8, 9.7), "MeetingDate": (142.8, 64.2, 33.6, 9.7),
+           "Attachment": (14.8, 64.2, 29.0, 9.7)},
+}
+ARIA_ART_TITLE_TOP = {"A4": 128.0, "A5": 90.5}
+ARIA_ART_BODY_TOP = {"A4": 176.0, "A5": 124.0}
+ARIA_ART_META_FONT = {"A4": "Vazirmatn,9", "A5": "Vazirmatn,6.5"}
+ARIA_ART_FOOTER_RESERVE = {"A4": 97.0, "A5": 62.0}
+
+
+class AriaArtworkMinutesTemplateTests(unittest.TestCase):
+    """صورتجلسهٔ ۱۰۰۵ روی سربرگ خودش (نه شرکت ۱) و با چیدمان ۱۰۰۳."""
+
+    def test_templates_exist_in_both_trees_and_both_sizes(self):
+        for tree in TREES:
+            for size in SIZES:
+                with self.subTest(tree=tree.name, size=size):
+                    path = template(tree, ARIA_ART, size)
+                    self.assertTrue(path.is_file(), f"قالب صورتجلسهٔ ۱۰۰۵ نیست: {path}")
+                    ET.parse(path)
+
+    def test_templates_are_byte_identical_between_trees(self):
+        for size in SIZES:
+            with self.subTest(size=size):
+                first, second = (template(tree, ARIA_ART, size) for tree in TREES)
+                self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_letterhead_is_the_company_1005_artwork(self):
+        """سربرگ باید همان هنر ۱۰۰۵ باشد که در قالب نامهٔ صادرهٔ همین شرکت جاسازی شده است."""
+        for size in SIZES:
+            with self.subTest(size=size):
+                own = ET.parse(template(TREES[0], ARIA_ART, size)).getroot().find("./Pages/Page1")
+                outgoing = ET.parse(TREES[0] / "Inventory.Api" / "Reports" / "OutgoingLetters"
+                                    / "Companies" / ARIA_ART / f"Outgoing-{size}.mrt").getroot()
+                artwork = "".join((own.findtext("Watermark/ImageBytes") or "").split())
+                outgoing_artwork = "".join(
+                    (next(e for e in outgoing.iter() if e.tag.split("}")[-1] == "Watermark")
+                     .findtext("ImageBytes") or "").split())
+                self.assertGreater(len(artwork), 100_000, "هنر سربرگ در قالب جاسازی نشده است")
+                self.assertEqual(artwork, outgoing_artwork,
+                                 "سربرگ صورتجلسهٔ ۱۰۰۵ باید همان هنر نامهٔ صادرهٔ خودش باشد")
+                # پرچم‌ها: پشت متن، فعال و کشیده تا کل صفحه.
+                self.assertEqual(own.findtext("Watermark/ImageBehind"), "True")
+                self.assertEqual(own.findtext("Watermark/ImageStretch"), "True")
+                self.assertEqual(own.findtext("Watermark/Enabled"), "True")
+
+    def test_meta_values_sit_on_the_dotted_line_in_one_row(self):
+        for size in SIZES:
+            with self.subTest(size=size):
+                by_name = {component.tag: component for component in components(TREES[0], ARIA_ART, size)}
+                for name, expected in ARIA_ART_META_BOX[size].items():
+                    component = by_name[f"{name}Value"]
+                    for got, wanted in zip(rect_pt(component), expected):
+                        self.assertAlmostEqual(got, wanted, places=1, msg=f"{size} {name}")
+                    self.assertEqual(component.findtext("TextBrush"), "Black", f"{size} {name}")
+                    self.assertEqual(component.findtext("Brush"), "White", f"{size} {name}")
+                    self.assertEqual(component.findtext("HorAlignment"), "Right", f"{size} {name}")
+                    self.assertEqual(component.findtext("Font"), ARIA_ART_META_FONT[size], f"{size} {name}")
+
+    def test_body_follows_the_company_1003_flow_from_above_the_contact_band(self):
+        for size in SIZES:
+            with self.subTest(size=size):
+                by_name = {component.tag: component for component in components(TREES[0], ARIA_ART, size)}
+                left, title_top, width, _ = rect_pt(by_name["TitleValue"])
+                _, body_top, _, _ = rect_pt(by_name["AttendeesValue"])
+                self.assertAlmostEqual(title_top, ARIA_ART_TITLE_TOP[size], places=1)
+                self.assertAlmostEqual(body_top, ARIA_ART_BODY_TOP[size], places=1)
+                # نوار تماس سربرگ تا ≈۱۰۹pt (A4) و ≈۷۷pt (A5) می‌آید؛ عنوان باید زیرش باشد.
+                self.assertGreater(title_top, 104.0 if size == "A4" else 74.0,
+                                   "عنوان نباید روی نوار تماس سربرگ بنشیند")
+                self.assertAlmostEqual(left, 28.08, places=1)
+                self.assertAlmostEqual(width, {"A4": 529.2, "A5": 345.6}[size], places=1)
+                self.assertEqual(by_name["TitleValue"].findtext("HorAlignment"), "Right")
+                # برچسب شماره/تاریخ/پیوست تکرار نمی‌شود (روی سربرگ چاپ شده‌اند).
+                for name in ("Number", "MeetingDate", "Attachment"):
+                    self.assertNotIn(f"{name}Caption", by_name)
+                # بدون شمارهٔ صفحه / بدون بلوک امضا در قالب (امضا در جریان چاپ اضافه می‌شود).
+                self.assertIsNone(by_name.get("PageNumber"))
+
+    def test_items_never_reach_the_patterned_footer_band(self):
+        page_height = {"A4": 841.89, "A5": 595.28}
+        for size in SIZES:
+            with self.subTest(size=size):
+                by_name = {component.tag: component for component in components(TREES[0], ARIA_ART, size)}
+                _, items_top, _, items_height = rect_pt(by_name["ItemsValue"])
+                limit = page_height[size] - ARIA_ART_FOOTER_RESERVE[size]
+                self.assertLessEqual(items_top + items_height, limit + 0.5)
+                # نوار تیره/زرد پایین کاغذ ۱۰۰۵ از ۷۶۲pt شروع می‌شود.
+                self.assertLessEqual(limit, 762.0)
+
+    def test_profile_reserves_and_signature_boxes_match_the_template(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                profile = (office(tree) / "MinutesLetterheadProfile.cs").read_text(encoding="utf-8")
+                self.assertIn("AriaArtwork", profile)
+                self.assertIn("FooterReserve: 97f", profile)
+                self.assertIn("FooterReserve: 62f", profile)
+                # سه ستون امضا با کادر ۱۶۸pt و ارتفاع ۴۶pt (A4)؛ A5 همان نسبت.
+                self.assertIn("SignatureColumns: 3", profile)
+                self.assertIn("SignatureBoxHeight: 46f", profile)
+                self.assertIn("SignatureCellWidth: 168f", profile)
+                # پروفایل با شناسهٔ شرکت انتخاب می‌شود، نه با حدس از نام سربرگ.
+                self.assertIn("AriaArtworkCompanyId => AriaArtwork(isA5)", profile)
+
+    def test_builder_script_knows_company_1005(self):
+        script = (ROOT / "tools" / "build_minutes_mrt.py").read_text(encoding="utf-8")
+        self.assertIn('"1005"', script)
+        self.assertIn("ARIA_ART_META_BOX", script)
         self.assertIn('meta_fill": "White"', script)
 
 

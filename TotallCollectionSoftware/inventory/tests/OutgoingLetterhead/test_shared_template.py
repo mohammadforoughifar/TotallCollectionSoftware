@@ -81,11 +81,15 @@ class SharedLetterTemplateTests(unittest.TestCase):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 inner = self.inner(tree)
-                # مقادیر سربرگ: لایهٔ سراسری صفحه با مختصات مطلق (نه مبدأ page.Header).
-                self.assertIn("DrawMetaRows(host, metaRows)", inner)
+                # مقادیر سربرگ: لایهٔ سراسری صفحه با مختصات مطلق (نه مبدأ page.Header) و با
+                # همان نقاش مشترکِ صورتجلسه/نامهٔ صادره، تا «پلاک سفید» و ترازِ راست مقدار
+                # در هر سه چاپ یکسان بماند.
+                self.assertIn("HeaderMetaPainter.Draw(host, metaRows", inner)
                 self.assertIn("page.Foreground().ContentFromLeftToRight()", inner)
                 self.assertIn("page.MarginTop(0);", inner)
-                self.assertIn("HomepaLetterheadLayout.ContentTop(a5)", inner)
+                # شروع متن: اعداد کاغذِ همان شرکت (۱۰۰۳: پایین نوار آبی + ۹۷pt؛ ۱۰۰۵: ۱۳۳pt).
+                self.assertIn("InnerLetterPaperProfile.ContentTop(companyId, a5)", inner)
+                self.assertIn("InnerLetterPaperProfile.FooterReserve(companyId, a5)", inner)
                 self.assertNotIn("void HeaderField(IContainer container", inner)
                 # بلوک اطلاعات مشترک با نامهٔ صادره؛ برچسب «موضوع» و گیرندگان بدون برچسب.
                 self.assertIn("LetterPrintTemplate.InfoBlock(c, rows, infoFontSize", inner)
