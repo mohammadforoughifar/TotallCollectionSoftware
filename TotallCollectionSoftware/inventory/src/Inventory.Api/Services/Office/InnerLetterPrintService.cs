@@ -119,8 +119,23 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 // دقیقاً روی خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
                 var meta = InnerLetterheadTemplates.TryLoadMetaLayout(
                     _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
-                    meta, company!.Id);
+                byte[] pdf;
+                try
+                {
+                    pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
+                        meta, company!.Id);
+                }
+                catch (Exception metaFailure) when (meta != null)
+                {
+                    // اگر رسم کادرهای شماره/تاریخ/پیوست شکست خورد، «نامه چاپ نشود» بدترین
+                    // نتیجه است: نامه با همان سربرگ و متن، فقط بدون این سه مقدار، دوباره
+                    // ساخته می‌شود تا کاربر PDF بگیرد و علت در لاگ بماند.
+                    _log.LogError(metaFailure,
+                        "رسم کادرهای شماره/تاریخ/پیوست ناموفق بود؛ چاپ بدون این سه مقدار تکرار می‌شود. LetterId={LetterId}, CompanyId={CompanyId}",
+                        letterId, company!.Id);
+                    pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
+                        null, company!.Id);
+                }
                 _log.LogInformation(
                     "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
                     letterId, company!.Id, templatePath,

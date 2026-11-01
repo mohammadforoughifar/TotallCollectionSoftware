@@ -341,7 +341,10 @@ class InnerPrintingTests(unittest.TestCase):
         service = (OFFICE / "InnerLetterPrintService.cs").read_text()
         self.assertIn("MetaLayout(", service)
         # شناسهٔ شرکت هم به رندر می‌رود تا «اعداد کاغذ» همان طرح انتخاب شود (۱۰۰۵ ≠ ۱۰۰۳).
-        self.assertIn("hasAttachment, fonts,\n                    meta, company!.Id);", service)
+        self.assertRegex(service, r"hasAttachment, fonts,\s*meta, company!\.Id\);")
+        # و اگر رسم کادرهای سربرگ شکست بخورد، چاپ با meta=null تکرار می‌شود
+        # (نامه نباید به‌خاطر سه مقدار سربرگ کامل چاپ‌نشده بماند).
+        self.assertRegex(service, r"hasAttachment, fonts,\s*null, company!\.Id\);")
 
     def test_background_is_a_repeating_page_background_and_body_can_flow(self):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()

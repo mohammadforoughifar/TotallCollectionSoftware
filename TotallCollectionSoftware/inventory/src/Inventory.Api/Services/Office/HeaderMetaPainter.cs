@@ -84,11 +84,22 @@ internal static class HeaderMetaPainter
                 {
                     column.Item().Height(height).Layers(layers =>
                     {
+                        // QuestPDF: هر «Layers» باید «دقیقاً یک» لایهٔ اصلی داشته باشد، وگرنه
+                        // رندر با «The Layers component needs to have exactly one primary
+                        // layer. It has none.» متوقف می‌شود — همان خطای واقعی چاپ نامهٔ داخلی
+                        // شرکت ۱۰۰۵ که سه کادر (پیوست/شماره/تاریخ) در یک ردیف دارد.
+                        //
+                        // لایهٔ اصلی نباید خالی باشد: لایهٔ اصلیِ خالی، اندازهٔ ردیف را Empty
+                        // می‌کند و QuestPDF آن ردیف را (و مقدارهایش را) رسم نمی‌کند.
+                        // پس کادر اولِ ردیف نقش لایهٔ اصلی را می‌گیرد؛ بقیه لایه‌های رویی‌اند
+                        // و با PaddingLeft مطلق سر جای خودشان می‌نشینند.
+                        var primaryTaken = false;
                         foreach (var cell in row.Cells)
                         {
                             var width = Math.Max(12f, cell.Width);
-                            layers.Layer()
-                                .PaddingLeft(Math.Max(0f, cell.Left))
+                            var layer = primaryTaken ? layers.Layer() : layers.PrimaryLayer();
+                            primaryTaken = true;
+                            layer.PaddingLeft(Math.Max(0f, cell.Left))
                                 .AlignLeft()
                                 .Width(width)
                                 .Height(height)

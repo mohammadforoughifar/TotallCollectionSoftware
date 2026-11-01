@@ -1935,11 +1935,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         .Height(AriaLetterheadLayout.HeaderHeight(isA5))
                         .Layers(layers =>
                         {
-                            layers.PrimaryLayer().Extend();
+                            // «لایهٔ اصلی» باید محتوا داشته باشد، وگرنه ارتفاع سربرگ صفر می‌شود
+                            // (مقدارها Wrap و چاپ‌نشده می‌مانند) و بدنهٔ نامه به‌اندازهٔ
+                            // HeaderHeight بالا می‌رود. پس کادر اول خودِ لایهٔ اصلی است؛
+                            // مختصات هر کادر مطلق است و ترتیب لایه‌ها ظاهر را عوض نمی‌کند.
                             if (declared != null)
                             {
                                 // هندسه/اندازه/رنگ/پلاک از خودِ قالب همان شرکت (پیش‌فرض).
-                                AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);
+                                AddDeclaredField(layers.PrimaryLayer(), declared.Date, date, pageTopMargin);
                                 AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);
                                 AddDeclaredField(layers.Layer(), declared.Attachment,
                                     hasAttachment ? "دارد" : "ندارد", pageTopMargin);
@@ -1947,7 +1950,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             else
                             {
                                 // قالب این سه کادر را اعلام نکرده: مختصات کالیبرهٔ همان هنر.
-                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Date(isA5), date,
+                                AddAriaField(layers.PrimaryLayer(), AriaLetterheadLayout.Date(isA5), date,
                                     AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
                                 AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
                                     AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
@@ -1964,8 +1967,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         .Height(HomepaLetterheadLayout.HeaderHeight(isA5))
                         .Layers(layers =>
                         {
-                            layers.PrimaryLayer().Extend();
-                            AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Number(isA5), number,
+                            // لایهٔ اصلی = کادر اول (خالی‌بودنش ارتفاع سربرگ را صفر می‌کرد).
+                            AddHomepaField(layers.PrimaryLayer(), HomepaLetterheadLayout.Number(isA5), number,
                                 HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
                             AddHomepaField(layers.Layer(), HomepaLetterheadLayout.Date(isA5), date,
                                 HomepaLetterheadLayout.HeaderValueFontSize(isA5), isolateLtr: true);
@@ -1990,8 +1993,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             .Height(isA5 ? 150 : 160)
                             .Layers(layers =>
                             {
-                                layers.PrimaryLayer().Extend();
-                                AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);
+                                // لایهٔ اصلی = کادر اول (خالی‌بودنش ارتفاع سربرگ را صفر می‌کرد).
+                                AddDeclaredField(layers.PrimaryLayer(), declared.Number, number, pageTopMargin);
                                 AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);
                                 AddDeclaredField(layers.Layer(), declared.Attachment,
                                     hasAttachment ? "دارد" : "ندارد", pageTopMargin);

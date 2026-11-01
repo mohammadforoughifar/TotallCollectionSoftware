@@ -270,5 +270,54 @@ class CompilationGuardTests(unittest.TestCase):
                 self.assertEqual(sorted(used - defined), [], "عضو استفاده‌شده‌ای وجود ندارد")
 
 
+class QuestPdfLayersTests(unittest.TestCase):
+    """«The Layers component needs to have exactly one primary layer. It has none.»
+
+    خطای واقعی چاپ نامهٔ داخلی شرکت ۱۰۰۵: سربرگش سه کادر (پیوست/شماره/تاریخ) در یک
+    ردیف دارد و <see>HeaderMetaPainter</see> آن ردیف را با Layers رسم می‌کرد، بدون
+    لایهٔ اصلی. لایهٔ اصلیِ خالی هم راه‌حل نیست: اندازهٔ ردیف Empty می‌شود و مقدارها
+    رسم نمی‌شوند؛ پس لایهٔ اصلی باید خودِ کادر اول باشد.
+    """
+
+    def layers_files(self):
+        for tree in TREES:
+            office_dir = office(tree)
+            for path in [office_dir / "HeaderMetaPainter.cs",
+                         office_dir / "Outgoing" / "OutgoingLetterPrintService.cs"]:
+                if path.exists():
+                    yield path
+
+    def test_every_layers_block_declares_a_primary_layer(self):
+        for path in self.layers_files():
+            with self.subTest(file=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertGreater(source.count(".Layers("), 0)
+                self.assertGreaterEqual(source.count("PrimaryLayer()"), source.count(".Layers("),
+                                        "هر Layers نیاز به یک لایهٔ اصلی دارد")
+
+    def test_primary_layer_is_never_left_empty(self):
+        for path in self.layers_files():
+            with self.subTest(file=path.name):
+                source = path.read_text(encoding="utf-8")
+                # لایهٔ اصلیِ خالی ⇒ ارتفاع/اندازهٔ Empty ⇒ مقدارها چاپ نمی‌شوند.
+                self.assertNotIn("PrimaryLayer().Extend()", source)
+                self.assertNotIn("PrimaryLayer().Height(", source)
+
+    def test_minutes_and_inner_letter_share_the_meta_painter(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                minutes = (office(tree) / "MeetingMinutesPrintService.cs").read_text(encoding="utf-8")
+                renderer = (office(tree) / "InnerLetterPdfRenderer.cs").read_text(encoding="utf-8")
+                self.assertIn("HeaderMetaPainter.Draw(", minutes)
+                self.assertIn("HeaderMetaPainter.Draw(", renderer)
+
+    def test_inner_letter_print_survives_a_meta_painter_failure(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = (office(tree) / "InnerLetterPrintService.cs").read_text(encoding="utf-8")
+                # شکست رسم سه مقدار سربرگ نباید کل چاپ را از کار بیندازد.
+                self.assertIn("catch (Exception metaFailure) when (meta != null)", source)
+
+
 if __name__ == "__main__":
     unittest.main()
