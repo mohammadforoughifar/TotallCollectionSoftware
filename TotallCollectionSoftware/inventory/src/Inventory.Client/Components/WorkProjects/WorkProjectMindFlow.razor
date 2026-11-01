@@ -38,6 +38,17 @@
         <div class="wpmf-zoom"><input class="form-control form-control-sm" placeholder="جست‌وجو در نقشه" @bind="_search" @bind:event="oninput" /><button class="btn btn-sm btn-light" @onclick="ZoomOut">−</button><span>@((int)(Zoom * 100))٪</span><button class="btn btn-sm btn-light" @onclick="ZoomIn">＋</button><button class="btn btn-sm btn-light" @onclick="Fit">نمای کامل</button></div>
     </div>
     @if (!string.IsNullOrWhiteSpace(_message)) { <div class="alert alert-warning py-2 px-3 mb-2">@_message</div> }
+    @* اگر ماژول JS «کشیدن گره با ماوس» بارگذاری نشود، فقط همین قابلیت از کار می‌افتد؛
+       نقشه، ویرایش، ذخیره و بقیهٔ عملیات مثل قبل کار می‌کنند (قبلاً کل صفحه می‌افتاد). *@
+    @if (_dragUnavailable)
+    {
+        <div class="alert alert-info py-2 px-3 mb-2 fs-9">
+            <i class="bi bi-info-circle"></i>
+            جابه‌جایی گره‌ها با کشیدن ماوس در این نشست فعال نشد (فایل اسکریپت نقشه بارگذاری نشد)؛
+            برای تغییر جای گره از تنظیمات گره استفاده کنید. اگر تکرار شد، صفحه را یک‌بار با
+            <b>Ctrl+F5</b> تازه کنید.
+        </div>
+    }
     @if (_loading)
     {
         <div class="wpmf-loading"><span class="spinner-border spinner-border-sm"></span> در حال بارگذاری نقشهٔ پروژه…</div>
@@ -404,6 +415,12 @@
     private readonly Stack<string> _undo = new();
     private readonly Stack<string> _redo = new();
     private DotNetObjectReference<WorkProjectMindFlow>? _self;
+
+    /// <summary>ماژول JS نگار ذهنی وقتی با import پویا بارگذاری شود (fallback).</summary>
+    private IJSObjectReference? _dragModule;
+
+    /// <summary>کشیدن با ماوس فعال نشد (خطای JS) — راهنمای کوچک بالای نقشه نشان داده می‌شود.</summary>
+    private bool _dragUnavailable;
     private int _loadedProjectId;
     private int? _loadedStandaloneMapId;
     private string _loadedSubFlowPath = "";
@@ -511,8 +528,54 @@
         if (!_attached && !_loading && _map.Nodes.Count > 0)
         {
             _self ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
+            await AttachDragAsync();
+        }
+    }
+
+    /// <summary>
+    /// اتصال «کشیدنِ گره‌ها» به ماژول JS — دو لایه برای اینکه هرگز رندر صفحه را نشکند.
+    /// <para>
+    /// باگ واقعی: خطای <c>Could not find 'inventoryWorkProjectMindFlow.attachDrag'
+    /// ('inventoryWorkProjectMindFlow' was undefined)</c> هنگام باز کردن «نگار ذهنی» در
+    /// پروژه‌های بخش دستور کار. دلیلش نبودِ تابع در صفحه نبود؛ فایل
+    /// <c>wwwroot/js/inventory-workproject-mindflow.js</c> وجود داشت ولی هیچ‌جا در
+    /// <c>index.html</c> بارگذاری نمی‌شد، پس متغیر سراسری هرگز ساخته نمی‌شد و JSInterop
+    /// استثنا می‌داد و کل کامپوننت از رندر می‌افتاد.
+    /// </para>
+    /// <para>
+    /// اصلاح: (۱) اسکریپت به index.html اضافه شد؛ (۲) همین‌جا هم اگر تابع سراسری نبود،
+    /// ماژول با import پویا بارگذاری می‌شود (مثل الگوی چت) تا حتی با index.html قدیمی در
+    /// کش مرورگر هم کار کند؛ (۳) هر خطای JS فقط «کشیدن با ماوس» را از کار می‌اندازد و
+    /// پیام کوتاهی در بالای نقشه نشان داده می‌شود — نه سقوط کل صفحه.
+    /// </para>
+    /// </summary>
+    private async Task AttachDragAsync()
+    {
+        try
+        {
+            // تابع سراسری از اسکریپت index.html موجود است؟
+            var hasGlobal = await JS.InvokeAsync<bool>("eval",
+                "typeof window.inventoryWorkProjectMindFlow === 'object' && typeof window.inventoryWorkProjectMindFlow.attachDrag === 'function'");
+
+            if (hasGlobal)
+                await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
+            else
+            {
+                // بارگذاری پویا — مستقل از ترتیب/کش اسکریپت‌های index.html
+                _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
+                    "./js/inventory-workproject-mindflow.js?v=1");
+                await _dragModule.InvokeVoidAsync("attachDrag", _svgId, _self);
+            }
+
             _attached = true;
+            _dragUnavailable = false;
+        }
+        catch (Exception ex)
+        {
+            // تلاش دوباره در هر رندر بی‌فایده است (و لاگ را پر می‌کند)؛ یک‌بار علامت می‌زنیم.
+            _attached = true;
+            _dragUnavailable = true;
+            Console.WriteLine($"[MindFlow] فعال‌سازی کشیدن گره‌ها انجام نشد: {ex.Message}");
         }
     }
 
@@ -1069,6 +1132,18 @@
         _workOrderLoadGeneration++;
         _candidateSearchGeneration++;
         _self?.Dispose();
+        // آزادسازی ماژول JS (اگر با import پویا بارگذاری شده باشد) — بی‌صدا
+        if (_dragModule is not null)
+        {
+            var module = _dragModule;
+            _dragModule = null;
+            _ = SafeDisposeModuleAsync(module);
+        }
+    }
+
+    private static async Task SafeDisposeModuleAsync(IJSObjectReference module)
+    {
+        try { await module.DisposeAsync(); } catch { /* صفحه در حال بسته شدن است */ }
     }
     public sealed class DragPoint { public Guid Id { get; set; } public double X { get; set; } public double Y { get; set; } }
     public sealed class MindFlowWorkOrder
