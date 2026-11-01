@@ -205,5 +205,70 @@ class ForeignLetterheadGuardTests(unittest.TestCase):
         self.assertTrue(all("homepa" not in name and "forough" not in name for name in aria))
 
 
+def members_of(source: str, type_name: str) -> set[str]:
+    """عضوهای اعلام‌شدهٔ یک کلاس (همان اندازه‌ای که کد استفاده می‌کند کافی است)."""
+    body = source.split(f"class {type_name}", 1)[1]
+    names = set(re.findall(r"\b(?:internal|public|private|protected)\s+"
+                           r"(?:static\s+|readonly\s+|const\s+|override\s+|async\s+)*"
+                           r"[\w<>\[\],\.\?\(\) ]+?\s+(\w+)\s*[\(;{=]", body))
+    names |= set(re.findall(r"\bconst\s+\w+\s+(\w+)", body))
+    return names
+
+
+class CompilationGuardTests(unittest.TestCase):
+    """خطاهای واقعی کامپایل که در IDE دیده شد — تا دوباره تکرار نشوند.
+
+    * در کنترلرها نام `File` به `ControllerBase.File(byte[], string)` اشاره می‌کند، نه
+      `System.IO.File` ⇒ CS0119.
+    * `LetterheadFolders(Clean(roots))` یک `IReadOnlyList<string>` را به پارامتر
+      `params string?[]` می‌داد ⇒ CS1503.
+    * `InnerLetterPrintService` متد `ResolveCompanyTemplatePath` را صدا می‌زد که پس از
+      یکپارچه‌سازی حذف شده بود ⇒ CS0117.
+    """
+
+    def test_controllers_never_use_bare_file(self):
+        pattern = re.compile(r"(?<![.\w])File\.(Exists|OpenRead|OpenWrite|ReadAll\w*|WriteAll\w*|Delete|Copy|Move)\b")
+        for tree in TREES:
+            controllers = tree / "Inventory.Api" / "Controllers"
+            if not controllers.is_dir():
+                continue
+            for path in controllers.rglob("*.cs"):
+                with self.subTest(file=str(path.relative_to(tree))):
+                    self.assertEqual(pattern.findall(path.read_text(encoding="utf-8")), [])
+
+    def test_params_members_are_not_called_with_a_list(self):
+        source = (office(TREES[0]) / "PrintAssetResolver.cs").read_text(encoding="utf-8")
+        # Clean(...) یک IReadOnlyList است؛ برای پارامتر params باید آرایه شود.
+        self.assertNotIn("LetterheadFolders(Clean(roots))", source)
+        self.assertIn("LetterheadFolders(Clean(roots).ToArray())", source)
+
+    def test_every_inner_letterhead_member_call_exists(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = (office(tree) / "InnerLetterheadTemplates.cs").read_text(encoding="utf-8")
+                defined = members_of(source, "InnerLetterheadTemplates")
+                self.assertIn("ResolveCompanyTemplatePath", defined)
+                self.assertIn("CompanyCandidates", defined)
+
+                used = set()
+                for path in (tree / "Inventory.Api").rglob("*.cs"):
+                    used |= set(re.findall(r"InnerLetterheadTemplates\.(\w+)\s*\(",
+                                           path.read_text(encoding="utf-8")))
+                self.assertEqual(sorted(used - defined), [], "متد استفاده‌شده‌ای وجود ندارد")
+
+    def test_every_resolver_member_call_exists(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = (office(tree) / "PrintAssetResolver.cs").read_text(encoding="utf-8")
+                defined = members_of(source, "PrintAssetResolver") | {
+                    "OutgoingLetters", "InnerLetters", "MeetingMinutes"}
+
+                used = set()
+                for path in (tree / "Inventory.Api").rglob("*.cs"):
+                    used |= set(re.findall(r"PrintAssetResolver\.(\w+)\s*[\(;=]",
+                                           path.read_text(encoding="utf-8")))
+                self.assertEqual(sorted(used - defined), [], "عضو استفاده‌شده‌ای وجود ندارد")
+
+
 if __name__ == "__main__":
     unittest.main()

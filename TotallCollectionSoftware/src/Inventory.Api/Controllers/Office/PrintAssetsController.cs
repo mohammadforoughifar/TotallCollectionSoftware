@@ -78,28 +78,39 @@ public class PrintAssetsController : RbacControllerBase
             {
                 outgoing = Template(PrintAssetResolver.OutgoingLetters,
                     _configuration["Reporting:Stimulsoft:TemplateRoot"],
-                    companyId, $"Outgoing-{(isA5 ? "A5" : "A4")}.mrt"),
+                    companyId, isA5, "Report_{0}_OutgoingLetter.mrt", "outgoingletter"),
                 inner = Template(PrintAssetResolver.InnerLetters,
                     _configuration["Reporting:InnerLetters:TemplateRoot"],
-                    companyId, $"Inner-{(isA5 ? "A5" : "A4")}.mrt"),
+                    companyId, isA5, "Report_{0}_InnerLetter.mrt", "innerletters"),
                 minutes = Template(PrintAssetResolver.MeetingMinutes,
                     _configuration["Reporting:MeetingMinutes:TemplateRoot"],
-                    companyId, $"Minutes-{(isA5 ? "A5" : "A4")}.mrt")
+                    companyId, isA5, "Report_{0}_MeetingMinutes.mrt", "meetingminutes")
             },
             hint = BuildHint(company?.LetterheadFileName, letterhead, companyId, isA5)
         });
     }
 
-    private object Template(string kind, string? configuredRoot, int companyId, string fileName)
+    /// <summary>
+    /// مسیرهای واقعی قالب یک چاپ: نام استاندارد (<c>Outgoing-A4.mrt</c>، <c>Inner-A4.mrt</c>،
+    /// <c>Minutes-A4.mrt</c>) و نام «پوشهٔ طراحی» (<c>Report/outgoingletter/{id}/Report_A4_OutgoingLetter.mrt</c>)
+    /// که آخرین جای جست‌وجوی هر سرویس است.
+    /// </summary>
+    private object Template(string kind, string? configuredRoot, int companyId, bool isA5,
+        string designFileName, string designFolder)
     {
+        var size = isA5 ? "A5" : "A4";
+        var fileName = kind switch
+        {
+            PrintAssetResolver.OutgoingLetters => $"Outgoing-{size}.mrt",
+            PrintAssetResolver.MeetingMinutes => $"Minutes-{size}.mrt",
+            _ => $"Inner-{size}.mrt"
+        };
+
         var candidates = PrintAssetResolver
             .TemplateCandidates(kind, companyId, fileName, configuredRoot, _env.ContentRootPath, AppContext.BaseDirectory)
-            .Concat(PrintAssetResolver.DesignFolderCandidates(kind switch
-            {
-                PrintAssetResolver.MeetingMinutes => "meetingminutes",
-                PrintAssetResolver.OutgoingLetters => "outgoingletter",
-                _ => "innerletters"
-            }, companyId, fileName, _env.ContentRootPath, AppContext.BaseDirectory))
+            .Concat(PrintAssetResolver.DesignFolderCandidates(designFolder, companyId,
+                string.Format(System.Globalization.CultureInfo.InvariantCulture, designFileName, size),
+                _env.ContentRootPath, AppContext.BaseDirectory))
             .ToArray();
 
         var resolved = PrintAssetResolver.FirstExisting(candidates);
@@ -117,7 +128,7 @@ public class PrintAssetsController : RbacControllerBase
     {
         try
         {
-            using var stream = File.OpenRead(path);
+            using var stream = System.IO.File.OpenRead(path);
             var document = XDocument.Load(stream, LoadOptions.None);
             var encoded = document.Descendants()
                 .FirstOrDefault(element => element.Name.LocalName == "Watermark")?
@@ -132,7 +143,7 @@ public class PrintAssetsController : RbacControllerBase
     }
 
     private static object Describe(IReadOnlyList<string> candidates)
-        => candidates.Select(path => new { path, exists = File.Exists(path) }).ToArray();
+        => candidates.Select(path => new { path, exists = System.IO.File.Exists(path) }).ToArray();
 
     private string BuildHint(string? registeredValue, string? resolvedLetterhead, int companyId, bool isA5)
     {

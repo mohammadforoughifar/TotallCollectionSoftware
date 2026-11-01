@@ -177,7 +177,7 @@ internal static class PrintAssetResolver
         if (name.Length == 0) return null;
         var wanted = Normalize(name);
 
-        foreach (var folder in LetterheadFolders(Clean(roots)))
+        foreach (var folder in LetterheadFolders(Clean(roots).ToArray()))
         {
             if (!Directory.Exists(folder)) continue;
             try

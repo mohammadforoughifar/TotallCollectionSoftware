@@ -69,6 +69,15 @@ internal static class InnerLetterheadTemplates
                 templateRoot, contentRoot, baseDirectory)
             .ToArray();
 
+    /// <summary>
+    /// اولین قالب موجودِ شرکت از فهرست <see cref="CompanyCandidates"/> — همان قاعدهٔ مشترک.
+    /// <c>null</c> یعنی هیچ قالبی برای این شرکت پیدا نشد.
+    /// </summary>
+    internal static string? ResolveCompanyTemplatePath(string contentRoot, string baseDirectory, int companyId,
+        bool a5, string? templateRoot = null)
+        => PrintAssetResolver.FirstExisting(
+            CompanyCandidates(contentRoot, baseDirectory, companyId, a5, templateRoot));
+
     private sealed record ArtworkEntry(long Length, DateTime WriteUtc, byte[] Bytes);
     private sealed record LayoutEntry(long Length, DateTime WriteUtc, Outgoing.OutgoingLetterDesignLayout? Layout);
 
