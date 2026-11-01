@@ -97,9 +97,15 @@
                                 <MoneyInput @bind-Value="partyBalance.Amount" CssClass="form-control text-center fw-bold num" />
                             </div>
 
-                            <div class="mb-3">
-                                <label class="form-label fs-8">تاریخ افتتاح حساب</label>
-                                <DatePicker @bind-Value="partyBalance.Date" />
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="form-label fs-8">تاریخ سند افتتاحیه</label>
+                                    <DatePicker @bind-Value="partyBalance.Date" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label fs-8">تاریخ سررسید تسویه نسیه <span class="text-danger">*</span></label>
+                                    <DatePicker @bind-Value="partyBalance.DueDate" />
+                                </div>
                             </div>
 
                             <div class="mb-3">
@@ -643,6 +649,8 @@
             var dummyWh = warehouseLookup.FirstOrDefault();
 
             var docDate = partyBalance.Date ?? DateTime.Today;
+            var dueDate = partyBalance.DueDate ?? docDate.AddMonths(1);
+
             var cmd = new OrderCommand
             {
                 Type = isSale ? TransactionType.Sale : TransactionType.Purchase,
@@ -650,7 +658,7 @@
                 WarehouseId = dummyWh?.Id ?? 1,
                 Date = docDate,
                 PaymentMethod = PaymentMethod.Credit,
-                DueDate = docDate.AddMonths(1), // تاریخ سررسید نسیه برای اعتبارسنجی سرور
+                DueDate = dueDate,
                 Description = string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description,
                 Lines = new List<OrderLineInput>
                 {
@@ -676,7 +684,7 @@
                 Date = partyBalance.Date ?? DateTime.Today
             });
 
-            partyBalance = new PartyBalanceItem { Date = DateTime.Today };
+            partyBalance = new PartyBalanceItem { Date = DateTime.Today, DueDate = DateTime.Today.AddMonths(1) };
         }
         catch (Exception ex)
         {
@@ -846,6 +854,7 @@
         public decimal Amount { get; set; }
         public bool IsDebtor { get; set; } = true;
         public DateTime? Date { get; set; } = DateTime.Today;
+        public DateTime? DueDate { get; set; } = DateTime.Today.AddMonths(1);
         public string? Description { get; set; }
     }
 
