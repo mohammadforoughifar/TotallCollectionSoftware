@@ -616,12 +616,18 @@
                     Name = "مانده بستانکاری افتتاحیه (کالا)",
                     IsService = false,
                     IsActive = true,
-                    WarehouseId = null, // قابل استفاده در همه انبارها
+                    WarehouseId = null, // بدون انبار اختصاصی (قابل استفاده در همه انبارها)
                     PurchasePrice = 0,
                     SalePrice = 0,
                     Description = "آیتم سیستمی برای ثبت مانده‌های افتتاحیه بدهی به تأمین‌کنندگان"
                 };
                 openingGoodsProduct = await ProductSvc.SaveAsync(newGoods);
+            }
+            else if (openingGoodsProduct.WarehouseId.HasValue)
+            {
+                // اگر قبلاً با انبار اختصاصی ذخیره شده بود، انبار اختصاصی آن را برمی‌داریم تا عمومی شود
+                openingGoodsProduct.WarehouseId = null;
+                await ProductSvc.SaveAsync(openingGoodsProduct);
             }
         }
         catch
@@ -642,9 +648,9 @@
             if (openingServiceProduct == null || openingGoodsProduct == null) await EnsureOpeningProductsAsync();
 
             var selectedProd = isSale ? openingServiceProduct : openingGoodsProduct;
-            var targetProdId = selectedProd?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
+            var targetProdId = selectedProd?.Id ?? (productLookup.FirstOrDefault(p => isSale || !p.Name.Contains("خدمات"))?.Id ?? 1);
 
-            // اگر کالا انبار اختصاصی دارد از همان انبار استفاده می‌کنیم، در غیر این صورت از اولین انبار معتبر
+            // انبار سند: اگر کالا انبار اختصاصی داشت همان انبار، در غیر این صورت اولین انبار معتبر سیستم
             int effectiveWarehouseId = (selectedProd?.WarehouseId is > 0)
                 ? selectedProd.WarehouseId.Value
                 : (warehouseLookup.FirstOrDefault()?.Id ?? 1);
@@ -756,6 +762,9 @@
                 });
             }
 
+            var startDate = instFirstDueDate ?? DateTime.Today.AddMonths(1);
+            var lastDueDate = startDate.AddMonths(instCount * instIntervalMonths);
+
             var cmd = new OrderCommand
             {
                 Type = TransactionType.Sale,
@@ -763,6 +772,7 @@
                 WarehouseId = dummyWh?.Id ?? 1,
                 Date = DateTime.Today,
                 PaymentMethod = PaymentMethod.Installment,
+                DueDate = lastDueDate,
                 Description = instNote,
                 Lines = new List<OrderLineInput>
                 {
