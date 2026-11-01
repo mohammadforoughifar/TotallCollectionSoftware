@@ -616,6 +616,7 @@
                     Name = "مانده بستانکاری افتتاحیه (کالا)",
                     IsService = false,
                     IsActive = true,
+                    WarehouseId = null, // قابل استفاده در همه انبارها
                     PurchasePrice = 0,
                     SalePrice = 0,
                     Description = "آیتم سیستمی برای ثبت مانده‌های افتتاحیه بدهی به تأمین‌کنندگان"
@@ -640,13 +641,13 @@
             var isSale = partyBalance.IsDebtor;
             if (openingServiceProduct == null || openingGoodsProduct == null) await EnsureOpeningProductsAsync();
 
-            // در فروش (طلب ما از مشتری) از رکورد خدمات استفاده می‌شود تا موجودی انبار منفی نشود
-            // در خرید (بدهی ما به تأمین‌کننده) چون قانون سیستم اجازه خرید خدمات نمی‌دهد، از رکورد کالا استفاده می‌شود
-            var targetProdId = isSale
-                ? (openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1))
-                : (openingGoodsProduct?.Id ?? (productLookup.FirstOrDefault(x => !x.Name.Contains("خدمات"))?.Id ?? 1));
+            var selectedProd = isSale ? openingServiceProduct : openingGoodsProduct;
+            var targetProdId = selectedProd?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
 
-            var dummyWh = warehouseLookup.FirstOrDefault();
+            // اگر کالا انبار اختصاصی دارد از همان انبار استفاده می‌کنیم، در غیر این صورت از اولین انبار معتبر
+            int effectiveWarehouseId = (selectedProd?.WarehouseId is > 0)
+                ? selectedProd.WarehouseId.Value
+                : (warehouseLookup.FirstOrDefault()?.Id ?? 1);
 
             var docDate = partyBalance.Date ?? DateTime.Today;
             var dueDate = partyBalance.DueDate ?? docDate.AddMonths(1);
@@ -655,7 +656,7 @@
             {
                 Type = isSale ? TransactionType.Sale : TransactionType.Purchase,
                 PartyId = partyBalance.PartyId,
-                WarehouseId = dummyWh?.Id ?? 1,
+                WarehouseId = effectiveWarehouseId,
                 Date = docDate,
                 PaymentMethod = PaymentMethod.Credit,
                 DueDate = dueDate,
