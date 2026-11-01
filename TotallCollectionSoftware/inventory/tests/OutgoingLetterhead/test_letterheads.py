@@ -507,8 +507,10 @@ class PrintPreparationBudgetTests(unittest.TestCase):
         self.workflow = (CLIENT / "Services" / "LetterPrintWorkflow.cs").read_text(encoding="utf-8")
 
     def test_preparation_budget_is_realistic_and_split(self):
-        self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(90)", self.workflow)
-        self.assertIn("RetryTimeout = TimeSpan.FromSeconds(60)", self.workflow)
+        # بودجهٔ اول ۱۲۰ ثانیه (رندر سرد)، تلاش خودکار ۱۵۰ ثانیه، تلاش دستی ۹۰ ثانیه.
+        self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(120)", self.workflow)
+        self.assertIn("AutoRetryTimeout = TimeSpan.FromSeconds(150)", self.workflow)
+        self.assertIn("RetryTimeout = TimeSpan.FromSeconds(90)", self.workflow)
         self.assertIn("HandoffTimeout = TimeSpan.FromSeconds(30)", self.workflow)
         self.assertNotIn("TimeSpan.FromSeconds(15)", self.workflow,
                          "the old 15-second ceiling cancelled the print before the server finished")
@@ -516,7 +518,10 @@ class PrintPreparationBudgetTests(unittest.TestCase):
     def test_download_and_browser_handoff_have_separate_budgets(self):
         self.assertIn("using (var loadTimeout = new CancellationTokenSource(loadBudget))", self.workflow)
         self.assertIn("using (var handoffTimeout = new CancellationTokenSource(HandoffTimeout))", self.workflow)
-        self.assertIn("var loadBudget = attemptNumber == 1 ? FirstAttemptTimeout : RetryTimeout;", self.workflow)
+        # بودجه بر اساس شمارهٔ تلاش انتخاب می‌شود: ۱ = اول، ۲ = خودکار، بعدی‌ها = دستی.
+        self.assertIn("1 => FirstAttemptTimeout,", self.workflow)
+        self.assertIn("2 => AutoRetryTimeout,", self.workflow)
+        self.assertIn("_ => RetryTimeout", self.workflow)
 
     def test_timeout_message_explains_what_happened(self):
         self.assertIn("ساخت نسخهٔ چاپ بیش از", self.workflow)
@@ -534,7 +539,8 @@ class PrintPreparationBudgetTests(unittest.TestCase):
         for service in (SERVICE, Path(__file__).resolve().parents[3] / "src" / "Inventory.Api" / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"):
             with self.subTest(service=str(service.parts[-6])):
                 source = service.read_text(encoding="utf-8")
-                self.assertIn("RenderedPdfLifetime = TimeSpan.FromSeconds(90)", source)
+                # کش حافظه باید از بودجهٔ کلاینت بیشتر بماند؛ وگرنه «تلاش مجدد» رندر را تکرار می‌کند.
+                self.assertRegex(source, r"RenderedPdfLifetime = TimeSpan\.From(Minutes|Hours)\(\d+\)")
                 self.assertIn("ConcurrentDictionary<string, CachedRender> RenderedPdfs", source)
                 self.assertIn("TaskCompletionSource<byte[]?>", source)
                 self.assertIn("TaskCreationOptions.RunContinuationsAsynchronously", source)
@@ -604,7 +610,7 @@ class BothClientTreesPrintTests(unittest.TestCase):
         for client in self.CLIENTS:
             with self.subTest(client=client.parts[-4]):
                 workflow = (client / "Services" / "LetterPrintWorkflow.cs").read_text(encoding="utf-8")
-                self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(90)", workflow)
+                self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(120)", workflow)
                 self.assertIn("ltxPrintStatus", workflow)
                 program = (client / "Program.cs").read_text(encoding="utf-8")
                 self.assertIn("AddScoped<LetterPrintWorkflow>()", program,

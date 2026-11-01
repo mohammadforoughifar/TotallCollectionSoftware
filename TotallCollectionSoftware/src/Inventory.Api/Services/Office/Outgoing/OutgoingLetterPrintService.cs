@@ -101,7 +101,21 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // پیش از پایان، درخواست را قطع کند (مهلت کلاینت) یا کاربر «تلاش مجدد» بزند، بدون این کش
     // همان رندر سنگین از صفر تکرار می‌شد و چاپ هیچ‌وقت آماده نمی‌شد. اکنون نتیجه ۹۰ ثانیه
     // نگه داشته می‌شود و درخواست‌های هم‌زمان همان Task را به اشتراک می‌گذارند.
-    private static readonly TimeSpan RenderedPdfLifetime = TimeSpan.FromSeconds(90);
+    // چاپ دوبارهٔ همان نامه تا ۱۰ دقیقه از حافظه/دیسک فوری برمی‌گردد. قبلاً ۹۰ ثانیه بود و
+    // اگر «ساخت PDF» از بودجهٔ کلاینت (۹۰ ثانیه) بیشتر طول می‌کشد، رکورد کش منقضی می‌شد و
+    // «تلاش مجدد» دقیقاً همان رندر سنگین را از صفر تکرار می‌کرد.
+    private static readonly TimeSpan RenderedPdfLifetime = TimeSpan.FromMinutes(10);
+
+    // کش روی دیسک: خروجی چاپ در فایل موقت نگه داشته می‌شود تا حتی اگر درخواست کلاینت وسط کار
+    // قطع شود (تایم‌اوت مرورگر)، اپلیکیشن ری‌استارت شود یا چاپ فردا تکرار شود، «تلاش مجدد»
+    // فوری جواب بدهد. کلید همان هش محتوای نامه است، پس با هر ویرایش نامه/امضا عوض می‌شود.
+    private static readonly string PrintCacheDirectory =
+        Path.Combine(Path.GetTempPath(), "totall-outgoing-print-cache");
+    private static readonly TimeSpan PrintCacheLifetime = TimeSpan.FromHours(12);
+    private const int PrintCacheMaxFiles = 60;
+
+    // آستانهٔ هشدار: رندری که بیشتر از این طول بکشد با یک خط SLOW در لاگ خلاصه می‌شود.
+    private const long SlowPrintWarningMs = 20_000;
 
     /// <summary>
     /// رندرِ مشترکِ درخواست‌های هم‌زمان. عمداً به‌جای <c>Lazy&lt;Task&lt;T&gt;&gt;</c> نوشته شده است:
@@ -158,6 +172,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly IHttpContextAccessor? _http;
     private readonly int[] _homepaCompanyIds;
     private readonly int[] _ariaCompanyIds;
+
+    // کش «در محدودهٔ همین درخواست»: شناسایی قالب شرکت چند بار صدا زده می‌شود
+    // (سربرگ قالب، هندسهٔ شماره/تاریخ/پیوست، چیدمان طرح). هر بار پوشه‌ها پیمایش و XML پارس
+    // می‌شد؛ این‌جا نتیجهٔ همان درخواست نگه داشته می‌شود (سرویس Scoped است).
+    private readonly Dictionary<string, string?> _requestTemplatePaths = new(StringComparer.OrdinalIgnoreCase);
+
+    // زمان هر مرحلهٔ همین رندر، برای یک خط خلاصه در لاگ (پشتیبانی فقط همین یک خط را می‌فرستد).
+    private readonly List<(string Stage, long Ms)> _stageTimings = new(24);
     private readonly int[] _designDrivenCompanyIds;
 
     // شرکت‌هایی که «طرح قالب» بر «فایل ثبت‌شدهٔ شرکت» اولویت دارد، حتی وقتی
@@ -769,6 +791,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private string? FindCompanyTemplate(int companyId, string size)
     {
+        var memoKey = $"{companyId}|{size}";
+        if (_requestTemplatePaths.TryGetValue(memoKey, out var memoized)) return memoized;
+
+        var resolved = FindCompanyTemplateCore(companyId, size);
+        _requestTemplatePaths[memoKey] = resolved;
+        return resolved;
+    }
+
+    private string? FindCompanyTemplateCore(int companyId, string size)
+    {
         // The active QuestPDF pipeline must honor the same template-root setting as the legacy renderer.
         var configuredRoot = _configuration["Reporting:Stimulsoft:TemplateRoot"];
         var templateRoot = string.IsNullOrWhiteSpace(configuredRoot)
@@ -922,10 +954,20 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true,
         bool withMargin = true, bool withLetterhead = true, bool requireSignatures = true)
     {
+        var printTimer = Stopwatch.StartNew();
         // کلید کش باید «همهٔ» گزینه‌های مؤثر در خروجی را ببیند، وگرنه چاپ با/بدون سربرگ و
         // با/بدون امضا خروجی یکدیگر را از کش برمی‌داشت.
         var cacheKey = await BuildPrintCacheKeyAsync(letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
         if (cacheKey == null) return null;
+
+        // کش دیسک قبل از هر کاری: اگر همین خروجی قبلاً ساخته شده، چاپ فوری است.
+        if (TryReadPrintCache(cacheKey) is { Length: > 0 } onDisk)
+        {
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=print-cache-disk-hit TotalMs={TotalMs} Bytes={Bytes}",
+                letterId, printTimer.ElapsedMilliseconds, onDisk.Length);
+            return onDisk;
+        }
 
         // رکورد پیش از شروع رندر در فرهنگ لغت منتشر می‌شود تا درخواست‌های هم‌زمان
         // (دوبار کلیک، تلاش مجدد پس از قطع مرورگر) همان رندر را await کنند.
@@ -942,6 +984,24 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         {
             var pdf = await GeneratePdfCoreAsync(letterId, size, withCopy, withMargin, withLetterhead, requireSignatures);
             if (pdf == null) RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));
+            else WritePrintCache(cacheKey, pdf);
+
+            _logger.LogInformation(
+                "OutgoingLetterPrintTiming LetterId={LetterId} Stage=print-complete TotalMs={TotalMs} Bytes={Bytes}",
+                letterId, printTimer.ElapsedMilliseconds, pdf?.Length ?? 0);
+            if (printTimer.ElapsedMilliseconds >= SlowPrintWarningMs)
+            {
+                // یک خط برای پشتیبانی: کدام مرحله کند بوده است.
+                var breakdown = string.Join("، ", _stageTimings
+                    .Where(stage => stage.Ms > 0)
+                    .OrderByDescending(stage => stage.Ms)
+                    .Select(stage => $"{stage.Stage}={stage.Ms}ms"));
+                _logger.LogWarning(
+                    "OutgoingLetterPrintTiming SLOW LetterId={LetterId} Size={Size} WithLetterhead={WithLetterhead} TotalMs={TotalMs} Stages(slowest-first)={Stages}",
+                    letterId, size, withLetterhead, printTimer.ElapsedMilliseconds,
+                    breakdown.Length == 0 ? "—" : breakdown);
+            }
+
             cached.Complete(pdf);
             return pdf;
         }
@@ -979,6 +1039,77 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         // رقابت شدید و غیرمنتظره: بدون کش رندر می‌کنیم تا درخواست کاربر معلق نماند.
         return (new CachedRender(DateTime.UtcNow), true);
+    }
+
+    // ==================== کش دیسک ====================
+
+    /// <summary>
+    /// خروجی چاپِ همین هش، اگر روی دیسک موجود و تازه باشد. نوشتن اتمیک است (فایل موقت +
+    /// Move) تا خواننده هرگز فایل نیمه‌نوشته نبیند.
+    /// </summary>
+    private byte[]? TryReadPrintCache(string cacheKey)
+    {
+        try
+        {
+            var path = PrintCachePath(cacheKey);
+            var info = new FileInfo(path);
+            if (!info.Exists) return null;
+            if (DateTime.UtcNow - info.LastWriteTimeUtc > PrintCacheLifetime)
+            {
+                try { info.Delete(); } catch { /* پاک‌نشدن فایل، چاپ را متوقف نمی‌کند */ }
+                return null;
+            }
+
+            var bytes = File.ReadAllBytes(path);
+            return bytes.Length > 0 ? bytes : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "خواندن کش چاپ از دیسک ناموفق بود (نادیده گرفته می‌شود).");
+            return null;
+        }
+    }
+
+    private void WritePrintCache(string cacheKey, byte[] pdf)
+    {
+        try
+        {
+            Directory.CreateDirectory(PrintCacheDirectory);
+            var path = PrintCachePath(cacheKey);
+            var temporary = path + ".tmp";
+            File.WriteAllBytes(temporary, pdf);
+            File.Move(temporary, path, overwrite: true);
+            PrunePrintCache();
+        }
+        catch (Exception ex)
+        {
+            // کش فقط «سرعت» است؛ اگر نوشتن نشد، چاپ همین حالا انجام شده و ادامه می‌دهیم.
+            _logger.LogDebug(ex, "نوشتن کش چاپ روی دیسک ناموفق بود (نادیده گرفته می‌شود).");
+        }
+    }
+
+    private static string PrintCachePath(string cacheKey) =>
+        Path.Combine(PrintCacheDirectory, cacheKey.Replace(':', '-') + ".pdf");
+
+    /// <summary>نگه‌داشتن سقف فایل‌ها: قدیمی‌ترین‌ها حذف می‌شوند تا پوشهٔ موقت رشد نکند.</summary>
+    private static void PrunePrintCache()
+    {
+        try
+        {
+            var directory = new DirectoryInfo(PrintCacheDirectory);
+            if (!directory.Exists) return;
+            var files = directory.GetFiles("*.pdf");
+            if (files.Length <= PrintCacheMaxFiles) return;
+
+            foreach (var file in files.OrderByDescending(file => file.LastWriteTimeUtc).Skip(PrintCacheMaxFiles))
+            {
+                try { file.Delete(); } catch { /* فایل قفل‌شده در پاک‌سازی بعدی حذف می‌شود */ }
+            }
+        }
+        catch
+        {
+            // پاک‌سازی بهترین‌تلاش است.
+        }
     }
 
     /// <summary>پاک‌سازی دوره‌ای انقضاشده‌ها تا حافظه با هر چاپ جدید رشد نکند.</summary>
@@ -1055,12 +1186,15 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     {
         var total = Stopwatch.StartNew();
         long lastStageMs = 0;
+        _stageTimings.Clear();
         void MarkStage(string stage)
         {
             var elapsed = total.ElapsedMilliseconds;
+            var stageMs = elapsed - lastStageMs;
+            _stageTimings.Add((stage, stageMs));
             _logger.LogInformation(
                 "OutgoingLetterPrintTiming LetterId={LetterId} Stage={Stage} StageMs={StageMs} TotalMs={TotalMs}",
-                letterId, stage, elapsed - lastStageMs, elapsed);
+                letterId, stage, stageMs, elapsed);
             lastStageMs = elapsed;
         }
 
