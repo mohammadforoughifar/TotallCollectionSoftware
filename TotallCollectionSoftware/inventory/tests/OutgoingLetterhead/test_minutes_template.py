@@ -237,18 +237,28 @@ class MinutesPrintServiceTests(unittest.TestCase):
                 self.assertIn("MeetingMinutesDesignLayout.TryRead(", service)
                 self.assertIn('Minutes-{size}.mrt', service)
                 # شرکت از خودِ صورتجلسه.
-                self.assertIn("m.CompanyId", service)
-                # و فقط برای صورتجلسهٔ قدیمیِ بدون شرکت، شرکت فعال درخواست.
-                self.assertIn('Request.Headers["X-Company-Id"]', service)
-                # اولویت: شرکتِ خودِ صورتجلسه؛ هدر شرکت فعال فقط برای رکوردهای قدیمیِ بی‌شرکت.
-                self.assertIn("companyId = m.CompanyId is > 0 ? m.CompanyId", service)
+                self.assertIn("await ResolveCompanyAsync(m.CompanyId)", service)
+                # و فقط برای صورتجلسهٔ قدیمیِ بدون شرکت، شرکت فعال درخواست / هدر.
+                self.assertIn("ActiveCompanyMiddleware.ItemKey", service)
+                self.assertIn("ActiveCompanyMiddleware.HeaderName", service)
+                # اولویت: شرکتِ خودِ صورتجلسه؛ شرکت فعال و هدر فقط برای رکوردهای قدیمیِ بی‌شرکت.
+                self.assertIn("if (recordCompanyId is > 0) return await Load(recordCompanyId.Value,"
+                              " MinutesCompanySource.Record);", service)
+                self.assertLess(service.index("MinutesCompanySource.Record);"),
+                                service.index("MinutesCompanySource.ActiveContext)"))
+                self.assertLess(service.index("MinutesCompanySource.ActiveContext)"),
+                                service.index("MinutesCompanySource.Header)"))
+                # وقتی شرکت از رکورد نیاید، دلیلش در لاگ می‌آید (نه سکوت).
+                self.assertIn("شرکت ثبت‌شده ندارد", service)
 
     def test_letterhead_comes_from_the_template_watermark_first(self):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
                 self.assertIn("ExtractTemplateLetterhead(templatePath)", service)
-                self.assertIn("letterheadPath ??= registeredLetterhead;", service)
+                self.assertIn("var letterheadPath = templateLetterhead ?? registeredLetterhead;", service)
+                # تصویر جاسازی‌شده هم قبل از استفاده بررسی می‌شود (خراب/ناشناخته ⇒ فایل شرکت).
+                self.assertIn("PrintAssetResolver.IsRenderable(templateLetterhead)", service)
                 self.assertIn('"Watermark"', service)
                 self.assertIn('"ImageBytes"', service)
 
@@ -358,7 +368,8 @@ class MinutesPrintServiceTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
                 self.assertIn("design is { HasRequiredSlots: true }", service)
-                self.assertIn("BuildContentPdf(m, parts, items, letterheadPath != null, companyName)", service)
+                self.assertIn("BuildContentSafely(m, parts, items, companyName, hasLetterhead)", service)
+                self.assertIn("return BuildContentPdf(m, parts, items, reserveLetterhead, companyName);", service)
 
     def test_layout_reader_never_throws_and_knows_the_five_slots(self):
         for tree in TREES:
@@ -761,6 +772,73 @@ class MinutesPrintRouteTests(unittest.TestCase):
 
     def _service_text(self, tree: Path) -> str:
         return (office(tree) / "MeetingMinutesPrintService.cs").read_text(encoding="utf-8")
+
+class MinutesLetterheadIsNeverSilentlyDropped(unittest.TestCase):
+    """صورتجلسهٔ ۱۰۰۵ روی سربرگ ۱۰۰۵ — و اگر نشد، لاگ بگوید چرا.
+
+    سه مسیر بی‌صدایی که چاپ را «بدون سربرگ» می‌کردند:
+
+    1) ساخت محتوای قالب استثنا می‌داد ⇒ `catch` هم `BuildFallbackPdf` برمی‌گرداند و هم
+       `letterheadPath = null` می‌کرد ⇒ کشیدن روی سربرگ کلاً انجام نمی‌شد.
+    2) کشیدن روی سربرگ استثنا می‌داد ⇒ `BuildContentPdf(..., reserveLetterhead: false, ...)`
+       یعنی صفحهٔ سفیدِ مات.
+    3) `BuildContentPdf` با `reserveLetterhead: true` رنگ صفحه را شفاف نمی‌کرد ⇒ صفحهٔ سفید
+       روی سربرگ کشیده می‌شد و سربرگ دیده نمی‌شد (`BuildTemplateContentPdf` این را داشت).
+    """
+
+    def service(self, tree: Path) -> str:
+        return (office(tree) / "MeetingMinutesPrintService.cs").read_text(encoding="utf-8")
+
+    def test_content_render_failure_keeps_the_letterhead(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                # هیچ‌جا سربرگ با ساختن سند جانشین دور ریخته نمی‌شود.
+                self.assertNotIn("letterheadPath = null;", service)
+                # تلاش دوم با همان سربرگ، فقط بدون لایهٔ کادرهای متا.
+                self.assertIn("withHeaderMeta: false", service)
+                self.assertIn("bool withHeaderMeta = true", service)
+
+    def test_every_failure_path_is_logged(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                for message in (
+                    "ساخت محتوای صورتجلسه با چیدمان قالب ناموفق بود",   # پلهٔ ۱
+                    "چیدمان قالب صورتجلسه در تلاش دوم هم جا نشد",        # پلهٔ ۲
+                    "چیدمان کلاسیک صورتجلسه ناموفق بود",                # پلهٔ ۳
+                    "کشیدن صورتجلسه روی سربرگ ناموفق بود",              # کشیدن روی سربرگ
+                    "بدون سربرگ چاپ می‌شود",                            # واقعاً سربرگی نبود
+                ):
+                    self.assertIn(message, service)
+                # لاگ‌ها با شناسهٔ صورتجلسه/شرکت/قالب‌اند تا در فایل لاگ سرور قابل ردیابی باشند.
+                self.assertIn("MinutesId={MinutesId}", service)
+                self.assertIn("Template={Template}", service)
+
+    def test_content_is_transparent_only_when_it_sits_on_a_letterhead(self):
+        """صفحهٔ سفیدِ مات روی سربرگ = سربرگِ ناپیدا؛ شفاف فقط در حالت روی سربرگ."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("page.PageColor(reserveLetterhead ? Colors.Transparent : Colors.White);",
+                              service)
+                self.assertIn("page.PageColor(withLetterhead ? Colors.Transparent : Colors.White);",
+                              service)
+                self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);",
+                              service)
+                # نسخهٔ ساده هم در حالت سربرگ، سربرگ خودش را نمی‌کشد (وگرنه دوبار چاپ می‌شود).
+                self.assertIn("if (withLetterhead) page.MarginTop(150);", service)
+                self.assertIn("if (!withLetterhead)", service)
+
+    def test_overlay_fallback_is_a_last_resort_without_letterhead(self):
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                service = self.service(tree)
+                self.assertIn("return OverlayOnLetterhead(contentPdf, letterheadPath);", service)
+                # اگر خود فایل سربرگ خراب باشد، تنها جایی است که بدون سربرگ چاپ می‌کنیم...
+                self.assertIn("catch { return BuildFallbackPdf(m, parts, items, companyName); }", service)
+                # ... و آن هم با «نسخهٔ بدون سربرگ» صریح، نه صفحهٔ نیمه‌کاره.
+                self.assertIn("BuildContentPdf(m, parts, items, false, companyName);", service)
 
 
 if __name__ == "__main__":

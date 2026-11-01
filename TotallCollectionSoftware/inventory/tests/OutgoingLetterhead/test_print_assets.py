@@ -154,6 +154,19 @@ class PrintAssetsDiagnosticsTests(unittest.TestCase):
                 self.assertIn("letterhead", source)
                 self.assertIn("candidates", source)
 
+    def test_diagnose_explains_which_company_a_minutes_prints_on(self):
+        """«صورتجلسهٔ ۱۰۰۵ روی سربرگ ۱۰۰۵ چاپ نمی‌شود» — پاسخ بدون لاگ سرور."""
+        for tree in TREES:
+            with self.subTest(tree=tree.name):
+                source = (tree / "Inventory.Api" / "Controllers" / "Office" / "PrintAssetsController.cs") \
+                    .read_text(encoding="utf-8")
+                self.assertIn("[FromQuery] int? minutesId = null", source)
+                self.assertIn("Db.MeetingMinutes.AsNoTracking()", source)
+                for field in ("recordCompanyId", "headerCompanyId", "effectiveCompanyId", "source"):
+                    self.assertIn(field, source)
+                # صورتجلسهٔ بی‌شرکت: پیام روشن، نه ۴۰۰ گنگ.
+                self.assertIn("این صورتجلسه شرکت ثبت‌شده ندارد", source)
+
 
 class LetterheadOverlayTests(unittest.TestCase):
     """سربرگِ با نسبت نامناسب نباید کشیده شود؛ وگرنه نقطه‌چین جابه‌جا می‌شود."""

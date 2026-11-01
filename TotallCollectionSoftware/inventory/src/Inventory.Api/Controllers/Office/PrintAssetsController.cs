@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Inventory.Api.Data;
+using Inventory.Api.Infrastructure;
 using Inventory.Api.Services.Office;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -41,9 +42,48 @@ public class PrintAssetsController : RbacControllerBase
     };
 
     [HttpGet("diagnose")]
-    public async Task<ActionResult> Diagnose([FromQuery] int companyId, [FromQuery] string? size = "A4")
+    public async Task<ActionResult> Diagnose([FromQuery] int companyId, [FromQuery] string? size = "A4",
+        [FromQuery] int? minutesId = null)
     {
-        if (companyId <= 0) return BadRequest(new { message = "شناسهٔ شرکت معتبر نیست." });
+        // «صورتجلسهٔ ۱۰۰۵ روی سربرگ ۱۰۰۵ چاپ نمی‌شود» — با minutesId می‌شود دید خودِ
+        // صورتجلسه چه شرکتی دارد و چاپ واقعاً از کدام شرکت/سربرگ/قالب استفاده می‌کند.
+        object? minutes = null;
+        if (minutesId is int id and > 0)
+        {
+            var record = await Db.MeetingMinutes.AsNoTracking()
+                .Where(x => x.Id == id && !x.IsDeleted)
+                .Select(x => new { x.Id, x.Title, x.CompanyId })
+                .FirstOrDefaultAsync();
+            if (record == null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+
+            var headerCompanyId = int.TryParse(
+                Request.Headers[ActiveCompanyMiddleware.HeaderName].FirstOrDefault(), out var headerId)
+                ? headerId
+                : 0;
+            var recordCompanyId = record.CompanyId is > 0 ? record.CompanyId.Value : 0;
+            var effective = recordCompanyId > 0 ? recordCompanyId
+                : headerCompanyId > 0 ? headerCompanyId
+                : 0;
+            minutes = new
+            {
+                record.Id,
+                record.Title,
+                recordCompanyId,
+                headerCompanyId,
+                effectiveCompanyId = effective,
+                source = record.CompanyId is > 0 ? "MeetingMinutes.CompanyId"
+                    : headerCompanyId > 0 ? "هدر X-Company-Id (صورتجلسهٔ قدیمیِ بدون شرکت)"
+                    : "هیچ — چاپ بدون سربرگ",
+                note = record.CompanyId is > 0
+                    ? "چاپ روی سربرگ همین شرکت انجام می‌شود."
+                    : "این صورتجلسه شرکت ثبت‌شده ندارد؛ سربرگ از شرکت فعال درخواست گرفته می‌شود. " +
+                      "برای چاپ روی سربرگ ۱۰۰۵، فیلد شرکت خود صورتجلسه را ۱۰۰۵ کنید."
+            };
+            if (companyId <= 0) companyId = effective;
+        }
+
+        if (companyId <= 0)
+            return BadRequest(new { message = "شناسهٔ شرکت معتبر نیست. companyId یا minutesId لازم است." });
 
         var isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
         var company = await Db.SystemCompanies.AsNoTracking()
@@ -57,6 +97,7 @@ public class PrintAssetsController : RbacControllerBase
         return Ok(new
         {
             size = isA5 ? "A5" : "A4",
+            minutes,
             company,
             companyRecordMissing = company == null,
             roots = new
