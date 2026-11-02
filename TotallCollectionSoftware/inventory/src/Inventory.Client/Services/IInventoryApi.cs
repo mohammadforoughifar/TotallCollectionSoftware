@@ -29,8 +29,7 @@ public interface IReferrerService
     Task<List<Referrer>> GetAllAsync(bool activeOnly = false);
     Task<Referrer> SaveAsync(Referrer referrer);
     Task DeleteAsync(int id);
-    Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
-    Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);
+
 
 
     /// <summary>کیف پول معرف‌ها با جستجو و مرتب‌سازی (sortBy: name|commission|paid|balance).</summary>
@@ -91,6 +90,8 @@ public interface IPartyService
     Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false);
     Task<Party> SaveAsync(Party party);
     Task DeleteAsync(int id);
+    Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);
 }
 
 /// <summary>سرویس موجودی انبار.</summary>
