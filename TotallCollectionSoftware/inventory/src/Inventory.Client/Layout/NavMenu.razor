@@ -456,12 +456,9 @@
                                         <i class="bi bi-cart-check"></i><span>گزارش فروش</span>
                                     </NavLink>
                                 }
-                                @if (Auth.CanSee("Parties") || Auth.CanSee("Customers") || Auth.CanSee("Suppliers"))
-                                {
-                                    <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
-                                        <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
-                                    </NavLink>
-                                }
+                                <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
+                                    <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
+                                </NavLink>
 
                             </div>
                         }
@@ -769,6 +766,9 @@
                         }
                     </NavLink>
                 }
+                <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
+                    <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
+                </NavLink>
             </div>
         }
     </div>
@@ -911,7 +911,7 @@
 
     private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Referrers", "TrsAccounts") || ShowPartiesMenu;
     private bool ShowOpsDashSub => Auth.Has("Dashboards.Financial") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
-    private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders");
+    private bool ShowOpsReportsSub => true;
     private bool ShowVisGroup => Auth.CanSee("SalesVisit");
     // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
     // منوی او کاملاً خالی می‌ماند.
@@ -919,7 +919,7 @@
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers", "ShopGuide");
 
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
-    private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
+    private bool ShowReportsGroup => true;
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
