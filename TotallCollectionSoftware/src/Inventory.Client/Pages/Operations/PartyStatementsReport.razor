@@ -8,327 +8,761 @@
 
 <PageTitle>گزارش گردش حساب و مانده اشخاص (طلب و بدهی)</PageTitle>
 
-<div class="page-head d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1 class="h3 fw-bold text-dark mb-1">
-            <i class="bi bi-journal-check text-primary me-2"></i>گزارش طلب و بدهی (گردش حساب اشخاص)
-        </h1>
-        <div class="text-muted fs-8">
-            بررسی مطالبات و بدهی‌ها، مانده افتتاح حساب اول دوره و ریز صورت‌حساب مشتریان و تأمین‌کنندگان
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ لوکس و هوشمند ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">گزارش طلب و بدهی و گردش حساب اشخاص</h1>
+                        <span class="badge rounded-pill fin-badge-status">دفتر معین اشخاص</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        پایش مطالبات وصول‌نشده، دیون به تأمین‌کنندگان، اثر مانده افتتاحیه و ریز تراکنش‌ها
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                @if (selectedPartyDetail != null)
+                {
+                    <button class="btn btn-outline-secondary fin-btn-pill" @onclick="() => selectedPartyDetail = null">
+                        <i class="bi bi-arrow-right me-1"></i> بازگشت به فهرست اشخاص
+                    </button>
+                    <button class="btn btn-primary fin-btn-pill" @onclick="PrintStatement">
+                        <i class="bi bi-printer-fill me-1"></i> چاپ رسمی صورت‌حساب
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-primary fin-btn-pill" @onclick="LoadReportAsync" disabled="@loading">
+                        <i class="bi bi-arrow-clockwise me-1 @(loading ? "spin" : "")"></i> به‌روزرسانی داده‌ها
+                    </button>
+                }
+            </div>
         </div>
     </div>
-    <div class="d-flex gap-2">
-        @if (selectedPartyDetail != null)
-        {
-            <button class="btn btn-outline-secondary btn-sm" @onclick="() => selectedPartyDetail = null">
-                <i class="bi bi-arrow-right me-1"></i> بازگشت به لیست کلی
-            </button>
-            <button class="btn btn-primary btn-sm" @onclick="PrintStatement">
-                <i class="bi bi-printer me-1"></i> چاپ صورت‌حساب
-            </button>
-        }
-        else
-        {
-            <button class="btn btn-outline-primary btn-sm" @onclick="LoadReportAsync">
-                <i class="bi bi-arrow-clockwise me-1"></i> به‌روزرسانی
-            </button>
-        }
-    </div>
-</div>
 
 @if (selectedPartyDetail == null)
 {
     @* ==================== حالت نمایش کلی (خلاصه اشخاص) ==================== *@
     @if (reportData != null)
     {
-        <!-- کارت‌های شاخص‌های مالی -->
+        <!-- کارت‌های شاخص‌های مالی با سبک جدید -->
         <div class="row g-3 mb-4">
+            <!-- کارت مطالبات -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card shadow-sm border-0 border-start border-danger border-4 h-100">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div>
-                                <span class="text-muted fs-8 fw-600">کل مطالبات (طلب ما)</span>
-                                <h4 class="fw-800 text-danger num mt-2 mb-0">@reportData.TotalReceivable.Money() <span class="fs-8 fw-normal">ریال</span></h4>
-                            </div>
-                            <div class="badge bg-soft-danger text-danger p-3 rounded-circle">
-                                <i class="bi bi-arrow-down-left-circle fs-4"></i>
-                            </div>
+                <div class="fin-kpi-card border-rose">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-rose">کل مطالبات (طلب ما)</span>
+                            <div class="fin-kpi-value text-rose num mt-1">@reportData.TotalReceivable.Money()</div>
+                            <div class="fin-kpi-unit">ریال</div>
                         </div>
-                        <div class="mt-2 text-danger fs-9 fw-bold">@reportData.DebtorCount.Num() طرف‌حساب بدهکار</div>
+                        <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
+                            <i class="bi bi-arrow-down-left-circle-fill"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-rose-subtle text-rose rounded-pill px-2.5">
+                            <i class="bi bi-people-fill me-1"></i> @reportData.DebtorCount.Num() شخص بدهکار
+                        </span>
                     </div>
                 </div>
             </div>
 
+            <!-- کارت بدهی‌ها -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div>
-                                <span class="text-muted fs-8 fw-600">کل بدهی‌ها (بستانکاری دیگران)</span>
-                                <h4 class="fw-800 text-success num mt-2 mb-0">@reportData.TotalPayable.Money() <span class="fs-8 fw-normal">ریال</span></h4>
-                            </div>
-                            <div class="badge bg-soft-success text-success p-3 rounded-circle">
-                                <i class="bi bi-arrow-up-right-circle fs-4"></i>
-                            </div>
+                <div class="fin-kpi-card border-emerald">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-emerald">کل بدهی‌ها (بستانکاری اشخاص)</span>
+                            <div class="fin-kpi-value text-emerald num mt-1">@reportData.TotalPayable.Money()</div>
+                            <div class="fin-kpi-unit">ریال</div>
                         </div>
-                        <div class="mt-2 text-success fs-9 fw-bold">@reportData.CreditorCount.Num() طرف‌حساب بستانکار</div>
+                        <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                            <i class="bi bi-arrow-up-right-circle-fill"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-emerald-subtle text-emerald rounded-pill px-2.5">
+                            <i class="bi bi-person-check-fill me-1"></i> @reportData.CreditorCount.Num() شخص بستانکار
+                        </span>
                     </div>
                 </div>
             </div>
 
+            <!-- تراز خالص -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div>
-                                <span class="text-muted fs-8 fw-600">تراز خالص مطالبات / بدهی</span>
-                                <h4 class="fw-800 @(reportData.NetBalance >= 0 ? "text-primary" : "text-warning") num mt-2 mb-0">
-                                    @Math.Abs(reportData.NetBalance).Money() <span class="fs-8 fw-normal">ریال</span>
-                                </h4>
+                <div class="fin-kpi-card border-indigo">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-indigo">تراز خالص مطالبات / بدهی</span>
+                            <div class="fin-kpi-value @(reportData.NetBalance >= 0 ? "text-indigo" : "text-amber") num mt-1">
+                                @Math.Abs(reportData.NetBalance).Money()
                             </div>
-                            <div class="badge bg-soft-primary text-primary p-3 rounded-circle">
-                                <i class="bi bi-scale fs-4"></i>
-                            </div>
+                            <div class="fin-kpi-unit">ریال</div>
                         </div>
-                        <div class="mt-2 text-muted fs-9">@(reportData.NetBalance >= 0 ? "تراز مثبت (مازاد طلب)" : "تراز منفی (مازاد بدهی)")</div>
+                        <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                            <i class="bi bi-scale"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge @(reportData.NetBalance >= 0 ? "bg-indigo-subtle text-indigo" : "bg-amber-subtle text-amber") rounded-pill px-2.5">
+                            @(reportData.NetBalance >= 0 ? "تراز مثبت (مازاد مطالبات)" : "تراز منفی (مازاد بدهی‌ها)")
+                        </span>
                     </div>
                 </div>
             </div>
 
+            <!-- کل اشخاص -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card shadow-sm border-0 border-start border-secondary border-4 h-100">
-                    <div class="card-body p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div>
-                                <span class="text-muted fs-8 fw-600">کل اشخاص ثبت‌شده</span>
-                                <h4 class="fw-800 text-dark num mt-2 mb-0">@reportData.Items.Count.Num() <span class="fs-8 fw-normal">طرف حساب</span></h4>
-                            </div>
-                            <div class="badge bg-soft-secondary text-secondary p-3 rounded-circle">
-                                <i class="bi bi-people fs-4"></i>
-                            </div>
+                <div class="fin-kpi-card border-slate">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-slate">کل طرف‌حساب‌های فعال</span>
+                            <div class="fin-kpi-value text-dark num mt-1">@reportData.Items.Count.Num()</div>
+                            <div class="fin-kpi-unit">طرف حساب ثبت‌شده</div>
                         </div>
-                        <div class="mt-2 text-muted fs-9">شامل مشتریان و تأمین‌کنندگان</div>
+                        <div class="fin-kpi-icon-box bg-slate-subtle text-slate">
+                            <i class="bi bi-journal-text"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="text-secondary fs-9">شامل کلیه مشتریان و تأمین‌کنندگان</span>
                     </div>
                 </div>
             </div>
         </div>
     }
 
-    <!-- فیلترهای گزارش -->
-    <div class="card shadow-sm border-0 mb-3">
-        <div class="card-body p-3">
-            <div class="row g-2 align-items-end">
-                <div class="col-12 col-md-3">
-                    <label class="form-label fs-8">جستجوی نام یا موبایل</label>
-                    <input class="form-control form-control-sm" placeholder="تایپ کنید…" @bind="searchTerm" @bind:event="oninput" @onkeyup="OnSearchKey" />
+    <!-- نوار فیلترهای ارگونومیک و مدرن -->
+    <div class="fin-filter-card mb-4">
+        <div class="row g-2.5 align-items-end">
+            <div class="col-12 col-md-4 col-xl-3">
+                <label class="fin-label">جستجوی شخص یا شماره تماس</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                    <input class="form-control border-start-0 fin-input" placeholder="نام مشتری، تأمین‌کننده یا موبایل..."
+                           @bind="searchTerm" @bind:event="oninput" @onkeyup="OnSearchKey" />
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fs-8">نوع شخص</label>
-                    <select class="form-select form-select-sm" @bind="selectedTypeStr" @bind:after="LoadReportAsync">
-                        <option value="">همه اشخاص</option>
-                        <option value="0">فقط مشتریان</option>
-                        <option value="1">فقط تأمین‌کنندگان</option>
-                    </select>
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="fin-label">دسته‌بندی شخص</label>
+                <select class="form-select form-select-sm fin-input" @bind="selectedTypeStr" @bind:after="LoadReportAsync">
+                    <option value="">همه اشخاص</option>
+                    <option value="0">فقط مشتریان</option>
+                    <option value="1">فقط تأمین‌کنندگان</option>
+                </select>
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="fin-label">وضعیت مانده حساب</label>
+                <select class="form-select form-select-sm fin-input" @bind="balanceFilter" @bind:after="ApplyBalanceFilter">
+                    <option value="all">همه وضعیت‌ها</option>
+                    <option value="debtors">فقط بدهکاران (طلب ما)</option>
+                    <option value="creditors">فقط بستانکاران (بدهی ما)</option>
+                    <option value="nonzero">فقط حساب‌های باز (غیرصفر)</option>
+                </select>
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="fin-label">از تاریخ</label>
+                <DatePicker @bind-Value="fromDate" />
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-2">
+                <label class="fin-label">تا تاریخ</label>
+                <DatePicker @bind-Value="toDate" />
+            </div>
+
+            <div class="col-12 col-xl-1">
+                <button class="btn btn-primary w-100 fin-btn-submit" @onclick="LoadReportAsync" disabled="@loading">
+                    <i class="bi bi-funnel-fill"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول خلاصه مانده‌های کلی اشخاص -->
+    <div class="fin-table-card">
+        <div class="fin-table-header">
+            <div class="d-flex align-items-center gap-2">
+                <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                    <i class="bi bi-people-fill"></i>
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fs-8">فیلتر مانده</label>
-                    <select class="form-select form-select-sm" @bind="balanceFilter" @bind:after="ApplyBalanceFilter">
-                        <option value="all">همه</option>
-                        <option value="debtors">فقط بدهکاران (طلب ما)</option>
-                        <option value="creditors">فقط بستانکاران (بدهی ما)</option>
-                        <option value="nonzero">فقط مانده‌داران (غیرصفر)</option>
-                    </select>
+                <div>
+                    <h3 class="fin-table-title">صورت وضعیت اشخاص و مانده نهایی</h3>
+                    <p class="fin-table-sub">نمایش به تفکیک مانده افتتاحیه اول دوره، گردش بدهکار و بستانکار و مانده نهایی</p>
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fs-8">از تاریخ</label>
-                    <DatePicker @bind-Value="fromDate" />
+            </div>
+            <div class="num fs-8 fw-700 text-secondary">
+                نمایش @filteredItems.Count.Num() شخص
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+                <div class="text-secondary fw-500 fs-8">در حال محاسبه گردش و مانده حساب‌ها...</div>
+            </div>
+        }
+        else if (filteredItems.Count == 0)
+        {
+            <div class="fin-empty-state text-center py-5">
+                <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
+                <div class="fw-bold text-secondary mt-2">هیچ شخصی با فیلترهای جاری یافت نشد</div>
+                <div class="fs-8 text-muted mt-1">می‌توانید عبارات جستجو را تغییر دهید یا فیلترها را حذف کنید.</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table fin-table align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 45px;" class="text-center">#</th>
+                            <th>طرف حساب</th>
+                            <th>نوع شخص</th>
+                            <th>اطلاعات تماس</th>
+                            <th class="text-start">مانده افتتاحیه</th>
+                            <th class="text-start">گردش بدهکار (افزایش)</th>
+                            <th class="text-start">گردش بستانکار (کاهش)</th>
+                            <th class="text-start">مانده نهایی</th>
+                            <th class="text-center">وضعیت حساب</th>
+                            <th class="text-center" style="width: 100px;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ int idx = 1; }
+                        @foreach (var item in filteredItems)
+                        {
+                            <tr class="fin-table-row">
+                                <td class="text-center num text-muted fs-8">@Fa.Digits(idx++)</td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="fin-avatar">
+                                            @item.PartyName.Substring(0, Math.Min(1, item.PartyName.Length))
+                                        </div>
+                                        <div>
+                                            <div class="fw-800 text-dark fs-7.5">@item.PartyName</div>
+                                            @if (!string.IsNullOrWhiteSpace(item.NationalCode))
+                                            {
+                                                <div class="num fs-9 text-muted">کد ملی: @item.NationalCode</div>
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge @(item.Type == PartyType.Customer ? "bg-info-subtle text-info border border-info-subtle" : "bg-purple-subtle text-purple border border-purple-subtle") rounded-pill px-2">
+                                        @(item.Type == PartyType.Customer ? "مشتری" : "تأمین‌کننده")
+                                    </span>
+                                </td>
+                                <td class="num fs-8 text-secondary">
+                                    @(string.IsNullOrWhiteSpace(item.Mobile) ? "—" : item.Mobile)
+                                </td>
+                                <td class="text-start num fs-8">
+                                    @if (item.OpeningBalance != 0)
+                                    {
+                                        <span class="fw-bold @(item.OpeningBalance > 0 ? "text-danger" : "text-success")">
+                                            @Math.Abs(item.OpeningBalance).Money()
+                                        </span>
+                                        <small class="fs-9 text-muted ms-1">@(item.OpeningBalance > 0 ? "طلب" : "بدهی")</small>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">۰</span>
+                                    }
+                                </td>
+                                <td class="text-start num fs-8 text-danger fw-500">
+                                    @(item.TotalDebit > 0 ? item.TotalDebit.Money() : "۰")
+                                </td>
+                                <td class="text-start num fs-8 text-success fw-500">
+                                    @(item.TotalCredit > 0 ? item.TotalCredit.Money() : "۰")
+                                </td>
+                                <td class="text-start num fs-7 fw-800">
+                                    @if (item.ClosingBalance != 0)
+                                    {
+                                        <span class="@(item.IsDebtor ? "text-danger" : "text-success")">
+                                            @Math.Abs(item.ClosingBalance).Money()
+                                        </span>
+                                        <span class="fs-9 fw-normal text-muted ms-1">ریال</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-secondary fw-normal">تسویه صفر</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (item.IsDebtor)
+                                    {
+                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2.5">
+                                            <i class="bi bi-arrow-down-left me-1"></i> بدهکار (طلب ما)
+                                        </span>
+                                    }
+                                    else if (item.IsCreditor)
+                                    {
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5">
+                                            <i class="bi bi-arrow-up-right me-1"></i> بستانکار (بدهی ما)
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2.5">
+                                            تسویه کامل
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-primary fin-btn-pill fs-8 px-2.5" @onclick="() => ViewPartyDetail(item.PartyId)">
+                                        <i class="bi bi-file-earmark-text me-1"></i> ریز صورت‌حساب
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+else
+{
+    @* ==================== حالت نمایش ریز صورت‌حساب شخص (دفتر معین) ==================== *@
+    <div class="fin-statement-view">
+        <!-- کارت خلاصه مشخصات طرف حساب -->
+        <div class="fin-statement-header-card mb-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="fin-avatar-lg">
+                        @selectedPartyDetail.PartyName.Substring(0, Math.Min(1, selectedPartyDetail.PartyName.Length))
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h2 class="h5 fw-800 text-dark mb-0">صورت‌حساب مالی «@selectedPartyDetail.PartyName»</h2>
+                            <span class="badge @(selectedPartyDetail.PartyType == PartyType.Customer ? "bg-info-subtle text-info" : "bg-purple-subtle text-purple") rounded-pill">
+                                @(selectedPartyDetail.PartyType == PartyType.Customer ? "مشتری" : "تأمین‌کننده")
+                            </span>
+                        </div>
+                        <div class="d-flex gap-3 text-secondary fs-8 mt-1.5 flex-wrap">
+                            @if (!string.IsNullOrWhiteSpace(selectedPartyDetail.Mobile))
+                            {
+                                <span><i class="bi bi-telephone text-muted me-1"></i> شماره تماس: <b class="num">@selectedPartyDetail.Mobile</b></span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(selectedPartyDetail.NationalCode))
+                            {
+                                <span><i class="bi bi-card-text text-muted me-1"></i> کد ملی: <b class="num">@selectedPartyDetail.NationalCode</b></span>
+                            }
+                            <span><i class="bi bi-calendar3 text-muted me-1"></i> تاریخ گزارش: <b class="num">@DateTime.Today.ToFa()</b></span>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fs-8">تا تاریخ</label>
-                    <DatePicker @bind-Value="toDate" />
+
+                <div class="fin-statement-kpi-badge @(selectedPartyDetail.ClosingBalance > 0 ? "badge-debtor" : (selectedPartyDetail.ClosingBalance < 0 ? "badge-creditor" : "badge-settled"))">
+                    <div class="fin-statement-kpi-sub">مانده نهایی حساب</div>
+                    <div class="fin-statement-kpi-val num">
+                        @Math.Abs(selectedPartyDetail.ClosingBalance).Money() <small class="fs-8 fw-normal">ریال</small>
+                    </div>
+                    <div class="fin-statement-kpi-status">
+                        @(selectedPartyDetail.ClosingBalance > 0 ? "بدهکار (طلب ما)" : (selectedPartyDetail.ClosingBalance < 0 ? "بستانکار (طلب شخص)" : "تسویه کامل"))
+                    </div>
                 </div>
-                <div class="col-12 col-md-1">
-                    <button class="btn btn-primary btn-sm w-100" @onclick="LoadReportAsync">
-                        اعمال
+            </div>
+        </div>
+
+        <!-- جدول ریز تراکنش‌ها -->
+        <div class="fin-table-card">
+            <div class="fin-table-header">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="fin-table-header-icon bg-primary-subtle text-primary">
+                        <i class="bi bi-card-checklist"></i>
+                    </div>
+                    <div>
+                        <h3 class="fin-table-title">گردش خط‌به‌خط اسناد و تسویه‌ها</h3>
+                        <p class="fin-table-sub">ریز رویدادهای مالی به ترتیب تقدم زمانی و محاسبه لحظه‌ای مانده</p>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary fin-btn-pill" @onclick="PrintStatement">
+                        <i class="bi bi-printer me-1"></i> چاپ صورت‌حساب
+                    </button>
+                    <button class="btn btn-sm btn-secondary fin-btn-pill" @onclick="() => selectedPartyDetail = null">
+                        <i class="bi bi-arrow-right me-1"></i> بازگشت
                     </button>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- جدول مانده اشخاص -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            @if (loading)
-            {
-                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0 fs-8">
-                        <thead class="table-light">
-                            <tr>
-                                <th>نام طرف حساب</th>
-                                <th>نوع</th>
-                                <th>موبایل</th>
-                                <th class="text-start">مانده افتتاحیه</th>
-                                <th class="text-start">گردش بدهکار</th>
-                                <th class="text-start">گردش بستانکار</th>
-                                <th class="text-start">مانده نهایی</th>
-                                <th>وضعیت</th>
-                                <th class="text-center">عملیات</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (filteredItems.Count == 0)
-                            {
-                                <tr><td colspan="9" class="text-center py-5 text-muted">رکوردی مطابق فیلتر یافت نشد</td></tr>
-                            }
-                            else
-                            {
-                                @foreach (var item in filteredItems)
-                                {
-                                    <tr>
-                                        <td class="fw-bold">@item.PartyName</td>
-                                        <td>
-                                            <span class="badge @(item.PartyType == PartyType.Customer ? "bg-info-subtle text-info" : "bg-warning-subtle text-warning")">
-                                                @(item.PartyType == PartyType.Customer ? "مشتری" : "تأمین‌کننده")
-                                            </span>
-                                        </td>
-                                        <td class="num text-muted">@(item.Mobile ?? "—")</td>
-                                        <td class="text-start num @(item.OpeningDebit > item.OpeningCredit ? "text-danger" : (item.OpeningCredit > item.OpeningDebit ? "text-success" : ""))">
-                                            @(item.OpeningDebit >= item.OpeningCredit
-                                                ? $"{((item.OpeningDebit - item.OpeningCredit)).Money()} بدهکار"
-                                                : $"{((item.OpeningCredit - item.OpeningDebit)).Money()} بستانکار")
-                                        </td>
-                                        <td class="text-start num text-danger">@item.PeriodDebit.Money()</td>
-                                        <td class="text-start num text-success">@item.PeriodCredit.Money()</td>
-                                        <td class="text-start fw-bold num @(item.IsDebtor ? "text-danger" : (item.IsCreditor ? "text-success" : "text-muted"))">
-                                            @Math.Abs(item.RemainingBalance).Money()
-                                        </td>
-                                        <td>
-                                            @if (item.IsDebtor)
-                                            {
-                                                <span class="badge bg-danger-subtle text-danger fw-bold">بدهکار (طلب ما)</span>
-                                            }
-                                            else if (item.IsCreditor)
-                                            {
-                                                <span class="badge bg-success-subtle text-success fw-bold">بستانکار (بدهی ما)</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary-subtle text-secondary">تسویه / بی‌حساب</span>
-                                            }
-                                        </td>
-                                        <td class="text-center">
-                                            <button class="btn btn-sm btn-outline-primary py-0 px-2 fs-9" @onclick="() => ViewPartyDetail(item.PartyId)">
-                                                <i class="bi bi-file-text me-1"></i> صورت‌حساب
-                                            </button>
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-        </div>
-    </div>
-}
-else
-{
-    @* ==================== حالت نمایش ریز صورت‌حساب (دفتر معین شخص) ==================== *@
-    <div id="statementPrintArea">
-        <div class="card shadow-sm border-0 mb-3">
-            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                <div>
-                    <h5 class="fw-bold mb-1">
-                        صورت‌حساب و گردش حساب: <span class="text-primary">@selectedPartyDetail.PartyName</span>
-                    </h5>
-                    <div class="text-muted fs-8">
-                        نوع: @(selectedPartyDetail.PartyType == PartyType.Customer ? "مشتری" : "تأمین‌کننده")
-                        @if (!string.IsNullOrWhiteSpace(selectedPartyDetail.Mobile))
+            <div class="table-responsive">
+                <table class="table fin-table align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;" class="text-center">ردیف</th>
+                            <th style="width: 100px;" class="text-center">تاریخ</th>
+                            <th style="width: 100px;" class="text-center">شماره سند</th>
+                            <th>عنوان رویداد / فاکتور</th>
+                            <th>شرح سند</th>
+                            <th class="text-start" style="width: 130px;">بدهکار (ریال)</th>
+                            <th class="text-start" style="width: 130px;">بستانکار (ریال)</th>
+                            <th class="text-start" style="width: 150px;">مانده لحظه‌ای (ریال)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ int rowNum = 1; }
+                        @foreach (var r in selectedPartyDetail.Rows)
                         {
-                            <span class="ms-3"><i class="bi bi-phone"></i> @selectedPartyDetail.Mobile</span>
-                        }
-                    </div>
-                </div>
-                <div class="text-start">
-                    <span class="fs-8 text-muted d-block">مانده نهایی حساب:</span>
-                    <span class="fs-4 fw-800 num @(selectedPartyDetail.ClosingBalance > 0 ? "text-danger" : (selectedPartyDetail.ClosingBalance < 0 ? "text-success" : "text-muted"))">
-                        @Math.Abs(selectedPartyDetail.ClosingBalance).Money() ریال
-                    </span>
-                    <span class="badge @(selectedPartyDetail.ClosingBalance > 0 ? "bg-danger" : (selectedPartyDetail.ClosingBalance < 0 ? "bg-success" : "bg-secondary")) ms-2">
-                        @(selectedPartyDetail.ClosingBalance > 0 ? "بدهکار به ما" : (selectedPartyDetail.ClosingBalance < 0 ? "طلبکار از ما" : "بی‌حساب"))
-                    </span>
-                </div>
-            </div>
-
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-striped align-middle mb-0 fs-8">
-                        <thead class="table-dark text-center">
-                            <tr>
-                                <th style="width: 50px">ردیف</th>
-                                <th style="width: 100px">تاریخ</th>
-                                <th style="width: 130px">شماره سند</th>
-                                <th style="width: 160px">عنوان عملیات</th>
-                                <th>شرح / بابت</th>
-                                <th class="text-start" style="width: 130px">بدهکار (ریال)</th>
-                                <th class="text-start" style="width: 130px">بستانکار (ریال)</th>
-                                <th class="text-start" style="width: 140px">مانده پس از سطر (ریال)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (selectedPartyDetail.Rows.Count == 0)
-                            {
-                                <tr><td colspan="8" class="text-center py-5 text-muted">گردشی برای این طرف حساب در بازه انتخابی وجود ندارد</td></tr>
-                            }
-                            else
-                            {
-                                int rowNum = 1;
-                                @foreach (var r in selectedPartyDetail.Rows)
-                                {
-                                    <tr class="@(r.IsOpening ? "table-warning fw-bold" : "")">
-                                        <td class="text-center num">@Fa.Digits(rowNum++)</td>
-                                        <td class="text-center num">@r.Date.ToFa()</td>
-                                        <td class="text-center num">@(string.IsNullOrWhiteSpace(r.DocumentNumber) ? "—" : r.DocumentNumber)</td>
-                                        <td class="fw-bold">
-                                            @if (r.IsOpening)
-                                            {
-                                                <i class="bi bi-star-fill text-warning me-1"></i>
-                                            }
-                                            @r.Title
-                                        </td>
-                                        <td>@r.Description</td>
-                                        <td class="text-start num @(r.Debit > 0 ? "text-danger fw-bold" : "")">@(r.Debit > 0 ? r.Debit.Money() : "۰")</td>
-                                        <td class="text-start num @(r.Credit > 0 ? "text-success fw-bold" : "")">@(r.Credit > 0 ? r.Credit.Money() : "۰")</td>
-                                        <td class="text-start num fw-bold @(r.Balance > 0 ? "text-danger" : (r.Balance < 0 ? "text-success" : "text-muted"))">
-                                            @Math.Abs(r.Balance).Money()
-                                            <small class="fs-9">@(r.Balance > 0 ? "بد" : (r.Balance < 0 ? "بس" : "—"))</small>
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                        <tfoot class="table-light fw-bold fs-7">
-                            <tr>
-                                <td colspan="5" class="text-end">جمع کل گردش دوره:</td>
-                                <td class="text-start num text-danger">@selectedPartyDetail.TotalDebit.Money()</td>
-                                <td class="text-start num text-success">@selectedPartyDetail.TotalCredit.Money()</td>
-                                <td class="text-start num @(selectedPartyDetail.ClosingBalance > 0 ? "text-danger" : "text-success")">
-                                    @Math.Abs(selectedPartyDetail.ClosingBalance).Money()
+                            <tr class="fin-table-row @(r.IsOpening ? "fin-opening-row" : "")">
+                                <td class="text-center num text-muted fs-8">@Fa.Digits(rowNum++)</td>
+                                <td class="text-center num fs-8">@r.Date.ToFa()</td>
+                                <td class="text-center num fs-8">@(string.IsNullOrWhiteSpace(r.DocumentNumber) ? "—" : r.DocumentNumber)</td>
+                                <td>
+                                    @if (r.IsOpening)
+                                    {
+                                        <span class="badge bg-warning-subtle text-amber border border-warning-subtle rounded-pill px-2.5 me-1">
+                                            <i class="bi bi-star-fill me-1"></i> مانده افتتاحیه
+                                        </span>
+                                    }
+                                    <span class="fw-700 text-dark fs-8">@r.Title</span>
+                                </td>
+                                <td class="text-secondary fs-8">@r.Description</td>
+                                <td class="text-start num fs-8 @(r.Debit > 0 ? "text-danger fw-700" : "text-muted")">
+                                    @(r.Debit > 0 ? r.Debit.Money() : "۰")
+                                </td>
+                                <td class="text-start num fs-8 @(r.Credit > 0 ? "text-success fw-700" : "text-muted")">
+                                    @(r.Credit > 0 ? r.Credit.Money() : "۰")
+                                </td>
+                                <td class="text-start num fs-8 fw-800 @(r.Balance > 0 ? "text-danger" : (r.Balance < 0 ? "text-success" : "text-muted"))">
+                                    @Math.Abs(r.Balance).Money()
+                                    <small class="fs-9 ms-1 @(r.Balance > 0 ? "badge bg-danger-subtle text-danger" : (r.Balance < 0 ? "badge bg-success-subtle text-success" : ""))">
+                                        @(r.Balance > 0 ? "بد" : (r.Balance < 0 ? "بس" : "—"))
+                                    </small>
                                 </td>
                             </tr>
-                        </tfoot>
-                    </table>
-                </div>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fin-table-total-row">
+                            <td colspan="5" class="text-end fw-800 fs-7.5">جمع کل گردش دوره:</td>
+                            <td class="text-start num text-danger fw-800 fs-7.5">@selectedPartyDetail.TotalDebit.Money()</td>
+                            <td class="text-start num text-success fw-800 fs-7.5">@selectedPartyDetail.TotalCredit.Money()</td>
+                            <td class="text-start num fw-900 fs-7 @(selectedPartyDetail.ClosingBalance > 0 ? "text-danger" : "text-success")">
+                                @Math.Abs(selectedPartyDetail.ClosingBalance).Money()
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
         </div>
     </div>
 }
+</div>
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
 
 @code {
     private bool loading = true;
