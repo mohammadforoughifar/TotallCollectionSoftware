@@ -84,6 +84,7 @@ public class EmployeesController : ControllerBase
             return Conflict(new ApiMessage(false, "کد پرسنلی تکراری است."));
 
         employee.Id = 0;
+        employee.Contracts ??= new List<EmployeeContract>();
         foreach (var c in employee.Contracts) c.Id = 0;
         _db.Employees.Add(employee);
         await _db.SaveChangesAsync();
@@ -102,6 +103,12 @@ public class EmployeesController : ControllerBase
 
         if (await _db.Employees.AnyAsync(e => e.Code == input.Code && e.Id != id))
             return Conflict(new ApiMessage(false, "کد پرسنلی تکراری است."));
+
+        // کلید موجودیت همیشه از مسیر می‌آید، نه از بدنهٔ درخواست؛ وگرنه اگر کلاینت Id=0
+        // بفرستد، SetValues تلاش می‌کند کلیدِ ردیف موجود را تغییر دهد و درخواست با
+        // InvalidOperationException شکست می‌خورد (ذخیرهٔ ویرایش انجام نمی‌شد).
+        input.Id = id;
+        input.Contracts ??= new List<EmployeeContract>();
 
         _db.Entry(employee).CurrentValues.SetValues(input);
 

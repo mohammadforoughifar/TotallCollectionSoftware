@@ -406,7 +406,13 @@
             {
                 var response = await Api.PostAsync<BonHrIdResponse>("api/employees", _model);
                 ok = response != null;
-                if (response != null) _editingId = response.Id;
+                if (response != null)
+                {
+                    // شناسهٔ ردیف تازه در مدل هم نوشته می‌شود تا ذخیرهٔ بعدی (ویرایش همین پرونده)
+                    // با PUT و شناسهٔ درست به سرور برود.
+                    _editingId = response.Id;
+                    _model.Id = response.Id;
+                }
             }
 
             _ok = ok;
