@@ -19,9 +19,23 @@
 </BonHrShell>
 
 
+    @if (_savedOnce)
+    {
+        <section class="card card-body mt-3" role="status">
+            <p class="form-message success-text mb-2">
+                <i class="bi bi-check-circle"></i>
+                @_message
+            </p>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-primary" href="/bon-hr/employees"><i class="bi bi-people"></i> بازگشت به فهرست پرسنل</a>
+                <button class="btn btn-light" type="button" @onclick="OpenForm"><i class="bi bi-pencil"></i> ادامهٔ ویرایش همین پرونده</button>
+            </div>
+        </section>
+    }
+
     <Modal Size="modal-xl" Visible="_showForm" Title="@(_editingId.HasValue ? "ویرایش پرونده پرسنلی" : "ثبت پرسنل جدید")" OnClose="CloseForm">
         <ChildContent>
-        <form id="bon-emp-form" class="employee-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+        <form id="bon-emp-form" class="employee-form" novalidate @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
             <ul class="nav nav-pills flex-wrap gap-1 mb-3" role="tablist">
                 <li class="nav-item"><button type="button" class="nav-link @(_tab == "identity" ? "active" : "")" @onclick='() => _tab = "identity"'>اطلاعات هویتی</button></li>
                 <li class="nav-item"><button type="button" class="nav-link @(_tab == "compensation" ? "active" : "")" @onclick='() => _tab = "compensation"'>حقوق و کارمزد</button></li>
@@ -44,11 +58,11 @@
                 <label class="form-label">کد بیمه‌شده اصلی <input class="form-control" maxlength="30" placeholder="کد بیمه تأمین اجتماعی" @bind="_model.PrimaryInsuredCode" /></label>
                 <label class="form-label">
                     واحد سازمانی
-                    <select class="form-select" value="@_model.Unit" @onchange="OnUnitChanged" required>
+                    <select class="form-select" @bind="_model.Unit" @bind:after="OnUnitBound" required>
                         <option value="">— انتخاب کنید —</option>
-                        @foreach (var department in _departments)
+                        @foreach (var department in UnitOptions)
                         {
-                            <option value="@department.Name">@department.Name</option>
+                            <option value="@department">@department</option>
                         }
                     </select>
                 </label>
@@ -56,7 +70,7 @@
                     ایستگاه کاری
                     <select class="form-select" @bind="_model.WorkStation" required>
                         <option value="">— انتخاب کنید —</option>
-                        @foreach (var station in Stations)
+                        @foreach (var station in StationOptions)
                         {
                             <option value="@station">@station</option>
                         }
@@ -74,7 +88,7 @@
                 <label class="form-label">عنوان شغلی / سمت <input class="form-control" maxlength="80" placeholder="مثلاً اپراتور خط" @bind="_model.PositionTitle" /></label>
                 <label class="form-label">
                     وضعیت تأهل
-                    <select class="form-select" value="@_model.Married" @onchange="OnMarriedChanged">
+                    <select class="form-select" @bind="_model.Married">
                         <option value="مجرد">مجرد</option>
                         <option value="متاهل">متأهل</option>
                     </select>
@@ -176,7 +190,13 @@
         </ChildContent>
         <Footer>
             <button class="btn btn-light" type="button" @onclick="CloseForm">انصراف (Esc)</button>
-            <button class="btn btn-primary" type="submit" form="bon-emp-form" disabled="@_busy">ذخیره</button>
+            <button class="btn btn-primary" type="button" @onclick="SaveAsync" disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner-border spinner-border-sm ms-1"></span>
+                }
+                <i class="bi bi-check-lg"></i> ذخیره
+            </button>
         </Footer>
     </Modal>
 
@@ -224,9 +244,37 @@
     private string _message = "";
     private bool _ok, _busy, _overwrite = true;
     private int? _editingId;
+    private string _lastUnit = "";
+    private bool _savedOnce;
 
     private IEnumerable<string> Stations =>
         _departments.FirstOrDefault(d => d.Name == _model.Unit)?.Stations.Select(s => s.Name) ?? Enumerable.Empty<string>();
+
+    /// <summary>
+    /// گزینه‌های کمبوی «واحد سازمانی». اگر واحدِ ثبت‌شدهٔ پرونده در فهرست واحدهای فعلی نباشد
+    /// (واحد حذف/تغییرنام‌داده‌شده)، همچنان به‌صورت یک گزینه نمایش داده می‌شود تا مقدار
+    /// ذخیره‌شده گم نشود و کمبو خالی به‌نظر نرسد.
+    /// </summary>
+    private IEnumerable<string> UnitOptions
+    {
+        get
+        {
+            var names = _departments.Select(d => d.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            if (!string.IsNullOrWhiteSpace(_model.Unit) && !names.Contains(_model.Unit)) names.Insert(0, _model.Unit);
+            return names;
+        }
+    }
+
+    /// <summary>همان قاعده برای «ایستگاه کاری» — ایستگاهِ ثبت‌شده حتی اگر در فهرست نباشد نمایش داده می‌شود.</summary>
+    private IEnumerable<string> StationOptions
+    {
+        get
+        {
+            var names = Stations.Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            if (!string.IsNullOrWhiteSpace(_model.WorkStation) && !names.Contains(_model.WorkStation)) names.Insert(0, _model.WorkStation);
+            return names;
+        }
+    }
 
     private decimal MarriageAmount =>
         BonFa.IsMarried(_model.Married) ? _rules?.MarriageMonthly ?? 0 : 0;
@@ -252,6 +300,7 @@
             {
                 _model = employee;
                 _editingId = employee.Id;
+                _lastUnit = employee.Unit;
                 var loaded = employee.Contracts ?? new List<EmployeeContract>();
                 // _contracts همیشه باید ۳ ردیف داشته باشد (رابط کاربری ۳ قرارداد نشان می‌دهد)
                 while (_contracts.Count < 3) _contracts.Add(new EmployeeContract());
@@ -261,16 +310,19 @@
         }
     }
 
-    private void OnUnitChanged(ChangeEventArgs args)
+    /// <summary>
+    /// پس از تغییر «واحد سازمانی» (با @bind:after) ایستگاه کاری پاک می‌شود، چون ایستگاه‌ها
+    /// به واحد وابسته‌اند؛ ولی اگر مقدار واحد واقعاً عوض نشده باشد دست‌نخورده می‌ماند.
+    /// </summary>
+    private void OnUnitBound()
     {
-        _model.Unit = args.Value?.ToString() ?? "";
+        if (_lastUnit == _model.Unit) return;
+        _lastUnit = _model.Unit;
         _model.WorkStation = "";
     }
 
     private void SetContractMonth(int index, ChangeEventArgs args) =>
         _contracts[index].Month = args.Value?.ToString() ?? "";
-
-    private void OnMarriedChanged(ChangeEventArgs args) => _model.Married = args.Value?.ToString() ?? "مجرد";
 
     private void OnChildrenChanged(ChangeEventArgs args) =>
         _model.Children = int.TryParse(BonFa.ToLatin(args.Value?.ToString() ?? "0"), out var n) ? n : 0;
@@ -307,26 +359,76 @@
         }
     }
 
+    /// <summary>
+    /// اعتبارسنجی روشن و پیام‌دار. پیش‌تر اعتبارسنجی به `required`های HTML سپرده شده بود و
+    /// چون کمبوی «واحد سازمانی» مقدار ذخیره‌شده را نشان نمی‌داد، مرورگر ارسال فرم را بی‌صدا
+    /// متوقف می‌کرد؛ نتیجه: دکمهٔ «ذخیره» هیچ واکنشی نداشت و هیچ پیامی هم دیده نمی‌شد.
+    /// </summary>
+    private string? ValidateForm()
+    {
+        if (string.IsNullOrWhiteSpace(_model.First)) return "«نام» الزامی است.";
+        if (string.IsNullOrWhiteSpace(_model.Last)) return "«نام خانوادگی» الزامی است.";
+        if (string.IsNullOrWhiteSpace(_model.Code)) return "«کد پرسنلی» الزامی است.";
+        var nid = BonFa.ToLatin(_model.Nid ?? "").Trim();
+        if (nid.Length > 0 && (nid.Length != 10 || !nid.All(char.IsDigit)))
+            return "«کد ملی» باید ۱۰ رقم باشد.";
+        if (string.IsNullOrWhiteSpace(_model.Unit)) return "«واحد سازمانی» را انتخاب کنید.";
+        if (string.IsNullOrWhiteSpace(_model.WorkStation)) return "«ایستگاه کاری» را انتخاب کنید.";
+        if (string.IsNullOrWhiteSpace(_model.ResponsibilityLevel)) return "«سطح سازمانی» را انتخاب کنید.";
+        return null;
+    }
+
     private async Task SaveAsync()
     {
-        _busy = true;
-        _model.Contracts = _contracts.Where(c => !string.IsNullOrEmpty(c.Name) || !string.IsNullOrEmpty(c.Month))
-            .Select(c => new EmployeeContract { Name = c.Name, Month = c.Month, FileId = c.FileId }).ToList();
+        if (_busy) return;
 
-        bool ok;
-        if (_editingId.HasValue)
-            ok = await Api.SendAsync(HttpMethod.Put, $"api/employees/{_editingId.Value}", _model);
-        else
+        var problem = ValidateForm();
+        if (problem is not null)
         {
-            var response = await Api.PostAsync<BonHrIdResponse>("api/employees", _model);
-            ok = response != null;
-            if (response != null) _editingId = response.Id;
+            _ok = false;
+            _message = problem;
+            Toast.Error(problem);
+            return;
         }
 
-        _busy = false;
-        _ok = ok;
-        _message = ok ? "اطلاعات پرسنل با موفقیت ذخیره شد." : "ذخیره‌سازی انجام نشد.";
-        if (ok) { Toast.Success(_message); _showForm = false; }
+        _busy = true;
+        try
+        {
+            _model.Nid = BonFa.ToLatin(_model.Nid ?? "").Trim();
+            _model.Code = BonFa.ToLatin(_model.Code ?? "").Trim();
+            _model.Contracts = _contracts.Where(c => !string.IsNullOrEmpty(c.Name) || !string.IsNullOrEmpty(c.Month))
+                .Select(c => new EmployeeContract { Name = c.Name, Month = c.Month, FileId = c.FileId }).ToList();
+
+            bool ok;
+            if (_editingId.HasValue)
+                ok = await Api.SendAsync(HttpMethod.Put, $"api/employees/{_editingId.Value}", _model);
+            else
+            {
+                var response = await Api.PostAsync<BonHrIdResponse>("api/employees", _model);
+                ok = response != null;
+                if (response != null) _editingId = response.Id;
+            }
+
+            _ok = ok;
+            _message = ok
+                ? "اطلاعات پرسنل با موفقیت ذخیره شد."
+                : (string.IsNullOrWhiteSpace(Api.LastError) ? "ذخیره‌سازی انجام نشد." : Api.LastError!);
+
+            if (ok)
+            {
+                _savedOnce = true;
+                Toast.Success(_message);
+                _showForm = false;
+            }
+            else Toast.Error(_message);
+        }
+        catch (Exception ex)
+        {
+            _ok = false;
+            _message = "ذخیره‌سازی انجام نشد: " + ex.Message;
+            Toast.Error(_message);
+        }
+        finally { _busy = false; }
     }
 
     private void OpenForm() => _showForm = true;

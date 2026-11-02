@@ -6,6 +6,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject LayoutState Layout
+@implements IDisposable
 
 <PageTitle>پرسنل بن‌سازه</PageTitle>
 <BonHrGuard Section="Employees">
@@ -213,9 +214,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _employees = await Api.ListAsync<Employee>("api/employees");
-        _units = _employees.Select(e => e.Unit).Where(u => !string.IsNullOrEmpty(u)).Distinct().OrderBy(u => u).ToList();
-        Filter();
+        Nav.LocationChanged += OnLocationChanged;
+        await ReloadAsync();
 
         if (Auth.IsAdmin)
         {
@@ -223,6 +223,28 @@
             _ceoMonth = _months.LastOrDefault() ?? "";
             await LoadCeoRowsAsync();
         }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    /// <summary>
+    /// این صفحه در سیستم تب‌ها یک‌بار ساخته می‌شود و در DOM می‌ماند؛ بنابراین بعد از
+    /// بازگشت از «ورود اطلاعات» (ثبت/ویرایش پرونده) فهرست قدیمی می‌ماند و کاربر فکر
+    /// می‌کند ذخیره انجام نشده است. با هر بازگشت به مسیر همین صفحه، فهرست از سرور
+    /// تازه‌سازی می‌شود.
+    /// </summary>
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var rel = Nav.ToBaseRelativePath(e.Location).Split('?')[0].Trim('/');
+        if (rel != "bon-hr/employees") return;
+        _ = InvokeAsync(ReloadAsync);
+    }
+
+    private async Task ReloadAsync()
+    {
+        _employees = await Api.ListAsync<Employee>("api/employees");
+        _units = _employees.Select(e => e.Unit).Where(u => !string.IsNullOrEmpty(u)).Distinct().OrderBy(u => u).ToList();
+        Filter();
     }
 
     private void Filter()
