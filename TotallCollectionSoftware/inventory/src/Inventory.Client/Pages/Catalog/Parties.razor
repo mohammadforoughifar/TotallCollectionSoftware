@@ -8,66 +8,118 @@
 
 <PageTitle>@PageTitleText</PageTitle>
 
-<div class="page-head">
-    <div>
-        <h1>@PageTitleText</h1>
-        <p class="lead">
-            @(CanSeeCustomers && CanSeeSuppliers ? "مدیریت مشتریان و تأمین‌کنندگان"
-              : CanSeeCustomers ? "تعریف و مدیریت مشتریان"
-              : "مدیریت تأمین‌کنندگان")
-        </p>
-    </div>
-    @if (CanCreateCurrent)
-    {
-        <button class="btn btn-primary ms-auto" @onclick="OpenNew">
-            <i class="bi bi-plus-lg"></i> @(type == PartyType.Supplier ? "تأمین‌کننده جدید" : "مشتری جدید")
-        </button>
-    }
-</div>
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon @(type == PartyType.Customer ? "bg-indigo-gradient" : "bg-emerald-gradient")">
+                    <i class="bi @(type == PartyType.Customer ? "bi-people-fill" : "bi-truck")"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">@PageTitleText</h1>
+                        <span class="badge rounded-pill fin-badge-indigo">
+                            @(type == PartyType.Customer ? "پایگاه مشتریان" : "شبکه تأمین‌کنندگان")
+                        </span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        مدیریت اطلاعات هویتی، سوابق تماس، مانده حساب مالی و وضعیت چک‌های برگشتی
+                    </div>
+                </div>
+            </div>
 
-<div class="card">
-    <div class="card-body">
-        @* مشتری و تأمین‌کننده دسترسی مستقل دارند: هر زبانه فقط با مجوز خودش دیده می‌شود *@
-        <div class="d-flex gap-2 mb-3">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                @if (CanCreateCurrent)
+                {
+                    <button class="btn btn-primary fin-btn-pill" @onclick="OpenNew">
+                        <i class="bi bi-person-plus-fill me-1"></i> @(type == PartyType.Supplier ? "ثبت تأمین‌کننده جدید" : "ثبت مشتری جدید")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== تب‌های سگمنتی مشتریان / تأمین‌کنندگان ================== -->
+    <div class="op-tabs-nav-wrapper mb-4">
+        <div class="op-tabs-nav" style="grid-template-columns: repeat(2, 1fr);">
             @if (CanSeeCustomers)
             {
-                <button class="btn @(type == PartyType.Customer ? "btn-primary" : "btn-light")" @onclick="() => SetType(PartyType.Customer)">
-                    <i class="bi bi-people"></i> مشتریان
+                <button type="button" class="op-tab-btn @(type == PartyType.Customer ? "is-active tab-cheques" : "")"
+                        @onclick="() => SetType(PartyType.Customer)">
+                    <div class="op-tab-icon-box">
+                        <i class="bi bi-person-badge-fill"></i>
+                    </div>
+                    <div class="op-tab-text">
+                        <span class="op-tab-title">مشتریان</span>
+                        <span class="op-tab-sub">خریداران حقیقی و حقوقی</span>
+                    </div>
                 </button>
             }
             @if (CanSeeSuppliers)
             {
-                <button class="btn @(type == PartyType.Supplier ? "btn-primary" : "btn-light")" @onclick="() => SetType(PartyType.Supplier)">
-                    <i class="bi bi-truck"></i> تأمین‌کنندگان
+                <button type="button" class="op-tab-btn @(type == PartyType.Supplier ? "is-active tab-installments" : "")"
+                        @onclick="() => SetType(PartyType.Supplier)">
+                    <div class="op-tab-icon-box">
+                        <i class="bi bi-truck-front-fill"></i>
+                    </div>
+                    <div class="op-tab-text">
+                        <span class="op-tab-title">تأمین‌کنندگان</span>
+                        <span class="op-tab-sub">فروشندگان کالا و خدمات</span>
+                    </div>
                 </button>
             }
         </div>
+    </div>
 
-        @if (!AnyAccess)
-        {
-            <div class="empty-state">
-                <i class="bi bi-shield-lock"></i>
-                <h5>به این بخش دسترسی ندارید</h5>
-                <p class="text-muted fs-8">برای دریافت دسترسی «مشتریان» یا «تأمین‌کنندگان» با مدیر سیستم تماس بگیرید.</p>
+    @if (!AnyAccess)
+    {
+        <div class="fin-table-card p-5 text-center">
+            <i class="bi bi-shield-lock fs-1 text-warning opacity-75"></i>
+            <h5 class="fw-800 text-dark mt-2">به این بخش دسترسی ندارید</h5>
+            <p class="text-secondary fs-8">برای دریافت دسترسی «مشتریان» یا «تأمین‌کنندگان» با مدیر سیستم تماس بگیرید.</p>
+        </div>
+    }
+    else if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+            <div class="text-secondary fs-8">در حال بارگذاری اشخاص...</div>
+        </div>
+    }
+    else if (items.Count == 0)
+    {
+        <div class="fin-table-card p-5 text-center">
+            <i class="bi bi-people fs-1 text-muted opacity-50"></i>
+            <div class="fw-bold text-secondary mt-2">طرف حسابی در این بخش ثبت نشده است</div>
+        </div>
+    }
+    else
+    {
+        <!-- ================== جدول اشخاص ================== -->
+        <div class="fin-table-card">
+            <div class="fin-table-header">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                        <i class="bi bi-person-lines-fill"></i>
+                    </div>
+                    <div>
+                        <h3 class="fin-table-title">فهرست @(type == PartyType.Customer ? "مشتریان" : "تأمین‌کنندگان")</h3>
+                        <p class="fin-table-sub">مشاهده اطلاعات تماس، آدرس و مانده حساب</p>
+                    </div>
+                </div>
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 num fs-8">
+                    @total.Num() طرف حساب
+                </span>
             </div>
-        }
-        else if (loading)
-        {
-            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
-        }
-        else if (items.Count == 0)
-        {
-            <div class="empty-state"><i class="bi bi-people"></i><h5>طرف حسابی ثبت نشده است</h5></div>
-        }
-        else
-        {
-            <div class="table-responsive grid-desktop">
-                <table class="table table-hover align-middle">
+
+            <div class="table-responsive">
+                <table class="table fin-table align-middle">
                     <thead>
                         <tr>
-                            <th>نام</th>
-                            <th>موبایل</th>
-                            <th>تلفن</th>
+                            <th>نام شخص / شرکت</th>
+                            <th>شماره تماس</th>
+                            <th>تلفن ثابت</th>
                             <th>آدرس</th>
                             @if (type == PartyType.Customer)
                             {
@@ -75,77 +127,94 @@
                                 <th>ثبت‌کننده</th>
                             }
                             <th class="text-start">مانده حساب (ریال)</th>
-                            <th>وضعیت</th>
-                            <th class="text-end">عملیات</th>
+                            <th class="text-center">وضعیت</th>
+                            <th class="text-center" style="width: 100px;">عملیات</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var p in Paged)
                         {
-                            <tr>
-                                <td class="fw-500">@p.Name</td>
-                                <td>@(p.Mobile ?? "—")</td>
-                                <td>@(p.Phone ?? "—")</td>
-                                <td class="text-muted">@(p.Address ?? "—")</td>
+                            <tr class="fin-table-row">
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="fin-avatar">
+                                            @p.Name.Substring(0, Math.Min(1, p.Name.Length))
+                                        </div>
+                                        <div class="fw-800 text-dark">@p.Name</div>
+                                    </div>
+                                </td>
+                                <td class="num fs-8 text-dark">@(p.Mobile ?? "—")</td>
+                                <td class="num fs-8 text-secondary">@(p.Phone ?? "—")</td>
+                                <td class="text-secondary fs-8">@(p.Address ?? "—")</td>
                                 @if (type == PartyType.Customer)
                                 {
                                     <td>
                                         @if (string.IsNullOrWhiteSpace(p.ReferrerName))
                                         {
-                                            <span class="text-muted">بدون معرف</span>
+                                            <span class="text-muted fs-8">بدون معرف</span>
                                         }
                                         else
                                         {
-                                            <span class="badge badge-soft-primary">@p.ReferrerName</span>
+                                            <span class="badge bg-indigo-subtle text-indigo rounded-pill px-2.5">
+                                                @p.ReferrerName
+                                            </span>
                                         }
                                     </td>
                                     <td>
                                         @if (string.IsNullOrWhiteSpace(p.RegisteredByName))
                                         {
-                                            <span class="text-muted">—</span>
+                                            <span class="text-muted fs-8">—</span>
                                         }
                                         else
                                         {
-                                            <span class="badge badge-soft-success" title="@RegistrarTitle(p)">@p.RegisteredByName</span>
+                                            <span class="badge bg-success-subtle text-success rounded-pill px-2" title="@RegistrarTitle(p)">
+                                                @p.RegisteredByName
+                                            </span>
                                         }
                                     </td>
                                 }
                                 <td class="text-start">
-                                    <div class="num @(p.Balance > 0 ? "text-success fw-700" : "text-danger fw-700")">
+                                    <div class="num fw-800 fs-7.5 @(p.Balance > 0 ? "text-emerald" : p.Balance < 0 ? "text-rose" : "text-muted")">
                                         @p.Balance.Money()
                                     </div>
                                     @if (p.BouncedChequesCount > 0)
                                     {
-                                        <div class="badge badge-soft-danger fs-8 mt-1" title="مشتری دارای چک برگشتی فعال است!">
-                                            <i class="bi bi-x-octagon"></i> @p.BouncedChequesCount.Num() چک برگشتی (@p.BouncedChequesTotal.Money())
+                                        <div class="badge bg-danger text-white fs-9 mt-1 rounded-pill" title="مشتری دارای چک برگشتی فعال است!">
+                                            <i class="bi bi-x-octagon me-1"></i> @p.BouncedChequesCount.Num() چک برگشتی (@p.BouncedChequesTotal.Money())
                                         </div>
                                     }
                                     @if (p.OverdueInstallmentsCount > 0)
                                     {
-                                        <div class="badge badge-soft-warning fs-8 mt-1" title="مشتری دارای اقساط معوق پرداخت نشده است!">
-                                            <i class="bi bi-clock-history"></i> @p.OverdueInstallmentsCount.Num() قسط معوق (@p.OverdueInstallmentsTotal.Money())
+                                        <div class="badge bg-amber-subtle text-amber fs-9 mt-1 rounded-pill" title="مشتری دارای اقساط معوق است!">
+                                            <i class="bi bi-clock-history me-1"></i> @p.OverdueInstallmentsCount.Num() قسط معوق (@p.OverdueInstallmentsTotal.Money())
                                         </div>
                                     }
                                 </td>
-                                <td>
+                                <td class="text-center">
                                     @if (p.IsActive)
                                     {
-                                        <span class="badge badge-soft-success">فعال</span>
+                                        <span class="badge bg-emerald-subtle text-emerald border border-emerald-subtle rounded-pill px-2.5">فعال</span>
                                     }
                                     else
                                     {
-                                        <span class="badge badge-soft-muted">غیرفعال</span>
+                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2.5">غیرفعال</span>
                                     }
                                 </td>
-                                <td class="text-end">
-                                    @if (CanUpdateCurrent)
-                                    {
-                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil text-primary"></i></button>
-                                    }
-                                    @if (CanDeleteCurrent)
-                                    {
-                                        <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(p)"><i class="bi bi-trash text-danger"></i></button>
-                                    }
+                                <td class="text-center">
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        @if (CanUpdateCurrent)
+                                        {
+                                            <button class="btn btn-sm btn-light text-primary fin-btn-pill fs-8 p-1 px-2" title="ویرایش" @onclick="() => OpenEdit(p)">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                        }
+                                        @if (CanDeleteCurrent)
+                                        {
+                                            <button class="btn btn-sm btn-light text-danger fin-btn-pill fs-8 p-1 px-2" title="حذف" @onclick="() => Delete(p)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -153,67 +222,11 @@
                 </table>
             </div>
 
-            @* ---------- نمای کارتی (موبایل) ---------- *@
-            <div class="cards-mobile">
-                @foreach (var p in Paged)
-                {
-                    <div class="m-card @(p.Balance >= 0 ? "st-ready" : "st-cancelled")">
-                        <div class="m-card-head">
-                            <div class="m-card-icon"><i class="bi @(type == PartyType.Customer ? "bi-person" : "bi-truck")"></i></div>
-                            <div class="flex-grow-1 min-w-0">
-                                <div class="fw-700 text-truncate">@p.Name</div>
-                                <div class="fs-8 text-muted num">@(p.Mobile ?? p.Phone ?? "—")</div>
-                                @if (type == PartyType.Customer)
-                                {
-                                    @if (!string.IsNullOrWhiteSpace(p.RegisteredByName))
-                                    {
-                                        <div class="fs-8">
-                                            <i class="bi bi-person-check text-success"></i>
-                                            ثبت‌شده توسط <b>@p.RegisteredByName</b>
-                                        </div>
-                                    }
-                                    <div class="fs-8">
-                                        @if (string.IsNullOrWhiteSpace(p.ReferrerName))
-                                        {
-                                            <span class="text-muted">بدون معرف</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge badge-soft-primary fs-8">معرف: @p.ReferrerName</span>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                            <div class="text-end">
-                                <div class="fs-8 text-muted">مانده حساب</div>
-                                <div class="num fw-800 @(p.Balance > 0 ? "text-success" : p.Balance < 0 ? "text-danger" : "")">@p.Balance.Money()</div>
-                                @if (p.BouncedChequesCount > 0)
-                                {
-                                    <div class="badge badge-soft-danger fs-9 mt-1"><i class="bi bi-x-octagon"></i> @p.BouncedChequesCount.Num() چک برگشتی</div>
-                                }
-                                @if (p.OverdueInstallmentsCount > 0)
-                                {
-                                    <div class="badge badge-soft-warning fs-9 mt-1"><i class="bi bi-clock-history"></i> @p.OverdueInstallmentsCount.Num() قسط معوق</div>
-                                }
-                            </div>
-                        </div>
-                        <div class="m-card-actions">
-                            @if (CanUpdateCurrent)
-                            {
-                                <button class="btn btn-light text-primary" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i> ویرایش</button>
-                            }
-                            @if (CanDeleteCurrent)
-                            {
-                                <button class="btn btn-light text-danger" @onclick="() => Delete(p)"><i class="bi bi-trash"></i></button>
-                            }
-                        </div>
-                    </div>
-                }
+            <div class="p-3 border-top bg-light">
+                <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
             </div>
-
-            <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
-        }
-    </div>
+        </div>
+    }
 </div>
 
 @* فرم تعریف طرف حساب — همان فرم مشترکِ ماژول ویزیتوری (/parties) *@
@@ -223,6 +236,419 @@
                 AllowReferrerPicker="true"
                 OnSaved="OnPartySaved"
                 OnCancel="CloseModal" />
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+<style>
+.op-tabs-nav-wrapper {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.05);
+    border: 1px solid #e2e8f0;
+}
+.op-tabs-nav {
+    display: grid;
+    gap: 6px;
+}
+.op-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    text-align: right;
+    outline: none !important;
+}
+.op-tab-icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    background: #f1f5f9;
+    color: #64748b;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.op-tab-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex-grow: 1;
+}
+.op-tab-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+    transition: color 0.2s;
+}
+.op-tab-sub {
+    font-size: 0.7rem;
+    color: #64748b;
+}
+.op-tab-btn:hover:not(.is-active) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.op-tab-btn.is-active {
+    background: #ffffff;
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #4f46e5;
+}
+.op-tab-btn.is-active.tab-cheques {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #4f46e5;
+}
+.op-tab-btn.is-active.tab-cheques .op-tab-icon-box {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    color: #ffffff;
+}
+.op-tab-btn.is-active.tab-installments {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #059669;
+}
+.op-tab-btn.is-active.tab-installments .op-tab-icon-box {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+}
+</style>
+
 
 @code {
     private PartyType type = PartyType.Customer;
