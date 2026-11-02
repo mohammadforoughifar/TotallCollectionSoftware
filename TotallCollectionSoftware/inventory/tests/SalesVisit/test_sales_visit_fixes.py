@@ -9,6 +9,9 @@
      به کلاینت برنگرداند.
   ۳) طراحی یکدست فرمهای «ثبت سفارش» و «جزئیات سفارش» + حذف دکمهٔ ارسال
      برای سفارش «در انتظار تأیید».
+  ۴) اعمال نهایی طرح: حذف سرچ سراسری کالا و هرگونه اسکرول داخلی، کمبوباکس مستقل
+     در هر سطر با باز شدن خودکار هنگام F2، تراکم فشردهٔ تبلت/موبایل، نوار بازبینی
+     سهتایی و نوار اقدام چسبان؛ پالت app.css بدون تغییر.
 """
 import re
 import unittest
@@ -18,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[2] / "src"
 ALL_REQUESTS = ROOT / "Inventory.Client/Pages/SalesVisit/AllRequests.razor"
 VISIT_FORM = ROOT / "Inventory.Client/Pages/SalesVisit/VisitForm.razor"
 VISIT_DETAIL = ROOT / "Inventory.Client/Pages/SalesVisit/VisitDetail.razor"
+SEARCH_SELECT = ROOT / "Inventory.Client/Shared/SearchSelect.razor"
+APP_CSS = ROOT / "Inventory.Client/wwwroot/css/app.css"
 SERVICE = ROOT / "Inventory.Api/Services/SalesVisit/VisOrderService.cs"
 CONTROLLER = ROOT / "Inventory.Api/Controllers/SalesVisit/SalesVisitController.cs"
 
@@ -138,13 +143,90 @@ class VisitFormsDesignTests(unittest.TestCase):
                          "کلاسهای margin دوتایی باعث فاصلهٔ ناهماهنگ سربرگ بودند")
         self.assertEqual(self.form_markup.count('class="row vis-grid"'), 1)
 
-    def test_both_tables_use_explicit_columns_and_fixed_layout(self):
+    # ---------- اعمال نهایی: حذف اسکرول، گرید، کمبو در هر سطر، تراکم ----------
+    def test_products_have_no_inner_or_horizontal_scroll(self):
+        for name, src, markup in (("VisitForm", self.form, self.form_markup),
+                                  ("VisitDetail", self.detail, self.detail_markup)):
+            with self.subTest(page=name):
+                self.assertNotIn('class="table-responsive"', markup,
+                                 "ناحیهٔ کالاها نباید داخل کانتینر اسکرولپذیر باشد")
+                self.assertNotRegex(src, r"min-width:\s*(?:780|660)px",
+                                    "پهنای حداقل جدول، عامل اسکرول افقی بود")
+                self.assertNotRegex(src, r"overflow:\s*(?:auto|scroll)",
+                                    "هیچ اسکرول داخلی در کالاها مجاز نیست")
+                self.assertNotRegex(src, r"max-height:\s*220px")
+                self.assertNotIn("vis-suggest", src, "فهرست پیشنهاد اسکرولپذیر حذف شد")
+                self.assertIn("data-no-scroll", markup)
+
+    def test_products_use_responsive_css_grid(self):
         for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
             with self.subTest(page=name):
-                cols = re.findall(r"<col\b[^>]*style=\"width:\s*\d+%\"[^>]*/?>", src)
-                self.assertGreaterEqual(len(cols), 6, "پهنای ستونها باید صریح باشد")
-                self.assertIn("table-layout: fixed", src)
-                self.assertIn("min-width:", src)
+                self.assertIn("grid-template-areas", src)
+                self.assertIn("minmax(0,", src)
+                self.assertIn("vis-cell-label", src)
+                self.assertIn("data-review-bar", src)
+                self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr))", src,
+                              "نوار بازبینی حتی روی موبایل هم یک ردیف ۳تایی است")
+
+    def test_global_product_search_is_removed(self):
+        for gone in ("productSearch", "productResults", "SearchProductsAsync",
+                     "AddLine(VisProductLite", "_prodDebounce"):
+            self.assertNotIn(gone, self.form, f"سرچ سراسری کالا باید کاملاً حذف شود: {gone}")
+        self.assertIn("productIndex.TryGetValue(productId", self.form,
+                      "اطلاعات کالا فقط از فهرست انبار بارگیریشده میآید")
+        self.assertGreaterEqual(self.form.count("await ReloadProductLookupAsync();"), 2,
+                                "در حالت ویرایش، فهرست کالاها باید پس از خواندن سفارش "
+                                "از انبار واقعی آن دوباره بارگیری شود")
+
+    def test_every_line_has_its_own_product_combo_opened_by_f2(self):
+        self.assertIn('Items="productLookup"', self.form_markup)
+        self.assertIn('AutoOpen="@(ReferenceEquals(l, autoOpenLine))"', self.form_markup)
+        self.assertIn('NoScrollMenu="true"', self.form_markup)
+        self.assertIn('MaxVisible="5"', self.form_markup)
+        self.assertIn('data-hotkey="f2"', self.form_markup)
+        self.assertIn("autoOpenLine = line;", self.form)
+        self.assertIn("autoOpenLine = null;", self.form,
+                      "پس از ریست فرم، هیچ سطری نباید همچنان AutoOpen بماند")
+        self.assertIn('@onclick="AddEmptyLine"', self.form_markup)
+
+    def test_search_select_supports_auto_open_and_tight_menu(self):
+        ss = read(SEARCH_SELECT)
+        self.assertIn("[Parameter] public bool AutoOpen", ss)
+        self.assertIn("[Parameter] public bool NoScrollMenu", ss)
+        self.assertIn("OnAfterRenderAsync(bool firstRender)", ss)
+        self.assertIn("_input.FocusAsync(true)", ss)
+        self.assertIn('ss-menu--tight', ss)
+
+    def test_compact_density_and_sticky_action_bar(self):
+        for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
+            with self.subTest(page=name):
+                self.assertIn("@@media (max-width: 1080px)", src)
+                self.assertIn("@@media (max-width: 720px)", src)
+                self.assertIn("position: sticky; bottom: 0", src)
+                self.assertIn('"qty price disc total"', src,
+                              "ردیف کالا روی موبایل/تبلت فقط ۲ ردیف است")
+                self.assertGreaterEqual(src.count("grid-template-areas"), 2,
+                                       "چیدمان دسکتاپ و چیدمان فشرده هر دو باید تعریف شوند")
+
+    def test_business_rules_survive_the_redesign(self):
+        self.assertIn("data-stock-alarm", self.form_markup)
+        self.assertIn("MaxDiscountPercent", self.form)
+        self.assertIn("model.SubmitAfterSave = submit && CanSubmit;", self.form)
+        self.assertIn("if (!CanSubmit) submit = false;", self.form)
+        self.assertIn("data-pending-note", self.form_markup)
+        self.assertIn("data-edit-btn", self.detail_markup)
+        self.assertIn("data-submit-btn", self.detail_markup)
+        self.assertIn("VisOrderStatus.Submitted", self.detail,
+                      "ویرایش سفارش در انتظار تأیید همچنان مجاز است")
+
+    def test_palette_is_untouched(self):
+        css = read(APP_CSS)
+        root = css[css.index(":root {"):css.index(":root {") + 700]
+        for token, value in (("--primary", "#4f46e5"), ("--primary-50", "#eef2ff"),
+                             ("--bg", "#f1f5f9"), ("--border", "#e2e8f0"),
+                             ("--success", "#10b981"), ("--danger", "#ef4444")):
+            with self.subTest(token=token):
+                self.assertIn(f"{token}: {value}", root)
 
     def test_cards_have_a_unified_header_and_padding(self):
         self.assertIn("vis-card-header", self.form)

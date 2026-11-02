@@ -30,7 +30,7 @@
     {
         @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
         <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
-        <div class="ss-menu" style="@MenuStyle" @onclick:stopPropagation="true">
+        <div class="ss-menu @(NoScrollMenu ? "ss-menu--tight" : "")" style="@MenuStyle" @onclick:stopPropagation="true">
             @if (matches.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
@@ -102,6 +102,19 @@
     /// </para>
     /// </summary>
     [Parameter] public int MaxVisible { get; set; } = 40;
+
+    /// <summary>
+    /// اگر true باشد، در نخستین رندر منو باز و ورودی فوکوس میشود.
+    /// کاربرد: سطر تازهای که با F2 در فرم سفارش ساخته میشود، بیدرنگ
+    /// کمبوباکس کالاهایش را باز میکند (بدون نیاز به کلیک اضافه).
+    /// </summary>
+    [Parameter] public bool AutoOpen { get; set; }
+
+    /// <summary>
+    /// منو بدون اسکرول داخلی. وقتی MaxVisible کوچک است (مثلاً ۵)، دیگر
+    /// max-height/overflow لازم نیست و قرارداد «بدون اسکرول در بخش کالاها» حفظ میشود.
+    /// </summary>
+    [Parameter] public bool NoScrollMenu { get; set; }
 
     private string query = "";
     private bool open;
@@ -188,6 +201,16 @@
     }
 
     private bool focused;
+
+    /// <summary>سطر تازهٔ F2: تنها یکبار، روی نخستین رندر، منو باز و فوکوس میشود.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !AutoOpen) return;
+        await OnFocus();                       // open = true + فهرست گزینهها
+        try { await _input.FocusAsync(true); } // preventScroll: صفحه نپرد
+        catch (JSException) { }
+        StateHasChanged();
+    }
 
     private async Task OnFocus()
     {

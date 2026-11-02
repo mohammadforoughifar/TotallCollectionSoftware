@@ -68,7 +68,12 @@
 
 @if (loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="vis-loading" data-loading-skeleton>
+        <div class="vis-skeleton vis-skel-head"></div>
+        <div class="vis-skeleton vis-skel-row"></div>
+        <div class="vis-skeleton vis-skel-row"></div>
+        <div class="vis-skeleton vis-skel-row"></div>
+    </div>
 }
 else if (blocked is not null)
 {
@@ -82,7 +87,7 @@ else
 {
     <div class="row vis-grid vis-form-layout">
         @* ---------------- ستون فرم ---------------- *@
-        <div class="col-12 col-xl-8">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header vis-card-header">
                     <i class="bi bi-person-vcard"></i><span class="card-title">مشخصات سفارش</span>
@@ -186,35 +191,12 @@ else
                     </div>
                 </div>
                 <div class="card-body">
-                    @* جستجوی سریع (اختیاری): انتخاب کالا از فهرست، سطر همان کالا را اضافه/زیاد می‌کند *@
-                    <div class="input-group mb-2">
-                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input class="form-control" placeholder="افزودن کالا — نام، کد یا بارکد… (یا با F2 سطر جدید)"
-                               @bind="productSearch" @bind:event="oninput" @bind:after="SearchProductsAsync" />
-                    </div>
-
                     @if (me is not null && me.ProductCount == 0)
                     {
                         <div class="alert alert-warning py-2 px-2 fs-8" data-no-product>
                             <i class="bi bi-exclamation-triangle"></i>
                             برای شرکت <b>@(string.IsNullOrWhiteSpace(me.CompanyName) ? "شما" : me.CompanyName)</b>
                             هیچ کالای فعالی تعریف نشده است؛ از مدیر سیستم بخواهید کالاهای این شرکت را ثبت کند.
-                        </div>
-                    }
-
-                    @if (productResults.Count > 0)
-                    {
-                        <div class="vis-suggest">
-                            @foreach (var p in productResults)
-                            {
-                                <div class="vis-suggest-item" @onclick="@(() => AddLine(p))">
-                                    <div>
-                                        <div class="fw-600 fs-8">@p.Name</div>
-                                        <div class="fs-9 text-muted">@p.Code — موجودی: @Fa.Number(p.Stock) @p.Unit</div>
-                                    </div>
-                                    <div class="text-start fs-8">@Fa.Money(p.SalePrice) ریال</div>
-                                </div>
-                            }
                         </div>
                     }
 
@@ -226,109 +208,112 @@ else
                         </div>
                     }
 
+                    @* اقلام: گرید واکنشگرا، بدون جدول پهن و بدون هیچ اسکرول داخلی *@
                     @if (model.Lines.Count == 0)
                     {
-                        <div class="text-center text-muted py-4 fs-8">
-                            <i class="bi bi-basket d-block fs-3 mb-1"></i>هنوز کالایی اضافه نشده است
+                        <div class="vis-empty" data-no-lines>
+                            <div class="vis-empty-ico"><i class="bi bi-basket"></i></div>
+                            <h6>هنوز کالایی اضافه نشده است</h6>
+                            <p>با کلید F2 یا دکمهٔ زیر یک سطر بسازید، سپس کالا را داخل همان سطر انتخاب کنید.</p>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="AddEmptyLine" disabled="@(model.WarehouseId <= 0)">
+                                <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
+                            </button>
                         </div>
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle vis-lines-table">
-                                <colgroup>
-                                    <col style="width:30%" />
-                                    <col style="width:10%" />
-                                    <col style="width:16%" />
-                                    <col style="width:19%" />
-                                    <col style="width:15%" />
-                                    <col style="width:10%" />
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>کالا</th>
-                                        <th>مقدار</th>
-                                        <th>قیمت واحد (ریال)</th>
-                                        <th title="تا ۹۹ = درصد | از ۱۰۰ به بالا = مبلغ ریالی">تخفیف</th>
-                                        <th class="text-start">جمع</th>
-                                        <th class="text-center"><i class="bi bi-trash"></i></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var l in model.Lines)
-                                    {
-                                        var available = AvailableOf(l);
-                                        var shortage = ShortageOf(l);
-                                        <tr @key="l" class="@(shortage > 0 ? "table-warning" : "")" data-shortage="@(shortage > 0 ? "1" : "0")">
-                                            <td>
-                                                @* انتخاب کالا داخل خود سطر — مثل فرم فروش *@
-                                                <SearchSelect Items="productLookup"
-                                                              Value="l.ProductId"
-                                                              ValueChanged="id => OnLineProductPicked(l, id)"
-                                                              Placeholder="جستجوی کالا…" />
-                                                @if (!string.IsNullOrWhiteSpace(l.Unit))
+                        <div class="vis-lines" data-no-scroll>
+                            <div class="vis-lines-head">
+                                <span class="vis-h-name">کالا</span>
+                                <span class="vis-h-qty">مقدار</span>
+                                <span class="vis-h-price">قیمت واحد (ریال)</span>
+                                <span class="vis-h-disc" title="تا ۹۹ = درصد | از ۱۰۰ به بالا = مبلغ ریالی">تخفیف</span>
+                                <span class="vis-h-total">جمع</span>
+                                <span class="vis-h-del"></span>
+                            </div>
+                            @foreach (var l in model.Lines)
+                            {
+                                var available = AvailableOf(l);
+                                var shortage = ShortageOf(l);
+                                <div @key="l" class="vis-line @(shortage > 0 ? "is-short" : "")" data-shortage="@(shortage > 0 ? "1" : "0")">
+                                    <div class="vis-cell c-name">
+                                        <span class="vis-cell-label">کالا</span>
+                                        @* هر سطر کمبوباکس مستقل خودش را دارد؛ سطر تازهٔ F2 همانجا باز میشود *@
+                                        <SearchSelect Items="productLookup"
+                                                      Value="l.ProductId"
+                                                      ValueChanged="id => OnLineProductPicked(l, id)"
+                                                      Placeholder="جستجوی کالا…"
+                                                      MaxVisible="5"
+                                                      NoScrollMenu="true"
+                                                      AutoOpen="@(ReferenceEquals(l, autoOpenLine))" />
+                                        @if (!string.IsNullOrWhiteSpace(l.Unit))
+                                        {
+                                            <div class="vis-cell-note">@l.ProductCode — واحد: @l.Unit</div>
+                                        }
+                                    </div>
+                                    <div class="vis-cell c-qty">
+                                        <span class="vis-cell-label">مقدار</span>
+                                        <input class="form-control form-control-sm num" value="@l.Quantity.ToString("0.##")"
+                                               @onchange="e => SetQty(l, e.Value?.ToString())" />
+                                        @if (shortage > 0)
+                                        {
+                                            <div class="vis-cell-note text-danger" data-stock-alarm>
+                                                <i class="bi bi-exclamation-triangle"></i>
+                                                موجودی @Fa.Number(available) — کسری @Fa.Number(shortage)
+                                            </div>
+                                        }
+                                        else if (l.ProductId > 0)
+                                        {
+                                            <div class="vis-cell-note vis-minor">موجودی: @Fa.Number(available) @l.Unit</div>
+                                        }
+                                    </div>
+                                    <div class="vis-cell c-price">
+                                        <span class="vis-cell-label">قیمت واحد (ریال)</span>
+                                        @* قیمت واحد برای ویزیتور خاکستری و غیرقابل ویرایش است (فقط خواندنی) *@
+                                        <MoneyInput Value="l.UnitPrice"
+                                                    ValueChanged="v => SetPrice(l, v)"
+                                                    Disabled="@(me?.CanApprove != true && me?.IsAdmin != true)"
+                                                    ReadOnly="@(me?.CanApprove != true && me?.IsAdmin != true)"
+                                                    CssClass="@($"form-control form-control-sm text-center num {(me?.CanApprove != true && me?.IsAdmin != true ? "bg-light text-muted" : "")}")" />
+                                    </div>
+                                    <div class="vis-cell c-disc">
+                                        <span class="vis-cell-label">تخفیف</span>
+                                        @* دو حالته: تا ۹۹ = درصد، از ۱۰۰ به بالا = مبلغ ریالی *@
+                                        <div class="input-group input-group-sm">
+                                            <input class="form-control form-control-sm text-center num"
+                                                   value="@DiscountText(l)"
+                                                   @oninput="e => OnDiscountInput(l, e.Value?.ToString())"
+                                                   @onblur="e => OnDiscountBlur(l)"
+                                                   inputmode="numeric" dir="ltr" />
+                                            <span class="input-group-text @(l.DiscountIsAmount ? "text-primary" : "")"
+                                                  title="@(l.DiscountIsAmount ? "مبلغ ریالی" : "درصد")">
+                                                @(l.DiscountIsAmount ? "ریال" : "٪")
+                                            </span>
+                                        </div>
+                                        @* مبلغ تخفیف همان ردیف — همیشه به ریال نمایش داده میشود *@
+                                        @if (LineDiscount(l) > 0)
+                                        {
+                                            <div class="vis-cell-note discount-line" data-line-discount="@LineDiscount(l)">
+                                                <span class="text-danger num">@Fa.Money(LineDiscount(l)) ریال</span>
+                                                @if (l.DiscountIsAmount)
                                                 {
-                                                    <div class="fs-9 text-muted mt-1">@l.ProductCode — واحد: @l.Unit</div>
+                                                    <span class="text-muted">(@Fa.Digits(l.DiscountPercent) درصد)</span>
                                                 }
-                                            </td>
-                                            <td>
-                                                <input class="form-control form-control-sm" value="@l.Quantity.ToString("0.##")"
-                                                       @onchange="e => SetQty(l, e.Value?.ToString())" />
-                                                @if (shortage > 0)
-                                                {
-                                                    <div class="fs-9 text-danger mt-1" data-stock-alarm>
-                                                        <i class="bi bi-exclamation-triangle"></i>
-                                                        موجودی @Fa.Number(available) — کسری @Fa.Number(shortage)
-                                                    </div>
-                                                }
-                                                else if (l.ProductId > 0)
-                                                {
-                                                    <div class="fs-9 text-muted mt-1">موجودی: @Fa.Number(available) @l.Unit</div>
-                                                }
-                                            </td>
-                                            <td>
-                                                @* قیمت واحد برای ویزیتور خاکستری و غیرقابل ویرایش است (فقط خواندنی) *@
-                                                <MoneyInput Value="l.UnitPrice"
-                                                            ValueChanged="v => SetPrice(l, v)"
-                                                            Disabled="@(me?.CanApprove != true && me?.IsAdmin != true)"
-                                                            ReadOnly="@(me?.CanApprove != true && me?.IsAdmin != true)"
-                                                            CssClass="@($"form-control form-control-sm text-center num {(me?.CanApprove != true && me?.IsAdmin != true ? "bg-light text-muted" : "")}")" />
-                                            </td>
-                                            <td>
-                                                @* دو حالته: تا ۹۹ = درصد، از ۱۰۰ به بالا = مبلغ ریالی *@
-                                                <div class="input-group input-group-sm">
-                                                    <input class="form-control form-control-sm text-center num"
-                                                           value="@DiscountText(l)"
-                                                           @oninput="e => OnDiscountInput(l, e.Value?.ToString())"
-                                                           @onblur="e => OnDiscountBlur(l)"
-                                                           inputmode="numeric" dir="ltr" />
-                                                    <span class="input-group-text @(l.DiscountIsAmount ? "text-primary" : "")"
-                                                          title="@(l.DiscountIsAmount ? "مبلغ ریالی" : "درصد")">
-                                                        @(l.DiscountIsAmount ? "ریال" : "٪")
-                                                    </span>
-                                                </div>
-                                                @* مبلغ تخفیف همان ردیف — همیشه به ریال نمایش داده می‌شود *@
-                                                @if (LineDiscount(l) > 0)
-                                                {
-                                                    <div class="fs-9 mt-1 discount-line" data-line-discount="@LineDiscount(l)">
-                                                        <span class="text-danger num">@Fa.Money(LineDiscount(l)) ریال</span>
-                                                        @if (l.DiscountIsAmount)
-                                                        {
-                                                            <span class="text-muted">(@Fa.Digits(l.DiscountPercent) درصد)</span>
-                                                        }
-                                                    </div>
-                                                }
-                                            </td>
-                                            <td class="text-start fs-8">@Fa.Money(l.LineTotal)</td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-danger" @onclick="@(() => model.Lines.Remove(l))">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="vis-cell c-total">
+                                        <span class="vis-cell-label">جمع سطر</span>
+                                        <div class="vis-line-total num">@Fa.Money(l.LineTotal) <small>ریال</small></div>
+                                    </div>
+                                    <div class="vis-cell c-del">
+                                        <button class="btn btn-sm btn-outline-danger vis-del-btn" title="حذف سطر"
+                                                @onclick="@(() => model.Lines.Remove(l))">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
                         </div>
                     }
 
@@ -348,68 +333,61 @@ else
             </div>
         </div>
 
-        @* ---------------- ستون جمع‌بندی ---------------- *@
-        <div class="col-12 col-xl-4">
-            <div class="card sticky-top vis-summary-card" style="top:.75rem">
-                <div class="card-header vis-card-header"><i class="bi bi-calculator"></i><span class="card-title">جمع سفارش</span></div>
-                <div class="card-body">
-                    <div class="vis-sum-row">
-                        <span>جمع کل</span><b class="num">@Fa.Money(Gross) <small>ریال</small></b>
-                    </div>
-                    <div class="vis-sum-row">
-                        <span>تخفیف</span><b class="num text-danger">@Fa.Money(Discount) <small>ریال</small></b>
-                    </div>
-                    <div class="vis-sum-total">
-                        <span>مبلغ نهایی سفارش</span>
-                        <div class="num">@Fa.Money(Net) <small>ریال</small></div>
-                    </div>
-                    @if (OverLimit)
-                    {
-                        <div class="alert alert-warning py-2 px-2 mt-3 fs-8 mb-0">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            تخفیف یک یا چند سطر از سقف مجاز شما بیشتر است؛ سفارش با علامت «تأیید ویژه» به مدیر می‌رود.
-                        </div>
-                    }
+        @* ---------------- بازبینی مالی و اقدامها (تمامعرض، زیر کالاها) ---------------- *@
+        <div class="col-12 vis-stack">
+            <div class="vis-review" data-review-bar>
+                <div class="vis-kpi"><span>جمع کل</span><b class="num">@Fa.Money(Gross) <small>ریال</small></b></div>
+                <div class="vis-kpi"><span>تخفیف</span><b class="num text-danger">@Fa.Money(Discount) <small>ریال</small></b></div>
+                <div class="vis-kpi vis-kpi-total"><span>قابل پرداخت</span><b class="num">@Fa.Money(Net) <small>ریال</small></b></div>
+            </div>
 
-                    @if (ShortLines.Count > 0)
-                    {
-                        <div class="alert alert-warning py-2 px-2 mt-3 mb-0 fs-8" data-stock-summary>
-                            <b><i class="bi bi-exclamation-triangle"></i> کسری موجودی در @Fa.Digits(ShortLines.Count) قلم:</b>
-                            @foreach (var sh in ShortLines)
-                            {
-                                <div class="fs-9">
-                                    @sh.Line.ProductName — موجودی @Fa.Number(sh.Available)، نیاز @Fa.Number(sh.Line.Quantity)
-                                </div>
-                            }
-                            <div class="fs-9 mt-1">ثبت سفارش انجام می‌شود؛ ولی پیش از ثبت فروش باید موجودی تأمین شود.</div>
-                        </div>
-                    }
+            @if (OverLimit)
+            {
+                <div class="alert alert-warning py-2 px-2 mt-2 fs-8 mb-0">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    تخفیف یک یا چند سطر از سقف مجاز شما بیشتر است؛ سفارش با علامت «تأیید ویژه» به مدیر میرود.
+                </div>
+            }
 
-                    @* سفارش «در انتظار تأیید» دیگر دکمهٔ ارسال ندارد: ارسال مجدد
-                       هم در سرور رد میشود و هم وضعیت را بههم میریزد. *@
-                    @if (!CanSubmit)
+            @if (ShortLines.Count > 0)
+            {
+                <div class="alert alert-warning py-2 px-2 mt-2 mb-0 fs-8" data-stock-summary>
+                    <b><i class="bi bi-exclamation-triangle"></i> کسری موجودی در @Fa.Digits(ShortLines.Count) قلم:</b>
+                    @foreach (var sh in ShortLines)
                     {
-                        <div class="alert alert-info vis-status-note" data-pending-note>
-                            <i class="bi bi-hourglass-split"></i>
-                            این سفارش در انتظار تأیید مدیر است؛ با ذخیرهٔ تغییرات، همچنان در صف تأیید میماند.
+                        <div class="fs-9">
+                            @sh.Line.ProductName — موجودی @Fa.Number(sh.Available)، نیاز @Fa.Number(sh.Line.Quantity)
                         </div>
                     }
-                    <div class="vis-actions">
-                        @if (CanSubmit)
-                        {
-                            <button class="btn btn-primary" disabled="@saving" @onclick="@(() => SaveAsync(true))">
-                                <i class="bi bi-send-check"></i> ذخیره و ارسال برای تأیید
-                            </button>
-                        }
-                        <button class="btn btn-outline-secondary" disabled="@saving" @onclick="@(() => SaveAsync(false))">
-                            <i class="bi bi-save"></i> @(Id > 0 ? "ذخیرهٔ تغییرات" : "ذخیرهٔ پیشنویس")
+                    <div class="fs-9 mt-1">ثبت سفارش انجام میشود؛ ولی پیش از ثبت فروش باید موجودی تأمین شود.</div>
+                </div>
+            }
+
+            @* سفارش «در انتظار تأیید» دیگر دکمهٔ ارسال ندارد *@
+            @if (!CanSubmit)
+            {
+                <div class="alert alert-info vis-status-note" data-pending-note>
+                    <i class="bi bi-hourglass-split"></i>
+                    این سفارش در انتظار تأیید مدیر است؛ با ذخیرهٔ تغییرات، همچنان در صف تأیید میماند.
+                </div>
+            }
+
+            <div class="vis-actionbar">
+                <div class="vis-action-btns">
+                    @if (CanSubmit)
+                    {
+                        <button class="btn btn-primary" disabled="@saving" @onclick="@(() => SaveAsync(true))">
+                            <i class="bi bi-send-check"></i> ذخیره و ارسال برای تأیید
                         </button>
-                    </div>
-                    <div class="vis-field-note">
-                        @(CanSubmit
-                            ? "تا زمانی که ارسال نکنید، سفارش روی موجودی و حساب مشتری هیچ اثری ندارد."
-                            : "تغییرات ذخیرهشده به اطلاع مدیر فروش میرسد.")
-                    </div>
+                    }
+                    <button class="btn btn-outline-secondary" disabled="@saving" @onclick="@(() => SaveAsync(false))">
+                        <i class="bi bi-save"></i> @(Id > 0 ? "ذخیرهٔ تغییرات" : "ذخیرهٔ پیشنویس")
+                    </button>
+                </div>
+                <div class="vis-field-note vis-action-note">
+                    @(CanSubmit
+                        ? "تا زمانی که ارسال نکنید، سفارش روی موجودی و حساب مشتری هیچ اثری ندارد."
+                        : "تغییرات ذخیرهشده به اطلاع مدیر فروش میرسد.")
                 </div>
             </div>
         </div>
@@ -805,9 +783,6 @@ else
 
 
 <style>
-    .vis-suggest { border: 1.5px solid #e2e8f0; border-radius: 12px; max-height: 220px; overflow: auto; margin-bottom: .6rem; background: #ffffff; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06); }
-    .vis-suggest-item { display: flex; justify-content: space-between; gap: .5rem; padding: .6rem .8rem; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
-    .vis-suggest-item:hover { background: #eef2ff; }
     .vis-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.55); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
     .vis-modal { background: #fff; border-radius: 16px; padding: 1.4rem 1.6rem; width: 100%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
     .fs-8 { font-size: .8rem; }
@@ -917,74 +892,209 @@ else
 .vis-form .card-body { padding: var(--vis-pad); }
 .vis-form .card-body > .alert { margin-top: var(--vis-gap); margin-bottom: 0; }
 
-/* جدول اقلام: پهنای ستونها فقط از colgroup، بدون وابستگی به محتوا */
-.vis-form .vis-lines-table {
-    table-layout: fixed;
-    width: 100%;
-    min-width: 780px;
-    margin: 0;
-    border-collapse: separate;
-    border-spacing: 0;
+/* ===== اقلام: گرید واکنشگرا، بدون جدول پهن و بدون اسکرول داخلی =====
+   هیچ پهنای حداقل، لبهٔ اسکرول، محدودیت ارتفاع یا جدول واکنشگرای پهن وجود ندارد؛
+   ردیفها صفحه را بهصورت عمودی رشد میدهند (اسکرول صفحه مجاز، اسکرول داخلی خیر). */
+.vis-form .vis-lines { margin-top: var(--vis-gap); }
+.vis-form .vis-lines-head,
+.vis-form .vis-line {
+    display: grid;
+    grid-template-columns: minmax(0, 2.4fr) minmax(0, .85fr) minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, .65fr);
+    grid-template-areas: "name qty price disc total del";
+    gap: var(--vis-gap-sm);
+    align-items: start;
+    min-width: 0;
 }
-.vis-form .vis-lines-table > thead > tr > th {
-    padding: .6rem;
+.vis-form .vis-lines-head {
+    padding: .5rem .6rem;
     background: #f8fafc;
-    color: var(--vis-muted);
+    border: 1px solid var(--vis-line);
+    border-radius: 10px;
     font-size: .74rem;
     font-weight: 700;
-    border-bottom: 1px solid var(--vis-line);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.vis-form .vis-lines-table > tbody > tr > td {
-    padding: .6rem;
-    border-bottom: 1px solid #f1f5f9;
-    vertical-align: middle;
-}
-.vis-form .vis-lines-table .form-control,
-.vis-form .vis-lines-table .input-group { min-width: 0; }
-
-/* جمع سفارش */
-.vis-form .vis-sum-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: .75rem;
-    padding: .45rem 0;
-    font-size: .8rem;
     color: var(--vis-muted);
-    border-bottom: 1px dashed #eef2f7;
 }
-.vis-form .vis-sum-row b { color: var(--vis-ink); font-weight: 700; }
-.vis-form .vis-sum-row small,
-.vis-form .vis-sum-total small { font-size: .7rem; font-weight: 500; color: var(--vis-muted); }
-.vis-form .vis-sum-total {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: .75rem;
-    margin-top: var(--vis-gap);
-    padding: .85rem .9rem;
-    border: 1px solid #dbe4ff;
+.vis-form .vis-lines-head > span { min-width: 0; }
+.vis-form .vis-h-name { grid-area: name; }
+.vis-form .vis-h-qty { grid-area: qty; }
+.vis-form .vis-h-price { grid-area: price; }
+.vis-form .vis-h-disc { grid-area: disc; }
+.vis-form .vis-h-total { grid-area: total; }
+.vis-form .vis-h-del { grid-area: del; }
+.vis-form .vis-line {
+    margin-top: var(--vis-gap-sm);
+    padding: .65rem .6rem;
+    border: 1px solid var(--vis-line);
     border-radius: 12px;
-    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+    background: #fff;
+    transition: box-shadow 180ms cubic-bezier(.2,.8,.2,1), transform 180ms cubic-bezier(.2,.8,.2,1);
 }
-.vis-form .vis-sum-total > span { font-size: .8rem; font-weight: 800; }
-.vis-form .vis-sum-total .num { font-size: 1.35rem; font-weight: 900; color: var(--vis-accent); }
-.vis-form .vis-actions { display: grid; gap: var(--vis-gap-sm); margin-top: var(--vis-gap); }
-.vis-form .vis-actions .btn {
-    padding: .6rem .9rem;
-    border-radius: 10px;
-    font-size: .82rem;
-    font-weight: 700;
+.vis-form .vis-line:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgba(15,23,42,.22); }
+.vis-form .vis-line.is-short { border-color: var(--warning); }
+.vis-form .vis-cell { min-width: 0; }
+.vis-form .c-name { grid-area: name; }
+.vis-form .c-qty { grid-area: qty; }
+.vis-form .c-price { grid-area: price; }
+.vis-form .c-disc { grid-area: disc; }
+.vis-form .c-total { grid-area: total; }
+.vis-form .c-del { grid-area: del; }
+.vis-form .vis-cell-label { display: none; margin-bottom: .2rem; font-size: .62rem; font-weight: 700; color: var(--vis-muted); }
+.vis-form .vis-line .form-control,
+.vis-form .vis-line .input-group,
+.vis-form .vis-line .ss { min-width: 0; width: 100%; }
+.vis-form .vis-cell-note {
+    margin-top: .25rem;
+    font-size: .7rem;
+    line-height: 1.5;
+    color: var(--vis-muted);
+    overflow-wrap: anywhere;
 }
-.vis-form .vis-status-note { font-size: .74rem; line-height: 1.7; margin-top: var(--vis-gap); }
+.vis-form .vis-line-total {
+    padding: .45rem .35rem;
+    border-radius: 9px;
+    background: var(--primary-50);
+    font-size: .8rem;
+    font-weight: 800;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+.vis-form .vis-line-total small { font-size: .65rem; font-weight: 500; color: var(--vis-muted); }
+.vis-form .vis-del-btn { width: 100%; }
+/* منوی کمبوی کالاها فقط ۵ گزینه رندر میکند ← بدون اسکرول داخلی */
+.vis-form .ss-menu--tight { max-height: none; overflow: visible; }
 
-@@media (max-width: 767.98px) {
-    .vis-form { --vis-gap: .75rem; --vis-pad: .9rem; }
-    .vis-form .vis-card-hint { display: none; }
+/* حالت خالی و اسکلتون */
+.vis-form .vis-empty {
+    margin-top: var(--vis-gap);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    border: 1px dashed var(--vis-line);
+    border-radius: 12px;
+}
+.vis-form .vis-empty-ico {
+    display: grid; place-items: center;
+    width: 56px; height: 56px; margin: 0 auto .6rem;
+    border-radius: 16px; background: var(--primary-50); color: var(--primary); font-size: 1.35rem;
+}
+.vis-form .vis-empty h6 { font-size: .88rem; font-weight: 800; }
+.vis-form .vis-empty p { margin: .3rem 0 .7rem; font-size: .74rem; line-height: 1.7; color: var(--vis-muted); }
+@@keyframes vis-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.vis-form .vis-loading { display: grid; gap: var(--vis-gap-sm); }
+.vis-form .vis-skeleton {
+    height: 2.6rem; border-radius: 12px;
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: vis-shimmer 1.4s linear infinite;
+}
+.vis-form .vis-skel-head { height: 3.6rem; }
+
+/* نوار بازبینی مالی: ۳ شاخص کنارهم (حتی روی موبایل) */
+.vis-form .vis-review {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--vis-gap-sm);
+    min-width: 0;
+}
+.vis-form .vis-kpi {
+    display: flex; flex-direction: column; gap: .2rem;
+    min-width: 0;
+    padding: .7rem .8rem;
+    border: 1px solid var(--vis-line);
+    border-radius: 12px;
+    background: #fff;
+}
+.vis-form .vis-kpi > span { font-size: .72rem; color: var(--vis-muted); }
+.vis-form .vis-kpi > b { font-size: .9rem; font-weight: 800; color: var(--vis-ink); overflow-wrap: anywhere; }
+.vis-form .vis-kpi small { font-size: .68rem; font-weight: 500; color: var(--vis-muted); }
+.vis-form .vis-kpi-total { border-color: #dbe4ff; background: linear-gradient(135deg, #eef2ff, #f8fafc); }
+.vis-form .vis-kpi-total > b { color: var(--vis-accent); font-size: 1.05rem; }
+
+/* نوار اقدام */
+.vis-form .vis-actionbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: var(--vis-gap);
+    margin-top: var(--vis-gap);
+    padding: .8rem var(--vis-pad);
+    border: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius);
+    background: #fff;
+}
+.vis-form .vis-action-btns { display: flex; flex-wrap: wrap; gap: var(--vis-gap-sm); }
+.vis-form .vis-action-btns .btn {
+    padding: .6rem .9rem; border-radius: 10px; font-size: .82rem; font-weight: 700;
+    transition: transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms cubic-bezier(.2,.8,.2,1);
+}
+.vis-form .vis-action-btns .btn:hover:not(:disabled) { transform: translateY(-1px); }
+.vis-form .vis-action-note { margin: 0; font-size: .72rem; color: var(--vis-muted); }
+.vis-form .vis-status-note { font-size: .74rem; line-height: 1.7; margin-top: var(--vis-gap); }
+/* ---------- تراکم فشرده: موبایل و تبلت ----------
+   شکستها بر اساس عرض نما هستند، نه container-type: چون container-type بهمعنای
+   contain:layout است و منوهای شناور position:fixed برنامه (SearchSelect/DatePicker)
+   را نسبت به کانتینر مختصاتدهی میکند. media query تبهای کششدهٔ display:none
+   را هم مختل نمیکند، چون به عرض پنجره وابسته است نه عرض پنل. */
+@@media (max-width: 1080px) {
+    .vis-form { --vis-gap: .6rem; --vis-gap-sm: .35rem; --vis-pad: .7rem; --vis-radius: 11px; line-height: 1.5; }
+    .vis-form > .fin-header .text-secondary,
+    .vis-form .vis-card-hint,
+    .vis-form .vis-date-note,
+    .vis-form .vis-minor { display: none; }
+    .vis-form .fin-header { padding: .55rem .7rem; }
+    .vis-form .fin-header h1 { font-size: .95rem; }
+    .vis-form .card-header.vis-card-header { padding: .4rem .6rem; }
+    .vis-form .card-header.vis-card-header .card-title { font-size: .78rem; }
+    .vis-form .card-body { padding: var(--vis-pad); }
+    .vis-form .form-label { font-size: .68rem; margin-bottom: .2rem; }
+    .vis-form .form-control, .vis-form .form-select { font-size: .76rem; padding: .38rem .55rem; }
+    .vis-form .vis-field-note { font-size: .66rem; margin-top: .25rem; }
+    .vis-form .vis-lines-head { display: none; }
+    .vis-form .vis-lines-head,
+    .vis-form .vis-line {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas: "name name name del" "qty price disc total";
+        row-gap: var(--vis-gap-sm);
+    }
+    .vis-form .vis-line { padding: var(--vis-gap-sm); }
+    .vis-form .vis-cell-label { display: block; font-size: .58rem; line-height: 1.25; margin-bottom: 0; }
+    .vis-form .vis-line .form-control,
+    .vis-form .vis-line .input-group { font-size: .7rem; padding: .28rem .3rem; }
+    .vis-form .vis-line-total { padding: .2rem .3rem; }
+    .vis-form .vis-line-total small { display: none; }
+    .vis-form .vis-cell-note { font-size: .62rem; margin-top: .1rem; }
+    .vis-form .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .vis-form .vis-kpi { padding: .35rem .45rem; }
+    .vis-form .vis-kpi > span { font-size: .6rem; }
+    .vis-form .vis-kpi > b { font-size: .76rem; }
+    .vis-form .vis-kpi small { display: none; }
+    .vis-form .vis-kpi-total > b { font-size: .88rem; }
+    .vis-form .vis-empty { padding: var(--vis-gap) var(--vis-pad); }
+    .vis-form .vis-empty-ico { width: 44px; height: 44px; border-radius: 14px; font-size: 1.15rem; }
+    .vis-form .vis-empty h6 { font-size: .85rem; }
+    .vis-form .vis-empty p { font-size: .7rem; }
+    .vis-form .vis-actionbar {
+        position: sticky; bottom: 0; z-index: 20;
+        flex-direction: column; align-items: stretch; gap: var(--vis-gap-sm);
+        padding: var(--vis-gap-sm);
+        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+    }
+    .vis-form .vis-action-note { display: none; }
+    .vis-form .vis-action-btns { flex-direction: row; }
+    .vis-form .vis-action-btns .btn { flex: 1 1 0; padding: .45rem; font-size: .7rem; }
+    .vis-form .vis-status-note { padding: .35rem .5rem; font-size: .66rem; }
+}
+@@media (max-width: 720px) {
+    .vis-form { --vis-gap: .45rem; --vis-gap-sm: .3rem; --vis-pad: .55rem; }
+    .vis-form .vis-lines-head,
+    .vis-form .vis-line {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas: "name name name del" "qty price disc total";
+    }
+    .vis-form .vis-cell-label { font-size: .56rem; }
+    .vis-form .vis-line .form-control,
+    .vis-form .vis-line .input-group { font-size: .68rem; }
+    .vis-form .vis-kpi { padding: .3rem .35rem; }
+    .vis-form .vis-kpi > span { font-size: .57rem; }
+    .vis-form .vis-kpi > b { font-size: .7rem; }
+    .vis-form .vis-kpi-total > b { font-size: .8rem; }
 }
 </style>
 
@@ -1029,7 +1139,6 @@ else
     private List<LookupItem> customerLookup = new();
 
     private System.Threading.CancellationTokenSource? _custDebounce;
-    private List<VisProductLite> productResults = new();
 
     /// <summary>فهرست کالاهای انبار برای انتخابگر داخل سطر (در تغییر انبار تازه می‌شود).</summary>
     private List<LookupItem> productLookup = new();
@@ -1037,8 +1146,8 @@ else
     /// <summary>فهرست کامل کالاهای انبار بر اساس شناسه — برای پر کردن قیمت/واحد سطر پس از انتخاب.</summary>
     private Dictionary<int, VisProductLite> productIndex = new();
 
-    private string? productSearch;
-    private System.Threading.CancellationTokenSource? _prodDebounce;
+    /// <summary>ساختهشده با F2: کمبوی کالای همین سطر در نخستین رندر باز میشود.</summary>
+    private VisOrderLineDto? autoOpenLine;
 
     private decimal Gross => model.Lines.Sum(l => l.Quantity * l.UnitPrice);
     private decimal Discount => model.Lines.Sum(LineDiscount);
@@ -1117,6 +1226,9 @@ else
 
                 orderDate = o.Date.Date;
                 deliveryDate = (o.DeliveryDate ?? o.Date).Date;
+                // سرچ سراسری حذف شده، پس فهرست کمبوی سطرها باید دقیقاً از انبار
+                // واقعی سفارش باشد (پیش از لود سفارش، انبار پیشفرض بارگیری شده بود).
+                await ReloadProductLookupAsync();
             }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1189,59 +1301,16 @@ else
     /// <summary>انتخاب مشتری از کمبوی جستجودار.</summary>
     private void OnCustomerPicked(int partyId) => model.PartyId = partyId;
 
-    private async Task SearchProductsAsync()
-    {
-        if (string.IsNullOrWhiteSpace(productSearch)) { productResults.Clear(); return; }
-
-        _prodDebounce?.Cancel();
-        _prodDebounce = new System.Threading.CancellationTokenSource();
-        var token = _prodDebounce.Token;
-        try
-        {
-            await Task.Delay(300, token);
-            if (token.IsCancellationRequested) return;
-            productResults = await Api.ProductsAsync(model.WarehouseId, productSearch) ?? new List<VisProductLite>();
-        }
-        catch (TaskCanceledException) { }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-    }
-
-    private void AddLine(VisProductLite p)
-    {
-        var existing = model.Lines.FirstOrDefault(l => l.ProductId == p.Id);
-        if (existing is not null)
-        {
-            existing.Quantity += 1;
-            existing.LineTotal = Round2(existing.Quantity * existing.UnitPrice) - LineDiscount(existing);
-        }
-        else
-        {
-            model.Lines.Add(new VisOrderLineDto
-            {
-                ProductId = p.Id,
-                ProductCode = p.Code,
-                ProductName = p.Name,
-                Unit = p.Unit,
-                Quantity = 1,
-                UnitPrice = p.SalePrice,
-                DiscountPercent = 0,
-                LineTotal = p.SalePrice
-            });
-        }
-
-        productSearch = "";
-        productResults.Clear();
-    }
-
     /// <summary>
-    /// دکمه/کلید میانبر F2 — یک سطر خالی می‌سازد و کاربر داخل خود سطر کالا را انتخاب می‌کند
-    /// (دقیقاً مثل فرم فروش). این روش جایگزین «جستجو و افزودن» نیست، کنار آن است.
+    /// تنها راه افزودن سطر: دکمه/کلید میانبر F2. سطر خالی ساخته میشود و
+    /// کمبوباکس کالای همان سطر بیدرنگ باز و فوکوس میگردد (AutoOpen).
+    /// سرچ سراسری کالا حذف شده است؛ فیلتر کردن فقط داخل کمبوی همان سطر انجام میشود.
     /// </summary>
     private void AddEmptyLine()
     {
         if (model.WarehouseId <= 0) { Toast.Error("ابتدا انبار را انتخاب کنید."); return; }
 
-        model.Lines.Add(new VisOrderLineDto
+        var line = new VisOrderLineDto
         {
             ProductId = 0,
             ProductName = "",
@@ -1252,16 +1321,18 @@ else
             DiscountPercent = 0,
             DiscountAmount = 0,
             LineTotal = 0
-        });
+        };
+        model.Lines.Add(line);
+        autoOpenLine = line;   // SearchSelect تازه، روی firstRender منو را باز میکند
     }
 
     /// <summary>انتخاب کالا برای یک سطر (از انتخابگر داخل سطر).</summary>
     private void OnLineProductPicked(VisOrderLineDto line, int productId)
     {
         var p = productLookup.FirstOrDefault(x => x.Id == productId);
-        var full = productIndex.TryGetValue(productId, out var cached)
-            ? cached
-            : productResults.FirstOrDefault(x => x.Id == productId);
+        // سرچ سراسری حذف شده: تنها منبع اطلاعات کالا، فهرست انبار است که
+        // هنگام انتخاب انبار یکبار بارگیری میشود.
+        var full = productIndex.TryGetValue(productId, out var cached) ? cached : null;
 
         if (productId <= 0)
         {
@@ -1500,8 +1571,7 @@ else
         orderDate = DateTime.Today;
         deliveryDate = DateTime.Today;
         originalStatus = null;
-        productSearch = null;
-        productResults = new();
+        autoOpenLine = null;
         formKey++;   // انتخابگر مشتری از نو ساخته می‌شود (متن قبلی پاک می‌شود)
         try { customers = await Api.CustomersAsync(null) ?? customers; }
         catch { /* فهرست قبلی کافی است */ }

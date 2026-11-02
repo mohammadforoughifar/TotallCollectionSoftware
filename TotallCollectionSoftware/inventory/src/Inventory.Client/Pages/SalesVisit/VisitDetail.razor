@@ -33,11 +33,22 @@
 </div>
 @if (loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="vis-detail-loading" data-loading-skeleton>
+        <div class="vis-detail-skeleton vis-detail-skel-head"></div>
+        <div class="vis-detail-skeleton"></div>
+        <div class="vis-detail-skeleton"></div>
+        <div class="vis-detail-skeleton"></div>
+    </div>
 }
 else if (order is null)
 {
-    <div class="empty-state"><i class="bi bi-search"></i><h5>سفارش یافت نشد یا به شما تعلق ندارد</h5></div>
+    <div class="empty-state" data-detail-empty>
+        <i class="bi bi-search"></i>
+        <h5>سفارش یافت نشد یا به شما تعلق ندارد</h5>
+        <button class="btn btn-sm btn-outline-primary mt-2" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
+            <i class="bi bi-arrow-right"></i> بازگشت به فهرست سفارشها
+        </button>
+    </div>
 }
 else
 {
@@ -57,58 +68,37 @@ else
         <div class="col-12 col-lg-8">
             <div class="card">
                 <div class="card-header vis-card-header"><i class="bi bi-box-seam"></i><span class="card-title">اقلام سفارش</span></div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0 vis-detail-table">
-                            <colgroup>
-                                <col style="width:6%" />
-                                <col style="width:34%" />
-                                <col style="width:14%" />
-                                <col style="width:16%" />
-                                <col style="width:14%" />
-                                <col style="width:16%" />
-                            </colgroup>
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>کالا</th>
-                                    <th class="text-start">مقدار</th>
-                                    <th class="text-start">قیمت واحد</th>
-                                    <th class="text-start">تخفیف</th>
-                                    <th class="text-start">جمع</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var (l, i) in order.Lines.Select((l, i) => (l, i)))
-                                {
-                                    <tr @key="l">
-                                        <td class="fs-8 text-muted">@Fa.Digits(i + 1)</td>
-                                        <td>
-                                            <div class="fw-600 fs-8">@l.ProductName</div>
-                                            <div class="fs-9 text-muted">@l.ProductCode @(string.IsNullOrWhiteSpace(l.Note) ? "" : $"— {l.Note}")</div>
-                                        </td>
-                                        <td class="text-start fs-8">@Fa.Number(l.Quantity) @l.Unit</td>
-                                        <td class="text-start fs-8">@Fa.Money(l.UnitPrice)</td>
-                                        <td class="text-start fs-8">@l.DiscountText</td>
-                                        <td class="text-start fs-8 fw-600">@Fa.Money(l.LineTotal)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="5" class="text-start fs-8">جمع کل</td>
-                                    <td class="text-start fs-8">@Fa.Money(order.TotalGross)</td>
-                                </tr>
-                                <tr>
-                                    <td colspan="5" class="text-start fs-8">تخفیف</td>
-                                    <td class="text-start fs-8 text-danger">@Fa.Money(order.TotalDiscount)</td>
-                                </tr>
-                                <tr>
-                                    <td colspan="5" class="text-start fw-700">قابل پرداخت</td>
-                                    <td class="text-start fw-700">@Fa.Money(order.TotalNet)</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                <div class="card-body">
+                    @* اقلام: گرید واکنشگرا، بدون جدول پهن و بدون هیچ اسکرول داخلی *@
+                    <div class="vis-detail-lines" data-no-scroll>
+                        <div class="vis-detail-lines-head">
+                            <span class="vis-h-idx">#</span>
+                            <span class="vis-h-name">کالا</span>
+                            <span class="vis-h-qty">مقدار</span>
+                            <span class="vis-h-price">قیمت واحد</span>
+                            <span class="vis-h-disc">تخفیف</span>
+                            <span class="vis-h-total">جمع</span>
+                        </div>
+                        @foreach (var (l, i) in order.Lines.Select((l, i) => (l, i)))
+                        {
+                            <div @key="l" class="vis-detail-line">
+                                <div class="vis-cell c-idx"><span class="vis-cell-label">ردیف</span>@Fa.Digits(i + 1)</div>
+                                <div class="vis-cell c-name">
+                                    <span class="vis-cell-label">کالا</span>
+                                    <b>@l.ProductName</b>
+                                    <span class="vis-cell-note">@l.ProductCode @(string.IsNullOrWhiteSpace(l.Note) ? "" : $"— {l.Note}")</span>
+                                </div>
+                                <div class="vis-cell c-qty"><span class="vis-cell-label">مقدار</span><b class="num">@Fa.Number(l.Quantity) @l.Unit</b></div>
+                                <div class="vis-cell c-price"><span class="vis-cell-label">قیمت واحد</span><b class="num">@Fa.Money(l.UnitPrice)</b></div>
+                                <div class="vis-cell c-disc"><span class="vis-cell-label">تخفیف</span><b class="num">@l.DiscountText</b></div>
+                                <div class="vis-cell c-total"><span class="vis-cell-label">جمع سطر</span><b class="num">@Fa.Money(l.LineTotal)</b></div>
+                            </div>
+                        }
+                    </div>
+                    <div class="vis-review" data-review-bar>
+                        <div class="vis-kpi"><span>جمع کل</span><b class="num">@Fa.Money(order.TotalGross) <small>ریال</small></b></div>
+                        <div class="vis-kpi"><span>تخفیف</span><b class="num text-danger">@Fa.Money(order.TotalDiscount) <small>ریال</small></b></div>
+                        <div class="vis-kpi vis-kpi-total"><span>قابل پرداخت</span><b class="num">@Fa.Money(order.TotalNet) <small>ریال</small></b></div>
                     </div>
                 </div>
             </div>
@@ -391,39 +381,88 @@ else
 .vis-detail .vis-card-header .card-title { margin: 0; font-size: .85rem; font-weight: 800; }
 .vis-detail .card-body { padding: var(--vis-pad); }
 
-/* جدول اقلام: پهنای ستونها فقط از colgroup */
-.vis-detail .vis-detail-table {
-    table-layout: fixed;
-    width: 100%;
-    min-width: 660px;
-    margin: 0;
-    border-collapse: separate;
-    border-spacing: 0;
+/* ===== اقلام: گرید واکنشگرا، بدون جدول پهن و بدون اسکرول داخلی =====
+   هیچ پهنای حداقل، لبهٔ اسکرول، محدودیت ارتفاع یا جدول واکنشگرای پهن وجود ندارد. */
+.vis-detail .vis-detail-lines { margin-top: 0; }
+.vis-detail .vis-detail-lines-head,
+.vis-detail .vis-detail-line {
+    display: grid;
+    grid-template-columns: minmax(0, .5fr) minmax(0, 2.6fr) minmax(0, 1.1fr) minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1.25fr);
+    grid-template-areas: "idx name qty price disc total";
+    gap: var(--vis-gap-sm);
+    align-items: start;
+    min-width: 0;
 }
-.vis-detail .vis-detail-table > thead > tr > th {
-    padding: .65rem .7rem;
+.vis-detail .vis-detail-lines-head {
+    padding: .5rem .6rem;
     background: #f8fafc;
-    color: var(--vis-muted);
+    border: 1px solid var(--vis-line);
+    border-radius: 10px;
     font-size: .74rem;
     font-weight: 700;
-    border-bottom: 1px solid var(--vis-line);
-    white-space: nowrap;
+    color: var(--vis-muted);
 }
-.vis-detail .vis-detail-table > tbody > tr > td {
-    padding: .65rem .7rem;
-    border-bottom: 1px solid #f1f5f9;
+.vis-detail .vis-detail-lines-head > span { min-width: 0; }
+.vis-detail .vis-h-idx { grid-area: idx; }
+.vis-detail .vis-h-name { grid-area: name; }
+.vis-detail .vis-h-qty { grid-area: qty; }
+.vis-detail .vis-h-price { grid-area: price; }
+.vis-detail .vis-h-disc { grid-area: disc; }
+.vis-detail .vis-h-total { grid-area: total; }
+.vis-detail .vis-detail-line {
+    margin-top: var(--vis-gap-sm);
+    padding: .6rem;
+    border: 1px solid var(--vis-line);
+    border-radius: 12px;
+    background: #fff;
     font-size: .8rem;
-    vertical-align: middle;
+    transition: box-shadow 180ms cubic-bezier(.2,.8,.2,1), transform 180ms cubic-bezier(.2,.8,.2,1);
 }
-.vis-detail .vis-detail-table > tfoot > tr > td {
-    padding: .6rem .7rem;
-    border-top: 1px solid var(--vis-line);
-    border-bottom: 0;
+.vis-detail .vis-detail-line:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgba(15,23,42,.22); }
+.vis-detail .vis-cell { min-width: 0; }
+.vis-detail .c-idx { grid-area: idx; color: var(--vis-muted); font-size: .74rem; }
+.vis-detail .c-name { grid-area: name; }
+.vis-detail .c-qty { grid-area: qty; }
+.vis-detail .c-price { grid-area: price; }
+.vis-detail .c-disc { grid-area: disc; }
+.vis-detail .c-total { grid-area: total; font-weight: 800; }
+.vis-detail .vis-cell > b { display: block; overflow-wrap: anywhere; font-weight: 700; }
+.vis-detail .vis-cell-label { display: none; margin-bottom: .2rem; font-size: .62rem; font-weight: 700; color: var(--vis-muted); }
+.vis-detail .vis-cell-note { display: block; margin-top: .2rem; font-size: .7rem; color: var(--vis-muted); overflow-wrap: anywhere; }
+
+/* نوار بازبینی مالی: ۳ شاخص کنارهم (حتی روی موبایل) */
+.vis-detail .vis-review {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--vis-gap-sm);
+    margin-top: var(--vis-gap);
+    min-width: 0;
 }
-.vis-detail .vis-detail-table > tfoot > tr:last-child > td {
-    background: #f8fafc;
-    font-weight: 800;
+.vis-detail .vis-kpi {
+    display: flex; flex-direction: column; gap: .2rem;
+    min-width: 0;
+    padding: .7rem .8rem;
+    border: 1px solid var(--vis-line);
+    border-radius: 12px;
+    background: #fff;
 }
+.vis-detail .vis-kpi > span { font-size: .72rem; color: var(--vis-muted); }
+.vis-detail .vis-kpi > b { font-size: .9rem; font-weight: 800; color: var(--vis-ink); overflow-wrap: anywhere; }
+.vis-detail .vis-kpi small { font-size: .68rem; font-weight: 500; color: var(--vis-muted); }
+.vis-detail .vis-kpi-total { border-color: #dbe4ff; background: linear-gradient(135deg, #eef2ff, #f8fafc); }
+.vis-detail .vis-kpi-total > b { color: var(--vis-accent); font-size: 1.05rem; }
+
+/* حالت خالی و اسکلتون */
+.vis-detail .empty-state .btn { margin-top: .5rem; }
+@@keyframes vis-detail-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.vis-detail .vis-detail-loading { display: grid; gap: var(--vis-gap-sm); }
+.vis-detail .vis-detail-skeleton {
+    height: 2.6rem; border-radius: 12px;
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: vis-detail-shimmer 1.4s linear infinite;
+}
+.vis-detail .vis-detail-skel-head { height: 3.6rem; }
 
 /* ردیفهای اطلاعات: فاصلهٔ یکسان و تراز یکدست برچسب / مقدار */
 .vis-detail .vis-row {
@@ -523,8 +562,59 @@ else
 .vis-detail .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
 .vis-detail .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
 
-@@media (max-width: 767.98px) {
-    .vis-detail { --vis-gap: .75rem; --vis-pad: .9rem; }
+/* ---------- تراکم فشرده: موبایل و تبلت ----------
+   همان دلیل VisitForm: container-type یعنی contain:layout و منوهای شناور
+   position:fixed برنامه را جابهجا میکند؛ پس شکستها عرض نما هستند. */
+@@media (max-width: 1080px) {
+    .vis-detail { --vis-gap: .6rem; --vis-gap-sm: .35rem; --vis-pad: .7rem; --vis-radius: 11px; line-height: 1.5; }
+    .vis-detail .vis-detail-head { padding: .55rem .7rem; }
+    .vis-detail .vis-detail-title { font-size: .95rem; }
+    .vis-detail .vis-detail-sub { font-size: .7rem; margin-top: .2rem; }
+    .vis-detail .vis-back-btn .bi { font-size: .8rem; }
+    .vis-detail .card-header.vis-card-header { padding: .4rem .6rem; }
+    .vis-detail .card-header.vis-card-header .card-title { font-size: .78rem; }
+    .vis-detail .card-body { padding: var(--vis-pad); }
+    .vis-detail .vis-detail-lines-head { display: none; }
+    .vis-detail .vis-detail-lines-head,
+    .vis-detail .vis-detail-line {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas: "idx name name name" "qty price disc total";
+        row-gap: var(--vis-gap-sm);
+    }
+    .vis-detail .vis-detail-line { padding: var(--vis-gap-sm); }
+    .vis-detail .vis-cell-label { display: block; font-size: .58rem; line-height: 1.25; margin-bottom: 0; }
+    .vis-detail .vis-cell > b { font-size: .72rem; }
+    .vis-detail .vis-cell-note { font-size: .62rem; }
+    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .vis-detail .vis-kpi { padding: .35rem .45rem; }
+    .vis-detail .vis-kpi > span { font-size: .6rem; }
+    .vis-detail .vis-kpi > b { font-size: .76rem; }
+    .vis-detail .vis-kpi small { display: none; }
+    .vis-detail .vis-kpi-total > b { font-size: .88rem; }
+    .vis-detail .vis-row { padding: .3rem 0; font-size: .72rem; }
+    .vis-detail .vis-tl-item { padding: .25rem 0; border-bottom: 0; font-size: .72rem; }
+    .vis-detail .vis-tl-dot { margin-top: .35rem; }
+    .vis-detail .vis-actions {
+        position: sticky; bottom: 0; z-index: 20;
+        padding: var(--vis-gap-sm);
+        border-radius: var(--vis-radius);
+        background: #fff;
+        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+    }
+    .vis-detail .vis-actions .btn { padding: .45rem; font-size: .7rem; }
+}
+@@media (max-width: 720px) {
+    .vis-detail { --vis-gap: .45rem; --vis-gap-sm: .3rem; --vis-pad: .55rem; }
+    .vis-detail .vis-detail-lines-head,
+    .vis-detail .vis-detail-line {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas: "idx name name name" "qty price disc total";
+    }
+    .vis-detail .vis-cell-label { font-size: .56rem; }
+    .vis-detail .vis-kpi { padding: .3rem .35rem; }
+    .vis-detail .vis-kpi > span { font-size: .57rem; }
+    .vis-detail .vis-kpi > b { font-size: .7rem; }
+    .vis-detail .vis-kpi-total > b { font-size: .8rem; }
 }
 </style>
 
