@@ -6,238 +6,338 @@
 @inject NavigationManager Nav
 @inject IAuthState Auth
 
-<PageTitle>همهٔ درخواست‌های سفارش</PageTitle>
+<PageTitle>همهٔ درخواست‌های سفارش ویزیتوری</PageTitle>
 
-<div class="page-head">
-    <div>
-        <h1>همهٔ درخواست‌های سفارش</h1>
-        <p class="lead">یک نمای کامل از تمام درخواست‌ها — پیش‌نویس، ارسال‌شده، تأییدشده، برگشتی، رد‌شده، فروش‌شده و لغوشده</p>
-    </div>
-    <button class="btn btn-light ms-auto" @onclick="LoadAsync"><i class="bi bi-arrow-clockwise"></i> بازخوانی</button>
-</div>
-
-@* ================== آمار همهٔ وضعیت‌ها ================== *@
-<div class="row g-2 mb-3">
-    @foreach (var c in ChipList)
-    {
-        <div class="col-6 col-md-3 col-xl-2">
-            <button type="button"
-                    class="vis-kpi w-100 text-start border-0 @(statusFilter == c.Status ? "vis-kpi-active" : "")"
-                    data-status-chip="@c.Key"
-                    @onclick="() => PickStatus(c.Status)">
-                <b>@Fa.Digits(c.Count)</b>
-                <span>@c.Text</span>
-            </button>
-        </div>
-    }
-</div>
-
-<div class="card">
-    <div class="card-body">
-        <div class="row g-2 align-items-center">
-            <div class="col-md-3">
-                <select class="form-select" @bind="statusFilter" @bind:after="LoadAsync">
-                    <option value="">همهٔ وضعیت‌ها</option>
-                    @foreach (var s in AllStatuses)
-                    {
-                        <option value="@((int)s)">@VisUi.StatusText(s)</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-2">
-                <DatePicker Value="from" ValueChanged="d => SetFrom(d)" />
-            </div>
-            <div class="col-md-2">
-                <DatePicker Value="to" ValueChanged="d => SetTo(d)" />
-            </div>
-            <div class="col-md-4">
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="شماره، مشتری، ویزیتور، یادداشت…"
-                           @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ لوکس ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-indigo-gradient">
+                    <i class="bi bi-collection-fill"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">همهٔ درخواست‌های سفارش فروش میدانی</h1>
+                        <span class="badge rounded-pill fin-badge-indigo">کنترل جامع سفارش‌ها</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        نمای یکپارچه از چرخه سفارش: پیش‌نویس، در انتظار، تأییدشده، برگشتی، رد‌شده، فاکتورشده و لغوشده
+                    </div>
                 </div>
             </div>
-            <div class="col-auto ms-auto text-muted fs-8">@Fa.Digits(items.Count) درخواست</div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button class="btn btn-outline-primary fin-btn-pill" @onclick="@(() => Nav.NavigateTo("/sales/approvals"))">
+                    <i class="bi bi-shield-check me-1"></i> کارتابل تأیید سرپرست
+                </button>
+                <button class="btn btn-outline-secondary fin-btn-pill" @onclick="LoadAsync" disabled="@loading">
+                    <i class="bi bi-arrow-clockwise me-1 @(loading ? "spin" : "")"></i> بازخوانی داده‌ها
+                </button>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="card mt-3">
-    <div class="card-body p-0">
-        @if (loading)
+    <!-- ================== کارت‌های شاخص KPI تفکیکی ================== -->
+    <div class="row g-2.5 mb-4">
+        @foreach (var c in ChipList)
         {
-            <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
-        }
-        else if (items.Count == 0)
-        {
-            <div class="empty-state"><i class="bi bi-inbox"></i><h5>درخواستی با این فیلتر یافت نشد</h5></div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" data-all-requests>
-                    <thead>
-                        <tr>
-                            <th style="width:2.2rem"></th>
-                            <th>شماره</th>
-                            <th>تاریخ</th>
-                            <th>ویزیتور</th>
-                            <th>مشتری</th>
-                            <th>تحویل</th>
-                            <th class="text-start">مبلغ خالص</th>
-                            <th>وضعیت</th>
-                            <th>تصمیم / دلیل</th>
-                            <th class="text-end">عملیات</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var o in items)
-                        {
-                            var open = expanded.Contains(o.Id);
-                            <tr class="vis-row" @onclick="() => Toggle(o.Id)" style="cursor:pointer">
-                                <td class="text-muted"><i class="bi @(open ? "bi-chevron-down" : "bi-chevron-left")"></i></td>
-                                <td class="fw-600">@o.Number</td>
-                                <td class="fs-8">@o.Date.ToFa()</td>
-                                <td class="fs-8">@o.ReferrerName</td>
-                                <td>
-                                    @o.PartyName
-                                    <div class="fs-9 text-muted">@Fa.Digits(o.LineCount) سطر — @VisUi.PaymentText(o.PaymentMethod)</div>
-                                </td>
-                                <td class="fs-8">
-                                    @if (o.FinalDeliveryDate is not null)
-                                    {
-                                        <span class="@(o.FinalDateChanged ? "text-warning fw-600" : "")"
-                                              title="@(o.FinalDateChanged ? $"تاریخ ویزیتور: {o.DeliveryDate?.ToFa()}" : "همان تاریخ ویزیتور")">
-                                            @o.FinalDeliveryDate.Value.ToFa()
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">@(o.DeliveryDate?.ToFa() ?? "—")</span>
-                                    }
-                                </td>
-                                <td class="text-start">@Fa.Money(o.TotalNet)</td>
-                                <td>
-                                    <span class="@VisUi.BadgeCss(o.Status)">@VisUi.StatusText(o.Status)</span>
-                                    @if (o.ReturnCount > 0)
-                                    {
-                                        <span class="vis-badge vis-orange" title="تعداد برگشت">↩ @Fa.Digits(o.ReturnCount)</span>
-                                    }
-                                    @if (o.DiscountOverLimit)
-                                    {
-                                        <span class="vis-badge vis-danger">تخفیف بالای سقف</span>
-                                    }
-                                </td>
-                                <td class="fs-8" style="max-width:16rem">
-                                    @if (!string.IsNullOrWhiteSpace(o.DecisionNote))
-                                    {
-                                        <span class="text-danger" data-decision-note>@o.DecisionNote</span>
-                                        <div class="fs-9 text-muted">@o.DecidedBy — @(o.DecidedAt is null ? "" : o.DecidedAt.Value.ToFa())</div>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                                <td class="text-end" @onclick:stopPropagation="true">
-                                    <button class="btn btn-sm btn-outline-secondary" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}"))">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            @if (open)
-                            {
-                                <tr class="vis-detail-row">
-                                    <td></td>
-                                    <td colspan="9">
-                                        <div class="row g-3">
-                                            <div class="col-12 col-lg-7">
-                                                <table class="table table-sm mb-0">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>کالا</th>
-                                                            <th class="text-start">مقدار</th>
-                                                            <th class="text-start">قیمت</th>
-                                                            <th class="text-start">تخفیف</th>
-                                                            <th class="text-start">جمع</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        @foreach (var l in o.Lines)
-                                                        {
-                                                            <tr>
-                                                                <td class="fs-8">@l.ProductName</td>
-                                                                <td class="text-start fs-8">@Fa.Number(l.Quantity)</td>
-                                                                <td class="text-start fs-8">@Fa.Money(l.UnitPrice)</td>
-                                                                <td class="text-start fs-8">@l.DiscountText</td>
-                                                                <td class="text-start fs-8">@Fa.Money(l.LineTotal)</td>
-                                                            </tr>
-                                                        }
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                            <div class="col-12 col-lg-5">
-                                                <div class="vis-sum">
-                                                    <div class="d-flex justify-content-between fs-8"><span>جمع کل</span><span>@Fa.Money(o.TotalGross)</span></div>
-                                                    <div class="d-flex justify-content-between fs-8"><span>تخفیف</span><span class="text-danger">@Fa.Money(o.TotalDiscount)</span></div>
-                                                    <div class="d-flex justify-content-between fw-700 mt-1"><span>قابل پرداخت</span><span>@Fa.Money(o.TotalNet)</span></div>
-                                                    <div class="fs-9 text-muted mt-1">انبار: @o.WarehouseName — ثبت‌کننده: @o.CreatedByName</div>
-                                                    <div class="fs-9 text-muted">تاریخ درخواستی ویزیتور: @(o.DeliveryDate?.ToFa() ?? "—")</div>
-                                                    @if (!string.IsNullOrWhiteSpace(o.Note))
-                                                    {
-                                                        <div class="fs-9 text-muted mt-1">یادداشت ویزیتور: @o.Note</div>
-                                                    }
-                                                    @if (o.Status == VisOrderStatus.Invoiced && !string.IsNullOrWhiteSpace(o.SaleNumber))
-                                                    {
-                                                        <div class="fs-9 text-success mt-1">فروش ثبت‌شده: @o.SaleNumber</div>
-                                                    }
-                                                </div>
-
-                                                @* ---------- گردش کامل ---------- *@
-                                                <div class="mt-2">
-                                                    <b class="fs-8"><i class="bi bi-clock-history"></i> گردش سفارش</b>
-                                                    @if (histories.TryGetValue(o.Id, out var hist) && hist.Count > 0)
-                                                    {
-                                                        <ul class="vis-hist mt-1">
-                                                            @foreach (var h in hist)
-                                                            {
-                                                                <li>
-                                                                    <span class="fs-9 text-muted">@h.At.ToFa()</span>
-                                                                    — <b class="fs-9">@h.UserName</b>
-                                                                    <span class="fs-9">: @(h.FromStatus is null ? "—" : VisUi.StatusText(h.FromStatus.Value)) ← @VisUi.StatusText(h.ToStatus)</span>
-                                                                    @if (!string.IsNullOrWhiteSpace(h.Comment))
-                                                                    {
-                                                                        <div class="fs-9 text-danger">@h.Comment</div>
-                                                                    }
-                                                                </li>
-                                                            }
-                                                        </ul>
-                                                    }
-                                                    else
-                                                    {
-                                                        <div class="fs-9 text-muted">در حال بارگذاری…</div>
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
+            var isAct = statusFilter == c.Status;
+            <div class="col-6 col-sm-4 col-md-3 col-xl-1.5" style="flex: 0 0 auto; width: 12.5%;">
+                <button type="button"
+                        class="fin-kpi-chip w-100 text-start border @(isAct ? "fin-kpi-chip-active" : "")"
+                        data-status-chip="@c.Key"
+                        @onclick="() => PickStatus(c.Status)">
+                    <div class="d-flex justify-content-between align-items-baseline">
+                        <span class="fin-kpi-chip-title text-secondary">@c.Text</span>
+                        <span class="fin-kpi-chip-count num fw-900 @(isAct ? "text-primary" : "text-dark")">@Fa.Digits(c.Count)</span>
+                    </div>
+                </button>
             </div>
         }
+    </div>
+
+    <!-- ================== نوار فیلتر هوشمند ================== -->
+    <div class="fin-card mb-4">
+        <div class="fin-card-body p-3">
+            <div class="row g-2.5 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">فیلتر وضعیت سفارش</label>
+                    <select class="form-select fin-input" @bind="statusFilter" @bind:after="LoadAsync">
+                        <option value="">همهٔ وضعیت‌ها (کل چرخه)</option>
+                        @foreach (var s in AllStatuses)
+                        {
+                            <option value="@((int)s)">@VisUi.StatusText(s)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">از تاریخ</label>
+                    <DatePicker Value="from" ValueChanged="d => SetFrom(d)" AllowClear="true" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">تا تاریخ</label>
+                    <DatePicker Value="to" ValueChanged="d => SetTo(d)" AllowClear="true" />
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">جستجوی هوشمند</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input class="form-control fin-input border-start-0" placeholder="شماره سفارش، نام مشتری، ویزیتور، یادداشت…"
+                               @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
+                    </div>
+                </div>
+                <div class="col-12 col-md-1 d-flex align-items-center justify-content-end pb-1">
+                    <span class="badge bg-slate-subtle text-slate rounded-pill px-2.5 py-1.5 num fs-8">
+                        @Fa.Digits(items.Count) سفارش
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== جدول جامع سفارش‌ها ================== -->
+    <div class="fin-card">
+        <div class="fin-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-table text-primary fs-5"></i>
+                <span class="fw-800 text-dark">فهرست کل درخواست‌ها</span>
+            </div>
+            <span class="text-secondary fs-8">برای مشاهده ریز اقلام و تاریخچه، روی هر ردیف کلیک کنید</span>
+        </div>
+        <div class="fin-card-body p-0">
+            @if (loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="text-secondary fs-8 mt-2">در حال بارگذاری اطلاعات درخواست‌ها...</div>
+                </div>
+            }
+            else if (items.Count == 0)
+            {
+                <div class="text-center py-5">
+                    <div class="fin-avatar bg-slate-subtle text-slate mx-auto mb-2" style="width:52px;height:52px">
+                        <i class="bi bi-inbox fs-3"></i>
+                    </div>
+                    <h5 class="fw-800 text-dark">درخواستی با این فیلترها یافت نشد</h5>
+                    <p class="text-secondary fs-8 mb-0">می‌توانید فیلتر وضعیت یا بازه تاریخی را تغییر دهید.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 fin-table" data-all-requests>
+                        <thead class="bg-light">
+                            <tr>
+                                <th style="width:2.5rem"></th>
+                                <th class="text-secondary fs-8 fw-700 py-3">شماره سفارش</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">تاریخ ثبت</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">ویزیتور</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">مشتری و جزئیات</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">تاریخ تحویل</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-start">مبلغ خالص (ریال)</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">وضعیت</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">تصمیم / دلیل سرپرست</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-end" style="width:5rem">اقدام</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var o in items)
+                            {
+                                var open = expanded.Contains(o.Id);
+                                <tr class="vis-row cursor-pointer transition-all @(open ? "bg-indigo-subtle-20" : "")" @onclick="() => Toggle(o.Id)">
+                                    <td class="text-center text-muted">
+                                        <i class="bi @(open ? "bi-chevron-down text-primary fw-bold" : "bi-chevron-left")"></i>
+                                    </td>
+                                    <td class="fw-800 text-dark num">@o.Number</td>
+                                    <td class="fs-8 text-secondary num">@o.Date.ToFa()</td>
+                                    <td class="fs-8 fw-700 text-dark">@o.ReferrerName</td>
+                                    <td>
+                                        <div class="fw-800 text-dark fs-8">@o.PartyName</div>
+                                        <div class="fs-9 text-muted mt-0.5">
+                                            @Fa.Digits(o.LineCount) سطر کالا — روش: @VisUi.PaymentText(o.PaymentMethod)
+                                        </div>
+                                    </td>
+                                    <td class="fs-8">
+                                        @if (o.FinalDeliveryDate is not null)
+                                        {
+                                            <span class="@(o.FinalDateChanged ? "badge bg-amber-subtle text-amber rounded-pill px-2 py-1" : "text-dark num")"
+                                                  title="@(o.FinalDateChanged ? $"تاریخ اولیه ویزیتور: {o.DeliveryDate?.ToFa()}" : "تأیید تاریخ ویزیتور")">
+                                                @o.FinalDeliveryDate.Value.ToFa()
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-secondary num">@(o.DeliveryDate?.ToFa() ?? "—")</span>
+                                        }
+                                    </td>
+                                    <td class="text-start num fw-800 text-emerald fs-7.5">@Fa.Money(o.TotalNet)</td>
+                                    <td>
+                                        <span class="@VisUi.BadgeCss(o.Status)">@VisUi.StatusText(o.Status)</span>
+                                        @if (o.ReturnCount > 0)
+                                        {
+                                            <span class="vis-badge vis-orange ms-1" title="تعداد برگشت">↩ @Fa.Digits(o.ReturnCount)</span>
+                                        }
+                                        @if (o.DiscountOverLimit)
+                                        {
+                                            <span class="vis-badge vis-danger ms-1">تخفیف ویژه</span>
+                                        }
+                                    </td>
+                                    <td class="fs-8" style="max-width:18rem">
+                                        @if (!string.IsNullOrWhiteSpace(o.DecisionNote))
+                                        {
+                                            <div class="text-danger fw-700" data-decision-note>@o.DecisionNote</div>
+                                            <div class="fs-9 text-muted">توسط: @o.DecidedBy — @(o.DecidedAt is null ? "" : o.DecidedAt.Value.ToFa())</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="text-end" @onclick:stopPropagation="true">
+                                        <button class="btn btn-sm btn-outline-primary fin-btn-pill px-2.5" title="مشاهده جزئیات سفارش" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}"))">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                @if (open)
+                                {
+                                    <tr class="vis-detail-row">
+                                        <td></td>
+                                        <td colspan="9" class="p-3 bg-light rounded-3">
+                                            <div class="row g-3">
+                                                <div class="col-12 col-lg-7">
+                                                    <div class="fin-card p-3 border shadow-none bg-white">
+                                                        <div class="fw-800 text-dark fs-8 mb-2 d-flex align-items-center gap-1.5">
+                                                            <i class="bi bi-box-seam text-primary"></i> اقلام سفارش داده شده
+                                                        </div>
+                                                        <div class="table-responsive">
+                                                            <table class="table table-sm align-middle mb-0">
+                                                                <thead class="bg-light">
+                                                                    <tr>
+                                                                        <th class="fs-8 text-secondary">نام کالا</th>
+                                                                        <th class="text-start fs-8 text-secondary">مقدار</th>
+                                                                        <th class="text-start fs-8 text-secondary">قیمت واحد</th>
+                                                                        <th class="text-start fs-8 text-secondary">تخفیف</th>
+                                                                        <th class="text-start fs-8 text-secondary">مبلغ کل</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @foreach (var l in o.Lines)
+                                                                    {
+                                                                        <tr>
+                                                                            <td class="fs-8 fw-700 text-dark">@l.ProductName</td>
+                                                                            <td class="text-start fs-8 num">@Fa.Number(l.Quantity)</td>
+                                                                            <td class="text-start fs-8 num text-secondary">@Fa.Money(l.UnitPrice)</td>
+                                                                            <td class="text-start fs-8 num text-rose">@l.DiscountText</td>
+                                                                            <td class="text-start fs-8 num fw-800 text-emerald">@Fa.Money(l.LineTotal)</td>
+                                                                        </tr>
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12 col-lg-5">
+                                                    <div class="fin-card p-3 border shadow-none bg-white mb-2.5">
+                                                        <div class="d-flex justify-content-between fs-8 py-1">
+                                                            <span class="text-secondary">جمع ناخالص:</span>
+                                                            <span class="num fw-700">@Fa.Money(o.TotalGross) ریال</span>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between fs-8 py-1">
+                                                            <span class="text-secondary">مجموع تخفیف:</span>
+                                                            <span class="num text-rose fw-700">@Fa.Money(o.TotalDiscount) ریال</span>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between fw-800 text-dark fs-7.5 py-1.5 border-top mt-1">
+                                                            <span>مبلغ خالص قابل پرداخت:</span>
+                                                            <span class="num text-emerald fw-900 fs-6">@Fa.Money(o.TotalNet) ریال</span>
+                                                        </div>
+                                                        <div class="fs-9 text-secondary mt-2 pt-2 border-top">
+                                                            <div><i class="bi bi-building me-1"></i> انبار مبدأ: <b>@o.WarehouseName</b> — ثبت‌کننده: <b>@o.CreatedByName</b></div>
+                                                            <div class="mt-0.5"><i class="bi bi-calendar-event me-1"></i> تاریخ درخواستی ویزیتور: <b>@(o.DeliveryDate?.ToFa() ?? "—")</b></div>
+                                                            @if (!string.IsNullOrWhiteSpace(o.Note))
+                                                            {
+                                                                <div class="mt-0.5 text-primary"><i class="bi bi-chat-left-text me-1"></i> یادداشت: @o.Note</div>
+                                                            }
+                                                            @if (o.Status == VisOrderStatus.Invoiced && !string.IsNullOrWhiteSpace(o.SaleNumber))
+                                                            {
+                                                                <div class="mt-1 text-success fw-800"><i class="bi bi-receipt-cutoff me-1"></i> شماره فاکتور فروش: @o.SaleNumber</div>
+                                                            }
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="fin-card p-3 border shadow-none bg-white">
+                                                        <div class="fw-800 text-dark fs-8 mb-1.5 d-flex align-items-center gap-1.5">
+                                                            <i class="bi bi-clock-history text-indigo"></i> سابقه و گردش فرآیند سفارش
+                                                        </div>
+                                                        @if (histories.TryGetValue(o.Id, out var hist) && hist.Count > 0)
+                                                        {
+                                                            <ul class="vis-hist mt-1">
+                                                                @foreach (var h in hist)
+                                                                {
+                                                                    <li class="py-1.5 border-bottom border-dashed">
+                                                                        <div class="d-flex justify-content-between align-items-center">
+                                                                            <span class="fs-9 fw-700 text-dark">@h.UserName</span>
+                                                                            <span class="fs-9 text-muted num">@h.At.ToFa()</span>
+                                                                        </div>
+                                                                        <div class="fs-9 text-secondary mt-0.5">
+                                                                            @(h.FromStatus is null ? "پیش‌نویس" : VisUi.StatusText(h.FromStatus.Value))
+                                                                            <i class="bi bi-arrow-left mx-1"></i>
+                                                                            <b class="text-primary">@VisUi.StatusText(h.ToStatus)</b>
+                                                                        </div>
+                                                                        @if (!string.IsNullOrWhiteSpace(h.Comment))
+                                                                        {
+                                                                            <div class="fs-9 text-rose mt-0.5 bg-rose-subtle p-1 rounded">@h.Comment</div>
+                                                                        }
+                                                                    </li>
+                                                                }
+                                                            </ul>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="fs-9 text-muted py-2 text-center">در حال دریافت تاریخچه تغییرات…</div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
     </div>
 </div>
 
 <style>
-    .vis-kpi { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 14px; padding: .55rem .75rem; }
-    .vis-kpi b { display: block; font-size: 1.1rem; }
-    .vis-kpi span { font-size: .7rem; color: #64748b; }
-    .vis-kpi-active { outline: 2px solid #3b82f6; background: #eff6ff; }
-    .vis-sum { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: .6rem .75rem; }
-    .vis-badge { display: inline-block; font-size: .68rem; border-radius: 99px; padding: .1rem .5rem; border: 1px solid transparent; }
+    .fin-kpi-chip {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: .5rem .75rem;
+        border-color: #e2e8f0;
+        transition: all .15s ease-in-out;
+        cursor: pointer;
+    }
+    .fin-kpi-chip:hover {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+    }
+    .fin-kpi-chip-active {
+        border-color: #4f46e5 !important;
+        background: #eef2ff !important;
+        box-shadow: 0 0 0 1px #4f46e5;
+    }
+    .fin-kpi-chip-title {
+        font-size: .74rem;
+        font-weight: 700;
+    }
+    .fin-kpi-chip-count {
+        font-size: 1.1rem;
+    }
+    .vis-badge { display: inline-block; font-size: .72rem; border-radius: 99px; padding: .18rem .55rem; border: 1px solid transparent; font-weight: 700; }
     .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
     .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
     .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
@@ -245,12 +345,344 @@
     .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
     .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
     .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
-    .vis-detail-row > td { background: #fbfdff; }
-    .vis-hist { list-style: none; padding: 0; margin: 0; max-height: 190px; overflow: auto; }
-    .vis-hist li { border-bottom: 1px dashed #e2e8f0; padding: .2rem 0; }
-    .fs-8 { font-size: .78rem; }
-    .fs-9 { font-size: .7rem; }
+    .bg-indigo-subtle-20 { background-color: rgba(238, 242, 255, 0.4) !important; }
+    .vis-hist { list-style: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto; }
+    .fs-8 { font-size: .8rem; }
+    .fs-9 { font-size: .72rem; }
 </style>
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
 
 @code {
     private bool loading = true;
