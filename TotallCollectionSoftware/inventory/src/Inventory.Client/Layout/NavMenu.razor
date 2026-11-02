@@ -876,13 +876,7 @@
             RefreshFaHr();
             _ = RefreshMindFlowAccessAsync();
             var path = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
-            gPersonal = path.StartsWith("personal-settings");
-            gMisc = path.StartsWith("misc");
-            if (path.StartsWith("trs/vouchers") || path.StartsWith("shop/credit-management")) gOps = true;
-            if (path == "" || path.StartsWith("operations/reports/dashboard")) { gOps = true; gOpsDash = true; }
-            if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
-            if (path.StartsWith("moadian")) gOps = true;
-            if (path.StartsWith("moadian/settings")) gOpsBase = true;
+            // تغییر آدرس منوهای باز را دستکاری نمی‌کند تا رفتار کاربر حفظ شود
             StateHasChanged();
         });
 
@@ -928,6 +922,31 @@
     /// <summary>ورود به بخش تنظیمات — فقط مدیر و با مجوز مشاهدهٔ ماژول تنظیمات.</summary>
     private bool CanSeeSettings => Auth.IsAdmin && Auth.CanSee("Settings");
 
+    private void CloseAllGroups()
+    {
+        gChat = false;
+        gDash = false;
+        gWo = false;
+        gDevTeam = false;
+        gBonHr = false;
+        gFaHr = false;
+        gLetters = false;
+        gMisc = false;
+        gPersonal = false;
+        gDocs = false;
+        gProjects = false;
+        gOps = false;
+        gOpsBase = false;
+        gOpsDash = false;
+        gOpsReports = false;
+        gVis = false;
+        gAdmin = false;
+        gReports = false;
+        gBase = false;
+        gSys = false;
+        gMoadian = false;
+    }
+
     protected override void OnInitialized()
     {
         // پیش‌فرض: همه‌ی گروه‌ها بسته — فقط گروهی که صفحه‌ی فعلی داخل آن است باز می‌شود
@@ -938,33 +957,12 @@
         RefreshFaHr();
         _ = RefreshMindFlowAccessAsync();
 
-        gChat = p.StartsWith("chat");
-        gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
-        gWo = p.StartsWith("work-orders") || p.StartsWith("work-projects");
-        gDevTeam = p.StartsWith("dev-team");
-        gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
-        gFaHr = ForoughAryaHrNavigation.IsWorkspace(p);
-        gLetters = p.StartsWith("letters");
-        gMisc = p.StartsWith("misc");
-        gPersonal = p.StartsWith("personal-settings");
-        gDocs = p.StartsWith("doc-archive");
-        gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
-        gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("trs/accounts") || p.StartsWith("moadian/settings") ||
-                   (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
-        gOpsDash = p == "" || p.StartsWith("operations/reports/dashboard");
-        gOpsReports = p.StartsWith("operations/reports");
-        gVis = p.StartsWith("sales/");
-        gOps = p == "" || p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("shop/credit-management") || p.StartsWith("moadian") || gOpsReports || gOpsBase || gVis || gOpsDash;
-        gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("servers") || p.StartsWith("settings/it-client-companies");
-        gReports = p.StartsWith("reports");
-        gBase = p.StartsWith("referrer-wallets") ||
-                p.StartsWith("system-company") || p.StartsWith("system-department");
-        gSys = p.StartsWith("users") || p.StartsWith("settings") || p.StartsWith("my-");
+        // هنگام ورود به برنامه (بعد از لاگین)، تمامی منوها و زیرمنوها به‌صورت پیش‌فرض کاملاً بسته هستند
+        CloseAllGroups();
         
     }
 
-    private void OnAuthChanged() => _ = InvokeAsync(RefreshMindFlowAccessAsync);
+    private void OnAuthChanged() => _ = InvokeAsync(async () => { CloseAllGroups(); await RefreshMindFlowAccessAsync(); StateHasChanged(); });
 
     private async Task RefreshMindFlowAccessAsync()
     {
