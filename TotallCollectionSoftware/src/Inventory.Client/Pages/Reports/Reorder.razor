@@ -69,7 +69,7 @@ else
                     <div>
                         <span class="fin-kpi-title text-indigo">محدوده انبار جاری</span>
                         <div class="fin-kpi-value text-indigo fs-5 mt-1">
-                            @(warehouseId > 0 ? (whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Title ?? "انبار انتخاب‌شده") : "همه انبارهای فعال")
+                            @(warehouseId > 0 ? (whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Name ?? "انبار انتخاب‌شده") : "همه انبارهای فعال")
                         </div>
                         <div class="fin-kpi-unit">مکان رهگیری فیزیکی</div>
                     </div>
