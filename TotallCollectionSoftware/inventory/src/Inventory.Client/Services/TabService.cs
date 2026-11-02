@@ -126,6 +126,10 @@ public sealed class TabService
         ("products",                    "کالاها",               "bi-box-seam"),
         ("parties",                     "طرف حساب‌ها",          "bi-people"),
         ("referrers",                   "معرف‌ها",              "bi-person-badge"),
+        // پروژه‌های کاری و نگار ذهنی — ترتیب مهم است: خاص قبل از عمومی
+        ("work-projects/mindflow",      "نگار ذهنی پروژه",      "bi-diagram-3-fill"),
+        ("work-projects",               "پروژه‌های کاری",       "bi-kanban-fill"),
+        ("mindflows",                   "نگار ذهنی",            "bi-diagram-3-fill"),
         ("projects",                    "پروژه‌ها",             "bi-arrow-left-right"),
         ("karfarmas",                   "کارفرماها",            "bi-briefcase"),
         ("letters",                     "نامه داخلی",           "bi-envelope-paper"),
@@ -184,7 +188,40 @@ public sealed class TabService
             if (!string.IsNullOrWhiteSpace(hr)) return (hr, "bi-people");
         }
 
-        return (key.Split('?')[0].Trim('/'), "bi-circle");
+        // آخرین چاره: مسیرِ خام لاتین نباید در تب مرورگر دیده شود.
+        // آخرین بخش مسیر را به یک عنوانِ خوانا تبدیل می‌کنیم و اگر ناشناخته بود، «صفحه» می‌گذاریم.
+        return (Humanize(key), "bi-circle");
+    }
+
+    /// <summary>
+    /// آیا این عنوان شبیه «اسلاگِ مسیر» است (لاتین/خط‌تیره/بدون حرف فارسی)؟
+    /// چنین عنوانی از نسخه‌های قدیمی ذخیره شده و باید با عنوانِ فارسی جایگزین شود.
+    /// </summary>
+    private static bool IsSlugLike(string? title)
+    {
+        var t = (title ?? "").Trim();
+        if (t.Length == 0) return false;
+        // هر حرف فارسی/عربی ⇒ عنوان واقعیِ فارسی است، دست نزن
+        if (t.Any(ch => ch >= '\u0600' && ch <= '\u06FF')) return false;
+        // لاتین و بدون فاصله/با خط‌تیره ⇒ اسلاگ مسیر
+        return t.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '/' or '.');
+    }
+
+    /// <summary>
+    /// تبدیلِ مسیرِ ناشناخته به عنوانِ فارسیِ خوانا.
+    /// چون عنوانِ واقعیِ صفحه با PageTitle بعد از رندر مشخص می‌شود و TabService آن را نمی‌بیند،
+    /// اینجا فقط از دیده‌شدنِ اسلاگ/خط‌تیره در تب جلوگیری می‌کنیم.
+    /// </summary>
+    private static string Humanize(string key)
+    {
+        var slug = key.Split('?')[0].Trim('/').Split('/').LastOrDefault() ?? "";
+        if (slug.Length == 0) return "صفحه";
+        // اگر مسیر کاملاً عددی یا GUID بود، شماره‌اش را نگه دار: «صفحه ۱۲»
+        if (slug.All(char.IsDigit)) return $"صفحه {slug}";
+        if (Guid.TryParse(slug, out _)) return "صفحه";
+        // عنوان فارسیِ ذخیره‌شده در Layout (SetTitle) بعداً روی این مقدار بازنویسی می‌شود؛
+        // این فقط یک حداقلِ قابل‌قبول است.
+        return "صفحه";
     }
 
     // ==================== بارگیری / ذخیره ====================
@@ -228,11 +265,14 @@ public sealed class TabService
                 var savedTitle = s.Title ?? "";
                 var staleHr = !HrNavigation.IsWorkspace(key)
                     && (savedTitle == "منابع انسانی" || savedTitle == "خانه منابع انسانی");
+                // تب‌های ذخیره‌شدهٔ نسخه‌های قبل ممکن است عنوانِ لاتین (اسلاگ مسیر) داشته باشند.
+                // عنوانِ کاملِ فارسی همیشه برنده است تا تب‌ها فارسی بمانند.
+                var staleSlug = IsSlugLike(savedTitle);
                 _tabs.Add(new TabItem
                 {
                     Key = key,
                     Url = s.Url,
-                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr ? title : savedTitle,
+                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug ? title : savedTitle,
                     Icon = string.IsNullOrWhiteSpace(s.Icon) || staleHr ? icon : s.Icon,
                     // تبِ خانه همیشه سنجاق است
                     Pinned = s.Pinned || key.Length == 0
@@ -288,8 +328,9 @@ public sealed class TabService
         else
         {
             t.Url = relativeUrl;
-            if (!HrNavigation.IsWorkspace(key)
-                && (t.Title == "منابع انسانی" || t.Title == "خانه منابع انسانی"))
+            if ((!HrNavigation.IsWorkspace(key)
+                    && (t.Title == "منابع انسانی" || t.Title == "خانه منابع انسانی"))
+                || IsSlugLike(t.Title))
             {
                 var (title, icon) = Resolve(key);
                 t.Title = title;
@@ -327,6 +368,30 @@ public sealed class TabService
             if (victim is null) break;
             _tabs.Remove(victim);
         }
+    }
+
+    /// <summary>
+    /// عنوانی که صفحه با &lt;PageTitle&gt; اعلام کرده را از &lt;head&gt; بخوان و روی تب فعال بنشان.
+    /// <para>
+    /// چرا از DOM؟ <c>&lt;PageTitle&gt;</c> فقط <c>document.title</c> را عوض می‌کند و
+    /// TabService هیچ راهی برای دیدنش ندارد. بسیاری از صفحه‌ها (مثل نگار ذهنی) عنوانِ
+    /// فارسی‌شان را فقط با PageTitle می‌دهند، پس تبشان اسلاگ/عنوانِ عمومی می‌ماند.
+    /// </para>
+    /// </summary>
+    public async ValueTask SyncFromDocumentTitleAsync()
+    {
+        if (_active is null) return;
+        string? raw;
+        try { raw = await _js.InvokeAsync<string?>("document.title"); }
+        catch { return; }
+
+        var title = (raw ?? "").Trim();
+        if (title.Length == 0 || IsSlugLike(title)) return;
+        if (string.Equals(title, _active.Title, StringComparison.Ordinal)) return;
+
+        _active.Title = title.Length > 46 ? title[..46] + "…" : title;
+        Changed?.Invoke();
+        await SaveAsync();
     }
 
     /// <summary>وقتی صفحه‌ای عنوانِ خود را با Layout.SetTitle معرفی کرد، عنوانِ تب هم به‌روز می‌شود</summary>

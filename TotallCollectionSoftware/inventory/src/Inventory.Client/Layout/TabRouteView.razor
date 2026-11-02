@@ -43,4 +43,12 @@ else
         if (bypass) Tabs.SetNoActive();
         else Tabs.Sync(rel, RouteData);
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (bypass) return;
+        // <PageTitle> عنوانِ فارسی را در <head> می‌گذارد؛ TabService آن را نمی‌بیند.
+        // یک‌بار پس از هر رندر عنوان را از DOM به تبِ فعال منتقل کن.
+        await Tabs.SyncFromDocumentTitleAsync();
+    }
 }
