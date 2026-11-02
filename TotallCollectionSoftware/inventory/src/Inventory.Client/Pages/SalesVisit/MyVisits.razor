@@ -620,7 +620,7 @@
             me = await Api.MeAsync();
             stats = await Api.StatsAsync();
             VisOrderStatus? st = int.TryParse(statusFilter, out var v) ? (VisOrderStatus)v : null;
-            items = await Api.ListAsync(st, search);
+            items = await Api.ListAsync(st, search) ?? new List<VisOrderDto>();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }

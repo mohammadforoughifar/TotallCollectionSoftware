@@ -843,6 +843,14 @@ else
         try
         {
             me = await Api.MeAsync();
+            // پاسخ خالی/نامعتبر سرور نباید به NullReferenceException روی me.CanCreate
+            // (و بعداً me.DefaultWarehouseId / me.ProductCount) تبدیل شود.
+            if (me is null)
+            {
+                blocked = "اطلاعات دسترسی شما از سرور دریافت نشد؛ لطفاً یکبار این تب را بازسازی کنید.";
+                loading = false;
+                return;
+            }
 
             // نقش تأییدکننده/مالی، نقش ثبت‌کننده نیست: مدیر فروش هیچ مسیر «ثبت سفارش جدید» ندارد.
             // (مدیر سیستم که هم Create دارد هم Approve، برای پشتیبانی از همین آدرس می‌تواند فرم را ببیند،
@@ -856,10 +864,10 @@ else
                 return;
             }
 
-            warehouses = await Api.WarehousesAsync();
+            warehouses = await Api.WarehousesAsync() ?? new List<VisWarehouseLite>();
             if (model.WarehouseId == 0) model.WarehouseId = me.DefaultWarehouseId;
             await ReloadProductLookupAsync();
-            customers = await Api.CustomersAsync(null);
+            customers = await Api.CustomersAsync(null) ?? new List<VisCustomerLite>();
             RebuildCustomerLookup();
 
             if (Id > 0)
@@ -891,7 +899,7 @@ else
                     WarehouseId = o.WarehouseId,
                     PaymentMethod = o.PaymentMethod,
                     Note = o.Note,
-                    Lines = o.Lines.ToList()
+                    Lines = (o.Lines ?? new List<VisOrderLineDto>()).ToList()
                 };
                 if (!customers.Any(c => c.Id == o.PartyId))
                     customers.Insert(0, new VisCustomerLite { Id = o.PartyId, Name = o.PartyName });
@@ -910,7 +918,7 @@ else
         if (model.WarehouseId <= 0) { productLookup = new(); return; }
         try
         {
-            var list = await Api.ProductsAsync(model.WarehouseId, null);
+            var list = await Api.ProductsAsync(model.WarehouseId, null) ?? new List<VisProductLite>();
             productIndex = list.ToDictionary(p => p.Id);
             productLookup = list.Select(p => new LookupItem
             {
@@ -958,7 +966,7 @@ else
         var selected = customers.FirstOrDefault(c => c.Id == model.PartyId);
         try
         {
-            customers = await Api.CustomersAsync(search);
+            customers = await Api.CustomersAsync(search) ?? new List<VisCustomerLite>();
             // مشتری انتخاب‌شده حتی اگر در نتیجهٔ جستجو نباشد، باید در فهرست بماند تا نامش نمایش داده شود
             if (selected is not null && customers.All(c => c.Id != selected.Id))
                 customers.Insert(0, selected);
@@ -981,7 +989,7 @@ else
         {
             await Task.Delay(300, token);
             if (token.IsCancellationRequested) return;
-            productResults = await Api.ProductsAsync(model.WarehouseId, productSearch);
+            productResults = await Api.ProductsAsync(model.WarehouseId, productSearch) ?? new List<VisProductLite>();
         }
         catch (TaskCanceledException) { }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1234,9 +1242,17 @@ else
         try
         {
             model.Date = orderDate?.Date ?? DateTime.Today;
-            model.DeliveryDate = deliveryDate.Value.Date;
+            model.DeliveryDate = deliveryDate?.Date ?? DateTime.Today;
             model.SubmitAfterSave = submit;
             var saved = await Api.SaveAsync(model);
+            // سرور ممکن است بدنهٔ خالی/null بفرستد (ApiClient در آن حالت default!
+            // برمیگرداند). بدون این نالچک، saved.Number دقیقاً همان
+            // NullReferenceException گزارششده هنگام «ثبت سفارش» است.
+            if (saved is null)
+            {
+                Toast.Error("نتیجهٔ ثبت سفارش از سرور دریافت نشد؛ پیش از تکرار، فهرست سفارشها را بازخوانی کنید (ممکن است سفارش ثبت شده باشد).");
+                return;
+            }
             Toast.Success(submit
                 ? $"سفارش {saved.Number} برای تأیید مدیر فروش ارسال شد."
                 : $"پیش‌نویس سفارش {saved.Number} ذخیره شد.");
@@ -1271,7 +1287,7 @@ else
         productSearch = null;
         productResults = new();
         formKey++;   // انتخابگر مشتری از نو ساخته می‌شود (متن قبلی پاک می‌شود)
-        try { customers = await Api.CustomersAsync(null); }
+        try { customers = await Api.CustomersAsync(null) ?? customers; }
         catch { /* فهرست قبلی کافی است */ }
         RebuildCustomerLookup();
         await ReloadProductLookupAsync();
@@ -1291,7 +1307,8 @@ else
     private async Task OnCustomerSaved(Party created)
     {
         showCustomerForm = false;
-        try { customers = await Api.CustomersAsync(null); }
+        if (created is null) { Toast.Error("مشتری جدید ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
+        try { customers = await Api.CustomersAsync(null) ?? customers; }
         catch (Exception ex) { Toast.Error(ex.Message); }
         model.PartyId = created.Id;
         if (!customers.Any(c => c.Id == created.Id))

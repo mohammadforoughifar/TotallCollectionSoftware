@@ -295,7 +295,48 @@ public class VisOrderService : IVisOrderService
         var q = _db.VisOrders.AsQueryable();
         if (actor.CanSeeAll) return q;
         var myRef = actor.ReferrerId ?? 0;
-        return q.Where(o => o.ReferrerId == myRef);
+        var myUserId = actor.UserId;
+        // سفارشی را که خودِ کاربر ثبت کرده است همیشه ببیند. هنگام ثبت، اگر حساب
+        // کاربر به معرف متصل نباشد، ویزیتور سفارش از پروندهٔ مشتری برداشته میشود؛
+        // در آن حالت o.ReferrerId با myRef فرق میکند و فیلتر قدیمی سفارش تازهذخیرهشده
+        // را نامرئی میکرد. نتیجه: GetAsync بعد از ذخیره null میداد و کلاینت با
+        // NullReferenceException (روی saved.Number) مواجه میشد. همراستا با LoadOwnedAsync.
+        return q.Where(o => o.ReferrerId == myRef
+                            || (myUserId > 0 && o.CreatedByUserId == myUserId));
+    }
+
+    /// <summary>
+    /// نتیجهٔ هر عملیات (ذخیره/ارسال/تأیید/...) که به کلاینت برگردانده میشود.
+    /// <para>GetAsync وابسته به محدودهٔ دید کاربر است و مجاز است null برگرداند؛
+    /// ولی برگرداندن null از یک عملیات موفق یعنی <c>Ok(null)</c> ← بدنهٔ JSON
+    /// برابر null ← <c>default!</c> در ApiClient ← دسترسی بدون نالچک به
+    /// <c>saved.Number</c> در VisitForm و خطای NullReferenceException.</para>
+    /// این متد تضمین میکند عملیات موفق هرگز null برنگرداند.
+    /// </summary>
+    private async Task<VisOrderDto> OperationResultAsync(VisActor actor, int id)
+    {
+        var dto = await GetAsync(actor, id);
+        if (dto is not null) return dto;
+
+        // راه جایگزین: همان سفارش را فقط با شناسه و بدون فیلتر محدوده میخوانیم.
+        // فیلتر سراسری «شرکت فعال» (HasQueryFilter) نیز ممکن است سفارش تازهساختهشده
+        // را پنهان کند: وقتی ActiveCompanyId==0 باشد، CompanyId رکورد null ذخیره
+        // میشود ولی فیلتر x.CompanyId==0 آن را پس میزند. چون مالکیت سفارش درست
+        // در ادامه بررسی میشود، این خواندن تکرکوردی بدون فیلتر شرکت انجام میشود.
+        var order = await _db.VisOrders.IgnoreQueryFilters().AsNoTracking()
+            .Include(o => o.Lines)
+            .Include(o => o.History)
+            .FirstOrDefaultAsync(o => o.Id == id)
+            ?? throw new InvalidOperationException("سفارش پس از ذخیره یافت نشد؛ لطفاً فهرست را بازخوانی کنید.");
+
+        var myRef = actor.ReferrerId ?? 0;
+        if (!actor.CanSeeAll && order.ReferrerId != myRef && order.CreatedByUserId != actor.UserId)
+            throw new InvalidOperationException("این سفارش متعلق به شما نیست.");
+
+        var result = ToDto(order);
+        result.History = order.History.OrderByDescending(h => h.At).Select(ToHistoryDto).ToList();
+        await FillSaleNumbersAsync(new List<VisOrderDto> { result });
+        return result;
     }
 
     // ==================================================================
@@ -306,7 +347,14 @@ public class VisOrderService : IVisOrderService
     {
         if (!actor.CanCreate && !actor.CanApprove)
             throw new InvalidOperationException("شما مجوز ثبت سفارش ویزیتوری را ندارید.");
+        if (cmd is null) throw new InvalidOperationException("اطلاعات سفارش دریافت نشد؛ فرم را دوباره باز کنید.");
+        // بدنهٔ JSON ممکن است lines:null یا آرایهای با عضو null بفرستد؛ پیش از
+        // هر دسترسی به Count/Quantity نرمالسازی میشود تا خطای NullReference ندهد.
+        cmd.Lines ??= new List<VisOrderLineDto>();
+        cmd.Lines.RemoveAll(l => l is null);
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+        if (cmd.Lines.Any(l => l.ProductId <= 0))
+            throw new InvalidOperationException("کالای یکی از سطرها انتخاب نشده است؛ سطر خالی را حذف کنید یا کالا را انتخاب کنید.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
             throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
@@ -354,6 +402,9 @@ public class VisOrderService : IVisOrderService
 
             entity = new VisOrder
             {
+                // رکورد متعلق به همان شرکتی باشد که ویزیتور مشتری/انبار/کالا را از آن میبیند؛
+                // وگرنه فیلتر شرکتی بعد از ذخیره آن را نامرئی میکند.
+                CompanyId = actor.CompanyId,
                 Number = await GenerateNumberAsync(),
                 CreatedAt = DateTime.Now,
                 CreatedByUserId = actor.UserId,
@@ -410,7 +461,8 @@ public class VisOrderService : IVisOrderService
         var row = 1;
         foreach (var l in cmd.Lines)
         {
-            var p = products[l.ProductId];
+            if (!products.TryGetValue(l.ProductId, out var p))
+                throw new InvalidOperationException("کالای یکی از سطرها یافت نشد؛ فهرست کالاها را دوباره بارگذاری کنید.");
             if (p.IsService && l.Quantity <= 0)
                 throw new InvalidOperationException($"مقدار خدمت «{p.Name}» باید بزرگ‌تر از صفر باشد.");
 
@@ -494,7 +546,7 @@ public class VisOrderService : IVisOrderService
         }
         await SafeBroadcastAsync(entity);
 
-        return (await GetAsync(actor, entity.Id))!;
+        return await OperationResultAsync(actor, entity.Id);
     }
 
     // ==================================================================
@@ -522,7 +574,7 @@ public class VisOrderService : IVisOrderService
         await NotifyOrderEventAsync(order, VisOrderEvent.Submitted, actor);
         await SafeBroadcastAsync(order);
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     public async Task<VisOrderDto> ApproveAsync(VisActor actor, int id, string? comment,
@@ -589,7 +641,7 @@ public class VisOrderService : IVisOrderService
 
         await NotifyOrderEventAsync(order, VisOrderEvent.Approved, actor);
         await SafeBroadcastAsync(order);
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     public async Task<VisOrderDto> ReturnAsync(VisActor actor, int id, string comment)
@@ -615,7 +667,7 @@ public class VisOrderService : IVisOrderService
         await NotifyOrderEventAsync(order, VisOrderEvent.Returned, actor);
         await SafeBroadcastAsync(order);
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     public async Task<VisOrderDto> RejectAsync(VisActor actor, int id, string comment)
@@ -640,7 +692,7 @@ public class VisOrderService : IVisOrderService
         await NotifyOrderEventAsync(order, VisOrderEvent.Rejected, actor);
         await SafeBroadcastAsync(order);
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     public async Task<VisOrderDto> CancelAsync(VisActor actor, int id, string? comment)
@@ -671,7 +723,7 @@ public class VisOrderService : IVisOrderService
         await NotifyOrderEventAsync(order, VisOrderEvent.Canceled, actor);
         await SafeBroadcastAsync(order);
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     // ==================================================================
@@ -776,7 +828,7 @@ public class VisOrderService : IVisOrderService
 
         await NotifyOrderEventAsync(order, VisOrderEvent.Sold, actor, $"فروش {sale.Number}");
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     private static string PayTitle(PaymentMethod m) => m switch
@@ -801,14 +853,14 @@ public class VisOrderService : IVisOrderService
             throw new InvalidOperationException("فقط سفارش تأییدشده قابل تبدیل به فاکتور است.");
 
         if (order.InvoiceId is > 0)
-            return (await GetAsync(actor, id))!;   // پیش‌نویس قبلاً ساخته شده است
+            return await OperationResultAsync(actor, id);   // پیش‌نویس قبلاً ساخته شده است
 
         await BuildInvoiceDraftAsync(actor, order);
         await _db.SaveChangesAsync();
         await NotifyOrderEventAsync(order, VisOrderEvent.InvoiceDraftCreated, actor);
         await SafeBroadcastAsync(order);
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     /// <summary>ساخت پیش‌نویس فاکتور فروش از سفارش — بدون قطعی‌سازی (اثر انبار/حسابداری ندارد).</summary>
@@ -871,10 +923,10 @@ public class VisOrderService : IVisOrderService
     {
         var order = await _db.VisOrders.Include(o => o.History).FirstOrDefaultAsync(o => o.Id == id)
                     ?? throw new InvalidOperationException("سفارش یافت نشد.");
-        if (order.InvoiceId is not > 0) return (await GetAsync(actor, id))!;
+        if (order.InvoiceId is not > 0) return await OperationResultAsync(actor, id);
 
         var invoice = await _db.FacInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == order.InvoiceId);
-        if (invoice is null) return (await GetAsync(actor, id))!;
+        if (invoice is null) return await OperationResultAsync(actor, id);
 
         var from = order.Status;
         if (invoice.Status == InvoiceStatus.Confirmed && order.Status != VisOrderStatus.Invoiced)
@@ -897,7 +949,7 @@ public class VisOrderService : IVisOrderService
             await SafeBroadcastAsync(order);
         }
 
-        return (await GetAsync(actor, id))!;
+        return await OperationResultAsync(actor, id);
     }
 
     // ==================================================================
@@ -1313,7 +1365,11 @@ public class VisOrderService : IVisOrderService
 
     private async Task<VisOrder> LoadOwnedAsync(VisActor actor, int id)
     {
-        var order = await _db.VisOrders.Include(o => o.Lines).Include(o => o.History)
+        // همراستا با OperationResultAsync: مالکیت صریحاً در خط بعد بررسی میشود،
+        // پس فیلتر شرکت نباید سفارش همین کاربر را (بهویژه درست بعد از ذخیره)
+        // از دسترس عملیات ارسال/تأیید خارج کند.
+        var order = await _db.VisOrders.IgnoreQueryFilters()
+            .Include(o => o.Lines).Include(o => o.History)
             .FirstOrDefaultAsync(o => o.Id == id)
             ?? throw new InvalidOperationException("سفارش یافت نشد.");
         if (!actor.CanSeeAll && order.ReferrerId != (actor.ReferrerId ?? 0) && order.CreatedByUserId != actor.UserId)
