@@ -198,6 +198,21 @@
                                               Placeholder="@(newCheque.Kind == ChequeKind.Received ? "انتخاب مشتری…" : "انتخاب تأمین‌کننده…")" />
                             </div>
 
+                            @if (newCheque.Kind == ChequeKind.Issued)
+                            {
+                                <div class="mb-2">
+                                    <label class="form-label fs-8">حساب بانکی صادرکننده (دسته چک ما) <span class="text-danger">*</span></label>
+                                    <select class="form-select form-select-sm" @bind="newCheque.TrsAccountId">
+                                        <option value="0">— انتخاب حساب بانکی —</option>
+                                        @foreach (var b in myBankAccounts)
+                                        {
+                                            <option value="@b.Id">@b.DisplayName</option>
+                                        }
+                                    </select>
+                                    <div class="fs-9 text-muted mt-1">چکی که می‌کشید از موجودی کدام حساب بانکی کسر شود</div>
+                                </div>
+                            }
+
                             <div class="row g-2 mb-2">
                                 <div class="col-6">
                                     <label class="form-label fs-8">مبلغ چک (ریال) <span class="text-danger">*</span></label>
@@ -484,6 +499,7 @@
     private List<LookupItem> allPartiesLookup = new();
     private List<LookupItem> customersLookup = new();
     private List<LookupItem> suppliersLookup = new();
+    private List<TrsAccount> myBankAccounts = new();
     private Product? openingServiceProduct;
     private Product? openingGoodsProduct;
     private List<LookupItem> warehouseLookup = new();
@@ -556,6 +572,13 @@
                 .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" })
                 .ToList();
             if (productLookup.Count > 0) stockProductId = productLookup[0].Id;
+
+            try
+            {
+                var allAccs = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                myBankAccounts = allAccs.Where(a => a.Kind == TreasuryAccountKind.Bank).ToList();
+            }
+            catch { myBankAccounts = new(); }
 
             var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
             chequesList = chqRes.Items;
@@ -707,6 +730,11 @@
     {
         if ((newCheque.PartyId ?? 0) <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
         if (newCheque.Amount <= 0) { Toast.Error("مبلغ چک باید بزرگ‌تر از صفر باشد."); return; }
+        if (newCheque.Kind == ChequeKind.Issued && (newCheque.TrsAccountId ?? 0) <= 0)
+        {
+            Toast.Error("لطفاً حساب بانکی صادرکننده را انتخاب کنید.");
+            return;
+        }
 
         saving = true;
         try
@@ -718,6 +746,13 @@
             var saved = await ChequeSvc.SaveAsync(newCheque);
             Toast.Success($"چک شماره {saved.Number} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
             
+            try
+            {
+                var allAccs = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                myBankAccounts = allAccs.Where(a => a.Kind == TreasuryAccountKind.Bank).ToList();
+            }
+            catch { myBankAccounts = new(); }
+
             var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
             chequesList = chqRes.Items;
 
