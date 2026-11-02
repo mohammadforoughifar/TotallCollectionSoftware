@@ -113,7 +113,7 @@
                                 <td class="text-end">
                                     @if (o.Status == VisOrderStatus.Approved)
                                     {
-                                        <button class="btn btn-sm btn-success" disabled="@busy"
+                                        <button class="btn btn-sm btn-success" disabled="@loading"
                                                 data-fin-open @onclick="() => OpenFinance(o)">
                                             <i class="bi bi-check2-circle"></i> تأیید مالی و ثبت فروش
                                         </button>
@@ -164,7 +164,7 @@
 
 @code {
     private bool loading = true;
-    private bool busy;
+    // private bool busy;
     private List<VisOrderDto> items = new();
 
     private bool showFinance;

@@ -436,14 +436,18 @@ public class PartyBalanceSummaryDto
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";
     public string? Mobile { get; set; }
+    public string? NationalCode { get; set; }
     public PartyType PartyType { get; set; }
+    public PartyType Type => PartyType;
     public decimal OpeningDebit { get; set; }
     public decimal OpeningCredit { get; set; }
+    public decimal OpeningBalance => OpeningDebit - OpeningCredit;
     public decimal PeriodDebit { get; set; }
     public decimal PeriodCredit { get; set; }
     public decimal TotalDebit => OpeningDebit + PeriodDebit;
     public decimal TotalCredit => OpeningCredit + PeriodCredit;
     public decimal RemainingBalance => TotalDebit - TotalCredit; // مثبت = بدهکار (طلب ما)، منفی = بستانکار (بدهی ما)
+    public decimal ClosingBalance => RemainingBalance;
     public bool IsDebtor => RemainingBalance > 0;
     public bool IsCreditor => RemainingBalance < 0;
     public bool IsSettled => RemainingBalance == 0;
@@ -451,8 +455,8 @@ public class PartyBalanceSummaryDto
 
 public class PartyStatementReportDto
 {
-    public decimal TotalReceivable { get; set; } // کل طلب ما از دیگران
-    public decimal TotalPayable { get; set; }    // کل بدهی ما به دیگران
+    public decimal TotalReceivable { get; set; }
+    public decimal TotalPayable { get; set; }
     public decimal NetBalance => TotalReceivable - TotalPayable;
     public int DebtorCount { get; set; }
     public int CreditorCount { get; set; }
@@ -477,7 +481,9 @@ public class PartyStatementDetailDto
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";
     public string? Mobile { get; set; }
+    public string? NationalCode { get; set; }
     public PartyType PartyType { get; set; }
+    public PartyType Type => PartyType;
     public decimal OpeningBalance { get; set; } // مثبت = بدهکار اولیه، منفی = بستانکار اولیه
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
