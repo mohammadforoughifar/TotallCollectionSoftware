@@ -183,6 +183,24 @@ public class PartyService : IPartyService
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/parties/{id}");
+
+    public Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    {
+        var q = $"api/parties/statements-summary?search={Uri.EscapeDataString(search ?? "")}";
+        if (type.HasValue) q += $"&type={(int)type.Value}";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PartyStatementReportDto>(q);
+    }
+
+    public Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null)
+    {
+        var q = $"api/parties/{partyId}/statement?";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PartyStatementDetailDto>(q.TrimEnd('?', '&'));
+    }
+
 }
 
 /// <summary>پیاده‌سازی سرویس موجودی.</summary>

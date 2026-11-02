@@ -2554,4 +2554,215 @@ public class InventoryService : IInventoryService
         return result;
     }
 
+
+    // ================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ==================
+
+    public async Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    {
+        var partiesQ = _db.Parties.AsNoTracking().AsQueryable();
+        if (type.HasValue) partiesQ = partiesQ.Where(p => p.Type == type.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            partiesQ = partiesQ.Where(p => p.Name.Contains(s) || (p.Mobile != null && p.Mobile.Contains(s)));
+        }
+
+        var parties = await partiesQ.OrderBy(p => p.Name).ToListAsync();
+        var partyIds = parties.Select(p => p.Id).ToList();
+
+        // اسناد فروشگاه
+        var txns = await _db.Transactions.AsNoTracking()
+            .Where(t => t.PartyId != null && partyIds.Contains(t.PartyId.Value))
+            .OrderBy(t => t.Date).ThenBy(t => t.Id)
+            .ToListAsync();
+
+        var report = new PartyStatementReportDto();
+
+        foreach (var p in parties)
+        {
+            var pTxns = txns.Where(t => t.PartyId == p.Id).ToList();
+
+            decimal openDebit = 0;
+            decimal openCredit = 0;
+            decimal periodDebit = 0;
+            decimal periodCredit = 0;
+
+            foreach (var t in pTxns)
+            {
+                var isOpening = t.Description != null && t.Description.Contains("افتتاح");
+                var isBefore = from.HasValue && t.Date < from.Value;
+
+                // در منطق فروشگاهی:
+                // فروش = افزایش طلب ما از شخص (بدهکار شدن طرف حساب)
+                // خرید = افزایش بدهی ما به شخص (بستانکار شدن طرف حساب)
+                decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+                decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+
+                // دریافتی‌ها و تسویه‌ها:
+                // اگر بخشی از فروش تسویه شده باشد، بستانکار می‌شود (کاهش طلب)
+                if (t.Type == TransactionType.Sale && t.SettledAmount > 0)
+                {
+                    credit += t.SettledAmount;
+                }
+                // اگر بخشی از خرید پرداخت شده باشد، بدهکار می‌شود (کاهش بدهی)
+                if (t.Type == TransactionType.Purchase && t.SettledAmount > 0)
+                {
+                    debit += t.SettledAmount;
+                }
+
+                if (isOpening || isBefore)
+                {
+                    openDebit += debit;
+                    openCredit += credit;
+                }
+                else
+                {
+                    if (!to.HasValue || t.Date <= to.Value)
+                    {
+                        periodDebit += debit;
+                        periodCredit += credit;
+                    }
+                }
+            }
+
+            var item = new PartyBalanceSummaryDto
+            {
+                PartyId = p.Id,
+                PartyName = p.Name,
+                Mobile = p.Mobile,
+                PartyType = p.Type,
+                OpeningDebit = openDebit,
+                OpeningCredit = openCredit,
+                PeriodDebit = periodDebit,
+                PeriodCredit = periodCredit
+            };
+
+            report.Items.Add(item);
+
+            if (item.RemainingBalance > 0)
+            {
+                report.TotalReceivable += item.RemainingBalance;
+                report.DebtorCount++;
+            }
+            else if (item.RemainingBalance < 0)
+            {
+                report.TotalPayable += Math.Abs(item.RemainingBalance);
+                report.CreditorCount++;
+            }
+        }
+
+        return report;
+    }
+
+    public async Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null)
+    {
+        var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId)
+            ?? throw new InvalidOperationException("طرف حساب یافت نشد.");
+
+        var txns = await _db.Transactions.AsNoTracking()
+            .Include(t => t.Lines)
+            .Where(t => t.PartyId == partyId)
+            .OrderBy(t => t.Date).ThenBy(t => t.Id)
+            .ToListAsync();
+
+        var result = new PartyStatementDetailDto
+        {
+            PartyId = party.Id,
+            PartyName = party.Name,
+            Mobile = party.Mobile,
+            PartyType = party.Type
+        };
+
+        decimal runningBalance = 0; // مثبت = طلب ما (بدهکار)، منفی = بدهی ما (بستانکار)
+        decimal openDebit = 0;
+        decimal openCredit = 0;
+
+        foreach (var t in txns)
+        {
+            var isOpening = t.Description != null && t.Description.Contains("افتتاح");
+            var isBefore = from.HasValue && t.Date < from.Value;
+
+            decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+            decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+
+            if (isOpening || isBefore)
+            {
+                openDebit += debit;
+                openCredit += credit;
+                runningBalance += (debit - credit);
+            }
+        }
+
+        result.OpeningBalance = runningBalance;
+
+        // سطر ابتدایی: مانده اول دوره / افتتاحیه
+        if (runningBalance != 0 || openDebit > 0 || openCredit > 0)
+        {
+            result.Rows.Add(new PartyStatementRowDto
+            {
+                Date = from ?? (txns.FirstOrDefault()?.Date ?? DateTime.Today),
+                Title = "مانده افتتاح حساب (اول دوره)",
+                Description = "مانده منتقل‌شده از دوره‌های قبل و اسناد افتتاحیه",
+                IsOpening = true,
+                Debit = runningBalance > 0 ? runningBalance : 0,
+                Credit = runningBalance < 0 ? Math.Abs(runningBalance) : 0,
+                Balance = runningBalance
+            });
+        }
+
+        // سطرهای گردش طی دوره
+        var periodTxns = txns.Where(t =>
+            !(t.Description != null && t.Description.Contains("افتتاح")) &&
+            (!from.HasValue || t.Date >= from.Value) &&
+            (!to.HasValue || t.Date <= to.Value)
+        ).ToList();
+
+        foreach (var t in periodTxns)
+        {
+            decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+            decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+
+            runningBalance += (debit - credit);
+            result.TotalDebit += debit;
+            result.TotalCredit += credit;
+
+            result.Rows.Add(new PartyStatementRowDto
+            {
+                Date = t.Date,
+                TransactionId = t.Id,
+                DocumentNumber = t.Number.ToString(),
+                Title = t.Type == TransactionType.Sale ? "فاکتور فروش" : "فاکتور خرید",
+                Description = t.Description ?? "",
+                Debit = debit,
+                Credit = credit,
+                Balance = runningBalance
+            });
+
+            // در صورت وجود تسویه/دریافت نقدی مرتبط
+            if (t.SettledAmount > 0)
+            {
+                var settleDebit = t.Type == TransactionType.Purchase ? t.SettledAmount : 0;
+                var settleCredit = t.Type == TransactionType.Sale ? t.SettledAmount : 0;
+                runningBalance += (settleDebit - settleCredit);
+                result.TotalDebit += settleDebit;
+                result.TotalCredit += settleCredit;
+
+                result.Rows.Add(new PartyStatementRowDto
+                {
+                    Date = t.Date,
+                    TransactionId = t.Id,
+                    DocumentNumber = t.Number.ToString(),
+                    Title = t.Type == TransactionType.Sale ? "تسویه / دریافتی فاکتور" : "پرداختی فاکتور خرید",
+                    Description = $"تسویه بابت فاکتور شماره {t.Number}",
+                    Debit = settleDebit,
+                    Credit = settleCredit,
+                    Balance = runningBalance
+                });
+            }
+        }
+
+        result.ClosingBalance = runningBalance;
+        return result;
+    }
+
 }

@@ -429,3 +429,58 @@ public class ShopCreditSummary
     public int OverdueInstallmentsCount { get; set; }
     public decimal OverdueInstallmentsTotal { get; set; }
 }
+
+// ==================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ====================
+public class PartyBalanceSummaryDto
+{
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? Mobile { get; set; }
+    public PartyType PartyType { get; set; }
+    public decimal OpeningDebit { get; set; }
+    public decimal OpeningCredit { get; set; }
+    public decimal PeriodDebit { get; set; }
+    public decimal PeriodCredit { get; set; }
+    public decimal TotalDebit => OpeningDebit + PeriodDebit;
+    public decimal TotalCredit => OpeningCredit + PeriodCredit;
+    public decimal RemainingBalance => TotalDebit - TotalCredit; // مثبت = بدهکار (طلب ما)، منفی = بستانکار (بدهی ما)
+    public bool IsDebtor => RemainingBalance > 0;
+    public bool IsCreditor => RemainingBalance < 0;
+    public bool IsSettled => RemainingBalance == 0;
+}
+
+public class PartyStatementReportDto
+{
+    public decimal TotalReceivable { get; set; } // کل طلب ما از دیگران
+    public decimal TotalPayable { get; set; }    // کل بدهی ما به دیگران
+    public decimal NetBalance => TotalReceivable - TotalPayable;
+    public int DebtorCount { get; set; }
+    public int CreditorCount { get; set; }
+    public List<PartyBalanceSummaryDto> Items { get; set; } = new();
+}
+
+public class PartyStatementRowDto
+{
+    public DateTime Date { get; set; }
+    public int? TransactionId { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string Title { get; set; } = "";
+    public string Description { get; set; } = "";
+    public bool IsOpening { get; set; }
+    public decimal Debit { get; set; }  // بدهکار (افزایش طلب ما از شخص)
+    public decimal Credit { get; set; } // بستانکار (کاهش طلب ما یا افزایش بدهی ما به شخص)
+    public decimal Balance { get; set; } // مانده پس از این سطر
+}
+
+public class PartyStatementDetailDto
+{
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? Mobile { get; set; }
+    public PartyType PartyType { get; set; }
+    public decimal OpeningBalance { get; set; } // مثبت = بدهکار اولیه، منفی = بستانکار اولیه
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
+    public decimal ClosingBalance { get; set; }
+    public List<PartyStatementRowDto> Rows { get; set; } = new();
+}

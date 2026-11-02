@@ -456,6 +456,12 @@
                                         <i class="bi bi-cart-check"></i><span>گزارش فروش</span>
                                     </NavLink>
                                 }
+                                @if (Auth.CanSee("Parties") || Auth.CanSee("Customers") || Auth.CanSee("Suppliers"))
+                                {
+                                    <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
+                                        <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
+                                    </NavLink>
+                                }
 
                             </div>
                         }

@@ -176,4 +176,28 @@ public class PartiesController : ControllerBase
         await _service.DeletePartyAsync(id);
         return Ok(new { ok = true });
     }
+
+    // ==================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ====================
+
+    [HttpGet("statements-summary")]
+    public async Task<ActionResult<PartyStatementReportDto>> GetStatementsSummary(
+        [FromQuery] PartyType? type = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] string? search = null)
+    {
+        var res = await _service.GetPartyStatementSummaryReportAsync(type, from, to, search);
+        return Ok(res);
+    }
+
+    [HttpGet("{id:int}/statement")]
+    public async Task<ActionResult<PartyStatementDetailDto>> GetPartyStatement(
+        int id,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
+    {
+        var res = await _service.GetPartyStatementDetailAsync(id, from, to);
+        return Ok(res);
+    }
+
 }

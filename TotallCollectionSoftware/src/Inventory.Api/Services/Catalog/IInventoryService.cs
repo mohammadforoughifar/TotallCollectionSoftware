@@ -70,6 +70,9 @@ public interface IInventoryService
 
     // ---------------- داشبورد ادمین و پرداخت ----------------
     Task<AdminDashboard> GetAdminDashboardAsync();
+    Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);
+
     Task ClearChequeAsync(int chequeId);
     Task BounceChequeAsync(int chequeId, string? reason);
     Task ResetChequeAsync(int chequeId);
