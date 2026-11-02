@@ -11,7 +11,7 @@
 @inject IJSRuntime JS
 @using Inventory.Client.Pages.Orders
 
-<Modal Visible="true" Title="@FormTitle" Size="modal-xl" OnClose="Cancel">
+<Modal Visible="true" Title="@FormTitle" Size="modal-xl" HeaderClass="@(Type == TransactionType.Purchase ? "purchase-order-header" : "")" OnClose="Cancel">
 
     <ChildContent>
         @if (loading)
@@ -20,7 +20,30 @@
         }
         else
         {
+            @if (Type == TransactionType.Purchase)
+            {
+                <nav class="purchase-steps" aria-label="مراحل ثبت خرید">
+                    <div class="purchase-step @(purchaseStep == 1 ? "active" : "complete")" aria-current="@(purchaseStep == 1 ? "step" : null)">
+                        <span class="purchase-step-number">@if (purchaseStep == 1) { <span>۱</span> } else { <i class="bi bi-check-lg"></i> }</span>
+                        <span><strong>اطلاعات خرید</strong><small>مشخصات و اقلام فاکتور</small></span>
+                    </div>
+                    <span class="purchase-step-line" aria-hidden="true"></span>
+                    <div class="purchase-step @(purchaseStep == 2 ? "active" : "")" aria-current="@(purchaseStep == 2 ? "step" : null)">
+                        <span class="purchase-step-number">۲</span>
+                        <span><strong>پرداخت و تأیید</strong><small>روش پرداخت و ثبت نهایی</small></span>
+                    </div>
+                </nav>
+                <div class="purchase-section-heading">
+                    <div>
+                        <h3>@(purchaseStep == 1 ? "اطلاعات فاکتور" : "پرداخت و تأیید نهایی")</h3>
+                        <p>@(purchaseStep == 1 ? "ابتدا مشخصات خرید و کالاهای فاکتور را تکمیل کنید." : "روش پرداخت را انتخاب کنید؛ امکان ترکیب چند روش وجود دارد.")</p>
+                    </div>
+                    <span>مرحله @purchaseStep.Num() از ۲</span>
+                </div>
+            }
             <div class="row g-3 mb-3">
+                @if (Type != TransactionType.Purchase || purchaseStep == 1)
+                {
                 <div class="col-md-4">
                     <label class="form-label">انبار <span class="text-danger">*</span></label>
                     <SearchSelect Items="whLookup" Value="warehouseId" ValueChanged="OnWarehouseChanged" Placeholder="انتخاب انبار…" />
@@ -52,9 +75,46 @@
                     </div>
                 }
 
-                @if (Type is TransactionType.Sale or TransactionType.Purchase)
+                }
+
+                @if (Type == TransactionType.Sale || (Type == TransactionType.Purchase && purchaseStep == 2))
                 {
-                    <div class="col-12">
+                    <div class="col-12 @(Type == TransactionType.Purchase ? "purchase-payment" : "")">
+                        @if (Type == TransactionType.Purchase)
+                        {
+                            <section class="purchase-summary" aria-label="خلاصه فاکتور و پرداخت">
+                                <div class="purchase-summary-head"><strong><i class="bi bi-receipt"></i> خلاصه فاکتور</strong><span>مبالغ به ریال</span></div>
+                                <div class="purchase-summary-main">
+                                    <div><span>تأمین‌کننده</span><strong>@(partyLookup.FirstOrDefault(p => p.Id == partyId)?.Name ?? "—")</strong></div>
+                                    <div><span>انبار</span><strong>@(whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Name ?? "—")</strong></div>
+                                    <div><span>اقلام</span><strong>@(lines.Count(l => l.ProductId > 0 && l.Qty > 0).Num()) سطر</strong></div>
+                                    <div class="purchase-summary-total"><span>مبلغ نهایی فاکتور</span><strong class="num">@grandTotal.Money()</strong></div>
+                                </div>
+                                <div class="purchase-summary-pay" aria-live="polite">
+                                    <div><span>نقد</span><strong class="num">@CashPart.Money()</strong></div>
+                                    <div><span>چک</span><strong class="num">@ChequeSum().Money()</strong></div>
+                                    <div><span>اقساط</span><strong class="num">@InstSum().Money()</strong></div>
+                                    <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > 1 ? "is-warning" : "")">
+                                        <span>@(FinalRemaining < -1 ? "مازاد پرداخت" : useCredit && FinalRemaining > 1 ? "مانده نسیه" : "باقی‌مانده")</span>
+                                        <strong class="num">@Math.Abs(FinalRemaining).Money()</strong>
+                                    </div>
+                                </div>
+                                <p class="purchase-summary-status" aria-live="polite">
+                                    @if (FinalRemaining > 1)
+                                    {
+                                        @(useCredit ? "مانده فاکتور به نسیه می‌رود؛ تاریخ سررسید را بررسی کنید." : "برای مانده فاکتور، پرداخت دیگری اضافه کنید یا نسیه و سررسید آن را مشخص کنید.")
+                                    }
+                                    else if (FinalRemaining < -1)
+                                    {
+                                        <span>جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).</span>
+                                    }
+                                    else
+                                    {
+                                        <span>جمع اجزای پرداخت با مبلغ فاکتور برابر است.</span>
+                                    }
+                                </p>
+                            </section>
+                        }
                         <div class="pay-box">
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                 <span class="fw-700"><i class="bi bi-credit-card-2-front text-primary ms-1"></i>روش پرداخت (ترکیبی)</span>
@@ -64,21 +124,23 @@
                                 </span>
                             </div>
                             <div class="pay-tabs">
-                                <button type="button" class="pay-tab @(useCash ? "active" : "")" data-pay-comp="cash" @onclick="ToggleCash">
+                                <button type="button" class="pay-tab @(useCash ? "active" : "")" data-pay-comp="cash" aria-pressed="@(useCash ? "true" : "false")" @onclick="ToggleCash">
                                     <i class="bi bi-cash-coin"></i> نقدی
                                 </button>
-                                <button type="button" class="pay-tab @(useCheque ? "active" : "")" data-pay-comp="cheque" @onclick="ToggleCheque">
+                                <button type="button" class="pay-tab @(useCheque ? "active" : "")" data-pay-comp="cheque" aria-pressed="@(useCheque ? "true" : "false")" @onclick="ToggleCheque">
                                     <i class="bi bi-bank"></i> چک
                                 </button>
-                                <button type="button" class="pay-tab @(useInstallment ? "active" : "")" data-pay-comp="installment" @onclick="ToggleInstallment">
+                                <button type="button" class="pay-tab @(useInstallment ? "active" : "")" data-pay-comp="installment" aria-pressed="@(useInstallment ? "true" : "false")" @onclick="ToggleInstallment">
                                     <i class="bi bi-journal-check"></i> اقساطی
                                 </button>
-                                <button type="button" class="pay-tab @(useCredit ? "active" : "")" data-pay-comp="credit" @onclick="ToggleCredit">
+                                <button type="button" class="pay-tab @(useCredit ? "active" : "")" data-pay-comp="credit" aria-pressed="@(useCredit ? "true" : "false")" @onclick="ToggleCredit">
                                     <i class="bi bi-hourglass-split"></i> نسیه
                                 </button>
                             </div>
 
                             @* ---------- نوار خلاصهٔ پرداخت: هر جزء و باقی‌ماندهٔ نهایی ---------- *@
+                            @if (Type == TransactionType.Sale)
+                            {
                             <div class="pay-summary mt-3" data-pay-summary>
                                 <div>مبلغ @(Type == TransactionType.Sale ? "فاکتور" : "سند"): <b class="num text-primary" data-pay-total>@grandTotal.Money()</b> ریال</div>
                                 <div>نقد: <b class="num text-success" data-pay-cash>@CashPart.Money()</b></div>
@@ -95,6 +157,8 @@
                                     }
                                 </div>
                             </div>
+
+                            }
 
                             @* ---------- جزء نقدی ---------- *@
                             @if (useCash)
@@ -303,6 +367,8 @@
                                 </div>
                             }
 
+                            @if (Type == TransactionType.Sale)
+                            {
                             <div class="fs-8 mt-2" data-pay-hint>
                                 @if (FinalRemaining > 1)
                                 {
@@ -317,11 +383,14 @@
                                     <span class="text-success"><i class="bi bi-check2-circle"></i> جمع اجزای پرداخت با مبلغ سند برابر است.</span>
                                 }
                             </div>
+                            }
                         </div>
                     </div>
                 }
             </div>
 
+            @if (Type != TransactionType.Purchase || purchaseStep == 1)
+            {
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-700 fs-7"><i class="bi bi-list-ul text-primary ms-1"></i>اقلام فاکتور</span>
                 <button class="btn btn-sm btn-outline-primary" data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
@@ -329,7 +398,7 @@
                 </button>
             </div>
 
-            <div>
+            <div class="@(Type == TransactionType.Purchase ? "purchase-items" : "")">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -355,8 +424,8 @@
                     <tbody>
                         @foreach (var l in lines)
                         {
-                            <tr>
-                                <td>
+                            <tr @key="l.Key">
+                                <td data-label="کالا">
                                     <SearchSelect Items="productLookup"
                                                   Value="l.ProductId"
                                                   ValueChanged="id => OnProductPicked(l, id)"
@@ -378,18 +447,18 @@
                                         </div>
                                     }
                                 </td>
-                                <td>
-                                    <input class="form-control num" inputmode="decimal" dir="ltr" placeholder="1.25"
+                                <td data-label="مقدار">
+                                    <input class="form-control num" aria-label="مقدار" inputmode="decimal" dir="ltr" placeholder="1.25"
                                            title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
                                            value="@l.QtyText" @oninput="@(e => { l.QtyText = FormatQuantity(e.Value); RecalcDiscount(l); })" />
                                 </td>
-                                <td>
-                                    <input class="form-control num" inputmode="decimal" dir="ltr"
+                                <td data-label="قیمت واحد (ریال)">
+                                    <input class="form-control num" aria-label="قیمت واحد به ریال" inputmode="decimal" dir="ltr"
                                            value="@l.PriceText" @oninput="@(e => { l.PriceText = FormatNum(e.Value); RecalcDiscount(l); })" />
                                 </td>
-                                <td>
+                                <td data-label="تخفیف (٪ یا ریال)">
                                     <div class="input-group input-group-sm">
-                                        <input class="form-control form-control-sm text-center num"
+                                        <input class="form-control form-control-sm text-center num" aria-label="تخفیف درصد یا ریال"
                                                value="@l.DiscountText"
                                                @oninput="e => OnLineDiscountInput(l, e.Value?.ToString())"
                                                @onblur="() => OnLineDiscountBlur(l)"
@@ -411,7 +480,7 @@
                                         </div>
                                     }
                                 </td>
-                                <td class="text-start num fw-500">@l.Total.Money()</td>
+                                <td data-label="مبلغ کل (ریال)" class="text-start num fw-500">@l.Total.Money()</td>
                                 @if (Type == TransactionType.Sale)
                                 {
                                     @if (CanSeeProfit)
@@ -456,6 +525,8 @@
                             </tr>
                         }
                     </tbody>
+                    @if (Type != TransactionType.Purchase)
+                    {
                     <tfoot class="border-top-2 table-light" style="border-top: 2px solid #cbd5e1;">
                         <tr class="align-middle">
                             <td class="fw-bold text-secondary">
@@ -505,8 +576,21 @@
                             <td></td>
                         </tr>
                     </tfoot>
+                    }
                 </table>
             </div>
+            @if (Type == TransactionType.Purchase)
+            {
+                <p class="purchase-table-hint"><i class="bi bi-arrow-left-right"></i> برای دیدن سایر ستون‌ها جدول را به طرفین بکشید.</p>
+                <div class="purchase-totals-wrap">
+                    <div class="purchase-totals">
+                        <div><span>جمع ناخالص</span><strong class="num">@totalGross.Money() <small>ریال</small></strong></div>
+                        <div><span>تخفیف اقلام</span><strong class="num">@totalLineDiscount.Money() <small>ریال</small></strong></div>
+                        <div class="purchase-totals-final"><span>مبلغ نهایی فاکتور</span><strong class="num">@grandTotal.Money() <small>ریال</small></strong></div>
+                    </div>
+                </div>
+            }
+            }
 
             @if (Type == TransactionType.Sale && (CanSeeProfit || referrerId > 0))
             {
@@ -538,15 +622,28 @@
     </ChildContent>
 
     <Footer>
-        <button class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ")
-        </button>
-        <button class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : "ثبت فاکتور — خرید/فروش (F1)")
-        </button>
+        <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
+        @if (!loading && Type == TransactionType.Purchase && purchaseStep == 1)
+        {
+            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" @onclick="GoToPayment" disabled="@saving">
+                ادامه و انتخاب روش پرداخت <i class="bi bi-arrow-left me-1"></i>
+            </button>
+        }
+        else if (!loading)
+        {
+            @if (Type == TransactionType.Purchase)
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="BackToPurchase" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت به اطلاعات خرید</button>
+            }
+            <button type="button" class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ")
+            </button>
+            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : Type == TransactionType.Purchase ? "ثبت فاکتور خرید (F1)" : "ثبت فاکتور — خرید/فروش (F1)")
+            </button>
+        }
     </Footer>
 </Modal>
 
@@ -790,8 +887,13 @@
     private DateTime? date;
     private string description = "";
     private bool loading = true, saving;
+    private int purchaseStep = 1;
 
-    private decimal grandTotal => lines.Sum(l => l.Total);
+    // در خرید، خلاصه و اجزای پرداخت فقط سطرهایی را شامل می‌شوند که واقعاً ذخیره خواهند شد.
+    private IEnumerable<LineVm> TotalLines => Type == TransactionType.Purchase
+        ? lines.Where(l => l.ProductId > 0 && l.Qty > 0)
+        : lines;
+    private decimal grandTotal => TotalLines.Sum(l => l.Total);
 
     // ---------------- پرداخت ترکیبی (فروش و خرید) ----------------
     // هر جزء مستقل فعال/غیرفعال می‌شود؛ باقی‌ماندهٔ هر سطر = مبلغ سند − (نقد + سطرهای قبلی)
@@ -887,7 +989,9 @@
     private string cashAmountText = "";
 
     /// <summary>جزء نقدی: اگر تنها جزء فعال باشد تمام مبلغ سند است، وگرنه مبلغی که کاربر وارد می‌کند.</summary>
-    private decimal CashPart => !HasNonCash ? grandTotal : Fa.ParseDecimal(cashAmountText);
+    private decimal CashPart => Type == TransactionType.Purchase && !useCash
+        ? 0m
+        : !HasNonCash ? grandTotal : Fa.ParseDecimal(cashAmountText);
 
     /// <summary>باقی‌ماندهٔ نهایی (می‌تواند منفی باشد = مازاد/سود مدت‌دار).</summary>
     private decimal FinalRemaining => grandTotal - CashPart - ChequeSum() - InstSum();
@@ -939,19 +1043,28 @@
     private void ToggleCheque()
     {
         useCheque = !useCheque;
+        EnsurePurchasePaymentMethod();
         if (useCheque && cheques.Count == 0) AddCheque();
     }
 
     private void ToggleInstallment()
     {
         useInstallment = !useInstallment;
+        EnsurePurchasePaymentMethod();
         if (useInstallment && installments.Count == 0) BuildInstallments(silent: true);
     }
 
     private void ToggleCredit()
     {
         useCredit = !useCredit;
+        EnsurePurchasePaymentMethod();
         if (useCredit && !creditDue.HasValue) creditDue = DateTime.Now.AddMonths(1);
+    }
+
+    // اگر آخرین جزء غیرفعال شد، خرید به پرداخت نقدی برمی‌گردد.
+    private void EnsurePurchasePaymentMethod()
+    {
+        if (Type == TransactionType.Purchase && !useCash && !HasNonCash) useCash = true;
     }
 
     /// <summary>روش پرداخت اعلامی به سرور (سرور خودش ترکیبی/تک‌جزء را از اجزا استخراج می‌کند).</summary>
@@ -1152,8 +1265,8 @@
     }
 
     /// <summary>سود تخمینی سطر: (قیمت فروش − بهای تمام‌شده میانگین) × مقدار. خدمات = کل مبلغ.</summary>
-    private decimal totalGross => lines.Sum(l => l.Gross);
-    private decimal totalLineDiscount => lines.Sum(l => l.DiscountAmount);
+    private decimal totalGross => TotalLines.Sum(l => l.Gross);
+    private decimal totalLineDiscount => TotalLines.Sum(l => l.DiscountAmount);
 
     private decimal LineProfit(LineVm l)
     {
@@ -1516,6 +1629,16 @@
         return formatted;
     }
 
+    private void GoToPayment()
+    {
+        if (!saving && ValidateInvoice()) purchaseStep = 2;
+    }
+
+    private void BackToPurchase()
+    {
+        if (!saving) purchaseStep = 1;
+    }
+
     private async Task Cancel() => await OnCancel.InvokeAsync();
 
     private Task Save() => SaveInternal(printAfterSave: false);
@@ -1548,21 +1671,33 @@
 
     private CompanyProfileDto? companyProfile;
 
-    private async Task SaveInternal(bool printAfterSave)
+    private bool ValidateInvoice()
     {
-        if (warehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return; }
-        if (partyId == 0) { Toast.Error("طرف حساب را انتخاب کنید."); return; }
-        if (!date.HasValue) { Toast.Error("تاریخ سند را وارد کنید."); return; }
+        if (warehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return false; }
+        if (partyId == 0) { Toast.Error("طرف حساب را انتخاب کنید."); return false; }
+        if (!date.HasValue) { Toast.Error("تاریخ سند را وارد کنید."); return false; }
 
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
-        if (validLines.Count == 0) { Toast.Error("حداقل یک سطر کالای معتبر وارد کنید."); return; }
+        if (validLines.Count == 0) { Toast.Error("حداقل یک سطر کالای معتبر وارد کنید."); return false; }
         if (validLines.Any(l => l.Qty != decimal.Round(l.Qty, 2, MidpointRounding.AwayFromZero)
                                 && (!l.OriginalQty.HasValue || l.Qty != l.OriginalQty.Value)))
         {
             Toast.Error("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            return false;
+        }
+        return true;
+    }
+
+    private async Task SaveInternal(bool printAfterSave)
+    {
+        if (saving || (Type == TransactionType.Purchase && purchaseStep != 2)) return;
+        if (!ValidateInvoice())
+        {
+            if (Type == TransactionType.Purchase) purchaseStep = 1;
             return;
         }
 
+        var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
         var cmd = new OrderCommand
         {
             WarehouseId = warehouseId,

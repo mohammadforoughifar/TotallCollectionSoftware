@@ -4000,3 +4000,6 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     .rr-trend { height: 170px; }
     .rr-trend-x { display: none; }
 }
+
+/* یکپارچگی سربرگ و نشانگر مراحل در فرم خرید */
+.modal-header.purchase-order-header { background: #fff; }
