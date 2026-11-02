@@ -7,22 +7,30 @@
 
 <PageTitle>@(order?.Number ?? "سفارش ویزیتوری")</PageTitle>
 
-<div class="page-head">
-    <div>
-        <h1>@(order?.Number ?? "…")</h1>
-        <p class="lead">
+<div class="vis-detail">
+<div class="vis-detail-head">
+    <div class="vis-detail-head-main">
+        <div class="vis-detail-eyebrow">سفارش ویزیتوری</div>
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <h1 class="vis-detail-title">@(order?.Number ?? "…")</h1>
             @if (order is not null)
             {
-                <span class="@VisUi.BadgeCss(order.Status)">@VisUi.StatusText(order.Status)</span>
-                <span class="ms-2">@order.PartyName — @order.Date.ToFa()</span>
+                <span class="@VisUi.BadgeCss(order.Status) vis-status">@VisUi.StatusText(order.Status)</span>
             }
-        </p>
+        </div>
+        @if (order is not null)
+        {
+            <div class="vis-detail-sub">
+                <span><i class="bi bi-person-vcard"></i> @order.PartyName</span>
+                <span><i class="bi bi-calendar3"></i> @order.Date.ToFa()</span>
+                <span><i class="bi bi-cash-coin"></i> @Fa.Money(order.TotalNet) ریال</span>
+            </div>
+        }
     </div>
-    <button class="btn btn-light ms-auto" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
-        <i class="bi bi-arrow-right"></i> فهرست
+    <button class="btn btn-light vis-back-btn" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
+        <i class="bi bi-arrow-right"></i> فهرست سفارشها
     </button>
 </div>
-
 @if (loading)
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
@@ -45,13 +53,21 @@ else
         </div>
     }
 
-    <div class="row g-3">
+    <div class="row vis-grid">
         <div class="col-12 col-lg-8">
             <div class="card">
-                <div class="card-header"><i class="bi bi-box-seam"></i><span class="card-title">اقلام سفارش</span></div>
+                <div class="card-header vis-card-header"><i class="bi bi-box-seam"></i><span class="card-title">اقلام سفارش</span></div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
+                        <table class="table table-sm align-middle mb-0 vis-detail-table">
+                            <colgroup>
+                                <col style="width:6%" />
+                                <col style="width:34%" />
+                                <col style="width:14%" />
+                                <col style="width:16%" />
+                                <col style="width:14%" />
+                                <col style="width:16%" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th>#</th>
@@ -65,7 +81,7 @@ else
                             <tbody>
                                 @foreach (var (l, i) in order.Lines.Select((l, i) => (l, i)))
                                 {
-                                    <tr>
+                                    <tr @key="l">
                                         <td class="fs-8 text-muted">@Fa.Digits(i + 1)</td>
                                         <td>
                                             <div class="fw-600 fs-8">@l.ProductName</div>
@@ -97,8 +113,8 @@ else
                 </div>
             </div>
 
-            <div class="card mt-3">
-                <div class="card-header"><i class="bi bi-clock-history"></i><span class="card-title">گردش سفارش</span></div>
+            <div class="card vis-stack">
+                <div class="card-header vis-card-header"><i class="bi bi-clock-history"></i><span class="card-title">گردش سفارش</span></div>
                 <div class="card-body">
                     @if (order.History.Count == 0)
                     {
@@ -132,7 +148,7 @@ else
 
         <div class="col-12 col-lg-4">
             <div class="card">
-                <div class="card-header"><i class="bi bi-info-circle"></i><span class="card-title">اطلاعات</span></div>
+                <div class="card-header vis-card-header"><i class="bi bi-info-circle"></i><span class="card-title">اطلاعات</span></div>
                 <div class="card-body fs-8">
                     <div class="vis-row"><span>ویزیتور</span><b>@order.ReferrerName</b></div>
                     <div class="vis-row"><span>مشتری</span><b>@order.PartyName</b></div>
@@ -162,7 +178,7 @@ else
                     </div>
                     @if (order.FinalDateSetBy is not null)
                     {
-                        <div class="fs-9 text-muted mb-1">
+                        <div class="vis-info-note">
                             تعیین‌شده توسط @order.FinalDateSetBy
                             @if (order.FinalDateSetAt is not null)
                             {
@@ -200,15 +216,16 @@ else
                 </div>
             </div>
 
-            <div class="card mt-3">
-                <div class="card-header"><i class="bi bi-lightning-charge"></i><span class="card-title">اقدام‌ها</span></div>
-                <div class="card-body d-grid gap-2">
+            <div class="card vis-stack">
+                <div class="card-header vis-card-header"><i class="bi bi-lightning-charge"></i><span class="card-title">اقدام‌ها</span></div>
+                <div class="card-body vis-actions">
                     @if (order.Status == VisOrderStatus.Submitted && me?.CanApprove != true)
                     {
                         <div class="alert alert-info py-2 px-2 fs-8 mb-1" data-edit-window>
                             <i class="bi bi-pencil-square"></i>
                             تا زمانی که مدیر سفارش را تأیید نکرده می‌توانید آن را ویرایش کنید؛
                             ویرایش، سفارش را در صف تأیید نگه می‌دارد و به مدیر اطلاع داده می‌شود.
+                            نیازی به ارسال دوباره نیست.
                         </div>
                     }
 
@@ -218,7 +235,12 @@ else
                                 @onclick="@(() => Nav.NavigateTo($"/sales/visits/{order.Id}/edit"))">
                             <i class="bi bi-pencil"></i> ویرایش
                         </button>
-                        <button class="btn btn-success" @onclick="SubmitAsync">
+                    }
+                    @* سفارش «در انتظار تأیید» قبلاً ارسال شده است؛ دکمهٔ ارسال
+                       فقط برای پیشنویس و سفارش برگشتی نمایش داده میشود. *@
+                    @if (CanSubmit)
+                    {
+                        <button class="btn btn-success" data-submit-btn @onclick="SubmitAsync">
                             <i class="bi bi-send"></i> ارسال برای تأیید
                         </button>
                     }
@@ -281,22 +303,229 @@ else
 
 <VisFinanceModal Visible="showFinance" Order="order" OnClose="@(() => showFinance = false)" OnDone="OnFinanceDone" />
 
+</div>
+
 <style>
-    .vis-row { display: flex; justify-content: space-between; gap: .5rem; padding: .25rem 0; border-bottom: 1px dashed #eef2f7; }
-    .vis-tl-item { display: flex; gap: .55rem; padding: .35rem 0; position: relative; }
-    .vis-tl-dot { width: 9px; height: 9px; border-radius: 50%; background: #2563eb; margin-top: .45rem; flex: 0 0 auto; }
-    .vis-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
-    .vis-modal { background: #fff; border-radius: 14px; padding: 1.1rem 1.2rem; width: 100%; max-width: 460px; }
-    .vis-badge { display: inline-block; font-size: .68rem; border-radius: 99px; padding: .1rem .5rem; border: 1px solid transparent; }
-    .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-    .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
-    .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
-    .vis-orange { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
-    .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
-    .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
-    .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
-    .fs-8 { font-size: .78rem; }
-    .fs-9 { font-size: .7rem; }
+/* ==========================================================================
+   طراحی یکدست «جزئیات سفارش»
+   همان مقیاس فاصلهگذاری فرم ثبت سفارش: --vis-gap برای ستونها/ردیفها،
+   --vis-pad برای حاشیهٔ کارتها و --vis-gap-sm برای عناصر داخل یک ردیف.
+   ========================================================================== */
+.vis-detail {
+    --vis-gap: 1rem;
+    --vis-gap-sm: .5rem;
+    --vis-pad: 1.15rem;
+    --vis-radius: 14px;
+    --vis-line: #e6ecf4;
+    --vis-ink: #0f172a;
+    --vis-muted: #64748b;
+    --vis-accent: #4f46e5;
+}
+/* تنها منبع فاصلهٔ بین ستونها — هم افقی و هم عمودی */
+.vis-detail .vis-grid {
+    --bs-gutter-x: var(--vis-gap);
+    --bs-gutter-y: var(--vis-gap);
+}
+.vis-detail .vis-stack { margin-top: var(--vis-gap); }
+
+/* سربرگ */
+.vis-detail .vis-detail-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--vis-gap);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: var(--vis-gap);
+    border: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius);
+    background: linear-gradient(135deg, #ffffff, #f8fafc);
+    box-shadow: 0 3px 16px rgba(15, 23, 42, .04);
+}
+.vis-detail .vis-detail-eyebrow {
+    margin-bottom: .3rem;
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--vis-accent);
+}
+.vis-detail .vis-detail-title {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 800;
+    line-height: 1.4;
+}
+.vis-detail .vis-detail-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem 1rem;
+    margin-top: var(--vis-gap-sm);
+    font-size: .78rem;
+    color: var(--vis-muted);
+}
+.vis-detail .vis-detail-sub i { margin-inline-end: .3rem; color: var(--vis-accent); }
+.vis-detail .vis-status { font-size: .72rem; padding: .2rem .6rem; }
+.vis-detail .vis-back-btn {
+    border-radius: 10px;
+    font-size: .8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.vis-detail > .alert { margin-bottom: var(--vis-gap); font-size: .78rem; }
+
+/* کارتها */
+.vis-detail .card {
+    border: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius);
+    box-shadow: 0 3px 16px rgba(15, 23, 42, .04);
+}
+.vis-detail .card-header.vis-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--vis-gap-sm);
+    padding: .8rem var(--vis-pad);
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
+    border-bottom: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius) var(--vis-radius) 0 0;
+}
+.vis-detail .vis-card-header > i { color: var(--vis-accent); font-size: .95rem; }
+.vis-detail .vis-card-header .card-title { margin: 0; font-size: .85rem; font-weight: 800; }
+.vis-detail .card-body { padding: var(--vis-pad); }
+
+/* جدول اقلام: پهنای ستونها فقط از colgroup */
+.vis-detail .vis-detail-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 660px;
+    margin: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.vis-detail .vis-detail-table > thead > tr > th {
+    padding: .65rem .7rem;
+    background: #f8fafc;
+    color: var(--vis-muted);
+    font-size: .74rem;
+    font-weight: 700;
+    border-bottom: 1px solid var(--vis-line);
+    white-space: nowrap;
+}
+.vis-detail .vis-detail-table > tbody > tr > td {
+    padding: .65rem .7rem;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: .8rem;
+    vertical-align: middle;
+}
+.vis-detail .vis-detail-table > tfoot > tr > td {
+    padding: .6rem .7rem;
+    border-top: 1px solid var(--vis-line);
+    border-bottom: 0;
+}
+.vis-detail .vis-detail-table > tfoot > tr:last-child > td {
+    background: #f8fafc;
+    font-weight: 800;
+}
+
+/* ردیفهای اطلاعات: فاصلهٔ یکسان و تراز یکدست برچسب / مقدار */
+.vis-detail .vis-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .5rem 0;
+    border-bottom: 1px dashed #eef2f7;
+    font-size: .8rem;
+}
+.vis-detail .vis-row > span { flex: 0 1 auto; color: var(--vis-muted); }
+.vis-detail .vis-row > b {
+    min-width: 0;
+    text-align: end;
+    overflow-wrap: anywhere;
+    color: var(--vis-ink);
+    font-weight: 700;
+}
+.vis-detail .vis-info-note {
+    padding: .3rem 0;
+    font-size: .72rem;
+    color: var(--vis-muted);
+}
+.vis-detail .card-body > .alert { margin-top: var(--vis-gap); margin-bottom: 0; }
+
+/* گردش سفارش */
+.vis-detail .vis-tl-item {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+    padding: .55rem 0;
+    border-bottom: 1px dashed #eef2f7;
+}
+.vis-detail .vis-tl-item:last-child { border-bottom: 0; }
+.vis-detail .vis-tl-dot {
+    width: 9px;
+    height: 9px;
+    margin-top: .5rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--vis-accent);
+    box-shadow: 0 0 0 3px #eef2ff;
+}
+
+/* اقدامها */
+.vis-detail .vis-actions { display: grid; gap: var(--vis-gap-sm); }
+.vis-detail .vis-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    padding: .6rem .9rem;
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+}
+.vis-detail .vis-actions .alert {
+    margin: 0 0 .25rem;
+    font-size: .74rem;
+    line-height: 1.7;
+}
+
+/* پنجرهٔ تصمیم */
+.vis-detail .vis-modal-back {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .5);
+}
+.vis-detail .vis-modal {
+    width: 100%;
+    max-width: 460px;
+    padding: 1.25rem;
+    border-radius: var(--vis-radius);
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, .25);
+}
+
+/* نشانهای وضعیت */
+.vis-detail .vis-badge {
+    display: inline-block;
+    padding: .1rem .5rem;
+    border: 1px solid transparent;
+    border-radius: 99px;
+    font-size: .68rem;
+}
+.vis-detail .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.vis-detail .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.vis-detail .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.vis-detail .vis-orange { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+.vis-detail .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
+.vis-detail .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.vis-detail .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
+
+@@media (max-width: 767.98px) {
+    .vis-detail { --vis-gap: .75rem; --vis-pad: .9rem; }
+}
 </style>
 
 @code {
@@ -311,6 +540,14 @@ else
     private string? comment;
 
     /// <summary>ویرایش تا زمانی که مدیر تأیید نکرده: پیش‌نویس، ارسال‌شده و برگشتی.</summary>
+    /// <summary>
+    /// ارسال فقط برای پیشنویس یا سفارش برگشتی مجاز است. سفارش «در انتظار تأیید»
+    /// قبلاً ارسال شده است، پس دکمهٔ «ارسال برای تأیید» نباید دیده شود.
+    /// </summary>
+    private bool CanSubmit => order is not null
+        && order.Status is VisOrderStatus.Draft or VisOrderStatus.Returned
+        && (me?.CanCreate == true || me?.CanApprove == true);
+
     private bool CanEdit => order is not null
         && order.Status is VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned
         && (me?.CanCreate == true || me?.CanApprove == true);

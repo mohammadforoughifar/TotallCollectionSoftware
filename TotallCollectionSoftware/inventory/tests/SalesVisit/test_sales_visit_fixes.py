@@ -7,6 +7,8 @@
   ۱) فرم «همهٔ درخواستها»: پهنای ستونها ثابت و مستقل از reflow/رندر مجدد تب.
   ۲) «ثبت سفارش» در کارتابل ویزیتور: هیچ مسیری پاسخ null / NullReferenceException
      به کلاینت برنگرداند.
+  ۳) طراحی یکدست فرمهای «ثبت سفارش» و «جزئیات سفارش» + حذف دکمهٔ ارسال
+     برای سفارش «در انتظار تأیید».
 """
 import re
 import unittest
@@ -15,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2] / "src"
 ALL_REQUESTS = ROOT / "Inventory.Client/Pages/SalesVisit/AllRequests.razor"
 VISIT_FORM = ROOT / "Inventory.Client/Pages/SalesVisit/VisitForm.razor"
+VISIT_DETAIL = ROOT / "Inventory.Client/Pages/SalesVisit/VisitDetail.razor"
 SERVICE = ROOT / "Inventory.Api/Services/SalesVisit/VisOrderService.cs"
 CONTROLLER = ROOT / "Inventory.Api/Controllers/SalesVisit/SalesVisitController.cs"
 
@@ -104,6 +107,78 @@ class OrderSaveNullSafetyTests(unittest.TestCase):
         self.assertLess(guard, number, "نالچک باید پیش از دسترسی به saved.Number باشد")
         self.assertIn("model.DeliveryDate = deliveryDate?.Date ?? DateTime.Today;", self.form)
         self.assertIn("if (created is null)", self.form)
+
+
+class VisitFormsDesignTests(unittest.TestCase):
+    """فاصلهگذاری یکدست و دکمهٔ ارسال فقط برای پیشنویس/برگشتی."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.form = read(VISIT_FORM)
+        cls.detail = read(VISIT_DETAIL)
+        cls.form_markup = cls.form[: cls.form.index("<style>")]
+        cls.detail_markup = cls.detail[: cls.detail.index("<style>")]
+
+    # ---------- طراحی / فاصلهها ----------
+    def test_both_forms_share_one_spacing_scale(self):
+        for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
+            with self.subTest(page=name):
+                self.assertRegex(src, r"--vis-gap:\s*1rem")
+                self.assertRegex(src, r"--vis-pad:\s*1\.15rem")
+                self.assertRegex(src, r"--vis-gap-sm:\s*\.5rem")
+                self.assertIn("--bs-gutter-x: var(--vis-gap)", src)
+                self.assertIn("--bs-gutter-y: var(--vis-gap)", src,
+                              "فاصلهٔ عمودی و افقی ستونها باید یکسان باشد")
+
+    def test_no_mixed_gutters_left_in_order_form(self):
+        # ردیفهای تودرتوی قدیمی با g-2 و mt-1 حذف شدهاند
+        self.assertNotIn('<div class="row g-2">', self.form_markup)
+        self.assertNotIn('row g-2 mt-1', self.form_markup)
+        self.assertNotIn('ms-auto fs-8 text-muted ms-2', self.form_markup,
+                         "کلاسهای margin دوتایی باعث فاصلهٔ ناهماهنگ سربرگ بودند")
+        self.assertEqual(self.form_markup.count('class="row vis-grid"'), 1)
+
+    def test_both_tables_use_explicit_columns_and_fixed_layout(self):
+        for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
+            with self.subTest(page=name):
+                cols = re.findall(r"<col\b[^>]*style=\"width:\s*\d+%\"[^>]*/?>", src)
+                self.assertGreaterEqual(len(cols), 6, "پهنای ستونها باید صریح باشد")
+                self.assertIn("table-layout: fixed", src)
+                self.assertIn("min-width:", src)
+
+    def test_cards_have_a_unified_header_and_padding(self):
+        self.assertIn("vis-card-header", self.form)
+        self.assertIn("vis-card-header", self.detail)
+        self.assertIn(".vis-form .card-body { padding: var(--vis-pad); }", self.form)
+        self.assertIn(".vis-detail .card-body { padding: var(--vis-pad); }", self.detail)
+
+    # ---------- دکمهٔ ارسال ----------
+    def test_detail_submit_button_only_for_draft_or_returned(self):
+        can = self.detail[self.detail.index("private bool CanSubmit"):]
+        can = can[: can.index("private bool CanEdit")]
+        self.assertIn("VisOrderStatus.Draft", can)
+        self.assertIn("VisOrderStatus.Returned", can)
+        self.assertNotIn("VisOrderStatus.Submitted", can,
+                         "سفارش در انتظار تأیید نباید قابل ارسال مجدد باشد")
+        # دکمه داخل شرط CanSubmit است، نه داخل بلوک CanEdit
+        edit_block = self.detail_markup[self.detail_markup.index("@if (CanEdit)"):]
+        edit_block = edit_block[: edit_block.index("@if (CanSubmit)")]
+        self.assertNotIn("ارسال برای تأیید", edit_block)
+        self.assertIn("data-submit-btn", self.detail_markup)
+
+    def test_order_form_hides_submit_when_editing_submitted_order(self):
+        self.assertIn("private bool CanSubmit => Id == 0", self.form)
+        self.assertIn("originalStatus = o.Status;", self.form)
+        self.assertIn("@if (CanSubmit)", self.form_markup)
+        self.assertIn("@if (!CanSubmit)", self.form_markup)
+        self.assertIn("data-pending-note", self.form_markup)
+        self.assertIn("model.SubmitAfterSave = submit && CanSubmit;", self.form)
+        self.assertIn("if (!CanSubmit) submit = false;", self.form)
+
+    def test_preview_assets_exist(self):
+        folder = Path(__file__).resolve().parent
+        self.assertTrue((folder / "visit-forms-preview.html").is_file())
+        self.assertTrue((folder / "serve_preview.py").is_file())
 
 
 if __name__ == "__main__":
