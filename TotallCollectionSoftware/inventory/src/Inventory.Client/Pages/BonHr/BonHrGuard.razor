@@ -60,6 +60,9 @@ else
     /// <summary>کلید بخش — یکی از مقادیر BonHrNav.Items.Section مثل Employees یا Attendance</summary>
     [Parameter] public string Section { get; set; } = "";
 
+    /// <summary>اکشن مورد نیاز: View / Create / Update / Delete (پیش‌فرض: View)</summary>
+    [Parameter] public string Action { get; set; } = "View";
+
     /// <summary>عنوان فارسی بخش برای نمایش در پیام عدم دسترسی (پیش‌فرض: از فهرست منو)</summary>
     [Parameter] public string? SectionTitle { get; set; }
 
@@ -78,7 +81,8 @@ else
     private bool Allowed =>
         Auth.IsAdmin
         || Auth.Has("RadisHr.Access")
-        || (!string.IsNullOrWhiteSpace(Section) && Auth.Has("RadisHr." + Section));
+        || (!string.IsNullOrWhiteSpace(Section)
+            && (Auth.Has($"RadisHr.{Section}") || Auth.Has($"RadisHr.{Section}.{Action}")));
 
     private void GoHome() => Nav.NavigateTo("");
 }

@@ -830,6 +830,22 @@
                 ModuleActionNames[$"{ShopSections.Module}.{shopSection.Key}.Manage"] =
                     $"{shopSection.Title} — ثبت، ویرایش و حذف";
         }
+
+        // ================== برچسب‌های فارسی مجوزهای بن‌سازه ==================
+        foreach (var bhSection in BonHrSections.All)
+        {
+            ModuleActionNames[$"{BonHrSections.Module}.{bhSection.Key}.View"] =
+                $"{bhSection.Title} — مشاهدهٔ بخش و منو";
+            if (bhSection.CreatePermission is not null)
+                ModuleActionNames[$"{BonHrSections.Module}.{bhSection.Key}.Create"] =
+                    $"{bhSection.Title} — ثبت/ایجاد";
+            if (bhSection.UpdatePermission is not null)
+                ModuleActionNames[$"{BonHrSections.Module}.{bhSection.Key}.Update"] =
+                    $"{bhSection.Title} — ویرایش/ذخیره";
+            if (bhSection.DeletePermission is not null)
+                ModuleActionNames[$"{BonHrSections.Module}.{bhSection.Key}.Delete"] =
+                    $"{bhSection.Title} — حذف";
+        }
     }
 
     private static string GetActionLabel(string module, string action)

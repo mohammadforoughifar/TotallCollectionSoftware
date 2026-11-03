@@ -204,13 +204,16 @@
                 <div class="nav-group-items">
                     @foreach (var item in BonHrNav.Items)
                     {
-                        @if (CanSeeBonHrSection(item.Section))
-                        {
+                        var section = BonHrSections.ByKey(item.Section);
+                        if (section is null || !CanSeeBonHrSection(section)) continue;
                         <NavLink class="nav-link" href="@item.Href" Match="@(item.Href == "bon-hr" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="NotifyClose">
                             <i class="bi @item.Icon"></i><span>@item.Label</span>
+                            @if (section.CreatePermission is not null && !Auth.Has(section.CreatePermission))
+                            {
+                                <span class="badge bg-light text-muted ms-1" title="فقط مشاهده">👁</span>
+                            }
                         </NavLink>
                         }
-                    }
                 </div>
             }
         </div>
@@ -872,7 +875,11 @@
 </div>
 
 @code {
-    private bool CanSeeBonHrSection(string section) => Auth.Has("RadisHr.Access") || Auth.Has("RadisHr."+section) || (section=="EmployeeEntry" && (Auth.Has("RadisHr.EmployeeCreate") || Auth.Has("RadisHr.EmployeeUpdate")));
+    private bool CanSeeBonHrSection(BonHrSection section) =>
+        Auth.IsAdmin
+        || Auth.Has("RadisHr.Access")
+        || Auth.Has(section.ViewPermission)
+        || Auth.Has($"RadisHr.{section.LegacyModule}");
 
     [Parameter] public int ReorderCount { get; set; }
     [Parameter] public int NewSystemsCount { get; set; }

@@ -20,14 +20,18 @@
                 {
                     <HrWorkspaceShell>
                         <ShopSectionGate Path="@t.Key">
-                            <RouteView RouteData="@t.RouteData" />
+                            <BonHrSectionGate Path="@t.Key" Action="View">
+                                <RouteView RouteData="@t.RouteData" />
+                            </BonHrSectionGate>
                         </ShopSectionGate>
                     </HrWorkspaceShell>
                 }
                 else
                 {
                     <ShopSectionGate Path="@t.Key">
-                        <RouteView RouteData="@t.RouteData" />
+                        <BonHrSectionGate Path="@t.Key" Action="View">
+                            <RouteView RouteData="@t.RouteData" />
+                        </BonHrSectionGate>
                     </ShopSectionGate>
                 }
             </div>
