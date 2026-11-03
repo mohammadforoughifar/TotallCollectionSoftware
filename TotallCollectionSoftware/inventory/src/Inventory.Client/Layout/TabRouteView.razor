@@ -12,7 +12,9 @@
 
 @if (bypass)
 {
-    <RouteView RouteData="@RouteData" DefaultLayout="@typeof(MainLayout)" />
+    <ShopSectionGate Path="@rel">
+        <RouteView RouteData="@RouteData" DefaultLayout="@typeof(MainLayout)" />
+    </ShopSectionGate>
 }
 else
 {
@@ -25,6 +27,7 @@ else
     [Parameter] public RouteData RouteData { get; set; } = default!;
 
     private bool bypass;
+    private string rel = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -34,7 +37,7 @@ else
 
     protected override void OnParametersSet()
     {
-        var rel = Nav.ToBaseRelativePath(Nav.Uri);
+        rel = Nav.ToBaseRelativePath(Nav.Uri);
 
         bypass = !Auth.IsLoggedIn
                  || TabService.IsExcluded(rel)

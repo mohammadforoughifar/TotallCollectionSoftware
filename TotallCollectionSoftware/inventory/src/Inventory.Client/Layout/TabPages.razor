@@ -14,15 +14,21 @@
         @if (t.RouteData is not null)
         {
             <div class="tabpane-body" @key="t.Version">
+                @* نگهبان «سامانه فروشگاهی»: هر بخش فقط با مجوز همان بخش باز می‌شود
+                   (ورود مستقیم با آدرس هم پوشش داده می‌شود، نه فقط پنهان‌کردن آیتم منو) *@
                 @if (HrNavigation.IsWorkspace(t.Key) && !ForoughAryaHrNavigation.IsWorkspace(t.Key))
                 {
                     <HrWorkspaceShell>
-                        <RouteView RouteData="@t.RouteData" />
+                        <ShopSectionGate Path="@t.Key">
+                            <RouteView RouteData="@t.RouteData" />
+                        </ShopSectionGate>
                     </HrWorkspaceShell>
                 }
                 else
                 {
-                    <RouteView RouteData="@t.RouteData" />
+                    <ShopSectionGate Path="@t.Key">
+                        <RouteView RouteData="@t.RouteData" />
+                    </ShopSectionGate>
                 }
             </div>
         }

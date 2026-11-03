@@ -2,6 +2,7 @@
 @inject HttpClient Http
 @inject IToastService Toast
 @inject IJSRuntime JS
+@using Inventory.Shared
 
 <PageTitle>مدیریت نقش‌ها و دسترسی‌ها</PageTitle>
 
@@ -494,6 +495,12 @@
 
     private static readonly List<PermCategory> ModuleCategories = new()
     {
+        // دستهٔ «هر بخش سامانه فروشگاهی» — هر آیتم منوی سامانه فروشگاهی یک مجوز مستقل دارد
+        // (Shop.{Section}.View و برای بخش‌های عملیاتی Shop.{Section}.Manage).
+        // این فهرست از Inventory.Shared/ShopSections.cs ساخته می‌شود؛ همان فهرستی که منو را
+        // می‌سازد، پس همیشه با منو یکی است.
+        new() { Title = "سامانه فروشگاهی — دسترسی هر بخش (خرید، فروش، بیجک، تعمیرات، تسویه، اطلاعات پایه و گزارش‌ها)", Icon = "bi-shop", Modules = new[] { ShopSections.Module } },
+
         new() { Title = "سامانه فروشگاهی — فروش، مالی و مودیان", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties", "Customers", "Suppliers", "SalesVisit", "Moadian", "ShopGuide" } },
 
         new() { Title = "معرف‌ها و پنل معرف", Icon = "bi-person-badge", Modules = new[] { "Referrers", "ReferrerWallets", "ReferrerPanel" } },
@@ -522,6 +529,7 @@
     // ==================== ترجمه فارسی ====================
     private static readonly Dictionary<string, string> ModuleNames = new()
     {
+        [ShopSections.Module] = "سامانه فروشگاهی — دسترسی هر بخش (یک تیک برای هر بخش)",
         ["Products"] = "کالاها",
         ["Stock"] = "موجودی انبار",
         ["Orders"] = "فروش / فاکتورها",
@@ -806,6 +814,23 @@
         ["AiAssistant.Use"] = "استفاده از دستیار هوش مصنوعی",
         ["AiAssistant.Manage"] = "مدیریت تنظیمات و قواعد هوش مصنوعی"
     };
+
+    /// <summary>
+    /// برچسب فارسی اکشن‌های ماژول «Shop» به‌صورت خودکار از فهرست بخش‌ها ساخته می‌شود؛
+    /// بنابراین با افزودن یک بخش جدید به <see cref="ShopSections"/>، نامش در تنظیمات هم
+    /// بی‌درنگ دیده می‌شود و نیازی به ویرایش دستی دیکشنری نیست.
+    /// </summary>
+    static Roles()
+    {
+        foreach (var shopSection in ShopSections.All)
+        {
+            ModuleActionNames[$"{ShopSections.Module}.{shopSection.Key}.View"] =
+                $"{shopSection.Title} — مشاهدهٔ بخش و منو";
+            if (shopSection.Writable)
+                ModuleActionNames[$"{ShopSections.Module}.{shopSection.Key}.Manage"] =
+                    $"{shopSection.Title} — ثبت، ویرایش و حذف";
+        }
+    }
 
     private static string GetActionLabel(string module, string action)
     {

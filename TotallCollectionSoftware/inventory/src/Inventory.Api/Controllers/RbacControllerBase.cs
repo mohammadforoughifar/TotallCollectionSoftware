@@ -35,10 +35,35 @@ public abstract class RbacControllerBase : ApiControllerBase
             // اعطای permission باید از طریق Role و به‌صورت module-scoped انجام شود.
             return false;
         }
-        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+        var direct = await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == module && p.Action == action);
+        return direct || await ShopSectionAllowsAsync(module, action);
+    }
+
+    /// <summary>
+    /// مجوزهای «بخش‌های سامانه فروشگاهی» (<c>Shop.{Section}.View/Manage</c>) به‌عنوان جایگزین
+    /// (نه افزودنی اجباری) برای مجوزهای قدیمی همان بخش پذیرفته می‌شوند؛ بنابراین نقشی که فقط
+    /// «فروش» را گرفته، در همان بخش کار می‌کند و لازم نیست مدیر مجوز قدیمی <c>Orders</c> را هم بدهد.
+    /// </summary>
+    private async Task<bool> ShopSectionAllowsAsync(string module, string action)
+    {
+        if (!Inventory.Shared.ShopSections.All.Any(s => s.LegacyModules.Any(m => m.Equals(module, StringComparison.OrdinalIgnoreCase))))
+            return false; // این ماژول ربطی به سامانه فروشگاهی ندارد — کوئری اضافی هم نمی‌زنیم
+
+        var granted = await Db.UserRoles
+            .Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .Where(p => p.Module == Inventory.Shared.ShopSections.Module)
+            .Select(p => p.Action)
+            .ToListAsync();
+        if (granted.Count == 0) return false;
+
+        var requested = $"{module}.{action}";
+        return granted.Any(a => Inventory.Shared.ShopSections.AliasAllows(
+            requested, $"{Inventory.Shared.ShopSections.Module}.{a}"));
     }
 
     /// <summary>اگر مجوز را نداشت 403 می‌دهد.</summary>
@@ -56,10 +81,15 @@ public abstract class RbacControllerBase : ApiControllerBase
             if (legacy == "Admin") return true;
             return false;
         }
-        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+        var direct = await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == module && actions.Contains(p.Action));
+        if (direct) return true;
+
+        foreach (var action in actions)
+            if (await ShopSectionAllowsAsync(module, action)) return true;
+        return false;
     }
 
     /// <summary>اگر هیچ‌کدام از مجوزها را نداشت 403 می‌دهد.</summary>

@@ -231,7 +231,16 @@ public static class RbacSeeder
         ["LetterStructures"] = new[] { "Read", "Update" },
         // ================== هوش مصنوعی فروغ آریا ==================
         // Use: گفتگو با دستیار + هوش نامه‌ها + منشی کارمندی | Manage: مدیریت (آینده)
-        ["AiAssistant"] = new[] { "Use", "Manage" }
+        ["AiAssistant"] = new[] { "Use", "Manage" },
+        // ================== سامانه فروشگاهی — دسترسی تفکیکی «هر بخش» ==================
+        // هر آیتم منوی «سامانه فروشگاهی» یک مجوز مستقل دارد تا مدیر بتواند مثلاً فقط
+        // «فروش» و «کالاها» را به یک نقش بدهد و «خرید»، «تسویه» یا «اطلاعات پایه» را ندهد:
+        //   Shop.{Section}.View   → دیدن بخش در منو و باز شدن صفحهٔ آن
+        //   Shop.{Section}.Manage → ثبت/ویرایش/حذف در همان بخش (فقط بخش‌های عملیاتی)
+        // فهرست بخش‌ها در Inventory.Shared/ShopSections.cs است (منبع واحد حقیقت)؛ همین
+        // فهرست منوی کناری و نگهبان مسیر صفحه را هم می‌سازد، پس این دو هرگز از هم جدا نمی‌شوند.
+        // مجوزهای قدیمی (Orders، GoodsIssues، Products، …) برای سازگاری معتبر می‌مانند.
+        [Inventory.Shared.ShopSections.Module] = Inventory.Shared.ShopSections.AllActions
     };
 
     public static async Task SeedAsync(AppDbContext db)
