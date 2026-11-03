@@ -58,67 +58,67 @@ public static class ShopSections
     public static readonly ShopSection[] All =
     [
         new("Dashboard",       "داشبورد عملیاتی (خرید، فروش و تعمیرات)", "bi-bar-chart-line", false,
-            ["Orders", "Repairs"], ["operations/reports/dashboard"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Purchase",        "خرید (رسید خرید)",                        "bi-bag-plus",       true,
-            ["Orders"], ["orders/purchase"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Sale",            "فروش (فاکتور فروش)",                       "bi-cart3",          true,
-            ["Orders"], ["orders/sale"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("GoodsIssue",      "بیجک (حوالهٔ تحویل کالا)",                 "bi-box-seam",       true,
-            ["GoodsIssues"], ["goods-issues"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Repairs",         "تعمیرات",                                  "bi-tools",          true,
-            ["Repairs"], ["repairs"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Expenses",        "هزینه‌ها",                                 "bi-cash-coin",      true,
-            ["Expenses"], ["expenses"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Installments",    "مدیریت اقساط و چک‌ها",                     "bi-wallet2",        true,
-            ["Orders", "TrsVouchers", "TrsCheques"], ["shop/credit-management"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("OpeningBalance",  "افتتاح حساب و مانده‌های اولیه",             "bi-box-arrow-in-right", true,
-            ["Orders", "Stock"], ["shop/opening-balance"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Settlement",      "تسویه فاکتورها",                           "bi-cash-stack",     true,
-            ["TrsVouchers"], ["trs/vouchers"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Kardex",          "کاردکس کالا (تعداد و ریالی)",              "bi-list-ol",        false,
-            ["ReportPages"], ["operations/reports/kardex-quantity", "operations/reports/kardex-rial", "reports/kardex"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("OrderReports",    "گزارش خرید و فروش",                        "bi-graph-up-arrow", false,
-            ["Orders"], ["operations/reports/orders/purchase", "operations/reports/orders/sale"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("PartyStatements", "گزارش طلب و بدهی اشخاص",                   "bi-journal-check",  false,
-            ["Orders", "Parties"], ["operations/reports/party-statements"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Products",        "کالاها",                                   "bi-box-seam",       true,
-            ["Products"], ["products"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Categories",      "گروه‌های کالا",                            "bi-tags",           true,
-            ["Products"], ["categories"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Units",           "واحدهای شمارش",                            "bi-rulers",         true,
-            ["Products"], ["units"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Warehouses",      "انبارها",                                  "bi-building",       true,
-            ["Warehouses"], ["warehouses"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Parties",         "طرف حساب‌ها (مشتری و تأمین‌کننده)",         "bi-people",         true,
-            ["Parties", "Customers", "Suppliers"], ["parties"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Referrers",       "معرف‌ها",                                  "bi-person-badge",   true,
-            ["Referrers"], ["referrers"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Banks",           "بانک، صندوق و کارتخوان (POS)",             "bi-wallet2",        true,
-            ["TrsAccounts"], ["trs/accounts"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("SalesVisit",      "فروش و ویزیتوری (سفارش میدانی)",           "bi-person-walking", true,
-            ["SalesVisit"], ["sales/visits", "sales/requests", "sales/approvals", "sales/finance-queue"]),
+            Array.Empty<string>(), Array.Empty<string>()),
 
         new("Guide",           "راهنمای سامانه فروشگاهی",                   "bi-journal-check",  false,
-            ["ShopGuide"], ["shop-guide"])
+            Array.Empty<string>(), Array.Empty<string>())
     ];
 
     private static readonly Dictionary<string, ShopSection> ByKeyMap =
