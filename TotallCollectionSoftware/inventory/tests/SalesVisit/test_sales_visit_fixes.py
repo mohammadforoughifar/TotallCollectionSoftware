@@ -10,8 +10,10 @@
   ۳) طراحی یکدست فرمهای «ثبت سفارش» و «جزئیات سفارش» + حذف دکمهٔ ارسال
      برای سفارش «در انتظار تأیید».
   ۴) اعمال نهایی طرح: حذف سرچ سراسری کالا و هرگونه اسکرول داخلی، کمبوباکس مستقل
-     در هر سطر با باز شدن خودکار هنگام F2، تراکم فشردهٔ تبلت/موبایل، نوار بازبینی
-     سهتایی و نوار اقدام چسبان؛ پالت app.css بدون تغییر.
+     در هر سطر، تراکم فشردهٔ تبلت/موبایل، نوار بازبینی سهتایی؛ پالت بدون تغییر.
+  ۵) رفع پرش/بازنشدن کمبوی کالا و بههمریختگی موبایل: کمبوی درونسطری بدون منوی
+     fixed/بدون فوکوس، گرید ۲ ستونهٔ مقاوم به عرض، و حذف نوار اقدام چسبان متداخل
+     با app-bottom-nav.
 """
 import re
 import unittest
@@ -178,35 +180,56 @@ class VisitFormsDesignTests(unittest.TestCase):
                                 "در حالت ویرایش، فهرست کالاها باید پس از خواندن سفارش "
                                 "از انبار واقعی آن دوباره بارگیری شود")
 
-    def test_every_line_has_its_own_product_combo_opened_by_f2(self):
-        self.assertIn('Items="productLookup"', self.form_markup)
-        self.assertIn('AutoOpen="@(ReferenceEquals(l, autoOpenLine))"', self.form_markup)
-        self.assertIn('NoScrollMenu="true"', self.form_markup)
-        self.assertIn('MaxVisible="5"', self.form_markup)
+    def test_every_line_has_its_own_inline_product_combo_opened_by_f2(self):
+        self.assertIn('class="vis-combo"', self.form_markup)
+        self.assertIn('@onfocus="@(() => OpenCombo(l))"', self.form_markup)
+        self.assertIn('@oninput="e => OnComboInput(l, e.Value?.ToString())"', self.form_markup)
+        self.assertIn('data-combo-menu', self.form_markup)
+        self.assertIn('@onclick="@(() => PickCombo(l, opt.Id))"', self.form_markup)
         self.assertIn('data-hotkey="f2"', self.form_markup)
-        self.assertIn("autoOpenLine = line;", self.form)
-        self.assertIn("autoOpenLine = null;", self.form,
-                      "پس از ریست فرم، هیچ سطری نباید همچنان AutoOpen بماند")
+        self.assertIn("comboLine = line;", self.form)
+        self.assertIn("CloseCombo();", self.form)
+        self.assertIn("private List<LookupItem> ComboMatches()", self.form)
+        self.assertIn(".Take(5).ToList()", self.form)
         self.assertIn('@onclick="AddEmptyLine"', self.form_markup)
 
-    def test_search_select_supports_auto_open_and_tight_menu(self):
-        ss = read(SEARCH_SELECT)
-        self.assertIn("[Parameter] public bool AutoOpen", ss)
-        self.assertIn("[Parameter] public bool NoScrollMenu", ss)
-        self.assertIn("OnAfterRenderAsync(bool firstRender)", ss)
-        self.assertIn("_input.FocusAsync(true)", ss)
-        self.assertIn('ss-menu--tight', ss)
+    def test_combo_has_no_fixed_menu_focus_or_js_positioning(self):
+        css = self.form[self.form.index('<style>'):]
+        c0 = css.index('.vis-form .vis-combo {')
+        c1 = css.index('.vis-form .vis-empty {', c0)
+        combo_css = css[c0:c1]
+        self.assertNotIn("position: fixed", combo_css,
+                         "منوی fixed همراه uiRect/Popover.Below روی موبایل میپرید")
+        self.assertNotIn("uiRect", self.form)
+        self.assertNotIn("FocusAsync", self.form)
+        self.assertNotIn("OnAfterRenderAsync", self.form)
+        self.assertNotIn("AutoOpen", self.form)
+        self.assertNotIn("NoScrollMenu", self.form)
+        # منو در جریان عادی صفحه است و اسکرول داخلی نمیسازد
+        self.assertIn(".vis-form .vis-combo-menu", css)
+        self.assertNotRegex(self.form, r"\.vis-combo-menu[^}]*overflow\s*:")
 
-    def test_compact_density_and_sticky_action_bar(self):
+    def test_shared_search_select_is_restored_untouched(self):
+        ss = read(SEARCH_SELECT)
+        for gone in ("AutoOpen", "NoScrollMenu", "OnAfterRenderAsync", "FocusAsync", "ss-menu--tight"):
+            self.assertNotIn(gone, ss,
+                             f"کامپوننت مشترک نباید برای این فرم دستکاری شود: {gone}")
+        self.assertIn('<div class="ss-menu" style="@MenuStyle"', ss)
+
+    def test_compact_density_and_no_overlapping_sticky_bar(self):
         for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
             with self.subTest(page=name):
                 self.assertIn("@@media (max-width: 1080px)", src)
                 self.assertIn("@@media (max-width: 720px)", src)
-                self.assertIn("position: sticky; bottom: 0", src)
-                self.assertIn('"qty price disc total"', src,
-                              "ردیف کالا روی موبایل/تبلت فقط ۲ ردیف است")
-                self.assertGreaterEqual(src.count("grid-template-areas"), 2,
-                                       "چیدمان دسکتاپ و چیدمان فشرده هر دو باید تعریف شوند")
+                self.assertIn('"name name" "qty price" "disc total"', src,
+                              "گرید فشرده ۲ ستونه است؛ سلولها روی عرض باریک له نمیشوند")
+                self.assertIn("repeat(2, minmax(0, 1fr)) !important", src)
+                self.assertIn("overflow-x: clip", src,
+                              "هیچ سرریز افقی نباید صفحه را پهن کند")
+                self.assertNotIn("position: sticky; bottom: 0", src,
+                                 "نوار اقدام چسبان با app-bottom-nav ثابت تداخل داشت")
+                self.assertIn("position: static", src)
+                self.assertGreaterEqual(src.count("grid-template-areas"), 2)
 
     def test_business_rules_survive_the_redesign(self):
         self.assertIn("data-stock-alarm", self.form_markup)

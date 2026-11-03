@@ -302,6 +302,7 @@ else
    --vis-pad برای حاشیهٔ کارتها و --vis-gap-sm برای عناصر داخل یک ردیف.
    ========================================================================== */
 .vis-detail {
+    max-width: 100%; overflow-x: clip;
     --vis-gap: 1rem;
     --vis-gap-sm: .5rem;
     --vis-pad: 1.15rem;
@@ -312,6 +313,7 @@ else
     --vis-accent: #4f46e5;
 }
 /* تنها منبع فاصلهٔ بین ستونها — هم افقی و هم عمودی */
+.vis-detail, .vis-detail * { box-sizing: border-box; }
 .vis-detail .vis-grid {
     --bs-gutter-x: var(--vis-gap);
     --bs-gutter-y: var(--vis-gap);
@@ -563,58 +565,55 @@ else
 .vis-detail .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
 
 /* ---------- تراکم فشرده: موبایل و تبلت ----------
-   همان دلیل VisitForm: container-type یعنی contain:layout و منوهای شناور
-   position:fixed برنامه را جابهجا میکند؛ پس شکستها عرض نما هستند. */
+   گرید ۲ ستونهٔ مقاوم به عرض پنل (نه عرض پنجره)؛ نوار اقدام ثابت نیست، چون
+   .app-bottom-nav ثابت اپ موبایل (۶۲px / z=1040) روی آن قرار میگرفت. */
 @@media (max-width: 1080px) {
-    .vis-detail { --vis-gap: .6rem; --vis-gap-sm: .35rem; --vis-pad: .7rem; --vis-radius: 11px; line-height: 1.5; }
-    .vis-detail .vis-detail-head { padding: .55rem .7rem; }
-    .vis-detail .vis-detail-title { font-size: .95rem; }
-    .vis-detail .vis-detail-sub { font-size: .7rem; margin-top: .2rem; }
-    .vis-detail .vis-back-btn .bi { font-size: .8rem; }
-    .vis-detail .card-header.vis-card-header { padding: .4rem .6rem; }
-    .vis-detail .card-header.vis-card-header .card-title { font-size: .78rem; }
+    .vis-detail { --vis-gap: .5rem; --vis-gap-sm: .3rem; --vis-pad: .6rem; --vis-radius: 11px; line-height: 1.45; }
+    .vis-detail .vis-detail-head { padding: .45rem .6rem; }
+    .vis-detail .vis-detail-title { font-size: .9rem; }
+    .vis-detail .vis-detail-sub { font-size: .68rem; margin-top: .15rem; }
+    .vis-detail .card-header.vis-card-header { padding: .35rem .55rem; }
+    .vis-detail .card-header.vis-card-header .card-title { font-size: .76rem; }
     .vis-detail .card-body { padding: var(--vis-pad); }
     .vis-detail .vis-detail-lines-head { display: none; }
-    .vis-detail .vis-detail-lines-head,
     .vis-detail .vis-detail-line {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-areas: "idx name name name" "qty price disc total";
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-areas: "name name" "qty price" "disc total" !important;
         row-gap: var(--vis-gap-sm);
-    }
-    .vis-detail .vis-detail-line { padding: var(--vis-gap-sm); }
-    .vis-detail .vis-cell-label { display: block; font-size: .58rem; line-height: 1.25; margin-bottom: 0; }
-    .vis-detail .vis-cell > b { font-size: .72rem; }
-    .vis-detail .vis-cell-note { font-size: .62rem; }
-    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .vis-detail .vis-kpi { padding: .35rem .45rem; }
-    .vis-detail .vis-kpi > span { font-size: .6rem; }
-    .vis-detail .vis-kpi > b { font-size: .76rem; }
-    .vis-detail .vis-kpi small { display: none; }
-    .vis-detail .vis-kpi-total > b { font-size: .88rem; }
-    .vis-detail .vis-row { padding: .3rem 0; font-size: .72rem; }
-    .vis-detail .vis-tl-item { padding: .25rem 0; border-bottom: 0; font-size: .72rem; }
-    .vis-detail .vis-tl-dot { margin-top: .35rem; }
-    .vis-detail .vis-actions {
-        position: sticky; bottom: 0; z-index: 20;
         padding: var(--vis-gap-sm);
-        border-radius: var(--vis-radius);
-        background: #fff;
-        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
     }
-    .vis-detail .vis-actions .btn { padding: .45rem; font-size: .7rem; }
+    .vis-detail .vis-detail-line:hover { transform: none; }
+    .vis-detail .c-idx { display: none; }
+    .vis-detail .c-name { grid-area: name; }
+    .vis-detail .c-qty { grid-area: qty; }
+    .vis-detail .c-price { grid-area: price; }
+    .vis-detail .c-disc { grid-area: disc; }
+    .vis-detail .c-total { grid-area: total; }
+    .vis-detail .vis-cell-label { display: block; font-size: .57rem; line-height: 1.2; margin-bottom: .1rem; }
+    .vis-detail .vis-cell > b { font-size: .7rem; }
+    .vis-detail .vis-cell-note { font-size: .6rem; }
+    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+    .vis-detail .vis-kpi { padding: .3rem .4rem; }
+    .vis-detail .vis-kpi > span { font-size: .58rem; }
+    .vis-detail .vis-kpi > b { font-size: .72rem; }
+    .vis-detail .vis-kpi small { display: none; }
+    .vis-detail .vis-kpi-total > b { font-size: .84rem; }
+    .vis-detail .vis-row { padding: .25rem 0; font-size: .7rem; }
+    .vis-detail .vis-tl-item { padding: .22rem 0; border-bottom: 0; font-size: .7rem; }
+    .vis-detail .vis-tl-dot { margin-top: .3rem; }
+    .vis-detail .vis-actions {
+        position: static; z-index: auto; box-shadow: none;
+        padding: var(--vis-gap-sm); border-radius: var(--vis-radius); background: #fff;
+    }
+    .vis-detail .vis-actions .btn { padding: .42rem; font-size: .7rem; }
 }
 @@media (max-width: 720px) {
-    .vis-detail { --vis-gap: .45rem; --vis-gap-sm: .3rem; --vis-pad: .55rem; }
-    .vis-detail .vis-detail-lines-head,
-    .vis-detail .vis-detail-line {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-areas: "idx name name name" "qty price disc total";
-    }
-    .vis-detail .vis-cell-label { font-size: .56rem; }
-    .vis-detail .vis-kpi { padding: .3rem .35rem; }
-    .vis-detail .vis-kpi > span { font-size: .57rem; }
-    .vis-detail .vis-kpi > b { font-size: .7rem; }
-    .vis-detail .vis-kpi-total > b { font-size: .8rem; }
+    .vis-detail { --vis-gap: .4rem; --vis-gap-sm: .25rem; --vis-pad: .5rem; }
+    .vis-detail .vis-cell-label { font-size: .55rem; }
+    .vis-detail .vis-kpi { padding: .25rem .3rem; }
+    .vis-detail .vis-kpi > span { font-size: .55rem; }
+    .vis-detail .vis-kpi > b { font-size: .68rem; }
+    .vis-detail .vis-kpi-total > b { font-size: .78rem; }
 }
 </style>
 

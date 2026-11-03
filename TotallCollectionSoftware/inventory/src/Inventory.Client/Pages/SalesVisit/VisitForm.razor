@@ -238,18 +238,47 @@ else
                                 <div @key="l" class="vis-line @(shortage > 0 ? "is-short" : "")" data-shortage="@(shortage > 0 ? "1" : "0")">
                                     <div class="vis-cell c-name">
                                         <span class="vis-cell-label">کالا</span>
-                                        @* هر سطر کمبوباکس مستقل خودش را دارد؛ سطر تازهٔ F2 همانجا باز میشود *@
-                                        <SearchSelect Items="productLookup"
-                                                      Value="l.ProductId"
-                                                      ValueChanged="id => OnLineProductPicked(l, id)"
-                                                      Placeholder="جستجوی کالا…"
-                                                      MaxVisible="5"
-                                                      NoScrollMenu="true"
-                                                      AutoOpen="@(ReferenceEquals(l, autoOpenLine))" />
-                                        @if (!string.IsNullOrWhiteSpace(l.Unit))
-                                        {
-                                            <div class="vis-cell-note">@l.ProductCode — واحد: @l.Unit</div>
-                                        }
+                                        @* کمبوی درونسطری: هیچ منوی fixed و هیچ JS مختصاتگیری نیست،
+                                           پس با کیبورد موبایل/اسکرول نمیپرد. F2 همان سطر را باز میکند. *@
+                                        <div class="vis-combo">
+                                            <div class="vis-combo-ctl">
+                                                <i class="bi bi-box-seam"></i>
+                                                <input class="form-control form-control-sm vis-combo-input"
+                                                       value="@ComboText(l)" placeholder="جستجوی کالا…" autocomplete="off"
+                                                       @onfocus="@(() => OpenCombo(l))"
+                                                       @oninput="e => OnComboInput(l, e.Value?.ToString())"
+                                                       @onkeydown="e => OnComboKey(l, e)" />
+                                                @if (IsComboOpen(l))
+                                                {
+                                                    <i class="bi bi-x-lg vis-combo-close" @onclick="CloseCombo"></i>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-chevron-down vis-combo-chev" @onclick="@(() => OpenCombo(l))"></i>
+                                                }
+                                            </div>
+                                            @if (l.ProductId > 0)
+                                            {
+                                                <div class="vis-combo-selected">@l.ProductName <span>@l.ProductCode — @l.Unit</span></div>
+                                            }
+                                            @if (IsComboOpen(l))
+                                            {
+                                                var matches = ComboMatches();
+                                                <div class="vis-combo-menu" data-combo-menu>
+                                                    @foreach (var opt in matches)
+                                                    {
+                                                        <div class="vis-combo-opt" @onmousedown:preventDefault="true"
+                                                             @onclick="@(() => PickCombo(l, opt.Id))">
+                                                            <span>@opt.Name</span><small>@opt.InfoText</small>
+                                                        </div>
+                                                    }
+                                                    @if (matches.Count == 0)
+                                                    {
+                                                        <div class="vis-combo-empty">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
                                     </div>
                                     <div class="vis-cell c-qty">
                                         <span class="vis-cell-label">مقدار</span>
@@ -801,6 +830,9 @@ else
    selectorها با .vis-form محدود شدهاند تا ترتیب تگهای استایل تبهای دیگر اثر نکند.
    ========================================================================== */
 .vis-form {
+    /* هیچ عنصری نباید صفحه را افقی پهن کند؛ clip برخلاف hidden اسکرولکانتنر
+       نمیسازد و به position:sticky آسیب نمیزند. */
+    max-width: 100%; overflow-x: clip;
     --vis-gap: 1rem;
     --vis-gap-sm: .5rem;
     --vis-pad: 1.15rem;
@@ -810,6 +842,7 @@ else
     --vis-muted: #64748b;
     --vis-accent: #4f46e5;
 }
+.vis-form, .vis-form * { box-sizing: border-box; }
 .vis-form > .fin-header { margin-bottom: var(--vis-gap); }
 
 /* تنها منبع فاصلهٔ بین ستونها — هم افقی و هم عمودی */
@@ -960,8 +993,43 @@ else
 }
 .vis-form .vis-line-total small { font-size: .65rem; font-weight: 500; color: var(--vis-muted); }
 .vis-form .vis-del-btn { width: 100%; }
-/* منوی کمبوی کالاها فقط ۵ گزینه رندر میکند ← بدون اسکرول داخلی */
-.vis-form .ss-menu--tight { max-height: none; overflow: visible; }
+/* ===== کمبوباکس درونسطری کالاها =====
+   منو در جریان عادی صفحه است (نه position:fixed)، حداکثر ۵ گزینه رندر میشود،
+   و هیچ max-height/overflow ندارد ← بدون اسکرول داخلی و بدون پرش. */
+.vis-form .vis-combo { position: relative; min-width: 0; }
+.vis-form .vis-combo-ctl {
+    display: flex; align-items: center; gap: .3rem; min-width: 0;
+    border: 1px solid var(--vis-line); border-radius: 10px; background: #fff;
+    padding: .1rem .35rem;
+    transition: border-color 180ms cubic-bezier(.2,.8,.2,1);
+}
+.vis-form .vis-combo:focus-within .vis-combo-ctl { border-color: var(--vis-accent); }
+.vis-form .vis-combo-ctl > i { flex: 0 0 auto; font-size: .75rem; color: var(--vis-accent); }
+.vis-form .vis-combo-input {
+    flex: 1 1 auto; min-width: 0; width: 100%;
+    border: 0 !important; box-shadow: none !important; background: transparent !important;
+    padding: .3rem .1rem !important; font-size: .74rem !important; line-height: 1.4;
+}
+.vis-form .vis-combo-chev { color: var(--vis-muted) !important; font-size: .62rem !important; cursor: pointer; }
+.vis-form .vis-combo-close { color: var(--danger) !important; font-size: .68rem !important; cursor: pointer; }
+.vis-form .vis-combo-selected {
+    margin-top: .2rem; font-size: .66rem; color: var(--vis-ink); font-weight: 700;
+    overflow-wrap: anywhere;
+}
+.vis-form .vis-combo-selected span { font-weight: 500; color: var(--vis-muted); }
+.vis-form .vis-combo-menu {
+    margin-top: .3rem; padding: .2rem;
+    border: 1px solid var(--vis-line); border-radius: 10px; background: #fff;
+    box-shadow: 0 6px 18px -8px rgba(15, 23, 42, .18);
+}
+.vis-form .vis-combo-opt {
+    display: flex; flex-direction: column; gap: .05rem;
+    padding: .3rem .4rem; border-radius: 7px; cursor: pointer; font-size: .7rem;
+    transition: background 150ms ease;
+}
+.vis-form .vis-combo-opt:hover { background: var(--primary-50); }
+.vis-form .vis-combo-opt small { font-size: .6rem; color: var(--vis-muted); overflow-wrap: anywhere; }
+.vis-form .vis-combo-empty { padding: .3rem .4rem; font-size: .66rem; color: var(--vis-muted); }
 
 /* حالت خالی و اسکلتون */
 .vis-form .vis-empty {
@@ -1028,73 +1096,86 @@ else
 .vis-form .vis-action-note { margin: 0; font-size: .72rem; color: var(--vis-muted); }
 .vis-form .vis-status-note { font-size: .74rem; line-height: 1.7; margin-top: var(--vis-gap); }
 /* ---------- تراکم فشرده: موبایل و تبلت ----------
-   شکستها بر اساس عرض نما هستند، نه container-type: چون container-type بهمعنای
-   contain:layout است و منوهای شناور position:fixed برنامه (SearchSelect/DatePicker)
-   را نسبت به کانتینر مختصاتدهی میکند. media query تبهای کششدهٔ display:none
-   را هم مختل نمیکند، چون به عرض پنجره وابسته است نه عرض پنل. */
+   گرید ۲ ستونهٔ ذاتاً واکنشگرا: تعداد ستونها دیگر به عرض پنجره وابسته نیست،
+   پس حتی وقتی پنل تب باریکتر از viewport باشد هم سلولها له نمیشوند.
+   نوار اقدام عمداً چسبان نیست: .app-bottom-nav ثابت (۶۲px / z=1040) روی موبایل
+   آن را میپوشاند و تداخل ایجاد میکرد. */
 @@media (max-width: 1080px) {
-    .vis-form { --vis-gap: .6rem; --vis-gap-sm: .35rem; --vis-pad: .7rem; --vis-radius: 11px; line-height: 1.5; }
+    .vis-form { --vis-gap: .5rem; --vis-gap-sm: .3rem; --vis-pad: .6rem; --vis-radius: 11px; line-height: 1.45; }
     .vis-form > .fin-header .text-secondary,
     .vis-form .vis-card-hint,
     .vis-form .vis-date-note,
-    .vis-form .vis-minor { display: none; }
-    .vis-form .fin-header { padding: .55rem .7rem; }
-    .vis-form .fin-header h1 { font-size: .95rem; }
-    .vis-form .card-header.vis-card-header { padding: .4rem .6rem; }
-    .vis-form .card-header.vis-card-header .card-title { font-size: .78rem; }
+    .vis-form .vis-minor,
+    .vis-form .vis-action-note { display: none; }
+    .vis-form .fin-header { padding: .45rem .6rem; }
+    .vis-form .fin-header h1 { font-size: .9rem; }
+    .vis-form .card-header.vis-card-header { padding: .35rem .55rem; }
+    .vis-form .card-header.vis-card-header .card-title { font-size: .76rem; }
     .vis-form .card-body { padding: var(--vis-pad); }
-    .vis-form .form-label { font-size: .68rem; margin-bottom: .2rem; }
-    .vis-form .form-control, .vis-form .form-select { font-size: .76rem; padding: .38rem .55rem; }
-    .vis-form .vis-field-note { font-size: .66rem; margin-top: .25rem; }
+    .vis-form .form-label { font-size: .66rem; margin-bottom: .15rem; }
+    .vis-form .form-control, .vis-form .form-select { font-size: .74rem; padding: .32rem .45rem; }
+    .vis-form .vis-field-note { font-size: .64rem; margin-top: .2rem; }
+
     .vis-form .vis-lines-head { display: none; }
-    .vis-form .vis-lines-head,
     .vis-form .vis-line {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-areas: "name name name del" "qty price disc total";
+        position: relative;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-areas: "name name" "qty price" "disc total" !important;
         row-gap: var(--vis-gap-sm);
+        padding: var(--vis-gap-sm);
+        padding-inline-end: 2.1rem;   /* جای دکمهٔ حذف */
     }
-    .vis-form .vis-line { padding: var(--vis-gap-sm); }
-    .vis-form .vis-cell-label { display: block; font-size: .58rem; line-height: 1.25; margin-bottom: 0; }
+    .vis-form .vis-line:hover { transform: none; }
+    .vis-form .c-name { grid-area: name; }
+    .vis-form .c-qty { grid-area: qty; }
+    .vis-form .c-price { grid-area: price; }
+    .vis-form .c-disc { grid-area: disc; }
+    .vis-form .c-total { grid-area: total; }
+    .vis-form .c-del {
+        grid-area: auto; position: absolute; inset-inline-end: .3rem; top: .3rem;
+        width: 1.8rem; height: 1.8rem;
+    }
+    .vis-form .vis-del-btn { width: 100%; height: 100%; padding: 0; display: grid; place-items: center; font-size: .7rem; }
+    .vis-form .vis-cell-label { display: block; font-size: .57rem; line-height: 1.2; margin-bottom: .1rem; }
     .vis-form .vis-line .form-control,
-    .vis-form .vis-line .input-group { font-size: .7rem; padding: .28rem .3rem; }
-    .vis-form .vis-line-total { padding: .2rem .3rem; }
-    .vis-form .vis-line-total small { display: none; }
-    .vis-form .vis-cell-note { font-size: .62rem; margin-top: .1rem; }
-    .vis-form .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .vis-form .vis-kpi { padding: .35rem .45rem; }
-    .vis-form .vis-kpi > span { font-size: .6rem; }
-    .vis-form .vis-kpi > b { font-size: .76rem; }
+    .vis-form .vis-line .input-group { font-size: .7rem; padding: .26rem .3rem; }
+    .vis-form .vis-combo-input { font-size: .7rem !important; padding: .24rem .1rem !important; }
+    .vis-form .vis-combo-opt { font-size: .66rem; padding: .26rem .35rem; }
+    .vis-form .vis-line-total { padding: .18rem .25rem; font-size: .72rem; }
+    .vis-form .vis-line-total small,
     .vis-form .vis-kpi small { display: none; }
-    .vis-form .vis-kpi-total > b { font-size: .88rem; }
+    .vis-form .vis-cell-note { font-size: .6rem; margin-top: .08rem; }
+
+    .vis-form .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+    .vis-form .vis-kpi { padding: .3rem .4rem; }
+    .vis-form .vis-kpi > span { font-size: .58rem; }
+    .vis-form .vis-kpi > b { font-size: .72rem; }
+    .vis-form .vis-kpi-total > b { font-size: .84rem; }
+
     .vis-form .vis-empty { padding: var(--vis-gap) var(--vis-pad); }
-    .vis-form .vis-empty-ico { width: 44px; height: 44px; border-radius: 14px; font-size: 1.15rem; }
-    .vis-form .vis-empty h6 { font-size: .85rem; }
-    .vis-form .vis-empty p { font-size: .7rem; }
+    .vis-form .vis-empty-ico { width: 40px; height: 40px; border-radius: 13px; font-size: 1.05rem; }
+    .vis-form .vis-empty h6 { font-size: .82rem; }
+    .vis-form .vis-empty p { font-size: .68rem; }
+
+    /* ثابت نیست تا با نوار پایین اپ تداخل نکند */
     .vis-form .vis-actionbar {
-        position: sticky; bottom: 0; z-index: 20;
+        position: static; z-index: auto; box-shadow: none;
         flex-direction: column; align-items: stretch; gap: var(--vis-gap-sm);
         padding: var(--vis-gap-sm);
-        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
     }
-    .vis-form .vis-action-note { display: none; }
     .vis-form .vis-action-btns { flex-direction: row; }
-    .vis-form .vis-action-btns .btn { flex: 1 1 0; padding: .45rem; font-size: .7rem; }
-    .vis-form .vis-status-note { padding: .35rem .5rem; font-size: .66rem; }
+    .vis-form .vis-action-btns .btn { flex: 1 1 0; padding: .42rem; font-size: .7rem; }
+    .vis-form .vis-status-note { padding: .3rem .45rem; font-size: .64rem; }
 }
 @@media (max-width: 720px) {
-    .vis-form { --vis-gap: .45rem; --vis-gap-sm: .3rem; --vis-pad: .55rem; }
-    .vis-form .vis-lines-head,
-    .vis-form .vis-line {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-areas: "name name name del" "qty price disc total";
-    }
-    .vis-form .vis-cell-label { font-size: .56rem; }
+    .vis-form { --vis-gap: .4rem; --vis-gap-sm: .25rem; --vis-pad: .5rem; }
+    .vis-form .vis-cell-label { font-size: .55rem; }
     .vis-form .vis-line .form-control,
-    .vis-form .vis-line .input-group { font-size: .68rem; }
-    .vis-form .vis-kpi { padding: .3rem .35rem; }
-    .vis-form .vis-kpi > span { font-size: .57rem; }
-    .vis-form .vis-kpi > b { font-size: .7rem; }
-    .vis-form .vis-kpi-total > b { font-size: .8rem; }
+    .vis-form .vis-line .input-group { font-size: .66rem; }
+    .vis-form .vis-kpi { padding: .25rem .3rem; }
+    .vis-form .vis-kpi > span { font-size: .55rem; }
+    .vis-form .vis-kpi > b { font-size: .68rem; }
+    .vis-form .vis-kpi-total > b { font-size: .78rem; }
 }
 </style>
 
@@ -1146,8 +1227,42 @@ else
     /// <summary>فهرست کامل کالاهای انبار بر اساس شناسه — برای پر کردن قیمت/واحد سطر پس از انتخاب.</summary>
     private Dictionary<int, VisProductLite> productIndex = new();
 
-    /// <summary>ساختهشده با F2: کمبوی کالای همین سطر در نخستین رندر باز میشود.</summary>
-    private VisOrderLineDto? autoOpenLine;
+    /// <summary>سطری که کمبوی درونسطریاش باز است (فقط یکی، چون منوها صفحه را رشد میدهند).</summary>
+    private VisOrderLineDto? comboLine;
+    private string comboQuery = "";
+
+    private bool IsComboOpen(VisOrderLineDto l) => ReferenceEquals(l, comboLine);
+    private string ComboText(VisOrderLineDto l)
+        => IsComboOpen(l) ? comboQuery : (l.ProductName ?? "");
+
+    /// <summary>حداکثر ۵ گزینه؛ بدون max-height/overflow یعنی بدون اسکرول داخلی.</summary>
+    private List<LookupItem> ComboMatches()
+    {
+        var q = (comboQuery ?? "").Trim();
+        return productLookup
+            .Where(x => q.Length == 0 || x.Name.Contains(q) || (x.InfoText ?? "").Contains(q))
+            .Take(5).ToList();
+    }
+
+    private void OpenCombo(VisOrderLineDto l) { comboLine = l; comboQuery = ""; }
+    private void CloseCombo() { comboLine = null; comboQuery = ""; }
+    private void OnComboInput(VisOrderLineDto l, string? value)
+    {
+        comboLine = l;
+        comboQuery = value ?? "";
+    }
+    private void OnComboKey(VisOrderLineDto l, KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { CloseCombo(); return; }
+        if (e.Key != "Enter") return;
+        var matches = ComboMatches();
+        if (matches.Count > 0) PickCombo(l, matches[0].Id);
+    }
+    private void PickCombo(VisOrderLineDto l, int productId)
+    {
+        OnLineProductPicked(l, productId);
+        CloseCombo();
+    }
 
     private decimal Gross => model.Lines.Sum(l => l.Quantity * l.UnitPrice);
     private decimal Discount => model.Lines.Sum(LineDiscount);
@@ -1303,7 +1418,7 @@ else
 
     /// <summary>
     /// تنها راه افزودن سطر: دکمه/کلید میانبر F2. سطر خالی ساخته میشود و
-    /// کمبوباکس کالای همان سطر بیدرنگ باز و فوکوس میگردد (AutoOpen).
+    /// کمبوی درونسطری همان سطر بیدرنگ باز میشود (بدون نیاز به فوکوس/کلیک).
     /// سرچ سراسری کالا حذف شده است؛ فیلتر کردن فقط داخل کمبوی همان سطر انجام میشود.
     /// </summary>
     private void AddEmptyLine()
@@ -1323,7 +1438,10 @@ else
             LineTotal = 0
         };
         model.Lines.Add(line);
-        autoOpenLine = line;   // SearchSelect تازه، روی firstRender منو را باز میکند
+        // منوی درونسطری همان سطر همان لحظه باز میشود: بدون فوکوس، بدون کیبورد موبایل،
+        // بدون مختصات fixed → نه میپرد و نه بسته میشود.
+        comboLine = line;
+        comboQuery = "";
     }
 
     /// <summary>انتخاب کالا برای یک سطر (از انتخابگر داخل سطر).</summary>
@@ -1571,7 +1689,7 @@ else
         orderDate = DateTime.Today;
         deliveryDate = DateTime.Today;
         originalStatus = null;
-        autoOpenLine = null;
+        CloseCombo();
         formKey++;   // انتخابگر مشتری از نو ساخته می‌شود (متن قبلی پاک می‌شود)
         try { customers = await Api.CustomersAsync(null) ?? customers; }
         catch { /* فهرست قبلی کافی است */ }

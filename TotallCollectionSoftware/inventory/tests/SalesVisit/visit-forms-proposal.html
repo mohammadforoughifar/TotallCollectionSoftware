@@ -391,20 +391,25 @@
 
 .pv-screen[data-size="tablet"] .pv-ui .pv-lines-head,
 .pv-screen[data-size="mobile"] .pv-ui .pv-lines-head { display: none; }
-.pv-screen[data-size="tablet"] .pv-ui .pv-line {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-areas: "name name name del" "qty price disc total";
+.pv-screen[data-size="tablet"] .pv-ui .pv-line,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line {
+  position: relative;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-areas: "name name" "qty price" "disc total" !important;
   row-gap: var(--sp-3);
+  padding-inline-end: 2.1rem;
 }
+.pv-screen[data-size="tablet"] .pv-ui .c-del,
+.pv-screen[data-size="mobile"] .pv-ui .c-del {
+  grid-area: auto; position: absolute; inset-inline-end: .3rem; top: .3rem;
+  width: 1.8rem; height: 1.8rem;
+}
+.pv-screen[data-size="tablet"] .pv-ui .pv-line .pv-btn-quiet,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line .pv-btn-quiet { width: 100%; height: 100%; padding: 0; }
 .pv-screen[data-size="tablet"] .pv-ui .pv-cell-label,
 .pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { display: block; }
 .pv-screen[data-size="tablet"] .pv-ui .c-name { padding-inline-end: .4rem; }
 
-.pv-screen[data-size="mobile"] .pv-ui .pv-line {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-areas: "name del" "qty price" "disc total";
-  row-gap: var(--sp-3);
-}
 .pv-screen[data-size="mobile"] .pv-ui .c-name { padding-inline-end: .4rem; }
 .pv-screen[data-size="mobile"] .pv-ui .pv-review { grid-template-columns: minmax(0, 1fr); }
 .pv-screen[data-size="mobile"] .pv-ui .pv-cols { grid-template-columns: minmax(0, 1fr); }
@@ -483,12 +488,13 @@
 .pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt { padding: .22rem .35rem; font-size: .65rem; }
 .pv-screen[data-size="tablet"] .pv-ui .pv-combo-meta,
 .pv-screen[data-size="mobile"] .pv-ui .pv-combo-meta { font-size: .58rem; }
-/* اقلام: هر سطر فقط ۲ ردیف فشرده (بهجای ۳)، بدون اسکرول داخلی */
+/* اقلام: گرید ۲ ستونهٔ مقاوم به عرض باریک، بدون اسکرول داخلی */
 .pv-screen[data-size="tablet"] .pv-ui .pv-line,
 .pv-screen[data-size="mobile"] .pv-ui .pv-line { padding: var(--sp-2); row-gap: var(--sp-2); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line,
 .pv-screen[data-size="mobile"] .pv-ui .pv-line {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-areas: "name name name del" "qty price disc total";
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-areas: "name name" "qty price" "disc total" !important;
 }
 .pv-screen[data-size="tablet"] .pv-ui .pv-cell-label,
 .pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { font-size: .58rem; margin-bottom: 0; line-height: 1.25; }
@@ -532,12 +538,11 @@
 .pv-screen[data-size="mobile"] .pv-ui .pv-kpi-total > b { font-size: .86rem; }
 .pv-screen[data-size="tablet"] .pv-ui .pv-cur,
 .pv-screen[data-size="mobile"] .pv-ui .pv-cur { display: none; }
-/* نوار اقدام چسبان: همیشه در دسترس، بدون اسکرول تا انتهای صفحه */
+/* نوار اقدام ثابت: نوار چسبان کف با app-bottom-nav اپ تداخل داشت */
 .pv-screen[data-size="tablet"] .pv-ui .pv-actionbar,
 .pv-screen[data-size="mobile"] .pv-ui .pv-actionbar {
-  position: sticky; bottom: 0; z-index: 20;
+  position: static; z-index: auto; box-shadow: none;
   flex-direction: column; align-items: stretch; gap: var(--sp-2); padding: var(--sp-3);
-  box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18), var(--elev-1);
 }
 .pv-screen[data-size="tablet"] .pv-ui .pv-action-note,
 .pv-screen[data-size="mobile"] .pv-ui .pv-action-note { display: none; }
