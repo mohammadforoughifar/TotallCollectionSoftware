@@ -44,6 +44,19 @@ class PurchaseWizardContract(unittest.TestCase):
         for value in ('grandTotal.Money()', 'CashPart.Money()', 'ChequeSum().Money()', 'InstSum().Money()', 'Math.Abs(FinalRemaining).Money()'):
             self.assertIn(value, FORM.split('class="purchase-summary"', 1)[1].split('</section>', 1)[0])
 
+    def test_selected_payment_labels_remain_readable(self):
+        active = re.search(r'\.purchase-payment \.pay-tab\.active\s*\{([^}]*)\}', CSS).group(1)
+        self.assertIn('linear-gradient(135deg, #4338ca, #6d28d9)', active)
+        self.assertIn('color: #fff', active)
+        hover = re.search(r'\.purchase-payment \.pay-tab\.active:hover\s*\{([^}]*)\}', CSS).group(1)
+        self.assertIn('color: #fff', hover)
+        for component in ('cash', 'cheque', 'installment', 'credit'):
+            rule = re.search(r'\.purchase-payment \.pay-tab\[data-pay-comp=' + component + r'\]\.active\s*\{([^}]*)\}', CSS)
+            self.assertIsNotNone(rule)
+            self.assertIn('color: #fff', rule.group(1))
+        buttons = FORM.split('<div class="pay-tabs">', 1)[1].split('</div>', 1)[0]
+        self.assertNotIn('bi-check', buttons)
+
     def test_responsive_and_header_scope(self):
         self.assertIn('@media (max-width: 600px)', CSS)
         self.assertIn('.purchase-items tbody tr', CSS)

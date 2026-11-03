@@ -42,11 +42,13 @@
 .purchase-payment .pay-box { border-radius: 12px; padding: 1rem; }
 .purchase-payment .pay-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); gap: .6rem; }
 .purchase-payment .pay-tab { min-height: 42px; padding: .5rem .7rem; border-radius: 10px; font-size: .85rem; }
-.purchase-payment .pay-tab.active { background: #fff; }
-.purchase-payment .pay-tab[data-pay-comp=cash].active { border-color: #10b981; color: #047857; box-shadow: 0 3px 10px -3px rgba(16,185,129,.26), 0 0 0 1px #10b981; }
-.purchase-payment .pay-tab[data-pay-comp=cheque].active { border-color: #f59e0b; color: #a85505; box-shadow: 0 3px 10px -3px rgba(245,158,11,.25), 0 0 0 1px #f59e0b; }
-.purchase-payment .pay-tab[data-pay-comp=installment].active { border-color: #7c3aed; color: #6d28d9; box-shadow: 0 3px 10px -3px rgba(124,58,237,.23), 0 0 0 1px #7c3aed; }
-.purchase-payment .pay-tab[data-pay-comp=credit].active { border-color: #ef4444; color: #b91c1c; box-shadow: 0 3px 10px -3px rgba(239,68,68,.22), 0 0 0 1px #ef4444; }
+/* متن و آیکون همهٔ گزینه‌های فعال باید روی گرادیان برند خوانا بمانند. */
+.purchase-payment .pay-tab.active { background: linear-gradient(135deg, #4338ca, #6d28d9); color: #fff; }
+.purchase-payment .pay-tab.active:hover { background: linear-gradient(135deg, #3730a3, #5b21b6); color: #fff; }
+.purchase-payment .pay-tab[data-pay-comp=cash].active { border-color: #10b981; color: #fff; box-shadow: 0 3px 10px -3px rgba(16,185,129,.26), 0 0 0 1px #10b981; }
+.purchase-payment .pay-tab[data-pay-comp=cheque].active { border-color: #f59e0b; color: #fff; box-shadow: 0 3px 10px -3px rgba(245,158,11,.25), 0 0 0 1px #f59e0b; }
+.purchase-payment .pay-tab[data-pay-comp=installment].active { border-color: #a78bfa; color: #fff; box-shadow: 0 3px 10px -3px rgba(124,58,237,.23), 0 0 0 1px #a78bfa; }
+.purchase-payment .pay-tab[data-pay-comp=credit].active { border-color: #fb7185; color: #fff; box-shadow: 0 3px 10px -3px rgba(239,68,68,.22), 0 0 0 1px #fb7185; }
 .purchase-items { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
 .purchase-items table { min-width: 720px; }
 .purchase-items th { color: #475569; background: #f8fafc; font-size: .77rem; }
