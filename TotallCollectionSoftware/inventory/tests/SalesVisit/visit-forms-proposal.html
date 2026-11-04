@@ -579,6 +579,36 @@
 .pv-screen[data-size="tablet"] .pv-ui .pv-toast,
 .pv-screen[data-size="mobile"] .pv-ui .pv-toast { font-size: .68rem; }
 
+/* ---- تراکم نهایی: قاب کوچیکتر ⇒ باکسها و ردیفها کوچیکتر ----
+   همان الگوی clamp()+vw در سورس Razor؛ اینجا چون قاب دستگاه عرض ثابتی دارد،
+   مقادیر برای تبلت و موبایل پلهای کوچکشونده گرفتهاند. */
+.pv-screen[data-size="tablet"] .pv-ui .pv-line { padding: 4px; row-gap: 3px; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line { padding: 3px; row-gap: 2px; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-cell-label { font-size: .5rem; line-height: 1; margin-bottom: 0; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { font-size: .46rem; line-height: 1; margin-bottom: 0; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line .pv-input { padding: .16rem .22rem !important; font-size: .62rem !important; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line .pv-input { padding: .12rem .18rem !important; font-size: .58rem !important; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line-total { padding: .14rem .2rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line-total { padding: .1rem .16rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-opt { padding: .14rem .28rem; font-size: .62rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt { padding: .1rem .22rem; font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-opt small,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt small { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi { padding: .18rem .28rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi { padding: .12rem .2rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > span { font-size: .5rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > span { font-size: .46rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > b { font-size: .64rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > b { font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-field > label { font-size: .58rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-field > label { font-size: .54rem; }
+/* نوار اقدام چسبان: دکمهها همیشه در دسترس (قاب پیشنمایش نوار پایین اپ ندارد) */
+.pv-screen[data-size="tablet"] .pv-ui .pv-actionbar,
+.pv-screen[data-size="mobile"] .pv-ui .pv-actionbar {
+  position: sticky; bottom: 0; z-index: 20; padding: 4px;
+  box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pv-ui *, .pv-ui *::before, .pv-ui *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

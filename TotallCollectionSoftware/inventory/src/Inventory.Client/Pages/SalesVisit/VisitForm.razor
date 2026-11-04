@@ -141,7 +141,7 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="col-12 col-md-4 vis-field">
+                        <div class="col-12 col-md-4 vis-field vis-field--sm">
                             <label class="form-label">روش پرداخت</label>
                             <select class="form-select" @bind="model.PaymentMethod">
                                 <option value="@PaymentMethod.Cash">نقدی</option>
@@ -150,11 +150,11 @@ else
                                 <option value="@PaymentMethod.Installment">اقساطی</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4 vis-field">
+                        <div class="col-12 col-md-4 vis-field vis-field--sm">
                             <label class="form-label">تاریخ سفارش</label>
                             <DatePicker @bind-Value="orderDate" />
                         </div>
-                        <div class="col-12 col-md-4 vis-field">
+                        <div class="col-12 col-md-4 vis-field vis-field--sm">
                             <label class="form-label">
                                 تاریخ دریافت محصول <span class="text-danger">*</span>
                                 <i class="bi bi-info-circle text-muted" title="تاریخ تحویل مورد نظر شما؛ مدیر میتواند تاریخ نهایی را تغییر دهد و هر دو تاریخ در سابقه میماند."></i>
@@ -833,6 +833,8 @@ else
     /* هیچ عنصری نباید صفحه را افقی پهن کند؛ clip برخلاف hidden اسکرولکانتنر
        نمیسازد و به position:sticky آسیب نمیزند. */
     max-width: 100%; overflow-x: clip;
+    --vis-ctl-f: .74rem;   /* اندازهٔ قلم کنترلها؛ در نماهای کوچک با vw کوچک میشود */
+    --vis-ctl-h: 30px;    /* حداقل ارتفاع باکسها */
     --vis-gap: 1rem;
     --vis-gap-sm: .5rem;
     --vis-pad: 1.15rem;
@@ -1008,7 +1010,8 @@ else
 .vis-form .vis-combo-input {
     flex: 1 1 auto; min-width: 0; width: 100%;
     border: 0 !important; box-shadow: none !important; background: transparent !important;
-    padding: .3rem .1rem !important; font-size: .74rem !important; line-height: 1.4;
+    padding: .3rem .1rem !important;
+    font-size: var(--vis-ctl-f) !important; min-height: var(--vis-ctl-h); line-height: 1.4;
 }
 .vis-form .vis-combo-chev { color: var(--vis-muted) !important; font-size: .62rem !important; cursor: pointer; }
 .vis-form .vis-combo-close { color: var(--danger) !important; font-size: .68rem !important; cursor: pointer; }
@@ -1095,27 +1098,54 @@ else
 .vis-form .vis-action-btns .btn:hover:not(:disabled) { transform: translateY(-1px); }
 .vis-form .vis-action-note { margin: 0; font-size: .72rem; color: var(--vis-muted); }
 .vis-form .vis-status-note { font-size: .74rem; line-height: 1.7; margin-top: var(--vis-gap); }
-/* ---------- تراکم فشرده: موبایل و تبلت ----------
-   گرید ۲ ستونهٔ ذاتاً واکنشگرا: تعداد ستونها دیگر به عرض پنجره وابسته نیست،
-   پس حتی وقتی پنل تب باریکتر از viewport باشد هم سلولها له نمیشوند.
-   نوار اقدام عمداً چسبان نیست: .app-bottom-nav ثابت (۶۲px / z=1040) روی موبایل
-   آن را میپوشاند و تداخل ایجاد میکرد. */
+/* ---------- تراکم پیوسته: هرچی نما کوچیکتر، باکسها و ردیفها کوچیکتر ----------
+   برخلاف نسخهٔ قبل (دو مقدار ثابت .5rem/.4rem)، همهٔ توکنها با clamp()+vw ساخته
+   شدند: از ۱۰۸۰px تا ۳۲۰px نرم کوچک میشوند تا کاربر مجبور نباشد زیاد اسکرول کند.
+   منوی کمبوی کالاها همچنان درونسطری و بدون اسکرول داخلی باقی میماند. */
 @@media (max-width: 1080px) {
-    .vis-form { --vis-gap: .5rem; --vis-gap-sm: .3rem; --vis-pad: .6rem; --vis-radius: 11px; line-height: 1.45; }
+    .vis-form {
+        --vis-gap: clamp(.26rem, calc(.55vw + .16rem), .5rem);
+        --vis-gap-sm: clamp(.14rem, calc(.3vw + .09rem), .28rem);
+        --vis-pad: clamp(.34rem, calc(.72vw + .22rem), .6rem);
+        --vis-radius: clamp(8px, calc(.9vw + 5px), 11px);
+        --vis-ctl-f: clamp(.66rem, calc(.5vw + .5rem), .76rem);
+        --vis-ctl-h: clamp(26px, calc(2.5vw + 17px), 34px);
+        line-height: 1.32;
+    }
     .vis-form > .fin-header .text-secondary,
     .vis-form .vis-card-hint,
     .vis-form .vis-date-note,
     .vis-form .vis-minor,
     .vis-form .vis-action-note { display: none; }
-    .vis-form .fin-header { padding: .45rem .6rem; }
-    .vis-form .fin-header h1 { font-size: .9rem; }
-    .vis-form .card-header.vis-card-header { padding: .35rem .55rem; }
-    .vis-form .card-header.vis-card-header .card-title { font-size: .76rem; }
+    .vis-form .fin-header { padding: var(--vis-pad); }
+    .vis-form .fin-header h1 { font-size: clamp(.82rem, calc(.6vw + .64rem), .94rem); }
+    .vis-form .fin-header-icon {
+        width: clamp(30px, calc(3vw + 20px), 42px); height: clamp(30px, calc(3vw + 20px), 42px);
+        border-radius: var(--vis-radius); font-size: clamp(1rem, calc(1vw + .8rem), 1.3rem);
+    }
+    .vis-form .card-header.vis-card-header { padding: var(--vis-pad) var(--vis-pad); }
+    .vis-form .card-header.vis-card-header .card-title { font-size: clamp(.7rem, calc(.5vw + .54rem), .78rem); }
     .vis-form .card-body { padding: var(--vis-pad); }
-    .vis-form .form-label { font-size: .66rem; margin-bottom: .15rem; }
-    .vis-form .form-control, .vis-form .form-select { font-size: .74rem; padding: .32rem .45rem; }
-    .vis-form .vis-field-note { font-size: .64rem; margin-top: .2rem; }
+    .vis-form .vis-stack { gap: var(--vis-gap) !important; }
 
+    /* همهٔ باکسها همقدم با عرض نما کوچک میشوند */
+    .vis-form .form-label {
+        font-size: clamp(.56rem, calc(.4vw + .46rem), .66rem);
+        margin-bottom: var(--vis-gap-sm);
+    }
+    .vis-form .form-control, .vis-form .form-select, .vis-form .vis-combo-ctl {
+        font-size: var(--vis-ctl-f);
+        min-height: var(--vis-ctl-h);
+        padding: var(--vis-gap-sm) var(--vis-pad);
+        border-radius: var(--vis-radius);
+    }
+    .vis-form .vis-combo-input {
+        padding: var(--vis-gap-sm) .1rem !important;
+        font-size: var(--vis-ctl-f) !important; min-height: var(--vis-ctl-h);
+    }
+    .vis-form .vis-field-note { font-size: clamp(.56rem, calc(.4vw + .46rem), .64rem); margin-top: var(--vis-gap-sm); }
+
+    /* ردیف کالا: ۲ ستونهٔ خوانا + برچسب کنار ورودی (دیگر هر سلول دو خط عمودی نیست) */
     .vis-form .vis-lines-head { display: none; }
     .vis-form .vis-line {
         position: relative;
@@ -1123,7 +1153,8 @@ else
         grid-template-areas: "name name" "qty price" "disc total" !important;
         row-gap: var(--vis-gap-sm);
         padding: var(--vis-gap-sm);
-        padding-inline-end: 2.1rem;   /* جای دکمهٔ حذف */
+        padding-inline-end: calc(var(--vis-ctl-h) + var(--vis-gap-sm));
+        border-radius: var(--vis-radius);
     }
     .vis-form .vis-line:hover { transform: none; }
     .vis-form .c-name { grid-area: name; }
@@ -1132,50 +1163,72 @@ else
     .vis-form .c-disc { grid-area: disc; }
     .vis-form .c-total { grid-area: total; }
     .vis-form .c-del {
-        grid-area: auto; position: absolute; inset-inline-end: .3rem; top: .3rem;
-        width: 1.8rem; height: 1.8rem;
+        grid-area: auto; position: absolute; inset-inline-end: var(--vis-gap-sm); top: var(--vis-gap-sm);
+        width: var(--vis-ctl-h); height: var(--vis-ctl-h);
     }
-    .vis-form .vis-del-btn { width: 100%; height: 100%; padding: 0; display: grid; place-items: center; font-size: .7rem; }
-    .vis-form .vis-cell-label { display: block; font-size: .57rem; line-height: 1.2; margin-bottom: .1rem; }
-    .vis-form .vis-line .form-control,
-    .vis-form .vis-line .input-group { font-size: .7rem; padding: .26rem .3rem; }
-    .vis-form .vis-combo-input { font-size: .7rem !important; padding: .24rem .1rem !important; }
-    .vis-form .vis-combo-opt { font-size: .66rem; padding: .26rem .35rem; }
-    .vis-form .vis-line-total { padding: .18rem .25rem; font-size: .72rem; }
+    .vis-form .vis-del-btn { width: 100%; height: 100%; padding: 0; display: grid; place-items: center; font-size: var(--vis-ctl-f); }
+    .vis-form .vis-line .vis-cell:not(.c-name):not(.c-del) {
+        display: flex; align-items: center; flex-wrap: wrap; gap: var(--vis-gap-sm);
+    }
+    .vis-form .vis-line .vis-cell > .vis-cell-label {
+        display: block; flex: 0 0 auto; max-width: 44%;
+        font-size: clamp(.48rem, calc(.32vw + .4rem), .56rem); line-height: 1.1;
+        margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .vis-form .vis-line .vis-cell > .form-control,
+    .vis-form .vis-line .vis-cell > .input-group,
+    .vis-form .vis-line .vis-cell > .vis-line-total {
+        flex: 1 1 45%; min-width: 0; margin: 0;
+        font-size: var(--vis-ctl-f); min-height: var(--vis-ctl-h);
+        padding: var(--vis-gap-sm) var(--vis-gap-sm);
+    }
+    .vis-form .vis-line .vis-cell > .vis-cell-note { flex: 1 1 100%; }
+    .vis-form .vis-line .input-group-text { font-size: clamp(.54rem, calc(.4vw + .44rem), .66rem); padding: 0 var(--vis-gap-sm); }
+    .vis-form .vis-combo-selected { font-size: clamp(.56rem, calc(.4vw + .46rem), .66rem); margin-top: var(--vis-gap-sm); }
+    .vis-form .vis-combo-menu { margin-top: var(--vis-gap-sm); padding: var(--vis-gap-sm); }
+    .vis-form .vis-combo-opt {
+        padding: var(--vis-gap-sm) var(--vis-gap-sm);
+        font-size: var(--vis-ctl-f);
+    }
+    .vis-form .vis-combo-opt small { display: none; }
+    .vis-form .vis-cell-note { font-size: clamp(.52rem, calc(.36vw + .44rem), .6rem); margin-top: 0; }
     .vis-form .vis-line-total small,
     .vis-form .vis-kpi small { display: none; }
-    .vis-form .vis-cell-note { font-size: .6rem; margin-top: .08rem; }
 
-    .vis-form .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-    .vis-form .vis-kpi { padding: .3rem .4rem; }
-    .vis-form .vis-kpi > span { font-size: .58rem; }
-    .vis-form .vis-kpi > b { font-size: .72rem; }
-    .vis-form .vis-kpi-total > b { font-size: .84rem; }
+    .vis-form .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: var(--vis-gap-sm); }
+    .vis-form .vis-kpi { padding: var(--vis-gap-sm) var(--vis-pad); }
+    .vis-form .vis-kpi > span { font-size: clamp(.5rem, calc(.35vw + .42rem), .58rem); }
+    .vis-form .vis-kpi > b { font-size: clamp(.62rem, calc(.5vw + .48rem), .76rem); }
+    .vis-form .vis-kpi-total > b { font-size: clamp(.72rem, calc(.6vw + .56rem), .88rem); }
 
     .vis-form .vis-empty { padding: var(--vis-gap) var(--vis-pad); }
-    .vis-form .vis-empty-ico { width: 40px; height: 40px; border-radius: 13px; font-size: 1.05rem; }
-    .vis-form .vis-empty h6 { font-size: .82rem; }
-    .vis-form .vis-empty p { font-size: .68rem; }
+    .vis-form .vis-empty-ico { width: clamp(32px, calc(4vw + 24px), 44px); height: clamp(32px, calc(4vw + 24px), 44px); font-size: 1rem; }
+    .vis-form .vis-empty h6 { font-size: clamp(.76rem, calc(.5vw + .58rem), .85rem); }
+    .vis-form .vis-empty p { font-size: clamp(.6rem, calc(.4vw + .5rem), .68rem); }
 
-    /* ثابت نیست تا با نوار پایین اپ تداخل نکند */
+    /* نوار اقدام چسبان بازگشت: کاربر برای رسیدن به دکمهها نباید تا ته اسکرول کند.
+       فقط وقتی نوار پایین اپ هست، بالاتر از آن (۶۲px) میایستد تا تداخل پیش نیاید. */
     .vis-form .vis-actionbar {
-        position: static; z-index: auto; box-shadow: none;
+        position: sticky; bottom: 0; z-index: 20; background: #fff;
         flex-direction: column; align-items: stretch; gap: var(--vis-gap-sm);
-        padding: var(--vis-gap-sm);
+        padding: var(--vis-gap-sm); border-radius: var(--vis-radius);
+        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
     }
-    .vis-form .vis-action-btns { flex-direction: row; }
-    .vis-form .vis-action-btns .btn { flex: 1 1 0; padding: .42rem; font-size: .7rem; }
-    .vis-form .vis-status-note { padding: .3rem .45rem; font-size: .64rem; }
+    .app-mobile .vis-form .vis-actionbar { bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+    .vis-form .vis-action-btns { flex-direction: row; gap: var(--vis-gap-sm); }
+    .vis-form .vis-action-btns .btn { flex: 1 1 0; padding: var(--vis-gap-sm); font-size: var(--vis-ctl-f); }
+    .vis-form .vis-status-note { padding: var(--vis-gap-sm) var(--vis-pad); font-size: clamp(.56rem, calc(.4vw + .46rem), .64rem); }
 }
 @@media (max-width: 720px) {
-    .vis-form { --vis-gap: .4rem; --vis-gap-sm: .25rem; --vis-pad: .5rem; }
-    .vis-form .vis-cell-label { font-size: .55rem; }
-    .vis-form .vis-line .form-control,
-    .vis-form .vis-line .input-group { font-size: .66rem; }
-    .vis-form .vis-kpi { padding: .25rem .3rem; }
-    .vis-form .vis-kpi > span { font-size: .55rem; }
-    .vis-form .vis-kpi > b { font-size: .68rem; }
-    .vis-form .vis-kpi-total > b { font-size: .78rem; }
+    .vis-form { line-height: 1.28; }
+    /* سه فیلد کوتاه (روش پرداخت / تاریخ سفارش / تاریخ تحویل) دوتایی میشوند */
+    .vis-form .vis-grid > .vis-field.vis-field--sm {
+        width: 50% !important; flex: 0 0 50% !important; max-width: 50% !important;
+    }
+    .vis-form .vis-grid > .vis-field.vis-field--sm:last-of-type { width: 50% !important; }
+    .vis-form .fin-header .badge,
+    .vis-form .vis-counter { font-size: .6rem; }
+    .vis-form .vis-kpi { padding: var(--vis-gap-sm); }
 }
 </style>
 

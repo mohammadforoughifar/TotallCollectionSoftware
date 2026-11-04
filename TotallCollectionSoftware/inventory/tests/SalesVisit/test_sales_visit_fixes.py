@@ -12,8 +12,10 @@
   ۴) اعمال نهایی طرح: حذف سرچ سراسری کالا و هرگونه اسکرول داخلی، کمبوباکس مستقل
      در هر سطر، تراکم فشردهٔ تبلت/موبایل، نوار بازبینی سهتایی؛ پالت بدون تغییر.
   ۵) رفع پرش/بازنشدن کمبوی کالا و بههمریختگی موبایل: کمبوی درونسطری بدون منوی
-     fixed/بدون فوکوس، گرید ۲ ستونهٔ مقاوم به عرض، و حذف نوار اقدام چسبان متداخل
-     با app-bottom-nav.
+     fixed/بدون فوکوس، گرید ۲ ستونهٔ مقاوم به عرض.
+  ۶) کوچک شدن پیوستهٔ باکسها و ردیفها با clamp()+vw بهجای دو مقدار ثابت؛ برچسب
+     کنار ورودی، فیلدهای کوتاه دوتایی، و نوار اقدام چسبانِ جابهجا شده بالای
+     نوار پایین اپ (etc. app-mobile).
 """
 import re
 import unittest
@@ -216,20 +218,45 @@ class VisitFormsDesignTests(unittest.TestCase):
                              f"کامپوننت مشترک نباید برای این فرم دستکاری شود: {gone}")
         self.assertIn('<div class="ss-menu" style="@MenuStyle"', ss)
 
-    def test_compact_density_and_no_overlapping_sticky_bar(self):
+    def test_compact_density_and_sticky_bar_clears_bottom_nav(self):
         for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
             with self.subTest(page=name):
                 self.assertIn("@@media (max-width: 1080px)", src)
                 self.assertIn("@@media (max-width: 720px)", src)
-                self.assertIn('"name name" "qty price" "disc total"', src,
-                              "گرید فشرده ۲ ستونه است؛ سلولها روی عرض باریک له نمیشوند")
+                self.assertIn('"name name" "qty price" "disc total"', src)
                 self.assertIn("repeat(2, minmax(0, 1fr)) !important", src)
-                self.assertIn("overflow-x: clip", src,
-                              "هیچ سرریز افقی نباید صفحه را پهن کند")
-                self.assertNotIn("position: sticky; bottom: 0", src,
-                                 "نوار اقدام چسبان با app-bottom-nav ثابت تداخل داشت")
-                self.assertIn("position: static", src)
+                self.assertIn("overflow-x: clip", src)
+                self.assertIn("position: sticky; bottom: 0", src,
+                              "دکمهها همیشه در دسترس باشند تا کاربر تا ته اسکرول نکند")
+                self.assertIn(".app-mobile .vis-" + ("form .vis-actionbar" if name == "VisitForm" else "detail .vis-actions"), src,
+                              "در حالت موبایل نوار اقدام باید بالاتر از app-bottom-nav بایستد")
+                self.assertIn("calc(62px + env(safe-area-inset-bottom, 0px))", src)
                 self.assertGreaterEqual(src.count("grid-template-areas"), 2)
+
+    def test_boxes_and_rows_shrink_continuously_with_viewport(self):
+        for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
+            with self.subTest(page=name):
+                self.assertIn("--vis-gap: clamp(", src)
+                self.assertIn("--vis-gap-sm: clamp(", src)
+                self.assertIn("--vis-pad: clamp(", src)
+                self.assertIn("--vis-radius: clamp(", src)
+                self.assertIn("--vis-ctl-f: clamp(", src)
+                self.assertGreaterEqual(len(re.findall(r"clamp\([^)]*vw", src)), 8,
+                                        "مقیاس باید به عرض نما وابسته باشد، نه دو پرش ثابت")
+                self.assertIn("var(--vis-ctl-f)", src)
+                self.assertIn("var(--vis-ctl-h)" if name == "VisitForm" else "var(--vis-gap-sm)", src)
+                # برچسب کنار ورودی/مقدار → هر سلول یک خط بهجای دو خط عمودی
+                selector = (".vis-line .vis-cell:not(.c-name):not(.c-del)" if name == "VisitForm"
+                            else ".vis-detail-line .vis-cell:not(.c-name)")
+                self.assertIn(selector, src)
+                i = src.index(selector)
+                self.assertIn("display: flex", src[i:i + 220])
+        self.assertIn("min-height: var(--vis-ctl-h)", self.form)
+        self.assertEqual(self.form.count('class="col-12 col-md-4 vis-field vis-field--sm"'), 3,
+                         "روش پرداخت و دو تاریخ → سه فیلد کوتاه")
+        self.assertIn(".vis-grid > .vis-field.vis-field--sm", self.form,
+                      "قانون دوتایی شدن فیلدهای کوتاه در 720px")
+        self.assertIn("flex: 0 0 50% !important", self.form)
 
     def test_business_rules_survive_the_redesign(self):
         self.assertIn("data-stock-alarm", self.form_markup)

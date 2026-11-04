@@ -564,23 +564,31 @@ else
 .vis-detail .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
 .vis-detail .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
 
-/* ---------- تراکم فشرده: موبایل و تبلت ----------
-   گرید ۲ ستونهٔ مقاوم به عرض پنل (نه عرض پنجره)؛ نوار اقدام ثابت نیست، چون
-   .app-bottom-nav ثابت اپ موبایل (۶۲px / z=1040) روی آن قرار میگرفت. */
+/* ---------- تراکم پیوسته: هرچی نما کوچیکتر، باکسها و ردیفها کوچیکتر ----------
+   توکنها با clamp()+vw ساخته شدند تا از ۱۰۸۰px تا ۳۲۰px نرم کوچک شوند (نه دو پرش ثابت). */
 @@media (max-width: 1080px) {
-    .vis-detail { --vis-gap: .5rem; --vis-gap-sm: .3rem; --vis-pad: .6rem; --vis-radius: 11px; line-height: 1.45; }
-    .vis-detail .vis-detail-head { padding: .45rem .6rem; }
-    .vis-detail .vis-detail-title { font-size: .9rem; }
-    .vis-detail .vis-detail-sub { font-size: .68rem; margin-top: .15rem; }
-    .vis-detail .card-header.vis-card-header { padding: .35rem .55rem; }
-    .vis-detail .card-header.vis-card-header .card-title { font-size: .76rem; }
+    .vis-detail {
+        --vis-gap: clamp(.26rem, calc(.55vw + .16rem), .5rem);
+        --vis-gap-sm: clamp(.14rem, calc(.3vw + .09rem), .28rem);
+        --vis-pad: clamp(.34rem, calc(.72vw + .22rem), .6rem);
+        --vis-radius: clamp(8px, calc(.9vw + 5px), 11px);
+        --vis-ctl-f: clamp(.66rem, calc(.5vw + .5rem), .76rem);
+        line-height: 1.32;
+    }
+    .vis-detail .vis-detail-head { padding: var(--vis-pad); }
+    .vis-detail .vis-detail-title { font-size: clamp(.82rem, calc(.6vw + .64rem), .94rem); }
+    .vis-detail .vis-detail-sub { font-size: clamp(.6rem, calc(.4vw + .5rem), .68rem); margin-top: var(--vis-gap-sm); }
+    .vis-detail .card-header.vis-card-header { padding: var(--vis-pad) var(--vis-pad); }
+    .vis-detail .card-header.vis-card-header .card-title { font-size: clamp(.7rem, calc(.5vw + .54rem), .78rem); }
     .vis-detail .card-body { padding: var(--vis-pad); }
+    .vis-detail .vis-stack { gap: var(--vis-gap) !important; }
     .vis-detail .vis-detail-lines-head { display: none; }
     .vis-detail .vis-detail-line {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         grid-template-areas: "name name" "qty price" "disc total" !important;
         row-gap: var(--vis-gap-sm);
         padding: var(--vis-gap-sm);
+        border-radius: var(--vis-radius);
     }
     .vis-detail .vis-detail-line:hover { transform: none; }
     .vis-detail .c-idx { display: none; }
@@ -589,31 +597,43 @@ else
     .vis-detail .c-price { grid-area: price; }
     .vis-detail .c-disc { grid-area: disc; }
     .vis-detail .c-total { grid-area: total; }
-    .vis-detail .vis-cell-label { display: block; font-size: .57rem; line-height: 1.2; margin-bottom: .1rem; }
-    .vis-detail .vis-cell > b { font-size: .7rem; }
-    .vis-detail .vis-cell-note { font-size: .6rem; }
-    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-    .vis-detail .vis-kpi { padding: .3rem .4rem; }
-    .vis-detail .vis-kpi > span { font-size: .58rem; }
-    .vis-detail .vis-kpi > b { font-size: .72rem; }
-    .vis-detail .vis-kpi small { display: none; }
-    .vis-detail .vis-kpi-total > b { font-size: .84rem; }
-    .vis-detail .vis-row { padding: .25rem 0; font-size: .7rem; }
-    .vis-detail .vis-tl-item { padding: .22rem 0; border-bottom: 0; font-size: .7rem; }
-    .vis-detail .vis-tl-dot { margin-top: .3rem; }
-    .vis-detail .vis-actions {
-        position: static; z-index: auto; box-shadow: none;
-        padding: var(--vis-gap-sm); border-radius: var(--vis-radius); background: #fff;
+    /* برچسب کنار مقدار، نه بالای آن → هر سلول یک خط بهجای دو خط */
+    .vis-detail .vis-detail-line .vis-cell:not(.c-name) {
+        display: flex; align-items: center; flex-wrap: wrap; gap: var(--vis-gap-sm);
     }
-    .vis-detail .vis-actions .btn { padding: .42rem; font-size: .7rem; }
+    .vis-detail .vis-detail-line .vis-cell-label {
+        display: block; flex: 0 0 auto; max-width: 44%; margin: 0;
+        font-size: clamp(.48rem, calc(.32vw + .4rem), .56rem); line-height: 1.1;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .vis-detail .vis-detail-line .vis-cell > b {
+        flex: 1 1 45%; min-width: 0; margin: 0;
+        font-size: var(--vis-ctl-f); line-height: 1.2; overflow-wrap: anywhere;
+    }
+    .vis-detail .vis-detail-line .vis-cell > .vis-cell-note { flex: 1 1 100%; }
+    .vis-detail .vis-cell-note { font-size: clamp(.52rem, calc(.36vw + .44rem), .6rem); }
+    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: var(--vis-gap-sm); }
+    .vis-detail .vis-kpi { padding: var(--vis-gap-sm) var(--vis-pad); }
+    .vis-detail .vis-kpi > span { font-size: clamp(.5rem, calc(.35vw + .42rem), .58rem); }
+    .vis-detail .vis-kpi > b { font-size: clamp(.62rem, calc(.5vw + .48rem), .76rem); }
+    .vis-detail .vis-kpi small { display: none; }
+    .vis-detail .vis-kpi-total > b { font-size: clamp(.72rem, calc(.6vw + .56rem), .88rem); }
+    .vis-detail .vis-row { padding: var(--vis-gap-sm) 0; font-size: var(--vis-ctl-f); }
+    .vis-detail .vis-tl-item { padding: var(--vis-gap-sm) 0; border-bottom: 0; font-size: var(--vis-ctl-f); }
+    .vis-detail .vis-tl-dot { margin-top: var(--vis-gap-sm); }
+    /* نوار اقدام چسبان، بالاتر از نوار پایین اپ در حالت موبایل */
+    .vis-detail .vis-actions {
+        position: sticky; bottom: 0; z-index: 20;
+        padding: var(--vis-gap-sm); border-radius: var(--vis-radius); background: #fff;
+        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+    }
+    .app-mobile .vis-detail .vis-actions { bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+    .vis-detail .vis-actions .btn { padding: var(--vis-gap-sm); font-size: var(--vis-ctl-f); }
 }
 @@media (max-width: 720px) {
-    .vis-detail { --vis-gap: .4rem; --vis-gap-sm: .25rem; --vis-pad: .5rem; }
-    .vis-detail .vis-cell-label { font-size: .55rem; }
-    .vis-detail .vis-kpi { padding: .25rem .3rem; }
-    .vis-detail .vis-kpi > span { font-size: .55rem; }
-    .vis-detail .vis-kpi > b { font-size: .68rem; }
-    .vis-detail .vis-kpi-total > b { font-size: .78rem; }
+    .vis-detail { line-height: 1.28; }
+    .vis-detail .vis-kpi { padding: var(--vis-gap-sm); }
+    .vis-detail .vis-cell-label { font-size: clamp(.46rem, calc(.3vw + .4rem), .54rem); }
 }
 </style>
 
