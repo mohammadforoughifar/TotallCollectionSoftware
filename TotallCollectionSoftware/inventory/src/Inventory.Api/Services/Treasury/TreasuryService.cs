@@ -55,6 +55,14 @@ public class TreasuryService : ITreasuryService
 
         var rows = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var list = rows.Select(MapAccount).ToList();
+        var compIds = list.Where(a => a.CompanyId.HasValue).Select(a => a.CompanyId!.Value).Distinct().ToList();
+        if (compIds.Count > 0)
+        {
+            var compNames = await _db.SystemCompanies.AsNoTracking().Where(c => compIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+            foreach (var a in list)
+                if (a.CompanyId.HasValue && compNames.TryGetValue(a.CompanyId.Value, out var cn))
+                    a.CompanyName = cn;
+        }
 
         if (!withBalances || list.Count == 0) return list;
 
@@ -69,6 +77,9 @@ public class TreasuryService : ITreasuryService
         if (e is null) return null;
 
         var dto = MapAccount(e);
+        if (dto.CompanyId.HasValue)
+            dto.CompanyName = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => c.Id == dto.CompanyId.Value).Select(c => c.Name).FirstOrDefaultAsync();
         await FillBalancesAsync(new List<TrsAccount> { dto });
         return dto;
     }
@@ -108,24 +119,34 @@ public class TreasuryService : ITreasuryService
             ? await _db.TrsAccounts.FirstOrDefaultAsync(a => a.Id == dto.Id)
               ?? throw new InvalidOperationException("صندوق/بانک یافت نشد.")
             : new Db.TrsAccount();
-        var mappingChanged = dto.Id > 0 && (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind);
+        int? requestedCompanyId = dto.CompanyId.HasValue
+            ? (dto.CompanyId.Value > 0 ? dto.CompanyId.Value : null)
+            : (dto.Id == 0 && _db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : e.CompanyId);
+        if (requestedCompanyId is int cid && !await _db.SystemCompanies.AnyAsync(c => c.Id == cid && c.IsActive))
+            throw new InvalidOperationException("شرکت انتخاب‌شده برای حساب خزانه فعال نیست یا یافت نشد.");
+
+        var mappingChanged = dto.Id > 0 && (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind || e.CompanyId != requestedCompanyId);
         // Serialize the check and update with cheque receipts; otherwise a receipt can
-        // be inserted between the check and an accounting-account remap.
+        // be inserted between the check and an accounting-account or company remap.
         await using var mappingTx = mappingChanged ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable) : null;
         if (mappingChanged)
         {
             await _db.Entry(e).ReloadAsync();
-            if (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind)
+            if (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind || e.CompanyId != requestedCompanyId)
             {
                 var chequeReceipt = await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
+                var instReceipt = await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
+                var creditRefund = await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(s => s.TrsAccountId == dto.Id);
                 var initialCash = await _db.TrsVoucherLines.AsNoTracking().AnyAsync(l => l.TrsAccountId == dto.Id &&
-                    l.TrsVoucher!.VoucherId != null && _db.SaleChequeChargeEvents.IgnoreQueryFilters()
-                        .Any(ev => ev.AccVoucherId == l.TrsVoucher.VoucherId));
-                if (chequeReceipt || initialCash)
-                    throw new InvalidOperationException("حساب دارای گردش فاکتور چک است؛ نوع یا حساب حسابداری آن قابل تغییر نیست.");
+                    l.TrsVoucher!.VoucherId != null && (
+                        _db.SaleChequeChargeEvents.IgnoreQueryFilters().Any(ev => ev.AccVoucherId == l.TrsVoucher.VoucherId) ||
+                        _db.SaleChequeCancellations.IgnoreQueryFilters().Any(cn => cn.AccVoucherId == l.TrsVoucher.VoucherId)));
+                if (chequeReceipt || instReceipt || creditRefund || initialCash)
+                    throw new InvalidOperationException("حساب دارای گردش فاکتور چک است؛ شرکت، نوع یا حساب حسابداری آن قابل تغییر نیست.");
             }
         }
 
+        e.CompanyId = requestedCompanyId;
         e.Code = code;
         e.Name = dto.Name.Trim();
         e.Kind = dto.Kind;
@@ -171,6 +192,8 @@ public class TreasuryService : ITreasuryService
         if (await _db.TrsVoucherLines.AnyAsync(l => l.TrsAccountId == id)
             || await _db.TrsVouchers.AnyAsync(v => v.FromAccountId == id || v.ToAccountId == id)
             || await _db.TrsCheques.AnyAsync(c => c.TrsAccountId == id)
+            || await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == id)
+            || await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(s => s.TrsAccountId == id)
             || await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == id))
             throw new InvalidOperationException("این حساب در اسناد خزانه استفاده شده است؛ به‌جای حذف آن را غیرفعال کنید.");
 
@@ -212,6 +235,14 @@ public class TreasuryService : ITreasuryService
             (!r.ReversalDate.HasValue || r.ReversalStatus != VoucherStatus.Confirmed)))
             throw new InvalidOperationException("سند معکوس وصول چک با گردش خزانه مطابقت ندارد.");
 
+        var saleInstReceipts = await _db.SaleChequeInstallmentReceipts.AsNoTracking()
+            .Where(r => ids.Contains(r.TrsAccountId) && r.AccVoucher.Status == VoucherStatus.Confirmed)
+            .Select(r => new { r.TrsAccountId, r.Amount, r.ReversalVoucherId, r.ReversalDate,
+                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
+        if (saleInstReceipts.Any(r => r.ReversalVoucherId.HasValue &&
+            (!r.ReversalDate.HasValue || r.ReversalStatus != VoucherStatus.Confirmed)))
+            throw new InvalidOperationException("سند معکوس دریافت قسط با گردش خزانه مطابقت ندارد.");
+
         foreach (var a in list)
         {
             var mine = lines.Where(l => l.AccountId == a.Id).ToList();
@@ -227,11 +258,15 @@ public class TreasuryService : ITreasuryService
             var saleReceipts = saleChequeReceipts.Where(r => r.TrsAccountId == a.Id).ToList();
             inSum += saleReceipts.Sum(r => r.Amount);
             outSum += saleReceipts.Where(r => r.ReversalVoucherId.HasValue).Sum(r => r.Amount);
+            var instReceipts = saleInstReceipts.Where(r => r.TrsAccountId == a.Id).ToList();
+            inSum += instReceipts.Sum(r => r.Amount);
+            outSum += instReceipts.Where(r => r.ReversalVoucherId.HasValue).Sum(r => r.Amount);
 
             a.TotalIn = inSum;
             a.TotalOut = outSum;
             a.Balance = a.OpeningBalance + inSum - outSum;
             a.MoveCount = mine.Count + mineCheques.Count + saleReceipts.Count + saleReceipts.Count(r => r.ReversalVoucherId.HasValue)
+                          + instReceipts.Count + instReceipts.Count(r => r.ReversalVoucherId.HasValue)
                           + transfers.Count(t => t.FromAccountId == a.Id || t.ToAccountId == a.Id);
         }
     }
@@ -258,6 +293,7 @@ public class TreasuryService : ITreasuryService
     private static TrsAccount MapAccount(Db.TrsAccount e) => new()
     {
         Id = e.Id,
+        CompanyId = e.CompanyId,
         Code = e.Code,
         Name = e.Name,
         Kind = e.Kind,
@@ -1274,6 +1310,9 @@ public class TreasuryService : ITreasuryService
         if (e.VoucherId is > 0)
         {
             if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId) ||
+                await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId) ||
+                await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId || x.ReversalVoucherId == e.VoucherId) ||
+                await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId) ||
                 await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId || x.ReversalVoucherId == e.VoucherId))
                 throw new InvalidOperationException("سند مرتبط با چک فروش را نمی‌توان از مسیر خزانه تغییر داد.");
             var v = await _db.AccVouchers.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == e.VoucherId);
@@ -2192,6 +2231,34 @@ public class TreasuryService : ITreasuryService
                 });
             }
         }
+
+        var instReceiptsFlow = await _db.SaleChequeInstallmentReceipts.AsNoTracking()
+            .Where(r => r.TrsAccountId == accountId && r.AccVoucher.Status == VoucherStatus.Confirmed)
+            .Select(r => new { r.Date, r.Amount, r.Installment.No, r.Transaction.Number, PartyName = r.Transaction.Party != null ? r.Transaction.Party.Name : null,
+                r.ReversalDate, r.ReversalVoucherId,
+                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
+        foreach (var inst in instReceiptsFlow)
+        {
+            rows.Add(new TrsFlowRow
+            {
+                Date = inst.Date, TrsVoucherId = 0, Number = 0, Kind = TreasuryKind.Receipt,
+                Method = "قسط فروش", PartyName = inst.PartyName,
+                Description = $"دریافت قسط {inst.No} فاکتور {inst.Number}", RefNumber = inst.Number,
+                In = inst.Amount, Out = 0
+            });
+            if (inst.ReversalVoucherId.HasValue)
+            {
+                if (!inst.ReversalDate.HasValue || inst.ReversalStatus != VoucherStatus.Confirmed)
+                    throw new InvalidOperationException("سند معکوس دریافت قسط با گردش خزانه مطابقت ندارد.");
+                rows.Add(new TrsFlowRow
+                {
+                    Date = inst.ReversalDate.Value, TrsVoucherId = 0, Number = 0, Kind = TreasuryKind.Payment,
+                    Method = "لغو دریافت قسط فروش", PartyName = inst.PartyName,
+                    Description = $"لغو دریافت قسط {inst.No} فاکتور {inst.Number}", RefNumber = inst.Number,
+                    In = 0, Out = inst.Amount
+                });
+            }
+        }
         return rows;
     }
 
@@ -2243,6 +2310,29 @@ public class TreasuryService : ITreasuryService
         var reversals = await reversalsQuery.Select(r => r.Amount).ToListAsync();
         d.PeriodOut += reversals.Sum();
         d.PaymentCount += reversals.Count;
+
+        var instInQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.AccVoucher.Status == VoucherStatus.Confirmed);
+        if (from.HasValue) instInQ = instInQ.Where(r => r.Date >= from.Value.Date);
+        if (to.HasValue)
+        {
+            var end = to.Value.Date.AddDays(1);
+            instInQ = instInQ.Where(r => r.Date < end);
+        }
+        var instIns = await instInQ.Select(r => r.Amount).ToListAsync();
+        d.PeriodIn += instIns.Sum();
+        d.ReceiptCount += instIns.Count;
+
+        var instRevQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.ReversalVoucherId != null &&
+            r.ReversalVoucher != null && r.ReversalVoucher.Status == VoucherStatus.Confirmed && r.ReversalDate != null);
+        if (from.HasValue) instRevQ = instRevQ.Where(r => r.ReversalDate >= from.Value.Date);
+        if (to.HasValue)
+        {
+            var end = to.Value.Date.AddDays(1);
+            instRevQ = instRevQ.Where(r => r.ReversalDate < end);
+        }
+        var instRevs = await instRevQ.Select(r => r.Amount).ToListAsync();
+        d.PeriodOut += instRevs.Sum();
+        d.PaymentCount += instRevs.Count;
 
         // ---------- چک‌ها ----------
         var open = _db.TrsCheques.AsNoTracking()

@@ -117,6 +117,16 @@ public interface IOrderService
     Task ReverseChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd);
     Task ChangeChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd);
     Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId);
+    Task<SaleChequeReturnPreviewDto> PreviewChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req);
+    Task<SaleChequeReturnSummaryDto> ReturnChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd);
+    Task ReplaceChequeAsync(int chequeId, SaleChequeReplaceCommand cmd);
+    Task RefundChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd);
+    Task AllocateChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd);
+    Task ReceiveChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd);
+    Task ReverseChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd);
+    Task CancelChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd);
+    Task<Order> EditChequeOrderAsync(int saleId, OrderCommand cmd);
+    Task<List<TrsAccount>> GetActiveTreasuryAccountsAsync(TreasuryAccountKind? kind = null);
     Task DeleteAsync(int id);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 

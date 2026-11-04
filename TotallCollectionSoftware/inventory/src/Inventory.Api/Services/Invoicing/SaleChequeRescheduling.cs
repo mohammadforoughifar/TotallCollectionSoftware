@@ -7,33 +7,73 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace Inventory.Api.Services.Invoicing;
 
 /// <summary>
-/// تغییر سررسید و سند تعدیل در تراکنش سریال فراخواننده. API و فرم به صورت آزمایشی
-/// متصل‌اند؛ صورت‌حساب تاریخی و تسویه بستانکاری باید قبل از فعال‌سازی کامل شوند.
+/// تغییر سررسید و سند تعدیل در تراکنش سریال فراخواننده، با پشتیبانی از تغییر پایه پس از برگشت جزئی.
 /// </summary>
 public static class SaleChequeRescheduling
 {
-    /// <summary>گردکردن تجمعی نسبت به سررسید اولیه، با رد تاریخچهٔ ناسازگار.</summary>
+    public static async Task<decimal> EffectiveBaseAsync(AppDbContext db, SaleChequeCharge charge)
+    {
+        var returns = await db.SaleChequeReturns.AsNoTracking()
+            .Where(r => r.SaleChequeChargeId == charge.Id)
+            .Select(r => new { r.GoodsAmount, r.VatAmount }).ToListAsync();
+        var returned = returns.Sum(r => r.GoodsAmount + r.VatAmount);
+        var effectiveBase = charge.BaseAmount - returned;
+        if (effectiveBase <= 0)
+            throw new InvalidOperationException("تمام کالاهای این فاکتور برگشت داده شده‌اند؛ تعدیل سررسید مجاز نیست.");
+        return effectiveBase;
+    }
+
+    /// <summary>گردکردن تجمعی در هر دورهٔ پایهٔ ثابت، با رد تاریخچهٔ ناسازگار.</summary>
     public static async Task<decimal> CalculateDeltaAsync(AppDbContext db, Cheque cheque, SaleChequeCharge charge, DateTime newDueDate)
+    {
+        var (_, delta) = await CalculatePlanAsync(db, cheque, charge, newDueDate);
+        return delta;
+    }
+
+    public static async Task<(decimal EffectiveBase, decimal Delta)> CalculatePlanAsync(
+        AppDbContext db, Cheque cheque, SaleChequeCharge charge, DateTime newDueDate)
     {
         if (!cheque.OriginalDueDate.HasValue)
             throw new InvalidOperationException("سررسید اولیه چک مشخص نیست؛ تعدیل خودکار مجاز نیست.");
+        var effectiveBase = await EffectiveBaseAsync(db, charge);
         var records = await db.SaleChequeReschedules.AsNoTracking().Where(r => r.ChequeId == cheque.Id)
             .OrderBy(r => r.Id).ToListAsync();
         var due = cheque.OriginalDueDate.Value.Date;
-        decimal posted = 0;
+        var segStartDue = due;
+        decimal? currentSegBase = null;
+        decimal segPosted = 0;
+
         foreach (var record in records)
         {
             if (record.SaleChequeChargeId != charge.Id || record.PreviousDueDate.Date != due ||
-                record.BaseAmount != charge.BaseAmount || record.RatePercent != charge.RatePercent || record.PeriodDays != charge.PeriodDays)
+                record.BaseAmount <= 0 || record.BaseAmount > charge.BaseAmount || record.BaseAmount < effectiveBase ||
+                record.RatePercent != charge.RatePercent || record.PeriodDays != charge.PeriodDays)
                 throw new InvalidOperationException("تاریخچه سررسید یا مبنای تعدیل ناسازگار است؛ بررسی دستی لازم است.");
+
+            if (currentSegBase.HasValue && record.BaseAmount != currentSegBase.Value)
+            {
+                if (record.BaseAmount > currentSegBase.Value ||
+                    segPosted != SaleChequeChargeMath.DateAdjustment(currentSegBase.Value, charge.RatePercent, charge.PeriodDays, segStartDue, due))
+                    throw new InvalidOperationException("تاریخچه سررسید یا گردکردن تعدیلات ناسازگار است؛ بررسی دستی لازم است.");
+                segStartDue = due;
+                segPosted = 0;
+            }
+
+            currentSegBase = record.BaseAmount;
             due = record.NewDueDate.Date;
-            posted += record.IncomeDelta;
+            segPosted += record.IncomeDelta;
         }
-        if (due != cheque.DueDate.Date || posted != SaleChequeChargeMath.DateAdjustment(
-                charge.BaseAmount, charge.RatePercent, charge.PeriodDays, cheque.OriginalDueDate.Value, due))
+
+        if (due != cheque.DueDate.Date || (currentSegBase.HasValue &&
+            segPosted != SaleChequeChargeMath.DateAdjustment(currentSegBase.Value, charge.RatePercent, charge.PeriodDays, segStartDue, due)))
             throw new InvalidOperationException("تاریخچه سررسید یا گردکردن تعدیلات ناسازگار است؛ بررسی دستی لازم است.");
-        return SaleChequeChargeMath.IncrementalDateAdjustment(charge.BaseAmount, charge.RatePercent, charge.PeriodDays,
-            cheque.OriginalDueDate.Value, cheque.DueDate, newDueDate);
+
+        var originDue = currentSegBase.HasValue && currentSegBase.Value == effectiveBase
+            ? segStartDue
+            : cheque.DueDate.Date;
+        var delta = SaleChequeChargeMath.IncrementalDateAdjustment(effectiveBase, charge.RatePercent, charge.PeriodDays,
+            originDue, cheque.DueDate, newDueDate);
+        return (effectiveBase, delta);
     }
 
     public static async Task<SaleChequeReschedule> ApplyAsync(AppDbContext db, int chequeId, Guid operationId,
@@ -90,12 +130,17 @@ public static class SaleChequeRescheduling
             charge.IncomeAccountId == charge.PartyAccountId || charge.Amount < 0 || charge.CustomerCredit < 0 ||
             (charge.Amount > 0 && charge.CustomerCredit > 0) || sale.Amount != charge.BaseAmount + charge.Amount)
             throw new InvalidOperationException("اطلاعات مالی فاکتور ناسازگار است؛ تغییر سررسید متوقف شد.");
+        if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
+            throw new InvalidOperationException("فاکتور ابطال شده است و تغییر سررسید مجاز نیست.");
         var ledgerEvents = await db.SaleChequeChargeEvents.AsNoTracking().Where(e => e.SaleChequeChargeId == charge.Id)
             .Select(e => new { e.Kind, e.Date, e.IncomeDelta, e.AccVoucher.Status }).ToListAsync();
         if (ledgerEvents.Count(e => e.Kind == SaleChequeChargeEventKind.Initial) != 1 ||
             ledgerEvents.Any(e => e.Status != VoucherStatus.Confirmed || e.Date.Date > operationDate) ||
             ledgerEvents.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit ||
             await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > operationDate) ||
+            await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > operationDate) ||
+            await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > operationDate) ||
+            await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)))
             throw new InvalidOperationException("تاریخچه درآمد با فاکتور مطابقت ندارد یا تاریخ اصلاح پیش از عملیات قبلی است.");
         var accounts = await db.AccAccounts.AsNoTracking()
@@ -107,9 +152,10 @@ public static class SaleChequeRescheduling
         var years = await db.AccFiscalYears.Where(y => y.StartDate <= operationDate && y.EndDate >= operationDate).ToListAsync();
         if (years.Count != 1 || years[0].IsClosed)
             throw new InvalidOperationException("برای تاریخ اصلاح باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-        decimal delta, newNet;
+        decimal effectiveBase, delta, newNet;
         try
         {
+            effectiveBase = await EffectiveBaseAsync(db, charge);
             delta = await CalculateDeltaAsync(db, cheque, charge, newDueDate);
             newNet = charge.Amount - charge.CustomerCredit + delta;
             if (decimal.Abs(newNet) > 9999999999999999.99m)
@@ -157,7 +203,7 @@ public static class SaleChequeRescheduling
         {
             CompanyId = charge.CompanyId, OperationId = operationId, ChequeId = cheque.Id, SaleChequeChargeId = charge.Id,
             SaleChequeChargeEvent = incomeEvent, PreviousDueDate = expectedDueDate, NewDueDate = newDueDate,
-            Date = operationDate, BaseAmount = charge.BaseAmount, RatePercent = charge.RatePercent, PeriodDays = charge.PeriodDays,
+            Date = operationDate, BaseAmount = effectiveBase, RatePercent = charge.RatePercent, PeriodDays = charge.PeriodDays,
             IncomeDelta = delta, CreatedBy = user, CreatedAt = DateTime.Now
         };
         cheque.DueDate = newDueDate;

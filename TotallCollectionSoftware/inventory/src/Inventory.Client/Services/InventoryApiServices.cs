@@ -292,6 +292,48 @@ public class OrderService : IOrderService
     public Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId)
         => _api.GetAsync<List<SaleChequeStatusHistoryItem>>($"api/orders/cheques/{chequeId}/status-history");
 
+    public Task<SaleChequeReturnPreviewDto> PreviewChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req)
+        => _api.PostAsync<SaleChequeReturnPreviewDto>($"api/orders/{saleId}/cheque-return-preview", req);
+
+    public Task<SaleChequeReturnSummaryDto> ReturnChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd)
+        => _api.PostAsync<SaleChequeReturnSummaryDto>($"api/orders/{saleId}/cheque-return", cmd);
+
+    public async Task ReplaceChequeAsync(int chequeId, SaleChequeReplaceCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/replace", cmd);
+    }
+
+    public async Task RefundChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/credit-refund", cmd);
+    }
+
+    public async Task AllocateChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/credit-allocation", cmd);
+    }
+
+    public async Task ReceiveChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/installments/{installmentId}/receipt", cmd);
+    }
+
+    public async Task ReverseChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/installments/{installmentId}/receipt-reversal", cmd);
+    }
+
+    public async Task CancelChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/cheque-cancel", cmd);
+    }
+
+    public Task<Order> EditChequeOrderAsync(int saleId, OrderCommand cmd)
+        => _api.PutAsync<Order>($"api/orders/{saleId}/cheque-edit", cmd);
+
+    public Task<List<TrsAccount>> GetActiveTreasuryAccountsAsync(TreasuryAccountKind? kind = null)
+        => _api.GetAsync<List<TrsAccount>>(kind.HasValue ? $"api/orders/active-treasury-accounts?kind={(int)kind.Value}" : "api/orders/active-treasury-accounts");
+
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/orders/{id}");
 

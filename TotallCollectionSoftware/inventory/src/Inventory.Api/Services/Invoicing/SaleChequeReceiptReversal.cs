@@ -58,15 +58,28 @@ public static class SaleChequeReceiptReversal
             throw new InvalidOperationException("وضعیت پیش از وصول ثبت نشده است؛ لغو خودکار ممکن نیست.");
         if (await db.SaleChequeStatusEvents.AnyAsync(e => e.OperationId == operationId))
             throw new InvalidOperationException("شناسه عملیات قبلاً استفاده شده است.");
-        if (await db.SystemCompanies.CountAsync() > 1)
-            throw new InvalidOperationException("لغو وصول آزمایشی در محیط چندشرکتی تا تفکیک حساب‌ها غیرفعال است.");
+        if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
+            throw new InvalidOperationException("فاکتور ابطال شده است.");
         if (await db.SaleChequeChargeEvents.AnyAsync(e => e.SaleChequeCharge.TransactionId == sale.Id && e.Date > date) ||
+            await db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == sale.Id && r.Date > date) ||
+            await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
+            await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ لغو وصول نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
-        var activeReceipts = await db.SaleChequeReceipts.AsNoTracking()
-            .Where(r => r.TransactionId == sale.Id && r.ReversalVoucherId == null).ToListAsync();
-        if (sale.SettledAmount != sale.CashAmount + activeReceipts.Sum(r => r.Amount) || sale.SettledAmount < receipt.Amount)
+        await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
+        if (sale.SettledAmount < receipt.Amount)
             throw new InvalidOperationException("تاریخچه تسویه فاکتور ناسازگار است.");
+        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
+            ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        var outboundCredits = (await db.SaleChequeCreditSettlements.AsNoTracking()
+            .Where(s => s.SaleTransactionId == sale.Id).Select(s => s.Amount).ToListAsync()).Sum();
+        if (outboundCredits > 0)
+        {
+            var signedNow = await SaleChequeSettlementLedger.SignedChargedSaleBalanceAsync(db, sale, charge);
+            var rawCreditAfterReversal = Math.Max(0m, -(signedNow - outboundCredits + receipt.Amount));
+            if (outboundCredits > rawCreditAfterReversal)
+                throw new InvalidOperationException("از محل وصول این چک قبلاً بستانکاری به مشتری پرداخت یا مصرف شده است؛ ابتدا بستانکاری تسویه‌شده را تعیین‌تکلیف کنید.");
+        }
         var bankLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.BankAccountId).ToList();
         var partyLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.PartyAccountId && l.PartyId == sale.PartyId).ToList();
         if (receipt.AccVoucher.Status != VoucherStatus.Confirmed || receipt.AccVoucher.Date.Date != receipt.Date.Date ||
@@ -75,6 +88,7 @@ public static class SaleChequeReceiptReversal
         var bank = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == receipt.TrsAccountId && a.IsActive &&
             a.Kind == TreasuryAccountKind.Bank && a.AccountId == receipt.BankAccountId)
             ?? throw new InvalidOperationException("حساب بانکی اولیه فعال نیست یا تنظیم آن تغییر کرده است.");
+        await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, bank, sale.CompanyId);
         var accounts = await db.AccAccounts.AsNoTracking().Where(a => a.Id == receipt.BankAccountId || a.Id == receipt.PartyAccountId).ToListAsync();
         if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable || a.Type != AccountType.Asset))
             throw new InvalidOperationException("حساب‌های بانک و مشتری باید فعال و قابل ثبت باشند.");

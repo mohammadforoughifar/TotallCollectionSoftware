@@ -17,6 +17,8 @@ namespace Inventory.Api.Data;
 public class TrsAccount
 {
     public int Id { get; set; }
+    /// <summary>مالکیت شرکت برای تفکیک ایمن حساب‌های بانکی/خزانه در محیط چندشرکتی؛ در تک‌شرکتی قدیمی می‌تواند null باشد.</summary>
+    public int? CompanyId { get; set; }
 
     [MaxLength(40)] public string Code { get; set; } = "";
     [MaxLength(200)] public string Name { get; set; } = "";

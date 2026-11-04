@@ -56,25 +56,28 @@ public static class SaleChequeReceiptPosting
         if (sale.Type != TransactionType.Sale || sale.PartyId is not > 0 || date < sale.Date.Date ||
             cheque.CompanyId != sale.CompanyId || charge.CompanyId != sale.CompanyId || charge.PartyAccountId is not > 0)
             throw new InvalidOperationException("فاکتور، حساب مشتری یا تاریخ وصول معتبر نیست.");
+        if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
+            throw new InvalidOperationException("فاکتور ابطال شده است و امکان وصول چک ندارد.");
         if (await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > date) ||
+            await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
+            await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
+            await db.SaleChequeInstallmentReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ وصول نمی‌تواند پیش از آخرین تغییر سررسید یا گردش وصول فاکتور باشد.");
         var initialConfirmed = await db.SaleChequeChargeEvents.AnyAsync(e => e.SaleChequeChargeId == charge.Id &&
             e.Kind == SaleChequeChargeEventKind.Initial && e.AccVoucher.Status == VoucherStatus.Confirmed);
         if (!initialConfirmed) throw new InvalidOperationException("سند قطعی اولیه فاکتور یافت نشد.");
-        // Treasury accounts are not company-scoped in the existing model.
-        if (await db.SystemCompanies.CountAsync() > 1)
-            throw new InvalidOperationException("وصول آزمایشی در محیط چندشرکتی تا تفکیک حساب‌های بانکی هر شرکت غیرفعال است.");
         var bank = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == trsAccountId && x.IsActive && x.Kind == TreasuryAccountKind.Bank)
             ?? throw new InvalidOperationException("حساب بانکی مقصد فعال نیست یا یافت نشد.");
+        if (await db.SystemCompanies.CountAsync() > 1 && (sale.CompanyId is not > 0 || bank.CompanyId != sale.CompanyId))
+            throw new InvalidOperationException("در محیط چندشرکتی، حساب بانکی مقصد باید صریحاً متعلق به شرکت همین فاکتور باشد.");
+        await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, bank, sale.CompanyId);
         if (bank.AccountId is not > 0 || bank.AccountId == charge.PartyAccountId)
             throw new InvalidOperationException("حساب حسابداری مستقل برای بانک و مشتری تنظیم کنید.");
         var accounts = await db.AccAccounts.AsNoTracking().Where(a => a.Id == bank.AccountId || a.Id == charge.PartyAccountId).ToListAsync();
         if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable || a.Type != AccountType.Asset))
             throw new InvalidOperationException("حساب‌های مشتری و بانک باید دارایی، فعال و قابل ثبت باشند.");
-        var previousReceipts = await db.SaleChequeReceipts.AsNoTracking().Where(x => x.TransactionId == sale.Id).ToListAsync();
-        if (sale.SettledAmount != sale.CashAmount + previousReceipts.Where(x => x.ReversalVoucherId == null).Sum(x => x.Amount))
-            throw new InvalidOperationException("تاریخچه وصول با مانده تسویه فاکتور مطابقت ندارد.");
+        await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         if (sale.SettledAmount + cheque.Amount > 9999999999999999.99m)
             throw new InvalidOperationException("جمع وصول از محدوده حسابداری بیشتر است.");
         var years = await db.AccFiscalYears.Where(y => y.StartDate <= date && y.EndDate >= date).ToListAsync();

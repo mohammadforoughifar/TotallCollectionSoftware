@@ -16,11 +16,28 @@ class ReturnPlannerContract(unittest.TestCase):
             self.assertIn(fragment, src)
         self.assertNotIn('SaveChanges', src)
 
-    def test_unimplemented_installment_route_stays_closed(self):
+    def test_new_charged_sale_snapshots_cost_before_posting(self):
         api = (ROOT / 'src/Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
-        self.assertIn('cmd.ChequeCharge is not null && cmd.Installments.Count > 0', api)
-        ui = (ROOT / 'src/Inventory.Client/Pages/Orders/OrderForm.razor').read_text(encoding='utf8')
-        self.assertIn('saleChequeCharge is not null && useInstallment && installments.Count > 0', ui)
+        section = api[api.index('private async Task FreezeChargedSaleCostsAsync'):api.index('private async Task EnrichSaleProfitAsync')]
+        self.assertIn('_db.Database.CurrentTransaction is null', section)
+        self.assertIn('ComputeSaleCosts(txns, group.Key, costingMethod, product.PurchasePrice)', section)
+        self.assertIn('line.UnitCostSnapshot = decimal.Round(cost, 2)', section)
+        self.assertIn('if (product.IsService) continue', section)
+        self.assertIn('_db.InvStocks.AnyAsync', section)
+        self.assertIn('_db.InvLedger.AnyAsync', section)
+        self.assertIn('line.UnitCostSnapshot = null', section)
+        create = api[api.index('public async Task<Order> CreateOrderAsync'):api.index('public async Task<PagedResult<Order>> GetOrdersAsync')]
+        self.assertLess(create.index('FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod)'),
+                        create.index('SaleChequeChargeRegistration.RegisterAsync'))
+
+    def test_installment_settlement_uses_dedicated_accounting_route(self):
+        api = (ROOT / 'src/Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
+        self.assertIn('cmd.ChequeCharge is not null && cmd.Installments.Any(i => i.IsPaid)', api)
+        self.assertIn('SaleChequeInstallmentPosting.ReceiveAsync', api)
+        self.assertIn('SaleChequeInstallmentPosting.ReverseAsync', api)
+        credit_ui = (ROOT / 'src/Inventory.Client/Pages/Shop/ShopCreditManagement.razor').read_text(encoding='utf8')
+        self.assertIn('OrderSvc.ReceiveChequeInstallmentAsync', credit_ui)
+        self.assertIn('OrderSvc.ReverseChequeInstallmentReceiptAsync', credit_ui)
 
 
 if __name__ == '__main__':

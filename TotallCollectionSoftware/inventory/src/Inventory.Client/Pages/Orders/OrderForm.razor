@@ -211,7 +211,7 @@
                                             <i class="bi bi-plus-lg"></i> افزودن چک
                                         </button>
                                     </div>
-                                    @if (Type == TransactionType.Sale && !IsEdit)
+                                    @if (Type == TransactionType.Sale && (!IsEdit || EditOrder?.HasChequeCharge == true))
                                     {
                                         <div class="alert alert-light border py-2 fs-8 mb-2">
                                             <div class="d-flex flex-wrap align-items-center gap-2">
@@ -219,11 +219,14 @@
                                                 @if (saleChequeCharge is not null)
                                                 {
                                                     <span class="num">@saleChequeIncome.Money() ریال</span>
-                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemoveSaleChequeCharge">حذف سود</button>
+                                                    @if (!IsEdit)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemoveSaleChequeCharge">حذف سود</button>
+                                                    }
                                                 }
                                                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenSaleChequeCharge">محاسبه سود</button>
                                             </div>
-                                            <div class="text-muted mt-1">ثبت این قابلیت پیش‌فرض خاموش و صرفاً آزمایشی است. برگشت کالا، ویرایش، ابطال و تسویه بستانکاری هنوز پشتیبانی نمی‌شود.</div>
+                                            <div class="text-muted mt-1">ثبت این قابلیت پیش‌فرض خاموش و تحت کلید آزمایشی است؛ مبلغ سود جدا از کالا و بدون ارزش افزوده در حساب درآمد مالی ثبت می‌شود.</div>
                                         </div>
                                     }
                                     @for (var ci = 0; ci < cheques.Count; ci++)
@@ -1425,7 +1428,9 @@
             var whTask = WarehouseSvc.GetLookupsAsync(activeOnly: true);
             var partyTask = Type == TransactionType.Sale ? null : PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
             var prodTask = ProductSvc.GetProductsAsync(pageSize: 10000);
-            var bankTask = AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            var bankTask = Type == TransactionType.Sale
+                ? OrderSvc.GetActiveTreasuryAccountsAsync()
+                : AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
             var referrerTask = Type == TransactionType.Sale ? ReferrerSvc.GetAllAsync(activeOnly: true) : null;
             var customerTask = Type == TransactionType.Sale ? PartySvc.GetAsync(PartyType.Customer) : null;
             var stockTask = LoadWarehouseStocksAsync();
@@ -1488,6 +1493,25 @@
                 creditDue = o.DueDate;
                 useCheque = o.Cheques.Count > 0 || o.PaymentMethod == PaymentMethod.Cheque;
                 useInstallment = o.Installments.Count > 0 || o.PaymentMethod == PaymentMethod.Installment;
+                if (o.HasChequeCharge && o.ChequeChargeSnapshot is not null)
+                {
+                    saleChequeCharge = new SaleChequeChargeInput
+                    {
+                        CalculatorBaseAmount = o.ChequeChargeSnapshot.CalculatorBaseAmount,
+                        CalculatorRatePercent = o.ChequeChargeSnapshot.CalculatorRatePercent,
+                        CalculatorMonths = o.ChequeChargeSnapshot.CalculatorMonths,
+                        AdjustmentRatePercent = o.ChequeChargeSnapshot.AdjustmentRatePercent,
+                        AdjustmentPeriodDays = o.ChequeChargeSnapshot.AdjustmentPeriodDays,
+                        ConfirmedCreditDueDate = o.ChequeChargeSnapshot.ConfirmedCreditDueDate
+                    };
+                    saleChequeIncome = o.ChequeIncomeAmount;
+                    chargeInvoiceBase = o.GoodsAmount;
+                    chargeBaseText = Fa.FormatTyping(saleChequeCharge.CalculatorBaseAmount.ToString("0.##"));
+                    chargeRateText = saleChequeCharge.CalculatorRatePercent.ToString("0.######");
+                    chargeMonths = saleChequeCharge.CalculatorMonths;
+                    chargeAdjustmentRateText = saleChequeCharge.AdjustmentRatePercent.ToString("0.######");
+                    chargeAdjustmentDays = saleChequeCharge.AdjustmentPeriodDays;
+                }
                 var loadedCash = o.PaymentMethod == PaymentMethod.Cash ? o.TotalAmount : o.CashAmount;
                 useCash = loadedCash > 0 || (o.Cheques.Count == 0 && o.Installments.Count == 0 && o.PaymentMethod != PaymentMethod.Cheque && o.PaymentMethod != PaymentMethod.Installment);
                 cashAmountText = loadedCash > 0 && (o.Cheques.Count > 0 || o.Installments.Count > 0 || o.PaymentMethod != PaymentMethod.Cash)
@@ -1910,7 +1934,7 @@
             return;
         }
 
-        if (saleChequeCharge is not null && (!useCheque || IsEdit || chargeInvoiceBase != goodsTotal))
+        if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
         {
             ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید.");
             return;
@@ -1918,11 +1942,6 @@
         if (saleChequeCharge is not null && CashPart > 0 && trsAccountId is not > 0)
         {
             ShowFormError("برای دریافت نقدی ترکیبی، حساب فعال صندوق یا بانک را انتخاب کنید.");
-            return;
-        }
-        if (saleChequeCharge is not null && useInstallment && installments.Count > 0)
-        {
-            ShowFormError("اقساط برای فاکتور آزمایشی تا تکمیل گردش تسویه پشتیبانی نمی‌شود.");
             return;
         }
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
@@ -2032,7 +2051,12 @@
         try
         {
             Order saved;
-            if (IsEdit)
+            if (IsEdit && EditOrder!.HasChequeCharge)
+            {
+                saved = await OrderSvc.EditChequeOrderAsync(EditOrder.Id, cmd);
+                Toast.Success("فاکتور فروش با صدور سند اصلاحی جایگزین شد.");
+            }
+            else if (IsEdit)
             {
                 saved = await OrderSvc.UpdateAsync(EditOrder!.Id, cmd);
                 Toast.Success(Type == TransactionType.Sale ? "فاکتور فروش ویرایش شد." : "فاکتور خرید ویرایش شد.");

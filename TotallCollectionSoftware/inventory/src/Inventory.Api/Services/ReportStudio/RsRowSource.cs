@@ -968,6 +968,7 @@ public sealed class RsRowSource : IRsRowSource
         TransactionType.Initial => "موجودی اول دوره",
         TransactionType.Purchase => "رسید خرید",
         TransactionType.Sale => "حواله فروش",
+        TransactionType.SaleReturn => "برگشت از فروش",
         TransactionType.Adjustment => "تعدیل",
         _ => "نامشخص"
     };

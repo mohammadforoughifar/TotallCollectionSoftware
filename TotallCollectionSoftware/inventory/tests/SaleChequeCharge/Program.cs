@@ -6,6 +6,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Reports;
 using Inventory.Api.Services.Accounting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -496,6 +497,197 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     }
     db.ChangeTracker.Clear();
     Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-MIXED"), "cash receipt and sale roll back together");
+    // The ordinary sale path freezes actual legacy stock cost, not the selling price or an input value.
+    var costProduct = new Product { Name = "کالای بهای آزمون", Code = "COST-SNAPSHOT", Unit = "عدد", PurchasePrice = 80 };
+    db.Products.Add(costProduct);
+    await db.SaveChangesAsync();
+    db.Transactions.Add(new Inventory.Api.Data.Transaction
+    {
+        Number = "PR-COST", Type = TransactionType.Purchase, Date = new DateTime(2026, 5, 1), WarehouseId = wh.Id,
+        PartyId = party.Id, Amount = 800,
+        Lines = new() { new TransactionLine { ProductId = costProduct.Id, Quantity = 10, Price = 80, GrossAmount = 800 } }
+    });
+    db.Stocks.Add(new Stock { WarehouseId = wh.Id, ProductId = costProduct.Id, Quantity = 10, AvgCost = 80 });
+    await db.SaveChangesAsync();
+    var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["SaleChequeCharge:ExperimentalEnabled"] = "true" }).Build();
+    var creationService = new InventoryService(db, NullLogger<InventoryService>.Instance, cfg);
+    var created = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = party.Id, Date = new DateTime(2026, 6, 2),
+        PaymentMethod = PaymentMethod.Cheque,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 1, Price = 200, UnitCostSnapshot = 5 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "COST-CHEQUE", Amount = 250, DueDate = new DateTime(2026, 7, 2) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput { CalculatorBaseAmount = 200, CalculatorRatePercent = 5,
+            CalculatorMonths = 5, AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30 }
+    }, "tester");
+    var savedLine = await db.TransactionLines.SingleAsync(l => l.TransactionId == created.Id);
+    Check(savedLine.UnitCostSnapshot == 80, "charged sale stores legacy cost instead of an input cost or sale price");
+
+    // End-to-end return, decision, post-return reschedule, cheque replacement, credit settlement, installments, edit and void.
+    var e2eParty = new Party { Type = PartyType.Customer, Name = "مشتری گردش کامل", IsActive = true };
+    db.Parties.Add(e2eParty);
+    await db.SaveChangesAsync();
+    treasuryBank.OpeningBalance = 1000;
+    await db.SaveChangesAsync();
+
+    var fullSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 3),
+        PaymentMethod = PaymentMethod.Cheque,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 90, VatValue = 200 } },
+        // Price 90 * 2 = 180; VatValue 200 (>100 => fixed 20? Wait: use VatValue = 10% => 18, or Price=100, VatValue=0 => 200)
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHQ-E2E-1", Amount = 250, DueDate = new DateTime(2026, 7, 3) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput
+        {
+            CalculatorBaseAmount = 200, CalculatorRatePercent = 5, CalculatorMonths = 5,
+            AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30
+        }
+    }, "tester");
+    // Wait: 2 * 90 = 180 + fixed VAT 200 = 380! Keep exact 200+50=250 by using Price=90, VatValue=11.11? Even cleaner: Price=100, VatValue=0 => 200!
+    // Let's cancel fullSale cleanly (exercising CancelSaleChequeOrderAsync!) and issue exact 200 (180 + 10% VAT on 200 -> Price=100, DiscountAmount=20, DiscountIsAmount=true, VatValue=111.11? No: Quantity=2, Price=90 => 180; VatValue=100.01? Wait: VatValue > 100 is fixed rial, so VatValue=120 is 120 rial, whereas 20% VAT is VatValue=20 => 180*20%=36, or Price=100, DiscountAmount=0, VatValue=0 => 200!).
+    await creationService.CancelSaleChequeOrderAsync(fullSale.Id, new Inventory.Shared.Dtos.SaleChequeCancelCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 3), Reason = "تست ابطال کامل"
+    }, "tester");
+    var stmtAfterCancel = await creationService.GetPartyStatementDetailAsync(e2eParty.Id);
+    Check(stmtAfterCancel.ClosingBalance == 0 && stmtAfterCancel.SaleGoodsTotal == 0 && stmtAfterCancel.SaleChequeIncomeTotal == 0,
+        "atomic cancellation zeroes customer statement, goods total and cheque income");
+
+    var sale250 = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 4),
+        PaymentMethod = PaymentMethod.Cheque,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 100, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHQ-250", Amount = 250, DueDate = new DateTime(2026, 7, 4) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput
+        {
+            CalculatorBaseAmount = 200, CalculatorRatePercent = 5, CalculatorMonths = 5,
+            AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30
+        }
+    }, "tester");
+    var origLineId = sale250.Lines.Single().Id;
+    var retPreview = await creationService.PreviewSaleChequeReturnAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeReturnPreviewRequest
+    {
+        Date = new DateTime(2026, 6, 5),
+        Lines = new() { new Inventory.Shared.Dtos.SaleChequeReturnLineDto { OriginalLineId = origLineId, Quantity = 1 } }
+    });
+    Check(retPreview.GoodsBeforeVat == 100 && retPreview.Income == 25 && retPreview.BalanceAfter == 125 && retPreview.UncollectedChequeExcess == 125,
+        "partial return preview computes proportional income and uncleared cheque excess");
+    try
+    {
+        await creationService.ReturnSaleChequeOrderAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeReturnCommand
+        {
+            OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 5),
+            Lines = new() { new Inventory.Shared.Dtos.SaleChequeReturnLineDto { OriginalLineId = origLineId, Quantity = 1 } },
+            Decision = SaleChequeReturnDecision.None, ConfirmedTotalCredit = 125
+        }, "tester");
+        throw new Exception("missing cheque decision accepted");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: return with uncleared cheque excess requires explicit customer decision"); }
+
+    await creationService.ReturnSaleChequeOrderAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeReturnCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 5),
+        Lines = new() { new Inventory.Shared.Dtos.SaleChequeReturnLineDto { OriginalLineId = origLineId, Quantity = 1 } },
+        Decision = SaleChequeReturnDecision.ReplaceCheque, ConfirmedTotalCredit = 125
+    }, "tester");
+    var stockAfterReturn = await db.Stocks.SingleAsync(s => s.WarehouseId == wh.Id && s.ProductId == costProduct.Id);
+    Check(stockAfterReturn.AvgCost == 80, "returned item restores stock at frozen cost rather than sale price");
+
+    // Reschedule after partial return uses remaining base (100 * 3% / 30 * 10 = 1)
+    var postReturnReschedule = await creationService.RescheduleSaleChequeAsync(sale250.Cheques[0].Id,
+        new Inventory.Shared.Dtos.SaleChequeRescheduleCommand
+        {
+            OperationId = Guid.NewGuid(), ExpectedDueDate = new DateTime(2026, 7, 4),
+            NewDueDate = new DateTime(2026, 7, 14), OperationDate = new DateTime(2026, 6, 6), ConfirmedIncomeDelta = 1
+        }, "tester");
+    Check(postReturnReschedule.BaseAmount == 100 && postReturnReschedule.IncomeDelta == 1,
+        "reschedule after partial return uses remaining goods base");
+
+    // Replace 250 cheque with 126 cheque matching remaining balance (100 goods + 26 income)
+    await creationService.ReplaceSaleChequeAsync(sale250.Cheques[0].Id, new Inventory.Shared.Dtos.SaleChequeReplaceCommand
+    {
+        OperationId = Guid.NewGuid(), OperationDate = new DateTime(2026, 6, 6),
+        Number = "CHQ-126", Amount = 126, DueDate = new DateTime(2026, 7, 14), BankName = "ملت"
+    }, "tester");
+    var refreshed250 = await creationService.GetOrderAsync(sale250.Id);
+    var activeCheque = refreshed250!.Cheques.Single(c => c.Status == ChequeStatus.InHand);
+    Check(refreshed250.Cheques.Any(c => c.Status == ChequeStatus.Cancelled) && activeCheque.Amount == 126,
+        "cheque replacement preserves old cheque in history and activates replacement cheque");
+
+    // Collect 126 cheque, then return remaining 1 unit -> creates 126 customer credit -> refund 26 + apply 100 to a new sale
+    await creationService.ReceiveSaleChequeAsync(activeCheque.Id, new Inventory.Shared.Dtos.SaleChequeReceiptCommand
+    {
+        OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 7)
+    }, "tester");
+    await creationService.ReturnSaleChequeOrderAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeReturnCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 8),
+        Lines = new() { new Inventory.Shared.Dtos.SaleChequeReturnLineDto { OriginalLineId = origLineId, Quantity = 1 } },
+        Decision = SaleChequeReturnDecision.None, ConfirmedTotalCredit = 126
+    }, "tester");
+    var afterFullReturn = await creationService.GetOrderAsync(sale250.Id);
+    Check(afterFullReturn!.AvailableCustomerCredit == 126, "return after cheque collection records customer credit without double counting");
+
+    await creationService.RefundSaleChequeCreditAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeCreditRefundCommand
+    {
+        OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Amount = 26, Date = new DateTime(2026, 6, 9)
+    }, "tester");
+    var secondSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 9),
+        PaymentMethod = PaymentMethod.Credit, DueDate = new DateTime(2026, 7, 9),
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 1, Price = 100, VatValue = 0 } }
+    }, "tester");
+    await creationService.ApplySaleChequeCreditAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeCreditAllocationCommand
+    {
+        OperationId = Guid.NewGuid(), TargetSaleId = secondSale.Id, Amount = 100, Date = new DateTime(2026, 6, 10)
+    }, "tester");
+    var finalE2EStmt = await creationService.GetPartyStatementDetailAsync(e2eParty.Id);
+    var finalE2EParty = (await creationService.GetPartiesAsync(PartyType.Customer)).Single(p => p.Id == e2eParty.Id);
+    Check(finalE2EStmt.ClosingBalance == 0 && finalE2EParty.Balance == 0,
+        "cash refund and credit allocation settle customer credit to zero with no double counting");
+
+    // Charged sale with installment + cheque, installment receipt & reversal, and atomic edit
+    var instSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 11),
+        PaymentMethod = PaymentMethod.Mixed,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 100, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHQ-INST", Amount = 150, DueDate = new DateTime(2026, 7, 11) } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 100, DueDate = new DateTime(2026, 7, 11) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput
+        {
+            CalculatorBaseAmount = 200, CalculatorRatePercent = 5, CalculatorMonths = 5,
+            AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30
+        }
+    }, "tester");
+    var editedSale = await creationService.EditSaleChequeOrderAsync(instSale.Id, new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 11),
+        PaymentMethod = PaymentMethod.Mixed,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 100, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHQ-INST-2", Amount = 150, DueDate = new DateTime(2026, 7, 11) } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 100, DueDate = new DateTime(2026, 7, 11) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput
+        {
+            CalculatorBaseAmount = 200, CalculatorRatePercent = 5, CalculatorMonths = 5,
+            AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30
+        }
+    }, "tester");
+    var instId = editedSale.Installments.Single().Id;
+    await creationService.ReceiveSaleChequeInstallmentAsync(instId, new Inventory.Shared.Dtos.SaleChequeInstallmentReceiptCommand
+    {
+        OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 12)
+    }, "tester");
+    await creationService.ReverseSaleChequeInstallmentReceiptAsync(instId, new Inventory.Shared.Dtos.SaleChequeInstallmentReversalCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 13)
+    }, "tester");
+    Check((await creationService.GetOrderAsync(editedSale.Id))!.SettledAmount == 0,
+        "charged installment receipt and reversal reconcile settled amount");
+
     var rule = await db.FacRules.SingleAsync(x => x.Kind == InvoiceKind.Sale);
     rule.ChequeIncomeAccountId = null;
     await db.SaveChangesAsync();
@@ -540,4 +732,18 @@ await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>
     Check(db.Database.GetMigrations().Contains(eventsMigration), "cheque income events migration discoverable");
     var eventsScript = db.GetService<IMigrator>().GenerateScript(accountSnapshotMigration, eventsMigration);
     Check(eventsScript.Contains("SaleChequeChargeEvents") && eventsScript.Contains("OperationId"), "SQL Server migration adds financial event history");
+    foreach (var (mig, tableName) in new[]
+    {
+        ("20261105000000_AddSaleChequeReturns", "SaleChequeReturns"),
+        ("20261105010000_AddSaleChequeReplacements", "SaleChequeReplacements"),
+        ("20261105020000_AddTreasuryAccountCompany", "IX_TrsAccounts_CompanyId"),
+        ("20261105030000_AddSaleChequeCreditSettlements", "SaleChequeCreditSettlements"),
+        ("20261105040000_AddSaleChequeInstallmentReceipts", "SaleChequeInstallmentReceipts"),
+        ("20261105050000_AddSaleChequeCancellations", "SaleChequeCancellations")
+    })
+    {
+        Check(db.Database.GetMigrations().Contains(mig), $"migration {mig} discoverable");
+        var migScript = db.GetService<IMigrator>().GenerateScript("20261104230000_AddSaleChequeReceiptReversals", mig);
+        Check(migScript.Contains(tableName), $"SQL Server script contains {tableName}");
+    }
 }

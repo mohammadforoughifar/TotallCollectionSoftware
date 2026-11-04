@@ -1891,6 +1891,7 @@ public class WarehousingService : IWarehousingService
                 qty = t.Type switch
                 {
                     TransactionType.Purchase => qty + l.Quantity,
+                    TransactionType.SaleReturn => qty + l.Quantity,
                     TransactionType.Sale => qty - l.Quantity,
                     _ => l.Quantity
                 };

@@ -37,6 +37,12 @@ public static class DbInitializer
                     await SaleChequeReceiptSchemaV1.EnsureAsync(db);
                     await SaleChequeReceiptReversalSchemaV1.EnsureAsync(db);
                     await SaleChequeStatusEventSchemaV1.EnsureAsync(db);
+                    await SaleChequeReturnSchemaV1.EnsureAsync(db);
+                    await SaleChequeReplacementSchemaV1.EnsureAsync(db);
+                    await TreasuryAccountCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
+                    await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeCancellationSchemaV1.EnsureAsync(db);
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
@@ -97,6 +103,12 @@ public static class DbInitializer
                     await SaleChequeReceiptSchemaV1.EnsureAsync(db);
                     await SaleChequeReceiptReversalSchemaV1.EnsureAsync(db);
                     await SaleChequeStatusEventSchemaV1.EnsureAsync(db);
+                    await SaleChequeReturnSchemaV1.EnsureAsync(db);
+                    await SaleChequeReplacementSchemaV1.EnsureAsync(db);
+                    await TreasuryAccountCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
+                    await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeCancellationSchemaV1.EnsureAsync(db);
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.

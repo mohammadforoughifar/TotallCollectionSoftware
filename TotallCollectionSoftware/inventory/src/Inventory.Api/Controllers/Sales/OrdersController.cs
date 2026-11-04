@@ -116,6 +116,88 @@ public class OrdersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>پیش‌نمایش برگشت کالای فاکتور دارای تاخیر تادیه چک بدون تغییر داده.</summary>
+    [HttpPost("{id:int}/cheque-return-preview")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<ActionResult<SaleChequeReturnPreviewDto>> PreviewChequeReturn(int id, [FromBody] SaleChequeReturnPreviewRequest req)
+        => Ok(await _service.PreviewSaleChequeReturnAsync(id, req));
+
+    /// <summary>ثبت اتمیک برگشت کالای فاکتور دارای تاخیر تادیه چک همراه با تصمیم مشتری درباره چک.</summary>
+    [HttpPost("{id:int}/cheque-return")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<ActionResult<SaleChequeReturnSummaryDto>> ReturnChequeOrder(int id, [FromBody] SaleChequeReturnCommand cmd)
+        => Ok(await _service.ReturnSaleChequeOrderAsync(id, cmd, User.Identity?.Name));
+
+    /// <summary>تعویض صریح چک وصول‌نشده با حفظ چک قبلی در تاریخچه.</summary>
+    [HttpPut("cheques/{chequeId:int}/replace")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> ReplaceCheque(int chequeId, [FromBody] SaleChequeReplaceCommand cmd)
+    {
+        await _service.ReplaceSaleChequeAsync(chequeId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>پرداخت وجه بستانکاری مشتری از حساب صندوق/بانک شرکت.</summary>
+    [HttpPost("{id:int}/credit-refund")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> RefundCredit(int id, [FromBody] SaleChequeCreditRefundCommand cmd)
+    {
+        await _service.RefundSaleChequeCreditAsync(id, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>مصرف بستانکاری مشتری برای تسویه فاکتور فروش دیگر همان مشتری.</summary>
+    [HttpPost("{id:int}/credit-allocation")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> AllocateCredit(int id, [FromBody] SaleChequeCreditAllocationCommand cmd)
+    {
+        await _service.ApplySaleChequeCreditAsync(id, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>دریافت قسط فاکتور دارای تاخیر تادیه چک به حساب منتخب شرکت.</summary>
+    [HttpPut("installments/{installmentId:int}/receipt")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> ReceiveInstallment(int installmentId, [FromBody] SaleChequeInstallmentReceiptCommand cmd)
+    {
+        await _service.ReceiveSaleChequeInstallmentAsync(installmentId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>لغو دریافت قسط فاکتور دارای تاخیر تادیه چک با سند معکوس.</summary>
+    [HttpPut("installments/{installmentId:int}/receipt-reversal")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> ReverseInstallmentReceipt(int installmentId, [FromBody] SaleChequeInstallmentReversalCommand cmd)
+    {
+        await _service.ReverseSaleChequeInstallmentReceiptAsync(installmentId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>ابطال اتمیک فاکتور دارای تاخیر تادیه چک با سند معکوس کامل.</summary>
+    [HttpPost("{id:int}/cheque-cancel")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Delete")]
+    public async Task<IActionResult> CancelChequeOrder(int id, [FromBody] SaleChequeCancelCommand cmd)
+    {
+        await _service.CancelSaleChequeOrderAsync(id, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>ویرایش اتمیک فاکتور سوددار اولیه پیش از گردش‌های بعدی.</summary>
+    [HttpPut("{id:int}/cheque-edit")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<ActionResult<Order>> EditChequeOrder(int id, [FromBody] OrderCommand cmd)
+    {
+        var existing = await _service.GetOrderAsync(id);
+        if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        var error = TrackingError(cmd, TransactionType.Sale, existing);
+        return error is null ? Ok(await _service.EditSaleChequeOrderAsync(id, cmd, User.Identity?.Name)) : BadRequest(new { message = error });
+    }
+
+    /// <summary>حساب‌های فعال خزانه/بانک متعلق به شرکت فعال برای عملیات فروش و وصول.</summary>
+    [HttpGet("active-treasury-accounts")]
+    public async Task<ActionResult<List<TrsAccount>>> ActiveTreasuryAccounts([FromQuery] TreasuryAccountKind? kind = null)
+        => Ok(await _service.GetActiveCompanyTreasuryAccountsAsync(kind));
+
     /// <summary>حذف سند و برگرداندن موجودی.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)

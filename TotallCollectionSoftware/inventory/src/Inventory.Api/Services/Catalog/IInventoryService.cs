@@ -71,6 +71,16 @@ public interface IInventoryService
     Task ReverseSaleChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd, string? user);
     Task ChangeSaleChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd, string? user);
     Task<List<SaleChequeStatusHistoryItem>> GetSaleChequeStatusHistoryAsync(int chequeId);
+    Task<SaleChequeReturnPreviewDto> PreviewSaleChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req);
+    Task<SaleChequeReturnSummaryDto> ReturnSaleChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd, string? user);
+    Task ReplaceSaleChequeAsync(int chequeId, SaleChequeReplaceCommand cmd, string? user);
+    Task RefundSaleChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd, string? user);
+    Task ApplySaleChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd, string? user);
+    Task ReceiveSaleChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd, string? user);
+    Task ReverseSaleChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd, string? user);
+    Task CancelSaleChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd, string? user);
+    Task<Order> EditSaleChequeOrderAsync(int saleId, OrderCommand cmd, string? user);
+    Task<List<TrsAccount>> GetActiveCompanyTreasuryAccountsAsync(TreasuryAccountKind? kind = null);
     Task<Order> UpdateOrderAsync(int id, OrderCommand cmd);
     Task<Order?> GetOrderAsync(int id);
 

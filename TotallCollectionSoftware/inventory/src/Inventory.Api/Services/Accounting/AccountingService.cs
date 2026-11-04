@@ -547,6 +547,10 @@ public class AccountingService : IAccountingService
         // Accounting vouchers are global. Check every company to avoid orphaning a
         // cheque event through a different active-company context.
         if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeReturns.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId || e.ReversalVoucherId == voucherId) ||
+            await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
             await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId || e.ReversalVoucherId == voucherId))
             throw new InvalidOperationException("سند مرتبط با چک فروش فقط از مسیر اصلاح سند مبدأ قابل تغییر است.");
     }

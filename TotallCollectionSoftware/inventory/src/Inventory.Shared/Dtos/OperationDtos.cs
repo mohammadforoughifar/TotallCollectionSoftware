@@ -25,6 +25,10 @@ public class OrderLine
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
 
+    /// <summary>مقدار قبلاً برگشت‌داده‌شده از این سطر فروش.</summary>
+    public decimal ReturnedQuantity { get; set; }
+    public decimal RemainingQuantity => Math.Max(0, Quantity - ReturnedQuantity);
+
     /// <summary>بهای تمام‌شدهٔ واحد؛ از snapshot ثبت‌شده یا روش قیمت‌گذاری انبار، پرشده توسط سرور.</summary>
     public decimal? UnitCost { get; set; }
 
@@ -51,6 +55,21 @@ public class Order
     public decimal TotalAmount { get; set; }
     /// <summary>ردیف مستقل درآمد تاخیر تادیه چک؛ فاکتورهای قدیمی صفر دارند.</summary>
     public decimal ChequeIncomeAmount { get; set; }
+    /// <summary>آیا ردیف تاخیر تادیه چک روی این سند وجود دارد (حتی اگر مبلغ جاری پس از اصلاح صفر شده باشد).</summary>
+    public bool HasChequeCharge { get; set; }
+    /// <summary>جمع کالا و مالیات برگشت‌داده‌شده از این فاکتور.</summary>
+    public decimal ReturnedGoodsAmount { get; set; }
+    /// <summary>جمع درآمد چک کسرشده بابت برگشت کالا.</summary>
+    public decimal ReturnedChequeIncomeAmount { get; set; }
+    /// <summary>بستانکاری ثبت‌شده مشتری بابت کاهش سود چک.</summary>
+    public decimal CustomerCreditAmount { get; set; }
+    /// <summary>بستانکاری قابل پرداخت یا قابل مصرف جاری مشتری در این فاکتور.</summary>
+    public decimal AvailableCustomerCredit { get; set; }
+    /// <summary>آیا فاکتور با سند معکوس ابطال شده است؟</summary>
+    public bool IsCancelled { get; set; }
+    /// <summary>مقادیر ثبت‌شده ماشین‌حساب و نرخ تعدیل برای بارگذاری در ویرایش فاکتور اولیه.</summary>
+    public SaleChequeChargeInput? ChequeChargeSnapshot { get; set; }
+    public List<SaleChequeReturnSummaryDto> ChequeReturns { get; set; } = new();
     /// <summary>کالا و خدمات شامل ارزش افزوده، بدون ردیف چک.</summary>
     public decimal GoodsAmount => TotalAmount - ChequeIncomeAmount;
 
@@ -179,6 +198,105 @@ public class SaleChequeStatusHistoryItem
     public ChequeStatus PreviousStatus { get; set; }
     public ChequeStatus NewStatus { get; set; }
     public string? CreatedBy { get; set; }
+    public string? Reason { get; set; }
+}
+
+public class SaleChequeReturnLineDto
+{
+    public int OriginalLineId { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+public class SaleChequeReturnPreviewRequest
+{
+    public DateTime Date { get; set; }
+    public List<SaleChequeReturnLineDto> Lines { get; set; } = new();
+}
+
+public class SaleChequeReturnPreviewDto
+{
+    public decimal GoodsBeforeVat { get; set; }
+    public decimal Vat { get; set; }
+    public decimal Income { get; set; }
+    public decimal TotalCredit { get; set; }
+    public decimal BalanceBefore { get; set; }
+    public decimal BalanceAfter { get; set; }
+    public decimal UncollectedChequeExcess { get; set; }
+}
+
+public class SaleChequeReturnCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
+    public List<SaleChequeReturnLineDto> Lines { get; set; } = new();
+    public SaleChequeReturnDecision Decision { get; set; }
+    public decimal? ConfirmedTotalCredit { get; set; }
+}
+
+public class SaleChequeReturnSummaryDto
+{
+    public int Id { get; set; }
+    public string ReturnNumber { get; set; } = "";
+    public DateTime Date { get; set; }
+    public decimal GoodsAmount { get; set; }
+    public decimal VatAmount { get; set; }
+    public decimal IncomeAmount { get; set; }
+    public decimal TotalCredit => GoodsAmount + VatAmount + IncomeAmount;
+    public decimal BalanceAfter { get; set; }
+    public decimal UncollectedChequeExcess { get; set; }
+    public SaleChequeReturnDecision Decision { get; set; }
+}
+
+public class SaleChequeReplaceCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime OperationDate { get; set; }
+    public string Number { get; set; } = "";
+    public decimal Amount { get; set; }
+    public DateTime DueDate { get; set; }
+    public string? BankName { get; set; }
+    public string? AccountInfo { get; set; }
+    public string? OwnerName { get; set; }
+    public string? Note { get; set; }
+    public string? Reason { get; set; }
+    public DateTime? ConfirmedCreditDueDate { get; set; }
+}
+
+public class SaleChequeCreditRefundCommand
+{
+    public Guid OperationId { get; set; }
+    public int TrsAccountId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime Date { get; set; }
+    public string? Note { get; set; }
+}
+
+public class SaleChequeCreditAllocationCommand
+{
+    public Guid OperationId { get; set; }
+    public int TargetSaleId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime Date { get; set; }
+    public string? Note { get; set; }
+}
+
+public class SaleChequeInstallmentReceiptCommand
+{
+    public Guid OperationId { get; set; }
+    public int TrsAccountId { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class SaleChequeInstallmentReversalCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class SaleChequeCancelCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
     public string? Reason { get; set; }
 }
 
@@ -475,6 +593,7 @@ public class ShopInstallmentItem
 {
     public int Id { get; set; }
     public int TransactionId { get; set; }
+    public bool HasChequeCharge { get; set; }
     public string OrderNumber { get; set; } = "";
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";

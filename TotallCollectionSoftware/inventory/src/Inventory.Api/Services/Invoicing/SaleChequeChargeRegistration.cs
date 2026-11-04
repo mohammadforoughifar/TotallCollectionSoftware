@@ -79,13 +79,13 @@ public static class SaleChequeChargeRegistration
         var cash = sale.PaymentMethod == PaymentMethod.Cash ? sale.Amount : sale.CashAmount;
         if (cash > 0)
         {
-            // Treasury accounts are global in the existing model; do not guess ownership in a multi-company database.
-            if (await db.SystemCompanies.CountAsync() > 1)
-                throw new InvalidOperationException("دریافت نقدی آزمایشی در محیط چندشرکتی تا تفکیک حساب‌ها غیرفعال است.");
             if (sale.TrsAccountId is not > 0)
                 throw new InvalidOperationException("برای دریافت نقدی حساب فعال صندوق یا بانک را انتخاب کنید.");
             var account = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == sale.TrsAccountId && a.IsActive && a.AccountId > 0)
                 ?? throw new InvalidOperationException("حساب صندوق یا بانک فعال و متصل به حسابداری لازم است.");
+            if (await db.SystemCompanies.CountAsync() > 1 && (sale.CompanyId is not > 0 || account.CompanyId != sale.CompanyId))
+                throw new InvalidOperationException("در محیط چندشرکتی، حساب صندوق یا بانک باید متعلق به شرکت همین فاکتور باشد.");
+            await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, account, sale.CompanyId);
             var compatible = sale.CashType switch
             {
                 CashType.Cash => account.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash,

@@ -1,19 +1,38 @@
-# Sale cheque charge — phase 1 probe
+# Sale cheque charge — end-to-end probe & test guide
 
-Run `dotnet run --project inventory/tests/SaleChequeCharge/SaleChequeCharge.csproj` from the parent of `inventory/`. This covers the shared calculation, SQLite schema repair and SQL Server migration generation. It requires .NET 8 and the project's NuGet packages.
+Run `dotnet run --project inventory/tests/SaleChequeCharge/SaleChequeCharge.csproj` from the parent of `inventory/`. This exercises the shared calculations, SQLite schema self-repair, SQL Server migration script generation, and end-to-end EF workflows. It requires .NET 8 and the project's NuGet packages.
 
-This phase introduces the data structure, calculation, independent-account setting, voucher planners, and transaction-bound services. Invoice registration, rescheduling and bank-selected cheque receipt are connected behind `SaleChequeCharge:ExperimentalEnabled=true` (environment variable `SaleChequeCharge__ExperimentalEnabled=true`); the switch is disabled by default. Experimental invoices cannot yet be edited, returned or fully settled and must not be used for real transactions. Receipt reversal is experimental and uses a separate reversing voucher; receipts made before the prior-account snapshot exists cannot be automatically reversed. Installments on charged experimental sales remain blocked. Mixed initial cash is connected to the same accounting voucher and a treasury receipt using an explicitly selected account. Treasury accounts have no company ownership in the existing model, so experimental cheque receipt, receipt reversal and mixed cash are blocked when more than one company exists. Do not deploy this as a completed financial feature.
+## Implemented workflows (guarded behind `SaleChequeCharge:ExperimentalEnabled=true`)
 
-The posting service's .NET probe checks account separation, mixed payment, duplicate prevention, closed fiscal years, and rollback. Neither it nor the new guarded invoice route has been executed in this environment. The test switch is intended solely for an isolated test database.
+The feature switch defaults to `false` until runtime verification in your .NET + SQLite/SQL Server environment is completed (`SaleChequeCharge__ExperimentalEnabled=true` in environment variables or `"SaleChequeCharge": { "ExperimentalEnabled": true }` in `appsettings.json`).
 
-The EF probe also covers statement opening balances, 200 + 50 separation, sales-report filtering, goods-only statistics (including the operations dashboard), and mapping of the selected treasury bank. Sales totals and trends in the general/admin dashboards exclude the cheque-income row, while payment breakdowns continue to show actual payment components. Syntax and structural tests are not a substitute for running it with .NET and both supported database providers.
+1. **Initial registration (`SaleChequeChargeRegistration` + `SaleChequeChargePosting`):**
+   - Separate non-inventory financial row (`SaleChequeCharge`) inside the same sale invoice; no fake product, zero effect on inventory quantities or average cost, no VAT on cheque income.
+   - Freezes legacy sales unit cost (`UnitCostSnapshot`) inside the invoice transaction (leaving cost unknown rather than guessed if the separate warehouse ledger has activity for that product).
+   - Posts balanced confirmed `AccVoucher` separating Customer Debit, Goods Credit, Goods VAT Credit, and independent Cheque Income Credit (`FacRule.ChequeIncomeAccountId`), plus linked `TrsVoucher` when mixed cash is received.
+   - Supports mixed payment components (cash, cheques, installments, and explicit credit due date).
 
-New cheques retain the first known due date. Legacy cheque dates stay unknown rather than being guessed, and legacy edits preserve known dates only when cheque IDs match. The correction amount planner is also isolated: it does not write vouchers, change a cheque, refund goods, or settle an account.
+2. **Due-date adjustment (`SaleChequeRescheduling`):**
+   - Formula: `(remaining goods base including VAT) × ratePercent / periodDays × deltaDays`, with cumulative midpoint-to-even rounding per constant-base segment.
+   - Reductions exceeding remaining cheque income record `CustomerCredit` without creating negative goods sales; cheque bounce/reset alone creates zero extra income.
 
-A transaction-bound initial registration service computes the initial calculator result on the server and rolls back the caller transaction on failure. It is reachable only with the explicit experimental switch; returns, payment or application of customer credit, cheque replacement, receipt reversal, mixed cash payment, and end-to-end runtime tests must be completed before production activation.
+3. **Atomic partial & full return + customer cheque decision (`SaleChequeReturnService`):**
+   - Creates `TransactionType.SaleReturn` (`SR-xxxx`), restores physical stock at frozen `UnitCostSnapshot` without polluting purchase statistics, posts `VoucherSource.StoreSaleReturn` + `SaleChequeChargeEventKind.GoodsReturn`, and proportionally reverses cheque income based on returned goods **including VAT**.
+   - When uncleared cheques exceed the post-return balance, requires explicit customer decision (`ReplaceCheque` vs `KeepChequeForGoods`) without automatically altering any cheque.
 
-The financial event table preserves the voucher link and account snapshot. The dedicated, permission-checked income report and profit/loss dashboard read confirmed linked voucher lines, excluding unrelated activity on the same account. They reject missing account snapshots and inconsistent event amounts. A rescheduling service and audit table can write an adjustment event and are reachable through the same experimental switch, with preview and confirmation. Adjustments use cumulative rounding against the known original due date; incompatible experimental history is rejected rather than silently changed. Experimental cheque receipts have a separate bank-linked voucher and dated history; customer statements place those receipts and reschedules on their actual dates. Marking an uncollected cheque bounced does not create an income adjustment. Experimental status changes, cheque receipts and receipt reversals are saved to a status event table and shown in cheque status history; earlier statuses are not reconstructed or invented. `SaleChequeReturnPlanner` is a pure calculation helper, not an integrated return workflow: inventory, accounting, decisions and subsequent settlement of customer credit remain unimplemented.
+4. **Audited cheque replacement (`SaleChequeReplacementService`):**
+   - Preserves the old cheque (`ChequeStatus.Cancelled` + `SaleChequeStatusEvent`) and links the replacement cheque via `SaleChequeReplacements`.
 
-User decisions for the unfinished workflow: customer credit can be applied to a later purchase or paid out; the destination bank is selected at cheque collection; returned goods' proportional base includes goods VAT; an uncleared cheque can be replaced or retained to cover further goods, as explicitly chosen by the customer. Holding a cheque is not the same as cash receipt; collection or a replacement must not be counted twice. Recording a decision, allocating it to later sales, and posting corresponding accounting entries are still required before this can be enabled.
+5. **Customer credit settlement (`SaleChequeCreditSettlementService`):**
+   - Settles realized customer credit either by bank/cash payout (`RefundPayment`, posting `AccVoucher` + `TrsVoucher`) or by applying credit to another unpaid sale of the same customer (`ApplyToSale`) with zero double counting of cheque receipts.
 
-The isolated return calculator also handles a return after an intervening reschedule using the remaining goods base and remaining income, with exact midpoint-to-even whole-rial rounding. It is not yet wired to a return operation. Run the .NET probe to verify it; the Python tests do not execute C#.
+6. **Bank-selected cheque & installment receipts and reversals (`SaleChequeReceiptPosting`, `SaleChequeReceiptReversal`, `SaleChequeInstallmentPosting`):**
+   - Destination bank/treasury account is explicitly selected at collection; multi-company deployments enforce per-company ownership (`TrsAccount.CompanyId` + `SaleChequeTreasuryGuard`).
+   - Reversals post separate reversing vouchers without deleting historical vouchers.
+
+7. **Atomic edit & cancellation (`SaleChequeCancellationService` + `EditSaleChequeOrderAsync`):**
+   - Cancels uncollected charged sales via full reversing `AccVoucher`, physical stock restoration, initial cash refund `TrsVoucher`, and cheque cancellation audit events.
+   - Untouched initial charged sales can be edited atomically in a single `Serializable` transaction.
+
+8. **Reports & statements (`OperationsReportsService`, `AccountingService`, `InventoryService`):**
+   - Customer statement (`PartyStatementsReport`), customer list balances, sales report (`OperationsOrderReport` with `hasChequeIncome` filter and goods-only averages/trends), dedicated cheque income report (`ChequeIncomeReport`), dashboards, and P&L (`AccFinanceDashboard`) reconcile across all workflows.

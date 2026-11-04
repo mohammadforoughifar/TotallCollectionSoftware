@@ -1,6 +1,7 @@
 @page "/trs/accounts"
 @inject ITrsAccountService AccountSvc
 @inject IAccAccountService AccSvc
+@inject IOutgoingLetterService CompanySvc
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -107,6 +108,10 @@ else
                                 <div class="fs-8 text-muted num">@acc.Code.FaDigits()</div>
                             </div>
                             <div class="ms-auto d-flex gap-1 align-items-center">
+                                @if (!string.IsNullOrWhiteSpace(acc.CompanyName))
+                                {
+                                    <span class="badge badge-soft-primary fs-8">@acc.CompanyName</span>
+                                }
                                 @if (acc.IsDefault)
                                 {
                                     <span class="badge badge-soft-success fs-8">پیش‌فرض</span>
@@ -221,6 +226,21 @@ else
                           ValueChanged="v => form.AccountId = v > 0 ? v : null" Placeholder="انتخاب حساب…" />
         </div>
 
+        @if (companies.Count > 0)
+        {
+            <div class="col-md-6">
+                <label class="form-label">شرکت مالک حساب <span class="fs-8 text-muted">— در چندشرکتی برای فروش و وصول الزامی است</span></label>
+                <select class="form-select" value="@(form.CompanyId ?? 0)"
+                        @onchange="e => form.CompanyId = int.TryParse(e.Value?.ToString(), out var cv) && cv > 0 ? cv : 0">
+                    <option value="0">— عمومی (تک‌شرکتی) —</option>
+                    @foreach (var c in companies)
+                    {
+                        <option value="@c.Id">@c.Name</option>
+                    }
+                </select>
+            </div>
+        }
+
         @if (form.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos)
         {
             <div class="col-12"><hr class="my-1" /><div class="fw-600 text-muted fs-8">مشخصات بانکی</div></div>
@@ -294,6 +314,8 @@ else
 @code {
     private List<TrsAccount> items = new();
     private List<LookupItem> accounts = new();
+    private List<LetterCompanyDto> companies = new();
+    private int? activeCompanyId;
     private TreasuryAccountKind? kindFilter;
     private bool loading = true, showForm, saving;
 
@@ -320,7 +342,12 @@ else
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("صندوق و بانک");
-        try { accounts = await AccSvc.GetLookupsAsync(); }
+        try
+        {
+            accounts = await AccSvc.GetLookupsAsync();
+            companies = await CompanySvc.GetCompaniesAsync();
+            activeCompanyId = (await CompanySvc.GetActiveCompanyAsync())?.Id;
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
         await Load();
     }
@@ -338,10 +365,10 @@ else
     private void OpenForm(TrsAccount? a)
     {
         form = a is null
-            ? new TrsAccount { IsActive = true, SortOrder = items.Count + 1 }
+            ? new TrsAccount { CompanyId = activeCompanyId, IsActive = true, SortOrder = items.Count + 1 }
             : new TrsAccount
             {
-                Id = a.Id, Code = a.Code, Name = a.Name, Kind = a.Kind,
+                Id = a.Id, CompanyId = a.CompanyId ?? 0, Code = a.Code, Name = a.Name, Kind = a.Kind,
                 AccountId = a.AccountId, BankName = a.BankName, BranchName = a.BranchName,
                 BranchCode = a.BranchCode, AccountNumber = a.AccountNumber, Iban = a.Iban,
                 CardNumber = a.CardNumber, OpeningBalance = a.OpeningBalance,

@@ -20,7 +20,10 @@ public enum TransactionType
     Sale = 2,
 
     /// <summary>اصلاح / شمارش موجودی</summary>
-    Adjustment = 3
+    Adjustment = 3,
+
+    /// <summary>برگشت کالای فروش؛ فقط از گردش برگشت فاکتور ایجاد می‌شود.</summary>
+    SaleReturn = 4
 }
 
 /// <summary>وضعیت پذیرش تعمیر</summary>
@@ -260,7 +263,25 @@ public enum VoucherSource
     StoreSaleChequeReceipt = 8,
 
     /// <summary>سند معکوس وصول چک فروش فروشگاه.</summary>
-    StoreSaleChequeReceiptReversal = 9
+    StoreSaleChequeReceiptReversal = 9,
+
+    /// <summary>برگشت از فروش فاکتور دارای تاخیر تادیه چک.</summary>
+    StoreSaleReturn = 10,
+
+    /// <summary>پرداخت وجه بستانکاری مشتری از خزانه/بانک.</summary>
+    StoreSaleCreditRefund = 11,
+
+    /// <summary>مصرف بستانکاری مشتری برای تسویه فاکتور فروش دیگر.</summary>
+    StoreSaleCreditAllocation = 12,
+
+    /// <summary>دریافت قسط فاکتور دارای تاخیر تادیه چک.</summary>
+    StoreSaleInstallmentReceipt = 13,
+
+    /// <summary>سند معکوس دریافت قسط فاکتور دارای تاخیر تادیه چک.</summary>
+    StoreSaleInstallmentReceiptReversal = 14,
+
+    /// <summary>ابطال فاکتور دارای تاخیر تادیه چک با سند معکوس کامل.</summary>
+    StoreSaleCancellation = 15
 }
 
 // ===================== ابعاد تحلیلی، دارایی ثابت، بودجه =====================
@@ -507,10 +528,26 @@ public enum BarcodeType
     Internal = 3
 }
 
+/// <summary>تصمیم ثبت‌شده دربارهٔ چک وصول‌نشدهٔ مازاد؛ خود چک خودکار تغییر نمی‌کند.</summary>
+public enum SaleChequeReturnDecision
+{
+    None = 0,
+    ReplaceCheque = 1,
+    KeepChequeForGoods = 2
+}
+
+/// <summary>نحوه تعیین‌تکلیف بستانکاری مشتری در فاکتور سوددار.</summary>
+public enum SaleChequeCreditSettlementKind
+{
+    RefundPayment = 1,
+    ApplyToSale = 2
+}
+
 /// <summary>نوع رویداد حسابداری ردیف مالی تاخیر تادیه چک.</summary>
 public enum SaleChequeChargeEventKind
 {
     Initial = 1,
     DueDateAdjustment = 2,
-    GoodsReturn = 3
+    GoodsReturn = 3,
+    Cancellation = 4
 }

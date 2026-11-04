@@ -15,6 +15,8 @@ namespace Inventory.Shared.Dtos;
 public class TrsAccount
 {
     public int Id { get; set; }
+    public int? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
 
     /// <summary>کد یکتا — مثلاً C-01 یا BNK-MELLAT</summary>
     public string Code { get; set; } = "";
