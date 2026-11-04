@@ -719,6 +719,10 @@ public class AppDbContext : DbContext
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.GrossAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatValue).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatAmount).HasPrecision(18, 2);
+        mb.Entity<Product>().Property(p => p.InvoiceVatValue).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);

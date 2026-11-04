@@ -1,4 +1,4 @@
-/* این استایل‌ها فقط به گردش دو مرحله‌ای خرید محدود هستند. */
+/* استایل مشترک گردش دو مرحله‌ای خرید و فروش. */
 .purchase-steps {
     display: flex;
     align-items: center;
@@ -48,7 +48,11 @@
 .purchase-payment .pay-tab[data-pay-comp=installment].active { border-color: #7c3aed; color: #6d28d9; box-shadow: 0 3px 10px -3px rgba(124,58,237,.23), 0 0 0 1px #7c3aed; }
 .purchase-payment .pay-tab[data-pay-comp=credit].active { border-color: #ef4444; color: #b91c1c; box-shadow: 0 3px 10px -3px rgba(239,68,68,.22), 0 0 0 1px #ef4444; }
 .purchase-items { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
-.purchase-items table { min-width: 720px; }
+.purchase-items table { min-width: 1120px; }
+.sale-items table { min-width: 1240px; }
+.purchase-items th, .purchase-items td { min-width: 100px; }
+.purchase-items th:first-child, .purchase-items td:first-child { min-width: 210px; }
+.purchase-items th:last-child, .purchase-items td:last-child { min-width: 0; }
 .purchase-items th { color: #475569; background: #f8fafc; font-size: .77rem; }
 .purchase-totals-wrap { display: flex; justify-content: flex-end; margin-top: .85rem; }
 .purchase-totals { width: min(100%,380px); border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; padding: .7rem 1rem; font-size: .85rem; }
@@ -74,10 +78,11 @@
     .purchase-items table, .purchase-items tbody { display: block; width: 100%; min-width: 0; }
     .purchase-items thead { display: none; }
     .purchase-items tbody tr { position: relative; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .7rem .85rem; padding: .85rem; margin-bottom: .65rem; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
-    .purchase-items tbody td { display: flex; flex-direction: column; gap: .3rem; min-width: 0; width: auto; padding: 0; border: 0; box-shadow: none; }
+    .purchase-items tbody td { min-width: 0; display: flex; flex-direction: column; gap: .3rem; min-width: 0; width: auto; padding: 0; border: 0; box-shadow: none; }
     .purchase-items tbody td::before { content: attr(data-label); color: #475569; font-size: .73rem; font-weight: 600; }
-    .purchase-items tbody td:first-child { grid-column: 1 / -1; padding-left: 2.8rem; }
-    .purchase-items tbody td:last-child { position: absolute; left: .7rem; top: .7rem; }
+    .purchase-items tbody td:first-child { min-width: 0; grid-column: 1 / -1; padding-left: 2.8rem; }
+    .sale-items tbody td:first-child { padding-left: 5.4rem; }
+    .purchase-items tbody td:last-child { position: absolute; left: .7rem; top: .7rem; flex-direction: row; }
     .purchase-items tbody td:last-child::before { display: none; }
     .purchase-items tbody td:nth-child(5) { justify-content: flex-start; }
     .purchase-totals { width: 100%; }
@@ -90,3 +95,5 @@
 @media (min-width: 601px) and (max-width: 820px) {
     .purchase-table-hint { display: block; }
 }
+
+.order-keyboard-hint { color: #5b6a80; font-size: .73rem; line-height: 1.8; margin-top: .4rem; }

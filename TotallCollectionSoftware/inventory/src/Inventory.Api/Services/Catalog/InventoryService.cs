@@ -467,7 +467,7 @@ public class InventoryService : IInventoryService
                     var unitCost = l.UnitCost ?? (snapshotMap.TryGetValue(l.Id, out var sn) && sn.HasValue ? sn.Value : 0m);
                     l.UnitCost = decimal.Round(unitCost, 2);
                     // سود دقیق با کسر تخفیف و کسر دستمزد تعمیرکار:
-                    l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                    l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
                 }
                 continue;
             }
@@ -486,7 +486,7 @@ public class InventoryService : IInventoryService
                 // سود دقیق = مبلغ کل سطر (پس از تخفیف) − (بهای تمام‌شده × تعداد)
                 var unitCost = l.UnitCost!.Value;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
             }
 
             var linesNeedingCost = productLines.Where(x => !x.UnitCost.HasValue).ToList();
@@ -503,7 +503,7 @@ public class InventoryService : IInventoryService
             {
                 var unitCost = costs.TryGetValue(l.Id, out var c) ? c : product.PurchasePrice;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
             }
         }
 
@@ -985,6 +985,7 @@ public class InventoryService : IInventoryService
             TaxCode = p.TaxCode,
             SalePrice = p.SalePrice,
             PurchasePrice = p.PurchasePrice,
+            InvoiceVatValue = p.InvoiceVatValue ?? (p.IsVatIncluded && p.VatRate >= 0 && p.VatRate <= 100 ? p.VatRate : 0),
             ReorderPoint = p.ReorderPoint,
             MaxStock = p.MaxStock,
             Description = p.Description,
@@ -1019,6 +1020,10 @@ public class InventoryService : IInventoryService
         {
             entity = await _db.Products.FindAsync(dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
+
+        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+            throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
 
         entity.Name = dto.Name.Trim();
         entity.IsService = dto.IsService;
@@ -1312,12 +1317,17 @@ public class InventoryService : IInventoryService
     public async Task<Order> CreateOrderAsync(OrderCommand cmd)
     {
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+        if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
+            throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
             throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
         if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
 
+        // Older clients do not send VAT on creation; a missing value means zero.
+        foreach (var line in cmd.Lines) line.VatValue ??= 0;
+        ValidateTaxedLinePrecision(cmd.Lines);
         var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
@@ -1390,7 +1400,7 @@ public class InventoryService : IInventoryService
 
         foreach (var l in cmd.Lines)
         {
-            var gross = l.Quantity * l.Price;
+            var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
             decimal discAmount = 0;
             decimal discPercent = 0;
             if (l.DiscountIsAmount)
@@ -1412,9 +1422,13 @@ public class InventoryService : IInventoryService
                 DiscountPercent = discPercent,
                 DiscountAmount = discAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = gross,
+                VatValue = l.VatValue ?? 0,
+                VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
                 UnitCostSnapshot = l.UnitCostSnapshot
             });
-            txn.Amount += Math.Max(0, gross - discAmount);
+            var afterDiscount = Math.Max(0, gross - discAmount);
+            txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
         }
 
         await using var trx = await _db.Database.BeginTransactionAsync();
@@ -1529,6 +1543,9 @@ public class InventoryService : IInventoryService
                 DiscountPercent = l.DiscountPercent,
                 DiscountAmount = l.DiscountAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = l.GrossAmount,
+                VatValue = l.VatValue,
+                VatAmount = l.VatAmount,
                 UnitCost = l.UnitCostSnapshot
             }).ToList()
         };
@@ -1543,6 +1560,8 @@ public class InventoryService : IInventoryService
     public async Task<Order> UpdateOrderAsync(int id, OrderCommand cmd)
     {
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+        if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
+            throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
         if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
@@ -1556,6 +1575,11 @@ public class InventoryService : IInventoryService
 
         var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
         var existingLineCosts = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.UnitCostSnapshot));
+        var existingLineVat = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.VatValue));
+        foreach (var line in cmd.Lines)
+            line.VatValue ??= existingLineVat.TryGetValue(line.Id, out var oldVat) && oldVat.ProductId == line.ProductId
+                ? oldVat.VatValue : 0m;
+        ValidateTaxedLinePrecision(cmd.Lines);
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
                                && (!existingLineQuantities.TryGetValue(l.Id, out var original)
                                    || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
@@ -1608,7 +1632,7 @@ public class InventoryService : IInventoryService
                 ? oldCost.UnitCostSnapshot
                 : l.UnitCostSnapshot;
 
-            var gross = l.Quantity * l.Price;
+            var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
             decimal discAmount = 0;
             decimal discPercent = 0;
             if (l.DiscountIsAmount)
@@ -1630,9 +1654,13 @@ public class InventoryService : IInventoryService
                 DiscountPercent = discPercent,
                 DiscountAmount = discAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = gross,
+                VatValue = l.VatValue ?? 0,
+                VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
                 UnitCostSnapshot = unitCostSnapshot
             });
-            txn.Amount += Math.Max(0, gross - discAmount);
+            var afterDiscount = Math.Max(0, gross - discAmount);
+            txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
         }
         await _db.SaveChangesAsync();
 
@@ -1898,9 +1926,18 @@ public class InventoryService : IInventoryService
     /// اگر بیشتر باشد، مازاد همان سود مدت‌دار (چک/اقساط) است و پذیرفته می‌شود.
     /// روش پرداخت مؤثر خودکار تعیین می‌شود: تک‌جزء ⇒ همان جزء، چندجزء ⇒ Mixed.
     /// </summary>
+    private static void ValidateTaxedLinePrecision(IEnumerable<OrderLineInput> lines)
+    {
+        // SQL Server stores price and discount percent with two decimals. Reject values
+        // which would otherwise make the persisted line disagree with its VAT snapshot.
+        if (lines.Any(l => l.VatValue.GetValueOrDefault() > 0 &&
+            (l.Price != decimal.Round(l.Price, 2) || (!l.DiscountIsAmount && l.DiscountPercent != decimal.Round(l.DiscountPercent, 2)))))
+            throw new InvalidOperationException("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
+    }
+
     private static void ApplyPayment(Db.Transaction txn, OrderCommand cmd)
     {
-        var total = cmd.Lines.Sum(l => l.Quantity * l.Price);
+        var total = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
 
         txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;

@@ -6,7 +6,7 @@
 
 <Modal Visible="Visible" Title="@Title" Size="modal-lg" OnClose="Close">
     <ChildContent>
-        <div class="row g-3">
+        <div class="row g-3" data-order-child="@InvoiceFormKey">
             <!-- نوع حساب -->
             <div class="col-md-6">
                 <label class="form-label fs-8 fw-bold">نوع حساب <span class="text-danger">*</span></label>
@@ -123,7 +123,7 @@
         <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@saving">
             انصراف
         </button>
-        <button type="button" class="btn btn-primary" @onclick="Save" disabled="@saving">
+        <button type="button" class="btn btn-primary" data-hotkey="@(InvoiceFormKey is null ? null : "f1")" @onclick="Save" disabled="@saving">
             @if (saving)
             {
                 <span class="spinner-border spinner-border-sm ms-1" role="status"></span>
@@ -179,6 +179,8 @@
 </Modal>
 
 @code {
+    /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
+    [Parameter] public string? InvoiceFormKey { get; set; }
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     [Parameter] public EventCallback<TrsAccount> OnAccountCreated { get; set; }

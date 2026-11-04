@@ -13,6 +13,8 @@ public class Product : ICompanyOwned
     [MaxLength(100)] public string? Barcode { get; set; }
     public decimal SalePrice { get; set; }
     public decimal PurchasePrice { get; set; }
+    /// <summary>پیش‌فرض ارزش افزوده برای فاکتور خرید/فروش؛ مستقل از نرخ درصدی سامانه مودیان.</summary>
+    public decimal? InvoiceVatValue { get; set; }
     public decimal ReorderPoint { get; set; }
     public decimal MaxStock { get; set; }
     public string? Description { get; set; }

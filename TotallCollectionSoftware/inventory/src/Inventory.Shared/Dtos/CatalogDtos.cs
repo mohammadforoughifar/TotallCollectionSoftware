@@ -213,6 +213,9 @@ public class Product
     /// <summary>قیمت خرید (ریال)</summary>
     public decimal PurchasePrice { get; set; }
 
+    /// <summary>ارزش افزوده پیش‌فرض فاکتور: تا ۱۰۰ درصد و بالاتر مبلغ ریالی؛ null در درخواست قدیمی یعنی بدون تغییر.</summary>
+    public decimal? InvoiceVatValue { get; set; }
+
     /// <summary>نقطه سفارش (حداقل موجودی مجاز)</summary>
     public decimal ReorderPoint { get; set; }
 

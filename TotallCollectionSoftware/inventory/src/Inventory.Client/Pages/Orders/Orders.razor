@@ -250,7 +250,10 @@
                             <th>واحد</th>
                             <th class="text-start">مقدار</th>
                             <th class="text-start">قیمت واحد</th>
-                            <th class="text-start">جمع</th>
+                            <th class="text-start">تخفیف</th>
+                            <th class="text-start">پس از تخفیف</th>
+                            <th class="text-start">ارزش افزوده</th>
+                            <th class="text-start">جمع پس از ارزش افزوده</th>
                             @if (viewing.IsSale)
                             {
                                 @if (CanSeeProfit)
@@ -279,6 +282,9 @@
                                 <td>@l.Unit</td>
                                 <td class="text-start num">@l.Quantity.Num()</td>
                                 <td class="text-start num">@l.Price.Money()</td>
+                                <td class="text-start num">@l.DiscountAmount.Money()</td>
+                                <td class="text-start num">@l.AfterDiscount.Money()</td>
+                                <td class="text-start num">@l.VatAmount.Money()</td>
                                 <td class="text-start num fw-700">@l.Total.Money()</td>
                                 @if (viewing.IsSale)
                                 {

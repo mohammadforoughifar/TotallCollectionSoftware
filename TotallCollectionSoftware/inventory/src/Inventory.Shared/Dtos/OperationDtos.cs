@@ -15,7 +15,12 @@ public class OrderLine
     public decimal DiscountPercent { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool DiscountIsAmount { get; set; }
-    public decimal Total => Math.Max(0, (Quantity * Price) - DiscountAmount);
+    public decimal? GrossAmount { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal VatAmount { get; set; }
+    public decimal Gross => GrossAmount ?? (Quantity * Price);
+    public decimal AfterDiscount => Math.Max(0, Gross - DiscountAmount);
+    public decimal Total => AfterDiscount + VatAmount;
 
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
@@ -150,6 +155,8 @@ public class OrderLineInput
     public decimal DiscountPercent { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool DiscountIsAmount { get; set; }
+    /// <summary>خالی در ویرایش توسط کلاینت قدیمی، snapshot فعلی را حفظ می‌کند.</summary>
+    public decimal? VatValue { get; set; }
 
     /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
     [JsonIgnore]

@@ -86,6 +86,9 @@
     /// <summary>نمایش دکمه «پاک کردن» وقتی مقداری انتخاب شده است (پیش‌فرض: فعال)</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
 
+    /// <summary>پس از انتخاب با Enter در فرم فاکتور، به ورودی بعدی برود.</summary>
+    [Parameter] public bool AdvanceOnEnter { get; set; }
+
     /// <summary>اعلان متن جستجو برای بارگیری گزینه‌ها از سرور؛ انتخابگر همچنان با لیست محدود دریافتی کار می‌کند.</summary>
     [Parameter] public EventCallback<string> SearchChanged { get; set; }
 
@@ -249,6 +252,11 @@
             return;
         }
 
+        if (e.Key == "Escape")
+        {
+            CloseMenu();
+            return;
+        }
         if (matches.Count == 0) return;
 
         if (e.Key == "ArrowDown")
@@ -275,11 +283,12 @@
             {
                 var clamped = Math.Clamp(highlightIndex, 0, matches.Count - 1);
                 await Select(matches[clamped]);
+                if (AdvanceOnEnter)
+                {
+                    try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); }
+                    catch (JSException) { }
+                }
             }
-        }
-        else if (e.Key == "Escape")
-        {
-            CloseMenu();
         }
     }
 

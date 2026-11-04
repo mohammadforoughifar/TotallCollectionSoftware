@@ -50,6 +50,7 @@
         <a class="dismiss">بستن</a>
     </div>
 
+    <script src="js/order-entry.js?v=2"></script>
     <script>
         // ---------- توابع کمکی فوکوس و اسکرول سند انبار ----------
         window.focusLastProductInput = function () {
@@ -65,6 +66,9 @@
         // ---------- کلیدهای میانبر سراسری و ناوبری بین فیلدها با اینتر ----------
         // F3 = افزودن دستگاه در پذیرش تعمیرات | F2 = میانبر فرم‌ها | F1 = افزودن ردیف/ثبت فرم | Esc = خروج | Enter = جابه‌جایی بین فیلدها
         document.addEventListener('keydown', function (e) {
+            // Esc ابتدا منوی کمبوباکس را می‌بندد، نه کل فرم را.
+            var escapeSelect = e.target && e.target.closest ? e.target.closest('.ss') : null;
+            if (e.key === 'Escape' && escapeSelect && escapeSelect.querySelector('.ss-menu')) return;
             // کلید F1 برای افزودن ردیف در فرم ثبت سند انبار
             if (e.key === 'F1') {
                 var addLineBtn = document.getElementById('btn-add-line') || document.getElementById('btn-add-line-empty');
@@ -99,6 +103,16 @@
                 // فقط preventDefault تا مکان‌نما در اینپوت حرکت نکند و فرم سابمیت نشود، اما رویداد به Blazor برسد
                 e.preventDefault();
                 if (e.key === 'Enter') return;
+            }
+
+            // این دو فرم ناوبری Enter مستقل دارند؛ انتخاب تقویم و کمبو هم نباید دوباره پردازش شود.
+            if (e.key === 'Enter' && e.target && e.target.closest) {
+                var orderModal = e.target.closest('.modal.show');
+                if (orderModal) {
+                    var orderChild = orderModal.querySelector('[data-order-child]');
+                    if (orderModal.querySelector('[data-order-wizard], [data-order-calculator]') ||
+                        (orderChild && orderChild.getAttribute('data-order-child'))) return;
+                }
             }
 
             // ناوبری با کلید Enter بین المان‌ها

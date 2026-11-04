@@ -33,7 +33,7 @@
             </div>
         }
 
-        <div class="row g-3">
+        <div class="row g-3" data-order-child="@InvoiceFormKey">
             <div class="col-12">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
                 <input class="form-control" @bind="party.Name" data-party-field="name" />
@@ -86,6 +86,10 @@
             }
             <div class="col-12">
                 <label class="form-label">یادداشت</label>
+                @if (!string.IsNullOrEmpty(InvoiceFormKey))
+                {
+                    <div class="fs-9 text-muted">Enter: فیلد بعدی · Shift+Enter: خط جدید</div>
+                }
                 <textarea class="form-control" rows="2" @bind="party.Note"></textarea>
             </div>
             <div class="col-12">
@@ -109,6 +113,9 @@
 </Modal>
 
 @code {
+    /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
+    [Parameter] public string? InvoiceFormKey { get; set; }
+
     /// <summary>نمایش/عدم نمایش فرم.</summary>
     [Parameter] public bool Visible { get; set; }
 
