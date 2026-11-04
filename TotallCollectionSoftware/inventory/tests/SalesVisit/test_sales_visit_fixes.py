@@ -15,7 +15,8 @@
      fixed/بدون فوکوس، گرید ۲ ستونهٔ مقاوم به عرض.
   ۶) کوچک شدن پیوستهٔ باکسها و ردیفها با clamp()+vw بهجای دو مقدار ثابت؛ برچسب
      کنار ورودی، فیلدهای کوتاه دوتایی، و نوار اقدام چسبانِ جابهجا شده بالای
-     نوار پایین اپ (etc. app-mobile).
+     نوار پایین اپ (app-mobile).
+  ۷) فاصلهٔ آیکون و متن کفدار (`--vis-icon-gap`): با تراکم بقیه له نمیشود.
 """
 import re
 import unittest
@@ -257,6 +258,28 @@ class VisitFormsDesignTests(unittest.TestCase):
         self.assertIn(".vis-grid > .vis-field.vis-field--sm", self.form,
                       "قانون دوتایی شدن فیلدهای کوتاه در 720px")
         self.assertIn("flex: 0 0 50% !important", self.form)
+
+    def test_icon_and_text_keep_a_minimum_gap_when_page_shrinks(self):
+        for name, src in (("VisitForm", self.form), ("VisitDetail", self.detail)):
+            with self.subTest(page=name):
+                self.assertIn("--vis-icon-gap: .55rem;", src,
+                              "فاصلهٔ پایهٔ آیکون/متن باید تعریف شود")
+                self.assertIn("--vis-icon-gap: clamp(.42rem, calc(.2vw + .36rem), .6rem);", src,
+                              "کف ۶٫۷px: تراکم بقیه نباید آیکون را به متن بچسباند")
+                self.assertGreaterEqual(src.count("gap: var(--vis-icon-gap)"), 3)
+                self.assertIn("display: inline-flex; align-items: center; justify-content: center;", src,
+                              "دکمهها flex شوند تا gap حتی برای متن خام هم اعمال شود")
+                self.assertIn("margin-inline-end: var(--vis-icon-gap)", src)
+                self.assertIn("card-header.vis-card-header {\n    display: flex;\n    align-items: center;\n    gap: var(--vis-icon-gap);", src)
+                # نباید سربرگ کارت همچنان از توکن ریز فاصلهٔ سلولها استفاده کند
+                self.assertNotIn("card-header.vis-card-header {\n    display: flex;\n    align-items: center;\n    gap: var(--vis-gap-sm);", src)
+        self.assertIn("gap: var(--vis-icon-gap); min-width: 0;", self.form,
+                      "کمبوی کالا: آیکون جعبه و اینپوت جدا بمانند")
+        self.assertIn("gap: var(--vis-icon-gap);\n    padding: .55rem 0;", self.detail,
+                      "نقطهٔ گردش سفارش و متنش فاصلهٔ کافی داشته باشند")
+        preview = read(ROOT.parent / "tests/SalesVisit/visit-forms-proposal.html")
+        self.assertIn("--pv-icon-gap: 7px", preview)
+        self.assertIn("gap: var(--pv-icon-gap)", preview)
 
     def test_business_rules_survive_the_redesign(self):
         self.assertIn("data-stock-alarm", self.form_markup)

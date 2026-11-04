@@ -303,6 +303,8 @@ else
    ========================================================================== */
 .vis-detail {
     max-width: 100%; overflow-x: clip;
+    /* فاصلهٔ آیکون و متن کف دارد */
+    --vis-icon-gap: .55rem;
     --vis-gap: 1rem;
     --vis-gap-sm: .5rem;
     --vis-pad: 1.15rem;
@@ -354,7 +356,7 @@ else
     font-size: .78rem;
     color: var(--vis-muted);
 }
-.vis-detail .vis-detail-sub i { margin-inline-end: .3rem; color: var(--vis-accent); }
+.vis-detail .vis-detail-sub i { margin-inline-end: var(--vis-icon-gap); color: var(--vis-accent); }
 .vis-detail .vis-status { font-size: .72rem; padding: .2rem .6rem; }
 .vis-detail .vis-back-btn {
     border-radius: 10px;
@@ -373,7 +375,7 @@ else
 .vis-detail .card-header.vis-card-header {
     display: flex;
     align-items: center;
-    gap: var(--vis-gap-sm);
+    gap: var(--vis-icon-gap);
     padding: .8rem var(--vis-pad);
     background: linear-gradient(180deg, #ffffff, #f8fafc);
     border-bottom: 1px solid var(--vis-line);
@@ -495,7 +497,7 @@ else
 .vis-detail .vis-tl-item {
     display: flex;
     align-items: flex-start;
-    gap: .7rem;
+    gap: var(--vis-icon-gap);
     padding: .55rem 0;
     border-bottom: 1px dashed #eef2f7;
 }
@@ -516,7 +518,7 @@ else
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: .4rem;
+    gap: var(--vis-icon-gap);
     padding: .6rem .9rem;
     border-radius: 10px;
     font-size: .82rem;
@@ -527,6 +529,19 @@ else
     font-size: .74rem;
     line-height: 1.7;
 }
+
+/* فاصلهٔ آیکون و متن: دکمهها flex با gap کفدار، یادداشتها margin منطقی */
+.vis-detail .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: var(--vis-icon-gap);
+}
+.vis-detail .btn > i { margin: 0 !important; flex: 0 0 auto; }
+.vis-detail .vis-info-note > i,
+.vis-detail .alert > i,
+.vis-detail .vis-row > span > i,
+.vis-detail .vis-tl-item > i,
+.vis-detail .vis-detail-sub > span > i { margin-inline-end: var(--vis-icon-gap); flex: 0 0 auto; }
+
 
 /* پنجرهٔ تصمیم */
 .vis-detail .vis-modal-back {
@@ -572,6 +587,8 @@ else
         --vis-gap-sm: clamp(.14rem, calc(.3vw + .09rem), .28rem);
         --vis-pad: clamp(.34rem, calc(.72vw + .22rem), .6rem);
         --vis-radius: clamp(8px, calc(.9vw + 5px), 11px);
+        /* کوچک میشود ولی هیچگاه کمتر از ۶٫۷px نمیشود */
+        --vis-icon-gap: clamp(.42rem, calc(.2vw + .36rem), .6rem);
         --vis-ctl-f: clamp(.66rem, calc(.5vw + .5rem), .76rem);
         line-height: 1.32;
     }
@@ -599,7 +616,7 @@ else
     .vis-detail .c-total { grid-area: total; }
     /* برچسب کنار مقدار، نه بالای آن → هر سلول یک خط بهجای دو خط */
     .vis-detail .vis-detail-line .vis-cell:not(.c-name) {
-        display: flex; align-items: center; flex-wrap: wrap; gap: var(--vis-gap-sm);
+        display: flex; align-items: center; flex-wrap: wrap; gap: var(--vis-icon-gap);
     }
     .vis-detail .vis-detail-line .vis-cell-label {
         display: block; flex: 0 0 auto; max-width: 44%; margin: 0;
@@ -628,6 +645,10 @@ else
         box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
     }
     .app-mobile .vis-detail .vis-actions { bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+    .vis-detail .card-header.vis-card-header,
+    .vis-detail .vis-actions .btn,
+    .vis-detail .btn,
+    .vis-detail .vis-tl-item { gap: var(--vis-icon-gap); }
     .vis-detail .vis-actions .btn { padding: var(--vis-gap-sm); font-size: var(--vis-ctl-f); }
 }
 @@media (max-width: 720px) {

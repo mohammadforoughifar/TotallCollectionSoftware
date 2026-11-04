@@ -6659,6 +6659,35 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
   box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
 }
 
+/* ---- فاصلهٔ آیکون و متن: کف 7px حتی وقتی همهچیز فشرده میشود ---- */
+.pv-screen[data-size="tablet"] .pv-ui,
+.pv-screen[data-size="mobile"] .pv-ui { --pv-icon-gap: 7px; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-title,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-title,
+.pv-screen[data-size="tablet"] .pv-ui .pv-btn,
+.pv-screen[data-size="mobile"] .pv-ui .pv-btn,
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail-item,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail-item,
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-ctl,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-ctl,
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod,
+.pv-screen[data-size="tablet"] .pv-ui .pv-status-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-status-note { gap: var(--pv-icon-gap); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-btn > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-btn > i,
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-title > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-title > i { margin: 0; flex: 0 0 auto; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-action-note > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-note > i,
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail-item > span > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail-item > span > i { margin-inline-end: var(--pv-icon-gap); }
+/* آیکون مطلق داخل اینپوت هم حداقل فاصلهٔ خودش را حفظ میکند */
+.pv-screen[data-size="tablet"] .pv-ui .pv-with-icon .pv-input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-with-icon .pv-input { padding-inline-start: 1.9rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-with-icon > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-with-icon > i { inset-inline-start: var(--pv-icon-gap); }
+
 @media (prefers-reduced-motion: reduce) {
   .pv-ui *, .pv-ui *::before, .pv-ui *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
