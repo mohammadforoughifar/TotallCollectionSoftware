@@ -251,7 +251,16 @@ public enum VoucherSource
     /// خودکار از «فروش فروشگاه» (سند فروشِ ثبت‌شده از سفارش ویزیتور پس از تأیید مالی).
     /// جدا از <see cref="Invoice"/> است تا شناسه‌ها با فاکتورهای ماژول فاکتور قاطی نشوند.
     /// </summary>
-    StoreSale = 6
+    StoreSale = 6,
+
+    /// <summary>اصلاح حسابداری تاخیر تادیه چک فروش.</summary>
+    StoreSaleChequeAdjustment = 7,
+
+    /// <summary>وصول چک فروش فروشگاه.</summary>
+    StoreSaleChequeReceipt = 8,
+
+    /// <summary>سند معکوس وصول چک فروش فروشگاه.</summary>
+    StoreSaleChequeReceiptReversal = 9
 }
 
 // ===================== ابعاد تحلیلی، دارایی ثابت، بودجه =====================

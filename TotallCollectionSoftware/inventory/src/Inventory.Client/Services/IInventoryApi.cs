@@ -111,6 +111,12 @@ public interface IOrderService
     Task<Order?> GetAsync(int id);
     Task<Order> CreateAsync(OrderCommand cmd);
     Task<Order> UpdateAsync(int id, OrderCommand cmd);
+    Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
+    Task<SaleChequeReschedulePreview> RescheduleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd);
+    Task ReceiveChequeAsync(int chequeId, SaleChequeReceiptCommand cmd);
+    Task ReverseChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd);
+    Task ChangeChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd);
+    Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId);
     Task DeleteAsync(int id);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 

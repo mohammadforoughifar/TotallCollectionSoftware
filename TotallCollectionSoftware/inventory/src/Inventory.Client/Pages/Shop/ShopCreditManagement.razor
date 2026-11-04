@@ -4,6 +4,8 @@
 @using Inventory.Shared.Dtos
 @inject IAuthState Auth
 @inject IDashboardService DashboardSvc
+@inject IOrderService OrderSvc
+@inject ITrsAccountService AccountSvc
 @inject IToastService Toast
 
 <PageTitle>مدیریت جامع چک‌ها و دفترچه اقساط</PageTitle>
@@ -327,6 +329,14 @@
                                     </td>
                                     <td class="text-center">
                                         <div class="d-flex justify-content-center gap-1">
+                                            @if (c.HasChequeCharge && Auth.Has("Orders.Read"))
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary fin-btn-pill fs-9 py-1 px-2" title="تاریخچه وضعیت چک" @onclick="() => OpenChequeHistory(c)">تاریخچه</button>
+                                            }
+                                            @if (c.HasChequeCharge && !c.IsCleared && Auth.Has("Orders.Update"))
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary fin-btn-pill fs-9 py-1 px-2" title="تغییر سررسید و محاسبه تعدیل" @onclick="() => OpenReschedule(c)">سررسید</button>
+                                            }
                                             @if (!c.IsCleared && c.Status != ChequeStatus.Bounced)
                                             {
                                                 <button class="btn btn-sm btn-outline-success fin-btn-pill fs-9 py-1 px-2.5" title="وصول / پاس شدن چک" @onclick="() => ConfirmClearCheque(c)">
@@ -347,7 +357,7 @@
                                             }
                                             else if (c.IsCleared)
                                             {
-                                                <button class="btn btn-sm btn-light fin-btn-pill fs-9 py-1 px-2" title="لغو وضعیت وصولی" @onclick="() => ResetCheque(c)">
+                                                <button class="btn btn-sm btn-light fin-btn-pill fs-9 py-1 px-2" title="لغو وضعیت وصولی" @onclick="() => RequestReceiptReversal(c)">
                                                     <i class="bi bi-arrow-counterclockwise me-1"></i> لغو وصول
                                                 </button>
                                             }
@@ -505,6 +515,109 @@
         </div>
     }
 </div>
+
+@if (reversalTarget is not null)
+{
+    <Modal Visible="true" Title="لغو وصول چک" OnClose="CloseReceiptReversal">
+        <ChildContent>
+            <div class="alert alert-warning fs-8">لغو وصول با سند معکوس و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقهٔ وصول حفظ خواهد شد.</div>
+            <p class="fs-8">چک <b class="num">@reversalTarget.Number</b> به مبلغ <b class="num">@reversalTarget.Amount.Money()</b> ریال</p>
+            <label class="form-label">تاریخ لغو وصول *</label>
+            <DatePicker @bind-Value="reversalDate" />
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-light" @onclick="CloseReceiptReversal">انصراف</button>
+            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" @onclick="ConfirmReceiptReversal">ثبت سند معکوس</button>
+        </Footer>
+    </Modal>
+}
+
+@if (historyTarget is not null)
+{
+    <Modal Visible="true" Title="تاریخچه وضعیت چک" OnClose="CloseChequeHistory">
+        <ChildContent>
+            <p class="fs-8">چک <b class="num">@historyTarget.Number</b></p>
+            <p class="text-muted fs-9">فقط تغییرات ثبت‌شده پس از فعال‌شدن تاریخچه نمایش داده می‌شوند.</p>
+            @if (historyItems.Count == 0)
+            {
+                <div class="text-muted fs-8 py-3">هنوز تغییری در تاریخچه ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle fs-9">
+                        <thead><tr><th>زمان</th><th>از</th><th>به</th><th>علت</th><th>کاربر</th></tr></thead>
+                        <tbody>
+                        @foreach (var item in historyItems)
+                        {
+                            <tr><td class="num">@item.CreatedAt.ToFa() @item.CreatedAt.ToString("HH:mm")</td><td>@ChequeStatusLabel(item.PreviousStatus)</td>
+                                <td>@ChequeStatusLabel(item.NewStatus)</td><td>@(item.Reason ?? "—")</td><td>@(item.CreatedBy ?? "—")</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </ChildContent>
+        <Footer><button type="button" class="btn btn-light" @onclick="CloseChequeHistory">بستن</button></Footer>
+    </Modal>
+}
+
+@if (receiptTarget is not null)
+{
+    <Modal Visible="true" Title="وصول چک فروش" OnClose="CloseReceipt">
+        <ChildContent>
+            <div class="alert alert-warning fs-8">وصول آزمایشی است؛ تعیین‌تکلیف طلب مشتری هنوز تکمیل نشده است.</div>
+            <p class="fs-8">چک <b class="num">@receiptTarget.Number</b> به مبلغ <b class="num">@receiptTarget.Amount.Money()</b> ریال</p>
+            <label class="form-label">حساب بانکی مقصد شرکت *</label>
+            <select class="form-select" @bind="receiptBankId">
+                <option value="0">انتخاب حساب بانکی</option>
+                @foreach (var account in receiptBanks)
+                {
+                    <option value="@account.Id">@account.Name</option>
+                }
+            </select>
+            @if (receiptBanks.Count == 0)
+            {
+                <div class="text-muted fs-9 mt-1">حساب بانکی فعال و متصل به حسابداری یافت نشد.</div>
+            }
+            <label class="form-label mt-2">تاریخ وصول *</label>
+            <DatePicker @bind-Value="receiptDate" />
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-light" @onclick="CloseReceipt">انصراف</button>
+            <button type="button" class="btn btn-success" disabled="@(receiptBusy || receiptBankId <= 0 || !receiptDate.HasValue)" @onclick="ConfirmReceipt">ثبت وصول</button>
+        </Footer>
+    </Modal>
+}
+
+@if (rescheduleTarget is not null)
+{
+    <Modal Visible="true" Title="تغییر سررسید چک" OnClose="CloseReschedule">
+        <ChildContent>
+            <div class="alert alert-warning fs-8">این مسیر آزمایشی است؛ صورت‌حساب تاریخی و تسویه بستانکاری هنوز کامل نیست. فقط در پایگاه داده آزمایشی استفاده شود.</div>
+            <div class="row g-2">
+                <div class="col-md-6"><label class="form-label">چک</label><div class="num fw-bold">@rescheduleTarget.Number</div></div>
+                <div class="col-md-6"><label class="form-label">سررسید قبلی</label><div class="num">@rescheduleTarget.DueDate.ToFa()</div></div>
+                <div class="col-md-6"><label class="form-label">سررسید جدید</label>
+                    <DatePicker Value="rescheduleDueDate" ValueChanged="SetRescheduleDueDate" /></div>
+                <div class="col-md-6"><label class="form-label">تاریخ ثبت اصلاح</label>
+                    <DatePicker @bind-Value="rescheduleOperationDate" /></div>
+                @if (reschedulePreview is not null)
+                {
+                    <div class="col-12 alert alert-light border fs-8 mt-2">
+                        مبنا: <b class="num">@reschedulePreview.BaseAmount.Money()</b> ریال؛ نرخ: <b class="num">@reschedulePreview.RatePercent.Num()</b>٪ در <b class="num">@reschedulePreview.PeriodDays.Num()</b> روز.
+                        <div class="mt-1">تعدیل سود: <b class="num">@reschedulePreview.IncomeDelta.Money()</b> ریال</div>
+                    </div>
+                }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-light" @onclick="CloseReschedule">انصراف</button>
+            <button type="button" class="btn btn-outline-primary" disabled="@rescheduleBusy" @onclick="PreviewReschedule">محاسبه</button>
+            <button type="button" class="btn btn-primary" disabled="@(rescheduleBusy || reschedulePreview is null)" @onclick="ConfirmReschedule">تأیید و ثبت</button>
+        </Footer>
+    </Modal>
+}
 
 <!-- ================== مدال شیک ثبت برگشت چک ================== -->
 @if (showBounceModal && bounceTarget != null)
@@ -980,6 +1093,168 @@
     private bool showBounceModal;
     private ShopChequeItem? bounceTarget;
     private string bounceReason = "";
+    private Guid bounceOperationId;
+    private ShopChequeItem? rescheduleTarget;
+    private DateTime? rescheduleDueDate, rescheduleOperationDate;
+    private SaleChequeReschedulePreview? reschedulePreview;
+    private Guid rescheduleOperationId;
+    private bool rescheduleBusy;
+    private ShopChequeItem? receiptTarget;
+    private List<Inventory.Shared.Dtos.TrsAccount> receiptBanks = new();
+    private DateTime? receiptDate;
+    private int receiptBankId;
+    private Guid receiptOperationId;
+    private bool receiptBusy;
+    private ShopChequeItem? reversalTarget;
+    private DateTime? reversalDate;
+    private Guid reversalOperationId;
+    private bool reversalBusy;
+    private ShopChequeItem? historyTarget;
+    private List<SaleChequeStatusHistoryItem> historyItems = new();
+
+    private async Task RequestReceiptReversal(ShopChequeItem item)
+    {
+        if (!item.HasChequeCharge) { await ResetCheque(item); return; }
+        reversalDate = DateTime.Today;
+        reversalOperationId = Guid.NewGuid();
+        reversalTarget = item;
+    }
+
+    private void CloseReceiptReversal()
+    {
+        if (!reversalBusy) reversalTarget = null;
+    }
+
+    private async Task ConfirmReceiptReversal()
+    {
+        if (reversalTarget is null || !reversalDate.HasValue || reversalBusy) return;
+        reversalBusy = true;
+        try
+        {
+            await OrderSvc.ReverseChequeReceiptAsync(reversalTarget.Id, new SaleChequeReceiptReversalCommand
+            {
+                OperationId = reversalOperationId, Date = reversalDate.Value
+            });
+            reversalTarget = null;
+            Toast.Success("لغو آزمایشی وصول با سند معکوس ثبت شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reversalBusy = false; }
+    }
+
+    private async Task OpenChequeHistory(ShopChequeItem item)
+    {
+        try
+        {
+            historyItems = await OrderSvc.GetChequeStatusHistoryAsync(item.Id);
+            historyTarget = item;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseChequeHistory() => historyTarget = null;
+
+    private static string ChequeStatusLabel(ChequeStatus status) => status switch
+    {
+        ChequeStatus.InHand => "در جریان",
+        ChequeStatus.Bounced => "برگشتی",
+        ChequeStatus.Cleared => "وصول‌شده",
+        _ => status.ToString()
+    };
+
+    private async Task OpenReceipt(ShopChequeItem item)
+    {
+        try
+        {
+            var accounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            receiptBanks = accounts.Where(a => a.Kind == TreasuryAccountKind.Bank && a.AccountId is > 0).ToList();
+            receiptBankId = 0; // نام بانک چک مشتری به‌معنای حساب مقصد شرکت نیست.
+            receiptDate = DateTime.Today;
+            receiptOperationId = Guid.NewGuid();
+            receiptTarget = item;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseReceipt()
+    {
+        if (!receiptBusy) receiptTarget = null;
+    }
+
+    private async Task ConfirmReceipt()
+    {
+        if (receiptTarget is null || receiptBankId <= 0 || !receiptDate.HasValue || receiptBusy) return;
+        receiptBusy = true;
+        try
+        {
+            await OrderSvc.ReceiveChequeAsync(receiptTarget.Id, new SaleChequeReceiptCommand
+            {
+                OperationId = receiptOperationId, TrsAccountId = receiptBankId, Date = receiptDate.Value
+            });
+            receiptTarget = null;
+            Toast.Success("وصول آزمایشی چک ثبت شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { receiptBusy = false; }
+    }
+
+    private void OpenReschedule(ShopChequeItem item)
+    {
+        rescheduleTarget = item;
+        rescheduleDueDate = item.DueDate;
+        rescheduleOperationDate = DateTime.Today;
+        reschedulePreview = null;
+        rescheduleOperationId = Guid.NewGuid();
+    }
+
+    private void CloseReschedule()
+    {
+        if (!rescheduleBusy) { rescheduleTarget = null; reschedulePreview = null; }
+    }
+
+    private void SetRescheduleDueDate(DateTime? value)
+    {
+        rescheduleDueDate = value;
+        reschedulePreview = null;
+        rescheduleOperationId = Guid.NewGuid();
+    }
+
+    private async Task PreviewReschedule()
+    {
+        if (rescheduleTarget is null || !rescheduleDueDate.HasValue || rescheduleBusy) return;
+        rescheduleBusy = true;
+        try
+        {
+            reschedulePreview = await OrderSvc.PreviewChequeRescheduleAsync(rescheduleTarget.Id,
+                rescheduleTarget.DueDate, rescheduleDueDate.Value);
+        }
+        catch (Exception ex) { reschedulePreview = null; Toast.Error(ex.Message); }
+        finally { rescheduleBusy = false; }
+    }
+
+    private async Task ConfirmReschedule()
+    {
+        if (rescheduleTarget is null || reschedulePreview is null || !rescheduleDueDate.HasValue ||
+            !rescheduleOperationDate.HasValue || rescheduleBusy) return;
+        rescheduleBusy = true;
+        try
+        {
+            await OrderSvc.RescheduleChequeAsync(rescheduleTarget.Id, new SaleChequeRescheduleCommand
+            {
+                OperationId = rescheduleOperationId, ExpectedDueDate = rescheduleTarget.DueDate,
+                NewDueDate = rescheduleDueDate.Value, OperationDate = rescheduleOperationDate.Value,
+                ConfirmedIncomeDelta = reschedulePreview.IncomeDelta
+            });
+            rescheduleTarget = null;
+            reschedulePreview = null;
+            Toast.Success("سررسید و تعدیل آزمایشی ثبت شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { rescheduleBusy = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1068,6 +1343,7 @@
 
     private async Task ConfirmClearCheque(ShopChequeItem c)
     {
+        if (c.HasChequeCharge) { await OpenReceipt(c); return; }
         try
         {
             await DashboardSvc.ClearChequeAsync(c.Id);
@@ -1083,6 +1359,7 @@
     private void PromptBounce(ShopChequeItem c)
     {
         bounceTarget = c;
+        bounceOperationId = Guid.NewGuid();
         bounceReason = "کسر موجودی حساب";
         showBounceModal = true;
     }
@@ -1092,7 +1369,10 @@
         if (bounceTarget == null) return;
         try
         {
-            await DashboardSvc.BounceChequeAsync(bounceTarget.Id, bounceReason);
+            if (bounceTarget.HasChequeCharge)
+                await OrderSvc.ChangeChequeStatusAsync(bounceTarget.Id, new SaleChequeStatusCommand { OperationId = bounceOperationId, Bounced = true, Reason = bounceReason });
+            else
+                await DashboardSvc.BounceChequeAsync(bounceTarget.Id, bounceReason);
             Toast.Error($"چک {bounceTarget.Number} برگشت خورد و در وضعیت بدهی ثبت شد.");
             showBounceModal = false;
             await LoadDataAsync();
@@ -1107,7 +1387,10 @@
     {
         try
         {
-            await DashboardSvc.ResetChequeAsync(c.Id);
+            if (c.HasChequeCharge)
+                await OrderSvc.ChangeChequeStatusAsync(c.Id, new SaleChequeStatusCommand { OperationId = Guid.NewGuid(), Bounced = false });
+            else
+                await DashboardSvc.ResetChequeAsync(c.Id);
             Toast.Info($"وضعیت چک {c.Number} به در جریان بازگردانده شد.");
             await LoadDataAsync();
         }

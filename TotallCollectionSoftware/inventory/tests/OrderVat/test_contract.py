@@ -17,7 +17,8 @@ class VatContract(unittest.TestCase):
         self.assertIn('afterDiscount + Vat(afterDiscount, vatValue)', calc)
         form = read('Inventory.Client/Pages/Orders/OrderForm.razor')
         self.assertIn('OrderLineAmounts.Vat(AfterDiscount, VatValue)', form)
-        self.assertIn('grandTotal => TotalLines.Sum(l => l.Total)', form)
+        self.assertIn('goodsTotal => TotalLines.Sum(l => l.Total)', form)
+        self.assertIn('grandTotal => goodsTotal + saleChequeIncome', form)
         self.assertIn('data-order-last-field', form.split('aria-label="ارزش افزوده درصد یا ریال"', 1)[1].split('/>', 1)[0])
         self.assertIn('VatValue = l.VatValue', form)
 

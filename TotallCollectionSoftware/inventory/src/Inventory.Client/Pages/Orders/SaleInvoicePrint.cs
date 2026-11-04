@@ -127,13 +127,15 @@ public static class SaleInvoicePrint
             sb.Append("<div class=\"desc\"><span>توضیحات: </span>").Append(Esc(order.Description)).Append("</div>");
 
         // ---------- جمع کل ----------
-        if ((hasLineDiscount && totalDiscount > 0) || hasVat)
+        if ((hasLineDiscount && totalDiscount > 0) || hasVat || order.ChequeIncomeAmount > 0)
         {
             sb.Append("<div style=\"margin-top:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;font-size:10.5px;\">");
             sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>جمع اقلام (ناخالص):</span><b class=\"num\">").Append(totalGross.Money()).Append(" ریال</b></div>");
             sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;color:#dc2626;\"><span>تخفیف کل اقلام:</span><b class=\"num\">- ").Append(totalDiscount.Money()).Append(" ریال</b></div>");
             if (hasVat)
                 sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>ارزش افزوده:</span><b class=\"num\">").Append(totalVat.Money()).Append(" ریال</b></div>");
+            if (order.ChequeIncomeAmount > 0)
+                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>تاخیر تادیه چک:</span><b class=\"num\">").Append(order.ChequeIncomeAmount.Money()).Append(" ریال</b></div>");
             sb.Append("</div>");
         }
 

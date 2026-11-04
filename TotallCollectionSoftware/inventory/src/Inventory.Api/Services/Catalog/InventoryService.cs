@@ -1,9 +1,11 @@
 using System.Globalization;
+using System.Data;
 using Inventory.Api.Services.Invoicing;
 using Db = Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Inventory.Api.Services;
@@ -15,11 +17,19 @@ public class InventoryService : IInventoryService
 {
     private readonly Db.AppDbContext _db;
     private readonly ILogger<InventoryService> _log;
+    private readonly IConfiguration? _configuration;
 
-    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log)
+    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log, IConfiguration? configuration = null)
     {
         _db = db;
         _log = log;
+        _configuration = configuration;
+    }
+
+    private void RequireExperimentalChequeCharge()
+    {
+        if (!string.Equals(_configuration?["SaleChequeCharge:ExperimentalEnabled"], "true", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("ثبت آزمایشی تاخیر تادیه چک هنوز فعال نیست؛ گردش اصلاح و تسویه باید تکمیل شود.");
     }
 
     // =============================== تنظیمات ===============================
@@ -1175,6 +1185,9 @@ public class InventoryService : IInventoryService
         var ids = list.Select(p => p.Id).ToList();
         var txns = await _db.Transactions.Include(t => t.Cheques).Include(t => t.Installments)
             .Where(t => t.PartyId != null && ids.Contains(t.PartyId.Value)).ToListAsync();
+        // Use the same verified history as the detailed statement; a gross invoice total
+        // is not a customer balance, particularly after receipts or a negative adjustment.
+        var chequeHistory = await LoadChequeStatementHistoryAsync(ids);
         var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
         var today = DateTime.Today;
 
@@ -1204,7 +1217,15 @@ public class InventoryService : IInventoryService
                 RegisteredByReferrerName = p.RegisteredByReferrerId.HasValue
                                            && refNames.TryGetValue(p.RegisteredByReferrerId.Value, out var rrn) ? rrn : null,
                 RegisteredAt = p.RegisteredAt,
-                Balance = pTxns.Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount),
+                Balance = pTxns.Sum(t => t.Type switch
+                {
+                    TransactionType.Sale when chequeHistory.TryGetValue(t.Id, out var history)
+                        => t.Amount - history.CurrentIncome + history.InitialIncome
+                           + history.Adjustments.Sum(a => a.Amount) - t.CashAmount - history.Receipts.Sum(r => r.Amount),
+                    TransactionType.Sale => t.Amount - Math.Max(0, t.SettledAmount),
+                    TransactionType.Purchase => -t.Amount + Math.Max(0, t.SettledAmount),
+                    _ => 0m
+                }),
                 BouncedChequesCount = bounced.Count,
                 BouncedChequesTotal = bounced.Sum(c => c.Amount),
                 OverdueInstallmentsCount = overdueInst.Count,
@@ -1318,8 +1339,17 @@ public class InventoryService : IInventoryService
 
     // =============================== خرید و فروش ===============================
 
-    public async Task<Order> CreateOrderAsync(OrderCommand cmd)
+    public async Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null)
     {
+        // The remaining correction and settlement workflows are not yet complete.
+        // Never expose partially manageable financial invoices without an explicit test opt-in.
+        if (cmd.ChequeCharge is not null) RequireExperimentalChequeCharge();
+        if (cmd.ChequeCharge is not null && cmd.Type != TransactionType.Sale)
+            throw new InvalidOperationException("تاخیر تادیه چک فقط برای فاکتور فروش مجاز است.");
+        if (cmd.ChequeCharge is not null && cmd.Installments.Count > 0)
+            throw new InvalidOperationException("اقساط برای فاکتور آزمایشی تا تکمیل گردش تسویه پشتیبانی نمی‌شود.");
+        if (cmd.ChequeCharge is not null && cmd.Cheques.Any(c => c.IsCleared))
+            throw new InvalidOperationException("وصول چک هنگام ثبت آزمایشی فاکتور مجاز نیست؛ وصول باید جداگانه ثبت شود.");
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
         if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
             throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
@@ -1398,9 +1428,33 @@ public class InventoryService : IInventoryService
             CreatedAt = DateTime.Now
         };
 
+        // در مسیر آزمایشی، کل قابل پرداخت شامل سود محاسبه‌شده در سرور است؛
+        // مبلغ چک‌ها را تغییر نمی‌دهیم و ثبت نهایی دوباره کنترل می‌شود.
+        decimal? paymentTotal = null;
+        if (cmd.ChequeCharge is { } chargeInput)
+        {
+            decimal income;
+            try
+            {
+                income = SaleChequeInitialCalculation.Calculate(chargeInput.CalculatorBaseAmount,
+                    chargeInput.CalculatorRatePercent, chargeInput.CalculatorMonths);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                throw new InvalidOperationException("ورودی‌های ماشین‌حساب اولیه تاخیر تادیه چک معتبر نیست.");
+            }
+            var goodsTotal = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent,
+                l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
+            if (income <= 0 || chargeInput.CalculatorBaseAmount > goodsTotal)
+                throw new InvalidOperationException("مبنای ماشین‌حساب یا سود اولیه معتبر نیست.");
+            if (chargeInput.ConfirmedCreditDueDate?.Date != cmd.DueDate?.Date)
+                throw new InvalidOperationException("تأیید سررسید نسیه با اجزای پرداخت مطابقت ندارد.");
+            paymentTotal = SaleChequeVoucherAmounts.Create(goodsTotal, 0, income).CustomerDebit;
+        }
+
         // پرداخت سند (خرید و فروش): نقدی / نسیه / چک / اقساط
         if (cmd.Type is TransactionType.Sale or TransactionType.Purchase)
-            ApplyPayment(txn, cmd);
+            ApplyPayment(txn, cmd, paymentTotal);
 
         foreach (var l in cmd.Lines)
         {
@@ -1435,7 +1489,9 @@ public class InventoryService : IInventoryService
             txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
         }
 
-        await using var trx = await _db.Database.BeginTransactionAsync();
+        await using var trx = cmd.ChequeCharge is null
+            ? await _db.Database.BeginTransactionAsync()
+            : await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         _db.Transactions.Add(txn);
         await _db.SaveChangesAsync();  // ابتدا سند ذخیره می‌شود تا در بازمحاسبه دیده شود
 
@@ -1455,6 +1511,13 @@ public class InventoryService : IInventoryService
             throw;
         }
 
+        if (cmd.ChequeCharge is { } registration)
+        {
+            await SaleChequeChargeRegistration.RegisterAsync(_db, txn.Id,
+                new SaleChequeChargeRegistrationInput(registration.CalculatorBaseAmount, registration.CalculatorRatePercent,
+                    registration.CalculatorMonths, registration.AdjustmentRatePercent, registration.AdjustmentPeriodDays,
+                    registration.ConfirmedCreditDueDate), user);
+        }
         await trx.CommitAsync();
 
         return await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
@@ -1576,6 +1639,8 @@ public class InventoryService : IInventoryService
     /// <summary>ویرایش سند خرید/فروش: جایگزینی سرصفحه و اقلام + بازمحاسبه موجودی انبارهای قدیم و جدید.</summary>
     public async Task<Order> UpdateOrderAsync(int id, OrderCommand cmd)
     {
+        if (cmd.ChequeCharge is not null)
+            throw new InvalidOperationException("افزودن یا ویرایش تاخیر تادیه چک از مسیر قدیمی ویرایش پشتیبانی نمی‌شود.");
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
         if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
             throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
@@ -1966,9 +2031,9 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
     }
 
-    private static void ApplyPayment(Db.Transaction txn, OrderCommand cmd)
+    private static void ApplyPayment(Db.Transaction txn, OrderCommand cmd, decimal? paymentTotal = null)
     {
-        var total = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
+        var total = paymentTotal ?? cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
 
         txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;
@@ -2172,12 +2237,18 @@ public class InventoryService : IInventoryService
         static decimal CashOf(Db.Transaction t) => t.PaymentMethod == PaymentMethod.Cash ? t.Amount : t.CashAmount;
         static decimal ChequeOf(Db.Transaction t) => t.Cheques.Sum(c => c.Amount);
         static decimal InstOf(Db.Transaction t) => t.Installments.Sum(i => i.Amount);
-        static decimal CreditOf(Db.Transaction t) => Math.Max(0, t.Amount - CashOf(t) - ChequeOf(t) - InstOf(t));
+        static decimal CreditOf(Db.Transaction t, decimal customerCredit) =>
+            Math.Max(0, t.Amount - customerCredit - CashOf(t) - ChequeOf(t) - InstOf(t));
+        var quarterIds = sales.Select(t => t.Id).ToList();
+        var quarterCredits = quarterIds.Count == 0 ? new Dictionary<int, decimal>() :
+            (await _db.SaleChequeCharges.AsNoTracking().Where(c => quarterIds.Contains(c.TransactionId))
+                .Select(c => new { c.TransactionId, c.CustomerCredit }).ToListAsync())
+                .ToDictionary(c => c.TransactionId, c => c.CustomerCredit);
 
         dash.PayCash = sales.Sum(CashOf);
         dash.PayCheque = sales.Sum(ChequeOf);
         dash.PayInstallment = sales.Sum(InstOf);
-        dash.PayCredit = sales.Sum(CreditOf);
+        dash.PayCredit = sales.Sum(t => CreditOf(t, quarterCredits.GetValueOrDefault(t.Id)));
 
         var partyNames = await _db.Parties.ToDictionaryAsync(p => p.Id, p => p);
 
@@ -2190,8 +2261,28 @@ public class InventoryService : IInventoryService
                         (t.PaymentMethod == PaymentMethod.Credit || t.PaymentMethod == PaymentMethod.Mixed) &&
                         t.DueDate != null && t.DueDate <= today && t.SettledAmount < t.Amount)
             .ToListAsync();
+        var overdueIds = creditTxns.Select(t => t.Id).ToList();
+        var overdueCharges = overdueIds.Count == 0 ? new Dictionary<int, decimal>() :
+            (await _db.SaleChequeCharges.AsNoTracking().Where(c => overdueIds.Contains(c.TransactionId))
+                .Select(c => new { c.TransactionId, c.CustomerCredit }).ToListAsync())
+                .ToDictionary(c => c.TransactionId, c => c.CustomerCredit);
+        var collectedCheques = new Dictionary<int, decimal>();
+        if (overdueIds.Count > 0)
+        {
+            var overdueReceipts = await _db.SaleChequeReceipts.AsNoTracking()
+                .Where(r => overdueIds.Contains(r.TransactionId) && r.ReversalVoucherId == null)
+                .Select(r => new { r.TransactionId, r.Amount }).ToListAsync();
+            collectedCheques = overdueReceipts.GroupBy(r => r.TransactionId).ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
+        }
         foreach (var t in creditTxns)
         {
+            var credit = CreditOf(t, overdueCharges.GetValueOrDefault(t.Id));
+            // SettledAmount already contains initial cash and, on charged sales, collected cheques.
+            // Deduct them once, not a second time from the overdue credit component.
+            var paidInstallments = t.Installments.Where(i => i.IsPaid).Sum(i => i.Amount);
+            var paidCredit = Math.Max(0, t.SettledAmount - CashOf(t) - paidInstallments - collectedCheques.GetValueOrDefault(t.Id));
+            var outstandingCredit = Math.Max(0, credit - paidCredit);
+            if (outstandingCredit == 0) continue;
             var party = t.PartyId.HasValue && partyNames.TryGetValue(t.PartyId.Value, out var pp) ? pp : null;
             dash.OverdueDebtors.Add(new DebtorItem
             {
@@ -2201,7 +2292,7 @@ public class InventoryService : IInventoryService
                 Number = t.Number,
                 TransactionId = t.Id,
                 Kind = "نسیه",
-                Amount = Math.Max(0, t.Amount - CashOf(t) - ChequeOf(t) - InstOf(t) - t.SettledAmount),
+                Amount = outstandingCredit,
                 DueDate = t.DueDate!.Value,
                 DaysOverdue = (int)(today - t.DueDate.Value.Date).TotalDays
             });
@@ -2309,6 +2400,116 @@ public class InventoryService : IInventoryService
                 // قیمت فروش عمداً ارسال نمی‌شود — معرف فقط موجود بودن کالا را می‌بیند
                 InStock = true
             }).ToList();
+    }
+
+    /// <summary>پیش‌نمایش آزمایشی تعدیل؛ سرور مبلغ را از شرایط ذخیره‌شده محاسبه می‌کند.</summary>
+    public async Task<SaleChequeReschedulePreview> PreviewSaleChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate)
+    {
+        RequireExperimentalChequeCharge();
+        if (expectedDueDate == default || newDueDate == default || expectedDueDate.Date == newDueDate.Date)
+            throw new InvalidOperationException("سررسید جدید معتبر و متفاوت از سررسید قبلی باشد.");
+        var cheque = await _db.Cheques.AsNoTracking().FirstOrDefaultAsync(c => c.Id == chequeId)
+            ?? throw new InvalidOperationException("چک یافت نشد.");
+        if (cheque.DueDate.Date != expectedDueDate.Date)
+            throw new InvalidOperationException("سررسید چک تغییر کرده است؛ اطلاعات را دوباره بارگذاری کنید.");
+        if (cheque.IsCleared || cheque.Status is not (ChequeStatus.InHand or ChequeStatus.Bounced))
+            throw new InvalidOperationException("تغییر سررسید فقط برای چک نزد صندوق یا برگشتی مجاز است.");
+        var charge = await _db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == cheque.TransactionId)
+            ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        decimal delta;
+        try { delta = await SaleChequeRescheduling.CalculateDeltaAsync(_db, cheque, charge, newDueDate); }
+        catch (Exception ex) when (ex is OverflowException or ArgumentOutOfRangeException)
+        { throw new InvalidOperationException("شرایط یا مبلغ تعدیل سررسید معتبر نیست.", ex); }
+        return new SaleChequeReschedulePreview { BaseAmount = charge.BaseAmount, RatePercent = charge.RatePercent,
+            PeriodDays = charge.PeriodDays, IncomeDelta = delta };
+    }
+
+    public async Task<SaleChequeReschedulePreview> RescheduleSaleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd, string? user)
+    {
+        RequireExperimentalChequeCharge();
+        ArgumentNullException.ThrowIfNull(cmd);
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var result = await SaleChequeRescheduling.ApplyAsync(_db, chequeId, cmd.OperationId,
+            cmd.ExpectedDueDate, cmd.NewDueDate, cmd.OperationDate, user, cmd.ConfirmedIncomeDelta);
+        await transaction.CommitAsync();
+        return new SaleChequeReschedulePreview { BaseAmount = result.BaseAmount, RatePercent = result.RatePercent,
+            PeriodDays = result.PeriodDays, IncomeDelta = result.IncomeDelta };
+    }
+
+    public async Task ReceiveSaleChequeAsync(int chequeId, SaleChequeReceiptCommand cmd, string? user)
+    {
+        RequireExperimentalChequeCharge();
+        ArgumentNullException.ThrowIfNull(cmd);
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await SaleChequeReceiptPosting.ReceiveAsync(_db, chequeId, cmd.OperationId, cmd.TrsAccountId, cmd.Date, user);
+        await transaction.CommitAsync();
+    }
+
+    public async Task ReverseSaleChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd, string? user)
+    {
+        RequireExperimentalChequeCharge();
+        ArgumentNullException.ThrowIfNull(cmd);
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await SaleChequeReceiptReversal.ReverseAsync(_db, chequeId, cmd.OperationId, cmd.Date, user);
+        await transaction.CommitAsync();
+    }
+
+    public async Task<List<SaleChequeStatusHistoryItem>> GetSaleChequeStatusHistoryAsync(int chequeId)
+    {
+        var cheque = await _db.Cheques.AsNoTracking().FirstOrDefaultAsync(c => c.Id == chequeId)
+            ?? throw new InvalidOperationException("چک یافت نشد.");
+        if (!await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == cheque.TransactionId))
+            throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        return await _db.SaleChequeStatusEvents.AsNoTracking().Where(e => e.ChequeId == chequeId)
+            .OrderByDescending(e => e.Id).Select(e => new SaleChequeStatusHistoryItem
+            {
+                CreatedAt = e.CreatedAt, CreatedBy = e.CreatedBy, PreviousStatus = e.PreviousStatus,
+                NewStatus = e.NewStatus, Reason = e.Reason
+            }).ToListAsync();
+    }
+
+    public async Task ChangeSaleChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd, string? user)
+    {
+        RequireExperimentalChequeCharge();
+        ArgumentNullException.ThrowIfNull(cmd);
+        if (cmd.OperationId == Guid.Empty) throw new InvalidOperationException("شناسه عملیات الزامی است.");
+        var reason = cmd.Bounced ? (string.IsNullOrWhiteSpace(cmd.Reason) ? "عدم موجودی کافی" : cmd.Reason.Trim()) : null;
+        if (reason?.Length > 200 || user?.Length > 120)
+            throw new InvalidOperationException("علت برگشت یا نام کاربر بیش از حد طولانی است.");
+        var target = cmd.Bounced ? ChequeStatus.Bounced : ChequeStatus.InHand;
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var prior = await _db.SaleChequeStatusEvents.FirstOrDefaultAsync(e => e.OperationId == cmd.OperationId);
+        if (prior is not null)
+        {
+            if (prior.ChequeId != chequeId || prior.NewStatus != target || prior.Reason != reason)
+                throw new InvalidOperationException("شناسه عملیات قبلاً برای تغییر دیگری استفاده شده است.");
+            await transaction.CommitAsync();
+            return;
+        }
+        var cheque = await _db.Cheques.FirstOrDefaultAsync(c => c.Id == chequeId)
+            ?? throw new InvalidOperationException("چک یافت نشد.");
+        if (!await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == cheque.TransactionId))
+            throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        if (cheque.IsCleared || await _db.SaleChequeReceipts.AnyAsync(r => r.ChequeId == cheque.Id && r.ReversalVoucherId == null))
+            throw new InvalidOperationException("ابتدا وصول چک را از مسیر لغو وصول با سند معکوس لغو کنید.");
+        if (cheque.Status is not (ChequeStatus.InHand or ChequeStatus.Bounced))
+            throw new InvalidOperationException("وضعیت چک قابل تغییر نیست.");
+        if (cheque.Status == target)
+            throw new InvalidOperationException("چک هم‌اکنون در همین وضعیت است.");
+        var oldStatus = cheque.Status;
+        if (target == ChequeStatus.Bounced && oldStatus != target)
+        {
+            cheque.BouncedAt = DateTime.Now;
+            cheque.BounceReason = reason;
+        }
+        cheque.Status = target;
+        _db.SaleChequeStatusEvents.Add(new Db.SaleChequeStatusEvent
+        {
+            CompanyId = cheque.CompanyId, OperationId = cmd.OperationId, ChequeId = cheque.Id,
+            PreviousStatus = oldStatus, NewStatus = target, CreatedAt = DateTime.Now, CreatedBy = user, Reason = reason
+        });
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync(); // صرف برگشت چک هیچ تغییر سودی ایجاد نمی‌کند.
     }
 
     // مسیرهای قدیمی رکورد مالی و سند مرتبط را اصلاح نمی‌کنند. تا تکمیل گردش اصلاحی
@@ -2537,6 +2738,8 @@ public class InventoryService : IInventoryService
         var parties = await _db.Parties.AsNoTracking()
             .Where(p => partyIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id);
+        var chargedTxnIds = (await _db.SaleChequeCharges.AsNoTracking()
+            .Where(c => txnIds.Contains(c.TransactionId)).Select(c => c.TransactionId).ToListAsync()).ToHashSet();
 
         var result = new List<ShopChequeItem>();
         foreach (var c in list)
@@ -2551,6 +2754,7 @@ public class InventoryService : IInventoryService
             {
                 Id = c.Id,
                 TransactionId = c.TransactionId,
+                HasChequeCharge = chargedTxnIds.Contains(c.TransactionId),
                 OrderNumber = t?.Number ?? "—",
                 TransactionType = t?.Type ?? TransactionType.Sale,
                 PartyId = t?.PartyId ?? 0,
@@ -2649,6 +2853,113 @@ public class InventoryService : IInventoryService
 
     // ================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ==================
 
+    private sealed record ChequeStatementAdjustment(DateTime Date, decimal Amount);
+    private sealed record ChequeStatementReceipt(DateTime Date, decimal Amount);
+    private sealed record ChequeStatementHistory(decimal CurrentIncome, decimal InitialIncome,
+        List<ChequeStatementAdjustment> Adjustments, List<ChequeStatementReceipt> Receipts);
+
+    private async Task<Dictionary<int, ChequeStatementHistory>> LoadChequeStatementHistoryAsync(IReadOnlyCollection<int> partyIds)
+    {
+        if (partyIds.Count == 0) return new();
+        var charges = await _db.SaleChequeCharges.AsNoTracking().Include(c => c.Transaction)
+            .Where(c => c.Transaction.PartyId.HasValue && partyIds.Contains(c.Transaction.PartyId.Value) && c.Transaction.Type == TransactionType.Sale)
+            .ToListAsync();
+        var events = await _db.SaleChequeChargeEvents.AsNoTracking()
+            .Include(e => e.AccVoucher).ThenInclude(v => v.Lines)
+            .Where(e => e.SaleChequeCharge.Transaction.PartyId.HasValue && partyIds.Contains(e.SaleChequeCharge.Transaction.PartyId.Value))
+            .ToListAsync();
+        var receipts = await _db.SaleChequeReceipts.AsNoTracking().Include(r => r.AccVoucher).ThenInclude(v => v.Lines)
+            .Include(r => r.ReversalVoucher).ThenInclude(v => v!.Lines)
+            .Where(r => r.Transaction.PartyId.HasValue && partyIds.Contains(r.Transaction.PartyId.Value)).ToListAsync();
+        var initialVoucherIds = events.Where(e => e.Kind == SaleChequeChargeEventKind.Initial).Select(e => e.AccVoucherId).ToList();
+        var initialCashVouchers = await _db.TrsVouchers.AsNoTracking().Include(v => v.Lines).ThenInclude(l => l.TrsAccount)
+            .Where(v => v.VoucherId.HasValue && initialVoucherIds.Contains(v.VoucherId.Value)).ToListAsync();
+        var byCharge = events.ToLookup(e => e.SaleChequeChargeId);
+        var bySale = receipts.ToLookup(r => r.TransactionId);
+        var result = new Dictionary<int, ChequeStatementHistory>();
+        foreach (var charge in charges)
+        {
+            var sale = charge.Transaction;
+            var history = byCharge[charge.Id].ToList();
+            if (charge.InitialAmount < 0 || charge.Amount < 0 || charge.CustomerCredit < 0 ||
+                sale.Amount - charge.Amount != charge.BaseAmount)
+                throw new InvalidOperationException("ردیف تاخیر تادیه چک با فاکتور مطابقت ندارد؛ صورت‌حساب قابل محاسبه نیست.");
+            if (history.Count == 0)
+            {
+                // Initial rows in older or test databases may not have a posted event.
+                // Never invent a correction history when the amounts have changed.
+                if (charge.InitialAmount != charge.Amount || charge.CustomerCredit != 0)
+                    throw new InvalidOperationException("تاریخچه تعدیل تاخیر تادیه چک یافت نشد.");
+            }
+            else
+            {
+                if (charge.IncomeAccountId is not int incomeAccountId ||
+                    history.Count(e => e.Kind == SaleChequeChargeEventKind.Initial) != 1 ||
+                    history.Any(e => e.Kind is not (SaleChequeChargeEventKind.Initial or SaleChequeChargeEventKind.DueDateAdjustment)))
+                    throw new InvalidOperationException("تاریخچه درآمد تاخیر تادیه چک ناقص است.");
+                foreach (var item in history)
+                {
+                    var lines = item.AccVoucher.Lines.Where(l => l.AccountId == incomeAccountId).ToList();
+                    if (item.AccVoucher.Status != VoucherStatus.Confirmed || item.Date.Date != item.AccVoucher.Date.Date ||
+                        lines.Count == 0 || lines.Sum(l => l.Credit - l.Debit) != item.IncomeDelta)
+                        throw new InvalidOperationException("تاریخچه درآمد چک با سند حسابداری مطابقت ندارد.");
+                }
+                var initial = history.Single(e => e.Kind == SaleChequeChargeEventKind.Initial);
+                if (initial.IncomeDelta != charge.InitialAmount || initial.Date.Date != sale.Date.Date ||
+                    history.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit)
+                    throw new InvalidOperationException("مبلغ جاری درآمد چک با تاریخچه حسابداری مطابقت ندارد.");
+            }
+            if (sale.CashAmount > 0)
+            {
+                var initialEvent = history.SingleOrDefault(e => e.Kind == SaleChequeChargeEventKind.Initial);
+                var cashVouchers = initialEvent is null ? new List<Db.TrsVoucher>() :
+                    initialCashVouchers.Where(v => v.VoucherId == initialEvent.AccVoucherId).ToList();
+                if (cashVouchers.Count != 1 || cashVouchers[0].Status != TreasuryStatus.Confirmed ||
+                    cashVouchers[0].Kind != TreasuryKind.Receipt || cashVouchers[0].Date.Date != sale.Date.Date ||
+                    cashVouchers[0].PartyId != sale.PartyId || cashVouchers[0].TotalAmount != sale.CashAmount ||
+                    cashVouchers[0].Lines.Count != 1 || cashVouchers[0].Lines[0].TrsAccountId != sale.TrsAccountId ||
+                    cashVouchers[0].Lines[0].Method != (sale.CashType == CashType.Cash ? PayMethod.Cash : PayMethod.Card) ||
+                    cashVouchers[0].Lines[0].Amount != sale.CashAmount ||
+                    cashVouchers[0].Lines[0].TrsAccount?.AccountId is not int cashAccountId ||
+                    initialEvent!.AccVoucher.Lines.Where(l => l.AccountId == cashAccountId).Sum(l => l.Debit - l.Credit) != sale.CashAmount)
+                    throw new InvalidOperationException("دریافت نقدی اولیه با سند خزانه و حسابداری مطابقت ندارد.");
+            }
+            var saleReceipts = bySale[sale.Id].ToList();
+            if (sale.SettledAmount != sale.CashAmount + saleReceipts.Where(r => r.ReversalVoucherId == null).Sum(r => r.Amount))
+                throw new InvalidOperationException("تاریخچه وصول با مبلغ تسویه فاکتور مطابقت ندارد.");
+            foreach (var receipt in saleReceipts)
+            {
+                var bankLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.BankAccountId).ToList();
+                var partyLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.PartyAccountId && l.PartyId == sale.PartyId).ToList();
+                if (receipt.AccVoucher.Status != VoucherStatus.Confirmed || receipt.Date.Date != receipt.AccVoucher.Date.Date ||
+                    bankLines.Count == 0 || partyLines.Count == 0 ||
+                    bankLines.Sum(l => l.Debit - l.Credit) != receipt.Amount ||
+                    partyLines.Sum(l => l.Credit - l.Debit) != receipt.Amount)
+                    throw new InvalidOperationException("وصول چک با سند حسابداری مطابقت ندارد.");
+                if (receipt.ReversalVoucherId.HasValue)
+                {
+                    var reverse = receipt.ReversalVoucher;
+                    if (reverse is null || !receipt.ReversalDate.HasValue || !receipt.ReversalOperationId.HasValue ||
+                        reverse.Status != VoucherStatus.Confirmed || reverse.Date.Date != receipt.ReversalDate.Value.Date ||
+                        receipt.ReversalDate.Value.Date < receipt.Date.Date ||
+                        reverse.Lines.Where(l => l.AccountId == receipt.BankAccountId).Sum(l => l.Credit - l.Debit) != receipt.Amount ||
+                        reverse.Lines.Where(l => l.AccountId == receipt.PartyAccountId && l.PartyId == sale.PartyId).Sum(l => l.Debit - l.Credit) != receipt.Amount)
+                        throw new InvalidOperationException("لغو وصول چک با سند معکوس مطابقت ندارد.");
+                }
+                else if (receipt.ReversalDate.HasValue || receipt.ReversalOperationId.HasValue)
+                    throw new InvalidOperationException("اطلاعات لغو وصول ناقص است.");
+            }
+            var receiptRows = saleReceipts.Select(r => new ChequeStatementReceipt(r.Date, r.Amount)).ToList();
+            receiptRows.AddRange(saleReceipts.Where(r => r.ReversalVoucherId.HasValue)
+                .Select(r => new ChequeStatementReceipt(r.ReversalDate!.Value, -r.Amount)));
+            result.Add(sale.Id, new ChequeStatementHistory(charge.Amount, charge.InitialAmount,
+                history.Where(e => e.Kind == SaleChequeChargeEventKind.DueDateAdjustment)
+                    .Select(e => new ChequeStatementAdjustment(e.Date, e.IncomeDelta)).OrderBy(e => e.Date).ToList(),
+                receiptRows.OrderBy(r => r.Date).ToList()));
+        }
+        return result;
+    }
+
     public async Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
     {
         var partiesQ = _db.Parties.AsNoTracking().AsQueryable();
@@ -2661,6 +2972,7 @@ public class InventoryService : IInventoryService
 
         var parties = await partiesQ.OrderBy(p => p.Name).ToListAsync();
         var partyIds = parties.Select(p => p.Id).ToList();
+        var chequeHistory = await LoadChequeStatementHistoryAsync(partyIds);
 
         // اسناد فروشگاه
         var txns = await _db.Transactions.AsNoTracking()
@@ -2687,14 +2999,15 @@ public class InventoryService : IInventoryService
                 // در منطق فروشگاهی:
                 // فروش = افزایش طلب ما از شخص (بدهکار شدن طرف حساب)
                 // خرید = افزایش بدهی ما به شخص (بستانکار شدن طرف حساب)
-                decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+                var initialSaleTotal = t.Type == TransactionType.Sale && chequeHistory.TryGetValue(t.Id, out var saleHistory)
+                    ? t.Amount - saleHistory.CurrentIncome + saleHistory.InitialIncome : t.Amount;
+                decimal debit = t.Type == TransactionType.Sale ? initialSaleTotal : 0;
                 decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
 
-                // دریافتی‌ها و تسویه‌ها:
-                // اگر بخشی از فروش تسویه شده باشد، بستانکار می‌شود (کاهش طلب)
+                // برای فروش دارای سود، فقط نقد اولیه در تاریخ فاکتور قرار می‌گیرد؛ وصول‌ها تاریخ مستقل دارند.
                 if (t.Type == TransactionType.Sale && t.SettledAmount > 0)
                 {
-                    credit += t.SettledAmount;
+                    credit += chequeHistory.ContainsKey(t.Id) ? t.CashAmount : t.SettledAmount;
                 }
                 // اگر بخشی از خرید پرداخت شده باشد، بدهکار می‌شود (کاهش بدهی)
                 if (t.Type == TransactionType.Purchase && t.SettledAmount > 0)
@@ -2713,6 +3026,33 @@ public class InventoryService : IInventoryService
                     {
                         periodDebit += debit;
                         periodCredit += credit;
+                    }
+                }
+                if (t.Type == TransactionType.Sale && chequeHistory.TryGetValue(t.Id, out var adjustments))
+                {
+                    foreach (var adjustment in adjustments.Adjustments)
+                    {
+                        var adjustmentDebit = Math.Max(0, adjustment.Amount);
+                        var adjustmentCredit = Math.Max(0, -adjustment.Amount);
+                        if (from.HasValue && adjustment.Date.Date < from.Value.Date)
+                        {
+                            openDebit += adjustmentDebit;
+                            openCredit += adjustmentCredit;
+                        }
+                        else if (!to.HasValue || adjustment.Date.Date <= to.Value.Date)
+                        {
+                            periodDebit += adjustmentDebit;
+                            periodCredit += adjustmentCredit;
+                        }
+                    }
+                    foreach (var receipt in adjustments.Receipts)
+                    {
+                        var receiptDebit = Math.Max(0, -receipt.Amount);
+                        var receiptCredit = Math.Max(0, receipt.Amount);
+                        if (from.HasValue && receipt.Date.Date < from.Value.Date)
+                        { openDebit += receiptDebit; openCredit += receiptCredit; }
+                        else if (!to.HasValue || receipt.Date.Date <= to.Value.Date)
+                        { periodDebit += receiptDebit; periodCredit += receiptCredit; }
                     }
                 }
             }
@@ -2757,10 +3097,8 @@ public class InventoryService : IInventoryService
             .OrderBy(t => t.Date).ThenBy(t => t.Id)
             .ToListAsync();
 
-        // ردیف مالی از اقلام کالایی مستقل است؛ نبود ردیف برای اسناد قدیمی یعنی صفر.
-        var chequeIncome = await _db.SaleChequeCharges.AsNoTracking()
-            .Where(c => c.Transaction.PartyId == partyId && c.Transaction.Type == TransactionType.Sale)
-            .ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
+        // اصل سود و تعدیلات در تاریخ واقعی خودشان نمایش داده می‌شوند.
+        var chequeHistory = await LoadChequeStatementHistoryAsync(new[] { partyId });
 
         var result = new PartyStatementDetailDto
         {
@@ -2779,12 +3117,14 @@ public class InventoryService : IInventoryService
             var isOpening = t.Description != null && t.Description.Contains("افتتاح");
             var isBefore = from.HasValue && t.Date.Date < from.Value.Date;
 
-            decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+            var initialSaleTotal = t.Type == TransactionType.Sale && chequeHistory.TryGetValue(t.Id, out var saleHistory)
+                ? t.Amount - saleHistory.CurrentIncome + saleHistory.InitialIncome : t.Amount;
+            decimal debit = t.Type == TransactionType.Sale ? initialSaleTotal : 0;
             decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
             // همانند گزارش خلاصه، تسویهٔ ثبت‌شدهٔ اسناد پیش از دوره نیز در مانده افتتاحیه لحاظ می‌شود.
             if (t.SettledAmount > 0)
             {
-                if (t.Type == TransactionType.Sale) credit += t.SettledAmount;
+                if (t.Type == TransactionType.Sale) credit += chequeHistory.ContainsKey(t.Id) ? t.CashAmount : t.SettledAmount;
                 if (t.Type == TransactionType.Purchase) debit += t.SettledAmount;
             }
 
@@ -2796,6 +3136,21 @@ public class InventoryService : IInventoryService
             }
         }
 
+        if (from.HasValue)
+        {
+            foreach (var adjustment in chequeHistory.Values.SelectMany(x => x.Adjustments).Where(x => x.Date.Date < from.Value.Date))
+            {
+                openDebit += Math.Max(0, adjustment.Amount);
+                openCredit += Math.Max(0, -adjustment.Amount);
+                runningBalance += adjustment.Amount;
+            }
+            foreach (var receipt in chequeHistory.Values.SelectMany(x => x.Receipts).Where(x => x.Date.Date < from.Value.Date))
+            {
+                openDebit += Math.Max(0, -receipt.Amount);
+                openCredit += Math.Max(0, receipt.Amount);
+                runningBalance -= receipt.Amount;
+            }
+        }
         result.OpeningBalance = runningBalance;
 
         // سطر ابتدایی: مانده اول دوره / افتتاحیه
@@ -2822,10 +3177,10 @@ public class InventoryService : IInventoryService
 
         foreach (var t in periodTxns)
         {
-            var income = t.Type == TransactionType.Sale && chequeIncome.TryGetValue(t.Id, out var amount) ? amount : 0m;
-            if (income < 0 || income > t.Amount)
-                throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ فاکتور مطابقت ندارد؛ صورت‌حساب قابل محاسبه نیست.");
-            decimal debit = t.Type == TransactionType.Sale ? t.Amount - income : 0;
+            ChequeStatementHistory? saleHistory = null;
+            if (t.Type == TransactionType.Sale) chequeHistory.TryGetValue(t.Id, out saleHistory);
+            var income = saleHistory?.InitialIncome ?? 0m;
+            decimal debit = t.Type == TransactionType.Sale ? t.Amount - (saleHistory?.CurrentIncome ?? 0m) : 0;
             decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
             if (t.Type == TransactionType.Sale)
             {
@@ -2865,11 +3220,12 @@ public class InventoryService : IInventoryService
                 });
             }
 
-            // در صورت وجود تسویه/دریافت نقدی مرتبط
-            if (t.SettledAmount > 0)
+            // در فاکتور دارای سود فقط دریافت نقدی اولیه در تاریخ فاکتور قرار می‌گیرد.
+            var initialSettled = saleHistory is not null ? t.CashAmount : t.SettledAmount;
+            if (initialSettled > 0)
             {
-                var settleDebit = t.Type == TransactionType.Purchase ? t.SettledAmount : 0;
-                var settleCredit = t.Type == TransactionType.Sale ? t.SettledAmount : 0;
+                var settleDebit = t.Type == TransactionType.Purchase ? initialSettled : 0;
+                var settleCredit = t.Type == TransactionType.Sale ? initialSettled : 0;
                 runningBalance += (settleDebit - settleCredit);
                 result.TotalDebit += settleDebit;
                 result.TotalCredit += settleCredit;
@@ -2888,6 +3244,50 @@ public class InventoryService : IInventoryService
             }
         }
 
+        foreach (var t in txns.Where(t => t.Type == TransactionType.Sale))
+        {
+            if (!chequeHistory.TryGetValue(t.Id, out var history)) continue;
+            foreach (var adjustment in history.Adjustments.Where(x =>
+                         (!from.HasValue || x.Date.Date >= from.Value.Date) &&
+                         (!to.HasValue || x.Date.Date <= to.Value.Date)))
+            {
+                var debit = Math.Max(0, adjustment.Amount);
+                var credit = Math.Max(0, -adjustment.Amount);
+                result.TotalDebit += debit;
+                result.TotalCredit += credit;
+                result.SaleChequeIncomeTotal += adjustment.Amount;
+                result.Rows.Add(new PartyStatementRowDto
+                {
+                    Date = adjustment.Date, TransactionId = t.Id, DocumentNumber = t.Number,
+                    Title = "تعدیل تاخیر تادیه چک", Description = $"تغییر سررسید فاکتور شماره {t.Number}",
+                    Debit = debit, Credit = credit
+                });
+            }
+            foreach (var receipt in history.Receipts.Where(x =>
+                         (!from.HasValue || x.Date.Date >= from.Value.Date) &&
+                         (!to.HasValue || x.Date.Date <= to.Value.Date)))
+            {
+                var receiptDebit = Math.Max(0, -receipt.Amount);
+                var receiptCredit = Math.Max(0, receipt.Amount);
+                result.TotalDebit += receiptDebit;
+                result.TotalCredit += receiptCredit;
+                result.Rows.Add(new PartyStatementRowDto
+                {
+                    Date = receipt.Date, TransactionId = t.Id, DocumentNumber = t.Number,
+                    Title = receipt.Amount < 0 ? "لغو وصول چک" : "وصول چک",
+                    Description = $"گردش چک فاکتور شماره {t.Number}", Debit = receiptDebit, Credit = receiptCredit
+                });
+            }
+        }
+        var openingRows = result.Rows.Where(r => r.IsOpening).ToList();
+        var datedRows = result.Rows.Where(r => !r.IsOpening).OrderBy(r => r.Date.Date).ThenBy(r => r.TransactionId).ToList();
+        runningBalance = result.OpeningBalance;
+        foreach (var row in datedRows)
+        {
+            runningBalance += row.Debit - row.Credit;
+            row.Balance = runningBalance;
+        }
+        result.Rows = openingRows.Concat(datedRows).ToList();
         result.ClosingBalance = runningBalance;
         return result;
     }

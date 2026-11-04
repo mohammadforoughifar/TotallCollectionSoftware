@@ -268,6 +268,30 @@ public class OrderService : IOrderService
     public Task<Order> UpdateAsync(int id, OrderCommand cmd)
         => _api.PutAsync<Order>($"api/orders/{id}", cmd);
 
+    public Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate)
+        => _api.GetAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule-preview?expectedDueDate={expectedDueDate:yyyy-MM-dd}&newDueDate={newDueDate:yyyy-MM-dd}");
+
+    public Task<SaleChequeReschedulePreview> RescheduleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd)
+        => _api.PutAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule", cmd);
+
+    public async Task ReceiveChequeAsync(int chequeId, SaleChequeReceiptCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/receipt", cmd);
+    }
+
+    public async Task ReverseChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/receipt-reversal", cmd);
+    }
+
+    public async Task ChangeChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/status", cmd);
+    }
+
+    public Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId)
+        => _api.GetAsync<List<SaleChequeStatusHistoryItem>>($"api/orders/cheques/{chequeId}/status-history");
+
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/orders/{id}");
 

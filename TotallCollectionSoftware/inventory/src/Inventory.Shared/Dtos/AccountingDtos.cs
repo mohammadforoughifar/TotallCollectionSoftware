@@ -216,6 +216,10 @@ public class AccVoucher
         VoucherSource.Manual => "دستی",
         VoucherSource.InventoryDoc => "سند انبار",
         VoucherSource.Invoice => "فاکتور",
+        VoucherSource.StoreSale => "فروش فروشگاه",
+        VoucherSource.StoreSaleChequeAdjustment => "اصلاح تاخیر تادیه چک فروش",
+        VoucherSource.StoreSaleChequeReceipt => "وصول چک فروش",
+        VoucherSource.StoreSaleChequeReceiptReversal => "لغو وصول چک فروش",
         VoucherSource.Opening => "افتتاحیه",
         _ => "اختتامیه"
     };

@@ -546,8 +546,9 @@ public class AccountingService : IAccountingService
     {
         // Accounting vouchers are global. Check every company to avoid orphaning a
         // cheque event through a different active-company context.
-        if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId))
-            throw new InvalidOperationException("سند مرتبط با تاخیر تادیه چک فقط از مسیر اصلاح سند مبدأ قابل تغییر است.");
+        if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId || e.ReversalVoucherId == voucherId))
+            throw new InvalidOperationException("سند مرتبط با چک فروش فقط از مسیر اصلاح سند مبدأ قابل تغییر است.");
     }
 
     public async Task<AccVoucher> SaveVoucherAsync(AccVoucher dto, string? user)

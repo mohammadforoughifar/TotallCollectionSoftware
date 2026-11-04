@@ -12,8 +12,8 @@ public sealed record SaleChequeChargeRegistrationInput(
     decimal AdjustmentRatePercent, int AdjustmentPeriodDays, DateTime? ConfirmedCreditDueDate);
 
 /// <summary>
-/// آماده‌سازی ثبت اولیهٔ ردیف مالی و سند در تراکنش فروش. این مسیر هنوز به API فاکتور
-/// متصل نیست؛ در صورت هر خطا کل تراکنش فراخواننده rollback می‌شود.
+/// ثبت اولیهٔ ردیف مالی و سند در تراکنش فروش. فراخوانی مسیر فروش فعلاً صرفاً با
+/// فعال‌سازی صریح حالت آزمایشی مجاز است؛ در هر خطا تراکنش فراخواننده rollback می‌شود.
 /// </summary>
 public static class SaleChequeChargeRegistration
 {
@@ -77,6 +77,24 @@ public static class SaleChequeChargeRegistration
             throw new InvalidOperationException("مبنای ماشین‌حساب یا سود اولیه تاخیر تادیه چک معتبر نیست.");
         var amounts = SaleChequeVoucherAmounts.Create(baseAmount, 0, income);
         var cash = sale.PaymentMethod == PaymentMethod.Cash ? sale.Amount : sale.CashAmount;
+        if (cash > 0)
+        {
+            // Treasury accounts are global in the existing model; do not guess ownership in a multi-company database.
+            if (await db.SystemCompanies.CountAsync() > 1)
+                throw new InvalidOperationException("دریافت نقدی آزمایشی در محیط چندشرکتی تا تفکیک حساب‌ها غیرفعال است.");
+            if (sale.TrsAccountId is not > 0)
+                throw new InvalidOperationException("برای دریافت نقدی حساب فعال صندوق یا بانک را انتخاب کنید.");
+            var account = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == sale.TrsAccountId && a.IsActive && a.AccountId > 0)
+                ?? throw new InvalidOperationException("حساب صندوق یا بانک فعال و متصل به حسابداری لازم است.");
+            var compatible = sale.CashType switch
+            {
+                CashType.Cash => account.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash,
+                CashType.CardReader => account.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank,
+                CashType.CardTransfer => account.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos,
+                _ => false
+            };
+            if (!compatible) throw new InvalidOperationException("نوع حساب با روش دریافت نقدی انتخاب‌شده مطابقت ندارد.");
+        }
         var cheques = sale.Cheques.Sum(c => c.Amount);
         var installments = sale.Installments.Sum(i => i.Amount);
         var parts = cash + cheques + installments;
@@ -98,6 +116,31 @@ public static class SaleChequeChargeRegistration
         });
         // This save is inside the existing transaction, not a commit.
         await db.SaveChangesAsync();
-        return await SaleChequeChargePosting.PostAsync(db, sale.Id, user);
+        var voucher = await SaleChequeChargePosting.PostAsync(db, sale.Id, user);
+        if (cash > 0)
+        {
+            var number = (await db.TrsVouchers.Where(v => v.Kind == TreasuryKind.Receipt)
+                .Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
+            var title = $"دریافت نقدی فاکتور فروش {sale.Number}";
+            db.TrsVouchers.Add(new TrsVoucher
+            {
+                Number = number, Kind = TreasuryKind.Receipt, Date = sale.Date.Date, PartyId = sale.PartyId,
+                Description = title, RefNumber = sale.Number, Status = TreasuryStatus.Confirmed,
+                TotalAmount = cash, CashAmount = cash, VoucherId = voucher.Id,
+                CreatedBy = user, ConfirmedBy = user, CreatedAt = DateTime.Now, ConfirmedAt = DateTime.Now,
+                Lines = new()
+                {
+                    new TrsVoucherLine
+                    {
+                        RowNo = 1, TrsAccountId = sale.TrsAccountId, Amount = cash,
+                        Method = sale.CashType == CashType.Cash ? PayMethod.Cash : PayMethod.Card,
+                        // The full tracking number remains on the sale; legacy treasury references are limited to 60 characters.
+                        RefNumber = sale.CashTrackingNumber is { Length: <= 60 } ? sale.CashTrackingNumber : null, Description = title
+                    }
+                }
+            });
+            await db.SaveChangesAsync();
+        }
+        return voucher;
     }
 }

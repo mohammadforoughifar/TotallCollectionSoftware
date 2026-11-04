@@ -730,7 +730,7 @@ public class InvoicingService : IInvoicingService
     /// </summary>
     public async Task<int?> PostStoreSaleVoucherAsync(int saleId, string? user)
     {
-        if (await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == saleId))
+        if (await _db.SaleChequeCharges.IgnoreQueryFilters().AnyAsync(c => c.TransactionId == saleId))
             throw new InvalidOperationException("صدور سند قدیمی برای فاکتور دارای تاخیر تادیه چک مجاز نیست.");
         var existing = await _db.AccVouchers.AsNoTracking()
             .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);
@@ -835,7 +835,7 @@ public class InvoicingService : IInvoicingService
 
     public async Task UnpostStoreSaleVoucherAsync(int saleId)
     {
-        if (await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == saleId))
+        if (await _db.SaleChequeCharges.IgnoreQueryFilters().AnyAsync(c => c.TransactionId == saleId))
             throw new InvalidOperationException("حذف سند قدیمی برای فاکتور دارای تاخیر تادیه چک مجاز نیست.");
         var voucher = await _db.AccVouchers.Include(v => v.Lines)
             .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);

@@ -51,7 +51,7 @@ public class OrdersController : ApiControllerBase
     public async Task<ActionResult<Order>> Create([FromBody] OrderCommand cmd)
     {
         var error = TrackingError(cmd, cmd.Type, null);
-        return error is null ? Ok(await _service.CreateOrderAsync(cmd)) : BadRequest(new { message = error });
+        return error is null ? Ok(await _service.CreateOrderAsync(cmd, User.Identity?.Name)) : BadRequest(new { message = error });
     }
 
     /// <summary>ویرایش سند خرید/فروش.</summary>
@@ -73,6 +73,47 @@ public class OrdersController : ApiControllerBase
             string.IsNullOrWhiteSpace(reference))
             return "شماره پیگیری پرداخت کارت به کارت را وارد کنید.";
         return reference?.Trim().Length > 100 ? "شماره پیگیری حداکثر ۱۰۰ نویسه است." : null;
+    }
+
+    /// <summary>پیش‌نمایش آزمایشی تعدیل سررسید بدون تغییر داده.</summary>
+    [HttpGet("cheques/{chequeId:int}/reschedule-preview")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<ActionResult<SaleChequeReschedulePreview>> PreviewReschedule(int chequeId,
+        [FromQuery] DateTime expectedDueDate, [FromQuery] DateTime newDueDate)
+        => Ok(await _service.PreviewSaleChequeRescheduleAsync(chequeId, expectedDueDate, newDueDate));
+
+    /// <summary>ثبت آزمایشی تغییر سررسید و سند تعدیل با تأیید پیش‌نمایش.</summary>
+    [HttpPut("cheques/{chequeId:int}/reschedule")]
+    public async Task<ActionResult<SaleChequeReschedulePreview>> Reschedule(int chequeId, [FromBody] SaleChequeRescheduleCommand cmd)
+        => Ok(await _service.RescheduleSaleChequeAsync(chequeId, cmd, User.Identity?.Name));
+
+    /// <summary>وصول آزمایشی چک فروش به حساب بانکی انتخاب‌شده.</summary>
+    [HttpPut("cheques/{chequeId:int}/receipt")]
+    public async Task<IActionResult> ReceiveCheque(int chequeId, [FromBody] SaleChequeReceiptCommand cmd)
+    {
+        await _service.ReceiveSaleChequeAsync(chequeId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>لغو وصول آزمایشی با سند معکوس.</summary>
+    [HttpPut("cheques/{chequeId:int}/receipt-reversal")]
+    public async Task<IActionResult> ReverseChequeReceipt(int chequeId, [FromBody] SaleChequeReceiptReversalCommand cmd)
+    {
+        await _service.ReverseSaleChequeReceiptAsync(chequeId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>تاریخچه وضعیت چک مشمول تاخیر تادیه.</summary>
+    [HttpGet("cheques/{chequeId:int}/status-history")]
+    public async Task<ActionResult<List<SaleChequeStatusHistoryItem>>> ChequeStatusHistory(int chequeId)
+        => Ok(await _service.GetSaleChequeStatusHistoryAsync(chequeId));
+
+    /// <summary>تغییر وضعیت چک آزمایشی بدون ایجاد سود جدید.</summary>
+    [HttpPut("cheques/{chequeId:int}/status")]
+    public async Task<IActionResult> ChangeChequeStatus(int chequeId, [FromBody] SaleChequeStatusCommand cmd)
+    {
+        await _service.ChangeSaleChequeStatusAsync(chequeId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
     }
 
     /// <summary>حذف سند و برگرداندن موجودی.</summary>

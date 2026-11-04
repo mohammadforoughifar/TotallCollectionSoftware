@@ -116,10 +116,70 @@ public class OrderCommand
     public int? TrsAccountId { get; set; }
 
     public DateTime? DueDate { get; set; }
+    /// <summary>درخواست صریح ثبت ردیف تاخیر تادیه چک؛ مبلغ سود در سرور محاسبه می‌شود.</summary>
+    public SaleChequeChargeInput? ChequeCharge { get; set; }
     public List<ChequeDto> Cheques { get; set; } = new();
     public List<InstallmentDto> Installments { get; set; } = new();
 
     public List<OrderLineInput> Lines { get; set; } = new();
+}
+
+/// <summary>ورودی ماشین‌حساب و شرایط تعدیل سررسید؛ مبلغ ردیف از کلاینت دریافت نمی‌شود.</summary>
+public class SaleChequeChargeInput
+{
+    public decimal CalculatorBaseAmount { get; set; }
+    public decimal CalculatorRatePercent { get; set; }
+    public int CalculatorMonths { get; set; }
+    public decimal AdjustmentRatePercent { get; set; }
+    public int AdjustmentPeriodDays { get; set; }
+    /// <summary>ماندهٔ نسیه صریحاً تأیید شده و تاریخ سررسید آن تعیین شده است.</summary>
+    public DateTime? ConfirmedCreditDueDate { get; set; }
+}
+
+public class SaleChequeRescheduleCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime ExpectedDueDate { get; set; }
+    public DateTime NewDueDate { get; set; }
+    public DateTime OperationDate { get; set; }
+    public decimal ConfirmedIncomeDelta { get; set; }
+}
+
+public class SaleChequeReschedulePreview
+{
+    public decimal BaseAmount { get; set; }
+    public decimal RatePercent { get; set; }
+    public int PeriodDays { get; set; }
+    public decimal IncomeDelta { get; set; }
+}
+
+public class SaleChequeReceiptCommand
+{
+    public Guid OperationId { get; set; }
+    public int TrsAccountId { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class SaleChequeReceiptReversalCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class SaleChequeStatusCommand
+{
+    public Guid OperationId { get; set; }
+    public bool Bounced { get; set; }
+    public string? Reason { get; set; }
+}
+
+public class SaleChequeStatusHistoryItem
+{
+    public DateTime CreatedAt { get; set; }
+    public ChequeStatus PreviousStatus { get; set; }
+    public ChequeStatus NewStatus { get; set; }
+    public string? CreatedBy { get; set; }
+    public string? Reason { get; set; }
 }
 
 /// <summary>چک دریافتی.</summary>
@@ -389,6 +449,7 @@ public class ShopChequeItem
 {
     public int Id { get; set; }
     public int TransactionId { get; set; }
+    public bool HasChequeCharge { get; set; }
     public string OrderNumber { get; set; } = "";
     public TransactionType TransactionType { get; set; }
     public int PartyId { get; set; }

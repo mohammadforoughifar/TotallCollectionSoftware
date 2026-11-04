@@ -47,7 +47,8 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('UseInvoiceWizard && !useCash', FORM)
         self.assertIn('UseInvoiceWizard && !useCash && !HasNonCash', FORM)
         self.assertIn('lines.Where(l => l.ProductId > 0 && l.Qty > 0)', FORM)
-        self.assertIn('private decimal grandTotal => TotalLines.Sum(l => l.Total);', FORM)
+        self.assertIn('private decimal goodsTotal => TotalLines.Sum(l => l.Total);', FORM)
+        self.assertIn('private decimal grandTotal => goodsTotal + saleChequeIncome;', FORM)
         for value in ('grandTotal.Money()', 'CashPart.Money()', 'ChequeSum().Money()', 'InstSum().Money()', 'Math.Abs(FinalRemaining).Money()'):
             self.assertIn(value, FORM.split('class="purchase-summary"', 1)[1].split('</section>', 1)[0])
 
@@ -129,7 +130,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('مبلغ پس از تخفیف', totals)
         self.assertIn('TotalLines.Sum(l => l.AfterDiscount).Money()', totals)
         self.assertIn('مبلغ نهایی پس از ارزش افزوده', totals)
-        self.assertIn('@grandTotal.Money()', totals)
+        self.assertIn('@goodsTotal.Money()', totals)
         self.assertIn('TotalLines.Sum(l => l.VatAmount).Money()', totals)
 
     def test_bank_and_focus_contract(self):

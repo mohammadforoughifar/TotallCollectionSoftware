@@ -9,7 +9,7 @@ namespace Inventory.Api.Services.Invoicing;
 /// <summary>
 /// صدور سند حسابداری برای فاکتور فروش دارای ردیف مالی چک.
 /// صرفاً داخل تراکنش Serializable متعلق به فراخواننده قابل اجرا است؛ این متد commit نمی‌کند.
-/// هنوز به مسیر ثبت فاکتور متصل نشده است.
+/// مسیر ثبت فاکتور فقط با فعال‌سازی صریح حالت آزمایشی آن را فراخوانی می‌کند.
 /// </summary>
 public static class SaleChequeChargePosting
 {

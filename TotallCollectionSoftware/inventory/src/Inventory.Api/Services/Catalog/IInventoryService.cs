@@ -64,7 +64,13 @@ public interface IInventoryService
     Task AdjustStockAsync(AdjustmentCommand cmd);
 
     // ---------------- خرید و فروش ----------------
-    Task<Order> CreateOrderAsync(OrderCommand cmd);
+    Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null);
+    Task<SaleChequeReschedulePreview> PreviewSaleChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
+    Task<SaleChequeReschedulePreview> RescheduleSaleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd, string? user);
+    Task ReceiveSaleChequeAsync(int chequeId, SaleChequeReceiptCommand cmd, string? user);
+    Task ReverseSaleChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd, string? user);
+    Task ChangeSaleChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd, string? user);
+    Task<List<SaleChequeStatusHistoryItem>> GetSaleChequeStatusHistoryAsync(int chequeId);
     Task<Order> UpdateOrderAsync(int id, OrderCommand cmd);
     Task<Order?> GetOrderAsync(int id);
 
