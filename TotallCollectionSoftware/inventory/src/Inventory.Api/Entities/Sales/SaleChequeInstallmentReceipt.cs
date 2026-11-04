@@ -7,7 +7,7 @@ public class SaleChequeInstallmentReceipt : ICompanyOwned
     public int? CompanyId { get; set; }
     public Guid OperationId { get; set; }
     public int InstallmentId { get; set; }
-    public Installment Installment { get; set; } = null!;
+    public InstallmentLine Installment { get; set; } = null!;
     public int TransactionId { get; set; }
     public Transaction Transaction { get; set; } = null!;
     public int TrsAccountId { get; set; }

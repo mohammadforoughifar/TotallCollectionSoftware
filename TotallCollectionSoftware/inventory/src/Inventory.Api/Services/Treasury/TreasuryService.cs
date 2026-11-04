@@ -2234,15 +2234,20 @@ public class TreasuryService : ITreasuryService
 
         var instReceiptsFlow = await _db.SaleChequeInstallmentReceipts.AsNoTracking()
             .Where(r => r.TrsAccountId == accountId && r.AccVoucher.Status == VoucherStatus.Confirmed)
-            .Select(r => new { r.Date, r.Amount, r.Installment.No, r.Transaction.Number, PartyName = r.Transaction.Party != null ? r.Transaction.Party.Name : null,
+            .Select(r => new { r.Date, r.Amount, r.Installment.No, r.Transaction.Number, r.Transaction.PartyId,
                 r.ReversalDate, r.ReversalVoucherId,
                 ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
+        var instPartyIds = instReceiptsFlow.Where(r => r.PartyId.HasValue).Select(r => r.PartyId!.Value).Distinct().ToList();
+        var instPartyNames = instPartyIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.Parties.AsNoTracking().Where(p => instPartyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);
         foreach (var inst in instReceiptsFlow)
         {
+            var instPartyName = inst.PartyId.HasValue && instPartyNames.TryGetValue(inst.PartyId.Value, out var pn) ? pn : null;
             rows.Add(new TrsFlowRow
             {
                 Date = inst.Date, TrsVoucherId = 0, Number = 0, Kind = TreasuryKind.Receipt,
-                Method = "قسط فروش", PartyName = inst.PartyName,
+                Method = "قسط فروش", PartyName = instPartyName,
                 Description = $"دریافت قسط {inst.No} فاکتور {inst.Number}", RefNumber = inst.Number,
                 In = inst.Amount, Out = 0
             });
@@ -2253,7 +2258,7 @@ public class TreasuryService : ITreasuryService
                 rows.Add(new TrsFlowRow
                 {
                     Date = inst.ReversalDate.Value, TrsVoucherId = 0, Number = 0, Kind = TreasuryKind.Payment,
-                    Method = "لغو دریافت قسط فروش", PartyName = inst.PartyName,
+                    Method = "لغو دریافت قسط فروش", PartyName = instPartyName,
                     Description = $"لغو دریافت قسط {inst.No} فاکتور {inst.Number}", RefNumber = inst.Number,
                     In = 0, Out = inst.Amount
                 });

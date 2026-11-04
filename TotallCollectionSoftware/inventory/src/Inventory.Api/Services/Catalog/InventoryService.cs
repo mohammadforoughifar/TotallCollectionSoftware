@@ -3258,7 +3258,7 @@ public class InventoryService : IInventoryService
         var chargedTxnIds = (await _db.SaleChequeCharges.AsNoTracking()
             .Where(c => txnIds.Contains(c.TransactionId)).Select(c => c.TransactionId).ToListAsync()).ToHashSet();
         var cancelledTxnIds = (await _db.SaleChequeCancellations.AsNoTracking()
-            .Where(c => txnIds.Contains(c.TransactionId)).Select(c => c.SaleTransactionId).ToListAsync()).ToHashSet();
+            .Where(c => txnIds.Contains(c.SaleTransactionId)).Select(c => c.SaleTransactionId).ToListAsync()).ToHashSet();
 
         var partyIds = txns.Values.Where(t => t.PartyId.HasValue).Select(t => t.PartyId!.Value).Distinct().ToList();
         var parties = await _db.Parties.AsNoTracking()

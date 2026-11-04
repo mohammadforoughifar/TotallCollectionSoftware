@@ -16744,7 +16744,7 @@ namespace Inventory.Api.Migrations
 
             modelBuilder.Entity("Inventory.Api.Data.SaleChequeInstallmentReceipt", b =>
                 {
-                    b.HasOne("Inventory.Api.Data.Installment", "Installment").WithMany().HasForeignKey("InstallmentId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.InstallmentLine", "Installment").WithMany().HasForeignKey("InstallmentId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.Transaction", "Transaction").WithMany().HasForeignKey("TransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.TrsAccount", "TrsAccount").WithMany().HasForeignKey("TrsAccountId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
