@@ -171,7 +171,12 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Create", "Update", "Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
-        return Ok(await _svc.SaveAsync(actor, cmd));
+        var saved = await _svc.SaveAsync(actor, cmd);
+        // محافظ نهایی: Ok(null) یعنی بدنهٔ JSON برابر null و NullReferenceException
+        // در کلاینت هنگام خواندن شمارهٔ سفارش. عملیات موفق همیشه باید DTO داشته باشد.
+        if (saved is null)
+            return StatusCode(500, new { message = "سفارش ذخیره شد ولی نتیجهٔ آن قابل بازخوانی نبود؛ فهرست سفارشها را بازخوانی کنید." });
+        return Ok(saved);
     }
 
     [HttpPost("{id:int}/submit")]

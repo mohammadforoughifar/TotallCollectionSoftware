@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>فروش و ویزیتوری — نمای فرمها</title>
+<link rel="stylesheet" href="../../src/Inventory.Client/wwwroot/css/bootstrap.min.css" />
+<link rel="stylesheet" href="../../src/Inventory.Client/wwwroot/icons/bootstrap-icons.css" />
+<link rel="stylesheet" href="../../src/Inventory.Client/wwwroot/css/app.css" />
+<style>
+/* ==========================================================================
+   صفحهٔ «پیشنهاد طراحی» — فقط نمونهٔ بصری؛ هیچ کامپوننتی تغییر نکرده است.
+   رنگها دقیقاً از app.css :root و استایلهای فعلی VisitForm/VisitDetail گرفته شدهاند.
+   چیزی که اضافه شده فقط «توکنهای بیرنگ» است: فاصله، شعاع، سایه، حرکت.
+   ========================================================================== */
+.pv-body { padding: 0 0 4rem; }
+.pv-wrap { max-width: 1360px; margin: 0 auto; padding: 0 1.2rem; }
+
+/* ---------- نوار بالای پیشنهاد ---------- */
+.pv-top {
+  position: sticky; top: 0; z-index: 60;
+  background: var(--sidebar); color: #fff;
+  box-shadow: 0 4px 20px -4px rgba(15, 23, 42, .25);
+  padding: .7rem 1.2rem;
+  display: flex; align-items: center; flex-wrap: wrap; gap: .6rem;
+}
+.pv-top-in { max-width: 1360px; margin: 0 auto; width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+.pv-top-label { font-size: .7rem; color: #94a3b8; white-space: nowrap; }
+.pv-top select {
+  font-size: .76rem; border-radius: 9px; padding: .3rem .55rem;
+  border: 1px solid #475569; background: #1e293b; color: #e2e8f0; font-family: inherit;
+}
+.pv-seg-dark { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: #1e293b; border: 1px solid #334155; }
+.pv-seg-dark button {
+  border: 0; background: transparent; color: #94a3b8; cursor: pointer;
+  font-family: inherit; font-size: .74rem; font-weight: 700;
+  padding: .3rem .75rem; border-radius: 999px; white-space: nowrap;
+  transition: background 180ms cubic-bezier(.2,.8,.2,1), color 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms cubic-bezier(.2,.8,.2,1);
+}
+.pv-seg-dark button:hover { color: #e2e8f0; }
+.pv-seg-dark button.is-active { background: #fff; color: #4338ca; box-shadow: 0 2px 8px rgba(15,23,42,.25); }
+
+/* ---------- استیج و قاب دستگاه ---------- */
+.pv-device-outer { display: flex; justify-content: center; margin-top: 1.2rem; }
+.pv-device {
+  width: min(100%, 1280px); transition: width 220ms cubic-bezier(.2,.8,.2,1);
+  border-radius: 18px; overflow: hidden; overflow: clip; border: 1px solid var(--border);
+  box-shadow: 0 18px 50px rgba(15,23,42,.22); background: #fff;
+}
+.pv-device[data-device="tablet"] { width: min(100%, 860px); }
+.pv-device[data-device="mobile"] { width: min(100%, 390px); }
+.pv-chrome {
+  display: flex; align-items: center; gap: .4rem; padding: .5rem .8rem;
+  background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+.pv-dots { display: flex; gap: .28rem; }
+.pv-dots i { width: 9px; height: 9px; border-radius: 50%; background: #cbd5e1; display: block; }
+.pv-url {
+  flex: 1 1 auto; min-width: 0; text-align: center; font-size: .7rem; color: var(--text-muted);
+  background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: .2rem .6rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: ltr;
+}
+.pv-size-tag { font-size: .68rem; font-weight: 800; color: var(--primary-600); white-space: nowrap; }
+.pv-screen { background: var(--bg); padding: 1rem; }
+.pv-view { display: none; }
+.pv-view.is-active { display: block; animation: pv-in 220ms cubic-bezier(.2,.8,.2,1); }
+@keyframes pv-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ==========================================================================
+   استایلهای «طرح پیشنهادی» — فقط توکنهای بیرنگ جدید؛ رنگها همان پالت فعلی
+   ========================================================================== */
+.pv-ui, .pv-ui * { box-sizing: border-box; }
+.pv-ui {
+  font-family: 'Vazirmatn', system-ui, 'Segoe UI', Tahoma, sans-serif;
+  color: var(--text); font-size: 1rem; line-height: 1.7;
+  /* Design Tokens — فقط مقیاس/شعاع/عمق/حرکت. هیچ رنگ تازهای تعریف نشده است. */
+  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-6: 1.5rem; --sp-8: 2rem;
+  --r-card: 14px; --r-ctl: 10px; --r-pill: 999px;
+  --elev-1: 0 1px 2px rgba(15,23,42,.05), 0 4px 20px -4px rgba(15,23,42,.05);
+  --elev-2: 0 8px 28px -8px rgba(15,23,42,.14);
+  --ring: 0 0 0 3px rgba(79,70,229,.18);
+  --motion: 180ms cubic-bezier(.2,.8,.2,1);
+  --line: var(--border);
+  --muted: var(--text-muted);
+  --soft: var(--text-soft);
+}
+.pv-ui .pv-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  box-shadow: var(--elev-1);
+}
+.pv-ui .pv-stack > * + * { margin-top: var(--sp-4); }
+.pv-ui .pv-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; white-space: nowrap; }
+.pv-ui .pv-cur { font-size: .68rem; font-weight: 500; color: var(--soft); }
+
+/* سربرگ محصول */
+.pv-ui .pv-head {
+  display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6); background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--elev-1);
+}
+.pv-ui .pv-head-main { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.pv-ui .pv-head-ico {
+  width: 46px; height: 46px; border-radius: 14px; flex: 0 0 auto; display: grid; place-items: center;
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #fff; font-size: 1.25rem;
+  box-shadow: 0 6px 16px -2px rgba(79,70,229,.35);
+}
+.pv-ui .pv-eyebrow { font-size: .7rem; font-weight: 800; color: var(--primary-600); }
+.pv-ui .pv-head h1 { font-size: 1.05rem; font-weight: 800; margin: 0; line-height: 1.5; }
+.pv-ui .pv-head-sub { font-size: .74rem; color: var(--muted); }
+.pv-ui .pv-badge {
+  display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; font-weight: 800;
+  padding: .2rem .65rem; border-radius: var(--r-pill); border: 1px solid var(--line); white-space: nowrap;
+}
+.pv-ui .pv-badge[data-tone="warning"] { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.pv-ui .pv-badge[data-tone="neutral"] { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
+.pv-ui .pv-badge[data-tone="danger"]  { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
+.pv-ui .pv-badge[data-tone="info"]    { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+
+/* ریل شاخصها (جایگزین تبها و کارتهای پراکنده) */
+.pv-ui .pv-rail { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.pv-ui .pv-rail-item {
+  display: flex; align-items: center; gap: .4rem; padding: .3rem .7rem; border-radius: var(--r-pill);
+  background: #f8fafc; border: 1px solid var(--line); font-size: .72rem; color: var(--muted); min-width: 0;
+}
+.pv-ui .pv-rail-item i { color: var(--primary); }
+.pv-ui .pv-rail-item b { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+
+/* عنوان بخش */
+.pv-ui .pv-sec-head {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-2);
+  padding: .75rem var(--sp-4); border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #ffffff, #f8fafc); border-radius: var(--r-card) var(--r-card) 0 0;
+}
+.pv-ui .pv-sec-title { display: flex; align-items: center; gap: .45rem; font-size: .86rem; font-weight: 800; }
+.pv-ui .pv-sec-title i { color: var(--primary); }
+.pv-ui .pv-sec-hint { font-size: .7rem; color: var(--muted); }
+.pv-ui .pv-sec-body { padding: var(--sp-4); }
+
+/* کنترلها */
+.pv-ui .pv-field { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.pv-ui .pv-field > label { font-size: .74rem; font-weight: 700; color: var(--muted); }
+.pv-ui .pv-input {
+  width: 100%; min-width: 0; border: 1px solid var(--line); background: #fff; color: var(--text);
+  border-radius: var(--r-ctl); padding: .55rem .7rem; font-family: inherit; font-size: .8rem;
+  transition: border-color var(--motion), box-shadow var(--motion), background var(--motion);
+}
+.pv-ui .pv-input::placeholder { color: var(--soft); }
+.pv-ui .pv-input:hover { border-color: #c7d2fe; }
+.pv-ui .pv-input:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.pv-ui .pv-field-note { font-size: .7rem; color: var(--soft); line-height: 1.7; }
+.pv-ui .pv-field-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-4); }
+.pv-ui .pv-with-icon { position: relative; }
+.pv-ui .pv-with-icon > i { position: absolute; inset-inline-start: .7rem; top: 50%; transform: translateY(-50%); color: var(--soft); font-size: .9rem; }
+.pv-ui .pv-with-icon .pv-input { padding-inline-start: 2.1rem; }
+
+/* Segmented Control برای روش پرداخت */
+.pv-ui .pv-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: var(--r-pill);
+  background: var(--primary-50); border: 1px solid var(--primary-100);
+}
+.pv-ui .pv-seg button {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer; font-family: inherit;
+  font-size: .72rem; font-weight: 700; padding: .3rem .75rem; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center; gap: .3rem;
+  transition: background var(--motion), color var(--motion), box-shadow var(--motion), transform var(--motion);
+}
+.pv-ui .pv-seg button:hover { color: var(--primary-600); }
+.pv-ui .pv-seg button.is-active { background: #fff; color: var(--primary-600); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+.pv-ui .pv-seg button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* دکمهها */
+.pv-ui .pv-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .4rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--r-ctl); padding: .55rem .95rem;
+  font-family: inherit; font-size: .78rem; font-weight: 800; white-space: nowrap;
+  transition: transform var(--motion), box-shadow var(--motion), background var(--motion), border-color var(--motion), color var(--motion);
+}
+.pv-ui .pv-btn:hover { transform: translateY(-1px); }
+.pv-ui .pv-btn:active { transform: translateY(0); }
+.pv-ui .pv-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.pv-ui .pv-btn-primary { color: #fff; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); box-shadow: 0 6px 16px -2px rgba(79,70,229,.35); }
+.pv-ui .pv-btn-primary:hover { box-shadow: 0 10px 22px -4px rgba(79,70,229,.45); }
+.pv-ui .pv-btn-secondary { background: #fff; color: var(--text); border-color: var(--line); }
+.pv-ui .pv-btn-secondary:hover { border-color: #c7d2fe; background: #f8fafc; }
+.pv-ui .pv-btn-ghost { background: var(--primary-50); color: var(--primary-600); border-color: var(--primary-100); }
+.pv-ui .pv-btn-ghost:hover { background: #e0e7ff; }
+.pv-ui .pv-btn-quiet { background: #fff; color: var(--danger); border-color: var(--line); padding: .4rem .6rem; }
+.pv-ui .pv-btn-quiet:hover { background: #fff1f2; border-color: #fecdd3; }
+.pv-ui kbd {
+  font-family: inherit; font-size: .64rem; font-weight: 800; padding: .05rem .3rem; border-radius: 5px;
+  background: #fff; border: 1px solid var(--primary-100); color: var(--primary-600);
+}
+.pv-ui .pv-spinner {
+  width: 13px; height: 13px; border-radius: 50%; display: none;
+  border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; animation: pv-spin .7s linear infinite;
+}
+.pv-ui .pv-btn.is-loading .pv-spinner { display: inline-block; }
+@keyframes pv-spin { to { transform: rotate(360deg); } }
+
+/* ===== کمبوباکس کالا در هر سطر =====
+   منو مطلقاً بدون overflow/max-height است: فقط ۵ گزینهٔ منطبق نشان داده میشود
+   و فیلتر کردن با تایپ داخل همان کمبو انجام میگیرد (سرچ سراسری حذف شد). */
+.pv-ui .pv-combo { position: relative; min-width: 0; }
+.pv-ui .pv-combo-ctl {
+  display: flex; align-items: center; gap: .35rem; min-width: 0;
+  border: 1px solid var(--line); background: #fff; border-radius: var(--r-ctl);
+  padding: .3rem .5rem; cursor: pointer;
+  transition: border-color var(--motion), box-shadow var(--motion), background var(--motion);
+}
+.pv-ui .pv-combo-ctl:hover { border-color: #c7d2fe; }
+.pv-ui .pv-combo.is-open .pv-combo-ctl { border-color: var(--primary); box-shadow: var(--ring); }
+.pv-ui .pv-combo-ctl > i:first-child { color: var(--primary); flex: 0 0 auto; font-size: .85rem; }
+.pv-ui .pv-combo-ctl .pv-chev { color: var(--soft); flex: 0 0 auto; font-size: .7rem; margin-inline-start: auto; transition: transform var(--motion); }
+.pv-ui .pv-combo.is-open .pv-combo-ctl .pv-chev { transform: rotate(180deg); }
+.pv-ui .pv-combo-input {
+  flex: 1 1 auto; min-width: 0; border: 0; outline: none; background: transparent;
+  font-family: inherit; font-size: .76rem; font-weight: 700; color: var(--text); padding: 0;
+}
+.pv-ui .pv-combo-input::placeholder { color: var(--soft); font-weight: 500; }
+.pv-ui .pv-combo-meta { font-size: .62rem; color: var(--muted); margin-top: .2rem; overflow-wrap: anywhere; }
+.pv-ui .pv-combo-menu {
+  display: none; position: absolute; inset-inline-start: 0; inset-inline-end: 0;
+  top: calc(100% + .25rem); z-index: 30;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--elev-2); padding: .25rem;
+}
+.pv-ui .pv-combo.is-open .pv-combo-menu { display: block; }
+.pv-ui .pv-combo-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: .4rem;
+  padding: .3rem .45rem; border-radius: 7px; cursor: pointer; font-size: .7rem;
+  transition: background var(--motion), color var(--motion);
+}
+.pv-ui .pv-combo-opt:hover, .pv-ui .pv-combo-opt.is-active { background: var(--primary-50); color: var(--primary-600); }
+.pv-ui .pv-combo-opt > span { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+.pv-ui .pv-combo-opt > small { color: var(--muted); font-size: .62rem; flex: 0 0 auto; }
+.pv-ui .pv-combo-empty { font-size: .68rem; color: var(--muted); padding: .35rem .45rem; }
+.pv-ui .pv-line.is-open-row { position: relative; z-index: 25; }
+
+/* ===== ناحیهٔ کالاها: گرید واکنشگرا، بدون جدول پهن، بدون overflow ===== */
+.pv-ui .pv-lines { margin-top: var(--sp-3); }
+.pv-ui .pv-lines-head,
+.pv-ui .pv-line {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(0, .85fr) minmax(0, 1.05fr) minmax(0, 1.25fr) minmax(0, 1.05fr) 34px;
+  grid-template-areas: "name qty price disc total del";
+  gap: var(--sp-2); align-items: center;
+}
+.pv-ui .pv-lines-head {
+  padding: .45rem .6rem; border-radius: 9px; background: #f8fafc; border: 1px solid var(--line);
+  font-size: .7rem; font-weight: 800; color: var(--muted);
+}
+.pv-ui .pv-lines-head > span { min-width: 0; }
+.pv-ui .pv-line {
+  padding: .6rem; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+  transition: border-color var(--motion), box-shadow var(--motion), transform var(--motion);
+}
+.pv-ui .pv-line + .pv-line { margin-top: var(--sp-2); }
+.pv-ui .pv-line:hover { border-color: #c7d2fe; box-shadow: var(--elev-2); transform: translateY(-1px); }
+.pv-ui .pv-line.is-short { border-color: #fde68a; background: #fffbeb; }
+.pv-ui .c-name { grid-area: name; min-width: 0; }
+.pv-ui .c-qty { grid-area: qty; min-width: 0; }
+.pv-ui .c-price { grid-area: price; min-width: 0; }
+.pv-ui .c-disc { grid-area: disc; min-width: 0; }
+.pv-ui .c-total { grid-area: total; min-width: 0; }
+.pv-ui .c-del { grid-area: del; justify-self: end; }
+.pv-ui .pv-cell-label { display: none; font-size: .66rem; font-weight: 700; color: var(--muted); margin-bottom: .15rem; }
+.pv-ui .pv-prod { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.pv-ui .pv-prod-ico {
+  width: 32px; height: 32px; flex: 0 0 auto; border-radius: 9px; display: grid; place-items: center;
+  background: var(--primary-50); color: var(--primary-600); border: 1px solid var(--primary-100);
+}
+.pv-ui .pv-prod-txt { min-width: 0; }
+.pv-ui .pv-prod-txt b { display: block; font-size: .78rem; font-weight: 700; overflow-wrap: anywhere; line-height: 1.5; }
+.pv-ui .pv-prod-txt small { display: block; font-size: .67rem; color: var(--muted); overflow-wrap: anywhere; }
+.pv-ui .pv-static-val { font-size: .8rem; font-weight: 700; overflow-wrap: anywhere; }
+.pv-ui .pv-line-total {
+  background: var(--primary-50); border: 1px solid var(--primary-100); border-radius: 9px;
+  padding: .35rem .5rem; text-align: center; min-width: 0;
+}
+.pv-ui .pv-line-total b { display: block; font-size: .82rem; font-weight: 800; color: var(--primary-600); overflow-wrap: anywhere; }
+.pv-ui .pv-line-total small { font-size: .64rem; color: var(--muted); }
+.pv-ui .pv-inline-note { display: block; font-size: .66rem; color: var(--muted); margin-top: .25rem; overflow-wrap: anywhere; }
+.pv-ui .pv-inline-note.is-warn { color: #92400e; }
+
+/* استپر تعداد */
+.pv-ui .pv-stepper { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: var(--r-ctl); background: #fff; min-width: 0; }
+.pv-ui .pv-stepper button {
+  flex: 0 0 26px; border: 0; background: #f8fafc; color: var(--muted); cursor: pointer; font-size: .75rem;
+  transition: background var(--motion), color var(--motion);
+}
+.pv-ui .pv-stepper button:hover { background: var(--primary-50); color: var(--primary-600); }
+.pv-ui .pv-stepper button:first-child { border-radius: 0 9px 9px 0; }
+.pv-ui .pv-stepper button:last-child { border-radius: 9px 0 0 9px; }
+.pv-ui .pv-stepper input {
+  flex: 1 1 auto; min-width: 0; width: 100%; border: 0; text-align: center; font-family: inherit;
+  font-size: .78rem; font-weight: 700; color: var(--text); background: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.pv-ui .pv-stepper input:focus { outline: none; }
+.pv-ui .pv-stepper:focus-within { box-shadow: var(--ring); border-color: var(--primary); }
+
+/* سگمنت کوچک حالت تخفیف */
+.pv-ui .pv-mini-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: #f1f5f9; border: 1px solid var(--line); }
+.pv-ui .pv-mini-seg button {
+  border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: .66rem; font-weight: 800;
+  padding: .1rem .4rem; border-radius: 6px; cursor: pointer; transition: background var(--motion), color var(--motion);
+}
+.pv-ui .pv-mini-seg button.is-active { background: #fff; color: var(--primary-600); box-shadow: 0 1px 2px rgba(15,23,42,.1); }
+.pv-ui .pv-disc-row { display: flex; gap: .3rem; align-items: center; min-width: 0; }
+.pv-ui .pv-disc-row .pv-input { padding: .35rem .45rem; font-size: .75rem; text-align: center; }
+
+/* نوار بازبینی مالی (جایگزین ستون ۴/۱۲ چسبان) */
+.pv-ui .pv-review { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
+.pv-ui .pv-kpi {
+  background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: .7rem .9rem; min-width: 0;
+}
+.pv-ui .pv-kpi > span { display: block; font-size: .7rem; color: var(--muted); font-weight: 700; }
+.pv-ui .pv-kpi > b { display: block; font-size: 1rem; font-weight: 800; margin-top: .15rem; overflow-wrap: anywhere; }
+.pv-ui .pv-kpi > b.pv-neg { color: var(--danger); }
+.pv-ui .pv-kpi-total {
+  background: linear-gradient(135deg, #eef2ff, #f8fafc); border-color: #dbe4ff;
+}
+.pv-ui .pv-kpi-total > b { color: var(--primary-600); font-size: 1.25rem; font-weight: 900; }
+
+/* نوار اقدام */
+.pv-ui .pv-actionbar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3);
+  margin-top: var(--sp-4); padding: .8rem 1rem; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--elev-1);
+}
+.pv-ui .pv-action-note { font-size: .72rem; color: var(--muted); line-height: 1.7; max-width: 46ch; }
+.pv-ui .pv-action-note i { color: var(--info); }
+.pv-ui .pv-action-btns { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.pv-ui .pv-status-note {
+  display: flex; gap: .5rem; align-items: flex-start; font-size: .73rem; line-height: 1.75;
+  background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; border-radius: 10px; padding: .55rem .75rem;
+  margin-top: var(--sp-3);
+}
+
+/* ---------- نشانگر فنی در نوار ابزار پیشنمایش ---------- */
+.pv-top-proof { font-size: .7rem; font-weight: 800; padding: .22rem .65rem; border-radius: 999px;
+  background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; white-space: nowrap; }
+.pv-top-proof.is-bad { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
+.pv-density-chip, .pv-height-chip { font-size: .68rem; font-weight: 800; padding: .22rem .6rem; border-radius: 999px; white-space: nowrap; }
+.pv-density-chip { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+.pv-density-chip[data-mode="normal"] { background: #f1f5f9; color: #5b6a80; border-color: #e2e8f0; }
+.pv-height-chip { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; }
+/* اطلاعات + گردش سفارش */
+.pv-ui .pv-cols { display: grid; grid-template-columns: 1.35fr .65fr; gap: var(--sp-4); }
+.pv-ui .pv-def { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.pv-ui .pv-def-item { background: #f8fafc; border: 1px solid var(--line); border-radius: 10px; padding: .55rem .7rem; min-width: 0; }
+.pv-ui .pv-def-item span { display: block; font-size: .68rem; color: var(--muted); }
+.pv-ui .pv-def-item b { display: block; font-size: .79rem; font-weight: 700; overflow-wrap: anywhere; }
+.pv-ui .pv-timeline { display: grid; gap: .55rem; }
+.pv-ui .pv-tl { display: flex; gap: .5rem; align-items: flex-start; min-width: 0; }
+.pv-ui .pv-tl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); flex: 0 0 auto; margin-top: .4rem; box-shadow: 0 0 0 3px var(--primary-50); }
+.pv-ui .pv-tl b { display: block; font-size: .76rem; font-weight: 700; }
+.pv-ui .pv-tl small { display: block; font-size: .67rem; color: var(--muted); }
+
+/* Empty State و Skeleton */
+.pv-ui .pv-empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: .6rem;
+  padding: var(--sp-8) var(--sp-4); background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 1px dashed #c7d2fe; border-radius: var(--r-card);
+}
+.pv-ui .pv-empty-ico {
+  width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; font-size: 1.6rem;
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); color: #fff;
+  box-shadow: 0 10px 24px -8px rgba(79,70,229,.5);
+}
+.pv-ui .pv-empty h3 { font-size: .95rem; font-weight: 800; margin: .2rem 0 0; }
+.pv-ui .pv-empty p { font-size: .77rem; color: var(--muted); margin: 0; max-width: 44ch; line-height: 1.9; }
+.pv-ui .pv-skel { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 37%, #f1f5f9 63%); background-size: 400% 100%; animation: pv-shimmer 1.4s ease infinite; border-radius: 8px; }
+@keyframes pv-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+.pv-ui .pv-skel-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 40px; gap: var(--sp-2); padding: .7rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.pv-ui .pv-skel-row + .pv-skel-row { margin-top: var(--sp-2); }
+.pv-ui .pv-skel-row i { display: block; height: 14px; }
+.pv-ui .pv-toast {
+  display: none; align-items: center; gap: .4rem; margin-top: var(--sp-3);
+  font-size: .75rem; font-weight: 700; color: #065f46; background: #d1fae5;
+  border: 1px solid #a7f3d0; border-radius: 10px; padding: .5rem .75rem;
+}
+.pv-ui .pv-toast.is-on { display: inline-flex; animation: pv-in 220ms cubic-bezier(.2,.8,.2,1); }
+
+/* ---------- شکستهای واکنشگرا: بر اساس عرض کانتینر، نه پنجره ---------- */
+/* نکتهٔ پیادهسازی نهایی: همین شکستها با @container نوشته میشوند تا تبهای کششده
+   (display:none) هنگام باز شدن، بدون نیاز به resize دوباره چیده شوند. */
+.pv-screen[data-size="tablet"] .pv-ui .pv-field-grid,
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-grid { grid-template-columns: minmax(0, 1fr); }
+
+.pv-screen[data-size="tablet"] .pv-ui .pv-lines-head,
+.pv-screen[data-size="mobile"] .pv-ui .pv-lines-head { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line {
+  position: relative;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-areas: "name name" "qty price" "disc total" !important;
+  row-gap: var(--sp-3);
+  padding-inline-end: 2.1rem;
+}
+.pv-screen[data-size="tablet"] .pv-ui .c-del,
+.pv-screen[data-size="mobile"] .pv-ui .c-del {
+  grid-area: auto; position: absolute; inset-inline-end: .3rem; top: .3rem;
+  width: 1.8rem; height: 1.8rem;
+}
+.pv-screen[data-size="tablet"] .pv-ui .pv-line .pv-btn-quiet,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line .pv-btn-quiet { width: 100%; height: 100%; padding: 0; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-cell-label,
+.pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { display: block; }
+.pv-screen[data-size="tablet"] .pv-ui .c-name { padding-inline-end: .4rem; }
+
+.pv-screen[data-size="mobile"] .pv-ui .c-name { padding-inline-end: .4rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-review { grid-template-columns: minmax(0, 1fr); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-cols { grid-template-columns: minmax(0, 1fr); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-def { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-actionbar { flex-direction: column; align-items: stretch; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-btns { flex-direction: column; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-btns .pv-btn { width: 100%; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-head { padding: var(--sp-4); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-body { padding: var(--sp-3); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-head-ico { width: 38px; height: 38px; font-size: 1rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-head h1 { font-size: .92rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-skel-row { grid-template-columns: 1fr 1fr 40px; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-skel-row i:nth-child(n+4) { display: none; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-btn { font-size: .75rem; }
+
+
+/* ---------- تراکم فشرده: موبایل و تبلت ----------
+   هدف: کمترین اسکرول عمودی و کمترین فضای خالی، بدون ایجاد هیچ اسکرول داخلی.
+   فقط مقیاس توکنها کوچک میشود؛ رنگها و ساختار همان است. */
+.pv-screen[data-size="tablet"], .pv-screen[data-size="mobile"] { padding: .55rem; }
+.pv-screen[data-size="tablet"] .pv-ui,
+.pv-screen[data-size="mobile"] .pv-ui {
+  --sp-1: .15rem; --sp-2: .3rem; --sp-3: .45rem; --sp-4: .6rem; --sp-6: .85rem; --sp-8: 1.1rem;
+  --r-card: 11px; --r-ctl: 8px;
+  line-height: 1.5;
+}
+/* سربرگ و کارتها */
+.pv-screen[data-size="tablet"] .pv-ui .pv-head,
+.pv-screen[data-size="mobile"] .pv-ui .pv-head { padding: var(--sp-3) var(--sp-4); align-items: center; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-head-sub,
+.pv-screen[data-size="mobile"] .pv-ui .pv-head-sub { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-head-ico,
+.pv-screen[data-size="mobile"] .pv-ui .pv-head-ico { width: 34px; height: 34px; border-radius: 10px; font-size: .95rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-head h1,
+.pv-screen[data-size="mobile"] .pv-ui .pv-head h1 { font-size: .88rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-eyebrow,
+.pv-screen[data-size="mobile"] .pv-ui .pv-eyebrow { font-size: .62rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail { margin-top: var(--sp-2); gap: var(--sp-1); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail-item,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail-item { padding: .12rem .4rem; font-size: .64rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-back .pv-btn-txt,
+.pv-screen[data-size="mobile"] .pv-ui .pv-back .pv-btn-txt { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-back,
+.pv-screen[data-size="mobile"] .pv-ui .pv-back { padding: .35rem .5rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-head,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-head { padding: .4rem var(--sp-3); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-title,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-title { font-size: .78rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-hint,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-hint { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-body,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-body { padding: var(--sp-3); }
+/* مشخصات: ۲ ستونه؛ مشتری و انبار تمامعرض */
+.pv-screen[data-size="tablet"] .pv-ui .pv-field-grid,
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-grid { gap: var(--sp-3); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-grid > .pv-field:nth-child(-n+2) { grid-column: 1 / -1; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-input { padding: .38rem .55rem; font-size: .76rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-field > label,
+.pv-screen[data-size="mobile"] .pv-ui .pv-field > label { font-size: .68rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-field-note:not(.pv-cap-note),
+.pv-screen[data-size="mobile"] .pv-ui .pv-field-note:not(.pv-cap-note) { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-cap-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-cap-note { margin-inline-start: 0 !important; font-size: .64rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-seg,
+.pv-screen[data-size="mobile"] .pv-ui .pv-seg { width: 100%; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-seg button,
+.pv-screen[data-size="mobile"] .pv-ui .pv-seg button { flex: 1 1 auto; justify-content: center; font-size: .67rem; padding: .22rem .25rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-ctl,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-ctl { padding: .2rem .35rem; gap: .25rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-input { font-size: .7rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-opt,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt { padding: .22rem .35rem; font-size: .65rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-meta,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-meta { font-size: .58rem; }
+/* اقلام: گرید ۲ ستونهٔ مقاوم به عرض باریک، بدون اسکرول داخلی */
+.pv-screen[data-size="tablet"] .pv-ui .pv-line,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line { padding: var(--sp-2); row-gap: var(--sp-2); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-areas: "name name" "qty price" "disc total" !important;
+}
+.pv-screen[data-size="tablet"] .pv-ui .pv-cell-label,
+.pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { font-size: .58rem; margin-bottom: 0; line-height: 1.25; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod-ico,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod-ico { width: 26px; height: 26px; border-radius: 7px; font-size: .75rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod { gap: .35rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod-txt b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod-txt b { font-size: .72rem; line-height: 1.35; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod-txt small,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod-txt small { font-size: .6rem; line-height: 1.3; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line .pv-input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line .pv-input { padding: .28rem .3rem !important; font-size: .7rem !important; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-stepper button,
+.pv-screen[data-size="mobile"] .pv-ui .pv-stepper button { flex-basis: 20px; font-size: .65rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-stepper input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-stepper input { font-size: .7rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-mini-seg button,
+.pv-screen[data-size="mobile"] .pv-ui .pv-mini-seg button { font-size: .6rem; padding: .05rem .25rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line-total,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line-total { padding: .2rem .3rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line-total b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line-total b { font-size: .7rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line-total small,
+.pv-screen[data-size="mobile"] .pv-ui .pv-line-total small { font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-static-val,
+.pv-screen[data-size="mobile"] .pv-ui .pv-static-val { font-size: .72rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-minor-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-minor-note { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-inline-note:not(.is-warn),
+.pv-screen[data-size="mobile"] .pv-ui .pv-inline-note:not(.is-warn) { font-size: .6rem; margin-top: .1rem; }
+/* نوار بازبینی: حتی روی موبایل یک ردیف ۳تایی */
+.pv-screen[data-size="mobile"] .pv-ui .pv-review { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi,
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi { padding: .35rem .45rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > span,
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > span { font-size: .6rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > b { font-size: .74rem; margin-top: 0; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi-total > b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi-total > b { font-size: .86rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-cur,
+.pv-screen[data-size="mobile"] .pv-ui .pv-cur { display: none; }
+/* نوار اقدام ثابت: نوار چسبان کف با app-bottom-nav اپ تداخل داشت */
+.pv-screen[data-size="tablet"] .pv-ui .pv-actionbar,
+.pv-screen[data-size="mobile"] .pv-ui .pv-actionbar {
+  position: static; z-index: auto; box-shadow: none;
+  flex-direction: column; align-items: stretch; gap: var(--sp-2); padding: var(--sp-3);
+}
+.pv-screen[data-size="tablet"] .pv-ui .pv-action-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-note { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-action-btns,
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-btns { flex-direction: row; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-action-btns .pv-btn,
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-btns .pv-btn { flex: 1 1 0; width: auto; padding: .45rem; font-size: .7rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-status-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-status-note { padding: .35rem .5rem; font-size: .66rem; line-height: 1.5; }
+/* اطلاعات / گردش / حالتها */
+.pv-screen[data-size="mobile"] .pv-ui .pv-def { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-def-item,
+.pv-screen[data-size="mobile"] .pv-ui .pv-def-item { padding: .3rem .4rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-def-item span,
+.pv-screen[data-size="mobile"] .pv-ui .pv-def-item span { font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-def-item b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-def-item b { font-size: .68rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-timeline,
+.pv-screen[data-size="mobile"] .pv-ui .pv-timeline { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-tl small,
+.pv-screen[data-size="mobile"] .pv-ui .pv-tl small { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-tl b,
+.pv-screen[data-size="mobile"] .pv-ui .pv-tl b { font-size: .68rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-empty,
+.pv-screen[data-size="mobile"] .pv-ui .pv-empty { padding: var(--sp-6) var(--sp-4); gap: var(--sp-2); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-empty-ico,
+.pv-screen[data-size="mobile"] .pv-ui .pv-empty-ico { width: 44px; height: 44px; border-radius: 14px; font-size: 1.15rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-empty h3,
+.pv-screen[data-size="mobile"] .pv-ui .pv-empty h3 { font-size: .85rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-empty p,
+.pv-screen[data-size="mobile"] .pv-ui .pv-empty p { font-size: .7rem; line-height: 1.6; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-skel-row,
+.pv-screen[data-size="mobile"] .pv-ui .pv-skel-row { padding: var(--sp-2); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-toast,
+.pv-screen[data-size="mobile"] .pv-ui .pv-toast { font-size: .68rem; }
+
+/* ---- تراکم نهایی: قاب کوچیکتر ⇒ باکسها و ردیفها کوچیکتر ----
+   همان الگوی clamp()+vw در سورس Razor؛ اینجا چون قاب دستگاه عرض ثابتی دارد،
+   مقادیر برای تبلت و موبایل پلهای کوچکشونده گرفتهاند. */
+.pv-screen[data-size="tablet"] .pv-ui .pv-line { padding: 4px; row-gap: 3px; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line { padding: 3px; row-gap: 2px; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-cell-label { font-size: .5rem; line-height: 1; margin-bottom: 0; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-cell-label { font-size: .46rem; line-height: 1; margin-bottom: 0; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line .pv-input { padding: .16rem .22rem !important; font-size: .62rem !important; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line .pv-input { padding: .12rem .18rem !important; font-size: .58rem !important; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-line-total { padding: .14rem .2rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-line-total { padding: .1rem .16rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-opt { padding: .14rem .28rem; font-size: .62rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt { padding: .1rem .22rem; font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-opt small,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-opt small { display: none; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi { padding: .18rem .28rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi { padding: .12rem .2rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > span { font-size: .5rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > span { font-size: .46rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-kpi > b { font-size: .64rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-kpi > b { font-size: .58rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-field > label { font-size: .58rem; }
+.pv-screen[data-size="mobile"] .pv-ui .pv-field > label { font-size: .54rem; }
+/* نوار اقدام چسبان: دکمهها همیشه در دسترس (قاب پیشنمایش نوار پایین اپ ندارد) */
+.pv-screen[data-size="tablet"] .pv-ui .pv-actionbar,
+.pv-screen[data-size="mobile"] .pv-ui .pv-actionbar {
+  position: sticky; bottom: 0; z-index: 20; padding: 4px;
+  box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+}
+
+/* ---- فاصلهٔ آیکون و متن: کف 7px حتی وقتی همهچیز فشرده میشود ---- */
+.pv-screen[data-size="tablet"] .pv-ui,
+.pv-screen[data-size="mobile"] .pv-ui { --pv-icon-gap: 7px; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-title,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-title,
+.pv-screen[data-size="tablet"] .pv-ui .pv-btn,
+.pv-screen[data-size="mobile"] .pv-ui .pv-btn,
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail-item,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail-item,
+.pv-screen[data-size="tablet"] .pv-ui .pv-combo-ctl,
+.pv-screen[data-size="mobile"] .pv-ui .pv-combo-ctl,
+.pv-screen[data-size="tablet"] .pv-ui .pv-prod,
+.pv-screen[data-size="mobile"] .pv-ui .pv-prod,
+.pv-screen[data-size="tablet"] .pv-ui .pv-status-note,
+.pv-screen[data-size="mobile"] .pv-ui .pv-status-note { gap: var(--pv-icon-gap); }
+.pv-screen[data-size="tablet"] .pv-ui .pv-btn > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-btn > i,
+.pv-screen[data-size="tablet"] .pv-ui .pv-sec-title > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-sec-title > i { margin: 0; flex: 0 0 auto; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-action-note > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-action-note > i,
+.pv-screen[data-size="tablet"] .pv-ui .pv-rail-item > span > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-rail-item > span > i { margin-inline-end: var(--pv-icon-gap); }
+/* آیکون مطلق داخل اینپوت هم حداقل فاصلهٔ خودش را حفظ میکند */
+.pv-screen[data-size="tablet"] .pv-ui .pv-with-icon .pv-input,
+.pv-screen[data-size="mobile"] .pv-ui .pv-with-icon .pv-input { padding-inline-start: 1.9rem; }
+.pv-screen[data-size="tablet"] .pv-ui .pv-with-icon > i,
+.pv-screen[data-size="mobile"] .pv-ui .pv-with-icon > i { inset-inline-start: var(--pv-icon-gap); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-ui *, .pv-ui *::before, .pv-ui *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body class="pv-body">
+
+<!-- ============ نوار کنترل پیشنهاد ============ -->
+<div class="pv-top">
+  <div class="pv-top-in">
+    <span class="pv-top-label">نما</span>
+    <div class="pv-seg-dark" id="seg-view">
+      <button class="is-active" data-view="form">ثبت سفارش</button>
+      <button data-view="detail">جزئیات سفارش</button>
+      <button data-view="states">حالتها و تعامل</button>
+    </div>
+    <span class="pv-top-label">اندازه</span>
+    <div class="pv-seg-dark" id="seg-device">
+      <button data-device="desktop">دسکتاپ</button>
+      <button data-device="tablet">تبلت</button>
+      <button class="is-active" data-device="mobile">موبایل</button>
+    </div>
+    <span class="pv-top-label">وضعیت</span>
+    <select id="pv-status" title="وضعیت سفارش">
+      <option value="submitted">در انتظار تأیید</option>
+      <option value="draft">پیشنویس</option>
+      <option value="returned">برگشتی برای اصلاح</option>
+    </select>
+    <span class="pv-top-proof" id="pv-proof-top">✓ بدون اسکرول · ۰px</span>
+    <span class="pv-density-chip" id="pv-density" data-mode="compact">تراکم فشرده</span>
+    <span class="pv-height-chip" id="pv-height">ارتفاع نما: —</span>
+  </div>
+</div>
+
+<div class="pv-wrap">
+
+  <div class="pv-device-outer">
+    <div class="pv-device" id="pv-device" data-device="mobile">
+      <div class="pv-chrome">
+        <span class="pv-dots"><i></i><i></i><i></i></span>
+        <span class="pv-url" id="pv-url">/sales/visits/new</span>
+        <span class="pv-size-tag" id="pv-size-tag">۳۹۰px · موبایل</span>
+      </div>
+      <div class="pv-screen" id="pv-screen" data-size="mobile">
+
+        <!-- ==================== نمای ۱: ثبت سفارش ==================== -->
+        <div class="pv-view is-active" id="view-form">
+          <div class="pv-ui">
+            <div class="pv-stack">
+
+              <!-- سربرگ -->
+              <div class="pv-head">
+                <div class="pv-head-main">
+                  <div class="pv-head-ico"><i class="bi bi-pencil-square"></i></div>
+                  <div style="min-width:0">
+                    <div class="pv-eyebrow">ثبت فروش میدانی</div>
+                    <h1>ثبت سفارش ویزیتوری جدید</h1>
+                    <div class="pv-head-sub">انتخاب مشتری، تخصیص انبار، ثبت اقلام با استعلام برخط موجودی و سقف تخفیف مجاز</div>
+                  </div>
+                </div>
+                <button class="pv-btn pv-btn-secondary pv-back"><i class="bi bi-arrow-right"></i><span class="pv-btn-txt"> بازگشت به سفارشها</span></button>
+              </div>
+
+              <!-- مشخصات -->
+              <section class="pv-card">
+                <div class="pv-sec-head">
+                  <div class="pv-sec-title"><i class="bi bi-person-vcard"></i> مشخصات سفارش</div>
+                  <span class="pv-sec-hint">اطلاعات پایهٔ سفارش</span>
+                </div>
+                <div class="pv-sec-body">
+                  <div class="pv-field-grid">
+                    <div class="pv-field">
+                      <label>مشتری <span style="color:var(--danger)">*</span></label>
+                      <div class="pv-with-icon"><i class="bi bi-search"></i><input class="pv-input" value="شرکت پخش فروغ آریا" /></div>
+                      <span class="pv-field-note">جستجوی نام، موبایل یا تلفن</span>
+                    </div>
+                    <div class="pv-field">
+                      <label>انبار <span style="color:var(--danger)">*</span></label>
+                      <input class="pv-input" value="انبار مرکزی — تهران" />
+                      <span class="pv-field-note">موجودی از همین انبار استعلام میشود</span>
+                    </div>
+                    <div class="pv-field">
+                      <label>تاریخ سفارش</label>
+                      <input class="pv-input" value="۱۴۰۴/۰۸/۱۱" />
+                      <span class="pv-field-note">قابل تغییر پیش از ارسال</span>
+                    </div>
+                    <div class="pv-field">
+                      <label>تاریخ تحویل (ویزیتور)</label>
+                      <input class="pv-input" value="۱۴۰۴/۰۸/۱۴" />
+                      <span class="pv-field-note">تاریخ نهایی را مدیر تعیین میکند</span>
+                    </div>
+                  </div>
+                  <div style="margin-top:var(--sp-4);display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-3)">
+                    <span style="font-size:.74rem;font-weight:700;color:var(--muted)">روش پرداخت</span>
+                    <div class="pv-seg" id="pv-pay">
+                      <button class="is-active"><i class="bi bi-cash"></i> نقدی</button>
+                      <button><i class="bi bi-credit-card"></i> اعتباری</button>
+                      <button><i class="bi bi-receipt"></i> چک</button>
+                      <button><i class="bi bi-bank"></i> حواله</button>
+                    </div>
+                    <span class="pv-field-note pv-cap-note" style="margin-inline-start:auto">سقف تخفیف مجاز شما: <b>۱۰٪</b></span>
+                  </div>
+                </div>
+              </section>
+
+              <!-- کالاها: بدون اسکرول -->
+              <section class="pv-card" data-no-scroll>
+                <div class="pv-sec-head">
+                  <div class="pv-sec-title"><i class="bi bi-box-seam"></i> کالاها <span class="pv-badge" data-tone="info">۳ قلم</span></div>
+                  <button class="pv-btn pv-btn-ghost" id="pv-f2-add" style="padding:.4rem .75rem"><i class="bi bi-plus-lg"></i> افزودن سطر <kbd>F2</kbd></button>
+                </div>
+                <div class="pv-sec-body">
+                  <div class="pv-lines">
+                    <div class="pv-lines-head">
+                      <span style="grid-area:name">کالا</span><span style="grid-area:qty">تعداد</span>
+                      <span style="grid-area:price">قیمت واحد</span><span style="grid-area:disc">تخفیف</span>
+                      <span style="grid-area:total">جمع سطر</span><span style="grid-area:del"></span>
+                    </div>
+
+                    <div class="pv-line">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div>
+                        <div class="pv-combo" data-combo>
+                          <div class="pv-combo-ctl" data-combo-toggle>
+                            <i class="bi bi-box-seam"></i>
+                            <input class="pv-combo-input" data-combo-input value="روغن آفتابگردان ۵ لیتری" placeholder="جستجوی کالا…" autocomplete="off" />
+                            <i class="bi bi-chevron-down pv-chev"></i>
+                          </div>
+                          <div class="pv-combo-meta" data-combo-meta>کد ۱۰۲۴ · واحد: بطری</div>
+                          <div class="pv-combo-menu" data-combo-menu>
+                        <div class="pv-combo-opt" data-name="روغن آفتابگردان ۵ لیتری" data-code="۱۰۲۴" data-unit="بطری" data-price="۸۵۰٬۰۰۰"><span>روغن آفتابگردان ۵ لیتری</span><small>۱۰۲۴</small></div>
+                        <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
+                        <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
+                        <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                            <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
+                          </div>
+                        </div></div>
+                      <div class="c-qty"><div class="pv-cell-label">تعداد</div><div class="pv-stepper"><button>−</button><input value="۱۲" /><button>+</button></div></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><input class="pv-input" value="۸۵۰٬۰۰۰" style="text-align:center;padding:.4rem .45rem;font-size:.76rem" /><span class="pv-inline-note pv-minor-note">موجودی: ۴۸ بطری</span></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-disc-row"><input class="pv-input" value="۵" /><span class="pv-mini-seg"><button class="is-active">٪</button><button>ریال</button></span></div><span class="pv-inline-note">= ۵۱۰٬۰۰۰ ریال</span></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۹٬۶۹۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"><button class="pv-btn pv-btn-quiet" title="حذف سطر"><i class="bi bi-trash"></i></button></div>
+                    </div>
+
+                    <div class="pv-line">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div>
+                        <div class="pv-combo" data-combo>
+                          <div class="pv-combo-ctl" data-combo-toggle>
+                            <i class="bi bi-box-seam"></i>
+                            <input class="pv-combo-input" data-combo-input value="برنج طارم هاشمی ۱۰ کیلویی" placeholder="جستجوی کالا…" autocomplete="off" />
+                            <i class="bi bi-chevron-down pv-chev"></i>
+                          </div>
+                          <div class="pv-combo-meta" data-combo-meta>کد ۲۱۴۰ · واحد: کیسه</div>
+                          <div class="pv-combo-menu" data-combo-menu>
+                        <div class="pv-combo-opt" data-name="روغن آفتابگردان ۵ لیتری" data-code="۱۰۲۴" data-unit="بطری" data-price="۸۵۰٬۰۰۰"><span>روغن آفتابگردان ۵ لیتری</span><small>۱۰۲۴</small></div>
+                        <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
+                        <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
+                        <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                            <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
+                          </div>
+                        </div></div>
+                      <div class="c-qty"><div class="pv-cell-label">تعداد</div><div class="pv-stepper"><button>−</button><input value="۴" /><button>+</button></div></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><input class="pv-input" value="۱٬۲۵۰٬۰۰۰" style="text-align:center;padding:.4rem .45rem;font-size:.76rem" /><span class="pv-inline-note pv-minor-note">موجودی: ۲۲ کیسه</span></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-disc-row"><input class="pv-input" value="۰" /><span class="pv-mini-seg"><button class="is-active">٪</button><button>ریال</button></span></div><span class="pv-inline-note pv-minor-note">بدون تخفیف</span></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۵٬۰۰۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"><button class="pv-btn pv-btn-quiet" title="حذف سطر"><i class="bi bi-trash"></i></button></div>
+                    </div>
+
+                    <div class="pv-line is-short">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div>
+                        <div class="pv-combo" data-combo>
+                          <div class="pv-combo-ctl" data-combo-toggle>
+                            <i class="bi bi-box-seam"></i>
+                            <input class="pv-combo-input" data-combo-input value="چای سیلان ۵۰۰ گرمی" placeholder="جستجوی کالا…" autocomplete="off" />
+                            <i class="bi bi-chevron-down pv-chev"></i>
+                          </div>
+                          <div class="pv-combo-meta" data-combo-meta>کد ۳۳۱۲ · واحد: بسته</div>
+                          <div class="pv-combo-menu" data-combo-menu>
+                        <div class="pv-combo-opt" data-name="روغن آفتابگردان ۵ لیتری" data-code="۱۰۲۴" data-unit="بطری" data-price="۸۵۰٬۰۰۰"><span>روغن آفتابگردان ۵ لیتری</span><small>۱۰۲۴</small></div>
+                        <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
+                        <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
+                        <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                            <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
+                          </div>
+                        </div></div>
+                      <div class="c-qty"><div class="pv-cell-label">تعداد</div><div class="pv-stepper"><button>−</button><input value="۶" /><button>+</button></div><span class="pv-inline-note is-warn">کسری ۲ بسته</span></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><input class="pv-input" value="۳۲۰٬۰۰۰" style="text-align:center;padding:.4rem .45rem;font-size:.76rem" /><span class="pv-inline-note pv-minor-note">موجودی: ۴ بسته</span></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-disc-row"><input class="pv-input" value="۲۰٬۰۰۰" /><span class="pv-mini-seg"><button>٪</button><button class="is-active">ریال</button></span></div><span class="pv-inline-note">= ۶٫۲۵٪</span></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۱٬۸۰۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"><button class="pv-btn pv-btn-quiet" title="حذف سطر"><i class="bi bi-trash"></i></button></div>
+                    </div>
+                  </div>
+
+                  <!-- نوار بازبینی مالی -->
+                  <div class="pv-review">
+                    <div class="pv-kpi"><span>جمع کل</span><b class="pv-num">۱۷٬۱۲۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi"><span>تخفیف</span><b class="pv-num pv-neg">۶۳۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi pv-kpi-total"><span>قابل پرداخت</span><b class="pv-num">۱۶٬۴۹۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                  </div>
+
+                </div>
+              </section>
+
+              <!-- نوار اقدام -->
+              <div class="pv-status-note" data-pending-note>
+                <i class="bi bi-hourglass-split"></i>
+                <span>این سفارش در انتظار تأیید مدیر است؛ با ذخیرهٔ تغییرات همچنان در صف تأیید میماند. نیازی به ارسال دوباره نیست.</span>
+              </div>
+              <div class="pv-actionbar">
+                <div class="pv-action-note"><i class="bi bi-info-circle"></i> تا زمانی که ارسال نکنید، سفارش روی موجودی و حساب مشتری اثری ندارد.</div>
+                <div class="pv-action-btns">
+                  <button class="pv-btn pv-btn-secondary"><i class="bi bi-save"></i> ذخیرهٔ پیشنویس</button>
+                  <button class="pv-btn pv-btn-primary" data-submit-btn style="display:none"><i class="bi bi-send-check"></i> ذخیره و ارسال برای تأیید <span class="pv-spinner"></span></button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== نمای ۲: جزئیات سفارش ==================== -->
+        <div class="pv-view" id="view-detail">
+          <div class="pv-ui">
+            <div class="pv-stack">
+
+              <div class="pv-head">
+                <div class="pv-head-main">
+                  <div class="pv-head-ico"><i class="bi bi-receipt"></i></div>
+                  <div style="min-width:0">
+                    <div class="pv-eyebrow">سفارش ویزیتوری</div>
+                    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
+                      <h1>VS-۱۴۰۴-۰۲۱۸</h1>
+                      <span class="pv-badge" data-status-badge data-tone="warning">در انتظار تأیید</span>
+                    </div>
+                    <div class="pv-rail">
+                      <span class="pv-rail-item"><i class="bi bi-person-vcard"></i> <b>شرکت پخش فروغ آریا</b></span>
+                      <span class="pv-rail-item"><i class="bi bi-calendar3"></i> <b>۱۴۰۴/۰۸/۱۱</b></span>
+                      <span class="pv-rail-item"><i class="bi bi-cash-coin"></i> <b class="pv-num">۱۶٬۴۹۰٬۰۰۰</b> ریال</span>
+                    </div>
+                  </div>
+                </div>
+                <button class="pv-btn pv-btn-secondary pv-back"><i class="bi bi-arrow-right"></i><span class="pv-btn-txt"> فهرست سفارشها</span></button>
+              </div>
+
+              <!-- اقلام: همان گرید، حالت فقطخواندنی، بدون اسکرول -->
+              <section class="pv-card" data-no-scroll>
+                <div class="pv-sec-head">
+                  <div class="pv-sec-title"><i class="bi bi-box-seam"></i> اقلام سفارش <span class="pv-badge" data-tone="info">۳ قلم</span></div>
+                  
+                </div>
+                <div class="pv-sec-body">
+                  <div class="pv-lines">
+                    <div class="pv-lines-head">
+                      <span style="grid-area:name">کالا</span><span style="grid-area:qty">مقدار</span>
+                      <span style="grid-area:price">قیمت واحد</span><span style="grid-area:disc">تخفیف</span>
+                      <span style="grid-area:total">جمع</span><span style="grid-area:del"></span>
+                    </div>
+
+                    <div class="pv-line">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div><div class="pv-prod"><span class="pv-prod-ico"><i class="bi bi-box"></i></span><div class="pv-prod-txt"><b>روغن آفتابگردان ۵ لیتری</b><small>کد ۱۰۲۴ · واحد: بطری</small></div></div></div>
+                      <div class="c-qty"><div class="pv-cell-label">مقدار</div><div class="pv-static-val pv-num">۱۲ بطری</div></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><div class="pv-static-val pv-num">۸۵۰٬۰۰۰</div></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-static-val">۵٪ <span class="pv-inline-note">۵۱۰٬۰۰۰ ریال</span></div></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع</div><div class="pv-line-total"><b class="pv-num">۹٬۶۹۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"></div>
+                    </div>
+
+                    <div class="pv-line">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div><div class="pv-prod"><span class="pv-prod-ico"><i class="bi bi-box"></i></span><div class="pv-prod-txt"><b>برنج طارم هاشمی ۱۰ کیلویی</b><small>کد ۲۱۴۰ · واحد: کیسه</small></div></div></div>
+                      <div class="c-qty"><div class="pv-cell-label">مقدار</div><div class="pv-static-val pv-num">۴ کیسه</div></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><div class="pv-static-val pv-num">۱٬۲۵۰٬۰۰۰</div></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-static-val">—</div></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع</div><div class="pv-line-total"><b class="pv-num">۵٬۰۰۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"></div>
+                    </div>
+
+                    <div class="pv-line">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div><div class="pv-prod"><span class="pv-prod-ico"><i class="bi bi-box"></i></span><div class="pv-prod-txt"><b>چای سیلان ۵۰۰ گرمی</b><small>کد ۳۳۱۲ · واحد: بسته</small></div></div></div>
+                      <div class="c-qty"><div class="pv-cell-label">مقدار</div><div class="pv-static-val pv-num">۶ بسته</div></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><div class="pv-static-val pv-num">۳۲۰٬۰۰۰</div></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-static-val pv-num">۲۰٬۰۰۰ ریال</div></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع</div><div class="pv-line-total"><b class="pv-num">۱٬۸۰۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"></div>
+                    </div>
+                  </div>
+
+                  <div class="pv-review">
+                    <div class="pv-kpi"><span>جمع کل</span><b class="pv-num">۱۷٬۱۲۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi"><span>تخفیف</span><b class="pv-num pv-neg">۶۳۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi pv-kpi-total"><span>قابل پرداخت</span><b class="pv-num">۱۶٬۴۹۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                  </div>
+
+                </div>
+              </section>
+
+              <!-- اطلاعات + گردش در دو ستون زیر اقلام -->
+              <div class="pv-cols">
+                <section class="pv-card">
+                  <div class="pv-sec-head"><div class="pv-sec-title"><i class="bi bi-info-circle"></i> اطلاعات سفارش</div></div>
+                  <div class="pv-sec-body">
+                    <div class="pv-def">
+                      <div class="pv-def-item"><span>ویزیتور</span><b>ویزیتور فروش — واحد تهران</b></div>
+                      <div class="pv-def-item"><span>مشتری</span><b>شرکت پخش فروغ آریا</b></div>
+                      <div class="pv-def-item"><span>انبار</span><b>انبار مرکزی — تهران</b></div>
+                      <div class="pv-def-item"><span>پرداخت</span><b>اعتباری ۳۰ روزه</b></div>
+                      <div class="pv-def-item"><span>تاریخ سفارش</span><b>۱۴۰۴/۰۸/۱۱</b></div>
+                      <div class="pv-def-item"><span>تحویل نهایی</span><b>در انتظار تصمیم مدیر</b></div>
+                    </div>
+                  </div>
+                </section>
+                <section class="pv-card">
+                  <div class="pv-sec-head"><div class="pv-sec-title"><i class="bi bi-clock-history"></i> گردش سفارش</div></div>
+                  <div class="pv-sec-body">
+                    <div class="pv-timeline">
+                      <div class="pv-tl"><span class="pv-tl-dot"></span><div><b>ارسال برای تأیید</b><small>۱۴۰۴/۰۸/۱۱ · ۱۰:۲۴ — ویزیتور</small></div></div>
+                      <div class="pv-tl"><span class="pv-tl-dot" style="background:#cbd5e1;box-shadow:0 0 0 3px #f1f5f9"></span><div><b>در صف مدیر فروش</b><small>تصمیمی ثبت نشده است</small></div></div>
+                    </div>
+                    <div class="pv-status-note" style="margin-top:var(--sp-4)"><i class="bi bi-pencil-square"></i><span>تا تأیید مدیر میتوانید ویرایش کنید؛ نیازی به ارسال دوباره نیست.</span></div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="pv-status-note" data-pending-note><i class="bi bi-hourglass-split"></i><span>سفارش در انتظار تأیید است؛ دکمهٔ «ارسال برای تأیید» حذف شده است.</span></div>
+              <div class="pv-actionbar">
+                <div class="pv-action-note"><i class="bi bi-shield-check"></i> ویرایش همچنان مجاز است و سفارش را در صف تأیید نگه میدارد.</div>
+                <div class="pv-action-btns">
+                  <button class="pv-btn pv-btn-secondary"><i class="bi bi-pencil"></i> ویرایش</button>
+                  <button class="pv-btn pv-btn-primary" data-submit-btn style="display:none"><i class="bi bi-send"></i> ارسال برای تأیید</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== نمای ۳: حالتهأ و تعامل ==================== -->
+        <div class="pv-view" id="view-states">
+          <div class="pv-ui">
+            <div class="pv-stack">
+
+              <section class="pv-card">
+                <div class="pv-sec-head"><div class="pv-sec-title"><i class="bi bi-inbox"></i> کالاها</div></div>
+                <div class="pv-sec-body">
+                  <div class="pv-empty">
+                    <div class="pv-empty-ico"><i class="bi bi-basket3"></i></div>
+                    <h3>سفارش شما هنوز کالایی ندارد</h3>
+                    <p>با جستجوی نام، کد یا بارکد شروع کنید؛ موجودی و سقف تخفیف همان لحظه نمایش داده میشود.</p>
+                    <button class="pv-btn pv-btn-primary"><i class="bi bi-plus-lg"></i> افزودن اولین کالا <kbd>F2</kbd></button>
+                    <span class="pv-field-note"><i class="bi bi-exclamation-triangle"></i> ابتدا انبار را انتخاب کنید تا سطر کالا اضافه شود.</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="pv-card">
+                <div class="pv-sec-head"><div class="pv-sec-title"><i class="bi bi-hourglass-split"></i> در حال بارگذاری اقلام</div></div>
+                <div class="pv-sec-body">
+                  <div class="pv-skel-row"><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel" style="width:24px"></i></div>
+                  <div class="pv-skel-row"><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel" style="width:24px"></i></div>
+                  <div class="pv-skel-row"><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel"></i><i class="pv-skel" style="width:24px"></i></div>
+                </div>
+              </section>
+
+              <section class="pv-card">
+                <div class="pv-sec-head"><div class="pv-sec-title"><i class="bi bi-hand-index"></i> ارسال سفارش</div></div>
+                <div class="pv-sec-body">
+                          <div class="pv-line">
+                    <div class="c-name"><div class="pv-cell-label">کالا</div><div class="pv-prod"><span class="pv-prod-ico"><i class="bi bi-box"></i></span><div class="pv-prod-txt"><b>نمونهٔ تعاملی — روغن آفتابگردان</b><small>کد ۱۰۲۴ · واحد: بطری</small></div></div></div>
+                    <div class="c-qty"><div class="pv-cell-label">تعداد</div><div class="pv-stepper"><button>−</button><input value="۲" /><button>+</button></div></div>
+                    <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><input class="pv-input" value="۸۵۰٬۰۰۰" style="text-align:center;padding:.4rem .45rem;font-size:.76rem" /></div>
+                    <div class="c-disc"><div class="pv-cell-label">تخفیف</div><input class="pv-input" value="۵" style="padding:.4rem .45rem;font-size:.76rem" /></div>
+                    <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۱٬۶۱۵٬۰۰۰</b><small>ریال</small></div></div>
+                    <div class="c-del"><button class="pv-btn pv-btn-quiet"><i class="bi bi-trash"></i></button></div>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:var(--sp-4)">
+                    <button class="pv-btn pv-btn-primary" id="pv-demo-load"><i class="bi bi-send-check"></i> ذخیره و ارسال برای تأیید <span class="pv-spinner"></span></button>
+                    <button class="pv-btn pv-btn-secondary"><i class="bi bi-save"></i> ذخیرهٔ پیشنویس</button>
+                  </div>
+                  <div class="pv-toast" id="pv-toast"><i class="bi bi-check-circle-fill"></i> سفارش با موفقیت ذخیره شد.</div>
+                </div>
+              </section>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+<script>
+(function () {
+  var device = document.getElementById('pv-device');
+  var screen = document.getElementById('pv-screen');
+  var sizeTag = document.getElementById('pv-size-tag');
+  var url = document.getElementById('pv-url');
+
+  /* --- جابهجایی نماها --- */
+  document.querySelectorAll('#seg-view button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#seg-view button').forEach(function (x) { x.classList.remove('is-active'); });
+      b.classList.add('is-active');
+      document.querySelectorAll('.pv-view').forEach(function (v) { v.classList.remove('is-active'); });
+      document.getElementById('view-' + b.dataset.view).classList.add('is-active');
+      url.textContent = b.dataset.view === 'detail' ? '/sales/visits/218' : (b.dataset.view === 'states' ? '/sales/visits/new' : '/sales/visits/new');
+      measure();
+    });
+  });
+
+  /* --- تغییر اندازهٔ قاب (همان کاری که @container در اپ انجام میدهد) --- */
+  document.querySelectorAll('#seg-device button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#seg-device button').forEach(function (x) { x.classList.remove('is-active'); });
+      b.classList.add('is-active');
+      device.dataset.device = b.dataset.device;
+      measure();
+    });
+  });
+
+  /* --- Segmented Controlهای داخلی --- */
+  function bindSeg(root) {
+    root.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        root.querySelectorAll('button').forEach(function (x) { x.classList.remove('is-active'); });
+        b.classList.add('is-active');
+      });
+    });
+  }
+  document.querySelectorAll('.pv-seg, .pv-mini-seg').forEach(bindSeg);
+
+  /* --- قاعدهٔ وضعیت: «در انتظار تأیید» دکمهٔ ارسال ندارد --- */
+  function applyStatus() {
+    var s = document.getElementById('pv-status').value;
+    var canSubmit = s !== 'submitted';
+    document.querySelectorAll('[data-submit-btn]').forEach(function (b) { b.style.display = canSubmit ? '' : 'none'; });
+    document.querySelectorAll('[data-pending-note]').forEach(function (n) { n.style.display = canSubmit ? 'none' : ''; });
+    var labels = { submitted: 'در انتظار تأیید', draft: 'پیشنویس', returned: 'برگشتی برای اصلاح' };
+    var tones = { submitted: 'warning', draft: 'neutral', returned: 'danger' };
+    document.querySelectorAll('[data-status-badge]').forEach(function (x) {
+      x.textContent = labels[s]; x.dataset.tone = tones[s];
+    });
+  }
+  document.getElementById('pv-status').addEventListener('change', applyStatus);
+
+  /* --- اندازهگیری زندهٔ «بدون اسکرول داخلی» --- */
+  function measure() {
+    var active = document.querySelector('.pv-view.is-active');
+    if (!active) return;
+    var w = Math.round(screen.clientWidth);
+    var size = w >= 1080 ? 'desktop' : (w >= 720 ? 'tablet' : 'mobile');
+    screen.dataset.size = size;
+    var sizeNames = { desktop: 'دسکتاپ', tablet: 'تبلت', mobile: 'موبایل' };
+    sizeTag.textContent = w + 'px · ' + sizeNames[size];
+    var dense = size !== 'desktop';
+    var dchip = document.getElementById('pv-density');
+    dchip.textContent = dense ? 'تراکم فشرده' : 'تراکم عادی';
+    dchip.dataset.mode = dense ? 'compact' : 'normal';
+    document.getElementById('pv-height').textContent = 'ارتفاع نما: ' + Math.round(active.scrollHeight) + 'px';
+    var scrollers = 0, over = 0;
+    active.querySelectorAll('[data-no-scroll]').forEach(function (root) {
+      var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+      nodes.forEach(function (el) {
+        var cs = getComputedStyle(el);
+        if (cs.overflowX === 'auto' || cs.overflowX === 'scroll' || cs.overflowY === 'auto' || cs.overflowY === 'scroll') scrollers++;
+        var d = el.scrollWidth - el.clientWidth;
+        if (d > over) over = d;
+      });
+    });
+    var ok = scrollers === 0 && over <= 1;
+    var proof = document.getElementById('pv-proof-top');
+    proof.classList.toggle('is-bad', !ok);
+    proof.textContent = (ok ? '✓ بدون اسکرول' : '⚠ اسکرول داخلی')
+      + ' · ' + over + 'px · ' + w + 'px';
+  }
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { measure(); }).observe(screen);
+  }
+  window.addEventListener('resize', measure);
+
+  /* --- دموی لودینگ --- */
+  var demo = document.getElementById('pv-demo-load');
+  var toast = document.getElementById('pv-toast');
+  demo.addEventListener('click', function () {
+    if (demo.classList.contains('is-loading')) return;
+    demo.classList.add('is-loading'); toast.classList.remove('is-on');
+    setTimeout(function () {
+      demo.classList.remove('is-loading'); toast.classList.add('is-on');
+    }, 1200);
+  });
+
+
+  /* --- کمبوباکس کالا در هر سطر + ایجاد سطر با F2 --- */
+  function faNum(v) { return String(v).replace(/[0-9]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[+d]; }); }
+  function p2e(v) { return (v || '').replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }); }
+  function rowOf(el) { return el.closest ? el.closest('.pv-line') : null; }
+  function closeCombos(except) {
+    document.querySelectorAll('.pv-combo.is-open').forEach(function (c) {
+      if (c === except) return;
+      c.classList.remove('is-open');
+      var r = rowOf(c); if (r) r.classList.remove('is-open-row');
+    });
+  }
+  function filterCombo(combo, q) {
+    var shown = 0;
+    combo.querySelectorAll('.pv-combo-opt').forEach(function (o) {
+      var hay = (o.dataset.name + ' ' + o.dataset.code);
+      var ok = !q || hay.indexOf(q) >= 0;
+      var vis = ok && shown < 5;
+      o.style.display = vis ? '' : 'none';
+      o.classList.remove('is-active');
+      if (vis) shown++;
+    });
+    var empty = combo.querySelector('.pv-combo-empty');
+    if (empty) empty.style.display = shown ? 'none' : '';
+    return shown;
+  }
+  function openCombo(combo, focus) {
+    closeCombos(combo);
+    combo.classList.add('is-open');
+    var r = rowOf(combo); if (r) r.classList.add('is-open-row');
+    var inp = combo.querySelector('[data-combo-input]');
+    filterCombo(combo, (inp.value || '').trim());
+    if (focus && inp) inp.focus({ preventScroll: true });
+  }
+  function selectOption(opt) {
+    var combo = opt.closest('[data-combo]');
+    var inp = combo.querySelector('[data-combo-input]');
+    inp.value = opt.dataset.name;
+    var meta = combo.querySelector('[data-combo-meta]');
+    if (meta) meta.textContent = 'کد ' + opt.dataset.code + ' · واحد: ' + opt.dataset.unit;
+    var r = rowOf(combo);
+    var price = r && r.querySelector('.c-price .pv-input'); if (price) price.value = opt.dataset.price;
+    var total = r && r.querySelector('.pv-line-total b'); if (total) total.textContent = opt.dataset.price;
+    combo.classList.remove('is-open'); if (r) r.classList.remove('is-open-row');
+    measure();
+  }
+  function updateCount() {
+    var b = document.querySelector('#view-form .pv-sec-title .pv-badge');
+    if (b) b.textContent = faNum(document.querySelectorAll('#view-form .pv-lines .pv-line').length) + ' قلم';
+  }
+  function addRow() {
+    var lines = document.querySelector('#view-form .pv-lines');
+    var first = lines && lines.querySelector('.pv-line');
+    if (!first) return;
+    var row = first.cloneNode(true);
+    row.classList.remove('is-short', 'is-open-row');
+    var combo = row.querySelector('[data-combo]');
+    combo.classList.remove('is-open');
+    combo.querySelector('[data-combo-input]').value = '';
+    var meta = combo.querySelector('[data-combo-meta]');
+    if (meta) meta.textContent = 'کالایی انتخاب نشده است';
+    filterCombo(combo, '');
+    var qty = row.querySelector('.c-qty .pv-stepper input'); if (qty) qty.value = '۱';
+    var price = row.querySelector('.c-price .pv-input'); if (price) price.value = '۰';
+    var disc = row.querySelector('.c-disc .pv-disc-row .pv-input'); if (disc) disc.value = '۰';
+    var total = row.querySelector('.pv-line-total b'); if (total) total.textContent = '۰';
+    row.querySelectorAll('.pv-inline-note').forEach(function (n) { n.remove(); });
+    row.querySelectorAll('.pv-mini-seg button').forEach(function (b, i) { b.classList.toggle('is-active', i === 0); });
+    lines.appendChild(row);
+    closeCombos(null);
+    openCombo(combo, true);
+    updateCount();
+    measure();
+  }
+
+  document.getElementById('pv-f2-add').addEventListener('click', addRow);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F2') { e.preventDefault(); addRow(); return; }
+    if (e.key === 'Escape') { closeCombos(null); return; }
+    if (!e.target.matches || !e.target.matches('[data-combo-input]')) return;
+    var combo = e.target.closest('[data-combo]');
+    var vis = Array.prototype.filter.call(combo.querySelectorAll('.pv-combo-opt'), function (o) { return o.style.display !== 'none'; });
+    if (!vis.length) return;
+    var cur = vis.findIndex(function (o) { return o.classList.contains('is-active'); });
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cur >= 0) vis[cur].classList.remove('is-active');
+      var next = e.key === 'ArrowDown' ? (cur + 1) % vis.length : (cur <= 0 ? vis.length - 1 : cur - 1);
+      vis[next].classList.add('is-active');
+    } else if (e.key === 'Enter' && cur >= 0) {
+      e.preventDefault(); selectOption(vis[cur]);
+    }
+  });
+  document.addEventListener('input', function (e) {
+    if (!e.target.matches || !e.target.matches('[data-combo-input]')) return;
+    var combo = e.target.closest('[data-combo]');
+    if (!combo.classList.contains('is-open')) openCombo(combo, false);
+    filterCombo(combo, e.target.value.trim());
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var toggle = t.closest && t.closest('[data-combo-toggle]');
+    if (toggle) {
+      var combo = toggle.closest('[data-combo]');
+      if (t.matches('[data-combo-input]')) {
+        if (!combo.classList.contains('is-open')) openCombo(combo, false);
+      } else if (combo.classList.contains('is-open')) {
+        combo.classList.remove('is-open');
+        var r = rowOf(combo); if (r) r.classList.remove('is-open-row');
+      } else { openCombo(combo, false); }
+      return;
+    }
+    var opt = t.closest && t.closest('.pv-combo-opt');
+    if (opt) { selectOption(opt); return; }
+    var del = t.closest && t.closest('.c-del .pv-btn');
+    if (del) { var dr = rowOf(del); if (dr) { dr.remove(); updateCount(); measure(); } return; }
+    var step = t.closest && t.closest('.pv-stepper button');
+    if (step) {
+      var inp = step.parentElement.querySelector('input');
+      var v = parseFloat(p2e(inp.value)) || 0;
+      v = Math.max(0, v + (t.textContent.trim() === '+' ? 1 : -1));
+      inp.value = faNum(Math.round(v * 100) / 100);
+      return;
+    }
+    if (!(t.closest && t.closest('[data-combo]'))) closeCombos(null);
+  });
+
+  applyStatus();
+  measure();
+  setTimeout(measure, 260);
+})();
+</script>
+</body>
+</html>
