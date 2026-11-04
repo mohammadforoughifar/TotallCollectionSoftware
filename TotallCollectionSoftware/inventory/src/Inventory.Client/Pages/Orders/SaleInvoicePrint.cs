@@ -76,11 +76,14 @@ public static class SaleInvoicePrint
         sb.Append("<section class=\"section\"><div class=\"section-head\"><span class=\"step\">۱</span><div><h2>اقلام سند</h2><small>")
             .Append(lines.Count.Num()).Append(" قلم</small></div></div>");
         var hasLineDiscount = lines.Any(l => l.DiscountAmount > 0);
-        var totalGross = lines.Sum(l => l.Quantity * l.Price);
+        var totalGross = lines.Sum(l => l.Gross);
         var totalDiscount = lines.Sum(l => l.DiscountAmount);
+        var hasVat = lines.Any(l => l.VatValue > 0 || l.VatAmount > 0);
+        var totalVat = lines.Sum(l => l.VatAmount);
 
         sb.Append("<table><thead><tr><th class=\"num-col\">ردیف</th><th>شرح کالا / خدمت</th><th>واحد</th><th class=\"qty-col\">تعداد</th><th class=\"money-col\">فی (ریال)</th>");
         if (hasLineDiscount) sb.Append("<th class=\"money-col\">تخفیف</th>");
+        if (hasVat) sb.Append("<th class=\"money-col\">پس از تخفیف</th><th class=\"money-col\">ارزش افزوده</th>");
         sb.Append("<th class=\"money-col\">مبلغ (ریال)</th></tr></thead><tbody>");
         for (var i = 0; i < lines.Count; i++)
         {
@@ -106,10 +109,17 @@ public static class SaleInvoicePrint
                     sb.Append("—");
                 }
             }
+            if (hasVat)
+            {
+                sb.Append("</td><td class=\"money-cell\">").Append(line.AfterDiscount.Money());
+                sb.Append("</td><td class=\"money-cell\">").Append(line.VatAmount.Money());
+                if (line.VatValue > 0 && line.VatValue <= 100)
+                    sb.Append(" <small class=\"text-muted\">(").Append(line.VatValue.ToString("0.##")).Append("٪)</small>");
+            }
             sb.Append("</td><td class=\"money-cell total-cell\">").Append(line.Total.Money()).Append("</td></tr>");
         }
         if (lines.Count == 0)
-            sb.Append("<tr><td colspan=\"" + (hasLineDiscount ? "7" : "6") + "\" class=\"empty\">برای این سند ردیفی ثبت نشده است.</td></tr>");
+            sb.Append("<tr><td colspan=\"" + ((hasLineDiscount ? 7 : 6) + (hasVat ? 2 : 0)) + "\" class=\"empty\">برای این سند ردیفی ثبت نشده است.</td></tr>");
         sb.Append("</tbody></table></section>");
 
         // ---------- توضیحات ----------
@@ -117,11 +127,13 @@ public static class SaleInvoicePrint
             sb.Append("<div class=\"desc\"><span>توضیحات: </span>").Append(Esc(order.Description)).Append("</div>");
 
         // ---------- جمع کل ----------
-        if (hasLineDiscount && totalDiscount > 0)
+        if ((hasLineDiscount && totalDiscount > 0) || hasVat)
         {
             sb.Append("<div style=\"margin-top:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;font-size:10.5px;\">");
             sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>جمع اقلام (ناخالص):</span><b class=\"num\">").Append(totalGross.Money()).Append(" ریال</b></div>");
             sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;color:#dc2626;\"><span>تخفیف کل اقلام:</span><b class=\"num\">- ").Append(totalDiscount.Money()).Append(" ریال</b></div>");
+            if (hasVat)
+                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>ارزش افزوده:</span><b class=\"num\">").Append(totalVat.Money()).Append(" ریال</b></div>");
             sb.Append("</div>");
         }
 

@@ -29,8 +29,11 @@
     @if (open)
     {
         @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
-        <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
-        <div class="ss-menu" style="@MenuStyle" @onclick:stopPropagation="true">
+        @if (!ConstrainToModal)
+        {
+            <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
+        }
+        <div class="ss-menu" style="@MenuStyle" data-order-constrained="@(ConstrainToModal ? "true" : null)" @ref="_menu" @onclick:stopPropagation="true">
             @if (matches.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
@@ -86,6 +89,25 @@
     /// <summary>نمایش دکمه «پاک کردن» وقتی مقداری انتخاب شده است (پیش‌فرض: فعال)</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
 
+    /// <summary>پس از انتخاب با Enter در فرم فاکتور، به ورودی بعدی برود.</summary>
+    [Parameter] public bool AdvanceOnEnter { get; set; }
+
+    /// <summary>نمایش همه گزینه‌ها هنگام فوکوس و محدود کردن منو به محدوده فرم فاکتور.</summary>
+    [Parameter] public bool ShowAllOnFocus { get; set; }
+    [Parameter] public bool ConstrainToModal { get; set; }
+    private bool showAll;
+    private ElementReference _menu;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (open && ConstrainToModal)
+        {
+            try { await JS.InvokeVoidAsync("orderEntry.placeSearchMenu", _input, _menu); }
+            catch (JSException) { }
+        }
+    }
+
+
     /// <summary>اعلان متن جستجو برای بارگیری گزینه‌ها از سرور؛ انتخابگر همچنان با لیست محدود دریافتی کار می‌کند.</summary>
     [Parameter] public EventCallback<string> SearchChanged { get; set; }
 
@@ -120,7 +142,7 @@
     /// </summary>
     private void RebuildMatches()
     {
-        var q = (query ?? "").Trim();
+        var q = showAll ? "" : (query ?? "").Trim();
         var starts = new List<LookupItem>(Math.Min(MaxVisible, 32)); // نامی که با متن شروع می‌شود
         var contains = new List<LookupItem>(Math.Min(MaxVisible, 32)); // بقیهٔ تطبیق‌ها
         var total = 0;
@@ -173,7 +195,7 @@
 
     protected override void OnParametersSet()
     {
-        if (Value > 0 && string.IsNullOrEmpty(query))
+        if (Value > 0 && (!focused || string.IsNullOrEmpty(query)))
         {
             var sel = Items.FirstOrDefault(i => i.Id == Value);
             if (sel is not null) query = sel.Name;
@@ -192,7 +214,9 @@
     private async Task OnFocus()
     {
         focused = true;
+        showAll = ShowAllOnFocus;
         await OpenMenu();
+        if (!focused) { open = false; return; }
         highlightIndex = 0;
         if (Value > 0)
         {
@@ -230,6 +254,7 @@
     private async Task OnInput(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? "";
+        showAll = false;
         highlightIndex = 0;
         RebuildMatches(); // فهرست فقط یک‌بار برای همین متن ساخته می‌شود (نه در هر رندر)
         if (!open) await OpenMenu();
@@ -249,7 +274,20 @@
             return;
         }
 
-        if (matches.Count == 0) return;
+        if (e.Key == "Escape")
+        {
+            CloseMenu();
+            return;
+        }
+        if (matches.Count == 0)
+        {
+            if (e.Key == "Enter" && AdvanceOnEnter)
+            {
+                CloseMenu();
+                try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); } catch (JSException) { }
+            }
+            return;
+        }
 
         if (e.Key == "ArrowDown")
         {
@@ -275,11 +313,12 @@
             {
                 var clamped = Math.Clamp(highlightIndex, 0, matches.Count - 1);
                 await Select(matches[clamped]);
+                if (AdvanceOnEnter)
+                {
+                    try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); }
+                    catch (JSException) { }
+                }
             }
-        }
-        else if (e.Key == "Escape")
-        {
-            CloseMenu();
         }
     }
 
@@ -296,6 +335,7 @@
     {
         focused = false;
         await Task.Delay(160);
+        if (focused) return;
         open = false;
         // اگر متن انتخابی مطابق نیست، برگرد به نام گزینه انتخاب‌شده
         var sel = Items.FirstOrDefault(i => i.Id == Value);
@@ -306,6 +346,7 @@
     private async Task Select(LookupItem item)
     {
         query = item.Name;
+        showAll = false;
         open = false;
         RebuildMatches();
         if (Value != item.Id)

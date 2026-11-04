@@ -6,7 +6,7 @@
 
 <Modal Visible="Visible" Title="@Title" Size="modal-lg" OnClose="Close">
     <ChildContent>
-        <div class="row g-3">
+        <div class="row g-3" data-order-child="@InvoiceFormKey">
             <!-- نوع حساب -->
             <div class="col-md-6">
                 <label class="form-label fs-8 fw-bold">نوع حساب <span class="text-danger">*</span></label>
@@ -36,13 +36,23 @@
                 <div class="col-md-6">
                     <label class="form-label fs-8 fw-bold">انتخاب سریع بانک</label>
                     <div class="input-group">
-                        <select class="form-select form-select-sm" value="@selectedBank" @onchange="OnQuickBankPick">
-                            <option value="">— انتخاب از لیست بانک‌ها —</option>
-                            @foreach (var b in AllBanks)
-                            {
-                                <option value="@b">@b</option>
-                            }
-                        </select>
+                        @if (!string.IsNullOrWhiteSpace(InvoiceFormKey))
+                        {
+                            <div class="flex-grow-1" style="min-width:0">
+                                <SearchSelectStr Items="@(AllBanks.ToList())" Value="@selectedBank" ValueChanged="@(name => OnQuickBankPick(new ChangeEventArgs { Value = name }))"
+                                                 Placeholder="انتخاب از لیست بانک‌ها" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="true" />
+                            </div>
+                        }
+                        else
+                        {
+                            <select class="form-select form-select-sm" value="@selectedBank" @onchange="OnQuickBankPick">
+                                <option value="">— انتخاب از لیست بانک‌ها —</option>
+                                @foreach (var b in AllBanks)
+                                {
+                                    <option value="@b">@b</option>
+                                }
+                            </select>
+                        }
                         <button type="button" class="btn btn-outline-primary" title="مدیریت و افزودن بانک" aria-label="مدیریت و افزودن بانک" @onclick="OpenBankManager">
                             <i class="bi bi-plus-lg"></i>
                         </button>
@@ -121,9 +131,9 @@
 
     <Footer>
         <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@saving">
-            انصراف
+            انصراف (Esc)
         </button>
-        <button type="button" class="btn btn-primary" @onclick="Save" disabled="@saving">
+        <button type="button" class="btn btn-primary" data-hotkey="@(InvoiceFormKey is null ? null : "f1")" @onclick="Save" disabled="@saving">
             @if (saving)
             {
                 <span class="spinner-border spinner-border-sm ms-1" role="status"></span>
@@ -132,7 +142,7 @@
             else
             {
                 <i class="bi bi-check-lg ms-1"></i>
-                <span>ثبت و انتخاب بانک</span>
+                <span>ثبت و انتخاب بانک@(InvoiceFormKey is null ? "" : " (F1)")</span>
             }
         </button>
     </Footer>
@@ -179,6 +189,8 @@
 </Modal>
 
 @code {
+    /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
+    [Parameter] public string? InvoiceFormKey { get; set; }
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     [Parameter] public EventCallback<TrsAccount> OnAccountCreated { get; set; }

@@ -342,6 +342,11 @@
                     <input type="number" step="any" class="form-control num" @bind="form.VatRate" dir="ltr" disabled="@(!form.IsVatIncluded)" />
                 </div>
                 <div class="col-md-3">
+                    <label class="form-label">ارزش افزوده پیش‌فرض فاکتور خرید/فروش</label>
+                    <input type="number" min="0" step="0.01" class="form-control num" @bind="form.InvoiceVatValue" dir="ltr" />
+                    <div class="fs-8 text-muted">تا ۱۰۰ درصد؛ بالاتر از ۱۰۰ ریال. این مقدار برای فاکتور خرید/فروش مستقل از نرخ مودیان است.</div>
+                </div>
+                <div class="col-md-3">
                     <label class="form-label">نرخ عوارض (٪)</label>
                     <input type="number" step="any" class="form-control num" @bind="form.DutyRate" dir="ltr" />
                 </div>
@@ -1327,6 +1332,14 @@
         form.ReorderPoint = Fa.ParseDecimal(fReorder);
         form.MaxStock = Fa.ParseDecimal(fMax);
         form.MinOrderQty = Fa.ParseDecimal(fMinOrder);
+
+        form.InvoiceVatValue ??= 0;
+        if (!OrderLineAmounts.IsValidVatValue(form.InvoiceVatValue.Value))
+        {
+            Toast.Error("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            tab = 1;
+            return;
+        }
 
         saving = true;
         try
