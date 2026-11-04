@@ -34,6 +34,9 @@ public class Transaction : ICompanyOwned
     /// <summary>نوع دریافت نقدی (نقد/کارت‌خوان/کارت به کارت) — برای نقدی یا بخش نقدی پرداخت ترکیبی</summary>
     public CashType? CashType { get; set; }
 
+    [MaxLength(100)]
+    public string? CashTrackingNumber { get; set; }
+
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط + مقداری نقد)</summary>
     public decimal CashAmount { get; set; }
 

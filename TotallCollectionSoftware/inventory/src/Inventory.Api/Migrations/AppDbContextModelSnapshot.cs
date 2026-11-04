@@ -1917,6 +1917,9 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("OriginalDueDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsCleared")
                         .HasColumnType("bit");
 
@@ -5944,6 +5947,9 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("bit");
 
                     b.Property<int?>("CashAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ChequeIncomeAccountId")
                         .HasColumnType("int");
 
                     b.Property<string>("Description")
@@ -11646,6 +11652,10 @@ namespace Inventory.Api.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<decimal?>("InvoiceVatValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -13665,6 +13675,46 @@ namespace Inventory.Api.Migrations
                     b.ToTable("Technicians");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.SaleChequeCharge", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<int>("TransactionId").HasColumnType("int");
+                    b.Property<decimal>("BaseAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("RatePercent").HasPrecision(18, 6).HasColumnType("decimal(18,6)");
+                    b.Property<int>("PeriodDays").HasColumnType("int");
+                    b.Property<decimal?>("CalculatorBaseAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal?>("CalculatorRatePercent").HasPrecision(18, 6).HasColumnType("decimal(18,6)");
+                    b.Property<int?>("CalculatorMonths").HasColumnType("int");
+                    b.Property<int?>("IncomeAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
+                    b.Property<decimal>("InitialAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("CustomerCredit").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.HasKey("Id");
+                    b.HasIndex("TransactionId").IsUnique();
+                    b.ToTable("SaleChequeCharges");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.SaleChequeChargeEvent", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<Guid>("OperationId").HasColumnType("uniqueidentifier");
+                    b.Property<int>("SaleChequeChargeId").HasColumnType("int");
+                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int>("Kind").HasColumnType("int");
+                    b.Property<DateTime>("Date").HasColumnType("datetime2");
+                    b.Property<decimal>("IncomeDelta").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.HasKey("Id");
+                    b.HasIndex("OperationId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("SaleChequeChargeId", "Date");
+                    b.ToTable("SaleChequeChargeEvents");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.Transaction", b =>
                 {
                     b.Property<int>("Id")
@@ -13683,6 +13733,10 @@ namespace Inventory.Api.Migrations
 
                     b.Property<int?>("CashType")
                         .HasColumnType("int");
+
+                    b.Property<string>("CashTrackingNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -13752,6 +13806,18 @@ namespace Inventory.Api.Migrations
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)");
+
+                    b.Property<decimal?>("GrossAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("VatValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("TransactionId")
                         .HasColumnType("int");
@@ -16339,6 +16405,26 @@ namespace Inventory.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.SaleChequeCharge", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.Transaction", "Transaction")
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                    b.Navigation("Transaction");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.SaleChequeChargeEvent", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.SaleChequeCharge", "SaleChequeCharge")
+                        .WithMany().HasForeignKey("SaleChequeChargeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher")
+                        .WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("SaleChequeCharge");
+                    b.Navigation("AccVoucher");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.TransactionLine", b =>

@@ -13,12 +13,15 @@ public class OperationsReportsService : IOperationsReportsService
     public OperationsReportsService(AppDbContext db) => _db = db;
 
     public async Task<OperationsOrderReportDto> GetOrderReportAsync(TransactionType type, DateTime? from, DateTime? to,
-        int? partyId, int? warehouseId)
+        int? partyId, int? warehouseId, bool? hasChequeIncome = null)
     {
         EnsureOrderType(type);
         (from, to) = NormalizeRange(from, to);
 
-        var documents = await OrderQuery(type, from, to, partyId, warehouseId)
+        var query = OrderQuery(type, from, to, partyId, warehouseId);
+        if (hasChequeIncome.HasValue)
+            query = query.Where(t => _db.SaleChequeCharges.Any(c => c.TransactionId == t.Id && c.Amount > 0) == hasChequeIncome.Value);
+        var documents = await query
             .Include(t => t.Lines)
             .OrderBy(t => t.Date).ThenBy(t => t.Id)
             .ToListAsync();
@@ -29,6 +32,15 @@ public class OperationsReportsService : IOperationsReportsService
             : await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
 
+        var documentIds = documents.Select(t => t.Id).ToList();
+        var charges = await _db.SaleChequeCharges.AsNoTracking()
+            .Where(c => documentIds.Contains(c.TransactionId))
+            .Select(c => new { c.TransactionId, c.Amount }).ToListAsync();
+        var chargeById = charges.ToDictionary(c => c.TransactionId, c => c.Amount);
+        if (documents.Any(t => chargeById.TryGetValue(t.Id, out var charge) && (charge < 0 || charge > t.Amount)))
+            throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ یکی از فاکتورها مطابقت ندارد.");
+        var chequeIncomeTotal = charges.Sum(c => c.Amount);
+
         var result = new OperationsOrderReportDto
         {
             Type = type,
@@ -37,11 +49,13 @@ public class OperationsReportsService : IOperationsReportsService
             DocumentCount = documents.Count,
             LineCount = documents.Sum(t => t.Lines.Count),
             TotalQuantity = documents.Sum(t => t.Lines.Sum(l => l.Quantity)),
-            TotalAmount = documents.Sum(t => t.Amount)
+            TotalAmount = documents.Sum(t => t.Amount),
+            GoodsAmount = documents.Sum(t => t.Amount) - chequeIncomeTotal,
+            ChequeIncomeAmount = chequeIncomeTotal
         };
         result.AverageDocumentAmount = result.DocumentCount == 0
             ? 0m
-            : result.TotalAmount / result.DocumentCount;
+            : result.GoodsAmount / result.DocumentCount;
 
         var groupByDay = GroupByDay(from, to, documents.Select(t => t.Date));
         result.Trend = documents
@@ -52,7 +66,7 @@ public class OperationsReportsService : IOperationsReportsService
                 PeriodStart = g.Key,
                 Label = PeriodLabel(g.Key, groupByDay),
                 DocumentCount = g.Count(),
-                Amount = g.Sum(t => t.Amount)
+                Amount = g.Sum(t => t.Amount - chargeById.GetValueOrDefault(t.Id))
             })
             .ToList();
 
@@ -65,13 +79,53 @@ public class OperationsReportsService : IOperationsReportsService
                 PartyName = partyNames.TryGetValue(g.Key, out var name) ? name : "—",
                 DocumentCount = g.Count(),
                 TotalQuantity = g.Sum(t => t.Lines.Sum(l => l.Quantity)),
-                TotalAmount = g.Sum(t => t.Amount)
+                TotalAmount = g.Sum(t => t.Amount - chargeById.GetValueOrDefault(t.Id))
             })
             .OrderByDescending(p => p.TotalAmount)
             .ThenBy(p => p.PartyName)
             .Take(10)
             .ToList();
 
+        return result;
+    }
+
+    public async Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from, DateTime? to, int? partyId)
+    {
+        (from, to) = NormalizeRange(from, to);
+        var query = _db.SaleChequeChargeEvents.AsNoTracking()
+            .Include(e => e.SaleChequeCharge).ThenInclude(c => c.Transaction)
+            .Include(e => e.AccVoucher).ThenInclude(v => v.Lines)
+            .Where(e => e.AccVoucher.Status == VoucherStatus.Confirmed &&
+                        e.SaleChequeCharge.Transaction.Type == TransactionType.Sale);
+        if (from.HasValue) query = query.Where(e => e.AccVoucher.Date >= from.Value);
+        if (to.HasValue)
+        {
+            var end = EndExclusive(to.Value);
+            query = query.Where(e => e.AccVoucher.Date < end);
+        }
+        if (partyId is > 0) query = query.Where(e => e.SaleChequeCharge.Transaction.PartyId == partyId);
+        var events = await query.OrderBy(e => e.AccVoucher.Date).ThenBy(e => e.AccVoucherId).ToListAsync();
+        var ids = events.Select(e => e.SaleChequeCharge.Transaction.PartyId).Where(id => id.HasValue)
+            .Select(id => id!.Value).Distinct().ToList();
+        var names = await _db.Parties.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);
+        var result = new ChequeIncomeReportDto { From = from, To = to };
+        foreach (var item in events)
+        {
+            var sale = item.SaleChequeCharge.Transaction;
+            var incomeAccountId = item.SaleChequeCharge.IncomeAccountId
+                ?? throw new InvalidOperationException("حساب درآمد ثبت‌شده برای گردش تاخیر تادیه چک مشخص نیست.");
+            var incomeLines = item.AccVoucher.Lines.Where(l => l.AccountId == incomeAccountId).ToList();
+            var income = incomeLines.Sum(l => l.Credit - l.Debit);
+            if (incomeLines.Count == 0 || income != item.IncomeDelta)
+                throw new InvalidOperationException("گردش تاخیر تادیه چک با آرتیکل سند حسابداری مطابقت ندارد.");
+            result.Rows.Add(new ChequeIncomeReportRow
+            {
+                Date = item.AccVoucher.Date, SaleId = sale.Id, SaleNumber = sale.Number,
+                PartyId = sale.PartyId, PartyName = sale.PartyId.HasValue && names.TryGetValue(sale.PartyId.Value, out var name) ? name : "—",
+                VoucherNumber = item.AccVoucher.Number, Kind = item.Kind, Income = income
+            });
+            result.TotalIncome += income;
+        }
         return result;
     }
 
@@ -87,12 +141,23 @@ public class OperationsReportsService : IOperationsReportsService
             var query = _db.Transactions.AsNoTracking()
                 .Where(t => t.Type == TransactionType.Purchase || t.Type == TransactionType.Sale);
             query = ApplyDateRange(query, from, to);
-            var rows = await query.Select(t => new { t.Type, t.Date, t.Amount, t.ReferrerId }).ToListAsync();
+            var rows = await query.Select(t => new { t.Id, t.Type, t.Date, t.Amount, t.ReferrerId }).ToListAsync();
+            var chargeQuery = _db.SaleChequeCharges.AsNoTracking()
+                .Where(c => c.Transaction.Type == TransactionType.Sale);
+            if (from.HasValue) chargeQuery = chargeQuery.Where(c => c.Transaction.Date >= from.Value.Date);
+            if (to.HasValue)
+            {
+                var end = EndExclusive(to.Value);
+                chargeQuery = chargeQuery.Where(c => c.Transaction.Date < end);
+            }
+            var chequeIncomes = await chargeQuery.ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
             transactions = rows.Select(t => new TransactionReportRow
             {
                 Type = t.Type,
                 Date = t.Date,
-                Amount = t.Amount,
+                Amount = t.Type == TransactionType.Sale
+                    ? SaleChequeChargeMath.GoodsTotal(t.Amount, chequeIncomes.GetValueOrDefault(t.Id))
+                    : t.Amount,
                 ReferrerId = t.ReferrerId
             }).ToList();
 

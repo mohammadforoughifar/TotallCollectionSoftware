@@ -227,25 +227,36 @@ public class OrderService : IOrderService
     private readonly IApiClient _api;
     public OrderService(IApiClient api) => _api = api;
 
-    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20)
+    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null)
     {
         var q = $"api/orders?type={(int)type}&page={page}&pageSize={pageSize}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         if (partyId is > 0) q += $"&partyId={partyId}";
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        if (hasChequeIncome.HasValue) q += $"&hasChequeIncome={hasChequeIncome.Value.ToString().ToLowerInvariant()}";
         return _api.GetAsync<PagedResult<Order>>(q);
     }
 
     public Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
-        int? partyId = null, int? warehouseId = null)
+        int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null)
     {
         var q = $"api/operations/reports/orders?type={(int)type}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         if (partyId is > 0) q += $"&partyId={partyId}";
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        if (hasChequeIncome.HasValue) q += $"&hasChequeIncome={hasChequeIncome.Value.ToString().ToLowerInvariant()}";
         return _api.GetAsync<OperationsOrderReportDto>(q);
+    }
+
+    public Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from = null, DateTime? to = null, int? partyId = null)
+    {
+        var q = "api/operations/reports/cheque-income?";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        if (partyId is > 0) q += $"&partyId={partyId}";
+        return _api.GetAsync<ChequeIncomeReportDto>(q);
     }
 
     public Task<Order?> GetAsync(int id)

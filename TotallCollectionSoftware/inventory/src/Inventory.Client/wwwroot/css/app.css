@@ -4003,3 +4003,8 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 
 /* یکپارچگی سربرگ و نشانگر مراحل در فرم خرید */
 .modal-header.purchase-order-header { background: #fff; }
+
+/* Wider invoice workspace keeps the item table on one line on desktop. */
+@media (min-width: 992px) {
+    .modal-dialog.invoice-dialog { max-width: min(96vw, 1600px); }
+}

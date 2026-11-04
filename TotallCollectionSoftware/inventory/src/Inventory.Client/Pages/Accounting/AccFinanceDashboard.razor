@@ -129,6 +129,10 @@ else
                 </div>
                 <div class="card-body">
                     @RenderBar("درآمدها", data.IncomeTotal, "bg-success")
+                    <div class="d-flex justify-content-between text-muted fs-8 mb-2">
+                        <span>از جمله تاخیر تادیه چک (مالی/غیرعملیاتی)</span>
+                        <b class="num">@data.ChequeIncomeTotal.Money() ریال</b>
+                    </div>
                     @RenderBar("هزینه‌ها", data.ExpenseTotal, "bg-warning")
 
                     <div class="d-flex justify-content-between border-top pt-2 mt-3">

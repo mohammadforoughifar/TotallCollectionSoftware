@@ -195,6 +195,10 @@ public class FacRule
     public int? ShippingAccountId { get; set; }
     public string? ShippingAccountName { get; set; }
 
+    /// <summary>حساب مستقل درآمد تاخیر تادیه چک؛ null در کلاینت قدیمی به معنی عدم تغییر است.</summary>
+    public int? ChequeIncomeAccountId { get; set; }
+    public string? ChequeIncomeAccountName { get; set; }
+
     /// <summary>با قطعی شدن فاکتور، سند انبار خودکار صادر و قطعی شود</summary>
     public bool AutoInvDoc { get; set; } = true;
 

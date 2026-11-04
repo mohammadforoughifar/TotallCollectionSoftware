@@ -12,6 +12,9 @@ public class OperationsOrderReportDto
     public int LineCount { get; set; }
     public decimal TotalQuantity { get; set; }
     public decimal TotalAmount { get; set; }
+    /// <summary>مبلغ کالا و خدمات با ارزش افزوده و بدون تاخیر تادیه چک.</summary>
+    public decimal GoodsAmount { get; set; }
+    public decimal ChequeIncomeAmount { get; set; }
     public decimal AverageDocumentAmount { get; set; }
     public List<OperationsOrderTrendPoint> Trend { get; set; } = new();
     public List<OperationsPartyReportRow> TopParties { get; set; } = new();
@@ -98,4 +101,26 @@ public class OperationsDashboardTrendPoint
     public decimal RepairProfit { get; set; }
     public decimal RepairPartsCost { get; set; }
     public decimal RepairLaborCost { get; set; }
+}
+
+/// <summary>گردش قطعی تاخیر تادیه چک بر حسب تاریخ سند و مشتری.</summary>
+public class ChequeIncomeReportDto
+{
+    public DateTime? From { get; set; }
+    public DateTime? To { get; set; }
+    public decimal TotalIncome { get; set; }
+    public List<ChequeIncomeReportRow> Rows { get; set; } = new();
+}
+
+public class ChequeIncomeReportRow
+{
+    public DateTime Date { get; set; }
+    public int SaleId { get; set; }
+    public string SaleNumber { get; set; } = "";
+    public int? PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public int VoucherNumber { get; set; }
+    public SaleChequeChargeEventKind Kind { get; set; }
+    /// <summary>خالص بستانکار منهای بدهکار درآمد؛ کاهش و برگشت منفی هستند.</summary>
+    public decimal Income { get; set; }
 }

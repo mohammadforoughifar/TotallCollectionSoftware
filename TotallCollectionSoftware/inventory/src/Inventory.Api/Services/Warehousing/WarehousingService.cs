@@ -535,6 +535,7 @@ public class WarehousingService : IWarehousingService
             IsActive = true,
             Unit = "عدد",
             VatRate = whSettings.DefaultVatRate > 0 ? whSettings.DefaultVatRate : 10,
+            InvoiceVatValue = 0,
             IsVatIncluded = true,
             CategoryId = categoryId is > 0 ? categoryId : null,
             EffectiveValuation = settingsMethod,
@@ -641,6 +642,9 @@ public class WarehousingService : IWarehousingService
         entity.TaxUnitCode = NullIfEmpty(dto.TaxUnitCode);
         entity.IsVatIncluded = dto.IsVatIncluded;
         entity.VatRate = dto.VatRate;
+        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+            throw new InvalidOperationException("ارزش افزوده فاکتور باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
         entity.DutyRate = dto.DutyRate;
         entity.OtherTaxRate = dto.OtherTaxRate;
         entity.CustomsCode = NullIfEmpty(dto.CustomsCode);
@@ -859,6 +863,7 @@ public class WarehousingService : IWarehousingService
             TaxUnitCode = p.TaxUnitCode,
             IsVatIncluded = p.IsVatIncluded,
             VatRate = p.VatRate,
+            InvoiceVatValue = p.InvoiceVatValue ?? (p.IsVatIncluded && p.VatRate >= 0 && p.VatRate <= 100 ? p.VatRate : 0),
             DutyRate = p.DutyRate,
             OtherTaxRate = p.OtherTaxRate,
             CustomsCode = p.CustomsCode,

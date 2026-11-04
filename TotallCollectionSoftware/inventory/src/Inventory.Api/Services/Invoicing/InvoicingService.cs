@@ -730,6 +730,8 @@ public class InvoicingService : IInvoicingService
     /// </summary>
     public async Task<int?> PostStoreSaleVoucherAsync(int saleId, string? user)
     {
+        if (await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == saleId))
+            throw new InvalidOperationException("صدور سند قدیمی برای فاکتور دارای تاخیر تادیه چک مجاز نیست.");
         var existing = await _db.AccVouchers.AsNoTracking()
             .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);
         if (existing is not null) return existing.Id;
@@ -833,6 +835,8 @@ public class InvoicingService : IInvoicingService
 
     public async Task UnpostStoreSaleVoucherAsync(int saleId)
     {
+        if (await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == saleId))
+            throw new InvalidOperationException("حذف سند قدیمی برای فاکتور دارای تاخیر تادیه چک مجاز نیست.");
         var voucher = await _db.AccVouchers.Include(v => v.Lines)
             .FirstOrDefaultAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == saleId);
         if (voucher is null) return;
@@ -870,7 +874,7 @@ public class InvoicingService : IInvoicingService
         if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync();
         rules = await _db.FacRules.AsNoTracking().OrderBy(r => r.Kind).ThenBy(r => r.Id).ToPageListAsync(pagination);
 
-        var accIds = rules.SelectMany(r => new[] { r.PartyAccountId, r.MainAccountId, r.VatAccountId, r.CashAccountId, r.ShippingAccountId })
+        var accIds = rules.SelectMany(r => new[] { r.PartyAccountId, r.MainAccountId, r.VatAccountId, r.CashAccountId, r.ShippingAccountId, r.ChequeIncomeAccountId })
             .Where(x => x is not null).Select(x => x!.Value).Distinct().ToList();
         var accounts = await _db.AccAccounts.AsNoTracking().Where(a => accIds.Contains(a.Id))
             .ToDictionaryAsync(a => a.Id, a => $"{a.Code} — {a.Name}");
@@ -897,6 +901,8 @@ public class InvoicingService : IInvoicingService
             CashAccountName = Name(r.CashAccountId),
             ShippingAccountId = r.ShippingAccountId,
             ShippingAccountName = Name(r.ShippingAccountId),
+            ChequeIncomeAccountId = r.ChequeIncomeAccountId,
+            ChequeIncomeAccountName = Name(r.ChequeIncomeAccountId),
             AutoInvDoc = r.AutoInvDoc,
             AutoVoucher = r.AutoVoucher,
             IsActive = r.IsActive,
@@ -919,6 +925,20 @@ public class InvoicingService : IInvoicingService
         e.VatAccountId = dto.VatAccountId is > 0 ? dto.VatAccountId : null;
         e.CashAccountId = dto.CashAccountId is > 0 ? dto.CashAccountId : null;
         e.ShippingAccountId = dto.ShippingAccountId is > 0 ? dto.ShippingAccountId : null;
+        // null means an older client omitted this setting; explicit zero clears it.
+        if (dto.ChequeIncomeAccountId.HasValue)
+            e.ChequeIncomeAccountId = dto.ChequeIncomeAccountId > 0 ? dto.ChequeIncomeAccountId : null;
+        if (e.ChequeIncomeAccountId is > 0)
+        {
+            if (e.Kind != InvoiceKind.Sale)
+                throw new InvalidOperationException("حساب درآمد تاخیر تادیه چک فقط در قاعده فروش قابل تنظیم است.");
+            var income = await _db.AccAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == e.ChequeIncomeAccountId)
+                ?? throw new InvalidOperationException("حساب درآمد تاخیر تادیه چک یافت نشد.");
+            if (!income.IsActive || !income.IsPostable || income.Type != AccountType.Income || income.IsPermanent)
+                throw new InvalidOperationException("حساب تاخیر تادیه چک باید حساب درآمد موقت، فعال و قابل ثبت باشد.");
+            if (new[] { e.PartyAccountId, e.MainAccountId, e.VatAccountId, e.CashAccountId, e.ShippingAccountId }.Contains(e.ChequeIncomeAccountId))
+                throw new InvalidOperationException("حساب درآمد تاخیر تادیه چک باید از حساب‌های دیگر فاکتور مستقل باشد.");
+        }
         e.AutoInvDoc = dto.AutoInvDoc;
         e.AutoVoucher = dto.AutoVoucher;
         e.Description = dto.Description;

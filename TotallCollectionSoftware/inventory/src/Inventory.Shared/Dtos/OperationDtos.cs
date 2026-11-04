@@ -15,7 +15,12 @@ public class OrderLine
     public decimal DiscountPercent { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool DiscountIsAmount { get; set; }
-    public decimal Total => Math.Max(0, (Quantity * Price) - DiscountAmount);
+    public decimal? GrossAmount { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal VatAmount { get; set; }
+    public decimal Gross => GrossAmount ?? (Quantity * Price);
+    public decimal AfterDiscount => Math.Max(0, Gross - DiscountAmount);
+    public decimal Total => AfterDiscount + VatAmount;
 
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
@@ -44,6 +49,10 @@ public class Order
     public string Description { get; set; } = "";
     public List<OrderLine> Lines { get; set; } = new();
     public decimal TotalAmount { get; set; }
+    /// <summary>ردیف مستقل درآمد تاخیر تادیه چک؛ فاکتورهای قدیمی صفر دارند.</summary>
+    public decimal ChequeIncomeAmount { get; set; }
+    /// <summary>کالا و خدمات شامل ارزش افزوده، بدون ردیف چک.</summary>
+    public decimal GoodsAmount => TotalAmount - ChequeIncomeAmount;
 
     /// <summary>معرف (بازاریاب) سند فروش</summary>
     public int? ReferrerId { get; set; }
@@ -61,6 +70,7 @@ public class Order
     // ---------- پرداخت (فقط فروش) ----------
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
     public CashType? CashType { get; set; }
+    public string? CashTrackingNumber { get; set; }
 
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی</summary>
     public decimal CashAmount { get; set; }
@@ -97,6 +107,7 @@ public class OrderCommand
     // ---------- پرداخت (فقط فروش) ----------
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
     public CashType? CashType { get; set; }
+    public string? CashTrackingNumber { get; set; }
 
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط)</summary>
     public decimal CashAmount { get; set; }
@@ -150,6 +161,8 @@ public class OrderLineInput
     public decimal DiscountPercent { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool DiscountIsAmount { get; set; }
+    /// <summary>خالی در ویرایش توسط کلاینت قدیمی، snapshot فعلی را حفظ می‌کند.</summary>
+    public decimal? VatValue { get; set; }
 
     /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
     [JsonIgnore]
@@ -485,6 +498,10 @@ public class PartyStatementDetailDto
     public PartyType PartyType { get; set; }
     public PartyType Type => PartyType;
     public decimal OpeningBalance { get; set; } // مثبت = بدهکار اولیه، منفی = بستانکار اولیه
+    /// <summary>جمع فروش کالا و خدمات دوره با ارزش افزوده، بدون درآمد چک.</summary>
+    public decimal SaleGoodsTotal { get; set; }
+    /// <summary>جمع ردیف تاخیر تادیه چک برای فاکتورهای فروش دوره.</summary>
+    public decimal SaleChequeIncomeTotal { get; set; }
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
     public decimal ClosingBalance { get; set; }

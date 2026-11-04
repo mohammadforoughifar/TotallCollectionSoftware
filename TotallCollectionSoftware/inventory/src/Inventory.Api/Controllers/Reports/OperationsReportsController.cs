@@ -19,10 +19,20 @@ public class OperationsReportsController : RbacControllerBase
     [HttpGet("orders")]
     public async Task<ActionResult<OperationsOrderReportDto>> GetOrderReport(
         [FromQuery] TransactionType type, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
-        [FromQuery] int? partyId = null, [FromQuery] int? warehouseId = null)
+        [FromQuery] int? partyId = null, [FromQuery] int? warehouseId = null, [FromQuery] bool? hasChequeIncome = null)
     {
         if (await ForbiddenUnlessAnyAsync("Orders", "View", "Read", "Access") is ObjectResult forbidden) return forbidden;
-        return Ok(await _reports.GetOrderReportAsync(type, from, to, partyId, warehouseId));
+        return Ok(await _reports.GetOrderReportAsync(type, from, to, partyId, warehouseId, hasChequeIncome));
+    }
+
+    /// <summary>گردش قطعی درآمد چک به تفکیک مشتری و تاریخ سند حسابداری.</summary>
+    [HttpGet("cheque-income")]
+    public async Task<ActionResult<ChequeIncomeReportDto>> GetChequeIncomeReport(
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] int? partyId = null)
+    {
+        if (await ForbiddenUnlessAnyAsync("Orders", "View", "Read", "Access") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessAnyAsync("Orders", "ViewProfit") is ObjectResult forbiddenProfit) return forbiddenProfit;
+        return Ok(await _reports.GetChequeIncomeReportAsync(from, to, partyId));
     }
 
     /// <summary>

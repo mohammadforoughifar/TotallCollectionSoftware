@@ -33,7 +33,7 @@
             </div>
         }
 
-        <div class="row g-3">
+        <div class="row g-3" data-order-child="@InvoiceFormKey">
             <div class="col-12">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
                 <input class="form-control" @bind="party.Name" data-party-field="name" />
@@ -65,13 +65,21 @@
             {
                 <div class="col-12">
                     <label class="form-label">معرف</label>
-                    <select class="form-select" @bind="referrerIdStr">
-                        <option value="0">— بدون معرف —</option>
-                        @foreach (var r in referrerList)
-                        {
-                            <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
-                        }
-                    </select>
+                    @if (!string.IsNullOrWhiteSpace(InvoiceFormKey))
+                    {
+                        <SearchSelect Items="@ReferrerLookup" Value="SelectedReferrer" ValueChanged="@(id => referrerIdStr = id.ToString())"
+                                      Placeholder="بدون معرف" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="true" />
+                    }
+                    else
+                    {
+                        <select class="form-select" @bind="referrerIdStr">
+                            <option value="0">— بدون معرف —</option>
+                            @foreach (var r in referrerList)
+                            {
+                                <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
+                            }
+                        </select>
+                    }
                     <div class="fs-8 text-muted mt-1">در فاکتور فروش این مشتری، معرف به‌صورت خودکار انتخاب می‌شود</div>
                 </div>
             }
@@ -86,6 +94,10 @@
             }
             <div class="col-12">
                 <label class="form-label">یادداشت</label>
+                @if (!string.IsNullOrEmpty(InvoiceFormKey))
+                {
+                    <div class="fs-9 text-muted">Enter: فیلد بعدی · Shift+Enter: خط جدید</div>
+                }
                 <textarea class="form-control" rows="2" @bind="party.Note"></textarea>
             </div>
             <div class="col-12">
@@ -103,12 +115,15 @@
             {
                 <span class="spinner-border spinner-border-sm ms-1"></span>
             }
-            ذخیره
+            ذخیره (F1)
         </button>
     </Footer>
 </Modal>
 
 @code {
+    /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
+    [Parameter] public string? InvoiceFormKey { get; set; }
+
     /// <summary>نمایش/عدم نمایش فرم.</summary>
     [Parameter] public bool Visible { get; set; }
 
@@ -133,6 +148,11 @@
     private bool saving;
     private List<Referrer> referrerList = new();
     private string referrerIdStr = "0";
+    private int SelectedReferrer => int.TryParse(referrerIdStr, out var id) ? id : 0;
+    private List<LookupItem> ReferrerLookup => referrerList.Select(r => new LookupItem
+    {
+        Id = r.Id, Name = r.Name + (string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")
+    }).ToList();
     private bool loadedForKey;
 
     private bool IsEdit => party.Id != 0;

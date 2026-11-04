@@ -175,10 +175,13 @@ public class InventoryService : IInventoryService
             .Where(t => t.ReferrerId == referrerId && t.Type == TransactionType.Sale)
             .ToListAsync();
 
+        var saleIds = txns.Select(t => t.Id).ToList();
+        var charges = await _db.SaleChequeCharges.AsNoTracking().Where(c => saleIds.Contains(c.TransactionId))
+            .ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
         decimal total = 0;
         foreach (var t in txns)
         {
-            var order = await ToOrderDtoAsync(t); // شامل محاسبه سود و پورسانت
+            var order = await ToOrderDtoAsync(t, charges.GetValueOrDefault(t.Id)); // شامل محاسبه سود و پورسانت
             total += order.CommissionAmount ?? 0;
         }
         return total;
@@ -467,7 +470,7 @@ public class InventoryService : IInventoryService
                     var unitCost = l.UnitCost ?? (snapshotMap.TryGetValue(l.Id, out var sn) && sn.HasValue ? sn.Value : 0m);
                     l.UnitCost = decimal.Round(unitCost, 2);
                     // سود دقیق با کسر تخفیف و کسر دستمزد تعمیرکار:
-                    l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                    l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
                 }
                 continue;
             }
@@ -486,7 +489,7 @@ public class InventoryService : IInventoryService
                 // سود دقیق = مبلغ کل سطر (پس از تخفیف) − (بهای تمام‌شده × تعداد)
                 var unitCost = l.UnitCost!.Value;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
             }
 
             var linesNeedingCost = productLines.Where(x => !x.UnitCost.HasValue).ToList();
@@ -503,7 +506,7 @@ public class InventoryService : IInventoryService
             {
                 var unitCost = costs.TryGetValue(l.Id, out var c) ? c : product.PurchasePrice;
                 l.UnitCost = decimal.Round(unitCost, 2);
-                l.Profit = decimal.Round(l.Total - (unitCost * l.Quantity), 2);
+                l.Profit = decimal.Round(l.AfterDiscount - (unitCost * l.Quantity), 2);
             }
         }
 
@@ -954,11 +957,12 @@ public class InventoryService : IInventoryService
             .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
         var ids = products.Select(p => p.Id).ToList();
         var stocks = await _db.Stocks.AsNoTracking().Where(s => ids.Contains(s.ProductId)).ToListAsync();
+        var stocksByProduct = stocks.ToLookup(s => s.ProductId);
         var warehouseIds = products.Where(p => p.WarehouseId != null).Select(p => p.WarehouseId!.Value).ToList();
         var whNames = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name);
         return new PagedResult<Product>
         {
-            Items = products.Select(p => ToProductDto(p, stocks, whNames)).ToList(),
+            Items = products.Select(p => ToProductDto(p, stocksByProduct[p.Id], whNames)).ToList(),
             TotalCount = total, Page = page, PageSize = pageSize
         };
     }
@@ -968,9 +972,9 @@ public class InventoryService : IInventoryService
             .Select(p => new LookupItem { Id = p.Id, Name = p.Code + " — " + p.Name })
             .ToPageListAsync(pagination, defaultCap: 100000);
 
-    private static Product ToProductDto(Db.Product p, List<Db.Stock> stocks, Dictionary<int, string>? whNames = null)
+    private static Product ToProductDto(Db.Product p, IEnumerable<Db.Stock> stocks, Dictionary<int, string>? whNames = null)
     {
-        var ps = stocks.Where(s => s.ProductId == p.Id).ToList();
+        var ps = stocks.ToList();
         var qty = ps.Sum(s => s.Quantity);
         var totalCost = ps.Sum(s => s.Quantity * s.AvgCost);
         var avg = qty > 0 ? totalCost / qty : p.PurchasePrice;
@@ -985,6 +989,7 @@ public class InventoryService : IInventoryService
             TaxCode = p.TaxCode,
             SalePrice = p.SalePrice,
             PurchasePrice = p.PurchasePrice,
+            InvoiceVatValue = p.InvoiceVatValue ?? (p.IsVatIncluded && p.VatRate >= 0 && p.VatRate <= 100 ? p.VatRate : 0),
             ReorderPoint = p.ReorderPoint,
             MaxStock = p.MaxStock,
             Description = p.Description,
@@ -1019,6 +1024,10 @@ public class InventoryService : IInventoryService
         {
             entity = await _db.Products.FindAsync(dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
+
+        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+            throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
 
         entity.Name = dto.Name.Trim();
         entity.IsService = dto.IsService;
@@ -1312,12 +1321,17 @@ public class InventoryService : IInventoryService
     public async Task<Order> CreateOrderAsync(OrderCommand cmd)
     {
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+        if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
+            throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
             throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
         if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
 
+        // Older clients do not send VAT on creation; a missing value means zero.
+        foreach (var line in cmd.Lines) line.VatValue ??= 0;
+        ValidateTaxedLinePrecision(cmd.Lines);
         var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
@@ -1390,7 +1404,7 @@ public class InventoryService : IInventoryService
 
         foreach (var l in cmd.Lines)
         {
-            var gross = l.Quantity * l.Price;
+            var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
             decimal discAmount = 0;
             decimal discPercent = 0;
             if (l.DiscountIsAmount)
@@ -1412,9 +1426,13 @@ public class InventoryService : IInventoryService
                 DiscountPercent = discPercent,
                 DiscountAmount = discAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = gross,
+                VatValue = l.VatValue ?? 0,
+                VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
                 UnitCostSnapshot = l.UnitCostSnapshot
             });
-            txn.Amount += Math.Max(0, gross - discAmount);
+            var afterDiscount = Math.Max(0, gross - discAmount);
+            txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
         }
 
         await using var trx = await _db.Database.BeginTransactionAsync();
@@ -1451,7 +1469,7 @@ public class InventoryService : IInventoryService
         return await ToOrderDtoAsync(t);
     }
 
-    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize)
+    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null)
     {
         var q = _db.Transactions.Include(x => x.Lines)
             .Include(x => x.Cheques).Include(x => x.Installments)
@@ -1460,19 +1478,30 @@ public class InventoryService : IInventoryService
         if (to.HasValue) q = q.Where(t => t.Date < to.Value.Date.AddDays(1));
         if (partyId.HasValue) q = q.Where(t => t.PartyId == partyId.Value);
         if (warehouseId.HasValue) q = q.Where(t => t.WarehouseId == warehouseId.Value);
+        if (hasChequeIncome.HasValue)
+            q = q.Where(t => _db.SaleChequeCharges.Any(c => c.TransactionId == t.Id && c.Amount > 0) == hasChequeIncome.Value);
 
         var total = await q.CountAsync();
         var pageItems = await q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
                                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
+        var saleIds = pageItems.Where(t => t.Type == TransactionType.Sale).Select(t => t.Id).ToList();
+        var chargeBySale = await _db.SaleChequeCharges.AsNoTracking().Where(c => saleIds.Contains(c.TransactionId))
+            .ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
         var items = new List<Order>();
-        foreach (var t in pageItems) items.Add(await ToOrderDtoAsync(t));
+        foreach (var t in pageItems) items.Add(await ToOrderDtoAsync(t, chargeBySale.GetValueOrDefault(t.Id)));
 
         return new PagedResult<Order> { Items = items, TotalCount = total };
     }
 
-    private async Task<Order> ToOrderDtoAsync(Db.Transaction t)
+    private async Task<Order> ToOrderDtoAsync(Db.Transaction t, decimal? knownChequeIncome = null)
     {
+        var chequeIncome = knownChequeIncome ?? (t.Type == TransactionType.Sale
+            ? await _db.SaleChequeCharges.AsNoTracking().Where(c => c.TransactionId == t.Id)
+                .Select(c => (decimal?)c.Amount).FirstOrDefaultAsync() ?? 0m
+            : 0m);
+        if (chequeIncome < 0 || chequeIncome > t.Amount)
+            throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ فاکتور مطابقت ندارد.");
         var products = await _db.Products.Where(p => t.Lines.Select(l => l.ProductId).Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         string? partyName = null;
         if (t.PartyId.HasValue)
@@ -1489,6 +1518,7 @@ public class InventoryService : IInventoryService
         var order = new Order
         {
             Id = t.Id,
+            ChequeIncomeAmount = chequeIncome,
             WarehouseId = t.WarehouseId,
             WarehouseName = whName,
             PartyId = t.PartyId ?? 0,
@@ -1502,6 +1532,7 @@ public class InventoryService : IInventoryService
             TotalAmount = t.Amount,
             PaymentMethod = t.PaymentMethod,
             CashType = t.CashType,
+            CashTrackingNumber = t.CashTrackingNumber,
             CashAmount = t.CashAmount,
             TrsAccountId = t.TrsAccountId,
             TrsAccountName = trsAccountName,
@@ -1529,6 +1560,9 @@ public class InventoryService : IInventoryService
                 DiscountPercent = l.DiscountPercent,
                 DiscountAmount = l.DiscountAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = l.GrossAmount,
+                VatValue = l.VatValue,
+                VatAmount = l.VatAmount,
                 UnitCost = l.UnitCostSnapshot
             }).ToList()
         };
@@ -1543,6 +1577,8 @@ public class InventoryService : IInventoryService
     public async Task<Order> UpdateOrderAsync(int id, OrderCommand cmd)
     {
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+        if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
+            throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
         if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
@@ -1553,9 +1589,15 @@ public class InventoryService : IInventoryService
             ?? throw new InvalidOperationException("سند یافت نشد.");
         if (txn.Type is not (TransactionType.Purchase or TransactionType.Sale))
             throw new InvalidOperationException("فقط اسناد خرید و فروش قابل ویرایش هستند.");
+        await RejectUnimplementedChequeChargeMutationAsync(txn.Id);
 
         var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
         var existingLineCosts = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.UnitCostSnapshot));
+        var existingLineVat = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.VatValue));
+        foreach (var line in cmd.Lines)
+            line.VatValue ??= existingLineVat.TryGetValue(line.Id, out var oldVat) && oldVat.ProductId == line.ProductId
+                ? oldVat.VatValue : 0m;
+        ValidateTaxedLinePrecision(cmd.Lines);
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
                                && (!existingLineQuantities.TryGetValue(l.Id, out var original)
                                    || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
@@ -1608,7 +1650,7 @@ public class InventoryService : IInventoryService
                 ? oldCost.UnitCostSnapshot
                 : l.UnitCostSnapshot;
 
-            var gross = l.Quantity * l.Price;
+            var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
             decimal discAmount = 0;
             decimal discPercent = 0;
             if (l.DiscountIsAmount)
@@ -1630,9 +1672,13 @@ public class InventoryService : IInventoryService
                 DiscountPercent = discPercent,
                 DiscountAmount = discAmount,
                 DiscountIsAmount = l.DiscountIsAmount,
+                GrossAmount = gross,
+                VatValue = l.VatValue ?? 0,
+                VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
                 UnitCostSnapshot = unitCostSnapshot
             });
-            txn.Amount += Math.Max(0, gross - discAmount);
+            var afterDiscount = Math.Max(0, gross - discAmount);
+            txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
         }
         await _db.SaveChangesAsync();
 
@@ -1661,6 +1707,7 @@ public class InventoryService : IInventoryService
         var t = await _db.Transactions.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("سند یافت نشد.");
 
+        await RejectUnimplementedChequeChargeMutationAsync(t.Id);
         var productIds = t.Lines.Select(l => l.ProductId).Distinct().ToList();
         var wh = t.WarehouseId;
 
@@ -1823,6 +1870,17 @@ public class InventoryService : IInventoryService
 
     // =============================== داشبورد ===============================
 
+    private async Task<Dictionary<int, decimal>> LoadSaleChequeIncomesAsync(DateTime? from = null)
+    {
+        var query = _db.SaleChequeCharges.AsNoTracking()
+            .Where(c => c.Transaction.Type == TransactionType.Sale);
+        if (from.HasValue) query = query.Where(c => c.Transaction.Date >= from.Value);
+        return await query.ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
+    }
+
+    private static decimal GoodsAmount(Db.Transaction sale, IReadOnlyDictionary<int, decimal> incomes)
+        => SaleChequeChargeMath.GoodsTotal(sale.Amount, incomes.GetValueOrDefault(sale.Id));
+
     public async Task<DashboardSummary> GetDashboardAsync()
     {
         var now = DateTime.Now;
@@ -1843,14 +1901,15 @@ public class InventoryService : IInventoryService
         var invValue = stocks.Sum(s => s.Quantity * s.AvgCost);
 
         var txns = await _db.Transactions.ToListAsync();
-        var todaySales = txns.Where(t => t.Type == TransactionType.Sale && t.Date.Date == now.Date).Sum(t => t.Amount);
+        var chequeIncomes = await LoadSaleChequeIncomesAsync();
+        var todaySales = txns.Where(t => t.Type == TransactionType.Sale && t.Date.Date == now.Date).Sum(t => GoodsAmount(t, chequeIncomes));
         var todayPurchases = txns.Where(t => t.Type == TransactionType.Purchase && t.Date.Date == now.Date).Sum(t => t.Amount);
 
         var (jy, jm, _) = PersianDate.FromGregorian(now);
         var monthStart = PersianDate.ToGregorian(jy, jm, 1);
         var monthEnd = PersianDate.ToGregorian(jy, jm == 12 ? 1 : jm + 1, 1).AddDays(-1);
 
-        var monthSales = txns.Where(t => t.Type == TransactionType.Sale && t.Date >= monthStart && t.Date <= monthEnd).Sum(t => t.Amount);
+        var monthSales = txns.Where(t => t.Type == TransactionType.Sale && t.Date >= monthStart && t.Date <= monthEnd).Sum(t => GoodsAmount(t, chequeIncomes));
         var monthPurchases = txns.Where(t => t.Type == TransactionType.Purchase && t.Date >= monthStart && t.Date <= monthEnd).Sum(t => t.Amount);
 
         return new DashboardSummary
@@ -1898,15 +1957,27 @@ public class InventoryService : IInventoryService
     /// اگر بیشتر باشد، مازاد همان سود مدت‌دار (چک/اقساط) است و پذیرفته می‌شود.
     /// روش پرداخت مؤثر خودکار تعیین می‌شود: تک‌جزء ⇒ همان جزء، چندجزء ⇒ Mixed.
     /// </summary>
+    private static void ValidateTaxedLinePrecision(IEnumerable<OrderLineInput> lines)
+    {
+        // SQL Server stores price and discount percent with two decimals. Reject values
+        // which would otherwise make the persisted line disagree with its VAT snapshot.
+        if (lines.Any(l => l.VatValue.GetValueOrDefault() > 0 &&
+            (l.Price != decimal.Round(l.Price, 2) || (!l.DiscountIsAmount && l.DiscountPercent != decimal.Round(l.DiscountPercent, 2)))))
+            throw new InvalidOperationException("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
+    }
+
     private static void ApplyPayment(Db.Transaction txn, OrderCommand cmd)
     {
-        var total = cmd.Lines.Sum(l => l.Quantity * l.Price);
+        var total = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
 
         txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;
         txn.CashAmount = 0;
         txn.DueDate = null;
         txn.SettledAmount = 0;
+        // Preserve a known original date only for the same persisted cheque ID.
+        // For legacy clients that omit IDs on edits, do not invent historical dates.
+        var originalDueDates = txn.Cheques.Where(c => c.Id > 0).ToDictionary(c => c.Id, c => c.OriginalDueDate);
         txn.Cheques.Clear();
         txn.Installments.Clear();
 
@@ -1936,6 +2007,8 @@ public class InventoryService : IInventoryService
                 OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),
                 Amount = c.Amount,
                 DueDate = c.DueDate.Date,
+                OriginalDueDate = txn.Id == 0 ? c.DueDate.Date :
+                    c.Id > 0 && originalDueDates.TryGetValue(c.Id, out var originalDate) ? originalDate : null,
                 IsCleared = c.IsCleared,
                 ClearedAt = c.IsCleared ? (c.ClearedAt ?? DateTime.Now) : null,
                 Note = string.IsNullOrWhiteSpace(c.Note) ? null : c.Note.Trim(),
@@ -1994,6 +2067,11 @@ public class InventoryService : IInventoryService
             txn.CashType = cmd.CashType ?? Inventory.Shared.CashType.Cash;
         }
 
+        // Missing values from older clients preserve an existing reference on edits.
+        var reference = cmd.CashTrackingNumber?.Trim();
+        if (reference?.Length > 100) throw new InvalidOperationException("شماره پیگیری حداکثر ۱۰۰ نویسه است.");
+        txn.CashTrackingNumber = txn.Type == TransactionType.Sale && cash > 0 && txn.CashType == CashType.CardTransfer
+            ? reference ?? txn.CashTrackingNumber : null;
         txn.PaymentMethod = PaymentMix.Derive(cash, chequeSum, instSum, creditRemainder);
     }
 
@@ -2009,6 +2087,10 @@ public class InventoryService : IInventoryService
         var monthStart = PersianDate.ToGregorian(jy, jm, 1);
         var quarterFirstMonth = jm <= 3 ? 1 : jm <= 6 ? 4 : jm <= 9 ? 7 : 10;
         var quarterStart = PersianDate.ToGregorian(jy, quarterFirstMonth, 1);
+        var m6y = jy; var m6m = jm;
+        for (var i = 0; i < 5; i++) { m6m--; if (m6m == 0) { m6m = 12; m6y--; } }
+        var sixMonthStart = PersianDate.ToGregorian(m6y, m6m, 1);
+        var chequeIncomes = await LoadSaleChequeIncomesAsync(sixMonthStart < quarterStart ? sixMonthStart : quarterStart);
 
         var sales = await _db.Transactions
             .Include(t => t.Cheques)
@@ -2018,10 +2100,10 @@ public class InventoryService : IInventoryService
 
         var dash = new AdminDashboard
         {
-            SalesToday = sales.Where(t => t.Date.Date == today).Sum(t => t.Amount),
-            SalesWeek = sales.Where(t => t.Date >= weekStart).Sum(t => t.Amount),
-            SalesMonth = sales.Where(t => t.Date >= monthStart).Sum(t => t.Amount),
-            SalesQuarter = sales.Sum(t => t.Amount)
+            SalesToday = sales.Where(t => t.Date.Date == today).Sum(t => GoodsAmount(t, chequeIncomes)),
+            SalesWeek = sales.Where(t => t.Date >= weekStart).Sum(t => GoodsAmount(t, chequeIncomes)),
+            SalesMonth = sales.Where(t => t.Date >= monthStart).Sum(t => GoodsAmount(t, chequeIncomes)),
+            SalesQuarter = sales.Sum(t => GoodsAmount(t, chequeIncomes))
         };
 
         // سود دوره‌ای بعد از محاسبه profitById (پایین‌تر) انجام می‌شود
@@ -2055,16 +2137,12 @@ public class InventoryService : IInventoryService
             dash.DailyTrend.Add(new TrendPoint
             {
                 Label = $"{djm}/{djd}",
-                Sales = dayTxns.Sum(t => t.Amount),
+                Sales = dayTxns.Sum(t => GoodsAmount(t, chequeIncomes)),
                 Profit = dayTxns.Sum(t => profitById.TryGetValue(t.Id, out var pv) ? pv : 0)
             });
         }
 
         // ۶ ماه شمسی اخیر — نیاز به همه اسناد ۶ ماه (فراتر از فصل)
-        var (cy, cm, _) = PersianDate.FromGregorian(today);
-        var m6y = cy; var m6m = cm;
-        for (var i = 0; i < 5; i++) { m6m--; if (m6m == 0) { m6m = 12; m6y--; } }
-        var sixMonthStart = PersianDate.ToGregorian(m6y, m6m, 1);
         var sales6m = await _db.Transactions
             .Where(t => t.Type == TransactionType.Sale && t.Date >= sixMonthStart)
             .ToListAsync();
@@ -2084,7 +2162,7 @@ public class InventoryService : IInventoryService
             dash.MonthlyTrend.Add(new TrendPoint
             {
                 Label = PersianDate.MonthName(mm),
-                Sales = mTxns.Sum(t => t.Amount),
+                Sales = mTxns.Sum(t => GoodsAmount(t, chequeIncomes)),
                 Profit = mTxns.Sum(t => profit6m.TryGetValue(t.Id, out var pv) ? pv : 0)
             });
             my = ny; mm = nm;
@@ -2233,11 +2311,20 @@ public class InventoryService : IInventoryService
             }).ToList();
     }
 
+    // مسیرهای قدیمی رکورد مالی و سند مرتبط را اصلاح نمی‌کنند. تا تکمیل گردش اصلاحی
+    // نباید داده‌ای را تغییر دهند که منجر به دوگانگی حساب و صورت‌حساب می‌شود.
+    private async Task RejectUnimplementedChequeChargeMutationAsync(int transactionId)
+    {
+        if (await _db.SaleChequeCharges.AnyAsync(c => c.TransactionId == transactionId))
+            throw new InvalidOperationException("عملیات روی فاکتور دارای تاخیر تادیه چک تا تکمیل گردش اصلاحی حسابداری مجاز نیست.");
+    }
+
     /// <summary>پاس کردن چک.</summary>
     public async Task ClearChequeAsync(int chequeId)
     {
         var c = await _db.Cheques.FindAsync(chequeId)
             ?? throw new InvalidOperationException("چک یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(c.TransactionId);
         c.IsCleared = true;
         c.ClearedAt = DateTime.Now;
         c.Status = ChequeStatus.Cleared;
@@ -2251,6 +2338,7 @@ public class InventoryService : IInventoryService
     {
         var c = await _db.Cheques.FindAsync(chequeId)
             ?? throw new InvalidOperationException("چک یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(c.TransactionId);
         c.IsCleared = false;
         c.ClearedAt = null;
         c.Status = ChequeStatus.Bounced;
@@ -2264,6 +2352,7 @@ public class InventoryService : IInventoryService
     {
         var c = await _db.Cheques.FindAsync(chequeId)
             ?? throw new InvalidOperationException("چک یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(c.TransactionId);
         c.IsCleared = false;
         c.ClearedAt = null;
         c.Status = ChequeStatus.InHand;
@@ -2277,6 +2366,7 @@ public class InventoryService : IInventoryService
     {
         var i = await _db.Installments.FindAsync(installmentId)
             ?? throw new InvalidOperationException("قسط یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(i.TransactionId);
         if (!i.IsPaid)
         {
             i.IsPaid = true;
@@ -2293,6 +2383,7 @@ public class InventoryService : IInventoryService
     {
         var i = await _db.Installments.FindAsync(installmentId)
             ?? throw new InvalidOperationException("قسط یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(i.TransactionId);
         if (i.IsPaid)
         {
             i.IsPaid = false;
@@ -2308,6 +2399,7 @@ public class InventoryService : IInventoryService
     {
         var t = await _db.Transactions.FindAsync(transactionId)
             ?? throw new InvalidOperationException("سند یافت نشد.");
+        await RejectUnimplementedChequeChargeMutationAsync(t.Id);
         if (amount <= 0) throw new InvalidOperationException("مبلغ تسویه باید بزرگ‌تر از صفر باشد.");
         t.SettledAmount = Math.Min(t.Amount, t.SettledAmount + amount);
         await _db.SaveChangesAsync();
@@ -2590,7 +2682,7 @@ public class InventoryService : IInventoryService
             foreach (var t in pTxns)
             {
                 var isOpening = t.Description != null && t.Description.Contains("افتتاح");
-                var isBefore = from.HasValue && t.Date < from.Value;
+                var isBefore = from.HasValue && t.Date.Date < from.Value.Date;
 
                 // در منطق فروشگاهی:
                 // فروش = افزایش طلب ما از شخص (بدهکار شدن طرف حساب)
@@ -2617,7 +2709,7 @@ public class InventoryService : IInventoryService
                 }
                 else
                 {
-                    if (!to.HasValue || t.Date <= to.Value)
+                    if (!to.HasValue || t.Date.Date <= to.Value.Date)
                     {
                         periodDebit += debit;
                         periodCredit += credit;
@@ -2665,6 +2757,11 @@ public class InventoryService : IInventoryService
             .OrderBy(t => t.Date).ThenBy(t => t.Id)
             .ToListAsync();
 
+        // ردیف مالی از اقلام کالایی مستقل است؛ نبود ردیف برای اسناد قدیمی یعنی صفر.
+        var chequeIncome = await _db.SaleChequeCharges.AsNoTracking()
+            .Where(c => c.Transaction.PartyId == partyId && c.Transaction.Type == TransactionType.Sale)
+            .ToDictionaryAsync(c => c.TransactionId, c => c.Amount);
+
         var result = new PartyStatementDetailDto
         {
             PartyId = party.Id,
@@ -2680,10 +2777,16 @@ public class InventoryService : IInventoryService
         foreach (var t in txns)
         {
             var isOpening = t.Description != null && t.Description.Contains("افتتاح");
-            var isBefore = from.HasValue && t.Date < from.Value;
+            var isBefore = from.HasValue && t.Date.Date < from.Value.Date;
 
             decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
             decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+            // همانند گزارش خلاصه، تسویهٔ ثبت‌شدهٔ اسناد پیش از دوره نیز در مانده افتتاحیه لحاظ می‌شود.
+            if (t.SettledAmount > 0)
+            {
+                if (t.Type == TransactionType.Sale) credit += t.SettledAmount;
+                if (t.Type == TransactionType.Purchase) debit += t.SettledAmount;
+            }
 
             if (isOpening || isBefore)
             {
@@ -2713,14 +2816,22 @@ public class InventoryService : IInventoryService
         // سطرهای گردش طی دوره
         var periodTxns = txns.Where(t =>
             !(t.Description != null && t.Description.Contains("افتتاح")) &&
-            (!from.HasValue || t.Date >= from.Value) &&
-            (!to.HasValue || t.Date <= to.Value)
+            (!from.HasValue || t.Date.Date >= from.Value.Date) &&
+            (!to.HasValue || t.Date.Date <= to.Value.Date)
         ).ToList();
 
         foreach (var t in periodTxns)
         {
-            decimal debit = t.Type == TransactionType.Sale ? t.Amount : 0;
+            var income = t.Type == TransactionType.Sale && chequeIncome.TryGetValue(t.Id, out var amount) ? amount : 0m;
+            if (income < 0 || income > t.Amount)
+                throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ فاکتور مطابقت ندارد؛ صورت‌حساب قابل محاسبه نیست.");
+            decimal debit = t.Type == TransactionType.Sale ? t.Amount - income : 0;
             decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+            if (t.Type == TransactionType.Sale)
+            {
+                result.SaleGoodsTotal += debit;
+                result.SaleChequeIncomeTotal += income;
+            }
 
             runningBalance += (debit - credit);
             result.TotalDebit += debit;
@@ -2737,6 +2848,22 @@ public class InventoryService : IInventoryService
                 Credit = credit,
                 Balance = runningBalance
             });
+
+            if (income > 0)
+            {
+                runningBalance += income;
+                result.TotalDebit += income;
+                result.Rows.Add(new PartyStatementRowDto
+                {
+                    Date = t.Date,
+                    TransactionId = t.Id,
+                    DocumentNumber = t.Number,
+                    Title = "تاخیر تادیه چک",
+                    Description = $"ردیف مالی فاکتور شماره {t.Number}",
+                    Debit = income,
+                    Balance = runningBalance
+                });
+            }
 
             // در صورت وجود تسویه/دریافت نقدی مرتبط
             if (t.SettledAmount > 0)

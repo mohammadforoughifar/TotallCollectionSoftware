@@ -112,6 +112,8 @@ public class FacRule
     public int? VatAccountId { get; set; }
     public int? CashAccountId { get; set; }
     public int? ShippingAccountId { get; set; }
+    /// <summary>حساب درآمد غیرعملیاتی تاخیر تادیه چک فروشگاه.</summary>
+    public int? ChequeIncomeAccountId { get; set; }
 
     public bool AutoInvDoc { get; set; } = true;
     public bool AutoVoucher { get; set; } = true;

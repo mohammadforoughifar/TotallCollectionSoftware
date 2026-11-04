@@ -138,6 +138,8 @@ public class AppDbContext : DbContext
     public DbSet<Stock> Stocks => Set<Stock>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<TransactionLine> TransactionLines => Set<TransactionLine>();
+    public DbSet<SaleChequeCharge> SaleChequeCharges => Set<SaleChequeCharge>();
+    public DbSet<SaleChequeChargeEvent> SaleChequeChargeEvents => Set<SaleChequeChargeEvent>();
     public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
     public DbSet<GoodsIssueLine> GoodsIssueLines => Set<GoodsIssueLine>();
 
@@ -719,6 +721,10 @@ public class AppDbContext : DbContext
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.GrossAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatValue).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatAmount).HasPrecision(18, 2);
+        mb.Entity<Product>().Property(p => p.InvoiceVatValue).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);
@@ -739,6 +745,24 @@ public class AppDbContext : DbContext
         // ---------- پرداخت فروش: چک و اقساط ----------
         mb.Entity<Transaction>().Property(t => t.SettledAmount).HasPrecision(18, 2);
         mb.Entity<Transaction>().Property(t => t.CashAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().HasIndex(c => c.TransactionId).IsUnique();
+        mb.Entity<SaleChequeCharge>().HasOne(c => c.Transaction).WithMany()
+            .HasForeignKey(c => c.TransactionId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<SaleChequeCharge>().Property(c => c.BaseAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.RatePercent).HasPrecision(18, 6);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CalculatorBaseAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CalculatorRatePercent).HasPrecision(18, 6);
+        mb.Entity<SaleChequeCharge>().Property(c => c.InitialAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.Amount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CustomerCredit).HasPrecision(18, 2);
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.OperationId).IsUnique();
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => new { e.SaleChequeChargeId, e.Date });
+        mb.Entity<SaleChequeChargeEvent>().HasOne(e => e.SaleChequeCharge).WithMany()
+            .HasForeignKey(e => e.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeChargeEvent>().HasOne(e => e.AccVoucher).WithMany()
+            .HasForeignKey(e => e.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeChargeEvent>().Property(e => e.IncomeDelta).HasPrecision(18, 2);
         mb.Entity<Cheque>().Property(c => c.Amount).HasPrecision(18, 2);
         mb.Entity<Cheque>().HasIndex(c => c.DueDate);
         mb.Entity<Cheque>().HasIndex(c => c.IsCleared);
@@ -1619,6 +1643,8 @@ public class AppDbContext : DbContext
         mb.Entity<Stock>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Transaction>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<TransactionLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeCharge>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeChargeEvent>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssue>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssueLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<VisOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

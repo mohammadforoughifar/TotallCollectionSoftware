@@ -272,6 +272,11 @@
                 <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
             </div>
         }
+        <div class="col-md-4">
+            <label class="form-label">ارزش افزوده پیش‌فرض فاکتور</label>
+            <input type="number" min="0" step="0.01" class="form-control num" @bind="form.InvoiceVatValue" dir="ltr" />
+            <div class="fs-8 text-muted mt-1">صفر تا ۱۰۰ درصد؛ بالاتر از ۱۰۰ مبلغ ریالی است.</div>
+        </div>
         <div class="col-md-6">
             <label class="form-label">شناسه مالیاتی @(form.IsService ? "خدمت" : "کالا")</label>
             <input class="form-control font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="شناسه رسمی کالا/خدمت" />
@@ -575,7 +580,7 @@
     private async Task OpenNew()
     {
         await LoadLookups();
-        form = new Product { IsActive = true, Unit = "عدد" };
+        form = new Product { IsActive = true, Unit = "عدد", InvoiceVatValue = 0 };
         fSale = fPurchase = fReorder = fMax = "";
         prodWarehouseIdStr = "0";
         showModal = true;
@@ -587,7 +592,7 @@
         {
             Id = p.Id, Code = p.Code, Name = p.Name, Category = p.Category, Barcode = p.Barcode,
             Unit = p.Unit, SalePrice = p.SalePrice, PurchasePrice = p.PurchasePrice,
-            TaxCode = p.TaxCode, ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
+            InvoiceVatValue = p.InvoiceVatValue ?? 0, TaxCode = p.TaxCode, ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
             IsActive = p.IsActive, IsService = p.IsService, WarehouseId = p.WarehouseId, CreatedAt = p.CreatedAt
         };
         prodWarehouseIdStr = (p.WarehouseId ?? 0).ToString();
@@ -630,6 +635,13 @@
             form.ReorderPoint = Fa.ParseDecimal(fReorder);
             form.MaxStock = Fa.ParseDecimal(fMax);
             form.WarehouseId = int.TryParse(prodWarehouseIdStr, out var pw) && pw > 0 ? pw : null;
+        }
+
+        form.InvoiceVatValue ??= 0;
+        if (!OrderLineAmounts.IsValidVatValue(form.InvoiceVatValue.Value))
+        {
+            Toast.Error("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            return;
         }
 
         saving = true;

@@ -35,6 +35,9 @@ public class Cheque : ICompanyOwned
     /// <summary>تاریخ سررسید چک</summary>
     public DateTime DueDate { get; set; }
 
+    /// <summary>سررسید نخست چک جدید؛ null برای چک‌های قدیمی که سررسید نخست آنها قابل احراز نیست.</summary>
+    public DateTime? OriginalDueDate { get; set; }
+
     /// <summary>پاس شده؟</summary>
     public bool IsCleared { get; set; }
 

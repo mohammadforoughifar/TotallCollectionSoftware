@@ -377,6 +377,14 @@ else
             </div>
         </div>
 
+        @if (selectedPartyDetail.PartyType == PartyType.Customer)
+        {
+            <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
+                <span>فروش کالا و خدمات با ارزش افزوده: <b class="num text-dark">@selectedPartyDetail.SaleGoodsTotal.Money()</b> ریال</span>
+                <span>تاخیر تادیه چک: <b class="num text-dark">@selectedPartyDetail.SaleChequeIncomeTotal.Money()</b> ریال</span>
+            </div>
+        }
+
         <!-- جدول ریز تراکنش‌ها -->
         <div class="fin-table-card">
             <div class="fin-table-header">

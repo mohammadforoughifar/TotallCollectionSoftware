@@ -40,6 +40,10 @@ else
                 </div>
 
                 <div class="d-flex gap-2 align-items-center flex-wrap">
+                    @if (!isPurchase && CanSeeProfit)
+                    {
+                        <a class="btn btn-outline-secondary fin-btn-pill" href="/operations/reports/cheque-income">گزارش تاخیر تادیه چک</a>
+                    }
                     <button class="btn btn-outline-secondary fin-btn-pill" disabled="@(summary is null)" @onclick="Print">
                         <i class="bi bi-printer-fill me-1"></i> چاپ رسمی گزارش
                     </button>
@@ -77,6 +81,19 @@ else
             </div>
         </div>
 
+        @if (!isPurchase)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3 d-print-none">
+                <label for="cheque-income-filter" class="fin-label mb-0">تاخیر تادیه چک</label>
+                <select id="cheque-income-filter" class="form-select form-select-sm w-auto" @bind="chequeIncomeFilter">
+                    <option value="all">همه فاکتورها</option>
+                    <option value="with">دارای تاخیر تادیه چک</option>
+                    <option value="without">بدون تاخیر تادیه چک</option>
+                </select>
+                <button class="btn btn-sm btn-outline-primary" disabled="@loading" @onclick="ApplyFilter">اعمال</button>
+            </div>
+        }
+
         @if (loading && summary is null)
         {
             <div class="text-center py-5">
@@ -93,6 +110,14 @@ else
         }
         else if (summary is not null)
         {
+            @if (!isPurchase)
+            {
+                <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
+                    <span>کالا و خدمات با ارزش افزوده: <b class="num text-dark">@summary.GoodsAmount.Money()</b> ریال</span>
+                    <span>تاخیر تادیه چک: <b class="num text-dark">@summary.ChequeIncomeAmount.Money()</b> ریال</span>
+                    <span>جمع فاکتورها: <b class="num text-dark">@summary.TotalAmount.Money()</b> ریال</span>
+                </div>
+            }
             <!-- ================== کارت‌های شاخص (KPI Cards) ================== -->
             <div class="row g-3 mb-4">
                 <div class="col-12 col-sm-6 col-xl-3">
@@ -168,7 +193,7 @@ else
                             </div>
                         </div>
                         <div class="fin-kpi-footer mt-3 pt-2">
-                            <span class="text-secondary fs-9">متوسط ارزش هر فاکتور</span>
+                            <span class="text-secondary fs-9">@(isPurchase ? "متوسط ارزش هر فاکتور" : "متوسط کالا و خدمات با ارزش افزوده، بدون درآمد چک")</span>
                         </div>
                     </div>
                 </div>
@@ -185,7 +210,7 @@ else
                                 </div>
                                 <div>
                                     <h3 class="fin-table-title">روند زمانی گردش @(isPurchase ? "خرید" : "فروش")</h3>
-                                    <p class="fin-table-sub">توزیع مبالغ و تعداد اسناد در طول زمان</p>
+                                    <p class="fin-table-sub">@(isPurchase ? "توزیع مبالغ و تعداد اسناد در طول زمان" : "مبلغ کالا و خدمات با ارزش افزوده، بدون درآمد چک")</p>
                                 </div>
                             </div>
                             <span class="badge @(isPurchase ? "bg-indigo-subtle text-indigo" : "bg-emerald-subtle text-emerald") rounded-pill px-3">
@@ -236,7 +261,7 @@ else
                                 </div>
                                 <div>
                                     <h3 class="fin-table-title">@(isPurchase ? "تأمین‌کنندگان برتر دوره" : "مشتریان برتر دوره")</h3>
-                                    <p class="fin-table-sub">رتبه‌بندی بر اساس بیشترین مبلغ تراکنش</p>
+                                    <p class="fin-table-sub">@(isPurchase ? "رتبه‌بندی بر اساس مبلغ تراکنش" : "رتبه‌بندی بر اساس مبلغ کالا و خدمات، بدون درآمد چک")</p>
                                 </div>
                             </div>
                         </div>
@@ -330,6 +355,11 @@ else
                                     <th>انبار مربوطه</th>
                                     <th class="text-center">اقلام</th>
                                     <th class="text-center">مقدار</th>
+                                    @if (!isPurchase)
+                                    {
+                                        <th class="text-start">کالا و ارزش افزوده (ریال)</th>
+                                        <th class="text-start">تاخیر تادیه چک (ریال)</th>
+                                    }
                                     <th class="text-start">مبلغ کل (ریال)</th>
                                     @if (!isPurchase && CanSeeProfit)
                                     {
@@ -347,6 +377,11 @@ else
                                         <td class="text-muted fs-8">@order.WarehouseName</td>
                                         <td class="text-center num text-secondary fs-8">@order.Lines.Count.Num()</td>
                                         <td class="text-center num fw-600 text-dark fs-8">@order.Lines.Sum(l => l.Quantity).Qty()</td>
+                                        @if (!isPurchase)
+                                        {
+                                            <td class="text-start num fs-8">@order.GoodsAmount.Money()</td>
+                                            <td class="text-start num fs-8">@order.ChequeIncomeAmount.Money()</td>
+                                        }
                                         <td class="text-start num fw-800 fs-7.5 @(isPurchase ? "text-indigo" : "text-emerald")">
                                             @order.TotalAmount.Money()
                                         </td>
@@ -726,6 +761,13 @@ else
     private int total;
     private int partyId;
     private int warehouseId;
+    private string chequeIncomeFilter = "all";
+    private bool? SelectedChequeIncome => isPurchase ? null : chequeIncomeFilter switch
+    {
+        "with" => true,
+        "without" => false,
+        _ => null
+    };
     private DateTime? from = DateTime.Today.AddDays(-30);
     private DateTime? to = DateTime.Today;
     private bool loading = true;
@@ -784,8 +826,8 @@ else
         loading = true;
         try
         {
-            var ordersTask = OrderSvc.GetOrdersAsync(selectedType, from, to, partyId, warehouseId, page, PageSize);
-            var summaryTask = OrderSvc.GetReportSummaryAsync(selectedType, from, to, partyId, warehouseId);
+            var ordersTask = OrderSvc.GetOrdersAsync(selectedType, from, to, partyId, warehouseId, page, PageSize, SelectedChequeIncome);
+            var summaryTask = OrderSvc.GetReportSummaryAsync(selectedType, from, to, partyId, warehouseId, SelectedChequeIncome);
             await Task.WhenAll(ordersTask, summaryTask);
             var paged = await ordersTask;
             items = paged.Items;

@@ -497,3 +497,11 @@ public enum BarcodeType
     /// <summary>کد داخلی سازمان (بدون استاندارد جهانی)</summary>
     Internal = 3
 }
+
+/// <summary>نوع رویداد حسابداری ردیف مالی تاخیر تادیه چک.</summary>
+public enum SaleChequeChargeEventKind
+{
+    Initial = 1,
+    DueDateAdjustment = 2,
+    GoodsReturn = 3
+}

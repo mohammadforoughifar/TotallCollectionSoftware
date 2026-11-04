@@ -358,6 +358,9 @@ public class AccDashboard
     public decimal LiabilityTotal { get; set; }
     public decimal EquityTotal { get; set; }
     public decimal IncomeTotal { get; set; }
+    /// <summary>درآمد قطعی تاخیر تادیه چک؛ بخشی از IncomeTotal است، نه مبلغی اضافی.</summary>
+    public decimal ChequeIncomeTotal { get; set; }
+    public decimal OtherIncomeTotal => IncomeTotal - ChequeIncomeTotal;
     public decimal ExpenseTotal { get; set; }
 
     /// <summary>سود (زیان) دوره = درآمد − هزینه</summary>
