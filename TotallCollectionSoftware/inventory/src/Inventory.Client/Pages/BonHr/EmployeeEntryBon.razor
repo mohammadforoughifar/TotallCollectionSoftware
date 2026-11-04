@@ -190,13 +190,16 @@
         </ChildContent>
         <Footer>
             <button class="btn btn-light" type="button" @onclick="CloseForm">انصراف (Esc)</button>
-            <button class="btn btn-primary" type="button" @onclick="SaveAsync" disabled="@_busy">
-                @if (_busy)
-                {
-                    <span class="spinner-border spinner-border-sm ms-1"></span>
-                }
-                <i class="bi bi-check-lg"></i> ذخیره
-            </button>
+            @if (CanSave)
+            {
+                <button class="btn btn-primary" type="button" @onclick="SaveAsync" disabled="@_busy">
+                    @if (_busy)
+                    {
+                        <span class="spinner-border spinner-border-sm ms-1"></span>
+                    }
+                    <i class="bi bi-check-lg"></i> ذخیره
+                </button>
+            }
         </Footer>
     </Modal>
 
@@ -244,6 +247,14 @@
     private string _message = "";
     private bool _ok, _busy, _overwrite = true;
     private int? _editingId;
+
+    private bool CanSave =>
+        Auth.IsAdmin
+        || Auth.Has("RadisHr.Access")
+        || (_editingId.HasValue
+            ? (Auth.Has("RadisHr.Employees.Update") || Auth.Has("RadisHr.EmployeeUpdate"))
+            : (Auth.Has("RadisHr.Employees.Create") || Auth.Has("RadisHr.EmployeeCreate")));
+
     private string _lastUnit = "";
     private bool _savedOnce;
 
