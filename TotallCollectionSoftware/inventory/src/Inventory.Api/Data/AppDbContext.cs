@@ -175,6 +175,10 @@ public class AppDbContext : DbContext
     public DbSet<BackupJob> BackupJobs => Set<BackupJob>();
     public DbSet<CentralBackupCompany> CentralBackupCompanies => Set<CentralBackupCompany>();
     public DbSet<CentralBackupReceipt> CentralBackupReceipts => Set<CentralBackupReceipt>();
+    public DbSet<RemoteSetting> RemoteSettings => Set<RemoteSetting>();
+    public DbSet<RemoteDevice> RemoteDevices => Set<RemoteDevice>();
+    public DbSet<RemoteSession> RemoteSessions => Set<RemoteSession>();
+    public DbSet<RemoteAuditLog> RemoteAuditLogs => Set<RemoteAuditLog>();
 
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
@@ -579,6 +583,13 @@ public class AppDbContext : DbContext
         mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
         mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);
         mb.Entity<BackupJob>().HasKey(x => x.Id);
+        mb.Entity<RemoteSetting>().Property(x => x.Id).ValueGeneratedNever();
+        mb.Entity<RemoteDevice>().HasKey(x => x.Id);
+        mb.Entity<RemoteSession>().HasKey(x => x.Id);
+        mb.Entity<RemoteDevice>().HasIndex(x => x.CompanyCode);
+        mb.Entity<RemoteSession>().HasIndex(x => x.DeviceId);
+        mb.Entity<RemoteSession>().HasIndex(x => x.Status);
+        mb.Entity<RemoteAuditLog>().HasIndex(x => x.SessionId);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
         AiSchemaV1.Configure(mb);
