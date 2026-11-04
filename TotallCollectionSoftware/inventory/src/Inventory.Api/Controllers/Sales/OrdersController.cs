@@ -48,12 +48,31 @@ public class OrdersController : ApiControllerBase
     /// <summary>ثبت سند خرید/فروش جدید.</summary>
     [HttpPost]
     public async Task<ActionResult<Order>> Create([FromBody] OrderCommand cmd)
-        => Ok(await _service.CreateOrderAsync(cmd));
+    {
+        var error = TrackingError(cmd, cmd.Type, null);
+        return error is null ? Ok(await _service.CreateOrderAsync(cmd)) : BadRequest(new { message = error });
+    }
 
     /// <summary>ویرایش سند خرید/فروش.</summary>
     [HttpPut("{id:int}")]
     public async Task<ActionResult<Order>> Update(int id, [FromBody] OrderCommand cmd)
-        => Ok(await _service.UpdateOrderAsync(id, cmd));
+    {
+        var existing = await _service.GetOrderAsync(id);
+        if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        var error = TrackingError(cmd, existing.Type, existing);
+        return error is null ? Ok(await _service.UpdateOrderAsync(id, cmd)) : BadRequest(new { message = error });
+    }
+
+    private static string? TrackingError(OrderCommand cmd, TransactionType type, Order? existing)
+    {
+        // Old clients may omit the new property; retain an existing transfer reference.
+        var reference = cmd.CashTrackingNumber ?? (existing?.CashType == CashType.CardTransfer ? existing.CashTrackingNumber : null);
+        if (type == TransactionType.Sale && cmd.CashType == CashType.CardTransfer &&
+            (cmd.PaymentMethod == PaymentMethod.Cash || cmd.CashAmount > 0) &&
+            string.IsNullOrWhiteSpace(reference))
+            return "شماره پیگیری پرداخت کارت به کارت را وارد کنید.";
+        return reference?.Trim().Length > 100 ? "شماره پیگیری حداکثر ۱۰۰ نویسه است." : null;
+    }
 
     /// <summary>حذف سند و برگرداندن موجودی.</summary>
     [HttpDelete("{id:int}")]

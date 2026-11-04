@@ -28,6 +28,7 @@ public static class DbInitializer
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
                     await OrderVatSchemaV1.EnsureAsync(db);
+                    await OrderTrackingSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
                     await OrganizationSchemaV1.EnsureAsync(db);
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
@@ -77,6 +78,7 @@ public static class DbInitializer
                 {
                     MigrateSqlServer(db);
                     await OrderVatSchemaV1.EnsureAsync(db);
+                    await OrderTrackingSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
                     await OrganizationSchemaV1.EnsureAsync(db);
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،

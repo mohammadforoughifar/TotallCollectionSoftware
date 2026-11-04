@@ -14,6 +14,10 @@
 <Modal Visible="true" Title="@FormTitle" Size="@(UseInvoiceWizard ? "modal-xl invoice-dialog" : "modal-xl")" HeaderClass="@(UseInvoiceWizard ? "purchase-order-header" : "")" OnClose="Cancel">
 
     <ChildContent>
+        @if (!string.IsNullOrEmpty(formError))
+        {
+            <div class="order-form-error" role="alert"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>@formError</span><button type="button" aria-label="بستن پیام خطا" @onclick="() => formError = null">×</button></div>
+        }
         @if (loading)
         {
             <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
@@ -168,6 +172,13 @@
                                                 </button>
                                             </div>
                                         </div>
+                                        @if (Type == TransactionType.Sale && CashKind == CashType.CardTransfer)
+                                        {
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label fs-8" for="cash-tracking-@formKey">شماره پیگیری پرداخت <span class="text-danger">*</span></label>
+                                                <input id="cash-tracking-@formKey" class="form-control form-control-sm" @bind="cashTrackingNumber" maxlength="100" dir="ltr" autocomplete="off" />
+                                            </div>
+                                        }
                                         <div class="col-12 col-md-2 fs-8 pb-1">
                                             @if (HasNonCash)
                                             {
@@ -889,6 +900,9 @@
     private DateTime? date;
     private string description = "";
     private bool loading = true, saving;
+    private string? formError;
+    private string? cashTrackingNumber;
+    private void ShowFormError(string message) => formError = message;
     private int invoiceStep = 1;
     private readonly string formKey = Guid.NewGuid().ToString("N");
     private bool invoiceInitialFocusDone;
@@ -1318,23 +1332,28 @@
     {
         try
         {
+            // Independent requests start together; edit-mode stock can also load immediately.
+            if (IsEdit) warehouseId = EditOrder!.WarehouseId;
+            var whTask = WarehouseSvc.GetLookupsAsync(activeOnly: true);
+            var partyTask = Type == TransactionType.Sale ? null : PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
+            var prodTask = ProductSvc.GetProductsAsync(pageSize: 10000);
+            var bankTask = AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            var referrerTask = Type == TransactionType.Sale ? ReferrerSvc.GetAllAsync(activeOnly: true) : null;
+            var customerTask = Type == TransactionType.Sale ? PartySvc.GetAsync(PartyType.Customer) : null;
+            var stockTask = LoadWarehouseStocksAsync();
             try
             {
                 var savedBanks = await JS.InvokeAsync<string?>("localStorage.getItem", "invoiceCheque.customBanks");
                 if (!string.IsNullOrWhiteSpace(savedBanks)) customChequeBanks = System.Text.Json.JsonSerializer.Deserialize<List<string>>(savedBanks) ?? new();
             }
             catch (Exception) { customChequeBanks = new(); }
-            var whTask = WarehouseSvc.GetLookupsAsync(activeOnly: true);
-            var partyTask = PartySvc.GetLookupsAsync(Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier, activeOnly: true);
-            var prodTask = ProductSvc.GetProductsAsync(pageSize: 10000);
-
             whLookup = await whTask;
-            partyLookup = await partyTask;
+            if (partyTask is not null) partyLookup = await partyTask;
             var prods = await prodTask;
 
             try
             {
-                bankAccounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                bankAccounts = await bankTask;
             }
             catch
             {
@@ -1345,15 +1364,15 @@
             products = prods.Items
                 .Where(p => p.IsActive && (Type == TransactionType.Sale || !p.IsService))
                 .ToList();
-            await LoadWarehouseStocksAsync();
+            await stockTask;
             RebuildProductLookup();
 
             if (Type == TransactionType.Sale)
             {
-                referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
+                referrers = await referrerTask!;
 
                 // فهرست مشتری‌ها با نمایش وضعیت معرف: «بدون معرف» یا نام معرف
-                customers = await PartySvc.GetAsync(PartyType.Customer);
+                customers = await customerTask!;
                 partyLookup = customers.Where(c => c.IsActive)
                     .Select(c => new LookupItem
                     {
@@ -1375,6 +1394,7 @@
                 description = o.Description;
 
                 // بارگذاری اطلاعات پرداخت (خرید و فروش) — اجزای ترکیبی
+                cashTrackingNumber = o.CashTrackingNumber;
                 cashTypeStr = ((int)(o.CashType ?? CashType.Cash)).ToString();
                 trsAccountId = o.TrsAccountId;
                 creditDue = o.DueDate;
@@ -1445,7 +1465,7 @@
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            ShowFormError(ex.Message);
         }
         finally
         {
@@ -1711,6 +1731,7 @@
 
     private void GoToPayment()
     {
+        formError = null;
         if (!saving && ValidateInvoice())
         {
             invoiceStep = 2;
@@ -1761,27 +1782,27 @@
 
     private bool ValidateInvoice()
     {
-        if (warehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return false; }
-        if (partyId == 0) { Toast.Error("طرف حساب را انتخاب کنید."); return false; }
-        if (!date.HasValue) { Toast.Error("تاریخ سند را وارد کنید."); return false; }
+        if (warehouseId == 0) { ShowFormError("انبار را انتخاب کنید."); return false; }
+        if (partyId == 0) { ShowFormError("طرف حساب را انتخاب کنید."); return false; }
+        if (!date.HasValue) { ShowFormError("تاریخ سند را وارد کنید."); return false; }
 
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
-        if (validLines.Count == 0) { Toast.Error("حداقل یک سطر کالای معتبر وارد کنید."); return false; }
+        if (validLines.Count == 0) { ShowFormError("حداقل یک سطر کالای معتبر وارد کنید."); return false; }
         if (validLines.Any(l => l.Qty != decimal.Round(l.Qty, 2, MidpointRounding.AwayFromZero)
                                 && (!l.OriginalQty.HasValue || l.Qty != l.OriginalQty.Value)))
         {
-            Toast.Error("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            ShowFormError("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
             return false;
         }
         if (validLines.Any(l => l.VatValue > 0 &&
                 (l.Price != decimal.Round(l.Price, 2) || (!l.DiscountIsAmount && l.DiscountPercent != decimal.Round(l.DiscountPercent, 2)))))
         {
-            Toast.Error("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
+            ShowFormError("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
             return false;
         }
         if (validLines.Any(l => !OrderLineAmounts.IsValidVatValue(l.VatValue)))
         {
-            Toast.Error("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            ShowFormError("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
             return false;
         }
         return true;
@@ -1790,6 +1811,7 @@
     private async Task SaveInternal(bool printAfterSave)
     {
         if (saving || (UseInvoiceWizard && invoiceStep != 2)) return;
+        formError = null;
         if (!ValidateInvoice())
         {
             if (UseInvoiceWizard)
@@ -1828,12 +1850,18 @@
             // ---------- پرداخت ترکیبی: نقد + چک + اقساط + نسیه ----------
             if (HasNonCash && CashPart > 0 && CashPart >= grandTotal)
             {
-                Toast.Error("مبلغ نقدی نمی‌تواند برابر یا بیشتر از مبلغ سند باشد؛ در این صورت فقط «نقدی» را فعال کنید.");
+                ShowFormError("مبلغ نقدی نمی‌تواند برابر یا بیشتر از مبلغ سند باشد؛ در این صورت فقط «نقدی» را فعال کنید.");
                 return;
             }
             var cash = HasNonCash ? CashPart : grandTotal;
 
             cmd.PaymentMethod = DeclaredMethod;
+            if (Type == TransactionType.Sale && cash > 0 && CashKind == CashType.CardTransfer && string.IsNullOrWhiteSpace(cashTrackingNumber))
+            {
+                ShowFormError("شماره پیگیری پرداخت کارت به کارت را وارد کنید.");
+                return;
+            }
+            cmd.CashTrackingNumber = Type == TransactionType.Sale && cash > 0 && CashKind == CashType.CardTransfer ? cashTrackingNumber?.Trim() : null;
             cmd.CashType = CashKind;
             cmd.TrsAccountId = trsAccountId > 0 ? trsAccountId : null;
             cmd.CashAmount = HasNonCash ? cash : 0;
@@ -1842,14 +1870,14 @@
             var chequeList = new List<ChequeDto>();
             if (useCheque)
             {
-                if (cheques.Count == 0) { Toast.Error("حداقل یک چک ثبت کنید."); return; }
+                if (cheques.Count == 0) { ShowFormError("حداقل یک چک ثبت کنید."); return; }
                 for (var i = 0; i < cheques.Count; i++)
                 {
-                    if (string.IsNullOrWhiteSpace(cheques[i].Number)) { Toast.Error($"شماره چک ردیف {i + 1} را وارد کنید."); return; }
-                    if (!chequeDates[i].HasValue) { Toast.Error($"سررسید چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (string.IsNullOrWhiteSpace(cheques[i].Number)) { ShowFormError($"شماره چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (!chequeDates[i].HasValue) { ShowFormError($"سررسید چک ردیف {i + 1} را وارد کنید."); return; }
                     cheques[i].Amount = Fa.ParseDecimal(chequeAmounts[i]);
                     cheques[i].DueDate = chequeDates[i]!.Value;
-                    if (cheques[i].Amount <= 0) { Toast.Error($"مبلغ چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (cheques[i].Amount <= 0) { ShowFormError($"مبلغ چک ردیف {i + 1} را وارد کنید."); return; }
                 }
                 chequeList = cheques;
             }
@@ -1858,13 +1886,13 @@
             var instList = new List<InstallmentDto>();
             if (useInstallment)
             {
-                if (installments.Count == 0) { Toast.Error("ابتدا دفترچه اقساط را بسازید."); return; }
+                if (installments.Count == 0) { ShowFormError("ابتدا دفترچه اقساط را بسازید."); return; }
                 for (var i = 0; i < installments.Count; i++)
                 {
-                    if (!instDates[i].HasValue) { Toast.Error($"سررسید قسط {i + 1} را وارد کنید."); return; }
+                    if (!instDates[i].HasValue) { ShowFormError($"سررسید قسط {i + 1} را وارد کنید."); return; }
                     installments[i].Amount = Fa.ParseDecimal(instAmounts[i]);
                     installments[i].DueDate = instDates[i]!.Value;
-                    if (installments[i].Amount <= 0) { Toast.Error($"مبلغ قسط {i + 1} را وارد کنید."); return; }
+                    if (installments[i].Amount <= 0) { ShowFormError($"مبلغ قسط {i + 1} را وارد کنید."); return; }
                 }
                 instList = installments;
             }
@@ -1879,7 +1907,7 @@
             {
                 if (!useCredit || !creditDue.HasValue)
                 {
-                    Toast.Error($"جمع پرداخت‌ها ({paid.Money()}) کمتر از مبلغ سند ({grandTotal.Money()}) است؛ " +
+                    ShowFormError($"جمع پرداخت‌ها ({paid.Money()}) کمتر از مبلغ سند ({grandTotal.Money()}) است؛ " +
                                 "باقی‌ماندهٔ " + remainder.Money() + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
                     return;
                 }
@@ -1906,7 +1934,7 @@
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            ShowFormError(ex.Message);
         }
         finally
         {

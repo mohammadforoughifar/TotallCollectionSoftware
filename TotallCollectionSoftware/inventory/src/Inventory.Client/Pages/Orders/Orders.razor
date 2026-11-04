@@ -362,6 +362,10 @@
                         <span class="fw-700 text-primary"><i class="bi bi-bank ms-1"></i>@viewing.TrsAccountName</span>
                     </div>
                 }
+                @if (!string.IsNullOrWhiteSpace(viewing.CashTrackingNumber))
+                {
+                    <div><span class="fs-8 text-muted ms-1">شماره پیگیری کارت به کارت:</span><span class="fw-700" dir="ltr">@viewing.CashTrackingNumber</span></div>
+                }
                 @if (viewing.Cheques.Count > 0)
                 {
                     <div>

@@ -13688,6 +13688,10 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("CashType")
                         .HasColumnType("int");
 
+                    b.Property<string>("CashTrackingNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 

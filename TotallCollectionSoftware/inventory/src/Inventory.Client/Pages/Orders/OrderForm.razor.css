@@ -114,3 +114,7 @@
 .order-keyboard-hint { color: #5b6a80; font-size: .73rem; line-height: 1.8; margin-top: .4rem; }
 
 .order-bank-select ::deep .ss { flex: 1 1 0; min-width: 0; }
+
+/* Validation stays visible inside the invoice, above its modal backdrop. */
+.order-form-error { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); width: min(90vw, 640px); z-index: 4600; display: flex; align-items: flex-start; gap: .6rem; padding: .75rem 1rem; margin-bottom: 1rem; background: #fff1f2; border: 1px solid #e11d48; border-right: 4px solid #be123c; border-radius: 9px; color: #881337; font-weight: 700; box-shadow: 0 4px 12px rgba(136,19,55,.15); }
+.order-form-error button { margin-inline-start: auto; border: 0; background: transparent; color: inherit; font-size: 1.25rem; line-height: 1; }

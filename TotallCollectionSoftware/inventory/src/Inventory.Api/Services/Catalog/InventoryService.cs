@@ -954,11 +954,12 @@ public class InventoryService : IInventoryService
             .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
         var ids = products.Select(p => p.Id).ToList();
         var stocks = await _db.Stocks.AsNoTracking().Where(s => ids.Contains(s.ProductId)).ToListAsync();
+        var stocksByProduct = stocks.ToLookup(s => s.ProductId);
         var warehouseIds = products.Where(p => p.WarehouseId != null).Select(p => p.WarehouseId!.Value).ToList();
         var whNames = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name);
         return new PagedResult<Product>
         {
-            Items = products.Select(p => ToProductDto(p, stocks, whNames)).ToList(),
+            Items = products.Select(p => ToProductDto(p, stocksByProduct[p.Id], whNames)).ToList(),
             TotalCount = total, Page = page, PageSize = pageSize
         };
     }
@@ -968,9 +969,9 @@ public class InventoryService : IInventoryService
             .Select(p => new LookupItem { Id = p.Id, Name = p.Code + " — " + p.Name })
             .ToPageListAsync(pagination, defaultCap: 100000);
 
-    private static Product ToProductDto(Db.Product p, List<Db.Stock> stocks, Dictionary<int, string>? whNames = null)
+    private static Product ToProductDto(Db.Product p, IEnumerable<Db.Stock> stocks, Dictionary<int, string>? whNames = null)
     {
-        var ps = stocks.Where(s => s.ProductId == p.Id).ToList();
+        var ps = stocks.ToList();
         var qty = ps.Sum(s => s.Quantity);
         var totalCost = ps.Sum(s => s.Quantity * s.AvgCost);
         var avg = qty > 0 ? totalCost / qty : p.PurchasePrice;
@@ -1516,6 +1517,7 @@ public class InventoryService : IInventoryService
             TotalAmount = t.Amount,
             PaymentMethod = t.PaymentMethod,
             CashType = t.CashType,
+            CashTrackingNumber = t.CashTrackingNumber,
             CashAmount = t.CashAmount,
             TrsAccountId = t.TrsAccountId,
             TrsAccountName = trsAccountName,
@@ -2031,6 +2033,11 @@ public class InventoryService : IInventoryService
             txn.CashType = cmd.CashType ?? Inventory.Shared.CashType.Cash;
         }
 
+        // Missing values from older clients preserve an existing reference on edits.
+        var reference = cmd.CashTrackingNumber?.Trim();
+        if (reference?.Length > 100) throw new InvalidOperationException("شماره پیگیری حداکثر ۱۰۰ نویسه است.");
+        txn.CashTrackingNumber = txn.Type == TransactionType.Sale && cash > 0 && txn.CashType == CashType.CardTransfer
+            ? reference ?? txn.CashTrackingNumber : null;
         txn.PaymentMethod = PaymentMix.Derive(cash, chequeSum, instSum, creditRemainder);
     }
 

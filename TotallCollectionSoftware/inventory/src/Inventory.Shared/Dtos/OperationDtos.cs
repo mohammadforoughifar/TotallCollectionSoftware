@@ -66,6 +66,7 @@ public class Order
     // ---------- پرداخت (فقط فروش) ----------
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
     public CashType? CashType { get; set; }
+    public string? CashTrackingNumber { get; set; }
 
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی</summary>
     public decimal CashAmount { get; set; }
@@ -102,6 +103,7 @@ public class OrderCommand
     // ---------- پرداخت (فقط فروش) ----------
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
     public CashType? CashType { get; set; }
+    public string? CashTrackingNumber { get; set; }
 
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط)</summary>
     public decimal CashAmount { get; set; }
