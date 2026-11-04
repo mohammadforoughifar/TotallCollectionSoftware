@@ -310,6 +310,16 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 builder.Services.AddSingleton<FileStore>();
 // کانال شرکت‌های راه‌دور: احراز هویت کلید API بین نصبِ شرکت و سرور مرکزی
 builder.Services.AddScoped<Inventory.Api.Services.ItExternalAuthService>();
+
+// ================== بک‌آپ خودکار SQL Server + ارسال به سرور مرکزی ==================
+builder.Services.AddHttpClient("backup", c => c.Timeout = TimeSpan.FromMinutes(30));
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupSettingsService, Inventory.Api.Services.Backup.BackupSettingsService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupSessionService, Inventory.Api.Services.Backup.BackupSessionService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.ISqlServerBackupService, Inventory.Api.Services.Backup.SqlServerBackupService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupUploadService, Inventory.Api.Services.Backup.BackupUploadService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.CentralBackupAuthService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.ICentralBackupStorageService, Inventory.Api.Services.Backup.CentralBackupStorageService>();
+builder.Services.AddHostedService<Inventory.Api.Services.Backup.BackupWorker>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
 builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
 // واترمارک سمت سرور (حک روی بایت تصویر/PDF) برای مدارکِ دارای فلگ واترمارک

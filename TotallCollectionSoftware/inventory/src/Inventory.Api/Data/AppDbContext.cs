@@ -169,6 +169,13 @@ public class AppDbContext : DbContext
     public DbSet<ItRemoteRequest> ItRemoteRequests => Set<ItRemoteRequest>();
     public DbSet<ItRemoteUserKey> ItRemoteUserKeys => Set<ItRemoteUserKey>();
 
+    // ==================== بک‌آپ خودکار SQL Server و ارسال به سرور مرکزی ====================
+    public DbSet<BackupSetting> BackupSettings => Set<BackupSetting>();
+    public DbSet<BackupBrowserSession> BackupBrowserSessions => Set<BackupBrowserSession>();
+    public DbSet<BackupJob> BackupJobs => Set<BackupJob>();
+    public DbSet<CentralBackupCompany> CentralBackupCompanies => Set<CentralBackupCompany>();
+    public DbSet<CentralBackupReceipt> CentralBackupReceipts => Set<CentralBackupReceipt>();
+
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
@@ -568,6 +575,10 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        // بک‌آپ خودکار: کلیدهای رشته‌ای و تک‌ردیفی تنظیمات نباید Identity بگیرند.
+        mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
+        mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);
+        mb.Entity<BackupJob>().HasKey(x => x.Id);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
         AiSchemaV1.Configure(mb);

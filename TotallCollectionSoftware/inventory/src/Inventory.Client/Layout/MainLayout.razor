@@ -11,6 +11,7 @@
 @inject RealtimeService Rt
 @inject IChatClientService Chat
 @inject TabService Tabs
+@inject IBackupSessionTracker BackupTracker
 @implements IDisposable
 
 @if (!Auth.IsLoggedIn)
@@ -630,6 +631,7 @@ else
         var version = ++companyContextVersion;
         if (!Auth.IsLoggedIn)
         {
+            try { await BackupTracker.StopAsync(); } catch { }
             ClearCompanyContext();
             await InvokeAsync(StateHasChanged);
             return;
@@ -749,6 +751,7 @@ else
             // زمینهٔ شرکت باید قبل از هر درخواست/اتصال پس از ورود آماده باشد.
             // این ترتیب، نمایش انتخاب‌گر و X-Company-Id را مستقل از کلیک روی پیام‌رسان می‌کند.
             await LoadCompanyContextAsync();
+            try { await BackupTracker.StartAsync(); } catch { }
             await InitNotificationsAsync();
         }
         await InvokeAsync(StateHasChanged);
@@ -1290,6 +1293,7 @@ else
         if (Auth.IsLoggedIn)
         {
             await LoadCompanyContextAsync();
+            try { await BackupTracker.StartAsync(); } catch { }
 
             // توست خوش‌آمد بعد از ورود موفق
             try
@@ -1461,6 +1465,7 @@ else
         Rt.DataChanged -= OnRtDataChanged;
         // ابتدا شنوندهٔ تغییر اندازه در JS جدا می‌شود تا دیگر به مرجعِ در حال آزادشدن فراخوانی نکند.
         try { _ = JS.InvokeVoidAsync("appShell.unwatch"); } catch { }
+        try { _ = BackupTracker.StopAsync(); } catch { }
         try { selfRef?.Dispose(); } catch { }
         selfRef = null;
     }

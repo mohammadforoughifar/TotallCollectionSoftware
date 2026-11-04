@@ -71,6 +71,7 @@ public static class DbInitializer
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                     // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
+                await BackupSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -118,6 +119,7 @@ public static class DbInitializer
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                     // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
+                await BackupSchemaV1.EnsureAsync(db);
                 }
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
