@@ -392,7 +392,13 @@
             @if (Type != TransactionType.Purchase || purchaseStep == 1)
             {
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="fw-700 fs-7"><i class="bi bi-list-ul text-primary ms-1"></i>اقلام فاکتور</span>
+                <div class="d-flex align-items-center flex-wrap" style="gap:.4rem">
+                    <span class="fw-700 fs-7"><i class="bi bi-list-ul text-primary ms-1"></i>اقلام فاکتور</span>
+                    @if (ZeroStockCount > 0)
+                    {
+                        <span class="zs-badge" data-zero-count><i class="bi bi-x-octagon"></i> @ZeroStockCount.Num() قلم ناموجود</span>
+                    }
+                </div>
                 <button class="btn btn-sm btn-outline-primary" data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
                     <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
                 </button>
@@ -424,7 +430,7 @@
                     <tbody>
                         @foreach (var l in lines)
                         {
-                            <tr @key="l.Key">
+                            <tr @key="l.Key" class="@(IsOutOfStock(l) ? "zs-row zs-row--table" : "")" data-zero-stock="@(IsOutOfStock(l) ? "1" : "0")">
                                 <td data-label="کالا">
                                     <SearchSelect Items="productLookup"
                                                   Value="l.ProductId"
@@ -446,9 +452,16 @@
                                             }
                                         </div>
                                     }
+                                    @if (IsOutOfStock(l))
+                                    {
+                                        <div class="zs-alert" data-zero-stock-alert>
+                                            <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
+                                            <span>در انبار انتخابشده موجود نیست — پیش از صدور فاکتور اصلاح کنید</span>
+                                        </div>
+                                    }
                                 </td>
                                 <td data-label="مقدار">
-                                    <input class="form-control num" aria-label="مقدار" inputmode="decimal" dir="ltr" placeholder="1.25"
+                                    <input class="form-control num @(IsOutOfStock(l) ? "zs-qty-input" : "")" aria-label="مقدار" inputmode="decimal" dir="ltr" placeholder="1.25"
                                            title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
                                            value="@l.QtyText" @oninput="@(e => { l.QtyText = FormatQuantity(e.Value); RecalcDiscount(l); })" />
                                 </td>
@@ -877,12 +890,21 @@
         public decimal Total => Math.Max(0, Gross - DiscountAmount);
     }
 
+    /// <summary>فقط در فاکتور فروش: کالای غیرخدماتی با موجودی صفر در انبار جاری.</summary>
+    private bool IsOutOfStock(LineVm l)
+        => Type == TransactionType.Sale && stocksLoaded && l.ProductId > 0 && warehouseId > 0
+           && !IsServiceProduct(l.ProductId)
+           && (!warehouseStocks.TryGetValue(l.ProductId, out var q) || q <= 0);
+    private int ZeroStockCount => lines.Count(IsOutOfStock);
+
     private List<LineVm> lines = new() { new LineVm() };
     private List<LookupItem> productLookup = new();
     private List<LookupItem> whLookup = new();
     private List<LookupItem> partyLookup = new();
     private List<Product> products = new();
     private Dictionary<int, decimal> warehouseStocks = new();
+    /// <summary>جلوگیری از هشدار کاذب پیش از بارگیری موجودی انبار.</summary>
+    private bool stocksLoaded;
     private int warehouseId, partyId, referrerId;
     private DateTime? date;
     private string description = "";
@@ -1412,6 +1434,7 @@
     private async Task LoadWarehouseStocksAsync()
     {
         warehouseStocks.Clear();
+        stocksLoaded = false;
         if (warehouseId > 0)
         {
             try
@@ -1420,6 +1443,7 @@
                 if (res?.Items != null)
                 {
                     warehouseStocks = res.Items.ToDictionary(s => s.ProductId, s => s.Quantity);
+                    stocksLoaded = true;
                 }
             }
             catch
@@ -1460,7 +1484,8 @@
                 else if (warehouseId > 0)
                 {
                     var qty = warehouseStocks.TryGetValue(p.Id, out var q) ? q : 0m;
-                    stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}";
+                    stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}"
+                        + (qty <= 0 ? " · ناموجود" : "");
                 }
                 return new LookupItem
                 {

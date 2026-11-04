@@ -145,7 +145,13 @@ else
         <div class="card-header">
             <i class="bi bi-list-ol text-primary"></i>
             <span class="card-title">اقلام فاکتور</span>
-            <span class="badge badge-soft-primary ms-auto">@doc.Lines.Count.Num() قلم</span>
+            <div class="ms-auto d-flex align-items-center flex-wrap" style="gap:.4rem">
+                <span class="badge badge-soft-primary">@doc.Lines.Count.Num() قلم</span>
+                @if (ZeroStockCount > 0)
+                {
+                    <span class="zs-badge" data-zero-count><i class="bi bi-x-octagon"></i> @ZeroStockCount.Num() قلم ناموجود</span>
+                }
+            </div>
         </div>
         <div class="card-body p-0">
             @if (Editable)
@@ -190,7 +196,7 @@ else
                         {
                             var idx = i;
                             var line = doc.Lines[idx];
-                            <tr>
+                            <tr class="@(IsZeroStock(line) ? "zs-row zs-row--table" : "")" data-zero-stock="@(IsZeroStock(line) ? "1" : "0")">
                                 <td class="num text-muted">@((idx + 1).FaDigits())</td>
                                 <td>
                                     <b>@line.ProductName</b>
@@ -203,8 +209,15 @@ else
                                             </span>
                                         }
                                     </div>
+                                    @if (IsZeroStock(line))
+                                    {
+                                        <div class="zs-alert" data-zero-stock-alert>
+                                            <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
+                                            <span>در انبار فاکتور موجود نیست — پیش از قطعی کردن اصلاح کنید</span>
+                                        </div>
+                                    }
                                 </td>
-                                <td><input type="number" step="0.01" class="form-control form-control-sm num text-center"
+                                <td><input type="number" step="0.01" class="form-control form-control-sm num text-center @(IsZeroStock(line) ? "zs-qty-input" : "")"
                                            value="@line.Quantity" @onchange="e => OnQty(idx, e)" disabled="@(!Editable)" /></td>
                                 <td><input type="number" step="any" class="form-control form-control-sm num text-center"
                                            value="@line.UnitPrice" @onchange="e => OnPrice(idx, e)" disabled="@(!Editable)" /></td>
@@ -236,7 +249,7 @@ else
                 {
                     var idx = i;
                     var line = doc.Lines[idx];
-                    <div class="m-card">
+                    <div class="m-card @(IsZeroStock(line) ? "zs-row zs-row--card" : "")" data-zero-stock="@(IsZeroStock(line) ? "1" : "0")">
                         <div class="m-card-head">
                             <div class="m-card-icon"><i class="bi bi-box-seam"></i></div>
                             <div class="flex-grow-1 min-w-0">
@@ -244,10 +257,17 @@ else
                                 <div class="fs-8 text-muted num">@line.ProductCode.FaDigits() · @line.Unit</div>
                             </div>
                         </div>
+                        @if (IsZeroStock(line))
+                        {
+                            <div class="zs-alert" data-zero-stock-alert>
+                                <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
+                                <span>در انبار فاکتور موجود نیست — پیش از قطعی کردن اصلاح کنید</span>
+                            </div>
+                        }
                         <div class="m-card-body">
                             <div class="m-card-row">
                                 <span>مقدار</span>
-                                <input type="number" step="0.01" class="form-control form-control-sm num"
+                                <input type="number" step="0.01" class="form-control form-control-sm num @(IsZeroStock(line) ? "zs-qty-input" : "")"
                                        value="@line.Quantity" @onchange="e => OnQty(idx, e)" disabled="@(!Editable)" />
                             </div>
                             <div class="m-card-row">
@@ -338,6 +358,10 @@ else
 
     private bool Editable => doc.Status == InvoiceStatus.Draft;
     private bool IsBuying => doc.Kind is InvoiceKind.Purchase or InvoiceKind.PurchaseReturn;
+
+    /// <summary>فقط در فاکتور فروش: کالای انتخابشده در انبار فاکتور موجودی صفر دارد.</summary>
+    private bool IsZeroStock(FacInvoiceLine l) => !IsBuying && l.ProductId > 0 && l.CurrentStock <= 0;
+    private int ZeroStockCount => doc.Lines.Count(IsZeroStock);
 
     // ---------- محاسبات زنده‌ی سمت کلاینت (سرور دوباره محاسبه می‌کند) ----------
     private decimal Gross => doc.Lines.Sum(l => l.Gross);
