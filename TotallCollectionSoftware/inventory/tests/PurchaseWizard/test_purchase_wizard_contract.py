@@ -113,8 +113,8 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('text-align: right', desktop_css)
         self.assertNotIn('display: grid', desktop_css)
         self.assertIn('@media (max-width: 991px)', CSS)
-        self.assertIn('InvoiceColumnWidth(22)', FORM)
-        self.assertIn('InvoiceColumnWidth(5)', FORM)
+        self.assertIn('InvoiceColumnWidth(22, 20)', FORM)
+        self.assertIn('InvoiceActionsColumnWidth', FORM)
         self.assertNotIn('overflow-x: auto', CSS)
         self.assertNotIn('min-width: 1120px', CSS)
         self.assertIn('height: 38px; min-height: 38px;', CSS)
@@ -129,8 +129,46 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('padding-inline-end: 1rem;', CSS)
         self.assertIn('.purchase-items table thead th {', CSS)
         self.assertIn('overflow-wrap: normal; word-break: normal;', CSS)
-        self.assertIn('100 + 10 * extraColumns', FORM)
 
+    def test_sale_column_widths_cover_all_optional_column_combinations(self):
+        items = FORM.split('<div data-order-entry', 1)[1]
+        colgroup = items.split('<colgroup>', 1)[1].split('</colgroup>', 1)[0]
+        thead = items.split('<thead>', 1)[1].split('</thead>', 1)[0]
+        row = items.split('<tr @key="l.Key" data-order-line="@l.Key">', 1)[1].split('</tr>', 1)[0]
+        shared_cols = colgroup.split('@if (Type == TransactionType.Sale && CanSeeProfit)', 1)[0]
+        weights = re.findall(r'InvoiceColumnWidth\((\d+)(?:,\s*(\d+))?\)', shared_cols)
+        self.assertEqual(len(weights), 8)
+        purchase_weights = [int(purchase) for purchase, _ in weights]
+        sale_weights = [int(sale or purchase) for purchase, sale in weights]
+        base = int(re.search(r'SaleBaseColumnWeight = (\d+)', FORM).group(1))
+        extra = int(re.search(r'SaleExtraColumnWeight = (\d+)', FORM).group(1))
+        self.assertEqual(sum(purchase_weights) + 5, 100)
+        self.assertEqual(sum(sale_weights), base)
+        self.assertEqual(colgroup.count('InvoiceColumnWidth(SaleExtraColumnWeight)'), 2)
+        self.assertIn('<col style="width:@InvoiceActionsColumnWidth" />', colgroup)
+        self.assertIn('SaleActionsColumnRem = 4.5m', FORM)
+        self.assertIn('SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns', FORM)
+        self.assertIn('100m * weight / totalWeight', FORM)
+        self.assertIn('if (Type != TransactionType.Sale)', FORM)
+        self.assertIn(': InvoiceColumnWidth(5)', FORM)
+
+        for condition, label in (('CanSeeProfit', 'سود'), ('referrerId > 0', 'پورسانت')):
+            self.assertIn(f'@if (Type == TransactionType.Sale && {condition})', colgroup)
+            guard = re.escape(f'@if ({condition})')
+            self.assertRegex(thead, guard + r'\s*\{\s*<th><span>' + label + r'</span>')
+            self.assertRegex(row, guard + r'\s*\{\s*<td data-label="' + label + '"')
+        for profit, commission in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            denominator = base + extra * (profit + commission)
+            visible = sale_weights + [extra] * (profit + commission)
+            self.assertEqual(sum(visible), denominator)
+            self.assertAlmostEqual(sum(100 * w / denominator for w in visible), 100)
+
+        desktop_sale = CSS.split('@media (min-width: 992px)', 1)[1].split('}', 1)[0]
+        self.assertIn('.sale-items table thead th, .sale-items tbody td', desktop_sale)
+        self.assertIn('padding-inline: .3rem', desktop_sale)
+        self.assertIn('.sale-items tbody .order-line-rate > input.form-control { padding-left: 24px;', CSS)
+        self.assertIn('.sale-items tbody .order-line-rate > .order-line-unit { width: 20px;', CSS)
+        self.assertIn('Inventory.Client.styles.css?v=5', INDEX)
 
     def test_invoice_totals_show_after_discount_and_after_vat(self):
         totals = FORM.split('<div class="purchase-totals">', 1)[1].split('</div>\n                </div>', 1)[0]

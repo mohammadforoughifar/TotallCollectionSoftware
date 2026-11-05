@@ -390,17 +390,17 @@
                     @if (UseInvoiceWizard)
                     {
                         <colgroup>
-                            <col style="width:@InvoiceColumnWidth(22)" />
+                            <col style="width:@InvoiceColumnWidth(22, 20)" />
                             <col style="width:@InvoiceColumnWidth(8)" />
-                            <col style="width:@InvoiceColumnWidth(12)" />
-                            <col style="width:@InvoiceColumnWidth(11)" />
-                            <col style="width:@InvoiceColumnWidth(9)" />
-                            <col style="width:@InvoiceColumnWidth(11)" />
-                            <col style="width:@InvoiceColumnWidth(9)" />
-                            <col style="width:@InvoiceColumnWidth(13)" />
-                            @if (Type == TransactionType.Sale && CanSeeProfit) { <col style="width:@InvoiceColumnWidth(10)" /> }
-                            @if (Type == TransactionType.Sale && referrerId > 0) { <col style="width:@InvoiceColumnWidth(10)" /> }
-                            <col style="width:@InvoiceColumnWidth(5)" />
+                            <col style="width:@InvoiceColumnWidth(12, 11)" />
+                            <col style="width:@InvoiceColumnWidth(11, 10)" />
+                            <col style="width:@InvoiceColumnWidth(9, 11)" />
+                            <col style="width:@InvoiceColumnWidth(11, 10)" />
+                            <col style="width:@InvoiceColumnWidth(9, 11)" />
+                            <col style="width:@InvoiceColumnWidth(13, 14)" />
+                            @if (Type == TransactionType.Sale && CanSeeProfit) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
+                            @if (Type == TransactionType.Sale && referrerId > 0) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
+                            <col style="width:@InvoiceActionsColumnWidth" />
                         </colgroup>
                     }
                     <thead>
@@ -960,10 +960,26 @@
         : lines;
     private decimal goodsTotal => TotalLines.Sum(l => l.Total);
     private decimal grandTotal => goodsTotal + saleChequeIncome;
-    private string InvoiceColumnWidth(int weight)
+
+    // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
+    // table the percentage columns share the space left by this fixed-width action column.
+    // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
+    private const decimal SaleActionsColumnRem = 4.5m;
+    private const int SaleBaseColumnWeight = 95;
+    private const int SaleExtraColumnWeight = 11;
+    private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
+        ? SaleActionsColumnRem.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "rem"
+        : InvoiceColumnWidth(5);
+
+    private string InvoiceColumnWidth(int purchaseWeight, int? saleWeight = null)
     {
-        var extraColumns = Type == TransactionType.Sale ? (CanSeeProfit ? 1 : 0) + (referrerId > 0 ? 1 : 0) : 0;
-        return (100m * weight / (100 + 10 * extraColumns)).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        if (Type != TransactionType.Sale)
+            return purchaseWeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+        var extraColumns = (CanSeeProfit ? 1 : 0) + (referrerId > 0 ? 1 : 0);
+        var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
+        var weight = saleWeight ?? purchaseWeight;
+        return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
     }
 
 

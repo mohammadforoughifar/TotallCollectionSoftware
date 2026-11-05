@@ -69,6 +69,12 @@
 .purchase-items tbody .order-line-value { justify-content: flex-start; line-height: 1.45; }
 .purchase-items tbody .order-line-actions { justify-content: flex-end; gap: .2rem; flex-wrap: nowrap; }
 .purchase-items tbody .order-line-actions .btn { flex: 0 0 auto; padding-inline: .2rem; font-size: .68rem; }
+/* Sale may have two extra columns and two action buttons; keep fields usable at laptop widths. */
+@media (min-width: 992px) {
+    .sale-items table thead th, .sale-items tbody td { padding-inline: .3rem; }
+    .sale-items tbody .order-line-rate > input.form-control { padding-left: 24px; padding-right: .3rem; }
+    .sale-items tbody .order-line-rate > .order-line-unit { width: 20px; }
+}
 /* On narrower viewports, retain the existing labelled mobile row layout without horizontal scrolling. */
 @media (max-width: 991px) {
     .purchase-items { border: 0; }
