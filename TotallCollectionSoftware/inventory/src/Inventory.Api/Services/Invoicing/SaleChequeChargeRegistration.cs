@@ -119,11 +119,12 @@ public static class SaleChequeChargeRegistration
         var entry = await SaleChequeChargePosting.PostAsync(db, sale.Id, user);
         if (cash > 0)
         {
-            var number = (await db.TrsVouchers.Where(v => v.Kind == TreasuryKind.Receipt)
+            var number = (await db.TrsVouchers.IgnoreQueryFilters().Where(v => v.Kind == TreasuryKind.Receipt)
                 .Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
             var title = $"دریافت نقدی فاکتور فروش {sale.Number}";
             var cashReceipt = new TrsVoucher
             {
+                CompanyId = sale.CompanyId,
                 Number = number, Kind = TreasuryKind.Receipt, Date = sale.Date.Date, PartyId = sale.PartyId,
                 Description = title, RefNumber = sale.Number, Status = TreasuryStatus.Confirmed,
                 TotalAmount = cash, CashAmount = cash,

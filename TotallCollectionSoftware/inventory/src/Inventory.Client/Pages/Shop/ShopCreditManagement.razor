@@ -526,16 +526,16 @@
 
 @if (reversalTarget is not null)
 {
-    <Modal Visible="true" Title="لغو وصول چک" OnClose="CloseReceiptReversal">
+    <Modal Visible="true" Title="@(reversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت چک" : "لغو وصول چک")" OnClose="CloseReceiptReversal">
         <ChildContent>
-            <div class="alert alert-warning fs-8">لغو وصول و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقهٔ وصول حفظ خواهد شد.</div>
+            <div class="alert alert-warning fs-8">@(reversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت و بازگشت مبلغ به حساب بانکی اولیه ثبت می‌شود؛ سابقه پرداخت حفظ خواهد شد." : "لغو وصول و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقه وصول حفظ خواهد شد.")</div>
             <p class="fs-8">چک <b class="num">@reversalTarget.Number</b> به مبلغ <b class="num">@reversalTarget.Amount.Money()</b> ریال</p>
-            <label class="form-label">تاریخ لغو وصول *</label>
+            <label class="form-label">@(reversalTarget.TransactionType == TransactionType.Purchase ? "تاریخ لغو پرداخت" : "تاریخ لغو وصول") *</label>
             <DatePicker @bind-Value="reversalDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReceiptReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceiptReversal">ثبت لغو دریافت</button>
+            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceiptReversal">@(reversalTarget.TransactionType == TransactionType.Purchase ? "ثبت لغو پرداخت" : "ثبت لغو وصول")</button>
         </Footer>
     </Modal>
 }
@@ -572,11 +572,11 @@
 
 @if (receiptTarget is not null)
 {
-    <Modal Visible="true" Title="وصول چک فروش" OnClose="CloseReceipt">
+    <Modal Visible="true" Title="@(receiptTarget.TransactionType == TransactionType.Purchase ? "پرداخت چک خرید" : "وصول چک فروش")" OnClose="CloseReceipt">
         <ChildContent>
             <p class="fs-8">چک <b class="num">@receiptTarget.Number</b> به مبلغ <b class="num">@receiptTarget.Amount.Money()</b> ریال</p>
-            <label class="form-label">حساب بانکی مقصد شرکت *</label>
-            <select class="form-select" @bind="receiptBankId">
+            <label class="form-label">@(receiptTarget.TransactionType == TransactionType.Purchase ? "حساب بانکی پرداخت" : "حساب بانکی مقصد شرکت") *</label>
+            <select class="form-select" @bind="receiptBankId" disabled="@(receiptTarget.TransactionType == TransactionType.Purchase && receiptTarget.TrsAccountId is > 0)">
                 <option value="0">انتخاب حساب بانکی</option>
                 @foreach (var account in receiptBanks)
                 {
@@ -587,12 +587,16 @@
             {
                 <div class="text-muted fs-9 mt-1">حساب بانکی فعال یافت نشد.</div>
             }
-            <label class="form-label mt-2">تاریخ وصول *</label>
+            @if (receiptTarget.TransactionType == TransactionType.Purchase && receiptTarget.TrsAccountId is > 0)
+            {
+                <div class="@(receiptBankId > 0 ? "text-muted" : "text-danger") fs-9 mt-1">@(receiptBankId > 0 ? "پرداخت از حساب صادرکننده چک ثبت می‌شود." : "حساب صادرکننده چک فعال نیست یا در شرکت جاری یافت نشد.")</div>
+            }
+            <label class="form-label mt-2">@(receiptTarget.TransactionType == TransactionType.Purchase ? "تاریخ پرداخت" : "تاریخ وصول") *</label>
             <DatePicker @bind-Value="receiptDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReceipt">انصراف</button>
-            <button type="button" class="btn btn-success" disabled="@(receiptBusy || receiptBankId <= 0 || !receiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceipt">ثبت وصول</button>
+            <button type="button" class="btn btn-success" disabled="@(receiptBusy || receiptBankId <= 0 || !receiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceipt">@(receiptTarget.TransactionType == TransactionType.Purchase ? "ثبت پرداخت" : "ثبت وصول")</button>
         </Footer>
     </Modal>
 }
@@ -664,10 +668,10 @@
 
 @if (instReceiptTarget is not null)
 {
-    <Modal Visible="true" Title="دریافت قسط فاکتور سوددار" OnClose="CloseInstallmentReceipt">
+    <Modal Visible="true" Title="@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "پرداخت قسط خرید" : "دریافت قسط فروش")" OnClose="CloseInstallmentReceipt">
         <ChildContent>
             <p class="fs-8">قسط شماره <b class="num">@instReceiptTarget.No.Num()</b> فاکتور <b class="num">@instReceiptTarget.OrderNumber</b> به مبلغ <b class="num">@instReceiptTarget.Amount.Money()</b> ریال</p>
-            <label class="form-label">حساب صندوق/بانک مقصد شرکت *</label>
+            <label class="form-label">@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "حساب صندوق/بانک پرداخت" : "حساب صندوق/بانک مقصد شرکت") *</label>
             <select class="form-select" @bind="instReceiptAccountId">
                 <option value="0">انتخاب حساب فعال شرکت</option>
                 @foreach (var account in instReceiptAccounts)
@@ -675,28 +679,28 @@
                     <option value="@account.Id">@account.Name</option>
                 }
             </select>
-            <label class="form-label mt-2">تاریخ دریافت *</label>
+            <label class="form-label mt-2">@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "تاریخ پرداخت" : "تاریخ دریافت") *</label>
             <DatePicker @bind-Value="instReceiptDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseInstallmentReceipt">انصراف</button>
-            <button type="button" class="btn btn-success" disabled="@(instReceiptBusy || instReceiptAccountId <= 0 || !instReceiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReceipt">ثبت دریافت قسط</button>
+            <button type="button" class="btn btn-success" disabled="@(instReceiptBusy || instReceiptAccountId <= 0 || !instReceiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReceipt">@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "ثبت پرداخت قسط" : "ثبت دریافت قسط")</button>
         </Footer>
     </Modal>
 }
 
 @if (instReversalTarget is not null)
 {
-    <Modal Visible="true" Title="لغو دریافت قسط" OnClose="CloseInstallmentReversal">
+    <Modal Visible="true" Title="@(instReversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت قسط" : "لغو دریافت قسط")" OnClose="CloseInstallmentReversal">
         <ChildContent>
-            <div class="alert alert-warning fs-8">لغو دریافت قسط با ثبت خروج از حساب اولیه انجام می‌شود؛ سابقه دریافت حفظ خواهد شد.</div>
+            <div class="alert alert-warning fs-8">@(instReversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت با ثبت بازگشت مبلغ به حساب اولیه انجام می‌شود؛ سابقه حفظ خواهد شد." : "لغو دریافت با ثبت خروج از حساب اولیه انجام می‌شود؛ سابقه حفظ خواهد شد.")</div>
             <p class="fs-8">قسط شماره <b class="num">@instReversalTarget.No.Num()</b> فاکتور <b class="num">@instReversalTarget.OrderNumber</b> به مبلغ <b class="num">@instReversalTarget.Amount.Money()</b> ریال</p>
-            <label class="form-label">تاریخ لغو دریافت *</label>
+            <label class="form-label">@(instReversalTarget.TransactionType == TransactionType.Purchase ? "تاریخ لغو پرداخت" : "تاریخ لغو دریافت") *</label>
             <DatePicker @bind-Value="instReversalDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseInstallmentReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReversal">ثبت لغو دریافت</button>
+            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReversal">@(instReversalTarget.TransactionType == TransactionType.Purchase ? "ثبت لغو پرداخت" : "ثبت لغو دریافت")</button>
         </Footer>
     </Modal>
 }
@@ -717,7 +721,7 @@
                     </p>
                     <div class="alert alert-warning fs-8 rounded-3 d-flex align-items-center gap-2 mb-3">
                         <i class="bi bi-info-circle-fill fs-5 text-warning"></i>
-                        <div>با ثبت برگشت، چک به عنوان چک لاوصول علامت‌گذاری شده و مانده بدهی مشتری در کلیه گزارش‌های مالی احیا خواهد شد.</div>
+                        <div>چک به وضعیت برگشتی می‌رود؛ برگشت به‌تنهایی درآمد جدید ایجاد نمی‌کند و مبلغ فاکتور را تغییر نمی‌دهد.</div>
                     </div>
                     <div class="mb-2">
                         <label class="fin-label">علت برگشت چک:</label>
@@ -1196,7 +1200,6 @@
 
     private async Task RequestReceiptReversal(ShopChequeItem item)
     {
-        if (!item.HasChequeCharge) { await ResetCheque(item); return; }
         reversalDate = DateTime.Today;
         reversalOperationId = Guid.NewGuid();
         reversalTarget = item;
@@ -1217,8 +1220,9 @@
             {
                 OperationId = reversalOperationId, Date = reversalDate.Value
             });
+            var wasPurchase = reversalTarget.TransactionType == TransactionType.Purchase;
             reversalTarget = null;
-            Toast.Success("لغو وصول ثبت شد.");
+            Toast.Success(wasPurchase ? "لغو پرداخت ثبت شد." : "لغو وصول ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1251,7 +1255,10 @@
         try
         {
             receiptBanks = await OrderSvc.GetActiveTreasuryAccountsAsync(TreasuryAccountKind.Bank);
-            receiptBankId = 0; // نام بانک چک مشتری به‌معنای حساب مقصد شرکت نیست.
+            // For issued cheques the recorded account is the actual payer; a
+            // customer's bank name, in contrast, never selects our destination.
+            receiptBankId = item.TransactionType == TransactionType.Purchase && item.TrsAccountId is > 0 &&
+                receiptBanks.Any(a => a.Id == item.TrsAccountId) ? item.TrsAccountId.Value : 0;
             receiptDate = DateTime.Today;
             receiptOperationId = Guid.NewGuid();
             receiptTarget = item;
@@ -1274,8 +1281,9 @@
             {
                 OperationId = receiptOperationId, TrsAccountId = receiptBankId, Date = receiptDate.Value
             });
+            var wasPurchase = receiptTarget.TransactionType == TransactionType.Purchase;
             receiptTarget = null;
-            Toast.Success("وصول چک ثبت شد.");
+            Toast.Success(wasPurchase ? "پرداخت چک ثبت شد." : "وصول چک ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1425,20 +1433,7 @@
         filteredInstallments = q.OrderBy(i => i.DueDate).ToList();
     }
 
-    private async Task ConfirmClearCheque(ShopChequeItem c)
-    {
-        if (c.HasChequeCharge) { await OpenReceipt(c); return; }
-        try
-        {
-            await DashboardSvc.ClearChequeAsync(c.Id);
-            Toast.Success($"چک {c.Number} با موفقیت وصول شد.");
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            Toast.Error(ex.Message);
-        }
-    }
+    private Task ConfirmClearCheque(ShopChequeItem c) => OpenReceipt(c);
 
     private void PromptBounce(ShopChequeItem c)
     {
@@ -1581,8 +1576,9 @@
                 TrsAccountId = instReceiptAccountId,
                 Date = instReceiptDate.Value
             });
+            var wasPurchase = instReceiptTarget.TransactionType == TransactionType.Purchase;
             instReceiptTarget = null;
-            Toast.Success("دریافت قسط ثبت شد.");
+            Toast.Success(wasPurchase ? "پرداخت قسط ثبت شد." : "دریافت قسط ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1605,36 +1601,20 @@
                 OperationId = instReversalOperationId,
                 Date = instReversalDate.Value
             });
+            var wasPurchase = instReversalTarget.TransactionType == TransactionType.Purchase;
             instReversalTarget = null;
-            Toast.Warning("دریافت قسط لغو شد.");
+            Toast.Warning(wasPurchase ? "پرداخت قسط لغو شد." : "دریافت قسط لغو شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { instReversalBusy = false; }
     }
 
-    private async Task PayInstallment(ShopInstallmentItem i)
-    {
-        if (i.HasChequeCharge)
-        {
-            await OpenInstallmentReceipt(i);
-            return;
-        }
-        try
-        {
-            await DashboardSvc.PayInstallmentAsync(i.Id);
-            Toast.Success($"قسط شماره {i.No} مشتری {i.PartyName} با موفقیت تسویه شد.");
-            await LoadDataAsync();
-        }
-        catch (Exception ex)
-        {
-            Toast.Error(ex.Message);
-        }
-    }
+    private Task PayInstallment(ShopInstallmentItem i) => OpenInstallmentReceipt(i);
 
     private async Task UnpayInstallment(ShopInstallmentItem i)
     {
-        if (i.HasChequeCharge)
+        if (i.HasChequeCharge || i.HasTrackedReceipt)
         {
             instReversalTarget = i;
             instReversalDate = DateTime.Today;

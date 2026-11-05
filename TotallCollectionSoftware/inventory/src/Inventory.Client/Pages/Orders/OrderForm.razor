@@ -22,6 +22,13 @@
         }
         else
         {
+            @if (IsEdit && !EditOrder!.ShopCashLedgerEnabled && !EditOrder.HasChequeCharge)
+            {
+                <div class="alert alert-warning py-2 d-flex align-items-center justify-content-between gap-2" role="status">
+                    <span>گردش نقدی این فاکتور قدیمی هنوز تطبیق نشده است. پیش از تغییر پرداخت، سابقه صندوق/بانک را بررسی کنید.</span>
+                    <button type="button" class="btn btn-sm btn-outline-dark flex-shrink-0" @onclick="OpenLegacyCashReconciliation">تطبیق نقد</button>
+                </div>
+            }
             @if (UseInvoiceWizard)
             {
                 <nav class="purchase-steps" data-order-wizard="@formKey" aria-label="@(Type == TransactionType.Sale ? "مراحل ثبت فروش" : "مراحل ثبت خرید")">
@@ -181,9 +188,9 @@
                                             <div class="input-group input-group-sm order-bank-select">
                                                 <SearchSelect Items="@CashAccountLookup" Value="@(trsAccountId ?? 0)" ValueChanged="OnCashAccountPicked"
                                                               Placeholder="انتخاب بانک…" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="UseInvoiceWizard" />
-                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
-                                                        @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)">
-                                                    <i class="bi bi-plus-lg ms-1"></i> تعریف بانک
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف صندوق/بانک جدید"
+                                                        @onclick="() => OpenQuickBank(CashKind == CashType.Cash ? TreasuryAccountKind.Cash : TreasuryAccountKind.Bank)">
+                                                    <i class="bi bi-plus-lg ms-1"></i> @(CashKind == CashType.Cash ? "تعریف صندوق" : "تعریف بانک")
                                                 </button>
                                             </div>
                                         </div>
@@ -712,6 +719,51 @@
     </Footer>
 </Modal>
 
+<Modal Visible="showCashReconciliation" Title="تطبیق گردش نقدی فاکتور قدیمی" Size="modal-lg" OnClose="CloseLegacyCashReconciliation">
+    <ChildContent>
+        @if (EditOrder is not null)
+        {
+            <p>فاکتور <strong>@EditOrder.Number</strong> — مبلغ نقد ثبت‌شده: <strong class="num">@EditOrder.CashAmount.Money()</strong> ریال</p>
+            @if (EditOrder.CashAmount > 0)
+            {
+                <div class="alert alert-info py-2">ابتدا گردش صندوق/بانک و اسناد دستی قبلی را بررسی کنید. اگر سند قطعی برای همین پرداخت موجود است، شماره آن را وارد کنید؛ در غیر این صورت گردش نقدی در تاریخ فاکتور ثبت می‌شود. از ثبت دوباره یک پرداخت قبلی خودداری کنید.</div>
+                <div class="row g-2">
+                    <div class="col-md-4"><label class="form-label">نوع پرداخت</label>
+                        <select class="form-select" @bind="legacyCashType" disabled="@(EditOrder.CashType.HasValue)">
+                            <option value="0">وجه نقد</option><option value="1">کارت‌خوان</option><option value="2">کارت به کارت</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8"><label class="form-label">حساب صندوق/بانک</label>
+                        <select class="form-select" @bind="legacyAccountId" disabled="@(EditOrder.TrsAccountId is > 0)">
+                            <option value="0">انتخاب حساب…</option>
+                            @foreach (var account in AccountsForCashType((CashType)legacyCashType))
+                            { <option value="@account.Id">@account.DisplayName</option> }
+                        </select>
+                    </div>
+                    <div class="col-12"><label class="form-label">شماره سند دستی قطعی (در صورت وجود)</label>
+                        <input type="number" min="1" class="form-control" @bind="legacyVoucherNumber" placeholder="اگر سند قبلی وجود ندارد خالی بگذارید" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p>برای مبلغ نقد صفر گردش جدیدی ساخته نمی‌شود. اگر مبلغ نقد در سوابق فاکتور مشخص نیست، ابتدا مدارک آن را بررسی کنید.</p>
+            }
+            <label class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" @bind="legacyCashConfirmed" />
+                <span class="form-check-label">سوابق را بررسی کردم و درستی انتخاب بالا را تأیید می‌کنم.</span>
+            </label>
+            @if (!string.IsNullOrEmpty(legacyCashError)) { <div class="alert alert-danger mt-2 mb-0" role="alert">@legacyCashError</div> }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="CloseLegacyCashReconciliation" disabled="@savingLegacyCash">انصراف</button>
+        <button type="button" class="btn btn-primary" @onclick="ConfirmLegacyCashReconciliation" disabled="@(!legacyCashConfirmed || savingLegacyCash)">
+            @if (savingLegacyCash) { <span class="spinner-border spinner-border-sm ms-1"></span> } تأیید تطبیق
+        </button>
+    </Footer>
+</Modal>
+
 @if (lastPurchase is not null || lastPurchaseLoading)
 {
     <Modal Visible="true" Title="آخرین فاکتور خرید" Size="modal-lg" OnClose="CloseLastPurchase">
@@ -952,6 +1004,54 @@
     /// <summary>مشخصات تجاری مجاز برای ایجاد فاکتور تازه، بدون شناسه یا اطلاعات تسویهٔ سند قبلی.</summary>
     [Parameter] public InvoiceCopyTemplate? CopyTemplate { get; set; }
 
+    private bool showCashReconciliation, savingLegacyCash, legacyCashConfirmed;
+    private string? legacyCashError;
+    private Guid legacyCashOperationId;
+    private int legacyCashType, legacyAccountId;
+    private int? legacyVoucherNumber;
+
+    private void OpenLegacyCashReconciliation()
+    {
+        if (EditOrder is null) return;
+        legacyCashType = (int)(EditOrder.CashType ?? CashType.Cash);
+        legacyAccountId = EditOrder.TrsAccountId ?? 0;
+        legacyVoucherNumber = null;
+        legacyCashConfirmed = false;
+        legacyCashError = null;
+        legacyCashOperationId = Guid.NewGuid();
+        showCashReconciliation = true;
+    }
+    private void CloseLegacyCashReconciliation() { if (!savingLegacyCash) showCashReconciliation = false; }
+    private async Task ConfirmLegacyCashReconciliation()
+    {
+        if (savingLegacyCash || !legacyCashConfirmed || EditOrder is null) return;
+        savingLegacyCash = true;
+        legacyCashError = null;
+        try
+        {
+            var command = new ShopCashReconciliationCommand
+            {
+                OperationId = legacyCashOperationId, Confirmed = true, ExpectedCashAmount = EditOrder.CashAmount,
+                TrsAccountId = EditOrder.CashAmount > 0 ? legacyAccountId : null,
+                CashType = EditOrder.CashAmount > 0 ? (CashType)legacyCashType : null,
+                ExistingVoucherNumber = legacyVoucherNumber
+            };
+            await OrderSvc.ReconcileCashAsync(EditOrder.Id, command);
+            EditOrder.ShopCashLedgerEnabled = true;
+            if (EditOrder.CashAmount > 0)
+            {
+                EditOrder.TrsAccountId = legacyAccountId;
+                EditOrder.CashType = (CashType)legacyCashType;
+                trsAccountId = legacyAccountId;
+                cashTypeStr = legacyCashType.ToString();
+            }
+            showCashReconciliation = false;
+            InvoiceSuccess("تطبیق گردش نقدی ثبت شد.");
+        }
+        catch (Exception ex) { legacyCashError = ex.Message; }
+        finally { savingLegacyCash = false; }
+    }
+
     private bool IsEdit => EditOrder is not null;
 
     private string FormTitle => IsEdit
@@ -1143,7 +1243,10 @@
             bankAccounts.Add(newAcc);
         }
 
-        trsAccountId = newAcc.Id;
+        if (AccountsForCashType(CashKind).Any(a => a.Id == newAcc.Id))
+            trsAccountId = newAcc.Id;
+        else
+            InvoiceError("حساب ثبت شد، اما با نوع پرداخت انتخاب‌شده سازگار نیست.");
         StateHasChanged();
     }
 
@@ -2065,9 +2168,10 @@
             ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید.");
             return;
         }
-        if (saleChequeCharge is not null && CashPart > 0 && trsAccountId is not > 0)
+        if (CashPart > 0 && trsAccountId is not > 0 &&
+            (!IsEdit || EditOrder?.ShopCashLedgerEnabled == true || saleChequeCharge is not null))
         {
-            ShowFormError("برای دریافت نقدی ترکیبی، حساب فعال صندوق یا بانک را انتخاب کنید.");
+            ShowFormError("برای پرداخت نقدی، حساب فعال صندوق یا بانک را انتخاب کنید.");
             return;
         }
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();

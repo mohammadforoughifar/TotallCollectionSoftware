@@ -81,7 +81,7 @@ else
             </div>
         </div>
 
-        @if (!isPurchase)
+        @if (!isPurchase && CanSeeProfit)
         {
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 d-print-none">
                 <label for="cheque-income-filter" class="fin-label mb-0">تاخیر تادیه چک</label>
@@ -110,7 +110,7 @@ else
         }
         else if (summary is not null)
         {
-            @if (!isPurchase)
+            @if (!isPurchase && CanSeeProfit)
             {
                 <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
                     <span>کالا و خدمات با ارزش افزوده: <b class="num text-dark">@summary.GoodsAmount.Money()</b> ریال</span>
@@ -355,7 +355,7 @@ else
                                     <th>انبار مربوطه</th>
                                     <th class="text-center">اقلام</th>
                                     <th class="text-center">مقدار</th>
-                                    @if (!isPurchase)
+                                    @if (!isPurchase && CanSeeProfit)
                                     {
                                         <th class="text-start">کالا و ارزش افزوده (ریال)</th>
                                         <th class="text-start">تاخیر تادیه چک (ریال)</th>
@@ -377,7 +377,7 @@ else
                                         <td class="text-muted fs-8">@order.WarehouseName</td>
                                         <td class="text-center num text-secondary fs-8">@order.Lines.Count.Num()</td>
                                         <td class="text-center num fw-600 text-dark fs-8">@order.Lines.Sum(l => l.Quantity).Qty()</td>
-                                        @if (!isPurchase)
+                                        @if (!isPurchase && CanSeeProfit)
                                         {
                                             <td class="text-start num fs-8">@order.GoodsAmount.Money()</td>
                                             <td class="text-start num fs-8">@order.ChequeIncomeAmount.Money()</td>

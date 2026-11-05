@@ -280,6 +280,9 @@ public class OrderService : IOrderService
     public Task<Order> UpdateAsync(int id, OrderCommand cmd)
         => _api.PutAsync<Order>($"api/orders/{id}", cmd);
 
+    public async Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/cash-reconciliation", cmd);
+
     public Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate)
         => _api.GetAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule-preview?expectedDueDate={expectedDueDate:yyyy-MM-dd}&newDueDate={newDueDate:yyyy-MM-dd}");
 

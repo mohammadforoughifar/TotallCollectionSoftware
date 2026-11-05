@@ -24,7 +24,8 @@ class ReportContract(unittest.TestCase):
     def test_statistics_use_goods_without_income(self):
         s = read('Inventory.Api/Services/Reports/OperationsReportsService.cs')
         self.assertIn('result.GoodsAmount / result.DocumentCount', s)
-        self.assertIn('t.Amount - chargeById.GetValueOrDefault(t.Id)', s)
+        self.assertIn('t.Amount - (includeChequeIncome ? chargeById.GetValueOrDefault(t.Id) : 0m)', s)
+        self.assertIn('includeChequeIncome ? chequeIncomeTotal : 0m', s)
         self.assertIn('documents.Sum(t => t.Lines.Count)', s)
         self.assertIn('documents.Sum(t => t.Lines.Sum(l => l.Quantity))', s)
 

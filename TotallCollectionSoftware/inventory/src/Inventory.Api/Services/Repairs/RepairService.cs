@@ -387,7 +387,7 @@ public class RepairService : IRepairService
             }
         }
 
-        var order = await _inventory.CreateOrderAsync(cmd);
+        var order = await _inventory.CreateOrderAsync(cmd, trackShopCash: false);
 
         r.InvoiceTransactionId = order.Id;
         r.Status = RepairStatus.Delivered;

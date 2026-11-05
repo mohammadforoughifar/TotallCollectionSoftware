@@ -53,6 +53,8 @@ public static class DbInitializer
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
                     await SalesCompanySchemaV1.EnsureAsync(db);
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+                    await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
@@ -120,6 +122,8 @@ public static class DbInitializer
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+                    await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
                     // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی) — مایگریشن squash شده این‌ها را نمی‌سازد

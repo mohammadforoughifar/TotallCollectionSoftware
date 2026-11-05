@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Inventory.Api.Services.Invoicing;
 
-/// <summary>لغو صریح وصول با سند معکوس؛ هیچ سند اولیه‌ای حذف یا تغییر نمی‌شود.</summary>
+/// <summary>لغو صریح وصول با گردش معکوس فروشگاهی؛ هیچ سابقه اولیه‌ای حذف نمی‌شود.</summary>
 public static class SaleChequeReceiptReversal
 {
     public static async Task ReverseAsync(AppDbContext db, int chequeId, Guid operationId, DateTime date, string? user)
@@ -64,15 +64,16 @@ public static class SaleChequeReceiptReversal
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ لغو وصول نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
+        if (sale.ShopCashLedgerEnabled) await ShopOrderCashLedger.VerifyCurrentAsync(db, sale);
         await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         if (sale.SettledAmount < receipt.Amount)
             throw new InvalidOperationException("تاریخچه تسویه فاکتور ناسازگار است.");
-        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
-            ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id);
         var outboundCredits = (await db.SaleChequeCreditSettlements.AsNoTracking()
             .Where(s => s.SaleTransactionId == sale.Id).Select(s => s.Amount).ToListAsync()).Sum();
         if (outboundCredits > 0)
         {
+            if (charge is null) throw new InvalidOperationException("گردش بستانکاری فاکتور نامعتبر است.");
             var signedNow = await SaleChequeSettlementLedger.SignedChargedSaleBalanceAsync(db, sale, charge);
             var rawCreditAfterReversal = Math.Max(0m, -(signedNow - outboundCredits + receipt.Amount));
             if (outboundCredits > rawCreditAfterReversal)
@@ -82,9 +83,14 @@ public static class SaleChequeReceiptReversal
             a.Kind == TreasuryAccountKind.Bank)
             ?? throw new InvalidOperationException("حساب بانکی اولیه فعال نیست یا تغییر کرده است.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, bank, sale.CompanyId);
-        var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, bank.Id);
-        if (!balance.HasValue || balance.Value < receipt.Amount)
-            throw new InvalidOperationException("مانده حساب بانکی برای لغو وصول کافی نیست.");
+        if (sale.Type == TransactionType.Sale)
+        {
+            var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, bank.Id);
+            if (!balance.HasValue || balance.Value < receipt.Amount)
+                throw new InvalidOperationException("مانده حساب بانکی برای لغو وصول کافی نیست.");
+        }
+        else if (sale.Type != TransactionType.Purchase)
+            throw new InvalidOperationException("نوع فاکتور برای لغو وصول معتبر نیست.");
         receipt.ReversalOperationId = operationId;
         receipt.ReversalDate = date;
         sale.SettledAmount -= receipt.Amount;

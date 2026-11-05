@@ -736,7 +736,7 @@ public class VisOrderService : IVisOrderService
         };
 
         // ---------- ۱) سند فروش فروشگاه (موجودی، چک‌ها، اقساط) ----------
-        var sale = await _inventory.CreateOrderAsync(saleCmd);
+        var sale = await _inventory.CreateOrderAsync(saleCmd, trackShopCash: false);
 
         // ---------- ۲) سند حسابداری خودکار ----------
         int? voucherId = null;
@@ -747,7 +747,7 @@ public class VisOrderService : IVisOrderService
         catch (Exception ex)
         {
             // تراکنش نباید نیمه‌کاره بماند: سند فروش برمی‌گردد و خطا برای مالی نمایش داده می‌شود
-            try { await _inventory.DeleteOrderAsync(sale.Id); } catch { /* ignore */ }
+            try { await _inventory.DeleteOrderAsync(sale.Id, allowUntrackedRollback: true); } catch { /* ignore */ }
             _log.LogError(ex, "صدور سند حسابداری فروش سفارش {Number} ناموفق بود", order.Number);
             throw new InvalidOperationException($"ثبت فروش انجام نشد: {ex.Message}");
         }

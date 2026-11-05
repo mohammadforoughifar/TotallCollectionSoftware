@@ -118,6 +118,7 @@ public interface IOrderService
     Task<Order?> GetAsync(int id);
     Task<Order> CreateAsync(OrderCommand cmd);
     Task<Order> UpdateAsync(int id, OrderCommand cmd);
+    Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd);
     Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
     Task<SaleChequeReschedulePreview> RescheduleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd);
     Task ReceiveChequeAsync(int chequeId, SaleChequeReceiptCommand cmd);

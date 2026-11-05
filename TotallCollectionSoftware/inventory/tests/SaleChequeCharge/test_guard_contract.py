@@ -5,11 +5,22 @@ ROOT = Path(__file__).resolve().parents[2] / 'src/Inventory.Api/Services'
 class GuardContract(unittest.TestCase):
     def test_legacy_mutations_refuse_charge_invoice(self):
         s = (ROOT / 'Catalog/InventoryService.cs').read_text(encoding='utf8')
-        for name in ('UpdateOrderAsync', 'DeleteOrderAsync', 'ClearChequeAsync', 'BounceChequeAsync',
-                     'ResetChequeAsync', 'PayInstallmentAsync', 'UnpayInstallmentAsync', 'SettleCreditAsync'):
+        for name in ('UpdateOrderAsync', 'DeleteOrderAsync'):
             section = s[s.index('public async Task' + ('<Order>' if name == 'UpdateOrderAsync' else '') + ' ' + name):]
             section = section[:section.find('\n    }')]
             self.assertIn('RejectUnimplementedChequeChargeMutationAsync(', section, name)
+        for name in ('PayInstallmentAsync', 'UnpayInstallmentAsync', 'SettleCreditAsync'):
+            section = s[s.index('public Task ' + name):]
+            section = section[:section.find('\n    }')]
+            self.assertIn('throw new InvalidOperationException', section, name)
+        clear = s[s.index('public Task ClearChequeAsync'):s.index('public async Task BounceChequeAsync')]
+        self.assertIn('throw new InvalidOperationException', clear)
+        for name in ('BounceChequeAsync', 'ResetChequeAsync'):
+            section = s[s.index('public async Task ' + name):]
+            section = section[:section.find('\n    }')]
+            self.assertIn('SaleChequeCharges.AnyAsync', section, name)
+            self.assertIn('SaleChequeReceipts.AnyAsync', section, name)
+            self.assertIn('IsolationLevel.Serializable', section, name)
         section = s[s.index('public async Task ChangeSaleChequeStatusAsync'):]
         section = section[:section.find('\n    }')]
         for guard in ('IsolationLevel.Serializable', 'SaleChequeReceipts.AnyAsync'):

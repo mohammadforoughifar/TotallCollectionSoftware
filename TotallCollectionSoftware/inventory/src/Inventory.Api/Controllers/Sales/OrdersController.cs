@@ -54,9 +54,12 @@ public class OrdersController : ApiControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
         [FromQuery] bool? hasChequeIncome = null)
     {
+        var canViewProfit = await CanSeeProfitAsync();
+        if (hasChequeIncome.HasValue && !canViewProfit)
+            return StatusCode(403, new { message = "فیلتر درآمد چک به مجوز مستقل مشاهده سود نیاز دارد." });
         var result = await _service.GetOrdersAsync(type, from, to, partyId, warehouseId,
             Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), hasChequeIncome);
-        if (result.Items.Any(o => o.Type is TransactionType.Sale or TransactionType.SaleReturn) && !await CanSeeProfitAsync())
+        if (result.Items.Any(o => o.Type is TransactionType.Sale or TransactionType.SaleReturn) && !canViewProfit)
             foreach (var order in result.Items) RemoveSaleProfit(order);
         return Ok(result);
     }
@@ -163,8 +166,16 @@ public class OrdersController : ApiControllerBase
         var error = TrackingError(cmd, existing.Type, existing);
         if (error is not null) return BadRequest(new { message = error });
         var revealProfit = await MayReturnSaleProfitAsync(existing.Type);
-        var saved = await _service.UpdateOrderAsync(id, cmd);
+        var saved = await _service.UpdateOrderAsync(id, cmd, User.Identity?.Name);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
+    }
+
+    /// <summary>تطبیق صریح گردش نقدی یک فاکتور قدیمی با سند دستی یا تأیید نبود آن.</summary>
+    [HttpPost("{id:int}/cash-reconciliation")]
+    public async Task<IActionResult> ReconcileCash(int id, [FromBody] ShopCashReconciliationCommand cmd)
+    {
+        await _service.ReconcileLegacyOrderCashAsync(id, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
     }
 
     private static string? TrackingError(OrderCommand cmd, TransactionType type, Order? existing)
@@ -308,7 +319,7 @@ public class OrdersController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        await _service.DeleteOrderAsync(id);
+        await _service.DeleteOrderAsync(id, User.Identity?.Name);
         return Ok(new { ok = true });
     }
 }

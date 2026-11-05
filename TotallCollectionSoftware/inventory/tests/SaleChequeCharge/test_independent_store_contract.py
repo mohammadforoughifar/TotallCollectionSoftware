@@ -31,7 +31,7 @@ class IndependentStoreContract(unittest.TestCase):
         auth = read('Inventory.Api/Infrastructure/ShopPermissionAuthorizer.cs')
         for token in ('TransactionType.Sale or TransactionType.SaleReturn', 'TransactionType.Purchase',
                       'Section(permissions, "Sale", write)', 'Section(permissions, "Purchase", write)',
-                      'InvoiceProducts', 'InvoiceWarehouses', 'InvoiceParties', 'OrderType(permissions, t, write)',
+                      'InvoiceProducts', 'InvoiceWarehouses', 'InvoiceParties', 'OrderType(permissions, requestedType, write)',
                       'action.Equals("ViewProfit"'):
             self.assertIn(token, auth)
         controller = read('Inventory.Api/Controllers/Sales/OrdersController.cs')
@@ -68,10 +68,12 @@ class IndependentStoreContract(unittest.TestCase):
                       'EnsureNotShopManagedVoucherAsync'):
             self.assertIn(token, treasury)
         calc = read('Inventory.Api/Services/Treasury/TreasuryBalanceCalculator.cs')
-        for token in ('owner != r.CompanyId', 'r.CompanyId != r.SaleCompany',
+        for token in ('!Matches(owner, r.CompanyId)', 'r.CompanyId != r.SaleCompany',
                       'r.ChequeTransaction != r.TransactionId', 'r.InstallmentTransaction != r.TransactionId',
-                      'myReceipts.Sum(r => r.Amount)', 'myReceipts.Where(r => r.ReversalDate.HasValue)',
-                      'myInstallments.Sum(r => r.Amount)', 'myInstallments.Where(r => r.ReversalDate.HasValue)'):
+                      'myReceipts.Where(r => r.SaleType == TransactionType.Sale)',
+                      'myReceipts.Where(r => r.SaleType == TransactionType.Purchase',
+                      'myInstallments.Where(r => r.SaleType == TransactionType.Sale)',
+                      'myInstallments.Where(r => r.SaleType == TransactionType.Purchase'):
             self.assertIn(token, calc)
 
     def test_summary_and_detail_preserve_cash_before_cancellation(self):
@@ -80,7 +82,8 @@ class IndependentStoreContract(unittest.TestCase):
                          source.index('public async Task<PartyStatementDetailDto> GetPartyStatementDetailAsync')]
         detail = source[source.index('public async Task<PartyStatementDetailDto> GetPartyStatementDetailAsync'):]
         self.assertIn('chequeHistory.ContainsKey(t.Id) ? t.CashAmount :', summary)
-        self.assertIn('t.CashAmount : t.SettledAmount', detail)
+        self.assertIn('saleHistory is not null ? t.CashAmount :', detail)
+        self.assertIn('activeOrdinaryCheques.GetValueOrDefault(t.Id)', detail)
         integrity = read('Inventory.Api/Services/Invoicing/SaleChequeShopLedgerIntegrity.cs')
         for token in ('allowUnpostedLegacy', 'events.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit',
                       'Matches(r.SaleChequeChargeEventId', 'MatchesPayment', 'InitialCashTrsVoucherId'):

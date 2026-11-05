@@ -10,7 +10,7 @@ class StatementContract(unittest.TestCase):
                      'saleHistory?.InitialIncome', 'result.SaleGoodsTotal += debit', 'result.SaleChequeIncomeTotal += income',
                      'Title = "تاخیر تادیه چک"', 'Title = "تعدیل تاخیر تادیه چک"',
                      'result.SaleChequeIncomeTotal += adjustment.Amount', 'result.TotalDebit += income',
-                     't.CashAmount : t.SettledAmount', '"لغو وصول چک" : "وصول چک"', 'debit += t.SettledAmount'):
+                     'saleHistory is not null ? t.CashAmount :', '"لغو وصول چک" : "وصول چک"', 'activeOrdinaryCheques.GetValueOrDefault(t.Id)'):
             self.assertIn(part, detail)
         integrity = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeShopLedgerIntegrity.cs').read_text(encoding='utf8')
         self.assertIn('events.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit', integrity)

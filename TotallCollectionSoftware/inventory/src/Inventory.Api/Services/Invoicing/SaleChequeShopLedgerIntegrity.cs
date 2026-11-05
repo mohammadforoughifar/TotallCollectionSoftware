@@ -111,7 +111,7 @@ public static class SaleChequeShopLedgerIntegrity
             var cash = charge.InitialCashTrsVoucherId is > 0
                 ? await db.TrsVouchers.AsNoTracking().Include(v => v.Lines).FirstOrDefaultAsync(v => v.Id == charge.InitialCashTrsVoucherId)
                 : null;
-            if (cash is null || cash.Kind != TreasuryKind.Receipt || cash.Status != TreasuryStatus.Confirmed ||
+            if (cash is null || cash.CompanyId != sale.CompanyId || cash.Kind != TreasuryKind.Receipt || cash.Status != TreasuryStatus.Confirmed ||
                 cash.Date.Date != sale.Date.Date || cash.PartyId != sale.PartyId || cash.TotalAmount != sale.CashAmount ||
                 cash.Lines.Count != 1 || cash.Lines[0].TrsAccountId != sale.TrsAccountId || cash.Lines[0].Amount != sale.CashAmount ||
                 cash.Lines[0].Method != (sale.CashType == CashType.Cash ? PayMethod.Cash : PayMethod.Card))
@@ -122,7 +122,7 @@ public static class SaleChequeShopLedgerIntegrity
     }
 
     private static bool MatchesPayment(TrsVoucher? voucher, Transaction sale, int? accountId, DateTime date, decimal amount)
-        => accountId is > 0 && voucher is not null && voucher.Status == TreasuryStatus.Confirmed &&
+        => accountId is > 0 && voucher is not null && voucher.CompanyId == sale.CompanyId && voucher.Status == TreasuryStatus.Confirmed &&
            voucher.Kind == TreasuryKind.Payment && voucher.Date.Date == date.Date && voucher.PartyId == sale.PartyId &&
            voucher.TotalAmount == amount && voucher.Lines.Count == 1 && voucher.Lines[0].TrsAccountId == accountId &&
            voucher.Lines[0].Amount == amount && voucher.Lines[0].Method is PayMethod.Cash or PayMethod.Card;

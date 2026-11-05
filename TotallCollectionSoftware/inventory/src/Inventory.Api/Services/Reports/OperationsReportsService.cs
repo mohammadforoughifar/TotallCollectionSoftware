@@ -14,7 +14,7 @@ public class OperationsReportsService : IOperationsReportsService
     public OperationsReportsService(AppDbContext db) => _db = db;
 
     public async Task<OperationsOrderReportDto> GetOrderReportAsync(TransactionType type, DateTime? from, DateTime? to,
-        int? partyId, int? warehouseId, bool? hasChequeIncome = null)
+        int? partyId, int? warehouseId, bool? hasChequeIncome = null, bool includeChequeIncome = true)
     {
         EnsureOrderType(type);
         (from, to) = NormalizeRange(from, to);
@@ -57,8 +57,8 @@ public class OperationsReportsService : IOperationsReportsService
             LineCount = documents.Sum(t => t.Lines.Count),
             TotalQuantity = documents.Sum(t => t.Lines.Sum(l => l.Quantity)) - returnedQtyTotal,
             TotalAmount = documents.Sum(t => t.Amount) - returnedGoodsTotal,
-            GoodsAmount = documents.Sum(t => t.Amount) - chequeIncomeTotal - returnedGoodsTotal,
-            ChequeIncomeAmount = chequeIncomeTotal
+            GoodsAmount = documents.Sum(t => t.Amount) - (includeChequeIncome ? chequeIncomeTotal : 0m) - returnedGoodsTotal,
+            ChequeIncomeAmount = includeChequeIncome ? chequeIncomeTotal : 0m
         };
         result.AverageDocumentAmount = result.DocumentCount == 0
             ? 0m
@@ -79,7 +79,7 @@ public class OperationsReportsService : IOperationsReportsService
                     PeriodStart = key,
                     Label = PeriodLabel(key, groupByDay),
                     DocumentCount = g.Count(),
-                    Amount = g.Sum(t => t.Amount - chargeById.GetValueOrDefault(t.Id)) - returnByBucket.GetValueOrDefault(key)
+                    Amount = g.Sum(t => t.Amount - (includeChequeIncome ? chargeById.GetValueOrDefault(t.Id) : 0m)) - returnByBucket.GetValueOrDefault(key)
                 };
             })
             .ToList();
@@ -95,7 +95,7 @@ public class OperationsReportsService : IOperationsReportsService
                 PartyName = partyNames.TryGetValue(g.Key, out var name) ? name : "—",
                 DocumentCount = g.Count(),
                 TotalQuantity = g.Sum(t => t.Lines.Sum(l => l.Quantity)) - (returnByParty.TryGetValue(g.Key, out var rp) ? rp.Qty : 0m),
-                TotalAmount = g.Sum(t => t.Amount - chargeById.GetValueOrDefault(t.Id)) - (returnByParty.TryGetValue(g.Key, out var rp2) ? rp2.Amt : 0m)
+                TotalAmount = g.Sum(t => t.Amount - (includeChequeIncome ? chargeById.GetValueOrDefault(t.Id) : 0m)) - (returnByParty.TryGetValue(g.Key, out var rp2) ? rp2.Amt : 0m)
             })
             .OrderByDescending(p => p.TotalAmount)
             .ThenBy(p => p.PartyName)
@@ -142,7 +142,7 @@ public class OperationsReportsService : IOperationsReportsService
     }
 
     public async Task<OperationsDashboardDto> GetDashboardAsync(DateTime? from, DateTime? to,
-        bool includeOrders, bool includeRepairs, bool includeReferrers)
+        bool includeOrders, bool includeRepairs, bool includeReferrers, bool includeChequeIncome = true)
     {
         (from, to) = NormalizeRange(from, to);
         var result = new OperationsDashboardDto { From = from, To = to };
@@ -167,7 +167,7 @@ public class OperationsReportsService : IOperationsReportsService
             {
                 Type = t.Type,
                 Date = t.Date,
-                Amount = t.Type == TransactionType.Sale
+                Amount = t.Type == TransactionType.Sale && includeChequeIncome
                     ? SaleChequeChargeMath.GoodsTotal(t.Amount, chequeIncomes.GetValueOrDefault(t.Id))
                     : t.Amount,
                 ReferrerId = t.ReferrerId

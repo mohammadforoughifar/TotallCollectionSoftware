@@ -489,6 +489,112 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     Check((await creationService.GetOrderAsync(editedSale.Id))!.SettledAmount == 0,
         "charged installment receipt and reversal reconcile settled amount");
 
+    // Ordinary store cash and issued cheques use the same operational treasury,
+    // without silently rebuilding older manual vouchers.
+    var plainParty = new Party { Type = PartyType.Customer, Name = "مشتری فاکتور عادی", IsActive = true };
+    var supplier = new Party { Type = PartyType.Supplier, Name = "تامین‌کننده عادی", IsActive = true };
+    var serviceProduct = new Product { Name = "خدمت آزمون نقدی", Code = "SHOP-CASH-SERVICE", Unit = "عدد", IsService = true, IsActive = true };
+    var purchaseProduct = new Product { Name = "کالای آزمون چک خرید", Code = "SHOP-PURCHASE", Unit = "عدد", IsActive = true };
+    db.AddRange(plainParty, supplier, serviceProduct, purchaseProduct);
+    await db.SaveChangesAsync();
+    var beforeOrdinary = (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance;
+    var ordinaryCash = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = plainParty.Id, Date = new DateTime(2026, 6, 10),
+        PaymentMethod = PaymentMethod.Cash, CashType = CashType.CardTransfer, CashTrackingNumber = "cash-ref",
+        TrsAccountId = treasuryBank.Id,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = serviceProduct.Id, Quantity = 1, Price = 100, VatValue = 0 } }
+    }, "tester");
+    Check(ordinaryCash.ShopCashLedgerEnabled && (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == beforeOrdinary + 100,
+        "ordinary cash sale enters bank balance once");
+    var ordinaryCashStmt = await creationService.GetPartyStatementDetailAsync(plainParty.Id);
+    Check(ordinaryCashStmt.ClosingBalance == 0, "ordinary cash sale and its dated receipt balance the party statement");
+    try { await creationService.DeleteOrderAsync(ordinaryCash.Id, "tester"); throw new Exception("financial history deleted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: direct delete preserves ordinary cash history"); }
+
+    var ordinaryPurchase = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Purchase, WarehouseId = wh.Id, PartyId = supplier.Id, Date = new DateTime(2026, 6, 11),
+        PaymentMethod = PaymentMethod.Cheque,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = purchaseProduct.Id, Quantity = 1, Price = 80, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "SHOP-PURCHASE-CHQ", Amount = 80,
+            TrsAccountId = treasuryBank.Id, DueDate = new DateTime(2026, 7, 11) } }
+    }, "tester");
+    var paidPurchase = new Inventory.Shared.Dtos.SaleChequeReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 12) };
+    await creationService.ReceiveSaleChequeAsync(ordinaryPurchase.Cheques.Single().Id, paidPurchase, "tester");
+    await creationService.ReceiveSaleChequeAsync(ordinaryPurchase.Cheques.Single().Id, paidPurchase, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == beforeOrdinary + 20,
+        "issued purchase cheque is an idempotent bank outflow");
+    var purchaseBefore = await creationService.GetPartyStatementDetailAsync(supplier.Id, to: new DateTime(2026, 6, 11));
+    var purchasePaid = await creationService.GetPartyStatementDetailAsync(supplier.Id, to: new DateTime(2026, 6, 12));
+    Check(purchaseBefore.ClosingBalance == -80 && purchasePaid.ClosingBalance == 0,
+        "purchase cheque appears on the payment date, not the invoice date");
+    await creationService.ReverseSaleChequeReceiptAsync(ordinaryPurchase.Cheques.Single().Id,
+        new Inventory.Shared.Dtos.SaleChequeReceiptReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 13) }, "tester");
+    var purchaseReversed = await creationService.GetPartyStatementDetailAsync(supplier.Id, to: new DateTime(2026, 6, 13));
+    var ordinaryFlow = await cashBank.GetFlowAsync(treasuryBank.Id, null, null);
+    Check(purchaseReversed.ClosingBalance == -80 && ordinaryFlow.ClosingBalance == beforeOrdinary + 100 &&
+          (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == ordinaryFlow.ClosingBalance,
+        "purchase reversal restores the bank and statement balance on its own date");
+
+    // A mixed ordinary invoice can collect an installment and cheque in either
+    // order; both have dated, reversible bank and party-statement movements.
+    var ordinaryMixed = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = plainParty.Id, Date = new DateTime(2026, 6, 14),
+        PaymentMethod = PaymentMethod.Mixed,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = serviceProduct.Id, Quantity = 1, Price = 200, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "ORDINARY-MIX-CHQ", Amount = 80, DueDate = new DateTime(2026, 7, 14) } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 120, DueDate = new DateTime(2026, 7, 15) } }
+    }, "tester");
+    var instOp = new Inventory.Shared.Dtos.SaleChequeInstallmentReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 20) };
+    await creationService.ReceiveSaleChequeInstallmentAsync(ordinaryMixed.Installments.Single().Id, instOp, "tester");
+    await creationService.ReceiveSaleChequeInstallmentAsync(ordinaryMixed.Installments.Single().Id, instOp, "tester");
+    var afterInst = await creationService.GetPartyStatementDetailAsync(plainParty.Id, to: new DateTime(2026, 6, 20));
+    Check(afterInst.ClosingBalance == 80 && (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == beforeOrdinary + 220,
+        "ordinary installment is idempotent and dated in bank and party statement");
+    await creationService.ReceiveSaleChequeAsync(ordinaryMixed.Cheques.Single().Id,
+        new Inventory.Shared.Dtos.SaleChequeReceiptCommand { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 21) }, "tester");
+    Check((await creationService.GetPartyStatementDetailAsync(plainParty.Id, to: new DateTime(2026, 6, 21))).ClosingBalance == 0,
+        "ordinary mixed invoice can collect cheque after installment");
+    await creationService.ReverseSaleChequeInstallmentReceiptAsync(ordinaryMixed.Installments.Single().Id,
+        new Inventory.Shared.Dtos.SaleChequeInstallmentReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 22) }, "tester");
+    Check((await creationService.GetPartyStatementDetailAsync(plainParty.Id, to: new DateTime(2026, 6, 22))).ClosingBalance == 120,
+        "ordinary installment reversal restores receivable on the reversal date");
+
+    var ordinaryPurchaseInst = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Purchase, WarehouseId = wh.Id, PartyId = supplier.Id, Date = new DateTime(2026, 6, 14),
+        PaymentMethod = PaymentMethod.Installment,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = purchaseProduct.Id, Quantity = 1, Price = 40, VatValue = 0 } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 40, DueDate = new DateTime(2026, 7, 14) } }
+    }, "tester");
+    var purchaseInstBankBefore = (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance;
+    var emptyBank = new TrsAccount { Code = "EMPTY-TEST", Name = "حساب بدون مانده", Kind = TreasuryAccountKind.Bank, IsActive = true };
+    db.TrsAccounts.Add(emptyBank);
+    await db.SaveChangesAsync();
+    try
+    {
+        await creationService.ReceiveSaleChequeInstallmentAsync(ordinaryPurchaseInst.Installments.Single().Id,
+            new Inventory.Shared.Dtos.SaleChequeInstallmentReceiptCommand { OperationId = Guid.NewGuid(), TrsAccountId = emptyBank.Id, Date = new DateTime(2026, 6, 20) }, "tester");
+        throw new Exception("purchase installment paid without funds");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: purchase installment with insufficient funds rolls back"); }
+    Check(!(await creationService.GetOrderAsync(ordinaryPurchaseInst.Id))!.Installments.Single().IsPaid &&
+          (await cashBank.GetAccountAsync(emptyBank.Id))!.Balance == 0,
+        "failed purchase installment leaves status and bank unchanged");
+    await creationService.ReceiveSaleChequeInstallmentAsync(ordinaryPurchaseInst.Installments.Single().Id,
+        new Inventory.Shared.Dtos.SaleChequeInstallmentReceiptCommand { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 20) }, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == purchaseInstBankBefore - 40,
+        "ordinary purchase installment is a bank outflow");
+    await creationService.ReverseSaleChequeInstallmentReceiptAsync(ordinaryPurchaseInst.Installments.Single().Id,
+        new Inventory.Shared.Dtos.SaleChequeInstallmentReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 21) }, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == purchaseInstBankBefore &&
+          (await cashBank.GetFlowAsync(treasuryBank.Id, null, null)).ClosingBalance == purchaseInstBankBefore,
+        "ordinary purchase installment reversal restores bank and flow balance");
+
     Check(await db.AccVouchers.CountAsync() == 0 && await db.AccAccounts.CountAsync() == 0 &&
           await db.AccFiscalYears.CountAsync() == 0 && await db.FacRules.CountAsync() == 0,
         "complete store workflows do not create or require ERP records");

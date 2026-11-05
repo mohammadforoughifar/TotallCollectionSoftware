@@ -32,7 +32,7 @@ class ReturnPlannerContract(unittest.TestCase):
 
     def test_installment_settlement_uses_dedicated_accounting_route(self):
         api = (ROOT / 'src/Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
-        self.assertIn('cmd.ChequeCharge is not null && cmd.Installments.Any(i => i.IsPaid)', api)
+        self.assertIn('(cmd.ChequeCharge is not null || trackShopCash) && cmd.Installments.Any(i => i.IsPaid)', api)
         self.assertIn('SaleChequeInstallmentPosting.ReceiveAsync', api)
         self.assertIn('SaleChequeInstallmentPosting.ReverseAsync', api)
         credit_ui = (ROOT / 'src/Inventory.Client/Pages/Shop/ShopCreditManagement.razor').read_text(encoding='utf8')

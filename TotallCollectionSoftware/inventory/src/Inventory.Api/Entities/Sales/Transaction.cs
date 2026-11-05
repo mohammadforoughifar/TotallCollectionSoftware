@@ -40,6 +40,9 @@ public class Transaction : ICompanyOwned
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط + مقداری نقد)</summary>
     public decimal CashAmount { get; set; }
 
+    /// <summary>گردش نقدی این فاکتور از ابتدا در دفتر مستقل فروشگاه ثبت می‌شود؛ فاکتورهای قدیمی خودکار بازسازی نمی‌شوند.</summary>
+    public bool ShopCashLedgerEnabled { get; set; }
+
     /// <summary>حساب بانکی / صندوق انتخابی برای تسویه</summary>
     public int? TrsAccountId { get; set; }
     public TrsAccount? TrsAccount { get; set; }

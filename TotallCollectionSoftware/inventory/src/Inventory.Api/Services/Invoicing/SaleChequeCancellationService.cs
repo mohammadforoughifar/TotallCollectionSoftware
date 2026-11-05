@@ -200,10 +200,11 @@ public static class SaleChequeCancellationService
         TrsVoucher? refundTrs = null;
         if (sale.CashAmount > 0 && cashTrsAccount is not null)
         {
-            var trsNo = (await db.TrsVouchers.Where(v => v.Kind == TreasuryKind.Payment)
+            var trsNo = (await db.TrsVouchers.IgnoreQueryFilters().Where(v => v.Kind == TreasuryKind.Payment)
                 .Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
             refundTrs = new TrsVoucher
             {
+                CompanyId = sale.CompanyId,
                 Number = trsNo,
                 Kind = TreasuryKind.Payment,
                 Date = operationDate,

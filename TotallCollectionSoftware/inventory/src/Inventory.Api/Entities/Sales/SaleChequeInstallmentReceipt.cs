@@ -1,6 +1,6 @@
 namespace Inventory.Api.Data;
 
-/// <summary>دریافت و لغو دریافت قسط فاکتور دارای تاخیر تادیه چک در گردش فروشگاهی.</summary>
+/// <summary>گردش دریافت/پرداخت و لغو قسط خرید یا فروش در دفتر فروشگاهی.</summary>
 public class SaleChequeInstallmentReceipt : ICompanyOwned
 {
     public int Id { get; set; }

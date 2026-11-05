@@ -554,6 +554,7 @@ public class AppDbContext : DbContext
     public DbSet<ConnectInfo> ConnectInfos => Set<ConnectInfo>();
 
     // ---------- ماژول خزانه‌داری ----------
+    public DbSet<ShopOrderCashEntry> ShopOrderCashEntries => Set<ShopOrderCashEntry>();
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
     public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
@@ -1485,7 +1486,18 @@ public class AppDbContext : DbContext
           .HasForeignKey(a => a.AccountId)
           .OnDelete(DeleteBehavior.SetNull);
 
+        // ثبت و معکوس‌سازی نقد خرید/فروش؛ تاریخچه حتی بعد از حذف فاکتور باقی می‌ماند.
+        mb.Entity<ShopOrderCashEntry>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.TransactionId).IsUnique().HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.MatchedTrsVoucherId).IsUnique().HasFilter("[MatchedTrsVoucherId] IS NOT NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => new { x.CompanyId, x.TrsAccountId });
+        mb.Entity<ShopOrderCashEntry>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopOrderCashEntry>().HasOne(x => x.MatchedTrsVoucher).WithMany().HasForeignKey(x => x.MatchedTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+
         // ---------- سند خزانه ----------
+        mb.Entity<TrsVoucher>().HasIndex(v => v.CompanyId);
         mb.Entity<TrsVoucher>().HasIndex(v => new { v.Kind, v.Number }).IsUnique();
         mb.Entity<TrsVoucher>().HasIndex(v => v.Date);
         mb.Entity<TrsVoucher>().HasIndex(v => v.Status);
@@ -1540,6 +1552,7 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Restrict);
 
         // ---------- چک ----------
+        mb.Entity<TrsCheque>().HasIndex(c => c.CompanyId);
         mb.Entity<TrsCheque>().HasIndex(c => new { c.Kind, c.Number });
         mb.Entity<TrsCheque>().HasIndex(c => c.DueDate);
         mb.Entity<TrsCheque>().HasIndex(c => c.Status);
@@ -1769,6 +1782,13 @@ public class AppDbContext : DbContext
         mb.Entity<VisCustomerLink>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopOrderCashEntry>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<TrsVoucher>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<TrsCheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        // Child sets are queried directly by balances, settlement and reports too.
+        mb.Entity<TrsVoucherLine>().HasQueryFilter(x => ActiveCompanyId == null || (x.TrsVoucher != null && x.TrsVoucher.CompanyId == ActiveCompanyId));
+        mb.Entity<TrsInvoiceAllocation>().HasQueryFilter(x => ActiveCompanyId == null || (x.TrsVoucher != null && x.TrsVoucher.CompanyId == ActiveCompanyId));
+        mb.Entity<TrsChequeAction>().HasQueryFilter(x => ActiveCompanyId == null || (x.Cheque != null && x.Cheque.CompanyId == ActiveCompanyId));
         mb.Entity<Cheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

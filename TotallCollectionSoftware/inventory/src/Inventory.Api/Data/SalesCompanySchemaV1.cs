@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Inventory.Api.Data;
 
@@ -29,7 +30,7 @@ public static class SalesCompanySchemaV1
     {
         "Products", "ProductCategories", "MeasureUnits", "Warehouses", "Parties",
         "Referrers", "ReferrerPayments", "Stocks",
-        "Transactions", "TransactionLines",
+        "Transactions", "TransactionLines", "ShopOrderCashEntries",
         "GoodsIssues", "GoodsIssueLines",
         "Expenses", "ExpenseCategories",
         "Cheques", "Installments",
@@ -113,8 +114,8 @@ public static class SalesCompanySchemaV1
         {
             if (db.Database.IsSqlite())
             {
-                if (!await TableExistsAsync(db, table)) continue;
-                await SafeAsync(db, $@"
+                if (!await TableExistsAsync(db, table, strict: true)) continue;
+                await db.Database.ExecuteSqlRawAsync($@"
 UPDATE [{table}]
    SET [CompanyId] = (SELECT [Id] FROM [SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id] LIMIT 1)
  WHERE [CompanyId] IS NULL
@@ -123,7 +124,7 @@ UPDATE [{table}]
             }
             else
             {
-                await SafeAsync(db, $@"
+                await db.Database.ExecuteSqlRawAsync($@"
 IF OBJECT_ID(N'dbo.{table}', N'U') IS NOT NULL
 BEGIN
     DECLARE @c int = (SELECT TOP 1 [Id] FROM [dbo].[SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id]);
@@ -133,6 +134,7 @@ END");
             }
         }
         await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+        await TreasuryCompanyScopeSchemaV1.BackfillAsync(db);
     }
 
     // ==================== SQL Server ====================
@@ -222,13 +224,14 @@ UPDATE [{table}]
     }
 
     // ==================== ابزار ====================
-    private static async Task<bool> TableExistsAsync(AppDbContext db, string table)
+    private static async Task<bool> TableExistsAsync(AppDbContext db, string table, bool strict = false)
     {
         try
         {
             var conn = db.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
+            cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
             cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=$n";
             var p = cmd.CreateParameter();
             p.ParameterName = "$n";
@@ -236,7 +239,7 @@ UPDATE [{table}]
             cmd.Parameters.Add(p);
             return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
         }
-        catch { return false; }
+        catch when (!strict) { return false; }
     }
 
     private static async Task<bool> ColumnExistsAsync(AppDbContext db, string table, string column)
@@ -246,6 +249,7 @@ UPDATE [{table}]
             var conn = db.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
+            cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
             cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'";
             return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
         }

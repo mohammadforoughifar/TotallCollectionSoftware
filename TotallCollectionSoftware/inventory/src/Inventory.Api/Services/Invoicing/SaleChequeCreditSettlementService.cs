@@ -109,10 +109,11 @@ public static class SaleChequeCreditSettlementService
             throw new InvalidOperationException("مانده حساب صندوق/بانک برای پرداخت بستانکاری مشتری کافی نیست.");
 
         var title = $"پرداخت بستانکاری مشتری — فاکتور {sale.Number}";
-        var trsNo = (await db.TrsVouchers.Where(v => v.Kind == TreasuryKind.Payment)
+        var trsNo = (await db.TrsVouchers.IgnoreQueryFilters().Where(v => v.Kind == TreasuryKind.Payment)
             .Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
         var trsVoucher = new TrsVoucher
         {
+            CompanyId = sale.CompanyId,
             Number = trsNo,
             Kind = TreasuryKind.Payment,
             Date = date,

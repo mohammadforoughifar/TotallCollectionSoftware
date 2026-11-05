@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace Inventory.Api.Services.Invoicing;
 
 /// <summary>
-/// دریافت و لغو دریافت قسط در فاکتورهای دارای تاخیر تادیه چک،
-/// با انتخاب صریح حساب شرکت و صدور سند حسابداری قطعی و معکوس.
+/// دریافت و لغو دریافت قسط در فاکتورهای خرید و فروش فروشگاهی،
+/// با انتخاب صریح حساب شرکت و ثبت گردش عملیاتی و معکوس.
 /// </summary>
 public static class SaleChequeInstallmentPosting
 {
@@ -77,31 +77,42 @@ public static class SaleChequeInstallmentPosting
 
         var sale = await db.Transactions.FirstOrDefaultAsync(t => t.Id == inst.TransactionId)
             ?? throw new InvalidOperationException("فاکتور یافت نشد.");
-        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
-            ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
-        if (sale.Type != TransactionType.Sale || sale.PartyId is not > 0 || date < sale.Date.Date ||
-            inst.CompanyId != sale.CompanyId || charge.CompanyId != sale.CompanyId)
+        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id);
+        if (sale.Type is not (TransactionType.Sale or TransactionType.Purchase) || sale.PartyId is not > 0 || date < sale.Date.Date ||
+            inst.CompanyId != sale.CompanyId || (charge is not null && (sale.Type != TransactionType.Sale || charge.CompanyId != sale.CompanyId)))
             throw new InvalidOperationException("فاکتور، حساب مشتری یا تاریخ دریافت قسط معتبر نیست.");
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
             throw new InvalidOperationException("فاکتور ابطال شده است و دریافت قسط مجاز نیست.");
 
-        if (await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > date) ||
+        if ((charge is not null && await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > date)) ||
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ دریافت قسط نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
 
-        var initial = await db.SaleChequeChargeEvents.AsNoTracking()
-            .Where(e => e.SaleChequeChargeId == charge.Id && e.Kind == SaleChequeChargeEventKind.Initial).ToListAsync();
-        if (initial.Count != 1 || initial[0].IncomeDelta != charge.InitialAmount || initial[0].Date.Date != sale.Date.Date)
-            throw new InvalidOperationException("گردش اولیه فاکتور معتبر نیست.");
+        if (charge is not null)
+        {
+            var initial = await db.SaleChequeChargeEvents.AsNoTracking()
+                .Where(e => e.SaleChequeChargeId == charge.Id && e.Kind == SaleChequeChargeEventKind.Initial).ToListAsync();
+            if (initial.Count != 1 || initial[0].IncomeDelta != charge.InitialAmount || initial[0].Date.Date != sale.Date.Date)
+                throw new InvalidOperationException("گردش اولیه فاکتور معتبر نیست.");
+        }
 
         var trsAccount = await db.TrsAccounts.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == trsAccountId && a.IsActive)
             ?? throw new InvalidOperationException("حساب مقصد فعال نیست یا یافت نشد.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, trsAccount, sale.CompanyId);
+        if (charge is null && sale.ShopCashLedgerEnabled) await ShopOrderCashLedger.VerifyCurrentAsync(db, sale);
+        if (charge is null && !sale.ShopCashLedgerEnabled && sale.CashAmount > 0)
+            throw new InvalidOperationException("نقد فاکتور قدیمی ابتدا باید به‌صورت صریح تطبیق شود.");
         await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
+        if (sale.Type == TransactionType.Purchase)
+        {
+            var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
+            if (!balance.HasValue || balance.Value < inst.Amount)
+                throw new InvalidOperationException("مانده صندوق/بانک برای پرداخت قسط خرید کافی نیست.");
+        }
         if (sale.SettledAmount + inst.Amount > MaxMoney)
             throw new InvalidOperationException("جمع دریافت از محدوده مجاز بیشتر است.");
 
@@ -145,7 +156,8 @@ public static class SaleChequeInstallmentPosting
             ?? throw new InvalidOperationException("دریافت فعال قسط یافت نشد.");
         var sale = receipt.Transaction;
         var inst = receipt.Installment;
-        if (sale.CompanyId != receipt.CompanyId || inst.CompanyId != receipt.CompanyId || sale.PartyId is not > 0 ||
+        if (sale.Type is not (TransactionType.Sale or TransactionType.Purchase) || sale.CompanyId != receipt.CompanyId ||
+            inst.CompanyId != receipt.CompanyId || inst.TransactionId != sale.Id || sale.PartyId is not > 0 ||
             !inst.IsPaid || inst.Amount != receipt.Amount || date < receipt.Date.Date)
             throw new InvalidOperationException("وضعیت قسط یا تاریخ لغو دریافت معتبر نیست.");
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
@@ -158,16 +170,17 @@ public static class SaleChequeInstallmentPosting
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ لغو دریافت قسط نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
 
+        if (sale.ShopCashLedgerEnabled) await ShopOrderCashLedger.VerifyCurrentAsync(db, sale);
         await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         if (sale.SettledAmount < receipt.Amount)
             throw new InvalidOperationException("تاریخچه تسویه فاکتور ناسازگار است.");
 
-        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
-            ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
+        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id);
         var outboundCredits = (await db.SaleChequeCreditSettlements.AsNoTracking()
             .Where(s => s.SaleTransactionId == sale.Id).Select(s => s.Amount).ToListAsync()).Sum();
         if (outboundCredits > 0)
         {
+            if (charge is null) throw new InvalidOperationException("گردش بستانکاری فاکتور نامعتبر است.");
             var signedNow = await SaleChequeSettlementLedger.SignedChargedSaleBalanceAsync(db, sale, charge);
             var rawCreditAfterReversal = Math.Max(0m, -(signedNow - outboundCredits + receipt.Amount));
             if (outboundCredits > rawCreditAfterReversal)
@@ -178,9 +191,12 @@ public static class SaleChequeInstallmentPosting
             .FirstOrDefaultAsync(a => a.Id == receipt.TrsAccountId && a.IsActive)
             ?? throw new InvalidOperationException("حساب مقصد اولیه قسط فعال نیست یا تغییر کرده است.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, trsAccount, sale.CompanyId);
-        var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
-        if (!balance.HasValue || balance.Value < receipt.Amount)
-            throw new InvalidOperationException("مانده حساب مقصد برای لغو دریافت قسط کافی نیست.");
+        if (sale.Type == TransactionType.Sale)
+        {
+            var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
+            if (!balance.HasValue || balance.Value < receipt.Amount)
+                throw new InvalidOperationException("مانده حساب مقصد برای لغو دریافت قسط کافی نیست.");
+        }
         receipt.ReversalOperationId = operationId;
         receipt.ReversalDate = date;
 

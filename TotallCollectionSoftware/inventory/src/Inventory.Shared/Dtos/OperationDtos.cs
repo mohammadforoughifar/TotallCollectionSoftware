@@ -94,6 +94,9 @@ public class Order
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی</summary>
     public decimal CashAmount { get; set; }
 
+    /// <summary>آیا گردش نقدی فاکتور در دفتر فروشگاهی ثبت می‌شود؟</summary>
+    public bool ShopCashLedgerEnabled { get; set; }
+
     /// <summary>شناسه بانک / حساب خزانه انتخابی برای تسویه</summary>
     public int? TrsAccountId { get; set; }
     public string? TrsAccountName { get; set; }
@@ -108,6 +111,18 @@ public class Order
 
     public bool IsPurchase => Type == TransactionType.Purchase;
     public bool IsSale => Type == TransactionType.Sale;
+}
+
+/// <summary>تطبیق صریح نقد فاکتور قدیمی؛ بدون این تأیید سابقه به‌طور خودکار ساخته نمی‌شود.</summary>
+public class ShopCashReconciliationCommand
+{
+    public Guid OperationId { get; set; }
+    public bool Confirmed { get; set; }
+    public decimal ExpectedCashAmount { get; set; }
+    public int? TrsAccountId { get; set; }
+    public CashType? CashType { get; set; }
+    /// <summary>شماره سند دستی قطعی هم‌مبلغ؛ null یعنی کاربر نبود گردش قبلی را تأیید کرده است.</summary>
+    public int? ExistingVoucherNumber { get; set; }
 }
 
 /// <summary>درخواست ثبت/ویرایش سند</summary>
@@ -582,6 +597,7 @@ public class ShopChequeItem
     public string PartyName { get; set; } = "";
     public string? PartyMobile { get; set; }
     public string Number { get; set; } = "";
+    public int? TrsAccountId { get; set; }
     public string? BankName { get; set; }
     public string? AccountInfo { get; set; }
     public string? OwnerName { get; set; }
@@ -602,6 +618,8 @@ public class ShopInstallmentItem
     public int Id { get; set; }
     public int TransactionId { get; set; }
     public bool HasChequeCharge { get; set; }
+    public TransactionType TransactionType { get; set; }
+    public bool HasTrackedReceipt { get; set; }
     public string OrderNumber { get; set; } = "";
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";

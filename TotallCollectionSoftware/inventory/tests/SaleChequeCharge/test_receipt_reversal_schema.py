@@ -50,7 +50,8 @@ class ReversalSchema(unittest.TestCase):
         self.assertIn('receipt.ReversalDate.HasValue', treasury)
         calculator = (ROOT / 'Inventory.Api/Services/Treasury/TreasuryBalanceCalculator.cs').read_text(encoding='utf8')
         self.assertIn('r.ReversalDate.HasValue', calculator)
-        self.assertIn('لغو وصول چک فروش', treasury)
+        self.assertIn('لغو وصول', treasury)
+        self.assertIn('receipt.ReversalDate.HasValue', treasury)
 
 
 if __name__ == '__main__':

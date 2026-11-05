@@ -24,10 +24,16 @@ public class OperationsReportsController : RbacControllerBase
         [FromQuery] int? partyId = null, [FromQuery] int? warehouseId = null, [FromQuery] bool? hasChequeIncome = null)
     {
         var permissions = new EffectivePermissions(Db);
-        if (!await permissions.IsLegacyAdminAsync(User) &&
-            !ShopPermissionAuthorizer.OrderType(await permissions.GetAsync(User), type, false))
+        var isAdmin = await permissions.IsLegacyAdminAsync(User);
+        var granted = await permissions.GetAsync(User);
+        if (!isAdmin && !ShopPermissionAuthorizer.OrderType(granted, type, false))
             return StatusCode(403, new { message = "شما به گزارش این نوع فاکتور دسترسی ندارید." });
-        return Ok(await _reports.GetOrderReportAsync(type, from, to, partyId, warehouseId, hasChequeIncome));
+        var canViewProfit = isAdmin || granted.Contains("Orders.ViewProfit");
+        if (hasChequeIncome.HasValue && !canViewProfit)
+            return StatusCode(403, new { message = "فیلتر درآمد چک به مجوز مستقل مشاهده سود نیاز دارد." });
+        // Without profit access, every aggregate uses the total invoice amount;
+        // exposing both goods-only and combined totals would reveal the difference.
+        return Ok(await _reports.GetOrderReportAsync(type, from, to, partyId, warehouseId, hasChequeIncome, canViewProfit));
     }
 
     /// <summary>گردش درآمد چک به تفکیک مشتری و تاریخ عملیات فروشگاهی.</summary>
@@ -60,7 +66,8 @@ public class OperationsReportsController : RbacControllerBase
         if (!canSeeOrders && !canSeeRepairs)
             return StatusCode(403, new { message = "برای مشاهدهٔ داشبورد عملیات، دسترسی خرید/فروش یا تعمیرات لازم است." });
 
+        var canViewProfit = await permissions.IsLegacyAdminAsync(User) || granted.Contains("Orders.ViewProfit");
         return Ok(await _reports.GetDashboardAsync(from, to, canSeeOrders, canSeeRepairs,
-            canSeeOrders && canSeeReferrers));
+            canSeeOrders && canSeeReferrers, canViewProfit));
     }
 }

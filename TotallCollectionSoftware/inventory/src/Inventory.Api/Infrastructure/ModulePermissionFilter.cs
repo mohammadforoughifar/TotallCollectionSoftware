@@ -45,6 +45,7 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
             ["Referrers.GetPayments"] = new("ReferrerWallets", "Read"),
             ["Referrers.AddPayment"] = new("ReferrerWallets", "Update"),
             ["Referrers.DeletePayment"] = new("ReferrerWallets", "Update"),
+            ["Orders.ReconcileCash"] = new("Orders", "Update"),
             ["Orders.PreviewChequeReturn"] = new("Orders", "Update"),
             ["Orders.ReturnChequeOrder"] = new("Orders", "Update"),
             ["Orders.RefundCredit"] = new("Orders", "Update"),

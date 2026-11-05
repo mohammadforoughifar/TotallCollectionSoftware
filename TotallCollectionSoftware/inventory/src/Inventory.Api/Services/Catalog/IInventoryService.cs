@@ -66,7 +66,8 @@ public interface IInventoryService
     Task AdjustStockAsync(AdjustmentCommand cmd);
 
     // ---------------- خرید و فروش ----------------
-    Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null);
+    Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true);
+    Task ReconcileLegacyOrderCashAsync(int id, ShopCashReconciliationCommand cmd, string? user);
     Task<SaleChequeReschedulePreview> PreviewSaleChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
     Task<SaleChequeReschedulePreview> RescheduleSaleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd, string? user);
     Task ReceiveSaleChequeAsync(int chequeId, SaleChequeReceiptCommand cmd, string? user);
@@ -83,7 +84,7 @@ public interface IInventoryService
     Task CancelSaleChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd, string? user);
     Task<Order> EditSaleChequeOrderAsync(int saleId, OrderCommand cmd, string? user);
     Task<List<TrsAccount>> GetActiveCompanyTreasuryAccountsAsync(TreasuryAccountKind? kind = null);
-    Task<Order> UpdateOrderAsync(int id, OrderCommand cmd);
+    Task<Order> UpdateOrderAsync(int id, OrderCommand cmd, string? user = null);
     Task<Order?> GetOrderAsync(int id);
 
     // ---------------- داشبورد ادمین و پرداخت ----------------
@@ -106,7 +107,7 @@ public interface IInventoryService
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
     Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false, Paging.Request? pagination = null);
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null);
-    Task DeleteOrderAsync(int id);
+    Task DeleteOrderAsync(int id, string? user = null, bool allowUntrackedRollback = false);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 
     /// <summary>آخرین سند خریدی که شامل این کالاست (برای نمایش در فرم فروش).</summary>

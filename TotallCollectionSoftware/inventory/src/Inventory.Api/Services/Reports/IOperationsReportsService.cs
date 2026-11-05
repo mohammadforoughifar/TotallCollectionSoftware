@@ -7,10 +7,10 @@ namespace Inventory.Api.Services.Reports;
 public interface IOperationsReportsService
 {
     Task<OperationsOrderReportDto> GetOrderReportAsync(TransactionType type, DateTime? from, DateTime? to,
-        int? partyId, int? warehouseId, bool? hasChequeIncome = null);
+        int? partyId, int? warehouseId, bool? hasChequeIncome = null, bool includeChequeIncome = true);
 
     Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from, DateTime? to, int? partyId);
 
     Task<OperationsDashboardDto> GetDashboardAsync(DateTime? from, DateTime? to,
-        bool includeOrders, bool includeRepairs, bool includeReferrers);
+        bool includeOrders, bool includeRepairs, bool includeReferrers, bool includeChequeIncome = true);
 }
