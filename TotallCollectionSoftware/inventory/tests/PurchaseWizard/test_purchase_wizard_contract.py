@@ -97,7 +97,12 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertLess(INDEX.index('js/order-entry.js?v=4'), INDEX.index("document.addEventListener('keydown'"))
 
     def test_invoice_row_controls_and_values_share_alignment(self):
-        row = FORM.split('<tr @key="l.Key" data-order-line="@l.Key">', 1)[1].split('</tr>', 1)[0]
+        items_section = FORM.split('<div data-order-entry', 1)[1]
+        thead = items_section.split('<thead>', 1)[1].split('</thead>', 1)[0]
+        row = items_section.split('<tr @key="l.Key" data-order-line="@l.Key">', 1)[1].split('</tr>', 1)[0]
+        # bootstrap.min.css is LTR (.text-start = left), which breaks RTL header/cell alignment against flex values.
+        self.assertNotIn('text-start', thead)
+        self.assertNotIn('text-start', row)
         self.assertIn('CssClass="order-line-control"', row)
         self.assertEqual(row.count('order-line-control'), 5)
         self.assertEqual(row.count('order-line-value'), 5)
@@ -105,18 +110,20 @@ class PurchaseWizardContract(unittest.TestCase):
         desktop_css = CSS.split('/* Desktop:', 1)[1].split('@media (max-width: 991px)', 1)[0]
         self.assertIn('table-layout: fixed', desktop_css)
         self.assertIn('vertical-align: top', desktop_css)
+        self.assertIn('text-align: right', desktop_css)
         self.assertNotIn('display: grid', desktop_css)
         self.assertIn('@media (max-width: 991px)', CSS)
-        self.assertIn('InvoiceColumnWidth(19)', FORM)
+        self.assertIn('InvoiceColumnWidth(22)', FORM)
+        self.assertIn('InvoiceColumnWidth(5)', FORM)
         self.assertNotIn('overflow-x: auto', CSS)
         self.assertNotIn('min-width: 1120px', CSS)
         self.assertIn('height: 38px; min-height: 38px;', CSS)
         self.assertIn('min-height: 2.6em;', CSS)
         self.assertIn('.purchase-items ::deep .order-line-control', CSS)
         self.assertEqual(row.count('input-group input-group-sm order-line-rate'), 2)
-        self.assertIn('display: block; position: relative; width: 100%; max-width: 100px;', CSS)
+        self.assertIn('display: block; position: relative; width: 100%; }', CSS)
         self.assertIn('position: absolute; z-index: 1; top: 1px; bottom: 1px; left: 1px;', CSS)
-        self.assertIn('padding-left: 33px;', CSS)
+        self.assertIn('padding-left: 36px;', CSS)
         self.assertEqual(row.count('input-group-text order-line-unit'), 2)
         self.assertNotIn('l.DiscountPercent.ToString', row)
         self.assertIn('padding-inline-end: 1rem;', CSS)

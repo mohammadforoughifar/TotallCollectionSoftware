@@ -390,17 +390,17 @@
                     @if (UseInvoiceWizard)
                     {
                         <colgroup>
-                            <col style="width:@InvoiceColumnWidth(19)" />
-                            <col style="width:@InvoiceColumnWidth(7)" />
-                            <col style="width:@InvoiceColumnWidth(11)" />
+                            <col style="width:@InvoiceColumnWidth(22)" />
+                            <col style="width:@InvoiceColumnWidth(8)" />
+                            <col style="width:@InvoiceColumnWidth(12)" />
                             <col style="width:@InvoiceColumnWidth(11)" />
                             <col style="width:@InvoiceColumnWidth(9)" />
-                            <col style="width:@InvoiceColumnWidth(12)" />
+                            <col style="width:@InvoiceColumnWidth(11)" />
                             <col style="width:@InvoiceColumnWidth(9)" />
-                            <col style="width:@InvoiceColumnWidth(12)" />
+                            <col style="width:@InvoiceColumnWidth(13)" />
                             @if (Type == TransactionType.Sale && CanSeeProfit) { <col style="width:@InvoiceColumnWidth(10)" /> }
                             @if (Type == TransactionType.Sale && referrerId > 0) { <col style="width:@InvoiceColumnWidth(10)" /> }
-                            <col style="width:@InvoiceColumnWidth(10)" />
+                            <col style="width:@InvoiceColumnWidth(5)" />
                         </colgroup>
                     }
                     <thead>
@@ -408,20 +408,20 @@
                             <th><span>کالا</span></th>
                             <th title="مقدار تا دو رقم اعشار"><span>مقدار</span><small>تا ۲ رقم</small></th>
                             <th><span>قیمت واحد</span><small>ریال</small></th>
-                            <th class="text-start"><span>مبلغ کل</span><small>ریال</small></th>
+                            <th><span>مبلغ کل</span><small>ریال</small></th>
                             <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>تخفیف</span><small>٪ یا ریال</small></th>
-                            <th class="text-start"><span>پس از تخفیف</span><small>ریال</small></th>
+                            <th><span>پس از تخفیف</span><small>ریال</small></th>
                             <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>ارزش افزوده</span><small>٪ یا ریال</small></th>
-                            <th class="text-start"><span>کل پس از ارزش افزوده</span><small>ریال</small></th>
+                            <th><span>کل پس از ارزش افزوده</span><small>ریال</small></th>
                             @if (Type == TransactionType.Sale)
                             {
                                 @if (CanSeeProfit)
                                 {
-                                    <th class="text-start"><span>سود</span><small>ریال</small></th>
+                                    <th><span>سود</span><small>ریال</small></th>
                                 }
                                 @if (referrerId > 0)
                                 {
-                                    <th class="text-start"><span>پورسانت</span><small>ریال</small></th>
+                                    <th><span>پورسانت</span><small>ریال</small></th>
                                 }
                             }
                             <th></th>
@@ -458,7 +458,7 @@
                                     }
                                 </td>
                                 <td data-label="مقدار">
-                                    <input class="form-control num order-line-control" aria-label="مقدار" inputmode="decimal" dir="ltr" placeholder="1.25"
+                                    <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="decimal" dir="ltr" placeholder="1.25"
                                            title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
                                            value="@l.QtyText" @oninput="@(e => { l.QtyText = FormatQuantity(e.Value); RecalcDiscount(l); })" />
                                 </td>
@@ -466,7 +466,7 @@
                                     <input class="form-control num order-line-control" aria-label="قیمت واحد به ریال" inputmode="decimal" dir="ltr"
                                            value="@l.PriceText" @oninput="@(e => { l.PriceText = FormatNum(e.Value); RecalcDiscount(l); })" />
                                 </td>
-                                <td data-label="مبلغ کل (ریال)" class="text-start num fw-500"><span class="order-line-value">@l.Gross.Money()</span></td>
+                                <td data-label="مبلغ کل (ریال)" class="num fw-500"><span class="order-line-value">@l.Gross.Money()</span></td>
                                 <td data-label="تخفیف (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
                                         <input class="form-control form-control-sm text-center num order-line-control" aria-label="تخفیف درصد یا ریال"
@@ -479,11 +479,11 @@
                                             @(l.DiscountIsAmount ? "ریال" : "٪")
                                         </span>
                                     </div>
-                                    <div class="fs-9 mt-1 text-danger num text-start">
+                                    <div class="fs-9 mt-1 text-danger num order-line-sub">
                                         @l.DiscountAmount.Money() ریال
                                     </div>
                                 </td>
-                                <td data-label="پس از تخفیف (ریال)" class="text-start num fw-500"><span class="order-line-value">@l.AfterDiscount.Money()</span></td>
+                                <td data-label="پس از تخفیف (ریال)" class="num fw-500"><span class="order-line-value">@l.AfterDiscount.Money()</span></td>
                                 <td data-label="ارزش افزوده (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
                                         <input class="form-control form-control-sm text-center num order-line-control" aria-label="ارزش افزوده درصد یا ریال" data-order-last-field
@@ -491,19 +491,19 @@
                                                placeholder="0" inputmode="decimal" dir="ltr" />
                                         <span class="input-group-text order-line-unit" title="@(l.VatValue > 100 ? "مبلغ ریالی" : "درصد")">@(l.VatValue > 100 ? "ریال" : "٪")</span>
                                     </div>
-                                    <div class="fs-9 mt-1 text-primary num text-start">@l.VatAmount.Money() ریال</div>
+                                    <div class="fs-9 mt-1 text-primary num order-line-sub">@l.VatAmount.Money() ریال</div>
                                 </td>
-                                <td data-label="کل پس از ارزش افزوده (ریال)" class="text-start num fw-700"><span class="order-line-value">@l.Total.Money()</span></td>
+                                <td data-label="کل پس از ارزش افزوده (ریال)" class="num fw-700"><span class="order-line-value">@l.Total.Money()</span></td>
                                 @if (Type == TransactionType.Sale)
                                 {
                                     @if (CanSeeProfit)
                                     {
-                                        <td data-label="سود" class="text-start num">
+                                        <td data-label="سود" class="num">
                                             @{ var profit = LineProfit(l); }
                                             <div class="order-line-value">
                                                 @if (l.ProductId > 0 && l.Qty > 0)
                                                 {
-                                                    <span class="fw-500 @(profit >= 0 ? "text-success" : "text-danger")">@profit.Money()</span>
+                                                    <span dir="ltr" class="fw-500 @(profit >= 0 ? "text-success" : "text-danger")">@profit.Money()</span>
                                                 }
                                                 else
                                                 {
@@ -514,7 +514,7 @@
                                     }
                                     @if (referrerId > 0)
                                     {
-                                        <td data-label="پورسانت" class="text-start num">
+                                        <td data-label="پورسانت" class="num">
                                             <div class="order-line-value">
                                                 @if (l.ProductId > 0 && l.Qty > 0)
                                                 {
@@ -528,7 +528,7 @@
                                         </td>
                                     }
                                 }
-                                <td class="text-end text-nowrap">
+                                <td class="text-nowrap">
                                     <div class="order-line-actions">
                                         @if (Type == TransactionType.Sale && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
