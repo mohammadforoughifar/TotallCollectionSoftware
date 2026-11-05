@@ -67,7 +67,7 @@ cd TotallCollectionSoftware
 python3 -m unittest discover -s inventory/tests/SalesVisit -p 'test_*.py' -q
 ```
 
-- **۵۱ تست قرارداد سورس OK** (۱۹ تست تازه در
+- **۵۱ تست قرارداد سورس OK** در زمان این تغییر (مجموع تستهای مخزن بعداً به ۶۳ رسید؛ ۱۹ تست تازه در
   `inventory/tests/SalesVisit/test_customer_phone_search.py`: لایهٔ نرمالسازی،
   مرجع رفتاری ۱۰ حالت، همهٔ کمبوها، پرسوجوهای سرور، DTOها، برچسبها و عدم
   بازگشت تغییرات موجودی صفر).
