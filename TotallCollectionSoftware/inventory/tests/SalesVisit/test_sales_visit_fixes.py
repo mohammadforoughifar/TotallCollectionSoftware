@@ -17,8 +17,8 @@
      کنار ورودی، فیلدهای کوتاه دوتایی، و نوار اقدام چسبانِ جابهجا شده بالای
      نوار پایین اپ (app-mobile).
   ۷) فاصلهٔ آیکون و متن کفدار (`--vis-icon-gap`): با تراکم بقیه له نمیشود.
-  ۸) آلارم «موجودی صفر» در همان سطر اقلام، مشترک بین ثبت سفارش ویزیتوری،
-     صدور فاکتور فروش و فاکتور فروش (Invoicing)؛ بدون تغییر قواعد ذخیره.
+  ۸) آلارم «موجودی صفر» در همان سطر اقلام، **فقط** در ثبت سفارش ویزیتوری؛
+     تغییرات دو فرم «فاکتور فروش» بنا به درخواست کاربر برگردانده شد.
 """
 import re
 import unittest
@@ -339,7 +339,7 @@ class VisitFormsDesignTests(unittest.TestCase):
 
 
 class ZeroStockAlarmTests(unittest.TestCase):
-    """آلارم موجودی صفر: تشخیص زودهنگام، هشدار درونسطری، و بدون تغییر رفتار ذخیره."""
+    """آلارم موجودی صفر فقط در ماژول فروش و ویزیتوری؛ فرمهای فاکتور فروش دستنخورده."""
 
     @classmethod
     def setUpClass(cls):
@@ -348,86 +348,71 @@ class ZeroStockAlarmTests(unittest.TestCase):
         cls.order = read(ROOT / "Inventory.Client/Pages/Orders/OrderForm.razor")
         cls.invoice = read(ROOT / "Inventory.Client/Pages/Invoicing/FacInvoiceForm.razor")
         cls.preview = read(ROOT.parent / "tests/SalesVisit/visit-forms-proposal.html")
+        cls.folder = Path(__file__).resolve().parent
 
-    # ---------- استایل مشترک ----------
-    def test_shared_css_exists_and_uses_existing_palette(self):
-        for cls in (".zs-alert {", ".zs-alert--warn", ".zs-row", ".zs-row--table",
-                    ".zs-row--card", ".zs-qty-input", ".zs-badge", ".zs-opt"):
+    # ---------- استایل مشترک (فقط آنچه ویزیتوری استفاده میکند) ----------
+    def test_shared_css_kept_for_sales_visit_only(self):
+        for cls in (".zs-alert {", ".zs-alert--warn", ".zs-row", ".zs-row--card",
+                    ".zs-qty-input", ".zs-badge", ".zs-opt"):
             self.assertIn(cls, self.app_css)
+        self.assertNotIn(".zs-row--table", self.app_css,
+                         "قواعد جدول فاکتور فروش حذف شدند")
         self.assertIn("var(--danger)", self.app_css)
         self.assertIn("var(--warning)", self.app_css)
         self.assertIn("@media (max-width: 720px)", self.app_css)
-        # سطر کامل قرمز نمیشود: فقط تِنت ۳٪ + لبهٔ باریک
         self.assertIn("rgba(239, 68, 68, .035)", self.app_css)
         self.assertIn("border-inline-start: 3px solid var(--danger)", self.app_css)
-        # پالت :root دستنخورده
         self.assertIn("--danger: #ef4444;", self.app_css)
         self.assertIn("--warning: #f59e0b;", self.app_css)
-        # هشدار اسکرول داخلی نمیسازد
         i = self.app_css.index(".zs-alert {")
         block = self.app_css[i:self.app_css.index("@media (max-width: 720px)", i)]
         self.assertNotRegex(block, r"(max-height|overflow)\s*:")
 
-    # ---------- ثبت سفارش ویزیتوری ----------
+    # ---------- ثبت سفارش ویزیتوری: باقی ماند ----------
     def test_visit_form_detects_zero_stock_on_selection(self):
         self.assertIn("private bool IsOutOfStock(VisOrderLineDto l)", self.form)
-        self.assertIn("!p.IsService && p.Stock <= 0", self.form,
-                      "خدمات نباید موجودی صفر بگیرند")
+        self.assertIn("!p.IsService && p.Stock <= 0", self.form)
         self.assertIn("private int ZeroStockCount => model.Lines.Count(IsOutOfStock);", self.form)
         self.assertIn("data-zero-stock", self.form)
         self.assertIn("zs-row zs-row--card", self.form)
         self.assertIn("zs-qty-input", self.form)
         self.assertIn("data-zero-stock-alert", self.form)
-        self.assertIn("zs-alert zs-alert--warn", self.form, "کسری موجودی هم متمایز شد")
+        self.assertIn("zs-alert zs-alert--warn", self.form)
         self.assertIn("zeroStockIds = list.Where(p => !p.IsService && p.Stock <= 0)", self.form)
-        self.assertIn('<em class="zs-opt">ناموجود</em>', self.form,
-                      "نشان ناموجود در خود فهرست کمبو، قبل از انتخاب")
+        self.assertIn('<em class="zs-opt">ناموجود</em>', self.form)
         self.assertIn("data-zero-count", self.form)
-        # قواعد ذخیره دستنخورده (هشدار نرم، همان پنجرهٔ تأیید)
         self.assertIn("private async Task ProceedWithShortage()", self.form)
         self.assertIn("model.SubmitAfterSave = submit && CanSubmit;", self.form)
         self.assertIn('@(ShortLines.Any(s => s.Available <= 0) ? "کالای ناموجود', self.form)
 
-    # ---------- صدور فاکتور فروش (Orders) ----------
-    def test_order_form_alarm_is_sale_only_and_guarded_by_stock_load(self):
-        self.assertIn("private bool IsOutOfStock(LineVm l)", self.order)
-        self.assertIn("Type == TransactionType.Sale && stocksLoaded", self.order,
-                      "پیش از بارگیری موجودی نباید هشدار کاذب بدهد")
-        self.assertIn("stocksLoaded = true;", self.order)
-        self.assertIn("stocksLoaded = false;", self.order)
-        self.assertIn("!IsServiceProduct(l.ProductId)", self.order)
-        self.assertIn("zs-row zs-row--table", self.order)
-        self.assertIn("data-zero-stock-alert", self.order)
-        self.assertIn("zs-qty-input", self.order)
-        self.assertIn("data-zero-count", self.order)
-        self.assertIn('+ (qty <= 0 ? " · ناموجود" : "")', self.order,
-                      "نشان ناموجود در منوی انتخاب کالا")
-        self.assertIn("اقلام فاکتور", self.order)
+    # ---------- فاکتور فروش: به حالت قبل برگشت ----------
+    def test_invoice_forms_are_back_to_original_state(self):
+        for gone in ("zs-", "IsOutOfStock", "stocksLoaded", "data-zero-stock",
+                     "ZeroStockCount", " · ناموجود"):
+            self.assertNotIn(gone, self.order, f"OrderForm: {gone} نباید بماند")
+        self.assertIn("· موجودی انبار:", self.order)
+        self.assertIn('stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}";', self.order)
+        for gone in ("zs-", "IsZeroStock", "data-zero-stock", "ZeroStockCount"):
+            self.assertNotIn(gone, self.invoice, f"FacInvoiceForm: {gone} نباید بماند")
+        self.assertIn('<span class="badge badge-soft-primary ms-auto">@doc.Lines.Count.Num() قلم</span>', self.invoice)
+        self.assertIn("· موجودی: @line.CurrentStock.Num()", self.invoice)
 
-    # ---------- فاکتور فروش (Invoicing) ----------
-    def test_invoice_form_alarm_in_desktop_and_mobile_rows(self):
-        self.assertIn("private bool IsZeroStock(FacInvoiceLine l)", self.invoice)
-        self.assertIn("!IsBuying && l.ProductId > 0 && l.CurrentStock <= 0", self.invoice,
-                      "فاکتور خرید نباید هشدار موجودی صفر بگیرد")
-        self.assertIn("private int ZeroStockCount => doc.Lines.Count(IsZeroStock);", self.invoice)
-        self.assertIn("zs-row zs-row--table", self.invoice)
-        self.assertIn("zs-row zs-row--card", self.invoice,
-                      "نمای کارتی موبایل هم هشدار دارد")
-        self.assertEqual(self.invoice.count("data-zero-stock-alert"), 2)
-        self.assertIn("zs-qty-input", self.invoice)
-        self.assertIn("data-zero-count", self.invoice)
-
-    # ---------- پیشنمایش ----------
-    def test_preview_shows_all_three_forms_with_the_same_alarm(self):
-        self.assertIn('data-view="invoice"', self.preview)
-        self.assertIn('id="view-invoice"', self.preview)
-        self.assertIn("zs-row zs-row--table", self.preview)
+    # ---------- پیشنمایش: فقط نماهای فروش و ویزیتوری ----------
+    def test_preview_shows_only_sales_visit_alarm(self):
+        for gone in ('data-view="invoice"', 'id="view-invoice"', 'pv-inv-',
+                     '/orders/new', 'zs-row--table'):
+            self.assertNotIn(gone, self.preview)
+        for view in ('id="view-form"', 'id="view-detail"', 'id="view-states"'):
+            self.assertIn(view, self.preview)
         self.assertIn("zs-alert", self.preview)
         self.assertIn("zs-badge", self.preview)
         self.assertIn("zs-opt", self.preview)
-        self.assertNotIn("pv-stock-alert", self.preview,
-                         "پیشنمایش باید همان کلاسهای تحویلدادهشده را بهکار ببرد")
-        self.assertGreaterEqual(self.preview.count("data-no-scroll"), 4)
+        self.assertNotIn("pv-stock-alert", self.preview)
+        self.assertGreaterEqual(self.preview.count("data-no-scroll"), 3)
+        self.assertFalse((self.folder / "visit-forms-zero-stock-preview.html").exists(),
+                         "پیشنمایش مخصوص فاکتور فروش حذف شد")
+        server = read(self.folder / "serve_proposal.py")
+        self.assertNotIn("/zero-stock", server)
 
 
 if __name__ == "__main__":

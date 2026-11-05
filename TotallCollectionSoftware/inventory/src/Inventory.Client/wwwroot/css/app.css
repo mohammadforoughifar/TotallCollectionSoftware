@@ -4005,9 +4005,8 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 .modal-header.purchase-order-header { background: #fff; }
 
 /* ============================================================
-   آلارم «موجودی صفر» در سطر اقلام (zero-stock)
-   مشترک بین: ثبت سفارش ویزیتوری، صدور فاکتور فروش (Orders)
-   و فاکتور فروش (Invoicing). فقط --danger / --warning موجود
+   آلارم «موجودی صفر» در سطر اقلام — فقط ماژول فروش و ویزیتوری
+   (Pages/SalesVisit/VisitForm.razor). فقط --danger / --warning موجود
    بهکار رفته و پالت :root تغییر نکرده است.
    سطر کامل قرمز نمیشود: آیکون + متن صریح + لبهٔ باریک + حلقهٔ
    دور فیلد تعداد، تا عددها روی زمینهٔ روشن خوانا بمانند.
@@ -4027,9 +4026,7 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 
 /* نشانهٔ سطر: فقط تِنت ۳٪ و یک لبهٔ ۳px؛ نه پسزمینهٔ قرمز کامل */
 .zs-row { background: rgba(239, 68, 68, .035) !important; }
-.zs-row--table > :first-child { border-inline-start: 3px solid var(--danger) !important; }
 .zs-row--card { border-inline-start: 3px solid var(--danger) !important; }
-.zs-row--table > td { background: rgba(239, 68, 68, .035); }
 .zs-qty-input { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(239, 68, 68, .12); }
 
 .zs-badge {

@@ -6,7 +6,6 @@
 مسیرها:
     /            → صفحهٔ طرح پیشنهادی (visit-forms-proposal.html)
     /current     → پیشنمایش نسخهٔ فعلی کامپوننتها (visit-forms-preview.html)
-    /zero-stock  ← نسخهٔ خودبسندهای که مستقیم روی نمای «فاکتور فروش» باز میشود
     /src/.../wwwroot/... → داراییهای CSS/فونت/آیکن، دقیقاً همان فایلهای پروژه
 
 نکتهها:
@@ -21,7 +20,6 @@ from pathlib import Path
 INVENTORY = Path(__file__).resolve().parents[2]          # .../inventory
 PROPOSAL = Path(__file__).with_name("visit-forms-proposal.html")
 CURRENT = Path(__file__).with_name("visit-forms-preview.html")
-ZERO_STOCK = Path(__file__).with_name("visit-forms-zero-stock-preview.html")
 ASSET_PREFIX = "/src/Inventory.Client/wwwroot/"
 PORT = 8000
 
@@ -41,8 +39,6 @@ class ProposalHandler(SimpleHTTPRequestHandler):
             return PROPOSAL
         if path in ("/current", "/current.html"):
             return CURRENT
-        if path in ("/zero-stock", "/zero-stock.html"):
-            return ZERO_STOCK
         return None
 
     def _html(self, target, head=False):

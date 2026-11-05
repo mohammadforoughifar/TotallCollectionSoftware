@@ -6059,9 +6059,8 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 .modal-header.purchase-order-header { background: #fff; }
 
 /* ============================================================
-   آلارم «موجودی صفر» در سطر اقلام (zero-stock)
-   مشترک بین: ثبت سفارش ویزیتوری، صدور فاکتور فروش (Orders)
-   و فاکتور فروش (Invoicing). فقط --danger / --warning موجود
+   آلارم «موجودی صفر» در سطر اقلام — فقط ماژول فروش و ویزیتوری
+   (Pages/SalesVisit/VisitForm.razor). فقط --danger / --warning موجود
    بهکار رفته و پالت :root تغییر نکرده است.
    سطر کامل قرمز نمیشود: آیکون + متن صریح + لبهٔ باریک + حلقهٔ
    دور فیلد تعداد، تا عددها روی زمینهٔ روشن خوانا بمانند.
@@ -6081,9 +6080,7 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 
 /* نشانهٔ سطر: فقط تِنت ۳٪ و یک لبهٔ ۳px؛ نه پسزمینهٔ قرمز کامل */
 .zs-row { background: rgba(239, 68, 68, .035) !important; }
-.zs-row--table > :first-child { border-inline-start: 3px solid var(--danger) !important; }
 .zs-row--card { border-inline-start: 3px solid var(--danger) !important; }
-.zs-row--table > td { background: rgba(239, 68, 68, .035); }
 .zs-qty-input { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(239, 68, 68, .12); }
 
 .zs-badge {
@@ -6746,21 +6743,6 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 .pv-screen[data-size="mobile"] .pv-ui .zs-alert { padding: .3rem .45rem; font-size: .64rem; gap: .35rem; }
 .pv-screen[data-size="mobile"] .pv-ui .zs-alert > span { flex: 1 1 100%; }
 
-/* ---- نمای فاکتور فروش (همان آلارم zs-* که در سورس اعمال شد) ---- */
-.pv-inv-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .72rem; }
-.pv-inv-table th {
-  font-size: .62rem; color: var(--muted); font-weight: 700;
-  padding: .4rem .35rem; border-bottom: 1px solid var(--line); text-align: right;
-}
-.pv-inv-table td { padding: .45rem .35rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-.pv-inv-table .pv-inv-name { font-weight: 700; overflow-wrap: anywhere; }
-.pv-inv-table .pv-inv-sub { font-size: .6rem; color: var(--muted); margin-top: .15rem; overflow-wrap: anywhere; }
-.pv-inv-table .pv-inv-inp {
-  width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px;
-  padding: .25rem .3rem; font-size: .68rem; text-align: center; background: #fff;
-}
-.pv-inv-table .pv-inv-num { font-size: .68rem; text-align: center; overflow-wrap: anywhere; }
-
 @media (prefers-reduced-motion: reduce) {
   .pv-ui *, .pv-ui *::before, .pv-ui *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
@@ -6775,7 +6757,6 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     <div class="pv-seg-dark" id="seg-view">
       <button class="is-active" data-view="form">ثبت سفارش</button>
       <button data-view="detail">جزئیات سفارش</button>
-      <button data-view="invoice">فاکتور فروش</button>
       <button data-view="states">حالتها و تعامل</button>
     </div>
     <span class="pv-top-label">اندازه</span>
@@ -7130,72 +7111,6 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
           </div>
         </div>
 
-        <!-- ==================== نمای ۴: فاکتور فروش ==================== -->
-        <div class="pv-view" id="view-invoice">
-          <div class="pv-ui">
-            <div class="pv-head">
-              <div class="pv-head-ico"><i class="bi bi-receipt"></i></div>
-              <div><h1>صدور فاکتور فروش</h1><div class="pv-head-sub">اقلام فاکتور · انبار مرکزی</div></div>
-              <span class="pv-badge" data-tone="warning">پیشنویس</span>
-            </div>
-            <div class="pv-stack">
-              <section class="pv-card" data-no-scroll>
-                <div class="pv-sec-head">
-                  <div class="pv-sec-title"><i class="bi bi-list-ul"></i> اقلام فاکتور
-                    <span class="pv-badge" data-tone="info">۳ قلم</span>
-                    <span class="zs-badge" data-zero-count><i class="bi bi-x-octagon"></i> ۱ قلم ناموجود</span>
-                  </div>
-                  <button class="pv-btn pv-btn-ghost" style="padding:.4rem .75rem"><i class="bi bi-plus-lg"></i> افزودن سطر <kbd>F2</kbd></button>
-                </div>
-                <div class="pv-sec-body">
-                  <table class="pv-inv-table">
-                    <thead><tr>
-                      <th style="width:38%">کالا</th><th style="width:14%">مقدار</th>
-                      <th style="width:22%">قیمت واحد</th><th style="width:20%">مبلغ کل</th><th style="width:6%"></th>
-                    </tr></thead>
-                    <tbody>
-                      <tr>
-                        <td><div class="pv-inv-name">روغن آفتابگردان ۵ لیتری</div>
-                            <div class="pv-inv-sub">واحد: بطری · موجودی انبار: ۴۸</div></td>
-                        <td><input class="pv-inv-inp" value="۱۲" /></td>
-                        <td><input class="pv-inv-inp" value="۸۵۰٬۰۰۰" /></td>
-                        <td class="pv-inv-num">۱۰٬۲۰۰٬۰۰۰</td>
-                        <td><button class="pv-btn pv-btn-quiet" title="حذف"><i class="bi bi-trash"></i></button></td>
-                      </tr>
-                      <tr>
-                        <td><div class="pv-inv-name">چای سیلان ۵۰۰ گرمی</div>
-                            <div class="pv-inv-sub">واحد: بسته · موجودی انبار: ۴</div>
-                            <div class="zs-alert zs-alert--warn"><i class="bi bi-exclamation-triangle"></i><b>کسری موجودی</b><span>موجودی ۴ بسته، سفارش ۶ بسته</span></div></td>
-                        <td><input class="pv-inv-inp" value="۶" /></td>
-                        <td><input class="pv-inv-inp" value="۳۲۰٬۰۰۰" /></td>
-                        <td class="pv-inv-num">۱٬۹۲۰٬۰۰۰</td>
-                        <td><button class="pv-btn pv-btn-quiet" title="حذف"><i class="bi bi-trash"></i></button></td>
-                      </tr>
-                      <tr class="zs-row zs-row--table" data-zero-stock="1">
-                        <td><div class="pv-inv-name">لوبیا چیتی ۹۰۰ گرمی</div>
-                            <div class="pv-inv-sub">واحد: بسته · موجودی انبار: ۰</div>
-                            <div class="zs-alert" data-zero-stock-alert>
-                              <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
-                              <span>در انبار انتخابشده موجود نیست — پیش از صدور فاکتور اصلاح کنید</span>
-                            </div></td>
-                        <td><input class="pv-inv-inp zs-qty-input" value="۲" /></td>
-                        <td><input class="pv-inv-inp" value="۱۸۵٬۰۰۰" /></td>
-                        <td class="pv-inv-num">۳۷۰٬۰۰۰</td>
-                        <td><button class="pv-btn pv-btn-quiet" title="حذف"><i class="bi bi-trash"></i></button></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <div class="pv-review">
-                    <div class="pv-kpi"><span>جمع کل</span><b class="pv-num">۱۲٬۴۹۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
-                    <div class="pv-kpi"><span>تخفیف</span><b class="pv-num pv-neg">۰ <small class="pv-cur">ریال</small></b></div>
-                    <div class="pv-kpi pv-kpi-total"><span>قابل پرداخت</span><b class="pv-num">۱۲٬۴۹۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
-
         <!-- ==================== نمای ۳: حالتهأ و تعامل ==================== -->
         <div class="pv-view" id="view-states">
           <div class="pv-ui">
@@ -7267,7 +7182,7 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
       b.classList.add('is-active');
       document.querySelectorAll('.pv-view').forEach(function (v) { v.classList.remove('is-active'); });
       document.getElementById('view-' + b.dataset.view).classList.add('is-active');
-      var urls = { form: '/sales/visits/new', detail: '/sales/visits/218', invoice: '/orders/new', states: '/sales/visits/new' };
+      var urls = { form: '/sales/visits/new', detail: '/sales/visits/218', states: '/sales/visits/new' };
       url.textContent = urls[b.dataset.view] || '/sales/visits/new';
       measure();
     });
