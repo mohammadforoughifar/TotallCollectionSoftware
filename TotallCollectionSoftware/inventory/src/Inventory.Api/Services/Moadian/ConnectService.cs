@@ -1886,11 +1886,11 @@ context.Customers.Any(x =>
             return await UpdateInvoiceAsync(modeldata);
         }
 
-        /// <summary>محاسبهٔ داخلیٔ شمارهٔ صورتحساب بعدی یک شرکت (حداکثر + ۱).</summary>
+        /// <summary>شمارهٔ بعدی همان خدمات‌دهنده: بیشترین شمارهٔ حذف‌نشده + ۱؛ در نبود آن ۱.</summary>
         private async Task<int> NextInvoiceNoCoreAsync(int? cpinfo)
         {
             int? max = await context.Invoices
-                .Where(i => i.CpInfo == cpinfo)
+                .Where(i => i.CpInfo == cpinfo && !i.IsDelete)
                 .MaxAsync(i => (int?)i.InvoiceNumber);
             return (max ?? 0) + 1;
         }

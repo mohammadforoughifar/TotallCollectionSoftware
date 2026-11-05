@@ -109,6 +109,7 @@ reject.Enabled = false; db.ChangeTracker.Clear();
 Check(!failed.Success && failed.Status == 500
     && (await db.Invoices.AsNoTracking().SingleAsync(i => i.Id == repeated.Id)).Description == "updated"
     && await db.InvoiceItems.CountAsync() == beforeLines, "failed edit reports failure and preserves persisted data");
+await InvoiceNumberRegression.RunAsync();
 Console.WriteLine("PASS: all Moadian invoice-goods regression checks completed; SQLite only, no real SQL Server/tax submission.");
 
 GoodsOrService Good(int id, int cpInfo, string? code, bool deleted = false) => new()

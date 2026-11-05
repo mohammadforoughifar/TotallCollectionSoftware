@@ -29,3 +29,15 @@ Scope: compiled production service and SQLite/EF behavior only. SQL Server
 runtime, browser workflows and actual tax-system acceptance still need deployment
 validation. No schema migration, catalog deletion or unique-code constraint is
 introduced by this fix.
+
+## Invoice numbering after soft deletion
+
+The same command also runs `InvoiceNumberRegression`, which exercises the real
+preview, creation and draft-deletion service methods on a separate SQLite DB.
+Automatic numbering is `MAX(InvoiceNumber)` over **non-deleted invoices of the
+same CpInfo**, plus one; when none remain it starts at 1. Thus deleting draft 3
+from 1/2/3 permits a new draft 3, but deleting 1 while 2 remains yields 3 rather
+than filling the internal gap. Multiple trailing deletions, provider isolation,
+all-deleted histories, existing sent-invoice deletion restrictions and preservation
+of existing invoice numbers are covered. Deleted history is not erased and no
+schema or existing invoice-number migration is performed.
