@@ -13,5 +13,14 @@ class TermsContract(unittest.TestCase):
         self.assertNotIn('تأخیر و تعدیه', form)
         self.assertNotIn('تأخیر و تعدیه', service)
 
+    def test_sale_cheque_option_and_setting_note_are_unambiguous(self):
+        form = (ROOT / 'src/Inventory.Client/Pages/Orders/OrderForm.razor').read_text(encoding='utf-8')
+        cheque = form.split('@if (useCheque)', 1)[1].split('@for (var ci = 0;', 1)[0]
+        self.assertIn('Type == TransactionType.Sale && (!IsEdit || EditOrder?.HasChequeCharge == true)', cheque)
+        self.assertIn('<strong>تاخیر تادیه چک</strong>', cheque)
+        self.assertIn('محاسبه سود', cheque)
+        self.assertIn('به تنظیمات سرور وابسته است', cheque)
+        self.assertNotIn('پیش‌فرض خاموش', cheque)
+
 if __name__ == '__main__':
     unittest.main()
