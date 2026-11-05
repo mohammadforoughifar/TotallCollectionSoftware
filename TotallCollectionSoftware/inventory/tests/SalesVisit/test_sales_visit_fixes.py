@@ -17,6 +17,10 @@
      کنار ورودی، فیلدهای کوتاه دوتایی، و نوار اقدام چسبانِ جابهجا شده بالای
      نوار پایین اپ (app-mobile).
   ۷) فاصلهٔ آیکون و متن کفدار (`--vis-icon-gap`): با تراکم بقیه له نمیشود.
+  ۸) آلارم «موجودی صفر» در همان سطر اقلام، **فقط** در ثبت سفارش ویزیتوری؛
+     تغییرات دو فرم «فاکتور فروش» بنا به درخواست کاربر برگردانده شد.
+  ۹) حذف «ثبت سفارش جدید» از سایدبار ماژول فروش و ویزیتوری؛ ورودی فقط همان
+     دکمهٔ صفحهٔ «سفارش‌های من» است.
 """
 import re
 import unittest
@@ -334,6 +338,115 @@ class VisitFormsDesignTests(unittest.TestCase):
         folder = Path(__file__).resolve().parent
         self.assertTrue((folder / "visit-forms-preview.html").is_file())
         self.assertTrue((folder / "serve_preview.py").is_file())
+
+
+class ZeroStockAlarmTests(unittest.TestCase):
+    """آلارم موجودی صفر فقط در ماژول فروش و ویزیتوری؛ فرمهای فاکتور فروش دستنخورده."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app_css = read(ROOT / "Inventory.Client/wwwroot/css/app.css")
+        cls.form = read(ROOT / "Inventory.Client/Pages/SalesVisit/VisitForm.razor")
+        cls.order = read(ROOT / "Inventory.Client/Pages/Orders/OrderForm.razor")
+        cls.invoice = read(ROOT / "Inventory.Client/Pages/Invoicing/FacInvoiceForm.razor")
+        cls.preview = read(ROOT.parent / "tests/SalesVisit/visit-forms-proposal.html")
+        cls.folder = Path(__file__).resolve().parent
+
+    # ---------- استایل مشترک (فقط آنچه ویزیتوری استفاده میکند) ----------
+    def test_shared_css_kept_for_sales_visit_only(self):
+        for cls in (".zs-alert {", ".zs-alert--warn", ".zs-row", ".zs-row--card",
+                    ".zs-qty-input", ".zs-badge", ".zs-opt"):
+            self.assertIn(cls, self.app_css)
+        self.assertNotIn(".zs-row--table", self.app_css,
+                         "قواعد جدول فاکتور فروش حذف شدند")
+        self.assertIn("var(--danger)", self.app_css)
+        self.assertIn("var(--warning)", self.app_css)
+        self.assertIn("@media (max-width: 720px)", self.app_css)
+        self.assertIn("rgba(239, 68, 68, .035)", self.app_css)
+        self.assertIn("border-inline-start: 3px solid var(--danger)", self.app_css)
+        self.assertIn("--danger: #ef4444;", self.app_css)
+        self.assertIn("--warning: #f59e0b;", self.app_css)
+        i = self.app_css.index(".zs-alert {")
+        block = self.app_css[i:self.app_css.index("@media (max-width: 720px)", i)]
+        self.assertNotRegex(block, r"(max-height|overflow)\s*:")
+
+    # ---------- ثبت سفارش ویزیتوری: باقی ماند ----------
+    def test_visit_form_detects_zero_stock_on_selection(self):
+        self.assertIn("private bool IsOutOfStock(VisOrderLineDto l)", self.form)
+        self.assertIn("!p.IsService && p.Stock <= 0", self.form)
+        self.assertIn("private int ZeroStockCount => model.Lines.Count(IsOutOfStock);", self.form)
+        self.assertIn("data-zero-stock", self.form)
+        self.assertIn("zs-row zs-row--card", self.form)
+        self.assertIn("zs-qty-input", self.form)
+        self.assertIn("data-zero-stock-alert", self.form)
+        self.assertIn("zs-alert zs-alert--warn", self.form)
+        self.assertIn("zeroStockIds = list.Where(p => !p.IsService && p.Stock <= 0)", self.form)
+        self.assertIn('<em class="zs-opt">ناموجود</em>', self.form)
+        self.assertIn("data-zero-count", self.form)
+        self.assertIn("private async Task ProceedWithShortage()", self.form)
+        self.assertIn("model.SubmitAfterSave = submit && CanSubmit;", self.form)
+        self.assertIn('@(ShortLines.Any(s => s.Available <= 0) ? "کالای ناموجود', self.form)
+
+    # ---------- فاکتور فروش: به حالت قبل برگشت ----------
+    def test_invoice_forms_are_back_to_original_state(self):
+        for gone in ("zs-", "IsOutOfStock", "stocksLoaded", "data-zero-stock",
+                     "ZeroStockCount", " · ناموجود"):
+            self.assertNotIn(gone, self.order, f"OrderForm: {gone} نباید بماند")
+        self.assertIn("· موجودی انبار:", self.order)
+        self.assertIn('stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}";', self.order)
+        for gone in ("zs-", "IsZeroStock", "data-zero-stock", "ZeroStockCount"):
+            self.assertNotIn(gone, self.invoice, f"FacInvoiceForm: {gone} نباید بماند")
+        self.assertIn('<span class="badge badge-soft-primary ms-auto">@doc.Lines.Count.Num() قلم</span>', self.invoice)
+        self.assertIn("· موجودی: @line.CurrentStock.Num()", self.invoice)
+
+    # ---------- پیشنمایش: فقط نماهای فروش و ویزیتوری ----------
+    def test_preview_shows_only_sales_visit_alarm(self):
+        for gone in ('data-view="invoice"', 'id="view-invoice"', 'pv-inv-',
+                     '/orders/new', 'zs-row--table'):
+            self.assertNotIn(gone, self.preview)
+        for view in ('id="view-form"', 'id="view-detail"', 'id="view-states"'):
+            self.assertIn(view, self.preview)
+        self.assertIn("zs-alert", self.preview)
+        self.assertIn("zs-badge", self.preview)
+        self.assertIn("zs-opt", self.preview)
+        self.assertNotIn("pv-stock-alert", self.preview)
+        self.assertGreaterEqual(self.preview.count("data-no-scroll"), 3)
+        self.assertFalse((self.folder / "visit-forms-zero-stock-preview.html").exists(),
+                         "پیشنمایش مخصوص فاکتور فروش حذف شد")
+        server = read(self.folder / "serve_proposal.py")
+        self.assertNotIn("/zero-stock", server)
+
+
+class SalesVisitSidebarTests(unittest.TestCase):
+    """منوی ماژول فروش و ویزیتوری: بدون ورودی تکراری «ثبت سفارش جدید»."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.menu = read(ROOT / "Inventory.Client/Layout/NavMenu.razor")
+        cls.layout = read(ROOT / "Inventory.Client/Layout/MainLayout.razor")
+        cls.my_visits = read(ROOT / "Inventory.Client/Pages/SalesVisit/MyVisits.razor")
+
+    def test_sidebar_no_longer_links_to_new_order(self):
+        self.assertNotIn('href="sales/visits/new"', self.menu)
+        self.assertNotIn("<span>ثبت سفارش جدید</span>", self.menu)
+        self.assertNotIn("bi bi-plus-square", self.menu)
+        # گروه و بقیهٔ آیتمها سر جای خودشان هستند
+        self.assertIn("فروش و ویزیتوری", self.menu)
+        self.assertIn('href="sales/visits"', self.menu)
+        self.assertIn("سفارش‌های من", self.menu)
+        self.assertIn('href="sales/approvals"', self.menu)
+        self.assertIn('href="sales/requests"', self.menu)
+        self.assertIn('href="sales/finance-queue"', self.menu)
+
+    def test_new_order_button_still_lives_in_my_visits(self):
+        self.assertIn("data-new-order", self.my_visits)
+        self.assertIn('Nav.NavigateTo("/sales/visits/new")', self.my_visits)
+        self.assertIn("me?.CanCreate == true", self.my_visits)
+
+    def test_direct_route_guard_is_untouched(self):
+        self.assertIn('("sales/visits/new",    "SalesVisit.Create"', self.layout,
+                      "محافظ مسیر مستقیم و عنوان تب نباید حذف شوند")
+        self.assertIn("RouteGuards", self.layout)
 
 
 if __name__ == "__main__":

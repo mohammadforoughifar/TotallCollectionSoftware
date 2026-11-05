@@ -2464,6 +2464,7 @@ public class InventoryService : IInventoryService
                 PartyId = t?.PartyId ?? 0,
                 PartyName = party?.Name ?? (c.OwnerName ?? "—"),
                 PartyMobile = party?.Mobile,
+                PartyPhone = party?.Phone,
                 Number = c.Number,
                 BankName = c.BankName,
                 AccountInfo = c.AccountInfo,
@@ -2485,7 +2486,8 @@ public class InventoryService : IInventoryService
                 bool match = item.Number.ToLower().Contains(s) ||
                              item.PartyName.ToLower().Contains(s) ||
                              (item.BankName != null && item.BankName.ToLower().Contains(s)) ||
-                             item.OrderNumber.ToLower().Contains(s);
+                             item.OrderNumber.ToLower().Contains(s) ||
+                             PhoneSearch.Matches(s, item.PartyMobile, item.PartyPhone);
                 if (!match) continue;
             }
 
@@ -2531,6 +2533,7 @@ public class InventoryService : IInventoryService
                 PartyId = t?.PartyId ?? 0,
                 PartyName = party?.Name ?? "—",
                 PartyMobile = party?.Mobile,
+                PartyPhone = party?.Phone,
                 No = i.No,
                 Amount = i.Amount,
                 DueDate = i.DueDate,
@@ -2544,7 +2547,7 @@ public class InventoryService : IInventoryService
                 var s = search.Trim().ToLower();
                 bool match = item.PartyName.ToLower().Contains(s) ||
                              item.OrderNumber.ToLower().Contains(s) ||
-                             (item.PartyMobile != null && item.PartyMobile.Contains(s));
+                             PhoneSearch.Matches(s, item.PartyMobile, item.PartyPhone);
                 if (!match) continue;
             }
 
@@ -2563,8 +2566,8 @@ public class InventoryService : IInventoryService
         if (type.HasValue) partiesQ = partiesQ.Where(p => p.Type == type.Value);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
-            partiesQ = partiesQ.Where(p => p.Name.Contains(s) || (p.Mobile != null && p.Mobile.Contains(s)));
+            // نام، موبایل و تلفن ثابت — با همسانسازی شماره (ارقام فارسی، +98، صفر آغازین)
+            partiesQ = partiesQ.MatchingPhone(search.Trim());
         }
 
         var parties = await partiesQ.OrderBy(p => p.Name).ToListAsync();

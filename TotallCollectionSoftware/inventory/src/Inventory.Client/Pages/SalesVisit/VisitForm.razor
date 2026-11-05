@@ -183,6 +183,10 @@ else
                     <i class="bi bi-box-seam"></i><span class="card-title">کالاها</span>
                     <div class="vis-card-actions">
                         <span class="vis-counter">@Fa.Digits(model.Lines.Count) سطر</span>
+                        @if (ZeroStockCount > 0)
+                        {
+                            <span class="zs-badge" data-zero-count><i class="bi bi-x-octagon"></i> @Fa.Digits(ZeroStockCount) قلم ناموجود</span>
+                        }
                         @* همان رفتار و همان کلید میانبر فرم فروش: دکمه سطر خالی میسازد (F2) *@
                         <button class="btn btn-sm btn-outline-primary" data-hotkey="f2" title="کلید میانبر: F2"
                                 @onclick="AddEmptyLine" disabled="@(model.WarehouseId <= 0)">
@@ -235,7 +239,7 @@ else
                             {
                                 var available = AvailableOf(l);
                                 var shortage = ShortageOf(l);
-                                <div @key="l" class="vis-line @(shortage > 0 ? "is-short" : "")" data-shortage="@(shortage > 0 ? "1" : "0")">
+                                <div @key="l" class="vis-line @(IsOutOfStock(l) ? "zs-row zs-row--card" : "") @(shortage > 0 && !IsOutOfStock(l) ? "is-short" : "")" data-shortage="@(shortage > 0 ? "1" : "0")" data-zero-stock="@(IsOutOfStock(l) ? "1" : "0")">
                                     <div class="vis-cell c-name">
                                         <span class="vis-cell-label">کالا</span>
                                         @* کمبوی درونسطری: هیچ منوی fixed و هیچ JS مختصاتگیری نیست،
@@ -270,6 +274,10 @@ else
                                                         <div class="vis-combo-opt" @onmousedown:preventDefault="true"
                                                              @onclick="@(() => PickCombo(l, opt.Id))">
                                                             <span>@opt.Name</span><small>@opt.InfoText</small>
+                                                            @if (zeroStockIds.Contains(opt.Id))
+                                                            {
+                                                                <em class="zs-opt">ناموجود</em>
+                                                            }
                                                         </div>
                                                     }
                                                     @if (matches.Count == 0)
@@ -279,12 +287,32 @@ else
                                                 </div>
                                             }
                                         </div>
+                                        @if (IsOutOfStock(l))
+                                        {
+                                            <div class="zs-alert" data-zero-stock-alert>
+                                                <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
+                                                <span>در «@WarehouseName» موجود نیست — پیش از ارسال سفارش اصلاح کنید</span>
+                                            </div>
+                                        }
+                                        else if (shortage > 0)
+                                        {
+                                            <div class="zs-alert zs-alert--warn" data-shortage-alert>
+                                                <i class="bi bi-exclamation-triangle"></i><b>کسری موجودی</b>
+                                                <span>موجودی @Fa.Number(available) — سفارش @Fa.Number(l.Quantity)</span>
+                                            </div>
+                                        }
                                     </div>
                                     <div class="vis-cell c-qty">
                                         <span class="vis-cell-label">مقدار</span>
-                                        <input class="form-control form-control-sm num" value="@l.Quantity.ToString("0.##")"
+                                        <input class="form-control form-control-sm num @(IsOutOfStock(l) ? "zs-qty-input" : "")" value="@l.Quantity.ToString("0.##")"
                                                @onchange="e => SetQty(l, e.Value?.ToString())" />
-                                        @if (shortage > 0)
+                                        @if (IsOutOfStock(l))
+                                        {
+                                            <div class="vis-cell-note text-danger" data-stock-alarm>
+                                                <i class="bi bi-x-octagon"></i> موجودی ۰
+                                            </div>
+                                        }
+                                        else if (shortage > 0)
                                         {
                                             <div class="vis-cell-note text-danger" data-stock-alarm>
                                                 <i class="bi bi-exclamation-triangle"></i>
@@ -381,7 +409,7 @@ else
             @if (ShortLines.Count > 0)
             {
                 <div class="alert alert-warning py-2 px-2 mt-2 mb-0 fs-8" data-stock-summary>
-                    <b><i class="bi bi-exclamation-triangle"></i> کسری موجودی در @Fa.Digits(ShortLines.Count) قلم:</b>
+                    <b><i class="bi bi-exclamation-triangle"></i> @(ShortLines.Any(s => s.Available <= 0) ? "کالای ناموجود / کسری موجودی" : "کسری موجودی") در @Fa.Digits(ShortLines.Count) قلم:</b>
                     @foreach (var sh in ShortLines)
                     {
                         <div class="fs-9">
@@ -433,7 +461,7 @@ else
         <div class="vis-modal" data-stock-confirm>
             <div class="d-flex align-items-center gap-2 mb-2">
                 <i class="bi bi-exclamation-triangle-fill text-warning fs-4"></i>
-                <b>کسری موجودی انبار</b>
+                <b>@(ShortLines.Any(s => s.Available <= 0) ? "کالای ناموجود و کسری موجودی انبار" : "کسری موجودی انبار")</b>
             </div>
             <div class="fs-8 mb-2">
                 برای @Fa.Digits(ShortLines.Count) قلم، موجودی انبار «@WarehouseName» کمتر از مقدار سفارش است:
@@ -1310,6 +1338,9 @@ else
     /// <summary>فهرست کامل کالاهای انبار بر اساس شناسه — برای پر کردن قیمت/واحد سطر پس از انتخاب.</summary>
     private Dictionary<int, VisProductLite> productIndex = new();
 
+    /// <summary>کالاهای غیرخدماتی با موجودی صفر در انبار جاری (برای نشان «ناموجود» در کمبو).</summary>
+    private HashSet<int> zeroStockIds = new();
+
     /// <summary>سطری که کمبوی درونسطریاش باز است (فقط یکی، چون منوها صفحه را رشد میدهند).</summary>
     private VisOrderLineDto? comboLine;
     private string comboQuery = "";
@@ -1436,11 +1467,12 @@ else
     /// <summary>ساخت فهرست کالاهای انبار برای انتخابگر سطرها (مثل فرم فروش).</summary>
     private async Task ReloadProductLookupAsync()
     {
-        if (model.WarehouseId <= 0) { productLookup = new(); return; }
+        if (model.WarehouseId <= 0) { productLookup = new(); zeroStockIds = new(); return; }
         try
         {
             var list = await Api.ProductsAsync(model.WarehouseId, null) ?? new List<VisProductLite>();
             productIndex = list.ToDictionary(p => p.Id);
+            zeroStockIds = list.Where(p => !p.IsService && p.Stock <= 0).Select(p => p.Id).ToHashSet();
             productLookup = list.Select(p => new LookupItem
             {
                 Id = p.Id,
@@ -1663,6 +1695,13 @@ else
     /// <summary>مقدار کسری همان سطر (صفر = موجودی کافی است).</summary>
     private decimal ShortageOf(VisOrderLineDto l)
         => l.ProductId > 0 ? Math.Max(0, l.Quantity - AvailableOf(l)) : 0m;
+
+    /// <summary>کالای انتخابشده (غیرخدماتی) در انبار جاری موجودی صفر دارد؛ مستقل از مقدار سطر،
+    /// یعنی همان لحظهٔ انتخاب کالا آلارم میآید نه بعد از وارد کردن تعداد.</summary>
+    private bool IsOutOfStock(VisOrderLineDto l)
+        => l.ProductId > 0 && productIndex.TryGetValue(l.ProductId, out var p)
+           && !p.IsService && p.Stock <= 0;
+    private int ZeroStockCount => model.Lines.Count(IsOutOfStock);
 
     private sealed record ShortLine(VisOrderLineDto Line, decimal Available, decimal Shortage);
 

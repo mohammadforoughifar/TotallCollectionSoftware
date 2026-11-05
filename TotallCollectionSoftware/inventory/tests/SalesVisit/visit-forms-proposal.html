@@ -638,6 +638,11 @@
 .pv-screen[data-size="tablet"] .pv-ui .pv-with-icon > i,
 .pv-screen[data-size="mobile"] .pv-ui .pv-with-icon > i { inset-inline-start: var(--pv-icon-gap); }
 
+/* ===== آلارم موجودی صفر: از کلاسهای مشترک zs-* در app.css استفاده میشود ===== */
+.pv-screen[data-size="tablet"] .pv-ui .zs-alert,
+.pv-screen[data-size="mobile"] .pv-ui .zs-alert { padding: .3rem .45rem; font-size: .64rem; gap: .35rem; }
+.pv-screen[data-size="mobile"] .pv-ui .zs-alert > span { flex: 1 1 100%; }
+
 @media (prefers-reduced-motion: reduce) {
   .pv-ui *, .pv-ui *::before, .pv-ui *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
@@ -746,7 +751,7 @@
               <!-- کالاها: بدون اسکرول -->
               <section class="pv-card" data-no-scroll>
                 <div class="pv-sec-head">
-                  <div class="pv-sec-title"><i class="bi bi-box-seam"></i> کالاها <span class="pv-badge" data-tone="info">۳ قلم</span></div>
+                  <div class="pv-sec-title"><i class="bi bi-box-seam"></i> کالاها <span class="pv-badge" data-tone="info">۴ قلم</span> <span class="zs-badge" data-zero-count><i class="bi bi-x-octagon"></i> ۱ قلم ناموجود</span></div>
                   <button class="pv-btn pv-btn-ghost" id="pv-f2-add" style="padding:.4rem .75rem"><i class="bi bi-plus-lg"></i> افزودن سطر <kbd>F2</kbd></button>
                 </div>
                 <div class="pv-sec-body">
@@ -771,7 +776,7 @@
                         <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
                         <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
                         <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
-                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰" data-stock="0"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small><em class="zs-opt">ناموجود</em></div>
                             <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
                           </div>
                         </div></div>
@@ -796,7 +801,7 @@
                         <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
                         <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
                         <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
-                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰" data-stock="0"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small><em class="zs-opt">ناموجود</em></div>
                             <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
                           </div>
                         </div></div>
@@ -816,12 +821,13 @@
                             <i class="bi bi-chevron-down pv-chev"></i>
                           </div>
                           <div class="pv-combo-meta" data-combo-meta>کد ۳۳۱۲ · واحد: بسته</div>
+                          <div class="zs-alert zs-alert--warn"><i class="bi bi-exclamation-triangle"></i><b>کسری موجودی</b><span>موجودی ۴ بسته، سفارش ۶ بسته</span></div>
                           <div class="pv-combo-menu" data-combo-menu>
                         <div class="pv-combo-opt" data-name="روغن آفتابگردان ۵ لیتری" data-code="۱۰۲۴" data-unit="بطری" data-price="۸۵۰٬۰۰۰"><span>روغن آفتابگردان ۵ لیتری</span><small>۱۰۲۴</small></div>
                         <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
                         <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
                         <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
-                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰" data-stock="0"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small><em class="zs-opt">ناموجود</em></div>
                             <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
                           </div>
                         </div></div>
@@ -831,13 +837,43 @@
                       <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۱٬۸۰۰٬۰۰۰</b><small>ریال</small></div></div>
                       <div class="c-del"><button class="pv-btn pv-btn-quiet" title="حذف سطر"><i class="bi bi-trash"></i></button></div>
                     </div>
+
+                    <div class="pv-line zs-row zs-row--card" data-stock="zero">
+                      <div class="c-name"><div class="pv-cell-label">کالا</div>
+                        <div class="pv-combo" data-combo>
+                          <div class="pv-combo-ctl" data-combo-toggle>
+                            <i class="bi bi-box-seam"></i>
+                            <input class="pv-combo-input" data-combo-input value="لوبیا چیتی ۹۰۰ گرمی" placeholder="جستجوی کالا…" autocomplete="off" />
+                            <i class="bi bi-chevron-down pv-chev"></i>
+                          </div>
+                          <div class="pv-combo-meta" data-combo-meta>کد ۴۱۸۸ · واحد: بسته</div>
+                          <div class="pv-combo-menu" data-combo-menu>
+                        <div class="pv-combo-opt" data-name="روغن آفتابگردان ۵ لیتری" data-code="۱۰۲۴" data-unit="بطری" data-price="۸۵۰٬۰۰۰"><span>روغن آفتابگردان ۵ لیتری</span><small>۱۰۲۴</small></div>
+                        <div class="pv-combo-opt" data-name="برنج طارم هاشمی ۱۰ کیلویی" data-code="۲۱۴۰" data-unit="کیسه" data-price="۱٬۲۵۰٬۰۰۰"><span>برنج طارم هاشمی ۱۰ کیلویی</span><small>۲۱۴۰</small></div>
+                        <div class="pv-combo-opt" data-name="چای سیلان ۵۰۰ گرمی" data-code="۳۳۱۲" data-unit="بسته" data-price="۳۲۰٬۰۰۰"><span>چای سیلان ۵۰۰ گرمی</span><small>۳۳۱۲</small></div>
+                        <div class="pv-combo-opt" data-name="شکر سفید ۱ کیلویی" data-code="۴۰۰۱" data-unit="بسته" data-price="۹۵٬۰۰۰"><span>شکر سفید ۱ کیلویی</span><small>۴۰۰۱</small></div>
+                        <div class="pv-combo-opt" data-name="لوبیا چیتی ۹۰۰ گرمی" data-code="۴۱۸۸" data-unit="بسته" data-price="۱۸۵٬۰۰۰" data-stock="0"><span>لوبیا چیتی ۹۰۰ گرمی</span><small>۴۱۸۸</small><em class="zs-opt">ناموجود</em></div>
+                            <div class="pv-combo-empty" style="display:none">موردی یافت نشد؛ عبارت را دقیقتر کنید.</div>
+                          </div>
+                        </div>
+                        <div class="zs-alert" data-stock-alert="zero">
+                          <i class="bi bi-x-octagon"></i><b>موجودی صفر</b>
+                          <span>در «انبار مرکزی» موجود نیست — پیش از ارسال سفارش اصلاح کنید</span>
+                        </div>
+                      </div>
+                      <div class="c-qty"><div class="pv-cell-label">تعداد</div><div class="pv-stepper"><button>−</button><input value="۲" /><button>+</button></div><span class="pv-inline-note is-warn">موجودی ۰</span></div>
+                      <div class="c-price"><div class="pv-cell-label">قیمت واحد</div><input class="pv-input" value="۱۸۵٬۰۰۰" style="text-align:center;padding:.4rem .45rem;font-size:.76rem" /><span class="pv-inline-note pv-minor-note">موجودی: ۰ بسته</span></div>
+                      <div class="c-disc"><div class="pv-cell-label">تخفیف</div><div class="pv-disc-row"><input class="pv-input" value="۰" /><span class="pv-mini-seg"><button class="is-active">٪</button><button>ریال</button></span></div><span class="pv-inline-note">بدون تخفیف</span></div>
+                      <div class="c-total"><div class="pv-cell-label">جمع سطر</div><div class="pv-line-total"><b class="pv-num">۳۷۰٬۰۰۰</b><small>ریال</small></div></div>
+                      <div class="c-del"><button class="pv-btn pv-btn-quiet" title="حذف سطر"><i class="bi bi-trash"></i></button></div>
+                    </div>
                   </div>
 
                   <!-- نوار بازبینی مالی -->
                   <div class="pv-review">
-                    <div class="pv-kpi"><span>جمع کل</span><b class="pv-num">۱۷٬۱۲۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi"><span>جمع کل</span><b class="pv-num">۱۶٬۸۶۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
                     <div class="pv-kpi"><span>تخفیف</span><b class="pv-num pv-neg">۶۳۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
-                    <div class="pv-kpi pv-kpi-total"><span>قابل پرداخت</span><b class="pv-num">۱۶٬۴۹۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
+                    <div class="pv-kpi pv-kpi-total"><span>قابل پرداخت</span><b class="pv-num">۱۶٬۲۳۰٬۰۰۰ <small class="pv-cur">ریال</small></b></div>
                   </div>
 
                 </div>
@@ -1046,7 +1082,8 @@
       b.classList.add('is-active');
       document.querySelectorAll('.pv-view').forEach(function (v) { v.classList.remove('is-active'); });
       document.getElementById('view-' + b.dataset.view).classList.add('is-active');
-      url.textContent = b.dataset.view === 'detail' ? '/sales/visits/218' : (b.dataset.view === 'states' ? '/sales/visits/new' : '/sales/visits/new');
+      var urls = { form: '/sales/visits/new', detail: '/sales/visits/218', states: '/sales/visits/new' };
+      url.textContent = urls[b.dataset.view] || '/sales/visits/new';
       measure();
     });
   });
@@ -1200,6 +1237,8 @@
     var disc = row.querySelector('.c-disc .pv-disc-row .pv-input'); if (disc) disc.value = '۰';
     var total = row.querySelector('.pv-line-total b'); if (total) total.textContent = '۰';
     row.querySelectorAll('.pv-inline-note').forEach(function (n) { n.remove(); });
+    row.querySelectorAll('.zs-alert').forEach(function (n) { n.remove(); });
+    row.classList.remove('zs-row', 'zs-row--card');
     row.querySelectorAll('.pv-mini-seg button').forEach(function (b, i) { b.classList.toggle('is-active', i === 0); });
     lines.appendChild(row);
     closeCombos(null);
@@ -1261,6 +1300,7 @@
   });
 
   applyStatus();
+  updateCount();
   measure();
   setTimeout(measure, 260);
 })();

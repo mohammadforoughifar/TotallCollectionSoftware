@@ -115,10 +115,7 @@ public class RepairService : IRepairService
                                  (d.DeviceType.Contains(s) ||
                                   (d.DeviceModel != null && d.DeviceModel.Contains(s)) ||
                                   (d.SerialNumber != null && d.SerialNumber.Contains(s)))) ||
-                             _db.Parties.Any(p => p.Id == r.PartyId &&
-                                 (p.Name.Contains(s) ||
-                                  (p.Mobile != null && p.Mobile.Contains(s)) ||
-                                  (p.Phone != null && p.Phone.Contains(s)))));
+                             _db.Parties.MatchingPhone(s).Any(p => p.Id == r.PartyId));
         }
 
         // شمارش، فیلتر و صفحه‌بندی همگی در SQL انجام می‌شوند؛ هیچ‌وقت کل پذیرش‌ها به حافظهٔ API/کلاینت نمی‌آیند.

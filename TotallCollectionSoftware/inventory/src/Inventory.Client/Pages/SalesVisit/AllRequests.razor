@@ -128,7 +128,7 @@
             <i class="bi bi-search stripe-search-icon"></i>
             <input type="text"
                    class="stripe-search-input"
-                   placeholder="فیلتر بر اساس شماره سفارش، مشتری، نام ویزیتور یا یادداشت…"
+                   placeholder="فیلتر بر اساس شماره سفارش، نام/تلفن مشتری، ویزیتور یا یادداشت…"
                    @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
             @if (!string.IsNullOrWhiteSpace(search))
             {

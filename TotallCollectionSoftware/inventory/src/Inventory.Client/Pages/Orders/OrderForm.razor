@@ -55,7 +55,7 @@
                             <i class="bi bi-plus-circle-fill text-success"></i> @(Type == TransactionType.Sale ? "مشتری جدید" : "تأمین‌کننده جدید")
                         </button>
                     </div>
-                    <SearchSelect Items="partyLookup" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب…" />
+                    <SearchSelect Items="partyLookup" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب — نام، موبایل یا تلفن…" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
@@ -819,13 +819,10 @@
             {
                 customers = await PartySvc.GetAsync(PartyType.Customer);
                 partyLookup = customers.Where(c => c.IsActive)
-                    .Select(c => new LookupItem
-                    {
-                        Id = c.Id,
-                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
-                            ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {c.ReferrerName}"
-                    }).ToList();
+                    .Select(c => PartyService.ToLookup(c, string.IsNullOrWhiteSpace(c.ReferrerName)
+                        ? $"{c.Name} — بدون معرف"
+                        : $"{c.Name} — معرف: {c.ReferrerName}"))
+                    .ToList();
             }
             else
             {
@@ -1312,13 +1309,10 @@
                 // فهرست مشتری‌ها با نمایش وضعیت معرف: «بدون معرف» یا نام معرف
                 customers = await PartySvc.GetAsync(PartyType.Customer);
                 partyLookup = customers.Where(c => c.IsActive)
-                    .Select(c => new LookupItem
-                    {
-                        Id = c.Id,
-                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
-                            ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {c.ReferrerName}"
-                    }).ToList();
+                    .Select(c => PartyService.ToLookup(c, string.IsNullOrWhiteSpace(c.ReferrerName)
+                        ? $"{c.Name} — بدون معرف"
+                        : $"{c.Name} — معرف: {c.ReferrerName}"))
+                    .ToList();
             }
 
             if (IsEdit)

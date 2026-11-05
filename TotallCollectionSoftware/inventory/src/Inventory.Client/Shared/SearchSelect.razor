@@ -129,7 +129,11 @@
             if (!RemoteSearch && q.Length > 0)
             {
                 var idx = it.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase);
-                if (idx < 0) continue;
+                // SearchText مقادیر پنهانی مثل تلفن/موبایل مشتری است: نباید در عنوان
+                // گزینه دیده شود، ولی جستجو باید آن را هم ببیند (با همسانسازی شماره).
+                // بیشتر انتخابگرها SearchText ندارند: از همان ابتدا رد میشوند تا هزینهای
+                // به جستجوی کالا/حساب/پروژه اضافه نشود.
+                if (idx < 0 && (it.SearchText is null || !PhoneSearch.Matches(q, it.SearchText))) continue;
                 total++;
                 // نتایجی که نامشان با متن جستجو شروع می‌شود، اول فهرست می‌آیند
                 if (idx == 0) { if (starts.Count < MaxVisible) starts.Add(it); }
