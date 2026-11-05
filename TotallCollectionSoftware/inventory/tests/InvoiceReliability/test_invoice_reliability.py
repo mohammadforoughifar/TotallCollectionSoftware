@@ -10,7 +10,7 @@ def read(path):
 class InvoiceReliability(unittest.TestCase):
     def test_parallel_initial_requests_and_stock_lookup(self):
         form = read('Inventory.Client/Pages/Orders/OrderForm.razor')
-        init = form[form.index('protected override async Task OnInitializedAsync()'):form.index('private async Task LoadWarehouseStocksAsync()')]
+        init = form[form.index('protected override async Task OnInitializedAsync()'):form.index('private Task<bool> LoadWarehouseStocksAsync()')]
         self.assertLess(init.index('var bankTask ='), init.index('whLookup = await whTask'))
         self.assertLess(init.index('var customerTask ='), init.index('whLookup = await whTask'))
         self.assertLess(init.index('if (IsEdit) warehouseId = EditOrder!.WarehouseId'), init.index('var stockTask ='))

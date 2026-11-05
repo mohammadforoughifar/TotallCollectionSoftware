@@ -2,7 +2,6 @@
 @inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
 @inject IProductService ProductSvc
-@inject IStockService StockSvc
 @inject IReferrerService ReferrerSvc
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
@@ -450,7 +449,30 @@
                                                   AdvanceOnEnter="UseInvoiceWizard"
                                                   Value="l.ProductId"
                                                   ValueChanged="id => OnProductPicked(l, id)"
-                                                  Placeholder="جستجوی کالا…" />
+                                                  Placeholder="جستجوی کالا…">
+                                        <ItemDetails Context="option">
+                                            @if (option is InvoiceProductOption productOption && productOption.StockQuantity.HasValue)
+                                            {
+                                                var quantity = productOption.StockQuantity.Value;
+                                                <small class="ss-item-info invoice-stock-info">
+                                                    موجودی این انبار:
+                                                    <span class="invoice-stock-quantity @(productOption.IsStockWarning ? "is-warning" : "")">
+                                                        @if (productOption.IsStockWarning)
+                                                        {
+                                                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                            <span class="visually-hidden">هشدار موجودی صفر یا منفی: </span>
+                                                        }
+                                                        <bdi dir="ltr">@InvoiceProductOption.FormatStock(quantity)</bdi>
+                                                    </span>
+                                                    @productOption.StockUnit
+                                                </small>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(option.InfoText))
+                                            {
+                                                <small class="ss-item-info">@option.InfoText</small>
+                                            }
+                                        </ItemDetails>
+                                    </SearchSelect>
                                     @if (!string.IsNullOrEmpty(l.Unit) || l.ProductId > 0)
                                     {
                                         <div class="fs-8 text-muted mt-1 d-flex gap-2 flex-wrap">
@@ -460,10 +482,17 @@
                                             }
                                             @if (l.ProductId > 0 && warehouseId > 0 && !IsServiceProduct(l.ProductId))
                                             {
-                                                var avail = warehouseStocks.TryGetValue(l.ProductId, out var q) ? q : 0m;
-                                                <span class="@(avail <= 0 ? "text-danger" : "text-success")">
-                                                    · موجودی انبار: <b class="num">@avail.ToString("0.##")</b>
-                                                </span>
+                                                @if (warehouseStock.IsLoaded)
+                                                {
+                                                    var avail = warehouseStock.Quantities.TryGetValue(l.ProductId, out var q) ? q : 0m;
+                                                    <span class="@(avail <= 0 ? "text-danger" : "text-success")">
+                                                        · موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span>· موجودی انبار: @(warehouseStock.IsLoading ? "در حال دریافت…" : "نامشخص")</span>
+                                                }
                                             }
                                         </div>
                                     }
@@ -957,7 +986,7 @@
     private List<LookupItem> partyLookup = new();
     private List<Product> products = new();
     private HashSet<int> activeWarehouseIds = new(), activePartyIds = new();
-    private Dictionary<int, decimal> warehouseStocks = new();
+    private readonly InvoiceWarehouseStock warehouseStock = new();
     private int warehouseId, partyId, referrerId;
     private DateTime? date;
     private string description = "";
@@ -1415,7 +1444,13 @@
     private int lastPurchaseProductId;
 
     private bool IsServiceProduct(int productId)
-        => products.FirstOrDefault(p => p.Id == productId)?.IsService == true;
+    {
+        var product = products.FirstOrDefault(p => p.Id == productId);
+        return product?.IsService
+            ?? EditOrder?.Lines.FirstOrDefault(l => l.ProductId == productId)?.IsService
+            ?? CopyTemplate?.Lines.FirstOrDefault(l => l.ProductId == productId)?.IsService
+            ?? false;
+    }
 
     private async Task ShowLastPurchase(int productId)
     {
@@ -1499,6 +1534,8 @@
                 .ToList();
             await stockTask;
             RebuildProductLookup();
+            if (warehouseId > 0 && !warehouseStock.IsLoaded)
+                InvoiceError("دریافت موجودی انبار ناموفق بود؛ انبار را پاک و دوباره انتخاب کنید.");
 
             if (Type == TransactionType.Sale)
             {
@@ -1609,7 +1646,7 @@
                 if (partyId > 0 && !partyLookup.Any(p => p.Id == partyId))
                     partyLookup.Add(new LookupItem { Id = partyId, Name = o.PartyName ?? $"طرف حساب {partyId}" });
                 foreach (var l in o.Lines.Where(l => !productLookup.Any(p => p.Id == l.ProductId)))
-                    productLookup.Add(new LookupItem { Id = l.ProductId, Name = l.ProductName });
+                    productLookup.Add(InvoiceProductOption.Create(l.ProductId, l.ProductName, l.Unit, IsServiceProduct(l.ProductId), warehouseStock));
             }
             else
             {
@@ -1649,7 +1686,7 @@
                     if (partyId > 0 && !partyLookup.Any(p => p.Id == partyId))
                         partyLookup.Add(new LookupItem { Id = partyId, Name = copy.PartyName ?? $"طرف حساب {partyId}" });
                     foreach (var l in copy.Lines.Where(l => !productLookup.Any(p => p.Id == l.ProductId)))
-                        productLookup.Add(new LookupItem { Id = l.ProductId, Name = l.ProductName });
+                        productLookup.Add(InvoiceProductOption.Create(l.ProductId, l.ProductName, l.Unit, IsServiceProduct(l.ProductId), warehouseStock));
                 }
             }
         }
@@ -1663,25 +1700,9 @@
         }
     }
 
-    private async Task LoadWarehouseStocksAsync()
-    {
-        warehouseStocks.Clear();
-        if (warehouseId > 0)
-        {
-            try
-            {
-                var res = await StockSvc.GetStockAsync(warehouseId: warehouseId, page: 1, pageSize: 10000);
-                if (res?.Items != null)
-                {
-                    warehouseStocks = res.Items.ToDictionary(s => s.ProductId, s => s.Quantity);
-                }
-            }
-            catch
-            {
-                warehouseStocks = new();
-            }
-        }
-    }
+    private Task<bool> LoadWarehouseStocksAsync()
+        => warehouseStock.LoadAsync(warehouseId, (id, page, size) =>
+            OrderSvc.GetWarehouseStockAsync(id, page, size));
 
     // Use the same eligibility rule when selecting a product and when validating
     // a copy; the temporary old-name entry must not make an ineligible item valid.
@@ -1691,7 +1712,7 @@
         if (p.IsService) return Type == TransactionType.Sale;
         if (p.WarehouseId is > 0 && p.WarehouseId != warehouseId) return false;
         if (Type == TransactionType.Sale)
-            return p.WarehouseId == warehouseId || warehouseStocks.ContainsKey(p.Id);
+            return p.WarehouseId == warehouseId || warehouseStock.Quantities.ContainsKey(p.Id);
         return p.WarehouseId is null || p.WarehouseId == warehouseId;
     }
 
@@ -1700,33 +1721,42 @@
     {
         var filtered = products.Where(IsProductSelectable);
         productLookup = filtered
-            .Select(p =>
-            {
-                var stockText = "";
-                if (p.IsService)
-                {
-                    stockText = "خدمات";
-                }
-                else if (warehouseId > 0)
-                {
-                    var qty = warehouseStocks.TryGetValue(p.Id, out var q) ? q : 0m;
-                    stockText = $"موجودی در این انبار: {qty.ToString("0.##")} {p.Unit}";
-                }
-                return new LookupItem
-                {
-                    Id = p.Id,
-                    Name = p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}",
-                    InfoText = stockText
-                };
-            })
+            .Select(p => (LookupItem)InvoiceProductOption.Create(
+                p.Id, p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}",
+                p.Unit, p.IsService, warehouseStock))
             .ToList();
+
+        // Keep existing line names visible while a new warehouse's stock is unknown;
+        // these temporary entries do not change the eligibility rule used by validation.
+        if (warehouseId > 0 && !warehouseStock.IsLoaded)
+        {
+            var visible = productLookup.Select(p => p.Id).ToHashSet();
+            foreach (var line in lines.Where(l => l.ProductId > 0 && visible.Add(l.ProductId)))
+            {
+                var product = products.FirstOrDefault(p => p.Id == line.ProductId);
+                var name = product is not null
+                    ? $"{product.Code} — {product.Name}" + (product.IsService ? " (خدمات)" : "")
+                    : EditOrder?.Lines.FirstOrDefault(l => l.ProductId == line.ProductId)?.ProductName
+                        ?? CopyTemplate?.Lines.FirstOrDefault(l => l.ProductId == line.ProductId)?.ProductName
+                        ?? $"کالا {line.ProductId}";
+                productLookup.Add(InvoiceProductOption.Create(line.ProductId, name, product?.Unit ?? line.Unit,
+                    IsServiceProduct(line.ProductId), warehouseStock));
+            }
+        }
     }
 
     private async Task OnWarehouseChanged(int v)
     {
         warehouseId = v;
-        await LoadWarehouseStocksAsync();
+        var load = LoadWarehouseStocksAsync();
+        RebuildProductLookup(); // immediately replace the previous warehouse's quantities with a loading state
+        if (!await load) return; // a newer warehouse selection has already taken over
         RebuildProductLookup();
+        if (warehouseId > 0 && !warehouseStock.IsLoaded)
+        {
+            InvoiceError("دریافت موجودی انبار ناموفق بود؛ انبار را پاک و دوباره انتخاب کنید.");
+            return; // an unavailable snapshot must not clear existing invoice lines
+        }
 
         // سطرهایی که کالایشان دیگر در فهرست مجاز این انبار نیست، پاک می‌شوند
         var validProductIds = productLookup.Select(x => x.Id).ToHashSet();

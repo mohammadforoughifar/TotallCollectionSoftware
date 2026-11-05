@@ -1,3 +1,13 @@
+/* جزئیات موجودی در گزینه‌های کالای فاکتور؛ فقط عدد ناموجود حالت هشدار دارد. */
+.invoice-stock-info { display: flex; align-items: center; flex-wrap: wrap; gap: .25rem; opacity: 1; }
+.invoice-stock-quantity { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.invoice-stock-quantity.is-warning {
+    display: inline-flex; align-items: center; gap: .2rem;
+    color: #b91c1c; background: #fff1f2; border: 1px solid #fecdd3;
+    border-radius: 5px; padding: 0 .3rem; line-height: 1.35;
+}
+.invoice-stock-quantity.is-warning i { font-size: .68rem; line-height: 1; }
+
 /* استایل مشترک گردش دو مرحله‌ای خرید و فروش. */
 .purchase-steps {
     display: flex;

@@ -168,7 +168,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('padding-inline: .3rem', desktop_sale)
         self.assertIn('.sale-items tbody .order-line-rate > input.form-control { padding-left: 24px;', CSS)
         self.assertIn('.sale-items tbody .order-line-rate > .order-line-unit { width: 20px;', CSS)
-        self.assertIn('Inventory.Client.styles.css?v=6', INDEX)
+        self.assertIn('Inventory.Client.styles.css?v=7', INDEX)
 
     def test_invoice_totals_show_after_discount_and_after_vat(self):
         totals = FORM.split('<div class="purchase-totals">', 1)[1].split('</div>\n                </div>', 1)[0]

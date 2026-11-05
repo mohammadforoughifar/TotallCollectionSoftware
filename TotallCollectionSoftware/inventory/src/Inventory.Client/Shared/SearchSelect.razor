@@ -59,7 +59,11 @@
                         }
                         <span class="ss-item-copy">
                             <span class="ss-item-name">@it.Name</span>
-                            @if (!string.IsNullOrWhiteSpace(it.InfoText))
+                            @if (ItemDetails is not null)
+                            {
+                                @ItemDetails(it)
+                            }
+                            else if (!string.IsNullOrWhiteSpace(it.InfoText))
                             {
                                 <small class="ss-item-info">@it.InfoText</small>
                             }
@@ -85,6 +89,9 @@
     [Parameter] public EventCallback<int> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
     [Parameter] public string CssClass { get; set; } = "";
+
+    /// <summary>نمایش اختیاری جزئیات هر گزینه؛ بدون قالب، متن InfoText مانند قبل نشان داده می‌شود.</summary>
+    [Parameter] public RenderFragment<LookupItem>? ItemDetails { get; set; }
 
     /// <summary>نمایش دکمه «پاک کردن» وقتی مقداری انتخاب شده است (پیش‌فرض: فعال)</summary>
     [Parameter] public bool AllowClear { get; set; } = true;

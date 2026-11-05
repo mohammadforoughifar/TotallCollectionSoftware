@@ -357,6 +357,14 @@ public class AdjustmentCommand
     public string? Description { get; set; }
 }
 
+/// <summary>موجودی تعدادیِ لازم برای انتخاب کالا در فاکتور؛ بدون بهای تمام‌شده.</summary>
+public class InvoiceStockItem
+{
+    public int WarehouseId { get; set; }
+    public int ProductId { get; set; }
+    public decimal Quantity { get; set; }
+}
+
 /// <summary>موجودی فعلی یک کالا در یک انبار</summary>
 public class StockItem
 {

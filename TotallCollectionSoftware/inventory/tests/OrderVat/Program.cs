@@ -30,6 +30,79 @@ Check(OrderLineAmounts.Total(2, 1000, 10, 0, false, 10) == 1980, "discount befor
 Check(OrderLineAmounts.Total(2, 1000, 0, 200, true, 101) == 1901, "fixed discount and fixed VAT");
 Check(!OrderLineAmounts.IsValidVatValue(-1) && !OrderLineAmounts.IsValidVatValue(1.001m), "invalid VAT rejected");
 
+// Product menus use a complete snapshot of the selected warehouse, not the previous
+// selection or an empty dictionary standing in for a failed request.
+var stock = new InvoiceWarehouseStock();
+var noWarehouse = InvoiceProductOption.Create(1, "goods", "عدد", false, stock);
+Check(noWarehouse.StockQuantity is null && !noWarehouse.IsStockWarning,
+    "unselected warehouse does not claim zero stock");
+var oldPage = new TaskCompletionSource<PagedResult<InvoiceStockItem>>(TaskCreationOptions.RunContinuationsAsynchronously);
+var oldLoad = stock.LoadAsync(1, (_, _, _) => oldPage.Task);
+Check(stock.IsLoading && !stock.IsLoaded &&
+      InvoiceProductOption.Create(1, "goods", "عدد", false, stock).StockQuantity is null,
+    "stock is unknown while loading");
+var loadedPages = new List<int>();
+var newLoad = stock.LoadAsync(2, (id, page, size) =>
+{
+    loadedPages.Add(page);
+    Check(id == 2 && size == 10000, "stock request uses the selected warehouse and page size");
+    return Task.FromResult(new PagedResult<InvoiceStockItem>
+    {
+        TotalCount = 3,
+        Items = page == 1
+            ? new() { new() { WarehouseId = 2, ProductId = 1, Quantity = 12.345m }, new() { WarehouseId = 2, ProductId = 2, Quantity = 0m } }
+            : new() { new() { WarehouseId = 2, ProductId = 3, Quantity = -1m } }
+    });
+});
+Check(await newLoad && loadedPages.SequenceEqual(new[] { 1, 2 }) && stock.IsLoaded,
+    "every stock page is loaded before treating missing products as zero");
+oldPage.SetResult(new PagedResult<InvoiceStockItem>
+{
+    TotalCount = 1, Items = new() { new() { WarehouseId = 1, ProductId = 1, Quantity = 99m } }
+});
+Check(!await oldLoad && stock.WarehouseId == 2 && stock.Quantities[1] == 12.345m,
+    "late results cannot replace the latest warehouse snapshot");
+var positiveOption = InvoiceProductOption.Create(1, "goods", "عدد", false, stock);
+var zeroOption = InvoiceProductOption.Create(2, "goods", "کیلو", false, stock);
+var negativeOption = InvoiceProductOption.Create(3, "goods", "عدد", false, stock);
+var missingOption = InvoiceProductOption.Create(4, "goods", "عدد", false, stock);
+var serviceOption = InvoiceProductOption.Create(4, "service", "", true, stock);
+Check(positiveOption.StockQuantity == 12.345m && !positiveOption.IsStockWarning && positiveOption.StockUnit == "عدد",
+    "positive stock and unit belong to the selected warehouse");
+Check(zeroOption.StockQuantity == 0m && zeroOption.IsStockWarning && negativeOption.IsStockWarning &&
+      missingOption.StockQuantity == 0m && missingOption.IsStockWarning,
+    "zero, negative and absent stock are warnings after a complete load");
+Check(serviceOption.StockQuantity is null && !serviceOption.IsStockWarning && serviceOption.InfoText == "خدمات",
+    "services do not acquire fictional inventory");
+Check(InvoiceProductOption.FormatStock(0.001m) == "۰.۰۰۱" && InvoiceProductOption.FormatStock(1234.5m) == "۱,۲۳۴.۵",
+    "stock formatting preserves fractional quantities and Persian digits");
+
+var pendingOld = new TaskCompletionSource<PagedResult<InvoiceStockItem>>(TaskCreationOptions.RunContinuationsAsynchronously);
+var pendingNew = new TaskCompletionSource<PagedResult<InvoiceStockItem>>(TaskCreationOptions.RunContinuationsAsynchronously);
+var staleFailure = stock.LoadAsync(3, (_, _, _) => pendingOld.Task);
+var pendingLoad = stock.LoadAsync(4, (_, _, _) => pendingNew.Task);
+pendingOld.SetException(new InvalidOperationException("old request failed"));
+Check(!await staleFailure && stock.IsLoading && stock.WarehouseId == 4,
+    "an old failure cannot stop a newer loading request");
+pendingNew.SetException(new InvalidOperationException("current request failed"));
+Check(await pendingLoad && !stock.IsLoaded && !stock.IsLoading &&
+      InvoiceProductOption.Create(1, "goods", "عدد", false, stock) is { StockQuantity: null, IsStockWarning: false, InfoText: "موجودی انبار نامشخص است" },
+    "a failed request is unknown, never a red zero");
+await stock.LoadAsync(5, (id, page, size) => Task.FromResult(new PagedResult<InvoiceStockItem>
+{
+    TotalCount = 2,
+    Items = page == 1 ? new() { new() { WarehouseId = id, ProductId = 1, Quantity = 5m } } : new()
+}));
+Check(!stock.IsLoaded && stock.Quantities.Count == 0, "an incomplete page sequence is not mistaken for a complete snapshot");
+await stock.LoadAsync(5, (id, page, size) => Task.FromResult(new PagedResult<InvoiceStockItem>
+{
+    TotalCount = page == 1 ? 2 : 1,
+    Items = new() { new() { WarehouseId = id, ProductId = page, Quantity = 5m } }
+}));
+Check(!stock.IsLoaded && stock.Quantities.Count == 0, "a changing total between pages cannot produce false zero stock");
+await stock.LoadAsync(0, (_, _, _) => throw new Exception("no warehouse must not query stock"));
+Check(stock.WarehouseId == 0 && !stock.IsLoaded && !stock.IsLoading, "clearing the warehouse also clears its snapshot");
+
 foreach (var section in ShopSections.All)
 {
     Check(!ShopSections.AliasAllows("Orders.ViewProfit", section.ViewPermission) &&
@@ -128,6 +201,8 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     foreach (var name in new[] { "Id", "Number", "Date", "Cheques", "Installments", "CashTrackingNumber", "ChequeChargeSnapshot", "SettledAmount" })
         Check(typeof(InvoiceCopyTemplate).GetProperty(name) is null, $"copy cannot carry old {name}");
     Check(typeof(InvoiceCopyLine).GetProperty("Id") is null, "copy lines cannot carry old line IDs");
+    var serviceCopy = InvoiceCopyTemplate.From(new Order { Lines = new() { new() { IsService = true } } });
+    Check(serviceCopy.Lines.Single().IsService, "an unavailable copied service is not displayed as stockable goods");
     var legacyCopy = InvoiceCopyTemplate.From(new Order { Type = TransactionType.Purchase, Lines = new()
     {
         new() { ProductId = product.Id, Quantity = 1.2345m, Price = 123.456m, DiscountPercent = 1.234m, VatValue = 0.123m }
@@ -150,6 +225,17 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     };
     Check(!(bool)((OkObjectResult)(await controller.ProfitAccess()).Result!).Value!,
         "stale admin claims and shop manage do not grant current profit access");
+    var invoiceStockPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1)).Result!).Value!;
+    Check(invoiceStockPage.Items.Single() is { Quantity: 1m } && invoiceStockPage.Items.Single().ProductId == product.Id &&
+          invoiceStockPage.Items.Single().WarehouseId == wh.Id && invoiceStockPage.TotalCount == 1,
+        "invoice stock endpoint returns the selected warehouse quantity with paging");
+    var noStockPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id + 1000)).Result!).Value!;
+    Check(noStockPage.TotalCount == 0 && noStockPage.Items.Count == 0 &&
+          (await controller.WarehouseStock(0)).Result is BadRequestObjectResult,
+        "invoice stock endpoint never returns all warehouses for an invalid or empty selection");
+    Check(typeof(InvoiceStockItem).GetProperties().Select(p => p.Name).ToHashSet()
+          .SetEquals(new[] { "WarehouseId", "ProductId", "Quantity" }),
+        "invoice stock endpoint cannot expose cost, price or profit fields");
     var hidden = (Order)((OkObjectResult)(await controller.GetById(sold.Id)).Result!).Value!;
     Check(hidden.TotalProfit is null && hidden.NetProfit is null && hidden.Lines.Single().Profit is null &&
           hidden.Lines.Single().UnitCost is null, "sale detail redacts profit and cost without explicit access");

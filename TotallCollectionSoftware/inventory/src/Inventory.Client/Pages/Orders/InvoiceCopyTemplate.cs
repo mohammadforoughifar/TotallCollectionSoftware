@@ -30,6 +30,7 @@ public sealed class InvoiceCopyTemplate
             ProductId = line.ProductId,
             ProductName = line.ProductName,
             Unit = line.Unit,
+            IsService = line.IsService,
             Quantity = line.Quantity,
             Price = line.Price,
             DiscountPercent = line.DiscountPercent,
@@ -45,6 +46,7 @@ public sealed class InvoiceCopyLine
     public int ProductId { get; init; }
     public string ProductName { get; init; } = "";
     public string Unit { get; init; } = "";
+    public bool IsService { get; init; }
     public decimal Quantity { get; init; }
     public decimal Price { get; init; }
     public decimal DiscountPercent { get; init; }

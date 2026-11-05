@@ -63,6 +63,23 @@ public class OrdersController : ApiControllerBase
     [HttpGet("profit-access")]
     public async Task<ActionResult<bool>> ProfitAccess() => Ok(await CanSeeProfitAsync());
 
+    /// <summary>موجودی تعدادی انبار برای انتخاب کالا در فاکتور، بدون افشای بهای تمام‌شده.</summary>
+    [HttpGet("warehouse-stock")]
+    public async Task<ActionResult<PagedResult<InvoiceStockItem>>> WarehouseStock(
+        [FromQuery] int warehouseId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10000)
+    {
+        if (warehouseId <= 0) return BadRequest(new { message = "انبار معتبر انتخاب کنید." });
+        var result = await _service.GetStockAsync(warehouseId, null, false, Math.Max(1, page), Math.Clamp(pageSize, 1, 10000));
+        return Ok(new PagedResult<InvoiceStockItem>
+        {
+            Items = result.Items.Select(s => new InvoiceStockItem
+            {
+                WarehouseId = s.WarehouseId, ProductId = s.ProductId, Quantity = s.Quantity
+            }).ToList(),
+            TotalCount = result.TotalCount, Page = result.Page, PageSize = result.PageSize
+        });
+    }
+
     /// <summary>پیشنهاد قیمت بر اساس آخرین معامله کالا.</summary>
     [HttpGet("suggest-price")]
     public async Task<ActionResult<decimal>> SuggestPrice([FromQuery] int productId, [FromQuery] TransactionType type)
