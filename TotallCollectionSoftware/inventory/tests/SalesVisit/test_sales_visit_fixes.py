@@ -19,6 +19,8 @@
   ۷) فاصلهٔ آیکون و متن کفدار (`--vis-icon-gap`): با تراکم بقیه له نمیشود.
   ۸) آلارم «موجودی صفر» در همان سطر اقلام، **فقط** در ثبت سفارش ویزیتوری؛
      تغییرات دو فرم «فاکتور فروش» بنا به درخواست کاربر برگردانده شد.
+  ۹) حذف «ثبت سفارش جدید» از سایدبار ماژول فروش و ویزیتوری؛ ورودی فقط همان
+     دکمهٔ صفحهٔ «سفارش‌های من» است.
 """
 import re
 import unittest
@@ -413,6 +415,38 @@ class ZeroStockAlarmTests(unittest.TestCase):
                          "پیشنمایش مخصوص فاکتور فروش حذف شد")
         server = read(self.folder / "serve_proposal.py")
         self.assertNotIn("/zero-stock", server)
+
+
+class SalesVisitSidebarTests(unittest.TestCase):
+    """منوی ماژول فروش و ویزیتوری: بدون ورودی تکراری «ثبت سفارش جدید»."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.menu = read(ROOT / "Inventory.Client/Layout/NavMenu.razor")
+        cls.layout = read(ROOT / "Inventory.Client/Layout/MainLayout.razor")
+        cls.my_visits = read(ROOT / "Inventory.Client/Pages/SalesVisit/MyVisits.razor")
+
+    def test_sidebar_no_longer_links_to_new_order(self):
+        self.assertNotIn('href="sales/visits/new"', self.menu)
+        self.assertNotIn("<span>ثبت سفارش جدید</span>", self.menu)
+        self.assertNotIn("bi bi-plus-square", self.menu)
+        # گروه و بقیهٔ آیتمها سر جای خودشان هستند
+        self.assertIn("فروش و ویزیتوری", self.menu)
+        self.assertIn('href="sales/visits"', self.menu)
+        self.assertIn("سفارش‌های من", self.menu)
+        self.assertIn('href="sales/approvals"', self.menu)
+        self.assertIn('href="sales/requests"', self.menu)
+        self.assertIn('href="sales/finance-queue"', self.menu)
+
+    def test_new_order_button_still_lives_in_my_visits(self):
+        self.assertIn("data-new-order", self.my_visits)
+        self.assertIn('Nav.NavigateTo("/sales/visits/new")', self.my_visits)
+        self.assertIn("me?.CanCreate == true", self.my_visits)
+
+    def test_direct_route_guard_is_untouched(self):
+        self.assertIn('("sales/visits/new",    "SalesVisit.Create"', self.layout,
+                      "محافظ مسیر مستقیم و عنوان تب نباید حذف شوند")
+        self.assertIn("RouteGuards", self.layout)
 
 
 if __name__ == "__main__":
