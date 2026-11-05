@@ -155,7 +155,7 @@
                             <!-- انتخاب طرف حساب -->
                             <div class="mb-3">
                                 <label class="op-label">طرف حساب (مشتری یا تأمین‌کننده) <span class="text-danger">*</span></label>
-                                <SearchSelect Items="allPartiesLookup" Value="partyBalance.PartyId" ValueChanged="OnPartySelected" Placeholder="جستجو با نام یا کد طرف حساب…" />
+                                <SearchSelect Items="allPartiesLookup" Value="partyBalance.PartyId" ValueChanged="OnPartySelected" Placeholder="جستجو با نام، تلفن یا موبایل طرف حساب…" />
                             </div>
 
                             <!-- سگمنت انتخاب نوع حساب با طراحی مدرن -->
@@ -373,7 +373,7 @@
                                 <SearchSelect Items="@(newCheque.Kind == ChequeKind.Received ? customersLookup : suppliersLookup)"
                                               Value="newCheque.PartyId ?? 0"
                                               ValueChanged="id => newCheque.PartyId = id"
-                                              Placeholder="@(newCheque.Kind == ChequeKind.Received ? "انتخاب یا جستجوی مشتری…" : "انتخاب یا جستجوی تأمین‌کننده…")" />
+                                              Placeholder="@(newCheque.Kind == ChequeKind.Received ? "انتخاب یا جستجوی مشتری — نام، موبایل یا تلفن…" : "انتخاب یا جستجوی تأمین‌کننده…")" />
                             </div>
 
                             @if (newCheque.Kind == ChequeKind.Issued)
@@ -547,7 +547,7 @@
                             <!-- انتخاب مشتری -->
                             <div class="mb-3">
                                 <label class="op-label">مشتری بدهکار <span class="text-danger">*</span></label>
-                                <SearchSelect Items="customersLookup" Value="instPartyId" ValueChanged="id => instPartyId = id" Placeholder="انتخاب یا جستجوی مشتری…" />
+                                <SearchSelect Items="customersLookup" Value="instPartyId" ValueChanged="id => instPartyId = id" Placeholder="انتخاب یا جستجوی مشتری — نام، موبایل یا تلفن…" />
                             </div>
 
                             <!-- کل مبلغ و تعداد اقساط -->
@@ -1498,8 +1498,18 @@
 
             customersLookup = custs;
             suppliersLookup = supps;
-            allPartiesLookup = custs.Select(c => new LookupItem { Id = c.Id, Name = $"مشتری: {c.Name}" })
-                .Concat(supps.Select(s => new LookupItem { Id = s.Id, Name = $"تأمین‌کننده: {s.Name}" }))
+            // پیشوند «مشتری:/تأمین‌کننده:» فقط برای نمایش است؛ شمارههای تلفن حتماً
+            // به گزینهٔ جدید منتقل شوند وگرنه جستجوی تلفنی در این کمبو از دست میرود.
+            allPartiesLookup = custs.Select(c => new LookupItem
+                {
+                    Id = c.Id, Name = $"مشتری: {c.Name}",
+                    SearchText = c.SearchText, InfoText = c.InfoText
+                })
+                .Concat(supps.Select(x => new LookupItem
+                {
+                    Id = x.Id, Name = $"تأمین‌کننده: {x.Name}",
+                    SearchText = x.SearchText, InfoText = x.InfoText
+                }))
                 .ToList();
 
             // دریافت یا ساخت خدمت افتتاح حساب (چون خدمات موجودی انبار نمی‌خواهد و خطا نمی‌دهد)

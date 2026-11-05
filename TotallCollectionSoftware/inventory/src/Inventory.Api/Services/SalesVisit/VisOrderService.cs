@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Invoicing;
@@ -261,7 +262,8 @@ public class VisOrderService : IVisOrderService
         {
             var s = search.Trim();
             q = q.Where(o => o.Number.Contains(s) || o.PartyName.Contains(s) || o.ReferrerName.Contains(s)
-                             || (o.Note != null && o.Note.Contains(s)));
+                             || (o.Note != null && o.Note.Contains(s))
+                             || _db.Parties.MatchingPhone(s).Any(p => p.Id == o.PartyId));
         }
 
         var list = await q.Include(o => o.Lines).AsNoTracking()
@@ -1152,9 +1154,9 @@ public class VisOrderService : IVisOrderService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
-            q = q.Where(p => p.Name.Contains(s) || (p.Mobile != null && p.Mobile.Contains(s))
-                                              || (p.Phone != null && p.Phone.Contains(s)));
+            // همان قاعدهٔ جستجوی مشتری در بقیهٔ سامانه فروشگاهی: نام، موبایل، تلفن
+            // ثابت + همسانسازی ارقام فارسی/عربی، صفر آغازین و پیششمارهٔ کشور.
+            q = q.MatchingPhone(search.Trim());
         }
 
         var myRef = actor.ReferrerId ?? 0;
