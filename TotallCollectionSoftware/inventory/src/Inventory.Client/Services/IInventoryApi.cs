@@ -106,6 +106,9 @@ public interface IOrderService
 {
     /// <summary>مجوز فعلی سمت سرور برای نمایش سود فروش.</summary>
     Task<bool> CanViewProfitAsync();
+    Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000);
+    Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false);
+    Task<List<Party>> GetInvoicePartiesAsync(TransactionType type);
     /// <summary>موجودی تعدادی انبار برای فهرست کالای فاکتور، بدون بهای تمام‌شده.</summary>
     Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000);
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null);

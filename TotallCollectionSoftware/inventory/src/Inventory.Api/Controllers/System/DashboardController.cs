@@ -54,6 +54,7 @@ public class DashboardController : ControllerBase
 
     /// <summary>پاس کردن چک از روی داشبورد مدیریتی یا مدیریت چک‌های فروشگاهی.</summary>
     [HttpPost("cheques/{chequeId:int}/clear")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ClearCheque(int chequeId)
     {
         await _inventory.ClearChequeAsync(chequeId);
@@ -62,6 +63,7 @@ public class DashboardController : ControllerBase
 
     /// <summary>برگشت زدن چک.</summary>
     [HttpPost("cheques/{chequeId:int}/bounce")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> BounceCheque(int chequeId, [FromQuery] string? reason)
     {
         await _inventory.BounceChequeAsync(chequeId, reason);
@@ -70,6 +72,7 @@ public class DashboardController : ControllerBase
 
     /// <summary>برگرداندن وضعیت چک به در جریان وصول.</summary>
     [HttpPost("cheques/{chequeId:int}/reset")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ResetCheque(int chequeId)
     {
         await _inventory.ResetChequeAsync(chequeId);
@@ -78,6 +81,7 @@ public class DashboardController : ControllerBase
 
     /// <summary>پرداخت یک قسط.</summary>
     [HttpPost("installments/{installmentId:int}/pay")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> PayInstallment(int installmentId)
     {
         await _inventory.PayInstallmentAsync(installmentId);
@@ -86,6 +90,7 @@ public class DashboardController : ControllerBase
 
     /// <summary>لغو پرداخت یک قسط (بازگشت به معوق/پرداخت‌نشده).</summary>
     [HttpPost("installments/{installmentId:int}/unpay")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> UnpayInstallment(int installmentId)
     {
         await _inventory.UnpayInstallmentAsync(installmentId);
@@ -94,16 +99,19 @@ public class DashboardController : ControllerBase
 
     /// <summary>دریافت خلاصه وضعیت چک‌ها و اقساط فروشگاهی.</summary>
     [HttpGet("shop-credit/summary")]
+    [RequirePermission("Orders", "Read")]
     public async Task<IActionResult> GetShopCreditSummary()
         => Ok(await _inventory.GetShopCreditSummaryAsync());
 
     /// <summary>فهرست چک‌های فروشگاهی با فیلتر وضعیت و نوع سند (خرید/فروش).</summary>
     [HttpGet("shop-credit/cheques")]
+    [RequirePermission("Orders", "Read")]
     public async Task<IActionResult> GetShopCheques([FromQuery] ChequeStatus? status, [FromQuery] TransactionType? txnType, [FromQuery] string? search)
         => Ok(await _inventory.GetShopChequesAsync(status, txnType, search));
 
     /// <summary>فهرست اقساط فروشگاهی با فیلتر وضعیت پرداخت.</summary>
     [HttpGet("shop-credit/installments")]
+    [RequirePermission("Orders", "Read")]
     public async Task<IActionResult> GetShopInstallments([FromQuery] bool? isPaid, [FromQuery] string? search)
         => Ok(await _inventory.GetShopInstallmentsAsync(isPaid, search));
 

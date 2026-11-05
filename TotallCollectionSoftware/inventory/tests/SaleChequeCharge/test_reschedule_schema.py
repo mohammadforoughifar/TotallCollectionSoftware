@@ -46,7 +46,7 @@ class RescheduleSchema(unittest.TestCase):
         text = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeRescheduling.cs').read_text(encoding='utf8')
         for part in ('IsolationLevel.Serializable', 'transaction.RollbackAsync()', 'db.ChangeTracker.Clear()',
                      'x.OperationId == operationId', 'cheque.DueDate.Date != expectedDueDate',
-                     'SaleChequeChargeMath.IncrementalDateAdjustment(', 'await CalculateDeltaAsync(', 'SaleChequeCorrectionAmounts.ForDueDate(delta)',
+                     'SaleChequeChargeMath.IncrementalDateAdjustment(', 'await CalculateDeltaAsync(',
                      'SaleChequeChargeEventKind.DueDateAdjustment', 'charge.CustomerCredit = newCredit',
                      'sale.Amount = invoiceTotal', 'db.SaleChequeReschedules.Add(record)',
                      'r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)'):

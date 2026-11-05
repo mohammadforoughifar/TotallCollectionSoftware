@@ -11,12 +11,26 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.AspNetCore.Http;
+using Inventory.Api.Infrastructure;
 
 static void Check(bool condition, string message)
 {
     if (!condition) throw new Exception("FAIL: " + message);
     Console.WriteLine("PASS: " + message);
 }
+
+var saleOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Shop.Sale.Manage" };
+var purchaseOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Shop.Purchase.Manage" };
+Check(ShopPermissionAuthorizer.OrderType(saleOnly, TransactionType.Sale, true) &&
+      !ShopPermissionAuthorizer.OrderType(saleOnly, TransactionType.Purchase, true) &&
+      ShopPermissionAuthorizer.OrderType(purchaseOnly, TransactionType.Purchase, true) &&
+      !ShopPermissionAuthorizer.OrderType(purchaseOnly, TransactionType.Sale, true),
+    "sale and purchase write permissions are independent");
+Check(!ShopSections.AliasAllows("Orders.ViewProfit", "Shop.Sale.Manage") &&
+      !ShopSections.AliasAllows("Orders.Create", "Shop.OrderReports.View") &&
+      ShopSections.AliasAllows("ReportPages.Kardex", "Shop.Kardex.View"),
+    "profit is explicit and read-only reports never grant writes");
 
 Check(SaleChequeInitialCalculation.Calculate(200, 5, 5) == 50, "original monthly calculator: 200 × 5% × 5 = 50");
 Check(SaleChequeInitialCalculation.Calculate(100, 0.5m, 1) == 0, "original calculator keeps midpoint-to-even rounding");
@@ -171,290 +185,19 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     try { await service.SaveRuleAsync(rule); throw new Exception("sales account accepted as cheque income"); }
     catch (InvalidOperationException) { Console.WriteLine("PASS: sales account rejected as cheque income"); }
 }
-// Posting is only callable inside an existing serializable transaction and must roll back with it.
+// Store-only posting and all subsequent workflows run without an ERP rule, account, year or voucher.
 await using (var connection = new SqliteConnection("Data Source=:memory:"))
 {
     await connection.OpenAsync();
     await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
     await db.Database.EnsureCreatedAsync();
-    var party = new Party { Name = "مشتری آزمایش" };
-    var wh = new Warehouse { Name = "انبار آزمایش" };
+    var party = new Party { Name = "مشتری آزمایش", Type = PartyType.Customer, IsActive = true };
+    var wh = new Warehouse { Name = "انبار آزمایش", IsActive = true };
     var prod = new Product { Name = "کالا", Code = "TEST-POST", Unit = "عدد" };
-    var ar = new AccAccount { Code = "1101", Name = "مشتری", Type = AccountType.Asset, IsPostable = true };
-    var sales = new AccAccount { Code = "4101", Name = "فروش", Type = AccountType.Income, IsPermanent = false, IsPostable = true };
-    var income = new AccAccount { Code = "5101", Name = "درآمد تاخیر تادیه چک", Type = AccountType.Income, IsPermanent = false, IsPostable = true };
-    var vatAccount = new AccAccount { Code = "2101", Name = "مالیات", Type = AccountType.Liability, IsPostable = true };
-    var cashAccount = new AccAccount { Code = "1102", Name = "بانک", Type = AccountType.Asset, IsPostable = true };
-    var selectedBankAccount = new AccAccount { Code = "1103", Name = "بانک انتخاب‌شده", Type = AccountType.Asset, IsPostable = true };
-    var year = new AccFiscalYear { Title = "آزمایش", StartDate = new DateTime(2026, 1, 1), EndDate = new DateTime(2026, 12, 31) };
-    db.AddRange(party, wh, prod, ar, sales, income, vatAccount, cashAccount, selectedBankAccount, year);
+    var treasuryBank = new TrsAccount { Code = "BANK-TEST", Name = "بانک مستقل", BankName = "آزمایش",
+        Kind = TreasuryAccountKind.Bank, IsActive = true, OpeningBalance = 1000 };
+    db.AddRange(party, wh, prod, treasuryBank);
     await db.SaveChangesAsync();
-    var sale = new Inventory.Api.Data.Transaction
-    {
-        Number = "SL-TEST", Type = TransactionType.Sale, Date = new DateTime(2026, 6, 1, 13, 45, 0), PartyId = party.Id,
-        WarehouseId = wh.Id, Amount = 250, PaymentMethod = PaymentMethod.Cheque,
-        Lines = new() { new TransactionLine { ProductId = prod.Id, Quantity = 1, Price = 200, GrossAmount = 200 } },
-        Cheques = new() { new Cheque { Number = "123", Amount = 250, DueDate = new DateTime(2026, 7, 1), OriginalDueDate = new DateTime(2026, 7, 1) } }
-    };
-    db.Transactions.Add(sale);
-    await db.SaveChangesAsync();
-    db.SaleChequeCharges.Add(new SaleChequeCharge { TransactionId = sale.Id, BaseAmount = 200, RatePercent = 3, PeriodDays = 30,
-        CalculatorBaseAmount = 200, CalculatorRatePercent = 5, CalculatorMonths = 5, InitialAmount = 50, Amount = 50 });
-    db.FacRules.Add(new Inventory.Api.Data.FacRule { Kind = InvoiceKind.Sale, IsActive = true, AutoVoucher = true,
-        MainAccountId = sales.Id, PartyAccountId = ar.Id, ChequeIncomeAccountId = income.Id, VatAccountId = vatAccount.Id, CashAccountId = cashAccount.Id });
-    await db.SaveChangesAsync();
-    var older = new Inventory.Api.Data.Transaction
-    {
-        Number = "SL-OLD", Type = TransactionType.Sale, Date = new DateTime(2026, 5, 15), PartyId = party.Id,
-        WarehouseId = wh.Id, Amount = 100, SettledAmount = 40
-    };
-    db.Transactions.Add(older);
-    await db.SaveChangesAsync();
-    var statementService = new InventoryService(db, NullLogger<InventoryService>.Instance);
-    var statement = await statementService.GetPartyStatementDetailAsync(party.Id, new DateTime(2026, 6, 1));
-    var statementSummary = await statementService.GetPartyStatementSummaryReportAsync(from: new DateTime(2026, 6, 1));
-    Check(statement.OpeningBalance == 60 && statement.ClosingBalance == 310, "opening includes older settlement and agrees with 200 + 50 invoice");
-    Check(statement.SaleGoodsTotal == 200 && statement.SaleChequeIncomeTotal == 50 && statement.Rows.Single(r => r.Title == "تاخیر تادیه چک").Debit == 50,
-        "statement shows separate goods and cheque income without double counting");
-    Check(statementSummary.Items.Single(x => x.PartyId == party.Id).RemainingBalance == statement.ClosingBalance,
-        "statement detail and summary closing balances agree");
-    Check((await statementService.GetPartiesAsync(PartyType.Customer)).Single(x => x.Id == party.Id).Balance == statement.ClosingBalance,
-        "customer list balance matches the statement after the legacy partial settlement");
-    var sameDay = await statementService.GetPartyStatementDetailAsync(party.Id, new DateTime(2026, 6, 1), new DateTime(2026, 6, 1));
-    var sameDaySummary = await statementService.GetPartyStatementSummaryReportAsync(from: new DateTime(2026, 6, 1), to: new DateTime(2026, 6, 1));
-    Check(sameDay.ClosingBalance == 310 && sameDaySummary.Items.Single(x => x.PartyId == party.Id).RemainingBalance == 310,
-        "statement includes transactions throughout the selected last day");
-    var reports = new OperationsReportsService(db);
-    var operationsDashboard = await reports.GetDashboardAsync(new DateTime(2026, 6, 1), new DateTime(2026, 6, 1), true, false, false);
-    Check(operationsDashboard.SaleCount == 1 && operationsDashboard.SaleTotal == 200,
-        "operations dashboard reports goods-only sales, excluding 50 cheque income");
-    var withCharge = await reports.GetOrderReportAsync(TransactionType.Sale, null, null, party.Id, wh.Id, true);
-    var withoutCharge = await reports.GetOrderReportAsync(TransactionType.Sale, null, null, party.Id, wh.Id, false);
-    Check(withCharge.DocumentCount == 1 && withCharge.GoodsAmount == 200 && withCharge.ChequeIncomeAmount == 50 && withCharge.TotalAmount == 250,
-        "sales report separates goods, cheque income and total");
-    Check(withoutCharge.DocumentCount == 1 && withoutCharge.TotalAmount == 100 && withoutCharge.ChequeIncomeAmount == 0,
-        "legacy invoice without cheque income appears in without filter");
-    Check(withCharge.AverageDocumentAmount == 200 && withCharge.Trend.Sum(x => x.Amount) == 200 && withCharge.TopParties.Single().TotalAmount == 200,
-        "product statistics exclude cheque income");
-    var filteredOrders = await statementService.GetOrdersAsync(TransactionType.Sale, null, null, party.Id, wh.Id, 1, 20, true);
-    Check(filteredOrders.TotalCount == 1 && filteredOrders.Items.Single().ChequeIncomeAmount == 50 && filteredOrders.Items.Single().GoodsAmount == 200,
-        "paged sales use same cheque-income filter and amounts");
-    try { await statementService.ClearChequeAsync(sale.Cheques[0].Id); throw new Exception("legacy cheque clearing accepted"); }
-    catch (InvalidOperationException) { Console.WriteLine("PASS: legacy cheque clearing is blocked for charge invoices"); }
-    try { await statementService.DeleteOrderAsync(sale.Id); throw new Exception("legacy invoice deletion accepted"); }
-    catch (InvalidOperationException) { Console.WriteLine("PASS: legacy invoice deletion is blocked for charge invoices"); }
-    var invoicing = new InvoicingService(db, null!, null!, NullLogger<InvoicingService>.Instance);
-    try { await invoicing.PostStoreSaleVoucherAsync(sale.Id, "tester"); throw new Exception("legacy posting accepted"); }
-    catch (InvalidOperationException) { Console.WriteLine("PASS: legacy posting is blocked for charge invoices"); }
-    try { await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester"); throw new Exception("posting outside transaction accepted"); }
-    catch (InvalidOperationException) { Console.WriteLine("PASS: transaction required"); }
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
-    {
-        var posted = await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester");
-        Check(posted.TotalDebit == 250 && posted.TotalCredit == 250, "200 goods + 50 cheque income balances at 250");
-        Check(posted.Lines.Single(l => l.AccountId == ar.Id).Debit == 250 && posted.Lines.Single(l => l.AccountId == sales.Id).Credit == 200 && posted.Lines.Single(l => l.AccountId == income.Id).Credit == 50, "distinct debit and income accounts");
-        var chargeSnapshot = await db.SaleChequeCharges.SingleAsync(x => x.TransactionId == sale.Id);
-        Check(chargeSnapshot.IncomeAccountId == income.Id && chargeSnapshot.PartyAccountId == ar.Id, "voucher account IDs are snapshotted");
-        var initialEvent = await db.SaleChequeChargeEvents.SingleAsync(e => e.AccVoucherId == posted.Id);
-        Check(initialEvent.Kind == SaleChequeChargeEventKind.Initial && initialEvent.IncomeDelta == 50 && initialEvent.SaleChequeChargeId == chargeSnapshot.Id,
-            "initial cheque-income event links the financial row to its voucher");
-        try { await new AccountingService(db).CancelVoucherAsync(posted.Id, "tester"); throw new Exception("linked voucher cancellation accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: linked voucher cannot be cancelled independently"); }
-        db.AccVouchers.Add(new AccVoucher
-        {
-            FiscalYearId = year.Id, Number = posted.Number + 1, Date = sale.Date, Source = VoucherSource.Manual,
-            Status = VoucherStatus.Confirmed, TotalDebit = 7, TotalCredit = 7,
-            Lines = new() { new AccVoucherLine { RowNo = 1, AccountId = ar.Id, Debit = 7 }, new AccVoucherLine { RowNo = 2, AccountId = income.Id, Credit = 7 } }
-        });
-        var configuredRule = await db.FacRules.SingleAsync(x => x.Kind == InvoiceKind.Sale);
-        configuredRule.ChequeIncomeAccountId = sales.Id; // historical sale must retain the original account
-        await db.SaveChangesAsync();
-        var dashboard = await new AccountingService(db).GetDashboardAsync();
-        Check(dashboard.IncomeTotal == 257 && dashboard.ChequeIncomeTotal == 50 && dashboard.OtherIncomeTotal == 207,
-            "profit/loss separates initial cheque income without counting unrelated account activity");
-        var chequeReport = await reports.GetChequeIncomeReportAsync(new DateTime(2026, 6, 1), new DateTime(2026, 6, 1), party.Id);
-        Check(chequeReport.Rows.Count == 1 && chequeReport.TotalIncome == 50 && chequeReport.Rows[0].PartyId == party.Id &&
-              chequeReport.Rows[0].SaleNumber == sale.Number && chequeReport.Rows[0].VoucherNumber == posted.Number,
-            "dedicated report filters confirmed income by date and customer without unrelated income");
-        var missingCustomer = await reports.GetChequeIncomeReportAsync(null, null, party.Id + 9999);
-        Check(missingCustomer.Rows.Count == 0 && missingCustomer.TotalIncome == 0, "income report filters by customer");
-        var correction = new AccVoucher
-        {
-            FiscalYearId = year.Id, Number = posted.Number + 2, Date = new DateTime(2026, 6, 3), Source = VoucherSource.Manual,
-            Status = VoucherStatus.Confirmed, TotalDebit = 3, TotalCredit = 3,
-            Lines = new() { new AccVoucherLine { RowNo = 1, AccountId = income.Id, Debit = 3 }, new AccVoucherLine { RowNo = 2, AccountId = ar.Id, Credit = 3 } }
-        };
-        db.SaleChequeChargeEvents.Add(new SaleChequeChargeEvent { OperationId = Guid.NewGuid(), SaleChequeChargeId = chargeSnapshot.Id,
-            AccVoucher = correction, Kind = SaleChequeChargeEventKind.DueDateAdjustment, Date = correction.Date, IncomeDelta = -3 });
-        await db.SaveChangesAsync();
-        var withCorrection = await reports.GetChequeIncomeReportAsync(null, null, party.Id);
-        var correctedDashboard = await new AccountingService(db).GetDashboardAsync();
-        Check(withCorrection.Rows.Count == 2 && withCorrection.TotalIncome == 47 && withCorrection.Rows.Any(r => r.Income == -3) &&
-              correctedDashboard.ChequeIncomeTotal == 47, "signed correction events reduce report and profit/loss without touching goods");
-        var changedEvent = await db.SaleChequeChargeEvents.SingleAsync(e => e.AccVoucherId == posted.Id);
-        changedEvent.IncomeDelta = 51;
-        await db.SaveChangesAsync();
-        try { await reports.GetChequeIncomeReportAsync(null, null, party.Id); throw new Exception("event and voucher mismatch accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: mismatched income event rejected"); }
-        try { await new AccountingService(db).GetDashboardAsync(); throw new Exception("dashboard accepted mismatched income event"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: dashboard rejects mismatched income event"); }
-        changedEvent.IncomeDelta = 50;
-        chargeSnapshot.IncomeAccountId = null;
-        await db.SaveChangesAsync();
-        try { await reports.GetChequeIncomeReportAsync(null, null, party.Id); throw new Exception("income report ignored missing account snapshot"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: income report rejects missing account snapshot"); }
-        try { await new AccountingService(db).GetDashboardAsync(); throw new Exception("dashboard ignored missing account snapshot"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: dashboard rejects missing account snapshot"); }
-        chargeSnapshot.IncomeAccountId = income.Id;
-        await db.SaveChangesAsync();
-        configuredRule.ChequeIncomeAccountId = income.Id;
-        await db.SaveChangesAsync();
-        try { await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester"); throw new Exception("duplicate posting accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: duplicate posting rejected"); }
-        // Initial event remains 50; an earlier test correction was only synthetic, so remove it
-        // before exercising the transactional reschedule workflow.
-        db.SaleChequeChargeEvents.RemoveRange(await db.SaleChequeChargeEvents.Where(e => e.AccVoucherId == correction.Id).ToListAsync());
-        db.AccVouchers.Remove(correction);
-        await db.SaveChangesAsync();
-        var operation = Guid.NewGuid();
-        var rescheduled = await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, operation,
-            new DateTime(2026, 7, 1), new DateTime(2026, 7, 11), new DateTime(2026, 6, 4), "tester");
-        Check(rescheduled.IncomeDelta == 2 && chargeSnapshot.Amount == 52 && sale.Amount == 252 &&
-              sale.Cheques[0].DueDate == new DateTime(2026, 7, 11),
-            "ten-day reschedule atomically updates due date, income and invoice total");
-        var retry = await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, operation,
-            new DateTime(2026, 7, 1), new DateTime(2026, 7, 11), new DateTime(2026, 6, 4), "tester");
-        Check(retry.Id == rescheduled.Id && await db.SaleChequeReschedules.CountAsync() == 1,
-            "reschedule retry is idempotent");
-        var revisedReport = await reports.GetChequeIncomeReportAsync(null, null, party.Id);
-        Check(revisedReport.TotalIncome == 52, "reschedule event is linked to the confirmed income voucher");
-        var beforeAdjustment = await statementService.GetPartyStatementDetailAsync(party.Id, null, new DateTime(2026, 6, 3));
-        var afterAdjustment = await statementService.GetPartyStatementDetailAsync(party.Id, new DateTime(2026, 6, 4), new DateTime(2026, 6, 4));
-        var afterSummary = await statementService.GetPartyStatementSummaryReportAsync(from: new DateTime(2026, 6, 4), to: new DateTime(2026, 6, 4));
-        Check(beforeAdjustment.ClosingBalance == 310 && afterAdjustment.OpeningBalance == 310 &&
-              afterAdjustment.ClosingBalance == 312 && afterAdjustment.SaleChequeIncomeTotal == 2 &&
-              afterSummary.Items.Single(x => x.PartyId == party.Id).RemainingBalance == 312,
-            "historical customer statement dates the correction rather than rewriting the original invoice");
-        var original = new DateTime(2026, 7, 1);
-        var dueAfterFirst = original.AddDays(10);
-        for (var day = 0; day < 10; day++)
-            await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, Guid.NewGuid(), dueAfterFirst.AddDays(day),
-                dueAfterFirst.AddDays(day + 1), new DateTime(2026, 6, 4), "tester");
-        Check(sale.Amount == 254, "ten one-day reschedules preserve cumulative whole-rial rounding");
-        await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, Guid.NewGuid(), dueAfterFirst.AddDays(10),
-            dueAfterFirst, new DateTime(2026, 6, 4), "tester");
-        Check(sale.Amount == 252, "returning the due date reverses the exact cumulative adjustment");
-        var receiptBank = new TrsAccount { Code = "BANK-RECEIPT", Name = "بانک وصول", Kind = TreasuryAccountKind.Bank,
-            IsActive = true, AccountId = selectedBankAccount.Id };
-        db.TrsAccounts.Add(receiptBank);
-        await db.SaveChangesAsync();
-        var receiptId = Guid.NewGuid();
-        var received = await SaleChequeReceiptPosting.ReceiveAsync(db, sale.Cheques[0].Id, receiptId, receiptBank.Id,
-            new DateTime(2026, 6, 5), "tester");
-        var receivedAgain = await SaleChequeReceiptPosting.ReceiveAsync(db, sale.Cheques[0].Id, receiptId, receiptBank.Id,
-            new DateTime(2026, 6, 5), "tester");
-        Check(received.Id == receivedAgain.Id && sale.SettledAmount == 250 && sale.Cheques[0].IsCleared,
-            "receipt is idempotent and does not add cheque income");
-        Check(await db.SaleChequeStatusEvents.CountAsync(e => e.ChequeId == sale.Cheques[0].Id && e.NewStatus == ChequeStatus.Cleared) == 1,
-            "receipt writes one immutable status event even after retry");
-        var beforeReceipt = await statementService.GetPartyStatementDetailAsync(party.Id, null, new DateTime(2026, 6, 4));
-        var afterReceipt = await statementService.GetPartyStatementDetailAsync(party.Id, new DateTime(2026, 6, 5), new DateTime(2026, 6, 5));
-        Check(beforeReceipt.ClosingBalance == 312 && afterReceipt.OpeningBalance == 312 && afterReceipt.ClosingBalance == 62,
-            "statement posts cheque receipt at its actual date without double counting");
-        Check((await statementService.GetPartiesAsync(PartyType.Customer)).Single(x => x.Id == party.Id).Balance == afterReceipt.ClosingBalance,
-            "customer list reflects the dated adjustment and cheque receipt exactly once");
-        var treasury = new Inventory.Api.Services.Treasury.TreasuryService(db, new AccountingService(db));
-        var receiptAccount = await treasury.GetAccountAsync(receiptBank.Id);
-        Check(receiptAccount is not null && receiptAccount.Balance == 250, "receipt updates selected treasury bank balance");
-        try { await new AccountingService(db).CancelVoucherAsync(received.AccVoucherId, "tester"); throw new Exception("receipt voucher cancellation accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: receipt voucher cannot be cancelled independently"); }
-        var reversalId = Guid.NewGuid();
-        await SaleChequeReceiptReversal.ReverseAsync(db, sale.Cheques[0].Id, reversalId, new DateTime(2026, 6, 6), "tester");
-        await SaleChequeReceiptReversal.ReverseAsync(db, sale.Cheques[0].Id, reversalId, new DateTime(2026, 6, 6), "tester");
-        Check(!sale.Cheques[0].IsCleared && sale.SettledAmount == 0 && received.ReversalVoucherId.HasValue,
-            "receipt reversal is idempotent and preserves the original voucher");
-        var afterReversal = await statementService.GetPartyStatementDetailAsync(party.Id, new DateTime(2026, 6, 6), new DateTime(2026, 6, 6));
-        Check(afterReversal.OpeningBalance == 62 && afterReversal.ClosingBalance == 312 &&
-              (await treasury.GetAccountAsync(receiptBank.Id))!.Balance == 0,
-            "dated receipt reversal restores customer debt and reverses treasury bank movement once");
-        Check((await statementService.GetPartiesAsync(PartyType.Customer)).Single(x => x.Id == party.Id).Balance == afterReversal.ClosingBalance,
-            "customer list restores the debt after receipt reversal");
-        // A reduction larger than the recorded income creates customer credit, not negative invoice income.
-        var earlier = original.AddDays(-300);
-        await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, Guid.NewGuid(), dueAfterFirst, earlier,
-            new DateTime(2026, 6, 6), "tester");
-        Check(chargeSnapshot.Amount == 0 && chargeSnapshot.CustomerCredit == 10 && sale.Amount == 200,
-            "an excessive early-date reduction becomes customer credit");
-        var creditStatement = await statementService.GetPartyStatementDetailAsync(party.Id);
-        Check(creditStatement.ClosingBalance == 250 &&
-              (await statementService.GetPartiesAsync(PartyType.Customer)).Single(x => x.Id == party.Id).Balance == creditStatement.ClosingBalance,
-            "customer balance includes excessive income reduction without losing credit");
-        await SaleChequeRescheduling.ApplyAsync(db, sale.Cheques[0].Id, Guid.NewGuid(), earlier, dueAfterFirst,
-            new DateTime(2026, 6, 6), "tester");
-        var receivedThird = await SaleChequeReceiptPosting.ReceiveAsync(db, sale.Cheques[0].Id, Guid.NewGuid(), receiptBank.Id,
-            new DateTime(2026, 6, 7), "tester");
-        Check(receivedThird.Id != received.Id && sale.SettledAmount == 250,
-            "a new collection is permitted after explicit reversal without deleting history");
-        await tx.RollbackAsync();
-    }
-    db.ChangeTracker.Clear();
-    Check(await db.AccVouchers.CountAsync() == 0 && await db.Transactions.AnyAsync(x => x.Id == sale.Id), "rollback removes voucher but not previously saved invoice");
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
-    {
-        var cheque = await db.Cheques.SingleAsync(x => x.TransactionId == sale.Id);
-        cheque.Amount = 249;
-        await db.SaveChangesAsync();
-        try { await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester"); throw new Exception("one-rial mismatch accepted"); }
-        catch (InvalidOperationException ex)
-        {
-            Check(ex.Message.Contains("جمع اجزای پرداخت"), "one-rial mismatch requires manual resolution");
-        }
-        await tx.RollbackAsync();
-    }
-    db.ChangeTracker.Clear();
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
-    {
-        var changedCharge = await db.SaleChequeCharges.SingleAsync(x => x.TransactionId == sale.Id);
-        changedCharge.CalculatorRatePercent = 4;
-        await db.SaveChangesAsync();
-        try { await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester"); throw new Exception("calculator mismatch accepted"); }
-        catch (InvalidOperationException ex)
-        {
-            Check(ex.Message.Contains("نتیجه ماشین‌حساب"), "initial calculator mismatch rejected");
-        }
-        await tx.RollbackAsync();
-    }
-    db.ChangeTracker.Clear();
-    var closedYear = await db.AccFiscalYears.SingleAsync(x => x.Id == year.Id);
-    closedYear.IsClosed = true;
-    await db.SaveChangesAsync();
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
-    {
-        try { await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester"); throw new Exception("closed fiscal year accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: closed fiscal year rejected"); }
-        await tx.RollbackAsync();
-    }
-    db.ChangeTracker.Clear();
-    closedYear = await db.AccFiscalYears.SingleAsync(x => x.Id == year.Id);
-    closedYear.IsClosed = false;
-    await db.SaveChangesAsync();
-    sale = await db.Transactions.Include(x => x.Lines).Include(x => x.Cheques).SingleAsync(x => x.Id == sale.Id);
-    sale.Lines[0].Price = 180; sale.Lines[0].GrossAmount = 180; sale.Lines[0].VatAmount = 20;
-    sale.Cheques[0].Amount = 200; sale.CashAmount = 50; sale.SettledAmount = 50; sale.PaymentMethod = PaymentMethod.Mixed;
-    var treasuryBank = new TrsAccount { Code = "BANK-TEST", Name = "بانک انتخابی", IsActive = true, AccountId = selectedBankAccount.Id };
-    db.TrsAccounts.Add(treasuryBank);
-    await db.SaveChangesAsync();
-    sale.TrsAccountId = treasuryBank.Id;
-    await db.SaveChangesAsync();
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
-    {
-        var posted = await SaleChequeChargePosting.PostAsync(db, sale.Id, "tester");
-        Check(posted.TotalDebit == 300 && posted.TotalCredit == 300, "mixed payment records separate customer settlement");
-        Check(posted.Lines.Single(l => l.AccountId == vatAccount.Id).Credit == 20 && posted.Lines.Single(l => l.AccountId == selectedBankAccount.Id).Debit == 50 && !posted.Lines.Any(l => l.AccountId == cashAccount.Id),
-            "VAT and selected treasury bank are posted to their own accounts");
-        await tx.RollbackAsync();
-    }
-    db.ChangeTracker.Clear();
     Inventory.Api.Data.Transaction NewRegistrationSale(string number) => new()
     {
         Number = number, Type = TransactionType.Sale, Date = new DateTime(2026, 6, 2), PartyId = party.Id,
@@ -469,34 +212,49 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         db.Transactions.Add(newSale);
         await db.SaveChangesAsync();
         var posted = await SaleChequeChargeRegistration.RegisterAsync(db, newSale.Id, registrationInput, "tester");
-        var registeredCharge = await db.SaleChequeCharges.SingleAsync(x => x.TransactionId == newSale.Id);
-        Check(newSale.Amount == 250 && registeredCharge.Amount == 50 && registeredCharge.BaseAmount == 200 &&
-              registeredCharge.RatePercent == 3 && posted.TotalDebit == 250, "initial invoice, charge and voucher registered in one transaction");
+        var charge = await db.SaleChequeCharges.SingleAsync(x => x.TransactionId == newSale.Id);
+        Check(newSale.Amount == 250 && charge.Amount == 50 && posted.IncomeDelta == 50 && posted.AccVoucherId is null,
+            "sale and initial income are written atomically without an ERP voucher");
         await tx.RollbackAsync();
     }
     db.ChangeTracker.Clear();
-    Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-REG"), "invoice and charge registration roll back together");
+    Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-REG"), "sale and income roll back together");
     await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
     {
         var mixed = NewRegistrationSale("SL-MIXED");
         mixed.PaymentMethod = PaymentMethod.Mixed;
         mixed.Cheques[0].Amount = 200;
-        mixed.CashAmount = 50; mixed.SettledAmount = 50; mixed.CashType = CashType.Cash;
+        mixed.CashAmount = 50; mixed.SettledAmount = 50; mixed.CashType = CashType.CardTransfer;
         mixed.TrsAccountId = treasuryBank.Id;
         db.Transactions.Add(mixed);
         await db.SaveChangesAsync();
         var posted = await SaleChequeChargeRegistration.RegisterAsync(db, mixed.Id, registrationInput, "tester");
-        var cashReceipt = await db.TrsVouchers.Include(v => v.Lines).SingleAsync(v => v.VoucherId == posted.Id);
+        var charge = await db.SaleChequeCharges.SingleAsync(c => c.TransactionId == mixed.Id);
+        var cashReceipt = await db.TrsVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == charge.InitialCashTrsVoucherId);
         Check(cashReceipt.TotalAmount == 50 && cashReceipt.Status == TreasuryStatus.Confirmed &&
-              cashReceipt.Lines.Single().TrsAccountId == treasuryBank.Id && posted.TotalDebit == 300,
-            "mixed cash and cheque writes exactly one treasury cash receipt linked to the initial voucher");
+              cashReceipt.Lines.Single().TrsAccountId == treasuryBank.Id && posted.AccVoucherId is null,
+            "mixed payment writes one protected store treasury receipt, with no ERP mapping");
         var treasury = new Inventory.Api.Services.Treasury.TreasuryService(db, new AccountingService(db));
-        try { await treasury.UnconfirmVoucherAsync(cashReceipt.Id, "tester"); throw new Exception("linked treasury voucher unconfirmed"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: linked treasury receipt cannot be reversed independently"); }
+        Check((await treasury.GetAccountAsync(treasuryBank.Id))!.Balance == 1050, "initial cash changes bank balance once");
+        try { await treasury.UnconfirmVoucherAsync(cashReceipt.Id, "tester"); throw new Exception("linked treasury receipt unconfirmed"); }
+        catch (InvalidOperationException) { Console.WriteLine("PASS: linked treasury receipt cannot be changed independently"); }
         await tx.RollbackAsync();
     }
     db.ChangeTracker.Clear();
-    Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-MIXED"), "cash receipt and sale roll back together");
+    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
+    {
+        var failed = NewRegistrationSale("SL-FAILED");
+        failed.Cheques[0].OriginalDueDate = null; // error occurs after charge save, inside posting
+        db.Transactions.Add(failed);
+        await db.SaveChangesAsync();
+        try { await SaleChequeChargeRegistration.RegisterAsync(db, failed.Id, registrationInput, "tester"); throw new Exception("invalid posting accepted"); }
+        catch (InvalidOperationException) { Console.WriteLine("PASS: invalid initial cheque aborts the sale"); }
+        Check(!db.ChangeTracker.Entries().Any(), "failed registration detaches rolled-back entities");
+    }
+    await db.SaveChangesAsync();
+    Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-FAILED") &&
+          !await db.SaleChequeCharges.AnyAsync(c => c.Transaction.Number == "SL-FAILED"),
+        "failed posting leaves no invoice, income or tracker residue");
     // The ordinary sale path freezes actual legacy stock cost, not the selling price or an input value.
     var costProduct = new Product { Name = "کالای بهای آزمون", Code = "COST-SNAPSHOT", Unit = "عدد", PurchasePrice = 80 };
     db.Products.Add(costProduct);
@@ -509,9 +267,7 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     });
     db.Stocks.Add(new Stock { WarehouseId = wh.Id, ProductId = costProduct.Id, Quantity = 10, AvgCost = 80 });
     await db.SaveChangesAsync();
-    var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["SaleChequeCharge:ExperimentalEnabled"] = "true" }).Build();
-    var creationService = new InventoryService(db, NullLogger<InventoryService>.Instance, cfg);
+    var creationService = new InventoryService(db, NullLogger<InventoryService>.Instance);
     var created = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
     {
         Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = party.Id, Date = new DateTime(2026, 6, 2),
@@ -524,6 +280,31 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     var savedLine = await db.TransactionLines.SingleAsync(l => l.TransactionId == created.Id);
     Check(savedLine.UnitCostSnapshot == 80, "charged sale stores legacy cost instead of an input cost or sale price");
 
+    var cashParty = new Party { Type = PartyType.Customer, Name = "مشتری نقدی", IsActive = true };
+    db.Parties.Add(cashParty); await db.SaveChangesAsync();
+    var cashSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = cashParty.Id, Date = new DateTime(2026, 6, 2),
+        PaymentMethod = PaymentMethod.Mixed, CashType = CashType.CardTransfer, CashAmount = 50,
+        CashTrackingNumber = "ref-50", TrsAccountId = treasuryBank.Id,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 1, Price = 200 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CASH-MIX", Amount = 200, DueDate = new DateTime(2026, 7, 2) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput { CalculatorBaseAmount = 200, CalculatorRatePercent = 5,
+            CalculatorMonths = 5, AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30 }
+    }, "tester");
+    await creationService.CancelSaleChequeOrderAsync(cashSale.Id, new Inventory.Shared.Dtos.SaleChequeCancelCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 3), Reason = "تست استرداد"
+    }, "tester");
+    var afterCashCancel = await creationService.GetPartyStatementDetailAsync(cashParty.Id, new DateTime(2026, 6, 4));
+    var summaryAfterCashCancel = await creationService.GetPartyStatementSummaryReportAsync(from: new DateTime(2026, 6, 4));
+    var cashBank = new Inventory.Api.Services.Treasury.TreasuryService(db, new AccountingService(db));
+    var cashFlow = await cashBank.GetFlowAsync(treasuryBank.Id, null, null);
+    Check(afterCashCancel.OpeningBalance == 0 && afterCashCancel.ClosingBalance == 0 &&
+          summaryAfterCashCancel.Items.Single(x => x.PartyId == cashParty.Id).ClosingBalance == 0 &&
+          (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == cashFlow.ClosingBalance && cashFlow.ClosingBalance == 1000,
+        "cancellation preserves the initial cash and refund in opening statements and bank flow");
+
     // End-to-end return, decision, post-return reschedule, cheque replacement, credit settlement, installments, edit and void.
     var e2eParty = new Party { Type = PartyType.Customer, Name = "مشتری گردش کامل", IsActive = true };
     db.Parties.Add(e2eParty);
@@ -535,8 +316,7 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     {
         Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = e2eParty.Id, Date = new DateTime(2026, 6, 3),
         PaymentMethod = PaymentMethod.Cheque,
-        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 90, VatValue = 200 } },
-        // Price 90 * 2 = 180; VatValue 200 (>100 => fixed 20? Wait: use VatValue = 10% => 18, or Price=100, VatValue=0 => 200)
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = costProduct.Id, Quantity = 2, Price = 100, VatValue = 0 } },
         Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHQ-E2E-1", Amount = 250, DueDate = new DateTime(2026, 7, 3) } },
         ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput
         {
@@ -544,8 +324,6 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
             AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30
         }
     }, "tester");
-    // Wait: 2 * 90 = 180 + fixed VAT 200 = 380! Keep exact 200+50=250 by using Price=90, VatValue=11.11? Even cleaner: Price=100, VatValue=0 => 200!
-    // Let's cancel fullSale cleanly (exercising CancelSaleChequeOrderAsync!) and issue exact 200 (180 + 10% VAT on 200 -> Price=100, DiscountAmount=20, DiscountIsAmount=true, VatValue=111.11? No: Quantity=2, Price=90 => 180; VatValue=100.01? Wait: VatValue > 100 is fixed rial, so VatValue=120 is 120 rial, whereas 20% VAT is VatValue=20 => 180*20%=36, or Price=100, DiscountAmount=0, VatValue=0 => 200!).
     await creationService.CancelSaleChequeOrderAsync(fullSale.Id, new Inventory.Shared.Dtos.SaleChequeCancelCommand
     {
         OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 3), Reason = "تست ابطال کامل"
@@ -605,6 +383,12 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     Check(postReturnReschedule.BaseAmount == 100 && postReturnReschedule.IncomeDelta == 1,
         "reschedule after partial return uses remaining goods base");
 
+    var incomeReport = await new OperationsReportsService(db).GetChequeIncomeReportAsync(
+        new DateTime(2026, 6, 4), new DateTime(2026, 6, 6), e2eParty.Id);
+    Check(incomeReport.TotalIncome == 26 && incomeReport.Rows.Count == 3 &&
+          incomeReport.Rows.All(r => r.EventId > 0 && r.VoucherNumber == 0),
+        "dated operational income report reconciles without an ERP voucher");
+
     // Replace 250 cheque with 126 cheque matching remaining balance (100 goods + 26 income)
     await creationService.ReplaceSaleChequeAsync(sale250.Cheques[0].Id, new Inventory.Shared.Dtos.SaleChequeReplaceCommand
     {
@@ -617,10 +401,27 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         "cheque replacement preserves old cheque in history and activates replacement cheque");
 
     // Collect 126 cheque, then return remaining 1 unit -> creates 126 customer credit -> refund 26 + apply 100 to a new sale
+    var receiptCommand = new Inventory.Shared.Dtos.SaleChequeReceiptCommand
+    {
+        OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 7)
+    };
+    await creationService.ReceiveSaleChequeAsync(activeCheque.Id, receiptCommand, "tester");
+    await creationService.ReceiveSaleChequeAsync(activeCheque.Id, receiptCommand, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == 1126, "replayed cheque receipt is not counted twice");
+    var reverseCommand = new Inventory.Shared.Dtos.SaleChequeReceiptReversalCommand
+    {
+        OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 7)
+    };
+    await creationService.ReverseSaleChequeReceiptAsync(activeCheque.Id, reverseCommand, "tester");
+    await creationService.ReverseSaleChequeReceiptAsync(activeCheque.Id, reverseCommand, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == 1000, "receipt reversal is idempotent");
     await creationService.ReceiveSaleChequeAsync(activeCheque.Id, new Inventory.Shared.Dtos.SaleChequeReceiptCommand
     {
         OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Date = new DateTime(2026, 6, 7)
     }, "tester");
+    var chequeFlow = await cashBank.GetFlowAsync(treasuryBank.Id, null, null);
+    Check(chequeFlow.ClosingBalance == 1126 && (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == chequeFlow.ClosingBalance,
+        "recollection and detailed account flow agree");
     await creationService.ReturnSaleChequeOrderAsync(sale250.Id, new Inventory.Shared.Dtos.SaleChequeReturnCommand
     {
         OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 8),
@@ -688,22 +489,87 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     Check((await creationService.GetOrderAsync(editedSale.Id))!.SettledAmount == 0,
         "charged installment receipt and reversal reconcile settled amount");
 
-    var rule = await db.FacRules.SingleAsync(x => x.Kind == InvoiceKind.Sale);
-    rule.ChequeIncomeAccountId = null;
-    await db.SaveChangesAsync();
-    await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
+    Check(await db.AccVouchers.CountAsync() == 0 && await db.AccAccounts.CountAsync() == 0 &&
+          await db.AccFiscalYears.CountAsync() == 0 && await db.FacRules.CountAsync() == 0,
+        "complete store workflows do not create or require ERP records");
+}
+// Explicit account/company scope, including legacy public accounts and no-company access.
+await using (var connection = new SqliteConnection("Data Source=:memory:"))
+{
+    await connection.OpenAsync();
+    var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+    await using (var seed = new AppDbContext(options))
     {
-        var failedSale = NewRegistrationSale("SL-FAILED");
-        db.Transactions.Add(failedSale);
-        await db.SaveChangesAsync();
-        try { await SaleChequeChargeRegistration.RegisterAsync(db, failedSale.Id, registrationInput, "tester"); throw new Exception("registration without account accepted"); }
-        catch (InvalidOperationException) { Console.WriteLine("PASS: missing income account aborts the whole sale"); }
-        Check(!db.ChangeTracker.Entries().Any(), "failed registration detaches rolled-back entities from a reused context");
+        await seed.Database.EnsureCreatedAsync();
+        seed.SystemCompanies.AddRange(new SystemCompany { Id = 1, Name = "الف" }, new SystemCompany { Id = 2, Name = "ب" });
+        seed.TrsAccounts.AddRange(new TrsAccount { Id = 1, CompanyId = 1, Code = "A", Name = "الف", IsActive = true },
+            new TrsAccount { Id = 2, CompanyId = 2, Code = "B", Name = "ب", IsActive = true },
+            new TrsAccount { Id = 3, Code = "C", Name = "قدیمی عمومی", IsActive = true });
+        await seed.SaveChangesAsync();
     }
-    await db.SaveChangesAsync(); // A reused context must not reinsert any part of the failed sale.
-    Check(!await db.Transactions.AnyAsync(x => x.Number == "SL-FAILED") &&
-          !await db.SaleChequeCharges.AnyAsync(c => c.Transaction.Number == "SL-FAILED"),
-        "failure after charge save rolls back original invoice and leaves no tracked financial row");
+    var http = new DefaultHttpContext();
+    http.Items["ActiveCompanyId"] = 1;
+    var accessor = new HttpContextAccessor { HttpContext = http };
+    await using var scoped = new AppDbContext(options, accessor);
+    var usable = await SaleChequeTreasuryGuard.ListCompanyAccountsAsync(scoped);
+    var treasury = new Inventory.Api.Services.Treasury.TreasuryService(scoped, new AccountingService(scoped));
+    var visible = await treasury.GetAccountsAsync();
+    Check(usable.Select(a => a.Id).SequenceEqual(new[] { 1 }) && visible.All(a => a.Id != 2 && a.Id != 3),
+        "multi-company payment choices are strict and ownerless accounts stay hidden");
+    try { await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(scoped, new TrsAccount { CompanyId = 2 }, 1); throw new Exception("foreign company account accepted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: foreign account rejected"); }
+    Check(await treasury.GetAccountAsync(2) is null, "other company bank cannot be read by id");
+    http.Items["ActiveCompanyId"] = 0;
+    Check((await SaleChequeTreasuryGuard.ListCompanyAccountsAsync(scoped)).Count == 0 && (await treasury.GetAccountsAsync()).Count == 0,
+        "user without a company cannot see bank accounts");
+    scoped.Parties.Add(new Party { Name = "بدون شرکت", Type = PartyType.Customer });
+    try { await scoped.SaveChangesAsync(); throw new Exception("write without company accepted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: user without company cannot create shop records"); }
+}
+
+// Exercise the actual provider-specific startup upgrade against a historical SQLite schema.
+await using (var connection = new SqliteConnection("Data Source=:memory:"))
+{
+    await connection.OpenAsync();
+    await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
+    await db.Database.ExecuteSqlRawAsync(@"
+        PRAGMA foreign_keys=ON;
+        CREATE TABLE AccVouchers(Id INTEGER PRIMARY KEY);
+        CREATE TABLE SaleChequeCharges(Id INTEGER PRIMARY KEY);
+        CREATE TABLE TrsVouchers(Id INTEGER PRIMARY KEY, VoucherId INTEGER, Kind INTEGER);
+        INSERT INTO AccVouchers VALUES (10), (11);
+        INSERT INTO SaleChequeCharges VALUES (1), (2);
+        INSERT INTO TrsVouchers VALUES (40,10,0), (41,11,0), (42,11,0);
+        CREATE TABLE SaleChequeChargeEvents(
+            Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, OperationId TEXT NOT NULL UNIQUE,
+            SaleChequeChargeId INTEGER NOT NULL REFERENCES SaleChequeCharges(Id) ON DELETE RESTRICT,
+            AccVoucherId INTEGER NOT NULL REFERENCES AccVouchers(Id) ON DELETE RESTRICT,
+            Kind INTEGER NOT NULL, Date TEXT NOT NULL, IncomeDelta TEXT NOT NULL);
+        CREATE UNIQUE INDEX IX_SaleChequeChargeEvents_AccVoucherId ON SaleChequeChargeEvents(AccVoucherId);
+        CREATE TABLE Audit(EventId INTEGER);
+        CREATE TRIGGER audit_event AFTER INSERT ON SaleChequeChargeEvents BEGIN INSERT INTO Audit VALUES(new.Id); END;
+        INSERT INTO SaleChequeChargeEvents VALUES (5,'old',1,10,1,'2026-06-01','50');
+        INSERT INTO SaleChequeChargeEvents VALUES (100,'deleted',2,11,1,'2026-06-01','7');
+        DELETE FROM SaleChequeChargeEvents WHERE Id=100;
+        INSERT INTO SaleChequeChargeEvents VALUES (6,'ambiguous',2,11,1,'2026-06-01','7');");
+    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
+    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
+    await using var command = connection.CreateCommand();
+    command.CommandText = "SELECT InitialCashTrsVoucherId FROM SaleChequeCharges WHERE Id=1";
+    Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 40, "unambiguous historical cash link is retained");
+    command.CommandText = "SELECT InitialCashTrsVoucherId FROM SaleChequeCharges WHERE Id=2";
+    Check(await command.ExecuteScalarAsync() is DBNull, "ambiguous historical cash link is not guessed");
+    await db.Database.ExecuteSqlRawAsync("INSERT INTO SaleChequeChargeEvents(OperationId,SaleChequeChargeId,AccVoucherId,Kind,Date,IncomeDelta) VALUES ('new',1,NULL,2,'2026-06-02','1')");
+    command.CommandText = "SELECT MAX(Id) FROM SaleChequeChargeEvents";
+    Check(Convert.ToInt32(await command.ExecuteScalarAsync()) > 100, "upgrade preserves AUTOINCREMENT high-water mark");
+    command.CommandText = "SELECT COUNT(*) FROM Audit WHERE EventId > 100";
+    Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 1, "upgrade preserves triggers");
+    command.CommandText = "SELECT AccVoucherId FROM SaleChequeChargeEvents WHERE Id=5";
+    Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 10, "historical voucher id is retained");
+    try { await db.Database.ExecuteSqlRawAsync("DELETE FROM AccVouchers WHERE Id=10"); throw new Exception("historic FK lost"); }
+    catch (SqliteException) { Console.WriteLine("PASS: historical voucher FK remains restrictive"); }
+    command.CommandText = "PRAGMA foreign_keys";
+    Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 1, "SQLite foreign keys restored after upgrade");
 }
 await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseSqlServer("Server=localhost;Database=not-used;Integrated Security=True;TrustServerCertificate=True").Options))
@@ -739,7 +605,8 @@ await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>
         ("20261105020000_AddTreasuryAccountCompany", "IX_TrsAccounts_CompanyId"),
         ("20261105030000_AddSaleChequeCreditSettlements", "SaleChequeCreditSettlements"),
         ("20261105040000_AddSaleChequeInstallmentReceipts", "SaleChequeInstallmentReceipts"),
-        ("20261105050000_AddSaleChequeCancellations", "SaleChequeCancellations")
+        ("20261105050000_AddSaleChequeCancellations", "SaleChequeCancellations"),
+        ("20261105060000_DecoupleShopChequeLedger", "InitialCashTrsVoucherId")
     })
     {
         Check(db.Database.GetMigrations().Contains(mig), $"migration {mig} discoverable");

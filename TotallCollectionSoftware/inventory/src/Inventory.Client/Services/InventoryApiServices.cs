@@ -229,6 +229,13 @@ public class OrderService : IOrderService
 
     public Task<bool> CanViewProfitAsync() => _api.GetAsync<bool>("api/orders/profit-access");
 
+    public Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000)
+        => _api.GetAsync<PagedResult<Product>>($"api/orders/invoice-products?type={(int)type}&page={page}&pageSize={pageSize}");
+    public Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false)
+        => _api.GetAsync<List<LookupItem>>($"api/orders/invoice-warehouses?type={(int)type}&activeOnly={activeOnly}");
+    public Task<List<Party>> GetInvoicePartiesAsync(TransactionType type)
+        => _api.GetAsync<List<Party>>($"api/orders/invoice-parties?type={(int)type}");
+
     public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000)
         => _api.GetAsync<PagedResult<InvoiceStockItem>>($"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}");
 

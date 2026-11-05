@@ -75,7 +75,7 @@ public static class SaleChequeReplacementService
         var oldCheque = await db.Cheques.FirstOrDefaultAsync(c => c.Id == oldChequeId)
             ?? throw new InvalidOperationException("چک مورد نظر یافت نشد.");
         if (oldCheque.IsCleared || oldCheque.Status is not (ChequeStatus.InHand or ChequeStatus.Bounced) ||
-            await db.SaleChequeReceipts.AnyAsync(r => r.ChequeId == oldCheque.Id && r.ReversalVoucherId == null))
+            await db.SaleChequeReceipts.AnyAsync(r => r.ChequeId == oldCheque.Id && r.ReversalDate == null))
             throw new InvalidOperationException("فقط چک وصول‌نشده نزد صندوق یا برگشتی قابل تعویض است.");
         if (dueDate != oldCheque.DueDate.Date)
             throw new InvalidOperationException("سررسید چک جایگزین باید برابر سررسید فعلی چک قبلی باشد؛ در صورت تغییر سررسید، پس از تعویض از گزینه تغییر سررسید استفاده کنید.");

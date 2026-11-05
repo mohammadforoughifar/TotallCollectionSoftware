@@ -24,7 +24,7 @@ BEGIN
         CONSTRAINT [FK_SaleChequeInstReceipts_RevVoucher] FOREIGN KEY ([ReversalVoucherId]) REFERENCES [dbo].[AccVouchers] ([Id]) ON DELETE NO ACTION
     );
     CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_OperationId] ON [dbo].[SaleChequeInstallmentReceipts] ([OperationId]);
-    CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_ActiveInstallment] ON [dbo].[SaleChequeInstallmentReceipts] ([InstallmentId]) WHERE [ReversalVoucherId] IS NULL;
+    CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_ActiveInstallment] ON [dbo].[SaleChequeInstallmentReceipts] ([InstallmentId]) WHERE [ReversalDate] IS NULL;
     CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_AccVoucherId] ON [dbo].[SaleChequeInstallmentReceipts] ([AccVoucherId]);
     CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_ReversalOperationId] ON [dbo].[SaleChequeInstallmentReceipts] ([ReversalOperationId]) WHERE [ReversalOperationId] IS NOT NULL;
     CREATE UNIQUE INDEX [IX_SaleChequeInstReceipts_ReversalVoucherId] ON [dbo].[SaleChequeInstallmentReceipts] ([ReversalVoucherId]) WHERE [ReversalVoucherId] IS NOT NULL;
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS ""SaleChequeInstallmentReceipts"" (
     CONSTRAINT ""FK_SaleChequeInstReceipts_RevVoucher"" FOREIGN KEY (""ReversalVoucherId"") REFERENCES ""AccVouchers"" (""Id"") ON DELETE RESTRICT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_OperationId"" ON ""SaleChequeInstallmentReceipts"" (""OperationId"");
-CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_ActiveInstallment"" ON ""SaleChequeInstallmentReceipts"" (""InstallmentId"") WHERE ""ReversalVoucherId"" IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_ActiveInstallment"" ON ""SaleChequeInstallmentReceipts"" (""InstallmentId"") WHERE ""ReversalDate"" IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_AccVoucherId"" ON ""SaleChequeInstallmentReceipts"" (""AccVoucherId"");
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_ReversalOperationId"" ON ""SaleChequeInstallmentReceipts"" (""ReversalOperationId"") WHERE ""ReversalOperationId"" IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeInstReceipts_ReversalVoucherId"" ON ""SaleChequeInstallmentReceipts"" (""ReversalVoucherId"") WHERE ""ReversalVoucherId"" IS NOT NULL;

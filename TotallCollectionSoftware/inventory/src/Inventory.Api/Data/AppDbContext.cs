@@ -70,6 +70,10 @@ public class AppDbContext : DbContext
         {
             if (entry.State == EntityState.Added)
             {
+                if (active == 0)
+                    throw new InvalidOperationException("کاربر به هیچ شرکتی دسترسی ندارد و امکان ثبت اطلاعات نیست.");
+                if (active is > 0 && entry.Entity.CompanyId is > 0 && entry.Entity.CompanyId != active)
+                    throw new InvalidOperationException("رکورد جدید باید متعلق به شرکت فعال باشد.");
                 if ((entry.Entity.CompanyId ?? 0) <= 0)
                 {
                     // کاربرِ بدون شرکت (۰) اجازهٔ ساخت رکورد ندارد؛ زمینهٔ تعیین‌نشده (null) → شرکت پیش‌فرض
@@ -755,6 +759,8 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().Property(t => t.SettledAmount).HasPrecision(18, 2);
         mb.Entity<Transaction>().Property(t => t.CashAmount).HasPrecision(18, 2);
         mb.Entity<SaleChequeCharge>().HasIndex(c => c.TransactionId).IsUnique();
+        mb.Entity<SaleChequeCharge>().HasIndex(c => c.InitialCashTrsVoucherId).IsUnique().HasFilter("[InitialCashTrsVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCharge>().HasOne(c => c.InitialCashTrsVoucher).WithMany().HasForeignKey(c => c.InitialCashTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<SaleChequeCharge>().HasOne(c => c.Transaction).WithMany()
             .HasForeignKey(c => c.TransactionId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<SaleChequeCharge>().Property(c => c.BaseAmount).HasPrecision(18, 2);
@@ -765,7 +771,7 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeCharge>().Property(c => c.Amount).HasPrecision(18, 2);
         mb.Entity<SaleChequeCharge>().Property(c => c.CustomerCredit).HasPrecision(18, 2);
         mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.OperationId).IsUnique();
-        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeChargeEvent>().HasIndex(e => new { e.SaleChequeChargeId, e.Date });
         mb.Entity<SaleChequeChargeEvent>().HasOne(e => e.SaleChequeCharge).WithMany()
             .HasForeignKey(e => e.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
@@ -782,8 +788,8 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeReschedule>().Property(x => x.RatePercent).HasPrecision(18, 6);
         mb.Entity<SaleChequeReschedule>().Property(x => x.IncomeDelta).HasPrecision(18, 2);
         mb.Entity<SaleChequeReceipt>().HasIndex(x => x.OperationId).IsUnique();
-        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ChequeId).IsUnique().HasFilter("[ReversalVoucherId] IS NULL");
-        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ChequeId).IsUnique().HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
         mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ReversalVoucherId).IsUnique().HasFilter("[ReversalVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeReceipt>().HasOne(x => x.Cheque).WithMany().HasForeignKey(x => x.ChequeId).OnDelete(DeleteBehavior.Restrict);
@@ -794,7 +800,7 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
         mb.Entity<SaleChequeReturn>().HasIndex(x => x.OperationId).IsUnique();
         mb.Entity<SaleChequeReturn>().HasIndex(x => x.ReturnTransactionId).IsUnique();
-        mb.Entity<SaleChequeReturn>().HasIndex(x => x.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeReturn>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeReturn>().HasIndex(x => x.SaleChequeChargeEventId).IsUnique().HasDatabaseName("IX_SaleChequeReturns_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
         mb.Entity<SaleChequeReturn>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<SaleChequeReturn>().HasOne(x => x.ReturnTransaction).WithMany().HasForeignKey(x => x.ReturnTransactionId).OnDelete(DeleteBehavior.Restrict);
@@ -828,7 +834,7 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeReplacement>().Property(x => x.OldAmount).HasPrecision(18, 2);
         mb.Entity<SaleChequeReplacement>().Property(x => x.NewAmount).HasPrecision(18, 2);
         mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.OperationId).IsUnique();
-        mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.TrsVoucherId).IsUnique().HasFilter("[TrsVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.TargetSaleTransaction).WithMany().HasForeignKey(x => x.TargetSaleTransactionId).OnDelete(DeleteBehavior.Restrict);
@@ -838,8 +844,8 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.TrsVoucher).WithMany().HasForeignKey(x => x.TrsVoucherId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<SaleChequeCreditSettlement>().Property(x => x.Amount).HasPrecision(18, 2);
         mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.OperationId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_OperationId");
-        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.InstallmentId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ActiveInstallment").HasFilter("[ReversalVoucherId] IS NULL");
-        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.AccVoucherId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_AccVoucherId");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.InstallmentId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ActiveInstallment").HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.AccVoucherId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_AccVoucherId").HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalOperationId").HasFilter("[ReversalOperationId] IS NOT NULL");
         mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.ReversalVoucherId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalVoucherId").HasFilter("[ReversalVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.Installment).WithMany().HasForeignKey(x => x.InstallmentId).OnDelete(DeleteBehavior.Restrict);
@@ -849,7 +855,7 @@ public class AppDbContext : DbContext
         mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.ReversalVoucher).WithMany().HasForeignKey(x => x.ReversalVoucherId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<SaleChequeInstallmentReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
         mb.Entity<SaleChequeCancellation>().HasIndex(x => x.OperationId).IsUnique();
-        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.AccVoucherId).IsUnique();
+        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeCancellation>().HasIndex(x => x.SaleChequeChargeEventId).IsUnique().HasDatabaseName("IX_SaleChequeCancellations_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
         mb.Entity<SaleChequeCancellation>().HasIndex(x => x.RefundTrsVoucherId).IsUnique().HasFilter("[RefundTrsVoucherId] IS NOT NULL");
         mb.Entity<SaleChequeCancellation>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);

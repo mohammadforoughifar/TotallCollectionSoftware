@@ -12,7 +12,7 @@ class GuardContract(unittest.TestCase):
             self.assertIn('RejectUnimplementedChequeChargeMutationAsync(', section, name)
         section = s[s.index('public async Task ChangeSaleChequeStatusAsync'):]
         section = section[:section.find('\n    }')]
-        for guard in ('RequireExperimentalChequeCharge()', 'IsolationLevel.Serializable', 'SaleChequeReceipts.AnyAsync'):
+        for guard in ('IsolationLevel.Serializable', 'SaleChequeReceipts.AnyAsync'):
             self.assertIn(guard, section)
         self.assertNotIn('SaleChequeChargeEvents.Add', section)
         invoicing = (ROOT / 'Invoicing/InvoicingService.cs').read_text(encoding='utf8')

@@ -43,8 +43,9 @@ class ProfitLossContract(unittest.TestCase):
                      'l.AccountId == incomeAccountId', 'dash.ChequeIncomeTotal += -net'):
             self.assertIn(part, service)
         posting = read('Inventory.Api/Services/Invoicing/SaleChequeChargePosting.cs')
-        self.assertIn('charge.IncomeAccountId = rule.ChequeIncomeAccountId', posting)
-        self.assertIn('charge.PartyAccountId = rule.PartyAccountId', posting)
+        self.assertNotIn('db.AccVouchers', posting)
+        self.assertNotIn('db.FacRules', posting)
+        self.assertIn('e.AccVoucherId != null', service)
         ui = read('Inventory.Client/Pages/Accounting/AccFinanceDashboard.razor')
         self.assertIn('data.ChequeIncomeTotal.Money()', ui)
         self.assertIn('مالی/غیرعملیاتی', ui)

@@ -93,8 +93,8 @@ class CompleteWorkflowsSchema(unittest.TestCase):
             self.db.execute('DELETE FROM AccVouchers WHERE Id = 600')
         svc = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeCreditSettlementService.cs').read_text(encoding='utf8')
         for part in ('IsolationLevel.Serializable', 'SaleChequeCreditSettlementKind.RefundPayment',
-                     'SaleChequeCreditSettlementKind.ApplyToSale', 'VoucherSource.StoreSaleCreditRefund',
-                     'VoucherSource.StoreSaleCreditAllocation', 'targetSale.SettledAmount += amount'):
+                     'SaleChequeCreditSettlementKind.ApplyToSale', 'SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync',
+                     'targetSale.SettledAmount += amount'):
             self.assertIn(part, svc)
 
     def test_installment_receipt_and_reversal_schema_and_contract(self):
@@ -112,8 +112,8 @@ class CompleteWorkflowsSchema(unittest.TestCase):
         self.db.execute("UPDATE SaleChequeInstallmentReceipts SET ReversalOperationId='rev-1', ReversalVoucherId=602, ReversalDate='2026-06-21' WHERE OperationId='inst-1'")
         self.db.execute(ins, ('inst-2', 601))
         svc = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeInstallmentPosting.cs').read_text(encoding='utf8')
-        for part in ('IsolationLevel.Serializable', 'VoucherSource.StoreSaleInstallmentReceipt',
-                     'VoucherSource.StoreSaleInstallmentReceiptReversal', 'sale.SettledAmount += inst.Amount',
+        for part in ('IsolationLevel.Serializable', 'SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync',
+                     'receipt.ReversalDate = date', 'sale.SettledAmount += inst.Amount',
                      'sale.SettledAmount -= receipt.Amount'):
             self.assertIn(part, svc)
 
@@ -131,7 +131,7 @@ class CompleteWorkflowsSchema(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute('DELETE FROM AccVouchers WHERE Id = 600')
         svc = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeCancellationService.cs').read_text(encoding='utf8')
-        for part in ('IsolationLevel.Serializable', 'VoucherSource.StoreSaleCancellation',
+        for part in ('IsolationLevel.Serializable', 'RefundTrsVoucher = refundTrs',
                      'SaleChequeChargeEventKind.Cancellation', 'SaleChequeReturnService.RebuildLegacyStockAsync'):
             self.assertIn(part, svc)
         inv = (ROOT / 'Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')

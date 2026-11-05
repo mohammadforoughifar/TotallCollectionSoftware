@@ -64,7 +64,7 @@ class ReturnWorkflowSchema(unittest.TestCase):
         svc = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeReturnService.cs').read_text(encoding='utf8')
         for part in ('IsolationLevel.Serializable', 'transaction.RollbackAsync()', 'db.ChangeTracker.Clear()',
                      'SaleChequeReturnPlanner.PlanLine(', 'SaleChequeReturnPlanner.Plan(',
-                     'SaleChequeCorrectionAmounts.ForReturn(', 'SaleChequeChargeEventKind.GoodsReturn',
+                     'SaleChequeChargeEventKind.GoodsReturn',
                      'SaleChequeReturnDecision.ReplaceCheque', 'SaleChequeReturnDecision.KeepChequeForGoods',
                      'TransactionType.SaleReturn', 'RebuildLegacyStockAsync'):
             self.assertIn(part, svc)

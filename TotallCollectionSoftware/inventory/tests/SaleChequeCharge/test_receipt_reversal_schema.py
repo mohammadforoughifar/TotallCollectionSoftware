@@ -42,12 +42,14 @@ class ReversalSchema(unittest.TestCase):
     def test_reversal_is_serialized_and_keeps_history(self):
         s = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeReceiptReversal.cs').read_text(encoding='utf8')
         for part in ('IsolationLevel.Serializable', 'tx.RollbackAsync()', 'ReversalOperationId == operationId',
-                     'PreviousAccountKnown', 'ReversalVoucher = new AccVoucher', 'sale.SettledAmount -= receipt.Amount',
-                     'cheque.TrsAccountId = receipt.PreviousTrsAccountId', 'balance.Balance < receipt.Amount'):
+                     'PreviousAccountKnown', 'receipt.ReversalDate = date', 'sale.SettledAmount -= receipt.Amount',
+                     'cheque.TrsAccountId = receipt.PreviousTrsAccountId', 'balance.Value < receipt.Amount'):
             self.assertIn(part, s)
         self.assertNotIn('AccVouchers.Remove', s)
         treasury = (ROOT / 'Inventory.Api/Services/Treasury/TreasuryService.cs').read_text(encoding='utf8')
-        self.assertIn('outSum += saleReceipts.Where(r => r.ReversalVoucherId.HasValue)', treasury)
+        self.assertIn('receipt.ReversalDate.HasValue', treasury)
+        calculator = (ROOT / 'Inventory.Api/Services/Treasury/TreasuryBalanceCalculator.cs').read_text(encoding='utf8')
+        self.assertIn('r.ReversalDate.HasValue', calculator)
         self.assertIn('لغو وصول چک فروش', treasury)
 
 

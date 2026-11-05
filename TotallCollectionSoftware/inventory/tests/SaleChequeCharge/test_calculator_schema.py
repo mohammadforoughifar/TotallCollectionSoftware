@@ -27,7 +27,7 @@ class CalculatorSchemaTests(unittest.TestCase):
         s = read('Inventory.Api/Services/Invoicing/SaleChequeChargePosting.cs')
         for part in ('SaleChequeInitialCalculation.Calculate(charge.CalculatorBaseAmount.Value',
                      'charge.CalculatorRatePercent.Value, charge.CalculatorMonths.Value',
-                     'calculatedInitial != charge.InitialAmount', 'charge.CalculatorBaseAmount.Value > charge.BaseAmount',
+                     'initial != charge.InitialAmount', 'charge.CalculatorBaseAmount.Value > charge.BaseAmount',
                      'charge.RatePercent < 0'):
             self.assertIn(part, s)
         self.assertIn('SaleChequeCalculatorSchemaV1.SqlServer', read('Inventory.Api/Migrations/20261104170000_AddSaleChequeCalculatorSnapshot.cs'))

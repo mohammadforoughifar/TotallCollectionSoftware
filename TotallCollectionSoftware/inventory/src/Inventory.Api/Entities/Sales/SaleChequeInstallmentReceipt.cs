@@ -1,6 +1,6 @@
 namespace Inventory.Api.Data;
 
-/// <summary>دریافت و لغو دریافت قسط فاکتور دارای تاخیر تادیه چک با سند حسابداری مستقل.</summary>
+/// <summary>دریافت و لغو دریافت قسط فاکتور دارای تاخیر تادیه چک در گردش فروشگاهی.</summary>
 public class SaleChequeInstallmentReceipt : ICompanyOwned
 {
     public int Id { get; set; }
@@ -12,10 +12,11 @@ public class SaleChequeInstallmentReceipt : ICompanyOwned
     public Transaction Transaction { get; set; } = null!;
     public int TrsAccountId { get; set; }
     public TrsAccount TrsAccount { get; set; } = null!;
-    public int BankAccountId { get; set; }
-    public int PartyAccountId { get; set; }
-    public int AccVoucherId { get; set; }
-    public AccVoucher AccVoucher { get; set; } = null!;
+    public int? BankAccountId { get; set; }
+    public int? PartyAccountId { get; set; }
+    /// <summary>پیوند اختیاری سند تاریخی ERP؛ گردش‌های جدید فروشگاهی به آن وابسته نیستند.</summary>
+    public int? AccVoucherId { get; set; }
+    public AccVoucher? AccVoucher { get; set; }
     public DateTime Date { get; set; }
     public decimal Amount { get; set; }
     public Guid? ReversalOperationId { get; set; }

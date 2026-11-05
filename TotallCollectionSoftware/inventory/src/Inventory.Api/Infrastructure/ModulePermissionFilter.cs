@@ -1,4 +1,5 @@
 using Inventory.Api.Services.Core;
+using Inventory.Api.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -27,6 +28,7 @@ public sealed class ModulePermissionAttribute : TypeFilterAttribute
 public sealed class ModulePermissionFilter : IAsyncActionFilter
 {
     private readonly IEffectivePermissions _permissions;
+    private readonly AppDbContext _db;
     private readonly string _module;
     private readonly string _readAction;
 
@@ -42,12 +44,18 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
             ["Referrers.GetWallets"] = new("ReferrerWallets", "Read"),
             ["Referrers.GetPayments"] = new("ReferrerWallets", "Read"),
             ["Referrers.AddPayment"] = new("ReferrerWallets", "Update"),
-            ["Referrers.DeletePayment"] = new("ReferrerWallets", "Update")
+            ["Referrers.DeletePayment"] = new("ReferrerWallets", "Update"),
+            ["Orders.PreviewChequeReturn"] = new("Orders", "Update"),
+            ["Orders.ReturnChequeOrder"] = new("Orders", "Update"),
+            ["Orders.RefundCredit"] = new("Orders", "Update"),
+            ["Orders.AllocateCredit"] = new("Orders", "Update"),
+            ["Orders.CancelChequeOrder"] = new("Orders", "Delete")
         };
 
-    public ModulePermissionFilter(IEffectivePermissions permissions, string module, string readAction)
+    public ModulePermissionFilter(IEffectivePermissions permissions, AppDbContext db, string module, string readAction)
     {
         _permissions = permissions;
+        _db = db;
         _module = module;
         _readAction = readAction;
     }
@@ -70,7 +78,7 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
         var user = context.HttpContext.User;
         var allowed = user.Identity?.IsAuthenticated == true
                       && (await _permissions.IsLegacyAdminAsync(user)
-                          || (await _permissions.GetAsync(user)).Contains($"{target.Module}.{target.Action}"));
+                          || await ShopPermissionAuthorizer.AllowsAsync(_db, context, await _permissions.GetAsync(user), target.Module, target.Action));
         if (!allowed)
         {
             context.Result = Denied("شما مجوز لازم برای این عملیات را ندارید.");

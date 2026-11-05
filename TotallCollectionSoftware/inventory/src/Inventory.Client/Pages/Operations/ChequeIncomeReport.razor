@@ -18,7 +18,7 @@ else
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
             <div>
                 <h1 class="h4 fw-bold mb-1">گزارش تاخیر تادیه چک</h1>
-                <p class="text-muted fs-8 mb-0">گردش درآمد مالی بر اساس تاریخ سند قطعی و مشتری</p>
+                <p class="text-muted fs-8 mb-0">گردش درآمد بر اساس تاریخ عملیات فروشگاه و مشتری</p>
             </div>
             <div class="d-flex gap-2 d-print-none">
                 <a class="btn btn-outline-secondary btn-sm" href="/operations/reports/orders/sale">گزارش فروش</a>
@@ -56,13 +56,13 @@ else
                 {
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light"><tr><th>تاریخ سند</th><th>مشتری</th><th>فاکتور فروش</th><th>سند حسابداری</th><th>نوع گردش</th><th class="text-start">مبلغ (ریال)</th></tr></thead>
+                            <thead class="table-light"><tr><th>تاریخ گردش</th><th>مشتری</th><th>فاکتور فروش</th><th>شناسه گردش</th><th>نوع گردش</th><th class="text-start">مبلغ (ریال)</th></tr></thead>
                             <tbody>
                             @foreach (var row in report.Rows)
                             {
                                 <tr>
                                     <td class="num">@row.Date.ToFa()</td><td>@row.PartyName</td><td class="num">@row.SaleNumber</td>
-                                    <td class="num">@row.VoucherNumber.Num()</td><td>@KindTitle(row.Kind)</td>
+                                    <td class="num">@row.EventId.Num()</td><td>@KindTitle(row.Kind)</td>
                                     <td class="num text-start @(row.Income < 0 ? "text-danger" : "")" dir="ltr">@row.Income.Money()</td>
                                 </tr>
                             }
@@ -87,7 +87,8 @@ else
     {
         Layout.SetTitle("گزارش تاخیر تادیه چک");
         if (!Auth.CanSee("Orders") || !Auth.Has("Orders.ViewProfit")) { loading = false; return; }
-        try { parties = await PartySvc.GetLookupsAsync(PartyType.Customer); }
+        try { parties = (await OrderSvc.GetInvoicePartiesAsync(TransactionType.Sale))
+            .Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         await Load();
     }

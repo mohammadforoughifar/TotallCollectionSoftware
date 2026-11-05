@@ -19,7 +19,7 @@ class TermsContract(unittest.TestCase):
         self.assertIn('Type == TransactionType.Sale && (!IsEdit || EditOrder?.HasChequeCharge == true)', cheque)
         self.assertIn('<strong>تاخیر تادیه چک</strong>', cheque)
         self.assertIn('محاسبه سود', cheque)
-        self.assertIn('به تنظیمات سرور وابسته است', cheque)
+        self.assertNotIn('به تنظیمات سرور وابسته است', cheque)
         self.assertNotIn('پیش‌فرض خاموش', cheque)
 
 if __name__ == '__main__':

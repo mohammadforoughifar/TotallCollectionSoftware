@@ -56,9 +56,10 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید"', FORM)
         self.assertIn('Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده"', FORM)
         self.assertIn('Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش"', FORM)
-        self.assertIn('Type == TransactionType.Sale && invoiceStep == 1 && (CanSeeProfit || referrerId > 0)', FORM)
+        self.assertIn('Type == TransactionType.Sale && invoiceStep == 1 && CanSeeProfit', FORM)
         self.assertIn('data-label="سود"', FORM)
         self.assertIn('data-label="پورسانت"', FORM)
+        self.assertIn('CanSeeProfit && referrerId > 0', FORM)
         self.assertIn('CanSeeProfit', FORM)
         self.assertIn('LineProfit(l)', FORM)
         self.assertIn('LineCommission(l)', FORM)
@@ -148,16 +149,17 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('<col style="width:@InvoiceActionsColumnWidth" />', colgroup)
         self.assertIn('SaleActionsColumnRem = 4.5m', FORM)
         self.assertIn('SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns', FORM)
+        self.assertIn('(CanSeeProfit && referrerId > 0 ? 1 : 0)', FORM)
         self.assertIn('100m * weight / totalWeight', FORM)
         self.assertIn('if (Type != TransactionType.Sale)', FORM)
         self.assertIn(': InvoiceColumnWidth(5)', FORM)
 
-        for condition, label in (('CanSeeProfit', 'سود'), ('referrerId > 0', 'پورسانت')):
+        for condition, label in (('CanSeeProfit', 'سود'), ('CanSeeProfit && referrerId > 0', 'پورسانت')):
             self.assertIn(f'@if (Type == TransactionType.Sale && {condition})', colgroup)
             guard = re.escape(f'@if ({condition})')
             self.assertRegex(thead, guard + r'\s*\{\s*<th><span>' + label + r'</span>')
             self.assertRegex(row, guard + r'\s*\{\s*<td data-label="' + label + '"')
-        for profit, commission in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        for profit, commission in ((0, 0), (1, 0), (1, 1)):
             denominator = base + extra * (profit + commission)
             visible = sale_weights + [extra] * (profit + commission)
             self.assertEqual(sum(visible), denominator)

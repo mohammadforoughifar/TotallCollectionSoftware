@@ -49,7 +49,8 @@ public sealed class ActiveCompanyMiddleware
             }
             catch (Exception ex)
             {
-                // تعیین شرکت نباید هیچ درخواستی را بشکند؛ در بدترین حالت بدون زمینه ادامه می‌دهیم.
+                // Fail closed: an authenticated request must never lose its company filter on lookup failure.
+                if (ctx.User?.Identity?.IsAuthenticated == true) ctx.Items[ItemKey] = 0;
                 _log.LogWarning(ex, "تعیین شرکت فعال برای درخواست {Path} ناموفق بود", ctx.Request.Path);
             }
         }
@@ -67,7 +68,7 @@ public sealed class ActiveCompanyMiddleware
             return Task.FromResult<(int?, string?)>((null, null));
 
         var userId = UserIdOf(ctx);
-        if (userId <= 0) return Task.FromResult<(int?, string?)>((null, null));
+        if (userId <= 0) return Task.FromResult<(int?, string?)>((0, null));
 
         // شرکت درخواستی از هدر (کمبوی بالای فرم اصلی)
         int? requested = int.TryParse(ctx.Request.Headers[HeaderName].FirstOrDefault(), out var h) && h > 0 ? h : null;

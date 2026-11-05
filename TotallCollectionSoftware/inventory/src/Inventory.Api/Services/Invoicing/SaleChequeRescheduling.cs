@@ -80,7 +80,7 @@ public static class SaleChequeRescheduling
         DateTime expectedDueDate, DateTime newDueDate, DateTime operationDate, string? user, decimal? confirmedIncomeDelta = null)
     {
         var transaction = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("تغییر سررسید باید داخل تراکنش حسابداری انجام شود.");
+            ?? throw new InvalidOperationException("تغییر سررسید باید داخل تراکنش فاکتور انجام شود.");
         try
         {
             if (transaction.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
@@ -126,16 +126,16 @@ public static class SaleChequeRescheduling
         var charge = await db.SaleChequeCharges.FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
             ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
         if (charge.CompanyId != sale.CompanyId || cheque.CompanyId != sale.CompanyId ||
-            charge.IncomeAccountId is not > 0 || charge.PartyAccountId is not > 0 ||
-            charge.IncomeAccountId == charge.PartyAccountId || charge.Amount < 0 || charge.CustomerCredit < 0 ||
+            charge.Amount < 0 || charge.CustomerCredit < 0 ||
             (charge.Amount > 0 && charge.CustomerCredit > 0) || sale.Amount != charge.BaseAmount + charge.Amount)
             throw new InvalidOperationException("اطلاعات مالی فاکتور ناسازگار است؛ تغییر سررسید متوقف شد.");
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
             throw new InvalidOperationException("فاکتور ابطال شده است و تغییر سررسید مجاز نیست.");
+        await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         var ledgerEvents = await db.SaleChequeChargeEvents.AsNoTracking().Where(e => e.SaleChequeChargeId == charge.Id)
-            .Select(e => new { e.Kind, e.Date, e.IncomeDelta, e.AccVoucher.Status }).ToListAsync();
+            .Select(e => new { e.Kind, e.Date, e.IncomeDelta }).ToListAsync();
         if (ledgerEvents.Count(e => e.Kind == SaleChequeChargeEventKind.Initial) != 1 ||
-            ledgerEvents.Any(e => e.Status != VoucherStatus.Confirmed || e.Date.Date > operationDate) ||
+            ledgerEvents.Any(e => e.Date.Date > operationDate) ||
             ledgerEvents.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit ||
             await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > operationDate) ||
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > operationDate) ||
@@ -143,15 +143,6 @@ public static class SaleChequeRescheduling
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)))
             throw new InvalidOperationException("تاریخچه درآمد با فاکتور مطابقت ندارد یا تاریخ اصلاح پیش از عملیات قبلی است.");
-        var accounts = await db.AccAccounts.AsNoTracking()
-            .Where(a => a.Id == charge.IncomeAccountId || a.Id == charge.PartyAccountId).ToListAsync();
-        if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable) ||
-            accounts.Single(a => a.Id == charge.IncomeAccountId).Type != AccountType.Income ||
-            accounts.Single(a => a.Id == charge.PartyAccountId).Type != AccountType.Asset)
-            throw new InvalidOperationException("حساب‌های ثبت‌شده مشتری و درآمد باید فعال و قابل ثبت باشند.");
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= operationDate && y.EndDate >= operationDate).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ اصلاح باید دقیقاً یک سال مالی باز وجود داشته باشد.");
         decimal effectiveBase, delta, newNet;
         try
         {
@@ -173,29 +164,10 @@ public static class SaleChequeRescheduling
         SaleChequeChargeEvent? incomeEvent = null;
         if (delta != 0)
         {
-            var amounts = SaleChequeCorrectionAmounts.ForDueDate(delta);
-            var year = years[0];
-            var number = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
-            var title = $"تعدیل سررسید چک — فاکتور {sale.Number}";
-            var voucher = new AccVoucher
-            {
-                FiscalYearId = year.Id, Number = number, Date = operationDate, Status = VoucherStatus.Confirmed,
-                Source = VoucherSource.StoreSaleChequeAdjustment, SourceId = sale.Id, SourceTitle = title,
-                Description = title, RefNumber = sale.Number, CreatedBy = user, ConfirmedBy = user,
-                CreatedAt = DateTime.Now, ConfirmedAt = DateTime.Now,
-                TotalDebit = amounts.TotalDebit, TotalCredit = amounts.TotalCredit,
-                Lines = new()
-                {
-                    new AccVoucherLine { RowNo = 1, AccountId = charge.PartyAccountId.Value, PartyId = sale.PartyId,
-                        Debit = amounts.PartyDebit, Credit = amounts.PartyCredit, Description = title, RefNumber = sale.Number },
-                    new AccVoucherLine { RowNo = 2, AccountId = charge.IncomeAccountId.Value, PartyId = sale.PartyId,
-                        Debit = amounts.IncomeDebit, Credit = amounts.IncomeCredit, Description = title, RefNumber = sale.Number }
-                }
-            };
             incomeEvent = new SaleChequeChargeEvent
             {
                 CompanyId = charge.CompanyId, OperationId = operationId, SaleChequeChargeId = charge.Id,
-                AccVoucher = voucher, Kind = SaleChequeChargeEventKind.DueDateAdjustment, Date = operationDate, IncomeDelta = delta
+                Kind = SaleChequeChargeEventKind.DueDateAdjustment, Date = operationDate, IncomeDelta = delta
             };
             db.SaleChequeChargeEvents.Add(incomeEvent);
         }

@@ -1,6 +1,5 @@
 using System.Data;
 using Inventory.Api.Data;
-using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +19,7 @@ public static class SaleChequeInstallmentPosting
         AppDbContext db, int installmentId, Guid operationId, int trsAccountId, DateTime date, string? user)
     {
         var tx = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("دریافت قسط باید در تراکنش حسابداری انجام شود.");
+            ?? throw new InvalidOperationException("دریافت قسط باید در تراکنش فاکتور انجام شود.");
         try
         {
             if (tx.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
@@ -39,7 +38,7 @@ public static class SaleChequeInstallmentPosting
         AppDbContext db, int installmentId, Guid operationId, DateTime date, string? user)
     {
         var tx = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("لغو دریافت قسط باید در تراکنش حسابداری انجام شود.");
+            ?? throw new InvalidOperationException("لغو دریافت قسط باید در تراکنش فاکتور انجام شود.");
         try
         {
             if (tx.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
@@ -71,7 +70,7 @@ public static class SaleChequeInstallmentPosting
 
         var inst = await db.Installments.FirstOrDefaultAsync(i => i.Id == installmentId)
             ?? throw new InvalidOperationException("قسط یافت نشد.");
-        if (inst.IsPaid || await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.InstallmentId == installmentId && r.ReversalVoucherId == null))
+        if (inst.IsPaid || await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.InstallmentId == installmentId && r.ReversalDate == null))
             throw new InvalidOperationException("این قسط قبلاً تسویه شده است.");
         if (inst.Amount <= 0 || inst.Amount > MaxMoney || decimal.Round(inst.Amount, 2) != inst.Amount)
             throw new InvalidOperationException("مبلغ قسط معتبر نیست.");
@@ -81,7 +80,7 @@ public static class SaleChequeInstallmentPosting
         var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
             ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
         if (sale.Type != TransactionType.Sale || sale.PartyId is not > 0 || date < sale.Date.Date ||
-            inst.CompanyId != sale.CompanyId || charge.CompanyId != sale.CompanyId || charge.PartyAccountId is not > 0)
+            inst.CompanyId != sale.CompanyId || charge.CompanyId != sale.CompanyId)
             throw new InvalidOperationException("فاکتور، حساب مشتری یا تاریخ دریافت قسط معتبر نیست.");
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
             throw new InvalidOperationException("فاکتور ابطال شده است و دریافت قسط مجاز نیست.");
@@ -93,65 +92,18 @@ public static class SaleChequeInstallmentPosting
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ دریافت قسط نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
 
-        var initialConfirmed = await db.SaleChequeChargeEvents.AnyAsync(e => e.SaleChequeChargeId == charge.Id &&
-            e.Kind == SaleChequeChargeEventKind.Initial && e.AccVoucher.Status == VoucherStatus.Confirmed);
-        if (!initialConfirmed) throw new InvalidOperationException("سند قطعی اولیه فاکتور یافت نشد.");
+        var initial = await db.SaleChequeChargeEvents.AsNoTracking()
+            .Where(e => e.SaleChequeChargeId == charge.Id && e.Kind == SaleChequeChargeEventKind.Initial).ToListAsync();
+        if (initial.Count != 1 || initial[0].IncomeDelta != charge.InitialAmount || initial[0].Date.Date != sale.Date.Date)
+            throw new InvalidOperationException("گردش اولیه فاکتور معتبر نیست.");
 
         var trsAccount = await db.TrsAccounts.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == trsAccountId && a.IsActive && a.AccountId > 0)
-            ?? throw new InvalidOperationException("حساب مقصد فعال یا متصل به حسابداری نیست.");
+            .FirstOrDefaultAsync(a => a.Id == trsAccountId && a.IsActive)
+            ?? throw new InvalidOperationException("حساب مقصد فعال نیست یا یافت نشد.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, trsAccount, sale.CompanyId);
-        var bankAccountId = trsAccount.AccountId!.Value;
-        var partyAccountId = charge.PartyAccountId.Value;
-        if (bankAccountId == partyAccountId)
-            throw new InvalidOperationException("حساب مقصد و حساب مشتری باید مستقل باشند.");
-
-        var accounts = await db.AccAccounts.AsNoTracking()
-            .Where(a => a.Id == bankAccountId || a.Id == partyAccountId).ToListAsync();
-        if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable || a.Type != AccountType.Asset))
-            throw new InvalidOperationException("حساب‌های مشتری و مقصد باید دارایی، فعال و قابل ثبت باشند.");
-
         await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         if (sale.SettledAmount + inst.Amount > MaxMoney)
-            throw new InvalidOperationException("جمع دریافت از محدوده حسابداری بیشتر است.");
-
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= date && y.EndDate >= date).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ دریافت قسط باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-        var year = years[0];
-        var number = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
-        var title = $"دریافت قسط {inst.No} — فاکتور {sale.Number}";
-        var voucher = new AccVoucher
-        {
-            FiscalYearId = year.Id,
-            Number = number,
-            Date = date,
-            Status = VoucherStatus.Confirmed,
-            Source = VoucherSource.StoreSaleInstallmentReceipt,
-            SourceId = sale.Id,
-            SourceTitle = title,
-            Description = title,
-            RefNumber = sale.Number,
-            CreatedBy = user,
-            ConfirmedBy = user,
-            CreatedAt = DateTime.Now,
-            ConfirmedAt = DateTime.Now,
-            TotalDebit = inst.Amount,
-            TotalCredit = inst.Amount,
-            Lines = new()
-            {
-                new AccVoucherLine
-                {
-                    RowNo = 1, AccountId = bankAccountId, PartyId = sale.PartyId,
-                    Debit = inst.Amount, Description = title, RefNumber = sale.Number
-                },
-                new AccVoucherLine
-                {
-                    RowNo = 2, AccountId = partyAccountId, PartyId = sale.PartyId,
-                    Credit = inst.Amount, Description = title, RefNumber = sale.Number
-                }
-            }
-        };
+            throw new InvalidOperationException("جمع دریافت از محدوده مجاز بیشتر است.");
 
         var receipt = new SaleChequeInstallmentReceipt
         {
@@ -160,9 +112,6 @@ public static class SaleChequeInstallmentPosting
             InstallmentId = inst.Id,
             TransactionId = sale.Id,
             TrsAccountId = trsAccount.Id,
-            BankAccountId = bankAccountId,
-            PartyAccountId = partyAccountId,
-            AccVoucher = voucher,
             Date = date,
             Amount = inst.Amount
         };
@@ -192,8 +141,7 @@ public static class SaleChequeInstallmentPosting
 
         var receipt = await db.SaleChequeInstallmentReceipts
             .Include(r => r.Installment).Include(r => r.Transaction)
-            .Include(r => r.AccVoucher).ThenInclude(v => v.Lines)
-            .FirstOrDefaultAsync(r => r.InstallmentId == installmentId && r.ReversalVoucherId == null)
+            .FirstOrDefaultAsync(r => r.InstallmentId == installmentId && r.ReversalDate == null)
             ?? throw new InvalidOperationException("دریافت فعال قسط یافت نشد.");
         var sale = receipt.Transaction;
         var inst = receipt.Installment;
@@ -226,65 +174,15 @@ public static class SaleChequeInstallmentPosting
                 throw new InvalidOperationException("از محل دریافت این قسط قبلاً بستانکاری به مشتری پرداخت یا مصرف شده است؛ ابتدا آن را تعیین‌تکلیف کنید.");
         }
 
-        var bankLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.BankAccountId).ToList();
-        var partyLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.PartyAccountId && l.PartyId == sale.PartyId).ToList();
-        if (receipt.AccVoucher.Status != VoucherStatus.Confirmed || receipt.AccVoucher.Date.Date != receipt.Date.Date ||
-            bankLines.Sum(l => l.Debit - l.Credit) != receipt.Amount || partyLines.Sum(l => l.Credit - l.Debit) != receipt.Amount)
-            throw new InvalidOperationException("سند دریافت اولیه قسط معتبر نیست.");
-
         var trsAccount = await db.TrsAccounts.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == receipt.TrsAccountId && a.IsActive && a.AccountId == receipt.BankAccountId)
+            .FirstOrDefaultAsync(a => a.Id == receipt.TrsAccountId && a.IsActive)
             ?? throw new InvalidOperationException("حساب مقصد اولیه قسط فعال نیست یا تغییر کرده است.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, trsAccount, sale.CompanyId);
-
-        var accounts = await db.AccAccounts.AsNoTracking()
-            .Where(a => a.Id == receipt.BankAccountId || a.Id == receipt.PartyAccountId).ToListAsync();
-        if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable || a.Type != AccountType.Asset))
-            throw new InvalidOperationException("حساب‌های مقصد و مشتری باید فعال و قابل ثبت باشند.");
-
-        var balance = await new TreasuryService(db, new AccountingService(db)).GetAccountAsync(trsAccount.Id);
-        if (balance is null || balance.Balance < receipt.Amount)
+        var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
+        if (!balance.HasValue || balance.Value < receipt.Amount)
             throw new InvalidOperationException("مانده حساب مقصد برای لغو دریافت قسط کافی نیست.");
-
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= date && y.EndDate >= date).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ لغو دریافت قسط باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-        var year = years[0];
-        var number = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
-        var title = $"لغو دریافت قسط {inst.No} — فاکتور {sale.Number}";
         receipt.ReversalOperationId = operationId;
         receipt.ReversalDate = date;
-        receipt.ReversalVoucher = new AccVoucher
-        {
-            FiscalYearId = year.Id,
-            Number = number,
-            Date = date,
-            Status = VoucherStatus.Confirmed,
-            Source = VoucherSource.StoreSaleInstallmentReceiptReversal,
-            SourceId = sale.Id,
-            SourceTitle = title,
-            Description = title,
-            RefNumber = sale.Number,
-            CreatedBy = user,
-            ConfirmedBy = user,
-            CreatedAt = DateTime.Now,
-            ConfirmedAt = DateTime.Now,
-            TotalDebit = receipt.Amount,
-            TotalCredit = receipt.Amount,
-            Lines = new()
-            {
-                new AccVoucherLine
-                {
-                    RowNo = 1, AccountId = receipt.PartyAccountId, PartyId = sale.PartyId,
-                    Debit = receipt.Amount, Description = title, RefNumber = sale.Number
-                },
-                new AccVoucherLine
-                {
-                    RowNo = 2, AccountId = receipt.BankAccountId, PartyId = sale.PartyId,
-                    Credit = receipt.Amount, Description = title, RefNumber = sale.Number
-                }
-            }
-        };
 
         sale.SettledAmount -= receipt.Amount;
         inst.IsPaid = false;

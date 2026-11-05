@@ -528,14 +528,14 @@
 {
     <Modal Visible="true" Title="لغو وصول چک" OnClose="CloseReceiptReversal">
         <ChildContent>
-            <div class="alert alert-warning fs-8">لغو وصول با سند معکوس و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقهٔ وصول حفظ خواهد شد.</div>
+            <div class="alert alert-warning fs-8">لغو وصول و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقهٔ وصول حفظ خواهد شد.</div>
             <p class="fs-8">چک <b class="num">@reversalTarget.Number</b> به مبلغ <b class="num">@reversalTarget.Amount.Money()</b> ریال</p>
             <label class="form-label">تاریخ لغو وصول *</label>
             <DatePicker @bind-Value="reversalDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReceiptReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceiptReversal">ثبت سند معکوس</button>
+            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceiptReversal">ثبت لغو دریافت</button>
         </Footer>
     </Modal>
 }
@@ -574,7 +574,6 @@
 {
     <Modal Visible="true" Title="وصول چک فروش" OnClose="CloseReceipt">
         <ChildContent>
-            <div class="alert alert-warning fs-8">وصول آزمایشی است؛ تعیین‌تکلیف طلب مشتری هنوز تکمیل نشده است.</div>
             <p class="fs-8">چک <b class="num">@receiptTarget.Number</b> به مبلغ <b class="num">@receiptTarget.Amount.Money()</b> ریال</p>
             <label class="form-label">حساب بانکی مقصد شرکت *</label>
             <select class="form-select" @bind="receiptBankId">
@@ -586,7 +585,7 @@
             </select>
             @if (receiptBanks.Count == 0)
             {
-                <div class="text-muted fs-9 mt-1">حساب بانکی فعال و متصل به حسابداری یافت نشد.</div>
+                <div class="text-muted fs-9 mt-1">حساب بانکی فعال یافت نشد.</div>
             }
             <label class="form-label mt-2">تاریخ وصول *</label>
             <DatePicker @bind-Value="receiptDate" />
@@ -602,7 +601,6 @@
 {
     <Modal Visible="true" Title="تغییر سررسید چک" OnClose="CloseReschedule">
         <ChildContent>
-            <div class="alert alert-warning fs-8">این مسیر آزمایشی است؛ صورت‌حساب تاریخی و تسویه بستانکاری هنوز کامل نیست. فقط در پایگاه داده آزمایشی استفاده شود.</div>
             <div class="row g-2">
                 <div class="col-md-6"><label class="form-label">چک</label><div class="num fw-bold">@rescheduleTarget.Number</div></div>
                 <div class="col-md-6"><label class="form-label">سررسید قبلی</label><div class="num">@rescheduleTarget.DueDate.ToFa()</div></div>
@@ -691,14 +689,14 @@
 {
     <Modal Visible="true" Title="لغو دریافت قسط" OnClose="CloseInstallmentReversal">
         <ChildContent>
-            <div class="alert alert-warning fs-8">لغو دریافت قسط با صدور سند حسابداری معکوس ثبت می‌شود.</div>
+            <div class="alert alert-warning fs-8">لغو دریافت قسط با ثبت خروج از حساب اولیه انجام می‌شود؛ سابقه دریافت حفظ خواهد شد.</div>
             <p class="fs-8">قسط شماره <b class="num">@instReversalTarget.No.Num()</b> فاکتور <b class="num">@instReversalTarget.OrderNumber</b> به مبلغ <b class="num">@instReversalTarget.Amount.Money()</b> ریال</p>
             <label class="form-label">تاریخ لغو دریافت *</label>
             <DatePicker @bind-Value="instReversalDate" />
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseInstallmentReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReversal">ثبت سند معکوس</button>
+            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReversal">ثبت لغو دریافت</button>
         </Footer>
     </Modal>
 }
@@ -1220,7 +1218,7 @@
                 OperationId = reversalOperationId, Date = reversalDate.Value
             });
             reversalTarget = null;
-            Toast.Success("لغو آزمایشی وصول با سند معکوس ثبت شد.");
+            Toast.Success("لغو وصول ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1277,7 +1275,7 @@
                 OperationId = receiptOperationId, TrsAccountId = receiptBankId, Date = receiptDate.Value
             });
             receiptTarget = null;
-            Toast.Success("وصول آزمایشی چک ثبت شد.");
+            Toast.Success("وصول چک ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1333,7 +1331,7 @@
             });
             rescheduleTarget = null;
             reschedulePreview = null;
-            Toast.Success("سررسید و تعدیل آزمایشی ثبت شد.");
+            Toast.Success("سررسید و تعدیل ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1584,7 +1582,7 @@
                 Date = instReceiptDate.Value
             });
             instReceiptTarget = null;
-            Toast.Success("دریافت قسط با سند حسابداری ثبت شد.");
+            Toast.Success("دریافت قسط ثبت شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1608,7 +1606,7 @@
                 Date = instReversalDate.Value
             });
             instReversalTarget = null;
-            Toast.Warning("دریافت قسط با سند معکوس لغو شد.");
+            Toast.Warning("دریافت قسط لغو شد.");
             await LoadDataAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

@@ -13,6 +13,8 @@ public static class SaleChequeTreasuryGuard
     public static async Task VerifyCompanyOwnershipAsync(AppDbContext db, TrsAccount account, int? saleCompanyId)
     {
         ArgumentNullException.ThrowIfNull(account);
+        if (db.ActiveCompanyId == 0 || (db.ActiveCompanyId is > 0 && saleCompanyId != db.ActiveCompanyId))
+            throw new InvalidOperationException("شرکت فاکتور با شرکت فعال کاربر مطابقت ندارد.");
         if (await db.SystemCompanies.CountAsync() > 1)
         {
             if (saleCompanyId is not > 0 || account.CompanyId != saleCompanyId)
@@ -27,9 +29,10 @@ public static class SaleChequeTreasuryGuard
     public static async Task<List<TrsAccount>> ListCompanyAccountsAsync(AppDbContext db, TreasuryAccountKind? kind = null)
     {
         var activeCompanyId = db.ActiveCompanyId;
+        if (activeCompanyId == 0) return new List<TrsAccount>();
         var multiCompany = await db.SystemCompanies.CountAsync() > 1;
-        var q = db.TrsAccounts.AsNoTracking().Include(a => a.Account)
-            .Where(a => a.IsActive && a.AccountId > 0);
+        var q = db.TrsAccounts.AsNoTracking()
+            .Where(a => a.IsActive);
         if (kind.HasValue)
             q = q.Where(a => a.Kind == kind.Value);
         if (multiCompany)

@@ -103,7 +103,7 @@ public class OperationsDashboardTrendPoint
     public decimal RepairLaborCost { get; set; }
 }
 
-/// <summary>گردش قطعی تاخیر تادیه چک بر حسب تاریخ سند و مشتری.</summary>
+/// <summary>گردش ثبت‌شده تاخیر تادیه چک بر حسب تاریخ عملیات و مشتری.</summary>
 public class ChequeIncomeReportDto
 {
     public DateTime? From { get; set; }
@@ -119,8 +119,10 @@ public class ChequeIncomeReportRow
     public string SaleNumber { get; set; } = "";
     public int? PartyId { get; set; }
     public string PartyName { get; set; } = "";
+    public int EventId { get; set; }
+    /// <summary>فیلد سازگار با API قدیمی؛ صفر یعنی گردش فروشگاهی سند ERP ندارد.</summary>
     public int VoucherNumber { get; set; }
     public SaleChequeChargeEventKind Kind { get; set; }
-    /// <summary>خالص بستانکار منهای بدهکار درآمد؛ کاهش و برگشت منفی هستند.</summary>
+    /// <summary>تغییر درآمد عملیاتی؛ کاهش و برگشت منفی هستند.</summary>
     public decimal Income { get; set; }
 }

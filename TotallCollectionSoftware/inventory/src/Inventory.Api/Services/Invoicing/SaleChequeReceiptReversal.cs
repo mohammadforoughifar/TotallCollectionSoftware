@@ -1,6 +1,5 @@
 using System.Data;
 using Inventory.Api.Data;
-using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -41,8 +40,7 @@ public static class SaleChequeReceiptReversal
             return;
         }
         var receipt = await db.SaleChequeReceipts.Include(r => r.Cheque).Include(r => r.Transaction)
-            .Include(r => r.AccVoucher).ThenInclude(v => v.Lines)
-            .FirstOrDefaultAsync(r => r.ChequeId == chequeId && r.ReversalVoucherId == null)
+            .FirstOrDefaultAsync(r => r.ChequeId == chequeId && r.ReversalDate == null)
             ?? throw new InvalidOperationException("وصول فعال چک یافت نشد.");
         var sale = receipt.Transaction;
         var cheque = receipt.Cheque;
@@ -80,41 +78,15 @@ public static class SaleChequeReceiptReversal
             if (outboundCredits > rawCreditAfterReversal)
                 throw new InvalidOperationException("از محل وصول این چک قبلاً بستانکاری به مشتری پرداخت یا مصرف شده است؛ ابتدا بستانکاری تسویه‌شده را تعیین‌تکلیف کنید.");
         }
-        var bankLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.BankAccountId).ToList();
-        var partyLines = receipt.AccVoucher.Lines.Where(l => l.AccountId == receipt.PartyAccountId && l.PartyId == sale.PartyId).ToList();
-        if (receipt.AccVoucher.Status != VoucherStatus.Confirmed || receipt.AccVoucher.Date.Date != receipt.Date.Date ||
-            bankLines.Sum(l => l.Debit - l.Credit) != receipt.Amount || partyLines.Sum(l => l.Credit - l.Debit) != receipt.Amount)
-            throw new InvalidOperationException("سند وصول اولیه معتبر نیست.");
         var bank = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == receipt.TrsAccountId && a.IsActive &&
-            a.Kind == TreasuryAccountKind.Bank && a.AccountId == receipt.BankAccountId)
-            ?? throw new InvalidOperationException("حساب بانکی اولیه فعال نیست یا تنظیم آن تغییر کرده است.");
+            a.Kind == TreasuryAccountKind.Bank)
+            ?? throw new InvalidOperationException("حساب بانکی اولیه فعال نیست یا تغییر کرده است.");
         await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, bank, sale.CompanyId);
-        var accounts = await db.AccAccounts.AsNoTracking().Where(a => a.Id == receipt.BankAccountId || a.Id == receipt.PartyAccountId).ToListAsync();
-        if (accounts.Count != 2 || accounts.Any(a => !a.IsActive || !a.IsPostable || a.Type != AccountType.Asset))
-            throw new InvalidOperationException("حساب‌های بانک و مشتری باید فعال و قابل ثبت باشند.");
-        var balance = await new TreasuryService(db, new AccountingService(db)).GetAccountAsync(bank.Id);
-        if (balance is null || balance.Balance < receipt.Amount)
+        var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, bank.Id);
+        if (!balance.HasValue || balance.Value < receipt.Amount)
             throw new InvalidOperationException("مانده حساب بانکی برای لغو وصول کافی نیست.");
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= date && y.EndDate >= date).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ لغو وصول باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-        var year = years[0];
-        var number = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
-        var title = $"لغو وصول چک {cheque.Number} — فاکتور {sale.Number}";
         receipt.ReversalOperationId = operationId;
         receipt.ReversalDate = date;
-        receipt.ReversalVoucher = new AccVoucher
-        {
-            FiscalYearId = year.Id, Number = number, Date = date, Status = VoucherStatus.Confirmed,
-            Source = VoucherSource.StoreSaleChequeReceiptReversal, SourceId = sale.Id, SourceTitle = title,
-            Description = title, RefNumber = cheque.Number, CreatedBy = user, ConfirmedBy = user,
-            CreatedAt = DateTime.Now, ConfirmedAt = DateTime.Now, TotalDebit = receipt.Amount, TotalCredit = receipt.Amount,
-            Lines = new()
-            {
-                new AccVoucherLine { RowNo = 1, AccountId = receipt.PartyAccountId, PartyId = sale.PartyId, Debit = receipt.Amount, Description = title },
-                new AccVoucherLine { RowNo = 2, AccountId = receipt.BankAccountId, PartyId = sale.PartyId, Credit = receipt.Amount, Description = title }
-            }
-        };
         sale.SettledAmount -= receipt.Amount;
         cheque.IsCleared = false;
         cheque.Status = originalStatus.PreviousStatus;
@@ -124,7 +96,7 @@ public static class SaleChequeReceiptReversal
         {
             CompanyId = receipt.CompanyId, OperationId = operationId, ChequeId = cheque.Id,
             PreviousStatus = ChequeStatus.Cleared, NewStatus = cheque.Status, CreatedAt = DateTime.Now, CreatedBy = user,
-            Reason = "لغو وصول با سند معکوس"
+            Reason = "لغو وصول فروشگاهی"
         });
         await db.SaveChangesAsync();
     }

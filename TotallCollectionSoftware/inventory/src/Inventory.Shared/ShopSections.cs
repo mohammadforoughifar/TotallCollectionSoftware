@@ -198,11 +198,12 @@ public static class ShopSections
             var matchesLegacy = section.LegacyModules.Any(m => m.Equals(module, StringComparison.OrdinalIgnoreCase));
             if (!matchesLegacy) continue;
 
-            if (granted.Equals(section.ManagePermission, StringComparison.OrdinalIgnoreCase)) return true;
-            // بخش‌های خواندنی (Writable=false): هر اکشن زیرمجموعهٔ آن‌ها تنها «مشاهده» است،
-            // پس تیک «مشاهدهٔ بخش» کل بخش را پوشش می‌دهد.
+            if (section.Writable && granted.Equals(section.ManagePermission, StringComparison.OrdinalIgnoreCase)) return true;
+            // گزارش فقط خواندنی است؛ هیچ مجوز مشاهده‌ای ثبت/ویرایش/حذف نمی‌دهد.
+            var kardexRead = section.Key == "Kardex" && module.Equals("ReportPages", StringComparison.OrdinalIgnoreCase)
+                && action.Equals("Kardex", StringComparison.OrdinalIgnoreCase);
             if (granted.Equals(section.ViewPermission, StringComparison.OrdinalIgnoreCase)
-                && (IsViewLike(action) || !section.Writable)) return true;
+                && (IsViewLike(action) || kardexRead)) return true;
         }
         return false;
     }

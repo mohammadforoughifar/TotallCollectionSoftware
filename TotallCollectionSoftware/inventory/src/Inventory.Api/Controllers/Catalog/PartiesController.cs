@@ -55,7 +55,8 @@ public class PartiesController : ControllerBase
     }
 
     private static bool Has(IReadOnlySet<string> perms, string module, string action)
-        => perms.Contains("*") || perms.Contains($"{module}.{action}");
+        => perms.Contains("*") || perms.Contains($"{module}.{action}") ||
+           perms.Any(p => ShopSections.AliasAllows($"{module}.{action}", p));
 
     /// <summary>ماژول مؤثر این نوع طرف حساب (تفکیک‌شده: Customers یا Suppliers).</summary>
     private static string ModuleOf(PartyType type) => type == PartyType.Supplier ? "Suppliers" : "Customers";
@@ -179,6 +180,11 @@ public class PartiesController : ControllerBase
 
     // ==================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ====================
 
+    private static bool CanReadAllStatements(IReadOnlySet<string> perms) =>
+        perms.Contains("*") || perms.Contains("Shop.PartyStatements.View") ||
+        perms.Contains("Orders.Read") || perms.Contains("Orders.View") || perms.Contains("Orders.Access") ||
+        Has(perms, "Parties", "Read");
+
     [HttpGet("statements-summary")]
     public async Task<ActionResult<PartyStatementReportDto>> GetStatementsSummary(
         [FromQuery] PartyType? type = null,
@@ -186,6 +192,9 @@ public class PartiesController : ControllerBase
         [FromQuery] DateTime? to = null,
         [FromQuery] string? search = null)
     {
+        var perms = await MyPermissionsAsync();
+        if (!CanReadAllStatements(perms) && (!type.HasValue || !CanReadAll(perms, type.Value)))
+            return Denied("شما به گزارش گردش این طرف حساب‌ها دسترسی ندارید.");
         var res = await _service.GetPartyStatementSummaryReportAsync(type, from, to, search);
         return Ok(res);
     }
@@ -196,6 +205,12 @@ public class PartiesController : ControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null)
     {
+        var perms = await MyPermissionsAsync();
+        if (!CanReadAllStatements(perms))
+        {
+            var type = await _db.Parties.AsNoTracking().Where(p => p.Id == id).Select(p => (PartyType?)p.Type).FirstOrDefaultAsync();
+            if (!type.HasValue || !CanReadAll(perms, type.Value)) return Denied("شما به گردش این طرف حساب دسترسی ندارید.");
+        }
         var res = await _service.GetPartyStatementDetailAsync(id, from, to);
         return Ok(res);
     }

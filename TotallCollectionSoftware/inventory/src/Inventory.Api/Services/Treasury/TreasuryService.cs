@@ -48,9 +48,24 @@ public class TreasuryService : ITreasuryService
     // ۱) صندوق و بانک
     // =====================================================================
 
+    // Legacy accounts without an owner are safe to expose only while there is
+    // a single company. In a multi-company database ownership must be reviewed
+    // explicitly; guessing or exposing the full shared history leaks data.
+    private IQueryable<Db.TrsAccount> VisibleAccounts()
+    {
+        var q = _db.TrsAccounts.AsQueryable();
+        return _db.ActiveCompanyId switch
+        {
+            0 => q.Where(a => false),
+            > 0 => q.Where(a => a.CompanyId == _db.ActiveCompanyId ||
+                (a.CompanyId == null && _db.SystemCompanies.Count() <= 1)),
+            _ => q
+        };
+    }
+
     public async Task<List<TrsAccount>> GetAccountsAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null)
     {
-        var q = _db.TrsAccounts.AsNoTracking().Include(a => a.Account).AsQueryable();
+        var q = VisibleAccounts().AsNoTracking().Include(a => a.Account).AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
         var rows = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
@@ -72,7 +87,7 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsAccount?> GetAccountAsync(int id)
     {
-        var e = await _db.TrsAccounts.AsNoTracking().Include(a => a.Account)
+        var e = await VisibleAccounts().AsNoTracking().Include(a => a.Account)
             .FirstOrDefaultAsync(a => a.Id == id);
         if (e is null) return null;
 
@@ -86,7 +101,7 @@ public class TreasuryService : ITreasuryService
 
     public async Task<List<LookupItem>> GetAccountLookupsAsync(bool activeOnly = true, Paging.Request? pagination = null)
     {
-        var q = _db.TrsAccounts.AsNoTracking().AsQueryable();
+        var q = VisibleAccounts().AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
         return await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ThenBy(x => x.Id)
@@ -102,6 +117,8 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsAccount> SaveAccountAsync(TrsAccount dto)
     {
+        if (_db.ActiveCompanyId == 0)
+            throw new InvalidOperationException("کاربر به هیچ شرکتی دسترسی ندارد.");
         if (string.IsNullOrWhiteSpace(dto.Name))
             throw new InvalidOperationException("نام صندوق/بانک الزامی است.");
 
@@ -116,33 +133,42 @@ public class TreasuryService : ITreasuryService
             throw new InvalidOperationException("برای حساب بانکی، نام بانک الزامی است.");
 
         var e = dto.Id > 0
-            ? await _db.TrsAccounts.FirstOrDefaultAsync(a => a.Id == dto.Id)
+            ? await VisibleAccounts().FirstOrDefaultAsync(a => a.Id == dto.Id)
               ?? throw new InvalidOperationException("صندوق/بانک یافت نشد.")
             : new Db.TrsAccount();
         int? requestedCompanyId = dto.CompanyId.HasValue
             ? (dto.CompanyId.Value > 0 ? dto.CompanyId.Value : null)
             : (dto.Id == 0 && _db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : e.CompanyId);
+        // An explicit 0 from an old client must not create an ownerless account.
+        if (dto.Id == 0 && _db.ActiveCompanyId is > 0 && requestedCompanyId is null)
+            requestedCompanyId = _db.ActiveCompanyId;
+        if (_db.ActiveCompanyId is > 0 && (requestedCompanyId is > 0 && requestedCompanyId != _db.ActiveCompanyId ||
+            dto.Id > 0 && e.CompanyId is > 0 && requestedCompanyId != _db.ActiveCompanyId))
+            throw new InvalidOperationException("حساب باید به شرکت فعال کاربر تعلق داشته باشد.");
         if (requestedCompanyId is int cid && !await _db.SystemCompanies.AnyAsync(c => c.Id == cid && c.IsActive))
             throw new InvalidOperationException("شرکت انتخاب‌شده برای حساب خزانه فعال نیست یا یافت نشد.");
 
-        var mappingChanged = dto.Id > 0 && (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind || e.CompanyId != requestedCompanyId);
+        var mappingChanged = dto.Id > 0 && (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind ||
+            e.CompanyId != requestedCompanyId || e.OpeningBalance != dto.OpeningBalance);
         // Serialize the check and update with cheque receipts; otherwise a receipt can
         // be inserted between the check and an accounting-account or company remap.
         await using var mappingTx = mappingChanged ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable) : null;
         if (mappingChanged)
         {
             await _db.Entry(e).ReloadAsync();
-            if (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind || e.CompanyId != requestedCompanyId)
+            if (e.AccountId != (dto.AccountId is > 0 ? dto.AccountId : null) || e.Kind != dto.Kind ||
+                e.CompanyId != requestedCompanyId || e.OpeningBalance != dto.OpeningBalance)
             {
                 var chequeReceipt = await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
                 var instReceipt = await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
                 var creditRefund = await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(s => s.TrsAccountId == dto.Id);
-                var initialCash = await _db.TrsVoucherLines.AsNoTracking().AnyAsync(l => l.TrsAccountId == dto.Id &&
-                    l.TrsVoucher!.VoucherId != null && (
-                        _db.SaleChequeChargeEvents.IgnoreQueryFilters().Any(ev => ev.AccVoucherId == l.TrsVoucher.VoucherId) ||
-                        _db.SaleChequeCancellations.IgnoreQueryFilters().Any(cn => cn.AccVoucherId == l.TrsVoucher.VoucherId)));
+                var initialCash = await _db.TrsVoucherLines.AsNoTracking().AnyAsync(l => l.TrsAccountId == dto.Id && (
+                    _db.SaleChequeCharges.IgnoreQueryFilters().Any(c => c.InitialCashTrsVoucherId == l.TrsVoucherId) ||
+                    _db.SaleChequeCancellations.IgnoreQueryFilters().Any(c => c.RefundTrsVoucherId == l.TrsVoucherId) ||
+                    (l.TrsVoucher!.VoucherId != null &&
+                     _db.SaleChequeChargeEvents.IgnoreQueryFilters().Any(ev => ev.AccVoucherId == l.TrsVoucher.VoucherId))));
                 if (chequeReceipt || instReceipt || creditRefund || initialCash)
-                    throw new InvalidOperationException("حساب دارای گردش فاکتور چک است؛ شرکت، نوع یا حساب حسابداری آن قابل تغییر نیست.");
+                    throw new InvalidOperationException("حساب دارای گردش فاکتور چک است؛ شرکت، نوع، حساب حسابداری یا مانده اولیه آن قابل تغییر نیست.");
             }
         }
 
@@ -168,7 +194,7 @@ public class TreasuryService : ITreasuryService
         // فقط یک حساب می‌تواند پیش‌فرض باشد
         if (dto.IsDefault)
         {
-            var others = await _db.TrsAccounts.Where(a => a.IsDefault && a.Id != e.Id).ToListAsync();
+            var others = await VisibleAccounts().Where(a => a.IsDefault && a.Id != e.Id && a.CompanyId == e.CompanyId).ToListAsync();
             foreach (var o in others) o.IsDefault = false;
             e.IsDefault = true;
             await _db.SaveChangesAsync();
@@ -186,7 +212,7 @@ public class TreasuryService : ITreasuryService
 
     public async Task DeleteAccountAsync(int id)
     {
-        var e = await _db.TrsAccounts.FirstOrDefaultAsync(a => a.Id == id)
+        var e = await VisibleAccounts().FirstOrDefaultAsync(a => a.Id == id)
                 ?? throw new InvalidOperationException("صندوق/بانک یافت نشد.");
 
         if (await _db.TrsVoucherLines.AnyAsync(l => l.TrsAccountId == id)
@@ -204,70 +230,15 @@ public class TreasuryService : ITreasuryService
     /// <summary>مانده و گردش هر حساب را از سطرهای اسناد قطعی‌شده محاسبه می‌کند.</summary>
     private async Task FillBalancesAsync(List<TrsAccount> list)
     {
-        var ids = list.Select(a => a.Id).ToList();
-
-        // گردش سطرهای دریافت/پرداخت (نقد، کارت، حواله)
-        var lines = await _db.TrsVoucherLines.AsNoTracking()
-            .Where(l => l.TrsAccountId != null && ids.Contains(l.TrsAccountId!.Value)
-                        && l.TrsVoucher!.Status == TreasuryStatus.Confirmed)
-            .Select(l => new { AccountId = l.TrsAccountId!.Value, l.TrsVoucher!.Kind, l.Amount })
-            .ToListAsync();
-
-        // انتقال بین حساب‌ها
-        var transfers = await _db.TrsVouchers.AsNoTracking()
-            .Where(v => v.Kind == TreasuryKind.Transfer && v.Status == TreasuryStatus.Confirmed)
-            .Select(v => new { v.FromAccountId, v.ToAccountId, v.TotalAmount, v.FeeAmount })
-            .ToListAsync();
-
-        // وصول چک‌ها: پول واقعاً در تاریخ وصول وارد/خارج بانک می‌شود
-        var chequeMoves = await _db.TrsCheques.AsNoTracking()
-            .Where(c => c.Status == ChequeStatus.Cleared && c.TrsAccountId != null
-                        && ids.Contains(c.TrsAccountId!.Value))
-            .Select(c => new { AccountId = c.TrsAccountId!.Value, c.Kind, c.Amount })
-            .ToListAsync();
-
-        // چک‌های فروشگاهی با سند مستقل وصول از چک‌های ماژول خزانه جدا هستند.
-        var saleChequeReceipts = await _db.SaleChequeReceipts.AsNoTracking()
-            .Where(r => ids.Contains(r.TrsAccountId) && r.AccVoucher.Status == VoucherStatus.Confirmed)
-            .Select(r => new { r.TrsAccountId, r.Amount, r.ReversalVoucherId, r.ReversalDate,
-                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
-        if (saleChequeReceipts.Any(r => r.ReversalVoucherId.HasValue &&
-            (!r.ReversalDate.HasValue || r.ReversalStatus != VoucherStatus.Confirmed)))
-            throw new InvalidOperationException("سند معکوس وصول چک با گردش خزانه مطابقت ندارد.");
-
-        var saleInstReceipts = await _db.SaleChequeInstallmentReceipts.AsNoTracking()
-            .Where(r => ids.Contains(r.TrsAccountId) && r.AccVoucher.Status == VoucherStatus.Confirmed)
-            .Select(r => new { r.TrsAccountId, r.Amount, r.ReversalVoucherId, r.ReversalDate,
-                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
-        if (saleInstReceipts.Any(r => r.ReversalVoucherId.HasValue &&
-            (!r.ReversalDate.HasValue || r.ReversalStatus != VoucherStatus.Confirmed)))
-            throw new InvalidOperationException("سند معکوس دریافت قسط با گردش خزانه مطابقت ندارد.");
-
-        foreach (var a in list)
+        var balances = await TreasuryBalanceCalculator.CalculateAsync(_db, list.Select(a => a.Id).ToList());
+        foreach (var account in list)
         {
-            var mine = lines.Where(l => l.AccountId == a.Id).ToList();
-            var inSum = mine.Where(l => l.Kind == TreasuryKind.Receipt).Sum(l => l.Amount);
-            var outSum = mine.Where(l => l.Kind == TreasuryKind.Payment).Sum(l => l.Amount);
-
-            inSum += transfers.Where(t => t.ToAccountId == a.Id).Sum(t => t.TotalAmount);
-            outSum += transfers.Where(t => t.FromAccountId == a.Id).Sum(t => t.TotalAmount + t.FeeAmount);
-
-            var mineCheques = chequeMoves.Where(c => c.AccountId == a.Id).ToList();
-            inSum += mineCheques.Where(c => c.Kind == ChequeKind.Received).Sum(c => c.Amount);
-            outSum += mineCheques.Where(c => c.Kind == ChequeKind.Issued).Sum(c => c.Amount);
-            var saleReceipts = saleChequeReceipts.Where(r => r.TrsAccountId == a.Id).ToList();
-            inSum += saleReceipts.Sum(r => r.Amount);
-            outSum += saleReceipts.Where(r => r.ReversalVoucherId.HasValue).Sum(r => r.Amount);
-            var instReceipts = saleInstReceipts.Where(r => r.TrsAccountId == a.Id).ToList();
-            inSum += instReceipts.Sum(r => r.Amount);
-            outSum += instReceipts.Where(r => r.ReversalVoucherId.HasValue).Sum(r => r.Amount);
-
-            a.TotalIn = inSum;
-            a.TotalOut = outSum;
-            a.Balance = a.OpeningBalance + inSum - outSum;
-            a.MoveCount = mine.Count + mineCheques.Count + saleReceipts.Count + saleReceipts.Count(r => r.ReversalVoucherId.HasValue)
-                          + instReceipts.Count + instReceipts.Count(r => r.ReversalVoucherId.HasValue)
-                          + transfers.Count(t => t.FromAccountId == a.Id || t.ToAccountId == a.Id);
+            if (!balances.TryGetValue(account.Id, out var balance))
+                throw new InvalidOperationException("حساب صندوق/بانک برای محاسبه مانده یافت نشد.");
+            account.TotalIn = balance.TotalIn;
+            account.TotalOut = balance.TotalOut;
+            account.Balance = balance.Amount;
+            account.MoveCount = balance.MoveCount;
         }
     }
 
@@ -848,6 +819,7 @@ public class TreasuryService : ITreasuryService
               ?? throw new InvalidOperationException("سند خزانه یافت نشد.")
             : new Db.TrsVoucher { Kind = dto.Kind, CreatedBy = user, CreatedAt = DateTime.Now };
 
+        if (dto.Id > 0) await EnsureNotShopManagedVoucherAsync(e.Id);
         if (e.Status == TreasuryStatus.Confirmed)
             throw new InvalidOperationException("سند قطعی قابل ویرایش نیست؛ ابتدا آن را به پیش‌نویس برگردانید.");
         if (e.Status == TreasuryStatus.Cancelled)
@@ -1204,6 +1176,15 @@ public class TreasuryService : ITreasuryService
         if (e.Kind != TreasuryKind.Transfer && e.PartyId is not > 0)
             throw new InvalidOperationException("برای قطعی کردن سند، طرف حساب را مشخص کنید.");
 
+        // Treasury vouchers do not implement ICompanyOwned. Validate every
+        // selected account explicitly before either receipt or payment is posted.
+        var selectedAccountIds = e.Lines.Where(l => l.TrsAccountId is > 0).Select(l => l.TrsAccountId!.Value)
+            .Concat(new[] { e.FromAccountId, e.ToAccountId }.Where(id => id is > 0).Select(id => id!.Value))
+            .Distinct().ToList();
+        var visibleCount = await VisibleAccounts().CountAsync(a => selectedAccountIds.Contains(a.Id) && a.IsActive);
+        if (visibleCount != selectedAccountIds.Count)
+            throw new InvalidOperationException("یکی از حساب‌های صندوق/بانک فعال نیست یا به شرکت جاری دسترسی ندارد.");
+
         var allocations = AllocationDtos(e);
         await ValidateInvoiceAllocationsAsync(e.Kind, e.PartyId, allocations, e.TotalAmount, e.Id);
 
@@ -1286,6 +1267,7 @@ public class TreasuryService : ITreasuryService
         var e = await _db.TrsVouchers.Include(v => v.Lines).FirstOrDefaultAsync(v => v.Id == id)
                 ?? throw new InvalidOperationException("سند خزانه یافت نشد.");
 
+        await EnsureNotShopManagedVoucherAsync(e.Id);
         if (e.Status == TreasuryStatus.Confirmed)
             throw new InvalidOperationException("ابتدا سند را از حالت قطعی خارج کنید.");
 
@@ -1304,9 +1286,19 @@ public class TreasuryService : ITreasuryService
         await _db.SaveChangesAsync();
     }
 
+    private async Task EnsureNotShopManagedVoucherAsync(int id)
+    {
+        if (id <= 0) return;
+        if (await _db.SaleChequeCharges.IgnoreQueryFilters().AnyAsync(c => c.InitialCashTrsVoucherId == id) ||
+            await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(c => c.TrsVoucherId == id) ||
+            await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(c => c.RefundTrsVoucherId == id))
+            throw new InvalidOperationException("گردش مربوط به فاکتور چک فقط از همان فاکتور قابل اصلاح است.");
+    }
+
     /// <summary>سند حسابداری سند خزانه را حذف و چک‌ها را به وضعیت اولیه برمی‌گرداند.</summary>
     private async Task ReverseAsync(Db.TrsVoucher e)
     {
+        await EnsureNotShopManagedVoucherAsync(e.Id);
         if (e.VoucherId is > 0)
         {
             if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(x => x.AccVoucherId == e.VoucherId) ||
@@ -1355,7 +1347,8 @@ public class TreasuryService : ITreasuryService
         foreach (var (accId, amount) in affected)
         {
             var acc = accounts.FirstOrDefault(a => a.Id == accId);
-            if (acc is null) continue;
+            if (acc is null)
+                throw new InvalidOperationException("حساب برداشت در شرکت جاری یافت نشد.");
             if (acc.Balance < amount)
                 throw new InvalidOperationException(
                     $"موجودی «{acc.Name}» کافی نیست. مانده: {acc.Balance:N0} — مبلغ درخواستی: {amount:N0}");
@@ -2054,8 +2047,10 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsFlowResult> GetFlowAsync(int trsAccountId, DateTime? from, DateTime? to)
     {
-        var acc = await _db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == trsAccountId)
+        var acc = await VisibleAccounts().AsNoTracking().FirstOrDefaultAsync(a => a.Id == trsAccountId)
                   ?? throw new InvalidOperationException("صندوق/بانک یافت نشد.");
+
+        await TreasuryBalanceCalculator.CalculateAsync(_db, new[] { trsAccountId });
 
         var result = new TrsFlowResult
         {
@@ -2205,12 +2200,14 @@ public class TreasuryService : ITreasuryService
             });
         }
 
-        var saleReceipts = await _db.SaleChequeReceipts.AsNoTracking()
-            .Where(r => r.TrsAccountId == accountId && r.AccVoucher.Status == VoucherStatus.Confirmed)
-            .Select(r => new { r.Date, r.Amount, r.Cheque.Number, r.Cheque.OwnerName, r.ReversalDate, r.ReversalVoucherId,
-                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
+        var saleReceipts = await _db.SaleChequeReceipts.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.TrsAccountId == accountId)
+            .Select(r => new { r.Date, r.Amount, r.Cheque.Number, r.Cheque.OwnerName, r.ReversalDate, r.ReversalOperationId }).ToListAsync();
         foreach (var receipt in saleReceipts)
         {
+            if (receipt.ReversalDate.HasValue != receipt.ReversalOperationId.HasValue ||
+                (receipt.ReversalDate.HasValue && receipt.ReversalDate.Value.Date < receipt.Date.Date))
+                throw new InvalidOperationException("تاریخچه لغو وصول چک ناقص است.");
             rows.Add(new TrsFlowRow
             {
                 Date = receipt.Date, TrsVoucherId = 0, Number = 0, Kind = TreasuryKind.Receipt,
@@ -2218,9 +2215,9 @@ public class TreasuryService : ITreasuryService
                 Description = $"وصول چک فروش شماره {receipt.Number}", RefNumber = receipt.Number,
                 In = receipt.Amount, Out = 0
             });
-            if (receipt.ReversalVoucherId.HasValue)
+            if (receipt.ReversalDate.HasValue)
             {
-                if (!receipt.ReversalDate.HasValue || receipt.ReversalStatus != VoucherStatus.Confirmed)
+                if (!receipt.ReversalOperationId.HasValue)
                     throw new InvalidOperationException("سند معکوس وصول چک با گردش خزانه مطابقت ندارد.");
                 rows.Add(new TrsFlowRow
                 {
@@ -2232,17 +2229,19 @@ public class TreasuryService : ITreasuryService
             }
         }
 
-        var instReceiptsFlow = await _db.SaleChequeInstallmentReceipts.AsNoTracking()
-            .Where(r => r.TrsAccountId == accountId && r.AccVoucher.Status == VoucherStatus.Confirmed)
+        var instReceiptsFlow = await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.TrsAccountId == accountId)
             .Select(r => new { r.Date, r.Amount, r.Installment.No, r.Transaction.Number, r.Transaction.PartyId,
-                r.ReversalDate, r.ReversalVoucherId,
-                ReversalStatus = r.ReversalVoucher != null ? (VoucherStatus?)r.ReversalVoucher.Status : null }).ToListAsync();
+                r.ReversalDate, r.ReversalOperationId }).ToListAsync();
         var instPartyIds = instReceiptsFlow.Where(r => r.PartyId.HasValue).Select(r => r.PartyId!.Value).Distinct().ToList();
         var instPartyNames = instPartyIds.Count == 0
             ? new Dictionary<int, string>()
             : await _db.Parties.AsNoTracking().Where(p => instPartyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);
         foreach (var inst in instReceiptsFlow)
         {
+            if (inst.ReversalDate.HasValue != inst.ReversalOperationId.HasValue ||
+                (inst.ReversalDate.HasValue && inst.ReversalDate.Value.Date < inst.Date.Date))
+                throw new InvalidOperationException("تاریخچه لغو دریافت قسط ناقص است.");
             var instPartyName = inst.PartyId.HasValue && instPartyNames.TryGetValue(inst.PartyId.Value, out var pn) ? pn : null;
             rows.Add(new TrsFlowRow
             {
@@ -2251,9 +2250,9 @@ public class TreasuryService : ITreasuryService
                 Description = $"دریافت قسط {inst.No} فاکتور {inst.Number}", RefNumber = inst.Number,
                 In = inst.Amount, Out = 0
             });
-            if (inst.ReversalVoucherId.HasValue)
+            if (inst.ReversalDate.HasValue)
             {
-                if (!inst.ReversalDate.HasValue || inst.ReversalStatus != VoucherStatus.Confirmed)
+                if (!inst.ReversalOperationId.HasValue)
                     throw new InvalidOperationException("سند معکوس دریافت قسط با گردش خزانه مطابقت ندارد.");
                 rows.Add(new TrsFlowRow
                 {
@@ -2287,14 +2286,12 @@ public class TreasuryService : ITreasuryService
 
         var confirmed = q.Where(v => v.Status == TreasuryStatus.Confirmed);
 
-        d.PeriodIn = await confirmed.Where(v => v.Kind == TreasuryKind.Receipt)
-            .SumAsync(v => (decimal?)v.TotalAmount) ?? 0;
-        d.PeriodOut = await confirmed.Where(v => v.Kind == TreasuryKind.Payment)
-            .SumAsync(v => (decimal?)v.TotalAmount) ?? 0;
+        d.PeriodIn = (await confirmed.Where(v => v.Kind == TreasuryKind.Receipt).Select(v => v.TotalAmount).ToListAsync()).Sum();
+        d.PeriodOut = (await confirmed.Where(v => v.Kind == TreasuryKind.Payment).Select(v => v.TotalAmount).ToListAsync()).Sum();
         d.ReceiptCount = await confirmed.CountAsync(v => v.Kind == TreasuryKind.Receipt);
         d.PaymentCount = await confirmed.CountAsync(v => v.Kind == TreasuryKind.Payment);
         d.DraftCount = await q.CountAsync(v => v.Status == TreasuryStatus.Draft);
-        var saleReceiptsQuery = _db.SaleChequeReceipts.AsNoTracking().Where(r => r.AccVoucher.Status == VoucherStatus.Confirmed);
+        var saleReceiptsQuery = _db.SaleChequeReceipts.AsNoTracking().AsQueryable();
         if (from.HasValue) saleReceiptsQuery = saleReceiptsQuery.Where(r => r.Date >= from.Value.Date);
         if (to.HasValue)
         {
@@ -2304,8 +2301,7 @@ public class TreasuryService : ITreasuryService
         var saleReceipts = await saleReceiptsQuery.Select(r => r.Amount).ToListAsync();
         d.PeriodIn += saleReceipts.Sum();
         d.ReceiptCount += saleReceipts.Count;
-        var reversalsQuery = _db.SaleChequeReceipts.AsNoTracking().Where(r => r.ReversalVoucherId != null &&
-            r.ReversalVoucher != null && r.ReversalVoucher.Status == VoucherStatus.Confirmed && r.ReversalDate != null);
+        var reversalsQuery = _db.SaleChequeReceipts.AsNoTracking().Where(r => r.ReversalDate != null && r.ReversalOperationId != null);
         if (from.HasValue) reversalsQuery = reversalsQuery.Where(r => r.ReversalDate >= from.Value.Date);
         if (to.HasValue)
         {
@@ -2316,7 +2312,7 @@ public class TreasuryService : ITreasuryService
         d.PeriodOut += reversals.Sum();
         d.PaymentCount += reversals.Count;
 
-        var instInQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.AccVoucher.Status == VoucherStatus.Confirmed);
+        var instInQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().AsQueryable();
         if (from.HasValue) instInQ = instInQ.Where(r => r.Date >= from.Value.Date);
         if (to.HasValue)
         {
@@ -2327,8 +2323,7 @@ public class TreasuryService : ITreasuryService
         d.PeriodIn += instIns.Sum();
         d.ReceiptCount += instIns.Count;
 
-        var instRevQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.ReversalVoucherId != null &&
-            r.ReversalVoucher != null && r.ReversalVoucher.Status == VoucherStatus.Confirmed && r.ReversalDate != null);
+        var instRevQ = _db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.ReversalDate != null && r.ReversalOperationId != null);
         if (from.HasValue) instRevQ = instRevQ.Where(r => r.ReversalDate >= from.Value.Date);
         if (to.HasValue)
         {
@@ -2343,17 +2338,14 @@ public class TreasuryService : ITreasuryService
         var open = _db.TrsCheques.AsNoTracking()
             .Where(c => c.Status == ChequeStatus.InHand || c.Status == ChequeStatus.InCollection);
 
-        d.ReceivedChequeTotal = await open.Where(c => c.Kind == ChequeKind.Received)
-            .SumAsync(c => (decimal?)c.Amount) ?? 0;
-        d.IssuedChequeTotal = await open.Where(c => c.Kind == ChequeKind.Issued)
-            .SumAsync(c => (decimal?)c.Amount) ?? 0;
+        d.ReceivedChequeTotal = (await open.Where(c => c.Kind == ChequeKind.Received).Select(c => c.Amount).ToListAsync()).Sum();
+        d.IssuedChequeTotal = (await open.Where(c => c.Kind == ChequeKind.Issued).Select(c => c.Amount).ToListAsync()).Sum();
         d.ReceivedChequeCount = await open.CountAsync(c => c.Kind == ChequeKind.Received);
         d.IssuedChequeCount = await open.CountAsync(c => c.Kind == ChequeKind.Issued);
 
         var today = DateTime.Now.Date;
         d.OverdueChequeCount = await open.CountAsync(c => c.DueDate < today);
-        d.OverdueChequeTotal = await open.Where(c => c.DueDate < today)
-            .SumAsync(c => (decimal?)c.Amount) ?? 0;
+        d.OverdueChequeTotal = (await open.Where(c => c.DueDate < today).Select(c => c.Amount).ToListAsync()).Sum();
 
         var horizon = today.AddDays(30);
         d.UpcomingCheques = await open

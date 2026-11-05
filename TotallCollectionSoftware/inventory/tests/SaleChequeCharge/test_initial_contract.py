@@ -14,8 +14,8 @@ class InitialChargeContract(unittest.TestCase):
         s = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeChargePosting.cs').read_text(encoding='utf8')
         for part in ('charge.BaseAmount != goods + vat', 'charge.InitialAmount != charge.Amount',
                      '!c.OriginalDueDate.HasValue', 'c.OriginalDueDate.Value.Date != c.DueDate.Date',
-                     'paid > sale.Amount || (paid < sale.Amount && !sale.DueDate.HasValue)',
-                     'sale.Installments.Any(i => i.Amount <= 0'):
+                     'parts > sale.Amount || (parts < sale.Amount && !sale.DueDate.HasValue)',
+                     'sale.Installments.Any(i => i.IsPaid || i.Amount <= 0'):
             self.assertIn(part, s)
         self.assertNotIn('PaymentMix.Tolerance', s)
 

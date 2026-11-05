@@ -35,7 +35,7 @@ class EventSchemaTests(unittest.TestCase):
         self.assertIn('SaleChequeChargeEvent>().HasIndex(e => e.OperationId).IsUnique()', ctx)
         self.assertEqual((ROOT / 'Inventory.Api/Data/DbInitializer.cs').read_text(encoding='utf8').count('SaleChequeChargeEventsSchemaV1.EnsureAsync(db)'), 2)
         posting = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeChargePosting.cs').read_text(encoding='utf8')
-        self.assertIn('AccVoucher = voucher, Kind = SaleChequeChargeEventKind.Initial', posting)
+        self.assertIn('Kind = SaleChequeChargeEventKind.Initial', posting)
         self.assertIn('IncomeDelta = charge.Amount', posting)
 
 if __name__ == '__main__': unittest.main()

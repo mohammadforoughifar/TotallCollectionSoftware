@@ -1,6 +1,5 @@
 using System.Data;
 using Inventory.Api.Data;
-using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +17,7 @@ public static class SaleChequeCancellationService
         AppDbContext db, int saleId, Guid operationId, DateTime operationDate, string? reason, string? user)
     {
         var tx = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("ابطال فاکتور باید در تراکنش حسابداری انجام شود.");
+            ?? throw new InvalidOperationException("ابطال فاکتور باید در تراکنش فروشگاهی انجام شود.");
         try
         {
             if (tx.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
@@ -59,23 +58,20 @@ public static class SaleChequeCancellationService
 
         var charge = await db.SaleChequeCharges.FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
             ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
-        if (charge.CompanyId != sale.CompanyId || charge.IncomeAccountId is not int incomeAccountId || incomeAccountId <= 0 ||
-            charge.PartyAccountId is not int partyAccountId || partyAccountId <= 0 || incomeAccountId == partyAccountId ||
-            charge.Amount < 0 || charge.CustomerCredit < 0 || (charge.Amount > 0 && charge.CustomerCredit > 0) ||
+        if (charge.CompanyId != sale.CompanyId || charge.Amount < 0 || charge.CustomerCredit < 0 || (charge.Amount > 0 && charge.CustomerCredit > 0) ||
             sale.Amount != charge.BaseAmount + charge.Amount)
             throw new InvalidOperationException("اطلاعات مالی فاکتور ناسازگار است؛ ابطال متوقف شد.");
 
         if (sale.Cheques.Any(c => c.IsCleared || c.Status == ChequeStatus.Cleared) ||
-            await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalVoucherId == null))
-            throw new InvalidOperationException("چک وصول‌شده فعال روی این فاکتور وجود دارد؛ ابتدا وصول چک را با سند معکوس لغو کنید.");
+            await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalDate == null))
+            throw new InvalidOperationException("چک وصول‌شده فعال روی این فاکتور وجود دارد؛ ابتدا وصول چک را لغو کنید.");
         if (sale.Installments.Any(i => i.IsPaid) ||
-            await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalVoucherId == null))
+            await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalDate == null))
             throw new InvalidOperationException("قسط پرداخت‌شده فعال روی این فاکتور وجود دارد؛ ابتدا دریافت قسط را لغو کنید.");
         if (await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id || s.TargetSaleTransactionId == sale.Id))
             throw new InvalidOperationException("روی این فاکتور تسویه یا انتقال بستانکاری ثبت شده است؛ ابطال خودکار مجاز نیست.");
 
         var events = await db.SaleChequeChargeEvents.AsNoTracking()
-            .Include(e => e.AccVoucher).ThenInclude(v => v.Lines).ThenInclude(l => l.Account)
             .Where(e => e.SaleChequeChargeId == charge.Id).ToListAsync();
         var priorReturns = await db.SaleChequeReturns.AsNoTracking().Include(r => r.Lines)
             .Where(r => r.SaleTransactionId == sale.Id).OrderBy(r => r.Id).ToListAsync();
@@ -85,7 +81,7 @@ public static class SaleChequeCancellationService
         var instReceipts = await db.SaleChequeInstallmentReceipts.AsNoTracking().Where(r => r.TransactionId == sale.Id).ToListAsync();
 
         if (events.Count(e => e.Kind == SaleChequeChargeEventKind.Initial) != 1 ||
-            events.Any(e => e.AccVoucher.Status != VoucherStatus.Confirmed || e.Date.Date > operationDate) ||
+            events.Any(e => e.Date.Date > operationDate) ||
             events.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit ||
             priorReturns.Any(r => r.Date.Date > operationDate) ||
             reschedules.Any(r => r.Date.Date > operationDate) ||
@@ -99,23 +95,17 @@ public static class SaleChequeCancellationService
 
         var origGoods = sale.Lines.Sum(l => Math.Max(0m, (l.GrossAmount ?? OrderLineAmounts.Gross(l.Quantity, l.Price)) - l.DiscountAmount));
         var origVat = sale.Lines.Sum(l => l.VatAmount);
-        var initialEvent = events.Single(e => e.Kind == SaleChequeChargeEventKind.Initial);
-        var (salesAccountId, vatAccountId) = await SaleChequeReturnService.ResolveSaleAndVatAccountsAsync(
-            db, initialEvent.AccVoucher, origGoods, origVat, incomeAccountId, partyAccountId);
-
-        int? cashLedgerAccountId = null;
         TrsAccount? cashTrsAccount = null;
         if (sale.CashAmount > 0)
         {
             if (sale.TrsAccountId is not int trsId || trsId <= 0)
                 throw new InvalidOperationException("حساب صندوق/بانک پیش‌دریافت نقدی اولیه مشخص نیست.");
             cashTrsAccount = await db.TrsAccounts.AsNoTracking()
-                .FirstOrDefaultAsync(a => a.Id == trsId && a.IsActive && a.AccountId > 0)
+                .FirstOrDefaultAsync(a => a.Id == trsId && a.IsActive)
                 ?? throw new InvalidOperationException("حساب صندوق/بانک پیش‌دریافت نقدی اولیه فعال نیست یا تغییر کرده است.");
             await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, cashTrsAccount, sale.CompanyId);
-            cashLedgerAccountId = cashTrsAccount.AccountId!.Value;
-            var trsBalance = await new TreasuryService(db, new AccountingService(db)).GetAccountAsync(cashTrsAccount.Id);
-            if (trsBalance is null || trsBalance.Balance < sale.CashAmount)
+            var trsBalance = await TreasuryBalanceCalculator.GetAmountAsync(db, cashTrsAccount.Id);
+            if (!trsBalance.HasValue || trsBalance.Value < sale.CashAmount)
                 throw new InvalidOperationException("مانده حساب صندوق/بانک برای استرداد پیش‌دریافت نقدی فاکتور کافی نیست.");
         }
 
@@ -154,23 +144,6 @@ public static class SaleChequeCancellationService
             remainingLineItems.Add((origLine, product, remQty, amounts));
         }
 
-        var requiredAccountIds = new List<int> { partyAccountId, incomeAccountId, salesAccountId };
-        if (remVat > 0)
-        {
-            if (vatAccountId is not int vid || vid <= 0)
-                throw new InvalidOperationException("حساب مالیات بر ارزش افزوده فاکتور مشخص نیست.");
-            requiredAccountIds.Add(vid);
-        }
-        if (cashLedgerAccountId.HasValue) requiredAccountIds.Add(cashLedgerAccountId.Value);
-        var distinctRequired = requiredAccountIds.Distinct().ToList();
-        var activeAccs = await db.AccAccounts.AsNoTracking().Where(a => distinctRequired.Contains(a.Id)).ToListAsync();
-        if (activeAccs.Count != distinctRequired.Count || activeAccs.Any(a => !a.IsActive || !a.IsPostable))
-            throw new InvalidOperationException("حساب‌های حسابداری فاکتور برای صدور سند ابطال باید فعال و قابل ثبت باشند.");
-
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= operationDate && y.EndDate >= operationDate).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ ابطال باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-
         Transaction? returnTxn = null;
         if (remainingLineItems.Count > 0)
         {
@@ -208,61 +181,7 @@ public static class SaleChequeCancellationService
                 await SaleChequeReturnService.RebuildLegacyStockAsync(db, sale.WarehouseId, pid);
         }
 
-        var year = years[0];
-        var voucherNo = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
         var title = $"ابطال فاکتور فروش {sale.Number}";
-        var voucher = new AccVoucher
-        {
-            FiscalYearId = year.Id,
-            Number = voucherNo,
-            Date = operationDate,
-            Status = VoucherStatus.Confirmed,
-            Source = VoucherSource.StoreSaleCancellation,
-            SourceId = sale.Id,
-            SourceTitle = title,
-            Description = $"{title} — {cleanReason}",
-            RefNumber = sale.Number,
-            CreatedBy = user,
-            ConfirmedBy = user,
-            CreatedAt = DateTime.Now,
-            ConfirmedAt = DateTime.Now
-        };
-        void AddLine(int accId, decimal debit, decimal credit, string desc)
-        {
-            if (debit == 0 && credit == 0) return;
-            voucher.Lines.Add(new AccVoucherLine
-            {
-                RowNo = voucher.Lines.Count + 1,
-                AccountId = accId,
-                PartyId = sale.PartyId,
-                Debit = debit,
-                Credit = credit,
-                Description = desc,
-                RefNumber = sale.Number
-            });
-        }
-        if (remGoods > 0) AddLine(salesAccountId, remGoods, 0, $"معکوس فروش کالا — {title}");
-        if (remVat > 0) AddLine(vatAccountId!.Value, remVat, 0, $"معکوس ارزش افزوده — {title}");
-        if (netIncomeNow > 0) AddLine(incomeAccountId, netIncomeNow, 0, $"معکوس تاخیر تادیه چک — {title}");
-        else if (netIncomeNow < 0) AddLine(incomeAccountId, 0, -netIncomeNow, $"تسویه بستانکاری اصلاحی چک — {title}");
-
-        var partyInvoiceNet = remGoods + remVat + netIncomeNow;
-        if (partyInvoiceNet > 0) AddLine(partyAccountId, 0, partyInvoiceNet, $"بستانکاری ابطال — {title}");
-        else if (partyInvoiceNet < 0) AddLine(partyAccountId, -partyInvoiceNet, 0, $"بدهکاری تسویه ابطال — {title}");
-
-        if (sale.CashAmount > 0 && cashLedgerAccountId.HasValue)
-        {
-            AddLine(partyAccountId, sale.CashAmount, 0, $"معکوس پیش‌دریافت نقدی — {title}");
-            AddLine(cashLedgerAccountId.Value, 0, sale.CashAmount, $"استرداد پیش‌دریافت نقدی — {title}");
-        }
-
-        voucher.TotalDebit = voucher.Lines.Sum(l => l.Debit);
-        voucher.TotalCredit = voucher.Lines.Sum(l => l.Credit);
-        if (voucher.Lines.Count < 2 || voucher.TotalDebit != voucher.TotalCredit || voucher.TotalDebit == 0)
-            throw new InvalidOperationException("سند حسابداری ابطال فاکتور تراز نیست.");
-        db.AccVouchers.Add(voucher);
-        await db.SaveChangesAsync();
-
         SaleChequeChargeEvent? cancelEvent = null;
         if (reversedIncomeDelta != 0)
         {
@@ -271,7 +190,6 @@ public static class SaleChequeCancellationService
                 CompanyId = charge.CompanyId,
                 OperationId = operationId,
                 SaleChequeChargeId = charge.Id,
-                AccVoucher = voucher,
                 Kind = SaleChequeChargeEventKind.Cancellation,
                 Date = operationDate,
                 IncomeDelta = reversedIncomeDelta
@@ -295,7 +213,6 @@ public static class SaleChequeCancellationService
                 Status = TreasuryStatus.Confirmed,
                 TotalAmount = sale.CashAmount,
                 CashAmount = sale.CashAmount,
-                VoucherId = voucher.Id,
                 CreatedBy = user,
                 ConfirmedBy = user,
                 CreatedAt = DateTime.Now,
@@ -347,14 +264,8 @@ public static class SaleChequeCancellationService
             SaleTransactionId = sale.Id,
             SaleChequeChargeId = charge.Id,
             ReturnTransaction = returnTxn,
-            AccVoucher = voucher,
             SaleChequeChargeEvent = cancelEvent,
             RefundTrsVoucher = refundTrs,
-            SalesAccountId = salesAccountId,
-            VatAccountId = vatAccountId,
-            IncomeAccountId = incomeAccountId,
-            PartyAccountId = partyAccountId,
-            CashLedgerAccountId = cashLedgerAccountId,
             Date = operationDate,
             ReversedGoodsAmount = remGoods,
             ReversedVatAmount = remVat,

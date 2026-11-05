@@ -30,10 +30,12 @@ public class OrdersController : ApiControllerBase
         if (order.Type is not (TransactionType.Sale or TransactionType.SaleReturn)) return order;
         order.TotalProfit = null;
         order.NetProfit = null;
+        order.CommissionAmount = null;
         foreach (var line in order.Lines)
         {
             line.UnitCost = null;
             line.Profit = null;
+            line.Commission = null;
         }
         return order;
     }
@@ -80,6 +82,41 @@ public class OrdersController : ApiControllerBase
         });
     }
 
+    /// <summary>داده‌های محدود مورد نیاز ثبت فاکتور؛ مشاهده سود فروش همچنان مجوز مستقل دارد.</summary>
+    [HttpGet("invoice-products")]
+    public async Task<ActionResult<PagedResult<Product>>> InvoiceProducts([FromQuery] TransactionType type, [FromQuery] int page = 1, [FromQuery] int pageSize = 10000)
+    {
+        if (type is not (TransactionType.Sale or TransactionType.Purchase)) return BadRequest();
+        var result = await _service.GetProductsAsync(null, false, Math.Max(1, page), Math.Clamp(pageSize, 1, 10000));
+        var showCost = type == TransactionType.Purchase || await CanSeeProfitAsync();
+        return Ok(new PagedResult<Product>
+        {
+            Items = result.Items.Select(p => new Product
+            {
+                Id = p.Id, Code = p.Code, Name = p.Name, Unit = p.Unit, IsActive = p.IsActive,
+                IsService = p.IsService, WarehouseId = p.WarehouseId, SalePrice = p.SalePrice,
+                InvoiceVatValue = p.InvoiceVatValue, PurchasePrice = showCost ? p.PurchasePrice : 0,
+                AvgCost = showCost ? p.AvgCost : 0
+            }).ToList(),
+            TotalCount = result.TotalCount, Page = result.Page, PageSize = result.PageSize
+        });
+    }
+
+    [HttpGet("invoice-warehouses")]
+    public async Task<ActionResult<List<LookupItem>>> InvoiceWarehouses([FromQuery] TransactionType type, [FromQuery] bool activeOnly = false)
+    {
+        if (type is not (TransactionType.Sale or TransactionType.Purchase)) return BadRequest();
+        var warehouses = await _service.GetWarehousesAsync();
+        return Ok(warehouses.Where(w => !activeOnly || w.IsActive).Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToList());
+    }
+
+    [HttpGet("invoice-parties")]
+    public async Task<ActionResult<List<Party>>> InvoiceParties([FromQuery] TransactionType type)
+    {
+        if (type is not (TransactionType.Sale or TransactionType.Purchase)) return BadRequest();
+        return Ok(await _service.GetInvoicePartiesAsync(type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier));
+    }
+
     /// <summary>پیشنهاد قیمت بر اساس آخرین معامله کالا.</summary>
     [HttpGet("suggest-price")]
     public async Task<ActionResult<decimal>> SuggestPrice([FromQuery] int productId, [FromQuery] TransactionType type)
@@ -89,6 +126,7 @@ public class OrdersController : ApiControllerBase
     [HttpGet("last-purchase")]
     public async Task<ActionResult<Order>> LastPurchase([FromQuery] int productId)
     {
+        if (!await CanSeeProfitAsync()) return StatusCode(403, new { message = "مشاهده قیمت خرید به مجوز مستقل مشاهده سود نیاز دارد." });
         var order = await _service.GetLastPurchaseAsync(productId);
         return order is null
             ? NotFound(new { message = "برای این کالا سند خریدی ثبت نشده است." })
@@ -140,19 +178,19 @@ public class OrdersController : ApiControllerBase
         return reference?.Trim().Length > 100 ? "شماره پیگیری حداکثر ۱۰۰ نویسه است." : null;
     }
 
-    /// <summary>پیش‌نمایش آزمایشی تعدیل سررسید بدون تغییر داده.</summary>
+    /// <summary>پیش‌نمایش تعدیل سررسید بدون تغییر داده.</summary>
     [HttpGet("cheques/{chequeId:int}/reschedule-preview")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<ActionResult<SaleChequeReschedulePreview>> PreviewReschedule(int chequeId,
         [FromQuery] DateTime expectedDueDate, [FromQuery] DateTime newDueDate)
         => Ok(await _service.PreviewSaleChequeRescheduleAsync(chequeId, expectedDueDate, newDueDate));
 
-    /// <summary>ثبت آزمایشی تغییر سررسید و سند تعدیل با تأیید پیش‌نمایش.</summary>
+    /// <summary>ثبت تغییر سررسید و تعدیل با تأیید پیش‌نمایش.</summary>
     [HttpPut("cheques/{chequeId:int}/reschedule")]
     public async Task<ActionResult<SaleChequeReschedulePreview>> Reschedule(int chequeId, [FromBody] SaleChequeRescheduleCommand cmd)
         => Ok(await _service.RescheduleSaleChequeAsync(chequeId, cmd, User.Identity?.Name));
 
-    /// <summary>وصول آزمایشی چک فروش به حساب بانکی انتخاب‌شده.</summary>
+    /// <summary>وصول چک فروش به حساب بانکی انتخاب‌شده.</summary>
     [HttpPut("cheques/{chequeId:int}/receipt")]
     public async Task<IActionResult> ReceiveCheque(int chequeId, [FromBody] SaleChequeReceiptCommand cmd)
     {
@@ -160,7 +198,7 @@ public class OrdersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>لغو وصول آزمایشی با سند معکوس.</summary>
+    /// <summary>لغو وصول چک.</summary>
     [HttpPut("cheques/{chequeId:int}/receipt-reversal")]
     public async Task<IActionResult> ReverseChequeReceipt(int chequeId, [FromBody] SaleChequeReceiptReversalCommand cmd)
     {
@@ -173,7 +211,7 @@ public class OrdersController : ApiControllerBase
     public async Task<ActionResult<List<SaleChequeStatusHistoryItem>>> ChequeStatusHistory(int chequeId)
         => Ok(await _service.GetSaleChequeStatusHistoryAsync(chequeId));
 
-    /// <summary>تغییر وضعیت چک آزمایشی بدون ایجاد سود جدید.</summary>
+    /// <summary>تغییر وضعیت چک بدون ایجاد سود جدید.</summary>
     [HttpPut("cheques/{chequeId:int}/status")]
     public async Task<IActionResult> ChangeChequeStatus(int chequeId, [FromBody] SaleChequeStatusCommand cmd)
     {
@@ -229,7 +267,7 @@ public class OrdersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>لغو دریافت قسط فاکتور دارای تاخیر تادیه چک با سند معکوس.</summary>
+    /// <summary>لغو دریافت قسط فاکتور دارای تاخیر تادیه چک با حفظ تاریخچه.</summary>
     [HttpPut("installments/{installmentId:int}/receipt-reversal")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ReverseInstallmentReceipt(int installmentId, [FromBody] SaleChequeInstallmentReversalCommand cmd)
@@ -238,7 +276,7 @@ public class OrdersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>ابطال اتمیک فاکتور دارای تاخیر تادیه چک با سند معکوس کامل.</summary>
+    /// <summary>ابطال اتمیک فاکتور دارای تاخیر تادیه چک با حفظ تاریخچه.</summary>
     [HttpPost("{id:int}/cheque-cancel")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Delete")]
     public async Task<IActionResult> CancelChequeOrder(int id, [FromBody] SaleChequeCancelCommand cmd)

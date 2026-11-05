@@ -12,10 +12,10 @@ public static class SaleChequeSettlementLedger
     public static async Task<decimal> ExpectedSettledAmountAsync(AppDbContext db, Transaction sale)
     {
         var activeCheques = (await db.SaleChequeReceipts.AsNoTracking()
-            .Where(r => r.TransactionId == sale.Id && r.ReversalVoucherId == null)
+            .Where(r => r.TransactionId == sale.Id && r.ReversalDate == null)
             .Select(r => r.Amount).ToListAsync()).Sum();
         var activeInstallments = (await db.SaleChequeInstallmentReceipts.AsNoTracking()
-            .Where(r => r.TransactionId == sale.Id && r.ReversalVoucherId == null)
+            .Where(r => r.TransactionId == sale.Id && r.ReversalDate == null)
             .Select(r => r.Amount).ToListAsync()).Sum();
         var inboundAllocations = (await db.SaleChequeCreditSettlements.AsNoTracking()
             .Where(s => s.Kind == SaleChequeCreditSettlementKind.ApplyToSale && s.TargetSaleTransactionId == sale.Id)
@@ -27,8 +27,27 @@ public static class SaleChequeSettlementLedger
         return sale.CashAmount - refundedInitialCash + activeCheques + activeInstallments + inboundAllocations;
     }
 
-    public static async Task EnsureSettledAmountConsistentAsync(AppDbContext db, Transaction sale)
+    public static async Task EnsureSettledAmountConsistentAsync(AppDbContext db, Transaction sale, bool allowUnpostedLegacy = false)
     {
+        var charge = await db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == sale.Id);
+        if (charge is not null)
+        {
+            await SaleChequeShopLedgerIntegrity.EnsureAsync(db, sale, charge, allowUnpostedLegacy);
+            var cheques = await db.SaleChequeReceipts.AsNoTracking().Include(r => r.Cheque)
+                .Where(r => r.TransactionId == sale.Id).ToListAsync();
+            var installments = await db.SaleChequeInstallmentReceipts.AsNoTracking().Include(r => r.Installment)
+                .Where(r => r.TransactionId == sale.Id).ToListAsync();
+            if (cheques.Any(r => r.CompanyId != sale.CompanyId || r.Amount <= 0 || r.Cheque.TransactionId != sale.Id ||
+                    r.Cheque.CompanyId != sale.CompanyId || r.ReversalDate.HasValue != r.ReversalOperationId.HasValue ||
+                    (r.ReversalDate.HasValue && r.ReversalDate.Value.Date < r.Date.Date) ||
+                    (!r.ReversalDate.HasValue && (!r.Cheque.IsCleared || r.Cheque.Status != ChequeStatus.Cleared ||
+                        r.Cheque.Amount != r.Amount || r.Cheque.TrsAccountId != r.TrsAccountId))) ||
+                installments.Any(r => r.CompanyId != sale.CompanyId || r.Amount <= 0 || r.Installment.TransactionId != sale.Id ||
+                    r.Installment.CompanyId != sale.CompanyId || r.ReversalDate.HasValue != r.ReversalOperationId.HasValue ||
+                    (r.ReversalDate.HasValue && r.ReversalDate.Value.Date < r.Date.Date) ||
+                    (!r.ReversalDate.HasValue && (!r.Installment.IsPaid || r.Installment.Amount != r.Amount))))
+                throw new InvalidOperationException("تاریخچه دریافت یا لغو دریافت فاکتور ناسازگار است.");
+        }
         var expected = await ExpectedSettledAmountAsync(db, sale);
         if (sale.SettledAmount != expected)
             throw new InvalidOperationException("مبلغ تسویه فاکتور با تاریخچه دریافت‌ها و تخصیص‌ها مطابقت ندارد.");

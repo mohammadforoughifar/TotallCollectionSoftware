@@ -16,8 +16,8 @@ namespace Inventory.Api.Data;
 //
 //  کارهایی که انجام می‌شود (idempotent و امن برای اجرای مکرر):
 //   ۱) افزودن ستون CompanyId به جدول‌های ماژول (اگر نباشد)
-//   ۲) انتساب رکوردهای قدیمی (CompanyId = NULL) به شرکت پیش‌فرض سیستم
-//      تا هیچ داده‌ای بعد از ارتقا «گم» نشود
+//   ۲) انتساب رکوردهای بدون شرکت فقط وقتی یک شرکت در کل سیستم وجود دارد؛
+//      در چندشرکتی مالک نامشخص باید با بررسی دستی تعیین شود، نه با حدس.
 //   ۳) یکتا بودن کد/نام را از «کل سیستم» به «داخل هر شرکت» منتقل می‌کند
 //      (ایندکس‌های یکتای قدیمی حذف و ایندکس‌های مرکب ساخته می‌شوند)
 //   ۴) ایندکس شرکت روی جدول‌های پرتراکنش برای سرعت فیلتر
@@ -101,7 +101,7 @@ public static class SalesCompanySchemaV1
     }
 
     /// <summary>
-    /// انتساب رکوردهای بدون شرکت (CompanyId IS NULL) به اولین شرکت فعال.
+    /// انتساب رکوردهای بدون شرکت فقط در نصب تک‌شرکتی به تنها شرکت فعال.
     /// <para>
     /// کاربرد: نصب تازه‌ای که هنوز هیچ شرکتی ندارد، دادهٔ پایه را با CompanyId = NULL می‌سازد.
     /// به‌محض ساخت اولین شرکت، این متد صدا زده می‌شود تا آن داده‌ها «گم» نشوند.
@@ -118,6 +118,7 @@ public static class SalesCompanySchemaV1
 UPDATE [{table}]
    SET [CompanyId] = (SELECT [Id] FROM [SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id] LIMIT 1)
  WHERE [CompanyId] IS NULL
+   AND (SELECT COUNT(*) FROM [SystemCompanies]) = 1
    AND EXISTS (SELECT 1 FROM [SystemCompanies] WHERE [IsActive] = 1);");
             }
             else
@@ -126,11 +127,12 @@ UPDATE [{table}]
 IF OBJECT_ID(N'dbo.{table}', N'U') IS NOT NULL
 BEGIN
     DECLARE @c int = (SELECT TOP 1 [Id] FROM [dbo].[SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id]);
-    IF @c IS NOT NULL
+    IF @c IS NOT NULL AND (SELECT COUNT(*) FROM [dbo].[SystemCompanies]) = 1
         UPDATE [dbo].[{table}] SET [CompanyId] = @c WHERE [CompanyId] IS NULL;
 END");
             }
         }
+        await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
     }
 
     // ==================== SQL Server ====================
@@ -142,12 +144,12 @@ END");
 IF OBJECT_ID(N'dbo.{table}', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.{table}', N'CompanyId') IS NULL
     ALTER TABLE [dbo].[{table}] ADD [CompanyId] int NULL;");
 
-            // انتساب رکوردهای بی‌شرکت به شرکت پیش‌فرض (اولین شرکت فعال)
+            // در چندشرکتی به‌جای حدس زدن مالک، سابقه بدون تغییر می‌ماند.
             await SafeAsync(db, $@"
 IF OBJECT_ID(N'dbo.{table}', N'U') IS NOT NULL
 BEGIN
     DECLARE @c int = (SELECT TOP 1 [Id] FROM [dbo].[SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id]);
-    IF @c IS NOT NULL
+    IF @c IS NOT NULL AND (SELECT COUNT(*) FROM [dbo].[SystemCompanies]) = 1
         UPDATE [dbo].[{table}] SET [CompanyId] = @c WHERE [CompanyId] IS NULL;
 END");
         }
@@ -200,6 +202,7 @@ IF OBJECT_ID(N'dbo.{table}', N'U') IS NOT NULL
 UPDATE [{table}]
    SET [CompanyId] = (SELECT [Id] FROM [SystemCompanies] WHERE [IsActive] = 1 ORDER BY [Id] LIMIT 1)
  WHERE [CompanyId] IS NULL
+   AND (SELECT COUNT(*) FROM [SystemCompanies]) = 1
    AND EXISTS (SELECT 1 FROM [SystemCompanies] WHERE [IsActive] = 1);");
         }
 

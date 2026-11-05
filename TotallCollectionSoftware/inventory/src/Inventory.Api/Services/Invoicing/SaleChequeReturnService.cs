@@ -24,10 +24,6 @@ public sealed record SaleChequeReturnComputation(
     decimal EpochBase,
     decimal EpochIncome,
     decimal PreviouslyReturnedBaseInEpoch,
-    int SalesAccountId,
-    int? VatAccountId,
-    int IncomeAccountId,
-    int PartyAccountId,
     IReadOnlyList<SaleChequeReturnItemComputation> Items);
 
 /// <summary>
@@ -51,7 +47,7 @@ public static class SaleChequeReturnService
         string? user)
     {
         var transaction = db.Database.CurrentTransaction
-            ?? throw new InvalidOperationException("ثبت برگشت فروش باید داخل تراکنش حسابداری انجام شود.");
+            ?? throw new InvalidOperationException("ثبت برگشت فروش باید داخل تراکنش فاکتور انجام شود.");
         try
         {
             if (transaction.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
@@ -113,10 +109,6 @@ public static class SaleChequeReturnService
         if (confirmedTotalCredit.HasValue && confirmedTotalCredit.Value != plan.TotalCredit)
             throw new InvalidOperationException("مبلغ برگشت نسبت به پیش‌نمایش تغییر کرده است؛ دوباره بررسی و تأیید کنید.");
 
-        var years = await db.AccFiscalYears.Where(y => y.StartDate <= operationDate && y.EndDate >= operationDate).ToListAsync();
-        if (years.Count != 1 || years[0].IsClosed)
-            throw new InvalidOperationException("برای تاریخ برگشت باید دقیقاً یک سال مالی باز وجود داشته باشد.");
-
         var sale = computed.Sale;
         var charge = computed.Charge;
         var returnNumber = await NextReturnNumberAsync(db);
@@ -163,53 +155,6 @@ public static class SaleChequeReturnService
         foreach (var productId in affectedProducts)
             await RebuildLegacyStockAsync(db, sale.WarehouseId, productId);
 
-        var amounts = SaleChequeCorrectionAmounts.ForReturn(plan.GoodsBeforeVat, plan.Vat, plan.Income);
-        var year = years[0];
-        var voucherNumber = (await db.AccVouchers.Where(v => v.FiscalYearId == year.Id).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
-        var title = $"برگشت از فروش {returnNumber} — فاکتور {sale.Number}";
-        var voucher = new AccVoucher
-        {
-            FiscalYearId = year.Id,
-            Number = voucherNumber,
-            Date = operationDate,
-            Status = VoucherStatus.Confirmed,
-            Source = VoucherSource.StoreSaleReturn,
-            SourceId = sale.Id,
-            SourceTitle = title,
-            Description = title,
-            RefNumber = returnNumber,
-            CreatedBy = user,
-            ConfirmedBy = user,
-            CreatedAt = DateTime.Now,
-            ConfirmedAt = DateTime.Now
-        };
-        void AddVoucherLine(int accountId, decimal debit, decimal credit, string desc)
-        {
-            if (debit == 0 && credit == 0) return;
-            voucher.Lines.Add(new AccVoucherLine
-            {
-                RowNo = voucher.Lines.Count + 1,
-                AccountId = accountId,
-                PartyId = sale.PartyId,
-                Debit = debit,
-                Credit = credit,
-                Description = desc,
-                RefNumber = returnNumber
-            });
-        }
-        AddVoucherLine(computed.SalesAccountId, amounts.GoodsDebit, 0, $"برگشت فروش کالا — {title}");
-        if (amounts.VatDebit > 0)
-            AddVoucherLine(computed.VatAccountId!.Value, amounts.VatDebit, 0, $"برگشت ارزش افزوده — {title}");
-        if (amounts.IncomeDebit > 0)
-            AddVoucherLine(computed.IncomeAccountId, amounts.IncomeDebit, 0, $"کسر تاخیر تادیه چک — {title}");
-        AddVoucherLine(computed.PartyAccountId, 0, amounts.PartyCredit, $"بستانکاری برگشت — {title}");
-
-        voucher.TotalDebit = voucher.Lines.Sum(l => l.Debit);
-        voucher.TotalCredit = voucher.Lines.Sum(l => l.Credit);
-        if (voucher.Lines.Count < 2 || voucher.TotalDebit != voucher.TotalCredit || voucher.TotalDebit != amounts.TotalDebit)
-            throw new InvalidOperationException("سند حسابداری برگشت از فروش تراز نیست.");
-        db.AccVouchers.Add(voucher);
-
         SaleChequeChargeEvent? incomeEvent = null;
         if (plan.Income > 0)
         {
@@ -218,7 +163,6 @@ public static class SaleChequeReturnService
                 CompanyId = charge.CompanyId,
                 OperationId = operationId,
                 SaleChequeChargeId = charge.Id,
-                AccVoucher = voucher,
                 Kind = SaleChequeChargeEventKind.GoodsReturn,
                 Date = operationDate,
                 IncomeDelta = -plan.Income
@@ -236,12 +180,7 @@ public static class SaleChequeReturnService
             SaleTransactionId = sale.Id,
             ReturnTransaction = returnTxn,
             SaleChequeChargeId = charge.Id,
-            AccVoucher = voucher,
             SaleChequeChargeEvent = incomeEvent,
-            SalesAccountId = computed.SalesAccountId,
-            VatAccountId = computed.VatAccountId,
-            IncomeAccountId = computed.IncomeAccountId,
-            PartyAccountId = computed.PartyAccountId,
             Date = operationDate,
             GoodsAmount = plan.GoodsBeforeVat,
             VatAmount = plan.Vat,
@@ -309,9 +248,7 @@ public static class SaleChequeReturnService
         var chargeQuery = tracking ? db.SaleChequeCharges.AsQueryable() : db.SaleChequeCharges.AsNoTracking();
         var charge = await chargeQuery.FirstOrDefaultAsync(c => c.TransactionId == sale.Id)
             ?? throw new InvalidOperationException("ردیف تاخیر تادیه چک یافت نشد.");
-        if (charge.CompanyId != sale.CompanyId || charge.IncomeAccountId is not int incomeAccountId || incomeAccountId <= 0 ||
-            charge.PartyAccountId is not int partyAccountId || partyAccountId <= 0 || incomeAccountId == partyAccountId ||
-            charge.Amount < 0 || charge.CustomerCredit < 0 || (charge.Amount > 0 && charge.CustomerCredit > 0) ||
+        if (charge.CompanyId != sale.CompanyId || charge.Amount < 0 || charge.CustomerCredit < 0 || (charge.Amount > 0 && charge.CustomerCredit > 0) ||
             sale.Amount != charge.BaseAmount + charge.Amount)
             throw new InvalidOperationException("اطلاعات مالی فاکتور ناسازگار است؛ برگشت متوقف شد.");
 
@@ -324,7 +261,6 @@ public static class SaleChequeReturnService
             throw new InvalidOperationException("فاکتور ابطال شده است و امکان ثبت برگشت مجدد ندارد.");
 
         var events = await db.SaleChequeChargeEvents.AsNoTracking()
-            .Include(e => e.AccVoucher).ThenInclude(v => v.Lines).ThenInclude(l => l.Account)
             .Where(e => e.SaleChequeChargeId == charge.Id).ToListAsync();
         var reschedules = await db.SaleChequeReschedules.AsNoTracking()
             .Where(r => r.SaleChequeChargeId == charge.Id).OrderBy(r => r.Id).ToListAsync();
@@ -338,7 +274,7 @@ public static class SaleChequeReturnService
             .Where(s => s.SaleTransactionId == sale.Id).ToListAsync();
 
         if (events.Count(e => e.Kind == SaleChequeChargeEventKind.Initial) != 1 ||
-            events.Any(e => e.AccVoucher.Status != VoucherStatus.Confirmed || e.Date.Date > operationDate) ||
+            events.Any(e => e.Date.Date > operationDate) ||
             events.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit ||
             reschedules.Any(r => r.Date.Date > operationDate) ||
             priorReturns.Any(r => r.Date.Date > operationDate) ||
@@ -349,10 +285,6 @@ public static class SaleChequeReturnService
 
         await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, sale);
         var netSettled = Math.Max(0m, sale.SettledAmount - creditSettlements.Sum(s => s.Amount));
-
-        var initialVoucher = events.Single(e => e.Kind == SaleChequeChargeEventKind.Initial).AccVoucher;
-        var (salesAccountId, vatAccountId) = await ResolveSaleAndVatAccountsAsync(
-            db, initialVoucher, origGoods, origVat, incomeAccountId, partyAccountId);
 
         var totalReturnedBase = priorReturns.Sum(r => r.GoodsAmount + r.VatAmount);
         var remainingBase = charge.BaseAmount - totalReturnedBase;
@@ -434,63 +366,13 @@ public static class SaleChequeReturnService
             throw new InvalidOperationException(ex.Message, ex);
         }
 
-        var accountIds = new List<int> { salesAccountId, incomeAccountId, partyAccountId };
-        if (plan.Vat > 0)
-        {
-            if (vatAccountId is not int vatId || vatId <= 0)
-                throw new InvalidOperationException("حساب مالیات بر ارزش افزوده فاکتور اولیه احراز نشد.");
-            accountIds.Add(vatId);
-        }
-        if (accountIds.Count != accountIds.Distinct().Count())
-            throw new InvalidOperationException("حساب‌های فروش، مالیات، درآمد چک و مشتری باید مستقل باشند.");
-        var activeAccounts = await db.AccAccounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToListAsync();
-        if (activeAccounts.Count != accountIds.Count || activeAccounts.Any(a => !a.IsActive || !a.IsPostable))
-            throw new InvalidOperationException("حساب‌های ثبت‌شده فاکتور باید فعال و قابل ثبت باشند.");
-
         return new SaleChequeReturnComputation(
             sale, charge, plan, remainingBase, epochRescheduleId, epochBase, epochIncome, previouslyReturnedInEpoch,
-            salesAccountId, vatAccountId, incomeAccountId, partyAccountId, items);
+            items);
     }
 
     private static decimal LineGoodsBeforeVat(TransactionLine l)
         => Math.Max(0m, (l.GrossAmount ?? OrderLineAmounts.Gross(l.Quantity, l.Price)) - l.DiscountAmount);
-
-    public static async Task<(int SalesAccountId, int? VatAccountId)> ResolveSaleAndVatAccountsAsync(
-        AppDbContext db, AccVoucher initialVoucher, decimal origGoods, decimal origVat, int incomeAccountId, int partyAccountId)
-    {
-        int salesAccountId;
-        if (origGoods > 0)
-        {
-            var salesGroups = initialVoucher.Lines
-                .Where(l => l.AccountId != incomeAccountId && l.AccountId != partyAccountId &&
-                            l.Debit == 0 && l.Credit > 0 &&
-                            l.Account is { Type: AccountType.Income, IsPermanent: false })
-                .GroupBy(l => l.AccountId).ToList();
-            if (salesGroups.Count != 1 || salesGroups[0].Sum(l => l.Credit) != origGoods)
-                throw new InvalidOperationException("حساب فروش کالای سند اولیه به طور یکتا قابل احراز نیست.");
-            salesAccountId = salesGroups[0].Key;
-        }
-        else
-        {
-            var rule = await db.FacRules.AsNoTracking().FirstOrDefaultAsync(r => r.Kind == InvoiceKind.Sale);
-            if (rule?.MainAccountId is not int fallbackSales || fallbackSales <= 0)
-                throw new InvalidOperationException("حساب فروش کالا تنظیم نشده است.");
-            salesAccountId = fallbackSales;
-        }
-
-        int? vatAccountId = null;
-        if (origVat > 0)
-        {
-            var vatGroups = initialVoucher.Lines
-                .Where(l => l.AccountId != incomeAccountId && l.AccountId != partyAccountId && l.AccountId != salesAccountId &&
-                            l.Debit == 0 && l.Credit > 0 && l.Account is { Type: AccountType.Liability })
-                .GroupBy(l => l.AccountId).ToList();
-            if (vatGroups.Count != 1 || vatGroups[0].Sum(l => l.Credit) != origVat)
-                throw new InvalidOperationException("حساب ارزش افزوده سند اولیه به طور یکتا قابل احراز نیست.");
-            vatAccountId = vatGroups[0].Key;
-        }
-        return (salesAccountId, vatAccountId);
-    }
 
     public static async Task<string> NextReturnNumberAsync(AppDbContext db)
     {

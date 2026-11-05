@@ -43,6 +43,7 @@ public static class DbInitializer
                     await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
                     await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
                     await SaleChequeCancellationSchemaV1.EnsureAsync(db);
+                    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
@@ -51,6 +52,7 @@ public static class DbInitializer
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
                     await SalesCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
@@ -109,6 +111,7 @@ public static class DbInitializer
                     await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
                     await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
                     await SaleChequeCancellationSchemaV1.EnsureAsync(db);
+                    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
@@ -116,6 +119,7 @@ public static class DbInitializer
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
                     // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی) — مایگریشن squash شده این‌ها را نمی‌سازد
@@ -290,6 +294,7 @@ public static class DbInitializer
                 // جدول‌هایی را پوشش می‌دهد که در همین راه‌اندازی تازه ساخته می‌شوند
                 // (GoodsIssues/GoodsIssueLines و RepairDevices) و در اجرای اول وجود نداشتند.
                 await SalesCompanySchemaV1.EnsureAsync(db);
+                await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {

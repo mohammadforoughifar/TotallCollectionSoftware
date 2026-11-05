@@ -32,19 +32,23 @@ class ReceiptSchema(unittest.TestCase):
 
     def test_accounting_treasury_and_statement_hooks_are_present(self):
         receipt = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeReceiptPosting.cs').read_text(encoding='utf8')
-        for s in ('IsolationLevel.Serializable', 'TreasuryAccountKind.Bank', 'Status = VoucherStatus.Confirmed',
+        for s in ('IsolationLevel.Serializable', 'TreasuryAccountKind.Bank', 'SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync',
                   'sale.SettledAmount += cheque.Amount', 'SaleChequeReceipts.Add(receipt)', 'tx.RollbackAsync()',
-                  'SystemCompanies.CountAsync() > 1', 'x.SaleChequeChargeId == charge.Id && x.Date > date',
+                  'x.SaleChequeChargeId == charge.Id && x.Date > date',
                   'x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)'):
             self.assertIn(s, receipt)
         accounts = (ROOT / 'Inventory.Api/Services/Accounting/AccountingService.cs').read_text(encoding='utf8')
         self.assertIn('SaleChequeReceipts.IgnoreQueryFilters()', accounts)
         treasury = (ROOT / 'Inventory.Api/Services/Treasury/TreasuryService.cs').read_text(encoding='utf8')
-        self.assertIn('inSum += saleReceipts.Sum(r => r.Amount)', treasury)
+        calculator = (ROOT / 'Inventory.Api/Services/Treasury/TreasuryBalanceCalculator.cs').read_text(encoding='utf8')
+        self.assertIn('SaleChequeReceipts.IgnoreQueryFilters().AsNoTracking()', calculator)
+        self.assertIn('myReceipts.Sum(r => r.Amount)', calculator)
         self.assertIn('وصول چک فروش شماره', treasury)
         statement = (ROOT / 'Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
         self.assertIn('"لغو وصول چک" : "وصول چک"', statement)
-        self.assertIn('sale.SettledAmount != sale.CashAmount + saleReceipts.Where(r => r.ReversalVoucherId == null).Sum(r => r.Amount)', statement)
+        ledger = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeSettlementLedger.cs').read_text(encoding='utf8')
+        self.assertIn('ReversalDate == null', ledger)
+        self.assertIn('SaleChequeShopLedgerIntegrity.EnsureAsync', ledger)
 
 
 if __name__ == '__main__':

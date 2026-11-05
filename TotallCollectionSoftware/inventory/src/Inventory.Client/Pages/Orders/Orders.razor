@@ -483,7 +483,7 @@
                 </div>
                 <div class="col-md-7 text-muted fs-8">
                     مشتری: <strong class="text-dark">@returningOrder.PartyName</strong> |
-                    مانده کالای قابل برگشت را وارد کرده و پیش‌نمایش حسابداری را بررسی کنید.
+                    مانده کالای قابل برگشت را وارد کرده و پیش‌نمایش مبلغ برگشت را بررسی کنید.
                 </div>
             </div>
             <div class="table-responsive mb-3">
@@ -642,7 +642,7 @@
         @if (cancellingOrder is not null)
         {
             <div class="alert alert-warning py-2 px-3 fs-8">
-                با ابطال این فاکتور، سند حسابداری معکوس برای اقلام باقی‌مانده، مالیات و تاخیر تادیه چک صادر می‌شود، موجودی کالا به انبار بازمی‌گردد و چک‌های وصول‌نشده در وضعیت ابطال قرار می‌گیرند.
+                با ابطال این فاکتور، گردش برگشت اقلام باقی‌مانده، مالیات و تاخیر تادیه چک ثبت می‌شود، موجودی کالا به انبار بازمی‌گردد و چک‌های وصول‌نشده در وضعیت ابطال قرار می‌گیرند.
             </div>
             <div class="mb-3">
                 <label class="form-label fs-8">تاریخ ابطال</label>
@@ -709,8 +709,9 @@
         try
         {
             if (whLookup.Count == 0)
-                whLookup = await WarehouseSvc.GetLookupsAsync();
-            partyLookup = await PartySvc.GetLookupsAsync(isPurchase ? PartyType.Supplier : PartyType.Customer);
+                whLookup = await OrderSvc.GetInvoiceWarehousesAsync(txnType);
+            partyLookup = (await OrderSvc.GetInvoicePartiesAsync(txnType))
+                .Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
         }
         catch { }
     }
@@ -1061,7 +1062,7 @@
                 Date = cancelDate,
                 Reason = cancelReason
             });
-            Toast.Success($"فاکتور «{cancellingOrder.Number}» با سند معکوس ابطال شد.");
+            Toast.Success($"فاکتور «{cancellingOrder.Number}» ابطال شد.");
             cancellingOrder = null;
             await Load();
         }

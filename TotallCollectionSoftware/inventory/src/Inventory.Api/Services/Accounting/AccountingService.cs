@@ -996,7 +996,7 @@ public class AccountingService : IAccountingService
         // confirmed vouchers in this dashboard's fiscal year to their snapshotted account.
         // Unrelated activity posted to the same account must not be attributed to a cheque.
         var chargeEvents = await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AsNoTracking()
-            .Where(e => e.AccVoucher.Status == VoucherStatus.Confirmed &&
+            .Where(e => e.AccVoucherId != null && e.AccVoucher != null && e.AccVoucher.Status == VoucherStatus.Confirmed &&
                         (year == null || e.AccVoucher.FiscalYearId == year.Id))
             .Select(e => new { e.AccVoucherId, e.IncomeDelta, e.SaleChequeCharge.IncomeAccountId })
             .ToListAsync();
@@ -1007,10 +1007,10 @@ public class AccountingService : IAccountingService
             if (item.IncomeAccountId is not int incomeAccountId ||
                 !typeOf.TryGetValue(incomeAccountId, out var accountType) || accountType != AccountType.Income)
                 throw new InvalidOperationException("حساب درآمد ثبت‌شده برای گردش تاخیر تادیه چک معتبر نیست.");
-            var incomeLines = linesByVoucher[item.AccVoucherId].Where(l => l.AccountId == incomeAccountId).ToList();
+            var incomeLines = linesByVoucher[item.AccVoucherId!.Value].Where(l => l.AccountId == incomeAccountId).ToList();
             if (incomeLines.Count == 0 || incomeLines.Sum(l => l.Credit - l.Debit) != item.IncomeDelta)
                 throw new InvalidOperationException("گردش تاخیر تادیه چک با آرتیکل سند حسابداری مطابقت ندارد.");
-            chargeAccounts.Add(item.AccVoucherId, incomeAccountId);
+            chargeAccounts.Add(item.AccVoucherId!.Value, incomeAccountId);
         }
 
         foreach (var l in lines)

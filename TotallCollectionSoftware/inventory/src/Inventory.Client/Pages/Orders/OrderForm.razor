@@ -236,7 +236,7 @@
                                                 }
                                                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenSaleChequeCharge">محاسبه سود</button>
                                             </div>
-                                            <div class="text-muted mt-1">ثبت آزمایشی این قابلیت به تنظیمات سرور وابسته است؛ مبلغ سود جدا از کالا و بدون ارزش افزوده در حساب درآمد مالی ثبت می‌شود.</div>
+                                            <div class="text-muted mt-1">مبلغ تاخیر تادیه چک جدا از کالا و بدون ارزش افزوده در گردش فروشگاه ثبت می‌شود.</div>
                                         </div>
                                     }
                                     @for (var ci = 0; ci < cheques.Count; ci++)
@@ -409,7 +409,7 @@
                             <col style="width:@InvoiceColumnWidth(9, 11)" />
                             <col style="width:@InvoiceColumnWidth(13, 14)" />
                             @if (Type == TransactionType.Sale && CanSeeProfit) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
-                            @if (Type == TransactionType.Sale && referrerId > 0) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
+                            @if (Type == TransactionType.Sale && CanSeeProfit && referrerId > 0) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
                             <col style="width:@InvoiceActionsColumnWidth" />
                         </colgroup>
                     }
@@ -429,7 +429,7 @@
                                 {
                                     <th><span>سود</span><small>ریال</small></th>
                                 }
-                                @if (referrerId > 0)
+                                @if (CanSeeProfit && referrerId > 0)
                                 {
                                     <th><span>پورسانت</span><small>ریال</small></th>
                                 }
@@ -552,7 +552,7 @@
                                             </div>
                                         </td>
                                     }
-                                    @if (referrerId > 0)
+                                    @if (CanSeeProfit && referrerId > 0)
                                     {
                                         <td data-label="پورسانت" class="num">
                                             <div class="order-line-value">
@@ -570,7 +570,7 @@
                                 }
                                 <td class="text-nowrap">
                                     <div class="order-line-actions">
-                                        @if (Type == TransactionType.Sale && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
+                                        @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
                                             <button class="btn btn-sm btn-light" tabindex="-1" title="آخرین فاکتور خرید این کالا" aria-label="آخرین فاکتور خرید این کالا" @onclick="() => ShowLastPurchase(l.ProductId)">
                                                 <i class="bi bi-receipt text-primary"></i>
@@ -624,7 +624,7 @@
                                         <div class="fw-bold fs-7 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</div>
                                     </td>
                                 }
-                                @if (referrerId > 0)
+                                @if (referrerId > 0 && CanSeeProfit)
                                 {
                                     <td class="text-start p-2">
                                         <div class="fs-9 text-muted mb-1">پورسانت:</div>
@@ -657,7 +657,7 @@
             }
             }
 
-            @if (Type == TransactionType.Sale && invoiceStep == 1 && (CanSeeProfit || referrerId > 0))
+            @if (Type == TransactionType.Sale && invoiceStep == 1 && CanSeeProfit)
             {
                 <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mt-2 p-2 px-3 rounded-3 border bg-light fs-8">
                     @if (CanSeeProfit)
@@ -911,7 +911,7 @@
         {
             if (Type == TransactionType.Sale)
             {
-                customers = await PartySvc.GetAsync(PartyType.Customer);
+                customers = await OrderSvc.GetInvoicePartiesAsync(TransactionType.Sale);
                 partyLookup = customers.Where(c => c.IsActive)
                     .Select(c => new LookupItem
                     {
@@ -923,7 +923,8 @@
             }
             else
             {
-                partyLookup = await PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
+                partyLookup = (await OrderSvc.GetInvoicePartiesAsync(TransactionType.Purchase)).Where(p => p.IsActive)
+                    .Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
             }
 
             // انتخاب خودکار طرف حساب جدید در کمبوباکس
@@ -1025,7 +1026,7 @@
         if (Type != TransactionType.Sale)
             return purchaseWeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
 
-        var extraColumns = (CanSeeProfit ? 1 : 0) + (referrerId > 0 ? 1 : 0);
+        var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
         var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
         var weight = saleWeight ?? purchaseWeight;
         return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
@@ -1233,7 +1234,7 @@
         : useInstallment ? PaymentMethod.Installment
         : PaymentMethod.Credit;
 
-    // ثبت آزمایشی ردیف مالی مستقل؛ هیچ چکی به‌طور خودکار بازنویسی نمی‌شود.
+    // ثبت ردیف مالی مستقل؛ هیچ چکی به‌طور خودکار بازنویسی نمی‌شود.
     private bool showSaleChequeCharge;
     private string chargeBaseText = "", chargeRateText = "", chargeAdjustmentRateText = "";
     private int chargeMonths = 1, chargeAdjustmentDays = 30;
@@ -1498,14 +1499,11 @@
             if (IsEdit) warehouseId = EditOrder!.WarehouseId;
             else if (CopyTemplate is not null) warehouseId = CopyTemplate.WarehouseId;
             var profitTask = Type == TransactionType.Sale ? OrderSvc.CanViewProfitAsync() : Task.FromResult(false);
-            var whTask = WarehouseSvc.GetLookupsAsync(activeOnly: true);
-            var partyTask = Type == TransactionType.Sale ? null : PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
-            var prodTask = ProductSvc.GetProductsAsync(pageSize: 10000);
-            var bankTask = Type == TransactionType.Sale
-                ? OrderSvc.GetActiveTreasuryAccountsAsync()
-                : AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            var whTask = OrderSvc.GetInvoiceWarehousesAsync(Type, activeOnly: true);
+            var partiesTask = OrderSvc.GetInvoicePartiesAsync(Type);
+            var prodTask = OrderSvc.GetInvoiceProductsAsync(Type);
+            var bankTask = OrderSvc.GetActiveTreasuryAccountsAsync();
             var referrerTask = Type == TransactionType.Sale ? ReferrerSvc.GetAllAsync(activeOnly: true) : null;
-            var customerTask = Type == TransactionType.Sale ? PartySvc.GetAsync(PartyType.Customer) : null;
             var stockTask = LoadWarehouseStocksAsync();
             try
             {
@@ -1516,7 +1514,9 @@
             try { canSeeProfit = await profitTask; }
             catch { canSeeProfit = false; } // fail closed if the permission cannot be verified
             whLookup = await whTask;
-            if (partyTask is not null) partyLookup = await partyTask;
+            var invoiceParties = await partiesTask;
+            if (Type == TransactionType.Purchase)
+                partyLookup = invoiceParties.Where(p => p.IsActive).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
             var prods = await prodTask;
 
             try
@@ -1539,10 +1539,11 @@
 
             if (Type == TransactionType.Sale)
             {
-                referrers = await referrerTask!;
+                try { referrers = await referrerTask!; }
+                catch { referrers = new(); } // معرف اختیاری است و مجوز آن پیش‌نیاز فروش نیست.
 
                 // فهرست مشتری‌ها با نمایش وضعیت معرف: «بدون معرف» یا نام معرف
-                customers = await customerTask!;
+                customers = invoiceParties;
                 partyLookup = customers.Where(c => c.IsActive)
                     .Select(c => new LookupItem
                     {

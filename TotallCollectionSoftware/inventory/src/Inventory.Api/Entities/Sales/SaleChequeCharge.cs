@@ -23,6 +23,9 @@ public class SaleChequeCharge : ICompanyOwned
     /// <summary>حساب‌های سند قطعی در لحظهٔ ثبت؛ null یعنی انتساب تاریخی احراز نشده است.</summary>
     public int? IncomeAccountId { get; set; }
     public int? PartyAccountId { get; set; }
+    /// <summary>رسید نقدی اولیه فروشگاه؛ برای پیشگیری از تغییر مستقل و محاسبه مانده صندوق.</summary>
+    public int? InitialCashTrsVoucherId { get; set; }
+    public TrsVoucher? InitialCashTrsVoucher { get; set; }
     /// <summary>سود اولیهٔ ماشین‌حساب و رقم جاری ردیف مالی.</summary>
     public decimal InitialAmount { get; set; }
     public decimal Amount { get; set; }

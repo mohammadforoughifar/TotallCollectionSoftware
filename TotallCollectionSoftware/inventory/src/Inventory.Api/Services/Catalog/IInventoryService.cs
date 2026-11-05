@@ -56,6 +56,8 @@ public interface IInventoryService
     // ---------------- طرف حساب ----------------
     /// <param name="referrerScope">محدودکردن به پروندهٔ یک معرف (ویزیتور بدون مجوز دیدن کل مشتریان).</param>
     Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null, int? referrerScope = null);
+    /// <summary>فقط مشخصات انتخاب طرف حساب در ثبت فاکتور، بدون مانده و اطلاعات تماس.</summary>
+    Task<List<Party>> GetInvoicePartiesAsync(PartyType type);
     Task<Party> SavePartyAsync(Party dto);
     Task DeletePartyAsync(int id);
 

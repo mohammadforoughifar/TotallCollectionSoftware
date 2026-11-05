@@ -12,9 +12,9 @@ class InvoiceReliability(unittest.TestCase):
         form = read('Inventory.Client/Pages/Orders/OrderForm.razor')
         init = form[form.index('protected override async Task OnInitializedAsync()'):form.index('private Task<bool> LoadWarehouseStocksAsync()')]
         self.assertLess(init.index('var bankTask ='), init.index('whLookup = await whTask'))
-        self.assertLess(init.index('var customerTask ='), init.index('whLookup = await whTask'))
+        self.assertLess(init.index('var partiesTask ='), init.index('whLookup = await whTask'))
         self.assertLess(init.index('if (IsEdit) warehouseId = EditOrder!.WarehouseId'), init.index('var stockTask ='))
-        self.assertIn('customers = await customerTask!', init)
+        self.assertIn('customers = invoiceParties', init)
         service = read('Inventory.Api/Services/Catalog/InventoryService.cs')
         self.assertIn('var stocksByProduct = stocks.ToLookup(s => s.ProductId)', service)
         self.assertIn('ToProductDto(p, stocksByProduct[p.Id], whNames)', service)

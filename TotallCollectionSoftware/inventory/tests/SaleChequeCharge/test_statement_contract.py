@@ -12,8 +12,10 @@ class StatementContract(unittest.TestCase):
                      'result.SaleChequeIncomeTotal += adjustment.Amount', 'result.TotalDebit += income',
                      't.CashAmount : t.SettledAmount', '"لغو وصول چک" : "وصول چک"', 'debit += t.SettledAmount'):
             self.assertIn(part, detail)
-        self.assertIn('history.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit', source)
-        self.assertIn('lines.Sum(l => l.Credit - l.Debit) != item.IncomeDelta', source)
+        integrity = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeShopLedgerIntegrity.cs').read_text(encoding='utf8')
+        self.assertIn('events.Sum(e => e.IncomeDelta) != charge.Amount - charge.CustomerCredit', integrity)
+        self.assertIn('Matches(r.SaleChequeChargeEventId', integrity)
+        self.assertIn('allowUnpostedLegacy', integrity)
 
     def test_last_day_is_inclusive_in_summary_and_detail(self):
         source = (ROOT / 'Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')

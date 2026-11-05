@@ -13681,6 +13681,7 @@ namespace Inventory.Api.Migrations
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
                     b.Property<int?>("CompanyId").HasColumnType("int");
                     b.Property<int>("TransactionId").HasColumnType("int");
+                    b.Property<int?>("InitialCashTrsVoucherId").HasColumnType("int");
                     b.Property<decimal>("BaseAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.Property<decimal>("RatePercent").HasPrecision(18, 6).HasColumnType("decimal(18,6)");
                     b.Property<int>("PeriodDays").HasColumnType("int");
@@ -13694,6 +13695,7 @@ namespace Inventory.Api.Migrations
                     b.Property<decimal>("CustomerCredit").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.HasKey("Id");
                     b.HasIndex("TransactionId").IsUnique();
+                    b.HasIndex("InitialCashTrsVoucherId").IsUnique().HasFilter("[InitialCashTrsVoucherId] IS NOT NULL");
                     b.ToTable("SaleChequeCharges");
                 });
 
@@ -13704,13 +13706,13 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("CompanyId").HasColumnType("int");
                     b.Property<Guid>("OperationId").HasColumnType("uniqueidentifier");
                     b.Property<int>("SaleChequeChargeId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<int>("Kind").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("IncomeDelta").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique();
-                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("SaleChequeChargeId", "Date");
                     b.ToTable("SaleChequeChargeEvents");
                 });
@@ -13750,9 +13752,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("ChequeId").HasColumnType("int");
                     b.Property<int>("TransactionId").HasColumnType("int");
                     b.Property<int>("TrsAccountId").HasColumnType("int");
-                    b.Property<int>("BankAccountId").HasColumnType("int");
-                    b.Property<int>("PartyAccountId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("BankAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.Property<Guid?>("ReversalOperationId").HasColumnType("uniqueidentifier");
@@ -13762,10 +13764,10 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("PreviousTrsAccountId").HasColumnType("int");
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique();
-                    b.HasIndex("ChequeId").IsUnique().HasFilter("[ReversalVoucherId] IS NULL");
+                    b.HasIndex("ChequeId").IsUnique().HasFilter("[ReversalDate] IS NULL");
                     b.HasIndex("ReversalOperationId").IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
                     b.HasIndex("ReversalVoucherId").IsUnique().HasFilter("[ReversalVoucherId] IS NOT NULL");
-                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("TransactionId");
                     b.HasIndex("TrsAccountId");
                     b.ToTable("SaleChequeReceipts");
@@ -13780,12 +13782,12 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("SaleTransactionId").HasColumnType("int");
                     b.Property<int>("ReturnTransactionId").HasColumnType("int");
                     b.Property<int>("SaleChequeChargeId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<int?>("SaleChequeChargeEventId").HasColumnType("int");
-                    b.Property<int>("SalesAccountId").HasColumnType("int");
+                    b.Property<int?>("SalesAccountId").HasColumnType("int");
                     b.Property<int?>("VatAccountId").HasColumnType("int");
-                    b.Property<int>("IncomeAccountId").HasColumnType("int");
-                    b.Property<int>("PartyAccountId").HasColumnType("int");
+                    b.Property<int?>("IncomeAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("GoodsAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.Property<decimal>("VatAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
@@ -13802,7 +13804,7 @@ namespace Inventory.Api.Migrations
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique();
                     b.HasIndex("ReturnTransactionId").IsUnique();
-                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("SaleChequeChargeEventId").IsUnique().HasDatabaseName("IX_SaleChequeReturns_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
                     b.HasIndex("SaleTransactionId");
                     b.HasIndex("SaleChequeChargeId");
@@ -13864,9 +13866,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("SaleChequeChargeId").HasColumnType("int");
                     b.Property<int?>("TrsAccountId").HasColumnType("int");
                     b.Property<int?>("TreasuryLedgerAccountId").HasColumnType("int");
-                    b.Property<int>("PartyAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
                     b.Property<int?>("TargetPartyAccountId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<int?>("TrsVoucherId").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
@@ -13875,7 +13877,7 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique();
-                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("TrsVoucherId").IsUnique().HasFilter("[TrsVoucherId] IS NOT NULL");
                     b.HasIndex("SaleTransactionId");
                     b.HasIndex("TargetSaleTransactionId");
@@ -13893,9 +13895,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("InstallmentId").HasColumnType("int");
                     b.Property<int>("TransactionId").HasColumnType("int");
                     b.Property<int>("TrsAccountId").HasColumnType("int");
-                    b.Property<int>("BankAccountId").HasColumnType("int");
-                    b.Property<int>("PartyAccountId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("BankAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
                     b.Property<Guid?>("ReversalOperationId").HasColumnType("uniqueidentifier");
@@ -13903,8 +13905,8 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime?>("ReversalDate").HasColumnType("datetime2");
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_OperationId");
-                    b.HasIndex("InstallmentId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ActiveInstallment").HasFilter("[ReversalVoucherId] IS NULL");
-                    b.HasIndex("AccVoucherId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_AccVoucherId");
+                    b.HasIndex("InstallmentId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ActiveInstallment").HasFilter("[ReversalDate] IS NULL");
+                    b.HasIndex("AccVoucherId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_AccVoucherId").HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("ReversalOperationId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalOperationId").HasFilter("[ReversalOperationId] IS NOT NULL");
                     b.HasIndex("ReversalVoucherId").IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalVoucherId").HasFilter("[ReversalVoucherId] IS NOT NULL");
                     b.HasIndex("TransactionId");
@@ -13921,13 +13923,13 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("SaleTransactionId").HasColumnType("int");
                     b.Property<int>("SaleChequeChargeId").HasColumnType("int");
                     b.Property<int?>("ReturnTransactionId").HasColumnType("int");
-                    b.Property<int>("AccVoucherId").HasColumnType("int");
+                    b.Property<int?>("AccVoucherId").HasColumnType("int");
                     b.Property<int?>("SaleChequeChargeEventId").HasColumnType("int");
                     b.Property<int?>("RefundTrsVoucherId").HasColumnType("int");
-                    b.Property<int>("SalesAccountId").HasColumnType("int");
+                    b.Property<int?>("SalesAccountId").HasColumnType("int");
                     b.Property<int?>("VatAccountId").HasColumnType("int");
-                    b.Property<int>("IncomeAccountId").HasColumnType("int");
-                    b.Property<int>("PartyAccountId").HasColumnType("int");
+                    b.Property<int?>("IncomeAccountId").HasColumnType("int");
+                    b.Property<int?>("PartyAccountId").HasColumnType("int");
                     b.Property<int?>("CashLedgerAccountId").HasColumnType("int");
                     b.Property<DateTime>("Date").HasColumnType("datetime2");
                     b.Property<decimal>("ReversedGoodsAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
@@ -13939,7 +13941,7 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
                     b.HasKey("Id");
                     b.HasIndex("OperationId").IsUnique();
-                    b.HasIndex("AccVoucherId").IsUnique();
+                    b.HasIndex("AccVoucherId").IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
                     b.HasIndex("SaleChequeChargeEventId").IsUnique().HasDatabaseName("IX_SaleChequeCancellations_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
                     b.HasIndex("RefundTrsVoucherId").IsUnique().HasFilter("[RefundTrsVoucherId] IS NOT NULL");
                     b.HasIndex("SaleTransactionId");
@@ -16677,6 +16679,9 @@ namespace Inventory.Api.Migrations
                         .HasForeignKey("TransactionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                    b.HasOne("Inventory.Api.Data.TrsVoucher", "InitialCashTrsVoucher")
+                        .WithMany().HasForeignKey("InitialCashTrsVoucherId").OnDelete(DeleteBehavior.Restrict);
+                    b.Navigation("InitialCashTrsVoucher");
                     b.Navigation("Transaction");
                 });
 
@@ -16685,7 +16690,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.SaleChequeCharge", "SaleChequeCharge")
                         .WithMany().HasForeignKey("SaleChequeChargeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher")
-                        .WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                        .WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("SaleChequeCharge");
                     b.Navigation("AccVoucher");
                 });
@@ -16705,7 +16710,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.Transaction", "SaleTransaction").WithMany().HasForeignKey("SaleTransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.Transaction", "ReturnTransaction").WithMany().HasForeignKey("ReturnTransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.SaleChequeCharge", "SaleChequeCharge").WithMany().HasForeignKey("SaleChequeChargeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.SaleChequeChargeEvent", "SaleChequeChargeEvent").WithMany().HasForeignKey("SaleChequeChargeEventId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("SaleTransaction"); b.Navigation("ReturnTransaction"); b.Navigation("SaleChequeCharge");
                     b.Navigation("AccVoucher"); b.Navigation("SaleChequeChargeEvent");
@@ -16736,7 +16741,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.Transaction", "TargetSaleTransaction").WithMany().HasForeignKey("TargetSaleTransactionId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.SaleChequeCharge", "SaleChequeCharge").WithMany().HasForeignKey("SaleChequeChargeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.TrsAccount", "TrsAccount").WithMany().HasForeignKey("TrsAccountId").OnDelete(DeleteBehavior.Restrict);
-                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.TrsVoucher", "TrsVoucher").WithMany().HasForeignKey("TrsVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("SaleTransaction"); b.Navigation("TargetSaleTransaction"); b.Navigation("SaleChequeCharge");
                     b.Navigation("TrsAccount"); b.Navigation("AccVoucher"); b.Navigation("TrsVoucher");
@@ -16747,7 +16752,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.InstallmentLine", "Installment").WithMany().HasForeignKey("InstallmentId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.Transaction", "Transaction").WithMany().HasForeignKey("TransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.TrsAccount", "TrsAccount").WithMany().HasForeignKey("TrsAccountId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.AccVoucher", "ReversalVoucher").WithMany().HasForeignKey("ReversalVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("Installment"); b.Navigation("Transaction"); b.Navigation("TrsAccount");
                     b.Navigation("AccVoucher"); b.Navigation("ReversalVoucher");
@@ -16758,7 +16763,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.Transaction", "SaleTransaction").WithMany().HasForeignKey("SaleTransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.SaleChequeCharge", "SaleChequeCharge").WithMany().HasForeignKey("SaleChequeChargeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.Transaction", "ReturnTransaction").WithMany().HasForeignKey("ReturnTransactionId").OnDelete(DeleteBehavior.Restrict);
-                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.SaleChequeChargeEvent", "SaleChequeChargeEvent").WithMany().HasForeignKey("SaleChequeChargeEventId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.TrsVoucher", "RefundTrsVoucher").WithMany().HasForeignKey("RefundTrsVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("SaleTransaction"); b.Navigation("SaleChequeCharge"); b.Navigation("ReturnTransaction");
@@ -16770,7 +16775,7 @@ namespace Inventory.Api.Migrations
                     b.HasOne("Inventory.Api.Data.Cheque", "Cheque").WithMany().HasForeignKey("ChequeId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.Transaction", "Transaction").WithMany().HasForeignKey("TransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                     b.HasOne("Inventory.Api.Data.TrsAccount", "TrsAccount").WithMany().HasForeignKey("TrsAccountId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.AccVoucher", "AccVoucher").WithMany().HasForeignKey("AccVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.HasOne("Inventory.Api.Data.AccVoucher", "ReversalVoucher").WithMany().HasForeignKey("ReversalVoucherId").OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("Cheque");
                     b.Navigation("Transaction");

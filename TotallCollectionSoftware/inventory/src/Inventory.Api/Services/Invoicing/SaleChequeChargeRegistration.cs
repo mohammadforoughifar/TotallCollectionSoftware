@@ -12,12 +12,12 @@ public sealed record SaleChequeChargeRegistrationInput(
     decimal AdjustmentRatePercent, int AdjustmentPeriodDays, DateTime? ConfirmedCreditDueDate);
 
 /// <summary>
-/// ثبت اولیهٔ ردیف مالی و سند در تراکنش فروش. فراخوانی مسیر فروش فعلاً صرفاً با
-/// فعال‌سازی صریح حالت آزمایشی مجاز است؛ در هر خطا تراکنش فراخواننده rollback می‌شود.
+/// ثبت اولیهٔ ردیف مالی و گردش فروشگاهی در تراکنش فروش؛
+/// در هر خطا تراکنش فراخواننده rollback می‌شود.
 /// </summary>
 public static class SaleChequeChargeRegistration
 {
-    public static async Task<AccVoucher> RegisterAsync(AppDbContext db, int saleId,
+    public static async Task<SaleChequeChargeEvent> RegisterAsync(AppDbContext db, int saleId,
         SaleChequeChargeRegistrationInput input, string? user)
     {
         var transaction = db.Database.CurrentTransaction
@@ -47,7 +47,7 @@ public static class SaleChequeChargeRegistration
         }
     }
 
-    private static async Task<AccVoucher> RegisterInTransactionAsync(AppDbContext db, int saleId,
+    private static async Task<SaleChequeChargeEvent> RegisterInTransactionAsync(AppDbContext db, int saleId,
         SaleChequeChargeRegistrationInput input, string? user)
     {
         var sale = await db.Transactions.Include(t => t.Lines).Include(t => t.Cheques).Include(t => t.Installments)
@@ -55,9 +55,8 @@ public static class SaleChequeChargeRegistration
             ?? throw new InvalidOperationException("فاکتور فروش یافت نشد.");
         if (sale.Type != TransactionType.Sale || sale.PartyId is not > 0 || sale.Lines.Count == 0)
             throw new InvalidOperationException("ردیف مالی فقط برای فاکتور فروش دارای مشتری و کالا قابل ثبت است.");
-        if (await db.SaleChequeCharges.AnyAsync(c => c.TransactionId == sale.Id) ||
-            await db.AccVouchers.AnyAsync(v => v.Source == VoucherSource.StoreSale && v.SourceId == sale.Id))
-            throw new InvalidOperationException("برای این فاکتور ردیف مالی یا سند حسابداری از قبل وجود دارد.");
+        if (await db.SaleChequeCharges.AnyAsync(c => c.TransactionId == sale.Id))
+            throw new InvalidOperationException("برای این فاکتور ردیف تاخیر تادیه چک از قبل وجود دارد.");
         if (input.AdjustmentRatePercent < 0 || input.AdjustmentRatePercent > 999999999999.999999m ||
             decimal.Round(input.AdjustmentRatePercent, 6) != input.AdjustmentRatePercent || input.AdjustmentPeriodDays <= 0)
             throw new InvalidOperationException("نرخ و بازه تعدیل سررسید معتبر نیست.");
@@ -81,8 +80,8 @@ public static class SaleChequeChargeRegistration
         {
             if (sale.TrsAccountId is not > 0)
                 throw new InvalidOperationException("برای دریافت نقدی حساب فعال صندوق یا بانک را انتخاب کنید.");
-            var account = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == sale.TrsAccountId && a.IsActive && a.AccountId > 0)
-                ?? throw new InvalidOperationException("حساب صندوق یا بانک فعال و متصل به حسابداری لازم است.");
+            var account = await db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == sale.TrsAccountId && a.IsActive)
+                ?? throw new InvalidOperationException("حساب صندوق یا بانک فعال لازم است.");
             if (await db.SystemCompanies.CountAsync() > 1 && (sale.CompanyId is not > 0 || account.CompanyId != sale.CompanyId))
                 throw new InvalidOperationException("در محیط چندشرکتی، حساب صندوق یا بانک باید متعلق به شرکت همین فاکتور باشد.");
             await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(db, account, sale.CompanyId);
@@ -107,26 +106,27 @@ public static class SaleChequeChargeRegistration
         sale.DueDate = credit > 0 ? input.ConfirmedCreditDueDate!.Value.Date : null;
         sale.PaymentMethod = PaymentMix.Derive(cash, cheques, installments, credit);
         sale.Amount = amounts.CustomerDebit;
-        db.SaleChequeCharges.Add(new SaleChequeCharge
+        var charge = new SaleChequeCharge
         {
             CompanyId = sale.CompanyId, TransactionId = sale.Id, BaseAmount = baseAmount,
             RatePercent = input.AdjustmentRatePercent, PeriodDays = input.AdjustmentPeriodDays,
             CalculatorBaseAmount = input.CalculatorBaseAmount, CalculatorRatePercent = input.CalculatorRatePercent,
             CalculatorMonths = input.CalculatorMonths, InitialAmount = income, Amount = income, CustomerCredit = 0
-        });
+        };
+        db.SaleChequeCharges.Add(charge);
         // This save is inside the existing transaction, not a commit.
         await db.SaveChangesAsync();
-        var voucher = await SaleChequeChargePosting.PostAsync(db, sale.Id, user);
+        var entry = await SaleChequeChargePosting.PostAsync(db, sale.Id, user);
         if (cash > 0)
         {
             var number = (await db.TrsVouchers.Where(v => v.Kind == TreasuryKind.Receipt)
                 .Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
             var title = $"دریافت نقدی فاکتور فروش {sale.Number}";
-            db.TrsVouchers.Add(new TrsVoucher
+            var cashReceipt = new TrsVoucher
             {
                 Number = number, Kind = TreasuryKind.Receipt, Date = sale.Date.Date, PartyId = sale.PartyId,
                 Description = title, RefNumber = sale.Number, Status = TreasuryStatus.Confirmed,
-                TotalAmount = cash, CashAmount = cash, VoucherId = voucher.Id,
+                TotalAmount = cash, CashAmount = cash,
                 CreatedBy = user, ConfirmedBy = user, CreatedAt = DateTime.Now, ConfirmedAt = DateTime.Now,
                 Lines = new()
                 {
@@ -138,9 +138,11 @@ public static class SaleChequeChargeRegistration
                         RefNumber = sale.CashTrackingNumber is { Length: <= 60 } ? sale.CashTrackingNumber : null, Description = title
                     }
                 }
-            });
+            };
+            db.TrsVouchers.Add(cashReceipt);
+            charge.InitialCashTrsVoucher = cashReceipt;
             await db.SaveChangesAsync();
         }
-        return voucher;
+        return entry;
     }
 }

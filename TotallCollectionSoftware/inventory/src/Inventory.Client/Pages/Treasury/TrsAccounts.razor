@@ -1,5 +1,6 @@
 @page "/trs/accounts"
 @inject ITrsAccountService AccountSvc
+@inject IAuthState Auth
 @inject IAccAccountService AccSvc
 @inject IOutgoingLetterService CompanySvc
 @inject IToastService Toast
@@ -159,6 +160,8 @@ else
                                 </div>
                             }
 
+                            @if (Auth.HasDirect("AccAccounts.Read"))
+                            {
                             <div class="fs-8 text-muted mb-3">
                                 <i class="bi bi-diagram-3"></i>
                                 @if (acc.AccountId is > 0)
@@ -171,6 +174,7 @@ else
                                     <span class="text-danger">حساب حسابداری متصل نشده — سند خودکار صادر نمی‌شود</span>
                                 }
                             </div>
+                            }
 
                             <div class="d-flex gap-1">
                                 <a class="btn btn-sm btn-outline-primary flex-fill" href="@($"/trs/reports/flow?accountId={acc.Id}")">
@@ -217,6 +221,8 @@ else
             <label class="form-label">نام <span class="text-danger">*</span></label>
             <input class="form-control" @bind="form.Name" placeholder="مثلاً صندوق مرکزی" />
         </div>
+        @if (Auth.HasDirect("AccAccounts.Read"))
+        {
         <div class="col-md-6">
             <label class="form-label">
                 حساب حسابداری متناظر
@@ -225,6 +231,7 @@ else
             <SearchSelect Items="accounts" Value="@(form.AccountId ?? 0)"
                           ValueChanged="v => form.AccountId = v > 0 ? v : null" Placeholder="انتخاب حساب…" />
         </div>
+        }
 
         @if (companies.Count > 0)
         {
@@ -344,11 +351,17 @@ else
         Layout.SetTitle("صندوق و بانک");
         try
         {
-            accounts = await AccSvc.GetLookupsAsync();
+            if (Auth.HasDirect("AccAccounts.Read")) accounts = await AccSvc.GetLookupsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        // Office permissions are not a prerequisite for a shop treasury account.
+        // If this optional selector is unavailable, the server assigns the active company.
+        try
+        {
             companies = await CompanySvc.GetCompaniesAsync();
             activeCompanyId = (await CompanySvc.GetActiveCompanyAsync())?.Id;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch { companies = new(); activeCompanyId = null; }
         await Load();
     }
 
@@ -368,7 +381,7 @@ else
             ? new TrsAccount { CompanyId = activeCompanyId, IsActive = true, SortOrder = items.Count + 1 }
             : new TrsAccount
             {
-                Id = a.Id, CompanyId = a.CompanyId ?? 0, Code = a.Code, Name = a.Name, Kind = a.Kind,
+                Id = a.Id, CompanyId = a.CompanyId, Code = a.Code, Name = a.Name, Kind = a.Kind,
                 AccountId = a.AccountId, BankName = a.BankName, BranchName = a.BranchName,
                 BranchCode = a.BranchCode, AccountNumber = a.AccountNumber, Iban = a.Iban,
                 CardNumber = a.CardNumber, OpeningBalance = a.OpeningBalance,

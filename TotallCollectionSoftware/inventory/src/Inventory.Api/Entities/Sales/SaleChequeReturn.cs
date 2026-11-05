@@ -15,14 +15,15 @@ public class SaleChequeReturn : ICompanyOwned
     public Transaction ReturnTransaction { get; set; } = null!;
     public int SaleChequeChargeId { get; set; }
     public SaleChequeCharge SaleChequeCharge { get; set; } = null!;
-    public int AccVoucherId { get; set; }
-    public AccVoucher AccVoucher { get; set; } = null!;
+    /// <summary>پیوند اختیاری سند تاریخی ERP؛ گردش‌های جدید فروشگاهی به آن وابسته نیستند.</summary>
+    public int? AccVoucherId { get; set; }
+    public AccVoucher? AccVoucher { get; set; }
     public int? SaleChequeChargeEventId { get; set; }
     public SaleChequeChargeEvent? SaleChequeChargeEvent { get; set; }
-    public int SalesAccountId { get; set; }
+    public int? SalesAccountId { get; set; }
     public int? VatAccountId { get; set; }
-    public int IncomeAccountId { get; set; }
-    public int PartyAccountId { get; set; }
+    public int? IncomeAccountId { get; set; }
+    public int? PartyAccountId { get; set; }
     public DateTime Date { get; set; }
     public decimal GoodsAmount { get; set; }
     public decimal VatAmount { get; set; }

@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Services.Invoicing;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -108,18 +109,19 @@ public class OperationsReportsService : IOperationsReportsService
     {
         (from, to) = NormalizeRange(from, to);
         var query = _db.SaleChequeChargeEvents.AsNoTracking()
+            .Include(e => e.AccVoucher) // optional historical link, never required for new shop events
             .Include(e => e.SaleChequeCharge).ThenInclude(c => c.Transaction)
-            .Include(e => e.AccVoucher).ThenInclude(v => v.Lines)
-            .Where(e => e.AccVoucher.Status == VoucherStatus.Confirmed &&
-                        e.SaleChequeCharge.Transaction.Type == TransactionType.Sale);
-        if (from.HasValue) query = query.Where(e => e.AccVoucher.Date >= from.Value);
+            .Where(e => e.SaleChequeCharge.Transaction.Type == TransactionType.Sale);
+        if (from.HasValue) query = query.Where(e => e.Date >= from.Value);
         if (to.HasValue)
         {
             var end = EndExclusive(to.Value);
-            query = query.Where(e => e.AccVoucher.Date < end);
+            query = query.Where(e => e.Date < end);
         }
         if (partyId is > 0) query = query.Where(e => e.SaleChequeCharge.Transaction.PartyId == partyId);
-        var events = await query.OrderBy(e => e.AccVoucher.Date).ThenBy(e => e.AccVoucherId).ToListAsync();
+        var events = await query.OrderBy(e => e.Date).ThenBy(e => e.Id).ToListAsync();
+        foreach (var charge in events.Select(e => e.SaleChequeCharge).DistinctBy(c => c.Id))
+            await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(_db, charge.Transaction);
         var ids = events.Select(e => e.SaleChequeCharge.Transaction.PartyId).Where(id => id.HasValue)
             .Select(id => id!.Value).Distinct().ToList();
         var names = await _db.Parties.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);
@@ -127,19 +129,14 @@ public class OperationsReportsService : IOperationsReportsService
         foreach (var item in events)
         {
             var sale = item.SaleChequeCharge.Transaction;
-            var incomeAccountId = item.SaleChequeCharge.IncomeAccountId
-                ?? throw new InvalidOperationException("حساب درآمد ثبت‌شده برای گردش تاخیر تادیه چک مشخص نیست.");
-            var incomeLines = item.AccVoucher.Lines.Where(l => l.AccountId == incomeAccountId).ToList();
-            var income = incomeLines.Sum(l => l.Credit - l.Debit);
-            if (incomeLines.Count == 0 || income != item.IncomeDelta)
-                throw new InvalidOperationException("گردش تاخیر تادیه چک با آرتیکل سند حسابداری مطابقت ندارد.");
             result.Rows.Add(new ChequeIncomeReportRow
             {
-                Date = item.AccVoucher.Date, SaleId = sale.Id, SaleNumber = sale.Number,
+                Date = item.Date, SaleId = sale.Id, SaleNumber = sale.Number,
                 PartyId = sale.PartyId, PartyName = sale.PartyId.HasValue && names.TryGetValue(sale.PartyId.Value, out var name) ? name : "—",
-                VoucherNumber = item.AccVoucher.Number, Kind = item.Kind, Income = income
+                EventId = item.Id, VoucherNumber = item.AccVoucher?.Number ?? 0,
+                Kind = item.Kind, Income = item.IncomeDelta
             });
-            result.TotalIncome += income;
+            result.TotalIncome += item.IncomeDelta;
         }
         return result;
     }

@@ -1,4 +1,6 @@
 using Inventory.Api.Data;
+using Inventory.Api.Infrastructure;
+using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Reports;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -21,16 +23,22 @@ public class OperationsReportsController : RbacControllerBase
         [FromQuery] TransactionType type, [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] int? partyId = null, [FromQuery] int? warehouseId = null, [FromQuery] bool? hasChequeIncome = null)
     {
-        if (await ForbiddenUnlessAnyAsync("Orders", "View", "Read", "Access") is ObjectResult forbidden) return forbidden;
+        var permissions = new EffectivePermissions(Db);
+        if (!await permissions.IsLegacyAdminAsync(User) &&
+            !ShopPermissionAuthorizer.OrderType(await permissions.GetAsync(User), type, false))
+            return StatusCode(403, new { message = "شما به گزارش این نوع فاکتور دسترسی ندارید." });
         return Ok(await _reports.GetOrderReportAsync(type, from, to, partyId, warehouseId, hasChequeIncome));
     }
 
-    /// <summary>گردش قطعی درآمد چک به تفکیک مشتری و تاریخ سند حسابداری.</summary>
+    /// <summary>گردش درآمد چک به تفکیک مشتری و تاریخ عملیات فروشگاهی.</summary>
     [HttpGet("cheque-income")]
     public async Task<ActionResult<ChequeIncomeReportDto>> GetChequeIncomeReport(
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null, [FromQuery] int? partyId = null)
     {
-        if (await ForbiddenUnlessAnyAsync("Orders", "View", "Read", "Access") is ObjectResult forbidden) return forbidden;
+        var permissions = new EffectivePermissions(Db);
+        if (!await permissions.IsLegacyAdminAsync(User) &&
+            !ShopPermissionAuthorizer.OrderType(await permissions.GetAsync(User), TransactionType.Sale, false))
+            return StatusCode(403, new { message = "شما به گزارش فروش دسترسی ندارید." });
         if (await ForbiddenUnlessAnyAsync("Orders", "ViewProfit") is ObjectResult forbiddenProfit) return forbiddenProfit;
         return Ok(await _reports.GetChequeIncomeReportAsync(from, to, partyId));
     }
@@ -43,7 +51,10 @@ public class OperationsReportsController : RbacControllerBase
     public async Task<ActionResult<OperationsDashboardDto>> GetDashboard(
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
     {
-        var canSeeOrders = await HasAnyAsync("Orders", "View", "Read", "Access");
+        var permissions = new EffectivePermissions(Db);
+        var granted = await permissions.GetAsync(User);
+        var canSeeOrders = await permissions.IsLegacyAdminAsync(User) || granted.Contains("Orders.Read") ||
+            granted.Contains("Orders.View") || granted.Contains("Orders.Access") || granted.Contains("Shop.Dashboard.View");
         var canSeeRepairs = await HasAnyAsync("Repairs", "View", "Read", "Access");
         var canSeeReferrers = await HasAnyAsync("Referrers", "View", "Read", "Access");
         if (!canSeeOrders && !canSeeRepairs)

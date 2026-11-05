@@ -19,23 +19,23 @@ class RegistrationContract(unittest.TestCase):
     def test_mixed_cash_uses_one_linked_treasury_receipt(self):
         s = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeChargeRegistration.cs').read_text(encoding='utf8')
         for part in ('SystemCompanies.CountAsync() > 1', 'sale.TrsAccountId is not > 0',
-                     'SaleChequeChargePosting.PostAsync', 'db.TrsVouchers.Add(new TrsVoucher',
-                     'VoucherId = voucher.Id', 'TotalAmount = cash', 'Status = TreasuryStatus.Confirmed'):
+                     'SaleChequeChargePosting.PostAsync', 'db.TrsVouchers.Add(cashReceipt)',
+                     'charge.InitialCashTrsVoucher = cashReceipt', 'TotalAmount = cash', 'Status = TreasuryStatus.Confirmed'):
             self.assertIn(part, s)
         statement = (ROOT / 'Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
-        self.assertIn('دریافت نقدی اولیه با سند خزانه و حسابداری مطابقت ندارد', statement)
+        integrity = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeShopLedgerIntegrity.cs').read_text(encoding='utf8')
+        self.assertIn('دریافت نقدی اولیه با گردش فروشگاهی صندوق/بانک مطابقت ندارد', integrity)
 
-    def test_experimental_hook_requires_explicit_opt_in(self):
+    def test_registration_is_enabled_without_erp_or_experimental_flag(self):
         s = (ROOT / 'Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
         start = s.index('public async Task<Order> CreateOrderAsync')
         end = s.index('public async Task<Order?> GetOrderAsync', start)
         section = s[start:end]
-        self.assertIn('SaleChequeCharge:ExperimentalEnabled', s)
-        for part in ('RequireExperimentalChequeCharge()', 'cmd.ChequeCharge is not null',
+        self.assertNotIn('SaleChequeCharge:ExperimentalEnabled', s)
+        for part in ('cmd.ChequeCharge is not null',
                      'IsolationLevel.Serializable', 'SaleChequeChargeRegistration.RegisterAsync',
                      'ApplyPayment(txn, cmd, paymentTotal)', 'await trx.CommitAsync()'):
             self.assertIn(part, section)
-        self.assertLess(section.index('RequireExperimentalChequeCharge()'), section.index('SaleChequeChargeRegistration.RegisterAsync'))
         self.assertLess(section.index('SaleChequeChargeRegistration.RegisterAsync'), section.index('await trx.CommitAsync()'))
 
 if __name__ == '__main__': unittest.main()

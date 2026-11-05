@@ -17,7 +17,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.SaleChequeReceipts') AND name = N'IX_SaleChequeReceipts_ChequeId' AND has_filter = 0)
         DROP INDEX [IX_SaleChequeReceipts_ChequeId] ON [dbo].[SaleChequeReceipts];
     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.SaleChequeReceipts') AND name = N'IX_SaleChequeReceipts_ChequeId')
-        EXEC(N'CREATE UNIQUE INDEX [IX_SaleChequeReceipts_ChequeId] ON [dbo].[SaleChequeReceipts] ([ChequeId]) WHERE [ReversalVoucherId] IS NULL;');
+        EXEC(N'CREATE UNIQUE INDEX [IX_SaleChequeReceipts_ChequeId] ON [dbo].[SaleChequeReceipts] ([ChequeId]) WHERE [ReversalDate] IS NULL;');
     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.SaleChequeReceipts') AND name = N'IX_SaleChequeReceipts_ReversalOperationId')
         EXEC(N'CREATE UNIQUE INDEX [IX_SaleChequeReceipts_ReversalOperationId] ON [dbo].[SaleChequeReceipts] ([ReversalOperationId]) WHERE [ReversalOperationId] IS NOT NULL;');
     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.SaleChequeReceipts') AND name = N'IX_SaleChequeReceipts_ReversalVoucherId')
@@ -50,12 +50,16 @@ END";
                 alter.CommandText = $"ALTER TABLE SaleChequeReceipts ADD COLUMN {name} {type}";
                 await alter.ExecuteNonQueryAsync();
             }
+            // Keep the previous uniqueness constraint if replacement fails (e.g. corrupt legacy rows).
+            await using var indexTransaction = await connection.BeginTransactionAsync();
             await using var indexes = connection.CreateCommand();
+            indexes.Transaction = indexTransaction;
             indexes.CommandText = @"DROP INDEX IF EXISTS ""IX_SaleChequeReceipts_ChequeId"";
-CREATE UNIQUE INDEX ""IX_SaleChequeReceipts_ChequeId"" ON ""SaleChequeReceipts"" (""ChequeId"") WHERE ""ReversalVoucherId"" IS NULL;
+CREATE UNIQUE INDEX ""IX_SaleChequeReceipts_ChequeId"" ON ""SaleChequeReceipts"" (""ChequeId"") WHERE ""ReversalDate"" IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeReceipts_ReversalOperationId"" ON ""SaleChequeReceipts"" (""ReversalOperationId"") WHERE ""ReversalOperationId"" IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SaleChequeReceipts_ReversalVoucherId"" ON ""SaleChequeReceipts"" (""ReversalVoucherId"") WHERE ""ReversalVoucherId"" IS NOT NULL;";
             await indexes.ExecuteNonQueryAsync();
+            await indexTransaction.CommitAsync();
         }
         finally { if (close) await connection.CloseAsync(); }
     }
