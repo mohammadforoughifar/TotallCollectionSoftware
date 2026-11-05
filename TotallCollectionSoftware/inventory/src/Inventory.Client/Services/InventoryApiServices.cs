@@ -227,6 +227,8 @@ public class OrderService : IOrderService
     private readonly IApiClient _api;
     public OrderService(IApiClient api) => _api = api;
 
+    public Task<bool> CanViewProfitAsync() => _api.GetAsync<bool>("api/orders/profit-access");
+
     public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null)
     {
         var q = $"api/orders?type={(int)type}&page={page}&pageSize={pageSize}";

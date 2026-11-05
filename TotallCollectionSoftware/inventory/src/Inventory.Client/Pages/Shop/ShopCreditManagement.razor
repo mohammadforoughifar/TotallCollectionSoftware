@@ -535,7 +535,7 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReceiptReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" @onclick="ConfirmReceiptReversal">ثبت سند معکوس</button>
+            <button type="button" class="btn btn-danger" disabled="@(reversalBusy || !reversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceiptReversal">ثبت سند معکوس</button>
         </Footer>
     </Modal>
 }
@@ -593,7 +593,7 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReceipt">انصراف</button>
-            <button type="button" class="btn btn-success" disabled="@(receiptBusy || receiptBankId <= 0 || !receiptDate.HasValue)" @onclick="ConfirmReceipt">ثبت وصول</button>
+            <button type="button" class="btn btn-success" disabled="@(receiptBusy || receiptBankId <= 0 || !receiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReceipt">ثبت وصول</button>
         </Footer>
     </Modal>
 }
@@ -622,7 +622,7 @@
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReschedule">انصراف</button>
             <button type="button" class="btn btn-outline-primary" disabled="@rescheduleBusy" @onclick="PreviewReschedule">محاسبه</button>
-            <button type="button" class="btn btn-primary" disabled="@(rescheduleBusy || reschedulePreview is null)" @onclick="ConfirmReschedule">تأیید و ثبت</button>
+            <button type="button" class="btn btn-primary" disabled="@(rescheduleBusy || reschedulePreview is null)" data-hotkey="f1" @onclick="ConfirmReschedule">تأیید و ثبت</button>
         </Footer>
     </Modal>
 }
@@ -659,7 +659,7 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseReplaceCheque">انصراف</button>
-            <button type="button" class="btn btn-primary" disabled="@(replaceBusy || string.IsNullOrWhiteSpace(replaceNumber) || !replaceOperationDate.HasValue)" @onclick="ConfirmReplaceCheque">ثبت تعویض چک</button>
+            <button type="button" class="btn btn-primary" disabled="@(replaceBusy || string.IsNullOrWhiteSpace(replaceNumber) || !replaceOperationDate.HasValue)" data-hotkey="f1" @onclick="ConfirmReplaceCheque">ثبت تعویض چک</button>
         </Footer>
     </Modal>
 }
@@ -682,7 +682,7 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseInstallmentReceipt">انصراف</button>
-            <button type="button" class="btn btn-success" disabled="@(instReceiptBusy || instReceiptAccountId <= 0 || !instReceiptDate.HasValue)" @onclick="ConfirmInstallmentReceipt">ثبت دریافت قسط</button>
+            <button type="button" class="btn btn-success" disabled="@(instReceiptBusy || instReceiptAccountId <= 0 || !instReceiptDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReceipt">ثبت دریافت قسط</button>
         </Footer>
     </Modal>
 }
@@ -698,7 +698,7 @@
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-light" @onclick="CloseInstallmentReversal">انصراف</button>
-            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" @onclick="ConfirmInstallmentReversal">ثبت سند معکوس</button>
+            <button type="button" class="btn btn-danger" disabled="@(instReversalBusy || !instReversalDate.HasValue)" data-hotkey="f1" @onclick="ConfirmInstallmentReversal">ثبت سند معکوس</button>
         </Footer>
     </Modal>
 }
@@ -711,7 +711,7 @@
             <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
                 <div class="modal-header bg-danger text-white px-4 py-3">
                     <h5 class="modal-title fs-6 fw-800"><i class="bi bi-exclamation-triangle-fill me-2"></i> ثبت برگشت چک در سیستم</h5>
-                    <button type="button" class="btn-close btn-close-white" @onclick="() => showBounceModal = false"></button>
+                    <button type="button" class="btn-close btn-close-white" data-hotkey="esc" @onclick="() => showBounceModal = false" disabled="@bounceBusy"></button>
                 </div>
                 <div class="modal-body p-4">
                     <p class="fs-8 text-dark mb-3">
@@ -727,8 +727,8 @@
                     </div>
                 </div>
                 <div class="modal-footer bg-light px-4 py-2.5">
-                    <button type="button" class="btn btn-light fin-btn-pill px-3" @onclick="() => showBounceModal = false">انصراف</button>
-                    <button type="button" class="btn btn-danger fin-btn-pill px-3" @onclick="ConfirmBounce">
+                    <button type="button" class="btn btn-light fin-btn-pill px-3" @onclick="() => showBounceModal = false" disabled="@bounceBusy">انصراف</button>
+                    <button type="button" class="btn btn-danger fin-btn-pill px-3" data-hotkey="f1" @onclick="ConfirmBounce" disabled="@bounceBusy">
                         <i class="bi bi-x-octagon me-1"></i> ثبت قطعی برگشت چک
                     </button>
                 </div>
@@ -1174,7 +1174,7 @@
     private string installmentSearch = "";
     private string installmentPaidFilter = "";
 
-    private bool showBounceModal;
+    private bool showBounceModal, bounceBusy;
     private ShopChequeItem? bounceTarget;
     private string bounceReason = "";
     private Guid bounceOperationId;
@@ -1452,7 +1452,8 @@
 
     private async Task ConfirmBounce()
     {
-        if (bounceTarget == null) return;
+        if (bounceBusy || bounceTarget == null) return;
+        bounceBusy = true;
         try
         {
             if (bounceTarget.HasChequeCharge)
@@ -1467,6 +1468,7 @@
         {
             Toast.Error(ex.Message);
         }
+        finally { bounceBusy = false; }
     }
 
     private async Task ResetCheque(ShopChequeItem c)

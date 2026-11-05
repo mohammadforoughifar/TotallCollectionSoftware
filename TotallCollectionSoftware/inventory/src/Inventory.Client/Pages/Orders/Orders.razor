@@ -85,7 +85,7 @@
                     <tbody>
                         @foreach (var o in items)
                         {
-                            <tr>
+                            <tr data-order-copy-context tabindex="0" title="برای کپی این فاکتور F7 را بزنید">
                                 <td class="doc-number fw-700 text-primary">
                                     @o.Number
                                     @if (o.IsCancelled)
@@ -118,6 +118,8 @@
                                 }
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
+                                    <button type="button" class="btn btn-sm btn-light" data-order-copy title="کپی فاکتور (F7 روی ردیف)" aria-label="کپی فاکتور"
+                                            @onclick="() => OpenCopy(o)" disabled="@(copyingId != 0)"><i class="bi bi-copy text-primary"></i></button>
                                     @if (!isPurchase)
                                     {
                                         <button class="btn btn-sm btn-light text-primary" title="چاپ فاکتور فروش" aria-label="چاپ فاکتور فروش"
@@ -171,7 +173,7 @@
             <div class="cards-mobile">
                 @foreach (var o in items)
                 {
-                    <div class="m-card @(isPurchase ? "st-received" : "st-ready")">
+                    <div class="m-card @(isPurchase ? "st-received" : "st-ready")" data-order-copy-context tabindex="0" title="برای کپی این فاکتور F7 را بزنید">
                         <div class="m-card-head">
                             <div class="m-card-icon"><i class="bi @(isPurchase ? "bi-bag-plus" : "bi-cart3")"></i></div>
                             <div class="flex-grow-1 min-w-0">
@@ -200,6 +202,8 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
+                            <button type="button" class="btn btn-light text-primary" data-order-copy title="کپی فاکتور (F7 روی ردیف)"
+                                    @onclick="() => OpenCopy(o)" disabled="@(copyingId != 0)"><i class="bi bi-copy"></i> کپی فاکتور</button>
                             <button class="btn btn-light text-primary" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
                                     aria-label="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
                                     @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
@@ -238,7 +242,7 @@
 
 @if (showForm)
 {
-    <OrderForm Type="@txnType" EditOrder="editingOrder" OnSaved="OnFormSaved" OnCancel="CloseForm" />
+    <OrderForm Type="@txnType" EditOrder="editingOrder" CopyTemplate="copyTemplate" OnSaved="OnFormSaved" OnCancel="CloseForm" />
 }
 
 <Modal Visible="viewing is not null" Title="جزئیات سند" Size="modal-lg" OnClose="() => viewing = null">
@@ -454,12 +458,15 @@
                 <i class="bi bi-arrow-return-right"></i> برگشت کالا
             </button>
         }
-        <button class="btn btn-outline-primary" @onclick="() => Print(viewing!)" disabled="@(viewing is null || printingId == viewing.Id)">
+        <button type="button" class="btn btn-outline-secondary" data-hotkey="f7" @onclick="() => OpenCopy(viewing!)" disabled="@(viewing is null || copyingId != 0)">
+            <i class="bi bi-copy"></i> کپی فاکتور (F7)
+        </button>
+        <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="() => Print(viewing!)" disabled="@(viewing is null || printingId == viewing.Id)">
             @if (viewing is not null && printingId == viewing.Id)
             {
                 <span class="spinner-border spinner-border-sm ms-1"></span>
             }
-            <i class="bi bi-printer"></i> چاپ @(viewing?.IsSale == true ? "فاکتور فروش" : "رسید خرید")
+            <i class="bi bi-printer"></i> چاپ @(viewing?.IsSale == true ? "فاکتور فروش" : "رسید خرید") (F4)
         </button>
         <button class="btn btn-light" @onclick="() => viewing = null"><i class="bi bi-x-lg"></i> بستن</button>
     </Footer>
@@ -553,7 +560,7 @@
         <button class="btn btn-outline-secondary" @onclick="PreviewReturnAsync" disabled="@(returnSaving || !HasSelectedReturnLines)">
             <i class="bi bi-calculator"></i> محاسبه پیش‌نمایش
         </button>
-        <button class="btn btn-primary" @onclick="SubmitReturnAsync"
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="SubmitReturnAsync"
                 disabled="@(returnSaving || returnPreview is null || (returnPreview.UncollectedChequeExcess > 0 && returnDecision == SaleChequeReturnDecision.None))">
             <i class="bi bi-check2"></i> ثبت قطعی برگشت
         </button>
@@ -623,7 +630,7 @@
         }
     </ChildContent>
     <Footer>
-        <button class="btn btn-primary" @onclick="SubmitCreditSettlementAsync" disabled="@creditSaving">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="SubmitCreditSettlementAsync" disabled="@creditSaving">
             <i class="bi bi-check2"></i> ثبت تعیین‌تکلیف بستانکاری
         </button>
         <button class="btn btn-light" @onclick="CloseCreditModal" disabled="@creditSaving">انصراف</button>
@@ -648,7 +655,7 @@
         }
     </ChildContent>
     <Footer>
-        <button class="btn btn-danger" @onclick="SubmitCancelOrderAsync" disabled="@cancelSaving">
+        <button class="btn btn-danger" data-hotkey="f1" @onclick="SubmitCancelOrderAsync" disabled="@cancelSaving">
             <i class="bi bi-x-octagon"></i> تأیید ابطال فاکتور
         </button>
         <button class="btn btn-light" @onclick="CloseCancelModal" disabled="@cancelSaving">انصراف</button>
@@ -657,8 +664,9 @@
 
 
 @code {
-    /// <summary>دسترسی «مشاهده سود» — Orders.ViewProfit از بخش نقش‌ها و دسترسی‌ها</summary>
-    private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
+    /// <summary>مجوز مؤثر سمت سرور؛ claim ذخیره‌شده در مرورگر ممکن است قدیمی باشد.</summary>
+    private bool canSeeProfit;
+    private bool CanSeeProfit => canSeeProfit;
 
     private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
     {
@@ -712,7 +720,11 @@
         loading = true;
         try
         {
-            var res = await OrderSvc.GetOrdersAsync(txnType, from, to, filterPartyId, filterWarehouseId, page, PageSize);
+            var profitTask = isPurchase ? Task.FromResult(false) : OrderSvc.CanViewProfitAsync();
+            var ordersTask = OrderSvc.GetOrdersAsync(txnType, from, to, filterPartyId, filterWarehouseId, page, PageSize);
+            try { canSeeProfit = await profitTask; }
+            catch { canSeeProfit = false; }
+            var res = await ordersTask;
             items = res.Items;
             total = res.TotalCount;
             pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
@@ -722,6 +734,8 @@
     }
 
     private Order? editingOrder;
+    private InvoiceCopyTemplate? copyTemplate;
+    private int copyingId;
     /// <summary>شناسهٔ سندی که همین حالا در حال آماده‌سازی چاپ است (برای نمایش اسپینر و جلوگیری از کلیک دوباره).</summary>
     private int printingId;
     /// <summary>تنظیمات چاپ/سربرگ شرکت — یک‌بار خوانده و نگه داشته می‌شود.</summary>
@@ -758,6 +772,7 @@
     private void OpenNew()
     {
         editingOrder = null;
+        copyTemplate = null;
         showForm = true;
     }
 
@@ -767,21 +782,47 @@
         {
             // دریافت سند کامل (همراه اقلام) از سرور
             editingOrder = await OrderSvc.GetAsync(o.Id) ?? o;
+            copyTemplate = null;
             showForm = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OpenCopy(Order source)
+    {
+        if (copyingId != 0) return;
+        copyingId = source.Id;
+        try
+        {
+            // Do not fall back to a possibly incomplete list row. The template is a
+            // whitelist: it cannot carry old payment details, transaction IDs or history.
+            var full = await OrderSvc.GetAsync(source.Id);
+            if (full is null || full.Type != txnType)
+            {
+                Toast.ShowAtTopRight("فاکتور برای کپی یافت نشد.", "error");
+                return;
+            }
+            copyTemplate = InvoiceCopyTemplate.From(full);
+            editingOrder = null;
+            viewing = null;
+            showForm = true;
+        }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { copyingId = 0; }
     }
 
     private void CloseForm()
     {
         showForm = false;
         editingOrder = null;
+        copyTemplate = null;
     }
 
     private async Task OnFormSaved()
     {
         showForm = false;
         editingOrder = null;
+        copyTemplate = null;
         await Load();
     }
 
@@ -881,7 +922,7 @@
 
     private async Task SubmitReturnAsync()
     {
-        if (returningOrder is null || returnPreview is null) return;
+        if (returnSaving || returningOrder is null || returnPreview is null) return;
         returnSaving = true;
         try
         {

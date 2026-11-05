@@ -394,7 +394,7 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseImport">بستن</button>
-        <button class="btn btn-primary" @onclick="DoImport" disabled="@(importing || importFile is null || importWarehouseId <= 0)">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="DoImport" disabled="@(importing || importFile is null || importWarehouseId <= 0)">
             @if (importing) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             بارگذاری و ثبت
         </button>
@@ -496,6 +496,7 @@
 
     private async Task DoImport()
     {
+        if (importing) return;
         if (importWarehouseId <= 0)
         {
             Toast.Error("لطفاً ابتدا انبار موردنظر را انتخاب کنید. ورود اکسل بدون انتخاب انبار امکان‌پذیر نیست.");
@@ -609,6 +610,7 @@
 
     private async Task Save()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(form.Name))
         {
             Toast.Error(form.IsService ? "نام خدمت را وارد کنید." : "نام کالا را وارد کنید.");

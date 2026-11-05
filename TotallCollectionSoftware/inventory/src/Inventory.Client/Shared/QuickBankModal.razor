@@ -133,7 +133,7 @@
         <button type="button" class="btn btn-secondary" @onclick="Close" disabled="@saving">
             انصراف (Esc)
         </button>
-        <button type="button" class="btn btn-primary" data-hotkey="@(InvoiceFormKey is null ? null : "f1")" @onclick="Save" disabled="@saving">
+        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving)
             {
                 <span class="spinner-border spinner-border-sm ms-1" role="status"></span>
@@ -142,7 +142,7 @@
             else
             {
                 <i class="bi bi-check-lg ms-1"></i>
-                <span>ثبت و انتخاب بانک@(InvoiceFormKey is null ? "" : " (F1)")</span>
+                <span>ثبت و انتخاب بانک (F1)</span>
             }
         </button>
     </Footer>
@@ -158,7 +158,7 @@
         </div>
         <div class="row g-2 mb-3">
             <div class="col-sm-8"><input class="form-control" @bind="newBankName" @bind:event="oninput" @onkeydown="OnBankInputKeyDown" placeholder="نام بانک جدید، مثلاً بانک خاورمیانه" /></div>
-            <div class="col-sm-4"><button type="button" class="btn btn-primary w-100" @onclick="AddBank" disabled="@string.IsNullOrWhiteSpace(newBankName)"><i class="bi bi-plus-lg ms-1"></i>افزودن بانک</button></div>
+            <div class="col-sm-4"><button type="button" class="btn btn-primary w-100" data-hotkey="f1" title="کلید میانبر: F1" @onclick="AddBank" disabled="@string.IsNullOrWhiteSpace(newBankName)"><i class="bi bi-plus-lg ms-1"></i>افزودن بانک (F1)</button></div>
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -191,6 +191,18 @@
 @code {
     /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
     [Parameter] public string? InvoiceFormKey { get; set; }
+
+    private void NotifyError(string message)
+    {
+        if (!string.IsNullOrWhiteSpace(InvoiceFormKey)) Toast.ShowAtTopRight(message, "error");
+        else Toast.Error(message);
+    }
+    private void NotifySuccess(string message)
+    {
+        if (!string.IsNullOrWhiteSpace(InvoiceFormKey)) Toast.ShowAtTopRight(message, "success");
+        else Toast.Success(message);
+    }
+
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     [Parameter] public EventCallback<TrsAccount> OnAccountCreated { get; set; }
@@ -231,7 +243,7 @@
         if (string.IsNullOrWhiteSpace(name)) return;
         if (AllBanks.Contains(name, StringComparer.OrdinalIgnoreCase))
         {
-            Toast.Error("این بانک از قبل در فهرست وجود دارد.");
+            NotifyError("این بانک از قبل در فهرست وجود دارد.");
             return;
         }
         customBanks.Add(name);
@@ -262,7 +274,7 @@
         {
             await JS.InvokeVoidAsync("localStorage.setItem", "quickBank.customBanks", System.Text.Json.JsonSerializer.Serialize(customBanks));
         }
-        catch { Toast.Error("ذخیره فهرست بانک‌ها در این مرورگر ممکن نشد."); }
+        catch { NotifyError("ذخیره فهرست بانک‌ها در این مرورگر ممکن نشد."); }
     }
 
     private static readonly string[] PopularBanks =
@@ -342,15 +354,16 @@
 
     private async Task Save()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(form.Name))
         {
-            Toast.Error("لطفاً نام / عنوان حساب را وارد کنید.");
+            NotifyError("لطفاً نام / عنوان حساب را وارد کنید.");
             return;
         }
 
         if (form.Kind == TreasuryAccountKind.Bank && string.IsNullOrWhiteSpace(form.BankName))
         {
-            Toast.Error("لطفاً نام بانک را مشخص کنید.");
+            NotifyError("لطفاً نام بانک را مشخص کنید.");
             return;
         }
 
@@ -366,7 +379,7 @@
             }
 
             var saved = await AccountSvc.SaveAsync(form);
-            Toast.Success($"حساب «{saved.Name}» با موفقیت ثبت و افزوده شد.");
+            NotifySuccess($"حساب «{saved.Name}» با موفقیت ثبت و افزوده شد.");
 
             await OnAccountCreated.InvokeAsync(saved);
             await Close();
@@ -374,7 +387,7 @@
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            NotifyError(ex.Message);
         }
         finally
         {

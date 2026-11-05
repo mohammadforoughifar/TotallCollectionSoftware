@@ -1,4 +1,5 @@
 using Inventory.Api.Services;
+using Inventory.Api.Services.Core;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -11,8 +12,37 @@ namespace Inventory.Api.Controllers;
 public class OrdersController : ApiControllerBase
 {
     private readonly IInventoryService _service;
+    private readonly IEffectivePermissions _permissions;
 
-    public OrdersController(IInventoryService service) => _service = service;
+    public OrdersController(IInventoryService service, IEffectivePermissions permissions)
+    {
+        _service = service;
+        _permissions = permissions;
+    }
+
+    // Profit and its underlying cost must not be exposed by the order API merely
+    // because the caller can read or manage sales. Always use current DB permissions.
+    private async Task<bool> CanSeeProfitAsync() => User.Identity?.IsAuthenticated == true &&
+        (await _permissions.IsLegacyAdminAsync(User) || (await _permissions.GetAsync(User)).Contains("Orders.ViewProfit"));
+
+    private static Order RemoveSaleProfit(Order order)
+    {
+        if (order.Type is not (TransactionType.Sale or TransactionType.SaleReturn)) return order;
+        order.TotalProfit = null;
+        order.NetProfit = null;
+        foreach (var line in order.Lines)
+        {
+            line.UnitCost = null;
+            line.Profit = null;
+        }
+        return order;
+    }
+
+    private async Task<bool> MayReturnSaleProfitAsync(TransactionType type) =>
+        type is not (TransactionType.Sale or TransactionType.SaleReturn) || await CanSeeProfitAsync();
+
+    private async Task<Order> ProtectSaleProfitAsync(Order order) =>
+        await MayReturnSaleProfitAsync(order.Type) ? order : RemoveSaleProfit(order);
 
     /// <summary>فهرست اسناد با فیلتر نوع/تاریخ/طرف حساب/انبار.</summary>
     [HttpGet]
@@ -21,7 +51,17 @@ public class OrdersController : ApiControllerBase
         [FromQuery] int? partyId, [FromQuery] int? warehouseId,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
         [FromQuery] bool? hasChequeIncome = null)
-        => Ok(await _service.GetOrdersAsync(type, from, to, partyId, warehouseId, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), hasChequeIncome));
+    {
+        var result = await _service.GetOrdersAsync(type, from, to, partyId, warehouseId,
+            Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), hasChequeIncome);
+        if (result.Items.Any(o => o.Type is TransactionType.Sale or TransactionType.SaleReturn) && !await CanSeeProfitAsync())
+            foreach (var order in result.Items) RemoveSaleProfit(order);
+        return Ok(result);
+    }
+
+    /// <summary>مجوز مؤثر فعلی برای نمایش سود، مستقل از claim قدیمی داخل توکن.</summary>
+    [HttpGet("profit-access")]
+    public async Task<ActionResult<bool>> ProfitAccess() => Ok(await CanSeeProfitAsync());
 
     /// <summary>پیشنهاد قیمت بر اساس آخرین معامله کالا.</summary>
     [HttpGet("suggest-price")]
@@ -43,7 +83,7 @@ public class OrdersController : ApiControllerBase
     public async Task<ActionResult<Order>> GetById(int id)
     {
         var order = await _service.GetOrderAsync(id);
-        return order is null ? NotFound(new { message = "سند یافت نشد." }) : Ok(order);
+        return order is null ? NotFound(new { message = "سند یافت نشد." }) : Ok(await ProtectSaleProfitAsync(order));
     }
 
     /// <summary>ثبت سند خرید/فروش جدید.</summary>
@@ -51,7 +91,12 @@ public class OrdersController : ApiControllerBase
     public async Task<ActionResult<Order>> Create([FromBody] OrderCommand cmd)
     {
         var error = TrackingError(cmd, cmd.Type, null);
-        return error is null ? Ok(await _service.CreateOrderAsync(cmd, User.Identity?.Name)) : BadRequest(new { message = error });
+        if (error is not null) return BadRequest(new { message = error });
+        // Check before the mutation: a permission-query failure after commit must
+        // never look like a failed save and encourage a duplicate invoice retry.
+        var revealProfit = await MayReturnSaleProfitAsync(cmd.Type);
+        var saved = await _service.CreateOrderAsync(cmd, User.Identity?.Name);
+        return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
     /// <summary>ویرایش سند خرید/فروش.</summary>
@@ -61,7 +106,10 @@ public class OrdersController : ApiControllerBase
         var existing = await _service.GetOrderAsync(id);
         if (existing is null) return NotFound(new { message = "سند یافت نشد." });
         var error = TrackingError(cmd, existing.Type, existing);
-        return error is null ? Ok(await _service.UpdateOrderAsync(id, cmd)) : BadRequest(new { message = error });
+        if (error is not null) return BadRequest(new { message = error });
+        var revealProfit = await MayReturnSaleProfitAsync(existing.Type);
+        var saved = await _service.UpdateOrderAsync(id, cmd);
+        return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
     private static string? TrackingError(OrderCommand cmd, TransactionType type, Order? existing)
@@ -190,7 +238,10 @@ public class OrdersController : ApiControllerBase
         var existing = await _service.GetOrderAsync(id);
         if (existing is null) return NotFound(new { message = "سند یافت نشد." });
         var error = TrackingError(cmd, TransactionType.Sale, existing);
-        return error is null ? Ok(await _service.EditSaleChequeOrderAsync(id, cmd, User.Identity?.Name)) : BadRequest(new { message = error });
+        if (error is not null) return BadRequest(new { message = error });
+        var revealProfit = await CanSeeProfitAsync();
+        var saved = await _service.EditSaleChequeOrderAsync(id, cmd, User.Identity?.Name);
+        return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
     /// <summary>حساب‌های فعال خزانه/بانک متعلق به شرکت فعال برای عملیات فروش و وصول.</summary>

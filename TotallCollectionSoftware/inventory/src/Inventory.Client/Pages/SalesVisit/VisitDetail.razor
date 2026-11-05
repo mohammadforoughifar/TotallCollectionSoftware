@@ -261,7 +261,7 @@ else
 
     @if (decision is not null)
     {
-        <div class="vis-modal-back" @onclick="@(() => decision = null)">
+        <div class="vis-modal-back" data-shop-dialog @onclick="@(() => decision = null)">
             <div class="vis-modal" @onclick:stopPropagation="true">
                 <h6 class="mb-2">
                     @(decision == DecisionKind.Return ? "برگشت برای اصلاح" : "رد سفارش")
@@ -269,10 +269,10 @@ else
                 <label class="form-label">دلیل (اجباری)</label>
                 <textarea class="form-control" rows="3" @bind="comment"></textarea>
                 <div class="d-flex gap-2 mt-3">
-                    <button class="btn @(decision == DecisionKind.Return ? "btn-warning" : "btn-danger")" @onclick="SendDecisionAsync">
+                    <button class="btn @(decision == DecisionKind.Return ? "btn-warning" : "btn-danger")" data-hotkey="f1" @onclick="SendDecisionAsync" disabled="@decisionBusy">
                         ثبت
                     </button>
-                    <button class="btn btn-light" @onclick="@(() => decision = null)">انصراف</button>
+                    <button class="btn btn-light" data-hotkey="esc" @onclick="@(() => decision = null)">انصراف</button>
                 </div>
             </div>
         </div>
@@ -308,6 +308,7 @@ else
     private VisOrderDto? order;
     private VisActorInfo? me;
     private DecisionKind? decision;
+    private bool decisionBusy;
     private string? comment;
 
     /// <summary>ویرایش تا زمانی که مدیر تأیید نکرده: پیش‌نویس، ارسال‌شده و برگشتی.</summary>
@@ -359,7 +360,9 @@ else
 
     private async Task SendDecisionAsync()
     {
+        if (decisionBusy || decision is null) return;
         if (string.IsNullOrWhiteSpace(comment)) { Toast.Error("دلیل را وارد کنید."); return; }
+        decisionBusy = true;
         try
         {
             order = decision == DecisionKind.Return
@@ -369,6 +372,7 @@ else
             decision = null;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { decisionBusy = false; }
     }
 
     private bool showFinance;

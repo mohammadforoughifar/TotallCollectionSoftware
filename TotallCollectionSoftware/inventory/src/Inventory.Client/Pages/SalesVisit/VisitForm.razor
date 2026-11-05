@@ -55,7 +55,7 @@
             </div>
 
             <div class="d-flex gap-2 align-items-center flex-wrap">
-                <button class="btn btn-outline-secondary fin-btn-pill" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
+                <button class="btn btn-outline-secondary fin-btn-pill" data-hotkey="esc" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
                     <i class="bi bi-arrow-right me-1"></i> بازگشت به سفارش‌ها
                 </button>
             </div>
@@ -379,8 +379,8 @@ else
                         <button class="btn btn-primary" disabled="@saving" @onclick="@(() => SaveAsync(true))">
                             <i class="bi bi-send-check"></i> ذخیره و ارسال برای تأیید
                         </button>
-                        <button class="btn btn-outline-secondary" disabled="@saving" @onclick="@(() => SaveAsync(false))">
-                            <i class="bi bi-save"></i> ذخیرهٔ پیش‌نویس
+                        <button class="btn btn-outline-secondary" data-hotkey="f1" disabled="@saving" @onclick="@(() => SaveAsync(false))">
+                            <i class="bi bi-save"></i> ذخیرهٔ پیش‌نویس (F1)
                         </button>
                     </div>
                     <div class="form-text mt-2">
@@ -398,7 +398,7 @@ else
    ==================================================================== *@
 @if (showStockConfirm)
 {
-    <div class="vis-modal-back">
+    <div class="vis-modal-back" data-shop-dialog>
         <div class="vis-modal" data-stock-confirm>
             <div class="d-flex align-items-center gap-2 mb-2">
                 <i class="bi bi-exclamation-triangle-fill text-warning fs-4"></i>
@@ -425,8 +425,8 @@ else
                 با تأیید شما، سفارش با همین مقادیر ثبت و ارسال می‌شود؛ تأمین موجودی پیش از ثبت فروش لازم است.
             </div>
             <div class="d-flex gap-2 justify-content-end">
-                <button class="btn btn-light" data-stock-cancel @onclick="CancelStockSave">انصراف</button>
-                <button class="btn btn-warning" data-stock-proceed @onclick="ProceedWithShortage">
+                <button class="btn btn-light" data-stock-cancel data-hotkey="esc" @onclick="CancelStockSave">انصراف</button>
+                <button class="btn btn-warning" data-stock-proceed data-hotkey="f1" @onclick="ProceedWithShortage">
                     <i class="bi bi-check2-circle"></i> تأیید و ادامهٔ ثبت سفارش
                 </button>
             </div>
@@ -1199,6 +1199,7 @@ else
 
     private async Task SaveAsync(bool submit)
     {
+        if (saving) return;
         if (model.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
         if (model.WarehouseId <= 0) { Toast.Error("انبار را انتخاب کنید."); return; }
         if (model.Lines.Count == 0) { Toast.Error("حداقل یک کالا اضافه کنید."); return; }
@@ -1230,6 +1231,7 @@ else
 
     private async Task DoSaveAsync(bool submit)
     {
+        if (saving) return;
         saving = true;
         try
         {

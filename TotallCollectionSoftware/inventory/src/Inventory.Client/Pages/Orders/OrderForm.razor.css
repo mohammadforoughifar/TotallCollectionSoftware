@@ -48,21 +48,26 @@
 .purchase-payment .pay-tab[data-pay-comp=installment].active { border-color: #7c3aed; color: #6d28d9; box-shadow: 0 3px 10px -3px rgba(124,58,237,.23), 0 0 0 1px #7c3aed; }
 .purchase-payment .pay-tab[data-pay-comp=credit].active { border-color: #ef4444; color: #b91c1c; box-shadow: 0 3px 10px -3px rgba(239,68,68,.22), 0 0 0 1px #ef4444; }
 /* Desktop: the original single-line table, with controls sharing one baseline. */
-.purchase-items { border: 1px solid #e2e8f0; border-radius: 10px; overflow: visible; }
+.purchase-items { border: 1px solid #dfe6f0; border-radius: 16px; overflow: visible; box-shadow: 0 3px 12px rgba(30,41,59,.045); }
 .purchase-items table { width: 100%; min-width: 0; table-layout: fixed; }
 .purchase-items table thead th { color: #475569; background: #f8fafc; font-size: .75rem; line-height: 1.6; white-space: normal; vertical-align: top; text-align: right; padding: .55rem .45rem; overflow-wrap: normal; word-break: normal; }
+.purchase-items table thead th:first-child { border-top-right-radius: 15px; }
+.purchase-items table thead th:last-child { border-top-left-radius: 15px; }
+.purchase-items tbody tr:focus-within td { background-color: #f8faff; }
 .purchase-items th span, .purchase-items th small { display: block; }
 .purchase-items th small { color: #64748b; font-size: .69rem; font-weight: 400; }
 .purchase-items tbody td { vertical-align: top; text-align: right; padding: .6rem .45rem; min-width: 0; overflow-wrap: anywhere; font-size: .8rem; }
 .purchase-items tbody td:first-child, .purchase-items table thead th:first-child { padding-inline-start: .85rem; }
 .purchase-items tbody td:last-child, .purchase-items table thead th:last-child { padding-inline-start: .25rem; padding-inline-end: 1rem; }
 .purchase-items tbody .order-line-control,
-.purchase-items ::deep .order-line-control { height: 38px; min-height: 38px; font-size: .8rem; padding-inline: .4rem; }
+.purchase-items ::deep .order-line-control { height: 38px; min-height: 38px; font-size: .8rem; padding-inline: .4rem; border: 1px solid #d7dfeb; border-radius: 12px; background-color: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
+.purchase-items tbody .order-line-control:focus,
+.purchase-items ::deep .order-line-control:focus { border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
 .purchase-items ::deep .ss .order-line-control { padding-left: 32px; }
 /* Unit is anchored inside the input itself, so it cannot wrap below the field. */
 .purchase-items tbody .order-line-rate { display: block; position: relative; width: 100%; }
-.purchase-items tbody .order-line-rate > input.form-control { display: block; width: 100%; min-width: 0; padding-left: 36px; border-radius: 10px !important; }
-.purchase-items tbody .order-line-rate > .order-line-unit { position: absolute; z-index: 1; top: 1px; bottom: 1px; left: 1px; width: 32px; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-right: 1px solid #d5dce6; border-radius: 9px 0 0 9px; white-space: nowrap; font-size: .75rem; pointer-events: none; }
+.purchase-items tbody .order-line-rate > input.form-control { display: block; width: 100%; min-width: 0; padding-left: 36px; border-radius: 12px !important; }
+.purchase-items tbody .order-line-rate > .order-line-unit { position: absolute; z-index: 1; top: 1px; bottom: 1px; left: 1px; width: 32px; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-right: 1px solid #d5dce6; border-radius: 11px 0 0 11px; white-space: nowrap; font-size: .75rem; pointer-events: none; }
 .purchase-items tbody .order-line-sub { text-align: right; }
 .purchase-items tbody .order-line-value,
 .purchase-items tbody .order-line-actions { min-height: 38px; display: flex; align-items: center; }
@@ -80,7 +85,7 @@
     .purchase-items { border: 0; }
     .purchase-items table, .purchase-items tbody { display: block; width: 100%; min-width: 0; }
     .purchase-items colgroup, .purchase-items thead { display: none; }
-    .purchase-items tbody tr { position: relative; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem .85rem; padding: .85rem; margin-bottom: .65rem; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+    .purchase-items tbody tr { position: relative; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .7rem .85rem; padding: .85rem; margin-bottom: .65rem; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 3px 12px rgba(30,41,59,.045); }
     .purchase-items tbody td { min-width: 0; display: flex; flex-direction: column; gap: .3rem; width: auto; padding: 0; border: 0; box-shadow: none; white-space: normal; overflow-wrap: anywhere; font-size: .86rem; }
     .purchase-items tbody td::before { content: attr(data-label); color: #475569; font-size: .73rem; font-weight: 600; line-height: 1.3; min-height: 2.6em; display: flex; align-items: flex-end; }
     .purchase-items tbody td:first-child { grid-column: span 2; padding: 0; padding-left: 6.6rem; }
@@ -115,15 +120,19 @@
     .purchase-totals { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .purchase-payment .pay-tab { transition: none; }
+    .purchase-payment .pay-tab, .purchase-items tbody .order-line-control,
+    .purchase-items ::deep .order-line-control { transition: none; }
 }
 
 
 
 .order-keyboard-hint { color: #5b6a80; font-size: .73rem; line-height: 1.8; margin-top: .4rem; }
+.invoice-copy-notice { display: flex; align-items: flex-start; gap: .55rem; margin-bottom: .85rem; padding: .65rem .8rem; border: 1px solid #dbe4ff; border-radius: 12px; background: #f5f7ff; color: #373f78; font-size: .8rem; line-height: 1.8; }
+.invoice-copy-notice i { color: #4f46e5; }
 
 .order-bank-select ::deep .ss { flex: 1 1 0; min-width: 0; }
 
-/* Validation stays visible inside the invoice, above its modal backdrop. */
-.order-form-error { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); width: min(90vw, 640px); z-index: 4600; display: flex; align-items: flex-start; gap: .6rem; padding: .75rem 1rem; margin-bottom: 1rem; background: #fff1f2; border: 1px solid #e11d48; border-right: 4px solid #be123c; border-radius: 9px; color: #881337; font-weight: 700; box-shadow: 0 4px 12px rgba(136,19,55,.15); }
-.order-form-error button { margin-inline-start: auto; border: 0; background: transparent; color: inherit; font-size: 1.25rem; line-height: 1; }
+/* Invoice validation stays visible at the top right, even when the form scrolls. */
+.order-form-error { position: fixed; top: 1rem; right: 1rem; width: min(calc(100vw - 2rem), 480px); max-height: min(40vh, 14rem); overflow-y: auto; z-index: 4600; display: flex; align-items: flex-start; gap: .6rem; padding: .75rem 1rem; margin-bottom: 1rem; background: #fff1f2; border: 1px solid #e11d48; border-right: 4px solid #be123c; border-radius: 12px; color: #881337; font-weight: 700; box-shadow: 0 4px 12px rgba(136,19,55,.15); }
+.order-form-error span { min-width: 0; overflow-wrap: anywhere; }
+.order-form-error button { flex: 0 0 auto; margin-inline-start: auto; border: 0; background: transparent; color: inherit; font-size: 1.25rem; line-height: 1; }

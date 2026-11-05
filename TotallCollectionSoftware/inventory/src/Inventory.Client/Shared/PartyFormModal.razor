@@ -202,19 +202,27 @@
         await OnCancel.InvokeAsync();
     }
 
+    private void Notify(string message, bool error)
+    {
+        if (!string.IsNullOrWhiteSpace(InvoiceFormKey)) Toast.ShowAtTopRight(message, error ? "error" : "success");
+        else if (error) Toast.Error(message);
+        else Toast.Success(message);
+    }
+
     private async Task Save()
     {
-        if (string.IsNullOrWhiteSpace(party.Name)) { Toast.Error("نام طرف حساب را وارد کنید."); return; }
+        if (saving) return;
+        if (string.IsNullOrWhiteSpace(party.Name)) { Notify("نام طرف حساب را وارد کنید.", true); return; }
 
         party.ReferrerId = AllowReferrerPicker && int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : party.ReferrerId;
         saving = true;
         try
         {
             var saved = await PartySvc.SaveAsync(party);
-            Toast.Success(IsEdit ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.");
+            Notify(IsEdit ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.", false);
             await OnSaved.InvokeAsync(saved);
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { Notify(ex.Message, true); }
         finally { saving = false; }
     }
 }

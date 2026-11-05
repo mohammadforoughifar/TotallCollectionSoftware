@@ -78,7 +78,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('tabindex="-1" title="حذف سطر"', FORM)
         self.assertIn('title="آخرین فاکتور خرید این کالا"', FORM)
         self.assertIn('data-order-add-line', FORM)
-        self.assertIn('data-hotkey="@(UseInvoiceWizard ? null : "f2")"', FORM)
+        self.assertIn('data-order-add-line data-hotkey="f2"', FORM)
         self.assertIn('Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساطی"', FORM)
         self.assertIn('data-order-initial', FORM)
         self.assertIn('pendingSectionFocus = "[data-order-payment]"', FORM)
@@ -94,7 +94,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('<SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard"', FORM)
         self.assertIn('if (AdvanceOnEnter)', SEARCH)
         self.assertIn('await JS.InvokeVoidAsync("orderEntry.focusNextField", _input)', SEARCH)
-        self.assertLess(INDEX.index('js/order-entry.js?v=4'), INDEX.index("document.addEventListener('keydown'"))
+        self.assertLess(INDEX.index('js/order-entry.js?v=5'), INDEX.index("document.addEventListener('keydown'"))
 
     def test_invoice_row_controls_and_values_share_alignment(self):
         items_section = FORM.split('<div data-order-entry', 1)[1]
@@ -168,7 +168,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('padding-inline: .3rem', desktop_sale)
         self.assertIn('.sale-items tbody .order-line-rate > input.form-control { padding-left: 24px;', CSS)
         self.assertIn('.sale-items tbody .order-line-rate > .order-line-unit { width: 20px;', CSS)
-        self.assertIn('Inventory.Client.styles.css?v=5', INDEX)
+        self.assertIn('Inventory.Client.styles.css?v=6', INDEX)
 
     def test_invoice_totals_show_after_discount_and_after_vat(self):
         totals = FORM.split('<div class="purchase-totals">', 1)[1].split('</div>\n                </div>', 1)[0]
@@ -185,8 +185,10 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('new TrsAccount { Kind = TreasuryAccountKind.Bank, Name = name, BankName = name', FORM)
         self.assertIn('customChequeBanks.Append(name)', FORM)
         self.assertIn('showChequeBank = false', FORM)
-        for key in ('(Alt+P)', '(Alt+U)', '(F1)', '(Esc)'):
+        for key in ('(F1)', '(F2)', '(F3)', '(F4)', '(Esc)'):
             self.assertIn(key, FORM)
+        self.assertNotIn('Alt+P', FORM)
+        self.assertNotIn('Alt+U', FORM)
         payment_choices = FORM.split('<div class="pay-tabs"', 1)[1].split('</div>', 1)[0]
         for key in ('F4', 'F6', 'F7', 'F8', 'Alt+'):
             self.assertNotIn(key, payment_choices)

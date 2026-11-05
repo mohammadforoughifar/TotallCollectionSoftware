@@ -18,9 +18,9 @@
     <link rel="mask-icon" href="icon.svg?v=2" color="#e8352a" />
     <link rel="stylesheet" href="css/bootstrap.min.css" />
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
-    <link rel="stylesheet" href="css/app.css?v=18" />
+    <link rel="stylesheet" href="css/app.css?v=19" />
     <link rel="stylesheet" href="css/letters.css?v=12" />
-    <link rel="stylesheet" href="Inventory.Client.styles.css?v=5" />
+    <link rel="stylesheet" href="Inventory.Client.styles.css?v=6" />
     <link href="manifest.webmanifest" rel="manifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -50,7 +50,7 @@
         <a class="dismiss">بستن</a>
     </div>
 
-    <script src="js/order-entry.js?v=4"></script>
+    <script src="js/order-entry.js?v=5"></script>
     <script>
         // ---------- توابع کمکی فوکوس و اسکرول سند انبار ----------
         window.focusLastProductInput = function () {
@@ -63,9 +63,10 @@
             }, 60);
         };
 
-        // ---------- کلیدهای میانبر سراسری و ناوبری بین فیلدها با اینتر ----------
-        // F3 = افزودن دستگاه در پذیرش تعمیرات | F2 = میانبر فرم‌ها | F1 = افزودن ردیف/ثبت فرم | Esc = خروج | Enter = جابه‌جایی بین فیلدها
+        // ---------- کلیدهای قدیمی سایر ماژول‌ها و ناوبری بین فیلدها با اینتر ----------
+        // میانبرهای سامانه فروشگاهی پیش‌تر در order-entry.js و فقط در تب/مودال فعال رسیدگی می‌شوند.
         document.addEventListener('keydown', function (e) {
+            if (e.defaultPrevented) return;
             // Esc ابتدا منوی کمبوباکس را می‌بندد، نه کل فرم را.
             var escapeSelect = e.target && e.target.closest ? e.target.closest('.ss') : null;
             if (e.key === 'Escape' && escapeSelect && escapeSelect.querySelector('.ss-menu')) return;

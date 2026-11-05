@@ -10,7 +10,7 @@
 
 @foreach (var t in Tabs.Tabs)
 {
-    <div class="tabpane @(t.IsActive ? "on" : "")" @key="t.Key">
+    <div class="tabpane @(t.IsActive ? "on" : "")" data-shop-scope="@(ShopSections.ForRoute(t.Key) is not null ? "true" : null)" @key="t.Key">
         @if (t.RouteData is not null)
         {
             <div class="tabpane-body" @key="t.Version">

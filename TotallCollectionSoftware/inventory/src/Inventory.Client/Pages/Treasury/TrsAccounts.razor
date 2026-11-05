@@ -303,7 +303,7 @@ else
     <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">
         <button class="btn btn-outline-secondary" @onclick="() => showForm = false">انصراف</button>
-        <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
             <i class="bi bi-save"></i> ذخیره
         </button>
@@ -391,6 +391,7 @@ else
 
     private async Task Save()
     {
+        if (saving) return;
         saving = true;
         try
         {

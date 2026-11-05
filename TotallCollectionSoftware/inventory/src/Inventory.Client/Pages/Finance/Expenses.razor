@@ -230,7 +230,7 @@
         <div class="row g-2 mb-3">
             <div class="col-md-8"><input class="form-control" placeholder="نام نوع هزینه *" @bind="catForm.Name" /></div>
             <div class="col-md-4">
-                <button class="btn btn-primary w-100" @onclick="SaveCat" disabled="@saving">
+                <button class="btn btn-primary w-100" data-hotkey="f1" @onclick="SaveCat" disabled="@saving">
                     @(catForm.Id == 0 ? "افزودن" : "ویرایش")
                 </button>
             </div>
@@ -413,6 +413,7 @@
 
     private async Task Save()
     {
+        if (saving) return;
         form.CategoryId = int.TryParse(catIdStr, out var cid) ? cid : 0;
         form.Amount = Fa.ParseDecimal(fAmount);
         form.Date = expDate ?? DateTime.Now;
@@ -454,6 +455,7 @@
 
     private async Task SaveCat()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(catForm.Name)) { Toast.Error("نام نوع هزینه را وارد کنید."); return; }
         saving = true;
         var savedName = catForm.Name.Trim();

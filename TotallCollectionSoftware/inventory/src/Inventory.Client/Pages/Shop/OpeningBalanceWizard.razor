@@ -224,7 +224,7 @@
                             </div>
 
                             <!-- دکمه ثبت -->
-                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SavePartyBalanceAsync" disabled="@saving">
+                            <button class="btn btn-primary w-100 op-btn-submit" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SavePartyBalanceAsync" disabled="@saving">
                                 @if (saving)
                                 {
                                     <span class="spinner-border spinner-border-sm me-2"></span>
@@ -434,7 +434,7 @@
                             </div>
 
                             <!-- دکمه ثبت چک -->
-                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SaveChequeAsync" disabled="@saving">
+                            <button class="btn btn-primary w-100 op-btn-submit" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveChequeAsync" disabled="@saving">
                                 @if (saving)
                                 {
                                     <span class="spinner-border spinner-border-sm me-2"></span>
@@ -594,7 +594,7 @@
                             </div>
 
                             <!-- دکمه ثبت -->
-                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="GenerateInstallmentsAsync" disabled="@saving">
+                            <button class="btn btn-primary w-100 op-btn-submit" data-hotkey="f1" title="کلید میانبر: F1" @onclick="GenerateInstallmentsAsync" disabled="@saving">
                                 @if (saving)
                                 {
                                     <span class="spinner-border spinner-border-sm me-2"></span>
@@ -727,7 +727,7 @@
                             </div>
 
                             <!-- دکمه ثبت -->
-                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SaveOpeningStockAsync" disabled="@saving">
+                            <button class="btn btn-primary w-100 op-btn-submit" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveOpeningStockAsync" disabled="@saving">
                                 @if (saving)
                                 {
                                     <span class="spinner-border spinner-border-sm me-2"></span>
@@ -879,7 +879,7 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light rounded-pill px-4" @onclick="() => showExcelModal = false">بستن</button>
-        <button class="btn btn-success rounded-pill px-4" @onclick="DoExcelImport" disabled="@(importingExcel || excelWarehouseId == 0 || excelFile == null)">
+        <button class="btn btn-success rounded-pill px-4" data-hotkey="f1" @onclick="DoExcelImport" disabled="@(importingExcel || excelWarehouseId == 0 || excelFile == null)">
             @if (importingExcel) { <span class="spinner-border spinner-border-sm me-1"></span> }
             <i class="bi bi-cloud-arrow-up me-1"></i> شروع ورود داده‌ها از فایل اکسل
         </button>
@@ -1389,6 +1389,7 @@
 
     private async Task DoExcelImport()
     {
+        if (importingExcel) return;
         if (excelWarehouseId <= 0)
         {
             Toast.Error("لطفاً ابتدا انبار موردنظر را انتخاب کنید.");
@@ -1602,6 +1603,7 @@
 
     private async Task SavePartyBalanceAsync()
     {
+        if (saving) return;
         if (partyBalance.PartyId <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
         if (partyBalance.Amount <= 0) { Toast.Error("مبلغ افتتاح حساب باید بزرگ‌تر از صفر باشد."); return; }
 
@@ -1669,6 +1671,7 @@
 
     private async Task SaveChequeAsync()
     {
+        if (saving) return;
         if ((newCheque.PartyId ?? 0) <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
         if (newCheque.Amount <= 0) { Toast.Error("مبلغ چک باید بزرگ‌تر از صفر باشد."); return; }
         if (newCheque.Kind == ChequeKind.Issued && (newCheque.TrsAccountId ?? 0) <= 0)
@@ -1711,6 +1714,7 @@
 
     private async Task GenerateInstallmentsAsync()
     {
+        if (saving) return;
         if (instPartyId <= 0) { Toast.Error("لطفاً مشتری را انتخاب کنید."); return; }
         if (instTotalAmount <= 0) { Toast.Error("مبلغ بدهی اقساطی باید بزرگ‌تر از صفر باشد."); return; }
         if (instCount <= 0) { Toast.Error("تعداد اقساط باید حداقل ۱ قسط باشد."); return; }
@@ -1779,6 +1783,7 @@
 
     private async Task SaveOpeningStockAsync()
     {
+        if (saving) return;
         if (stockWarehouseId <= 0) { Toast.Error("لطفاً انبار را انتخاب کنید."); return; }
         if (stockProductId <= 0) { Toast.Error("لطفاً کالا را انتخاب کنید."); return; }
         if (stockQuantity <= 0) { Toast.Error("تعداد کالا باید بزرگ‌تر از صفر باشد."); return; }

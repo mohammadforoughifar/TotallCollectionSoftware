@@ -1,9 +1,9 @@
-// Keyboard navigation for the active purchase/sale invoice and its calculator.
-// Other dialogs keep their own keyboard behavior.
+// Invoice navigation and scoped operational shortcuts for shop pages.
+// Only the active shop tab and its topmost dialog may receive a shortcut.
 (function () {
     const fieldSelector = 'input:not([disabled]):not([readonly]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([readonly]):not([tabindex="-1"])';
     function visibleModals() {
-        return Array.from(document.querySelectorAll('.modal.show')).filter(modal => modal.getClientRects().length > 0);
+        return Array.from(document.querySelectorAll('.modal.show, [data-shop-dialog]')).filter(modal => modal.getClientRects().length > 0);
     }
     function topModal() {
         const modals = visibleModals();
@@ -70,6 +70,42 @@
         document.querySelectorAll('.ss-menu[data-order-constrained="true"]').forEach(menu => placeSearchMenu(menu._orderAnchor, menu));
     });
 
+    // Persistent invoice validation and temporary notifications share the top-right
+    // corner. Measure only visible errors so the toast stack starts below them,
+    // including after wrapping, tab changes, resize and Blazor re-rendering.
+    if (window.MutationObserver && window.ResizeObserver && window.requestAnimationFrame && document.documentElement) {
+        let frame = 0, lastOffset = -1;
+        const observed = new Set();
+        function scheduleNoticeLayout() {
+            if (!frame) frame = window.requestAnimationFrame(updateNoticeLayout);
+        }
+        const resizeObserver = new window.ResizeObserver(scheduleNoticeLayout);
+        function updateNoticeLayout() {
+            frame = 0;
+            const errors = Array.from(document.querySelectorAll('.order-form-error'));
+            for (const item of observed) {
+                if (!errors.includes(item)) { resizeObserver.unobserve(item); observed.delete(item); }
+            }
+            errors.forEach(item => {
+                if (!observed.has(item)) { observed.add(item); resizeObserver.observe(item); }
+            });
+            const visibleBottoms = errors.filter(item => item.getClientRects().length > 0)
+                .map(item => item.getBoundingClientRect().bottom);
+            const margin = parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+            const offset = visibleBottoms.length ? Math.max(0, Math.ceil(Math.max(...visibleBottoms) + 12 - margin)) : 0;
+            if (offset !== lastOffset) {
+                document.documentElement.style.setProperty('--invoice-error-stack-offset', offset + 'px');
+                lastOffset = offset;
+            }
+        }
+        new window.MutationObserver(scheduleNoticeLayout).observe(document.documentElement, {
+            subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden']
+        });
+        window.addEventListener('resize', scheduleNoticeLayout);
+        window.addEventListener('scroll', scheduleNoticeLayout, true);
+        scheduleNoticeLayout();
+    }
+
     window.orderEntry = {
         placeSearchMenu: placeSearchMenu,
         isFocusWithin: function (root) { return !!root && root.contains(document.activeElement); },
@@ -115,37 +151,62 @@
     }, true);
 
     document.addEventListener('keydown', function (event) {
-        if (event.isComposing || event.repeat) return;
+        if (event.isComposing) return;
         const visible = visibleModals();
         const modal = visible[visible.length - 1];
-        if (!modal) return;
         const consume = () => { event.preventDefault(); event.stopImmediatePropagation(); };
-        const isInvoice = !!modal.querySelector('[data-order-wizard]');
-        const isCalculator = !!modal.querySelector('[data-order-calculator]');
-        const childMarker = modal.querySelector('[data-order-child]');
+        const isInvoice = !!(modal && modal.querySelector('[data-order-wizard]'));
+        const isCalculator = !!(modal && modal.querySelector('[data-order-calculator]'));
+        const childMarker = modal && modal.querySelector('[data-order-child]');
         const isInvoiceChild = !!(childMarker && childMarker.getAttribute('data-order-child'));
         const invoiceCovered = !isInvoice && visible.slice(0, -1).some(item => item.querySelector('[data-order-wizard]'));
-        if ((isInvoice || invoiceCovered) && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-            if (event.key === 'F1') {
-                const ownButton = modal.querySelector('[data-hotkey="f1"]');
-                consume();
-                if (ownButton && !ownButton.disabled && ownButton.getClientRects().length) ownButton.click();
-                return;
-            }
-            if (event.key === 'F2' || event.key === 'F3') {
-                // Don't let a global handler activate an obscured form. Preserve a child dialog's own shortcut.
-                const ownButton = invoiceCovered && modal.querySelector('[data-hotkey="' + event.key.toLowerCase() + '"]');
-                if (ownButton && !ownButton.disabled && ownButton.getClientRects().length) {
-                    consume(); ownButton.click();
-                } else {
-                    event.stopImmediatePropagation();
-                }
-                return;
-            }
-        }
-        if (!isInvoice && !isCalculator && !isInvoiceChild) return;
-
+        const shop = document.querySelector && document.querySelector('.tabpane.on[data-shop-scope="true"]');
+        const shortcuts = { F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F7: 'f7', Escape: 'esc' };
+        const hotkey = shortcuts[event.key];
         const target = event.target;
+
+        if ((shop || isInvoice || invoiceCovered) && hotkey) {
+            // Don't send modified keys to the legacy global handler either; leave
+            // their native browser behavior untouched. Repeats never submit twice.
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+                event.stopImmediatePropagation();
+                return;
+            }
+            if (event.repeat) { consume(); return; }
+            if (event.key === 'Escape' && target && target.closest) {
+                const search = target.closest('.ss');
+                if (search && search.querySelector('.ss-menu')) return; // let the combo close first
+                const date = target.closest('.date-picker');
+                const calendar = date && date.querySelector('.dp-popover');
+                if (calendar) {
+                    consume();
+                    calendar.dispatchEvent(new CustomEvent('dpclose', { bubbles: true }));
+                    return;
+                }
+            }
+
+            let actions = [];
+            if (event.key === 'F7' && !modal) {
+                // A list never has a default invoice: F7 only copies the row/card
+                // that actually owns keyboard focus.
+                const row = target && target.closest && target.closest('[data-order-copy-context]');
+                if (row && shop && shop.contains(row)) {
+                    const copy = row.querySelector('[data-order-copy]');
+                    if (copy) actions = [copy];
+                }
+            } else {
+                const root = modal || shop;
+                if (root) actions = Array.from(root.querySelectorAll('[data-hotkey="' + hotkey + '"]'));
+            }
+            actions = actions.filter(action => !action.disabled && action.getClientRects().length > 0);
+            // Ambiguous actions are never guessed. Each form marks one action for
+            // each shortcut; nested/hidden dialogs cannot reach an underlying form.
+            if (hotkey !== 'esc' || modal || actions.length) consume();
+            if (actions.length === 1) actions[0].click();
+            return;
+        }
+        if (event.repeat || !modal || (!isInvoice && !isCalculator && !isInvoiceChild)) return;
+
         if (event.key === 'Enter' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
             target && typeof target.matches === 'function') {
             if (isInvoice && target.matches('[data-order-last-field]')) {
@@ -187,14 +248,5 @@
             nextField(target, modal);
             return;
         }
-
-        if (!isInvoice || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        const mapping = {
-            KeyP: '[data-order-shortcut="print"]', KeyU: '[data-order-shortcut="back"]'
-        };
-        const selector = mapping[event.code];
-        const button = selector && modal.querySelector(selector);
-        if (!button || button.disabled || !button.getClientRects().length) return;
-        consume(); button.click();
     }, true);
 })();

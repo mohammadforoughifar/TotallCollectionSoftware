@@ -40,7 +40,7 @@
                 <button type="button" class="btn btn-outline-primary fin-btn-pill" @onclick="() => OpenQuickBankGeneral(TreasuryAccountKind.Bank)">
                     <i class="bi bi-bank me-1"></i> تعریف سریع حساب/بانک
                 </button>
-                <a class="btn btn-outline-secondary fin-btn-pill" href="/trs/vouchers">
+                <a class="btn btn-outline-secondary fin-btn-pill" data-hotkey="esc" href="/trs/vouchers">
                     <i class="bi bi-arrow-right me-1"></i> بازگشت به دفتر اسناد
                 </a>
             </div>
@@ -193,7 +193,7 @@ else
                             <input class="form-control num" value="@allocationAmountText" @onchange="OnAllocationAmountText" />
                         </div>
                         <div class="col-4 col-lg-2 d-grid">
-                            <button class="btn btn-outline-primary" @onclick="AddInvoiceAllocation" disabled="@(!CanAddInvoiceAllocation)">
+                            <button class="btn btn-outline-primary" data-hotkey="f2" @onclick="AddInvoiceAllocation" disabled="@(!CanAddInvoiceAllocation)">
                                 <i class="bi bi-plus-lg"></i> افزودن
                             </button>
                         </div>
@@ -561,14 +561,14 @@ else
                 </a>
             }
 
-            <button class="btn btn-outline-secondary" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
+            <button class="btn btn-outline-secondary" data-hotkey="f4" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
 
             @if (doc.Status == TreasuryStatus.Draft)
             {
                 <button class="btn btn-outline-primary" @onclick="() => Save(false)" disabled="@saving">
                     <i class="bi bi-save"></i> ذخیره پیش‌نویس
                 </button>
-                <button class="btn btn-success" @onclick="() => Save(true)" disabled="@saving">
+                <button class="btn btn-success" data-hotkey="f1" @onclick="() => Save(true)" disabled="@saving">
                     @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                     <i class="bi bi-check2-circle"></i> ثبت و قطعی
                 </button>
@@ -1332,6 +1332,7 @@ else
 
     private async Task Save(bool confirm)
     {
+        if (saving) return;
         saving = true;
         try
         {

@@ -555,9 +555,9 @@
                     <div>
                         <h6>دستگاه‌های پذیرش‌شده <span class="badge badge-soft-primary">@form.Devices.Count</span></h6>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f3"
-                            title="افزودن دستگاه (F3)" @onclick="AddDevice">
-                        <i class="bi bi-plus-lg"></i> افزودن دستگاه (F3)
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto"
+                            title="افزودن دستگاه" @onclick="AddDevice">
+                        <i class="bi bi-plus-lg"></i> افزودن دستگاه
                     </button>
                 </div>
 
@@ -624,7 +624,7 @@
                     <div>
                         <h6 class="mb-0">کارها و قطعات مصرفی </h6>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddItem">
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">
                         <i class="bi bi-plus-lg"></i> ردیف جدید (F2)
                     </button>
                 </div>
@@ -687,8 +687,8 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" @onclick="SaveAndPrintReceipt" disabled="@saving">
-            <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل
+        <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="SaveAndPrintReceipt" disabled="@saving">
+            <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل (F4)
         </button>
         <button class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
@@ -729,8 +729,8 @@
                 }
             </div>
             <div class="d-flex justify-content-end gap-2 mb-3">
-                <button class="btn btn-sm btn-outline-primary" @onclick="() => PrintDeliveryReceipt(viewing!)">
-                    <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه
+                <button class="btn btn-sm btn-outline-primary" data-hotkey="f4" @onclick="() => PrintDeliveryReceipt(viewing!)">
+                    <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه (F4)
                 </button>
                 @if (viewing.InvoiceTransactionId is > 0)
                 {
@@ -1012,7 +1012,7 @@
             <div class="col-md-3"><input class="form-control" placeholder="موبایل" @bind="techForm.Phone" dir="ltr" data-digits="tel" inputmode="tel" /></div>
             <div class="col-md-3"><input class="form-control" placeholder="تخصص (لپ‌تاپ، دوربین…)" @bind="techForm.Specialty" /></div>
             <div class="col-md-2">
-                <button class="btn btn-primary w-100" @onclick="SaveTech" disabled="@saving">
+                <button class="btn btn-primary w-100" data-hotkey="f1" @onclick="SaveTech" disabled="@saving">
                     @(techForm.Id == 0 ? "افزودن" : "ویرایش")
                 </button>
             </div>
@@ -1706,6 +1706,7 @@
 
     private async Task SaveInternal(bool printAfterSave)
     {
+        if (saving) return;
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
         EnsureFormDevices();
         if (form.Devices.Count == 0) { Toast.Error("حداقل یک دستگاه اضافه کنید."); return; }
@@ -1797,6 +1798,7 @@
 
     private async Task DoInvoice()
     {
+        if (saving) return;
         if (invoicing is null) return;
         if (invPaymentMethod == PaymentMethod.Credit)
         {
@@ -1886,6 +1888,7 @@
 
     private async Task SaveNewCustomer()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(newCustomer.Name)) { Toast.Error("نام مشتری را وارد کنید."); return; }
         saving = true;
         try
@@ -1907,6 +1910,7 @@
 
     private async Task SaveTech()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(techForm.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
         saving = true;
         try

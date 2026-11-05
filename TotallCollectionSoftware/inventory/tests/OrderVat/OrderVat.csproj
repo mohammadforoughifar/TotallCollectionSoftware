@@ -9,5 +9,6 @@
     <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
     <Compile Include="../../src/Inventory.Client/Extensions/PersianExtensions.cs" Link="PersianExtensions.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/Orders/SaleInvoicePrint.cs" Link="SaleInvoicePrint.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/Orders/InvoiceCopyTemplate.cs" Link="InvoiceCopyTemplate.cs" />
   </ItemGroup>
 </Project>

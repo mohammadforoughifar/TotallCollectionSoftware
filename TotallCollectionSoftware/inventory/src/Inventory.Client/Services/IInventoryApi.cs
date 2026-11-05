@@ -104,6 +104,8 @@ public interface IStockService
 /// <summary>سرویس اسناد خرید و فروش.</summary>
 public interface IOrderService
 {
+    /// <summary>مجوز فعلی سمت سرور برای نمایش سود فروش.</summary>
+    Task<bool> CanViewProfitAsync();
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null);
     Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
         int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null);
@@ -171,6 +173,8 @@ public interface IToastService
     void Error(string message);
     void Warning(string message);
     void Info(string message);
+    /// <summary>اعلان اختصاصی بالای سمت راست برای گردش ثبت فاکتور.</summary>
+    void ShowAtTopRight(string message, string kind);
     void Remove(Guid id);
 }
 

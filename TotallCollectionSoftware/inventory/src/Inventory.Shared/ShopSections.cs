@@ -173,8 +173,9 @@ public static class ShopSections
     /// </para>
     /// <para>
     /// توجه: مدل «بخش» از ماژول قدیمی بازتر است (همان‌طور که در منو هم دیده می‌شود)؛
-    /// یعنی <c>Shop.Sale.Manage</c> کل مجوزهای ماژول <c>Orders</c> را می‌دهد، ولی
-    /// <c>Shop.Sale.View</c> فقط مجوزهای خواندنی را.
+    /// یعنی <c>Shop.Sale.Manage</c> مجوزهای عملیاتی ماژول <c>Orders</c> را می‌دهد، ولی
+    /// <c>Shop.Sale.View</c> فقط مجوزهای خواندنی را. مشاهدهٔ سود استثنا است و همیشه
+    /// به مجوز مستقل <c>Orders.ViewProfit</c> نیاز دارد.
     /// </para>
     /// </summary>
     public static bool AliasAllows(string? requested, string? granted)
@@ -186,6 +187,11 @@ public static class ShopSections
         if (dot <= 0 || dot == requested.Length - 1) return false;
         var module = requested[..dot];
         var action = requested[(dot + 1)..];
+
+        // A section's broad View/Manage permission must not imply this sensitive action,
+        // including through read-only sections that also share the legacy Orders module.
+        if (module.Equals("Orders", StringComparison.OrdinalIgnoreCase)
+            && action.Equals("ViewProfit", StringComparison.OrdinalIgnoreCase)) return false;
 
         foreach (var section in All)
         {

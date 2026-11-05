@@ -10,7 +10,7 @@
 @* =====================================================================
    حواله تحویل کالا — سند «فقط مقدار» (بدون هیچ مبلغ/ریالی)
    • نام کالا آزاد تایپ می‌شود (بدون انتخاب از فهرست کالاها)
-   • Enter = جابه‌جایی بین سطرها | F1 = سطر تازه | F2 = ذخیره
+   • Enter = جابه‌جایی بین سطرها | F2 = سطر تازه | F1 = ذخیره
    • مشتری از فهرست + دکمه «مشتری جدید» برای تعریف سریع همان‌جا
    • چاپ A4 با طراحی اختصاصی
    ===================================================================== *@
@@ -204,8 +204,8 @@
                 </div>
                 @if (!viewing)
                 {
-                    <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" @onclick="AddEmptyLine">
-                        <i class="bi bi-plus-lg"></i> سطر تازه (F1)
+                    <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" data-hotkey="f2" @onclick="AddEmptyLine">
+                        <i class="bi bi-plus-lg"></i> سطر تازه (F2)
                     </button>
                 }
             </div>
@@ -261,8 +261,8 @@
             {
                 <div class="gi-hints">
                     <span><kbd>Enter</kbd> سطر بعدی</span>
-                    <span><kbd>F1</kbd> سطر تازه</span>
-                    <span><kbd>F2</kbd> ذخیره</span>
+                    <span><kbd>F2</kbd> سطر تازه</span>
+                    <span><kbd>F1</kbd> ذخیره</span>
                     <span><kbd>Esc</kbd> انصراف</span>
                 </div>
             }
@@ -272,13 +272,13 @@
         <button class="btn btn-light" @onclick="CloseForm">@(viewing ? "بستن" : "انصراف (Esc)")</button>
         @if (viewing)
         {
-            <button class="btn btn-outline-primary" @onclick="PrintCurrent"><i class="bi bi-printer"></i> چاپ</button>
+            <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="PrintCurrent"><i class="bi bi-printer"></i> چاپ (F4)</button>
         }
         else
         {
-            <button class="btn btn-primary" data-hotkey="f2" @onclick="Save" disabled="@saving">
+            <button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                ذخیره (F2)
+                ذخیره (F1)
             </button>
         }
     </Footer>
@@ -308,7 +308,7 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseNewParty">انصراف</button>
-        <button class="btn btn-primary" @onclick="SaveNewParty" disabled="@savingParty">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="SaveNewParty" disabled="@savingParty">
             @if (savingParty) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             ذخیره مشتری
         </button>
@@ -472,7 +472,7 @@
 
     // ---------- سطرها ----------
 
-    /// <summary>سطر تازه (F1) — فوکوس بعد از رندر روی نام کالای سطر جدید می‌رود.</summary>
+    /// <summary>سطر تازه (F2) — فوکوس بعد از رندر روی نام کالای سطر جدید می‌رود.</summary>
     private void AddEmptyLine()
     {
         if (viewing) return;
@@ -521,6 +521,7 @@
 
     private async Task Save()
     {
+        if (saving) return;
         if (viewing) { CloseForm(); return; }
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
 
@@ -567,6 +568,7 @@
 
     private async Task SaveNewParty()
     {
+        if (savingParty) return;
         if (string.IsNullOrWhiteSpace(newParty.Name)) { Toast.Error("نام مشتری را وارد کنید."); return; }
 
         savingParty = true;

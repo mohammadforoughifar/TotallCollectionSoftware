@@ -8,11 +8,12 @@ const source = fs.readFileSync(path.join(__dirname, '../../src/Inventory.Client/
 function setup() {
     let handler;
     const listeners = {};
-    const state = { modals: [] };
+    const state = { modals: [], shop: null };
     const document = {
         activeElement: null,
         addEventListener(type, cb, capture) { assert.ok(type === 'keydown' || type === 'focusin' || type === 'pointerdown'); assert.equal(capture, true); listeners[type] = cb; if (type === 'keydown') handler = cb; },
-        querySelectorAll(selector) { return selector === '.modal.show' ? state.modals : []; }
+        querySelectorAll(selector) { return selector === '.modal.show, [data-shop-dialog]' ? state.modals : []; },
+        querySelector(selector) { return selector === '.tabpane.on[data-shop-scope="true"]' ? state.shop : null; }
     };
     const context = { window: { addEventListener() {}, innerWidth: 800, innerHeight: 650 }, document, setTimeout };
     vm.runInNewContext(source, context);
@@ -38,7 +39,14 @@ function fixture() {
     const grid = { querySelectorAll: () => [row1, row2] };
     const section = { querySelectorAll: () => [first, second] };
     const modal = { getClientRects: visible, contains: el => [grid, first, second].includes(el),
-        querySelectorAll(selector) { return selector === '[data-order-line]' ? [row2] : []; },
+        querySelectorAll(selector) {
+            if (selector === '[data-order-line]') return [row2];
+            if (selector === '[data-hotkey="f1"]') return [f1];
+            if (selector === '[data-hotkey="f2"]') return [add];
+            if (selector === '[data-hotkey="f3"]') return [back];
+            if (selector === '[data-hotkey="f4"]') return [print];
+            return [];
+        },
         querySelector(selector) {
             if (selector === '[data-order-wizard]') return marker;
             if (selector === '[data-order-wizard], [data-order-calculator], [data-order-child]') return marker;
@@ -106,31 +114,75 @@ test('open search select receives Enter and calendar controls are not intercepte
     f.handler(e); assert.equal(e.prevented, false);
 });
 
-test('only footer shortcuts are active; payment keys keep their browser behavior', () => {
+test('payment choices have no shortcuts, including the former Alt keys', () => {
     const f = fixture();
-    for (const key of ['F4', 'F6', 'F7', 'F8', 'F9', 'F10']) {
+    for (const key of ['F6', 'F8', 'F9', 'F10']) {
         const e = event({ key }); f.handler(e); assert.equal(e.prevented, false); assert.equal(f.tab.clicked, 0);
     }
-    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'KeyC', 'KeyI', 'KeyJ', 'KeyK', 'KeyB', 'KeyN', 'KeyL']) {
+    for (const code of ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'KeyC', 'KeyI', 'KeyJ', 'KeyK', 'KeyB', 'KeyN', 'KeyL', 'KeyU', 'KeyP']) {
         const e = event({ code, altKey: true }); f.handler(e); assert.equal(e.prevented, false); assert.equal(f.tab.clicked, 0);
     }
-    let e = event({ code: 'KeyU', altKey: true }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(f.back.clicked, 1);
-    e = event({ code: 'KeyP', altKey: true }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(f.print.clicked, 1);
-    e = event({ code: 'KeyP', altKey: true, ctrlKey: true }); f.handler(e); assert.equal(f.print.clicked, 1); assert.equal(e.prevented, false);
 });
 
-test('F1 acts on the top dialog; F2/F3 cannot activate a covered invoice', () => {
+test('invoice F1/F2/F3/F4 act only on the top dialog, never on a covered form', () => {
     const f = fixture();
-    let e = event({ key: 'F1' }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(f.f1.clicked, 1);
-    for (const key of ['F2', 'F3']) { e = event({ key }); f.handler(e); assert.equal(e.prevented, false); assert.equal(e.stopped, true); assert.equal(f.add.clicked, 0); }
-    const child = { getClientRects: visible, querySelector: () => null };
+    for (const [key, action] of [['F1', f.f1], ['F2', f.add], ['F3', f.back], ['F4', f.print]]) {
+        const e = event({ key }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(action.clicked, 1);
+    }
+    // F7 in an invoice without a copy action must not pick an arbitrary document.
+    let e = event({ key: 'F7' }); f.handler(e); assert.ok(e.prevented && e.stopped);
+    const own = button();
+    const child = { getClientRects: visible, querySelector: () => null,
+        querySelectorAll: selector => selector === '[data-hotkey="f2"]' ? [own] : [] };
     f.state.modals.push(child);
     e = event({ key: 'F1' }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(f.f1.clicked, 1);
-    e = event({ key: 'F2' }); f.handler(e); assert.equal(e.prevented, false); assert.equal(e.stopped, true);
-    const own = button();
-    child.querySelector = selector => selector === '[data-hotkey="f2"]' ? own : null;
-    e = event({ key: 'F2' }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(own.clicked, 1);
-    e = event({ key: 'Escape' }); f.handler(e); assert.equal(e.prevented, false);
+    e = event({ key: 'F2' }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(own.clicked, 1); assert.equal(f.add.clicked, 1);
+    for (const key of ['F3', 'F4', 'F7', 'Escape']) {
+        e = event({ key }); f.handler(e); assert.ok(e.prevented && e.stopped);
+    }
+    assert.equal(f.back.clicked, 1); assert.equal(f.print.clicked, 1);
+});
+
+test('shop-page shortcuts choose an unambiguous enabled action and ignore repeats/modifiers', () => {
+    const f = setup(), save = button(), add = button(), duplicate = button();
+    f.state.shop = { querySelectorAll(selector) {
+        if (selector === '[data-hotkey="f1"]') return [save];
+        if (selector === '[data-hotkey="f2"]') return [add];
+        if (selector === '[data-hotkey="f4"]') return [duplicate, button()];
+        return [];
+    } };
+    let e = event({ key: 'F1' }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(save.clicked, 1);
+    e = event({ key: 'F2', repeat: true }); f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(add.clicked, 0);
+    e = event({ key: 'F2', ctrlKey: true }); f.handler(e); assert.equal(e.prevented, false); assert.equal(e.stopped, true); assert.equal(add.clicked, 0);
+    e = event({ key: 'F2' }); f.handler(e); assert.equal(add.clicked, 1);
+    e = event({ key: 'F4' }); f.handler(e); assert.ok(e.prevented); assert.equal(duplicate.clicked, 0);
+});
+
+test('F7 on an invoice list requires the focused row; a child dialog is isolated', () => {
+    const f = setup(), copy = button(), childSave = button(), childClose = button();
+    const row = { querySelector: selector => selector === '[data-order-copy]' ? copy : null };
+    f.state.shop = { contains: el => el === row, querySelectorAll: () => [] };
+    let e = event({ key: 'F7', target: { closest: () => null } });
+    f.handler(e); assert.ok(e.prevented && e.stopped); assert.equal(copy.clicked, 0);
+    e = event({ key: 'F7', target: { closest: selector => selector === '[data-order-copy-context]' ? row : null } });
+    f.handler(e); assert.equal(copy.clicked, 1);
+    f.state.modals = [{ getClientRects: visible, querySelector: () => null, querySelectorAll(selector) {
+        if (selector === '[data-hotkey="f1"]') return [childSave];
+        if (selector === '[data-hotkey="esc"]') return [childClose];
+        return [];
+    } }];
+    e = event({ key: 'F7', target: { closest: () => row } }); f.handler(e); assert.equal(copy.clicked, 1);
+    e = event({ key: 'F1' }); f.handler(e); assert.equal(childSave.clicked, 1);
+    e = event({ key: 'Escape' }); f.handler(e); assert.equal(childClose.clicked, 1);
+});
+
+test('Escape first lets an open search menu close, without cancelling its form', () => {
+    const f = fixture(), close = button();
+    f.modal.querySelectorAll = selector => selector === '[data-hotkey="esc"]' ? [close] : [];
+    const target = { closest: selector => selector === '.ss' ? { querySelector: () => ({}) } : null };
+    let e = event({ key: 'Escape', target }); f.handler(e); assert.equal(e.prevented, false); assert.equal(close.clicked, 0);
+    e = event({ key: 'Escape', target: { closest: () => null } }); f.handler(e);
+    assert.ok(e.prevented && e.stopped); assert.equal(close.clicked, 1);
 });
 
 test('invoice quick forms support multiline Enter navigation without affecting unrelated dialogs', () => {

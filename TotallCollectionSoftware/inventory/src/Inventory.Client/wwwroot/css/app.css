@@ -404,6 +404,22 @@ a { text-decoration: none; }
     /* بوت‌استرپ برای .toast-container مقدار pointer-events:none می‌گذارد و به فرزندان ارث می‌رسد */
     pointer-events: none;
 }
+/* Only notifications explicitly sent from invoice entry use this position. */
+.toast-container.toast-container-top-right {
+    top: calc(1rem + var(--invoice-error-stack-offset, 0px));
+    right: 1rem;
+    bottom: auto;
+    left: auto;
+    z-index: 4700;
+    max-width: min(360px, calc(100vw - 2rem));
+    max-height: max(0px, calc(100vh - 2rem - var(--invoice-error-stack-offset, 0px)));
+    overflow-y: auto;
+    pointer-events: auto;
+}
+.toast-container-top-right .toast-item { flex: 0 0 auto; min-width: 0; }
+.toast-container-top-right .toast-item > div:not(.toast-icon) { min-width: 0; overflow-wrap: anywhere; }
+/* Make it clear which invoice receives F7 without changing table geometry. */
+[data-order-copy-context]:focus-visible { outline: 2px solid #4f46e5; outline-offset: -2px; }
 .toast-item {
     pointer-events: auto; /* بدون این، کلیک روی اعلان و دکمهٔ ✕ اصلاً به دکمه نمی‌رسد */
     display: flex;
