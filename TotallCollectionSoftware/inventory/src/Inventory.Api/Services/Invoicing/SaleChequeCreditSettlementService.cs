@@ -107,6 +107,7 @@ public static class SaleChequeCreditSettlementService
         var trsBalance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
         if (!trsBalance.HasValue || trsBalance.Value < amount)
             throw new InvalidOperationException("مانده حساب صندوق/بانک برای پرداخت بستانکاری مشتری کافی نیست.");
+        await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, trsAccount.Id, date, amount);
 
         var title = $"پرداخت بستانکاری مشتری — فاکتور {sale.Number}";
         var trsNo = (await db.TrsVouchers.IgnoreQueryFilters().Where(v => v.Kind == TreasuryKind.Payment)
@@ -202,6 +203,9 @@ public static class SaleChequeCreditSettlementService
         if (amount > availableCredit)
             throw new InvalidOperationException("مبلغ انتخاب‌شده بیشتر از بستانکاری قابل مصرف مشتری در فاکتور مبدأ است.");
 
+        if (await ShopOrderCreditPosting.HasLaterEventsAsync(db, targetSale.Id, date))
+            throw new InvalidOperationException("تاریخ انتقال نمی‌تواند پیش از آخرین گردش فاکتور مقصد باشد.");
+        await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, targetSale);
         var unpaidTarget = await SaleChequeSettlementLedger.UnpaidSaleBalanceAsync(db, targetSale);
         if (amount > unpaidTarget)
             throw new InvalidOperationException("مبلغ انتخاب‌شده بیشتر از مانده پرداخت‌نشده فاکتور مقصد است.");
@@ -248,6 +252,7 @@ public static class SaleChequeCreditSettlementService
             await db.SaleChequeReschedules.AnyAsync(r => r.SaleChequeChargeId == charge.Id && r.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ تسویه بستانکاری نمی‌تواند پیش از عملیات قبلی فاکتور باشد.");
 

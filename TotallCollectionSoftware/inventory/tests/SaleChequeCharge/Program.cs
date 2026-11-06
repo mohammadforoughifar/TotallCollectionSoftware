@@ -595,6 +595,198 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
           (await cashBank.GetFlowAsync(treasuryBank.Id, null, null)).ClosingBalance == purchaseInstBankBefore,
         "ordinary purchase installment reversal restores bank and flow balance");
 
+    // Ordinary nasiya is independent of ERP, partial, dated and reversible.
+    var creditCustomer = new Party { Type = PartyType.Customer, Name = "مشتری نسیه", IsActive = true };
+    var creditSupplier = new Party { Type = PartyType.Supplier, Name = "تامین‌کننده نسیه", IsActive = true };
+    db.AddRange(creditCustomer, creditSupplier);
+    await db.SaveChangesAsync();
+    var mixedCreditSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = creditCustomer.Id, Date = new DateTime(2026, 6, 14),
+        PaymentMethod = PaymentMethod.Mixed, DueDate = new DateTime(2026, 8, 1),
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = serviceProduct.Id, Quantity = 1, Price = 300, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CREDIT-MIX-CHQ", Amount = 100, DueDate = new DateTime(2026, 7, 14) } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 50, DueDate = new DateTime(2026, 7, 15) } }
+    }, "tester");
+    var creditState = await creationService.GetOrderCreditStateAsync(mixedCreditSale.Id);
+    Check(creditState.Outstanding == 300 && creditState.ReservedForCheques == 100 &&
+          creditState.ReservedForInstallments == 50 && creditState.AvailableCredit == 150,
+        "mixed invoice credit excludes open cheques and installments");
+    var creditBankBefore = (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance;
+    var creditCommand = new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Amount = 70, Date = new DateTime(2026, 6, 20) };
+    await creationService.ReceiveOrderCreditAsync(mixedCreditSale.Id, creditCommand, "tester");
+    await creationService.ReceiveOrderCreditAsync(mixedCreditSale.Id, creditCommand, "tester");
+    creditState = await creationService.GetOrderCreditStateAsync(mixedCreditSale.Id);
+    Check(creditState.AvailableCredit == 80 && creditState.Receipts.Count == 1 &&
+          (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == creditBankBefore + 70,
+        "partial sale credit receipt is idempotent and changes the bank once");
+    try
+    {
+        await creationService.ReceiveOrderCreditAsync(mixedCreditSale.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Amount = 81, Date = new DateTime(2026, 6, 21) }, "tester");
+        throw new Exception("credit receipt consumed reserved obligations");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: credit receipt cannot consume open cheque or installment"); }
+    try
+    {
+        await creationService.ReceiveOrderCreditAsync(mixedCreditSale.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = creditCommand.OperationId, TrsAccountId = treasuryBank.Id, Amount = 71, Date = creditCommand.Date }, "tester");
+        throw new Exception("credit operation reused with different amount");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: altered credit replay rejected"); }
+    var creditBefore = await creationService.GetPartyStatementDetailAsync(creditCustomer.Id, to: new DateTime(2026, 6, 19));
+    var creditAfter = await creationService.GetPartyStatementDetailAsync(creditCustomer.Id, to: new DateTime(2026, 6, 20));
+    var creditSummary = await creationService.GetPartyStatementSummaryReportAsync(to: new DateTime(2026, 6, 20));
+    Check(creditBefore.ClosingBalance == 300 && creditAfter.ClosingBalance == 230 &&
+          creditSummary.Items.Single(x => x.PartyId == creditCustomer.Id).ClosingBalance == creditAfter.ClosingBalance,
+        "credit receipt is dated correctly and party summary equals detail");
+    var creditReceiptId = creditState.Receipts.Single().Id;
+    var reversalCommand = new Inventory.Shared.Dtos.ShopOrderCreditReversalCommand
+    { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 25) };
+    await creationService.ReverseOrderCreditAsync(mixedCreditSale.Id, creditReceiptId, reversalCommand, "tester");
+    await creationService.ReverseOrderCreditAsync(mixedCreditSale.Id, creditReceiptId, reversalCommand, "tester");
+    var creditReopened = await creationService.GetOrderCreditStateAsync(mixedCreditSale.Id);
+    var creditOpeningAfter = await creationService.GetPartyStatementDetailAsync(creditCustomer.Id, from: new DateTime(2026, 6, 24));
+    Check(creditReopened.AvailableCredit == 150 && creditReopened.Receipts.Single().ReversalDate == reversalCommand.Date &&
+          creditOpeningAfter.OpeningBalance == 230 && creditOpeningAfter.ClosingBalance == 300 &&
+          (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == creditBankBefore,
+        "reversal preserves history, bank and opening/closing statement dates");
+    try { await creationService.DeleteOrderAsync(mixedCreditSale.Id, "tester"); throw new Exception("credit history deleted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: even reversed credit history prevents direct invoice deletion"); }
+
+    var creditPurchase = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Purchase, WarehouseId = wh.Id, PartyId = creditSupplier.Id, Date = new DateTime(2026, 6, 14),
+        PaymentMethod = PaymentMethod.Credit, DueDate = new DateTime(2026, 7, 14),
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = purchaseProduct.Id, Quantity = 1, Price = 80, VatValue = 0 } }
+    }, "tester");
+    try
+    {
+        await creationService.ReceiveOrderCreditAsync(creditPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = emptyBank.Id, Amount = 30, Date = new DateTime(2026, 6, 20) }, "tester");
+        throw new Exception("purchase credit paid without funds");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: purchase credit with insufficient funds rolls back"); }
+    Check((await creationService.GetOrderCreditStateAsync(creditPurchase.Id)).AvailableCredit == 80,
+        "failed purchase payment does not change payable");
+    var purchaseCreditOp = new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Amount = 30, Date = new DateTime(2026, 6, 20) };
+    await creationService.ReceiveOrderCreditAsync(creditPurchase.Id, purchaseCreditOp, "tester");
+    var paidCreditPurchase = await creationService.GetOrderCreditStateAsync(creditPurchase.Id);
+    Check(paidCreditPurchase.AvailableCredit == 50 && (await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == creditBankBefore - 30 &&
+          (await creationService.GetPartyStatementDetailAsync(creditSupplier.Id, to: purchaseCreditOp.Date)).ClosingBalance == -50,
+        "purchase credit payment is an outflow and reduces supplier payable on its date");
+    await creationService.ReverseOrderCreditAsync(creditPurchase.Id, paidCreditPurchase.Receipts.Single().Id,
+        new Inventory.Shared.Dtos.ShopOrderCreditReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 21) }, "tester");
+    Check((await cashBank.GetAccountAsync(treasuryBank.Id))!.Balance == creditBankBefore &&
+          (await cashBank.GetFlowAsync(treasuryBank.Id, null, null)).ClosingBalance == creditBankBefore &&
+          (await creationService.GetPartyStatementDetailAsync(creditSupplier.Id, to: new DateTime(2026, 6, 21))).ClosingBalance == -80,
+        "purchase credit reversal restores account, flow and payable");
+
+    // Sale reversal is a real outflow: money already spent cannot be silently removed from the account.
+    await creationService.ReceiveOrderCreditAsync(mixedCreditSale.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = emptyBank.Id, Amount = 50, Date = new DateTime(2026, 6, 26) }, "tester");
+    var saleCreditOnEmptyBank = (await creationService.GetOrderCreditStateAsync(mixedCreditSale.Id)).Receipts.Single(r => !r.ReversalDate.HasValue);
+    await creationService.ReceiveOrderCreditAsync(creditPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = emptyBank.Id, Amount = 40, Date = new DateTime(2026, 6, 27) }, "tester");
+    var purchaseCreditOnEmptyBank = (await creationService.GetOrderCreditStateAsync(creditPurchase.Id)).Receipts.Single(r => !r.ReversalDate.HasValue);
+    try
+    {
+        await creationService.ReverseOrderCreditAsync(mixedCreditSale.Id, saleCreditOnEmptyBank.Id,
+            new Inventory.Shared.Dtos.ShopOrderCreditReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 28) }, "tester");
+        throw new Exception("sale credit reversed with insufficient bank funds");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: sale credit reversal with insufficient funds rolls back"); }
+    Check((await cashBank.GetAccountAsync(emptyBank.Id))!.Balance == 10 &&
+          (await creationService.GetOrderCreditStateAsync(mixedCreditSale.Id)).AvailableCredit == 100,
+        "failed sale reversal leaves the active receipt and bank unchanged");
+    await creationService.ReverseOrderCreditAsync(creditPurchase.Id, purchaseCreditOnEmptyBank.Id,
+        new Inventory.Shared.Dtos.ShopOrderCreditReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 29) }, "tester");
+    await creationService.ReverseOrderCreditAsync(mixedCreditSale.Id, saleCreditOnEmptyBank.Id,
+        new Inventory.Shared.Dtos.ShopOrderCreditReversalCommand { OperationId = Guid.NewGuid(), Date = new DateTime(2026, 6, 30) }, "tester");
+    Check((await cashBank.GetAccountAsync(emptyBank.Id))!.Balance == 0,
+        "reversing both real movements restores the original account balance");
+
+    // Current balance alone cannot justify a debit before funding or before a later daily low point.
+    var datedBank = new TrsAccount { Code = "DATED-TEST", Name = "حساب آزمون تاریخ", Kind = TreasuryAccountKind.Bank,
+        OpeningBalance = 0, IsActive = true };
+    var datedSales = new Inventory.Api.Data.Transaction
+    { Number = "DATED-SALES", Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = creditCustomer.Id,
+      Date = new DateTime(2026, 6, 25), Amount = 200, SettledAmount = 0, PaymentMethod = PaymentMethod.Credit };
+    var datedPurchase = new Inventory.Api.Data.Transaction
+    { Number = "DATED-PURCHASE", Type = TransactionType.Purchase, WarehouseId = wh.Id, PartyId = creditSupplier.Id,
+      Date = new DateTime(2026, 6, 25), Amount = 80, SettledAmount = 0, PaymentMethod = PaymentMethod.Credit };
+    var backdatedPurchase = new Inventory.Api.Data.Transaction
+    { Number = "BACKDATED-PURCHASE", Type = TransactionType.Purchase, WarehouseId = wh.Id, PartyId = creditSupplier.Id,
+      Date = new DateTime(2026, 6, 25), Amount = 40, SettledAmount = 0, PaymentMethod = PaymentMethod.Credit };
+    db.AddRange(datedBank, datedSales, datedPurchase, backdatedPurchase); await db.SaveChangesAsync();
+    foreach (var day in new[] { 10, 30 })
+        await creationService.ReceiveOrderCreditAsync(datedSales.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = datedBank.Id, Amount = 100, Date = new DateTime(2026, 7, day) }, "tester");
+    try
+    {
+        await creationService.ReceiveOrderCreditAsync(backdatedPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = datedBank.Id, Amount = 40, Date = new DateTime(2026, 7, 5) }, "tester");
+        throw new Exception("backdated purchase spent a future receipt");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: purchase cannot spend money before it arrived"); }
+    await creationService.ReceiveOrderCreditAsync(datedPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = datedBank.Id, Amount = 80, Date = new DateTime(2026, 7, 20) }, "tester");
+    try
+    {
+        await creationService.ReceiveOrderCreditAsync(backdatedPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = datedBank.Id, Amount = 30, Date = new DateTime(2026, 7, 15) }, "tester");
+        throw new Exception("backdated purchase made a later daily balance negative");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: backdated purchase protects later daily low point"); }
+    await creationService.ReceiveOrderCreditAsync(backdatedPurchase.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = datedBank.Id, Amount = 20, Date = new DateTime(2026, 7, 15) }, "tester");
+    Check((await Inventory.Api.Services.Treasury.TreasuryBalanceCalculator.GetAmountAsync(db, datedBank.Id)) == 100,
+        "backdated purchase that leaves every daily balance nonnegative is allowed");
+
+    var chargedCreditCustomer = new Party { Type = PartyType.Customer, Name = "مشتری نسیه چک سوددار", IsActive = true };
+    db.Parties.Add(chargedCreditCustomer); await db.SaveChangesAsync();
+    var chargedCreditSale = await creationService.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
+    {
+        Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = chargedCreditCustomer.Id, Date = new DateTime(2026, 6, 14),
+        PaymentMethod = PaymentMethod.Mixed, DueDate = new DateTime(2026, 8, 1),
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = serviceProduct.Id, Quantity = 1, Price = 200, VatValue = 0 } },
+        Cheques = new() { new Inventory.Shared.Dtos.ChequeDto { Number = "CHARGED-CREDIT-CHQ", Amount = 100, DueDate = new DateTime(2026, 7, 14) } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 50, DueDate = new DateTime(2026, 7, 15) } },
+        ChequeCharge = new Inventory.Shared.Dtos.SaleChequeChargeInput { CalculatorBaseAmount = 200, CalculatorRatePercent = 5,
+            CalculatorMonths = 5, AdjustmentRatePercent = 3, AdjustmentPeriodDays = 30 }
+    }, "tester");
+    Check((await creationService.GetOrderCreditStateAsync(chargedCreditSale.Id)).AvailableCredit == 100,
+        "charged sale has only its unreserved credit remainder available");
+    await creationService.ReceiveOrderCreditAsync(chargedCreditSale.Id, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = treasuryBank.Id, Amount = 60, Date = new DateTime(2026, 6, 20) }, "tester");
+    var chargedStatement = await creationService.GetPartyStatementDetailAsync(chargedCreditCustomer.Id, to: new DateTime(2026, 6, 20));
+    var chargedSummary = await creationService.GetPartyStatementSummaryReportAsync(to: new DateTime(2026, 6, 20));
+    var chargedParty = (await creationService.GetPartiesAsync(PartyType.Customer)).Single(p => p.Id == chargedCreditCustomer.Id);
+    Check(chargedStatement.ClosingBalance == 190 && chargedSummary.Items.Single(x => x.PartyId == chargedCreditCustomer.Id).ClosingBalance == 190 &&
+          chargedParty.Balance == 190, "charged sale credit appears once in summary, detail and party balance");
+
+    // A status-only historical payment has no reliable bank/date; do not synthesize it.
+    var oldCredit = new Inventory.Api.Data.Transaction
+    { Number = "OLD-CREDIT", Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = creditCustomer.Id,
+      Date = new DateTime(2026, 6, 14), Amount = 100, SettledAmount = 25, PaymentMethod = PaymentMethod.Credit };
+    db.Transactions.Add(oldCredit); await db.SaveChangesAsync();
+    try { await creationService.GetOrderCreditStateAsync(oldCredit.Id); throw new Exception("untracked historical credit accepted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: status-only historical payment is not guessed"); }
+    Check(!await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == oldCredit.Id),
+        "review of old credit creates no invented receipt");
+    var oldPaidFlag = new Inventory.Api.Data.Transaction
+    { Number = "OLD-PAID-FLAG", Type = TransactionType.Sale, WarehouseId = wh.Id, PartyId = creditCustomer.Id,
+      Date = new DateTime(2026, 6, 14), Amount = 100, SettledAmount = 0, PaymentMethod = PaymentMethod.Mixed,
+      Installments = new() { new InstallmentLine { No = 1, Amount = 30, DueDate = new DateTime(2026, 7, 1), IsPaid = true } } };
+    db.Transactions.Add(oldPaidFlag); await db.SaveChangesAsync();
+    try { await creationService.GetOrderCreditStateAsync(oldPaidFlag.Id); throw new Exception("untracked paid flag was treated as free credit"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: status-only paid installment cannot be collected again as credit"); }
+    await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(db, oldPaidFlag, allowUnpostedLegacy: true);
+    Check(!await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == oldPaidFlag.Id),
+        "legacy report verification does not invent a dated installment receipt");
+
     Check(await db.AccVouchers.CountAsync() == 0 && await db.AccAccounts.CountAsync() == 0 &&
           await db.AccFiscalYears.CountAsync() == 0 && await db.FacRules.CountAsync() == 0,
         "complete store workflows do not create or require ERP records");
@@ -611,6 +803,25 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         seed.TrsAccounts.AddRange(new TrsAccount { Id = 1, CompanyId = 1, Code = "A", Name = "الف", IsActive = true },
             new TrsAccount { Id = 2, CompanyId = 2, Code = "B", Name = "ب", IsActive = true },
             new TrsAccount { Id = 3, Code = "C", Name = "قدیمی عمومی", IsActive = true });
+        seed.Parties.AddRange(new Party { Id = 1, CompanyId = 1, Name = "مشتری الف", Type = PartyType.Customer },
+            new Party { Id = 2, CompanyId = 2, Name = "مشتری ب", Type = PartyType.Customer });
+        seed.Warehouses.AddRange(new Warehouse { Id = 1, CompanyId = 1, Name = "انبار الف" },
+            new Warehouse { Id = 2, CompanyId = 2, Name = "انبار ب" });
+        seed.Transactions.AddRange(
+            new Inventory.Api.Data.Transaction { Id = 1, CompanyId = 1, Number = "COMPANY-A", Type = TransactionType.Sale,
+                PartyId = 1, WarehouseId = 1, Date = new DateTime(2026, 6, 1), Amount = 100, PaymentMethod = PaymentMethod.Credit },
+            new Inventory.Api.Data.Transaction { Id = 2, CompanyId = 2, Number = "COMPANY-B", Type = TransactionType.Sale,
+                PartyId = 2, WarehouseId = 2, Date = new DateTime(2026, 6, 1), Amount = 100, PaymentMethod = PaymentMethod.Credit });
+        var wrongBankOrder = new Inventory.Api.Data.Transaction
+        { Id = 3, CompanyId = 1, Number = "COMPANY-A-WRONG-BANK", Type = TransactionType.Sale,
+          PartyId = 1, WarehouseId = 1, Date = new DateTime(2026, 6, 1), Amount = 100, SettledAmount = 10,
+          PaymentMethod = PaymentMethod.Mixed, Installments = new()
+          { new InstallmentLine { CompanyId = 1, No = 1, Amount = 10, DueDate = new DateTime(2026, 7, 1), IsPaid = true } } };
+        seed.Transactions.Add(wrongBankOrder);
+        await seed.SaveChangesAsync();
+        seed.SaleChequeInstallmentReceipts.Add(new SaleChequeInstallmentReceipt
+        { CompanyId = 1, OperationId = Guid.NewGuid(), InstallmentId = wrongBankOrder.Installments.Single().Id,
+          TransactionId = 3, TrsAccountId = 2, Amount = 10, Date = new DateTime(2026, 6, 2) });
         await seed.SaveChangesAsync();
     }
     var http = new DefaultHttpContext();
@@ -625,6 +836,23 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     try { await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(scoped, new TrsAccount { CompanyId = 2 }, 1); throw new Exception("foreign company account accepted"); }
     catch (InvalidOperationException) { Console.WriteLine("PASS: foreign account rejected"); }
     Check(await treasury.GetAccountAsync(2) is null, "other company bank cannot be read by id");
+    var scopedInventory = new InventoryService(scoped, NullLogger<InventoryService>.Instance);
+    try
+    {
+        await scopedInventory.ReceiveOrderCreditAsync(1, new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+        { OperationId = Guid.NewGuid(), TrsAccountId = 2, Amount = 20, Date = new DateTime(2026, 6, 2) }, "tester");
+        throw new Exception("foreign company credit account accepted");
+    }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: foreign company cannot receive credit on its account"); }
+    try { await scopedInventory.GetOrderCreditStateAsync(2); throw new Exception("foreign credit invoice exposed"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: foreign company credit invoice is not visible"); }
+    try { await scopedInventory.GetOrderCreditStateAsync(3); throw new Exception("foreign bank on paid installment accepted"); }
+    catch (InvalidOperationException) { Console.WriteLine("PASS: a paid installment with another company's bank is not trusted"); }
+    var scopedCreditOp = new Inventory.Shared.Dtos.ShopOrderCreditReceiptCommand
+    { OperationId = Guid.NewGuid(), TrsAccountId = 1, Amount = 20, Date = new DateTime(2026, 6, 2) };
+    await scopedInventory.ReceiveOrderCreditAsync(1, scopedCreditOp, "tester");
+    Check((await scopedInventory.GetOrderCreditStateAsync(1)).AvailableCredit == 80,
+        "company-scoped credit receipt updates only its own invoice");
     http.Items["ActiveCompanyId"] = 0;
     Check((await SaleChequeTreasuryGuard.ListCompanyAccountsAsync(scoped)).Count == 0 && (await treasury.GetAccountsAsync()).Count == 0,
         "user without a company cannot see bank accounts");
@@ -712,7 +940,8 @@ await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>
         ("20261105030000_AddSaleChequeCreditSettlements", "SaleChequeCreditSettlements"),
         ("20261105040000_AddSaleChequeInstallmentReceipts", "SaleChequeInstallmentReceipts"),
         ("20261105050000_AddSaleChequeCancellations", "SaleChequeCancellations"),
-        ("20261105060000_DecoupleShopChequeLedger", "InitialCashTrsVoucherId")
+        ("20261105060000_DecoupleShopChequeLedger", "InitialCashTrsVoucherId"),
+        ("20261105090000_AddShopCreditReceipts", "ShopOrderCreditReceipts")
     })
     {
         Check(db.Database.GetMigrations().Contains(mig), $"migration {mig} discoverable");

@@ -125,6 +125,43 @@ public class ShopCashReconciliationCommand
     public int? ExistingVoucherNumber { get; set; }
 }
 
+/// <summary>وضعیت و تاریخچه تسویه نسیه، جدا از اقساط و چک‌های پرداخت‌نشده.</summary>
+public class ShopOrderCreditState
+{
+    public decimal Outstanding { get; set; }
+    public decimal ReservedForCheques { get; set; }
+    public decimal ReservedForInstallments { get; set; }
+    public decimal AvailableCredit { get; set; }
+    public bool IsCancelled { get; set; }
+    public List<ShopOrderCreditReceiptDto> Receipts { get; set; } = new();
+}
+
+public class ShopOrderCreditReceiptDto
+{
+    public int Id { get; set; }
+    public decimal Amount { get; set; }
+    public int TrsAccountId { get; set; }
+    public string AccountName { get; set; } = "";
+    public DateTime Date { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime? ReversalDate { get; set; }
+    public string? ReversedBy { get; set; }
+}
+
+public class ShopOrderCreditReceiptCommand
+{
+    public Guid OperationId { get; set; }
+    public int TrsAccountId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class ShopOrderCreditReversalCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
+}
+
 /// <summary>درخواست ثبت/ویرایش سند</summary>
 public class OrderCommand
 {

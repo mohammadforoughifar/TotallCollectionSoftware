@@ -141,6 +141,7 @@ public static class SaleChequeRescheduling
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > operationDate) ||
             await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > operationDate) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)))
             throw new InvalidOperationException("تاریخچه درآمد با فاکتور مطابقت ندارد یا تاریخ اصلاح پیش از عملیات قبلی است.");
         decimal effectiveBase, delta, newNet;

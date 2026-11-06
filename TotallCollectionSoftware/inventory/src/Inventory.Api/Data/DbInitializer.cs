@@ -54,6 +54,7 @@ public static class DbInitializer
                     await SalesCompanySchemaV1.EnsureAsync(db);
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await ShopOrderCreditSchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
@@ -123,6 +124,7 @@ public static class DbInitializer
                     await SalesCompanySchemaV1.EnsureAsync(db);
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await ShopOrderCreditSchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);

@@ -22,6 +22,7 @@ public static class SaleChequeCompanyOwnershipSchemaV1
         ("SaleChequeReplacements", "TransactionId", "Transactions"),
         ("SaleChequeCreditSettlements", "SaleTransactionId", "Transactions"),
         ("SaleChequeInstallmentReceipts", "TransactionId", "Transactions"),
+        ("ShopOrderCreditReceipts", "TransactionId", "Transactions"),
         ("SaleChequeCancellations", "SaleTransactionId", "Transactions")
     };
 

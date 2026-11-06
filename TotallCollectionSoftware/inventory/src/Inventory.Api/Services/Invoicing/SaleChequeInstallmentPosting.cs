@@ -88,6 +88,7 @@ public static class SaleChequeInstallmentPosting
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ دریافت قسط نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
 
@@ -112,6 +113,7 @@ public static class SaleChequeInstallmentPosting
             var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
             if (!balance.HasValue || balance.Value < inst.Amount)
                 throw new InvalidOperationException("مانده صندوق/بانک برای پرداخت قسط خرید کافی نیست.");
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, trsAccount.Id, date, inst.Amount);
         }
         if (sale.SettledAmount + inst.Amount > MaxMoney)
             throw new InvalidOperationException("جمع دریافت از محدوده مجاز بیشتر است.");
@@ -167,6 +169,7 @@ public static class SaleChequeInstallmentPosting
             await db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == sale.Id && r.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ لغو دریافت قسط نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
 
@@ -196,6 +199,7 @@ public static class SaleChequeInstallmentPosting
             var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, trsAccount.Id);
             if (!balance.HasValue || balance.Value < receipt.Amount)
                 throw new InvalidOperationException("مانده حساب مقصد برای لغو دریافت قسط کافی نیست.");
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, trsAccount.Id, date, receipt.Amount);
         }
         receipt.ReversalOperationId = operationId;
         receipt.ReversalDate = date;

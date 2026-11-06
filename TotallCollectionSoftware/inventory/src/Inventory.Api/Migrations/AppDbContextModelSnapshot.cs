@@ -14046,6 +14046,35 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Cheque");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.ShopOrderCreditReceipt", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<Guid>("OperationId").HasColumnType("uniqueidentifier");
+                    b.Property<int>("TransactionId").HasColumnType("int");
+                    b.Property<string>("OrderNumber").IsRequired().HasMaxLength(30).HasColumnType("nvarchar(30)");
+                    b.Property<int>("OrderType").HasColumnType("int");
+                    b.Property<int>("PartyId").HasColumnType("int");
+                    b.Property<string>("PartyName").HasMaxLength(200).HasColumnType("nvarchar(200)");
+                    b.Property<int>("TrsAccountId").HasColumnType("int");
+                    b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<DateTime>("Date").HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
+                    b.Property<string>("CreatedBy").HasMaxLength(120).HasColumnType("nvarchar(120)");
+                    b.Property<Guid?>("ReversalOperationId").HasColumnType("uniqueidentifier");
+                    b.Property<DateTime?>("ReversalDate").HasColumnType("datetime2");
+                    b.Property<DateTime?>("ReversedAt").HasColumnType("datetime2");
+                    b.Property<string>("ReversedBy").HasMaxLength(120).HasColumnType("nvarchar(120)");
+                    b.HasKey("Id");
+                    b.HasIndex("OperationId").IsUnique();
+                    b.HasIndex("ReversalOperationId").IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+                    b.HasIndex("TransactionId");
+                    b.HasIndex("TrsAccountId");
+                    b.HasIndex("CompanyId", "TrsAccountId");
+                    b.ToTable("ShopOrderCreditReceipts");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.ShopOrderCashEntry", b =>
                 {
                     b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
@@ -16830,6 +16859,16 @@ namespace Inventory.Api.Migrations
                     b.Navigation("TrsAccount");
                     b.Navigation("AccVoucher");
                     b.Navigation("ReversalVoucher");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.ShopOrderCreditReceipt", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.Transaction", "Transaction").WithMany()
+                        .HasForeignKey("TransactionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("Inventory.Api.Data.TrsAccount", "TrsAccount").WithMany()
+                        .HasForeignKey("TrsAccountId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.Navigation("Transaction");
+                    b.Navigation("TrsAccount");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.ShopOrderCashEntry", b =>

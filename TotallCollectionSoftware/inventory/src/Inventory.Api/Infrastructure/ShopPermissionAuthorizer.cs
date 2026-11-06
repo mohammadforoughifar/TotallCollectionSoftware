@@ -77,6 +77,13 @@ public static class ShopPermissionAuthorizer
             return context.ActionArguments.TryGetValue("type", out var typeArg) && typeArg is TransactionType requestedType && OrderType(permissions, requestedType, write);
         if (name == "Create")
             return context.ActionArguments.TryGetValue("cmd", out var createArg) && createArg is OrderCommand createCommand && OrderType(permissions, createCommand.Type, true);
+        if (name is "GetCreditState" or "ReceiveCredit" or "ReverseCreditReceipt")
+        {
+            if (Section(permissions, "Installments", write)) return true;
+            if (!context.ActionArguments.TryGetValue("id", out var creditArg) || creditArg is not int creditOrderId || creditOrderId <= 0) return false;
+            var creditType = await db.Transactions.AsNoTracking().Where(t => t.Id == creditOrderId).Select(t => (TransactionType?)t.Type).FirstOrDefaultAsync();
+            return (creditType is TransactionType.Sale or TransactionType.Purchase) && OrderType(permissions, creditType.Value, write);
+        }
         if (name is "GetById" or "Update" or "Delete" or "ReconcileCash")
         {
             if (!context.ActionArguments.TryGetValue("id", out var orderArg) || orderArg is not int orderId || orderId <= 0) return false;

@@ -121,7 +121,8 @@ public class OperationsReportsService : IOperationsReportsService
         if (partyId is > 0) query = query.Where(e => e.SaleChequeCharge.Transaction.PartyId == partyId);
         var events = await query.OrderBy(e => e.Date).ThenBy(e => e.Id).ToListAsync();
         foreach (var charge in events.Select(e => e.SaleChequeCharge).DistinctBy(c => c.Id))
-            await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(_db, charge.Transaction);
+            // Income reports need not infer an old status-only cheque/installment payment.
+            await SaleChequeSettlementLedger.EnsureSettledAmountConsistentAsync(_db, charge.Transaction, allowUnpostedLegacy: true);
         var ids = events.Select(e => e.SaleChequeCharge.Transaction.PartyId).Where(id => id.HasValue)
             .Select(id => id!.Value).Distinct().ToList();
         var names = await _db.Parties.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Name);

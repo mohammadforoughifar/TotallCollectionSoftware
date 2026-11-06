@@ -62,6 +62,7 @@ public static class SaleChequeReceiptPosting
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ وصول نمی‌تواند پیش از آخرین تغییر سررسید یا گردش وصول فاکتور باشد.");
         if (charge is not null)
@@ -87,6 +88,7 @@ public static class SaleChequeReceiptPosting
             var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, bank.Id);
             if (!balance.HasValue || balance.Value < cheque.Amount)
                 throw new InvalidOperationException("مانده بانک برای پرداخت چک خرید کافی نیست.");
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, bank.Id, date, cheque.Amount);
         }
         if (sale.SettledAmount + cheque.Amount > 9999999999999999.99m)
             throw new InvalidOperationException("جمع وصول از محدوده مجاز بیشتر است.");

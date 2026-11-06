@@ -555,6 +555,7 @@ public class AppDbContext : DbContext
 
     // ---------- ماژول خزانه‌داری ----------
     public DbSet<ShopOrderCashEntry> ShopOrderCashEntries => Set<ShopOrderCashEntry>();
+    public DbSet<ShopOrderCreditReceipt> ShopOrderCreditReceipts => Set<ShopOrderCreditReceipt>();
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
     public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
@@ -1496,6 +1497,14 @@ public class AppDbContext : DbContext
         mb.Entity<ShopOrderCashEntry>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopOrderCashEntry>().HasOne(x => x.MatchedTrsVoucher).WithMany().HasForeignKey(x => x.MatchedTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
 
+        // تسویه‌های تاریخ‌دار نسیه؛ اصل و لغو هر دو حفظ می‌شوند.
+        mb.Entity<ShopOrderCreditReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => new { x.CompanyId, x.TrsAccountId });
+        mb.Entity<ShopOrderCreditReceipt>().HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopOrderCreditReceipt>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+
         // ---------- سند خزانه ----------
         mb.Entity<TrsVoucher>().HasIndex(v => v.CompanyId);
         mb.Entity<TrsVoucher>().HasIndex(v => new { v.Kind, v.Number }).IsUnique();
@@ -1782,6 +1791,7 @@ public class AppDbContext : DbContext
         mb.Entity<VisCustomerLink>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopOrderCreditReceipt>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopOrderCashEntry>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<TrsVoucher>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<TrsCheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

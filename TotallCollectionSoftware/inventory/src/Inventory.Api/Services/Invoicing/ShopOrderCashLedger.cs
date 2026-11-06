@@ -73,6 +73,9 @@ public static class ShopOrderCashLedger
         var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, order.TrsAccountId.Value);
         if (!balance.HasValue || balance.Value < 0)
             throw new InvalidOperationException("مانده حساب صندوق/بانک برای پرداخت نقدی خرید کافی نیست.");
+        var entryDate = await db.ShopOrderCashEntries.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.TransactionId == order.Id && e.ReversalDate == null).Select(e => e.Date).SingleAsync();
+        await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, order.TrsAccountId.Value, entryDate, 0m);
     }
 
     public static async Task SyncAfterEditAsync(AppDbContext db, Transaction order, ShopOrderCashEntry? previous, string? user)
@@ -91,8 +94,15 @@ public static class ShopOrderCashLedger
         if (order.CashAmount > 0)
         {
             await AddAsync(db, order, date, user);
-            await EnsurePurchaseBalanceAsync(db, order);
+            if (previous is null || previous.OrderType != TransactionType.Purchase ||
+                previous.TrsAccountId != order.TrsAccountId || order.CashAmount > previous.Amount)
+                await EnsurePurchaseBalanceAsync(db, order);
         }
+        // Editing a sale's original cash can withdraw it from its former account.
+        // Check after both compensating and replacement entries so same-day netting is accurate.
+        if (previous is not null && previous.OrderType == TransactionType.Sale &&
+            (previous.TrsAccountId != order.TrsAccountId || order.CashAmount < previous.Amount))
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, previous.TrsAccountId, date, 0m);
     }
 
     public static async Task ReverseForDeleteAsync(AppDbContext db, Transaction order, ShopOrderCashEntry? previous, string? user)

@@ -283,6 +283,15 @@ public class OrderService : IOrderService
     public async Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd)
         => await _api.PostAsync<object>($"api/orders/{id}/cash-reconciliation", cmd);
 
+    public Task<ShopOrderCreditState> GetCreditStateAsync(int id)
+        => _api.GetAsync<ShopOrderCreditState>($"api/orders/{id}/credit-receipts");
+
+    public async Task ReceiveCreditAsync(int id, ShopOrderCreditReceiptCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/credit-receipts", cmd);
+
+    public async Task ReverseCreditReceiptAsync(int id, int receiptId, ShopOrderCreditReversalCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/credit-receipts/{receiptId}/reversal", cmd);
+
     public Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate)
         => _api.GetAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule-preview?expectedDueDate={expectedDueDate:yyyy-MM-dd}&newDueDate={newDueDate:yyyy-MM-dd}");
 

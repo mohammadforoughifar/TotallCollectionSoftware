@@ -1,7 +1,9 @@
+using System.Data;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Inventory.Api.Services.Treasury;
 
@@ -73,6 +75,12 @@ public static class TreasuryBalanceCalculator
                 r.TransactionId, SaleCompany = r.Transaction.CompanyId, SaleType = r.Transaction.Type, SaleDate = r.Transaction.Date,
                 InstallmentCompany = r.Installment.CompanyId, InstallmentTransaction = r.Installment.TransactionId,
                 InstallmentAmount = r.Installment.Amount, r.Installment.IsPaid }).ToListAsync();
+        var creditReceipts = await db.ShopOrderCreditReceipts.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => ids.Contains(r.TrsAccountId))
+            .Select(r => new { r.TrsAccountId, r.CompanyId, r.OperationId, r.Amount, r.Date, r.ReversalDate,
+                r.ReversalOperationId, r.ReversedAt, r.OrderType, r.OrderNumber, r.PartyId,
+                ParentCompany = r.Transaction.CompanyId, ParentType = r.Transaction.Type,
+                ParentNumber = r.Transaction.Number, ParentParty = r.Transaction.PartyId, ParentDate = r.Transaction.Date }).ToListAsync();
         // A bank's balance must include *all* movements on that bank, not only
         // rows visible through the current invoice query filter.  If a historical
         // movement contradicts explicit multi-company ownership, fail closed.
@@ -92,7 +100,8 @@ public static class TreasuryBalanceCalculator
                 orderCash.Any(e => !owners.TryGetValue(e.TrsAccountId, out var owner) || !Matches(owner, e.CompanyId)))
                 throw new InvalidOperationException("مالک بخشی از گردش خزانه مشخص نیست یا با شرکت حساب مطابقت ندارد؛ پیش از محاسبه مانده تاریخچه را تطبیق دهید.");
             if (saleReceipts.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)) ||
-                installments.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)))
+                installments.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)) ||
+                creditReceipts.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)))
                 throw new InvalidOperationException("شرکت گردش وصول با مالک حساب صندوق/بانک مطابقت ندارد؛ تاریخچه نیازمند بررسی است.");
             // Cash/refund vouchers used by the independent shop are linked to the
             // sale as well. Never include another company's linked cash silently.
@@ -129,6 +138,14 @@ public static class TreasuryBalanceCalculator
             (!r.ReversalDate.HasValue && (!r.IsPaid || r.InstallmentAmount != r.Amount))))
             throw new InvalidOperationException("تاریخچه وصول یا لغو وصول با گردش صندوق/بانک مطابقت ندارد.");
 
+        if (creditReceipts.Any(r => r.OperationId == Guid.Empty || r.Amount <= 0 ||
+            r.OrderType is not (TransactionType.Sale or TransactionType.Purchase) || r.CompanyId != r.ParentCompany ||
+            r.OrderType != r.ParentType || r.OrderNumber != r.ParentNumber || r.PartyId != r.ParentParty ||
+            r.Date == default || r.Date.Date < r.ParentDate.Date ||
+            r.ReversalDate.HasValue != r.ReversalOperationId.HasValue || r.ReversalDate.HasValue != r.ReversedAt.HasValue ||
+            r.ReversalOperationId == Guid.Empty || (r.ReversalDate.HasValue && r.ReversalDate.Value.Date < r.Date.Date)))
+            throw new InvalidOperationException("تاریخچه نسیه با فاکتور یا گردش صندوق/بانک مطابقت ندارد.");
+
         var result = new Dictionary<int, Balance>();
         foreach (var account in accounts)
         {
@@ -137,6 +154,7 @@ public static class TreasuryBalanceCalculator
             var myReceipts = saleReceipts.Where(r => r.TrsAccountId == account.Id).ToList();
             var myInstallments = installments.Where(r => r.TrsAccountId == account.Id).ToList();
             var myOrderCash = orderCash.Where(e => e.TrsAccountId == account.Id).ToList();
+            var myCredit = creditReceipts.Where(r => r.TrsAccountId == account.Id).ToList();
             var totalIn = mine.Where(l => l.Kind == TreasuryKind.Receipt).Sum(l => l.Amount)
                 + transfers.Where(t => t.ToAccountId == account.Id).Sum(t => t.TotalAmount)
                 + myCheques.Where(c => c.Kind == ChequeKind.Received).Sum(c => c.Amount)
@@ -144,6 +162,8 @@ public static class TreasuryBalanceCalculator
                 + myReceipts.Where(r => r.SaleType == TransactionType.Purchase && r.ReversalDate.HasValue).Sum(r => r.Amount)
                 + myInstallments.Where(r => r.SaleType == TransactionType.Sale).Sum(r => r.Amount)
                 + myInstallments.Where(r => r.SaleType == TransactionType.Purchase && r.ReversalDate.HasValue).Sum(r => r.Amount)
+                + myCredit.Where(r => r.OrderType == TransactionType.Sale).Sum(r => r.Amount)
+                + myCredit.Where(r => r.OrderType == TransactionType.Purchase && r.ReversalDate.HasValue).Sum(r => r.Amount)
                 + myOrderCash.Where(e => e.OrderType == TransactionType.Sale && !e.MatchedTrsVoucherId.HasValue).Sum(e => e.Amount)
                 + myOrderCash.Where(e => e.OrderType == TransactionType.Purchase && e.ReversalDate.HasValue).Sum(e => e.Amount);
             var totalOut = mine.Where(l => l.Kind == TreasuryKind.Payment).Sum(l => l.Amount)
@@ -153,15 +173,51 @@ public static class TreasuryBalanceCalculator
                 + myReceipts.Where(r => r.SaleType == TransactionType.Purchase).Sum(r => r.Amount)
                 + myInstallments.Where(r => r.SaleType == TransactionType.Sale && r.ReversalDate.HasValue).Sum(r => r.Amount)
                 + myInstallments.Where(r => r.SaleType == TransactionType.Purchase).Sum(r => r.Amount)
+                + myCredit.Where(r => r.OrderType == TransactionType.Purchase).Sum(r => r.Amount)
+                + myCredit.Where(r => r.OrderType == TransactionType.Sale && r.ReversalDate.HasValue).Sum(r => r.Amount)
                 + myOrderCash.Where(e => e.OrderType == TransactionType.Purchase && !e.MatchedTrsVoucherId.HasValue).Sum(e => e.Amount)
                 + myOrderCash.Where(e => e.OrderType == TransactionType.Sale && e.ReversalDate.HasValue).Sum(e => e.Amount);
             var count = mine.Count + myCheques.Count + myReceipts.Count + myReceipts.Count(r => r.ReversalDate.HasValue)
                 + myInstallments.Count + myInstallments.Count(r => r.ReversalDate.HasValue)
+                + myCredit.Count + myCredit.Count(r => r.ReversalDate.HasValue)
                 + transfers.Count(t => t.FromAccountId == account.Id || t.ToAccountId == account.Id)
                 + myOrderCash.Count(e => !e.MatchedTrsVoucherId.HasValue) + myOrderCash.Count(e => e.ReversalDate.HasValue);
             result.Add(account.Id, new Balance(account.OpeningBalance, totalIn, totalOut, count));
         }
         return result;
+    }
+
+    /// <summary>
+    /// یک خروجی تازه نباید مانده را در روز خودش یا هیچ روز ثبت‌شده بعدی منفی کند.
+    /// مبلغ صفر برای کنترل خروجی‌ای است که همین حالا داخل تراکنش ذخیره شده است.
+    /// </summary>
+    public static async Task EnsureAvailableOnAndAfterAsync(AppDbContext db, int accountId, DateTime date, decimal newDebit)
+    {
+        var transaction = db.Database.CurrentTransaction;
+        if (transaction is null || transaction.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable ||
+            accountId <= 0 || date == default || newDebit < 0)
+            throw new InvalidOperationException("کنترل تاریخ‌دار مانده باید در تراکنش معتبر فروشگاه انجام شود.");
+        var balances = await CalculateAsync(db, new[] { accountId });
+        if (!balances.TryGetValue(accountId, out var balance))
+            throw new InvalidOperationException("حساب صندوق/بانک برای کنترل مانده یافت نشد.");
+        // A historic status-only treasury cheque has no trustworthy clearing date.
+        // Never substitute its due date when deciding whether a backdated payment is safe.
+        if (await db.TrsCheques.IgnoreQueryFilters().AnyAsync(c => c.TrsAccountId == accountId &&
+                c.Status == ChequeStatus.Cleared && c.StatusDate == null))
+            throw new InvalidOperationException("تاریخ وصول بخشی از گردش قدیمی حساب مشخص نیست؛ پیش از پرداخت تاریخچه را بررسی کنید.");
+        var rows = await TreasuryService.CollectFlowAsync(db, accountId);
+        if (rows.Any(r => r.Date == default) || balance.Opening + rows.Sum(r => r.In - r.Out) != balance.Amount)
+            throw new InvalidOperationException("گردش تاریخ‌دار حساب با مانده صندوق/بانک مطابقت ندارد.");
+        var day = date.Date;
+        var running = balance.Opening + rows.Where(r => r.Date.Date <= day).Sum(r => r.In - r.Out);
+        if (running < newDebit)
+            throw new InvalidOperationException("مانده صندوق/بانک در تاریخ عملیات برای این پرداخت کافی نیست.");
+        foreach (var group in rows.Where(r => r.Date.Date > day).GroupBy(r => r.Date.Date).OrderBy(g => g.Key))
+        {
+            running += group.Sum(r => r.In - r.Out);
+            if (running < newDebit)
+                throw new InvalidOperationException("این پرداخت باعث منفی‌شدن مانده صندوق/بانک در گردش‌های بعدی می‌شود.");
+        }
     }
 
     public static async Task<decimal?> GetAmountAsync(AppDbContext db, int accountId)

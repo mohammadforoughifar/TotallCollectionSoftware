@@ -172,6 +172,7 @@ public class TreasuryService : ITreasuryService
                 var instReceipt = await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
                 var creditRefund = await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(s => s.TrsAccountId == dto.Id);
                 var ordinaryCash = await _db.ShopOrderCashEntries.IgnoreQueryFilters().AnyAsync(e => e.TrsAccountId == dto.Id);
+                var creditReceipt = await _db.ShopOrderCreditReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == dto.Id);
                 var treasuryHistory = await _db.TrsVoucherLines.IgnoreQueryFilters().AnyAsync(l => l.TrsAccountId == dto.Id) ||
                     await _db.TrsVouchers.IgnoreQueryFilters().AnyAsync(v => v.FromAccountId == dto.Id || v.ToAccountId == dto.Id) ||
                     await _db.TrsCheques.IgnoreQueryFilters().AnyAsync(c => c.TrsAccountId == dto.Id);
@@ -180,7 +181,7 @@ public class TreasuryService : ITreasuryService
                     _db.SaleChequeCancellations.IgnoreQueryFilters().Any(c => c.RefundTrsVoucherId == l.TrsVoucherId) ||
                     (l.TrsVoucher!.VoucherId != null &&
                      _db.SaleChequeChargeEvents.IgnoreQueryFilters().Any(ev => ev.AccVoucherId == l.TrsVoucher.VoucherId))));
-                if (chequeReceipt || instReceipt || creditRefund || initialCash || ordinaryCash || treasuryHistory)
+                if (chequeReceipt || instReceipt || creditReceipt || creditRefund || initialCash || ordinaryCash || treasuryHistory)
                     throw new InvalidOperationException("حساب دارای سابقه مالی است؛ شرکت، نوع، حساب حسابداری یا مانده اولیه آن قابل تغییر نیست.");
             }
         }
@@ -233,6 +234,7 @@ public class TreasuryService : ITreasuryService
             || await _db.TrsVouchers.IgnoreQueryFilters().AnyAsync(v => v.FromAccountId == id || v.ToAccountId == id)
             || await _db.TrsCheques.IgnoreQueryFilters().AnyAsync(c => c.TrsAccountId == id)
             || await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == id)
+            || await _db.ShopOrderCreditReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == id)
             || await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(s => s.TrsAccountId == id)
             || await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(r => r.TrsAccountId == id))
             throw new InvalidOperationException("این حساب در اسناد خزانه استفاده شده است؛ به‌جای حذف آن را غیرفعال کنید.");
@@ -2115,13 +2117,18 @@ public class TreasuryService : ITreasuryService
     }
 
     /// <summary>همه‌ی گردش‌های یک حساب: سطرهای اسناد، انتقال‌ها و وصول چک‌ها</summary>
-    private async Task<List<TrsFlowRow>> CollectFlowAsync(int accountId)
+    private Task<List<TrsFlowRow>> CollectFlowAsync(int accountId) => CollectFlowAsync(_db, accountId);
+
+    // Shared by account reports and dated debit checks, with balance validation performed by the caller.
+    internal static async Task<List<TrsFlowRow>> CollectFlowAsync(Db.AppDbContext db, int accountId)
     {
+        var _db = db;
         var rows = new List<TrsFlowRow>();
 
         // سطرهای نقد/کارت/حواله
         var lines = await _db.TrsVoucherLines.AsNoTracking()
             .Where(l => l.TrsAccountId == accountId && l.TrsVoucher!.Status == TreasuryStatus.Confirmed
+                        && (l.TrsVoucher.Kind == TreasuryKind.Receipt || l.TrsVoucher.Kind == TreasuryKind.Payment)
                         && l.Method != PayMethod.Cheque && l.Method != PayMethod.Discount)
             .Select(l => new
             {
@@ -2310,6 +2317,30 @@ public class TreasuryService : ITreasuryService
                     In = incoming ? 0 : inst.Amount, Out = incoming ? inst.Amount : 0
                 });
             }
+        }
+        // Independent shop credit receipts are recorded at their actual date and account.
+        var creditFlow = await _db.ShopOrderCreditReceipts.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.TrsAccountId == accountId).ToListAsync();
+        foreach (var credit in creditFlow)
+        {
+            var incoming = credit.OrderType == TransactionType.Sale;
+            rows.Add(new TrsFlowRow
+            {
+                Date = credit.Date, TrsVoucherId = 0, Number = 0,
+                Kind = incoming ? TreasuryKind.Receipt : TreasuryKind.Payment,
+                Method = incoming ? "نسیه فروش" : "نسیه خرید", PartyName = credit.PartyName,
+                Description = $"{(incoming ? "دریافت" : "پرداخت")} نسیه فاکتور {credit.OrderNumber}",
+                RefNumber = credit.OrderNumber, In = incoming ? credit.Amount : 0, Out = incoming ? 0 : credit.Amount
+            });
+            if (credit.ReversalDate.HasValue)
+                rows.Add(new TrsFlowRow
+                {
+                    Date = credit.ReversalDate.Value, TrsVoucherId = 0, Number = 0,
+                    Kind = incoming ? TreasuryKind.Payment : TreasuryKind.Receipt,
+                    Method = incoming ? "لغو دریافت نسیه" : "لغو پرداخت نسیه", PartyName = credit.PartyName,
+                    Description = $"لغو {(incoming ? "دریافت" : "پرداخت")} نسیه فاکتور {credit.OrderNumber}",
+                    RefNumber = credit.OrderNumber, In = incoming ? 0 : credit.Amount, Out = incoming ? credit.Amount : 0
+                });
         }
         return rows;
     }

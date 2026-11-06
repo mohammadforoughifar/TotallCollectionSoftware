@@ -157,6 +157,8 @@
                                             <button class="btn btn-sm btn-light" title="تعیین‌تکلیف بستانکاری مشتری" @onclick="() => OpenCreditSettlement(o)"><i class="bi bi-wallet2 text-success"></i></button>
                                         }
                                     }
+                                    <button type="button" class="btn btn-sm btn-light" title="تسویه نسیه و سوابق" aria-label="تسویه نسیه و سوابق"
+                                            @onclick="() => OpenOrderCredit(o)" disabled="@orderCreditOpening"><i class="bi bi-cash-stack text-primary"></i></button>
                                     @if (!o.IsCancelled)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
@@ -225,6 +227,7 @@
                                     <button class="btn btn-light text-success" @onclick="() => OpenCreditSettlement(o)"><i class="bi bi-wallet2"></i> بستانکاری</button>
                                 }
                             }
+                            <button type="button" class="btn btn-light text-primary" @onclick="() => OpenOrderCredit(o)" disabled="@orderCreditOpening"><i class="bi bi-cash-stack"></i> نسیه و سوابق</button>
                             @if (!o.IsCancelled)
                             {
                                 <button class="btn btn-light text-primary" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil"></i> ویرایش</button>
@@ -637,6 +640,108 @@
     </Footer>
 </Modal>
 
+<Modal Visible="orderCreditOrder is not null" Title="@(orderCreditOrder is null ? "" : $"تسویه نسیه فاکتور {orderCreditOrder.Number}")" Size="modal-lg" OnClose="CloseOrderCredit">
+    <ChildContent>
+        @if (orderCreditOrder is not null && orderCreditState is not null)
+        {
+            <div class="d-flex flex-wrap gap-3 align-items-center bg-light rounded p-3 mb-3">
+                <div><span class="text-muted fs-8">طرف حساب</span><div class="fw-700">@orderCreditOrder.PartyName</div></div>
+                <div><span class="text-muted fs-8">مانده کل فاکتور</span><div class="num fw-700">@CreditMoney(orderCreditState.Outstanding) ریال</div></div>
+                <div><span class="text-muted fs-8">مانده نسیه آزاد</span><div class="num fw-700 text-primary">@CreditMoney(orderCreditState.AvailableCredit) ریال</div></div>
+            </div>
+            @if (orderCreditState.ReservedForCheques > 0 || orderCreditState.ReservedForInstallments > 0)
+            {
+                <div class="alert alert-light border py-2 fs-8">
+                    چک باز: <span class="num">@CreditMoney(orderCreditState.ReservedForCheques)</span> ریال؛
+                    اقساط باز: <span class="num">@CreditMoney(orderCreditState.ReservedForInstallments)</span> ریال.
+                    این تعهدات از مسیر اختصاصی خودشان تسویه می‌شوند.
+                </div>
+            }
+            @if (orderCreditState.AvailableCredit > 0 && !orderCreditState.IsCancelled)
+            {
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">@(isPurchase ? "مبلغ پرداخت نسیه (ریال)" : "مبلغ دریافت نسیه (ریال)")</label>
+                        <input class="form-control form-control-sm num text-start" inputmode="decimal" @bind="orderCreditAmountText" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">@(isPurchase ? "حساب پرداخت‌کننده" : "حساب دریافت‌کننده")</label>
+                        <select class="form-select form-select-sm" @bind="orderCreditAccountId">
+                            <option value="0">— انتخاب صندوق یا بانک —</option>
+                            @foreach (var account in orderCreditAccounts)
+                            {
+                                <option value="@account.Id">@account.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">تاریخ گردش</label>
+                        <PersianDatePicker Value="orderCreditDate" ValueChanged="v => orderCreditDate = v" />
+                    </div>
+                </div>
+                @if (orderCreditAccounts.Count == 0)
+                {
+                    <div class="alert alert-warning py-2 fs-8">حساب فعال صندوق یا بانک برای شرکت یافت نشد؛ ابتدا آن را در فروشگاه تعریف کنید.</div>
+                }
+            }
+            else
+            {
+                <div class="text-muted fs-8 mb-3">مانده نسیه آزاد برای ثبت وجود ندارد.</div>
+            }
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <strong class="fs-8">تاریخچه گردش نسیه</strong>
+                @if (orderCreditState.Receipts.Any(r => !r.ReversalDate.HasValue))
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted fs-8">تاریخ لغو</span>
+                        <PersianDatePicker Value="orderCreditReversalDate" ValueChanged="v => orderCreditReversalDate = v" />
+                    </div>
+                }
+            </div>
+            @if (orderCreditState.Receipts.Count == 0)
+            {
+                <div class="text-muted fs-8 border rounded p-3">هنوز گردش نسیه‌ای برای این فاکتور ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>تاریخ</th><th>حساب</th><th class="text-start">مبلغ (ریال)</th><th>وضعیت</th><th></th></tr></thead>
+                        <tbody>
+                        @foreach (var receipt in orderCreditState.Receipts)
+                        {
+                            <tr>
+                                <td>@receipt.Date.ToFa()</td>
+                                <td>@receipt.AccountName</td>
+                                <td class="num text-start">@CreditMoney(receipt.Amount)</td>
+                                <td>@(receipt.ReversalDate.HasValue ? $"لغو در {receipt.ReversalDate.Value.ToFa()}" : "ثبت‌شده")</td>
+                                <td class="text-end">
+                                    @if (!receipt.ReversalDate.HasValue && !orderCreditState.IsCancelled)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled="@orderCreditSaving"
+                                                @onclick="() => ReverseOrderCreditAsync(receipt)">لغو گردش</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        @if (orderCreditState is not null && orderCreditState.AvailableCredit > 0 && !orderCreditState.IsCancelled)
+        {
+            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="SubmitOrderCreditAsync" disabled="@orderCreditSaving">
+                @(isPurchase ? "ثبت پرداخت نسیه" : "ثبت دریافت نسیه")
+            </button>
+        }
+        <button type="button" class="btn btn-light" @onclick="CloseOrderCredit" disabled="@orderCreditSaving">بستن</button>
+    </Footer>
+</Modal>
+
 <Modal Visible="cancellingOrder is not null" Title="@(cancellingOrder is null ? "" : $"ابطال فاکتور {cancellingOrder.Number}")" OnClose="CloseCancelModal">
     <ChildContent>
         @if (cancellingOrder is not null)
@@ -1037,6 +1142,92 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { creditSaving = false; }
+    }
+
+    private static string CreditMoney(decimal value)
+        => Fa.Digits(value.ToString("#,##0.##", System.Globalization.CultureInfo.InvariantCulture));
+
+    private Order? orderCreditOrder;
+    private ShopOrderCreditState? orderCreditState;
+    private List<TrsAccount> orderCreditAccounts = new();
+    private string orderCreditAmountText = "";
+    private int orderCreditAccountId;
+    private DateTime orderCreditDate = DateTime.Today;
+    private DateTime orderCreditReversalDate = DateTime.Today;
+    private Guid orderCreditOperationId;
+    private readonly Dictionary<int, Guid> orderCreditReversalOperations = new();
+    private bool orderCreditSaving, orderCreditOpening;
+
+    private async Task OpenOrderCredit(Order order)
+    {
+        if (orderCreditOpening || orderCreditSaving) return;
+        orderCreditOpening = true;
+        try
+        {
+            var state = await OrderSvc.GetCreditStateAsync(order.Id);
+            var accounts = state.AvailableCredit > 0 ? await OrderSvc.GetActiveTreasuryAccountsAsync() : new List<TrsAccount>();
+            orderCreditOrder = order;
+            orderCreditState = state;
+            orderCreditAccounts = accounts;
+            orderCreditAmountText = Fa.FormatTyping(state.AvailableCredit.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            orderCreditAccountId = 0;
+            orderCreditDate = DateTime.Today < order.Date.Date ? order.Date.Date : DateTime.Today;
+            orderCreditReversalDate = orderCreditDate;
+            orderCreditOperationId = Guid.NewGuid();
+            orderCreditReversalOperations.Clear();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditOpening = false; }
+    }
+
+    private void CloseOrderCredit()
+    {
+        if (!orderCreditSaving) { orderCreditOrder = null; orderCreditState = null; }
+    }
+
+    private async Task SubmitOrderCreditAsync()
+    {
+        if (orderCreditOrder is null || orderCreditState is null || orderCreditSaving) return;
+        var amount = Fa.ParseDecimal(orderCreditAmountText);
+        if (amount <= 0 || amount > orderCreditState.AvailableCredit)
+        { Toast.Error("مبلغ باید بیشتر از صفر و حداکثر برابر مانده نسیه آزاد باشد."); return; }
+        if (orderCreditAccountId <= 0) { Toast.Error("حساب صندوق یا بانک را انتخاب کنید."); return; }
+        orderCreditSaving = true;
+        try
+        {
+            await OrderSvc.ReceiveCreditAsync(orderCreditOrder.Id, new ShopOrderCreditReceiptCommand
+            {
+                OperationId = orderCreditOperationId, Amount = amount, Date = orderCreditDate, TrsAccountId = orderCreditAccountId
+            });
+            Toast.Success(isPurchase ? "پرداخت نسیه خرید ثبت شد." : "دریافت نسیه فروش ثبت شد.");
+            orderCreditOrder = null; orderCreditState = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditSaving = false; }
+    }
+
+    private async Task ReverseOrderCreditAsync(ShopOrderCreditReceiptDto receipt)
+    {
+        if (orderCreditOrder is null || orderCreditSaving) return;
+        orderCreditSaving = true;
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", "گردش انتخاب‌شده با ثبت رویداد معکوس لغو شود؟");
+            if (!confirmed) return;
+            if (!orderCreditReversalOperations.TryGetValue(receipt.Id, out var operationId))
+            {
+                operationId = Guid.NewGuid();
+                orderCreditReversalOperations[receipt.Id] = operationId;
+            }
+            await OrderSvc.ReverseCreditReceiptAsync(orderCreditOrder.Id, receipt.Id, new ShopOrderCreditReversalCommand
+            { OperationId = operationId, Date = orderCreditReversalDate });
+            Toast.Success("لغو گردش نسیه با حفظ سابقه ثبت شد.");
+            orderCreditOrder = null; orderCreditState = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditSaving = false; }
     }
 
     private Order? cancellingOrder;

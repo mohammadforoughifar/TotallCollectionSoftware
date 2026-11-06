@@ -92,6 +92,8 @@ public static class SaleChequeReplacementService
 
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
             throw new InvalidOperationException("فاکتور ابطال شده است و امکان تعویض چک ندارد.");
+        if (await ShopOrderCreditPosting.HasLaterEventsAsync(db, sale.Id, opDate))
+            throw new InvalidOperationException("تاریخ تعویض نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
         var remainingPayable = Math.Max(0m, await SaleChequeSettlementLedger.SignedChargedSaleBalanceAsync(db, sale, charge));
         var otherUncollected = sale.Cheques
             .Where(c => c.Id != oldCheque.Id && !c.IsCleared && c.Status is ChequeStatus.InHand or ChequeStatus.Bounced or ChequeStatus.InCollection)

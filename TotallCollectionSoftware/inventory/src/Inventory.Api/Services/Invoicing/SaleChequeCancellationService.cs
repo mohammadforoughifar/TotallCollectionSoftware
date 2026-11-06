@@ -68,6 +68,8 @@ public static class SaleChequeCancellationService
         if (sale.Installments.Any(i => i.IsPaid) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalDate == null))
             throw new InvalidOperationException("قسط پرداخت‌شده فعال روی این فاکتور وجود دارد؛ ابتدا دریافت قسط را لغو کنید.");
+        if (await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalDate == null))
+            throw new InvalidOperationException("تسویه نسیه فعالی روی این فاکتور وجود دارد؛ ابتدا آن را لغو کنید.");
         if (await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id || s.TargetSaleTransactionId == sale.Id))
             throw new InvalidOperationException("روی این فاکتور تسویه یا انتقال بستانکاری ثبت شده است؛ ابطال خودکار مجاز نیست.");
 
@@ -86,6 +88,7 @@ public static class SaleChequeCancellationService
             priorReturns.Any(r => r.Date.Date > operationDate) ||
             reschedules.Any(r => r.Date.Date > operationDate) ||
             receipts.Any(r => r.Date.Date > operationDate || (r.ReversalDate.HasValue && r.ReversalDate.Value.Date > operationDate)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
             instReceipts.Any(r => r.Date.Date > operationDate || (r.ReversalDate.HasValue && r.ReversalDate.Value.Date > operationDate)))
             throw new InvalidOperationException("تاریخ ابطال نمی‌تواند پیش از عملیات ثبت‌شده قبلی فاکتور باشد.");
 
@@ -107,6 +110,7 @@ public static class SaleChequeCancellationService
             var trsBalance = await TreasuryBalanceCalculator.GetAmountAsync(db, cashTrsAccount.Id);
             if (!trsBalance.HasValue || trsBalance.Value < sale.CashAmount)
                 throw new InvalidOperationException("مانده حساب صندوق/بانک برای استرداد پیش‌دریافت نقدی فاکتور کافی نیست.");
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, cashTrsAccount.Id, operationDate, sale.CashAmount);
         }
 
         var remGoods = origGoods - priorReturns.Sum(r => r.GoodsAmount);

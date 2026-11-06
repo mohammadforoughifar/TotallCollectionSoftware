@@ -178,6 +178,27 @@ public class OrdersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>مانده آزاد نسیه و تاریخچه دریافت/پرداخت آن.</summary>
+    [HttpGet("{id:int}/credit-receipts")]
+    public async Task<ActionResult<ShopOrderCreditState>> GetCreditState(int id)
+        => Ok(await _service.GetOrderCreditStateAsync(id));
+
+    /// <summary>دریافت نسیه فروش یا پرداخت نسیه خرید با حساب و تاریخ واقعی.</summary>
+    [HttpPost("{id:int}/credit-receipts")]
+    public async Task<IActionResult> ReceiveCredit(int id, [FromBody] ShopOrderCreditReceiptCommand cmd)
+    {
+        await _service.ReceiveOrderCreditAsync(id, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>لغو تاریخ‌دار گردش نسیه بدون حذف سابقه.</summary>
+    [HttpPost("{id:int}/credit-receipts/{receiptId:int}/reversal")]
+    public async Task<IActionResult> ReverseCreditReceipt(int id, int receiptId, [FromBody] ShopOrderCreditReversalCommand cmd)
+    {
+        await _service.ReverseOrderCreditAsync(id, receiptId, cmd, User.Identity?.Name);
+        return Ok(new { ok = true });
+    }
+
     private static string? TrackingError(OrderCommand cmd, TransactionType type, Order? existing)
     {
         // Old clients may omit the new property; retain an existing transfer reference.

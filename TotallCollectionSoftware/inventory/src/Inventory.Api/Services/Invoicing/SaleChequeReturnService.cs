@@ -279,6 +279,7 @@ public static class SaleChequeReturnService
             reschedules.Any(r => r.Date.Date > operationDate) ||
             priorReturns.Any(r => r.Date.Date > operationDate) ||
             creditSettlements.Any(s => s.Date.Date > operationDate) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > operationDate || r.ReversalDate > operationDate)) ||
             installmentReceipts.Any(r => r.Date.Date > operationDate || (r.ReversalDate.HasValue && r.ReversalDate.Value.Date > operationDate)) ||
             receipts.Any(r => r.Date.Date > operationDate || (r.ReversalDate.HasValue && r.ReversalDate.Value.Date > operationDate)))
             throw new InvalidOperationException("تاریخچه مالی فاکتور ناقص است یا تاریخ برگشت پیش از عملیات قبلی است.");

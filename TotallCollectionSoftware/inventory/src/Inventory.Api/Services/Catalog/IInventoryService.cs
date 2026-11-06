@@ -68,6 +68,9 @@ public interface IInventoryService
     // ---------------- خرید و فروش ----------------
     Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true);
     Task ReconcileLegacyOrderCashAsync(int id, ShopCashReconciliationCommand cmd, string? user);
+    Task<ShopOrderCreditState> GetOrderCreditStateAsync(int id);
+    Task ReceiveOrderCreditAsync(int id, ShopOrderCreditReceiptCommand cmd, string? user);
+    Task ReverseOrderCreditAsync(int id, int receiptId, ShopOrderCreditReversalCommand cmd, string? user);
     Task<SaleChequeReschedulePreview> PreviewSaleChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
     Task<SaleChequeReschedulePreview> RescheduleSaleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd, string? user);
     Task ReceiveSaleChequeAsync(int chequeId, SaleChequeReceiptCommand cmd, string? user);

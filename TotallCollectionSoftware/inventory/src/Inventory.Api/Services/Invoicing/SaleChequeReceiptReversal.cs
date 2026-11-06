@@ -62,6 +62,7 @@ public static class SaleChequeReceiptReversal
             await db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == sale.Id && r.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
+            await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))
             throw new InvalidOperationException("تاریخ لغو وصول نمی‌تواند پیش از آخرین گردش ثبت‌شده فاکتور باشد.");
         if (sale.ShopCashLedgerEnabled) await ShopOrderCashLedger.VerifyCurrentAsync(db, sale);
@@ -88,6 +89,7 @@ public static class SaleChequeReceiptReversal
             var balance = await TreasuryBalanceCalculator.GetAmountAsync(db, bank.Id);
             if (!balance.HasValue || balance.Value < receipt.Amount)
                 throw new InvalidOperationException("مانده حساب بانکی برای لغو وصول کافی نیست.");
+            await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(db, bank.Id, date, receipt.Amount);
         }
         else if (sale.Type != TransactionType.Purchase)
             throw new InvalidOperationException("نوع فاکتور برای لغو وصول معتبر نیست.");
