@@ -18,7 +18,7 @@
 }
 else
 {
-    <div class="fin-page-container fade-in">
+    <div class="fin-page-container fade-in" @ref="printRoot">
         <!-- ================== سربرگ ================== -->
         <div class="fin-header mb-4">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
@@ -789,6 +789,8 @@ else
 
 
 @code {
+    private ElementReference printRoot;
+
     [Parameter] public string? Type { get; set; }
 
     private bool isPurchase => string.Equals(Type, "purchase", StringComparison.OrdinalIgnoreCase);
@@ -897,7 +899,15 @@ else
         return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+    private async Task Print()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش خرید و فروش"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
 
     private async Task PrintCustomerStatement()
     {
@@ -918,8 +928,8 @@ else
             var statement = await PartySvc.GetPartyStatementDetailAsync(selectedParty, start, end);
             // Resolve the active company on every print; the user may have switched companies.
             var companyProfile = await ProfileSvc.GetAsync();
-            var opened = await JS.InvokeAsync<bool>("giPrint", CustomerStatementPrint.Build(statement, companyProfile, start, end));
-            if (!opened) Toast.Error("چاپ صورت‌حساب باز نشد؛ تنظیمات چاپ مرورگر را بررسی کنید.");
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", CustomerStatementPrint.Build(statement, companyProfile, start, end));
+            if (!opened) Toast.Error("پیش‌نمایش صورت‌حساب باز نشد؛ دوباره تلاش کنید.");
         }
         catch (Exception ex) { Toast.Error("صورت‌حساب مشتری تهیه نشد: " + ex.Message); }
         finally { printingStatement = false; }

@@ -16,7 +16,7 @@
 }
 else
 {
-    <div class="fin-page-container fade-in">
+    <div class="fin-page-container fade-in" @ref="printRoot">
         <!-- ================== سربرگ ================== -->
         <div class="fin-header mb-4">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
@@ -725,6 +725,8 @@ else
 
 
 @code {
+    private ElementReference printRoot;
+
     private bool CanOpenDashboard => Auth.CanSee("Orders") || Auth.CanSee("Repairs");
     private OperationsDashboardDto? data;
     private DateTime? from = DateTime.Today.AddDays(-30);
@@ -757,5 +759,13 @@ else
         return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+    private async Task Print()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش داشبورد فروشگاهی"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
 }

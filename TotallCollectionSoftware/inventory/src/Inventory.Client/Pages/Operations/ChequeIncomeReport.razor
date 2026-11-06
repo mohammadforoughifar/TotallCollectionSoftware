@@ -14,7 +14,7 @@
 }
 else
 {
-    <div class="container-fluid py-3" style="max-width: 1440px;">
+    <div class="container-fluid py-3" style="max-width: 1440px;" @ref="printRoot">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
             <div>
                 <h1 class="h4 fw-bold mb-1">گزارش تاخیر تادیه چک</h1>
@@ -76,6 +76,8 @@ else
 }
 
 @code {
+    private ElementReference printRoot;
+
     private DateTime? from = DateTime.Today.AddDays(-30);
     private DateTime? to = DateTime.Today;
     private int partyId;
@@ -101,7 +103,15 @@ else
         finally { loading = false; }
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+    private async Task Print()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش تاخیر تادیه چک"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
     private static string KindTitle(SaleChequeChargeEventKind kind) => kind switch
     {
         SaleChequeChargeEventKind.Initial => "سود اولیه چک فاکتور",

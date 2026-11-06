@@ -887,9 +887,9 @@
             else
             {
                 var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
-                var opened = await JS.InvokeAsync<bool>("giPrint", html);
+                var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
                 if (!opened)
-                    Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+                    Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
             }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

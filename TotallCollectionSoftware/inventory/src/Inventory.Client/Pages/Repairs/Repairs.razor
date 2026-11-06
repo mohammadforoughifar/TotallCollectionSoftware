@@ -1843,8 +1843,8 @@
         {
             var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
             var html = RepairDeliveryReceiptPrint.Build(repair, companyName, companyProfile);
-            var opened = await JS.InvokeAsync<bool>("giPrint", html);
-            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
+            if (!opened) Toast.Error("پیش‌نمایش چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -1868,8 +1868,8 @@
             }
 
             var html = SaleInvoicePrint.Build(invoice, companyProfile);
-            var opened = await JS.InvokeAsync<bool>("giPrint", html);
-            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
+            if (!opened) Toast.Error("پیش‌نمایش چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

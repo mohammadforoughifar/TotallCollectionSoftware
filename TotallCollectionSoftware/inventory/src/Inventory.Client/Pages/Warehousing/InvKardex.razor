@@ -6,10 +6,11 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <PageTitle>گزارش کاردکس مقداری و ریالی کالا</PageTitle>
 
-<div class="fin-page-container fade-in">
+<div class="fin-page-container fade-in" @ref="printRoot">
     <!-- ================== سربرگ لوکس ================== -->
     <div class="fin-header mb-4 d-print-none">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
@@ -633,6 +634,8 @@
 
 
 @code {
+    private ElementReference printRoot;
+
     [SupplyParameterFromQuery(Name = "productId")] public int? QueryProductId { get; set; }
     [SupplyParameterFromQuery(Name = "warehouseId")] public int? QueryWarehouseId { get; set; }
 
@@ -706,7 +709,21 @@
         await Load();
     }
 
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+    private async Task Print()
+    {
+        var route = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
+        if (!route.Equals("operations/reports/kardex-rial", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("window.print");
+            return;
+        }
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "کاردکس ریالی کالا"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
 
     private static string NatureIcon(StockNature n) => n switch
     {

@@ -624,22 +624,16 @@
         finally { loading = false; }
     }
 
-    /// <summary>چاپ از داخل پنجره مشاهده (مشاهده بسته و بازگشت به فهرست).</summary>
-    private async Task PrintCurrent()
-    {
-        showForm = false;
-        viewing = false;
-        await PrintDoc(form);
-    }
+    /// <summary>پیش‌نمایش از جزئیات، بدون بستن پنجرهٔ زیر آن.</summary>
+    private async Task PrintCurrent() => await PrintDoc(form);
 
     /// <summary>
-    /// سند چاپ را در یک iframe جداگانه می‌سازد تا هیچ استایلی از صفحهٔ برنامه در آن تأثیر نداشد
-    /// (اگر از حالت فرمل، ظهر نمی‌شد و چاپ سفید می‌شد).
+    /// پیش‌نمایش سند در iframe مستقل نمایش داده می‌شود تا استایل فرم روی نسخهٔ چاپی اثر نگذارد.
     /// </summary>
     private async Task PrintDoc(GoodsIssueDto d)
     {
         if (d is null) return;
-        var ok = await JS.InvokeAsync<bool>("giPrint", GoodsIssuesPrint.Build(d, companyName));
-        if (!ok) Toast.Error("پنجرهٔ چاپ باز نشد.");
+        var ok = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", GoodsIssuesPrint.Build(d, companyName));
+        if (!ok) Toast.Error("پیش‌نمایش چاپ باز نشد.");
     }
 }

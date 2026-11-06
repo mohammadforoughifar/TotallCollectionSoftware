@@ -52,6 +52,8 @@
     [Parameter] public bool ShowText { get; set; } = true;
     [Parameter] public string PdfLabel { get; set; } = "PDF";
     [Parameter] public string PdfTitle { get; set; } = "خروجی PDF";
+    /// <summary>برای دکمه‌های چاپ، PDF را پیش از چاپ نمایش بده؛ خروجی‌های معمول دانلود می‌مانند.</summary>
+    [Parameter] public bool PreviewPdf { get; set; }
     [Parameter] public string ExcelLabel { get; set; } = "Excel";
     [Parameter] public string ExcelTitle { get; set; } = "خروجی اکسل";
 
@@ -77,6 +79,13 @@
             if (data.Length == 0)
             {
                 Toast.Info("گزارش داده‌ای برای نمایش ندارد.");
+                return;
+            }
+
+            if (format == "pdf" && PreviewPdf)
+            {
+                var previewed = await JS.InvokeAsync<bool>("shopPrintPreview.openPdf", data, fileName);
+                if (!previewed) Toast.Error("پیش‌نمایش فهرست باز نشد؛ دوباره تلاش کنید.");
                 return;
             }
 
