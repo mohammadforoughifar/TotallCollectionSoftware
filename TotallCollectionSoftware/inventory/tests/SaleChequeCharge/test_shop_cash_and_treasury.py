@@ -88,6 +88,14 @@ class ShopCashSchema(unittest.TestCase):
         self.assertIn('if (!e.MatchedTrsVoucherId.HasValue)', flow)
         self.assertIn('MatchedTrsVoucherId == id', flow)
 
+    def test_legacy_voucher_resolves_to_database_entity(self):
+        # Both imported namespaces define TrsVoucher; the reconciliation API needs the EF entity.
+        ledger = read('Inventory.Api/Services/Invoicing/ShopOrderCashLedger.cs')
+        self.assertIn('using Inventory.Shared.Dtos;', ledger)
+        self.assertIn('using TrsVoucher = Inventory.Api.Data.TrsVoucher;', ledger)
+        self.assertIn('TrsVoucher? voucher = null;', ledger)
+        self.assertIn('MatchesLegacyVoucher(TrsVoucher voucher, Transaction order)', ledger)
+
     def test_upgrade_and_reconciliation_wiring(self):
         snapshot = read('Inventory.Api/Migrations/AppDbContextModelSnapshot.cs')
         self.assertIn('ShopOrderCashEntry', snapshot)

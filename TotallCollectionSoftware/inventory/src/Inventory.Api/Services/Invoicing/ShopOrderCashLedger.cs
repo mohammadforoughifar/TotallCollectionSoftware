@@ -5,6 +5,7 @@ using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using TrsVoucher = Inventory.Api.Data.TrsVoucher;
 
 namespace Inventory.Api.Services.Invoicing;
 

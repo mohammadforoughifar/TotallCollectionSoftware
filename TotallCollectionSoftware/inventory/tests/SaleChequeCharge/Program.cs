@@ -20,6 +20,11 @@ static void Check(bool condition, string message)
     Console.WriteLine("PASS: " + message);
 }
 
+// This method must accept the EF treasury entity, not the similarly named shared DTO.
+Func<Inventory.Api.Data.TrsVoucher, Inventory.Api.Data.Transaction, bool> legacyVoucherMatcher = ShopOrderCashLedger.MatchesLegacyVoucher;
+Check(legacyVoucherMatcher.Method.GetParameters()[0].ParameterType == typeof(Inventory.Api.Data.TrsVoucher),
+    "legacy cash reconciliation uses the database treasury voucher");
+
 var saleOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Shop.Sale.Manage" };
 var purchaseOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Shop.Purchase.Manage" };
 Check(ShopPermissionAuthorizer.OrderType(saleOnly, TransactionType.Sale, true) &&
