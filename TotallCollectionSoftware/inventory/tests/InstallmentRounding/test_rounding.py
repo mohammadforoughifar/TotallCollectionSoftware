@@ -131,9 +131,15 @@ class RoundingIntegrationContracts(unittest.TestCase):
     def test_manual_payment_edits_and_past_cheques_are_not_auto_redistributed(self):
         form = read('Inventory.Client/Pages/Orders/OrderForm.razor')
         manual = form[form.index('private void OnChequeAmountInput('):form.index('// ---------------- فعال/غیرفعال کردن')]
-        self.assertIn('chequeAmounts[i] = Fa.FormatTyping', manual)
+        self.assertIn('var value = Fa.FormatTyping(e.Value?.ToString());', manual)
+        self.assertIn('if (value != chequeAmounts[i]) calculatedChequeSchedule = null;', manual)
+        self.assertIn('chequeAmounts[i] = value;', manual)
         self.assertIn('instAmounts[i] = Fa.FormatTyping', manual)
         self.assertNotIn('RoundedInstallmentDistribution', manual)
+        pay = form[form.index('private void GoToPayment()'):form.index('private void BackToInvoice()')]
+        self.assertIn('!hasKnownHistory', pay)
+        self.assertIn('if (!refreshed)', pay)
+        self.assertIn('chequeAmounts[i] = ""', pay.split('if (!refreshed)', 1)[1])
         self.assertIn('KnownLaterChequeActivity', form)
         self.assertIn('ردیف‌های چک فعلی جایگزین می‌شوند', form)
 

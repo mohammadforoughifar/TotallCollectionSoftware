@@ -204,7 +204,7 @@
                        checked="@form.IsService" @onchange="@(() => form.IsService = true)" />
                 <label class="form-check-label" for="prodService">خدمات</label>
             </div>
-            <div class="fs-8 text-muted">خدمات موجودی انبار ندارد و فقط در فروش انتخاب می‌شود</div>
+            <div class="fs-8 text-muted">خدمت: بدون موجودی، فقط فروش</div>
         </div>
         <div class="col-md-5">
             <label class="form-label">@(form.IsService ? "نام خدمت" : "نام کالا") <span class="text-danger">*</span></label>
@@ -307,7 +307,7 @@
                         <option value="@w.Id">@w.Name</option>
                     }
                 </select>
-                <div class="fs-8 text-muted mt-1">در صورت انتخاب، این کالا فقط در همان انبار قابل خرید/فروش است</div>
+                <div class="fs-8 text-muted mt-1">خرید و فروش فقط در انبار انتخابی.</div>
             </div>
         }
         @if (editing)

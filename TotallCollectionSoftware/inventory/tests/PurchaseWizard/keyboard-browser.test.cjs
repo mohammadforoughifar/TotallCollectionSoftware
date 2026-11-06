@@ -34,6 +34,10 @@ const fixture = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="u
   <button id="page-print" data-hotkey="f4">چاپ</button>
   <table><tbody><tr id="row-a" tabindex="0" data-order-copy-context><td>فاکتور الف</td><td><button id="copy-a" data-order-copy>کپی</button></td></tr>
   <tr id="row-b" tabindex="0" data-order-copy-context><td>فاکتور ب</td><td><button id="copy-b" data-order-copy>کپی</button></td></tr></tbody></table>
+  <div class="modal fade" id="detail"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-body"><input id="detail-field"></div>
+    <div class="modal-footer"><button id="detail-copy" data-hotkey="f7">کپی فاکتور</button></div>
+  </div></div></div>
   <div class="modal fade" id="invoice"><div class="modal-dialog modal-dialog-centered modal-xl"><div class="modal-content">
     <div class="modal-header"><button id="invoice-close" data-hotkey="esc">بستن</button></div>
     <div class="modal-body"><div data-order-wizard="invoice-key">
@@ -110,21 +114,33 @@ test('shop shortcuts and notification stacking in Chromium', { skip, timeout: 30
         } finally { await page.close(); }
     });
 
-    await t.test('F8 uses the focused product row, never an unrelated or covered row', async () => {
+    await t.test('F7 still copies an invoice from its details dialog', async () => {
+        const page = await createPage(browser);
+        try {
+            await show(page, 'detail');
+            await page.focus('#detail-field'); await page.keyboard.press('F7');
+            assert.deepEqual(await actions(page), ['detail-copy']);
+            await page.evaluate(() => { document.getElementById('detail-copy').disabled = true; });
+            await page.keyboard.press('F7');
+            assert.deepEqual(await actions(page), []);
+        } finally { await page.close(); }
+    });
+
+    await t.test('F7 and F8 use the focused product row, never an unrelated or covered row', async () => {
         const page = await createPage(browser);
         try {
             await show(page, 'invoice');
-            await page.focus('#line-a'); await page.keyboard.press('F8');
+            await page.focus('#line-a'); await page.keyboard.press('F7');
             await page.focus('#line-b'); await page.keyboard.press('F8');
             assert.deepEqual(await actions(page), ['last-a', 'last-b']);
             await page.evaluate(() => { document.getElementById('last-b').disabled = true; });
-            await page.keyboard.press('F8');
-            await page.focus('#line-service'); await page.keyboard.press('F8');
-            await page.focus('#invoice-field'); await page.keyboard.press('F8');
+            await page.keyboard.press('F7');
+            await page.focus('#line-service'); await page.keyboard.press('F7');
+            await page.focus('#invoice-field'); await page.keyboard.press('F7');
             assert.deepEqual(await actions(page), []);
-            await show(page, 'child'); await page.focus('#child-field'); await page.keyboard.press('F8');
+            await show(page, 'child'); await page.focus('#child-field'); await page.keyboard.press('F7');
             await page.evaluate(() => document.getElementById('line-a').dispatchEvent(
-                new KeyboardEvent('keydown', { key:'F8', bubbles:true, cancelable:true })));
+                new KeyboardEvent('keydown', { key:'F7', bubbles:true, cancelable:true })));
             assert.deepEqual(await actions(page), []);
         } finally { await page.close(); }
     });

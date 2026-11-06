@@ -27,8 +27,11 @@ class InvoiceEnhancements(unittest.TestCase):
         self.assertIn('OpenCalc(true, interestOnly: true)', form)
         self.assertIn('if (!calcInterestOnly)', form)
         self.assertIn('paymentStepGoodsTotal.Value != goodsTotal', form)
-        self.assertIn('chequeAmounts[i] = ""', form)
-        self.assertIn('instAmounts[i] = ""', form)
+        pay = form.split('private void GoToPayment()', 1)[1].split('private void BackToInvoice()', 1)[0]
+        self.assertIn('!hasKnownHistory', pay)
+        self.assertIn('var refreshed = TryRefreshCalculatedCheques();', pay)
+        self.assertIn('chequeAmounts[i] = ""', pay.split('if (!refreshed)', 1)[1])
+        self.assertIn('instAmounts[i] = ""', pay)
         self.assertIn('cheques <= PaymentMix.Tolerance / 2m', registration)
         self.assertIn('parts > amounts.CustomerDebit', registration)
         self.assertIn('input.ConfirmedCreditDueDate', registration)

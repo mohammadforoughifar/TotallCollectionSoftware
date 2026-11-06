@@ -6,7 +6,7 @@
 <PageTitle>قیمت‌گذاری و حداقل سود</PageTitle>
 
 <div class="page-head pricing-head">
-    <div><h1>قیمت‌گذاری فروشگاه</h1><p class="lead">کنترل سود، تغییر قیمت گروهی و مشاهده سابقه قیمت‌ها</p></div>
+    <div><h1>قیمت‌گذاری فروشگاه</h1></div>
 </div>
 
 @if (loading)
@@ -34,7 +34,14 @@ else
                     </div>
                     @if (CanManage) { <button class="btn btn-primary" @onclick="SavePolicy" disabled="@busy"><i class="bi bi-check2"></i> ذخیره تنظیمات</button> }
                 </div>
-                <div class="pricing-note"><i class="bi bi-info-circle"></i><span>مثال: خرید ۱۰۰ و سود ۲۰٪ یعنی حداقل ۱۲۰، پیش از کسر پورسانت. کنترل پس از تخفیف و کسر پورسانت است؛ ارزش افزوده و تاخیر تادیه چک در آن محاسبه نمی‌شوند. بدون خرید معتبر، فروش کالا متوقف می‌شود. برای اسناد هم‌تاریخ، ترتیب ثبت سند ملاک است.</span></div>
+                @if (policy.MinimumProfitEnabled)
+                {
+                    <p class="pricing-warning">بدون خرید معتبر، فروش کالا متوقف می‌شود.</p>
+                }
+                <details class="pricing-note">
+                    <summary>جزئیات محاسبه حداقل سود</summary>
+                    <p>مثال: خرید ۱۰۰ و سود ۲۰٪ یعنی حداقل ۱۲۰، پیش از کسر پورسانت. کنترل پس از تخفیف و کسر پورسانت است؛ ارزش افزوده و تاخیر تادیه چک در آن محاسبه نمی‌شوند. برای اسناد هم‌تاریخ، ترتیب ثبت سند ملاک است.</p>
+                </details>
                 @if (policy.UpdatedAt.HasValue) { <div class="pricing-muted">آخرین تغییر: @policy.UpdatedAt.Value.ToFa() · @(policy.UpdatedBy ?? "—")</div> }
             </div>
         </section>

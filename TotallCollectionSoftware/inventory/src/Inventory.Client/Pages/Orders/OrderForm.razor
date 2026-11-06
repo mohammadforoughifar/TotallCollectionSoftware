@@ -38,12 +38,12 @@
                 <nav class="purchase-steps" data-order-wizard="@formKey" aria-label="@(Type == TransactionType.Sale ? "مراحل ثبت فروش" : "مراحل ثبت خرید")">
                     <div class="purchase-step @(invoiceStep == 1 ? "active" : "complete")" aria-current="@(invoiceStep == 1 ? "step" : null)">
                         <span class="purchase-step-number">@if (invoiceStep == 1) { <span>۱</span> } else { <i class="bi bi-check-lg"></i> }</span>
-                        <span><strong>@(Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید")</strong><small>مشخصات و اقلام فاکتور</small></span>
+                        <span><strong>@(Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید")</strong></span>
                     </div>
                     <span class="purchase-step-line" aria-hidden="true"></span>
                     <div class="purchase-step @(invoiceStep == 2 ? "active" : "")" aria-current="@(invoiceStep == 2 ? "step" : null)">
                         <span class="purchase-step-number">۲</span>
-                        <span><strong>پرداخت و تأیید</strong><small>روش پرداخت و ثبت نهایی</small></span>
+                        <span><strong>پرداخت و تأیید</strong></span>
                     </div>
                 </nav>
                 @if (CopyTemplate is not null && invoiceStep == 1)
@@ -59,10 +59,7 @@
                     </div>
                 }
                 <div class="purchase-section-heading">
-                    <div>
-                        <h3>@(invoiceStep == 1 ? "اطلاعات فاکتور" : "پرداخت و تأیید نهایی")</h3>
-                        <p>@(invoiceStep == 1 ? (Type == TransactionType.Sale ? "ابتدا مشخصات فروش و اقلام فاکتور را تکمیل کنید." : "ابتدا مشخصات خرید و کالاهای فاکتور را تکمیل کنید.") : "روش پرداخت را انتخاب کنید؛ امکان ترکیب چند روش وجود دارد.")</p>
-                    </div>
+                    <h3>@(invoiceStep == 1 ? "اطلاعات فاکتور" : "پرداخت و تأیید نهایی")</h3>
                     <span>مرحله @invoiceStep.Num() از ۲</span>
                 </div>
             }
@@ -130,39 +127,34 @@
                                         <strong class="num">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
                                     </div>
                                 </div>
-                                <p class="purchase-summary-status" aria-live="polite">
-                                    @if (FinalRemaining > (StrictPaymentBalance ? 0 : 1))
-                                    {
-                                        @(useCredit ? "مانده فاکتور به نسیه می‌رود؛ تاریخ سررسید را بررسی کنید." : "برای مانده فاکتور، پرداخت دیگری اضافه کنید یا نسیه و سررسید آن را مشخص کنید.")
-                                    }
-                                    else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
-                                    {
-                                        <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
-                                    }
-                                    else if (FinalRemaining != 0)
-                                    {
-                                        <span>اختلاف در محدوده تلورانس ثبت است؛ برای برابری دقیق، مبلغ پرداخت‌ها را دستی اصلاح کنید.</span>
-                                    }
-                                    else
-                                    {
-                                        <span>جمع اجزای پرداخت با مبلغ فاکتور برابر است.</span>
-                                    }
-                                </p>
+                                @if (FinalRemaining != 0)
+                                {
+                                    <p class="purchase-summary-status" aria-live="polite">
+                                        @if (FinalRemaining > (StrictPaymentBalance ? 0 : 1))
+                                        {
+                                            @(useCredit ? "مانده فاکتور به نسیه می‌رود؛ تاریخ سررسید را بررسی کنید." : "برای مانده فاکتور، پرداخت دیگری اضافه کنید یا نسیه و سررسید آن را مشخص کنید.")
+                                        }
+                                        else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
+                                        {
+                                            <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
+                                        }
+                                        else
+                                        {
+                                            <span>اختلاف در محدوده تلورانس ثبت است؛ برای برابری دقیق، مبلغ پرداخت‌ها را دستی اصلاح کنید.</span>
+                                        }
+                                    </p>
+                                }
                             </section>
                         }
                         @if (paymentAmountsNeedReview && ((useCheque && chequeAmounts.Any(string.IsNullOrWhiteSpace)) || (useInstallment && instAmounts.Any(string.IsNullOrWhiteSpace))))
                         {
                             <div class="alert alert-warning py-2 fs-8" role="status" data-payment-amounts-review>
-                                مبلغ کالا تغییر کرده است؛ مبلغ چک‌ها و اقساط را دوباره وارد کنید. شماره، بانک و تاریخ‌ها حفظ شده‌اند.
+                                مبلغ اقلام تغییر کرده است؛ مبلغ ردیف‌های خالی را دوباره وارد کنید. شماره، بانک و تاریخ چک‌ها حفظ شده‌اند.
                             </div>
                         }
                         <div class="pay-box">
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                 <span class="fw-700"><i class="bi bi-credit-card-2-front text-primary ms-1"></i>روش پرداخت (ترکیبی)</span>
-                                <span class="fs-8 text-muted">
-                                    می‌توانید چند جزء را هم‌زمان فعال کنید (نقد + چک + @(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط") + نسیه)؛
-                                    باقی‌ماندهٔ هر سطر بر اساس سطرهای قبلی و مبلغ نقدی محاسبه می‌شود.
-                                </span>
                             </div>
                             <div class="pay-tabs" aria-label="روش‌های پرداخت">
                                 <button type="button" class="pay-tab @(useCash ? "active" : "")" data-pay-comp="cash" aria-pressed="@(useCash ? "true" : "false")" @onclick="ToggleCash">
@@ -178,7 +170,6 @@
                                     <i class="bi bi-hourglass-split"></i> نسیه
                                 </button>
                             </div>
-                            <div class="order-keyboard-hint">Enter: فیلد بعدی · F1: ثبت · F3: مرحله قبل · F4: ثبت و چاپ · Esc: انصراف</div>
 
                             @* ---------- جزء نقدی ---------- *@
                             @if (useCash)
@@ -300,7 +291,7 @@
                                     }
                                     @if (cheques.Count == 0)
                                     {
-                                        <div class="fs-8 text-muted">هنوز چکی اضافه نشده است؛ با «افزودن چک» ردیف جدید با مبلغ باقی‌مانده ساخته می‌شود.</div>
+                                        <div class="fs-8 text-muted">هنوز چکی اضافه نشده است.</div>
                                     }
                                     @if (Type == TransactionType.Sale && HasChequeIncomeArticle)
                                     {
@@ -363,7 +354,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="fs-8 text-muted mb-2">در ساخت دفترچه، مبالغ تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف دقیق در قسط آخر می‌ماند و جمع تغییر نمی‌کند.</div>
+                                    <div class="fs-8 text-muted mb-2">رند اقساط: ۱۰٬۰۰۰ ریال؛ جمع دقیق حفظ می‌شود.</div>
                                     @if (installments.Count > 0)
                                     {
                                         <div class="table-responsive">
@@ -399,7 +390,7 @@
                                     }
                                     else
                                     {
-                                        <div class="fs-8 text-muted">با «ساخت دفترچه» اقساط بر اساس باقی‌ماندهٔ فعلی ساخته می‌شوند.</div>
+                                        <div class="fs-8 text-muted">هنوز قسطی ساخته نشده است.</div>
                                     }
                                 </div>
                             }
@@ -431,18 +422,9 @@
                     <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
                 </button>
             </div>
-            @if (UseInvoiceWizard)
+            @if (Type == TransactionType.Sale)
             {
-                <div class="order-keyboard-hint mb-2">Tab و Enter: پیمایش فیلدها (Shift+Enter: خط جدید) · Enter در پایان سطر کالا: سطر بعد · F2: سطر جدید · @if (Type == TransactionType.Sale && CanSeeProfit) { <text>F8: آخرین خرید سطر · </text> } F1: ادامه · Esc: انصراف</div>
-            }
-
-            @if (Type == TransactionType.Purchase && canManagePricing)
-            {
-                <div class="invoice-price-hint"><i class="bi bi-info-circle"></i> قیمت فروش جدید اختیاری است؛ خالی یعنی بدون تغییر. قیمت واردشده از تاریخ همین خرید معتبر می‌شود.</div>
-            }
-            else if (Type == TransactionType.Sale)
-            {
-                <div class="invoice-price-hint"><i class="bi bi-clock-history"></i> قیمت پیشنهادی هر کالای تازه بر اساس تاریخ فاکتور است؛ تغییر تاریخ، قیمت سطرهای موجود را خودکار عوض نمی‌کند.</div>
+                <div class="invoice-price-hint"><i class="bi bi-clock-history"></i> تغییر تاریخ، قیمت سطرهای موجود را خودکار عوض نمی‌کند.</div>
             }
             <div data-order-entry class="@(UseInvoiceWizard ? (Type == TransactionType.Sale ? "purchase-items sale-items" : "purchase-items") : "")">
                 <table class="table table-hover align-middle mb-0">
@@ -470,7 +452,7 @@
                             <th><span>قیمت واحد</span><small>ریال</small></th>
                             @if (Type == TransactionType.Purchase && canManagePricing)
                             {
-                                <th title="خالی یعنی بدون تغییر قیمت فروش"><span>قیمت فروش جدید</span><small>اختیاری · ریال</small></th>
+                                <th title="قیمت اختیاری از تاریخ خرید اعمال می‌شود؛ خالی یعنی بدون تغییر"><span>قیمت فروش جدید</span><small>اختیاری · ریال</small></th>
                             }
                             <th><span>مبلغ کل</span><small>ریال</small></th>
                             <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>تخفیف</span><small>٪ یا ریال</small></th>
@@ -573,7 +555,8 @@
                                 {
                                     <td data-label="قیمت فروش جدید (اختیاری، ریال)">
                                         <input class="form-control num order-line-control" aria-label="قیمت فروش جدید، اختیاری" inputmode="decimal" dir="ltr"
-                                               placeholder="بدون تغییر" value="@l.NewSalePriceText" @oninput="@(e => l.NewSalePriceText = e.Value?.ToString() ?? string.Empty)" />
+                                               title="قیمت اختیاری از تاریخ خرید اعمال می‌شود؛ خالی یعنی بدون تغییر" placeholder="بدون تغییر"
+                                               value="@l.NewSalePriceText" @oninput="@(e => l.NewSalePriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()))" />
                                     </td>
                                 }
                                 <td data-label="مبلغ کل (ریال)" class="num fw-500"><span class="order-line-value">@l.Gross.Money()</span></td>
@@ -642,9 +625,7 @@
                                     <div class="order-line-actions">
                                         @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
-                                            <button type="button" class="btn btn-sm btn-light" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
-                                                <i class="bi bi-receipt text-primary"></i>
-                                            </button>
+                                            <button type="button" class="btn btn-sm btn-light text-primary" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F7 یا F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F7 یا F8" @onclick="() => ShowLastPurchase(l.ProductId)">F7</button>
                                         }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
@@ -1225,6 +1206,8 @@
     // This is a form-only baseline, never an alteration of a posted payment.
     private decimal? paymentStepGoodsTotal;
     private bool paymentAmountsNeedReview;
+    // Only rows generated in this open form are eligible for automatic refresh.
+    private CalculatedChequeSchedule? calculatedChequeSchedule;
     private readonly string formKey = Guid.NewGuid().ToString("N");
     private bool invoiceInitialFocusDone;
     private string? pendingSectionFocus;
@@ -1416,7 +1399,11 @@
         => cashAmountText = Fa.FormatTyping(e.Value?.ToString());
 
     private void OnChequeAmountInput(int i, ChangeEventArgs e)
-        => chequeAmounts[i] = Fa.FormatTyping(e.Value?.ToString());
+    {
+        var value = Fa.FormatTyping(e.Value?.ToString());
+        if (value != chequeAmounts[i]) calculatedChequeSchedule = null;
+        chequeAmounts[i] = value;
+    }
 
     private void OnInstAmountInput(int i, ChangeEventArgs e)
         => instAmounts[i] = Fa.FormatTyping(e.Value?.ToString());
@@ -1485,6 +1472,7 @@
     private void RemoveSaleChequeCharge()
     {
         if (saleChequeCharge is null) return;
+        calculatedChequeSchedule = null;
         saleChequeCharge = null;
         saleChequeIncome = 0;
         chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0;
@@ -1598,6 +1586,7 @@
         }
         var calculation = plan.Value;
         var rowAmounts = calcInterestOnly ? Array.Empty<decimal>() : calculation.Amounts;
+        var adjustmentRate = calculation.MonthlyRatePercent;
         SaleChequeChargeInput? calculatedCharge = null;
         if (calcForCheque && Type == TransactionType.Sale)
         {
@@ -1611,7 +1600,6 @@
                 InvoiceError("جزئیات سود این فاکتور قدیمی موجود نیست؛ بررسی دستی سابقه لازم است.");
                 return;
             }
-            var adjustmentRate = calculation.MonthlyRatePercent;
             if (!string.IsNullOrWhiteSpace(calcAdjustmentRateText) &&
                 !TryCalculatorPercent(calcAdjustmentRateText, out adjustmentRate))
             {
@@ -1645,6 +1633,7 @@
         {
             // Only replace the pending income article. Manual cheque rows and their
             // amounts, numbers, banks and dates are deliberately untouched.
+            calculatedChequeSchedule = null;
             var hadCharge = saleChequeCharge is not null;
             saleChequeCharge = calculatedCharge;
             saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
@@ -1694,6 +1683,8 @@
                 chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
                 removedCalculatedChequeIncome = false;
             }
+            calculatedChequeSchedule = new CalculatedChequeSchedule(calculation, goodsTotal, CashPart, InstSum(),
+                adjustmentRate, calcAdjustmentDays);
             InvoiceSuccess($"{calculation.Months} چک ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود). شماره و بانک هر چک را تکمیل کنید.");
         }
         else
@@ -1729,6 +1720,7 @@
     /// <summary>سطر چک جدید — مبلغ پیش‌فرض = باقی‌ماندهٔ فعلی سند (نقد + چک‌ها + اقساط کسر شده).</summary>
     private void AddCheque()
     {
+        calculatedChequeSchedule = null;
         var rest = FinalRemaining;
         cheques.Add(new ChequeDto());
         chequeAmounts.Add(rest > 0 ? Fa.FormatTyping(ExactDecimal(rest)) : "");
@@ -1738,6 +1730,7 @@
 
     private void RemoveCheque(int i)
     {
+        calculatedChequeSchedule = null;
         cheques.RemoveAt(i); chequeAmounts.RemoveAt(i); chequeDates.RemoveAt(i);
     }
 
@@ -2320,12 +2313,7 @@
     }
 
     private static bool TryNewSalePrice(string text, out decimal value)
-    {
-        var raw = Fa.ToEn(text ?? "").Trim().Replace(",", "").Replace('\u066B', '.').Replace("\u066C", "");
-        return decimal.TryParse(raw, System.Globalization.NumberStyles.AllowDecimalPoint,
-            System.Globalization.CultureInfo.InvariantCulture, out value) && value >= 0 &&
-            value <= 9999999999999999.99m && decimal.Round(value, 2) == value;
-    }
+        => PurchaseSalePriceInput.TryParse(text, out value);
 
     // A copied legacy value must remain visible in full, even when it needs correction
     // to meet today's precision rules; formatting must not silently round it.
@@ -2394,6 +2382,48 @@
         return formatted;
     }
 
+    private bool TryRefreshCalculatedCheques()
+    {
+        if (calculatedChequeSchedule is not { } schedule || !useCheque ||
+            chequeDates.Count != cheques.Count) return false;
+        try
+        {
+            // Recalculate before touching any rows. A changed cash/installment amount,
+            // manually edited cheque, or invalid rounded schedule requires review instead.
+            var refreshed = schedule.Recalculate(goodsTotal, CashPart, InstSum(), cheques.Count,
+                chequeAmounts.Select(Fa.ParseDecimal).ToArray());
+            var nextAmounts = refreshed.Calculation.Amounts
+                .Select(amount => Fa.FormatTyping(ExactDecimal(amount))).ToList();
+            SaleChequeChargeInput? nextCharge = null;
+            if (Type == TransactionType.Sale)
+            {
+                nextCharge = refreshed.Calculation.CreateSaleChequeCharge(goodsTotal,
+                    refreshed.AdjustmentRatePercent, refreshed.AdjustmentPeriodDays);
+                if (IsEdit && ((EditOrder?.HasChequeCharge == true && nextCharge is null) ||
+                               (EditOrder?.HasChequeCharge != true && nextCharge is not null))) return false;
+            }
+
+            // Change only amounts and the pending calculation, never cheque metadata.
+            chequeAmounts = nextAmounts;
+            calculatedChequeSchedule = refreshed;
+            if (Type == TransactionType.Sale)
+            {
+                var hadCharge = saleChequeCharge is not null;
+                saleChequeCharge = nextCharge;
+                saleChequeIncome = nextCharge is null ? 0m : refreshed.Calculation.Interest;
+                chargeInvoiceBase = nextCharge is null ? 0m : goodsTotal;
+                chargeCashBase = nextCharge is null ? 0m : CashPart;
+                chargeInstallmentBase = nextCharge is null ? 0m : InstSum();
+                removedCalculatedChequeIncome = nextCharge is null && (hadCharge || removedCalculatedChequeIncome);
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            return false;
+        }
+    }
+
     private void GoToPayment()
     {
         formError = null;
@@ -2405,9 +2435,19 @@
                  order.Installments.Any(i => i.IsPaid));
             if (paymentStepGoodsTotal.HasValue && paymentStepGoodsTotal.Value != goodsTotal && !hasKnownHistory)
             {
-                // Clear only the editable amount strings, including temporarily hidden
-                // payment rows. Numbers, banks, dates and the stored document stay intact.
-                for (var i = 0; i < chequeAmounts.Count; i++) chequeAmounts[i] = "";
+                var wasCalculated = calculatedChequeSchedule is not null && useCheque;
+                var refreshed = TryRefreshCalculatedCheques();
+                if (!refreshed)
+                {
+                    // Manual, unknown or inconsistent rows require explicit amounts.
+                    for (var i = 0; i < chequeAmounts.Count; i++) chequeAmounts[i] = "";
+                    calculatedChequeSchedule = null;
+                    if (wasCalculated) InvoiceInfo("تقسیم خودکار ممکن نیست؛ مبلغ چک‌ها را بررسی یا دوباره محاسبه کنید.");
+                }
+                else InvoiceInfo("مبلغ چک‌ها و سود با تنظیمات قبلی دوباره محاسبه شد.");
+
+                // The previous review rule for non-cheque installments remains unchanged.
+                // Their amounts are not redistributed or absorbed into the cheque calculation.
                 for (var i = 0; i < instAmounts.Count; i++) instAmounts[i] = "";
                 paymentAmountsNeedReview = chequeAmounts.Count > 0 || instAmounts.Count > 0;
             }

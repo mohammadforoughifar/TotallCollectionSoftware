@@ -10,8 +10,10 @@
 .pricing-fields { display: grid; grid-template-columns: 1.5fr .8fr .7fr 1fr; gap: .7rem; }
 .pricing-fields > div { min-width: 0; }
 .pricing-card .form-label { font-size: .78rem; color: #475569; font-weight: 600; }
-.pricing-note { display: flex; gap: .5rem; background: #f5f7ff; border: 1px solid #e3e8ff; border-radius: 10px; padding: .7rem; margin-top: 1rem; color: #475689; font-size: .76rem; line-height: 1.9; }
-.pricing-note i { flex: none; }
+.pricing-note { background: #f5f7ff; border: 1px solid #e3e8ff; border-radius: 10px; padding: .45rem .7rem; margin-top: .75rem; color: #475689; font-size: .76rem; line-height: 1.9; }
+.pricing-note summary { cursor: pointer; font-weight: 600; }
+.pricing-note p { margin: .4rem 0 0; }
+.pricing-warning { margin: .7rem 0 0; color: #9a5814; font-size: .76rem; }
 .pricing-muted { margin-top: .6rem; font-size: .72rem; }
 .pricing-actions, .pricing-apply { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .7rem; margin-top: 1rem; font-size: .8rem; }
 .pricing-preview-header { border-top: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: .8rem 0; font-size: .8rem; color: #475569; }

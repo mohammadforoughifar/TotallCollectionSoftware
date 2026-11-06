@@ -26,9 +26,6 @@
                         <h1 class="h4 fw-800 text-dark mb-0">افتتاح حساب و ثبت مانده‌های اولیه</h1>
                         <span class="badge rounded-pill op-badge-start">آغاز دوره مالی</span>
                     </div>
-                    <div class="text-secondary fs-8 mt-1">
-                        سامانه جامع ثبت مانده مطالبات، بدهی‌های اولیه، چک‌های اول دوره، اقساط باز و کاردکس اولیه انبار
-                    </div>
                 </div>
             </div>
 
@@ -69,7 +66,6 @@
                 </div>
                 <div class="op-tab-text">
                     <span class="op-tab-title">طرف حساب‌ها</span>
-                    <span class="op-tab-sub">طلب و بدهی اولیه اشخاص</span>
                 </div>
                 @if (recentPartyBalances.Count > 0)
                 {
@@ -84,7 +80,6 @@
                 </div>
                 <div class="op-tab-text">
                     <span class="op-tab-title">چک‌های اول دوره</span>
-                    <span class="op-tab-sub">دریافتی از مشتری / پرداختی</span>
                 </div>
                 @if (chequesList.Count > 0)
                 {
@@ -99,7 +94,6 @@
                 </div>
                 <div class="op-tab-text">
                     <span class="op-tab-title">اقساط باز و معوق</span>
-                    <span class="op-tab-sub">تقسیط بدهی‌های گذشته</span>
                 </div>
                 @if (recentInstallmentOrders.Count > 0)
                 {
@@ -114,7 +108,6 @@
                 </div>
                 <div class="op-tab-text">
                     <span class="op-tab-title">موجودی اولیه کالاها</span>
-                    <span class="op-tab-sub">انبار اولیه و ورودی اکسل</span>
                 </div>
                 @if (recentStockLines.Count > 0)
                 {
@@ -147,7 +140,6 @@
                             </div>
                             <div>
                                 <h2 class="op-form-title">ثبت مانده افتتاحیه شخص</h2>
-                                <p class="op-form-desc">تعیین طلبکاری یا بدهکاری مشتری و تأمین‌کننده در ابتدای دوره</p>
                             </div>
                         </div>
 
@@ -169,7 +161,6 @@
                                             <div class="op-segment-title text-danger">
                                                 <i class="bi bi-arrow-down-left-circle-fill me-1"></i> بدهکار (طلب ما از شخص)
                                             </div>
-                                            <div class="op-segment-desc">شخص به مجموعه ما بدهکار است و باید پرداخت کند</div>
                                         </div>
                                     </div>
 
@@ -180,7 +171,6 @@
                                             <div class="op-segment-title text-success">
                                                 <i class="bi bi-arrow-up-right-circle-fill me-1"></i> بستانکار (بدهی ما به شخص)
                                             </div>
-                                            <div class="op-segment-desc">ما به این طرف حساب بدهکاریم (طلب تأمین‌کننده)</div>
                                         </div>
                                     </div>
                                 </div>
@@ -193,16 +183,10 @@
                                     <MoneyInput @bind-Value="partyBalance.Amount" CssClass="form-control op-money-input num" />
                                     <span class="op-currency-tag">ریال</span>
                                 </div>
-                                <div class="op-helper-text">
-                                    @if (partyBalance.Amount > 0)
-                                    {
-                                        <span class="text-secondary">معادل: <b>@((partyBalance.Amount / 10).ToString("N0")) تومان</b></span>
-                                    }
-                                    else
-                                    {
-                                        <span>مبلغ را به ریال وارد کنید</span>
-                                    }
-                                </div>
+                                @if (partyBalance.Amount > 0)
+                                {
+                                    <div class="op-helper-text text-secondary">معادل: <b>@((partyBalance.Amount / 10).ToString("N0")) تومان</b></div>
+                                }
                             </div>
 
                             <!-- تاریخ‌ها -->
@@ -250,7 +234,6 @@
                                 </div>
                                 <div>
                                     <h3 class="op-table-title">افتتاح حساب‌های ثبت‌شده اخیر</h3>
-                                    <p class="op-table-sub">فهرست حساب‌های اشخاص که در این بخش صادر شده‌اند</p>
                                 </div>
                             </div>
                             <a href="/operations/reports/party-statements" class="btn btn-sm btn-outline-primary op-btn-rounded">
@@ -277,7 +260,6 @@
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در این نشست ثبت نشده است</div>
-                                                    <div class="fs-8 text-muted mt-1">پس از تکمیل فرم سمت راست و زدن دکمه ثبت، سوابق در این جدول نمایش داده می‌شوند.</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -332,7 +314,6 @@
                             </div>
                             <div>
                                 <h2 class="op-form-title">ثبت چک افتتاحیه اول دوره</h2>
-                                <p class="op-form-desc">ثبت چک‌های مشتریان نزد ما یا چک‌های صادره از حساب خودمان</p>
                             </div>
                         </div>
 
@@ -348,7 +329,6 @@
                                             <div class="op-segment-title text-primary">
                                                 <i class="bi bi-box-arrow-in-down-left me-1"></i> چک دریافتی (نزد صندوق)
                                             </div>
-                                            <div class="op-segment-desc">چکی که مشتری در دوره قبل بابت حسابش داده است</div>
                                         </div>
                                     </div>
 
@@ -359,7 +339,6 @@
                                             <div class="op-segment-title text-danger">
                                                 <i class="bi bi-box-arrow-up-right me-1"></i> چک پرداختی (دسته چک ما)
                                             </div>
-                                            <div class="op-segment-desc">چکی که به تأمین‌کننده کشیده‌ایم و سررسیدش نرسیده</div>
                                         </div>
                                     </div>
                                 </div>
@@ -460,7 +439,6 @@
                                 </div>
                                 <div>
                                     <h3 class="op-table-title">آخرین چک‌های موجود در سامانه</h3>
-                                    <p class="op-table-sub">فهرست چک‌های دریافتی و پرداختی با سررسیدهای پیش‌رو</p>
                                 </div>
                             </div>
                             <a href="/trs/cheques" class="btn btn-sm btn-outline-primary op-btn-rounded">
@@ -488,7 +466,6 @@
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-credit-card fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">چکی در سامانه ثبت نشده است</div>
-                                                    <div class="fs-8 text-muted mt-1">با فرم سمت راست چک‌های اول دوره را در دفتر ثبت کنید.</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -539,7 +516,6 @@
                             </div>
                             <div>
                                 <h2 class="op-form-title">ثبت و تقسیط مانده اول دوره</h2>
-                                <p class="op-form-desc">تبدیل بدهی مشتری به دفترچه اقساط با سررسیدهای منظم</p>
                             </div>
                         </div>
 
@@ -620,7 +596,6 @@
                                 </div>
                                 <div>
                                     <h3 class="op-table-title">دفترچه‌های اقساط ثبت‌شده</h3>
-                                    <p class="op-table-sub">فهرست حساب‌های تقسیط‌شده اول دوره</p>
                                 </div>
                             </div>
                             <a href="/shop/credit-management" class="btn btn-sm btn-outline-primary op-btn-rounded">
@@ -647,7 +622,6 @@
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-calendar-x fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز اقساط اولیه‌ای در این بخش ثبت نشده است</div>
-                                                    <div class="fs-8 text-muted mt-1">از فرم سمت راست برای تبدیل مطالبات گذشته به اقساط استفاده فرمایید.</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -688,7 +662,6 @@
                             </div>
                             <div class="flex-grow-1">
                                 <h2 class="op-form-title">ثبت موجودی اولیه انبار</h2>
-                                <p class="op-form-desc">نقطه شروع کاردکس کالاها در انبارهای مختلف</p>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-success op-btn-rounded" @onclick="OpenExcelImport">
                                 <i class="bi bi-file-earmark-excel-fill me-1"></i> ورود با اکسل
@@ -753,7 +726,6 @@
                                 </div>
                                 <div>
                                     <h3 class="op-table-title">کالاهای ثبت‌شده اولیه در این نشست</h3>
-                                    <p class="op-table-sub">اقلامی که موجودی نقطه صفر آن‌ها ذخیره شده است</p>
                                 </div>
                             </div>
                             <button type="button" class="btn btn-sm btn-success op-btn-rounded" @onclick="OpenExcelImport">
@@ -780,7 +752,6 @@
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در این نشست ثبت نشده است</div>
-                                                    <div class="fs-8 text-muted mt-1">می‌توانید کالاها را تک‌تک ثبت کنید یا با دکمه بالا اکسل را به صورت گروهی بارگذاری نمایید.</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -848,7 +819,7 @@
                 <InputFile class="form-control" OnChange="OnExcelFileSelected" accept=".xlsx" disabled="@(excelWarehouseId == 0)" />
                 @if (excelWarehouseId == 0)
                 {
-                    <div class="fs-9 text-muted mt-1">پس از انتخاب انبار، فیلد فایل فعال خواهد شد.</div>
+                    <div class="fs-9 text-muted mt-1">ابتدا انبار را انتخاب کنید.</div>
                 }
             </div>
 

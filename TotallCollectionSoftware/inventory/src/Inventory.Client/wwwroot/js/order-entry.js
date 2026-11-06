@@ -188,7 +188,7 @@
             }
 
             let actions = [];
-            if (event.key === 'F8') {
+            if (event.key === 'F8' || (event.key === 'F7' && isInvoice)) {
                 // Never guess a product: use only the focused row of the top invoice.
                 // The button is absent for services, missing products or users without
                 // permission to see purchase prices. A covering dialog gets no action.
