@@ -79,6 +79,16 @@ class PricingSchemaTests(unittest.TestCase):
 
 
 class PricingContractTests(unittest.TestCase):
+    def test_razor_injected_properties_do_not_share_the_component_name(self):
+        # Razor turns @inject into a member of the component's generated class.
+        # A member named like its component produces CS0542 at compile time.
+        client = ROOT / 'src/Inventory.Client'
+        for page in client.rglob('*.razor'):
+            source = page.read_text(encoding='utf-8')
+            for match in re.finditer(r'^\s*@inject\s+[^\r\n]+?\s+(\w+)\s*$', source, re.MULTILINE):
+                with self.subTest(page=str(page.relative_to(client)), member=match.group(1)):
+                    self.assertNotEqual(match.group(1), page.stem)
+
     def test_shop_rule_applies_in_all_sale_mutations_and_never_to_services(self):
         self.assertEqual(INVENTORY.count('ShopMinimumProfitGuard.ValidateAsync('), 3)
         self.assertIn('!p.IsService', GUARD)

@@ -1,5 +1,5 @@
 @page "/shop/pricing"
-@inject IShopPricingClient Pricing
+@inject IShopPricingClient PricingClient
 @inject IAuthState Auth
 @inject IToastService Toast
 
@@ -108,9 +108,9 @@ else
     {
         try
         {
-            var policyTask = Pricing.GetPolicyAsync();
-            var categoriesTask = Pricing.GetCategoriesAsync();
-            var historyTask = Pricing.GetHistoryAsync();
+            var policyTask = PricingClient.GetPolicyAsync();
+            var categoriesTask = PricingClient.GetCategoriesAsync();
+            var historyTask = PricingClient.GetHistoryAsync();
             policy = await policyTask;
             markupText = policy.MinimumMarkupPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             categories = await categoriesTask;
@@ -127,7 +127,7 @@ else
     {
         if (!TryPercent(markupText, out var markup) || markup > 10000) { Toast.ShowAtTopRight("درصد سود معتبر نیست.", "error"); return; }
         busy = true;
-        try { policy.MinimumMarkupPercent = markup; policy = await Pricing.SavePolicyAsync(policy); Toast.ShowAtTopRight("تنظیم حداقل سود ذخیره شد.", "success"); }
+        try { policy.MinimumMarkupPercent = markup; policy = await PricingClient.SavePolicyAsync(policy); Toast.ShowAtTopRight("تنظیم حداقل سود ذخیره شد.", "success"); }
         catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
         finally { busy = false; }
     }
@@ -142,7 +142,7 @@ else
         var request = BuildRequest();
         if (request is null) { Toast.ShowAtTopRight("گروه، تاریخ و درصد معتبر را وارد کنید.", "error"); return; }
         busy = true; preview = null;
-        try { preview = await Pricing.PreviewAsync(request); previewRequest = request; operationId = Guid.NewGuid(); }
+        try { preview = await PricingClient.PreviewAsync(request); previewRequest = request; operationId = Guid.NewGuid(); }
         catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
         finally { busy = false; }
     }
@@ -156,10 +156,10 @@ else
         busy = true;
         try
         {
-            await Pricing.ApplyAsync(new ShopPriceAdjustmentCommand { CategoryId = current.CategoryId, IncludeDescendants = current.IncludeDescendants,
+            await PricingClient.ApplyAsync(new ShopPriceAdjustmentCommand { CategoryId = current.CategoryId, IncludeDescendants = current.IncludeDescendants,
                 Increase = current.Increase, Percent = current.Percent, EffectiveDate = current.EffectiveDate, PreviewHash = preview.PreviewHash, OperationId = operationId });
             Toast.ShowAtTopRight("تغییر قیمت ثبت شد.", "success");
-            preview = null; history = await Pricing.GetHistoryAsync();
+            preview = null; history = await PricingClient.GetHistoryAsync();
         }
         catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
         finally { busy = false; }
