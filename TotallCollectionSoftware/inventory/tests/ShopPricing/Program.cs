@@ -89,16 +89,28 @@ await pricing.ApplyAsync(apply, "pricing-test");
 Check(await db.ShopSalePrices.CountAsync(h => h.OperationId == apply.OperationId) == 1, "retries are idempotent");
 Check((await inventory.GetOrderAsync(oldSale.Id))!.Lines.Single().Price == 110, "existing invoice price never changes");
 
+var roundingGroup = new Db.ProductCategory { Name = "گروه گرد کردن" };
+db.ProductCategories.Add(roundingGroup);
+await db.SaveChangesAsync();
+var roundedProduct = new Db.Product { Name = "کالای گرد کردن", Code = "PRICE-R", Unit = "عدد", CategoryId = roundingGroup.Id };
+db.Products.Add(roundedProduct);
+await db.SaveChangesAsync();
+db.ShopSalePrices.Add(new Db.ShopSalePrice { ProductId = roundedProduct.Id, EffectiveDate = purchaseDate, Price = 1005m, Source = "test" });
+await db.SaveChangesAsync();
+var roundingPreview = await pricing.PreviewAsync(new ShopPriceAdjustmentRequest { CategoryId = roundingGroup.Id,
+    Percent = 10m, Increase = true, EffectiveDate = saleDate });
+Check(roundingPreview.Rows.Single().NewPrice == 1106m, "automatic percentage price rounds half rial upward");
+
 await pricing.SavePolicyAsync(new ShopPricingPolicyDto { MinimumProfitEnabled = true, MinimumMarkupPercent = 20 }, "manager");
 var count = await db.Transactions.CountAsync();
-await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 119.99m, customer.Id), "clerk"); }, "markup below last purchase floor");
+await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 119m, customer.Id), "clerk"); }, "markup below last purchase floor");
 Check(await db.Transactions.CountAsync() == count, "rejected sale rolls back atomically");
 await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 120, customer.Id, discount: 1), "clerk"); }, "line discount is considered");
 var vatSale = await inventory.CreateOrderAsync(Sale(goods.Id, 120, customer.Id, vat: 10), "clerk");
 Check(vatSale.Lines.Single().Price == 120 && vatSale.TotalAmount == 132, "VAT is excluded from the minimum profit");
-await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 122.21m, referred.Id), "clerk"); }, "referrer commission cannot consume minimum markup");
-var commissionSale = await inventory.CreateOrderAsync(Sale(goods.Id, 122.22m, referred.Id), "clerk");
-Check(commissionSale.Lines.Single().Price == 122.22m, "commission-adjusted boundary passes");
+await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 122m, referred.Id), "clerk"); }, "referrer commission cannot consume minimum markup");
+var commissionSale = await inventory.CreateOrderAsync(Sale(goods.Id, 123m, referred.Id), "clerk");
+Check(commissionSale.Lines.Single().Price == 123m, "commission-adjusted boundary passes");
 await Rejected(async () => { await inventory.CreateOrderAsync(Sale(missing.Id, 999, customer.Id), "clerk"); }, "missing last purchase blocks goods sale");
 var serviceSale = await inventory.CreateOrderAsync(Sale(labor.Id, 50, customer.Id), "clerk");
 Check(serviceSale.Lines.Single().Price == 50, "services are excluded");

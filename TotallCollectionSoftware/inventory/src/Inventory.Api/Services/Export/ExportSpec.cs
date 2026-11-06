@@ -84,6 +84,9 @@ public class ExportColumn
 
     /// <summary>متن طولانی است و باید در PDF بشکند.</summary>
     public bool Wrap { get; set; }
+
+    /// <summary>Only for shop stock/legacy price columns: show stored fractional digits.</summary>
+    public bool PreserveFractionalDigits { get; set; }
 }
 
 /// <summary>یک سطر گزارش.</summary>

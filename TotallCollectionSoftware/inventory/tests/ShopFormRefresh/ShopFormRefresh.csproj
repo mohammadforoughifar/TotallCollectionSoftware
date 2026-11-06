@@ -9,5 +9,6 @@
     <ProjectReference Include="../../src/Inventory.Shared/Inventory.Shared.csproj" />
     <Compile Include="../../src/Inventory.Client/Pages/Orders/CalculatedChequeSchedule.cs" Link="CalculatedChequeSchedule.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/Orders/PurchaseSalePriceInput.cs" Link="PurchaseSalePriceInput.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/Orders/ShopQuantityInput.cs" Link="ShopQuantityInput.cs" />
   </ItemGroup>
 </Project>

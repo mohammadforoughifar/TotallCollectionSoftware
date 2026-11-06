@@ -131,7 +131,7 @@ class PricingContractTests(unittest.TestCase):
         self.assertIn('GetDatedSalePriceAsync(id, invoiceDate.Value)', FORM)
         self.assertIn('!string.IsNullOrWhiteSpace(l.PriceText)', FORM)
         self.assertIn('قیمت این تاریخ ثبت نشده', FORM)
-        self.assertIn('PriceText = FormatNum(l.Price.ToString', FORM)
+        self.assertIn('PriceText = PurchaseSalePriceInput.Format(ExactDecimal(l.Price))', FORM)
 
 if __name__ == '__main__':
     unittest.main()

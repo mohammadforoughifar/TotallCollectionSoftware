@@ -62,3 +62,21 @@ public class DatedSalePriceDto
     public decimal? Price { get; set; }
     public DateTime? EffectiveDate { get; set; }
 }
+
+/// <summary>Profit-authorized explanation of the exact purchase used at an invoice date.</summary>
+public class ShopMinimumProfitBasisDto
+{
+    public int? CompanyId { get; set; }
+    public bool PolicyConfigured { get; set; }
+    public bool MinimumProfitEnabled { get; set; }
+    public decimal MinimumMarkupPercent { get; set; }
+    public int? PurchaseId { get; set; }
+    public string? PurchaseNumber { get; set; }
+    public DateTime? PurchaseDate { get; set; }
+    public decimal? PurchaseQuantity { get; set; }
+    public decimal? PurchaseGross { get; set; }
+    public decimal? PurchaseDiscount { get; set; }
+    public decimal? NetUnitCost { get; set; }
+    public decimal? MinimumUnitRevenueBeforeSaleDiscountAndCommission { get; set; }
+    public string? Reason { get; set; }
+}

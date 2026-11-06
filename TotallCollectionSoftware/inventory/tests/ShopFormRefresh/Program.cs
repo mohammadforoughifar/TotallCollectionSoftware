@@ -67,6 +67,19 @@ internal static class ShopFormRefreshTests
         Check(!PurchaseSalePriceInput.TryParse(formatted, out _), "reject invalid price " + input);
     }
 
+    private static void Quantity(string input, string expected, decimal value)
+    {
+        var output = ShopQuantityInput.Format(input);
+        Check(output == expected && ShopQuantityInput.TryParse(output, out var parsed) && parsed == value,
+            "quantity " + input + " -> " + output);
+    }
+
+    private static void InvalidQuantity(string input)
+    {
+        var output = ShopQuantityInput.Format(input);
+        Check(!ShopQuantityInput.TryParse(output, out _), "invalid quantity " + input + " -> " + output);
+    }
+
     private static void Main()
     {
         var original = InvoiceInstallmentCalculation.Create(2_000_000m, 5m, 5);
@@ -153,17 +166,32 @@ internal static class ShopFormRefreshTests
         }
 
         Price("1234567", "1,234,567", 1234567m);
-        Price("۱۲۳۴۵۶۷٫۸۹", "1,234,567.89", 1234567.89m);
-        Price("١٬٢٣٤٬٥٦٧٫٨٩", "1,234,567.89", 1234567.89m);
-        Price("001234.00", "1,234.00", 1234m);
-        Price("1234567.", "1,234,567.", 1234567m);
-        Price(".5", ".5", 0.5m);
-        Price("9999999999999999.99", "9,999,999,999,999,999.99", 9999999999999999.99m);
+        Price("۱۲۳۴۵۶۷", "1,234,567", 1234567m);
+        Price("١٬٢٣٤٬٥٦٧", "1,234,567", 1234567m);
+        Price("001234", "1,234", 1234m);
+        Price("1,0001", "10,001", 10001m); // typing after the live thousands separator
+        Price("9999999999999999", "9,999,999,999,999,999", 9999999999999999m);
+        var legacy = PurchaseSalePriceInput.Format("۱۲۳۴۵۶۷٫۸۹");
+        Check(legacy == "1,234,567.89" && PurchaseSalePriceInput.TryParseLegacy(legacy, out var legacyPrice) && legacyPrice == 1234567.89m,
+            "an unchanged historical fractional price is preserved exactly");
+        Check(!PurchaseSalePriceInput.TryParse(legacy, out _), "historical fractional price cannot be registered as a new price");
         Check(PurchaseSalePriceInput.Format(" ") == "" && !PurchaseSalePriceInput.TryParse("", out _),
             "blank remains optional and is not parsed as zero");
         InvalidPrice(","); InvalidPrice("٬"); InvalidPrice("-1,234"); InvalidPrice("+1");
         InvalidPrice("1a234"); InvalidPrice("1.2.3"); InvalidPrice(".");
-        InvalidPrice("12.345"); InvalidPrice("10000000000000000"); InvalidPrice("1e3");
+        InvalidPrice("12.345"); InvalidPrice("1.00"); InvalidPrice(".5"); InvalidPrice("1234567.");
+        InvalidPrice("100,50"); InvalidPrice("10000000000000000"); InvalidPrice("1e3");
+        Quantity("1,5", "1.5", 1.5m);
+        Quantity("1.5", "1.5", 1.5m);
+        Quantity("۱٫۵", "1.5", 1.5m);
+        Quantity("1,234.50", "1,234.50", 1234.5m);
+        Quantity("1.234,50", "1,234.50", 1234.5m);
+        Quantity("1,000,50", "1,000.50", 1000.5m);
+        Quantity("1,0001", "10,001", 10001m);
+        Quantity(".5", "0.5", .5m);
+        InvalidQuantity("1,,2"); InvalidQuantity("1,23,456"); InvalidQuantity("1.2.3");
+        InvalidQuantity("-1"); InvalidQuantity("1x2"); InvalidQuantity("1.2,3"); InvalidQuantity("1.");
+
         Console.WriteLine("PASS: " + checks + " cheque refresh, payment, rounding and price input checks");
     }
 }

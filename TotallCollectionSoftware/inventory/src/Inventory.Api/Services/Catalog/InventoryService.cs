@@ -886,8 +886,8 @@ public class InventoryService : IInventoryService
         var units = await q.OrderBy(u => u.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var counts = await _db.Products
-            .GroupBy(p => p.Unit)
-            .Select(g => new { Name = g.Key, Count = g.Count() })
+            .GroupBy(p => new { p.CompanyId, p.Unit })
+            .Select(g => new { g.Key.CompanyId, Name = g.Key.Unit, Count = g.Count() })
             .ToListAsync();
 
         return units.Select(u => new MeasureUnit
@@ -895,8 +895,9 @@ public class InventoryService : IInventoryService
             Id = u.Id,
             Name = u.Name,
             IsActive = u.IsActive,
+            AllowsFractionalQuantity = u.AllowsFractionalQuantity,
             CreatedAt = u.CreatedAt,
-            ProductCount = counts.FirstOrDefault(x => x.Name == u.Name)?.Count ?? 0
+            ProductCount = counts.FirstOrDefault(x => x.CompanyId == u.CompanyId && x.Name == u.Name)?.Count ?? 0
         }).ToList();
     }
 
@@ -906,48 +907,52 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("نام واحد شمارش را وارد کنید.");
 
         var name = dto.Name.Trim();
-        var dup = await _db.MeasureUnits.AnyAsync(u => u.Name == name && u.Id != dto.Id);
-        if (dup) throw new InvalidOperationException("واحد شمارشی با این نام از قبل وجود دارد.");
-
         Db.MeasureUnit entity;
         string? oldName = null;
         if (dto.Id == 0)
         {
-            entity = new Db.MeasureUnit { CreatedAt = DateTime.Now };
-            _db.MeasureUnits.Add(entity);
+            var owner = _db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : _db.ResolveDefaultCompanyId();
+            entity = new Db.MeasureUnit { CompanyId = owner, CreatedAt = DateTime.Now };
         }
         else
         {
-            entity = await _db.MeasureUnits.FindAsync(dto.Id)
+            entity = await _db.MeasureUnits.FirstOrDefaultAsync(u => u.Id == dto.Id)
                 ?? throw new InvalidOperationException("واحد شمارش یافت نشد.");
             oldName = entity.Name;
         }
+        var dup = await _db.MeasureUnits.AnyAsync(u => u.CompanyId == entity.CompanyId && u.Name == name && u.Id != dto.Id);
+        if (dup) throw new InvalidOperationException("واحد شمارشی با این نام از قبل وجود دارد.");
+        if (dto.Id == 0) _db.MeasureUnits.Add(entity);
 
         entity.Name = name;
         entity.IsActive = dto.IsActive;
+        // Old clients may omit the new field; never erase a saved decision.
+        entity.AllowsFractionalQuantity = dto.AllowsFractionalQuantity ?? entity.AllowsFractionalQuantity
+            ?? ShopQuantityRules.DefaultAllowsFraction(name);
 
         // در صورت تغییر نام واحد، روی کالاهای مرتبط هم اعمال می‌شود
         if (oldName != null && oldName != name)
         {
-            var related = await _db.Products.Where(p => p.Unit == oldName).ToListAsync();
+            var related = await _db.Products.Where(p => p.CompanyId == entity.CompanyId && p.Unit == oldName).ToListAsync();
             foreach (var p in related) p.Unit = name;
         }
 
         await _db.SaveChangesAsync();
 
-        var count = await _db.Products.CountAsync(p => p.Unit == entity.Name);
+        var count = await _db.Products.CountAsync(p => p.CompanyId == entity.CompanyId && p.Unit == entity.Name);
         return new MeasureUnit
         {
             Id = entity.Id, Name = entity.Name, IsActive = entity.IsActive,
+            AllowsFractionalQuantity = entity.AllowsFractionalQuantity,
             CreatedAt = entity.CreatedAt, ProductCount = count
         };
     }
 
     public async Task DeleteUnitAsync(int id)
     {
-        var u = await _db.MeasureUnits.FindAsync(id);
+        var u = await _db.MeasureUnits.FirstOrDefaultAsync(unit => unit.Id == id);
         if (u is null) return;
-        var used = await _db.Products.AnyAsync(p => p.Unit == u.Name);
+        var used = await _db.Products.AnyAsync(p => p.CompanyId == u.CompanyId && p.Unit == u.Name);
         if (used) throw new InvalidOperationException("این واحد روی کالاها استفاده شده و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
         _db.MeasureUnits.Remove(u);
         await _db.SaveChangesAsync();
@@ -979,8 +984,8 @@ public class InventoryService : IInventoryService
                 var name = row.Cell(2).GetString().Trim();
                 var category = row.Cell(3).GetString().Trim();
                 var unit = row.Cell(4).GetString().Trim();
-                var purchase = ReadDecimal(row.Cell(5));
-                var sale = ReadDecimal(row.Cell(6));
+                var purchase = ReadWholePrice(row.Cell(5));
+                var sale = ReadWholePrice(row.Cell(6));
                 var reorder = ReadDecimal(row.Cell(7));
                 var maxStock = ReadDecimal(row.Cell(8));
                 var barcode = row.Cell(9).GetString().Trim();
@@ -1011,19 +1016,38 @@ public class InventoryService : IInventoryService
             }
             catch (Exception ex)
             {
+                // A failed row may already have attached an Added product/unit; do
+                // not let a later successful row accidentally persist it.
+                _db.ChangeTracker.Clear();
                 result.Failed++;
                 result.Errors.Add($"سطر {r}: {ex.Message}");
             }
         }
 
-        // واحدهای جدید فایل اکسل به جدول واحدهای شمارش اضافه می‌شوند
-        var usedUnits = await _db.Products.Select(p => p.Unit).Distinct().ToListAsync();
-        var known = await _db.MeasureUnits.Select(u => u.Name).ToListAsync();
-        foreach (var u in usedUnits.Where(x => !string.IsNullOrWhiteSpace(x) && !known.Contains(x)))
-            _db.MeasureUnits.Add(new Db.MeasureUnit { Name = u, CreatedAt = DateTime.Now });
-        await _db.SaveChangesAsync();
-
+        // SaveProductAsync creates each missing unit for that product's own company.
         return result;
+    }
+
+    private static decimal ReadWholePrice(ClosedXML.Excel.IXLCell cell)
+    {
+        if (cell.IsEmpty()) return 0m;
+        decimal value;
+        if (cell.DataType == ClosedXML.Excel.XLDataType.Number)
+        {
+            if (!cell.TryGetValue<decimal>(out value))
+                throw new InvalidOperationException("قیمت عدد معتبری نیست.");
+        }
+        else
+        {
+            var raw = Fa.ToEn(cell.GetString()).Trim().Replace('\u066C', ',');
+            // Text cells must be digits or properly grouped thousands. A comma
+            // used as a decimal separator must never turn 100,50 into 10050.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(raw, @"^(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)$") ||
+                !decimal.TryParse(raw.Replace(",", ""), NumberStyles.None, CultureInfo.InvariantCulture, out value))
+                throw new InvalidOperationException($"قیمت «{cell.GetString()}» باید به ریال صحیح و بدون اعشار باشد.");
+        }
+        ShopPricingService.ValidatePrice(value);
+        return value;
     }
 
     private static decimal ReadDecimal(ClosedXML.Excel.IXLCell cell)
@@ -1087,6 +1111,28 @@ public class InventoryService : IInventoryService
 
     // =============================== کالا ===============================
 
+    private async Task<Dictionary<(int? CompanyId, string Name), bool?>> ResolveUnitRulesAsync(IEnumerable<Db.Product> source)
+    {
+        var products = source.Where(p => !p.IsService).ToList();
+        var names = products.Select(p => (p.Unit ?? "").Trim()).Where(n => n.Length > 0).Distinct().ToList();
+        if (names.Count == 0) return new();
+        var rows = await _db.MeasureUnits.AsNoTracking().Where(u => names.Contains(u.Name))
+            .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync();
+        var result = rows.GroupBy(u => (u.CompanyId, u.Name))
+            .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+        foreach (var product in products)
+        {
+            var key = (product.CompanyId, (product.Unit ?? "").Trim());
+            // Missing built-in units have the same default as the startup seeder;
+            // unknown/custom names remain unresolved. Never use another company's row.
+            if (!result.ContainsKey(key)) result[key] = ShopQuantityRules.DefaultAllowsFraction(key.Item2);
+        }
+        return result;
+    }
+
+    private static bool? UnitRule(Db.Product product, Dictionary<(int? CompanyId, string Name), bool?> rules)
+        => product.IsService ? true : rules.GetValueOrDefault((product.CompanyId, (product.Unit ?? "").Trim()));
+
     public async Task<PagedResult<Product>> GetProductsAsync(string? search, bool belowReorderOnly, int page, int pageSize, int? warehouseId = null)
     {
         var q = _db.Products.AsNoTracking().AsQueryable();
@@ -1124,9 +1170,11 @@ public class InventoryService : IInventoryService
         var warehouseIds = products.Where(p => p.WarehouseId != null).Select(p => p.WarehouseId!.Value).ToList();
         var whNames = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name);
         var effectivePrices = await ShopPricingService.ResolveAsync(_db, ids, DateTime.Today);
+        var unitRules = await ResolveUnitRulesAsync(products);
         var mapped = products.Select(p =>
         {
             var dto = ToProductDto(p, stocksByProduct[p.Id], whNames);
+            dto.AllowsFractionalQuantity = UnitRule(p, unitRules);
             if (effectivePrices.TryGetValue(p.Id, out var price)) dto.SalePrice = price.Price;
             return dto;
         }).ToList();
@@ -1180,6 +1228,7 @@ public class InventoryService : IInventoryService
         var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
         var whNames = await _db.Warehouses.ToDictionaryAsync(w => w.Id, w => w.Name);
         var dto = ToProductDto(p, stocks, whNames);
+        dto.AllowsFractionalQuantity = UnitRule(p, await ResolveUnitRulesAsync(new[] { p }));
         var prices = await ShopPricingService.ResolveAsync(_db, new[] { id }, DateTime.Today);
         if (prices.TryGetValue(id, out var price)) dto.SalePrice = price.Price;
         return dto;
@@ -1198,11 +1247,14 @@ public class InventoryService : IInventoryService
             entity = await _db.Products.FindAsync(dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
 
-        ShopPricingService.ValidatePrice(dto.SalePrice);
         var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
             : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
         decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
             ? currentPrice.Price : entity.SalePrice;
+        // Preserve unchanged legacy fractional catalog prices; new/changed prices must be whole rials.
+        if (entity.Id == 0 || previousSalePrice != dto.SalePrice) ShopPricingService.ValidatePrice(dto.SalePrice);
+        if (!dto.IsService && (entity.Id == 0 || entity.PurchasePrice != dto.PurchasePrice))
+            ShopPricingService.ValidatePrice(dto.PurchasePrice);
 
         if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
             throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
@@ -1228,6 +1280,15 @@ public class InventoryService : IInventoryService
         else
         {
             entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
+            var unitOwner = entity.Id == 0
+                ? (_db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : _db.ResolveDefaultCompanyId())
+                : entity.CompanyId;
+            // Do not borrow a same-named unit from another company, even when
+            // this service is invoked without an HTTP company filter.
+            if ((unitOwner.HasValue || !_db.ResolveDefaultCompanyId().HasValue) &&
+                !await _db.MeasureUnits.AnyAsync(u => u.CompanyId == unitOwner && u.Name == entity.Unit))
+                _db.MeasureUnits.Add(new Db.MeasureUnit { CompanyId = unitOwner, Name = entity.Unit,
+                    AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(entity.Unit), CreatedAt = DateTime.Now });
             entity.Category = NullIfEmpty(dto.Category);
 
             // Keep the keyed and legacy text representation consistent when the shop form changes group.
@@ -1272,7 +1333,8 @@ public class InventoryService : IInventoryService
             entity.Code = code;
         }
 
-        if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
+        if (entity.Id == 0 || previousSalePrice != dto.SalePrice ||
+            (!currentPrices.ContainsKey(entity.Id) && ShopInvoiceAmounts.IsWholePrice(dto.SalePrice)))
             ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
         await _db.SaveChangesAsync();
         return await GetProductAsync(entity.Id) ?? throw new InvalidOperationException();
@@ -1629,6 +1691,8 @@ public class InventoryService : IInventoryService
         await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
+            var wholeRials = (trackShopCash || cmd.ChequeCharge is not null) && (cmd.Type is TransactionType.Sale or TransactionType.Purchase);
+            if (wholeRials) await ValidateShopLineRulesAsync(cmd, products);
             var txn = new Db.Transaction
             {
                 ShopCashLedgerEnabled = trackShopCash && cmd.ChequeCharge is null && (cmd.Type is TransactionType.Sale or TransactionType.Purchase),
@@ -1658,8 +1722,7 @@ public class InventoryService : IInventoryService
                 {
                     throw new InvalidOperationException("ورودی‌های ماشین‌حساب اولیه تاخیر تادیه چک معتبر نیست.");
                 }
-                var goodsTotal = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent,
-                    l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
+                var goodsTotal = ShopInvoiceLineMath.Total(cmd.Lines, wholeRials);
                 if (income <= 0 || chargeInput.CalculatorBaseAmount > goodsTotal)
                     throw new InvalidOperationException("مبنای ماشین‌حساب یا سود اولیه معتبر نیست.");
                 if (chargeInput.ConfirmedCreditDueDate?.Date != cmd.DueDate?.Date)
@@ -1669,39 +1732,19 @@ public class InventoryService : IInventoryService
 
             // پرداخت سند (خرید و فروش): نقدی / نسیه / چک / اقساط
             if (cmd.Type is TransactionType.Sale or TransactionType.Purchase)
-                ApplyPayment(txn, cmd, paymentTotal);
+                ApplyPayment(txn, cmd, paymentTotal ?? ShopInvoiceLineMath.Total(cmd.Lines, wholeRials));
 
             foreach (var l in cmd.Lines)
             {
-                var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
-                decimal discAmount = 0;
-                decimal discPercent = 0;
-                if (l.DiscountIsAmount)
-                {
-                    discAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
-                    discPercent = gross > 0 ? Math.Round(discAmount * 100m / gross, 2) : 0;
-                }
-                else if (l.DiscountPercent > 0)
-                {
-                    discPercent = Math.Clamp(l.DiscountPercent, 0, 100);
-                    discAmount = Math.Round(gross * discPercent / 100m, 0);
-                }
-
+                var amounts = ShopInvoiceLineMath.Calculate(l, wholeRials);
                 txn.Lines.Add(new Db.TransactionLine
                 {
-                    ProductId = l.ProductId,
-                    Quantity = l.Quantity,
-                    Price = l.Price,
-                    DiscountPercent = discPercent,
-                    DiscountAmount = discAmount,
-                    DiscountIsAmount = l.DiscountIsAmount,
-                    GrossAmount = gross,
-                    VatValue = l.VatValue ?? 0,
-                    VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
-                    UnitCostSnapshot = l.UnitCostSnapshot
+                    ProductId = l.ProductId, Quantity = l.Quantity, Price = l.Price,
+                    DiscountPercent = amounts.DiscountPercent, DiscountAmount = amounts.DiscountAmount,
+                    DiscountIsAmount = amounts.DiscountIsAmount, GrossAmount = amounts.Gross,
+                    VatValue = amounts.VatValue, VatAmount = amounts.VatAmount, UnitCostSnapshot = l.UnitCostSnapshot
                 });
-                var afterDiscount = Math.Max(0, gross - discAmount);
-                txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
+                txn.Amount += amounts.Total;
             }
 
             _db.Transactions.Add(txn);
@@ -2047,6 +2090,7 @@ public class InventoryService : IInventoryService
                 throw new InvalidOperationException("تغییر طرف حساب، تاریخ یا نوع افتتاحِ فاکتور دارای گردش نقدی مجاز نیست؛ تاریخچه باید حفظ شود.");
             var oldCash = (txn.CashAmount, txn.CashType, txn.TrsAccountId, txn.CashTrackingNumber, txn.PartyId, txn.Date);
 
+            var originalLines = txn.Lines.ToDictionary(l => l.Id);
             var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
             var existingLineCosts = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.UnitCostSnapshot));
             var existingLineVat = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.VatValue));
@@ -2060,7 +2104,7 @@ public class InventoryService : IInventoryService
                 throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است؛ فقط مقدار قدیمیِ بدون تغییر قابل حفظ است.");
 
             if (txn.Type is TransactionType.Sale or TransactionType.Purchase)
-                ApplyPayment(txn, cmd);
+                ApplyPayment(txn, cmd, ShopInvoiceLineMath.Total(cmd.Lines, true, originalLines));
             if (!txn.ShopCashLedgerEnabled &&
                 (txn.CashAmount != oldCash.CashAmount || ((oldCash.CashAmount > 0 || txn.CashAmount > 0) &&
                     (txn.CashType != oldCash.CashType || txn.TrsAccountId != oldCash.TrsAccountId ||
@@ -2071,6 +2115,7 @@ public class InventoryService : IInventoryService
             var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
             var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
             await ValidateOrderReferencesAsync(cmd, productIds, products.Count);
+            await ValidateShopLineRulesAsync(cmd, products, originalLines);
 
             // A frozen goods cost is only reusable while the stock chronology and
             // ordered goods quantities stay unchanged. A changed quantity can use
@@ -2113,7 +2158,7 @@ public class InventoryService : IInventoryService
                         var newLines = cmd.Lines.Where(l => l.ProductId == productId).ToList();
                         if (oldLines.Count != newLines.Count || oldLines.Any(old => !newLines.Any(line => line.Id == old.Id &&
                             line.Quantity == old.Quantity && line.Price == old.Price &&
-                            OrderLineAmounts.Discount(line.Quantity, line.Price, line.DiscountPercent, line.DiscountAmount, line.DiscountIsAmount) == old.DiscountAmount)))
+                            ShopInvoiceLineMath.Calculate(line, true, old).DiscountAmount == old.DiscountAmount)))
                             throw new InvalidOperationException("سطر خریدی که منبع سابقه قیمت فروش است قابل تغییر مستقیم نیست؛ سابقه باید حفظ شود.");
                     }
                 }
@@ -2162,35 +2207,16 @@ public class InventoryService : IInventoryService
                     (!products.TryGetValue(l.ProductId, out var costProduct) || !costProduct.IsService))
                     unitCostSnapshot = null;
 
-                var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
-                decimal discAmount = 0;
-                decimal discPercent = 0;
-                if (l.DiscountIsAmount)
-                {
-                    discAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
-                    discPercent = gross > 0 ? Math.Round(discAmount * 100m / gross, 2) : 0;
-                }
-                else if (l.DiscountPercent > 0)
-                {
-                    discPercent = Math.Clamp(l.DiscountPercent, 0, 100);
-                    discAmount = Math.Round(gross * discPercent / 100m, 0);
-                }
-
+                var oldLine = originalLines.TryGetValue(l.Id, out var existingLine) ? existingLine : null;
+                var amounts = ShopInvoiceLineMath.Calculate(l, true, oldLine);
                 txn.Lines.Add(new Db.TransactionLine
                 {
-                    ProductId = l.ProductId,
-                    Quantity = l.Quantity,
-                    Price = l.Price,
-                    DiscountPercent = discPercent,
-                    DiscountAmount = discAmount,
-                    DiscountIsAmount = l.DiscountIsAmount,
-                    GrossAmount = gross,
-                    VatValue = l.VatValue ?? 0,
-                    VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0),
-                    UnitCostSnapshot = unitCostSnapshot
+                    ProductId = l.ProductId, Quantity = l.Quantity, Price = l.Price,
+                    DiscountPercent = amounts.DiscountPercent, DiscountAmount = amounts.DiscountAmount,
+                    DiscountIsAmount = amounts.DiscountIsAmount, GrossAmount = amounts.Gross,
+                    VatValue = amounts.VatValue, VatAmount = amounts.VatAmount, UnitCostSnapshot = unitCostSnapshot
                 });
-                var afterDiscount = Math.Max(0, gross - discAmount);
-                txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
+                txn.Amount += amounts.Total;
             }
             if (hasCashHistory && txn.Amount != originalAmount)
                 throw new InvalidOperationException("تغییر مبلغ کالای فاکتور دارای گردش نقدی مستقیم مجاز نیست؛ تاریخچه باید حفظ شود.");
@@ -2506,6 +2532,32 @@ public class InventoryService : IInventoryService
     /// اگر بیشتر باشد، مازاد همان سود مدت‌دار (چک/اقساط) است و پذیرفته می‌شود.
     /// روش پرداخت مؤثر خودکار تعیین می‌شود: تک‌جزء ⇒ همان جزء، چندجزء ⇒ Mixed.
     /// </summary>
+    private async Task ValidateShopLineRulesAsync(OrderCommand cmd, Dictionary<int, Db.Product> products,
+        IReadOnlyDictionary<int, Db.TransactionLine>? originals = null)
+    {
+        var existingIds = cmd.Lines.Where(l => l.Id > 0).Select(l => l.Id).ToList();
+        if (existingIds.Count != existingIds.Distinct().Count())
+            throw new InvalidOperationException("شناسه سطر فاکتور تکراری است.");
+        var rules = await ResolveUnitRulesAsync(products.Values);
+        foreach (var line in cmd.Lines)
+        {
+            var old = originals is not null && originals.TryGetValue(line.Id, out var saved) ? saved : null;
+            if (line.Quantity > ShopInvoiceAmounts.MaximumQuantity &&
+                !(old is not null && old.ProductId == line.ProductId && old.Quantity == line.Quantity))
+                throw new InvalidOperationException("مقدار سطر خارج از محدوده قابل ثبت است.");
+            if (!ShopInvoiceLineMath.SameBasis(line, old) && !ShopInvoiceAmounts.IsWholePrice(line.Price))
+                throw new InvalidOperationException("قیمت هر سطر باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد.");
+            if (!products.TryGetValue(line.ProductId, out var product) || product.IsService) continue;
+            // Preserve a historical quantity only when that same product and quantity remain unchanged.
+            if (old is not null && old.ProductId == line.ProductId && old.Quantity == line.Quantity) continue;
+            var allows = UnitRule(product, rules);
+            if (!allows.HasValue)
+                throw new InvalidOperationException($"نوع مقدار واحد «{product.Unit}» برای «{product.Name}» مشخص نیست؛ آن را در واحدهای شمارش تعیین کنید.");
+            if (!allows.Value && !ShopQuantityRules.IsWhole(line.Quantity))
+                throw new InvalidOperationException($"مقدار «{product.Name}» با واحد «{product.Unit}» باید عدد صحیح باشد.");
+        }
+    }
+
     private static void ValidateTaxedLinePrecision(IEnumerable<OrderLineInput> lines)
     {
         // SQL Server stores price and discount percent with two decimals. Reject values
@@ -3132,7 +3184,7 @@ public class InventoryService : IInventoryService
         ShopPricingService.ValidatePurchasePriceInputs(cmd);
         if (cmd.ChequeCharge is null || cmd.Type != TransactionType.Sale)
             throw new InvalidOperationException("ویرایش فاکتور سوددار نیازمند اطلاعات تاخیر تادیه چک است.");
-        if (cmd.Lines.Count == 0 || cmd.Lines.Any(l => l.Quantity <= 0 || l.Quantity != decimal.Round(l.Quantity, 2)) ||
+        if (cmd.Lines.Count == 0 || cmd.Lines.Any(l => l.Quantity <= 0) ||
             cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)) ||
             cmd.WarehouseId <= 0 || cmd.PartyId <= 0)
             throw new InvalidOperationException("مشخصات اقلام، انبار یا مشتری برای ویرایش فاکتور معتبر نیست.");
@@ -3157,11 +3209,18 @@ public class InventoryService : IInventoryService
             await SaleChequeCancellationService.VoidInTransactionAsync(
                 _db, saleId, Guid.NewGuid(), voidDate, $"ابطال سیستمی جهت ویرایش فاکتور {oldSale.Number}", user);
 
-            foreach (var line in cmd.Lines) line.VatValue ??= 0;
+            var originalLines = oldSale.Lines.ToDictionary(l => l.Id);
+            if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2) &&
+                (!originalLines.TryGetValue(l.Id, out var oldQuantity) || oldQuantity.ProductId != l.ProductId || oldQuantity.Quantity != l.Quantity)))
+                throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است؛ فقط مقدار قدیمیِ بدون تغییر قابل حفظ است.");
+            foreach (var line in cmd.Lines)
+                line.VatValue ??= originalLines.TryGetValue(line.Id, out var oldVat) && oldVat.ProductId == line.ProductId
+                    ? oldVat.VatValue : 0m;
             ValidateTaxedLinePrecision(cmd.Lines);
             var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
             var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
             await ValidateOrderReferencesAsync(cmd, productIds, products.Count);
+            await ValidateShopLineRulesAsync(cmd, products, originalLines);
             var settings = await GetSettingsAsync();
 
             foreach (var l in cmd.Lines)
@@ -3192,8 +3251,7 @@ public class InventoryService : IInventoryService
             var chargeInput = cmd.ChequeCharge;
             decimal income = SaleChequeInitialCalculation.Calculate(
                 chargeInput.CalculatorBaseAmount, chargeInput.CalculatorRatePercent, chargeInput.CalculatorMonths);
-            var goodsTotal = cmd.Lines.Sum(l => OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent,
-                l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0));
+            var goodsTotal = ShopInvoiceLineMath.Total(cmd.Lines, true, originalLines);
             if (income <= 0 || chargeInput.CalculatorBaseAmount > goodsTotal)
                 throw new InvalidOperationException("مبنای ماشین‌حساب یا سود اولیه معتبر نیست.");
             if (chargeInput.ConfirmedCreditDueDate?.Date != cmd.DueDate?.Date)
@@ -3223,27 +3281,16 @@ public class InventoryService : IInventoryService
 
             foreach (var l in cmd.Lines)
             {
-                var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
-                decimal discAmount = 0, discPercent = 0;
-                if (l.DiscountIsAmount)
-                {
-                    discAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
-                    discPercent = gross > 0 ? Math.Round(discAmount * 100m / gross, 2) : 0;
-                }
-                else if (l.DiscountPercent > 0)
-                {
-                    discPercent = Math.Clamp(l.DiscountPercent, 0, 100);
-                    discAmount = Math.Round(gross * discPercent / 100m, 0);
-                }
-                var afterDiscount = Math.Max(0, gross - discAmount);
-                var vatAmt = OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0);
+                var oldLine = originalLines.TryGetValue(l.Id, out var existingLine) ? existingLine : null;
+                var amounts = ShopInvoiceLineMath.Calculate(l, true, oldLine);
                 newTxn.Lines.Add(new Db.TransactionLine
                 {
                     ProductId = l.ProductId, Quantity = l.Quantity, Price = l.Price,
-                    DiscountPercent = discPercent, DiscountAmount = discAmount, DiscountIsAmount = l.DiscountIsAmount,
-                    GrossAmount = gross, VatValue = l.VatValue ?? 0, VatAmount = vatAmt
+                    DiscountPercent = amounts.DiscountPercent, DiscountAmount = amounts.DiscountAmount,
+                    DiscountIsAmount = amounts.DiscountIsAmount, GrossAmount = amounts.Gross,
+                    VatValue = amounts.VatValue, VatAmount = amounts.VatAmount
                 });
-                newTxn.Amount += afterDiscount + vatAmt;
+                newTxn.Amount += amounts.Total;
             }
 
             _db.Transactions.Add(newTxn);

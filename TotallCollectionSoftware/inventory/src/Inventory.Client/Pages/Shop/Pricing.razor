@@ -28,6 +28,10 @@ else
                     <input id="minimumProfit" class="form-check-input" type="checkbox" @bind="policy.MinimumProfitEnabled" disabled="@(!CanManage || busy)" />
                     <label for="minimumProfit" class="form-check-label">جلوگیری از فروش کمتر از حداقل سود</label>
                 </div>
+                <p class="pricing-intro" role="status">وضعیت ذخیره‌شده برای شرکت فعال: <strong>@(savedMinimumEnabled ? "فعال" : "غیرفعال")</strong>
+                    @if (savedMinimumEnabled) { <span> · @savedMarkup.ToString("0.##")٪ روی بهای خرید</span> }
+                    <span> — تغییر کلید یا درصد تا ذخیره اعمال نمی‌شود.</span>
+                </p>
                 <div class="pricing-policy-row">
                     <div><label class="form-label" for="markup">حداقل درصد روی بهای خرید</label>
                         <div class="input-group"><input id="markup" class="form-control num" dir="ltr" inputmode="decimal" @bind="markupText" disabled="@(!CanManage || busy)" /><span class="input-group-text">٪</span></div>
@@ -40,7 +44,7 @@ else
                 }
                 <details class="pricing-note">
                     <summary>جزئیات محاسبه حداقل سود</summary>
-                    <p>مثال: خرید ۱۰۰ و سود ۲۰٪ یعنی حداقل ۱۲۰، پیش از کسر پورسانت. کنترل پس از تخفیف و کسر پورسانت است؛ ارزش افزوده و تاخیر تادیه چک در آن محاسبه نمی‌شوند. برای اسناد هم‌تاریخ، ترتیب ثبت سند ملاک است.</p>
+                    <p>مثال: خرید ۱۰۰ و سود ۲۰٪ یعنی حداقل ۱۲۰، پیش از کسر پورسانت. کنترل پس از تخفیف و کسر پورسانت است؛ ارزش افزوده و تاخیر تادیه چک در آن محاسبه نمی‌شوند. برای اسناد هم‌تاریخ، ترتیب ثبت سند ملاک است. در فروش با F7 می‌توانید مبنای واقعی تا تاریخ فاکتور را با مجوز مشاهده سود بررسی کنید.</p>
                 </details>
                 @if (policy.UpdatedAt.HasValue) { <div class="pricing-muted">آخرین تغییر: @policy.UpdatedAt.Value.ToFa() · @(policy.UpdatedBy ?? "—")</div> }
             </div>
@@ -100,6 +104,8 @@ else
     private bool loading = true, busy;
     private string? error;
     private ShopPricingPolicyDto policy = new();
+    private bool savedMinimumEnabled;
+    private decimal savedMarkup;
     private string markupText = "0", percentText = "";
     private List<LookupItem> categories = new();
     private List<ShopPriceHistoryItem> history = new();
@@ -119,6 +125,8 @@ else
             var categoriesTask = PricingClient.GetCategoriesAsync();
             var historyTask = PricingClient.GetHistoryAsync();
             policy = await policyTask;
+            savedMinimumEnabled = policy.MinimumProfitEnabled;
+            savedMarkup = policy.MinimumMarkupPercent;
             markupText = policy.MinimumMarkupPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             categories = await categoriesTask;
             history = await historyTask;
@@ -134,7 +142,14 @@ else
     {
         if (!TryPercent(markupText, out var markup) || markup > 10000) { Toast.ShowAtTopRight("درصد سود معتبر نیست.", "error"); return; }
         busy = true;
-        try { policy.MinimumMarkupPercent = markup; policy = await PricingClient.SavePolicyAsync(policy); Toast.ShowAtTopRight("تنظیم حداقل سود ذخیره شد.", "success"); }
+        try
+        {
+            policy.MinimumMarkupPercent = markup;
+            policy = await PricingClient.SavePolicyAsync(policy);
+            savedMinimumEnabled = policy.MinimumProfitEnabled;
+            savedMarkup = policy.MinimumMarkupPercent;
+            Toast.ShowAtTopRight(savedMinimumEnabled ? "حداقل سود فعال و ذخیره شد." : "تنظیم ذخیره شد؛ کنترل حداقل سود غیرفعال است.", "success");
+        }
         catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
         finally { busy = false; }
     }

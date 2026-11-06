@@ -34,7 +34,8 @@ class RegistrationContract(unittest.TestCase):
         self.assertNotIn('SaleChequeCharge:ExperimentalEnabled', s)
         for part in ('cmd.ChequeCharge is not null',
                      'IsolationLevel.Serializable', 'SaleChequeChargeRegistration.RegisterAsync',
-                     'ApplyPayment(txn, cmd, paymentTotal)', 'await trx.CommitAsync()'):
+                     'ApplyPayment(txn, cmd, paymentTotal ?? ShopInvoiceLineMath.Total(cmd.Lines, wholeRials))',
+                     'var goodsTotal = ShopInvoiceLineMath.Total(cmd.Lines, wholeRials)', 'await trx.CommitAsync()'):
             self.assertIn(part, section)
         self.assertLess(section.index('SaleChequeChargeRegistration.RegisterAsync'), section.index('await trx.CommitAsync()'))
 

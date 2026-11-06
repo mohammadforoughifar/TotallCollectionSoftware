@@ -15,6 +15,12 @@ Check(!ShopMinimumProfit.Meets(500, 1, 0, 20, 0, 0), "missing or zero cost is no
 Check(!ShopMinimumProfit.Meets(120, 0, 100, 20, 0, 0), "zero quantity rejected");
 Check(!ShopMinimumProfit.Meets(200, 1, 100, 20, 101, 100), "invalid commission rejected");
 Check(!ShopMinimumProfit.Meets(200, 1, 100, 20, 100, 100), "100 percent commission cannot meet positive markup");
+Check(!ShopMinimumProfit.MeetsPurchase(76_000_000m, 1m, 65_000_000m, 1m, 20m, 0m, 0m), "76m is below a 20% markup on 65m");
+Check(ShopMinimumProfit.MeetsPurchase(78_000_000m, 1m, 65_000_000m, 1m, 20m, 0m, 0m), "78m meets that floor");
+Check(!ShopMinimumProfit.MeetsPurchase(78_000_000m, 1m, 65_000_000m, 1m, 20m, 10m, 65_000_000m), "commission is deducted");
+Check(ShopMinimumProfit.MeetsPurchase(80_000_000m, 1m, 65_000_000m, 1m, 20m, 10m, 65_000_000m), "commission-adjusted example passes");
+Check(ShopMinimumProfit.MeetsPurchase(240m, 3m, 200m, 3m, 20m, 0m, 0m), "exact recurring cost meets boundary");
+Check(!ShopMinimumProfit.MeetsPurchase(239.99m, 3m, 200m, 3m, 20m, 0m, 0m), "exact recurring cost rejects below boundary");
 var random = new Random(29041);
 for (var i = 0; i < 10000; i++)
 {

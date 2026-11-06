@@ -24,9 +24,12 @@ class VatContract(unittest.TestCase):
 
     def test_server_create_update_payment_and_legacy_compatibility(self):
         service = read('Inventory.Api/Services/Catalog/InventoryService.cs')
-        self.assertEqual(2, service.count('VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discAmount), l.VatValue ?? 0)'))
-        self.assertEqual(2, service.count('txn.Amount += afterDiscount + OrderLineAmounts.Vat(afterDiscount, l.VatValue ?? 0)'))
-        self.assertIn('OrderLineAmounts.Total(l.Quantity, l.Price, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount, l.VatValue ?? 0)', service)
+        line_math = read('Inventory.Api/Services/Catalog/ShopInvoiceLineMath.cs')
+        self.assertIn('OrderLineAmounts.Vat(Math.Max(0m, gross - discount), vatValue)', line_math)
+        self.assertIn('original.VatAmount', line_math)
+        self.assertGreaterEqual(service.count('VatAmount = amounts.VatAmount'), 3)
+        self.assertGreaterEqual(service.count('ShopInvoiceLineMath.Total(cmd.Lines'), 3)
+        self.assertIn('ShopInvoiceLineMath.Calculate(l, true, oldLine)', service)
         self.assertIn('line.VatValue ??= existingLineVat.TryGetValue', service)
         self.assertIn('oldVat.ProductId == line.ProductId', service)
         self.assertIn('l.Profit = decimal.Round(l.AfterDiscount', service)

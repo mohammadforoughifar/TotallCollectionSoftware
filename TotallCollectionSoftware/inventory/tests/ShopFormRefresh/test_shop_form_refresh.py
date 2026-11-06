@@ -95,10 +95,11 @@ class PriceAndDeclutterContracts(unittest.TestCase):
         self.assertIn('!TryNewSalePrice(l.NewSalePriceText, out _)', FORM)
         self.assertIn('NewSalePrice = Type == TransactionType.Purchase', FORM)
         self.assertIn('Fa.ToEn(value)', PRICE)
-        self.assertIn('if (raw.Length == 0) return typed;', PRICE)
-        self.assertIn('!DigitsOnly(whole) || !DigitsOnly(fraction)', PRICE)
+        self.assertIn('if (!TryParts(value, out var typed', PRICE)
+        self.assertIn('!DigitsOnly(groups[0])', PRICE)
         self.assertIn('NumberStyles.AllowDecimalPoint', PRICE)
-        self.assertIn('decimal.Round(result, 2) == result', PRICE)
+        self.assertIn('ShopInvoiceAmounts.IsWholePrice(result)', PRICE)
+        self.assertIn('TryParseLegacy', PRICE)
 
     def test_redundant_hints_removed_but_warnings_and_description_fields_remain(self):
         opening = read('Pages/Shop/OpeningBalanceWizard.razor')

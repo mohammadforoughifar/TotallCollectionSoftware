@@ -106,6 +106,7 @@ public interface IOrderService
 {
     Task<bool> CanManagePricingAsync();
     Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date);
+    Task<ShopMinimumProfitBasisDto> GetMinimumProfitBasisAsync(int productId, DateTime date, int? saleId);
 
     /// <summary>مجوز فعلی سمت سرور برای نمایش سود فروش.</summary>
     Task<bool> CanViewProfitAsync();

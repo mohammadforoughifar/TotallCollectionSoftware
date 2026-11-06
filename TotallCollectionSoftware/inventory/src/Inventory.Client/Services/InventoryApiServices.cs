@@ -232,6 +232,10 @@ public class OrderService : IOrderService
     public Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date) =>
         _api.GetAsync<DatedSalePriceDto>($"api/orders/dated-sale-price?productId={productId}&date={date:yyyy-MM-dd}");
 
+    public Task<ShopMinimumProfitBasisDto> GetMinimumProfitBasisAsync(int productId, DateTime date, int? saleId)
+        => _api.GetAsync<ShopMinimumProfitBasisDto>($"api/orders/minimum-profit-basis?productId={productId}&date={date:yyyy-MM-dd}" +
+            (saleId is > 0 ? $"&saleId={saleId.Value}" : ""));
+
     public Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000)
         => _api.GetAsync<PagedResult<Product>>($"api/orders/invoice-products?type={(int)type}&page={page}&pageSize={pageSize}");
     public Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false)

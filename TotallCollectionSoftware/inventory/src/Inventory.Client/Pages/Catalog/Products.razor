@@ -7,6 +7,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@using Inventory.Client.Pages.Orders
 
 <PageTitle>کالاها</PageTitle>
 
@@ -112,10 +113,10 @@
                                     }
                                 </td>
                                 <td>@p.Unit</td>
-                                <td class="text-start num">@p.PurchasePrice.Money()</td>
-                                <td class="text-start num fw-500">@p.SalePrice.Money()</td>
-                                <td class="text-start num">@p.TotalStock.Num()</td>
-                                <td class="text-start num">@p.ReorderPoint.Num()</td>
+                                <td class="text-start num">@p.PurchasePrice.MoneyExact()</td>
+                                <td class="text-start num fw-500">@p.SalePrice.MoneyExact()</td>
+                                <td class="text-start num">@p.TotalStock.Qty()</td>
+                                <td class="text-start num">@p.ReorderPoint.Qty()</td>
                                 <td class="num fs-8">@p.CreatedAt.ToFa()</td>
                                 <td>
                                     @if (p.BelowReorder)
@@ -163,16 +164,16 @@
                         <div class="m-card-body">
                             <div class="m-card-row">
                                 <span><i class="bi bi-boxes text-muted"></i> موجودی</span>
-                                <b class="num">@p.TotalStock.Num()</b>
+                                <b class="num">@p.TotalStock.Qty()</b>
                             </div>
                             <div class="m-card-money">
                                 <div>
                                     <div class="fs-8 text-muted">قیمت خرید</div>
-                                    <div class="num fw-500">@p.PurchasePrice.Money()</div>
+                                    <div class="num fw-500">@p.PurchasePrice.MoneyExact()</div>
                                 </div>
                                 <div class="text-end">
                                     <div class="fs-8 text-muted">قیمت فروش</div>
-                                    <div class="num fw-800 text-primary">@p.SalePrice.Money()</div>
+                                    <div class="num fw-800 text-primary">@p.SalePrice.MoneyExact()</div>
                                 </div>
                             </div>
                         </div>
@@ -251,11 +252,11 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">قیمت خرید (ریال)</label>
-                <input class="form-control num" value="@fPurchase" @oninput="@(e => fPurchase = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fPurchase" @oninput="@(e => fPurchase = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
             <div class="col-md-3">
                 <label class="form-label">قیمت فروش (ریال)</label>
-                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">نقطه سفارش (حداقل موجودی)</label>
@@ -270,7 +271,7 @@
         {
             <div class="col-md-4">
                 <label class="form-label">قیمت خدمات (ریال) <span class="text-danger">*</span></label>
-                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
         }
         <div class="col-md-4">
@@ -602,8 +603,10 @@
         // اگر گروه کالای فعلی در فهرست گروه‌های فعال نبود، موقتاً اضافه می‌شود تا انتخاب حفظ شود
         if (!string.IsNullOrWhiteSpace(p.Category) && !categories.Any(c => c.Name == p.Category))
             categories.Add(new ProductCategory { Name = p.Category });
-        fSale = Fa.Money(p.SalePrice); fPurchase = Fa.Money(p.PurchasePrice);
-        fReorder = Fa.Money(p.ReorderPoint); fMax = Fa.Money(p.MaxStock);
+        // Do not round a pre-existing fractional price merely by opening the editor.
+        fSale = Fa.MoneyExact(p.SalePrice); fPurchase = Fa.MoneyExact(p.PurchasePrice);
+        fReorder = Fa.Digits(p.ReorderPoint.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
+        fMax = Fa.Digits(p.MaxStock.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
         showModal = true;
     }
 
@@ -618,10 +621,24 @@
             return;
         }
 
+        // Blank optional prices mean zero, as before. Keep an unchanged legacy
+        // fractional value, but require whole rials for every new/changed price.
+        var saleText = string.IsNullOrWhiteSpace(fSale) ? "0" : fSale;
+        var purchaseText = string.IsNullOrWhiteSpace(fPurchase) ? "0" : fPurchase;
+        decimal purchasePrice = 0m;
+        if (!PurchaseSalePriceInput.TryParseLegacy(saleText, out var salePrice) ||
+            (!PurchaseSalePriceInput.TryParse(saleText, out _) &&
+             !(editing && salePrice == form.SalePrice && !ShopInvoiceAmounts.IsWholePrice(form.SalePrice))))
+        { Toast.Error("قیمت فروش باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."); return; }
+        if (!form.IsService && (!PurchaseSalePriceInput.TryParseLegacy(purchaseText, out purchasePrice) ||
+            (!PurchaseSalePriceInput.TryParse(purchaseText, out _) &&
+             !(editing && purchasePrice == form.PurchasePrice && !ShopInvoiceAmounts.IsWholePrice(form.PurchasePrice)))))
+        { Toast.Error("قیمت خرید باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."); return; }
+
         if (form.IsService)
         {
             // خدمات: فقط نام، کد و قیمت — بقیه فیلدها پاک می‌شوند
-            form.SalePrice = Fa.ParseDecimal(fSale);
+            form.SalePrice = salePrice;
             if (form.SalePrice <= 0) { Toast.Error("قیمت خدمات را وارد کنید."); return; }
             form.PurchasePrice = 0;
             form.ReorderPoint = 0;
@@ -633,8 +650,8 @@
         }
         else
         {
-            form.SalePrice = Fa.ParseDecimal(fSale);
-            form.PurchasePrice = Fa.ParseDecimal(fPurchase);
+            form.SalePrice = salePrice;
+            form.PurchasePrice = purchasePrice;
             form.ReorderPoint = Fa.ParseDecimal(fReorder);
             form.MaxStock = Fa.ParseDecimal(fMax);
             form.WarehouseId = int.TryParse(prodWarehouseIdStr, out var pw) && pw > 0 ? pw : null;

@@ -28,6 +28,7 @@ public class SystemCompaniesController : ControllerBase
         _db.SystemCompanies.Add(c);
         await _db.SaveChangesAsync();
         await SalesCompanySchemaV1.BackfillAsync(_db);
+        if (c.IsActive) await Seeder.EnsureUnitsForCompanyAsync(_db, c.Id);
         await tx.CommitAsync();
         return Ok(new { id = c.Id });
     }
@@ -43,7 +44,11 @@ public class SystemCompaniesController : ControllerBase
         item.Name = c.Name; item.Code = c.Code; item.Phone = c.Phone; item.Address = c.Address;
         item.IsActive = c.IsActive; item.LetterheadFileName = c.LetterheadFileName;
         await _db.SaveChangesAsync();
-        if (activating) await SalesCompanySchemaV1.BackfillAsync(_db);
+        if (activating)
+        {
+            await SalesCompanySchemaV1.BackfillAsync(_db);
+            await Seeder.EnsureUnitsForCompanyAsync(_db, item.Id);
+        }
         await tx.CommitAsync();
         return Ok();
     }

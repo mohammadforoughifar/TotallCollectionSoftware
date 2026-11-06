@@ -326,10 +326,10 @@
                                 </td>
                                 <td>@l.Unit</td>
                                 <td class="text-start num">
-                                    @l.Quantity.Num()
+                                    @l.Quantity.Qty()
                                     @if (l.ReturnedQuantity > 0)
                                     {
-                                        <span class="badge badge-soft-warning fs-8 me-1">برگشتی: @l.ReturnedQuantity.Num()</span>
+                                        <span class="badge badge-soft-warning fs-8 me-1">برگشتی: @l.ReturnedQuantity.Qty()</span>
                                     }
                                 </td>
                                 <td class="text-start num">@(UseExactAmounts(viewing) ? l.Price.MoneyExact() : l.Price.Money())</td>
@@ -458,9 +458,9 @@
                                     <tr>
                                         <td class="doc-number fw-700">@ret.ReturnNumber</td>
                                         <td>@ret.Date.ToFa()</td>
-                                        <td class="text-start num">@((ret.GoodsAmount + ret.VatAmount).Money())</td>
-                                        <td class="text-start num">@ret.IncomeAmount.Money()</td>
-                                        <td class="text-start num fw-700">@ret.TotalCredit.Money()</td>
+                                        <td class="text-start num">@((ret.GoodsAmount + ret.VatAmount).MoneyExact())</td>
+                                        <td class="text-start num">@ret.IncomeAmount.MoneyExact()</td>
+                                        <td class="text-start num fw-700">@ret.TotalCredit.MoneyExact()</td>
                                         <td class="fs-8">@DecisionLabel(ret.Decision)</td>
                                     </tr>
                                 }
@@ -523,9 +523,9 @@
                             var currentQty = returnQuantities.GetValueOrDefault(line.Id);
                             <tr>
                                 <td>@line.ProductName <span class="text-muted fs-8">(@line.Unit)</span></td>
-                                <td class="text-start num">@line.Quantity.Num()</td>
-                                <td class="text-start num">@line.ReturnedQuantity.Num()</td>
-                                <td class="text-start num fw-700">@line.RemainingQuantity.Num()</td>
+                                <td class="text-start num">@line.Quantity.Qty()</td>
+                                <td class="text-start num">@line.ReturnedQuantity.Qty()</td>
+                                <td class="text-start num fw-700">@line.RemainingQuantity.Qty()</td>
                                 <td>
                                     <input type="number" step="0.01" min="0" max="@line.RemainingQuantity"
                                            class="form-control form-control-sm num text-start"
@@ -543,10 +543,10 @@
             {
                 <div class="alert alert-light border py-2 px-3 mb-3">
                     <div class="row g-2 fs-8">
-                        <div class="col-md-4">کالا بدون ارزش افزوده: <b class="num">@returnPreview.GoodsBeforeVat.Money()</b> ریال</div>
-                        <div class="col-md-4">ارزش افزوده برگشتی: <b class="num">@returnPreview.Vat.Money()</b> ریال</div>
-                        <div class="col-md-4">کسر نسبی تاخیر تادیه چک: <b class="num">@returnPreview.Income.Money()</b> ریال</div>
-                        <div class="col-md-4">جمع بستانکاری برگشت: <b class="num text-primary">@returnPreview.TotalCredit.Money()</b> ریال</div>
+                        <div class="col-md-4">کالا بدون ارزش افزوده: <b class="num">@returnPreview.GoodsBeforeVat.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">ارزش افزوده برگشتی: <b class="num">@returnPreview.Vat.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">کسر نسبی تاخیر تادیه چک: <b class="num">@returnPreview.Income.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">جمع بستانکاری برگشت: <b class="num text-primary">@returnPreview.TotalCredit.MoneyExact()</b> ریال</div>
                         <div class="col-md-4">مانده پیش از برگشت: <b class="num">@FormatSignedBalance(returnPreview.BalanceBefore)</b></div>
                         <div class="col-md-4">مانده پس از برگشت: <b class="num">@FormatSignedBalance(returnPreview.BalanceAfter)</b></div>
                     </div>
@@ -555,7 +555,7 @@
                 {
                     <div class="alert alert-warning py-2 px-3 mb-0">
                         <div class="fw-700 fs-8 mb-2">
-                            مبلغ چک‌های وصول‌نشده به میزان <span class="num">@returnPreview.UncollectedChequeExcess.Money()</span> ریال بیشتر از مانده جدید فاکتور است. تصمیم مشتری را ثبت کنید (چک به صورت خودکار تغییر نمی‌کند):
+                            مبلغ چک‌های وصول‌نشده به میزان <span class="num">@returnPreview.UncollectedChequeExcess.MoneyExact()</span> ریال بیشتر از مانده جدید فاکتور است. تصمیم مشتری را ثبت کنید (چک به صورت خودکار تغییر نمی‌کند):
                         </div>
                         <div class="d-flex flex-column gap-2 fs-8">
                             <label class="d-flex align-items-center gap-2">
@@ -791,7 +791,9 @@
     private bool CanSeeProfit => canSeeProfit;
 
     private static bool UseExactAmounts(Order order) => order.HasChequeCharge || order.Cheques.Count > 0 ||
-        order.Installments.Count > 0 || order.TotalAmount % 1m != 0m;
+        order.Installments.Count > 0 || order.TotalAmount % 1m != 0m ||
+        order.Lines.Any(l => l.Price % 1m != 0m || l.Gross % 1m != 0m || l.DiscountAmount % 1m != 0m ||
+            l.AfterDiscount % 1m != 0m || l.VatAmount % 1m != 0m || l.Total % 1m != 0m);
 
     private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
     {
@@ -1078,7 +1080,7 @@
     };
 
     private static string FormatSignedBalance(decimal v)
-        => v < 0 ? $"{Math.Abs(v).Money()} ریال بستانکاری مشتری" : v > 0 ? $"{v.Money()} ریال بدهی مشتری" : "صفر (تسویه)";
+        => v < 0 ? $"{Math.Abs(v).MoneyExact()} ریال بستانکاری مشتری" : v > 0 ? $"{v.MoneyExact()} ریال بدهی مشتری" : "صفر (تسویه)";
 
     private Order? creditOrder;
     private SaleChequeCreditSettlementKind creditMode = SaleChequeCreditSettlementKind.RefundPayment;

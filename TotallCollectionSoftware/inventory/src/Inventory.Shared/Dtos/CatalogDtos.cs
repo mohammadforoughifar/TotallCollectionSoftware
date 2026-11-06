@@ -164,6 +164,9 @@ public class MeasureUnit
     /// <summary>فعال / غیرفعال</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>null یعنی نوع مقدار این واحد هنوز مشخص نشده است.</summary>
+    public bool? AllowsFractionalQuantity { get; set; }
+
     /// <summary>زمان ایجاد</summary>
     public DateTime CreatedAt { get; set; }
 
@@ -197,6 +200,9 @@ public class Product
 
     /// <summary>واحد شمارش (عدد، کیلوگرم، متر، ...)</summary>
     public string Unit { get; set; } = "عدد";
+
+    /// <summary>نوع مقدارِ واحد در شرکت کالا؛ null یعنی نیازمند تعیین در اطلاعات پایه.</summary>
+    public bool? AllowsFractionalQuantity { get; set; }
 
     /// <summary>گروه / دسته‌بندی کالا</summary>
     public string? Category { get; set; }

@@ -133,13 +133,13 @@
                                 <td class="text-secondary fw-500 fs-8">@s.WarehouseName</td>
                                 <td class="text-dark fs-8">@s.Unit</td>
                                 <td class="text-start num fw-900 fs-7.5 @(s.BelowReorder ? "text-danger" : "text-emerald")">
-                                    @s.Quantity.Num()
+                                    @s.Quantity.Qty()
                                 </td>
                                 <td class="text-start num fs-8 text-secondary">@s.AvgCost.Money()</td>
                                 <td class="text-start num fw-800 fs-8 text-dark">
                                     @((s.Quantity * s.AvgCost).Money()) <small class="fs-9 text-muted">ریال</small>
                                 </td>
-                                <td class="text-start num fs-8 text-muted">@s.ReorderPoint.Num()</td>
+                                <td class="text-start num fs-8 text-muted">@s.ReorderPoint.Qty()</td>
                                 <td class="text-center">
                                     @if (s.BelowReorder)
                                     {

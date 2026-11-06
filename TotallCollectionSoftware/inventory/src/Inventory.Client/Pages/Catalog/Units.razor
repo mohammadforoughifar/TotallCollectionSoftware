@@ -56,6 +56,7 @@
                     <thead>
                         <tr>
                             <th>نام واحد</th>
+                            <th>نوع مقدار</th>
                             <th class="text-start">تعداد کالا</th>
                             <th>تاریخ ایجاد</th>
                             <th>وضعیت</th>
@@ -67,6 +68,7 @@
                         {
                             <tr>
                                 <td class="fw-500"><i class="bi bi-rulers text-muted ms-1"></i> @u.Name</td>
+                                <td><span class="@(u.AllowsFractionalQuantity.HasValue ? "text-muted" : "text-danger fw-500")">@QuantityKind(u.AllowsFractionalQuantity)</span></td>
                                 <td class="text-start num">@u.ProductCount.Num()</td>
                                 <td class="num">@u.CreatedAt.ToFa()</td>
                                 <td>
@@ -104,6 +106,7 @@
                                         <span class="badge badge-soft-muted fs-8">غیرفعال</span>
                                     }
                                 </div>
+                                <div class="fs-8 text-muted">@QuantityKind(u.AllowsFractionalQuantity)</div>
                                 <div class="fs-8 text-muted num">ایجاد: @u.CreatedAt.ToFa()</div>
                             </div>
                             <div class="text-end">
@@ -130,6 +133,20 @@
         <div class="col-12">
             <label class="form-label">نام واحد <span class="text-danger">*</span></label>
             <input class="form-control" @bind="form.Name" placeholder="مثلاً: عدد، کیلوگرم، لیتر…" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">نوع مقدار کالا با این واحد <span class="text-danger">*</span></label>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="unitQuantity" id="unitWhole"
+                       checked="@(form.AllowsFractionalQuantity == false)" @onchange="@(() => form.AllowsFractionalQuantity = false)" />
+                <label class="form-check-label" for="unitWhole">فقط صحیح (مانند عدد)</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="unitQuantity" id="unitFractional"
+                       checked="@(form.AllowsFractionalQuantity == true)" @onchange="@(() => form.AllowsFractionalQuantity = true)" />
+                <label class="form-check-label" for="unitFractional">اعشار مجاز (مانند کیلوگرم)</label>
+            </div>
+            <div class="form-text">این انتخاب برای ثبت‌های جدید خرید و فروش است؛ اسناد قبلی تغییر نمی‌کنند.</div>
         </div>
         <div class="col-12">
             <label class="form-label d-block">وضعیت</label>
@@ -171,6 +188,12 @@
     private MeasureUnit form = new();
     private bool showModal, saving;
     private bool editing => form.Id != 0;
+    private static string QuantityKind(bool? fractional) => fractional switch
+    {
+        true => "مقدار اعشاری مجاز",
+        false => "فقط مقدار صحیح",
+        null => "نوع مقدار را تعیین کنید"
+    };
 
 
     // ---------- صفحه‌بندی ----------
@@ -222,6 +245,7 @@
         form = new MeasureUnit
         {
             Id = u.Id, Name = u.Name, IsActive = u.IsActive,
+            AllowsFractionalQuantity = u.AllowsFractionalQuantity,
             CreatedAt = u.CreatedAt, ProductCount = u.ProductCount
         };
         showModal = true;
@@ -232,6 +256,8 @@
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام واحد را وارد کنید."); return; }
+        form.AllowsFractionalQuantity ??= ShopQuantityRules.DefaultAllowsFraction(form.Name);
+        if (!form.AllowsFractionalQuantity.HasValue) { Toast.Error("نوع مقدار واحد را انتخاب کنید: فقط صحیح یا اعشار مجاز."); return; }
 
         saving = true;
         try

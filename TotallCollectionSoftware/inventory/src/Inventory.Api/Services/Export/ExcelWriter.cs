@@ -277,7 +277,7 @@ public static class ExcelWriter
             var value = i < row.Values.Count ? row.Values[i] : null;
             var cell = ws.Cell(r, c);
 
-            WriteValue(cell, value, col.Kind);
+            WriteValue(cell, value, col.Kind, col.PreserveFractionalDigits);
 
             if (i == 0 && row.Indent > 0)
                 cell.Style.Alignment.Indent = Math.Min(row.Indent * 2, 15);
@@ -301,7 +301,7 @@ public static class ExcelWriter
     }
 
     /// <summary>مقدار را با نوع درست در سلول می‌نویسد تا در اکسل قابل محاسبه بماند.</summary>
-    private static void WriteValue(IXLCell cell, object? value, ExportValueKind kind)
+    private static void WriteValue(IXLCell cell, object? value, ExportValueKind kind, bool preserveFractionalDigits)
     {
         if (value is null) { cell.Value = ""; return; }
 
@@ -311,7 +311,7 @@ public static class ExcelWriter
                 if (ExportSpec.TryDecimal(value, out var money))
                 {
                     cell.Value = money;
-                    cell.Style.NumberFormat.Format = MoneyFormat;
+                    cell.Style.NumberFormat.Format = preserveFractionalDigits ? NumberFormat : MoneyFormat;
                 }
                 else cell.Value = value.ToString();
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;

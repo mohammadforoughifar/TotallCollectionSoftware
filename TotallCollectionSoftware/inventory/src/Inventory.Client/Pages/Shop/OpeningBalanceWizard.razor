@@ -1,6 +1,7 @@
 @page "/shop/opening-balance"
 @using Inventory.Shared
 @using Inventory.Shared.Dtos
+@using Inventory.Client.Pages.Orders
 @inject IPartyService PartySvc
 @inject IOrderService OrderSvc
 @inject IWarehouseService WarehouseSvc
@@ -686,10 +687,13 @@
                                 <div class="col-6">
                                     <label class="op-label">تعداد موجودی اولیه <span class="text-danger">*</span></label>
                                     <input type="number" step="any" min="0.01" class="form-control form-control-sm text-center fw-bold num op-input" @bind="stockQuantity" />
+                                    <div class="op-helper-text text-secondary">@StockQuantityHint</div>
                                 </div>
                                 <div class="col-6">
                                     <label class="op-label">بهای تمام‌شده واحد (ریال)</label>
-                                    <MoneyInput @bind-Value="stockUnitPrice" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
+                                    <input type="text" inputmode="numeric" dir="ltr" class="form-control form-control-sm text-center fw-bold num op-input"
+                                           title="بهای واحد به ریال صحیح و بدون اعشار" value="@stockUnitPriceText"
+                                           @oninput="@(e => stockUnitPriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()))" />
                                 </div>
                             </div>
 
@@ -763,8 +767,8 @@
                                             <tr class="op-table-row">
                                                 <td class="text-secondary fw-500">@sl.WarehouseName</td>
                                                 <td class="fw-bold text-dark">@sl.ProductName</td>
-                                                <td class="text-center fw-bold num text-emerald fs-7">@sl.Quantity.Num()</td>
-                                                <td class="text-start num text-secondary fs-8">@sl.UnitPrice.Money() ریال</td>
+                                                <td class="text-center fw-bold num text-emerald fs-7">@sl.Quantity.Qty()</td>
+                                                <td class="text-start num text-secondary fs-8">@sl.UnitPrice.MoneyExact() ریال</td>
                                                 <td class="num text-muted fs-8">@sl.Date.ToFa()</td>
                                             </tr>
                                         }
@@ -1386,9 +1390,8 @@
             {
                 Toast.Success($"{excelResult.Imported} کالا با موفقیت وارد و در انبار ثبت شد.");
                 var prods = await ProductSvc.GetProductsAsync(pageSize: 1000);
-                productLookup = prods.Items.Where(p => p.IsActive && !p.IsService)
-                    .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" })
-                    .ToList();
+                stockProducts = prods.Items.Where(p => p.IsActive && !p.IsService).ToList();
+                productLookup = stockProducts.Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }).ToList();
             }
             if (excelResult.Failed > 0)
             {
@@ -1440,7 +1443,14 @@
     private int stockWarehouseId;
     private int stockProductId;
     private decimal stockQuantity = 1;
-    private decimal stockUnitPrice = 0;
+    private string stockUnitPriceText = "";
+    private List<Product> stockProducts = new();
+    private string StockQuantityHint => stockProducts.FirstOrDefault(p => p.Id == stockProductId)?.AllowsFractionalQuantity switch
+    {
+        true => "این واحد مقدار اعشاری تا دو رقم می‌پذیرد.",
+        false => "این واحد فقط مقدار صحیح می‌پذیرد.",
+        null => "نوع مقدار واحد را در واحدهای شمارش تعیین کنید."
+    };
     private string stockDescription = "موجودی اولیه اول دوره انبار";
     private List<OpeningStockLine> recentStockLines = new();
 
@@ -1481,9 +1491,8 @@
             if (warehouseLookup.Count > 0) stockWarehouseId = warehouseLookup[0].Id;
 
             var prods = await ProductSvc.GetProductsAsync(pageSize: 1000);
-            productLookup = prods.Items.Where(p => p.IsActive && !p.IsService)
-                .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" })
-                .ToList();
+            stockProducts = prods.Items.Where(p => p.IsActive && !p.IsService).ToList();
+            productLookup = stockProducts.Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }).ToList();
             if (productLookup.Count > 0) stockProductId = productLookup[0].Id;
 
             try
@@ -1758,6 +1767,14 @@
         if (stockWarehouseId <= 0) { Toast.Error("لطفاً انبار را انتخاب کنید."); return; }
         if (stockProductId <= 0) { Toast.Error("لطفاً کالا را انتخاب کنید."); return; }
         if (stockQuantity <= 0) { Toast.Error("تعداد کالا باید بزرگ‌تر از صفر باشد."); return; }
+        var product = stockProducts.FirstOrDefault(p => p.Id == stockProductId);
+        if (product?.AllowsFractionalQuantity is null) { Toast.Error("ابتدا نوع مقدار این واحد را در واحدهای شمارش تعیین کنید."); return; }
+        if (product.AllowsFractionalQuantity == false && !ShopQuantityRules.IsWhole(stockQuantity))
+        { Toast.Error("مقدار این کالا باید عدد صحیح باشد."); return; }
+        if (stockQuantity != decimal.Round(stockQuantity, 2)) { Toast.Error("مقدار کالا حداکثر دو رقم اعشار دارد."); return; }
+        var priceText = string.IsNullOrWhiteSpace(stockUnitPriceText) ? "0" : stockUnitPriceText;
+        if (!PurchaseSalePriceInput.TryParse(priceText, out var stockUnitPrice))
+        { Toast.Error("بهای واحد باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."); return; }
 
         saving = true;
         try
@@ -1782,6 +1799,7 @@
             };
 
             await OrderSvc.CreateAsync(cmd);
+            stockUnitPriceText = "";
             var prodName = productLookup.FirstOrDefault(p => p.Id == stockProductId)?.Name ?? "";
             var whName = warehouseLookup.FirstOrDefault(w => w.Id == stockWarehouseId)?.Name ?? "";
 

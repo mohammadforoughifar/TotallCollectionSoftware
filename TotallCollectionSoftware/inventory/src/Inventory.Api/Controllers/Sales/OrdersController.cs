@@ -124,7 +124,7 @@ public class OrdersController : ApiControllerBase
             Items = result.Items.Select(p => new Product
             {
                 Id = p.Id, Code = p.Code, Name = p.Name, Unit = p.Unit, IsActive = p.IsActive,
-                IsService = p.IsService, WarehouseId = p.WarehouseId, SalePrice = p.SalePrice,
+                AllowsFractionalQuantity = p.AllowsFractionalQuantity, IsService = p.IsService, WarehouseId = p.WarehouseId, SalePrice = p.SalePrice,
                 InvoiceVatValue = p.InvoiceVatValue, PurchasePrice = showCost ? p.PurchasePrice : 0,
                 AvgCost = showCost ? p.AvgCost : 0
             }).ToList(),
@@ -151,6 +151,15 @@ public class OrdersController : ApiControllerBase
     [HttpGet("suggest-price")]
     public async Task<ActionResult<decimal>> SuggestPrice([FromQuery] int productId, [FromQuery] TransactionType type)
         => Ok(await _service.SuggestPriceAsync(productId, type));
+
+    /// <summary>Basis used by the minimum-profit guard, protected like purchase cost.</summary>
+    [HttpGet("minimum-profit-basis")]
+    public async Task<ActionResult<ShopMinimumProfitBasisDto>> MinimumProfitBasis([FromQuery] int productId,
+        [FromQuery] DateTime date, [FromQuery] int? saleId, [FromServices] ShopPricingService pricing)
+    {
+        if (!await CanSeeProfitAsync()) return StatusCode(403, new { message = "مشاهده مبنای خرید به مجوز مستقل مشاهده سود نیاز دارد." });
+        return Ok(await pricing.GetMinimumProfitBasisAsync(productId, date, saleId));
+    }
 
     /// <summary>آخرین فاکتور خریدی که شامل این کالاست.</summary>
     [HttpGet("last-purchase")]

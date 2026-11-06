@@ -1,4 +1,5 @@
 using Inventory.Shared;
+using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Data;
 
@@ -13,6 +14,24 @@ public static class Seeder
         "عدد", "کیلوگرم", "گرم", "لیتر", "متر", "سانتی‌متر", "مترمربع",
         "بسته", "کارتن", "جفت", "حلقه", "دستگاه", "شاخه", "رول", "گالن", "تن"
     };
+
+    /// <summary>Seed a newly created/activated company's units inside the caller's transaction.</summary>
+    public static async Task EnsureUnitsForCompanyAsync(AppDbContext db, int companyId)
+    {
+        if (companyId <= 0) throw new ArgumentOutOfRangeException(nameof(companyId));
+        var createdAt = DateTime.Now;
+        foreach (var unitName in DefaultUnits)
+        {
+            var fractional = ShopQuantityRules.DefaultAllowsFraction(unitName);
+            // The company being created can differ from the request's active company.
+            // Parameterized SQL uses the existing transaction without pretending that
+            // the new company's rows belong to the active one; existing choices remain untouched.
+            await db.Database.ExecuteSqlInterpolatedAsync($@"
+INSERT INTO [MeasureUnits] ([CompanyId], [Name], [IsActive], [AllowsFractionalQuantity], [CreatedAt])
+SELECT {companyId}, {unitName}, {true}, {fractional}, {createdAt}
+WHERE NOT EXISTS (SELECT 1 FROM [MeasureUnits] WHERE [CompanyId] = {companyId} AND [Name] = {unitName})");
+        }
+    }
 
     public static void Seed(AppDbContext db)
     {
@@ -65,7 +84,7 @@ public static class Seeder
 
         // ---------------- واحدهای شمارش پیش‌فرض ----------------
         foreach (var unitName in DefaultUnits)
-            db.MeasureUnits.Add(new MeasureUnit { Name = unitName, CreatedAt = DateTime.Now });
+            db.MeasureUnits.Add(new MeasureUnit { Name = unitName, AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(unitName), CreatedAt = DateTime.Now });
 
         var products = new List<Product>();
         int pi = 1;

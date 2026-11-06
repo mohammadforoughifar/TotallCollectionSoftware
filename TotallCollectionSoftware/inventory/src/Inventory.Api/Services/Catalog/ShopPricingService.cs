@@ -25,6 +25,48 @@ public class ShopPricingService
             MinimumMarkupPercent = row.MinimumMarkupPercent, UpdatedAt = row.UpdatedAt, UpdatedBy = row.UpdatedBy };
     }
 
+    /// <summary>Read-only diagnostic; the order controller checks the separate profit permission.</summary>
+    public async Task<ShopMinimumProfitBasisDto> GetMinimumProfitBasisAsync(int productId, DateTime date, int? saleId)
+    {
+        if (date == default || date.Date == DateTime.MaxValue.Date)
+            throw new InvalidOperationException("تاریخ فاکتور معتبر نیست.");
+        var company = Company;
+        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId && p.CompanyId == company)
+            ?? throw new InvalidOperationException("کالا در شرکت فعال یافت نشد.");
+        var policy = await _db.ShopPricingPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.CompanyId == company);
+        var result = new ShopMinimumProfitBasisDto { CompanyId = company, PolicyConfigured = policy is not null,
+            MinimumProfitEnabled = policy?.MinimumProfitEnabled == true, MinimumMarkupPercent = policy?.MinimumMarkupPercent ?? 0m };
+        if (product.IsService) { result.Reason = "خدمات مشمول کنترل حداقل سود کالا نیستند."; return result; }
+        var cutoff = int.MaxValue;
+        if (saleId is > 0)
+        {
+            var original = await _db.Transactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == saleId &&
+                t.CompanyId == company && t.Type == TransactionType.Sale)
+                ?? throw new InvalidOperationException("فاکتور فروش در شرکت فعال یافت نشد.");
+            var isChequeCorrection = await _db.SaleChequeCharges.AsNoTracking().AnyAsync(c => c.TransactionId == original.Id);
+            if (!isChequeCorrection || date.Date == original.Date.Date) cutoff = original.Id;
+        }
+        var purchases = await ShopMinimumProfitGuard.FindPurchasesAsync(_db, company, new[] { productId }, date, cutoff);
+        if (!purchases.TryGetValue(productId, out var purchase))
+        { result.Reason = "تا تاریخ و ترتیب این فاکتور، خریدی برای این کالا پیدا نشد."; return result; }
+        result.PurchaseId = purchase.TransactionId;
+        result.PurchaseNumber = purchase.Number;
+        result.PurchaseDate = purchase.Date;
+        result.PurchaseQuantity = purchase.Quantity;
+        result.PurchaseGross = purchase.Gross;
+        result.PurchaseDiscount = purchase.DiscountAmount;
+        if (!purchase.IsValid)
+        { result.Reason = "مقدار، قیمت یا تخفیف آخرین خرید معتبر نیست."; return result; }
+        result.NetUnitCost = purchase.Net / purchase.Quantity;
+        if (result.MinimumProfitEnabled)
+        {
+            try { result.MinimumUnitRevenueBeforeSaleDiscountAndCommission = decimal.Ceiling(
+                purchase.Net * (100m + result.MinimumMarkupPercent) / (purchase.Quantity * 100m)); }
+            catch (OverflowException) { result.Reason = "محاسبه حداقل به دلیل بزرگی مبلغ ممکن نیست."; }
+        }
+        return result;
+    }
+
     public async Task<ShopPricingPolicyDto> SavePolicyAsync(ShopPricingPolicyDto input, string? user)
     {
         if (input.MinimumMarkupPercent < 0 || input.MinimumMarkupPercent > 10000 || input.MinimumMarkupPercent != decimal.Round(input.MinimumMarkupPercent, 2))
@@ -67,8 +109,8 @@ public class ShopPricingService
 
     public static void ValidatePrice(decimal price)
     {
-        if (price < 0 || price > 9999999999999999.99m || decimal.Round(price, 2) != price)
-            throw new InvalidOperationException("قیمت فروش باید غیرمنفی و حداکثر با دو رقم اعشار باشد.");
+        if (!ShopInvoiceAmounts.IsWholePrice(price))
+            throw new InvalidOperationException("قیمت باید غیرمنفی و بدون اعشار، به ریال صحیح باشد.");
     }
 
     /// <summary>Called before the same SaveChanges as the product, including new products.</summary>
@@ -158,7 +200,7 @@ public class ShopPricingService
             else if (old == null || old.Price <= 0) row.Reason = "قیمت معتبر در این تاریخ موجود نیست";
             else
             {
-                try { row.NewPrice = decimal.Round(old.Price * (1m + (request.Increase ? request.Percent : -request.Percent) / 100m), 2); }
+                try { row.NewPrice = decimal.Round(old.Price * (1m + (request.Increase ? request.Percent : -request.Percent) / 100m), 0, MidpointRounding.AwayFromZero); }
                 catch (OverflowException) { throw new InvalidOperationException("قیمت جدید خارج از محدوده قابل ثبت است."); }
                 ValidatePrice(row.NewPrice.Value);
             }

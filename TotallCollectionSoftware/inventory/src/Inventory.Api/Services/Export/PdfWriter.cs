@@ -229,7 +229,7 @@ public static class PdfWriter
             {
                 var col = columns[i];
                 var value = i < row.Values.Count ? row.Values[i] : null;
-                var text = Format(value, col.Kind, spec);
+                var text = Format(value, col.Kind, spec, col.PreserveFractionalDigits);
 
                 var indent = i == 0 ? row.Indent : 0;
 
@@ -253,7 +253,7 @@ public static class PdfWriter
                 // اگر مقدار جمع نداریم ولی ستون اول است، برچسب «جمع کل» می‌گذاریم
                 var text = value is null && i == 0 && !col.Sum
                     ? "جمع کل"
-                    : Format(value, col.Kind, spec);
+                    : Format(value, col.Kind, spec, col.PreserveFractionalDigits);
 
                 BodyCell(table.Cell(), text, TotalBg, AlignOf(col.Kind), true);
             }
@@ -343,7 +343,7 @@ public static class PdfWriter
     // قالب‌بندی مقادیر
     // =====================================================================
 
-    internal static string Format(object? value, ExportValueKind kind, ExportSpec spec)
+    internal static string Format(object? value, ExportValueKind kind, ExportSpec spec, bool preserveFractionalDigits = false)
     {
         if (value is null) return "";
 
@@ -351,12 +351,14 @@ public static class PdfWriter
         {
             case ExportValueKind.Money:
                 return ExportSpec.TryDecimal(value, out var m)
-                    ? (m == 0 ? "—" : Digits(Fa.Money(m), spec))
+                    ? (m == 0 ? "—" : Digits(preserveFractionalDigits
+                        ? m.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture) : Fa.Money(m), spec))
                     : Digits(value.ToString(), spec);
 
             case ExportValueKind.Number:
                 return ExportSpec.TryDecimal(value, out var n)
-                    ? Digits(Fa.Number(n), spec)
+                    ? Digits(preserveFractionalDigits
+                        ? n.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture) : Fa.Number(n), spec)
                     : Digits(value.ToString(), spec);
 
             case ExportValueKind.Int:

@@ -57,6 +57,7 @@ public static class DbInitializer
                     await ShopOrderCreditSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopQuantitySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
@@ -129,6 +130,7 @@ public static class DbInitializer
                     await ShopOrderCreditSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopQuantitySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
@@ -398,17 +400,24 @@ public static class DbInitializer
 
                 // بازسازی واحدهای شمارش برای دیتابیس‌های قدیمی:
                 // واحدهای پیش‌فرض + واحدهای استفاده‌شده روی کالاها که در جدول نیستند اضافه می‌شوند.
-                var knownUnits = db.MeasureUnits.Select(u => u.Name).ToHashSet();
-                var wanted = Seeder.DefaultUnits
-                    .Concat(db.Products.Select(p => p.Unit).Distinct().ToList())
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Distinct()
-                    .Where(n => !knownUnits.Contains(n))
-                    .ToList();
+                // Unit names are company-owned even though products store the name as text.
+                // Rebuild a missing unit only for the known owner, never copy another
+                // company's custom precision decision or guess an unowned product's owner.
+                var knownUnits = db.MeasureUnits.Select(u => new { u.CompanyId, u.Name }).ToList()
+                    .Select(u => (u.CompanyId, u.Name)).ToHashSet();
+                var defaultCompany = db.ResolveDefaultCompanyId();
+                var owners = db.SystemCompanies.Where(c => c.IsActive).Select(c => (int?)c.Id).ToList();
+                if (owners.Count == 0) owners.Add(null);
+                var usedUnits = db.Products.Where(p => !p.IsService).Select(p => new { p.CompanyId, p.Unit }).Distinct().ToList()
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Unit) && (p.CompanyId.HasValue || !defaultCompany.HasValue))
+                    .Select(p => (p.CompanyId, Name: p.Unit.Trim()));
+                var builtIns = owners.SelectMany(owner => Seeder.DefaultUnits.Select(name => (CompanyId: owner, Name: name)));
+                var wanted = usedUnits.Concat(builtIns).Distinct().Where(key => !knownUnits.Contains(key)).ToList();
                 if (wanted.Count > 0)
                 {
-                    foreach (var name in wanted)
-                        db.MeasureUnits.Add(new MeasureUnit { Name = name, CreatedAt = DateTime.Now });
+                    foreach (var (companyId, name) in wanted)
+                        db.MeasureUnits.Add(new MeasureUnit { CompanyId = companyId, Name = name,
+                            AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(name), CreatedAt = DateTime.Now });
                     db.SaveChanges();
                     Console.WriteLine($"[DB] {wanted.Count} واحد شمارش اضافه شد.");
                 }
