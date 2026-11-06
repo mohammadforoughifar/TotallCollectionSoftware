@@ -178,10 +178,10 @@ class PurchaseWizardContract(unittest.TestCase):
     def test_invoice_totals_show_after_discount_and_after_vat(self):
         totals = FORM.split('<div class="purchase-totals">', 1)[1].split('</div>\n                </div>', 1)[0]
         self.assertIn('مبلغ پس از تخفیف', totals)
-        self.assertIn('TotalLines.Sum(l => l.AfterDiscount).Money()', totals)
+        self.assertIn('TotalLines.Sum(l => l.AfterDiscount).MoneyExact()', totals)
         self.assertIn('مبلغ نهایی پس از ارزش افزوده', totals)
-        self.assertIn('@goodsTotal.Money()', totals)
-        self.assertIn('TotalLines.Sum(l => l.VatAmount).Money()', totals)
+        self.assertIn('@ExactMoney(goodsTotal)', totals)
+        self.assertIn('TotalLines.Sum(l => l.VatAmount).MoneyExact()', totals)
 
     def test_bank_and_focus_contract(self):
         self.assertIn('OpenOnFocus="UseInvoiceWizard"', FORM)

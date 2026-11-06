@@ -101,7 +101,7 @@
                                 <td>@o.PartyName</td>
                                 <td class="text-muted">@o.WarehouseName</td>
                                 <td><span class="badge badge-soft-primary">@o.Lines.Count.Num() قلم</span></td>
-                                <td class="text-start num fw-700">@o.TotalAmount.Money()</td>
+                                <td class="text-start num fw-700">@o.TotalAmount.MoneyExact()</td>
                                 <td>@PayBadge(o)</td>
                                 @if (!isPurchase && CanSeeProfit)
                                 {
@@ -191,7 +191,7 @@
                             <div class="m-card-money">
                                 <div>
                                     <div class="fs-8 text-muted">مبلغ کل</div>
-                                    <div class="num fw-700">@o.TotalAmount.Money()</div>
+                                    <div class="num fw-700">@o.TotalAmount.MoneyExact()</div>
                                 </div>
                                 @if (!isPurchase && CanSeeProfit && o.TotalProfit.HasValue)
                                 {
@@ -326,11 +326,11 @@
                                         <span class="badge badge-soft-warning fs-8 me-1">برگشتی: @l.ReturnedQuantity.Num()</span>
                                     }
                                 </td>
-                                <td class="text-start num">@(viewing.HasChequeCharge ? l.Price.MoneyExact() : l.Price.Money())</td>
-                                <td class="text-start num">@(viewing.HasChequeCharge ? l.DiscountAmount.MoneyExact() : l.DiscountAmount.Money())</td>
-                                <td class="text-start num">@(viewing.HasChequeCharge ? l.AfterDiscount.MoneyExact() : l.AfterDiscount.Money())</td>
-                                <td class="text-start num">@(viewing.HasChequeCharge ? l.VatAmount.MoneyExact() : l.VatAmount.Money())</td>
-                                <td class="text-start num fw-700">@(viewing.HasChequeCharge ? l.Total.MoneyExact() : l.Total.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.Price.MoneyExact() : l.Price.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.DiscountAmount.MoneyExact() : l.DiscountAmount.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.AfterDiscount.MoneyExact() : l.AfterDiscount.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.VatAmount.MoneyExact() : l.VatAmount.Money())</td>
+                                <td class="text-start num fw-700">@(UseExactAmounts(viewing) ? l.Total.MoneyExact() : l.Total.Money())</td>
                                 @if (viewing.IsSale)
                                 {
                                     @if (CanSeeProfit)
@@ -401,7 +401,7 @@
                 }
                 <div>
                     <span class="text-muted ms-2">مبلغ کل:</span>
-                    <span class="fw-800 fs-5 text-primary num">@(viewing.HasChequeCharge ? viewing.TotalAmount.MoneyExact() : viewing.TotalAmount.Money())</span>
+                    <span class="fw-800 fs-5 text-primary num">@(UseExactAmounts(viewing) ? viewing.TotalAmount.MoneyExact() : viewing.TotalAmount.Money())</span>
                     <span class="fs-8 text-muted">ریال</span>
                 </div>
             </div>
@@ -783,6 +783,9 @@
     /// <summary>مجوز مؤثر سمت سرور؛ claim ذخیره‌شده در مرورگر ممکن است قدیمی باشد.</summary>
     private bool canSeeProfit;
     private bool CanSeeProfit => canSeeProfit;
+
+    private static bool UseExactAmounts(Order order) => order.HasChequeCharge || order.Cheques.Count > 0 ||
+        order.Installments.Count > 0 || order.TotalAmount % 1m != 0m;
 
     private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
     {

@@ -46,35 +46,44 @@ Check(SaleChequeInitialCalculation.Calculate(100, 0.5m, 1) == 0, "original calcu
 Check(SaleChequeInitialCalculation.Calculate(200, 0, 1) == 0, "zero-rate invoice has zero cheque income");
 // The client and server share this exact plan; payment rows and the income snapshot
 // must use the same basis, rate and month count, including on a repeated calculation.
-var calculatedPlan = InvoiceInstallmentCalculation.Create(200m, 5m, 5);
-var calculatedTerms = calculatedPlan.CreateSaleChequeCharge(200m, 5m, 30);
-Check(calculatedPlan.Interest == 50m && calculatedPlan.Total == 250m &&
-      calculatedPlan.RegularAmount == 50m && calculatedPlan.LastAmount == 50m &&
-      calculatedTerms is not null && calculatedTerms.CalculatorBaseAmount == 200m &&
+var calculatedPlan = InvoiceInstallmentCalculation.Create(2_000_000m, 5m, 5);
+var calculatedTerms = calculatedPlan.CreateSaleChequeCharge(2_000_000m, 5m, 30);
+Check(calculatedPlan.Interest == 500_000m && calculatedPlan.Total == 2_500_000m &&
+      calculatedPlan.Amounts.SequenceEqual(Enumerable.Repeat(500_000m, 5)) &&
+      calculatedTerms is not null && calculatedTerms.CalculatorBaseAmount == 2_000_000m &&
       calculatedTerms.CalculatorRatePercent == 5m && calculatedTerms.CalculatorMonths == 5 &&
       calculatedTerms.AdjustmentRatePercent == 5m && calculatedTerms.AdjustmentPeriodDays == 30,
-    "one calculator creates 250 of cheque rows and a 50 income snapshot");
+    "one calculator creates 2,500,000 of rounded cheque rows and a 500,000 income snapshot");
 var repeatedPlan = InvoiceInstallmentCalculation.Create(calculatedPlan.BaseAmount, calculatedPlan.MonthlyRatePercent, calculatedPlan.Months);
 Check(repeatedPlan == calculatedPlan, "recalculation does not charge interest on prior interest");
-var mixedPlan = InvoiceInstallmentCalculation.Create(200m - 50m - 20m, 5m, 2);
-Check(mixedPlan.Interest == 13m && mixedPlan.RegularAmount == 71m && mixedPlan.LastAmount == 72m &&
-      mixedPlan.Total + 50m + 20m == 213m,
+var mixedPlan = InvoiceInstallmentCalculation.Create(2_000_000m - 500_000m - 200_000m, 5m, 2);
+Check(mixedPlan.Interest == 130_000m && mixedPlan.Amounts.SequenceEqual(new[] { 710_000m, 720_000m }) &&
+      mixedPlan.Total + 500_000m + 200_000m == 2_130_000m,
     "mixed cash and installments are excluded from the cheque principal");
-var noInterestPlan = InvoiceInstallmentCalculation.Create(5.01m, 0m, 3);
-Check(noInterestPlan.CreateSaleChequeCharge(5.01m, 0m, 30) is null && noInterestPlan.RegularAmount == 1m &&
-      noInterestPlan.LastAmount == 3.01m && noInterestPlan.RegularAmount * 2 + noInterestPlan.LastAmount == 5.01m,
+var noInterestPlan = InvoiceInstallmentCalculation.Create(50_000.01m, 0m, 3);
+Check(noInterestPlan.CreateSaleChequeCharge(50_000.01m, 0m, 30) is null &&
+      noInterestPlan.Amounts.SequenceEqual(new[] { 20_000m, 20_000m, 10_000.01m }) &&
+      noInterestPlan.Amounts.Sum() == 50_000.01m,
     "zero income creates no charge and the final row retains fractional money");
-Check(InvoiceInstallmentCalculation.Create(0.51m, 0m, 1).LastAmount == 0.51m,
+var balancedPlan = InvoiceInstallmentCalculation.Create(1_000_000m, 0m, 3);
+Check(balancedPlan.Amounts.SequenceEqual(new[] { 330_000m, 330_000m, 340_000m }) &&
+      balancedPlan.Amounts.Sum() == balancedPlan.Total,
+    "rounded payments increase and decrease by whole units without changing the total");
+var residualPlan = InvoiceInstallmentCalculation.Create(1_000_001.23m, 0m, 3);
+Check(residualPlan.Amounts.SequenceEqual(new[] { 330_000m, 340_000m, 330_001.23m }) &&
+      residualPlan.Amounts.Sum() == residualPlan.Total,
+    "the sub-unit remainder is retained only in the last row");
+Check(InvoiceInstallmentCalculation.Create(0.51m, 0m, 1).Amounts[0] == 0.51m,
     "a single cheque retains its exact fractional amount above the payment tolerance");
 try { InvoiceInstallmentCalculation.Create(0.50m, 0m, 1); throw new Exception("unclassifiable cheque component accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: a cheque below the payment classifier threshold is rejected"); }
-try { InvoiceInstallmentCalculation.Create(1m, 0m, 3); throw new Exception("zero-value cheque rows accepted"); }
+try { InvoiceInstallmentCalculation.Create(19_999m, 0m, 3); throw new Exception("zero-value cheque rows accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: insufficient amount cannot create zero cheque rows"); }
 try { InvoiceInstallmentCalculation.Create(200m, 0.0000001m, 1); throw new Exception("rate precision accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: invalid rate precision rejected before row replacement"); }
-try { calculatedPlan.CreateSaleChequeCharge(199m, 5m, 30); throw new Exception("basis exceeds goods accepted"); }
+try { calculatedPlan.CreateSaleChequeCharge(1_999_999m, 5m, 30); throw new Exception("basis exceeds goods accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: calculator basis cannot exceed goods with VAT"); }
-try { calculatedPlan.CreateSaleChequeCharge(200m, 5m, 0); throw new Exception("zero adjustment period accepted"); }
+try { calculatedPlan.CreateSaleChequeCharge(2_000_000m, 5m, 0); throw new Exception("zero adjustment period accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: invalid adjustment terms rejected"); }
 try { calculatedPlan.CreateSaleChequeCharge(9999999999999999.99m, 5m, 30); throw new Exception("total invoice overflow accepted"); }
 catch (ArgumentOutOfRangeException) { Console.WriteLine("PASS: full goods plus income must fit the ledger before rows are replaced"); }
@@ -851,26 +860,27 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     await db.SaveChangesAsync();
     var service = new InventoryService(db, NullLogger<InventoryService>.Instance);
     var firstDue = new DateTime(2026, 7, 1);
+    var plannedAmounts = calculatedPlan.Amounts;
     var chequeRows = Enumerable.Range(0, calculatedPlan.Months).Select(i => new Inventory.Shared.Dtos.ChequeDto
     {
         Number = $"CALC-{i + 1}", DueDate = firstDue.AddDays(i * 30),
-        Amount = i == calculatedPlan.Months - 1 ? calculatedPlan.LastAmount : calculatedPlan.RegularAmount
+        Amount = plannedAmounts[i]
     }).ToList();
     var sale = await service.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
     {
         Type = TransactionType.Sale, WarehouseId = warehouse.Id, PartyId = customer.Id,
         Date = new DateTime(2026, 6, 2), PaymentMethod = PaymentMethod.Cheque,
-        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 200m, VatValue = 0m } },
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 2_000_000m, VatValue = 0m } },
         Cheques = chequeRows, ChequeCharge = calculatedTerms
     }, "tester");
-    Check(sale.GoodsAmount == 200m && sale.ChequeIncomeAmount == 50m && sale.TotalAmount == 250m &&
-          sale.Cheques.Sum(c => c.Amount) == 250m && sale.HasChequeCharge,
-        "calculator output persists as 200 goods, 50 income and 250 in cheques");
+    Check(sale.GoodsAmount == 2_000_000m && sale.ChequeIncomeAmount == 500_000m && sale.TotalAmount == 2_500_000m &&
+          sale.Cheques.Sum(c => c.Amount) == 2_500_000m && sale.HasChequeCharge,
+        "calculator output persists as 2,000,000 goods, 500,000 income and 2,500,000 in cheques");
     var before = await service.GetPartyStatementDetailAsync(customer.Id, to: new DateTime(2026, 6, 2));
     var incomeRow = before.Rows.Single(r => r.Title == "تاخیر تادیه چک");
-    Check(before.ClosingBalance == 250m && before.SaleGoodsTotal == 200m && before.SaleChequeIncomeTotal == 50m &&
-          before.Rows.Single(r => r.Title == "فاکتور فروش").Debit == 200m && incomeRow.Debit == 50m &&
-          incomeRow.Description.Contains(sale.Number) && incomeRow.Description.Contains("۲۰۰") &&
+    Check(before.ClosingBalance == 2_500_000m && before.SaleGoodsTotal == 2_000_000m && before.SaleChequeIncomeTotal == 500_000m &&
+          before.Rows.Single(r => r.Title == "فاکتور فروش").Debit == 2_000_000m && incomeRow.Debit == 500_000m &&
+          incomeRow.Description.Contains(sale.Number) && incomeRow.Description.Contains(Fa.MoneyExact(2_000_000m)) &&
           incomeRow.Description.Contains("۵٪") && incomeRow.Description.Contains("۵ ماه") &&
           !before.Rows.Any(r => r.Title == "وصول چک"),
         "handed-over cheques remain due; statement separately explains invoice and saved calculator terms");
@@ -878,8 +888,8 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         new DateTime(2026, 6, 2), new DateTime(2026, 6, 2), customer.Id, null);
     var incomeReport = await new OperationsReportsService(db).GetChequeIncomeReportAsync(
         new DateTime(2026, 6, 2), new DateTime(2026, 6, 2), customer.Id);
-    Check(salesReport.TotalAmount == 250m && salesReport.GoodsAmount == 200m && salesReport.ChequeIncomeAmount == 50m &&
-          incomeReport.TotalIncome == 50m && incomeReport.Rows.Count == 1 && incomeReport.Rows[0].VoucherNumber == 0,
+    Check(salesReport.TotalAmount == 2_500_000m && salesReport.GoodsAmount == 2_000_000m && salesReport.ChequeIncomeAmount == 500_000m &&
+          incomeReport.TotalIncome == 500_000m && incomeReport.Rows.Count == 1 && incomeReport.Rows[0].VoucherNumber == 0,
         "sales report and store income event reconcile without an ERP voucher");
     for (var i = 0; i < sale.Cheques.Count; i++)
     {
@@ -889,10 +899,10 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         if (i == 0) await service.ReceiveSaleChequeAsync(sale.Cheques[i].Id, command, "tester");
     }
     var after = await service.GetPartyStatementDetailAsync(customer.Id);
-    Check(after.ClosingBalance == 0m && after.Rows.Where(r => r.Title == "وصول چک").Sum(r => r.Credit) == 250m &&
+    Check(after.ClosingBalance == 0m && after.Rows.Where(r => r.Title == "وصول چک").Sum(r => r.Credit) == 2_500_000m &&
           await db.SaleChequeReceipts.CountAsync(r => r.TransactionId == sale.Id) == calculatedPlan.Months &&
           await db.SaleChequeChargeEvents.CountAsync(e => e.SaleChequeCharge.TransactionId == sale.Id) == 1,
-        "collecting the generated 250 once clears the customer balance without duplicating income");
+        "collecting the generated 2,500,000 once clears the customer balance without duplicating income");
     Check(!await db.AccAccounts.AnyAsync() && !await db.AccFiscalYears.AnyAsync() &&
           !await db.AccVouchers.AnyAsync() && !await db.FacRules.AnyAsync(),
         "the example works without ERP accounts, fiscal years, vouchers or rules");
@@ -906,7 +916,7 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     await db.SaveChangesAsync();
     var legacyStatement = await service.GetPartyStatementDetailAsync(customer.Id);
     var legacyIncome = legacyStatement.Rows.Single(r => r.Title == "تاخیر تادیه چک");
-    Check(legacyIncome.Debit == 50m && legacyIncome.Description.Contains(sale.Number) &&
+    Check(legacyIncome.Debit == 500_000m && legacyIncome.Description.Contains(sale.Number) &&
           !legacyIncome.Description.Contains("مبنا") && legacyStatement.ClosingBalance == 0m,
         "old missing calculator terms are not fabricated");
 
@@ -914,41 +924,41 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     var mixedCustomer = new Party { Name = "مشتری ترکیبی ماشین‌حساب", Type = PartyType.Customer, IsActive = true };
     db.AddRange(zeroCustomer, mixedCustomer);
     await db.SaveChangesAsync();
-    var zeroPlan = InvoiceInstallmentCalculation.Create(200m, 0m, 2);
+    var zeroPlan = InvoiceInstallmentCalculation.Create(2_000_000m, 0m, 2);
     var zeroSale = await service.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
     {
         Type = TransactionType.Sale, WarehouseId = warehouse.Id, PartyId = zeroCustomer.Id,
         Date = new DateTime(2026, 6, 2), PaymentMethod = PaymentMethod.Cheque,
-        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 200m } },
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 2_000_000m } },
         Cheques = new() {
-            new Inventory.Shared.Dtos.ChequeDto { Number = "ZERO-1", Amount = zeroPlan.RegularAmount, DueDate = firstDue },
-            new Inventory.Shared.Dtos.ChequeDto { Number = "ZERO-2", Amount = zeroPlan.LastAmount, DueDate = firstDue.AddDays(30) }
+            new Inventory.Shared.Dtos.ChequeDto { Number = "ZERO-1", Amount = zeroPlan.Amounts[0], DueDate = firstDue },
+            new Inventory.Shared.Dtos.ChequeDto { Number = "ZERO-2", Amount = zeroPlan.Amounts[1], DueDate = firstDue.AddDays(30) }
         },
-        ChequeCharge = zeroPlan.CreateSaleChequeCharge(200m, 0m, 30)
+        ChequeCharge = zeroPlan.CreateSaleChequeCharge(2_000_000m, 0m, 30)
     }, "tester");
-    Check(zeroSale.TotalAmount == 200m && !zeroSale.HasChequeCharge &&
+    Check(zeroSale.TotalAmount == 2_000_000m && !zeroSale.HasChequeCharge &&
           !await db.SaleChequeCharges.AnyAsync(c => c.TransactionId == zeroSale.Id) &&
-          (await service.GetPartyStatementDetailAsync(zeroCustomer.Id)).ClosingBalance == 200m,
+          (await service.GetPartyStatementDetailAsync(zeroCustomer.Id)).ClosingBalance == 2_000_000m,
         "zero-rate cheque sale creates no income event and remains receivable");
 
     var mixedSale = await service.CreateOrderAsync(new Inventory.Shared.Dtos.OrderCommand
     {
         Type = TransactionType.Sale, WarehouseId = warehouse.Id, PartyId = mixedCustomer.Id,
         Date = new DateTime(2026, 6, 2), PaymentMethod = PaymentMethod.Mixed, CashType = CashType.CardReader,
-        CashAmount = 50m, TrsAccountId = bank.Id,
-        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 200m } },
-        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 20m, DueDate = firstDue } },
+        CashAmount = 500_000m, TrsAccountId = bank.Id,
+        Lines = new() { new Inventory.Shared.Dtos.OrderLineInput { ProductId = product.Id, Quantity = 1m, Price = 2_000_000m } },
+        Installments = new() { new Inventory.Shared.Dtos.InstallmentDto { No = 1, Amount = 200_000m, DueDate = firstDue } },
         Cheques = new() {
-            new Inventory.Shared.Dtos.ChequeDto { Number = "MIX-1", Amount = mixedPlan.RegularAmount, DueDate = firstDue },
-            new Inventory.Shared.Dtos.ChequeDto { Number = "MIX-2", Amount = mixedPlan.LastAmount, DueDate = firstDue.AddDays(30) }
+            new Inventory.Shared.Dtos.ChequeDto { Number = "MIX-1", Amount = mixedPlan.Amounts[0], DueDate = firstDue },
+            new Inventory.Shared.Dtos.ChequeDto { Number = "MIX-2", Amount = mixedPlan.Amounts[1], DueDate = firstDue.AddDays(30) }
         },
-        ChequeCharge = mixedPlan.CreateSaleChequeCharge(200m, 5m, 30)
+        ChequeCharge = mixedPlan.CreateSaleChequeCharge(2_000_000m, 5m, 30)
     }, "tester");
     var mixedStatement = await service.GetPartyStatementDetailAsync(mixedCustomer.Id);
-    Check(mixedSale.TotalAmount == 213m && mixedSale.ChequeIncomeAmount == 13m &&
-          mixedSale.Cheques.Sum(c => c.Amount) == 143m && mixedStatement.ClosingBalance == 163m &&
-          mixedStatement.SaleGoodsTotal == 200m && mixedStatement.SaleChequeIncomeTotal == 13m,
-        "mixed cash and installment payment uses only 130 as the cheque principal");
+    Check(mixedSale.TotalAmount == 2_130_000m && mixedSale.ChequeIncomeAmount == 130_000m &&
+          mixedSale.Cheques.Sum(c => c.Amount) == 1_430_000m && mixedStatement.ClosingBalance == 1_630_000m &&
+          mixedStatement.SaleGoodsTotal == 2_000_000m && mixedStatement.SaleChequeIncomeTotal == 130_000m,
+        "mixed cash and installment payment uses only 1,300,000 as the cheque principal");
 }
 
 // Explicit account/company scope, including legacy public accounts and no-company access.

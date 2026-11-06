@@ -8,8 +8,11 @@ namespace Inventory.Shared;
 /// </summary>
 public readonly record struct InvoiceInstallmentCalculation(
     decimal BaseAmount, decimal MonthlyRatePercent, int Months,
-    decimal Interest, decimal Total, decimal RegularAmount, decimal LastAmount)
+    decimal Interest, decimal Total)
 {
+    /// <summary>ردیف‌های پرداخت؛ تنها ردیف آخر می‌تواند باقی‌ماندهٔ کمتر از واحد رند را داشته باشد.</summary>
+    public decimal[] Amounts => RoundedInstallmentDistribution.Split(Total, Months);
+
     public static InvoiceInstallmentCalculation Create(decimal baseAmount, decimal monthlyRatePercent, int months)
     {
         var interest = SaleChequeInitialCalculation.Calculate(baseAmount, monthlyRatePercent, months);
@@ -19,13 +22,9 @@ public readonly record struct InvoiceInstallmentCalculation(
         // tolerance. Do not create a cheque component it would mistake for cash.
         if (total <= PaymentMix.Tolerance / 2m)
             throw new ArgumentOutOfRangeException(nameof(baseAmount), "مبلغ چک برای ثبت روش پرداخت کافی نیست.");
-        // Preserve the existing whole-rial split; retain cents in the last payment.
-        // Reject zero-value rows rather than silently creating an invalid schedule.
-        var regular = months == 1 ? total : decimal.Floor(total / months);
-        var last = total - regular * (months - 1);
-        if (regular <= 0 || last <= 0)
-            throw new ArgumentOutOfRangeException(nameof(months), "مبلغ برای تعداد ردیف‌های انتخاب‌شده کافی نیست.");
-        return new InvoiceInstallmentCalculation(baseAmount, monthlyRatePercent, months, interest, total, regular, last);
+        // Validate every rounded row before the UI replaces any existing entries.
+        _ = RoundedInstallmentDistribution.Split(total, months);
+        return new InvoiceInstallmentCalculation(baseAmount, monthlyRatePercent, months, interest, total);
     }
 
     /// <summary>

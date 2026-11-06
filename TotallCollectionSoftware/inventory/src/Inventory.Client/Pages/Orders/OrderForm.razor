@@ -114,7 +114,7 @@
                                     <div><span>انبار</span><strong>@(whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Name ?? "—")</strong></div>
                                     <div><span>اقلام</span><strong>@(lines.Count(l => l.ProductId > 0 && l.Qty > 0).Num()) سطر</strong></div>
                                     <div class="purchase-summary-total">
-                                        <span>مبلغ نهایی فاکتور</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(grandTotal) : grandTotal.Money())</strong>
+                                        <span>مبلغ نهایی فاکتور</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(grandTotal) : grandTotal.Money())</strong>
                                         @if (HasChequeIncomeArticle)
                                         {
                                             <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + تاخیر تادیه چک <b class="num">@ExactMoney(saleChequeIncome)</b></small>
@@ -122,12 +122,12 @@
                                     </div>
                                 </div>
                                 <div class="purchase-summary-pay" aria-live="polite">
-                                    <div><span>نقد</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(CashPart) : CashPart.Money())</strong></div>
-                                    <div><span>چک</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(ChequeSum()) : ChequeSum().Money())</strong></div>
-                                    <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(InstSum()) : InstSum().Money())</strong></div>
+                                    <div><span>نقد</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(CashPart) : CashPart.Money())</strong></div>
+                                    <div><span>چک</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(ChequeSum()) : ChequeSum().Money())</strong></div>
+                                    <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(InstSum()) : InstSum().Money())</strong></div>
                                     <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > (StrictPaymentBalance ? 0 : 1) ? "is-warning" : "")">
-                                        <span>@(FinalRemaining < (StrictPaymentBalance ? 0 : -1) ? "مازاد پرداخت" : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده")</span>
-                                        <strong class="num">@(StrictPaymentBalance ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
+                                        <span>@(FinalRemaining < 0 ? "مازاد پرداخت" : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده")</span>
+                                        <strong class="num">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
                                     </div>
                                 </div>
                                 <p class="purchase-summary-status" aria-live="polite">
@@ -138,6 +138,10 @@
                                     else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
                                     {
                                         <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
+                                    }
+                                    else if (FinalRemaining != 0)
+                                    {
+                                        <span>اختلاف در محدوده تلورانس ثبت است؛ برای برابری دقیق، مبلغ پرداخت‌ها را دستی اصلاح کنید.</span>
                                     }
                                     else
                                     {
@@ -209,7 +213,7 @@
                                         <div class="col-12 col-md-2 fs-8 pb-1">
                                             @if (HasNonCash)
                                             {
-                                                <span>باقی‌مانده پس از نقد: <b class="num text-primary" data-pay-remain-cash>@RemainingAfterCash.Money()</b></span>
+                                                <span>باقی‌مانده پس از نقد: <b class="num text-primary" data-pay-remain-cash>@ExactMoney(RemainingAfterCash)</b></span>
                                             }
                                             else
                                             {
@@ -278,7 +282,7 @@
                                             </div>
                                             <div class="col-12 fs-9">
                                                 <span class="text-muted">باقی‌مانده پس از این چک:</span>
-                                                <b class="num text-primary" data-rem-cheque="@i">@(StrictPaymentBalance ? ExactMoney(RemainingAfterCheque(i)) : RemainingAfterCheque(i).Money())</b> ریال
+                                                <b class="num text-primary" data-rem-cheque="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterCheque(i)) : RemainingAfterCheque(i).Money())</b> ریال
                                             </div>
                                         </div>
                                     }
@@ -343,6 +347,7 @@
                                             </button>
                                         </div>
                                     </div>
+                                    <div class="fs-8 text-muted mb-2">در ساخت دفترچه، مبالغ تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف دقیق در قسط آخر می‌ماند و جمع تغییر نمی‌کند.</div>
                                     @if (installments.Count > 0)
                                     {
                                         <div class="table-responsive">
@@ -364,7 +369,7 @@
                                                                 <input class="form-control form-control-sm num" value="@instAmounts[i]"
                                                                        @oninput="@(e => OnInstAmountInput(i, e))" inputmode="numeric" dir="ltr" />
                                                             </td>
-                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(StrictPaymentBalance ? ExactMoney(RemainingAfterInstallment(i)) : RemainingAfterInstallment(i).Money())</b></td>
+                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterInstallment(i)) : RemainingAfterInstallment(i).Money())</b></td>
                                                             <td><button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف قسط" aria-label="حذف قسط" data-pay-remove-inst="@i" @onclick="() => RemoveInstallment(i)"><i class="bi bi-x-lg text-danger"></i></button></td>
                                                         </tr>
                                                     }
@@ -372,8 +377,8 @@
                                             </table>
                                         </div>
                                         <div class="fs-8">
-                                            جمع اقساط: <b class="num">@InstSum().Money()</b> —
-                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@(StrictPaymentBalance ? ExactMoney(FinalRemaining) : FinalRemaining.Money())</b>
+                                            جمع اقساط: <b class="num">@ExactMoney(InstSum())</b> —
+                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@(ExactPaymentDisplay ? ExactMoney(FinalRemaining) : FinalRemaining.Money())</b>
                                         </div>
                                     }
                                     else
@@ -392,7 +397,7 @@
                                         <DatePicker @bind-Value="creditDue" OpenOnFocus="UseInvoiceWizard" />
                                     </div>
                                     <div class="col-12 col-md-8 fs-8 pb-1">
-                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@(StrictPaymentBalance ? ExactMoney(Math.Max(0, FinalRemaining)) : Math.Max(0, FinalRemaining).Money())</b> ریال
+                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@(ExactPaymentDisplay ? ExactMoney(Math.Max(0, FinalRemaining)) : Math.Max(0, FinalRemaining).Money())</b> ریال
                                     </div>
                                 </div>
                             }
@@ -543,7 +548,7 @@
                                         @l.DiscountAmount.Money() ریال
                                     </div>
                                 </td>
-                                <td data-label="پس از تخفیف (ریال)" class="num fw-500"><span class="order-line-value">@l.AfterDiscount.Money()</span></td>
+                                <td data-label="پس از تخفیف (ریال)" class="num fw-500"><span class="order-line-value">@l.AfterDiscount.MoneyExact()</span></td>
                                 <td data-label="ارزش افزوده (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
                                         <input class="form-control form-control-sm text-center num order-line-control" aria-label="ارزش افزوده درصد یا ریال" data-order-last-field
@@ -551,9 +556,9 @@
                                                placeholder="0" inputmode="decimal" dir="ltr" />
                                         <span class="input-group-text order-line-unit" title="@(l.VatValue > 100 ? "مبلغ ریالی" : "درصد")">@(l.VatValue > 100 ? "ریال" : "٪")</span>
                                     </div>
-                                    <div class="fs-9 mt-1 text-primary num order-line-sub">@l.VatAmount.Money() ریال</div>
+                                    <div class="fs-9 mt-1 text-primary num order-line-sub">@l.VatAmount.MoneyExact() ریال</div>
                                 </td>
-                                <td data-label="کل پس از ارزش افزوده (ریال)" class="num fw-700"><span class="order-line-value">@l.Total.Money()</span></td>
+                                <td data-label="کل پس از ارزش افزوده (ریال)" class="num fw-700"><span class="order-line-value">@l.Total.MoneyExact()</span></td>
                                 @if (Type == TransactionType.Sale)
                                 {
                                     @if (CanSeeProfit)
@@ -667,11 +672,11 @@
                         {
                             <div><span>جمع مقدار اقلام</span><strong class="num">@TotalLines.Sum(l => l.Qty).ToString("0.##")</strong></div>
                         }
-                        <div><span>جمع ناخالص</span><strong class="num">@totalGross.Money() <small>ریال</small></strong></div>
-                        <div><span>تخفیف اقلام</span><strong class="num">@totalLineDiscount.Money() <small>ریال</small></strong></div>
-                        <div><span>مبلغ پس از تخفیف</span><strong class="num">@TotalLines.Sum(l => l.AfterDiscount).Money() <small>ریال</small></strong></div>
-                        <div><span>ارزش افزوده</span><strong class="num">@TotalLines.Sum(l => l.VatAmount).Money() <small>ریال</small></strong></div>
-                        <div class="purchase-totals-final"><span>مبلغ نهایی پس از ارزش افزوده</span><strong class="num">@goodsTotal.Money() <small>ریال</small></strong></div>
+                        <div><span>جمع ناخالص</span><strong class="num">@ExactMoney(totalGross) <small>ریال</small></strong></div>
+                        <div><span>تخفیف اقلام</span><strong class="num">@ExactMoney(totalLineDiscount) <small>ریال</small></strong></div>
+                        <div><span>مبلغ پس از تخفیف</span><strong class="num">@TotalLines.Sum(l => l.AfterDiscount).MoneyExact() <small>ریال</small></strong></div>
+                        <div><span>ارزش افزوده</span><strong class="num">@TotalLines.Sum(l => l.VatAmount).MoneyExact() <small>ریال</small></strong></div>
+                        <div class="purchase-totals-final"><span>مبلغ نهایی پس از ارزش افزوده</span><strong class="num">@ExactMoney(goodsTotal) <small>ریال</small></strong></div>
                     </div>
                 </div>
             }
@@ -919,26 +924,40 @@
             {
                 <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
             }
+            <div class="col-12 fs-8 text-muted">ردیف‌ها تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف کمتر از این واحد در ردیف آخر می‌ماند و جمع و سود تغییر نمی‌کنند.</div>
             @if (CalculatorPlan is { } calc)
             {
+                var rowAmounts = calc.Amounts;
                 <div class="col-12">
                     <div class="calc-preview">
                         <div class="d-flex flex-wrap gap-3 justify-content-between">
                             <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@ExactMoney(calc.BaseAmount)</div></div>
                             <div><div class="fs-8 text-muted">سود کل (@ExactPercent(calc.MonthlyRatePercent)٪ × @calc.Months.Num() ماه)</div><div class="num fw-700 text-warning">@ExactMoney(calc.Interest)</div></div>
                             <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@ExactMoney(calc.Total)</div></div>
-                            <div><div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div><div class="num fw-800 text-success">@ExactMoney(calc.RegularAmount)</div></div>
+                            <div>
+                                <div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div>
+                                <div class="num fw-800 text-success">@CalculatorAmountRange(rowAmounts)</div>
+                            </div>
                         </div>
-                        @if (calc.LastAmount != calc.RegularAmount)
+                        @if (rowAmounts.Distinct().Skip(1).Any())
                         {
-                            <div class="fs-8 text-muted mt-2">مبلغ ردیف آخر: <b class="num">@ExactMoney(calc.LastAmount)</b> ریال</div>
+                            <div class="fs-8 text-muted mt-2">توزیع ردیف‌ها:
+                                @foreach (var group in rowAmounts.GroupBy(amount => amount))
+                                {
+                                    <span class="me-2">@(group.Count().Num()) × @ExactMoney(group.Key) ریال</span>
+                                }
+                            </div>
+                        }
+                        @if (calc.Total % RoundedInstallmentDistribution.RoundingUnit != 0m)
+                        {
+                            <div class="fs-8 text-muted mt-1">برای حفظ جمع دقیق، ردیف آخر <b class="num">@ExactMoney(rowAmounts[^1])</b> ریال است.</div>
                         }
                     </div>
                 </div>
             }
             else if (CalcBase > 0)
             {
-                <div class="col-12 fs-8 text-danger">مبلغ، نرخ سود یا تعداد ماه معتبر نیست؛ مبالغ باید حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار داشته باشند.</div>
+                <div class="col-12 fs-8 text-danger">مبلغ، نرخ یا تعداد معتبر نیست، یا مبلغ برای ساخت این تعداد ردیف مثبت با رند ۱۰٬۰۰۰ ریالی کافی نیست. مبلغ حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار دارد.</div>
             }
         </div>
     </ChildContent>
@@ -1388,6 +1407,8 @@
     private bool removedCalculatedChequeIncome;
     private bool HasChequeIncomeArticle => saleChequeCharge is not null || (IsEdit && EditOrder?.HasChequeCharge == true);
     private bool StrictPaymentBalance => HasChequeIncomeArticle || removedCalculatedChequeIncome;
+    private bool ExactPaymentDisplay => StrictPaymentBalance || useCheque || useInstallment ||
+        grandTotal % 1m != 0m || CashPart % 1m != 0m;
 
     private void RemoveSaleChequeCharge()
     {
@@ -1430,6 +1451,13 @@
         : Math.Max(0m, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum());
 
     private static string ExactMoney(decimal amount) => Fa.MoneyExact(amount);
+
+    private static string CalculatorAmountRange(IReadOnlyList<decimal> amounts)
+    {
+        var minimum = amounts.Min();
+        var maximum = amounts.Max();
+        return minimum == maximum ? ExactMoney(minimum) : $"{ExactMoney(minimum)} تا {ExactMoney(maximum)}";
+    }
 
     private static string ExactPercent(decimal rate)
         => Fa.Digits(rate.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
@@ -1491,6 +1519,7 @@
             return;
         }
         var calculation = plan.Value;
+        var rowAmounts = calculation.Amounts;
         SaleChequeChargeInput? calculatedCharge = null;
         if (calcForCheque && Type == TransactionType.Sale)
         {
@@ -1554,7 +1583,7 @@
             var newDates = new List<DateTime?>();
             for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calculation.Months - 1 ? calculation.LastAmount : calculation.RegularAmount;
+                var amount = rowAmounts[i];
                 newCheques.Add(new ChequeDto());
                 newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
                 newDates.Add(dates[i]);
@@ -1578,7 +1607,7 @@
             var newDates = new List<DateTime?>();
             for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calculation.Months - 1 ? calculation.LastAmount : calculation.RegularAmount;
+                var amount = rowAmounts[i];
                 newInstallments.Add(new InstallmentDto { No = i + 1 });
                 newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
                 newDates.Add(dates[i]);
@@ -1627,22 +1656,44 @@
 
     private void BuildInstallments(bool silent = false)
     {
-        if (instCount < 1) { if (!silent) InvoiceError("تعداد قسط را وارد کنید."); return; }
+        if (instCount < 1 || instCount > RoundedInstallmentDistribution.MaximumCount)
+        { if (!silent) InvoiceError("تعداد قسط باید بین ۱ و ۶۰ باشد."); return; }
         if (!instFirstDue.HasValue) { if (!silent) InvoiceError("تاریخ اولین قسط را وارد کنید."); return; }
+        if (instIntervalDays < 1) { if (!silent) InvoiceError("فاصله اقساط باید حداقل یک روز باشد."); return; }
 
         // مبلغ قابل تقسیم = باقی‌مانده پس از نقد و چک‌ها (سطرهای قبلی)
         var totalDue = Math.Max(0, grandTotal - CashPart - ChequeSum());
         if (totalDue <= 0) { if (!silent) InvoiceError("ابتدا اقلام فاکتور را وارد کنید."); return; }
+        if (totalDue <= PaymentMix.Tolerance / 2m)
+        { if (!silent) InvoiceError("مبلغ اقساط برای ثبت روش پرداخت کافی نیست."); return; }
 
-        installments.Clear(); instAmounts.Clear(); instDates.Clear();
-        var baseAmount = Math.Floor(totalDue / instCount);
-        for (var i = 0; i < instCount; i++)
+        decimal[] amounts;
+        try { amounts = RoundedInstallmentDistribution.Split(totalDue, instCount); }
+        catch (ArgumentOutOfRangeException)
         {
-            var amount = i == instCount - 1 ? totalDue - baseAmount * (instCount - 1) : baseAmount;
-            installments.Add(new InstallmentDto { No = i + 1 });
-            instAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
-            instDates.Add(instFirstDue.Value.AddDays((double)(i * instIntervalDays)));
+            if (!silent) InvoiceError("مبلغ باید حداکثر دو رقم اعشار داشته باشد و برای این تعداد قسط مثبت با رند ۱۰٬۰۰۰ ریالی کافی باشد.");
+            return;
         }
+
+        // Keep the old rows until every new amount and due date is valid.
+        var newInstallments = new List<InstallmentDto>();
+        var newAmounts = new List<string>();
+        var newDates = new List<DateTime?>();
+        try
+        {
+            for (var i = 0; i < instCount; i++)
+            {
+                newInstallments.Add(new InstallmentDto { No = i + 1 });
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amounts[i])));
+                newDates.Add(instFirstDue.Value.AddDays((double)((long)i * instIntervalDays)));
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            if (!silent) InvoiceError("تاریخ یا فاصله سررسیدها خارج از محدوده مجاز است.");
+            return;
+        }
+        installments = newInstallments; instAmounts = newAmounts; instDates = newDates;
         if (!silent && UseInvoiceWizard) pendingSectionFocus = "[data-inst-row=\"0\"]";
     }
 

@@ -47,7 +47,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-indigo">چک‌های در جریان وصول</span>
-                            <div class="fin-kpi-value text-indigo num mt-1">@summary.InHandChequesTotal.Money()</div>
+                            <div class="fin-kpi-value text-indigo num mt-1">@summary.InHandChequesTotal.MoneyExact()</div>
                             <div class="fin-kpi-unit">ریال نزد صندوق یا بانک</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
@@ -68,7 +68,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-rose">چک‌های برگشتی (مطالبات معوق)</span>
-                            <div class="fin-kpi-value text-rose num mt-1">@summary.BouncedChequesTotal.Money()</div>
+                            <div class="fin-kpi-value text-rose num mt-1">@summary.BouncedChequesTotal.MoneyExact()</div>
                             <div class="fin-kpi-unit">ریال وصول‌نشده</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
@@ -89,7 +89,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-amber">اقساط باز و سررسیدشده</span>
-                            <div class="fin-kpi-value text-amber num mt-1">@summary.PendingInstallmentsTotal.Money()</div>
+                            <div class="fin-kpi-value text-amber num mt-1">@summary.PendingInstallmentsTotal.MoneyExact()</div>
                             <div class="fin-kpi-unit">ریال اقساط وصولی</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
@@ -111,7 +111,7 @@
                         <div>
                             <span class="fin-kpi-title text-emerald">مجموع وصولی‌های موفق</span>
                             <div class="fin-kpi-value text-emerald num mt-1">
-                                @((summary.ClearedChequesTotal + summary.PaidInstallmentsTotal).Money())
+                                @((summary.ClearedChequesTotal + summary.PaidInstallmentsTotal).MoneyExact())
                             </div>
                             <div class="fin-kpi-unit">ریال تسویه‌شده</div>
                         </div>
@@ -284,7 +284,7 @@
                                         <span class="num fs-8 fw-700 text-indigo">@c.OrderNumber</span>
                                     </td>
                                     <td class="text-start num fw-800 fs-7.5 @(c.Status == ChequeStatus.Bounced ? "text-danger" : c.IsCleared ? "text-emerald" : "text-dark")">
-                                        @c.Amount.Money()
+                                        @c.Amount.MoneyExact()
                                     </td>
                                     <td class="num fs-8">
                                         <div class="fw-600">@c.DueDate.ToFa()</div>
@@ -461,7 +461,7 @@
                                     </td>
                                     <td><span class="num fs-8 fw-700 text-indigo">@i.OrderNumber</span></td>
                                     <td class="text-start num fw-800 fs-7.5 @(i.IsPaid ? "text-emerald" : i.DaysOverdue > 0 ? "text-rose" : "text-dark")">
-                                        @i.Amount.Money()
+                                        @i.Amount.MoneyExact()
                                     </td>
                                     <td class="num fs-8 fw-600">@i.DueDate.ToFa()</td>
                                     <td>
@@ -529,7 +529,7 @@
     <Modal Visible="true" Title="@(reversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت چک" : "لغو وصول چک")" OnClose="CloseReceiptReversal">
         <ChildContent>
             <div class="alert alert-warning fs-8">@(reversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت و بازگشت مبلغ به حساب بانکی اولیه ثبت می‌شود؛ سابقه پرداخت حفظ خواهد شد." : "لغو وصول و خروج مبلغ از حساب بانکی اولیه ثبت می‌شود؛ سابقه وصول حفظ خواهد شد.")</div>
-            <p class="fs-8">چک <b class="num">@reversalTarget.Number</b> به مبلغ <b class="num">@reversalTarget.Amount.Money()</b> ریال</p>
+            <p class="fs-8">چک <b class="num">@reversalTarget.Number</b> به مبلغ <b class="num">@reversalTarget.Amount.MoneyExact()</b> ریال</p>
             <label class="form-label">@(reversalTarget.TransactionType == TransactionType.Purchase ? "تاریخ لغو پرداخت" : "تاریخ لغو وصول") *</label>
             <DatePicker @bind-Value="reversalDate" />
         </ChildContent>
@@ -574,7 +574,7 @@
 {
     <Modal Visible="true" Title="@(receiptTarget.TransactionType == TransactionType.Purchase ? "پرداخت چک خرید" : "وصول چک فروش")" OnClose="CloseReceipt">
         <ChildContent>
-            <p class="fs-8">چک <b class="num">@receiptTarget.Number</b> به مبلغ <b class="num">@receiptTarget.Amount.Money()</b> ریال</p>
+            <p class="fs-8">چک <b class="num">@receiptTarget.Number</b> به مبلغ <b class="num">@receiptTarget.Amount.MoneyExact()</b> ریال</p>
             <label class="form-label">@(receiptTarget.TransactionType == TransactionType.Purchase ? "حساب بانکی پرداخت" : "حساب بانکی مقصد شرکت") *</label>
             <select class="form-select" @bind="receiptBankId" disabled="@(receiptTarget.TransactionType == TransactionType.Purchase && receiptTarget.TrsAccountId is > 0)">
                 <option value="0">انتخاب حساب بانکی</option>
@@ -615,8 +615,8 @@
                 @if (reschedulePreview is not null)
                 {
                     <div class="col-12 alert alert-light border fs-8 mt-2">
-                        مبنا: <b class="num">@reschedulePreview.BaseAmount.Money()</b> ریال؛ نرخ: <b class="num">@reschedulePreview.RatePercent.Num()</b>٪ در <b class="num">@reschedulePreview.PeriodDays.Num()</b> روز.
-                        <div class="mt-1">تعدیل سود: <b class="num">@reschedulePreview.IncomeDelta.Money()</b> ریال</div>
+                        مبنا: <b class="num">@reschedulePreview.BaseAmount.MoneyExact()</b> ریال؛ نرخ: <b class="num">@reschedulePreview.RatePercent.Num()</b>٪ در <b class="num">@reschedulePreview.PeriodDays.Num()</b> روز.
+                        <div class="mt-1">تعدیل سود: <b class="num">@reschedulePreview.IncomeDelta.MoneyExact()</b> ریال</div>
                     </div>
                 }
             </div>
@@ -634,7 +634,7 @@
     <Modal Visible="true" Title="تعویض چک وصول‌نشده" OnClose="CloseReplaceCheque">
         <ChildContent>
             <div class="alert alert-light border fs-8">
-                چک قبلی <b class="num">@replaceTarget.Number</b> (مبلغ <b class="num">@replaceTarget.Amount.Money()</b> ریال، سررسید <b class="num">@replaceTarget.DueDate.ToFa()</b>) حذف نمی‌شود و با ثبت سابقه به وضعیت ابطال/تعویض می‌رود.
+                چک قبلی <b class="num">@replaceTarget.Number</b> (مبلغ <b class="num">@replaceTarget.Amount.MoneyExact()</b> ریال، سررسید <b class="num">@replaceTarget.DueDate.ToFa()</b>) حذف نمی‌شود و با ثبت سابقه به وضعیت ابطال/تعویض می‌رود.
             </div>
             <div class="row g-2">
                 <div class="col-md-6">
@@ -670,7 +670,7 @@
 {
     <Modal Visible="true" Title="@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "پرداخت قسط خرید" : "دریافت قسط فروش")" OnClose="CloseInstallmentReceipt">
         <ChildContent>
-            <p class="fs-8">قسط شماره <b class="num">@instReceiptTarget.No.Num()</b> فاکتور <b class="num">@instReceiptTarget.OrderNumber</b> به مبلغ <b class="num">@instReceiptTarget.Amount.Money()</b> ریال</p>
+            <p class="fs-8">قسط شماره <b class="num">@instReceiptTarget.No.Num()</b> فاکتور <b class="num">@instReceiptTarget.OrderNumber</b> به مبلغ <b class="num">@instReceiptTarget.Amount.MoneyExact()</b> ریال</p>
             <label class="form-label">@(instReceiptTarget.TransactionType == TransactionType.Purchase ? "حساب صندوق/بانک پرداخت" : "حساب صندوق/بانک مقصد شرکت") *</label>
             <select class="form-select" @bind="instReceiptAccountId">
                 <option value="0">انتخاب حساب فعال شرکت</option>
@@ -694,7 +694,7 @@
     <Modal Visible="true" Title="@(instReversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت قسط" : "لغو دریافت قسط")" OnClose="CloseInstallmentReversal">
         <ChildContent>
             <div class="alert alert-warning fs-8">@(instReversalTarget.TransactionType == TransactionType.Purchase ? "لغو پرداخت با ثبت بازگشت مبلغ به حساب اولیه انجام می‌شود؛ سابقه حفظ خواهد شد." : "لغو دریافت با ثبت خروج از حساب اولیه انجام می‌شود؛ سابقه حفظ خواهد شد.")</div>
-            <p class="fs-8">قسط شماره <b class="num">@instReversalTarget.No.Num()</b> فاکتور <b class="num">@instReversalTarget.OrderNumber</b> به مبلغ <b class="num">@instReversalTarget.Amount.Money()</b> ریال</p>
+            <p class="fs-8">قسط شماره <b class="num">@instReversalTarget.No.Num()</b> فاکتور <b class="num">@instReversalTarget.OrderNumber</b> به مبلغ <b class="num">@instReversalTarget.Amount.MoneyExact()</b> ریال</p>
             <label class="form-label">@(instReversalTarget.TransactionType == TransactionType.Purchase ? "تاریخ لغو پرداخت" : "تاریخ لغو دریافت") *</label>
             <DatePicker @bind-Value="instReversalDate" />
         </ChildContent>
@@ -717,7 +717,7 @@
                 </div>
                 <div class="modal-body p-4">
                     <p class="fs-8 text-dark mb-3">
-                        آیا از ثبت برگشت چک شماره <strong class="num text-danger">@bounceTarget.Number</strong> به مبلغ <strong class="num text-danger">@bounceTarget.Amount.Money() ریال</strong> طرف حساب <strong>@bounceTarget.PartyName</strong> اطمینان دارید؟
+                        آیا از ثبت برگشت چک شماره <strong class="num text-danger">@bounceTarget.Number</strong> به مبلغ <strong class="num text-danger">@bounceTarget.Amount.MoneyExact() ریال</strong> طرف حساب <strong>@bounceTarget.PartyName</strong> اطمینان دارید؟
                     </p>
                     <div class="alert alert-warning fs-8 rounded-3 d-flex align-items-center gap-2 mb-3">
                         <i class="bi bi-info-circle-fill fs-5 text-warning"></i>
