@@ -29,8 +29,8 @@ class DedicatedReportContract(unittest.TestCase):
         page = read('Inventory.Client/Pages/Operations/ChequeIncomeReport.razor')
         self.assertIn('Auth.Has("Orders.ViewProfit")', page)
         self.assertIn('OrderSvc.GetChequeIncomeReportAsync(from, to, partyId)', page)
-        self.assertIn('row.Income.Money()', page)
-        self.assertIn('report.TotalIncome.Money()', page)
+        self.assertIn('row.Income.MoneyExact()', page)
+        self.assertIn('report.TotalIncome.MoneyExact()', page)
         self.assertIn('/operations/reports/cheque-income', read('Inventory.Client/Pages/Operations/OperationsOrderReport.razor'))
 
 if __name__ == '__main__': unittest.main()

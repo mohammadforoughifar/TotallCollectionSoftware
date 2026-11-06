@@ -368,7 +368,7 @@ else
                 <div class="fin-statement-kpi-badge @(selectedPartyDetail.ClosingBalance > 0 ? "badge-debtor" : (selectedPartyDetail.ClosingBalance < 0 ? "badge-creditor" : "badge-settled"))">
                     <div class="fin-statement-kpi-sub">مانده نهایی حساب</div>
                     <div class="fin-statement-kpi-val num">
-                        @Math.Abs(selectedPartyDetail.ClosingBalance).Money() <small class="fs-8 fw-normal">ریال</small>
+                        @Math.Abs(selectedPartyDetail.ClosingBalance).MoneyExact() <small class="fs-8 fw-normal">ریال</small>
                     </div>
                     <div class="fin-statement-kpi-status">
                         @(selectedPartyDetail.ClosingBalance > 0 ? "بدهکار (طلب ما)" : (selectedPartyDetail.ClosingBalance < 0 ? "بستانکار (طلب شخص)" : "تسویه کامل"))
@@ -380,9 +380,10 @@ else
         @if (selectedPartyDetail.PartyType == PartyType.Customer)
         {
             <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
-                <span>فروش کالا و خدمات با ارزش افزوده: <b class="num text-dark">@selectedPartyDetail.SaleGoodsTotal.Money()</b> ریال</span>
-                <span>تاخیر تادیه چک: <b class="num text-dark">@selectedPartyDetail.SaleChequeIncomeTotal.Money()</b> ریال</span>
+                <span>فروش کالا و خدمات با ارزش افزوده: <b class="num text-dark">@selectedPartyDetail.SaleGoodsTotal.MoneyExact()</b> ریال</span>
+                <span>تاخیر تادیه چک: <b class="num text-dark">@selectedPartyDetail.SaleChequeIncomeTotal.MoneyExact()</b> ریال</span>
             </div>
+            <p class="fs-8 text-secondary px-2 mb-3">تاخیر تادیه چک در ریز صورت‌حساب، جدا از کالا و به‌عنوان بدهی مشتری آمده است. مبلغ چک هنگام ثبت وصول از بدهی کم می‌شود، نه صرفاً هنگام تحویل چک.</p>
         }
 
         <!-- جدول ریز تراکنش‌ها -->
@@ -440,13 +441,13 @@ else
                                 </td>
                                 <td class="text-secondary fs-8">@r.Description</td>
                                 <td class="text-start num fs-8 @(r.Debit > 0 ? "text-danger fw-700" : "text-muted")">
-                                    @(r.Debit > 0 ? r.Debit.Money() : "۰")
+                                    @(r.Debit > 0 ? r.Debit.MoneyExact() : "۰")
                                 </td>
                                 <td class="text-start num fs-8 @(r.Credit > 0 ? "text-success fw-700" : "text-muted")">
-                                    @(r.Credit > 0 ? r.Credit.Money() : "۰")
+                                    @(r.Credit > 0 ? r.Credit.MoneyExact() : "۰")
                                 </td>
                                 <td class="text-start num fs-8 fw-800 @(r.Balance > 0 ? "text-danger" : (r.Balance < 0 ? "text-success" : "text-muted"))">
-                                    @Math.Abs(r.Balance).Money()
+                                    @Math.Abs(r.Balance).MoneyExact()
                                     <small class="fs-9 ms-1 @(r.Balance > 0 ? "badge bg-danger-subtle text-danger" : (r.Balance < 0 ? "badge bg-success-subtle text-success" : ""))">
                                         @(r.Balance > 0 ? "بد" : (r.Balance < 0 ? "بس" : "—"))
                                     </small>
@@ -457,10 +458,10 @@ else
                     <tfoot>
                         <tr class="fin-table-total-row">
                             <td colspan="5" class="text-end fw-800 fs-7.5">جمع کل گردش دوره:</td>
-                            <td class="text-start num text-danger fw-800 fs-7.5">@selectedPartyDetail.TotalDebit.Money()</td>
-                            <td class="text-start num text-success fw-800 fs-7.5">@selectedPartyDetail.TotalCredit.Money()</td>
+                            <td class="text-start num text-danger fw-800 fs-7.5">@selectedPartyDetail.TotalDebit.MoneyExact()</td>
+                            <td class="text-start num text-success fw-800 fs-7.5">@selectedPartyDetail.TotalCredit.MoneyExact()</td>
                             <td class="text-start num fw-900 fs-7 @(selectedPartyDetail.ClosingBalance > 0 ? "text-danger" : "text-success")">
-                                @Math.Abs(selectedPartyDetail.ClosingBalance).Money()
+                                @Math.Abs(selectedPartyDetail.ClosingBalance).MoneyExact()
                             </td>
                         </tr>
                     </tfoot>

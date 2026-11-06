@@ -43,6 +43,6 @@ class StatementContract(unittest.TestCase):
 
     def test_ui_displays_period_sums(self):
         s = (ROOT / 'Inventory.Client/Pages/Operations/PartyStatementsReport.razor').read_text(encoding='utf8')
-        self.assertIn('selectedPartyDetail.SaleGoodsTotal.Money()', s)
-        self.assertIn('selectedPartyDetail.SaleChequeIncomeTotal.Money()', s)
+        self.assertIn('selectedPartyDetail.SaleGoodsTotal.MoneyExact()', s)
+        self.assertIn('selectedPartyDetail.SaleChequeIncomeTotal.MoneyExact()', s)
 if __name__ == '__main__': unittest.main()

@@ -113,9 +113,9 @@ else
             @if (!isPurchase && CanSeeProfit)
             {
                 <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
-                    <span>کالا و خدمات با ارزش افزوده: <b class="num text-dark">@summary.GoodsAmount.Money()</b> ریال</span>
-                    <span>تاخیر تادیه چک: <b class="num text-dark">@summary.ChequeIncomeAmount.Money()</b> ریال</span>
-                    <span>جمع فاکتورها: <b class="num text-dark">@summary.TotalAmount.Money()</b> ریال</span>
+                    <span>کالا و خدمات با ارزش افزوده: <b class="num text-dark">@summary.GoodsAmount.MoneyExact()</b> ریال</span>
+                    <span>تاخیر تادیه چک: <b class="num text-dark">@summary.ChequeIncomeAmount.MoneyExact()</b> ریال</span>
+                    <span>جمع فاکتورها: <b class="num text-dark">@summary.TotalAmount.MoneyExact()</b> ریال</span>
                 </div>
             }
             <!-- ================== کارت‌های شاخص (KPI Cards) ================== -->
@@ -128,7 +128,7 @@ else
                                     جمع کل مبلغ @(isPurchase ? "خرید" : "فروش")
                                 </span>
                                 <div class="fin-kpi-value num @(isPurchase ? "text-indigo" : "text-emerald") mt-1">
-                                    @summary.TotalAmount.Money()
+                                    @summary.TotalAmount.MoneyExact()
                                 </div>
                                 <div class="fin-kpi-unit">ریال</div>
                             </div>
@@ -379,11 +379,11 @@ else
                                         <td class="text-center num fw-600 text-dark fs-8">@order.Lines.Sum(l => l.Quantity).Qty()</td>
                                         @if (!isPurchase && CanSeeProfit)
                                         {
-                                            <td class="text-start num fs-8">@order.GoodsAmount.Money()</td>
-                                            <td class="text-start num fs-8">@order.ChequeIncomeAmount.Money()</td>
+                                            <td class="text-start num fs-8">@order.GoodsAmount.MoneyExact()</td>
+                                            <td class="text-start num fs-8">@order.ChequeIncomeAmount.MoneyExact()</td>
                                         }
                                         <td class="text-start num fw-800 fs-7.5 @(isPurchase ? "text-indigo" : "text-emerald")">
-                                            @order.TotalAmount.Money()
+                                            @order.TotalAmount.MoneyExact()
                                         </td>
                                         @if (!isPurchase && CanSeeProfit)
                                         {

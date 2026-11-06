@@ -3442,6 +3442,7 @@ public class InventoryService : IInventoryService
     private sealed record ChequeStatementCreditSettlement(DateTime Date, SaleChequeCreditSettlementKind Kind, string? TargetNumber, decimal Amount);
     private sealed record ChequeStatementInboundAllocation(DateTime Date, string SourceNumber, decimal Amount);
     private sealed record ChequeStatementHistory(decimal CurrentIncome, decimal InitialIncome,
+        decimal? CalculatorBaseAmount, decimal? CalculatorRatePercent, int? CalculatorMonths,
         List<ChequeStatementAdjustment> Adjustments,
         List<ChequeStatementReceipt> Receipts,
         List<ChequeStatementReturn> Returns,
@@ -3490,6 +3491,7 @@ public class InventoryService : IInventoryService
             instRows.AddRange(saleInstReceipts.Where(r => r.ReversalDate.HasValue)
                 .Select(r => new ChequeStatementReceipt(r.ReversalDate!.Value, -r.Amount)));
             result.Add(sale.Id, new ChequeStatementHistory(charge.Amount, charge.InitialAmount,
+                charge.CalculatorBaseAmount, charge.CalculatorRatePercent, charge.CalculatorMonths,
                 history.Where(e => e.Kind == SaleChequeChargeEventKind.DueDateAdjustment)
                     .Select(e => new ChequeStatementAdjustment(e.Date, e.IncomeDelta)).OrderBy(e => e.Date).ToList(),
                 receiptRows.OrderBy(r => r.Date).ToList(),
@@ -3504,6 +3506,20 @@ public class InventoryService : IInventoryService
                     .Select(c => new ChequeStatementInboundAllocation(c.Date, c.SaleTransaction.Number, c.Amount)).ToList()));
         }
         return result;
+    }
+
+    private static string DescribeChequeIncome(ChequeStatementHistory? history, string saleNumber)
+    {
+        var text = $"سود توافق‌شده بابت پرداخت چکی فاکتور {saleNumber}؛ جدا از کالا و بدون ارزش افزوده";
+        // Old records may not contain calculator snapshots. Never invent their terms.
+        if (history?.CalculatorBaseAmount is decimal amount &&
+            history.CalculatorRatePercent is decimal rate && history.CalculatorMonths is int months)
+        {
+            var basis = Fa.Digits(amount.ToString("#,##0.##", CultureInfo.InvariantCulture));
+            var percent = Fa.Digits(rate.ToString("0.######", CultureInfo.InvariantCulture));
+            text += $" (مبنا {basis} ریال، {percent}٪ ماهانه، {Fa.Digits(months)} ماه)";
+        }
+        return text;
     }
 
     private sealed record ShopCashStatementEvent(int TransactionId, int PartyId, string OrderNumber,
@@ -4052,7 +4068,7 @@ public class InventoryService : IInventoryService
                     TransactionId = t.Id,
                     DocumentNumber = t.Number,
                     Title = "تاخیر تادیه چک",
-                    Description = $"ردیف مالی فاکتور شماره {t.Number}",
+                    Description = DescribeChequeIncome(saleHistory, t.Number),
                     Debit = income,
                     Balance = runningBalance
                 });

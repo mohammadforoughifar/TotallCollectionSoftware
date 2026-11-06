@@ -6,9 +6,12 @@ class InitialChargeContract(unittest.TestCase):
     def test_original_monthly_calculator_keeps_same_formula_and_rounding(self):
         existing = (ROOT / 'Inventory.Client/Pages/Orders/OrderForm.razor').read_text(encoding='utf8')
         calc = (ROOT / 'Inventory.Shared/SaleChequeInitialCalculation.cs').read_text(encoding='utf8')
-        self.assertIn('Math.Round(CalcBase * CalcRate / 100m * calcMonths, 0)', existing)
+        shared = (ROOT / 'Inventory.Shared/InvoiceInstallmentCalculation.cs').read_text(encoding='utf8')
+        self.assertIn('InvoiceInstallmentCalculation.Create(CalcBase, rate, calcMonths)', existing)
+        self.assertIn('SaleChequeInitialCalculation.Calculate(baseAmount, monthlyRatePercent, months)', shared)
         self.assertIn('Math.Round(calculatorBase * monthlyRatePercent / 100m * months, 0)', calc)
         self.assertIn('months > 60', calc)
+        self.assertNotIn('Math.Round(CalcBase * CalcRate', existing)
 
     def test_posting_blocks_undecided_payment_or_unknown_original_date(self):
         s = (ROOT / 'Inventory.Api/Services/Invoicing/SaleChequeChargePosting.cs').read_text(encoding='utf8')

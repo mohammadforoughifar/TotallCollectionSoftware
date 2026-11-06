@@ -17,9 +17,9 @@ class ReportContract(unittest.TestCase):
         ui = read('Inventory.Client/Pages/Operations/OperationsOrderReport.razor')
         self.assertIn('page, PageSize, SelectedChequeIncome', ui)
         self.assertIn('warehouseId, SelectedChequeIncome', ui)
-        self.assertIn('order.GoodsAmount.Money()', ui)
-        self.assertIn('order.ChequeIncomeAmount.Money()', ui)
-        self.assertIn('summary.TotalAmount.Money()', ui)
+        self.assertIn('order.GoodsAmount.MoneyExact()', ui)
+        self.assertIn('order.ChequeIncomeAmount.MoneyExact()', ui)
+        self.assertIn('summary.TotalAmount.MoneyExact()', ui)
 
     def test_statistics_use_goods_without_income(self):
         s = read('Inventory.Api/Services/Reports/OperationsReportsService.cs')

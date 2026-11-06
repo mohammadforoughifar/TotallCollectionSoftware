@@ -326,11 +326,11 @@
                                         <span class="badge badge-soft-warning fs-8 me-1">برگشتی: @l.ReturnedQuantity.Num()</span>
                                     }
                                 </td>
-                                <td class="text-start num">@l.Price.Money()</td>
-                                <td class="text-start num">@l.DiscountAmount.Money()</td>
-                                <td class="text-start num">@l.AfterDiscount.Money()</td>
-                                <td class="text-start num">@l.VatAmount.Money()</td>
-                                <td class="text-start num fw-700">@l.Total.Money()</td>
+                                <td class="text-start num">@(viewing.HasChequeCharge ? l.Price.MoneyExact() : l.Price.Money())</td>
+                                <td class="text-start num">@(viewing.HasChequeCharge ? l.DiscountAmount.MoneyExact() : l.DiscountAmount.Money())</td>
+                                <td class="text-start num">@(viewing.HasChequeCharge ? l.AfterDiscount.MoneyExact() : l.AfterDiscount.Money())</td>
+                                <td class="text-start num">@(viewing.HasChequeCharge ? l.VatAmount.MoneyExact() : l.VatAmount.Money())</td>
+                                <td class="text-start num fw-700">@(viewing.HasChequeCharge ? l.Total.MoneyExact() : l.Total.Money())</td>
                                 @if (viewing.IsSale)
                                 {
                                     @if (CanSeeProfit)
@@ -366,6 +366,17 @@
                     </tbody>
                 </table>
             </div>
+            @if (viewing.IsSale && viewing.HasChequeCharge)
+            {
+                <div class="alert alert-light border py-2 px-3 mt-2 mb-0 fs-8" data-sale-cheque-income-detail>
+                    <div class="d-flex flex-wrap gap-3">
+                        <strong>تاخیر تادیه چک</strong>
+                        <span>کالا و ارزش افزوده: <b class="num">@viewing.GoodsAmount.MoneyExact()</b> ریال</span>
+                        <span>بدهکار مشتری / بستانکار فروشگاه: <b class="num">@viewing.ChequeIncomeAmount.MoneyExact()</b> ریال</span>
+                    </div>
+                    <div class="text-muted mt-1">سود چک جدا از مبلغ کالا و بدون ارزش افزوده در جمع فاکتور منظور شده است.</div>
+                </div>
+            }
             <div class="d-flex justify-content-end align-items-center gap-3 mt-2">
                 @if (viewing.IsSale && CanSeeProfit && viewing.TotalProfit.HasValue)
                 {
@@ -390,7 +401,7 @@
                 }
                 <div>
                     <span class="text-muted ms-2">مبلغ کل:</span>
-                    <span class="fw-800 fs-5 text-primary num">@viewing.TotalAmount.Money()</span>
+                    <span class="fw-800 fs-5 text-primary num">@(viewing.HasChequeCharge ? viewing.TotalAmount.MoneyExact() : viewing.TotalAmount.Money())</span>
                     <span class="fs-8 text-muted">ریال</span>
                 </div>
             </div>

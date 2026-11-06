@@ -94,13 +94,13 @@ public static class SaleInvoicePrint
                 sb.Append(" <span class=\"badge\">خدمت</span>");
             sb.Append("</strong></td><td class=\"qty-cell\">").Append(Esc(line.Unit))
                 .Append("</td><td class=\"qty-cell\">").Append(line.Quantity.Qty())
-                .Append("</td><td class=\"money-cell\">").Append(line.Price.Money());
+                .Append("</td><td class=\"money-cell\">").Append(order.HasChequeCharge ? line.Price.MoneyExact() : line.Price.Money());
             if (hasLineDiscount)
             {
                 sb.Append("</td><td class=\"money-cell\">");
                 if (line.DiscountAmount > 0)
                 {
-                    sb.Append(line.DiscountAmount.Money());
+                    sb.Append(order.HasChequeCharge ? line.DiscountAmount.MoneyExact() : line.DiscountAmount.Money());
                     if (line.DiscountIsAmount && line.DiscountPercent > 0)
                         sb.Append(" <small class=\"text-muted\">(").Append(line.DiscountPercent.ToString("0.##")).Append("%</small>)");
                 }
@@ -111,12 +111,12 @@ public static class SaleInvoicePrint
             }
             if (hasVat)
             {
-                sb.Append("</td><td class=\"money-cell\">").Append(line.AfterDiscount.Money());
-                sb.Append("</td><td class=\"money-cell\">").Append(line.VatAmount.Money());
+                sb.Append("</td><td class=\"money-cell\">").Append(order.HasChequeCharge ? line.AfterDiscount.MoneyExact() : line.AfterDiscount.Money());
+                sb.Append("</td><td class=\"money-cell\">").Append(order.HasChequeCharge ? line.VatAmount.MoneyExact() : line.VatAmount.Money());
                 if (line.VatValue > 0 && line.VatValue <= 100)
                     sb.Append(" <small class=\"text-muted\">(").Append(line.VatValue.ToString("0.##")).Append("٪)</small>");
             }
-            sb.Append("</td><td class=\"money-cell total-cell\">").Append(line.Total.Money()).Append("</td></tr>");
+            sb.Append("</td><td class=\"money-cell total-cell\">").Append(order.HasChequeCharge ? line.Total.MoneyExact() : line.Total.Money()).Append("</td></tr>");
         }
         if (lines.Count == 0)
             sb.Append("<tr><td colspan=\"" + ((hasLineDiscount ? 7 : 6) + (hasVat ? 2 : 0)) + "\" class=\"empty\">برای این سند ردیفی ثبت نشده است.</td></tr>");
@@ -130,18 +130,21 @@ public static class SaleInvoicePrint
         if ((hasLineDiscount && totalDiscount > 0) || hasVat || order.ChequeIncomeAmount > 0)
         {
             sb.Append("<div style=\"margin-top:10px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;font-size:10.5px;\">");
-            sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>جمع اقلام (ناخالص):</span><b class=\"num\">").Append(totalGross.Money()).Append(" ریال</b></div>");
-            sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;color:#dc2626;\"><span>تخفیف کل اقلام:</span><b class=\"num\">- ").Append(totalDiscount.Money()).Append(" ریال</b></div>");
+            sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>جمع اقلام (ناخالص):</span><b class=\"num\">").Append(order.HasChequeCharge ? totalGross.MoneyExact() : totalGross.Money()).Append(" ریال</b></div>");
+            sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;color:#dc2626;\"><span>تخفیف کل اقلام:</span><b class=\"num\">- ").Append(order.HasChequeCharge ? totalDiscount.MoneyExact() : totalDiscount.Money()).Append(" ریال</b></div>");
             if (hasVat)
-                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>ارزش افزوده:</span><b class=\"num\">").Append(totalVat.Money()).Append(" ریال</b></div>");
+                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>ارزش افزوده:</span><b class=\"num\">").Append(order.HasChequeCharge ? totalVat.MoneyExact() : totalVat.Money()).Append(" ریال</b></div>");
             if (order.ChequeIncomeAmount > 0)
-                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>تاخیر تادیه چک:</span><b class=\"num\">").Append(order.ChequeIncomeAmount.Money()).Append(" ریال</b></div>");
+            {
+                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>کالا و ارزش افزوده:</span><b class=\"num\">").Append(order.HasChequeCharge ? order.GoodsAmount.MoneyExact() : order.GoodsAmount.Money()).Append(" ریال</b></div>");
+                sb.Append("<div style=\"display:flex;justify-content:space-between;padding:2px 0;\"><span>تاخیر تادیه چک (بدون ارزش افزوده):</span><b class=\"num\">").Append(order.HasChequeCharge ? order.ChequeIncomeAmount.MoneyExact() : order.ChequeIncomeAmount.Money()).Append(" ریال</b></div>");
+            }
             sb.Append("</div>");
         }
 
         sb.Append("<section class=\"grand-total\"><div><span>مبلغ قابل پرداخت</span><small>جمع نهایی ")
             .Append(docTitle).Append("</small></div><strong>")
-            .Append(order.TotalAmount.Money()).Append(" <small>ریال</small></strong></section>");
+            .Append(order.HasChequeCharge ? order.TotalAmount.MoneyExact() : order.TotalAmount.Money()).Append(" <small>ریال</small></strong></section>");
 
         // ---------- امضاها ----------
         if (showSignatures)

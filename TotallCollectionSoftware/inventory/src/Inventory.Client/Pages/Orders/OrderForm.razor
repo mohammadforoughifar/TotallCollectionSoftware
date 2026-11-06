@@ -22,6 +22,10 @@
         }
         else
         {
+            @if (KnownLaterChequeActivity)
+            {
+                <div class="alert alert-warning py-2 fs-8" role="status">این فاکتور دارای گردش بعدی است و ویرایش مستقیم آن مجاز نیست؛ برای اصلاح از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید.</div>
+            }
             @if (IsEdit && !EditOrder!.ShopCashLedgerEnabled && !EditOrder.HasChequeCharge)
             {
                 <div class="alert alert-warning py-2 d-flex align-items-center justify-content-between gap-2" role="status">
@@ -109,30 +113,31 @@
                                     <div><span>@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده")</span><strong>@(partyLookup.FirstOrDefault(p => p.Id == partyId)?.Name ?? "—")</strong></div>
                                     <div><span>انبار</span><strong>@(whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Name ?? "—")</strong></div>
                                     <div><span>اقلام</span><strong>@(lines.Count(l => l.ProductId > 0 && l.Qty > 0).Num()) سطر</strong></div>
-                                    @if (saleChequeCharge is not null)
-                                    {
-                                        <div><span>کالا با ارزش افزوده</span><strong class="num">@goodsTotal.Money()</strong></div>
-                                        <div><span>تاخیر تادیه چک</span><strong class="num">@saleChequeIncome.Money()</strong></div>
-                                    }
-                                    <div class="purchase-summary-total"><span>مبلغ نهایی فاکتور</span><strong class="num">@grandTotal.Money()</strong></div>
+                                    <div class="purchase-summary-total">
+                                        <span>مبلغ نهایی فاکتور</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(grandTotal) : grandTotal.Money())</strong>
+                                        @if (HasChequeIncomeArticle)
+                                        {
+                                            <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + تاخیر تادیه چک <b class="num">@ExactMoney(saleChequeIncome)</b></small>
+                                        }
+                                    </div>
                                 </div>
                                 <div class="purchase-summary-pay" aria-live="polite">
-                                    <div><span>نقد</span><strong class="num">@CashPart.Money()</strong></div>
-                                    <div><span>چک</span><strong class="num">@ChequeSum().Money()</strong></div>
-                                    <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@InstSum().Money()</strong></div>
-                                    <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > (saleChequeCharge is null ? 1 : 0) ? "is-warning" : "")">
-                                        <span>@(FinalRemaining < (saleChequeCharge is null ? -1 : 0) ? "مازاد پرداخت" : useCredit && FinalRemaining > (saleChequeCharge is null ? 1 : 0) ? "مانده نسیه" : "باقی‌مانده")</span>
-                                        <strong class="num">@Math.Abs(FinalRemaining).Money()</strong>
+                                    <div><span>نقد</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(CashPart) : CashPart.Money())</strong></div>
+                                    <div><span>چک</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(ChequeSum()) : ChequeSum().Money())</strong></div>
+                                    <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@(StrictPaymentBalance ? ExactMoney(InstSum()) : InstSum().Money())</strong></div>
+                                    <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > (StrictPaymentBalance ? 0 : 1) ? "is-warning" : "")">
+                                        <span>@(FinalRemaining < (StrictPaymentBalance ? 0 : -1) ? "مازاد پرداخت" : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده")</span>
+                                        <strong class="num">@(StrictPaymentBalance ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
                                     </div>
                                 </div>
                                 <p class="purchase-summary-status" aria-live="polite">
-                                    @if (FinalRemaining > (saleChequeCharge is null ? 1 : 0))
+                                    @if (FinalRemaining > (StrictPaymentBalance ? 0 : 1))
                                     {
                                         @(useCredit ? "مانده فاکتور به نسیه می‌رود؛ تاریخ سررسید را بررسی کنید." : "برای مانده فاکتور، پرداخت دیگری اضافه کنید یا نسیه و سررسید آن را مشخص کنید.")
                                     }
-                                    else if (FinalRemaining < (saleChequeCharge is null ? -1 : 0))
+                                    else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
                                     {
-                                        <span>@(saleChequeCharge is null ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار)." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید.")</span>
+                                        <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
                                     }
                                     else
                                     {
@@ -221,31 +226,13 @@
                                 <div class="mt-3" data-pay-cheque-box>
                                     <div class="d-flex align-items-center gap-2 mb-2">
                                         <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
-                                        <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" disabled="@(saleChequeCharge is not null)" @onclick="() => OpenCalc(true)">
+                                        <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
                                         <button type="button" class="btn btn-sm btn-outline-primary" data-pay-add-cheque data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddCheque">
                                             <i class="bi bi-plus-lg"></i> افزودن چک (F2)
                                         </button>
                                     </div>
-                                    @if (Type == TransactionType.Sale && (!IsEdit || EditOrder?.HasChequeCharge == true))
-                                    {
-                                        <div class="alert alert-light border py-2 fs-8 mb-2">
-                                            <div class="d-flex flex-wrap align-items-center gap-2">
-                                                <strong>تاخیر تادیه چک</strong>
-                                                @if (saleChequeCharge is not null)
-                                                {
-                                                    <span class="num">@saleChequeIncome.Money() ریال</span>
-                                                    @if (!IsEdit)
-                                                    {
-                                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemoveSaleChequeCharge">حذف سود</button>
-                                                    }
-                                                }
-                                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenSaleChequeCharge">محاسبه سود</button>
-                                            </div>
-                                            <div class="text-muted mt-1">مبلغ تاخیر تادیه چک جدا از کالا و بدون ارزش افزوده در گردش فروشگاه ثبت می‌شود.</div>
-                                        </div>
-                                    }
                                     @for (var ci = 0; ci < cheques.Count; ci++)
                                     {
                                         var i = ci;
@@ -291,13 +278,39 @@
                                             </div>
                                             <div class="col-12 fs-9">
                                                 <span class="text-muted">باقی‌مانده پس از این چک:</span>
-                                                <b class="num text-primary" data-rem-cheque="@i">@RemainingAfterCheque(i).Money()</b> ریال
+                                                <b class="num text-primary" data-rem-cheque="@i">@(StrictPaymentBalance ? ExactMoney(RemainingAfterCheque(i)) : RemainingAfterCheque(i).Money())</b> ریال
                                             </div>
                                         </div>
                                     }
                                     @if (cheques.Count == 0)
                                     {
                                         <div class="fs-8 text-muted">هنوز چکی اضافه نشده است؛ با «افزودن چک» ردیف جدید با مبلغ باقی‌مانده ساخته می‌شود.</div>
+                                    }
+                                    @if (Type == TransactionType.Sale && HasChequeIncomeArticle)
+                                    {
+                                        <div class="alert alert-light border py-2 px-3 fs-8 mt-2 mb-0" data-sale-cheque-income-article>
+                                            <div class="d-flex flex-wrap align-items-center gap-3">
+                                                <strong>تاخیر تادیه چک</strong>
+                                                <span>بدهکار مشتری: <b class="num">@saleChequeIncome.Money()</b> ریال</span>
+                                                <span>بستانکار فروشگاه: <b class="num">@saleChequeIncome.Money()</b> ریال</span>
+                                                @if (!IsEdit)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="RemoveSaleChequeCharge">حذف ردیف سود</button>
+                                                }
+                                            </div>
+                                            <div class="text-muted mt-1">
+                                                @if (saleChequeCharge is not null)
+                                                {
+                                                    <span>مبنای اولیه: <b class="num">@ExactMoney(saleChequeCharge.CalculatorBaseAmount)</b> ریال،
+                                                        نرخ ماهانه <b class="num">@ExactPercent(saleChequeCharge.CalculatorRatePercent)</b>٪ برای <b class="num">@saleChequeCharge.CalculatorMonths.Num()</b> ماه. </span>
+                                                }
+                                                else
+                                                {
+                                                    <span>جزئیات مبنا و نرخ اولیه در سابقه این فاکتور موجود نیست. </span>
+                                                }
+                                                این ردیف جدا از کالا و بدون ارزش افزوده است و @(IsEdit ? "در گردش فاکتور ثبت شده است" : "با ثبت فاکتور در گردش مشتری و درآمد فروشگاه ثبت می‌شود").
+                                            </div>
+                                        </div>
                                     }
                                 </div>
                             }
@@ -351,7 +364,7 @@
                                                                 <input class="form-control form-control-sm num" value="@instAmounts[i]"
                                                                        @oninput="@(e => OnInstAmountInput(i, e))" inputmode="numeric" dir="ltr" />
                                                             </td>
-                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@RemainingAfterInstallment(i).Money()</b></td>
+                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(StrictPaymentBalance ? ExactMoney(RemainingAfterInstallment(i)) : RemainingAfterInstallment(i).Money())</b></td>
                                                             <td><button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف قسط" aria-label="حذف قسط" data-pay-remove-inst="@i" @onclick="() => RemoveInstallment(i)"><i class="bi bi-x-lg text-danger"></i></button></td>
                                                         </tr>
                                                     }
@@ -360,7 +373,7 @@
                                         </div>
                                         <div class="fs-8">
                                             جمع اقساط: <b class="num">@InstSum().Money()</b> —
-                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@FinalRemaining.Money()</b>
+                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@(StrictPaymentBalance ? ExactMoney(FinalRemaining) : FinalRemaining.Money())</b>
                                         </div>
                                     }
                                     else
@@ -379,7 +392,7 @@
                                         <DatePicker @bind-Value="creditDue" OpenOnFocus="UseInvoiceWizard" />
                                     </div>
                                     <div class="col-12 col-md-8 fs-8 pb-1">
-                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@Math.Max(0, FinalRemaining).Money()</b> ریال
+                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@(StrictPaymentBalance ? ExactMoney(Math.Max(0, FinalRemaining)) : Math.Max(0, FinalRemaining).Money())</b> ریال
                                     </div>
                                 </div>
                             }
@@ -834,28 +847,6 @@
     </Modal>
 }
 
-<Modal Visible="showSaleChequeCharge" Title="محاسبه تاخیر تادیه چک" OnClose="() => showSaleChequeCharge = false">
-    <ChildContent>
-        <div class="row g-2">
-            <div class="col-md-6"><label class="form-label">مبنای ماشین‌حساب اولیه (ریال)</label>
-                <input class="form-control num" value="@chargeBaseText" @oninput="@(e => chargeBaseText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" /></div>
-            <div class="col-md-6"><label class="form-label">درصد سود ماهانه اولیه</label>
-                <input class="form-control num" @bind="chargeRateText" inputmode="decimal" dir="ltr" /></div>
-            <div class="col-md-4"><label class="form-label">تعداد ماه</label>
-                <input class="form-control num" type="number" min="1" max="60" @bind="chargeMonths" dir="ltr" /></div>
-            <div class="col-md-4"><label class="form-label">درصد تعدیل سررسید</label>
-                <input class="form-control num" @bind="chargeAdjustmentRateText" inputmode="decimal" dir="ltr" /></div>
-            <div class="col-md-4"><label class="form-label">بازه تعدیل (روز)</label>
-                <input class="form-control num" type="number" min="1" @bind="chargeAdjustmentDays" dir="ltr" /></div>
-            <div class="col-12 fs-8 text-muted">پس از تأیید، مبلغ سود به فاکتور اضافه می‌شود؛ مبلغ چک‌ها خودکار تغییر نمی‌کند.</div>
-        </div>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-light" @onclick="() => showSaleChequeCharge = false">انصراف</button>
-        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="ApplySaleChequeCharge">تأیید سود (F1)</button>
-    </Footer>
-</Modal>
-
 <Modal Visible="showCalc" Title="@(calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
@@ -863,7 +854,7 @@
                 <label class="form-label">مبلغ پایه (ریال)</label>
                 <input class="form-control num" value="@calcBaseText"
                        @oninput="@(e => calcBaseText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
-                <div class="fs-8 text-muted mt-1">پیش‌فرض: باقیماندهٔ سند پس از کسر نقد و سطرهای قبلی (@(Math.Max(0, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum()).Money()) ریال)</div>
+                <div class="fs-8 text-muted mt-1">@(calcForCheque && Type == TransactionType.Sale ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط" : "مبنای پیشنهادی: باقیماندهٔ سند پس از کسر سایر پرداخت‌ها") (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">درصد سود ماهانه</label>
@@ -875,7 +866,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label">تعداد ماه (قسط)</label>
-                <input class="form-control num" @bind="calcMonths" type="number" min="1" max="60" dir="ltr" />
+                <input class="form-control num" @bind="calcMonths" @bind:event="oninput" type="number" min="1" max="60" dir="ltr" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">تاریخ شروع (اولین سررسید)</label>
@@ -884,29 +875,76 @@
             <div class="col-md-4">
                 <label class="form-label">فاصله هر @(calcForCheque ? "چک" : "قسط")</label>
                 <div class="input-group">
-                    <input class="form-control num" @bind="calcIntervalDays" type="number" min="1" dir="ltr" />
+                    <input class="form-control num" @bind="calcIntervalDays" @bind:event="oninput" type="number" min="1" dir="ltr" />
                     <span class="input-group-text">روز</span>
                 </div>
             </div>
 
-            @if (CalcBase > 0 && calcMonths > 0)
+            @if (calcForCheque && Type == TransactionType.Sale)
+            {
+                <div class="col-12 fs-8 text-muted">
+                    سود همین محاسبه، یک‌بار به بدهی مشتری و درآمد فروشگاه اضافه می‌شود؛ به خود سود ارزش افزوده تعلق نمی‌گیرد.
+                </div>
+                @if (IsEdit && EditOrder?.HasChequeCharge != true)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">افزودن سود به فاکتور ثبت‌شده‌ای که ردیف تاخیر تادیه ندارد، در ویرایش پشتیبانی نمی‌شود؛ برای فروش جدید از همین ماشین‌حساب استفاده کنید.</div></div>
+                }
+                else if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">جزئیات محاسبه اولیه فاکتور قدیمی در دسترس نیست و نباید حدس زده شود؛ این فاکتور به بررسی سابقه نیاز دارد.</div></div>
+                }
+                else if (IsEdit && EditOrder?.HasChequeCharge == true)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">فاکتور دارای گردش بعدی قابل ویرایش مستقیم نیست؛ برای آن از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید. سابقه کامل هنگام ثبت در سرور کنترل می‌شود.</div></div>
+                }
+                <div class="col-12">
+                    <details class="fs-8">
+                        <summary class="text-secondary">شرایط اختیاری تعدیل سررسید (پیش‌فرض: نرخ ماهانه، هر ۳۰ روز)</summary>
+                        <div class="row g-2 mt-1">
+                            <div class="col-6">
+                                <label class="form-label">نرخ تعدیل هر بازه (٪)</label>
+                                <input class="form-control form-control-sm num" value="@calcAdjustmentRateText"
+                                       @oninput="@(e => calcAdjustmentRateText = e.Value?.ToString() ?? "")"
+                                       placeholder="همان نرخ ماهانه" inputmode="decimal" dir="ltr" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">بازه تعدیل (روز)</label>
+                                <input class="form-control form-control-sm num" type="number" min="1" @bind="calcAdjustmentDays" @bind:event="oninput" dir="ltr" />
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            }
+            @if (calcForCheque && cheques.Count > 0)
+            {
+                <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
+            }
+            @if (CalculatorPlan is { } calc)
             {
                 <div class="col-12">
                     <div class="calc-preview">
                         <div class="d-flex flex-wrap gap-3 justify-content-between">
-                            <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@CalcBase.Money()</div></div>
-                            <div><div class="fs-8 text-muted">سود کل (@CalcRate.Num()٪ × @calcMonths.Num() ماه)</div><div class="num fw-700 text-warning">@CalcInterest.Money()</div></div>
-                            <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@CalcTotal.Money()</div></div>
-                            <div><div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div><div class="num fw-800 text-success">@CalcPerMonth.Money()</div></div>
+                            <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@ExactMoney(calc.BaseAmount)</div></div>
+                            <div><div class="fs-8 text-muted">سود کل (@ExactPercent(calc.MonthlyRatePercent)٪ × @calc.Months.Num() ماه)</div><div class="num fw-700 text-warning">@ExactMoney(calc.Interest)</div></div>
+                            <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@ExactMoney(calc.Total)</div></div>
+                            <div><div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div><div class="num fw-800 text-success">@ExactMoney(calc.RegularAmount)</div></div>
                         </div>
+                        @if (calc.LastAmount != calc.RegularAmount)
+                        {
+                            <div class="fs-8 text-muted mt-2">مبلغ ردیف آخر: <b class="num">@ExactMoney(calc.LastAmount)</b> ریال</div>
+                        }
                     </div>
                 </div>
+            }
+            else if (CalcBase > 0)
+            {
+                <div class="col-12 fs-8 text-danger">مبلغ، نرخ سود یا تعداد ماه معتبر نیست؛ مبالغ باید حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار داشته باشند.</div>
             }
         </div>
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showCalc = false">انصراف (Esc)</button>
-        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalcBase <= 0 || calcMonths < 1 || !calcStart.HasValue)">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalculatorPlan is null || calcIntervalDays < 1 || !calcStart.HasValue)">
             <i class="bi bi-check2-circle"></i> ساخت ردیف‌ها (F1)
         </button>
     </Footer>
@@ -1302,6 +1340,13 @@
 
     private void ToggleCheque()
     {
+        if (useCheque && (saleChequeCharge is not null || (IsEdit && EditOrder?.HasChequeCharge == true)))
+        {
+            InvoiceInfo(IsEdit
+                ? "چک فاکتور دارای تاخیر تادیه را از این بخش نمی‌توان غیرفعال کرد."
+                : "برای غیرفعال‌کردن چک، ابتدا ردیف سود چک را حذف کنید.");
+            return;
+        }
         useCheque = !useCheque;
         EnsureInvoicePaymentMethod();
         if (useCheque && cheques.Count == 0) AddCheque();
@@ -1337,108 +1382,210 @@
         : useInstallment ? PaymentMethod.Installment
         : PaymentMethod.Credit;
 
-    // ثبت ردیف مالی مستقل؛ هیچ چکی به‌طور خودکار بازنویسی نمی‌شود.
-    private bool showSaleChequeCharge;
-    private string chargeBaseText = "", chargeRateText = "", chargeAdjustmentRateText = "";
-    private int chargeMonths = 1, chargeAdjustmentDays = 30;
+    // ردیف مالی از همان محاسبهٔ چک ساخته می‌شود؛ مبالغ چک خارج از «ساخت ردیف‌ها» تغییر نمی‌کنند.
     private SaleChequeChargeInput? saleChequeCharge;
-    private decimal saleChequeIncome, chargeInvoiceBase;
-
-    private void OpenSaleChequeCharge()
-    {
-        if (saleChequeCharge is null) chargeBaseText = Fa.FormatTyping(goodsTotal.ToString("0.##"));
-        showSaleChequeCharge = true;
-    }
+    private decimal saleChequeIncome, chargeInvoiceBase, chargeCashBase, chargeInstallmentBase;
+    private bool removedCalculatedChequeIncome;
+    private bool HasChequeIncomeArticle => saleChequeCharge is not null || (IsEdit && EditOrder?.HasChequeCharge == true);
+    private bool StrictPaymentBalance => HasChequeIncomeArticle || removedCalculatedChequeIncome;
 
     private void RemoveSaleChequeCharge()
     {
+        if (saleChequeCharge is null) return;
         saleChequeCharge = null;
         saleChequeIncome = 0;
-        chargeInvoiceBase = 0;
-    }
-
-    private void ApplySaleChequeCharge()
-    {
-        var basis = Fa.ParseDecimal(chargeBaseText);
-        var rate = Fa.ParseDecimal(chargeRateText);
-        var adjustmentRate = Fa.ParseDecimal(chargeAdjustmentRateText);
-        if (basis > goodsTotal || adjustmentRate < 0 || adjustmentRate > 999999999999.999999m ||
-            decimal.Round(adjustmentRate, 6) != adjustmentRate || chargeAdjustmentDays <= 0)
-        {
-            InvoiceError("مبنا، نرخ یا بازه تعدیل سررسید معتبر نیست.");
-            return;
-        }
-        decimal income;
-        try { income = SaleChequeInitialCalculation.Calculate(basis, rate, chargeMonths); }
-        catch (ArgumentOutOfRangeException) { InvoiceError("ورودی‌های ماشین‌حساب اولیه معتبر نیست."); return; }
-        if (income <= 0) { InvoiceError("سود محاسبه‌شده باید بیشتر از صفر باشد."); return; }
-        saleChequeCharge = new SaleChequeChargeInput
-        {
-            CalculatorBaseAmount = basis, CalculatorRatePercent = rate, CalculatorMonths = chargeMonths,
-            AdjustmentRatePercent = adjustmentRate, AdjustmentPeriodDays = chargeAdjustmentDays
-        };
-        chargeInvoiceBase = goodsTotal;
-        saleChequeIncome = income;
-        showSaleChequeCharge = false;
+        chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0;
+        removedCalculatedChequeIncome = true;
+        InvoiceInfo("ردیف سود حذف شد؛ مبلغ چک‌ها تغییر نکرده است. در صورت مازاد، پرداخت‌ها را دستی اصلاح کنید.");
     }
 
     // ---------------- ماشین‌حساب اقساط/چک با سود ----------------
     private bool showCalc, calcForCheque;
-    private string calcBaseText = "", calcRateText = "";
-    private int calcMonths = 3, calcIntervalDays = 30;
+    private string calcBaseText = "", calcRateText = "", calcAdjustmentRateText = "";
+    private int calcMonths = 3, calcIntervalDays = 30, calcAdjustmentDays = 30;
     private DateTime? calcStart;
 
     private decimal CalcBase => Fa.ParseDecimal(calcBaseText);
-    private decimal CalcRate => Fa.ParseDecimal(calcRateText);
-    /// <summary>سود ساده ماهانه: پایه × درصد × تعداد ماه</summary>
-    private decimal CalcInterest => Math.Round(CalcBase * CalcRate / 100m * calcMonths, 0);
-    private decimal CalcTotal => CalcBase + CalcInterest;
-    private decimal CalcPerMonth => calcMonths > 0 ? Math.Floor(CalcTotal / calcMonths) : 0;
+
+    private static bool TryCalculatorPercent(string? value, out decimal result)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { result = 0; return true; }
+        var normalized = Fa.ToEn(value).Trim().Replace(",", "").Replace("٬", "").Replace("٫", ".");
+        return decimal.TryParse(normalized, System.Globalization.NumberStyles.AllowLeadingSign |
+            System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out result);
+    }
+
+    private InvoiceInstallmentCalculation? CalculatorPlan
+    {
+        get
+        {
+            if (!TryCalculatorPercent(calcRateText, out var rate)) return null;
+            try { return InvoiceInstallmentCalculation.Create(CalcBase, rate, calcMonths); }
+            catch (ArgumentOutOfRangeException) { return null; }
+        }
+    }
+
+    private decimal CalculatorSuggestedBase => calcForCheque && Type == TransactionType.Sale
+        ? Math.Max(0m, goodsTotal - CashPart - InstSum())
+        : Math.Max(0m, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum());
+
+    private static string ExactMoney(decimal amount) => Fa.MoneyExact(amount);
+
+    private static string ExactPercent(decimal rate)
+        => Fa.Digits(rate.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
+
+    // The server checks the complete history; this avoids replacing form rows when later
+    // activity is already visible on the loaded invoice.
+    private bool KnownLaterChequeActivity
+    {
+        get
+        {
+            if (!IsEdit || EditOrder is not { HasChequeCharge: true } order) return false;
+            if (order.IsCancelled || order.ChequeReturns.Count > 0 ||
+                order.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) ||
+                order.Installments.Any(i => i.IsPaid) || order.SettledAmount != order.CashAmount) return true;
+            if (order.ChequeChargeSnapshot is not { } snapshot) return false;
+            try
+            {
+                return SaleChequeInitialCalculation.Calculate(snapshot.CalculatorBaseAmount, snapshot.CalculatorRatePercent,
+                    snapshot.CalculatorMonths) != order.ChequeIncomeAmount;
+            }
+            catch (ArgumentOutOfRangeException) { return true; }
+        }
+    }
 
     private void OpenCalc(bool forCheque)
     {
         calcForCheque = forCheque;
-        // پایهٔ محاسبه = باقی‌مانده پس از نقد و جزء «دیگر» (چک‌ها یا اقساط)
-        var baseRemain = forCheque
-            ? Math.Max(0, grandTotal - CashPart - InstSum())
-            : Math.Max(0, grandTotal - CashPart - ChequeSum());
-        calcBaseText = baseRemain > 0 ? Fa.FormatTyping(baseRemain.ToString("0")) : "";
-        if (!calcStart.HasValue) calcStart = DateTime.Now.AddMonths(1); // پیش‌فرض: یک ماه بعد
+        // هنگام محاسبهٔ مجدد، سود قبلی نباید دوباره بخشی از مبنای چک شود.
+        var baseRemain = CalculatorSuggestedBase;
+        if (forCheque && Type == TransactionType.Sale && saleChequeCharge is not null)
+        {
+            if (chargeInvoiceBase == goodsTotal && chargeCashBase == CashPart && chargeInstallmentBase == InstSum())
+                baseRemain = saleChequeCharge.CalculatorBaseAmount;
+            calcRateText = ExactDecimal(saleChequeCharge.CalculatorRatePercent);
+            calcMonths = saleChequeCharge.CalculatorMonths;
+            calcAdjustmentRateText = saleChequeCharge.AdjustmentRatePercent == saleChequeCharge.CalculatorRatePercent
+                ? "" : ExactDecimal(saleChequeCharge.AdjustmentRatePercent);
+            calcAdjustmentDays = saleChequeCharge.AdjustmentPeriodDays;
+        }
+        else if (forCheque && Type == TransactionType.Sale)
+        {
+            calcAdjustmentRateText = ""; // خالی یعنی همان نرخ ماهانه، بدون ورود دوباره
+            calcAdjustmentDays = 30;
+        }
+        calcBaseText = baseRemain > 0 ? Fa.FormatTyping(ExactDecimal(baseRemain)) : "";
+        if (!calcStart.HasValue)
+            calcStart = forCheque && chequeDates.Count > 0 && chequeDates[0].HasValue
+                ? chequeDates[0] : DateTime.Now.AddMonths(1);
         showCalc = true;
         if (UseInvoiceWizard) pendingSectionFocus = "[data-order-calculator]";
     }
 
     private void ApplyCalc()
     {
-        if (CalcBase <= 0 || calcMonths < 1 || !calcStart.HasValue) return;
+        var plan = CalculatorPlan;
+        if (plan is null || !calcStart.HasValue || calcIntervalDays < 1)
+        {
+            InvoiceError("مبنا، نرخ، تعداد، تاریخ یا فاصله اقساط معتبر نیست.");
+            return;
+        }
+        var calculation = plan.Value;
+        SaleChequeChargeInput? calculatedCharge = null;
+        if (calcForCheque && Type == TransactionType.Sale)
+        {
+            if (KnownLaterChequeActivity)
+            {
+                InvoiceError("فاکتور دارای گردش بعدی است؛ از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+            {
+                InvoiceError("جزئیات سود این فاکتور قدیمی موجود نیست؛ بررسی دستی سابقه لازم است.");
+                return;
+            }
+            var adjustmentRate = calculation.MonthlyRatePercent;
+            if (!string.IsNullOrWhiteSpace(calcAdjustmentRateText) &&
+                !TryCalculatorPercent(calcAdjustmentRateText, out adjustmentRate))
+            {
+                InvoiceError("نرخ تعدیل سررسید معتبر نیست.");
+                return;
+            }
+            if (calculation.BaseAmount > goodsTotal)
+            {
+                InvoiceError("مبنای سود بیشتر از مبلغ کالا و ارزش افزوده است.");
+                return;
+            }
+            try { calculatedCharge = calculation.CreateSaleChequeCharge(goodsTotal, adjustmentRate, calcAdjustmentDays); }
+            catch (ArgumentOutOfRangeException)
+            {
+                InvoiceError("نرخ یا بازه تعدیل، یا جمع کالا و سود، خارج از محدوده مجاز است.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge != true && calculatedCharge is not null)
+            {
+                InvoiceError("افزودن سود به فاکتور ثبت‌شده بدون ردیف تاخیر تادیه پشتیبانی نمی‌شود.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge == true && calculatedCharge is null)
+            {
+                InvoiceError("حذف کامل سود از فاکتور ثبت‌شده با این ویرایش پشتیبانی نمی‌شود.");
+                return;
+            }
+        }
 
-        var per = CalcPerMonth;
-        var last = CalcTotal - per * (calcMonths - 1); // قسط آخر = مانده دقیق
+        // محاسبه و اعتبارسنجی همه سررسیدها پیش از جایگزینی هر ردیف انجام شود.
+        var dates = new List<DateTime>();
+        try
+        {
+            for (var i = 0; i < calculation.Months; i++)
+                dates.Add(calcStart.Value.Date.AddDays((double)((long)i * calcIntervalDays)));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            InvoiceError("تاریخ یا فاصله سررسیدها خارج از محدوده مجاز است.");
+            return;
+        }
 
         if (calcForCheque)
         {
-            cheques.Clear(); chequeAmounts.Clear(); chequeDates.Clear();
-            for (var i = 0; i < calcMonths; i++)
+            var newCheques = new List<ChequeDto>();
+            var newAmounts = new List<string>();
+            var newDates = new List<DateTime?>();
+            for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calcMonths - 1 ? last : per;
-                cheques.Add(new ChequeDto());
-                chequeAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
-                chequeDates.Add(calcStart.Value.AddDays((double)(i * calcIntervalDays)));
+                var amount = i == calculation.Months - 1 ? calculation.LastAmount : calculation.RegularAmount;
+                newCheques.Add(new ChequeDto());
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
+                newDates.Add(dates[i]);
             }
-            InvoiceSuccess($"{calcMonths} چک ساخته شد — مبلغ نهایی {CalcTotal.Money()} ریال (شامل {CalcInterest.Money()} سود). شماره و بانک هر چک را تکمیل کنید.");
+            cheques = newCheques; chequeAmounts = newAmounts; chequeDates = newDates;
+            if (Type == TransactionType.Sale)
+            {
+                saleChequeCharge = calculatedCharge;
+                saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
+                chargeInvoiceBase = calculatedCharge is null ? 0m : goodsTotal;
+                chargeCashBase = calculatedCharge is null ? 0m : CashPart;
+                chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
+                removedCalculatedChequeIncome = false;
+            }
+            InvoiceSuccess($"{calculation.Months} چک ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود). شماره و بانک هر چک را تکمیل کنید.");
         }
         else
         {
-            installments.Clear(); instAmounts.Clear(); instDates.Clear();
-            for (var i = 0; i < calcMonths; i++)
+            var newInstallments = new List<InstallmentDto>();
+            var newAmounts = new List<string>();
+            var newDates = new List<DateTime?>();
+            for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calcMonths - 1 ? last : per;
-                installments.Add(new InstallmentDto { No = i + 1 });
-                instAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
-                instDates.Add(calcStart.Value.AddDays((double)(i * calcIntervalDays)));
+                var amount = i == calculation.Months - 1 ? calculation.LastAmount : calculation.RegularAmount;
+                newInstallments.Add(new InstallmentDto { No = i + 1 });
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
+                newDates.Add(dates[i]);
             }
-            instCount = calcMonths;
-            InvoiceSuccess($"دفترچه {calcMonths} قسطی ساخته شد — مبلغ نهایی {CalcTotal.Money()} ریال (شامل {CalcInterest.Money()} سود).");
+            installments = newInstallments; instAmounts = newAmounts; instDates = newDates;
+            instCount = calculation.Months;
+            InvoiceSuccess($"دفترچه {calculation.Months} قسطی ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود).");
         }
         showCalc = false;
     }
@@ -1459,7 +1606,7 @@
     {
         var rest = FinalRemaining;
         cheques.Add(new ChequeDto());
-        chequeAmounts.Add(rest > 0 ? Fa.FormatTyping(rest.ToString("0")) : "");
+        chequeAmounts.Add(rest > 0 ? Fa.FormatTyping(ExactDecimal(rest)) : "");
         chequeDates.Add(null);
         if (UseInvoiceWizard) pendingSectionFocus = $"[data-cheque-row=\"{cheques.Count - 1}\"]";
     }
@@ -1493,7 +1640,7 @@
         {
             var amount = i == instCount - 1 ? totalDue - baseAmount * (instCount - 1) : baseAmount;
             installments.Add(new InstallmentDto { No = i + 1 });
-            instAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
+            instAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
             instDates.Add(instFirstDue.Value.AddDays((double)(i * instIntervalDays)));
         }
         if (!silent && UseInvoiceWizard) pendingSectionFocus = "[data-inst-row=\"0\"]";
@@ -1677,29 +1824,30 @@
                 creditDue = o.DueDate;
                 useCheque = o.Cheques.Count > 0 || o.PaymentMethod == PaymentMethod.Cheque;
                 useInstallment = o.Installments.Count > 0 || o.PaymentMethod == PaymentMethod.Installment;
-                if (o.HasChequeCharge && o.ChequeChargeSnapshot is not null)
+                if (o.HasChequeCharge)
                 {
-                    saleChequeCharge = new SaleChequeChargeInput
-                    {
-                        CalculatorBaseAmount = o.ChequeChargeSnapshot.CalculatorBaseAmount,
-                        CalculatorRatePercent = o.ChequeChargeSnapshot.CalculatorRatePercent,
-                        CalculatorMonths = o.ChequeChargeSnapshot.CalculatorMonths,
-                        AdjustmentRatePercent = o.ChequeChargeSnapshot.AdjustmentRatePercent,
-                        AdjustmentPeriodDays = o.ChequeChargeSnapshot.AdjustmentPeriodDays,
-                        ConfirmedCreditDueDate = o.ChequeChargeSnapshot.ConfirmedCreditDueDate
-                    };
+                    // Even an old charge without calculator terms is still a real, visible amount.
                     saleChequeIncome = o.ChequeIncomeAmount;
                     chargeInvoiceBase = o.GoodsAmount;
-                    chargeBaseText = Fa.FormatTyping(saleChequeCharge.CalculatorBaseAmount.ToString("0.##"));
-                    chargeRateText = saleChequeCharge.CalculatorRatePercent.ToString("0.######");
-                    chargeMonths = saleChequeCharge.CalculatorMonths;
-                    chargeAdjustmentRateText = saleChequeCharge.AdjustmentRatePercent.ToString("0.######");
-                    chargeAdjustmentDays = saleChequeCharge.AdjustmentPeriodDays;
+                    chargeCashBase = o.CashAmount;
+                    chargeInstallmentBase = o.Installments.Sum(i => i.Amount);
+                    if (o.ChequeChargeSnapshot is { } snapshot)
+                    {
+                        saleChequeCharge = new SaleChequeChargeInput
+                        {
+                            CalculatorBaseAmount = snapshot.CalculatorBaseAmount,
+                            CalculatorRatePercent = snapshot.CalculatorRatePercent,
+                            CalculatorMonths = snapshot.CalculatorMonths,
+                            AdjustmentRatePercent = snapshot.AdjustmentRatePercent,
+                            AdjustmentPeriodDays = snapshot.AdjustmentPeriodDays,
+                            ConfirmedCreditDueDate = snapshot.ConfirmedCreditDueDate
+                        };
+                    }
                 }
                 var loadedCash = o.PaymentMethod == PaymentMethod.Cash ? o.TotalAmount : o.CashAmount;
                 useCash = loadedCash > 0 || (o.Cheques.Count == 0 && o.Installments.Count == 0 && o.PaymentMethod != PaymentMethod.Cheque && o.PaymentMethod != PaymentMethod.Installment);
                 cashAmountText = loadedCash > 0 && (o.Cheques.Count > 0 || o.Installments.Count > 0 || o.PaymentMethod != PaymentMethod.Cash)
-                    ? Fa.FormatTyping(loadedCash.ToString("0")) : "";
+                    ? Fa.FormatTyping(ExactDecimal(loadedCash)) : "";
                 var loadedCredit = o.TotalAmount - loadedCash - o.Cheques.Sum(c => c.Amount) - o.Installments.Sum(i => i.Amount);
                 useCredit = loadedCredit > 1 || o.PaymentMethod == PaymentMethod.Credit;
                 cheques = o.Cheques.Select(c => new ChequeDto
@@ -1708,13 +1856,13 @@
                     OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate, IsCleared = c.IsCleared,
                     ClearedAt = c.ClearedAt, Note = c.Note
                 }).ToList();
-                chequeAmounts = o.Cheques.Select(c => Fa.FormatTyping(c.Amount.ToString("0"))).ToList();
+                chequeAmounts = o.Cheques.Select(c => Fa.FormatTyping(ExactDecimal(c.Amount))).ToList();
                 chequeDates = o.Cheques.Select(c => (DateTime?)c.DueDate).ToList();
                 installments = o.Installments.Select(i => new InstallmentDto
                 {
                     Id = i.Id, No = i.No, Amount = i.Amount, DueDate = i.DueDate, IsPaid = i.IsPaid, PaidAt = i.PaidAt
                 }).ToList();
-                instAmounts = o.Installments.Select(i => Fa.FormatTyping(i.Amount.ToString("0"))).ToList();
+                instAmounts = o.Installments.Select(i => Fa.FormatTyping(ExactDecimal(i.Amount))).ToList();
                 instDates = o.Installments.Select(i => (DateTime?)i.DueDate).ToList();
                 instCount = Math.Max(1, installments.Count);
                 lines = o.Lines.Select(l =>
@@ -2163,9 +2311,14 @@
             return;
         }
 
+        if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+        {
+            ShowFormError("جزئیات اولیه سود این فاکتور قدیمی موجود نیست؛ ویرایش بدون بررسی سابقه مجاز نیست.");
+            return;
+        }
         if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
         {
-            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید.");
+            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، «محاسبه اقساط چک» را دوباره انجام دهید.");
             return;
         }
         if (CashPart > 0 && trsAccountId is not > 0 &&
@@ -2255,17 +2408,22 @@
             // ماندهٔ نهایی = نسیه
             var paid = cash + chequeList.Sum(c => c.Amount) + instList.Sum(i => i.Amount);
             var remainder = grandTotal - paid;
-            if (saleChequeCharge is not null && remainder < 0)
+            if ((saleChequeCharge is not null || removedCalculatedChequeIncome) && remainder < 0)
             {
                 ShowFormError("جمع پرداخت‌ها بیش از مبلغ فاکتور است؛ لطفاً اجزای پرداخت را دستی اصلاح کنید.");
                 return;
             }
-            if (remainder > (saleChequeCharge is not null ? 0 : 1))
+            if (removedCalculatedChequeIncome && saleChequeCharge is null && remainder > 0 && remainder <= PaymentMix.Tolerance)
+            {
+                ShowFormError("مانده پس از حذف سود کمتر از حد ثبت نسیه است؛ مبلغ پرداخت‌ها را دقیقاً اصلاح کنید.");
+                return;
+            }
+            if (remainder > (HasChequeIncomeArticle ? 0 : PaymentMix.Tolerance))
             {
                 if (!useCredit || !creditDue.HasValue)
                 {
-                    ShowFormError($"جمع پرداخت‌ها ({paid.Money()}) کمتر از مبلغ سند ({grandTotal.Money()}) است؛ " +
-                                "باقی‌ماندهٔ " + remainder.Money() + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
+                    ShowFormError($"جمع پرداخت‌ها ({ExactMoney(paid)}) کمتر از مبلغ سند ({ExactMoney(grandTotal)}) است؛ " +
+                                "باقی‌ماندهٔ " + ExactMoney(remainder) + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
                     return;
                 }
                 cmd.DueDate = creditDue;

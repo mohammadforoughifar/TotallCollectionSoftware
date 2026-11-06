@@ -42,8 +42,11 @@ class PurchaseWizardContract(unittest.TestCase):
     def test_payment_selection_and_sums(self):
         for component in ('cash', 'cheque', 'installment', 'credit'):
             self.assertIn(f'data-pay-comp="{component}"', FORM)
-        for callback in ('ToggleCheque()', 'ToggleInstallment()', 'ToggleCredit()'):
-            self.assertRegex(FORM, re.escape(callback) + r'\s*\{[^}]*EnsureInvoicePaymentMethod\(\);')
+        for callback, following in (('ToggleCheque()', 'private void ToggleInstallment()'),
+                                    ('ToggleInstallment()', 'private void ToggleCredit()'),
+                                    ('ToggleCredit()', 'private void EnsureInvoicePaymentMethod()')):
+            body = method('private void ' + callback, following)
+            self.assertIn('EnsureInvoicePaymentMethod();', body)
         self.assertIn('UseInvoiceWizard && !useCash', FORM)
         self.assertIn('UseInvoiceWizard && !useCash && !HasNonCash', FORM)
         self.assertIn('lines.Where(l => l.ProductId > 0 && l.Qty > 0)', FORM)
