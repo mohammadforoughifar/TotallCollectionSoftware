@@ -50,22 +50,26 @@ function rateCell(index, value, unit) {
         </div><div class="${subtitleClass}">۱۰۰,۰۰۰ ریال</div></td>`;
 }
 
-function fixture({ sale, profit, commission, service, amount }) {
+function fixture({ sale, profit, commission, service, amount, purchasePrice }) {
     const extras = Number(profit) + Number(commission);
     const visibleWeights = [
-        ...weights.slice(0, 8),
-        ...(profit ? [weights[8]] : []),
-        ...(commission ? [weights[9]] : [])
+        ...weights.slice(0, 3),
+        ...(purchasePrice ? [weights[3]] : []),
+        ...weights.slice(4, 9),
+        ...(profit ? [weights[9]] : []),
+        ...(commission ? [weights[10]] : [])
     ];
     const colTags = visibleWeights.map(spec => {
         const weight = sale ? (spec[1] ?? spec[0]) : spec[0];
-        const width = sale ? `${(100 * weight / (baseWeight + extraWeight * extras)).toFixed(6)}%` : `${weight}%`;
+        const width = sale ? `${(100 * weight / (baseWeight + extraWeight * extras)).toFixed(6)}%` : `${(100 * weight / (purchasePrice ? 111 : 100)).toFixed(6)}%`;
         return `<col style="width:${width}">`;
-    }).join('') + `<col style="width:${sale ? `${actionsRem}rem` : '5%'}">`;
+    }).join('') + `<col style="width:${sale ? `${actionsRem}rem` : `${(500 / (purchasePrice ? 111 : 100)).toFixed(6)}%`}">`;
     const header = [
-        ...heads.slice(0, 8),
-        ...(profit ? [heads[8]] : []),
-        ...(commission ? [heads[9]] : []), heads[10]
+        ...heads.slice(0, 3),
+        ...(purchasePrice ? [heads[3]] : []),
+        ...heads.slice(4, 9),
+        ...(profit ? [heads[9]] : []),
+        ...(commission ? [heads[10]] : []), heads[11]
     ].join('');
     const units = amount ? 'ریال' : '٪';
     const rateValue = amount ? '100,000' : '100';
@@ -77,14 +81,15 @@ function fixture({ sale, profit, commission, service, amount }) {
             <div class="fs-8 text-muted mt-1 d-flex gap-2 flex-wrap"><span>واحد: لیتر</span><span class="text-success">· موجودی انبار: <b class="num">۱۰۰</b></span></div></td>`,
         `${openCell(1)}${input(1, '12.5')}</td>`,
         `${openCell(2)}${input(2, '1,000,000')}</td>`,
-        `${openCell(3)}<span class="order-line-value">۱,۰۰۰,۰۰۰</span></td>`,
-        rateCell(4, rateValue, units),
-        `${openCell(5)}<span class="order-line-value">۱,۰۰۰,۰۰۰</span></td>`,
-        rateCell(6, rateValue, units),
-        `${openCell(7)}<span class="order-line-value">۱,۱۰۰,۰۰۰</span></td>`,
-        ...(profit ? [`${openCell(8)}<div class="order-line-value"><span dir="ltr" class="fw-500 text-danger">-۱۰,۰۰۰,۰۰۰</span></div></td>`] : []),
-        ...(commission ? [`${openCell(9)}<div class="order-line-value"><span class="text-primary">۱۰۰,۰۰۰</span></div></td>`] : []),
-        `${openCell(10)}<div class="order-line-actions">${lastPurchase}<button class="btn btn-sm btn-light" aria-label="حذف سطر"><i class="bi bi-x-lg text-danger"></i></button></div></td>`
+        ...(purchasePrice ? [`${openCell(3)}${input(3, '1,100,000')}</td>`] : []),
+        `${openCell(4)}<span class="order-line-value">۱,۰۰۰,۰۰۰</span></td>`,
+        rateCell(5, rateValue, units),
+        `${openCell(6)}<span class="order-line-value">۱,۰۰۰,۰۰۰</span></td>`,
+        rateCell(7, rateValue, units),
+        `${openCell(8)}<span class="order-line-value">۱,۱۰۰,۰۰۰</span></td>`,
+        ...(profit ? [`${openCell(9)}<div class="order-line-value"><span dir="ltr" class="fw-500 text-danger">-۱۰,۰۰۰,۰۰۰</span></div></td>`] : []),
+        ...(commission ? [`${openCell(10)}<div class="order-line-value"><span class="text-primary">۱۰۰,۰۰۰</span></div></td>`] : []),
+        `${openCell(11)}<div class="order-line-actions">${lastPurchase}<button class="btn btn-sm btn-light" aria-label="حذف سطر"><i class="bi bi-x-lg text-danger"></i></button></div></td>`
     ].join('');
     return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -105,7 +110,7 @@ async function serve() {
             const sale = url.searchParams.get('sale') === '1';
             const on = key => url.searchParams.get(key) === '1';
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            res.end(fixture({ sale, profit: sale && on('profit'), commission: sale && on('commission'), service: on('service'), amount: on('amount') }));
+            res.end(fixture({ sale, profit: sale && on('profit'), commission: sale && on('commission'), service: on('service'), amount: on('amount'), purchasePrice: !sale && on('purchasePrice') }));
             return;
         }
         const file = path.resolve(www, `.${url.pathname}`);
@@ -157,7 +162,20 @@ async function inspect(page) {
                 textWidth, field: box(field), unit: box(unit), unitText: textBoxes(unit)
             };
         });
+        const priceInputs = controls.filter(field => field.closest('td')?.getAttribute('data-label')?.includes('قیمت')).map(field => {
+            const style = getComputedStyle(field);
+            const measure = document.createElement('span');
+            for (const prop of ['font-family', 'font-size', 'font-weight', 'font-style', 'font-variant-numeric', 'letter-spacing'])
+                measure.style.setProperty(prop, style.getPropertyValue(prop));
+            measure.style.cssText += ';position:fixed;white-space:pre;visibility:hidden;';
+            measure.textContent = field.value;
+            document.body.appendChild(measure);
+            const textWidth = measure.getBoundingClientRect().width;
+            measure.remove();
+            return { textWidth, innerWidth: field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) };
+        });
         return {
+            priceInputs,
             documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
             bodyScroll: body.scrollWidth, bodyWidth: body.clientWidth,
             wrapper: box(wrapper), table: box(table), row: box(table.querySelector('tbody tr')),
@@ -208,6 +226,7 @@ async function check(page, base, width, params) {
         assert.ok(inside(value.text[0], value), `${label}: amount overlaps its neighbour`);
     }
     for (const control of m.controls) assert.ok(Math.abs(control.top - m.controls[0].top) < 1, `${label}: fields not on one line`);
+    for (const price of m.priceInputs) assert.ok(price.textWidth <= price.innerWidth + 1, `${label}: sample price clipped`);
     if (params.sale === '1') assert.ok(m.cells[0].width > m.cells[1].width * 1.75, `${label}: product column lost its intended width`);
 }
 
@@ -219,7 +238,7 @@ test('purchase and sale item columns align without overflow', { skip, timeout: 9
         const page = await browser.newPage();
         const base = `http://127.0.0.1:${server.address().port}`;
         const variants = [
-            { sale: '0' }, { sale: '1' }, { sale: '1', profit: '1' },
+            { sale: '0' }, { sale: '0', purchasePrice: '1' }, { sale: '1' }, { sale: '1', profit: '1' },
             { sale: '1', commission: '1' }, { sale: '1', profit: '1', commission: '1' }
         ];
         for (const width of [992, 1024, 1280, 1568, 991, 768, 390]) {

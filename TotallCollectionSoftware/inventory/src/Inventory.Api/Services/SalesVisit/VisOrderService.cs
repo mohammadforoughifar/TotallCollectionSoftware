@@ -38,6 +38,7 @@ public sealed record VisActor(
 
     /// <summary>نام شرکت مؤثر — برای نمایش در فرم سفارش.</summary>
     public string CompanyName { get; init; } = "";
+    public bool CanManagePricing { get; init; }
 
     /// <summary>دیدن همهٔ سفارش‌های شرکت (مدیر فروش/مالی) در مقابل فقط سفارش‌های خودش (ویزیتور).</summary>
     public bool CanSeeAll => IsAdmin || CanApprove || CanFinance;
@@ -166,7 +167,8 @@ public class VisOrderService : IVisOrderService
             MaxDiscountPercent: referrer?.MaxDiscountPercent ?? 0m)
         {
             CompanyId = companyId,
-            CompanyName = companyName
+            CompanyName = companyName,
+            CanManagePricing = isAdmin || perms.Contains("Shop.Pricing.Manage")
         };
     }
 
@@ -735,8 +737,11 @@ public class VisOrderService : IVisOrderService
             Lines = lines
         };
 
+        // Backdated financial posting has the same explicit shop permission as the order API.
+        if (saleCmd.Date.Date < DateTime.Today && !actor.CanManagePricing)
+            throw new InvalidOperationException("ثبت فروش تاریخ‌گذشته به مجوز مدیریت قیمت‌گذاری نیاز دارد.");
         // ---------- ۱) سند فروش فروشگاه (موجودی، چک‌ها، اقساط) ----------
-        var sale = await _inventory.CreateOrderAsync(saleCmd, trackShopCash: false);
+        var sale = await _inventory.CreateOrderAsync(saleCmd, actor.UserName, trackShopCash: false);
 
         // ---------- ۲) سند حسابداری خودکار ----------
         int? voucherId = null;
@@ -1238,6 +1243,8 @@ public class VisOrderService : IVisOrderService
             })
             .ToListAsync();
 
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, list.Select(p => p.Id), DateTime.Today);
+        foreach (var product in list) if (effectivePrices.TryGetValue(product.Id, out var price)) product.SalePrice = price.Price;
         if (warehouseId is > 0 && list.Count > 0)
         {
             var ids = list.Select(p => p.Id).ToList();

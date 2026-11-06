@@ -43,7 +43,7 @@ public static class ShopPermissionAuthorizer
             "PayInstallment" or "UnpayInstallment" or "GetShopCreditSummary" or "GetShopCheques" or "GetShopInstallments"))
             return Section(permissions, "Installments", write);
         if (descriptor.ControllerName != "Orders") return false;
-        if (name is "ProfitAccess" or "WarehouseStock" or "ActiveTreasuryAccounts")
+        if (name is "ProfitAccess" or "PricingAccess" or "DatedSalePrice" or "WarehouseStock" or "ActiveTreasuryAccounts")
             return !write && (Section(permissions, "Sale", false) || Section(permissions, "Purchase", false) ||
                 Section(permissions, "Installments", false) || Section(permissions, "OpeningBalance", false) ||
                 Section(permissions, "OrderReports", false));

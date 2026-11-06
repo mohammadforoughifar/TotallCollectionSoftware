@@ -436,6 +436,14 @@
                 <div class="order-keyboard-hint mb-2">Tab و Enter: پیمایش فیلدها (Shift+Enter: خط جدید) · Enter در پایان سطر کالا: سطر بعد · F2: سطر جدید · @if (Type == TransactionType.Sale && CanSeeProfit) { <text>F8: آخرین خرید سطر · </text> } F1: ادامه · Esc: انصراف</div>
             }
 
+            @if (Type == TransactionType.Purchase && canManagePricing)
+            {
+                <div class="invoice-price-hint"><i class="bi bi-info-circle"></i> قیمت فروش جدید اختیاری است؛ خالی یعنی بدون تغییر. قیمت واردشده از تاریخ همین خرید معتبر می‌شود.</div>
+            }
+            else if (Type == TransactionType.Sale)
+            {
+                <div class="invoice-price-hint"><i class="bi bi-clock-history"></i> قیمت پیشنهادی هر کالای تازه بر اساس تاریخ فاکتور است؛ تغییر تاریخ، قیمت سطرهای موجود را خودکار عوض نمی‌کند.</div>
+            }
             <div data-order-entry class="@(UseInvoiceWizard ? (Type == TransactionType.Sale ? "purchase-items sale-items" : "purchase-items") : "")">
                 <table class="table table-hover align-middle mb-0">
                     @if (UseInvoiceWizard)
@@ -444,6 +452,7 @@
                             <col style="width:@InvoiceColumnWidth(22, 20)" />
                             <col style="width:@InvoiceColumnWidth(8)" />
                             <col style="width:@InvoiceColumnWidth(12, 11)" />
+                            @if (Type == TransactionType.Purchase && canManagePricing) { <col style="width:@InvoiceColumnWidth(11)" /> }
                             <col style="width:@InvoiceColumnWidth(11, 10)" />
                             <col style="width:@InvoiceColumnWidth(9, 11)" />
                             <col style="width:@InvoiceColumnWidth(11, 10)" />
@@ -459,6 +468,10 @@
                             <th><span>کالا</span></th>
                             <th title="مقدار تا دو رقم اعشار"><span>مقدار</span><small>تا ۲ رقم</small></th>
                             <th><span>قیمت واحد</span><small>ریال</small></th>
+                            @if (Type == TransactionType.Purchase && canManagePricing)
+                            {
+                                <th title="خالی یعنی بدون تغییر قیمت فروش"><span>قیمت فروش جدید</span><small>اختیاری · ریال</small></th>
+                            }
                             <th><span>مبلغ کل</span><small>ریال</small></th>
                             <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>تخفیف</span><small>٪ یا ریال</small></th>
                             <th><span>پس از تخفیف</span><small>ریال</small></th>
@@ -553,8 +566,16 @@
                                 </td>
                                 <td data-label="قیمت واحد (ریال)">
                                     <input class="form-control num order-line-control" aria-label="قیمت واحد به ریال" inputmode="decimal" dir="ltr"
-                                           value="@l.PriceText" @oninput="@(e => { l.PriceText = FormatNum(e.Value); RecalcDiscount(l); })" />
+                                           value="@l.PriceText" @oninput="@(e => { l.PriceRequestVersion++; l.PriceText = FormatNum(e.Value); l.PriceNotice = null; RecalcDiscount(l); })" />
+                                    @if (!string.IsNullOrEmpty(l.PriceNotice)) { <small class="dated-price-note">@l.PriceNotice</small> }
                                 </td>
+                                @if (Type == TransactionType.Purchase && canManagePricing)
+                                {
+                                    <td data-label="قیمت فروش جدید (اختیاری، ریال)">
+                                        <input class="form-control num order-line-control" aria-label="قیمت فروش جدید، اختیاری" inputmode="decimal" dir="ltr"
+                                               placeholder="بدون تغییر" value="@l.NewSalePriceText" @oninput="@(e => l.NewSalePriceText = e.Value?.ToString() ?? string.Empty)" />
+                                    </td>
+                                }
                                 <td data-label="مبلغ کل (ریال)" class="num fw-500"><span class="order-line-value">@l.Gross.Money()</span></td>
                                 <td data-label="تخفیف (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
@@ -1165,6 +1186,9 @@
         public decimal? OriginalQty { get; set; }
         public string QtyText { get; set; } = "1";
         public string PriceText { get; set; } = "";
+        public string NewSalePriceText { get; set; } = "";
+        public string? PriceNotice { get; set; }
+        public int PriceRequestVersion { get; set; }
         public string Unit { get; set; } = "";
         public string DiscountText { get; set; } = "";
         public decimal DiscountPercent { get; set; }
@@ -1190,7 +1214,7 @@
     private int warehouseId, partyId, referrerId;
     private DateTime? date;
     private string description = "";
-    private bool loading = true, saving;
+    private bool loading = true, saving, canManagePricing;
     private string? formError;
     private string? cashTrackingNumber;
     private void ShowFormError(string message) => formError = message;
@@ -1226,7 +1250,10 @@
     private string InvoiceColumnWidth(int purchaseWeight, int? saleWeight = null)
     {
         if (Type != TransactionType.Sale)
-            return purchaseWeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+        {
+            var total = Type == TransactionType.Purchase && canManagePricing ? 111m : 100m;
+            return (100m * purchaseWeight / total).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        }
 
         var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
         var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
@@ -1886,6 +1913,7 @@
             if (IsEdit) warehouseId = EditOrder!.WarehouseId;
             else if (CopyTemplate is not null) warehouseId = CopyTemplate.WarehouseId;
             var profitTask = Type == TransactionType.Sale ? OrderSvc.CanViewProfitAsync() : Task.FromResult(false);
+            var pricingTask = OrderSvc.CanManagePricingAsync();
             var whTask = OrderSvc.GetInvoiceWarehousesAsync(Type, activeOnly: true);
             var partiesTask = OrderSvc.GetInvoicePartiesAsync(Type);
             var prodTask = OrderSvc.GetInvoiceProductsAsync(Type);
@@ -1900,6 +1928,8 @@
             catch (Exception) { customChequeBanks = new(); }
             try { canSeeProfit = await profitTask; }
             catch { canSeeProfit = false; } // fail closed if the permission cannot be verified
+            try { canManagePricing = await pricingTask; }
+            catch { canManagePricing = false; }
             whLookup = await whTask;
             var invoiceParties = await partiesTask;
             if (Type == TransactionType.Purchase)
@@ -2251,25 +2281,50 @@
         if (lines.Count == 0) AddLine();
     }
 
-    private void OnProductPicked(LineVm l, int id)
+    private async Task OnProductPicked(LineVm l, int id)
     {
-        if (l.ProductId != id)
-        {
-            l.OriginalQty = null;
-            l.Id = 0;
-        }
-        var changed = l.ProductId != id;
+        if (l.ProductId == id) return; // Never reprice an already saved/selected row.
+        l.OriginalQty = null;
+        l.Id = 0;
         l.ProductId = id;
+        var requestVersion = ++l.PriceRequestVersion;
+        l.PriceText = "";
+        l.NewSalePriceText = "";
+        l.PriceNotice = null;
         var p = products.FirstOrDefault(x => x.Id == id);
-        if (p is not null)
+        if (p is null) { l.VatText = "0"; RecalcDiscount(l); return; }
+        l.Unit = p.Unit;
+        l.VatText = FormatNum(ExactDecimal(p.InvoiceVatValue ?? 0));
+        if (Type != TransactionType.Sale)
         {
-            l.Unit = p.Unit;
-            if (changed) l.VatText = FormatNum((p.InvoiceVatValue ?? 0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
-            var price = Type == TransactionType.Sale ? p.SalePrice : p.PurchasePrice;
-            if (price > 0) l.PriceText = FormatNum(((long)price).ToString());
+            if (p.PurchasePrice > 0) l.PriceText = FormatNum(ExactDecimal(p.PurchasePrice));
+            RecalcDiscount(l);
+            return;
+        }
+        var invoiceDate = date?.Date;
+        if (!invoiceDate.HasValue) { l.PriceNotice = "ابتدا تاریخ فاکتور را مشخص کنید."; return; }
+        try
+        {
+            var suggested = await OrderSvc.GetDatedSalePriceAsync(id, invoiceDate.Value);
+            // An async response must never overwrite a newer selection, date or manual entry.
+            if (l.PriceRequestVersion != requestVersion || l.ProductId != id || date?.Date != invoiceDate || !string.IsNullOrWhiteSpace(l.PriceText)) return;
+            if (suggested.Price.HasValue) l.PriceText = FormatNum(ExactDecimal(suggested.Price.Value));
+            else l.PriceNotice = "قیمت این تاریخ ثبت نشده؛ دستی وارد کنید.";
             RecalcDiscount(l);
         }
-        else if (changed) l.VatText = "0";
+        catch
+        {
+            if (l.PriceRequestVersion == requestVersion && l.ProductId == id && string.IsNullOrWhiteSpace(l.PriceText))
+                l.PriceNotice = "دریافت قیمت تاریخی ناموفق بود؛ دستی وارد کنید.";
+        }
+    }
+
+    private static bool TryNewSalePrice(string text, out decimal value)
+    {
+        var raw = Fa.ToEn(text ?? "").Trim().Replace(",", "").Replace('\u066B', '.').Replace("\u066C", "");
+        return decimal.TryParse(raw, System.Globalization.NumberStyles.AllowDecimalPoint,
+            System.Globalization.CultureInfo.InvariantCulture, out value) && value >= 0 &&
+            value <= 9999999999999999.99m && decimal.Round(value, 2) == value;
     }
 
     // A copied legacy value must remain visible in full, even when it needs correction
@@ -2413,6 +2468,16 @@
 
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
         if (validLines.Count == 0) { ShowFormError("حداقل یک سطر کالای معتبر وارد کنید."); return false; }
+        if (Type == TransactionType.Sale && validLines.Any(l => string.IsNullOrWhiteSpace(l.PriceText)))
+        {
+            ShowFormError("قیمت فروش سطرهایی را که قیمت تاریخی ندارند وارد کنید.");
+            return false;
+        }
+        if (Type == TransactionType.Purchase && validLines.Any(l => !string.IsNullOrWhiteSpace(l.NewSalePriceText) && !TryNewSalePrice(l.NewSalePriceText, out _)))
+        {
+            ShowFormError("قیمت فروش اختیاری باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            return false;
+        }
         if (CopyTemplate is not null && !IsEdit)
         {
             if (!activeWarehouseIds.Contains(warehouseId)) { ShowFormError("انبار فاکتور قبلی غیرفعال است؛ انبار فعال انتخاب کنید."); return false; }
@@ -2494,6 +2559,7 @@
                 ProductId = l.ProductId,
                 Quantity = l.Qty,
                 Price = l.Price,
+                NewSalePrice = Type == TransactionType.Purchase && !string.IsNullOrWhiteSpace(l.NewSalePriceText) && TryNewSalePrice(l.NewSalePriceText, out var newPrice) ? newPrice : null,
                 DiscountPercent = l.DiscountPercent,
                 DiscountAmount = l.DiscountAmount,
                 DiscountIsAmount = l.DiscountIsAmount,

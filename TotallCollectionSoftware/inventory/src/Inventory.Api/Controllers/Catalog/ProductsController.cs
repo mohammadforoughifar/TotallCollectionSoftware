@@ -1,4 +1,5 @@
 using Inventory.Api.Services;
+using Inventory.Api.Services.Core;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -43,8 +44,17 @@ public class ProductsController : ApiControllerBase
 
     /// <summary>ایجاد یا ویرایش کالا.</summary>
     [HttpPost]
-    public async Task<ActionResult<Product>> Save([FromBody] Product product)
-        => Ok(await _service.SaveProductAsync(product));
+    public async Task<ActionResult<Product>> Save([FromBody] Product product, [FromServices] IEffectivePermissions permissions)
+    {
+        var current = product.Id > 0 ? await _service.GetProductAsync(product.Id) : null;
+        if ((current is null ? product.SalePrice != 0 : current.SalePrice != product.SalePrice) &&
+            !await CanManagePricingAsync(permissions))
+            return StatusCode(403, new { message = "تغییر قیمت فروش به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
+        return Ok(await _service.SaveProductAsync(product));
+    }
+
+    private async Task<bool> CanManagePricingAsync(IEffectivePermissions permissions) =>
+        await permissions.IsLegacyAdminAsync(User) || (await permissions.GetAsync(User)).Contains("Shop.Pricing.Manage");
 
     /// <summary>حذف کالا.</summary>
     [HttpDelete("{id:int}")]
@@ -57,8 +67,9 @@ public class ProductsController : ApiControllerBase
     /// <summary>ورود گروهی کالا از فایل اکسل (xlsx).</summary>
     [HttpPost("import")]
     [DisableRequestSizeLimit]
-    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file, [FromQuery] int? warehouseId = null)
+    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file, [FromServices] IEffectivePermissions permissions, [FromQuery] int? warehouseId = null)
     {
+        if (!await CanManagePricingAsync(permissions)) return StatusCode(403, new { message = "ورود قیمت از اکسل به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
         if (file is null || file.Length == 0)
             return BadRequest(new { message = "فایل اکسل انتخاب نشده است." });
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))

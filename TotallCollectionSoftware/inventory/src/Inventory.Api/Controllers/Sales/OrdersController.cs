@@ -13,6 +13,7 @@ public class OrdersController : ApiControllerBase
 {
     private readonly IInventoryService _service;
     private readonly IEffectivePermissions _permissions;
+    private string? CurrentActor => User.Identity?.Name ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     public OrdersController(IInventoryService service, IEffectivePermissions permissions)
     {
@@ -24,6 +25,27 @@ public class OrdersController : ApiControllerBase
     // because the caller can read or manage sales. Always use current DB permissions.
     private async Task<bool> CanSeeProfitAsync() => User.Identity?.IsAuthenticated == true &&
         (await _permissions.IsLegacyAdminAsync(User) || (await _permissions.GetAsync(User)).Contains("Orders.ViewProfit"));
+
+    private async Task<bool> CanManagePricingAsync() => User.Identity?.IsAuthenticated == true &&
+        (await _permissions.IsLegacyAdminAsync(User) || (await _permissions.GetAsync(User)).Contains("Shop.Pricing.Manage"));
+
+    [HttpGet("pricing-access")]
+    public async Task<ActionResult<bool>> PricingAccess() => Ok(await CanManagePricingAsync());
+
+    [HttpGet("dated-sale-price")]
+    public async Task<ActionResult<DatedSalePriceDto>> DatedSalePrice([FromQuery] int productId, [FromQuery] DateTime date,
+        [FromServices] ShopPricingService pricing) => Ok(await pricing.GetPriceAsync(productId, date));
+
+    private async Task<string?> PricingPermissionErrorAsync(OrderCommand cmd, Order? existing = null)
+    {
+        // Even without a date change, editing a past purchase can change the last-cost basis.
+        var needsPricing = cmd.Lines.Any(l => l.NewSalePrice.HasValue) ||
+            (cmd.Date != default && cmd.Date.Date < DateTime.Today) ||
+            (existing is not null && existing.Date.Date < DateTime.Today);
+        return needsPricing && !await CanManagePricingAsync()
+            ? "ثبت قیمت فروش یا تغییر فاکتور تاریخ‌گذشته به مجوز مدیریت قیمت‌گذاری نیاز دارد." : null;
+    }
+
 
     private static Order RemoveSaleProfit(Order order)
     {
@@ -153,6 +175,8 @@ public class OrdersController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<Order>> Create([FromBody] OrderCommand cmd)
     {
+        var permissionError = await PricingPermissionErrorAsync(cmd);
+        if (permissionError is not null) return StatusCode(403, new { message = permissionError });
         var error = TrackingError(cmd, cmd.Type, null);
         if (error is not null) return BadRequest(new { message = error });
         // Check before the mutation: a permission-query failure after commit must
@@ -163,7 +187,7 @@ public class OrdersController : ApiControllerBase
         // must never be able to forge a sale-profit or commission snapshot.
         if (cmd.Type == TransactionType.Sale)
             foreach (var line in cmd.Lines) line.UnitCostSnapshot = null;
-        var saved = await _service.CreateOrderAsync(cmd, User.Identity?.Name);
+        var saved = await _service.CreateOrderAsync(cmd, CurrentActor);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
@@ -173,12 +197,14 @@ public class OrdersController : ApiControllerBase
     {
         var existing = await _service.GetOrderAsync(id);
         if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        var permissionError = await PricingPermissionErrorAsync(cmd, existing);
+        if (permissionError is not null) return StatusCode(403, new { message = permissionError });
         var error = TrackingError(cmd, existing.Type, existing);
         if (error is not null) return BadRequest(new { message = error });
         var revealProfit = await MayReturnSaleProfitAsync(existing.Type);
         if (existing.Type == TransactionType.Sale)
             foreach (var line in cmd.Lines) line.UnitCostSnapshot = null;
-        var saved = await _service.UpdateOrderAsync(id, cmd, User.Identity?.Name);
+        var saved = await _service.UpdateOrderAsync(id, cmd, CurrentActor);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
@@ -186,7 +212,7 @@ public class OrdersController : ApiControllerBase
     [HttpPost("{id:int}/cash-reconciliation")]
     public async Task<IActionResult> ReconcileCash(int id, [FromBody] ShopCashReconciliationCommand cmd)
     {
-        await _service.ReconcileLegacyOrderCashAsync(id, cmd, User.Identity?.Name);
+        await _service.ReconcileLegacyOrderCashAsync(id, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -199,7 +225,7 @@ public class OrdersController : ApiControllerBase
     [HttpPost("{id:int}/credit-receipts")]
     public async Task<IActionResult> ReceiveCredit(int id, [FromBody] ShopOrderCreditReceiptCommand cmd)
     {
-        await _service.ReceiveOrderCreditAsync(id, cmd, User.Identity?.Name);
+        await _service.ReceiveOrderCreditAsync(id, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -207,7 +233,7 @@ public class OrdersController : ApiControllerBase
     [HttpPost("{id:int}/credit-receipts/{receiptId:int}/reversal")]
     public async Task<IActionResult> ReverseCreditReceipt(int id, int receiptId, [FromBody] ShopOrderCreditReversalCommand cmd)
     {
-        await _service.ReverseOrderCreditAsync(id, receiptId, cmd, User.Identity?.Name);
+        await _service.ReverseOrderCreditAsync(id, receiptId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -232,13 +258,13 @@ public class OrdersController : ApiControllerBase
     /// <summary>ثبت تغییر سررسید و تعدیل با تأیید پیش‌نمایش.</summary>
     [HttpPut("cheques/{chequeId:int}/reschedule")]
     public async Task<ActionResult<SaleChequeReschedulePreview>> Reschedule(int chequeId, [FromBody] SaleChequeRescheduleCommand cmd)
-        => Ok(await _service.RescheduleSaleChequeAsync(chequeId, cmd, User.Identity?.Name));
+        => Ok(await _service.RescheduleSaleChequeAsync(chequeId, cmd, CurrentActor));
 
     /// <summary>وصول چک فروش به حساب بانکی انتخاب‌شده.</summary>
     [HttpPut("cheques/{chequeId:int}/receipt")]
     public async Task<IActionResult> ReceiveCheque(int chequeId, [FromBody] SaleChequeReceiptCommand cmd)
     {
-        await _service.ReceiveSaleChequeAsync(chequeId, cmd, User.Identity?.Name);
+        await _service.ReceiveSaleChequeAsync(chequeId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -246,7 +272,7 @@ public class OrdersController : ApiControllerBase
     [HttpPut("cheques/{chequeId:int}/receipt-reversal")]
     public async Task<IActionResult> ReverseChequeReceipt(int chequeId, [FromBody] SaleChequeReceiptReversalCommand cmd)
     {
-        await _service.ReverseSaleChequeReceiptAsync(chequeId, cmd, User.Identity?.Name);
+        await _service.ReverseSaleChequeReceiptAsync(chequeId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -259,7 +285,7 @@ public class OrdersController : ApiControllerBase
     [HttpPut("cheques/{chequeId:int}/status")]
     public async Task<IActionResult> ChangeChequeStatus(int chequeId, [FromBody] SaleChequeStatusCommand cmd)
     {
-        await _service.ChangeSaleChequeStatusAsync(chequeId, cmd, User.Identity?.Name);
+        await _service.ChangeSaleChequeStatusAsync(chequeId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -273,14 +299,14 @@ public class OrdersController : ApiControllerBase
     [HttpPost("{id:int}/cheque-return")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<ActionResult<SaleChequeReturnSummaryDto>> ReturnChequeOrder(int id, [FromBody] SaleChequeReturnCommand cmd)
-        => Ok(await _service.ReturnSaleChequeOrderAsync(id, cmd, User.Identity?.Name));
+        => Ok(await _service.ReturnSaleChequeOrderAsync(id, cmd, CurrentActor));
 
     /// <summary>تعویض صریح چک وصول‌نشده با حفظ چک قبلی در تاریخچه.</summary>
     [HttpPut("cheques/{chequeId:int}/replace")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ReplaceCheque(int chequeId, [FromBody] SaleChequeReplaceCommand cmd)
     {
-        await _service.ReplaceSaleChequeAsync(chequeId, cmd, User.Identity?.Name);
+        await _service.ReplaceSaleChequeAsync(chequeId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -289,7 +315,7 @@ public class OrdersController : ApiControllerBase
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> RefundCredit(int id, [FromBody] SaleChequeCreditRefundCommand cmd)
     {
-        await _service.RefundSaleChequeCreditAsync(id, cmd, User.Identity?.Name);
+        await _service.RefundSaleChequeCreditAsync(id, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -298,7 +324,7 @@ public class OrdersController : ApiControllerBase
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> AllocateCredit(int id, [FromBody] SaleChequeCreditAllocationCommand cmd)
     {
-        await _service.ApplySaleChequeCreditAsync(id, cmd, User.Identity?.Name);
+        await _service.ApplySaleChequeCreditAsync(id, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -307,7 +333,7 @@ public class OrdersController : ApiControllerBase
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ReceiveInstallment(int installmentId, [FromBody] SaleChequeInstallmentReceiptCommand cmd)
     {
-        await _service.ReceiveSaleChequeInstallmentAsync(installmentId, cmd, User.Identity?.Name);
+        await _service.ReceiveSaleChequeInstallmentAsync(installmentId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -316,7 +342,7 @@ public class OrdersController : ApiControllerBase
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ReverseInstallmentReceipt(int installmentId, [FromBody] SaleChequeInstallmentReversalCommand cmd)
     {
-        await _service.ReverseSaleChequeInstallmentReceiptAsync(installmentId, cmd, User.Identity?.Name);
+        await _service.ReverseSaleChequeInstallmentReceiptAsync(installmentId, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -325,7 +351,7 @@ public class OrdersController : ApiControllerBase
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Delete")]
     public async Task<IActionResult> CancelChequeOrder(int id, [FromBody] SaleChequeCancelCommand cmd)
     {
-        await _service.CancelSaleChequeOrderAsync(id, cmd, User.Identity?.Name);
+        await _service.CancelSaleChequeOrderAsync(id, cmd, CurrentActor);
         return Ok(new { ok = true });
     }
 
@@ -336,10 +362,12 @@ public class OrdersController : ApiControllerBase
     {
         var existing = await _service.GetOrderAsync(id);
         if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        var permissionError = await PricingPermissionErrorAsync(cmd, existing);
+        if (permissionError is not null) return StatusCode(403, new { message = permissionError });
         var error = TrackingError(cmd, TransactionType.Sale, existing);
         if (error is not null) return BadRequest(new { message = error });
         var revealProfit = await CanSeeProfitAsync();
-        var saved = await _service.EditSaleChequeOrderAsync(id, cmd, User.Identity?.Name);
+        var saved = await _service.EditSaleChequeOrderAsync(id, cmd, CurrentActor);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
@@ -352,7 +380,11 @@ public class OrdersController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        await _service.DeleteOrderAsync(id, User.Identity?.Name);
+        var existing = await _service.GetOrderAsync(id);
+        if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        if (existing.Date.Date < DateTime.Today && !await CanManagePricingAsync())
+            return StatusCode(403, new { message = "حذف فاکتور تاریخ‌گذشته به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
+        await _service.DeleteOrderAsync(id, CurrentActor);
         return Ok(new { ok = true });
     }
 }

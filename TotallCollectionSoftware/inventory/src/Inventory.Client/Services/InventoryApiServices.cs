@@ -228,6 +228,9 @@ public class OrderService : IOrderService
     public OrderService(IApiClient api) => _api = api;
 
     public Task<bool> CanViewProfitAsync() => _api.GetAsync<bool>("api/orders/profit-access");
+    public Task<bool> CanManagePricingAsync() => _api.GetAsync<bool>("api/orders/pricing-access");
+    public Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date) =>
+        _api.GetAsync<DatedSalePriceDto>($"api/orders/dated-sale-price?productId={productId}&date={date:yyyy-MM-dd}");
 
     public Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000)
         => _api.GetAsync<PagedResult<Product>>($"api/orders/invoice-products?type={(int)type}&page={page}&pageSize={pageSize}");
@@ -559,4 +562,16 @@ public class GoodsIssueService : IGoodsIssueService
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/goods-issues/{id}");
+}
+
+public class ShopPricingClient : IShopPricingClient
+{
+    private readonly IApiClient _api;
+    public ShopPricingClient(IApiClient api) => _api = api;
+    public Task<ShopPricingPolicyDto> GetPolicyAsync() => _api.GetAsync<ShopPricingPolicyDto>("api/shop-pricing/policy");
+    public Task<ShopPricingPolicyDto> SavePolicyAsync(ShopPricingPolicyDto policy) => _api.PutAsync<ShopPricingPolicyDto>("api/shop-pricing/policy", policy);
+    public Task<List<LookupItem>> GetCategoriesAsync() => _api.GetAsync<List<LookupItem>>("api/shop-pricing/categories");
+    public Task<ShopPriceAdjustmentPreview> PreviewAsync(ShopPriceAdjustmentRequest request) => _api.PostAsync<ShopPriceAdjustmentPreview>("api/shop-pricing/preview", request);
+    public Task<ShopPriceAdjustmentPreview> ApplyAsync(ShopPriceAdjustmentCommand command) => _api.PostAsync<ShopPriceAdjustmentPreview>("api/shop-pricing/apply", command);
+    public Task<List<ShopPriceHistoryItem>> GetHistoryAsync() => _api.GetAsync<List<ShopPriceHistoryItem>>("api/shop-pricing/history?take=200");
 }

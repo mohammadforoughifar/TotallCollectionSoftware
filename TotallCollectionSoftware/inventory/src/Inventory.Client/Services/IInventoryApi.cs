@@ -104,6 +104,9 @@ public interface IStockService
 /// <summary>سرویس اسناد خرید و فروش.</summary>
 public interface IOrderService
 {
+    Task<bool> CanManagePricingAsync();
+    Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date);
+
     /// <summary>مجوز فعلی سمت سرور برای نمایش سود فروش.</summary>
     Task<bool> CanViewProfitAsync();
     Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000);
@@ -225,4 +228,15 @@ public interface IGoodsIssueService
     Task<GoodsIssueDto?> GetAsync(int id);
     Task<GoodsIssueDto> SaveAsync(GoodsIssueCommand cmd);
     Task DeleteAsync(int id);
+}
+
+/// <summary>Shop-scoped policy, dated batch preview and audit history.</summary>
+public interface IShopPricingClient
+{
+    Task<ShopPricingPolicyDto> GetPolicyAsync();
+    Task<ShopPricingPolicyDto> SavePolicyAsync(ShopPricingPolicyDto policy);
+    Task<List<LookupItem>> GetCategoriesAsync();
+    Task<ShopPriceAdjustmentPreview> PreviewAsync(ShopPriceAdjustmentRequest request);
+    Task<ShopPriceAdjustmentPreview> ApplyAsync(ShopPriceAdjustmentCommand command);
+    Task<List<ShopPriceHistoryItem>> GetHistoryAsync();
 }

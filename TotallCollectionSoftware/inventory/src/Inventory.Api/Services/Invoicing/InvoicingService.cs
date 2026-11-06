@@ -286,6 +286,8 @@ public class InvoicingService : IInvoicingService
             .Where(s => s.ProductId == productId && s.WarehouseId == warehouseId)
             .Select(s => (decimal?)s.Quantity).FirstOrDefaultAsync() ?? 0;
 
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, new[] { p.Id }, DateTime.Today);
+        var sellingPrice = effectivePrices.TryGetValue(p.Id, out var effective) ? effective.Price : p.SalePrice;
         return new FacInvoiceLine
         {
             ProductId = p.Id,
@@ -294,7 +296,7 @@ public class InvoicingService : IInvoicingService
             Unit = p.Unit,
             TaxCode = p.TaxCode,
             Quantity = 1,
-            UnitPrice = buying ? p.PurchasePrice : p.SalePrice,
+            UnitPrice = buying ? p.PurchasePrice : sellingPrice,
             VatRate = p.VatRate,
             CurrentStock = stock
         };

@@ -1123,9 +1123,16 @@ public class InventoryService : IInventoryService
         var stocksByProduct = stocks.ToLookup(s => s.ProductId);
         var warehouseIds = products.Where(p => p.WarehouseId != null).Select(p => p.WarehouseId!.Value).ToList();
         var whNames = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name);
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, ids, DateTime.Today);
+        var mapped = products.Select(p =>
+        {
+            var dto = ToProductDto(p, stocksByProduct[p.Id], whNames);
+            if (effectivePrices.TryGetValue(p.Id, out var price)) dto.SalePrice = price.Price;
+            return dto;
+        }).ToList();
         return new PagedResult<Product>
         {
-            Items = products.Select(p => ToProductDto(p, stocksByProduct[p.Id], whNames)).ToList(),
+            Items = mapped,
             TotalCount = total, Page = page, PageSize = pageSize
         };
     }
@@ -1172,7 +1179,10 @@ public class InventoryService : IInventoryService
         if (p is null) return null;
         var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
         var whNames = await _db.Warehouses.ToDictionaryAsync(w => w.Id, w => w.Name);
-        return ToProductDto(p, stocks, whNames);
+        var dto = ToProductDto(p, stocks, whNames);
+        var prices = await ShopPricingService.ResolveAsync(_db, new[] { id }, DateTime.Today);
+        if (prices.TryGetValue(id, out var price)) dto.SalePrice = price.Price;
+        return dto;
     }
 
     public async Task<Product> SaveProductAsync(Product dto)
@@ -1188,6 +1198,12 @@ public class InventoryService : IInventoryService
             entity = await _db.Products.FindAsync(dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
 
+        ShopPricingService.ValidatePrice(dto.SalePrice);
+        var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
+            : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
+        decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
+            ? currentPrice.Price : entity.SalePrice;
+
         if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
             throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
         await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
@@ -1201,6 +1217,7 @@ public class InventoryService : IInventoryService
             // خدمات: بدون گروه، بارکد، واحد، قیمت خرید، نقطه سفارش، حداکثر موجودی و انبار
             entity.Unit = "خدمت";
             entity.Category = null;
+            entity.CategoryId = null;
             entity.Barcode = null;
             entity.SalePrice = dto.SalePrice;
             entity.PurchasePrice = 0;
@@ -1213,11 +1230,18 @@ public class InventoryService : IInventoryService
             entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
             entity.Category = NullIfEmpty(dto.Category);
 
-            // اگر گروه واردشده در جدول گروه‌های کالا نبود، خودکار اضافه می‌شود
-            if (entity.Category != null &&
-                !await _db.ProductCategories.AnyAsync(c => c.Name == entity.Category))
+            // Keep the keyed and legacy text representation consistent when the shop form changes group.
+            if (entity.Category == null) entity.CategoryId = null;
+            else
             {
-                _db.ProductCategories.Add(new Db.ProductCategory { Name = entity.Category, CreatedAt = DateTime.Now });
+                var matching = await _db.ProductCategories.Where(c => c.Name == entity.Category).Select(c => c.Id).ToListAsync();
+                if (matching.Count == 0)
+                {
+                    _db.ProductCategories.Add(new Db.ProductCategory { Name = entity.Category, CreatedAt = DateTime.Now });
+                    entity.CategoryId = null; // text fallback until that new group has an ID
+                }
+                else if (entity.CategoryId is not > 0 || !matching.Contains(entity.CategoryId.Value))
+                    entity.CategoryId = matching.Count == 1 ? matching[0] : null;
             }
             entity.Barcode = NullIfEmpty(dto.Barcode);
             entity.SalePrice = dto.SalePrice;
@@ -1248,6 +1272,8 @@ public class InventoryService : IInventoryService
             entity.Code = code;
         }
 
+        if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
+            ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
         await _db.SaveChangesAsync();
         return await GetProductAsync(entity.Id) ?? throw new InvalidOperationException();
     }
@@ -1267,6 +1293,10 @@ public class InventoryService : IInventoryService
 
     public async Task DeleteProductAsync(int id)
     {
+        // A product with substantive price changes is retained for audit.
+        if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
+            await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
+            throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
         var used = await _db.TransactionLines.AnyAsync(l => l.ProductId == id);
         if (used) throw new InvalidOperationException("این کالا دارای سوابق انبار است و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
         var p = await _db.Products.FindAsync(id);
@@ -1485,6 +1515,8 @@ public class InventoryService : IInventoryService
         var items = await query.OrderBy(r => r.ProductName).ThenBy(r => r.WarehouseName)
             .ThenBy(r => r.ProductId).ThenBy(r => r.WarehouseId)
             .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
+        var prices = await ShopPricingService.ResolveAsync(_db, items.Select(i => i.ProductId), DateTime.Today);
+        foreach (var item in items) if (prices.TryGetValue(item.ProductId, out var price)) item.LastSalePrice = price.Price;
         return new PagedResult<StockItem> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
     }
 
@@ -1518,6 +1550,7 @@ public class InventoryService : IInventoryService
 
     public async Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true)
     {
+        ShopPricingService.ValidatePurchasePriceInputs(cmd);
         if (cmd.Type == TransactionType.SaleReturn)
             throw new InvalidOperationException("برگشت فروش فقط از گردش ویژه فاکتور قابل ثبت است.");
         if (cmd.ChequeCharge is not null && cmd.Type != TransactionType.Sale)
@@ -1706,12 +1739,18 @@ public class InventoryService : IInventoryService
                         registration.CalculatorMonths, registration.AdjustmentRatePercent, registration.AdjustmentPeriodDays,
                         registration.ConfirmedCreditDueDate), user);
             }
-            else if (trackShopCash && txn.Type == TransactionType.Sale && txn.ReferrerId is > 0)
+            else if (txn.Type == TransactionType.Sale && txn.ReferrerId is > 0 &&
+                (trackShopCash || (txn.Lines.Any(l => !products[l.ProductId].IsService && !l.UnitCostSnapshot.HasValue) &&
+                    await _db.ShopPricingPolicies.AnyAsync(p => p.CompanyId == txn.CompanyId && p.MinimumProfitEnabled))))
             {
                 // Freeze reliable store-ledger costs for new commission-bearing sales.
                 // The existing method leaves mixed-ledger costs unknown rather than inventing them.
                 await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
             }
+            if (txn.Type == TransactionType.Sale)
+                await ShopMinimumProfitGuard.ValidateAsync(_db, txn, products);
+            if (trackShopCash && txn.Type == TransactionType.Purchase)
+                await ShopPricingService.RecordPurchasePricesAsync(_db, txn, cmd, user);
             var savedOrder = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
             await trx.CommitAsync();
             return savedOrder;
@@ -1973,6 +2012,7 @@ public class InventoryService : IInventoryService
     /// <summary>ویرایش سند خرید/فروش: جایگزینی سرصفحه و اقلام + بازمحاسبه موجودی انبارهای قدیم و جدید.</summary>
     public async Task<Order> UpdateOrderAsync(int id, OrderCommand cmd, string? user = null)
     {
+        ShopPricingService.ValidatePurchasePriceInputs(cmd);
         if (cmd.ChequeCharge is not null)
             throw new InvalidOperationException("افزودن یا ویرایش تاخیر تادیه چک از مسیر قدیمی ویرایش پشتیبانی نمی‌شود.");
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
@@ -2058,6 +2098,31 @@ public class InventoryService : IInventoryService
                     throw new InvalidOperationException($"کالای «{prod.Name}» مخصوص انبار دیگری است و در این انبار قابل ثبت نیست.");
                 }
             }
+
+            if (txn.Type == TransactionType.Purchase)
+            {
+                var pricedProductIds = await _db.ShopSalePrices.AsNoTracking().Where(h => h.PurchaseTransactionId == txn.Id)
+                    .Select(h => h.ProductId).Distinct().ToListAsync();
+                if (pricedProductIds.Count > 0)
+                {
+                    if ((cmd.Date != default && cmd.Date.Date != txn.Date.Date) || cmd.WarehouseId != txn.WarehouseId || cmd.PartyId != txn.PartyId)
+                        throw new InvalidOperationException("تاریخ، انبار و طرف حساب خریدی که منبع سابقه قیمت است قابل تغییر مستقیم نیست.");
+                    foreach (var productId in pricedProductIds)
+                    {
+                        var oldLines = txn.Lines.Where(l => l.ProductId == productId).ToList();
+                        var newLines = cmd.Lines.Where(l => l.ProductId == productId).ToList();
+                        if (oldLines.Count != newLines.Count || oldLines.Any(old => !newLines.Any(line => line.Id == old.Id &&
+                            line.Quantity == old.Quantity && line.Price == old.Price &&
+                            OrderLineAmounts.Discount(line.Quantity, line.Price, line.DiscountPercent, line.DiscountAmount, line.DiscountIsAmount) == old.DiscountAmount)))
+                            throw new InvalidOperationException("سطر خریدی که منبع سابقه قیمت فروش است قابل تغییر مستقیم نیست؛ سابقه باید حفظ شود.");
+                    }
+                }
+            }
+            int? floorReferrer = txn.Type == TransactionType.Sale
+                ? (cmd.ReferrerId is > 0 ? cmd.ReferrerId : await _db.Parties.Where(p => p.Id == cmd.PartyId).Select(p => p.ReferrerId).FirstOrDefaultAsync())
+                : null;
+            var unchangedFloorLines = txn.Type == TransactionType.Sale
+                ? ShopMinimumProfitGuard.UnchangedLineIndexes(txn, cmd, floorReferrer) : new HashSet<int>();
 
             // جفت‌های (انبار، کالا) متأثر: هم اقلام قدیم و هم جدید
             var affected = txn.Lines.Select(l => (Wh: txn.WarehouseId, Pid: l.ProductId))
@@ -2153,6 +2218,10 @@ public class InventoryService : IInventoryService
                 var settings = await GetSettingsAsync();
                 await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
             }
+            if (txn.Type == TransactionType.Sale)
+                await ShopMinimumProfitGuard.ValidateAsync(_db, txn, products, unchangedFloorLines);
+            if (txn.Type == TransactionType.Purchase)
+                await ShopPricingService.RecordPurchasePricesAsync(_db, txn, cmd, user);
             if (txn.ShopCashLedgerEnabled)
                 await ShopOrderCashLedger.SyncAfterEditAsync(_db, txn, previousCash, user);
             var savedOrder = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
@@ -2176,6 +2245,8 @@ public class InventoryService : IInventoryService
                 ?? throw new InvalidOperationException("سند یافت نشد.");
 
             await RejectUnimplementedChequeChargeMutationAsync(t.Id);
+            if (t.Type == TransactionType.Purchase && await _db.ShopSalePrices.AnyAsync(h => h.PurchaseTransactionId == t.Id))
+                throw new InvalidOperationException("این خرید منبع سابقه قیمت فروش است و حذف مستقیم آن مجاز نیست.");
             if (await _db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == t.Id))
                 throw new InvalidOperationException("فاکتور دارای تاریخچه وصول چک است و حذف مستقیم آن مجاز نیست.");
             if (t.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) || t.Installments.Any(i => i.IsPaid) || t.SettledAmount != t.CashAmount)
@@ -2235,16 +2306,8 @@ public class InventoryService : IInventoryService
         if (p is null) return 0;
         if (type == TransactionType.Sale)
         {
-            var last = await _db.Transactions.Include(x => x.Lines)
-                .Where(t => t.Type == TransactionType.Sale && t.Lines.Any(l => l.ProductId == productId))
-                .OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
-                .FirstOrDefaultAsync();
-            if (last != null)
-            {
-                var line = last.Lines.First(l => l.ProductId == productId);
-                return line.Price;
-            }
-            return p.SalePrice;
+            var prices = await ShopPricingService.ResolveAsync(_db, new[] { productId }, DateTime.Today);
+            return prices.TryGetValue(productId, out var price) ? price.Price : 0m;
         }
         return p.PurchasePrice;
     }
@@ -3066,6 +3129,7 @@ public class InventoryService : IInventoryService
     public async Task<Order> EditSaleChequeOrderAsync(int saleId, OrderCommand cmd, string? user)
     {
         ArgumentNullException.ThrowIfNull(cmd);
+        ShopPricingService.ValidatePurchasePriceInputs(cmd);
         if (cmd.ChequeCharge is null || cmd.Type != TransactionType.Sale)
             throw new InvalidOperationException("ویرایش فاکتور سوددار نیازمند اطلاعات تاخیر تادیه چک است.");
         if (cmd.Lines.Count == 0 || cmd.Lines.Any(l => l.Quantity <= 0 || l.Quantity != decimal.Round(l.Quantity, 2)) ||
@@ -3078,7 +3142,7 @@ public class InventoryService : IInventoryService
         await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
-            var oldSale = await _db.Transactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == saleId)
+            var oldSale = await _db.Transactions.AsNoTracking().Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == saleId)
                 ?? throw new InvalidOperationException("فاکتور مورد ویرایش یافت نشد.");
             if (await _db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == saleId) ||
                 await _db.SaleChequeReschedules.AnyAsync(r => r.SaleChequeCharge.TransactionId == saleId) ||
@@ -3124,6 +3188,7 @@ public class InventoryService : IInventoryService
             int? saleReferrerId = cmd.ReferrerId is > 0 ? cmd.ReferrerId
                 : await _db.Parties.Where(p => p.Id == cmd.PartyId).Select(p => p.ReferrerId).FirstOrDefaultAsync();
 
+            var unchangedFloorLines = ShopMinimumProfitGuard.UnchangedLineIndexes(oldSale, cmd, saleReferrerId);
             var chargeInput = cmd.ChequeCharge;
             decimal income = SaleChequeInitialCalculation.Calculate(
                 chargeInput.CalculatorBaseAmount, chargeInput.CalculatorRatePercent, chargeInput.CalculatorMonths);
@@ -3189,6 +3254,8 @@ public class InventoryService : IInventoryService
             await EnsureNoNegativeStockAsync(productIds.Select(pid => (cmd.WarehouseId, pid)));
 
             await FreezeChargedSaleCostsAsync(newTxn, products, settings.CostingMethod);
+            await ShopMinimumProfitGuard.ValidateAsync(_db, newTxn, products, unchangedFloorLines,
+                editDate.Date == oldSale.Date.Date ? oldSale.Id : null);
             await SaleChequeChargeRegistration.RegisterAsync(_db, newTxn.Id,
                 new SaleChequeChargeRegistrationInput(chargeInput.CalculatorBaseAmount, chargeInput.CalculatorRatePercent,
                     chargeInput.CalculatorMonths, chargeInput.AdjustmentRatePercent, chargeInput.AdjustmentPeriodDays,

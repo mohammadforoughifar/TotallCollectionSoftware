@@ -108,7 +108,8 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertNotIn('text-start', thead)
         self.assertNotIn('text-start', row)
         self.assertIn('CssClass="order-line-control"', row)
-        self.assertEqual(row.count('order-line-control'), 5)
+        self.assertEqual(row.count('order-line-control'), 6)  # sixth is purchase-only optional sale price
+        self.assertIn('Type == TransactionType.Purchase && canManagePricing', row)
         self.assertEqual(row.count('order-line-value'), 5)
         self.assertIn('class="order-line-actions"', row)
         desktop_css = CSS.split('/* Desktop:', 1)[1].split('@media (max-width: 991px)', 1)[0]
@@ -140,6 +141,7 @@ class PurchaseWizardContract(unittest.TestCase):
         thead = items.split('<thead>', 1)[1].split('</thead>', 1)[0]
         row = items.split('<tr @key="l.Key" data-order-line="@l.Key">', 1)[1].split('</tr>', 1)[0]
         shared_cols = colgroup.split('@if (Type == TransactionType.Sale && CanSeeProfit)', 1)[0]
+        shared_cols = re.sub(r'@if \(Type == TransactionType.Purchase && canManagePricing\) \{ <col[^\n]+\}', '', shared_cols)
         weights = re.findall(r'InvoiceColumnWidth\((\d+)(?:,\s*(\d+))?\)', shared_cols)
         self.assertEqual(len(weights), 8)
         purchase_weights = [int(purchase) for purchase, _ in weights]
@@ -147,6 +149,8 @@ class PurchaseWizardContract(unittest.TestCase):
         base = int(re.search(r'SaleBaseColumnWeight = (\d+)', FORM).group(1))
         extra = int(re.search(r'SaleExtraColumnWeight = (\d+)', FORM).group(1))
         self.assertEqual(sum(purchase_weights) + 5, 100)
+        self.assertIn('canManagePricing ? 111m : 100m', FORM)
+        self.assertIn('InvoiceColumnWidth(11)', colgroup)
         self.assertEqual(sum(sale_weights), base)
         self.assertEqual(colgroup.count('InvoiceColumnWidth(SaleExtraColumnWeight)'), 2)
         self.assertIn('<col style="width:@InvoiceActionsColumnWidth" />', colgroup)

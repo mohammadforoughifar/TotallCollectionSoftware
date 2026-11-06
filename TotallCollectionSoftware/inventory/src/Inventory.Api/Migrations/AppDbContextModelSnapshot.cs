@@ -17315,6 +17315,49 @@ namespace Inventory.Api.Migrations
 
                     b.Navigation("UserRoles");
                 });
+            // Shop pricing history is additive; older legacy snapshot omissions are intentionally not guessed here.
+            modelBuilder.Entity("Inventory.Api.Data.ShopPricingPolicy", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<bool>("MinimumProfitEnabled").HasColumnType("bit");
+                    b.Property<decimal>("MinimumMarkupPercent").HasPrecision(9, 2).HasColumnType("decimal(9,2)");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("datetime2");
+                    b.Property<string>("UpdatedBy").HasMaxLength(120).HasColumnType("nvarchar(120)");
+                    b.HasKey("Id");
+                    b.HasIndex("CompanyId").IsUnique().HasFilter("[CompanyId] IS NOT NULL");
+                    b.ToTable("ShopPricingPolicies");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.ShopSalePrice", b =>
+                {
+                    b.Property<long>("Id").ValueGeneratedOnAdd().HasColumnType("bigint");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<int>("ProductId").HasColumnType("int");
+                    b.Property<DateTime>("EffectiveDate").HasColumnType("datetime2");
+                    b.Property<decimal>("Price").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal?>("PreviousPrice").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<string>("Source").IsRequired().HasMaxLength(24).HasColumnType("nvarchar(24)");
+                    b.Property<int?>("PurchaseTransactionId").HasColumnType("int");
+                    b.Property<Guid?>("OperationId").HasColumnType("uniqueidentifier");
+                    b.Property<string>("PreviewHash").HasMaxLength(64).HasColumnType("nvarchar(64)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
+                    b.Property<string>("CreatedBy").HasMaxLength(120).HasColumnType("nvarchar(120)");
+                    b.HasKey("Id");
+                    b.HasIndex("ProductId");
+                    b.HasIndex("PurchaseTransactionId");
+                    b.HasIndex("CompanyId", "ProductId", "EffectiveDate", "Id");
+                    b.HasIndex("OperationId", "ProductId").IsUnique().HasFilter("[OperationId] IS NOT NULL");
+                    b.ToTable("ShopSalePrices");
+                });
+            modelBuilder.Entity("Inventory.Api.Data.ShopSalePrice", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.Product", "Product").WithMany().HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade).IsRequired();
+                    b.Navigation("Product");
+                });
 #pragma warning restore 612, 618
         }
     }

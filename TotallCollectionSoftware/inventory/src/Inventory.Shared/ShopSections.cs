@@ -109,6 +109,9 @@ public static class ShopSections
         new("Parties",         "طرف حساب‌ها (مشتری و تأمین‌کننده)",         "bi-people",         true,
             ["Parties", "Customers", "Suppliers"], ["parties"]),
 
+        new("Pricing",         "قیمت‌گذاری و حداقل سود",                     "bi-tags",           true,
+            [], ["shop/pricing"]),
+
         new("Referrers",       "معرف‌ها",                                  "bi-person-badge",   true,
             ["Referrers"], ["referrers"]),
 

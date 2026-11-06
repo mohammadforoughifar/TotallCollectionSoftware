@@ -491,10 +491,12 @@ public class WarehousingService : IWarehousingService
         var catMap = catFlat.ToDictionary(c => c.Id);
         var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
         var settingsMethod = await GetSettingsMethodAsync();
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, productIds, DateTime.Today);
 
         foreach (var p in list)
         {
             var dto = MapProduct(p, catMap, whMap, settingsMethod);
+            if (effectivePrices.TryGetValue(p.Id, out var effective)) dto.SalePrice = effective.Price;
             if (qtyMap.TryGetValue(p.Id, out var st))
             {
                 dto.TotalStock = st.Qty;
@@ -516,6 +518,8 @@ public class WarehousingService : IWarehousingService
         var catMap = catFlat.ToDictionary(c => c.Id);
         var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
         var dto = MapProduct(p, catMap, whMap, await GetSettingsMethodAsync());
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, new[] { id }, DateTime.Today);
+        if (effectivePrices.TryGetValue(id, out var effective)) dto.SalePrice = effective.Price;
 
         var st = await _db.InvStocks.AsNoTracking().Where(s => s.ProductId == id).ToListAsync();
         dto.TotalStock = st.Sum(s => s.Quantity);
@@ -616,6 +620,11 @@ public class WarehousingService : IWarehousingService
                      ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
 
+        ShopPricingService.ValidatePrice(dto.SalePrice);
+        var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
+            : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
+        decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
+            ? currentPrice.Price : entity.SalePrice;
         await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
         var catName = dto.CategoryId is > 0
             ? (await _db.ProductCategories.FindAsync(dto.CategoryId.Value))?.Name
@@ -669,7 +678,8 @@ public class WarehousingService : IWarehousingService
         entity.Description = NullIfEmpty(dto.Description);
         entity.Note = NullIfEmpty(dto.Note);
         entity.ImageUrl = NullIfEmpty(dto.ImageUrl);
-
+        if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
+            ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
         await _db.SaveChangesAsync();
 
         // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
@@ -700,6 +710,10 @@ public class WarehousingService : IWarehousingService
 
     public async Task DeleteProductAsync(int id)
     {
+        // A product with substantive price changes is retained for audit.
+        if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
+            await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
+            throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
         var entity = await _db.Products.FindAsync(id)
                      ?? throw new InvalidOperationException("کالا یافت نشد.");
 

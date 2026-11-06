@@ -218,6 +218,8 @@ public class StocktakingService : IStocktakingService
                 .Select(s => (decimal?)s.Quantity).FirstOrDefaultAsync() ?? 0
             : 0;
 
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, new[] { product.Id }, DateTime.Today);
+        var salePrice = effectivePrices.TryGetValue(product.Id, out var effective) ? effective.Price : product.SalePrice;
         return new BcdScanResult
         {
             Found = true,
@@ -228,7 +230,7 @@ public class StocktakingService : IStocktakingService
             Unit = unit ?? product.Unit,
             PackQty = pack <= 0 ? 1 : pack,
             CurrentStock = stock,
-            SalePrice = product.SalePrice,
+            SalePrice = salePrice,
             PurchasePrice = product.PurchasePrice
         };
     }
@@ -245,6 +247,7 @@ public class StocktakingService : IStocktakingService
             .Where(b => productIds.Contains(b.ProductId) && b.IsActive)
             .ToListAsync();
 
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, productIds, DateTime.Today);
         var list = new List<BcdLabel>();
         foreach (var id in productIds)
         {
@@ -262,7 +265,7 @@ public class StocktakingService : IStocktakingService
                 Barcode = bc?.Code ?? p.Barcode,
                 Type = bc?.Type ?? (IsEan13(p.Barcode) ? BarcodeType.Ean13 : BarcodeType.Code128),
                 Unit = bc?.Unit ?? p.Unit,
-                SalePrice = p.SalePrice,
+                SalePrice = effectivePrices.TryGetValue(p.Id, out var effective) ? effective.Price : p.SalePrice,
                 Copies = 1
             });
         }

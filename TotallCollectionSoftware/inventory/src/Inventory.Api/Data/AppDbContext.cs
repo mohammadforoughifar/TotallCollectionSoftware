@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
     /// </list>
     /// </summary>
     public int? ActiveCompanyId => ReadActiveCompanyId();
+    public string? CurrentUserName => _http?.HttpContext?.User?.Identity?.Name
+        ?? _http?.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     private int? ReadActiveCompanyId()
     {
@@ -137,6 +139,8 @@ public class AppDbContext : DbContext
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
     public DbSet<MeasureUnit> MeasureUnits => Set<MeasureUnit>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ShopPricingPolicy> ShopPricingPolicies => Set<ShopPricingPolicy>();
+    public DbSet<ShopSalePrice> ShopSalePrices => Set<ShopSalePrice>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<Stock> Stocks => Set<Stock>();
@@ -737,6 +741,14 @@ public class AppDbContext : DbContext
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);
+        mb.Entity<ShopPricingPolicy>().Property(p => p.MinimumMarkupPercent).HasPrecision(9, 2);
+        mb.Entity<ShopPricingPolicy>().HasIndex(p => p.CompanyId).IsUnique();
+        mb.Entity<ShopSalePrice>().Property(p => p.Price).HasPrecision(18, 2);
+        mb.Entity<ShopSalePrice>().Property(p => p.PreviousPrice).HasPrecision(18, 2);
+        mb.Entity<ShopSalePrice>().HasOne(p => p.Product).WithMany().HasForeignKey(p => p.ProductId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ShopSalePrice>().HasIndex(p => new { p.CompanyId, p.ProductId, p.EffectiveDate, p.Id });
+        mb.Entity<ShopSalePrice>().HasIndex(p => new { p.OperationId, p.ProductId }).IsUnique().HasFilter("[OperationId] IS NOT NULL");
+        mb.Entity<ShopSalePrice>().HasIndex(p => p.PurchaseTransactionId);
         mb.Entity<TransactionLine>().Property(l => l.DiscountAmount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.GrossAmount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.VatValue).HasPrecision(18, 2);
@@ -1765,6 +1777,8 @@ public class AppDbContext : DbContext
         // هر رکورد فقط در شرکت فعالِ انتخاب‌شده در نوار بالای برنامه دیده می‌شود.
         // ActiveCompanyId == null یعنی زمینهٔ شرکتی تعیین نشده (اجرای پس‌زمینه/نصب اولیه) → بدون فیلتر.
         mb.Entity<Product>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopPricingPolicy>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopSalePrice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ProductCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<MeasureUnit>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Warehouse>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

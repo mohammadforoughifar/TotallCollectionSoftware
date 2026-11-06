@@ -397,6 +397,8 @@ public class OrderLineInput
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
+    /// <summary>Optional new list price, only for purchase; effective on invoice date.</summary>
+    public decimal? NewSalePrice { get; set; }
     public decimal DiscountPercent { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool DiscountIsAmount { get; set; }
