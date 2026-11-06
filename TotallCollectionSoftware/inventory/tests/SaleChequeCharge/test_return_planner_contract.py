@@ -20,7 +20,7 @@ class ReturnPlannerContract(unittest.TestCase):
         api = (ROOT / 'src/Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf8')
         section = api[api.index('private async Task FreezeChargedSaleCostsAsync'):api.index('private async Task EnrichSaleProfitAsync')]
         self.assertIn('_db.Database.CurrentTransaction is null', section)
-        self.assertIn('ComputeSaleCosts(txns, group.Key, costingMethod, product.PurchasePrice)', section)
+        self.assertIn('ComputeSaleCosts(throughSale, group.Key, costingMethod, product.PurchasePrice)', section)
         self.assertIn('line.UnitCostSnapshot = decimal.Round(cost, 2)', section)
         self.assertIn('if (product.IsService) continue', section)
         self.assertIn('_db.InvStocks.AnyAsync', section)

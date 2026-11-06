@@ -184,7 +184,12 @@ public class InventoryService : IInventoryService
         foreach (var t in txns)
         {
             var order = await ToOrderDtoAsync(t, charges.GetValueOrDefault(t.Id)); // شامل محاسبه سود و پورسانت
-            total += order.CommissionAmount ?? 0;
+            // Never turn unknown rates into zero or treat a newly recorded sale's
+            // estimated goods cost as a definite, payable wallet liability. Old
+            // documents retain their prior estimated wallet behavior.
+            if (!order.CommissionAmount.HasValue || (order.CommissionRatesAreHistorical && order.HasEstimatedSaleCost))
+                throw new InvalidOperationException("پورسانت قطعی یکی از فروش‌های معرف قابل محاسبه نیست؛ نرخ معرف و بهای ثبت‌شده کالا را بررسی کنید.");
+            total += order.CommissionAmount.Value;
         }
         return total;
     }
@@ -206,6 +211,20 @@ public class InventoryService : IInventoryService
         CreatedAt = r.CreatedAt,
         OrderCount = orderCount
     };
+
+    public async Task<Referrer?> GetReferrerWalletAsync(int referrerId)
+    {
+        var referrer = await _db.Referrers.AsNoTracking().FirstOrDefaultAsync(r => r.Id == referrerId);
+        if (referrer is null) return null;
+        var count = await _db.Transactions.CountAsync(t => t.ReferrerId == referrerId);
+        // Sum in memory, as in the list implementation, for SQLite decimal support.
+        var payments = await _db.ReferrerPayments.AsNoTracking().Where(p => p.ReferrerId == referrerId).ToListAsync();
+        var dto = MapWallet(referrer, count);
+        dto.TotalCommission = await ComputeReferrerCommissionAsync(referrerId);
+        dto.TotalPaid = payments.Sum(p => p.Amount);
+        dto.WalletBalance = dto.TotalCommission - dto.TotalPaid;
+        return dto;
+    }
 
     public async Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc,
         Paging.Request? pagination = null)
@@ -383,7 +402,7 @@ public class InventoryService : IInventoryService
 
         foreach (var t in orderedTxns)
         {
-            foreach (var l in t.Lines.Where(l => l.ProductId == productId))
+            foreach (var l in t.Lines.Where(l => l.ProductId == productId).OrderBy(l => l.Id))
             {
                 switch (t.Type)
                 {
@@ -478,16 +497,79 @@ public class InventoryService : IInventoryService
             var txns = await _db.Transactions.Include(t => t.Lines)
                 .Where(t => t.WarehouseId == sale.WarehouseId && t.Lines.Any(l => l.ProductId == group.Key))
                 .OrderBy(t => t.Date).ThenBy(t => t.Id).ToListAsync();
-            var costs = ComputeSaleCosts(txns, group.Key, costingMethod, product.PurchasePrice);
+            var saleIndex = txns.FindIndex(t => t.Id == sale.Id);
+            if (saleIndex < 0) throw new InvalidOperationException("فاکتور برای تعیین بهای تمام‌شده یافت نشد.");
+            var throughSale = txns.Take(saleIndex + 1).ToList();
+            var reliableLines = ReliableSaleCostLines(throughSale, sale.Id, group.Key);
+            var costs = reliableLines.Count == 0 ? new Dictionary<int, decimal>()
+                : ComputeSaleCosts(throughSale, group.Key, costingMethod, product.PurchasePrice);
             foreach (var line in group)
             {
+                // When prior quantities or adjustments cannot substantiate the
+                // cost, retain an explicitly estimated result rather than freezing
+                // a fallback purchase price as historical fact.
+                if (!reliableLines.Contains(line.Id)) { line.UnitCostSnapshot = null; continue; }
                 if (!costs.TryGetValue(line.Id, out var cost) || cost < 0 || cost > 9999999999999999.99m)
                     throw new InvalidOperationException("بهای تمام‌شده کالا قابل تعیین نیست؛ ثبت متوقف شد.");
-                // The persisted column has decimal(18,2) precision; use the historical stock cost, not an input value.
                 line.UnitCostSnapshot = decimal.Round(cost, 2);
             }
         }
         await _db.SaveChangesAsync();
+    }
+
+    // Conservative confidence check for the same stock chronology consumed by
+    // ComputeSaleCosts. An unexplained opening/adjustment or a historical
+    // shortfall makes later values estimates, even if a fallback price exists.
+    private static HashSet<int> ReliableSaleCostLines(List<Db.Transaction> ordered, int saleId, int productId)
+    {
+        var reliable = true;
+        var available = 0m;
+        var result = new HashSet<int>();
+        foreach (var txn in ordered)
+        {
+            foreach (var line in txn.Lines.Where(l => l.ProductId == productId).OrderBy(l => l.Id))
+            {
+                if (line.Quantity <= 0) reliable = false;
+                switch (txn.Type)
+                {
+                    case TransactionType.Purchase:
+                        if (line.Price < 0) reliable = false;
+                        available += line.Quantity;
+                        break;
+                    case TransactionType.SaleReturn:
+                        if (!line.UnitCostSnapshot.HasValue || line.UnitCostSnapshot.Value < 0) reliable = false;
+                        available += line.Quantity;
+                        break;
+                    case TransactionType.Sale:
+                        if (line.Quantity > available) reliable = false;
+                        if (txn.Id == saleId && reliable) result.Add(line.Id);
+                        available -= line.Quantity;
+                        break;
+                    default:
+                        reliable = false;
+                        available = line.Quantity;
+                        break;
+                }
+            }
+        }
+        return result;
+    }
+
+    private async Task SnapshotReferrerRatesAsync(Db.Transaction sale)
+    {
+        sale.ReferrerGoodsPercentSnapshot = null;
+        sale.ReferrerServicePercentSnapshot = null;
+        if (sale.Type != TransactionType.Sale || sale.ReferrerId is not > 0) return;
+        // Query filters enforce the active company. Never infer an old rate from a
+        // different company or fill missing historical snapshots automatically.
+        var referrer = await _db.Referrers.AsNoTracking().FirstOrDefaultAsync(r => r.Id == sale.ReferrerId.Value)
+            ?? throw new InvalidOperationException("معرف مشتری در شرکت جاری یافت نشد؛ مشخصات مشتری را اصلاح کنید.");
+        if (referrer.GoodsCommissionPercent is < 0 or > 100 || referrer.ServiceCommissionPercent is < 0 or > 100 ||
+            decimal.Round(referrer.GoodsCommissionPercent, 6) != referrer.GoodsCommissionPercent ||
+            decimal.Round(referrer.ServiceCommissionPercent, 6) != referrer.ServiceCommissionPercent)
+            throw new InvalidOperationException("درصد پورسانت معرف معتبر نیست؛ نرخ کالا و خدمات باید بین صفر و صد و حداکثر شش رقم اعشار باشد.");
+        sale.ReferrerGoodsPercentSnapshot = referrer.GoodsCommissionPercent;
+        sale.ReferrerServicePercentSnapshot = referrer.ServiceCommissionPercent;
     }
 
     /// <summary>محاسبه سود سطرهای فروش یک سند + پورسانت معرف.</summary>
@@ -501,8 +583,10 @@ public class InventoryService : IInventoryService
 
         // واکشی فاکتور در دیتابیس برای دسترسی به Snapshotهای ثبت‌شده روی سطرهای TransactionLine
         var dbTxn = await _db.Transactions.Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == order.Id);
-        var snapshotMap = dbTxn?.Lines.ToDictionary(l => l.Id, l => l.UnitCostSnapshot) 
+        var snapshotMap = dbTxn?.Lines.ToDictionary(l => l.Id, l => l.UnitCostSnapshot)
                           ?? new Dictionary<int, decimal?>();
+        order.HasEstimatedSaleCost = order.Lines.Any(l => !l.IsService &&
+            (!snapshotMap.TryGetValue(l.Id, out var cost) || !cost.HasValue));
         if (await _db.SaleChequeCancellations.AsNoTracking().AnyAsync(c => c.SaleTransactionId == order.Id))
         {
             foreach (var l in order.Lines)
@@ -514,6 +598,17 @@ public class InventoryService : IInventoryService
             order.TotalProfit = 0;
             order.CommissionAmount = 0;
             order.NetProfit = 0;
+            order.HasEstimatedSaleCost = false;
+            return;
+        }
+        // A missing product may have been a service or goods. Do not turn an
+        // unresolvable cost/category into a false zero profit or commission.
+        if (order.Lines.Any(l => !products.ContainsKey(l.ProductId)))
+        {
+            order.HasEstimatedSaleCost = true;
+            order.TotalProfit = null;
+            order.CommissionAmount = null;
+            order.NetProfit = null;
             return;
         }
         var returnedLines = await _db.SaleChequeReturnLines.AsNoTracking()
@@ -588,35 +683,27 @@ public class InventoryService : IInventoryService
 
         order.TotalProfit = order.Lines.Sum(l => l.Profit ?? 0);
 
-        // پورسانت معرف (به تفکیک هر سطر):
-        //   کالا   → درصد کالا × «سود» سطر (سود منفی پورسانت نمی‌گیرد)
-        //   خدمات → درصد خدمات × «کل مبلغ» سطر
-        if (order.ReferrerId is > 0)
+        // پورسانت فقط از سود فروشگاه کم می‌شود، نه از مبلغ یا گردش مشتری.
+        // برای فاکتورهای جدید نرخ در زمان ثبت نگهداری شده و پس از برگشت،
+        // خدمات از مبلغ پس از تخفیفِ باقیمانده و کالا از سود مثبت محاسبه می‌شود.
+        if (order.ReferrerId is > 0 && order.ReferrerGoodsCommissionPercent is decimal goodsRate &&
+            order.ReferrerServiceCommissionPercent is decimal serviceRate)
         {
-            var referrer = await _db.Referrers.FindAsync(order.ReferrerId);
-            if (referrer is not null)
+            foreach (var l in order.Lines)
             {
-                foreach (var l in order.Lines)
-                {
-                    // پورسانت بر اساس سود خالص سطر (نه کل مبلغ ناخالص):
-                    // سود پس از کسر تخفیف و کسر بهای قطعه و دستمزد
-                    var profit = l.Profit ?? 0;
-                    if (profit > 0)
-                    {
-                        var percent = l.IsService ? referrer.ServiceCommissionPercent : referrer.GoodsCommissionPercent;
-                        l.Commission = decimal.Round(profit * percent / 100m, 2);
-                    }
-                    else
-                    {
-                        l.Commission = 0;
-                    }
-                }
-                order.CommissionAmount = order.Lines.Sum(l => l.Commission ?? 0);
+                var profit = l.Profit ?? 0m;
+                var remainingAfterDiscount = Math.Max(0m, l.AfterDiscount - retGoodsMap.GetValueOrDefault(l.Id));
+                l.Commission = l.IsService && !order.UsesLegacyCommissionPolicy
+                    ? SaleReferrerCommission.Service(remainingAfterDiscount, serviceRate)
+                    : SaleReferrerCommission.Goods(profit, l.IsService ? serviceRate : goodsRate);
             }
+            order.CommissionAmount = order.Lines.Sum(l => l.Commission ?? 0m);
         }
 
-        // سود خالص = سود کل − پورسانت معرف
-        order.NetProfit = order.TotalProfit - (order.CommissionAmount ?? 0);
+        // نرخ تاریخی اسناد قدیمی بازسازی نمی‌شود؛ سیاست قبلی آن‌ها تغییر نمی‌کند.
+        // اگر معرف موجود نباشد، مبلغ نامشخص را صفر قطعی وانمود نمی‌کنیم.
+        order.NetProfit = order.ReferrerId is > 0 && !order.CommissionAmount.HasValue
+            ? null : order.TotalProfit - (order.CommissionAmount ?? 0m);
     }
 
     /// <summary>بررسی منفی نشدن موجودی جفت‌های (انبار، کالا) — با توجه به تنظیمات.</summary>
@@ -1103,6 +1190,7 @@ public class InventoryService : IInventoryService
 
         if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
             throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
         if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
 
         entity.Name = dto.Name.Trim();
@@ -1520,6 +1608,7 @@ public class InventoryService : IInventoryService
                 ReferrerId = saleReferrerId,
                 CreatedAt = DateTime.Now
             };
+            await SnapshotReferrerRatesAsync(txn);
 
             // در این مسیر، کل قابل پرداخت شامل سود محاسبه‌شده در سرور است؛
             // مبلغ چک‌ها را تغییر نمی‌دهیم و ثبت نهایی دوباره کنترل می‌شود.
@@ -1617,6 +1706,12 @@ public class InventoryService : IInventoryService
                         registration.CalculatorMonths, registration.AdjustmentRatePercent, registration.AdjustmentPeriodDays,
                         registration.ConfirmedCreditDueDate), user);
             }
+            else if (trackShopCash && txn.Type == TransactionType.Sale && txn.ReferrerId is > 0)
+            {
+                // Freeze reliable store-ledger costs for new commission-bearing sales.
+                // The existing method leaves mixed-ledger costs unknown rather than inventing them.
+                await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
+            }
             var savedOrder = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
             await trx.CommitAsync();
             return savedOrder;
@@ -1693,9 +1788,19 @@ public class InventoryService : IInventoryService
         if (t.PartyId.HasValue)
             partyName = await _db.Parties.Where(p => p.Id == t.PartyId.Value).Select(p => p.Name).FirstOrDefaultAsync();
         string? whName = await _db.Warehouses.Where(w => w.Id == t.WarehouseId).Select(w => w.Name).FirstOrDefaultAsync();
-        string? refName = t.ReferrerId.HasValue
-            ? await _db.Referrers.Where(r => r.Id == t.ReferrerId.Value).Select(r => r.Name).FirstOrDefaultAsync()
+        var referrer = t.ReferrerId.HasValue
+            ? await _db.Referrers.AsNoTracking().FirstOrDefaultAsync(r => r.Id == t.ReferrerId.Value)
             : null;
+        var hasAnyCommissionRateSnapshot = t.ReferrerGoodsPercentSnapshot.HasValue || t.ReferrerServicePercentSnapshot.HasValue;
+        var hasCommissionRateSnapshot = t.ReferrerGoodsPercentSnapshot.HasValue && t.ReferrerServicePercentSnapshot.HasValue;
+        // A partial snapshot is corrupt, not a legacy document. Never silently
+        // replace its missing half with today's rate or the old commission rule.
+        decimal? goodsRate = hasCommissionRateSnapshot ? t.ReferrerGoodsPercentSnapshot
+            : !hasAnyCommissionRateSnapshot ? referrer?.GoodsCommissionPercent : null;
+        decimal? serviceRate = hasCommissionRateSnapshot ? t.ReferrerServicePercentSnapshot
+            : !hasAnyCommissionRateSnapshot ? referrer?.ServiceCommissionPercent : null;
+        if (goodsRate is < 0 or > 100 || serviceRate is < 0 or > 100)
+            goodsRate = serviceRate = null;
 
         string? trsAccountName = null;
         if (t.TrsAccountId.HasValue)
@@ -1739,7 +1844,11 @@ public class InventoryService : IInventoryService
             PartyId = t.PartyId ?? 0,
             PartyName = partyName,
             ReferrerId = t.ReferrerId,
-            ReferrerName = refName,
+            ReferrerName = referrer?.Name,
+            ReferrerGoodsCommissionPercent = goodsRate,
+            ReferrerServiceCommissionPercent = serviceRate,
+            CommissionRatesAreHistorical = hasCommissionRateSnapshot && goodsRate.HasValue && serviceRate.HasValue,
+            UsesLegacyCommissionPolicy = t.ReferrerId is > 0 && !hasAnyCommissionRateSnapshot,
             Type = t.Type,
             Number = t.Number,
             Date = t.Date,
@@ -1923,6 +2032,23 @@ public class InventoryService : IInventoryService
             var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
             await ValidateOrderReferencesAsync(cmd, productIds, products.Count);
 
+            // A frozen goods cost is only reusable while the stock chronology and
+            // ordered goods quantities stay unchanged. A changed quantity can use
+            // a different FIFO/LIFO layer even when the product ID is the same.
+            var goodsCostBasisChanged = false;
+            if (txn.Type == TransactionType.Sale)
+            {
+                var oldProductIds = txn.Lines.Select(l => l.ProductId).Distinct().ToList();
+                var oldServiceIds = (await _db.Products.Where(p => oldProductIds.Contains(p.Id) && p.IsService)
+                    .Select(p => p.Id).ToListAsync()).ToHashSet();
+                var oldBasis = txn.Lines.Where(l => !oldServiceIds.Contains(l.ProductId)).OrderBy(l => l.Id)
+                    .Select(l => (l.Id, l.ProductId, l.Quantity)).ToList();
+                var newBasis = cmd.Lines.Where(l => !products.TryGetValue(l.ProductId, out var p) || !p.IsService)
+                    .Select(l => (l.Id, l.ProductId, l.Quantity)).ToList();
+                goodsCostBasisChanged = txn.WarehouseId != cmd.WarehouseId ||
+                    (cmd.Date != default && cmd.Date != txn.Date) || !oldBasis.SequenceEqual(newBasis);
+            }
+
             // کالای دارای انبار اختصاصی فقط در همان انبار قابل ثبت است
             foreach (var l in cmd.Lines)
             {
@@ -1952,7 +2078,13 @@ public class InventoryService : IInventoryService
                     updReferrerId = await _db.Parties.Where(p => p.Id == cmd.PartyId)
                         .Select(p => p.ReferrerId).FirstOrDefaultAsync();
             }
-            txn.ReferrerId = updReferrerId;
+            if (txn.ReferrerId != updReferrerId)
+            {
+                txn.ReferrerId = updReferrerId;
+                await SnapshotReferrerRatesAsync(txn);
+            }
+            // An unchanged old referrer retains its original snapshot, including
+            // null for a legacy document whose historical rates are unknown.
             txn.Date = cmd.Date == default ? txn.Date : cmd.Date;
             txn.Description = cmd.Description;
             txn.Amount = 0;
@@ -1961,6 +2093,9 @@ public class InventoryService : IInventoryService
                 var unitCostSnapshot = existingLineCosts.TryGetValue(l.Id, out var oldCost) && oldCost.ProductId == l.ProductId
                     ? oldCost.UnitCostSnapshot
                     : l.UnitCostSnapshot;
+                if (txn.Type == TransactionType.Sale && goodsCostBasisChanged &&
+                    (!products.TryGetValue(l.ProductId, out var costProduct) || !costProduct.IsService))
+                    unitCostSnapshot = null;
 
                 var gross = OrderLineAmounts.Gross(l.Quantity, l.Price);
                 decimal discAmount = 0;
@@ -2012,6 +2147,12 @@ public class InventoryService : IInventoryService
                 throw;
             }
 
+            if (goodsCostBasisChanged && txn.Type == TransactionType.Sale && txn.ReferrerId is > 0 &&
+                txn.ReferrerGoodsPercentSnapshot.HasValue && txn.ReferrerServicePercentSnapshot.HasValue)
+            {
+                var settings = await GetSettingsAsync();
+                await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
+            }
             if (txn.ShopCashLedgerEnabled)
                 await ShopOrderCashLedger.SyncAfterEditAsync(_db, txn, previousCash, user);
             var savedOrder = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
@@ -3005,6 +3146,12 @@ public class InventoryService : IInventoryService
                 ReferrerId = saleReferrerId,
                 CreatedAt = DateTime.Now
             };
+            if (oldSale.ReferrerId == saleReferrerId)
+            {
+                newTxn.ReferrerGoodsPercentSnapshot = oldSale.ReferrerGoodsPercentSnapshot;
+                newTxn.ReferrerServicePercentSnapshot = oldSale.ReferrerServicePercentSnapshot;
+            }
+            else await SnapshotReferrerRatesAsync(newTxn);
             foreach (var c in cmd.Cheques) c.Id = 0;
             foreach (var i in cmd.Installments) i.Id = 0;
             ApplyPayment(newTxn, cmd, paymentTotal);
@@ -3652,6 +3799,8 @@ public class InventoryService : IInventoryService
 
     public async Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
     {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+            throw new InvalidOperationException("تاریخ شروع صورت‌حساب نمی‌تواند پس از تاریخ پایان باشد.");
         var partiesQ = _db.Parties.AsNoTracking().AsQueryable();
         if (type.HasValue) partiesQ = partiesQ.Where(p => p.Type == type.Value);
         if (!string.IsNullOrWhiteSpace(search))
@@ -3727,12 +3876,12 @@ public class InventoryService : IInventoryService
                     debit += Math.Max(0m, t.SettledAmount - (t.ShopCashLedgerEnabled ? t.CashAmount : 0m) - activeOrdinaryCheques.GetValueOrDefault(t.Id) - activeOrdinaryInstallments.GetValueOrDefault(t.Id) - activeShopCredits.GetValueOrDefault(t.Id));
                 }
 
-                if (isOpening || isBefore)
+                if (isBefore || (isOpening && (!to.HasValue || t.Date.Date <= to.Value.Date)))
                 {
                     openDebit += debit;
                     openCredit += credit;
                 }
-                else
+                else if (!isOpening)
                 {
                     if (!to.HasValue || t.Date.Date <= to.Value.Date)
                     {
@@ -3804,7 +3953,7 @@ public class InventoryService : IInventoryService
             foreach (var e in shopCashEvents[p.Id])
             {
                 var isDebit = (e.Type == TransactionType.Purchase) != e.IsReversal;
-                if (e.IsOpening || (from.HasValue && e.Date.Date < from.Value.Date))
+                if ((e.IsOpening && (!to.HasValue || e.Date.Date <= to.Value.Date)) || (from.HasValue && e.Date.Date < from.Value.Date))
                 { if (isDebit) openDebit += e.Amount; else openCredit += e.Amount; }
                 else if (!to.HasValue || e.Date.Date <= to.Value.Date)
                 { if (isDebit) periodDebit += e.Amount; else periodCredit += e.Amount; }
@@ -3868,6 +4017,8 @@ public class InventoryService : IInventoryService
 
     public async Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null)
     {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+            throw new InvalidOperationException("تاریخ شروع صورت‌حساب نمی‌تواند پس از تاریخ پایان باشد.");
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId)
             ?? throw new InvalidOperationException("طرف حساب یافت نشد.");
 
@@ -3928,7 +4079,7 @@ public class InventoryService : IInventoryService
                 if (t.Type == TransactionType.Purchase) debit += Math.Max(0m, t.SettledAmount - (t.ShopCashLedgerEnabled ? t.CashAmount : 0m) - activeOrdinaryCheques.GetValueOrDefault(t.Id) - activeOrdinaryInstallments.GetValueOrDefault(t.Id) - activeShopCredits.GetValueOrDefault(t.Id));
             }
 
-            if (isOpening || isBefore)
+            if (isBefore || (isOpening && (!to.HasValue || t.Date.Date <= to.Value.Date)))
             {
                 openDebit += debit;
                 openCredit += credit;
@@ -3980,7 +4131,8 @@ public class InventoryService : IInventoryService
                 runningBalance -= alloc.Amount;
             }
         }
-        foreach (var e in shopCashEvents.Where(e => e.IsOpening || (from.HasValue && e.Date.Date < from.Value.Date)))
+        foreach (var e in shopCashEvents.Where(e => (e.IsOpening && (!to.HasValue || e.Date.Date <= to.Value.Date)) ||
+                     (from.HasValue && e.Date.Date < from.Value.Date)))
         {
             var isDebit = (e.Type == TransactionType.Purchase) != e.IsReversal;
             if (isDebit) { openDebit += e.Amount; runningBalance += e.Amount; }
@@ -4036,9 +4188,11 @@ public class InventoryService : IInventoryService
             var income = saleHistory?.InitialIncome ?? 0m;
             decimal debit = t.Type == TransactionType.Sale ? t.Amount - (saleHistory?.CurrentIncome ?? 0m) : 0;
             decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+            decimal? saleDiscount = t.Type == TransactionType.Sale ? t.Lines.Sum(l => l.DiscountAmount) : null;
             if (t.Type == TransactionType.Sale)
             {
                 result.SaleGoodsTotal += debit;
+                result.SaleIssuedDiscountTotal += saleDiscount ?? 0m;
                 result.SaleChequeIncomeTotal += income;
             }
 
@@ -4053,6 +4207,7 @@ public class InventoryService : IInventoryService
                 DocumentNumber = t.Number.ToString(),
                 Title = t.Type == TransactionType.Sale ? "فاکتور فروش" : "فاکتور خرید",
                 Description = t.Description ?? "",
+                SaleInvoiceDiscount = saleDiscount,
                 Debit = debit,
                 Credit = credit,
                 Balance = runningBalance

@@ -15,7 +15,13 @@
         <h1>@(isPurchase ? "اسناد خرید" : "اسناد فروش")</h1>
         <p class="lead">@(isPurchase ? "ثبت و مدیریت رسیدهای خرید" : "ثبت و مدیریت فاکتورهای فروش")</p>
     </div>
-    <div class="d-flex align-items-center gap-2 me-auto">
+    <div class="d-flex flex-wrap align-items-center gap-2 me-auto">
+        <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="orders-print-paper">
+            کاغذ چاپ
+            <select id="orders-print-paper" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size>
+                <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
+            </select>
+        </label>
         @if (Auth.CanSee("ShopGuide"))
         {
             <a class="btn btn-outline-secondary" href="shop-guide">
@@ -860,6 +866,7 @@
     private int printingId;
     /// <summary>تنظیمات چاپ/سربرگ شرکت — یک‌بار خوانده و نگه داشته می‌شود.</summary>
     private CompanyProfileDto? companyProfile;
+    private string printPaperSize = "default";
 
     /// <summary>
     /// چاپ سند فروش/خرید در قالب مستقل (A4 یا A5 بر اساس «تعریف شرکت»)؛
@@ -879,7 +886,7 @@
                 Toast.Error("این سند قلمی ندارد؛ چاپ انجام نشد.");
             else
             {
-                var html = SaleInvoicePrint.Build(order, companyProfile);
+                var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
                 var opened = await JS.InvokeAsync<bool>("giPrint", html);
                 if (!opened)
                     Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");

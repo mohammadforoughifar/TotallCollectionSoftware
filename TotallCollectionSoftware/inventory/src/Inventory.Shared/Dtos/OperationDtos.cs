@@ -77,6 +77,15 @@ public class Order
     public int? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
 
+    /// <summary>درصدهای ثبت‌شده در زمان فروش؛ برای سند قدیمی نرخ جاری به‌صورت تخمینی نمایش داده می‌شود.</summary>
+    public decimal? ReferrerGoodsCommissionPercent { get; set; }
+    public decimal? ReferrerServiceCommissionPercent { get; set; }
+    public bool CommissionRatesAreHistorical { get; set; }
+    /// <summary>در سندهای بدون نرخ تاریخی، مبنای خدمات قدیمی حفظ شده است.</summary>
+    public bool UsesLegacyCommissionPolicy { get; set; }
+    /// <summary>بهای همه سطرهای کالا در زمان فروش تثبیت نشده است؛ سود و پورسانت برآوردی‌اند.</summary>
+    public bool HasEstimatedSaleCost { get; set; }
+
     /// <summary>مجموع سود سند (فقط فروش — پر شده توسط سرور)</summary>
     public decimal? TotalProfit { get; set; }
 
@@ -727,6 +736,8 @@ public class PartyStatementRowDto
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
     public bool IsOpening { get; set; }
+    /// <summary>تخفیف فاکتور فروشِ همان ردیف؛ صرفاً اطلاعاتی و قبلاً در بدهکار لحاظ شده است.</summary>
+    public decimal? SaleInvoiceDiscount { get; set; }
     public decimal Debit { get; set; }  // بدهکار (افزایش طلب ما از شخص)
     public decimal Credit { get; set; } // بستانکار (کاهش طلب ما یا افزایش بدهی ما به شخص)
     public decimal Balance { get; set; } // مانده پس از این سطر
@@ -743,6 +754,8 @@ public class PartyStatementDetailDto
     public decimal OpeningBalance { get; set; } // مثبت = بدهکار اولیه، منفی = بستانکار اولیه
     /// <summary>جمع فروش کالا و خدمات دوره با ارزش افزوده، بدون درآمد چک.</summary>
     public decimal SaleGoodsTotal { get; set; }
+    /// <summary>تخفیف فاکتورهای فروش صادرشده در دوره، پیش از برگشت‌های بعدی.</summary>
+    public decimal SaleIssuedDiscountTotal { get; set; }
     /// <summary>جمع ردیف تاخیر تادیه چک برای فاکتورهای فروش دوره.</summary>
     public decimal SaleChequeIncomeTotal { get; set; }
     public decimal TotalDebit { get; set; }

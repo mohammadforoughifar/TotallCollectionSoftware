@@ -31,6 +31,11 @@ public class OrdersController : ApiControllerBase
         order.TotalProfit = null;
         order.NetProfit = null;
         order.CommissionAmount = null;
+        order.ReferrerGoodsCommissionPercent = null;
+        order.ReferrerServiceCommissionPercent = null;
+        order.CommissionRatesAreHistorical = false;
+        order.UsesLegacyCommissionPolicy = false;
+        order.HasEstimatedSaleCost = false;
         foreach (var line in order.Lines)
         {
             line.UnitCost = null;
@@ -153,6 +158,11 @@ public class OrdersController : ApiControllerBase
         // Check before the mutation: a permission-query failure after commit must
         // never look like a failed save and encourage a duplicate invoice retry.
         var revealProfit = await MayReturnSaleProfitAsync(cmd.Type);
+        // Sale costs are calculated by the server. The internal repair workflow
+        // may provide its own costs directly to the service, but an HTTP client
+        // must never be able to forge a sale-profit or commission snapshot.
+        if (cmd.Type == TransactionType.Sale)
+            foreach (var line in cmd.Lines) line.UnitCostSnapshot = null;
         var saved = await _service.CreateOrderAsync(cmd, User.Identity?.Name);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
@@ -166,6 +176,8 @@ public class OrdersController : ApiControllerBase
         var error = TrackingError(cmd, existing.Type, existing);
         if (error is not null) return BadRequest(new { message = error });
         var revealProfit = await MayReturnSaleProfitAsync(existing.Type);
+        if (existing.Type == TransactionType.Sale)
+            foreach (var line in cmd.Lines) line.UnitCostSnapshot = null;
         var saved = await _service.UpdateOrderAsync(id, cmd, User.Identity?.Name);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }

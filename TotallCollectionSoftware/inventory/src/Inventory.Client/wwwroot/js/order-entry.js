@@ -161,10 +161,12 @@
         const isInvoiceChild = !!(childMarker && childMarker.getAttribute('data-order-child'));
         const invoiceCovered = !isInvoice && visible.slice(0, -1).some(item => item.querySelector('[data-order-wizard]'));
         const shop = document.querySelector && document.querySelector('.tabpane.on[data-shop-scope="true"]');
-        const shortcuts = { F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F7: 'f7', Escape: 'esc' };
+        const shortcuts = { F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F7: 'f7', F8: 'f8', Escape: 'esc' };
         const hotkey = shortcuts[event.key];
         const target = event.target;
 
+        // F8 belongs only to an invoice or its covering dialog, not the shop list.
+        if (event.key === 'F8' && !isInvoice && !invoiceCovered) return;
         if ((shop || isInvoice || invoiceCovered) && hotkey) {
             // Don't send modified keys to the legacy global handler either; leave
             // their native browser behavior untouched. Repeats never submit twice.
@@ -186,7 +188,16 @@
             }
 
             let actions = [];
-            if (event.key === 'F7' && !modal) {
+            if (event.key === 'F8') {
+                // Never guess a product: use only the focused row of the top invoice.
+                // The button is absent for services, missing products or users without
+                // permission to see purchase prices. A covering dialog gets no action.
+                const row = isInvoice && target && target.closest && target.closest('[data-order-line]');
+                if (row && modal.contains(row)) {
+                    const lastPurchase = row.querySelector('[data-order-last-purchase]');
+                    if (lastPurchase) actions = [lastPurchase];
+                }
+            } else if (event.key === 'F7' && !modal) {
                 // A list never has a default invoice: F7 only copies the row/card
                 // that actually owns keyboard focus.
                 const row = target && target.closest && target.closest('[data-order-copy-context]');

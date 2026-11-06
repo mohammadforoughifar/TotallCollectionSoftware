@@ -44,6 +44,24 @@ Check(Fa.FormatTyping("۲۰۰٫۴۹") == "200.49" && Fa.ParseDecimal(Fa.FormatTy
 Check(SaleChequeInitialCalculation.Calculate(200, 5, 5) == 50, "original monthly calculator: 200 × 5% × 5 = 50");
 Check(SaleChequeInitialCalculation.Calculate(100, 0.5m, 1) == 0, "original calculator keeps midpoint-to-even rounding");
 Check(SaleChequeInitialCalculation.Calculate(200, 0, 1) == 0, "zero-rate invoice has zero cheque income");
+// A manual interest calculation does not require an equal, rounded schedule and
+// never changes the unequal amounts the operator already typed.
+var manualCheques = new[] { 7_000m, 13_001m };
+var manualPlan = InvoiceInstallmentCalculation.CreateInterestOnly(20_001m, 5m, 3);
+var manualCharge = manualPlan.CreateSaleChequeCharge(20_001m, 5m, 30);
+Check(manualPlan.Interest == 3_000m && manualPlan.Total == 23_001m &&
+      manualCharge is not null && manualCharge.CalculatorBaseAmount == 20_001m &&
+      manualCheques.SequenceEqual(new[] { 7_000m, 13_001m }),
+    "manual interest uses the same formula without replacing unequal cheque amounts");
+Check(InvoiceInstallmentCalculation.CreateInterestOnly(20_001m, 0m, 3)
+    .CreateSaleChequeCharge(20_001m, 0m, 30) is null, "zero manual interest produces no charge");
+Check(SaleReferrerCommission.Goods(200m, 10m) == 20m && SaleReferrerCommission.Goods(-20m, 10m) == 0m,
+    "goods commission is a percentage of positive line profit");
+Check(SaleReferrerCommission.Service(900m, 10m) == 90m && SaleReferrerCommission.Service(-20m, 10m) == 0m,
+    "service commission uses the post-discount amount, not its margin");
+Check(SaleReferrerCommission.Goods(0.15m, 10m) == 0.02m &&
+      SaleReferrerCommission.Service(0.15m, 10m) == 0.02m,
+    "commission is rounded to two decimal places per line");
 // The client and server share this exact plan; payment rows and the income snapshot
 // must use the same basis, rate and month count, including on a repeated calculation.
 var calculatedPlan = InvoiceInstallmentCalculation.Create(2_000_000m, 5m, 5);

@@ -39,6 +39,9 @@ const fixture = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="u
     <div class="modal-body"><div data-order-wizard="invoice-key">
        <input id="invoice-field"><div class="ss" id="search"><input id="search-field"></div>
        <div class="date-picker"><input id="date-field"></div>
+       <div data-order-line="a"><input id="line-a"><button id="last-a" data-order-last-purchase>آخرین خرید الف</button></div>
+       <div data-order-line="b"><input id="line-b"><button id="last-b" data-order-last-purchase>آخرین خرید ب</button></div>
+       <div data-order-line="service"><input id="line-service"></div>
     </div></div><div class="modal-footer">
        <button id="invoice-add" data-hotkey="f2">افزودن</button><button id="invoice-back" data-hotkey="f3">قبل</button>
        <button id="invoice-print" data-hotkey="f4">چاپ</button><button id="invoice-save" data-hotkey="f1">ثبت</button>
@@ -104,6 +107,25 @@ test('shop shortcuts and notification stacking in Chromium', { skip, timeout: 30
             await page.focus('#other-field');
             await page.keyboard.press('F1');
             assert.deepEqual(await actions(page), ['other-save']);
+        } finally { await page.close(); }
+    });
+
+    await t.test('F8 uses the focused product row, never an unrelated or covered row', async () => {
+        const page = await createPage(browser);
+        try {
+            await show(page, 'invoice');
+            await page.focus('#line-a'); await page.keyboard.press('F8');
+            await page.focus('#line-b'); await page.keyboard.press('F8');
+            assert.deepEqual(await actions(page), ['last-a', 'last-b']);
+            await page.evaluate(() => { document.getElementById('last-b').disabled = true; });
+            await page.keyboard.press('F8');
+            await page.focus('#line-service'); await page.keyboard.press('F8');
+            await page.focus('#invoice-field'); await page.keyboard.press('F8');
+            assert.deepEqual(await actions(page), []);
+            await show(page, 'child'); await page.focus('#child-field'); await page.keyboard.press('F8');
+            await page.evaluate(() => document.getElementById('line-a').dispatchEvent(
+                new KeyboardEvent('keydown', { key:'F8', bubbles:true, cancelable:true })));
+            assert.deepEqual(await actions(page), []);
         } finally { await page.close(); }
     });
 

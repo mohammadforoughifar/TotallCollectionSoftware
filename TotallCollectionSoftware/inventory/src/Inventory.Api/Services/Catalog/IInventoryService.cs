@@ -22,6 +22,8 @@ public interface IInventoryService
     // ---------------- کیف پول و پرداخت معرف ----------------
     /// <summary>فهرست کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance، desc)</summary>
     Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc, Paging.Request? pagination = null);
+    /// <summary>کیف پول یک معرف، بدون وابسته کردن پنل او به محاسبهٔ سایر معرف‌ها.</summary>
+    Task<Referrer?> GetReferrerWalletAsync(int referrerId);
     Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, Paging.Request? pagination = null);
     Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto);
     Task DeleteReferrerPaymentAsync(int id);

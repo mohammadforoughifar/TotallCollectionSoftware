@@ -14018,6 +14018,14 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("ReferrerId")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("ReferrerGoodsPercentSnapshot")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal?>("ReferrerServicePercentSnapshot")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
                     b.Property<bool>("ShopCashLedgerEnabled")
                         .HasColumnType("bit");
 

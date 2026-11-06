@@ -209,7 +209,11 @@ public class PartiesController : ControllerBase
         if (!CanReadAllStatements(perms))
         {
             var type = await _db.Parties.AsNoTracking().Where(p => p.Id == id).Select(p => (PartyType?)p.Type).FirstOrDefaultAsync();
-            if (!type.HasValue || !CanReadAll(perms, type.Value)) return Denied("شما به گردش این طرف حساب دسترسی ندارید.");
+            // The sales report's customer print needs this customer-only ledger.
+            // Do not expand this permission to supplier statements or writes.
+            var salesReportCustomer = type == PartyType.Customer && perms.Contains("Shop.OrderReports.View");
+            if (!type.HasValue || (!salesReportCustomer && !CanReadAll(perms, type.Value)))
+                return Denied("شما به گردش این طرف حساب دسترسی ندارید.");
         }
         var res = await _service.GetPartyStatementDetailAsync(id, from, to);
         return Ok(res);

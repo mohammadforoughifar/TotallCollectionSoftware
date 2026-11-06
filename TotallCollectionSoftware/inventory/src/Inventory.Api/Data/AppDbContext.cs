@@ -732,6 +732,8 @@ public class AppDbContext : DbContext
         mb.Entity<Product>().Property(p => p.PurchasePrice).HasPrecision(18, 2);
         mb.Entity<Stock>().Property(s => s.AvgCost).HasPrecision(18, 4);
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
+        mb.Entity<Transaction>().Property(t => t.ReferrerGoodsPercentSnapshot).HasPrecision(18, 6);
+        mb.Entity<Transaction>().Property(t => t.ReferrerServicePercentSnapshot).HasPrecision(18, 6);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);

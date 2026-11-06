@@ -1,11 +1,11 @@
 @page "/operations/reports/orders/{Type}"
 @inject IAuthState Auth
 @inject IOrderService OrderSvc
-@inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject ICompanyProfileService ProfileSvc
 
 <PageTitle>@(isPurchase ? "گزارش تحلیلی خرید" : "گزارش تحلیلی فروش")</PageTitle>
 
@@ -44,6 +44,21 @@ else
                     {
                         <a class="btn btn-outline-secondary fin-btn-pill" href="/operations/reports/cheque-income">گزارش تاخیر تادیه چک</a>
                     }
+                    @if (!isPurchase)
+                    {
+                        <label class="d-flex align-items-center gap-1 fs-8 mb-0">
+                            بازه صورت‌حساب
+                            <select class="form-select form-select-sm w-auto" @bind="statementRange" aria-label="بازه صورت‌حساب مشتری">
+                                <option value="all">کل سابقه</option><option value="period">بازه گزارش</option>
+                            </select>
+                        </label>
+                        <button type="button" class="btn btn-outline-primary fin-btn-pill" data-print-customer-statement
+                                title="صورت‌حساب مشتری شامل همه انبارهاست"
+                                disabled="@(partyId <= 0 || printingStatement)" @onclick="PrintCustomerStatement">
+                            @if (printingStatement) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            <i class="bi bi-person-lines-fill me-1"></i> چاپ صورت‌حساب مشتری
+                        </button>
+                    }
                     <button class="btn btn-outline-secondary fin-btn-pill" disabled="@(summary is null)" @onclick="Print">
                         <i class="bi bi-printer-fill me-1"></i> چاپ رسمی گزارش
                     </button>
@@ -68,6 +83,10 @@ else
                 <div class="col-6 col-lg-3">
                     <label class="fin-label">@(isPurchase ? "تأمین‌کننده" : "مشتری")</label>
                     <SearchSelect Items="partyLookup" Value="partyId" ValueChanged="v => partyId = v" Placeholder="همهٔ طرف‌حساب‌ها" />
+                    @if (!isPurchase)
+                    {
+                        <small class="text-muted">برای چاپ صورت‌حساب، یک مشتری انتخاب کنید؛ مانده شامل همه انبارهاست.</small>
+                    }
                 </div>
                 <div class="col-6 col-lg-3">
                     <label class="fin-label">انبار مقصد/مبدأ</label>
@@ -364,6 +383,9 @@ else
                                     @if (!isPurchase && CanSeeProfit)
                                     {
                                         <th class="text-start">سود ناخالص (ریال)</th>
+                                        <th>معرف / درصد پورسانت</th>
+                                        <th class="text-start">پورسانت (ریال)</th>
+                                        <th class="text-start">سود پس از پورسانت (ریال)</th>
                                     }
                                 </tr>
                             </thead>
@@ -391,14 +413,33 @@ else
                                                 @if (order.TotalProfit.HasValue)
                                                 {
                                                     <span class="fw-800 @(order.TotalProfit >= 0 ? "text-emerald" : "text-danger")">
-                                                        @order.TotalProfit.Value.Money()
+                                                        @order.TotalProfit.Value.MoneyExact()
                                                     </span>
+                                                    @if (order.HasEstimatedSaleCost) { <small class="d-block text-muted">برآوردی</small> }
                                                 }
                                                 else
                                                 {
                                                     <span class="text-muted">—</span>
                                                 }
                                             </td>
+                                            <td class="fs-8">
+                                                @if (order.ReferrerId is > 0)
+                                                {
+                                                    <strong>@(order.ReferrerName ?? "معرف نامشخص")</strong>
+                                                    <div>کالا: @CommissionPercent(order.ReferrerGoodsCommissionPercent) · خدمات: @CommissionPercent(order.ReferrerServiceCommissionPercent)</div>
+                                                    @if (order.UsesLegacyCommissionPolicy)
+                                                    {
+                                                        <small class="text-muted">نرخ جاری؛ سابقه نرخ فروش ثبت نشده، مبنای قبلی حفظ شده است.</small>
+                                                    }
+                                                    else if (!order.CommissionRatesAreHistorical)
+                                                    {
+                                                        <small class="text-danger">نرخ ثبت‌شده ناقص یا نامعتبر است؛ پورسانت قابل محاسبه نیست.</small>
+                                                    }
+                                                }
+                                                else { <span class="text-muted">—</span> }
+                                            </td>
+                                            <td class="text-start num fs-8">@(order.CommissionAmount.HasValue ? order.CommissionAmount.Value.MoneyExact() : "—")</td>
+                                            <td class="text-start num fs-8">@(order.NetProfit.HasValue ? order.NetProfit.Value.MoneyExact() : "—")</td>
                                         }
                                     </tr>
                                 }
@@ -751,7 +792,8 @@ else
     [Parameter] public string? Type { get; set; }
 
     private bool isPurchase => string.Equals(Type, "purchase", StringComparison.OrdinalIgnoreCase);
-    private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
+    private bool canSeeProfit;
+    private bool CanSeeProfit => canSeeProfit;
     private TransactionType selectedType => isPurchase ? TransactionType.Purchase : TransactionType.Sale;
     private string TrendPeriod => summary?.Trend.Any(p => p.Label.Contains('/')) == true ? "روزانه" : "ماهانه";
 
@@ -771,6 +813,8 @@ else
     private DateTime? from = DateTime.Today.AddDays(-30);
     private DateTime? to = DateTime.Today;
     private bool loading = true;
+    private bool printingStatement;
+    private string statementRange = "all";
     private bool lookupsLoaded;
     private bool? lookupPurchase;
     private List<Order> items = new();
@@ -782,6 +826,8 @@ else
     {
         Layout.SetTitle(isPurchase ? "گزارش خرید" : "گزارش فروش");
         if (!Auth.CanSee("Orders")) return;
+        try { canSeeProfit = !isPurchase && await OrderSvc.CanViewProfitAsync(); }
+        catch { canSeeProfit = false; } // use current server permission, fail closed
         if (lookupPurchase.HasValue && lookupPurchase.Value != isPurchase)
         {
             lookupsLoaded = false;
@@ -799,10 +845,12 @@ else
         if (lookupsLoaded) return;
         try
         {
-            var parties = PartySvc.GetLookupsAsync(isPurchase ? PartyType.Supplier : PartyType.Customer);
-            var warehouses = WarehouseSvc.GetLookupsAsync();
+            // These invoice-scoped lookups are available with the report's own
+            // permission; unrelated customer/warehouse management is not required.
+            var parties = OrderSvc.GetInvoicePartiesAsync(selectedType);
+            var warehouses = OrderSvc.GetInvoiceWarehousesAsync(selectedType);
             await Task.WhenAll(parties, warehouses);
-            partyLookup = await parties;
+            partyLookup = (await parties).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
             warehouseLookup = await warehouses;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -839,6 +887,10 @@ else
         finally { loading = false; }
     }
 
+    private static string CommissionPercent(decimal? value) => value.HasValue
+        ? Fa.Digits(value.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture).Replace('.', '٫')) + "٪"
+        : "—";
+
     private static string BarStyle(decimal value, decimal max)
     {
         var pct = max <= 0 ? 0 : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
@@ -846,4 +898,30 @@ else
     }
 
     private async Task Print() => await JS.InvokeVoidAsync("window.print");
+
+    private async Task PrintCustomerStatement()
+    {
+        if (isPurchase || partyId <= 0 || printingStatement) return;
+        var selectedParty = partyId;
+        var start = statementRange == "period" ? from : null;
+        var end = statementRange == "period" ? to : null;
+        if (start.HasValue && end.HasValue && start.Value.Date > end.Value.Date)
+        {
+            Toast.Error("تاریخ شروع صورت‌حساب نمی‌تواند پس از تاریخ پایان باشد.");
+            return;
+        }
+        printingStatement = true;
+        try
+        {
+            // This is the customer-wide ledger, not the current page of invoices
+            // or a warehouse-filtered approximation of the account balance.
+            var statement = await PartySvc.GetPartyStatementDetailAsync(selectedParty, start, end);
+            // Resolve the active company on every print; the user may have switched companies.
+            var companyProfile = await ProfileSvc.GetAsync();
+            var opened = await JS.InvokeAsync<bool>("giPrint", CustomerStatementPrint.Build(statement, companyProfile, start, end));
+            if (!opened) Toast.Error("چاپ صورت‌حساب باز نشد؛ تنظیمات چاپ مرورگر را بررسی کنید.");
+        }
+        catch (Exception ex) { Toast.Error("صورت‌حساب مشتری تهیه نشد: " + ex.Message); }
+        finally { printingStatement = false; }
+    }
 }

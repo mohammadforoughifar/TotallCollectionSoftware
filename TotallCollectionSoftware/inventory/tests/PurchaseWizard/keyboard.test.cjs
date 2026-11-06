@@ -116,12 +116,35 @@ test('open search select receives Enter and calendar controls are not intercepte
 
 test('payment choices have no shortcuts, including the former Alt keys', () => {
     const f = fixture();
-    for (const key of ['F6', 'F8', 'F9', 'F10']) {
+    for (const key of ['F6', 'F9', 'F10']) {
         const e = event({ key }); f.handler(e); assert.equal(e.prevented, false); assert.equal(f.tab.clicked, 0);
     }
     for (const code of ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'KeyC', 'KeyI', 'KeyJ', 'KeyK', 'KeyB', 'KeyN', 'KeyL', 'KeyU', 'KeyP']) {
         const e = event({ code, altKey: true }); f.handler(e); assert.equal(e.prevented, false); assert.equal(f.tab.clicked, 0);
     }
+});
+
+test('F8 opens only the focused invoice row last purchase and respects covering dialogs', () => {
+    const f = fixture(), firstPurchase = button(), secondPurchase = button();
+    const firstRow = { querySelector: selector => selector === '[data-order-last-purchase]' ? firstPurchase : null };
+    const secondRow = { querySelector: selector => selector === '[data-order-last-purchase]' ? secondPurchase : null };
+    f.modal.contains = el => el === firstRow || el === secondRow;
+    const target = row => ({ closest: selector => selector === '[data-order-line]' ? row : null });
+    let e = event({ key: 'F8', target: target(firstRow) }); f.handler(e);
+    assert.ok(e.prevented && e.stopped); assert.equal(firstPurchase.clicked, 1); assert.equal(secondPurchase.clicked, 0);
+    e = event({ key: 'F8', target: target(secondRow) }); f.handler(e);
+    assert.equal(secondPurchase.clicked, 1);
+    secondPurchase.disabled = true;
+    e = event({ key: 'F8', target: target(secondRow) }); f.handler(e); assert.equal(secondPurchase.clicked, 1);
+    e = event({ key: 'F8', target: target(null) }); f.handler(e); assert.ok(e.prevented); assert.equal(firstPurchase.clicked, 1);
+    const child = { getClientRects: visible, querySelector: () => null, querySelectorAll: () => [] };
+    f.state.modals.push(child);
+    e = event({ key: 'F8', target: target(firstRow) }); f.handler(e);
+    assert.ok(e.prevented && e.stopped); assert.equal(firstPurchase.clicked, 1);
+    f.state.modals = [];
+    f.state.shop = { querySelectorAll: () => [] };
+    e = event({ key: 'F8', target: target(firstRow) }); f.handler(e);
+    assert.equal(e.prevented, false); assert.equal(firstPurchase.clicked, 1);
 });
 
 test('invoice F1/F2/F3/F4 act only on the top dialog, never on a covered form', () => {

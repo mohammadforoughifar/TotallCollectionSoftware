@@ -75,6 +75,12 @@ public static class SaleChequeChargeRegistration
         if (input.CalculatorBaseAmount > baseAmount || income <= 0)
             throw new InvalidOperationException("مبنای ماشین‌حساب یا سود اولیه تاخیر تادیه چک معتبر نیست.");
         var amounts = SaleChequeVoucherAmounts.Create(baseAmount, 0, income);
+        var cheques = sale.Cheques.Sum(c => c.Amount);
+        // A nonzero but tiny cheque can otherwise be classified as a cash-only
+        // invoice by PaymentMix, inventing an initial cash receipt. Require an
+        // actual cheque component for every cheque-income article.
+        if (cheques <= PaymentMix.Tolerance / 2m)
+            throw new InvalidOperationException("برای ثبت تاخیر تادیه چک، جمع چک‌های معتبر باید بیش از نیم ریال باشد.");
         var cash = sale.PaymentMethod == PaymentMethod.Cash ? sale.Amount : sale.CashAmount;
         if (cash > 0)
         {
@@ -94,7 +100,6 @@ public static class SaleChequeChargeRegistration
             };
             if (!compatible) throw new InvalidOperationException("نوع حساب با روش دریافت نقدی انتخاب‌شده مطابقت ندارد.");
         }
-        var cheques = sale.Cheques.Sum(c => c.Amount);
         var installments = sale.Installments.Sum(i => i.Amount);
         var parts = cash + cheques + installments;
         if (parts > amounts.CustomerDebit)

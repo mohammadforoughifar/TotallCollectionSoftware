@@ -24,6 +24,10 @@ public class Transaction : ICompanyOwned
     /// <summary>معرف (بازاریاب) سند فروش</summary>
     public int? ReferrerId { get; set; }
 
+    /// <summary>نرخ توافق‌شده هنگام ثبت؛ null در اسناد قدیمی یعنی سابقه نرخ موجود نیست.</summary>
+    public decimal? ReferrerGoodsPercentSnapshot { get; set; }
+    public decimal? ReferrerServicePercentSnapshot { get; set; }
+
     public decimal Amount { get; set; }
 
     // ---------- پرداخت (فقط فروش) ----------

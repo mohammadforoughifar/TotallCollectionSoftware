@@ -66,7 +66,7 @@ class ShopWorkflows(unittest.TestCase):
         self.assertIn('ShopSections.ForRoute(t.Key)', tabs)
         self.assertIn('.tabpane.on[data-shop-scope="true"]', js)
         self.assertIn('.modal.show, [data-shop-dialog]', js)
-        self.assertIn("F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F7: 'f7', Escape: 'esc'", js)
+        self.assertIn("F1: 'f1', F2: 'f2', F3: 'f3', F4: 'f4', F7: 'f7', F8: 'f8', Escape: 'esc'", js)
         self.assertIn('actions.length === 1', js)
         self.assertIn("target.closest('[data-order-copy-context]')", js)
         form = read('Inventory.Client/Pages/Orders/OrderForm.razor')

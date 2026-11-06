@@ -95,7 +95,7 @@
                     <div class="col-12">
                         <div class="alert alert-info fs-8 py-2 mb-0">
                             <i class="bi bi-person-badge ms-1"></i>
-                            معرف این مشتری: <b>@(referrers.FirstOrDefault(r => r.Id == referrerId)?.Name)</b>
+                            معرف این مشتری: <b>@(referrers.FirstOrDefault(r => r.Id == referrerId)?.Name ?? customers.FirstOrDefault(c => c.Id == partyId)?.ReferrerName ?? "نامشخص")</b>
                         </div>
                     </div>
                 }
@@ -149,6 +149,12 @@
                                     }
                                 </p>
                             </section>
+                        }
+                        @if (paymentAmountsNeedReview && ((useCheque && chequeAmounts.Any(string.IsNullOrWhiteSpace)) || (useInstallment && instAmounts.Any(string.IsNullOrWhiteSpace))))
+                        {
+                            <div class="alert alert-warning py-2 fs-8" role="status" data-payment-amounts-review>
+                                مبلغ کالا تغییر کرده است؛ مبلغ چک‌ها و اقساط را دوباره وارد کنید. شماره، بانک و تاریخ‌ها حفظ شده‌اند.
+                            </div>
                         }
                         <div class="pay-box">
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -228,8 +234,14 @@
                             @if (useCheque)
                             {
                                 <div class="mt-3" data-pay-cheque-box>
-                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                         <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
+                                        @if (Type == TransactionType.Sale)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only title="محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها" @onclick="() => OpenCalc(true, interestOnly: true)">
+                                                <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
+                                            </button>
+                                        }
                                         <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
@@ -302,6 +314,10 @@
                                                     <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="RemoveSaleChequeCharge">حذف ردیف سود</button>
                                                 }
                                             </div>
+                                            @if (saleChequeCharge is not null && chargeInvoiceBase != goodsTotal)
+                                            {
+                                                <div class="text-danger fw-bold mt-1" role="status">مبلغ کالا تغییر کرده است؛ پیش از ثبت، تاخیر تادیه چک را دوباره محاسبه کنید.</div>
+                                            }
                                             <div class="text-muted mt-1">
                                                 @if (saleChequeCharge is not null)
                                                 {
@@ -417,7 +433,7 @@
             </div>
             @if (UseInvoiceWizard)
             {
-                <div class="order-keyboard-hint mb-2">Tab و Enter: پیمایش فیلدها (Shift+Enter: خط جدید) · Enter در پایان سطر کالا: سطر بعد · F2: سطر جدید · F1: ادامه · Esc: انصراف</div>
+                <div class="order-keyboard-hint mb-2">Tab و Enter: پیمایش فیلدها (Shift+Enter: خط جدید) · Enter در پایان سطر کالا: سطر بعد · F2: سطر جدید · @if (Type == TransactionType.Sale && CanSeeProfit) { <text>F8: آخرین خرید سطر · </text> } F1: ادامه · Esc: انصراف</div>
             }
 
             <div data-order-entry class="@(UseInvoiceWizard ? (Type == TransactionType.Sale ? "purchase-items sale-items" : "purchase-items") : "")">
@@ -490,6 +506,10 @@
                                                         <bdi dir="ltr">@InvoiceProductOption.FormatStock(quantity)</bdi>
                                                     </span>
                                                     @productOption.StockUnit
+                                                    @if (Type == TransactionType.Sale && productOption.IsStockWarning)
+                                                    {
+                                                        <strong class="invoice-stock-alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> ناموجود</strong>
+                                                    }
                                                 </small>
                                             }
                                             else if (!string.IsNullOrWhiteSpace(option.InfoText))
@@ -510,8 +530,12 @@
                                                 @if (warehouseStock.IsLoaded)
                                                 {
                                                     var avail = warehouseStock.Quantities.TryGetValue(l.ProductId, out var q) ? q : 0m;
-                                                    <span class="@(avail <= 0 ? "text-danger" : "text-success")">
-                                                        · موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
+                                                    <span class="@(Type == TransactionType.Sale && avail <= 0 ? "invoice-stock-inline-warning" : avail <= 0 ? "text-danger" : "text-success")" role="status">
+                                                        @if (Type == TransactionType.Sale && avail <= 0)
+                                                        {
+                                                            <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> <strong>ناموجود</strong> <text>—</text>
+                                                        }
+                                                        موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
                                                     </span>
                                                 }
                                                 else
@@ -583,7 +607,7 @@
                                             <div class="order-line-value">
                                                 @if (l.ProductId > 0 && l.Qty > 0)
                                                 {
-                                                    <span class="text-primary">@LineCommission(l).Money()</span>
+                                                    <span class="text-primary">@(CommissionRatesKnown ? LineCommission(l).MoneyExact() : "نامشخص")</span>
                                                 }
                                                 else
                                                 {
@@ -597,7 +621,7 @@
                                     <div class="order-line-actions">
                                         @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
-                                            <button class="btn btn-sm btn-light" tabindex="-1" title="آخرین فاکتور خرید این کالا" aria-label="آخرین فاکتور خرید این کالا" @onclick="() => ShowLastPurchase(l.ProductId)">
+                                            <button type="button" class="btn btn-sm btn-light" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
                                                 <i class="bi bi-receipt text-primary"></i>
                                             </button>
                                         }
@@ -653,7 +677,7 @@
                                 {
                                     <td class="text-start p-2">
                                         <div class="fs-9 text-muted mb-1">پورسانت:</div>
-                                        <div class="fw-bold fs-7 num text-primary">@totalCommission.Money()</div>
+                                        <div class="fw-bold fs-7 num text-primary">@(CommissionRatesKnown ? totalCommission.MoneyExact() : "نامشخص")</div>
                                     </td>
                                 }
                             }
@@ -696,13 +720,13 @@
                     {
                         <div>
                             <span class="text-muted ms-1">پورسانت معرف:</span>
-                            <span class="fw-700 num text-primary">@totalCommission.Money()</span> ریال
+                            <span class="fw-700 num text-primary">@(CommissionRatesKnown ? totalCommission.MoneyExact() : "نامشخص")</span> @(CommissionRatesKnown ? "ریال" : "")
                         </div>
                         @if (CanSeeProfit)
                         {
                             <div>
                                 <span class="text-muted ms-1">سود خالص:</span>
-                                <span class="fw-700 num @(netProfit >= 0 ? "text-success" : "text-danger")">@netProfit.Money()</span> ریال
+                                <span class="fw-700 num @(netProfit >= 0 ? "text-success" : "text-danger")">@(CommissionRatesKnown ? netProfit.MoneyExact() : "نامشخص")</span> @(CommissionRatesKnown ? "ریال" : "")
                             </div>
                         }
                     }
@@ -725,6 +749,12 @@
             {
                 <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
             }
+            <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="invoice-print-paper-@formKey">
+                کاغذ چاپ
+                <select id="invoice-print-paper-@formKey" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size disabled="@saving">
+                    <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
+                </select>
+            </label>
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
@@ -852,7 +882,7 @@
     </Modal>
 }
 
-<Modal Visible="showCalc" Title="@(calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
+<Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
             <div class="col-md-6">
@@ -870,20 +900,23 @@
                 </div>
             </div>
             <div class="col-md-4">
-                <label class="form-label">تعداد ماه (قسط)</label>
+                <label class="form-label">@(calcInterestOnly ? "تعداد ماه" : "تعداد ماه (قسط)")</label>
                 <input class="form-control num" @bind="calcMonths" @bind:event="oninput" type="number" min="1" max="60" dir="ltr" />
             </div>
-            <div class="col-md-4">
-                <label class="form-label">تاریخ شروع (اولین سررسید)</label>
-                <DatePicker @bind-Value="calcStart" OpenOnFocus="UseInvoiceWizard" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">فاصله هر @(calcForCheque ? "چک" : "قسط")</label>
-                <div class="input-group">
-                    <input class="form-control num" @bind="calcIntervalDays" @bind:event="oninput" type="number" min="1" dir="ltr" />
-                    <span class="input-group-text">روز</span>
+            @if (!calcInterestOnly)
+            {
+                <div class="col-md-4">
+                    <label class="form-label">تاریخ شروع (اولین سررسید)</label>
+                    <DatePicker @bind-Value="calcStart" OpenOnFocus="UseInvoiceWizard" />
                 </div>
-            </div>
+                <div class="col-md-4">
+                    <label class="form-label">فاصله هر @(calcForCheque ? "چک" : "قسط")</label>
+                    <div class="input-group">
+                        <input class="form-control num" @bind="calcIntervalDays" @bind:event="oninput" type="number" min="1" dir="ltr" />
+                        <span class="input-group-text">روز</span>
+                    </div>
+                </div>
+            }
 
             @if (calcForCheque && Type == TransactionType.Sale)
             {
@@ -920,26 +953,36 @@
                     </details>
                 </div>
             }
-            @if (calcForCheque && cheques.Count > 0)
+            @if (calcInterestOnly)
             {
-                <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
+                <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
             }
-            <div class="col-12 fs-8 text-muted">ردیف‌ها تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف کمتر از این واحد در ردیف آخر می‌ماند و جمع و سود تغییر نمی‌کنند.</div>
+            else
+            {
+                @if (calcForCheque && cheques.Count > 0)
+                {
+                    <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
+                }
+                <div class="col-12 fs-8 text-muted">ردیف‌ها تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف کمتر از این واحد در ردیف آخر می‌ماند و جمع و سود تغییر نمی‌کنند.</div>
+            }
             @if (CalculatorPlan is { } calc)
             {
-                var rowAmounts = calc.Amounts;
+                var rowAmounts = calcInterestOnly ? Array.Empty<decimal>() : calc.Amounts;
                 <div class="col-12">
                     <div class="calc-preview">
                         <div class="d-flex flex-wrap gap-3 justify-content-between">
                             <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@ExactMoney(calc.BaseAmount)</div></div>
                             <div><div class="fs-8 text-muted">سود کل (@ExactPercent(calc.MonthlyRatePercent)٪ × @calc.Months.Num() ماه)</div><div class="num fw-700 text-warning">@ExactMoney(calc.Interest)</div></div>
                             <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@ExactMoney(calc.Total)</div></div>
-                            <div>
-                                <div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div>
-                                <div class="num fw-800 text-success">@CalculatorAmountRange(rowAmounts)</div>
-                            </div>
+                            @if (!calcInterestOnly)
+                            {
+                                <div>
+                                    <div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div>
+                                    <div class="num fw-800 text-success">@CalculatorAmountRange(rowAmounts)</div>
+                                </div>
+                            }
                         </div>
-                        @if (rowAmounts.Distinct().Skip(1).Any())
+                        @if (!calcInterestOnly && rowAmounts.Distinct().Skip(1).Any())
                         {
                             <div class="fs-8 text-muted mt-2">توزیع ردیف‌ها:
                                 @foreach (var group in rowAmounts.GroupBy(amount => amount))
@@ -948,7 +991,7 @@
                                 }
                             </div>
                         }
-                        @if (calc.Total % RoundedInstallmentDistribution.RoundingUnit != 0m)
+                        @if (!calcInterestOnly && calc.Total % RoundedInstallmentDistribution.RoundingUnit != 0m)
                         {
                             <div class="fs-8 text-muted mt-1">برای حفظ جمع دقیق، ردیف آخر <b class="num">@ExactMoney(rowAmounts[^1])</b> ریال است.</div>
                         }
@@ -957,14 +1000,14 @@
             }
             else if (CalcBase > 0)
             {
-                <div class="col-12 fs-8 text-danger">مبلغ، نرخ یا تعداد معتبر نیست، یا مبلغ برای ساخت این تعداد ردیف مثبت با رند ۱۰٬۰۰۰ ریالی کافی نیست. مبلغ حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار دارد.</div>
+                <div class="col-12 fs-8 text-danger">@(calcInterestOnly ? "مبلغ، نرخ یا تعداد ماه معتبر نیست." : "مبلغ، نرخ یا تعداد معتبر نیست، یا مبلغ برای ساخت این تعداد ردیف مثبت با رند ۱۰٬۰۰۰ ریالی کافی نیست.") مبلغ حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار دارد.</div>
             }
         </div>
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showCalc = false">انصراف (Esc)</button>
-        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalculatorPlan is null || calcIntervalDays < 1 || !calcStart.HasValue)">
-            <i class="bi bi-check2-circle"></i> ساخت ردیف‌ها (F1)
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalculatorPlan is null || (!calcInterestOnly && (calcIntervalDays < 1 || !calcStart.HasValue)))">
+            <i class="bi bi-check2-circle"></i> @(calcInterestOnly ? "ثبت محاسبه سود در فاکتور (F1)" : "ساخت ردیف‌ها (F1)")
         </button>
     </Footer>
 </Modal>
@@ -1025,9 +1068,8 @@
                     .Select(c => new LookupItem
                     {
                         Id = c.Id,
-                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
-                            ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {c.ReferrerName}"
+                        Name = c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
+                            : $"{c.Name} — معرف: {(string.IsNullOrWhiteSpace(c.ReferrerName) ? "نامشخص" : c.ReferrerName)}"
                     }).ToList();
             }
             else
@@ -1156,6 +1198,9 @@
     private void InvoiceError(string message) => Toast.ShowAtTopRight(message, "error");
     private void InvoiceInfo(string message) => Toast.ShowAtTopRight(message, "info");
     private int invoiceStep = 1;
+    // This is a form-only baseline, never an alteration of a posted payment.
+    private decimal? paymentStepGoodsTotal;
+    private bool paymentAmountsNeedReview;
     private readonly string formKey = Guid.NewGuid().ToString("N");
     private bool invoiceInitialFocusDone;
     private string? pendingSectionFocus;
@@ -1421,7 +1466,7 @@
     }
 
     // ---------------- ماشین‌حساب اقساط/چک با سود ----------------
-    private bool showCalc, calcForCheque;
+    private bool showCalc, calcForCheque, calcInterestOnly;
     private string calcBaseText = "", calcRateText = "", calcAdjustmentRateText = "";
     private int calcMonths = 3, calcIntervalDays = 30, calcAdjustmentDays = 30;
     private DateTime? calcStart;
@@ -1441,7 +1486,12 @@
         get
         {
             if (!TryCalculatorPercent(calcRateText, out var rate)) return null;
-            try { return InvoiceInstallmentCalculation.Create(CalcBase, rate, calcMonths); }
+            try
+            {
+                return calcInterestOnly
+                    ? InvoiceInstallmentCalculation.CreateInterestOnly(CalcBase, rate, calcMonths)
+                    : InvoiceInstallmentCalculation.Create(CalcBase, rate, calcMonths);
+            }
             catch (ArgumentOutOfRangeException) { return null; }
         }
     }
@@ -1482,9 +1532,10 @@
         }
     }
 
-    private void OpenCalc(bool forCheque)
+    private void OpenCalc(bool forCheque, bool interestOnly = false)
     {
         calcForCheque = forCheque;
+        calcInterestOnly = forCheque && Type == TransactionType.Sale && interestOnly;
         // هنگام محاسبهٔ مجدد، سود قبلی نباید دوباره بخشی از مبنای چک شود.
         var baseRemain = CalculatorSuggestedBase;
         if (forCheque && Type == TransactionType.Sale && saleChequeCharge is not null)
@@ -1513,13 +1564,13 @@
     private void ApplyCalc()
     {
         var plan = CalculatorPlan;
-        if (plan is null || !calcStart.HasValue || calcIntervalDays < 1)
+        if (plan is null || (!calcInterestOnly && (!calcStart.HasValue || calcIntervalDays < 1)))
         {
             InvoiceError("مبنا، نرخ، تعداد، تاریخ یا فاصله اقساط معتبر نیست.");
             return;
         }
         var calculation = plan.Value;
-        var rowAmounts = calculation.Amounts;
+        var rowAmounts = calcInterestOnly ? Array.Empty<decimal>() : calculation.Amounts;
         SaleChequeChargeInput? calculatedCharge = null;
         if (calcForCheque && Type == TransactionType.Sale)
         {
@@ -1561,6 +1612,24 @@
                 InvoiceError("حذف کامل سود از فاکتور ثبت‌شده با این ویرایش پشتیبانی نمی‌شود.");
                 return;
             }
+        }
+
+        if (calcInterestOnly)
+        {
+            // Only replace the pending income article. Manual cheque rows and their
+            // amounts, numbers, banks and dates are deliberately untouched.
+            var hadCharge = saleChequeCharge is not null;
+            saleChequeCharge = calculatedCharge;
+            saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
+            chargeInvoiceBase = calculatedCharge is null ? 0m : goodsTotal;
+            chargeCashBase = calculatedCharge is null ? 0m : CashPart;
+            chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
+            removedCalculatedChequeIncome = calculatedCharge is null && (hadCharge || removedCalculatedChequeIncome);
+            showCalc = false;
+            InvoiceInfo(calculatedCharge is null
+                ? "سود محاسبه‌شده صفر است؛ مبلغ چک‌ها تغییر نکرد. جمع پرداخت‌ها را بررسی کنید."
+                : $"تاخیر تادیه چک {ExactMoney(calculation.Interest)} ریال محاسبه شد؛ مبلغ چک‌ها تغییر نکرد. جمع پرداخت‌ها را بررسی کنید.");
+            return;
         }
 
         // محاسبه و اعتبارسنجی همه سررسیدها پیش از جایگزینی هر ردیف انجام شود.
@@ -1722,22 +1791,35 @@
         partyId = v;
         if (Type != TransactionType.Sale) return;
         var customer = customers.FirstOrDefault(c => c.Id == v);
-        referrerId = customer?.ReferrerId is > 0 && referrers.Any(r => r.Id == customer.ReferrerId)
-            ? customer.ReferrerId.Value
-            : 0;
+        referrerId = customer?.ReferrerId is > 0 ? customer.ReferrerId.Value : 0;
     }
+
+    private (decimal? Goods, decimal? Service) PreviewCommissionRates
+    {
+        get
+        {
+            // For an edit, only the server can tell whether the saved policy is
+            // historical, legacy or damaged. Do not substitute today's rate.
+            if (IsEdit && EditOrder?.ReferrerId == referrerId)
+                return (EditOrder.ReferrerGoodsCommissionPercent, EditOrder.ReferrerServiceCommissionPercent);
+            var r = referrers.FirstOrDefault(x => x.Id == referrerId);
+            return (r?.GoodsCommissionPercent, r?.ServiceCommissionPercent);
+        }
+    }
+    private bool CommissionRatesKnown => PreviewCommissionRates is (decimal goods, decimal service) &&
+        goods is >= 0 and <= 100 && service is >= 0 and <= 100;
 
     /// <summary>پورسانت تخمینی سطر: کالا = درصد × سود سطر (سود منفی=۰) | خدمات = درصد × مبلغ سطر.</summary>
     private decimal LineCommission(LineVm l)
     {
-        if (referrerId <= 0) return 0;
-        var r = referrers.FirstOrDefault(x => x.Id == referrerId);
-        if (r is null) return 0;
+        if (referrerId <= 0 || !CommissionRatesKnown) return 0;
+        var (goodsRate, serviceRate) = PreviewCommissionRates;
+        var sameEditedReferrer = IsEdit && EditOrder?.ReferrerId == referrerId;
         var p = products.FirstOrDefault(x => x.Id == l.ProductId);
         if (p is null) return 0;
-        if (p.IsService) return decimal.Round(l.AfterDiscount * r.ServiceCommissionPercent / 100m, 2);
-        var profit = LineProfit(l);
-        return profit > 0 ? decimal.Round(profit * r.GoodsCommissionPercent / 100m, 2) : 0;
+        if (p.IsService && !(sameEditedReferrer && EditOrder?.UsesLegacyCommissionPolicy == true))
+            return SaleReferrerCommission.Service(l.AfterDiscount, serviceRate.Value);
+        return SaleReferrerCommission.Goods(LineProfit(l), p.IsService ? serviceRate.Value : goodsRate.Value);
     }
 
     // ---------- آخرین فاکتور خرید ----------
@@ -1787,7 +1869,11 @@
     {
         var p = products.FirstOrDefault(x => x.Id == l.ProductId);
         if (p is null) return 0;
-        if (p.IsService) return l.AfterDiscount;
+        if (p.IsService)
+        {
+            var serviceCost = IsEdit ? EditOrder?.Lines.FirstOrDefault(x => x.Id == l.Id)?.UnitCost ?? 0m : 0m;
+            return l.AfterDiscount - serviceCost * l.Qty;
+        }
         var cost = p.AvgCost > 0 ? p.AvgCost : p.PurchasePrice;
         return l.AfterDiscount - (cost * l.Qty);
     }
@@ -1849,9 +1935,8 @@
                     .Select(c => new LookupItem
                     {
                         Id = c.Id,
-                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
-                            ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {c.ReferrerName}"
+                        Name = c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
+                            : $"{c.Name} — معرف: {(string.IsNullOrWhiteSpace(c.ReferrerName) ? "نامشخص" : c.ReferrerName)}"
                     }).ToList();
             }
 
@@ -1939,6 +2024,7 @@
                     return vm;
                 }).ToList();
                 if (lines.Count == 0) lines.Add(new LineVm());
+                paymentStepGoodsTotal = goodsTotal;
 
                 // فیلتر کالاها بر اساس انبار سند
                 RebuildProductLookup();
@@ -2258,6 +2344,19 @@
         formError = null;
         if (!saving && ValidateInvoice())
         {
+            var hasKnownHistory = IsEdit && EditOrder is { } order &&
+                (KnownLaterChequeActivity || order.IsCancelled || order.ChequeReturns.Count > 0 ||
+                 order.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) ||
+                 order.Installments.Any(i => i.IsPaid));
+            if (paymentStepGoodsTotal.HasValue && paymentStepGoodsTotal.Value != goodsTotal && !hasKnownHistory)
+            {
+                // Clear only the editable amount strings, including temporarily hidden
+                // payment rows. Numbers, banks, dates and the stored document stay intact.
+                for (var i = 0; i < chequeAmounts.Count; i++) chequeAmounts[i] = "";
+                for (var i = 0; i < instAmounts.Count; i++) instAmounts[i] = "";
+                paymentAmountsNeedReview = chequeAmounts.Count > 0 || instAmounts.Count > 0;
+            }
+            paymentStepGoodsTotal = goodsTotal;
             invoiceStep = 2;
             pendingSectionFocus = "[data-order-payment]";
         }
@@ -2267,6 +2366,7 @@
     {
         if (!saving)
         {
+            paymentStepGoodsTotal = goodsTotal;
             invoiceStep = 1;
             pendingSectionFocus = "[data-order-initial]";
         }
@@ -2294,7 +2394,7 @@
                 InvoiceError("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
                 return;
             }
-            var html = SaleInvoicePrint.Build(order, companyProfile);
+            var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
             var opened = await JS.InvokeAsync<bool>("giPrint", html);
             if (!opened)
                 InvoiceError("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
@@ -2303,6 +2403,7 @@
     }
 
     private CompanyProfileDto? companyProfile;
+    private string printPaperSize = "default";
 
     private bool ValidateInvoice()
     {
@@ -2369,7 +2470,7 @@
         }
         if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
         {
-            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، «محاسبه اقساط چک» را دوباره انجام دهید.");
+            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها را تغییر نمی‌دهد.");
             return;
         }
         if (CashPart > 0 && trsAccountId is not > 0 &&
@@ -2436,6 +2537,11 @@
                     if (cheques[i].Amount <= 0) { ShowFormError($"مبلغ چک ردیف {i + 1} را وارد کنید."); return; }
                 }
                 chequeList = cheques;
+            }
+            if (saleChequeCharge is not null && chequeList.Sum(c => c.Amount) <= PaymentMix.Tolerance / 2m)
+            {
+                ShowFormError("برای ثبت تاخیر تادیه چک، جمع چک‌های معتبر باید بیش از نیم ریال باشد.");
+                return;
             }
 
             // جزء اقساط

@@ -381,6 +381,7 @@ else
         {
             <div class="d-flex flex-wrap gap-3 mb-3 px-2 fs-8 text-secondary">
                 <span>فروش کالا و خدمات با ارزش افزوده: <b class="num text-dark">@selectedPartyDetail.SaleGoodsTotal.MoneyExact()</b> ریال</span>
+                <span>تخفیف فاکتورهای صادرشده دوره (پیش از برگشت): <b class="num text-dark">@selectedPartyDetail.SaleIssuedDiscountTotal.MoneyExact()</b> ریال</span>
                 <span>تاخیر تادیه چک: <b class="num text-dark">@selectedPartyDetail.SaleChequeIncomeTotal.MoneyExact()</b> ریال</span>
             </div>
             <p class="fs-8 text-secondary px-2 mb-3">تاخیر تادیه چک در ریز صورت‌حساب، جدا از کالا و به‌عنوان بدهی مشتری آمده است. مبلغ چک هنگام ثبت وصول از بدهی کم می‌شود، نه صرفاً هنگام تحویل چک.</p>
@@ -439,7 +440,13 @@ else
                                     }
                                     <span class="fw-700 text-dark fs-8">@r.Title</span>
                                 </td>
-                                <td class="text-secondary fs-8">@r.Description</td>
+                                <td class="text-secondary fs-8">
+                                    @r.Description
+                                    @if (r.SaleInvoiceDiscount is decimal discount)
+                                    {
+                                        <div class="text-muted">تخفیف فاکتور: <b class="num">@discount.MoneyExact()</b> ریال (در مبلغ لحاظ شده)</div>
+                                    }
+                                </td>
                                 <td class="text-start num fs-8 @(r.Debit > 0 ? "text-danger fw-700" : "text-muted")">
                                     @(r.Debit > 0 ? r.Debit.MoneyExact() : "۰")
                                 </td>

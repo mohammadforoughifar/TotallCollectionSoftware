@@ -7,6 +7,15 @@
     border-radius: 5px; padding: 0 .3rem; line-height: 1.35;
 }
 .invoice-stock-quantity.is-warning i { font-size: .68rem; line-height: 1; }
+/* Explicit warning in the sale picker and in the selected row, not just a red zero. */
+.invoice-stock-alert, .invoice-stock-inline-warning {
+    display: inline-flex; align-items: center; gap: .3rem;
+    color: #991b1b; background: #fff1f2; border: 1px solid #fda4af;
+    border-radius: 7px; padding: .15rem .45rem; font-size: .77rem;
+    font-weight: 800; line-height: 1.5; opacity: 1;
+}
+.invoice-stock-inline-warning { margin-top: .1rem; }
+.invoice-stock-alert i, .invoice-stock-inline-warning i { font-size: .86rem; }
 
 /* استایل مشترک گردش دو مرحله‌ای خرید و فروش. */
 .purchase-steps {
@@ -76,7 +85,7 @@
 .purchase-items ::deep .order-line-control:focus { border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
 .purchase-items ::deep .ss .order-line-control { padding-left: 32px; }
 /* Unit is anchored inside the input itself, so it cannot wrap below the field. */
-.purchase-items tbody .order-line-rate { display: block; position: relative; width: 100%; }
+.purchase-items tbody .order-line-rate { display: block; position: relative; width: 100%; max-width: 5.25rem; }
 .purchase-items tbody .order-line-rate > input.form-control { display: block; width: 100%; min-width: 0; padding-left: 36px; border-radius: 12px !important; }
 .purchase-items tbody .order-line-rate > .order-line-unit { position: absolute; z-index: 1; top: 1px; bottom: 1px; left: 1px; width: 32px; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-right: 1px solid #d5dce6; border-radius: 11px 0 0 11px; white-space: nowrap; font-size: .75rem; pointer-events: none; }
 .purchase-items tbody .order-line-sub { text-align: right; }

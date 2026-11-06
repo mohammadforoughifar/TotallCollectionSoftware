@@ -616,6 +616,7 @@ public class WarehousingService : IWarehousingService
                      ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
 
+        await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
         var catName = dto.CategoryId is > 0
             ? (await _db.ProductCategories.FindAsync(dto.CategoryId.Value))?.Name
             : null;

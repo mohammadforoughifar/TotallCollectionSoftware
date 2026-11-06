@@ -13,10 +13,17 @@ public readonly record struct InvoiceInstallmentCalculation(
     /// <summary>ردیف‌های پرداخت؛ تنها ردیف آخر می‌تواند باقی‌ماندهٔ کمتر از واحد رند را داشته باشد.</summary>
     public decimal[] Amounts => RoundedInstallmentDistribution.Split(Total, Months);
 
-    public static InvoiceInstallmentCalculation Create(decimal baseAmount, decimal monthlyRatePercent, int months)
+    /// <summary>همان فرمول ماهانه، بدون ساخت یا تغییر مبلغ هیچ ردیف پرداخت.</summary>
+    public static InvoiceInstallmentCalculation CreateInterestOnly(decimal baseAmount, decimal monthlyRatePercent, int months)
     {
         var interest = SaleChequeInitialCalculation.Calculate(baseAmount, monthlyRatePercent, months);
-        var total = baseAmount + interest;
+        return new InvoiceInstallmentCalculation(baseAmount, monthlyRatePercent, months, interest, baseAmount + interest);
+    }
+
+    public static InvoiceInstallmentCalculation Create(decimal baseAmount, decimal monthlyRatePercent, int months)
+    {
+        var calculation = CreateInterestOnly(baseAmount, monthlyRatePercent, months);
+        var total = calculation.Total;
 
         // The payment-method classifier ignores components at or below half its
         // tolerance. Do not create a cheque component it would mistake for cash.
@@ -24,7 +31,7 @@ public readonly record struct InvoiceInstallmentCalculation(
             throw new ArgumentOutOfRangeException(nameof(baseAmount), "مبلغ چک برای ثبت روش پرداخت کافی نیست.");
         // Validate every rounded row before the UI replaces any existing entries.
         _ = RoundedInstallmentDistribution.Split(total, months);
-        return new InvoiceInstallmentCalculation(baseAmount, monthlyRatePercent, months, interest, total);
+        return calculation;
     }
 
     /// <summary>
