@@ -1,0 +1,243 @@
+@page "/settings/backup"
+@inject IApiClient Api
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IAuthState Auth
+
+<PageTitle>بک‌آپ خودکار و ارسال به سرور مرکزی</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>بک‌آپ خودکار و ارسال به سرور مرکزی</h1>
+        <p class="lead">گرفتن بک‌آپ SQL Server هنگام غیرفعال شدن آخرین نشست مرورگر و ارسال امن به سرور مرکزی</p>
+    </div>
+    <a href="/settings" class="btn btn-secondary me-auto"><i class="bi bi-arrow-right"></i> بازگشت به تنظیمات</a>
+</div>
+
+@if (!Auth.IsAdmin)
+{
+    <div class="alert alert-danger">این صفحه فقط برای مدیر سیستم قابل دسترسی است.</div>
+}
+else if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-12 col-xl-7">
+            <div class="card">
+                <div class="card-header"><i class="bi bi-cloud-arrow-up"></i> تنظیمات ارسال</div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="bkEnabled" @bind="form.Enabled" />
+                        <label class="form-check-label" for="bkEnabled">بک‌آپ خودکار فعال باشد</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">آدرس سرور مرکزی (HTTPS)</label>
+                        <input class="form-control num" dir="ltr" @bind="form.CentralServerUrl" placeholder="https://backup.example.com" />
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">کد شرکت / مشتری</label>
+                            <input class="form-control num" dir="ltr" @bind="form.CompanyCode" placeholder="ACME" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">نام شرکت (نمایشی)</label>
+                            <input class="form-control" @bind="form.CompanyName" />
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label">کلید API بک‌آپ</label>
+                        <input class="form-control num" dir="ltr" type="password" @bind="form.ApiKey"
+                               placeholder="@(form.HasKey ? "کلید ذخیره شده است؛ برای تغییر، کلید جدید را وارد کنید" : "کلید را از سرور مرکزی بگیرید")" />
+                        @if (form.HasKey)
+                        {
+                            <div class="form-text">
+                                کلید ذخیره شده است.
+                                <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="() => form.ClearKey = true">حذف کلید</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header"><i class="bi bi-clock-history"></i> ماشه‌ها و نگهداری محلی</div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="bkLast" @bind="form.TriggerOnLastSession" />
+                        <label class="form-check-label" for="bkLast">بعد از بسته/غیرفعال شدن آخرین نشست مرورگر</label>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="bkDaily" @bind="form.TriggerDaily" />
+                        <label class="form-check-label" for="bkDaily">بک‌آپ روزانه پشتیبان</label>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">ساعت بک‌آپ روزانه</label>
+                            <input class="form-control num" dir="ltr" @bind="form.DailyTime" placeholder="23:00" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">تأخیر آخرین نشست (ثانیه)</label>
+                            <input class="form-control num" type="number" min="30" max="3600" @bind="form.LastSessionGraceSeconds" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">حداقل فاصله دو بک‌آپ (دقیقه)</label>
+                            <input class="form-control num" type="number" min="1" max="1440" @bind="form.CooldownMinutes" />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">مسیر بک‌آپ محلی</label>
+                            <input class="form-control num" dir="ltr" @bind="form.LocalBackupPath" placeholder="خالی = App_Data/Backups کنار API" />
+                            <div class="form-text">این مسیر باید برای سرویس SQL Server قابل نوشتن باشد.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">تعداد بک‌آپ محلی</label>
+                            <input class="form-control num" type="number" min="1" max="100" @bind="form.LocalKeepCount" />
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer d-flex flex-wrap gap-2">
+                    <button class="btn btn-primary" disabled="@busy" @onclick="Save"><i class="bi bi-check2"></i> ذخیره</button>
+                    <button class="btn btn-outline-primary" disabled="@busy" @onclick="Test"><i class="bi bi-wifi"></i> تست اتصال</button>
+                    <button class="btn btn-outline-success" disabled="@busy" @onclick="Run"><i class="bi bi-play-circle"></i> بک‌آپ و ارسال دستی</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <div class="card">
+                <div class="card-header"><i class="bi bi-activity"></i> وضعیت</div>
+                <div class="card-body fs-8">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr><td>Provider</td><td>@status?.Provider</td></tr>
+                            <tr><td>نسخه SQL Server</td><td>@status?.SqlVersion</td></tr>
+                            <tr><td>Edition</td><td>@status?.SqlEdition</td></tr>
+                            <tr><td>COMPRESSION داخلی</td><td>@(status?.NativeCompressionSupported == true ? "پشتیبانی می‌شود" : "در صورت نیاز ZIP")</td></tr>
+                            <tr><td>نشست فعال مرورگر</td><td>@status?.ActiveSessions</td></tr>
+                            <tr><td>در صف / در حال اجرا</td><td>@status?.PendingJobs</td></tr>
+                            <tr><td>ناموفق</td><td>@status?.FailedJobs</td></tr>
+                            <tr><td>آخرین ارسال موفق</td><td>@(status?.LastSentJob?.SentAt?.ToString("yyyy/MM/dd HH:mm") ?? "—")</td></tr>
+                        </tbody>
+                    </table>
+                    @if (!string.IsNullOrWhiteSpace(testMessage))
+                    {
+                        <div class="alert @(testOk ? "alert-success" : "alert-danger") py-2 mt-3 mb-0">@testMessage</div>
+                    }
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header"><i class="bi bi-list-ul"></i> آخرین بک‌آپ‌ها</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 fs-8">
+                            <thead><tr><th>زمان</th><th>علت</th><th>وضعیت</th><th>حجم</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var j in jobs)
+                                {
+                                    <tr>
+                                        <td>@j.CreatedAt.ToString("MM/dd HH:mm")</td>
+                                        <td>@ReasonFa(j.Reason)</td>
+                                        <td>@StatusFa(j.Status)</td>
+                                        <td>@FormatSize(j.SizeBytes)</td>
+                                        <td>
+                                            @if (j.Status == "Failed")
+                                            {
+                                                <button class="btn btn-sm btn-link p-0" @onclick="() => Retry(j.Id)">تلاش مجدد</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (!string.IsNullOrWhiteSpace(j.LastError))
+                                    {
+                                        <tr><td colspan="5" class="text-danger fs-9">@j.LastError</td></tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool loading = true, busy, testOk;
+    private string? testMessage;
+    private BackupSettingsDto form = new();
+    private BackupStatusDto? status;
+    private List<BackupJobDto> jobs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("بک‌آپ خودکار");
+        if (!Auth.IsAdmin) { loading = false; return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            status = await Api.GetAsync<BackupStatusDto>("api/backup/status");
+            form = status.Settings;
+            jobs = await Api.GetAsync<List<BackupJobDto>>("api/backup/jobs");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task Save()
+    {
+        busy = true;
+        try
+        {
+            form = await Api.PutAsync<BackupSettingsDto>("api/backup/settings", form);
+            form.ApiKey = null;
+            Toast.Success("تنظیمات بک‌آپ ذخیره شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Test()
+    {
+        busy = true; testMessage = null;
+        try
+        {
+            var r = await Api.PostAsync<TestResult>("api/backup/test");
+            testOk = r?.Ok == true;
+            testMessage = r?.Message ?? "پاسخ نامشخص";
+        }
+        catch (Exception ex) { testOk = false; testMessage = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Run()
+    {
+        busy = true;
+        try
+        {
+            await Api.PostAsync<object>("api/backup/run");
+            Toast.Success("بک‌آپ دستی در صف قرار گرفت.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Retry(string id)
+    {
+        try { await Api.PostAsync<object>($"api/backup/jobs/{id}/retry"); await Load(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private static string ReasonFa(string r) => r switch { "LastSession" => "آخرین نشست", "Daily" => "روزانه", "Manual" => "دستی", _ => r };
+    private static string StatusFa(string s) => s switch { "Pending" => "در صف", "Running" => "گرفتن بک‌آپ", "Uploading" => "ارسال", "Sent" => "ارسال شده", "Failed" => "ناموفق", _ => s };
+    private static string FormatSize(long b) => b <= 0 ? "—" : b < 1024 * 1024 ? $"{b / 1024.0:0.#} KB" : $"{b / 1024.0 / 1024.0:0.#} MB";
+    private class TestResult { public bool Ok { get; set; } public string? Message { get; set; } }
+}

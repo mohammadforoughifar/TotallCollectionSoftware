@@ -1,0 +1,6 @@
+<Project>
+  <Import Project="../Directory.Build.props" />
+  <Target Name="RejectLegacyOuterSourceBuild" BeforeTargets="PrepareForBuild">
+    <Error Text="Legacy outer src is retired for builds. Open TotallCollectionSoftware/inventory/Inventory.sln. All maintained code is now in inventory/src. Do not edit/build this legacy src tree." />
+  </Target>
+</Project>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">پیام‌رسان توتال</string>
+    <string name="chats">گفتگوها</string>
+    <string name="contacts">مخاطبین</string>
+    <string name="settings">تنظیمات</string>
+    <string name="search_hint">جستجو…</string>
+    <string name="tab_all">همه</string>
+    <string name="tab_unread">خوانده‌نشده</string>
+    <string name="tab_groups">گروه‌ها</string>
+    <string name="message_hint">پیام بنویسید…</string>
+    <string name="online">آنلاین</string>
+    <string name="typing">در حال نوشتن…</string>
+    <string name="last_seen">آخرین بازدید</string>
+    <string name="members">عضو</string>
+    <string name="new_message">گفتگوی جدید</string>
+    <string name="new_group">گروه جدید</string>
+    <string name="reply">پاسخ</string>
+    <string name="forward">ارسال به دیگری</string>
+    <string name="copy">کپی</string>
+    <string name="edit">ویرایش</string>
+    <string name="delete">حذف</string>
+    <string name="pin">سنجاق</string>
+    <string name="react">واکنش</string>
+    <string name="photo">عکس</string>
+    <string name="video">ویدیو</string>
+    <string name="file">فایل</string>
+    <string name="audio">صدا</string>
+</resources>

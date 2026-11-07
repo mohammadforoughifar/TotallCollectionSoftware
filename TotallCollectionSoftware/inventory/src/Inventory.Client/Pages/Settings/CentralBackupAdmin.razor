@@ -1,0 +1,210 @@
+@page "/settings/central-backup"
+@inject IApiClient Api
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IAuthState Auth
+@inject NavigationManager Nav
+
+<PageTitle>مدیریت بک‌آپ‌های مرکزی</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>مدیریت بک‌آپ‌های مرکزی</h1>
+        <p class="lead">تعریف مشتری‌ها، صدور کلید API و مشاهده بک‌آپ‌های دریافت‌شده از نصب‌های راه‌دور</p>
+    </div>
+    <a href="/settings" class="btn btn-secondary me-auto"><i class="bi bi-arrow-right"></i> بازگشت به تنظیمات</a>
+</div>
+
+@if (!Auth.IsAdmin)
+{
+    <div class="alert alert-danger">این صفحه فقط برای مدیر سیستم قابل دسترسی است.</div>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-12 col-xl-5">
+            <div class="card">
+                <div class="card-header"><i class="bi bi-building"></i> شرکت‌های مشتری</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4"><input class="form-control num" dir="ltr" placeholder="کد شرکت" @bind="edit.Code" /></div>
+                        <div class="col-md-8"><input class="form-control" placeholder="نام شرکت" @bind="edit.Name" /></div>
+                        <div class="col-md-4"><input class="form-control num" type="number" min="1" @bind="edit.RetentionDays" title="نگهداری (روز)" /></div>
+                        <div class="col-md-4"><input class="form-control num" type="number" min="0" @bind="edit.MaxStorageMb" title="سقف فضا (MB)" /></div>
+                        <div class="col-md-4">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="cbActive" @bind="edit.IsActive" />
+                                <label class="form-check-label" for="cbActive">فعال</label>
+                            </div>
+                        </div>
+                        <div class="col-12"><input class="form-control" placeholder="یادداشت" @bind="edit.Note" /></div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-primary" disabled="@busy" @onclick="SaveCompany"><i class="bi bi-check2"></i> @(edit.Id > 0 ? "ویرایش" : "ساخت شرکت")</button>
+                        <button class="btn btn-light" @onclick="NewCompany">جدید</button>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(newKey))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0 fs-8">
+                            کلید API فقط همین یک‌بار نمایش داده می‌شود:
+                            <div class="num" dir="ltr">@newKey</div>
+                        </div>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 fs-8">
+                            <thead><tr><th>کد</th><th>نام</th><th>فعال</th><th>آخرین اتصال</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var c in companies)
+                                {
+                                    <tr>
+                                        <td class="num">@c.Code</td>
+                                        <td>@c.Name</td>
+                                        <td>@(c.IsActive ? "بله" : "خیر")</td>
+                                        <td>@(c.LastSeenAt?.ToString("MM/dd HH:mm") ?? "—")</td>
+                                        <td class="text-nowrap">
+                                            <button class="btn btn-sm btn-link p-0 me-2" @onclick="() => EditCompany(c)">ویرایش</button>
+                                            <button class="btn btn-sm btn-link p-0 me-2" @onclick="() => Rotate(c.Id)">تعویض کلید</button>
+                                            <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => DeleteCompany(c.Id)">حذف</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <div class="card">
+                <div class="card-header d-flex align-items-center gap-2">
+                    <i class="bi bi-archive"></i> بک‌آپ‌های دریافت‌شده
+                    <select class="form-select form-select-sm ms-auto" style="max-width:220px" @onchange="FilterCompany">
+                        <option value="">همه شرکت‌ها</option>
+                        @foreach (var c in companies)
+                        {
+                            <option value="@c.Id">@c.Code — @c.Name</option>
+                        }
+                    </select>
+                    <button class="btn btn-sm btn-light" @onclick="LoadReceipts"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 fs-8">
+                            <thead><tr><th>زمان</th><th>شرکت</th><th>دیتابیس</th><th>علت</th><th>حجم</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var r in receipts)
+                                {
+                                    <tr>
+                                        <td>@r.ReceivedAt.ToString("yyyy/MM/dd HH:mm")</td>
+                                        <td>@r.CompanyCode</td>
+                                        <td>@r.DatabaseName</td>
+                                        <td>@ReasonFa(r.Reason)</td>
+                                        <td>@FormatSize(r.SizeBytes)</td>
+                                        <td class="text-nowrap">
+                                            <a class="btn btn-sm btn-link p-0 me-2" href="@DownloadUrl(r.Id)">دانلود</a>
+                                            <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => DeleteReceipt(r.Id)">حذف</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool busy;
+    private string? newKey;
+    private int? filterCompanyId;
+    private CentralBackupCompanyDto edit = new();
+    private List<CentralBackupCompanyDto> companies = new();
+    private List<CentralBackupReceiptDto> receipts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("بک‌آپ‌های مرکزی");
+        if (!Auth.IsAdmin) return;
+        await LoadCompanies();
+        await LoadReceipts();
+    }
+
+    private async Task LoadCompanies()
+    {
+        try { companies = await Api.GetAsync<List<CentralBackupCompanyDto>>("api/central-backup/companies"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task LoadReceipts()
+    {
+        try
+        {
+            var url = filterCompanyId is > 0 ? $"api/central-backup/receipts?companyId={filterCompanyId}" : "api/central-backup/receipts";
+            receipts = await Api.GetAsync<List<CentralBackupReceiptDto>>(url);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void NewCompany() { edit = new CentralBackupCompanyDto(); newKey = null; }
+    private void EditCompany(CentralBackupCompanyDto c) { edit = new CentralBackupCompanyDto { Id = c.Id, Code = c.Code, Name = c.Name, IsActive = c.IsActive, RetentionDays = c.RetentionDays, MaxStorageMb = c.MaxStorageMb, Note = c.Note }; newKey = null; }
+
+    private async Task SaveCompany()
+    {
+        busy = true;
+        try
+        {
+            var r = await Api.PostAsync<SaveCompanyResult>("api/central-backup/companies", edit);
+            newKey = r?.ApiKey;
+            Toast.Success("شرکت ذخیره شد.");
+            await LoadCompanies();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Rotate(int id)
+    {
+        try
+        {
+            var r = await Api.PostAsync<RotateResult>($"api/central-backup/companies/{id}/rotate-key");
+            newKey = r?.ApiKey;
+            Toast.Success("کلید جدید صادر شد.");
+            await LoadCompanies();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteCompany(int id)
+    {
+        try { await Api.DeleteAsync($"api/central-backup/companies/{id}"); await LoadCompanies(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteReceipt(int id)
+    {
+        try { await Api.DeleteAsync($"api/central-backup/receipts/{id}"); await LoadReceipts(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task FilterCompany(ChangeEventArgs e)
+    {
+        filterCompanyId = int.TryParse(e.Value?.ToString(), out var id) && id > 0 ? id : null;
+        await LoadReceipts();
+    }
+
+    private string DownloadUrl(int id)
+    {
+        var url = Api.BuildUrl($"api/central-backup/receipts/{id}/download");
+        return string.IsNullOrWhiteSpace(Auth.Token) ? url : url + "?access_token=" + Uri.EscapeDataString(Auth.Token);
+    }
+
+    private static string ReasonFa(string r) => r switch { "LastSession" => "آخرین نشست", "Daily" => "روزانه", "Manual" => "دستی", _ => r };
+    private static string FormatSize(long b) => b <= 0 ? "—" : b < 1024 * 1024 ? $"{b / 1024.0:0.#} KB" : $"{b / 1024.0 / 1024.0:0.#} MB";
+    private class SaveCompanyResult { public int Id { get; set; } public string? ApiKey { get; set; } }
+    private class RotateResult { public string? ApiKey { get; set; } }
+}

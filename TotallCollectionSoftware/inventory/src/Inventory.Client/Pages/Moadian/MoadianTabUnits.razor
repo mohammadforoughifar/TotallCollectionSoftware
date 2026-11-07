@@ -1,0 +1,234 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+@if (Ctx.CpInfoId <= 0)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-building-add"></i>
+        <span>ابتدا از نوار بالای صفحه یک شرکت مودیان انتخاب کنید؛ واحدها به‌ازای هر خدمات‌دهنده جدا هستند.</span>
+    </div>
+}
+else
+{
+<div class="card mi-blocked">
+    <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+        <span><i class="bi bi-rulers" aria-hidden="true"></i> فهرست واحدهای سنجش معتبر سامانهٔ مودیان <span class="text-muted small">— مخصوص خدمات‌دهندهٔ انتخاب‌شده</span></span>
+        <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) واحد</span>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+            <div class="mi-flt-search" style="max-width:none;min-width:230px">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input class="form-control" placeholder="جستجو در نام یا کد" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در واحدها" />
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i> واحد جدید
+            </button>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(loadError))
+    {
+        <div class="mi-error" role="alert">
+            <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+            <div class="mi-error-text">
+                <div class="fw-bold">بارگذاری فهرست واحدها ناموفق بود</div>
+                <div class="small" style="white-space:pre-wrap">@loadError</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync(pno)">
+                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+            </button>
+        </div>
+    }
+    <div class="card-body p-0">
+        @if (loading)
+        {
+            <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری واحدها">
+                @for (int si = 0; si < 4; si++)
+                {
+                    <div class="mi-sk-row">
+                        <div class="mi-sk" style="width:40%"></div>
+                        <div class="mi-sk" style="width:20%"></div>
+                        <div class="mi-sk" style="width:14%"></div>
+                    </div>
+                }
+            </div>
+        }
+        else if (items is null || items.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-rulers"></i></div>
+                <h5>@(string.IsNullOrWhiteSpace(search) ? "واحدی تعریف نشده است" : $"واحدی با «{search}» یافت نشد")</h5>
+                <p class="text-muted mb-3">@(string.IsNullOrWhiteSpace(search)
+                    ? "واحدهای سنجش معتبر (مانند عدد، کیلوگرم، متر و…) را ثبت کنید."
+                    : "عبارت جستجو را تغییر دهید یا آن را پاک کنید.")</p>
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    @if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x-lg" aria-hidden="true"></i> پاک‌کردن جستجو</button>
+                    }
+                    <button type="button" class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-plus-lg" aria-hidden="true"></i> واحد جدید</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive grid-desktop mi-table">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>نام واحد</th>
+                            <th style="width:180px">کد</th>
+                            <th class="text-end" style="width:130px">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in items)
+                        {
+                            <tr>
+                                <td class="fw-semibold">@u.Name</td>
+                                <td><code class="num" dir="ltr">@u.Code</code></td>
+                                <td class="text-end">
+                                    <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => OpenForm(u)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                    <button type="button" class="mpa mpa-red mpa-ic" title="حذف" @onclick="() => Delete(u)"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if ((data?.TotalPages ?? 0) > 1)
+            {
+                <div class="mi-pager d-flex align-items-center gap-2">
+                    <span class="text-muted small num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) واحد — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                    <div class="ms-auto d-flex gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)" aria-label="صفحهٔ قبل"><i class="bi bi-chevron-right"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)" aria-label="صفحهٔ بعد"><i class="bi bi-chevron-left"></i></button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+}
+
+<Modal Visible="showForm" Title="@(form.UnitOfMeasurementId > 0 ? "ویرایش واحد" : "واحد جدید")" OnClose="CloseForm">
+        <ChildContent>
+    <div class="mb-2">
+        <label class="form-label">نام واحد <span class="text-danger">*</span></label>
+        <input class="form-control" value="@form.Name" @oninput="e => form.Name = e.Value?.ToString()" placeholder="مثلاً: عدد" />
+    </div>
+    <div class="mb-2">
+        <label class="form-label">کد واحد <span class="text-danger">*</span></label>
+        <input class="form-control num" dir="ltr" value="@form.Code" @oninput="e => form.Code = e.Value?.ToString()" placeholder="کد معتبر سامانه" />
+    </div>
+    @if (!string.IsNullOrEmpty(formError))
+    {
+        <div class="alert alert-danger py-2 small">@formError</div>
+    }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="CloseForm">انصراف</button>
+        <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
+            @(form.UnitOfMeasurementId > 0 ? "ذخیرهٔ تغییرات" : "ثبت واحد")
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private PagedList<VMUnitOfMeasurement>? data;
+    private List<VMUnitOfMeasurement>? items;
+    private bool loading = true;
+    private string? loadError;
+    private int pno = 1;
+    private const int PageSize = 10;
+    private string search = "";
+    private System.Timers.Timer? searchTimer;
+
+    private bool showForm;
+    private VMUnitOfMeasurement form = new();
+    private string? formError;
+    private bool saving;
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
+        _ = LoadAsync(1);
+    }
+
+    private void OnCtxChanged() => _ = LoadAsync(1);
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); } }
+    private void ClearSearch() { search = ""; _ = LoadAsync(1); }
+
+    private async Task LoadAsync(int p)
+    {
+        if (Ctx.CpInfoId <= 0) { loading = false; StateHasChanged(); return; }
+        loading = true; StateHasChanged();
+        try
+        {
+            loadError = null;
+            var model = await Moadian.GetUnitsAsync(Ctx.CpInfoId, string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
+            var paged = MoadianService.AsStrict<PagedList<VMUnitOfMeasurement>>(model, "دریافت فهرست واحدها");
+            data = paged;
+            items = paged?.Items?.ToList();
+            pno = p;
+        }
+        catch (Exception ex) { loadError = ex.Message; Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void OpenForm(VMUnitOfMeasurement? u)
+    {
+        form = u is null
+            ? new VMUnitOfMeasurement { CpInfoId = Ctx.CpInfoId }
+            : new VMUnitOfMeasurement { UnitOfMeasurementId = u.UnitOfMeasurementId, CpInfoId = u.CpInfoId, Name = u.Name, Code = u.Code };
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() => showForm = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام واحد الزامی است."; return; }
+        if (string.IsNullOrWhiteSpace(form.Code)) { formError = "کد واحد الزامی است."; return; }
+        if (form.CpInfoId <= 0) form.CpInfoId = Ctx.CpInfoId;
+        saving = true; StateHasChanged();
+        try
+        {
+            var r = form.UnitOfMeasurementId > 0
+                ? await Moadian.UpdateUnitAsync(form)
+                : await Moadian.InsertUnitAsync(form);
+            if (r.Success)
+            {
+                Toast.Success(form.UnitOfMeasurementId > 0 ? "تغییرات ذخیره شد." : "واحد ثبت شد.");
+                CloseForm();
+                await LoadAsync(pno);
+            }
+            else formError = r.Message ?? "خطا در ذخیره.";
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; StateHasChanged(); }
+    }
+
+    private async Task Delete(VMUnitOfMeasurement u)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"واحد «{u.Name}» حذف شود؟");
+        if (!ok) return;
+        try
+        {
+            var r = await Moadian.DeleteUnitAsync(u.UnitOfMeasurementId);
+            if (r.Success) { Toast.Success("واحد حذف شد."); await LoadAsync(pno); }
+            else Toast.Error(r.Message ?? "خطا در حذف.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }
+}

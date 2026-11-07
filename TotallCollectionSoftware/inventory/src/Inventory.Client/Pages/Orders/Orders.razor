@@ -1,0 +1,1307 @@
+@page "/orders/{Type}"
+@inject IAuthState Auth
+@inject IOrderService OrderSvc
+@inject IWarehouseService WarehouseSvc
+@inject IPartyService PartySvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+@inject ICompanyProfileService ProfileSvc
+
+<PageTitle>@(isPurchase ? "خرید" : "فروش")</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>@(isPurchase ? "اسناد خرید" : "اسناد فروش")</h1>
+        <p class="lead">@(isPurchase ? "ثبت و مدیریت رسیدهای خرید" : "ثبت و مدیریت فاکتورهای فروش")</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 me-auto">
+        <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="orders-print-paper">
+            کاغذ چاپ
+            <select id="orders-print-paper" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size>
+                <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
+            </select>
+        </label>
+        @if (Auth.CanSee("ShopGuide"))
+        {
+            <a class="btn btn-outline-secondary" href="shop-guide">
+                <i class="bi bi-journal-check"></i> راهنما
+            </a>
+        }
+        <button class="btn btn-primary" @onclick="OpenNew">
+            <i class="bi bi-plus-lg"></i> @(isPurchase ? "خرید جدید" : "فروش جدید")
+        </button>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2 align-items-end">
+            <div class="flex-grow-1" style="min-width:220px">
+                <label class="form-label">از تاریخ</label>
+                <DatePicker @bind-Value="from" AllowClear="true" />
+            </div>
+            <div class="flex-grow-1" style="min-width:220px">
+                <label class="form-label">تا تاریخ</label>
+                <DatePicker @bind-Value="to" AllowClear="true" />
+            </div>
+            <div style="min-width:220px">
+                <label class="form-label">انبار</label>
+                <SearchSelect Items="whLookup" Value="filterWarehouseId" ValueChanged="v => filterWarehouseId = v" Placeholder="همه انبارها" />
+            </div>
+            <div style="min-width:220px">
+                <label class="form-label">طرف حساب</label>
+                <SearchSelect Items="partyLookup" Value="filterPartyId" ValueChanged="v => filterPartyId = v" Placeholder="همه" />
+            </div>
+            <button class="btn btn-primary" @onclick="ApplyFilter"><i class="bi bi-funnel"></i> اعمال فیلتر</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        @if (loading)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="empty-state"><i class="bi bi-receipt"></i><h5>سندی ثبت نشده است</h5></div>
+        }
+        else
+        {
+            <div class="table-responsive grid-desktop">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>شماره سند</th>
+                            <th>تاریخ</th>
+                            <th>طرف حساب</th>
+                            <th>انبار</th>
+                            <th>اقلام</th>
+                            <th class="text-start">مبلغ کل (ریال)</th>
+                            <th>پرداخت</th>
+                            @if (!isPurchase && CanSeeProfit)
+                            {
+                                <th class="text-start">سود</th>
+                            }
+                            <th class="text-end">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in items)
+                        {
+                            <tr data-order-copy-context tabindex="0" title="برای کپی این فاکتور F7 را بزنید">
+                                <td class="doc-number fw-700 text-primary">
+                                    @o.Number
+                                    @if (o.IsCancelled)
+                                    {
+                                        <span class="badge badge-soft-muted fs-8 me-1">ابطال‌شده</span>
+                                    }
+                                    @if (o.AvailableCustomerCredit > 0)
+                                    {
+                                        <span class="badge badge-soft-success fs-8 me-1">بستانکاری: @o.AvailableCustomerCredit.Money()</span>
+                                    }
+                                </td>
+                                <td class="text-muted">@o.Date.ToFa()</td>
+                                <td>@o.PartyName</td>
+                                <td class="text-muted">@o.WarehouseName</td>
+                                <td><span class="badge badge-soft-primary">@o.Lines.Count.Num() قلم</span></td>
+                                <td class="text-start num fw-700">@o.TotalAmount.MoneyExact()</td>
+                                <td>@PayBadge(o)</td>
+                                @if (!isPurchase && CanSeeProfit)
+                                {
+                                    <td class="text-start num">
+                                        @if (o.TotalProfit.HasValue)
+                                        {
+                                            <span class="fw-500 @(o.TotalProfit >= 0 ? "text-success" : "text-danger")">@o.TotalProfit.Value.Money()</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                }
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
+                                    <button type="button" class="btn btn-sm btn-light" data-order-copy title="کپی فاکتور (F7 روی ردیف)" aria-label="کپی فاکتور"
+                                            @onclick="() => OpenCopy(o)" disabled="@(copyingId != 0)"><i class="bi bi-copy text-primary"></i></button>
+                                    @if (!isPurchase)
+                                    {
+                                        <button class="btn btn-sm btn-light text-primary" title="چاپ فاکتور فروش" aria-label="چاپ فاکتور فروش"
+                                                @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                            @if (printingId == o.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-printer"></i>
+                                            }
+                                            <span class="d-none d-xxl-inline ms-1">چاپ فاکتور فروش</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-light" title="چاپ رسید خرید" aria-label="چاپ رسید خرید"
+                                                @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                            @if (printingId == o.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-primary"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-printer text-primary"></i>
+                                            }
+                                        </button>
+                                    }
+                                    @if (o.IsSale && o.HasChequeCharge && !o.IsCancelled)
+                                    {
+                                        <button class="btn btn-sm btn-light" title="برگشت کالا" @onclick="() => OpenReturn(o)"><i class="bi bi-arrow-return-right text-warning"></i></button>
+                                        @if (o.AvailableCustomerCredit > 0)
+                                        {
+                                            <button class="btn btn-sm btn-light" title="تعیین‌تکلیف بستانکاری مشتری" @onclick="() => OpenCreditSettlement(o)"><i class="bi bi-wallet2 text-success"></i></button>
+                                        }
+                                    }
+                                    <button type="button" class="btn btn-sm btn-light" title="تسویه نسیه و سوابق" aria-label="تسویه نسیه و سوابق"
+                                            @onclick="() => OpenOrderCredit(o)" disabled="@orderCreditOpening"><i class="bi bi-cash-stack text-primary"></i></button>
+                                    @if (!o.IsCancelled)
+                                    {
+                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
+                                        <button class="btn btn-sm btn-light" title="@(o.HasChequeCharge ? "ابطال فاکتور" : "حذف")" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* ---------- نمای کارتی (موبایل) ---------- *@
+            <div class="cards-mobile">
+                @foreach (var o in items)
+                {
+                    <div class="m-card @(isPurchase ? "st-received" : "st-ready")" data-order-copy-context tabindex="0" title="برای کپی این فاکتور F7 را بزنید">
+                        <div class="m-card-head">
+                            <div class="m-card-icon"><i class="bi @(isPurchase ? "bi-bag-plus" : "bi-cart3")"></i></div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="doc-number fw-800 text-primary">@o.Number</span>
+                                    @PayBadge(o)
+                                </div>
+                                <div class="fw-700 text-truncate">@o.PartyName</div>
+                                <div class="fs-8 text-muted">@o.Date.ToFa() — @o.Lines.Count.Num() قلم — @o.WarehouseName</div>
+                            </div>
+                        </div>
+                        <div class="m-card-body">
+                            <div class="m-card-money">
+                                <div>
+                                    <div class="fs-8 text-muted">مبلغ کل</div>
+                                    <div class="num fw-700">@o.TotalAmount.MoneyExact()</div>
+                                </div>
+                                @if (!isPurchase && CanSeeProfit && o.TotalProfit.HasValue)
+                                {
+                                    <div class="text-end">
+                                        <div class="fs-8 text-muted">سود</div>
+                                        <div class="num fw-800 @(o.TotalProfit >= 0 ? "text-success" : "text-danger")">@o.TotalProfit.Value.Money()</div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="m-card-actions">
+                            <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
+                            <button type="button" class="btn btn-light text-primary" data-order-copy title="کپی فاکتور (F7 روی ردیف)"
+                                    @onclick="() => OpenCopy(o)" disabled="@(copyingId != 0)"><i class="bi bi-copy"></i> کپی فاکتور</button>
+                            <button class="btn btn-light text-primary" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
+                                    aria-label="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")"
+                                    @onclick="() => Print(o)" disabled="@(printingId == o.Id)">
+                                @if (printingId == o.Id)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-printer"></i>
+                                }
+                                @(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور فروش")
+                            </button>
+                            @if (o.IsSale && o.HasChequeCharge && !o.IsCancelled)
+                            {
+                                <button class="btn btn-light text-warning" @onclick="() => OpenReturn(o)"><i class="bi bi-arrow-return-right"></i> برگشت</button>
+                                @if (o.AvailableCustomerCredit > 0)
+                                {
+                                    <button class="btn btn-light text-success" @onclick="() => OpenCreditSettlement(o)"><i class="bi bi-wallet2"></i> بستانکاری</button>
+                                }
+                            }
+                            <button type="button" class="btn btn-light text-primary" @onclick="() => OpenOrderCredit(o)" disabled="@orderCreditOpening"><i class="bi bi-cash-stack"></i> نسیه و سوابق</button>
+                            @if (!o.IsCancelled)
+                            {
+                                <button class="btn btn-light text-primary" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                <button class="btn btn-light text-danger" @onclick="() => Delete(o)"><i class="bi bi-trash"></i></button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <Pager Page="page" PageCount="pageCount" OnPageChanged="GoToPage" />
+        }
+    </div>
+</div>
+
+@if (showForm)
+{
+    <OrderForm Type="@txnType" EditOrder="editingOrder" CopyTemplate="copyTemplate" OnSaved="OnFormSaved" OnCancel="CloseForm" />
+}
+
+<Modal Visible="viewing is not null" Title="جزئیات سند" Size="modal-lg" OnClose="() => viewing = null">
+    <ChildContent>
+        @if (viewing is not null)
+        {
+            <div class="d-flex flex-wrap gap-3 mb-3">
+                <div class="flex-grow-1">
+                    <div class="fs-8 text-muted">شماره سند</div>
+                    <div class="fw-700 text-primary doc-number">@viewing.Number</div>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fs-8 text-muted">تاریخ</div>
+                    <div class="fw-500">@viewing.Date.ToFa()</div>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fs-8 text-muted">طرف حساب</div>
+                    <div class="fw-500">@viewing.PartyName</div>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fs-8 text-muted">انبار</div>
+                    <div class="fw-500">@viewing.WarehouseName</div>
+                </div>
+                @if (!string.IsNullOrEmpty(viewing.ReferrerName))
+                {
+                    <div class="flex-grow-1">
+                        <div class="fs-8 text-muted">معرف</div>
+                        <div class="fw-500">@viewing.ReferrerName</div>
+                    </div>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(viewing.Description))
+            {
+                <div class="mb-3 fs-8 text-muted">توضیحات: @viewing.Description</div>
+            }
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>کالا</th>
+                            <th>واحد</th>
+                            <th class="text-start">مقدار</th>
+                            <th class="text-start">قیمت واحد</th>
+                            <th class="text-start">تخفیف</th>
+                            <th class="text-start">پس از تخفیف</th>
+                            <th class="text-start">ارزش افزوده</th>
+                            <th class="text-start">جمع پس از ارزش افزوده</th>
+                            @if (viewing.IsSale)
+                            {
+                                @if (CanSeeProfit)
+                                {
+                                    <th class="text-start">بهای تمام‌شده</th>
+                                    <th class="text-start">سود</th>
+                                }
+                                @if (viewing.CommissionAmount is > 0)
+                                {
+                                    <th class="text-start">پورسانت معرف</th>
+                                }
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in viewing.Lines)
+                        {
+                            <tr>
+                                <td>
+                                    @l.ProductName
+                                    @if (l.IsService)
+                                    {
+                                        <span class="badge badge-soft-primary fs-8 me-1">خدمات</span>
+                                    }
+                                </td>
+                                <td>@l.Unit</td>
+                                <td class="text-start num">
+                                    @l.Quantity.Qty()
+                                    @if (l.ReturnedQuantity > 0)
+                                    {
+                                        <span class="badge badge-soft-warning fs-8 me-1">برگشتی: @l.ReturnedQuantity.Qty()</span>
+                                    }
+                                </td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.Price.MoneyExact() : l.Price.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.DiscountAmount.MoneyExact() : l.DiscountAmount.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.AfterDiscount.MoneyExact() : l.AfterDiscount.Money())</td>
+                                <td class="text-start num">@(UseExactAmounts(viewing) ? l.VatAmount.MoneyExact() : l.VatAmount.Money())</td>
+                                <td class="text-start num fw-700">@(UseExactAmounts(viewing) ? l.Total.MoneyExact() : l.Total.Money())</td>
+                                @if (viewing.IsSale)
+                                {
+                                    @if (CanSeeProfit)
+                                    {
+                                        <td class="text-start num text-muted">@(l.UnitCost.HasValue ? l.UnitCost.Value.Money() : "—")</td>
+                                        <td class="text-start num">
+                                            @if (l.Profit.HasValue)
+                                            {
+                                                <span class="fw-500 @(l.Profit >= 0 ? "text-success" : "text-danger")">@l.Profit.Value.Money()</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    }
+                                    @if (viewing.CommissionAmount is > 0)
+                                    {
+                                        <td class="text-start num">
+                                            @if (l.Commission is > 0)
+                                            {
+                                                <span class="fw-500 text-primary">@l.Commission.Value.Money()</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (viewing.IsSale && viewing.HasChequeCharge)
+            {
+                <div class="alert alert-light border py-2 px-3 mt-2 mb-0 fs-8" data-sale-cheque-income-detail>
+                    <div class="d-flex flex-wrap gap-3">
+                        <strong>تاخیر تادیه چک</strong>
+                        <span>کالا و ارزش افزوده: <b class="num">@viewing.GoodsAmount.MoneyExact()</b> ریال</span>
+                        <span>بدهکار مشتری / بستانکار فروشگاه: <b class="num">@viewing.ChequeIncomeAmount.MoneyExact()</b> ریال</span>
+                    </div>
+                    <div class="text-muted mt-1">سود چک جدا از مبلغ کالا و بدون ارزش افزوده در جمع فاکتور منظور شده است.</div>
+                </div>
+            }
+            <div class="d-flex justify-content-end align-items-center gap-3 mt-2">
+                @if (viewing.IsSale && CanSeeProfit && viewing.TotalProfit.HasValue)
+                {
+                    <div>
+                        <span class="text-muted ms-1 fs-8">سود سند:</span>
+                        <span class="fw-700 num @(viewing.TotalProfit >= 0 ? "text-success" : "text-danger")">@viewing.TotalProfit.Value.Money()</span>
+                    </div>
+                }
+                @if (viewing.CommissionAmount is > 0)
+                {
+                    <div>
+                        <span class="text-muted ms-1 fs-8">پورسانت معرف:</span>
+                        <span class="fw-700 num text-primary">@viewing.CommissionAmount.Value.Money()</span>
+                    </div>
+                    @if (CanSeeProfit)
+                    {
+                        <div>
+                            <span class="text-muted ms-1 fs-8">سود خالص:</span>
+                            <span class="fw-700 num @(viewing.NetProfit >= 0 ? "text-success" : "text-danger")">@((viewing.NetProfit ?? 0).Money())</span>
+                        </div>
+                    }
+                }
+                <div>
+                    <span class="text-muted ms-2">مبلغ کل:</span>
+                    <span class="fw-800 fs-5 text-primary num">@(UseExactAmounts(viewing) ? viewing.TotalAmount.MoneyExact() : viewing.TotalAmount.Money())</span>
+                    <span class="fs-8 text-muted">ریال</span>
+                </div>
+            </div>
+
+            <div class="alert alert-light border d-flex flex-wrap gap-4 align-items-center py-2 px-3 mt-3 mb-0">
+                <div>
+                    <span class="fs-8 text-muted ms-1">روش تسویه:</span>
+                    <span class="fw-700">@PayBadge(viewing)</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(viewing.TrsAccountName))
+                {
+                    <div>
+                        <span class="fs-8 text-muted ms-1">حساب / بانک:</span>
+                        <span class="fw-700 text-primary"><i class="bi bi-bank ms-1"></i>@viewing.TrsAccountName</span>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(viewing.CashTrackingNumber))
+                {
+                    <div><span class="fs-8 text-muted ms-1">شماره پیگیری کارت به کارت:</span><span class="fw-700" dir="ltr">@viewing.CashTrackingNumber</span></div>
+                }
+                @if (viewing.Cheques.Count > 0)
+                {
+                    <div>
+                        <span class="fs-8 text-muted ms-1">چک‌ها:</span>
+                        <span class="fw-700">@viewing.Cheques.Count.Num() فقره (@string.Join("، ", viewing.Cheques.Where(c => !string.IsNullOrWhiteSpace(c.BankName)).Select(c => c.BankName).Distinct()))</span>
+                    </div>
+                }
+            </div>
+            @if (viewing.ChequeReturns.Count > 0)
+            {
+                <div class="mt-3">
+                    <div class="fw-700 fs-8 mb-2">سوابق برگشت کالا</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>سند برگشت</th>
+                                    <th>تاریخ</th>
+                                    <th class="text-start">کالا و مالیات</th>
+                                    <th class="text-start">کسر سود چک</th>
+                                    <th class="text-start">جمع بستانکاری</th>
+                                    <th>تصمیم چک</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ret in viewing.ChequeReturns)
+                                {
+                                    <tr>
+                                        <td class="doc-number fw-700">@ret.ReturnNumber</td>
+                                        <td>@ret.Date.ToFa()</td>
+                                        <td class="text-start num">@((ret.GoodsAmount + ret.VatAmount).MoneyExact())</td>
+                                        <td class="text-start num">@ret.IncomeAmount.MoneyExact()</td>
+                                        <td class="text-start num fw-700">@ret.TotalCredit.MoneyExact()</td>
+                                        <td class="fs-8">@DecisionLabel(ret.Decision)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        @if (viewing?.IsSale == true && viewing.HasChequeCharge)
+        {
+            <button class="btn btn-outline-warning" @onclick="() => OpenReturn(viewing!)">
+                <i class="bi bi-arrow-return-right"></i> برگشت کالا
+            </button>
+        }
+        <button type="button" class="btn btn-outline-secondary" data-hotkey="f7" @onclick="() => OpenCopy(viewing!)" disabled="@(viewing is null || copyingId != 0)">
+            <i class="bi bi-copy"></i> کپی فاکتور (F7)
+        </button>
+        <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="() => Print(viewing!)" disabled="@(viewing is null || printingId == viewing.Id)">
+            @if (viewing is not null && printingId == viewing.Id)
+            {
+                <span class="spinner-border spinner-border-sm ms-1"></span>
+            }
+            <i class="bi bi-printer"></i> چاپ @(viewing?.IsSale == true ? "فاکتور فروش" : "رسید خرید") (F4)
+        </button>
+        <button class="btn btn-light" @onclick="() => viewing = null"><i class="bi bi-x-lg"></i> بستن</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="returningOrder is not null" Title="@(returningOrder is null ? "" : $"برگشت کالا — فاکتور {returningOrder.Number}")" Size="modal-lg" OnClose="CloseReturn">
+    <ChildContent>
+        @if (returningOrder is not null)
+        {
+            <div class="row g-3 mb-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fs-8">تاریخ برگشت</label>
+                    <PersianDatePicker Value="returnDate" ValueChanged="OnReturnDateChanged" />
+                </div>
+                <div class="col-md-7 text-muted fs-8">
+                    مشتری: <strong class="text-dark">@returningOrder.PartyName</strong> |
+                    مانده کالای قابل برگشت را وارد کرده و پیش‌نمایش مبلغ برگشت را بررسی کنید.
+                </div>
+            </div>
+            <div class="table-responsive mb-3">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>کالا / خدمات</th>
+                            <th class="text-start">فروخته‌شده</th>
+                            <th class="text-start">قبلاً برگشتی</th>
+                            <th class="text-start">قابل برگشت</th>
+                            <th style="width:150px">مقدار برگشت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in returningOrder.Lines)
+                        {
+                            var currentQty = returnQuantities.GetValueOrDefault(line.Id);
+                            <tr>
+                                <td>@line.ProductName <span class="text-muted fs-8">(@line.Unit)</span></td>
+                                <td class="text-start num">@line.Quantity.Qty()</td>
+                                <td class="text-start num">@line.ReturnedQuantity.Qty()</td>
+                                <td class="text-start num fw-700">@line.RemainingQuantity.Qty()</td>
+                                <td>
+                                    <input type="number" step="0.01" min="0" max="@line.RemainingQuantity"
+                                           class="form-control form-control-sm num text-start"
+                                           disabled="@(line.RemainingQuantity <= 0 || returnSaving)"
+                                           value="@currentQty"
+                                           @onchange="e => OnReturnQuantityChanged(line.Id, line.RemainingQuantity, e.Value?.ToString())" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (returnPreview is not null)
+            {
+                <div class="alert alert-light border py-2 px-3 mb-3">
+                    <div class="row g-2 fs-8">
+                        <div class="col-md-4">کالا بدون ارزش افزوده: <b class="num">@returnPreview.GoodsBeforeVat.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">ارزش افزوده برگشتی: <b class="num">@returnPreview.Vat.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">کسر نسبی تاخیر تادیه چک: <b class="num">@returnPreview.Income.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">جمع بستانکاری برگشت: <b class="num text-primary">@returnPreview.TotalCredit.MoneyExact()</b> ریال</div>
+                        <div class="col-md-4">مانده پیش از برگشت: <b class="num">@FormatSignedBalance(returnPreview.BalanceBefore)</b></div>
+                        <div class="col-md-4">مانده پس از برگشت: <b class="num">@FormatSignedBalance(returnPreview.BalanceAfter)</b></div>
+                    </div>
+                </div>
+                @if (returnPreview.UncollectedChequeExcess > 0)
+                {
+                    <div class="alert alert-warning py-2 px-3 mb-0">
+                        <div class="fw-700 fs-8 mb-2">
+                            مبلغ چک‌های وصول‌نشده به میزان <span class="num">@returnPreview.UncollectedChequeExcess.MoneyExact()</span> ریال بیشتر از مانده جدید فاکتور است. تصمیم مشتری را ثبت کنید (چک به صورت خودکار تغییر نمی‌کند):
+                        </div>
+                        <div class="d-flex flex-column gap-2 fs-8">
+                            <label class="d-flex align-items-center gap-2">
+                                <input type="radio" name="return-cheque-decision"
+                                       checked="@(returnDecision == SaleChequeReturnDecision.ReplaceCheque)"
+                                       @onchange="() => returnDecision = SaleChequeReturnDecision.ReplaceCheque" />
+                                <span>تعویض چک وصول‌نشده با چک متناسب با مانده</span>
+                            </label>
+                            <label class="d-flex align-items-center gap-2">
+                                <input type="radio" name="return-cheque-decision"
+                                       checked="@(returnDecision == SaleChequeReturnDecision.KeepChequeForGoods)"
+                                       @onchange="() => returnDecision = SaleChequeReturnDecision.KeepChequeForGoods" />
+                                <span>نگهداری چک فعلی نزد ما و دریافت کالای دیگر در قبال مازاد</span>
+                            </label>
+                        </div>
+                    </div>
+                }
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-outline-secondary" @onclick="PreviewReturnAsync" disabled="@(returnSaving || !HasSelectedReturnLines)">
+            <i class="bi bi-calculator"></i> محاسبه پیش‌نمایش
+        </button>
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="SubmitReturnAsync"
+                disabled="@(returnSaving || returnPreview is null || (returnPreview.UncollectedChequeExcess > 0 && returnDecision == SaleChequeReturnDecision.None))">
+            <i class="bi bi-check2"></i> ثبت قطعی برگشت
+        </button>
+        <button class="btn btn-light" @onclick="CloseReturn" disabled="@returnSaving">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="creditOrder is not null" Title="@(creditOrder is null ? "" : $"تعیین‌تکلیف بستانکاری مشتری — فاکتور {creditOrder.Number}")" Size="modal-lg" OnClose="CloseCreditModal">
+    <ChildContent>
+        @if (creditOrder is not null)
+        {
+            <div class="alert alert-light border py-2 px-3 mb-3 fs-8">
+                مشتری: <strong>@creditOrder.PartyName</strong> |
+                بستانکاری قابل تعیین‌تکلیف: <strong class="num text-success">@creditOrder.AvailableCustomerCredit.Money()</strong> ریال
+            </div>
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" class="btn btn-sm @(creditMode == SaleChequeCreditSettlementKind.RefundPayment ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => creditMode = SaleChequeCreditSettlementKind.RefundPayment">
+                    پرداخت وجه به مشتری
+                </button>
+                <button type="button" class="btn btn-sm @(creditMode == SaleChequeCreditSettlementKind.ApplyToSale ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick="() => creditMode = SaleChequeCreditSettlementKind.ApplyToSale">
+                    مصرف در فاکتور فروش دیگر مشتری
+                </button>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label fs-8">تاریخ عملیات</label>
+                    <PersianDatePicker Value="creditDate" ValueChanged="v => creditDate = v" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fs-8">مبلغ (ریال)</label>
+                    <input class="form-control form-control-sm num text-start" @bind="creditAmountText" />
+                </div>
+                @if (creditMode == SaleChequeCreditSettlementKind.RefundPayment)
+                {
+                    <div class="col-md-4">
+                        <label class="form-label fs-8">حساب صندوق/بانک پرداخت‌کننده شرکت</label>
+                        <select class="form-select form-select-sm" @bind="creditTrsAccountId">
+                            <option value="0">— انتخاب حساب فعال شرکت —</option>
+                            @foreach (var acc in creditAccounts)
+                            {
+                                <option value="@acc.Id">@acc.Name @(string.IsNullOrWhiteSpace(acc.BankName) ? "" : $"({acc.BankName})")</option>
+                            }
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <div class="col-md-4">
+                        <label class="form-label fs-8">فاکتور مقصد همین مشتری</label>
+                        <select class="form-select form-select-sm" @bind="creditTargetSaleId">
+                            <option value="0">— انتخاب فاکتور فروش باز —</option>
+                            @foreach (var target in creditTargetOrders)
+                            {
+                                var unpaid = Math.Max(0m, target.TotalAmount - target.SettledAmount);
+                                <option value="@target.Id">@target.Number — مانده: @unpaid.Money() ریال</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <div class="col-12">
+                    <label class="form-label fs-8">توضیح (اختیاری)</label>
+                    <input class="form-control form-control-sm" @bind="creditNote" maxlength="200" />
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="SubmitCreditSettlementAsync" disabled="@creditSaving">
+            <i class="bi bi-check2"></i> ثبت تعیین‌تکلیف بستانکاری
+        </button>
+        <button class="btn btn-light" @onclick="CloseCreditModal" disabled="@creditSaving">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="orderCreditOrder is not null" Title="@(orderCreditOrder is null ? "" : $"تسویه نسیه فاکتور {orderCreditOrder.Number}")" Size="modal-lg" OnClose="CloseOrderCredit">
+    <ChildContent>
+        @if (orderCreditOrder is not null && orderCreditState is not null)
+        {
+            <div class="d-flex flex-wrap gap-3 align-items-center bg-light rounded p-3 mb-3">
+                <div><span class="text-muted fs-8">طرف حساب</span><div class="fw-700">@orderCreditOrder.PartyName</div></div>
+                <div><span class="text-muted fs-8">مانده کل فاکتور</span><div class="num fw-700">@CreditMoney(orderCreditState.Outstanding) ریال</div></div>
+                <div><span class="text-muted fs-8">مانده نسیه آزاد</span><div class="num fw-700 text-primary">@CreditMoney(orderCreditState.AvailableCredit) ریال</div></div>
+            </div>
+            @if (orderCreditState.ReservedForCheques > 0 || orderCreditState.ReservedForInstallments > 0)
+            {
+                <div class="alert alert-light border py-2 fs-8">
+                    چک باز: <span class="num">@CreditMoney(orderCreditState.ReservedForCheques)</span> ریال؛
+                    اقساط باز: <span class="num">@CreditMoney(orderCreditState.ReservedForInstallments)</span> ریال.
+                    این تعهدات از مسیر اختصاصی خودشان تسویه می‌شوند.
+                </div>
+            }
+            @if (orderCreditState.AvailableCredit > 0 && !orderCreditState.IsCancelled)
+            {
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">@(isPurchase ? "مبلغ پرداخت نسیه (ریال)" : "مبلغ دریافت نسیه (ریال)")</label>
+                        <input class="form-control form-control-sm num text-start" inputmode="decimal" @bind="orderCreditAmountText" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">@(isPurchase ? "حساب پرداخت‌کننده" : "حساب دریافت‌کننده")</label>
+                        <select class="form-select form-select-sm" @bind="orderCreditAccountId">
+                            <option value="0">— انتخاب صندوق یا بانک —</option>
+                            @foreach (var account in orderCreditAccounts)
+                            {
+                                <option value="@account.Id">@account.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label fs-8">تاریخ گردش</label>
+                        <PersianDatePicker Value="orderCreditDate" ValueChanged="v => orderCreditDate = v" />
+                    </div>
+                </div>
+                @if (orderCreditAccounts.Count == 0)
+                {
+                    <div class="alert alert-warning py-2 fs-8">حساب فعال صندوق یا بانک برای شرکت یافت نشد؛ ابتدا آن را در فروشگاه تعریف کنید.</div>
+                }
+            }
+            else
+            {
+                <div class="text-muted fs-8 mb-3">مانده نسیه آزاد برای ثبت وجود ندارد.</div>
+            }
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <strong class="fs-8">تاریخچه گردش نسیه</strong>
+                @if (orderCreditState.Receipts.Any(r => !r.ReversalDate.HasValue))
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted fs-8">تاریخ لغو</span>
+                        <PersianDatePicker Value="orderCreditReversalDate" ValueChanged="v => orderCreditReversalDate = v" />
+                    </div>
+                }
+            </div>
+            @if (orderCreditState.Receipts.Count == 0)
+            {
+                <div class="text-muted fs-8 border rounded p-3">هنوز گردش نسیه‌ای برای این فاکتور ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>تاریخ</th><th>حساب</th><th class="text-start">مبلغ (ریال)</th><th>وضعیت</th><th></th></tr></thead>
+                        <tbody>
+                        @foreach (var receipt in orderCreditState.Receipts)
+                        {
+                            <tr>
+                                <td>@receipt.Date.ToFa()</td>
+                                <td>@receipt.AccountName</td>
+                                <td class="num text-start">@CreditMoney(receipt.Amount)</td>
+                                <td>@(receipt.ReversalDate.HasValue ? $"لغو در {receipt.ReversalDate.Value.ToFa()}" : "ثبت‌شده")</td>
+                                <td class="text-end">
+                                    @if (!receipt.ReversalDate.HasValue && !orderCreditState.IsCancelled)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled="@orderCreditSaving"
+                                                @onclick="() => ReverseOrderCreditAsync(receipt)">لغو گردش</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        @if (orderCreditState is not null && orderCreditState.AvailableCredit > 0 && !orderCreditState.IsCancelled)
+        {
+            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="SubmitOrderCreditAsync" disabled="@orderCreditSaving">
+                @(isPurchase ? "ثبت پرداخت نسیه" : "ثبت دریافت نسیه")
+            </button>
+        }
+        <button type="button" class="btn btn-light" @onclick="CloseOrderCredit" disabled="@orderCreditSaving">بستن</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="cancellingOrder is not null" Title="@(cancellingOrder is null ? "" : $"ابطال فاکتور {cancellingOrder.Number}")" OnClose="CloseCancelModal">
+    <ChildContent>
+        @if (cancellingOrder is not null)
+        {
+            <div class="alert alert-warning py-2 px-3 fs-8">
+                با ابطال این فاکتور، گردش برگشت اقلام باقی‌مانده، مالیات و تاخیر تادیه چک ثبت می‌شود، موجودی کالا به انبار بازمی‌گردد و چک‌های وصول‌نشده در وضعیت ابطال قرار می‌گیرند.
+            </div>
+            <div class="mb-3">
+                <label class="form-label fs-8">تاریخ ابطال</label>
+                <PersianDatePicker Value="cancelDate" ValueChanged="v => cancelDate = v" />
+            </div>
+            <div>
+                <label class="form-label fs-8">علت ابطال</label>
+                <input class="form-control form-control-sm" @bind="cancelReason" maxlength="200" placeholder="مثلاً انصراف مشتری پیش از وصول چک" />
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-danger" data-hotkey="f1" @onclick="SubmitCancelOrderAsync" disabled="@cancelSaving">
+            <i class="bi bi-x-octagon"></i> تأیید ابطال فاکتور
+        </button>
+        <button class="btn btn-light" @onclick="CloseCancelModal" disabled="@cancelSaving">انصراف</button>
+    </Footer>
+</Modal>
+
+
+@code {
+    /// <summary>مجوز مؤثر سمت سرور؛ claim ذخیره‌شده در مرورگر ممکن است قدیمی باشد.</summary>
+    private bool canSeeProfit;
+    private bool CanSeeProfit => canSeeProfit;
+
+    private static bool UseExactAmounts(Order order) => order.HasChequeCharge || order.Cheques.Count > 0 ||
+        order.Installments.Count > 0 || order.TotalAmount % 1m != 0m ||
+        order.Lines.Any(l => l.Price % 1m != 0m || l.Gross % 1m != 0m || l.DiscountAmount % 1m != 0m ||
+            l.AfterDiscount % 1m != 0m || l.VatAmount % 1m != 0m || l.Total % 1m != 0m);
+
+    private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
+    {
+        PaymentMethod.Cash => @<span class="badge badge-pay-cash fs-8" title="@o.TrsAccountName"><i class="bi bi-cash-coin"></i> نقدی @(!string.IsNullOrWhiteSpace(o.TrsAccountName) ? $"({o.TrsAccountName})" : "")</span>,
+        PaymentMethod.Credit => @<span class="badge badge-pay-credit fs-8"><i class="bi bi-hourglass-split"></i> نسیه</span>,
+        PaymentMethod.Cheque => @<span class="badge badge-pay-cheque fs-8"><i class="bi bi-bank"></i> چک</span>,
+        PaymentMethod.Mixed => @<span class="badge badge-pay-mixed fs-8"><i class="bi bi-pie-chart"></i> ترکیبی</span>,
+        _ => @<span class="badge badge-pay-inst fs-8"><i class="bi bi-journal-check"></i> اقساطی</span>
+    };
+
+    [Parameter] public string? Type { get; set; }
+
+    private bool isPurchase => Type == "purchase";
+    private TransactionType txnType => isPurchase ? TransactionType.Purchase : TransactionType.Sale;
+
+    private List<Order> items = new();
+    private int total, page = 1, pageCount = 1;
+    private const int PageSize = 15;
+    private bool loading = true, showForm;
+    private DateTime? from, to;
+    private int filterWarehouseId, filterPartyId;
+    private List<LookupItem> whLookup = new();
+    private List<LookupItem> partyLookup = new();
+    private Order? viewing;
+
+    protected override void OnInitialized()
+    {
+        Layout.SetTitle(isPurchase ? "اسناد خرید" : "اسناد فروش");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadLookups();
+        page = 1;
+        await Load();
+    }
+
+    private async Task LoadLookups()
+    {
+        try
+        {
+            if (whLookup.Count == 0)
+                whLookup = await OrderSvc.GetInvoiceWarehousesAsync(txnType);
+            partyLookup = (await OrderSvc.GetInvoicePartiesAsync(txnType))
+                .Select(p => PartyService.ToLookup(p)).ToList();
+        }
+        catch { }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var profitTask = isPurchase ? Task.FromResult(false) : OrderSvc.CanViewProfitAsync();
+            var ordersTask = OrderSvc.GetOrdersAsync(txnType, from, to, filterPartyId, filterWarehouseId, page, PageSize);
+            try { canSeeProfit = await profitTask; }
+            catch { canSeeProfit = false; }
+            var res = await ordersTask;
+            items = res.Items;
+            total = res.TotalCount;
+            pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private Order? editingOrder;
+    private InvoiceCopyTemplate? copyTemplate;
+    private int copyingId;
+    /// <summary>شناسهٔ سندی که همین حالا در حال آماده‌سازی چاپ است (برای نمایش اسپینر و جلوگیری از کلیک دوباره).</summary>
+    private int printingId;
+    /// <summary>تنظیمات چاپ/سربرگ شرکت — یک‌بار خوانده و نگه داشته می‌شود.</summary>
+    private CompanyProfileDto? companyProfile;
+    private string printPaperSize = "default";
+
+    /// <summary>
+    /// چاپ سند فروش/خرید در قالب مستقل (A4 یا A5 بر اساس «تعریف شرکت»)؛
+    /// سند کامل همراه اقلام از سرور خوانده می‌شود و همان سازندهٔ چاپِ فاکتور فروش
+    /// (SaleInvoicePrint) که در تبدیل تعمیرات به فاکتور هم استفاده می‌شود، خروجی را می‌سازد.
+    /// چاپ در iframe مستقل انجام می‌شود تا استایل‌های @media printِ خود برنامه روی فاکتور اثر نگذارد.
+    /// </summary>
+    private async Task Print(Order o)
+    {
+        if (printingId != 0) return;   // از کلیک‌های پشت‌سرهم جلوگیری می‌کند
+        printingId = o.Id;
+        try
+        {
+            companyProfile ??= await ProfileSvc.GetAsync();
+            var order = await OrderSvc.GetAsync(o.Id) ?? o;   // سند کامل (اقلام/چک‌ها)
+            if (order.Lines.Count == 0)
+                Toast.Error("این سند قلمی ندارد؛ چاپ انجام نشد.");
+            else
+            {
+                var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
+                var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
+                if (!opened)
+                    Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printingId = 0; }
+    }
+
+    private void OpenNew()
+    {
+        editingOrder = null;
+        copyTemplate = null;
+        showForm = true;
+    }
+
+    private async Task OpenEdit(Order o)
+    {
+        try
+        {
+            // دریافت سند کامل (همراه اقلام) از سرور
+            editingOrder = await OrderSvc.GetAsync(o.Id) ?? o;
+            copyTemplate = null;
+            showForm = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OpenCopy(Order source)
+    {
+        if (copyingId != 0) return;
+        copyingId = source.Id;
+        try
+        {
+            // Do not fall back to a possibly incomplete list row. The template is a
+            // whitelist: it cannot carry old payment details, transaction IDs or history.
+            var full = await OrderSvc.GetAsync(source.Id);
+            if (full is null || full.Type != txnType)
+            {
+                Toast.ShowAtTopRight("فاکتور برای کپی یافت نشد.", "error");
+                return;
+            }
+            copyTemplate = InvoiceCopyTemplate.From(full);
+            editingOrder = null;
+            viewing = null;
+            showForm = true;
+        }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { copyingId = 0; }
+    }
+
+    private void CloseForm()
+    {
+        showForm = false;
+        editingOrder = null;
+        copyTemplate = null;
+    }
+
+    private async Task OnFormSaved()
+    {
+        showForm = false;
+        editingOrder = null;
+        copyTemplate = null;
+        await Load();
+    }
+
+    private async Task ApplyFilter()
+    {
+        page = 1;
+        await Load();
+    }
+
+    private async Task GoToPage(int p)
+    {
+        page = p;
+        await Load();
+    }
+
+    private void View(Order o) => viewing = o;
+
+    private Order? returningOrder;
+    private DateTime returnDate = DateTime.Today;
+    private Dictionary<int, decimal> returnQuantities = new();
+    private SaleChequeReturnPreviewDto? returnPreview;
+    private SaleChequeReturnDecision returnDecision;
+    private Guid returnOperationId;
+    private bool returnSaving;
+    private bool HasSelectedReturnLines => returnQuantities.Values.Any(q => q > 0);
+
+    private async Task OpenReturn(Order summary)
+    {
+        try
+        {
+            var fresh = await OrderSvc.GetAsync(summary.Id);
+            if (fresh is null) { Toast.Error("سند یافت نشد."); return; }
+            viewing = null;
+            returningOrder = fresh;
+            returnDate = DateTime.Today < fresh.Date.Date ? fresh.Date.Date : DateTime.Today;
+            returnQuantities = fresh.Lines.ToDictionary(l => l.Id, _ => 0m);
+            returnPreview = null;
+            returnDecision = SaleChequeReturnDecision.None;
+            returnOperationId = Guid.NewGuid();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseReturn()
+    {
+        if (returnSaving) return;
+        returningOrder = null;
+        returnPreview = null;
+    }
+
+    private void OnReturnDateChanged(DateTime value)
+    {
+        returnDate = value;
+        returnPreview = null;
+        returnDecision = SaleChequeReturnDecision.None;
+        returnOperationId = Guid.NewGuid();
+    }
+
+    private void OnReturnQuantityChanged(int lineId, decimal maxQty, string? raw)
+    {
+        if (!decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var q) &&
+            !decimal.TryParse(raw, out q))
+            q = 0m;
+        q = Math.Clamp(decimal.Round(q, 2), 0m, maxQty);
+        returnQuantities[lineId] = q;
+        returnPreview = null;
+        returnDecision = SaleChequeReturnDecision.None;
+        returnOperationId = Guid.NewGuid();
+    }
+
+    private List<SaleChequeReturnLineDto> SelectedReturnLines()
+        => returnQuantities.Where(kv => kv.Value > 0)
+            .Select(kv => new SaleChequeReturnLineDto { OriginalLineId = kv.Key, Quantity = kv.Value })
+            .ToList();
+
+    private async Task PreviewReturnAsync()
+    {
+        if (returningOrder is null) return;
+        var lines = SelectedReturnLines();
+        if (lines.Count == 0) { Toast.Error("مقدار برگشتی حداقل یک سطر را وارد کنید."); return; }
+        try
+        {
+            returnPreview = await OrderSvc.PreviewChequeReturnAsync(returningOrder.Id, new SaleChequeReturnPreviewRequest
+            {
+                Date = returnDate,
+                Lines = lines
+            });
+            if (returnPreview.UncollectedChequeExcess == 0)
+                returnDecision = SaleChequeReturnDecision.None;
+        }
+        catch (Exception ex)
+        {
+            returnPreview = null;
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task SubmitReturnAsync()
+    {
+        if (returnSaving || returningOrder is null || returnPreview is null) return;
+        returnSaving = true;
+        try
+        {
+            var res = await OrderSvc.ReturnChequeOrderAsync(returningOrder.Id, new SaleChequeReturnCommand
+            {
+                OperationId = returnOperationId,
+                Date = returnDate,
+                Lines = SelectedReturnLines(),
+                Decision = returnPreview.UncollectedChequeExcess > 0 ? returnDecision : SaleChequeReturnDecision.None,
+                ConfirmedTotalCredit = returnPreview.TotalCredit
+            });
+            Toast.Success($"برگشت با شماره «{res.ReturnNumber}» ثبت شد.");
+            returningOrder = null;
+            returnPreview = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { returnSaving = false; }
+    }
+
+    private static string DecisionLabel(SaleChequeReturnDecision d) => d switch
+    {
+        SaleChequeReturnDecision.ReplaceCheque => "تعویض چک وصول‌نشده",
+        SaleChequeReturnDecision.KeepChequeForGoods => "نگهداری چک در قبال کالای دیگر",
+        _ => "—"
+    };
+
+    private static string FormatSignedBalance(decimal v)
+        => v < 0 ? $"{Math.Abs(v).MoneyExact()} ریال بستانکاری مشتری" : v > 0 ? $"{v.MoneyExact()} ریال بدهی مشتری" : "صفر (تسویه)";
+
+    private Order? creditOrder;
+    private SaleChequeCreditSettlementKind creditMode = SaleChequeCreditSettlementKind.RefundPayment;
+    private DateTime creditDate = DateTime.Today;
+    private string creditAmountText = "";
+    private int creditTrsAccountId;
+    private int creditTargetSaleId;
+    private string? creditNote;
+    private Guid creditOperationId;
+    private bool creditSaving;
+    private List<TrsAccount> creditAccounts = new();
+    private List<Order> creditTargetOrders = new();
+
+    private async Task OpenCreditSettlement(Order summary)
+    {
+        try
+        {
+            var fresh = await OrderSvc.GetAsync(summary.Id);
+            if (fresh is null || fresh.AvailableCustomerCredit <= 0)
+            {
+                Toast.Info("بستانکاری فعالی روی این فاکتور وجود ندارد.");
+                return;
+            }
+            creditAccounts = await OrderSvc.GetActiveTreasuryAccountsAsync();
+            var partySales = await OrderSvc.GetOrdersAsync(TransactionType.Sale, partyId: fresh.PartyId, page: 1, pageSize: 200);
+            creditTargetOrders = partySales.Items
+                .Where(x => x.Id != fresh.Id && !x.IsCancelled && x.TotalAmount - x.SettledAmount > 0)
+                .ToList();
+            creditOrder = fresh;
+            creditMode = SaleChequeCreditSettlementKind.RefundPayment;
+            creditDate = DateTime.Today < fresh.Date.Date ? fresh.Date.Date : DateTime.Today;
+            creditAmountText = Fa.FormatTyping(fresh.AvailableCustomerCredit.ToString("0.##"));
+            creditTrsAccountId = 0;
+            creditTargetSaleId = 0;
+            creditNote = "";
+            creditOperationId = Guid.NewGuid();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseCreditModal()
+    {
+        if (!creditSaving) creditOrder = null;
+    }
+
+    private async Task SubmitCreditSettlementAsync()
+    {
+        if (creditOrder is null || creditSaving) return;
+        var amount = Fa.ParseDecimal(creditAmountText);
+        if (amount <= 0) { Toast.Error("مبلغ بستانکاری را وارد کنید."); return; }
+        creditSaving = true;
+        try
+        {
+            if (creditMode == SaleChequeCreditSettlementKind.RefundPayment)
+            {
+                if (creditTrsAccountId <= 0) { Toast.Error("حساب پرداخت‌کننده شرکت را انتخاب کنید."); return; }
+                await OrderSvc.RefundChequeCreditAsync(creditOrder.Id, new SaleChequeCreditRefundCommand
+                {
+                    OperationId = creditOperationId,
+                    TrsAccountId = creditTrsAccountId,
+                    Amount = amount,
+                    Date = creditDate,
+                    Note = creditNote
+                });
+                Toast.Success("پرداخت وجه بستانکاری مشتری ثبت شد.");
+            }
+            else
+            {
+                if (creditTargetSaleId <= 0) { Toast.Error("فاکتور مقصد مشتری را انتخاب کنید."); return; }
+                await OrderSvc.AllocateChequeCreditAsync(creditOrder.Id, new SaleChequeCreditAllocationCommand
+                {
+                    OperationId = creditOperationId,
+                    TargetSaleId = creditTargetSaleId,
+                    Amount = amount,
+                    Date = creditDate,
+                    Note = creditNote
+                });
+                Toast.Success("بستانکاری مشتری به فاکتور انتخاب‌شده تخصیص یافت.");
+            }
+            creditOrder = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { creditSaving = false; }
+    }
+
+    private static string CreditMoney(decimal value)
+        => Fa.Digits(value.ToString("#,##0.##", System.Globalization.CultureInfo.InvariantCulture));
+
+    private Order? orderCreditOrder;
+    private ShopOrderCreditState? orderCreditState;
+    private List<TrsAccount> orderCreditAccounts = new();
+    private string orderCreditAmountText = "";
+    private int orderCreditAccountId;
+    private DateTime orderCreditDate = DateTime.Today;
+    private DateTime orderCreditReversalDate = DateTime.Today;
+    private Guid orderCreditOperationId;
+    private readonly Dictionary<int, Guid> orderCreditReversalOperations = new();
+    private bool orderCreditSaving, orderCreditOpening;
+
+    private async Task OpenOrderCredit(Order order)
+    {
+        if (orderCreditOpening || orderCreditSaving) return;
+        orderCreditOpening = true;
+        try
+        {
+            var state = await OrderSvc.GetCreditStateAsync(order.Id);
+            var accounts = state.AvailableCredit > 0 ? await OrderSvc.GetActiveTreasuryAccountsAsync() : new List<TrsAccount>();
+            orderCreditOrder = order;
+            orderCreditState = state;
+            orderCreditAccounts = accounts;
+            orderCreditAmountText = Fa.FormatTyping(state.AvailableCredit.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            orderCreditAccountId = 0;
+            orderCreditDate = DateTime.Today < order.Date.Date ? order.Date.Date : DateTime.Today;
+            orderCreditReversalDate = orderCreditDate;
+            orderCreditOperationId = Guid.NewGuid();
+            orderCreditReversalOperations.Clear();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditOpening = false; }
+    }
+
+    private void CloseOrderCredit()
+    {
+        if (!orderCreditSaving) { orderCreditOrder = null; orderCreditState = null; }
+    }
+
+    private async Task SubmitOrderCreditAsync()
+    {
+        if (orderCreditOrder is null || orderCreditState is null || orderCreditSaving) return;
+        var amount = Fa.ParseDecimal(orderCreditAmountText);
+        if (amount <= 0 || amount > orderCreditState.AvailableCredit)
+        { Toast.Error("مبلغ باید بیشتر از صفر و حداکثر برابر مانده نسیه آزاد باشد."); return; }
+        if (orderCreditAccountId <= 0) { Toast.Error("حساب صندوق یا بانک را انتخاب کنید."); return; }
+        orderCreditSaving = true;
+        try
+        {
+            await OrderSvc.ReceiveCreditAsync(orderCreditOrder.Id, new ShopOrderCreditReceiptCommand
+            {
+                OperationId = orderCreditOperationId, Amount = amount, Date = orderCreditDate, TrsAccountId = orderCreditAccountId
+            });
+            Toast.Success(isPurchase ? "پرداخت نسیه خرید ثبت شد." : "دریافت نسیه فروش ثبت شد.");
+            orderCreditOrder = null; orderCreditState = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditSaving = false; }
+    }
+
+    private async Task ReverseOrderCreditAsync(ShopOrderCreditReceiptDto receipt)
+    {
+        if (orderCreditOrder is null || orderCreditSaving) return;
+        orderCreditSaving = true;
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", "گردش انتخاب‌شده با ثبت رویداد معکوس لغو شود؟");
+            if (!confirmed) return;
+            if (!orderCreditReversalOperations.TryGetValue(receipt.Id, out var operationId))
+            {
+                operationId = Guid.NewGuid();
+                orderCreditReversalOperations[receipt.Id] = operationId;
+            }
+            await OrderSvc.ReverseCreditReceiptAsync(orderCreditOrder.Id, receipt.Id, new ShopOrderCreditReversalCommand
+            { OperationId = operationId, Date = orderCreditReversalDate });
+            Toast.Success("لغو گردش نسیه با حفظ سابقه ثبت شد.");
+            orderCreditOrder = null; orderCreditState = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { orderCreditSaving = false; }
+    }
+
+    private Order? cancellingOrder;
+    private DateTime cancelDate = DateTime.Today;
+    private string cancelReason = "";
+    private Guid cancelOperationId;
+    private bool cancelSaving;
+
+    private void CloseCancelModal()
+    {
+        if (!cancelSaving) cancellingOrder = null;
+    }
+
+    private async Task SubmitCancelOrderAsync()
+    {
+        if (cancellingOrder is null || cancelSaving) return;
+        cancelSaving = true;
+        try
+        {
+            await OrderSvc.CancelChequeOrderAsync(cancellingOrder.Id, new SaleChequeCancelCommand
+            {
+                OperationId = cancelOperationId,
+                Date = cancelDate,
+                Reason = cancelReason
+            });
+            Toast.Success($"فاکتور «{cancellingOrder.Number}» ابطال شد.");
+            cancellingOrder = null;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { cancelSaving = false; }
+    }
+
+    private async Task Delete(Order o)
+    {
+        if (o.HasChequeCharge)
+        {
+            cancellingOrder = o;
+            cancelDate = DateTime.Today < o.Date.Date ? o.Date.Date : DateTime.Today;
+            cancelReason = "ابطال فاکتور فروش";
+            cancelOperationId = Guid.NewGuid();
+            return;
+        }
+        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف سند «{o.Number}» مطمئن هستید؟ موجودی انبار اصلاح خواهد شد.");
+        if (!ok) return;
+        try
+        {
+            await OrderSvc.DeleteAsync(o.Id);
+            Toast.Success("سند حذف شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

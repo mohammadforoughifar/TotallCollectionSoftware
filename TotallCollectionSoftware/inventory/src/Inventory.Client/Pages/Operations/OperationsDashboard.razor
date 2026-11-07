@@ -1,0 +1,771 @@
+@page "/operations/reports/dashboard"
+@inject IAuthState Auth
+@inject IDashboardService DashboardSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>داشبورد جامع فروشگاهی و تحلیل عملکرد</PageTitle>
+
+@if (!CanOpenDashboard)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2 mt-3 rounded-4 p-3">
+        <i class="bi bi-shield-exclamation fs-4 text-warning"></i>
+        <div>برای مشاهدهٔ داشبورد جامع، دسترسی مشاهدهٔ خرید/فروش یا تعمیرات لازم است.</div>
+    </div>
+}
+else
+{
+    <div class="fin-page-container fade-in" @ref="printRoot">
+        <!-- ================== سربرگ ================== -->
+        <div class="fin-header mb-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="fin-header-icon bg-indigo-gradient">
+                        <i class="bi bi-speedometer2"></i>
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h1 class="h4 fw-800 text-dark mb-0">داشبورد جامع تحلیلی عملیات و فروشگاه</h1>
+                            <span class="badge rounded-pill fin-badge-indigo">دیده‌بان کسب‌وکار</span>
+                        </div>
+                        <div class="text-secondary fs-8 mt-1">
+                            تحلیل زنده و یکپارچه خرید، فروش، خدمات تعمیراتی، سودآوری و عملکرد معرف‌ها
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <button class="btn btn-outline-secondary fin-btn-pill" disabled="@loading" @onclick="Print">
+                        <i class="bi bi-printer-fill me-1"></i> چاپ داشبورد
+                    </button>
+                    <button class="btn btn-outline-primary fin-btn-pill" disabled="@loading" @onclick="Load">
+                        <i class="bi bi-arrow-clockwise me-1 @(loading ? "spin" : "")"></i> به‌روزرسانی
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================== نوار فیلتر ================== -->
+        <div class="fin-filter-card mb-4 d-print-none">
+            <div class="row g-2.5 align-items-end">
+                <div class="col-6 col-lg-3">
+                    <label class="fin-label">از تاریخ</label>
+                    <DatePicker @bind-Value="from" AllowClear="true" />
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="fin-label">تا تاریخ</label>
+                    <DatePicker @bind-Value="to" AllowClear="true" />
+                </div>
+                <div class="col-12 col-lg-3">
+                    <button class="btn btn-primary w-100 fin-btn-submit" disabled="@loading" @onclick="Load">
+                        <i class="bi bi-arrow-repeat me-1"></i> بازخوانی شاخص‌ها
+                    </button>
+                </div>
+                <div class="col-12 col-lg-3 text-secondary fs-8 d-flex align-items-center gap-1.5 pb-1">
+                    <i class="bi bi-calendar-range text-indigo"></i>
+                    <span>بازه گزارش: <b class="text-dark">@RangeText</b></span>
+                </div>
+            </div>
+        </div>
+
+        @if (loading && data is null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+                <div class="text-secondary fw-500 fs-8">در حال تجمیع اطلاعات داشبورد مدیریتی...</div>
+            </div>
+        }
+        else if (!loading && data is null)
+        {
+            <div class="fin-table-card p-5 text-center">
+                <i class="bi bi-exclamation-circle fs-1 text-muted opacity-50"></i>
+                <div class="fw-bold text-secondary mt-2">داده‌های داشبورد بارگذاری نشد</div>
+            </div>
+        }
+        else if (data is not null)
+        {
+            @* ==================== ردیف کارت‌های آماری ==================== *@
+            @if (Auth.CanSee("Orders"))
+            {
+                <div class="row g-3 mb-4">
+                    <!-- کارت خرید -->
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="fin-kpi-card border-indigo">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <span class="fin-kpi-title text-indigo">کل خرید دوره</span>
+                                    <div class="fin-kpi-value text-indigo num mt-1">@data.PurchaseTotal.Money()</div>
+                                    <div class="fin-kpi-unit">ریال</div>
+                                </div>
+                                <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                                    <i class="bi bi-bag-plus-fill"></i>
+                                </div>
+                            </div>
+                            <div class="fin-kpi-footer mt-3 pt-2">
+                                <span class="badge bg-indigo-subtle text-indigo rounded-pill px-2.5 num">
+                                    @data.PurchaseCount.Num() فاکتور خرید
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- کارت فروش -->
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="fin-kpi-card border-emerald">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <span class="fin-kpi-title text-emerald">کل فروش دوره</span>
+                                    <div class="fin-kpi-value text-emerald num mt-1">@data.SaleTotal.Money()</div>
+                                    <div class="fin-kpi-unit">ریال</div>
+                                </div>
+                                <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                                    <i class="bi bi-cart-check-fill"></i>
+                                </div>
+                            </div>
+                            <div class="fin-kpi-footer mt-3 pt-2">
+                                <span class="badge bg-emerald-subtle text-emerald rounded-pill px-2.5 num">
+                                    @data.SaleCount.Num() فاکتور فروش
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (Auth.CanSee("Repairs"))
+                    {
+                        <!-- درآمد تعمیرات -->
+                        <div class="col-12 col-sm-6 col-xl-3">
+                            <div class="fin-kpi-card border-amber">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="fin-kpi-title text-amber">درآمد تعمیرات تحویل‌شده</span>
+                                        <div class="fin-kpi-value text-amber num mt-1">@data.RepairRevenue.Money()</div>
+                                        <div class="fin-kpi-unit">ریال</div>
+                                    </div>
+                                    <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
+                                        <i class="bi bi-tools"></i>
+                                    </div>
+                                </div>
+                                <div class="fin-kpi-footer mt-3 pt-2">
+                                    <span class="badge bg-amber-subtle text-amber rounded-pill px-2.5 num">
+                                        @data.DeliveredRepairCount.Num() پذیرش تحویل‌شده
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- سود تعمیرات -->
+                        <div class="col-12 col-sm-6 col-xl-3">
+                            <div class="fin-kpi-card @(data.RepairProfit >= 0 ? "border-emerald" : "border-rose")">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="fin-kpi-title @(data.RepairProfit >= 0 ? "text-emerald" : "text-rose")">
+                                            سود خالص تعمیرات
+                                        </span>
+                                        <div class="fin-kpi-value num @(data.RepairProfit >= 0 ? "text-emerald" : "text-rose") mt-1">
+                                            @data.RepairProfit.Money()
+                                        </div>
+                                        <div class="fin-kpi-unit">ریال</div>
+                                    </div>
+                                    <div class="fin-kpi-icon-box @(data.RepairProfit >= 0 ? "bg-emerald-subtle text-emerald" : "bg-rose-subtle text-rose")">
+                                        <i class="bi @(data.RepairProfit >= 0 ? "bi-graph-up-arrow" : "bi-graph-down-arrow")"></i>
+                                    </div>
+                                </div>
+                                <div class="fin-kpi-footer mt-3 pt-2">
+                                    <span class="text-secondary fs-9 num">@data.ActiveRepairCount.Num() دستگاه در دست اقدام</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- ================== بخش تحلیل روند و معرف‌ها ================== -->
+            <div class="row g-4">
+                <div class="col-12 col-xl-8">
+                    <div class="fin-table-card h-100">
+                        <div class="fin-table-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                                    <i class="bi bi-bar-chart-steps"></i>
+                                </div>
+                                <div>
+                                    <h3 class="fin-table-title">روند عملکرد مقایسه‌ای در بازهٔ انتخابی</h3>
+                                    <p class="fin-table-sub">مقایسه هم‌زمان خرید، فروش و درآمد خدمات در مقیاس زمانی</p>
+                                </div>
+                            </div>
+                            <span class="badge bg-indigo-subtle text-indigo rounded-pill px-3">
+                                تفکیک @TrendPeriod
+                            </span>
+                        </div>
+
+                        <div class="p-3.5">
+                            <div class="d-flex flex-wrap gap-4 mb-3 fs-8">
+                                @if (Auth.CanSee("Orders"))
+                                {
+                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-indigo fs-9"></i> خرید</span>
+                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-emerald fs-9"></i> فروش</span>
+                                }
+                                @if (Auth.CanSee("Repairs"))
+                                {
+                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-amber fs-9"></i> درآمد تعمیرات</span>
+                                }
+                            </div>
+
+                            @if (data.Trend.Count == 0)
+                            {
+                                <div class="fin-empty-state text-center py-5">
+                                    <i class="bi bi-bar-chart fs-1 text-muted opacity-50"></i>
+                                    <div class="text-secondary mt-1 fs-8">در این بازه داده‌ای برای نمودار وجود ندارد</div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex flex-column gap-3.5">
+                                    @foreach (var point in data.Trend)
+                                    {
+                                        <div class="p-2.5 rounded-3 bg-light-subtle border">
+                                            <div class="fw-700 text-dark fs-8 mb-2">@point.Label</div>
+                                            @if (Auth.CanSee("Orders"))
+                                            {
+                                                <div class="d-flex align-items-center gap-2 mb-1.5">
+                                                    <span class="text-secondary fs-9" style="width: 48px;">خرید</span>
+                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
+                                                        <div class="progress-bar bg-indigo-gradient" style="@BarStyle(point.Purchase)"></div>
+                                                    </div>
+                                                    <span class="num fs-9 fw-700 text-indigo" style="width: 100px; text-align: left;">@point.Purchase.Money()</span>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2 mb-1.5">
+                                                    <span class="text-secondary fs-9" style="width: 48px;">فروش</span>
+                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
+                                                        <div class="progress-bar bg-emerald-gradient" style="@BarStyle(point.Sale)"></div>
+                                                    </div>
+                                                    <span class="num fs-9 fw-700 text-emerald" style="width: 100px; text-align: left;">@point.Sale.Money()</span>
+                                                </div>
+                                            }
+                                            @if (Auth.CanSee("Repairs"))
+                                            {
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="text-secondary fs-9" style="width: 48px;">تعمیرات</span>
+                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
+                                                        <div class="progress-bar bg-warning" style="@BarStyle(point.RepairRevenue)"></div>
+                                                    </div>
+                                                    <span class="num fs-9 fw-700 text-amber" style="width: 100px; text-align: left;">@point.RepairRevenue.Money()</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @if (Auth.CanSee("Orders") && Auth.CanSee("Referrers"))
+                {
+                    <div class="col-12 col-xl-4">
+                        <div class="fin-table-card h-100">
+                            <div class="fin-table-header">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="fin-table-header-icon bg-amber-subtle text-amber">
+                                        <i class="bi bi-trophy-fill"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="fin-table-title">معرف‌های برتر دوره</h3>
+                                        <p class="fin-table-sub">بیشترین حجم فروش ارجاع‌شده</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-0">
+                                @if (data.BestReferrer is null)
+                                {
+                                    <div class="fin-empty-state text-center py-5">
+                                        <i class="bi bi-person-badge fs-1 text-muted opacity-50"></i>
+                                        <div class="text-secondary mt-2 fs-8">فروش دارای معرف در این بازه ثبت نشده است</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <!-- کارت مدال معرف برتر -->
+                                    <div class="p-4 text-center border-bottom bg-gradient-light">
+                                        <div class="fin-trophy-avatar mb-2">
+                                            <i class="bi bi-award-fill"></i>
+                                        </div>
+                                        <div class="fw-800 fs-6 text-dark">@data.BestReferrer.ReferrerName</div>
+                                        <div class="num fs-4 fw-900 text-emerald mt-1">
+                                            @data.BestReferrer.SalesAmount.Money() <small class="fs-8 fw-normal text-muted">ریال</small>
+                                        </div>
+                                        <div class="badge bg-emerald-subtle text-emerald rounded-pill px-3 mt-1.5 num">
+                                            @data.BestReferrer.SaleCount.Num() فاکتور موفق ارجاعی
+                                        </div>
+                                    </div>
+
+                                    @if (data.TopReferrers.Count > 1)
+                                    {
+                                        <div class="table-responsive">
+                                            <table class="table fin-table align-middle">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="text-center">رتبه</th>
+                                                        <th>معرف</th>
+                                                        <th class="text-start">فروش (ریال)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @{ var rank = 2; }
+                                                    @foreach (var referrer in data.TopReferrers.Skip(1))
+                                                    {
+                                                        <tr class="fin-table-row">
+                                                            <td class="text-center num text-secondary fs-8">@Fa.Digits(rank)</td>
+                                                            <td class="fw-700 text-dark">@referrer.ReferrerName</td>
+                                                            <td class="text-start num fw-800 text-dark fs-8">@referrer.SalesAmount.Money()</td>
+                                                        </tr>
+                                                        rank++;
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (Auth.CanSee("Repairs"))
+                {
+                    <div class="col-12 col-xl-4">
+                        <div class="fin-table-card h-100">
+                            <div class="fin-table-header">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                                        <i class="bi bi-clipboard2-check"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="fin-table-title">وضعیت سفارش‌های تعمیرات</h3>
+                                        <p class="fin-table-sub">پایش جریان کار واحد فنی</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-3 d-flex flex-column gap-2">
+                                <div class="d-flex justify-content-between align-items-center p-2.5 rounded-3 bg-light border">
+                                    <span class="fs-8 text-secondary">کل پذیرش‌ها:</span>
+                                    <b class="num text-dark fs-7">@data.RepairCount.Num()</b>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center p-2.5 rounded-3 bg-amber-subtle border border-amber-subtle">
+                                    <span class="fs-8 text-amber">در حال انجام:</span>
+                                    <b class="num text-amber fs-7">@data.ActiveRepairCount.Num()</b>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center p-2.5 rounded-3 bg-emerald-subtle border border-emerald-subtle">
+                                    <span class="fs-8 text-emerald">تحویل‌شده:</span>
+                                    <b class="num text-emerald fs-7">@data.DeliveredRepairCount.Num()</b>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center p-2.5 rounded-3 bg-light border">
+                                    <span class="fs-8 text-muted">انصرافی:</span>
+                                    <b class="num text-muted fs-8">@data.CancelledRepairCount.Num()</b>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+<style>
+.fin-trophy-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #d97706;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    box-shadow: 0 4px 14px rgba(217, 119, 6, 0.25);
+}
+.bg-gradient-light {
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+}
+</style>
+
+
+@code {
+    private ElementReference printRoot;
+
+    private bool CanOpenDashboard => Auth.CanSee("Orders") || Auth.CanSee("Repairs");
+    private OperationsDashboardDto? data;
+    private DateTime? from = DateTime.Today.AddDays(-30);
+    private DateTime? to = DateTime.Today;
+    private bool loading = true;
+
+    private string RangeText => $"{(from.HasValue ? from.Value.ToFa() : "از ابتدا")} تا {(to.HasValue ? to.Value.ToFa() : "امروز")}";
+    private string TrendPeriod => data?.Trend.Any(p => p.Label.Contains('/')) == true ? "روزانه" : "ماهانه";
+    private decimal ChartMax => data is null || data.Trend.Count == 0
+        ? 0m
+        : data.Trend.SelectMany(p => new[] { p.Purchase, p.Sale, p.RepairRevenue }).DefaultIfEmpty(0m).Max();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("داشبورد جامع فروشگاهی");
+        if (CanOpenDashboard) await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { data = await DashboardSvc.GetOperationsDashboardAsync(from, to); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private string BarStyle(decimal value)
+    {
+        var pct = ChartMax <= 0m ? 0d : Math.Clamp((double)(value / ChartMax) * 100d, 0d, 100d);
+        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    private async Task Print()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش داشبورد فروشگاهی"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
+}

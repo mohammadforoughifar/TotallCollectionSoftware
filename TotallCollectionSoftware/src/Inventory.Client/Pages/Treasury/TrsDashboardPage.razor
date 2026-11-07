@@ -1,0 +1,764 @@
+@page "/trs/dashboard"
+@inject ITrsReportService ReportSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+
+<PageTitle>داشبورد جامع خزانه‌داری و مدیریت نقدینگی</PageTitle>
+
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ لوکس ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-emerald-gradient">
+                    <i class="bi bi-bank"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">داشبورد خزانه‌داری، بانک‌ها و نقدینگی</h1>
+                        <span class="badge rounded-pill fin-badge-emerald">مدیریت نقدینگی</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        پایش موجودی لحظه‌ای صندوق‌ها، حساب‌های بانکی، خالص جریان وجوه نقد و تقویم چک‌ها
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <a class="btn btn-primary fin-btn-pill" href="/trs/vouchers/new/Receipt">
+                    <i class="bi bi-plus-lg me-1"></i> ثبت سند دریافت جدید
+                </a>
+                <a class="btn btn-outline-danger fin-btn-pill" href="/trs/vouchers/new/Payment">
+                    <i class="bi bi-dash-lg me-1"></i> ثبت سند پرداخت جدید
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== نوار فیلتر ================== -->
+    <div class="fin-filter-card mb-4 d-print-none">
+        <div class="row g-2.5 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="fin-label">گردش از تاریخ</label>
+                <DatePicker Value="from" ValueChanged="OnFrom" AllowClear="true" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="fin-label">تا تاریخ</label>
+                <DatePicker Value="to" ValueChanged="OnTo" AllowClear="true" />
+            </div>
+            <div class="col-12 col-md-3">
+                <button class="btn btn-primary w-100 fin-btn-submit" disabled="@loading" @onclick="Load">
+                    <i class="bi bi-arrow-clockwise me-1 @(loading ? "spin" : "")"></i> به‌روزرسانی نقدینگی
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (loading && data is null)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+            <div class="text-secondary fw-500 fs-8">در حال استعلام آخرین وضعیت بانک‌ها و صندوق‌ها...</div>
+        </div>
+    }
+    else if (!loading && data is null)
+    {
+        <div class="fin-table-card p-5 text-center">
+            <i class="bi bi-wallet2 fs-1 text-muted opacity-50"></i>
+            <div class="fw-bold text-secondary mt-2">اطلاعات خزانه‌داری در دسترس نیست</div>
+        </div>
+    }
+    else if (data is not null)
+    {
+        <!-- ================== ردیف اول: کارت‌های موجودی و نقدینگی کل ================== -->
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-emerald">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-emerald">کل موجودی نقد و بانک</span>
+                            <div class="fin-kpi-value text-emerald num mt-1">@data.TotalBalance.Money()</div>
+                            <div class="fin-kpi-unit">ریال</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                            <i class="bi bi-wallet2"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-emerald-subtle text-emerald rounded-pill px-2.5 num">
+                            @data.Accounts.Count.Num() حساب فعال
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-indigo">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-indigo">موجودی صندوق‌ها</span>
+                            <div class="fin-kpi-value text-indigo num mt-1">@data.TotalCashBalance.Money()</div>
+                            <div class="fin-kpi-unit">ریال نقد</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                            <i class="bi bi-cash-stack"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="text-secondary fs-9">نقدینگی در دسترس در صندوق‌ها</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-purple">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-purple">موجودی حساب‌های بانکی</span>
+                            <div class="fin-kpi-value text-purple num mt-1">@data.TotalBankBalance.Money()</div>
+                            <div class="fin-kpi-unit">ریال بانکی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-purple-subtle text-purple">
+                            <i class="bi bi-bank2"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="text-secondary fs-9">مانده جاری در کارت‌ها و بانک‌ها</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card @(NetFlow >= 0 ? "border-emerald" : "border-rose")">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title @(NetFlow >= 0 ? "text-emerald" : "text-rose")">خالص گردش وجوه دوره</span>
+                            <div class="fin-kpi-value num @(NetFlow >= 0 ? "text-emerald" : "text-rose") mt-1">
+                                @Math.Abs(NetFlow).Money()
+                            </div>
+                            <div class="fin-kpi-unit">دریافت‌ها − پرداخت‌ها</div>
+                        </div>
+                        <div class="fin-kpi-icon-box @(NetFlow >= 0 ? "bg-emerald-subtle text-emerald" : "bg-rose-subtle text-rose")">
+                            <i class="bi @(NetFlow >= 0 ? "bi-graph-up-arrow" : "bi-graph-down-arrow")"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge @(NetFlow >= 0 ? "bg-emerald-subtle text-emerald" : "bg-rose-subtle text-rose") rounded-pill px-2.5">
+                            @(NetFlow >= 0 ? "ورود خالص نقدینگی" : "خروج خالص نقدینگی")
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================== ردیف دوم: گردش دوره و چک‌های باز ================== -->
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-slate">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-slate">کل دریافت‌های دوره</span>
+                            <div class="fin-kpi-value text-emerald num mt-1">@data.PeriodIn.Money()</div>
+                            <div class="fin-kpi-unit">واریزی‌ها و وصولی‌ها</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                            <i class="bi bi-box-arrow-in-down"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-slate-subtle text-slate rounded-pill px-2.5 num">
+                            @data.ReceiptCount.Num() سند دریافت
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-slate">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-slate">کل پرداخت‌های دوره</span>
+                            <div class="fin-kpi-value text-rose num mt-1">@data.PeriodOut.Money()</div>
+                            <div class="fin-kpi-unit">مخارج و تسویه‌ها</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
+                            <i class="bi bi-box-arrow-up"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-slate-subtle text-slate rounded-pill px-2.5 num">
+                            @data.PaymentCount.Num() سند پرداخت
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-indigo">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-indigo">چک‌های دریافتی نزد صندوق</span>
+                            <div class="fin-kpi-value text-indigo num mt-1">@data.ReceivedChequeTotal.Money()</div>
+                            <div class="fin-kpi-unit">چک مشتریان در جریان وصول</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                            <i class="bi bi-credit-card-2-front"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-indigo-subtle text-indigo rounded-pill px-2.5 num">
+                            @data.ReceivedChequeCount.Num() برگ چک باز
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-amber">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-amber">چک‌های پرداختی سررسیدنشده</span>
+                            <div class="fin-kpi-value text-amber num mt-1">@data.IssuedChequeTotal.Money()</div>
+                            <div class="fin-kpi-unit">تعهدات پرداختی به طرف‌ها</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
+                            <i class="bi bi-credit-card"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-amber-subtle text-amber rounded-pill px-2.5 num">
+                            @data.IssuedChequeCount.Num() برگ چک صادره
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (data.OverdueChequeCount > 0)
+        {
+            <div class="alert alert-danger d-flex align-items-center justify-content-between gap-3 p-3 rounded-4 mb-4 border border-danger-subtle">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle-fill fs-3 text-danger"></i>
+                    <div>
+                        <div class="fw-800 text-danger fs-7.5">هشدار سررسید گذشته چک‌ها</div>
+                        <div class="fs-8 text-secondary">
+                            تعداد <b class="num text-danger">@data.OverdueChequeCount.Num()</b> برگ چک به ارزش
+                            <b class="num text-danger">@data.OverdueChequeTotal.Money()</b> ریال سررسید گذشته و در انتظار وصول یا برگشت می‌باشند.
+                        </div>
+                    </div>
+                </div>
+                <a class="btn btn-sm btn-danger fin-btn-pill px-3" href="/trs/cheques">
+                    بررسی در دفتر چک <i class="bi bi-arrow-left ms-1"></i>
+                </a>
+            </div>
+        }
+
+        <!-- ================== جداول حساب‌ها و چک‌های نزدیک سررسید ================== -->
+        <div class="row g-4">
+            <!-- جدول مانده حساب‌های بانکی و صندوق‌ها -->
+            <div class="col-12 col-xl-6">
+                <div class="fin-table-card h-100">
+                    <div class="fin-table-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="fin-table-header-icon bg-emerald-subtle text-emerald">
+                                <i class="bi bi-wallet2"></i>
+                            </div>
+                            <div>
+                                <h3 class="fin-table-title">مانده لحظه‌ای صندوق‌ها و بانک‌ها</h3>
+                                <p class="fin-table-sub">تفکیک ورودی، خروجی و موجودی هر حساب</p>
+                            </div>
+                        </div>
+                        <a class="btn btn-sm btn-outline-primary fin-btn-pill" href="/trs/accounts">
+                            <i class="bi bi-gear-fill me-1"></i> مدیریت حساب‌ها
+                        </a>
+                    </div>
+
+                    <div class="p-0">
+                        @if (data.Accounts.Count == 0)
+                        {
+                            <div class="fin-empty-state text-center py-5">
+                                <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
+                                <div class="text-secondary mt-2 fs-8">حساب فعالی در سیستم تعریف نشده است</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table fin-table align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>عنوان حساب</th>
+                                            <th class="text-start">وارده (ریال)</th>
+                                            <th class="text-start">صادره (ریال)</th>
+                                            <th class="text-start">موجودی فعلی</th>
+                                            <th class="text-center" style="width: 40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var a in data.Accounts)
+                                        {
+                                            <tr class="fin-table-row">
+                                                <td>
+                                                    <div class="fw-800 text-dark">@a.Name</div>
+                                                    <div class="fs-9 text-secondary">@a.KindTitle</div>
+                                                </td>
+                                                <td class="text-start num text-emerald fw-700 fs-8">@a.TotalIn.Money()</td>
+                                                <td class="text-start num text-rose fw-700 fs-8">@a.TotalOut.Money()</td>
+                                                <td class="text-start num fw-800 fs-7.5 @(a.Balance >= 0 ? "text-dark" : "text-rose")">
+                                                    @a.Balance.Money()
+                                                </td>
+                                                <td class="text-center">
+                                                    <a class="btn btn-sm btn-light rounded-circle p-1 text-secondary"
+                                                       href="@($"/trs/reports/flow?accountId={a.Id}")" title="مشاهده گردش">
+                                                        <i class="bi bi-list-columns fs-7"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="fin-table-total-row">
+                                            <td class="fw-800 fs-7.5">مجموع کل:</td>
+                                            <td class="text-start num text-emerald fw-800 fs-7.5">@data.Accounts.Sum(a => a.TotalIn).Money()</td>
+                                            <td class="text-start num text-rose fw-800 fs-7.5">@data.Accounts.Sum(a => a.TotalOut).Money()</td>
+                                            <td class="text-start num fw-900 fs-7 text-emerald">@data.TotalBalance.Money()</td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- جدول چک‌های نزدیک به سررسید -->
+            <div class="col-12 col-xl-6">
+                <div class="fin-table-card h-100">
+                    <div class="fin-table-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                                <i class="bi bi-calendar-event"></i>
+                            </div>
+                            <div>
+                                <h3 class="fin-table-title">چک‌های نزدیک به سررسید (۳۰ روز آینده)</h3>
+                                <p class="fin-table-sub">پیش‌بینی جریان نقدینگی و تعهدات سررسیددار</p>
+                            </div>
+                        </div>
+                        <a class="btn btn-sm btn-outline-primary fin-btn-pill" href="/trs/cheques">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> مشاهده دفتر چک
+                        </a>
+                    </div>
+
+                    <div class="p-0">
+                        @if (data.UpcomingCheques.Count == 0)
+                        {
+                            <div class="fin-empty-state text-center py-5">
+                                <i class="bi bi-check2-circle fs-1 text-emerald opacity-75"></i>
+                                <div class="fw-700 text-dark mt-2">هیچ چکی در ۳۰ روز آینده سررسید ندارد</div>
+                                <div class="text-secondary fs-8 mt-1">تعهدات پرداختی یا وصولی نزدیکی ثبت نشده است.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table fin-table align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>نوع</th>
+                                            <th>سریال / بانک</th>
+                                            <th>طرف حساب</th>
+                                            <th class="text-start">مبلغ چک (ریال)</th>
+                                            <th class="text-center">سررسید</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var c in data.UpcomingCheques)
+                                        {
+                                            <tr class="fin-table-row @(c.IsOverdue ? "fin-opening-row" : "")">
+                                                <td>
+                                                    <span class="badge @(c.Kind == ChequeKind.Received ? "bg-primary-subtle text-primary border border-primary-subtle" : "bg-danger-subtle text-danger border border-danger-subtle") rounded-pill px-2.5">
+                                                        @(c.Kind == ChequeKind.Received ? "دریافتی" : "پرداختی")
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div class="num fw-700 text-dark">@c.Number.FaDigits()</div>
+                                                </td>
+                                                <td class="text-dark fw-500 fs-8">@(c.PartyName ?? "—")</td>
+                                                <td class="text-start num fw-800 text-dark fs-7.5">@c.Amount.Money()</td>
+                                                <td class="text-center">
+                                                    <div class="num fw-700 text-dark fs-8">@c.DueDate.ToFaDate()</div>
+                                                    <div class="fs-9 @(c.IsOverdue ? "text-danger fw-700" : "text-secondary") num">
+                                                        @(c.IsOverdue ? $"{Math.Abs(c.DaysToDue)} روز گذشته" : $"{c.DaysToDue} روز مانده")
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+@code {
+    private TrsDashboard? data;
+    private DateTime? from, to;
+    private bool loading = true;
+
+    private decimal NetFlow => data is null ? 0 : data.PeriodIn - data.PeriodOut;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("داشبورد خزانه");
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { data = await ReportSvc.GetDashboardAsync(from, to); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task OnFrom(DateTime? d) { from = d; await Load(); }
+    private async Task OnTo(DateTime? d) { to = d; await Load(); }
+}

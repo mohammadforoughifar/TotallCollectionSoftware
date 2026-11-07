@@ -1,0 +1,17 @@
+[
+  {
+    "Name": "Local development (Client + API)",
+    "Projects": [
+      {
+        "Path": "inventory\\src\\Inventory.Api\\Inventory.Api.csproj",
+        "Action": "Start",
+        "DebugTarget": "http"
+      },
+      {
+        "Path": "inventory\\src\\Inventory.Client\\Inventory.Client.csproj",
+        "Action": "Start",
+        "DebugTarget": "http"
+      }
+    ]
+  }
+]

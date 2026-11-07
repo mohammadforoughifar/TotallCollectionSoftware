@@ -1,0 +1,194 @@
+@page "/shop/pricing"
+@inject IShopPricingClient PricingClient
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<PageTitle>قیمت‌گذاری و حداقل سود</PageTitle>
+
+<div class="page-head pricing-head">
+    <div><h1>قیمت‌گذاری فروشگاه</h1></div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+else
+{
+    <div class="pricing-layout">
+        <section class="card pricing-card">
+            <div class="card-header"><i class="bi bi-shield-check text-primary"></i><span class="card-title">حداقل سود فروش</span></div>
+            <div class="card-body">
+                <p class="pricing-intro">اختیاری؛ مبلغ مبنا آخرین خرید معتبر کالا تا تاریخ فاکتور است. خدمات مشمول نیستند.</p>
+                <div class="form-check form-switch pricing-switch">
+                    <input id="minimumProfit" class="form-check-input" type="checkbox" @bind="policy.MinimumProfitEnabled" disabled="@(!CanManage || busy)" />
+                    <label for="minimumProfit" class="form-check-label">جلوگیری از فروش کمتر از حداقل سود</label>
+                </div>
+                <p class="pricing-intro" role="status">وضعیت ذخیره‌شده برای شرکت فعال: <strong>@(savedMinimumEnabled ? "فعال" : "غیرفعال")</strong>
+                    @if (savedMinimumEnabled) { <span> · @savedMarkup.ToString("0.##")٪ روی بهای خرید</span> }
+                    <span> — تغییر کلید یا درصد تا ذخیره اعمال نمی‌شود.</span>
+                </p>
+                <div class="pricing-policy-row">
+                    <div><label class="form-label" for="markup">حداقل درصد روی بهای خرید</label>
+                        <div class="input-group"><input id="markup" class="form-control num" dir="ltr" inputmode="decimal" @bind="markupText" disabled="@(!CanManage || busy)" /><span class="input-group-text">٪</span></div>
+                    </div>
+                    @if (CanManage) { <button class="btn btn-primary" @onclick="SavePolicy" disabled="@busy"><i class="bi bi-check2"></i> ذخیره تنظیمات</button> }
+                </div>
+                @if (policy.MinimumProfitEnabled)
+                {
+                    <p class="pricing-warning">بدون خرید معتبر، فروش کالا متوقف می‌شود.</p>
+                }
+                <details class="pricing-note">
+                    <summary>جزئیات محاسبه حداقل سود</summary>
+                    <p>مثال: خرید ۱۰۰ و سود ۲۰٪ یعنی حداقل ۱۲۰، پیش از کسر پورسانت. کنترل پس از تخفیف و کسر پورسانت است؛ ارزش افزوده و تاخیر تادیه چک در آن محاسبه نمی‌شوند. برای اسناد هم‌تاریخ، ترتیب ثبت سند ملاک است. در فروش با F7 می‌توانید مبنای واقعی تا تاریخ فاکتور را با مجوز مشاهده سود بررسی کنید.</p>
+                </details>
+                @if (policy.UpdatedAt.HasValue) { <div class="pricing-muted">آخرین تغییر: @policy.UpdatedAt.Value.ToFa() · @(policy.UpdatedBy ?? "—")</div> }
+            </div>
+        </section>
+
+        <section class="card pricing-card">
+            <div class="card-header"><i class="bi bi-sliders2 text-primary"></i><span class="card-title">تغییر گروهی قیمت فروش</span></div>
+            <div class="card-body">
+                <p class="pricing-intro">قیمت جدید از تاریخ انتخابی اعمال می‌شود؛ مبلغ فاکتورهای ثبت‌شده تغییر نمی‌کند.</p>
+                <div class="pricing-fields">
+                    <div><label class="form-label" for="priceGroup">گروه کالا</label><select id="priceGroup" class="form-select" @bind="categoryId" disabled="@(!CanManage || busy)"><option value="0">انتخاب گروه…</option>@foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }</select></div>
+                    <div><label class="form-label" for="priceDirection">نوع تغییر</label><select id="priceDirection" class="form-select" @bind="increase" disabled="@(!CanManage || busy)"><option value="true">افزایش</option><option value="false">کاهش</option></select></div>
+                    <div><label class="form-label" for="changePercent">درصد</label><div class="input-group"><input id="changePercent" class="form-control num" dir="ltr" inputmode="decimal" @bind="percentText" disabled="@(!CanManage || busy)" /><span class="input-group-text">٪</span></div></div>
+                    <div><label class="form-label">تاریخ اجرا</label><DatePicker @bind-Value="effectiveDate" OpenOnFocus="true" /></div>
+                </div>
+                <div class="pricing-actions">
+                    <div class="form-check"><input id="includeChildren" class="form-check-input" type="checkbox" @bind="includeDescendants" disabled="@(!CanManage || busy)" /><label for="includeChildren" class="form-check-label">زیرگروه‌ها نیز اعمال شوند</label></div>
+                    @if (CanManage) { <button class="btn btn-outline-primary" @onclick="LoadPreview" disabled="@busy"><i class="bi bi-eye"></i> پیش‌نمایش تغییرات</button> }
+                </div>
+                @if (preview is not null)
+                {
+                    <div class="pricing-preview-header"><strong>پیش‌نمایش</strong><span>@preview.Rows.Count.Num() کالا · @(preview.Rows.Count(r => r.NewPrice.HasValue).Num()) قابل تغییر</span></div>
+                    <div class="table-responsive pricing-table"><table class="table table-sm align-middle mb-0"><thead><tr><th>کالا</th><th>قیمت قبلی</th><th>قیمت جدید</th><th>وضعیت</th></tr></thead><tbody>
+                        @foreach (var row in preview.Rows)
+                        {
+                            <tr><td><strong>@row.Name</strong><small class="d-block text-muted">@row.Code @(!row.IsActive ? "· غیرفعال" : "")</small></td>
+                                <td class="num">@(row.PreviousPrice.HasValue ? row.PreviousPrice.Value.MoneyExact() : "—")</td><td class="num">@(row.NewPrice.HasValue ? row.NewPrice.Value.MoneyExact() : "—")</td><td>@(row.Reason ?? "آماده")</td></tr>
+                        }
+                    </tbody></table></div>
+                    <div class="pricing-apply"><span>مبالغ به ریال هستند. کالاهای بدون قیمت معتبر در تاریخ انتخابی تغییر نمی‌کنند.</span>
+                        @if (CanManage) { <button class="btn btn-primary" @onclick="Apply" disabled="@(busy || !preview.Rows.Any(r => r.NewPrice.HasValue))"><i class="bi bi-check2-all"></i> تأیید و ثبت تغییرات</button> }</div>
+                }
+            </div>
+        </section>
+    </div>
+    <section class="card pricing-card mt-3">
+        <div class="card-header"><i class="bi bi-clock-history text-primary"></i><span class="card-title">سابقه قیمت فروش</span><span class="pricing-history-caption">۲۰۰ تغییر آخر این شرکت</span></div>
+        <div class="card-body p-0">
+            @if (history.Count == 0) { <p class="pricing-empty">هنوز سابقه‌ای ثبت نشده است.</p> }
+            else
+            {
+                <div class="table-responsive pricing-table"><table class="table align-middle mb-0"><thead><tr><th>کالا</th><th>تاریخ اجرا</th><th>قیمت قبلی</th><th>قیمت جدید</th><th>منبع</th><th>ثبت‌کننده</th><th>زمان ثبت</th></tr></thead><tbody>
+                    @foreach (var item in history)
+                    {
+                        <tr><td><strong>@item.ProductName</strong><small class="d-block text-muted">@item.ProductCode</small></td><td class="num">@item.EffectiveDate.ToFa()</td>
+                            <td class="num">@(item.PreviousPrice.HasValue ? item.PreviousPrice.Value.MoneyExact() : "—")</td><td class="num">@item.Price.MoneyExact()</td>
+                            <td>@SourceTitle(item)</td><td>@(item.CreatedBy ?? "—")</td><td class="num">@item.CreatedAt.ToFa()</td></tr>
+                    }
+                </tbody></table></div>
+            }
+            <div class="pricing-history-foot">قیمت‌های پیش از نخستین سابقه مشخص نیستند و از فاکتورهای گذشته حدس زده نمی‌شوند.</div>
+        </div>
+    </section>
+}
+
+@code {
+    private bool loading = true, busy;
+    private string? error;
+    private ShopPricingPolicyDto policy = new();
+    private bool savedMinimumEnabled;
+    private decimal savedMarkup;
+    private string markupText = "0", percentText = "";
+    private List<LookupItem> categories = new();
+    private List<ShopPriceHistoryItem> history = new();
+    private int categoryId;
+    private bool increase = true, includeDescendants;
+    private DateTime? effectiveDate = DateTime.Today;
+    private ShopPriceAdjustmentPreview? preview;
+    private ShopPriceAdjustmentRequest? previewRequest;
+    private Guid operationId;
+    private bool CanManage => Auth.IsAdmin || ShopAccess.CanManage(Auth, "Pricing");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var policyTask = PricingClient.GetPolicyAsync();
+            var categoriesTask = PricingClient.GetCategoriesAsync();
+            var historyTask = PricingClient.GetHistoryAsync();
+            policy = await policyTask;
+            savedMinimumEnabled = policy.MinimumProfitEnabled;
+            savedMarkup = policy.MinimumMarkupPercent;
+            markupText = policy.MinimumMarkupPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            categories = await categoriesTask;
+            history = await historyTask;
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+    private static bool TryPercent(string value, out decimal number) => decimal.TryParse(
+        Fa.ToEn(value ?? "").Trim().Replace(",", "").Replace('\u066B', '.'),
+        System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out number)
+        && number >= 0 && number == decimal.Round(number, 2);
+    private async Task SavePolicy()
+    {
+        if (!TryPercent(markupText, out var markup) || markup > 10000) { Toast.ShowAtTopRight("درصد سود معتبر نیست.", "error"); return; }
+        busy = true;
+        try
+        {
+            policy.MinimumMarkupPercent = markup;
+            policy = await PricingClient.SavePolicyAsync(policy);
+            savedMinimumEnabled = policy.MinimumProfitEnabled;
+            savedMarkup = policy.MinimumMarkupPercent;
+            Toast.ShowAtTopRight(savedMinimumEnabled ? "حداقل سود فعال و ذخیره شد." : "تنظیم ذخیره شد؛ کنترل حداقل سود غیرفعال است.", "success");
+        }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { busy = false; }
+    }
+    private ShopPriceAdjustmentRequest? BuildRequest()
+    {
+        if (categoryId <= 0 || !effectiveDate.HasValue || !TryPercent(percentText, out var percent) || percent <= 0 || percent > (increase ? 10000 : 100))
+            return null;
+        return new() { CategoryId = categoryId, IncludeDescendants = includeDescendants, Increase = increase, Percent = percent, EffectiveDate = effectiveDate.Value.Date };
+    }
+    private async Task LoadPreview()
+    {
+        var request = BuildRequest();
+        if (request is null) { Toast.ShowAtTopRight("گروه، تاریخ و درصد معتبر را وارد کنید.", "error"); return; }
+        busy = true; preview = null;
+        try { preview = await PricingClient.PreviewAsync(request); previewRequest = request; operationId = Guid.NewGuid(); }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { busy = false; }
+    }
+    private async Task Apply()
+    {
+        var current = BuildRequest();
+        if (preview is null || previewRequest is null || current is null || current.CategoryId != previewRequest.CategoryId ||
+            current.IncludeDescendants != previewRequest.IncludeDescendants || current.Increase != previewRequest.Increase ||
+            current.Percent != previewRequest.Percent || current.EffectiveDate != previewRequest.EffectiveDate)
+        { Toast.ShowAtTopRight("مشخصات تغییر کرده‌اند؛ دوباره پیش‌نمایش بگیرید.", "error"); return; }
+        busy = true;
+        try
+        {
+            await PricingClient.ApplyAsync(new ShopPriceAdjustmentCommand { CategoryId = current.CategoryId, IncludeDescendants = current.IncludeDescendants,
+                Increase = current.Increase, Percent = current.Percent, EffectiveDate = current.EffectiveDate, PreviewHash = preview.PreviewHash, OperationId = operationId });
+            Toast.ShowAtTopRight("تغییر قیمت ثبت شد.", "success");
+            preview = null; history = await PricingClient.GetHistoryAsync();
+        }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { busy = false; }
+    }
+    private static string SourceTitle(ShopPriceHistoryItem item) => item.Source switch
+    {
+        "baseline" => "مبنای اولیه", "catalog" => "ویرایش کالا", "purchase" => item.PurchaseTransactionId.HasValue ? $"فاکتور خرید #{item.PurchaseTransactionId}" : "خرید",
+        "group" => "تغییر گروهی", _ => item.Source
+    };
+}

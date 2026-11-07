@@ -1,0 +1,65 @@
+/* Print preview used by the shop; the existing print helpers for other modules stay unchanged. */
+.shop-print-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    flex-direction: column;
+    background: #eef2f7;
+    color: #1e293b;
+    direction: rtl;
+    font-family: Vazirmatn, Tahoma, sans-serif;
+    outline: none;
+}
+.shop-print-preview *, .shop-print-preview *::before, .shop-print-preview *::after { box-sizing: border-box; }
+.shop-print-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .7rem 1.2rem;
+    padding: .7rem 1rem;
+    background: #fff;
+    border-bottom: 1px solid #dce3ed;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+.shop-print-heading { display: flex; align-items: center; gap: .65rem; min-width: 0; margin-inline-end: auto; }
+.shop-print-heading-icon {
+    display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px;
+    color: #4338ca; background: #eef2ff; border: 1px solid #dfe4ff; border-radius: 10px;
+}
+.shop-print-heading-text { display: grid; gap: 0; min-width: 0; line-height: 1.6; }
+.shop-print-heading-text strong { color: #172033; font-size: .95rem; }
+.shop-print-document-title { color: #64748b; font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-print-actions, .shop-print-tools, .shop-print-pages { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.shop-print-preview button, .shop-print-preview .shop-print-download {
+    display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+    min-height: 36px; padding: .4rem .75rem; border: 1px solid #cbd5e1;
+    border-radius: 8px; background: #fff; color: #334155; font: inherit;
+    font-size: .8rem; font-weight: 600; line-height: 1.4; text-decoration: none; cursor: pointer;
+}
+.shop-print-preview button:hover:not(:disabled), .shop-print-preview .shop-print-download:hover { background: #f8fafc; border-color: #94a3b8; }
+.shop-print-preview button:focus-visible, .shop-print-preview .shop-print-download:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 2px; }
+.shop-print-preview button:disabled { opacity: .45; cursor: not-allowed; }
+.shop-print-preview .shop-print-primary { background: #4f46e5; border-color: #4f46e5; color: white; }
+.shop-print-preview .shop-print-primary:hover:not(:disabled) { background: #4338ca; border-color: #4338ca; }
+.shop-print-preview [hidden] { display: none !important; }
+.shop-print-tool-button { min-width: 36px; padding-inline: .5rem !important; }
+.shop-print-zoom-label, .shop-print-page-label { min-width: 4rem; text-align: center; direction: ltr; color: #475569; font-size: .76rem; font-variant-numeric: tabular-nums; }
+.shop-print-status { flex: 0 0 auto; padding: .42rem 1rem; color: #475569; font-size: .82rem; line-height: 1.6; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+.shop-print-status.is-error { color: #991b1b; background: #fef2f2; border-bottom-color: #fecaca; }
+.shop-print-stage { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px; display: flex; justify-content: safe center; align-items: flex-start; }
+.shop-print-frame-wrap { position: relative; flex: 0 0 auto; min-width: 0; background: #fff; box-shadow: 0 3px 18px rgba(15, 23, 42, .15); }
+.shop-print-frame { display: block; position: absolute; top: 0; left: 0; border: 0; background: #fff; transform-origin: top left; }
+.shop-print-pdf-host { flex: 0 1 1000px; width: 100%; max-width: 1000px; height: 100%; overflow: auto; direction: ltr; text-align: center; }
+.shop-print-pdf-host .fpv-pdf-canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 3px 18px rgba(15, 23, 42, .15); }
+.shop-print-pdf-frame { position: fixed; left: -10000px; top: 0; width: 100vw; height: 100vh; border: 0; pointer-events: none; }
+@media (max-width: 640px) {
+    .shop-print-head { gap: .5rem; padding: .6rem .7rem; }
+    .shop-print-heading { flex: 1 1 100%; }
+    .shop-print-actions { margin-inline-start: auto; }
+    .shop-print-preview button, .shop-print-preview .shop-print-download { min-height: 34px; padding: .35rem .55rem; }
+    .shop-print-stage { padding: 10px; }
+    .shop-print-status { padding-inline: .7rem; }
+}
+@media print { .shop-print-preview { display: none !important; } }

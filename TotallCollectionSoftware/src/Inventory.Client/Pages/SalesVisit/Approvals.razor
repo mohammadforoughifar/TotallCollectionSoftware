@@ -1,0 +1,718 @@
+@namespace Inventory.Client.Pages
+@page "/sales/approvals"
+@inject ISalesVisitApi Api
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject NavigationManager Nav
+
+<PageTitle>کارتابل تأیید سفارش‌های ویزیتور</PageTitle>
+
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-indigo-gradient">
+                    <i class="bi bi-shield-check"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">کارتابل تأیید سفارش‌های سرپرست فروش</h1>
+                        <span class="badge rounded-pill fin-badge-indigo">کنترل اعتبار و تخفیف</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        بررسی هشدارهای کسری موجودی، رعایت سقف تخفیف مجاز و تعیین تاریخ نهایی تحویل
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button class="btn btn-outline-primary fin-btn-pill" data-all-requests-link @onclick="@(() => Nav.NavigateTo("/sales/requests"))">
+                    <i class="bi bi-collection me-1"></i> همهٔ درخواست‌ها (با رد‌شده‌ها)
+                </button>
+                <button class="btn btn-outline-secondary fin-btn-pill" @onclick="LoadAsync">
+                    <i class="bi bi-arrow-clockwise me-1"></i> بازخوانی صف
+                </button>
+            </div>
+        </div>
+    </div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (items.Count == 0)
+{
+    <div class="empty-state">
+        <i class="bi bi-check2-circle"></i>
+        <h5>صف تأیید خالی است</h5>
+        <div class="text-muted fs-8">سفارش ارسال‌شدهٔ جدیدی وجود ندارد.</div>
+    </div>
+}
+else
+{
+    <div class="row g-3">
+        @foreach (var item in items)
+        {
+            var o = item.Order;
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-receipt"></i>
+                        <span class="card-title">@o.Number — @o.PartyName</span>
+                        <span class="ms-2 fs-8 text-muted">ویزیتور: @o.ReferrerName — @o.Date.ToFa()</span>
+                        <div class="ms-auto d-flex gap-1">
+                            @if (o.DiscountOverLimit)
+                            {
+                                <span class="vis-badge vis-danger">تخفیف بالای سقف</span>
+                            }
+                            @if (item.StockWarnings.Count > 0)
+                            {
+                                <span class="vis-badge vis-warning">کسری موجودی</span>
+                            }
+                            @if (o.ReturnCount > 0)
+                            {
+                                <span class="vis-badge vis-orange">@Fa.Digits(o.ReturnCount) بار برگشتی</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-12 col-lg-7">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>کالا</th>
+                                                <th class="text-start">مقدار</th>
+                                                <th class="text-start">قیمت</th>
+                                                <th class="text-start">تخفیف</th>
+                                                <th class="text-start">جمع</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var l in o.Lines)
+                                            {
+                                                var warn = item.StockWarnings.FirstOrDefault(w => w.ProductId == l.ProductId);
+                                                <tr class="@(warn is null ? "" : "table-warning")">
+                                                    <td class="fs-8">
+                                                        @l.ProductName
+                                                        @if (warn is not null)
+                                                        {
+                                                            <div class="fs-9 text-danger">
+                                                                موجودی @Fa.Number(warn.Available) — نیاز @Fa.Number(warn.Required)
+                                                            </div>
+                                                        }
+                                                    </td>
+                                                    <td class="text-start fs-8">@Fa.Number(l.Quantity)</td>
+                                                    <td class="text-start fs-8">@Fa.Money(l.UnitPrice)</td>
+                                                    <td class="text-start fs-8">@l.DiscountText</td>
+                                                    <td class="text-start fs-8">@Fa.Money(l.LineTotal)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-5">
+                                <div class="vis-sum">
+                                    <div class="d-flex justify-content-between fs-8"><span>جمع کل</span><span>@Fa.Money(o.TotalGross)</span></div>
+                                    <div class="d-flex justify-content-between fs-8"><span>تخفیف</span><span class="text-danger">@Fa.Money(o.TotalDiscount)</span></div>
+                                    <div class="d-flex justify-content-between fw-700 mt-1"><span>قابل پرداخت</span><span>@Fa.Money(o.TotalNet)</span></div>
+                                    <div class="fs-9 text-muted mt-1">پرداخت: @VisUi.PaymentText(o.PaymentMethod) — انبار: @o.WarehouseName</div>
+                                    @if (!string.IsNullOrWhiteSpace(o.Note))
+                                    {
+                                        <div class="fs-9 text-muted mt-1">یادداشت ویزیتور: @o.Note</div>
+                                    }
+                                </div>
+
+                                @* ---------- تاریخ تحویل: درخواست ویزیتور + تصمیم مدیر ---------- *@
+                                <div class="vis-date-box mt-2">
+                                    <div class="d-flex justify-content-between align-items-center fs-8">
+                                        <span class="text-muted"><i class="bi bi-truck"></i> تاریخ درخواستی ویزیتور</span>
+                                        <b>@(o.DeliveryDate?.ToFa() ?? "—")</b>
+                                    </div>
+                                    <label class="form-label fs-8 mt-2 mb-1">تاریخ نهایی تحویل (قابل تغییر)</label>
+                                    <DatePicker Value="FinalDateOf(o.Id)"
+                                                ValueChanged="d => SetFinalDate(o.Id, d)"
+                                                AllowClear="false" />
+                                    @if (IsFinalDateChanged(o))
+                                    {
+                                        <div class="alert alert-warning py-1 px-2 mt-2 mb-0 fs-9">
+                                            <i class="bi bi-exclamation-triangle"></i>
+                                            تاریخ نهایی با تاریخ ویزیتور فرق دارد؛ هر دو تاریخ در سابقه ثبت می‌شود.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="form-text fs-9 mt-1">مطابق تاریخ ویزیتور — برای تغییر، تاریخ دیگری انتخاب کنید.</div>
+                                    }
+                                </div>
+
+                                <div class="d-grid gap-2 mt-2">
+                                    <button class="btn @(item.StockWarnings.Count > 0 ? "btn-warning" : "btn-primary")"
+                                            data-approve @onclick="@(() => ApproveAsync(o, item.StockWarnings))">
+                                        <i class="bi bi-patch-check"></i> تأیید و ارسال به مالی
+                                        @if (item.StockWarnings.Count > 0)
+                                        {
+                                            <span class="ms-1">(با کسری موجودی)</span>
+                                        }
+                                    </button>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-warning flex-fill" @onclick="@(() => Start(Decision.Return, o))">
+                                            <i class="bi bi-arrow-return-right"></i> برگشت
+                                        </button>
+                                        <button class="btn btn-outline-danger flex-fill" @onclick="@(() => Start(Decision.Reject, o))">
+                                            <i class="bi bi-x-octagon"></i> رد
+                                        </button>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-primary btn-sm flex-fill" title="ویرایش تخفیف و اقلام سفارش توسط مدیر بدون محدودیت سقف" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}/edit"))">
+                                            <i class="bi bi-pencil-square"></i> ویرایش / تغییر تخفیف
+                                        </button>
+                                        <button class="btn btn-link btn-sm text-decoration-none" @onclick="@(() => Nav.NavigateTo($"/sales/visits/{o.Id}"))">
+                                            جزئیات و گردش
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (stockTarget is not null)
+    {
+        <div class="vis-modal-back">
+            <div class="vis-modal" data-approve-confirm>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-exclamation-triangle-fill text-warning fs-4"></i>
+                    <b>کسری موجودی — @stockTarget.Number</b>
+                </div>
+                <div class="fs-8 mb-2">موجودی انبار «@stockTarget.WarehouseName» برای این اقلام کافی نیست:</div>
+                <table class="table table-sm">
+                    <thead><tr><th>کالا</th><th class="text-start">نیاز</th><th class="text-start">موجودی</th></tr></thead>
+                    <tbody>
+                        @foreach (var w in stockWarnings)
+                        {
+                            <tr>
+                                <td class="fs-8">@w.ProductName</td>
+                                <td class="text-start fs-8 num">@Fa.Number(w.Required)</td>
+                                <td class="text-start fs-8 num text-danger">@Fa.Number(w.Available)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="fs-8 text-muted mb-3">
+                    با تأیید شما، سفارش تأیید و به کارتابل مالی می‌رود؛ تأمین موجودی پیش از ثبت فروش لازم است.
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button class="btn btn-light" data-approve-cancel @onclick="CancelApprove">انصراف</button>
+                    <button class="btn btn-warning" data-approve-proceed @onclick="ProceedApprove">
+                        <i class="bi bi-check2-circle"></i> تأیید و ادامه
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (decision is not null)
+    {
+        <div class="vis-modal-back" @onclick="Close">
+            <div class="vis-modal" @onclick:stopPropagation="true">
+                <h6 class="mb-2">
+                    @(decision == Decision.Return ? "برگشت برای اصلاح" : "رد سفارش")
+                    <span class="text-muted fs-8">— @target?.Number</span>
+                </h6>
+                <label class="form-label">دلیل (اجباری)</label>
+                <textarea class="form-control" rows="3" @bind="comment" placeholder="دلیل برای ویزیتور ارسال می‌شود"></textarea>
+                <div class="d-flex gap-2 mt-3">
+                    <button class="btn @(decision == Decision.Return ? "btn-warning" : "btn-danger")" @onclick="SendAsync">ثبت</button>
+                    <button class="btn btn-light" @onclick="Close">انصراف</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+
+</div>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+<style>
+    .vis-sum { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: .9rem 1rem; }
+    .vis-badge { display: inline-block; font-size: .72rem; border-radius: 99px; padding: .2rem .6rem; border: 1px solid transparent; font-weight: 700; }
+    .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+    .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+    .vis-orange { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+    .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
+    .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+    .vis-date-box { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: .75rem .9rem; }
+    .fs-8 { font-size: .8rem; }
+    .fs-9 { font-size: .72rem; }
+</style>
+
+
+@code {
+    private enum Decision { Return, Reject }
+
+    private bool loading = true;
+    private bool busy;
+    private List<VisApprovalItem> items = new();
+    private Decision? decision;
+    private VisOrderDto? target;
+    private string? comment;
+
+    /// <summary>تاریخ نهایی انتخاب‌شدهٔ مدیر برای هر سفارش (کلید: شناسهٔ سفارش).</summary>
+    private readonly Dictionary<int, DateTime?> finalDates = new();
+
+    /// <summary>تاریخ نهایی فعلی — پیش‌فرض همان تاریخ درخواستی ویزیتور.</summary>
+    private DateTime? FinalDateOf(int orderId) => finalDates.TryGetValue(orderId, out var d) ? d : null;
+
+    private void SetFinalDate(int orderId, DateTime? value) => finalDates[orderId] = value?.Date;
+
+    private bool IsFinalDateChanged(VisOrderDto o)
+        => FinalDateOf(o.Id).HasValue && o.DeliveryDate.HasValue
+           && FinalDateOf(o.Id)!.Value.Date != o.DeliveryDate!.Value.Date;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("تأیید سفارش‌های ویزیتور");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            items = await Api.ApprovalsAsync();
+
+            // تاریخ نهایی پیش‌فرض = تاریخ درخواستی ویزیتور (مدیر می‌تواند تغییر دهد)
+            finalDates.Clear();
+            foreach (var it in items)
+                finalDates[it.Order.Id] = (it.Order.DeliveryDate ?? it.Order.Date).Date;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private VisOrderDto? stockTarget;
+    private List<VisStockWarning> stockWarnings = new();
+
+    /// <summary>
+    /// تأیید سفارش. اگر کسری موجودی باشد اول آلارم داده می‌شود:
+    /// تأیید کاربر ⇒ ادامهٔ تأیید، انصراف ⇒ هیچ تغییری (کار متوقف می‌شود).
+    /// </summary>
+    private async Task ApproveAsync(VisOrderDto o, List<VisStockWarning> warnings)
+    {
+        if (busy) return;
+        if (warnings is { Count: > 0 })
+        {
+            stockWarnings = warnings;
+            stockTarget = o;
+            return;
+        }
+        await DoApproveAsync(o, viaShortage: false);
+    }
+
+    private void CancelApprove()
+    {
+        stockTarget = null;
+        stockWarnings = new();
+        Toast.Info("تأیید سفارش متوقف شد؛ ابتدا موجودی انبار را تأمین کنید.");
+    }
+
+    private async Task ProceedApprove()
+    {
+        var o = stockTarget;
+        stockTarget = null;
+        stockWarnings = new();
+        if (o is not null) await DoApproveAsync(o, viaShortage: true);
+    }
+
+    /// <summary>
+    /// تأیید واقعی سفارش. اگر مدیر با وجود کسری موجودی تأیید کرده باشد،
+    /// همین موضوع در گردش سفارش (comment) ثبت می‌شود تا سابقه گم نشود.
+    /// </summary>
+    private async Task DoApproveAsync(VisOrderDto o, bool viaShortage)
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            var finalDate = FinalDateOf(o.Id) ?? o.DeliveryDate ?? o.Date;
+            var changed = o.DeliveryDate.HasValue && finalDate.Date != o.DeliveryDate.Value.Date;
+            var note = viaShortage ? "تأیید با وجود کسری موجودی انبار (به‌تأیید مدیر)" : null;
+            await Api.ApproveAsync(o.Id, note, finalDate);
+            Toast.Success(changed
+                ? $"سفارش {o.Number} تأیید شد؛ تاریخ نهایی تحویل {finalDate.ToFa()} (تاریخ ویزیتور {o.DeliveryDate!.Value.ToFa()} در سابقه ماند)."
+                : $"سفارش {o.Number} تأیید شد و به صف مالی رفت.");
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private void Start(Decision kind, VisOrderDto o)
+    {
+        decision = kind;
+        target = o;
+        comment = "";
+    }
+
+    private void Close()
+    {
+        decision = null;
+        target = null;
+    }
+
+    private async Task SendAsync()
+    {
+        if (target is null || decision is null) return;
+        if (string.IsNullOrWhiteSpace(comment)) { Toast.Error("دلیل را وارد کنید."); return; }
+        try
+        {
+            if (decision == Decision.Return) await Api.ReturnAsync(target.Id, comment!);
+            else await Api.RejectAsync(target.Id, comment!);
+            Toast.Success("تصمیم ثبت و به ویزیتور اطلاع داده شد.");
+            Close();
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

@@ -1,0 +1,1147 @@
+@page "/shop/credit-management"
+@using Microsoft.AspNetCore.Authorization
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject IAuthState Auth
+@inject IDashboardService DashboardSvc
+@inject IToastService Toast
+
+<PageTitle>مدیریت جامع چک‌ها و دفترچه اقساط</PageTitle>
+
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ لوکس ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-indigo-gradient">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">مدیریت چک‌ها، اسناد و دفترچه اقساط</h1>
+                        <span class="badge rounded-pill fin-badge-indigo">وصول مطالبات</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        پیگیری تعهدات مشتریان و تأمین‌کنندگان، تأیید وصولی‌ها، اعلام برگشتی‌ها و تسویه اقساط
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button class="btn btn-outline-primary fin-btn-pill" @onclick="LoadDataAsync" disabled="@loading">
+                    <i class="bi bi-arrow-clockwise me-1 @(loading ? "spin" : "")"></i> به‌روزرسانی اطلاعات
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (summary != null)
+    {
+        <!-- ================== کارت‌های شاخص KPI ================== -->
+        <div class="row g-3 mb-4">
+            <!-- چک‌های در جریان -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-indigo">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-indigo">چک‌های در جریان وصول</span>
+                            <div class="fin-kpi-value text-indigo num mt-1">@summary.InHandChequesTotal.Money()</div>
+                            <div class="fin-kpi-unit">ریال نزد صندوق یا بانک</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                            <i class="bi bi-hourglass-split"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-indigo-subtle text-indigo rounded-pill px-2.5 num">
+                            @summary.InHandChequesCount.Num() برگ چک فعال
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- چک‌های برگشتی -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-rose">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-rose">چک‌های برگشتی (مطالبات معوق)</span>
+                            <div class="fin-kpi-value text-rose num mt-1">@summary.BouncedChequesTotal.Money()</div>
+                            <div class="fin-kpi-unit">ریال وصول‌نشده</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
+                            <i class="bi bi-x-octagon-fill"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-rose-subtle text-rose rounded-pill px-2.5 num">
+                            @summary.BouncedChequesCount.Num() چک برگشتی و بدهکار
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- اقساط پرداخت‌نشده -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-amber">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-amber">اقساط باز و سررسیدشده</span>
+                            <div class="fin-kpi-value text-amber num mt-1">@summary.PendingInstallmentsTotal.Money()</div>
+                            <div class="fin-kpi-unit">ریال اقساط وصولی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
+                            <i class="bi bi-calendar2-week"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-amber-subtle text-amber rounded-pill px-2.5 num">
+                            @summary.PendingInstallmentsCount.Num() قسط باز (@summary.OverdueInstallmentsCount.Num() معوق)
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- وصولی‌های قطعی -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-emerald">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-emerald">مجموع وصولی‌های موفق</span>
+                            <div class="fin-kpi-value text-emerald num mt-1">
+                                @((summary.ClearedChequesTotal + summary.PaidInstallmentsTotal).Money())
+                            </div>
+                            <div class="fin-kpi-unit">ریال تسویه‌شده</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-emerald-subtle text-emerald rounded-pill px-2.5 num">
+                            @((summary.ClearedChequesCount + summary.PaidInstallmentsCount).Num()) فقره وصولی کامل
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- ================== تب‌های سگمنتی لوکس ================== -->
+    <div class="op-tabs-nav-wrapper mb-4">
+        <div class="op-tabs-nav" style="grid-template-columns: repeat(2, 1fr);">
+            <button type="button" class="op-tab-btn @(activeTab == "cheques" ? "is-active tab-cheques" : "")"
+                    @onclick='() => SetTab("cheques")'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-credit-card-2-front-fill"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">مدیریت چک‌ها</span>
+                    <span class="op-tab-sub">چک‌های دریافتی از مشتریان و پرداختی به تأمین‌کنندگان</span>
+                </div>
+                @if (cheques.Count > 0)
+                {
+                    <span class="op-tab-counter">@cheques.Count.Num()</span>
+                }
+            </button>
+
+            <button type="button" class="op-tab-btn @(activeTab == "installments" ? "is-active tab-installments" : "")"
+                    @onclick='() => SetTab("installments")'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-calendar2-range-fill"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">مدیریت دفترچه اقساط</span>
+                    <span class="op-tab-sub">پیگیری سررسید اقساط و ثبت وصولی خط‌به‌خط</span>
+                </div>
+                @if (installments.Count > 0)
+                {
+                    <span class="op-tab-counter">@installments.Count.Num()</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- ================== محتوای تب فعال ================== -->
+    @if (activeTab == "cheques")
+    {
+        <!-- نوار فیلتر چک -->
+        <div class="fin-filter-card mb-4">
+            <div class="row g-2.5 align-items-end">
+                <div class="col-12 col-md-5 col-xl-4">
+                    <label class="fin-label">جستجوی سریال چک، طرف حساب یا شماره فاکتور</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control border-start-0 fin-input"
+                               placeholder="جستجوی سریال، کد صیاد، نام مشتری..."
+                               @bind="chequeSearch" @bind:event="oninput" @onkeyup="ApplyChequeFilter" />
+                    </div>
+                </div>
+
+                <div class="col-6 col-md-3 col-xl-3">
+                    <label class="fin-label">وضعیت چک</label>
+                    <select class="form-select form-select-sm fin-input" @bind="chequeStatusFilter" @bind:after="ApplyChequeFilter">
+                        <option value="">همه وضعیت‌ها</option>
+                        <option value="@((int)ChequeStatus.InHand)">در جریان وصول (نزد صندوق / بانک)</option>
+                        <option value="@((int)ChequeStatus.Cleared)">وصول‌شده (پاس شده)</option>
+                        <option value="@((int)ChequeStatus.Bounced)">برگشت خورده (بدهکار)</option>
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-3 col-xl-3">
+                    <label class="fin-label">نوع تراکنش چک</label>
+                    <select class="form-select form-select-sm fin-input" @bind="chequeTxnTypeFilter" @bind:after="ApplyChequeFilter">
+                        <option value="">همه چک‌ها (دریافتی و پرداختی)</option>
+                        <option value="@((int)TransactionType.Sale)">چک‌های دریافتی از مشتری (فروش)</option>
+                        <option value="@((int)TransactionType.Purchase)">چک‌های پرداختی ما (خرید)</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-1 col-xl-2 text-md-end pb-1">
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 num fs-8">
+                        @filteredCheques.Count.Num() چک
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول چک‌ها -->
+        <div class="fin-table-card">
+            @if (loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+                    <div class="text-secondary fs-8">در حال بارگذاری چک‌ها...</div>
+                </div>
+            }
+            else if (filteredCheques.Count == 0)
+            {
+                <div class="fin-empty-state text-center py-5">
+                    <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
+                    <div class="fw-bold text-secondary mt-2">هیچ چکی با شرایط انتخابی یافت نشد</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table fin-table align-middle">
+                        <thead>
+                            <tr>
+                                <th>نوع</th>
+                                <th>سریال چک / صیاد</th>
+                                <th>طرف حساب</th>
+                                <th>بانک و شعبه</th>
+                                <th>شماره فاکتور</th>
+                                <th class="text-start">مبلغ چک (ریال)</th>
+                                <th>تاریخ سررسید</th>
+                                <th>وضعیت</th>
+                                <th class="text-center" style="width: 140px;">عملیات وصول</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in filteredCheques)
+                            {
+                                <tr class="fin-table-row @(c.Status == ChequeStatus.Bounced ? "table-danger-subtle" : c.IsCleared ? "table-success-subtle" : "")">
+                                    <td>
+                                        @if (c.TransactionType == TransactionType.Sale)
+                                        {
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2.5">
+                                                <i class="bi bi-arrow-down-left me-1"></i> دریافتی
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-amber-subtle text-amber border border-amber-subtle rounded-pill px-2.5">
+                                                <i class="bi bi-arrow-up-right me-1"></i> پرداختی
+                                            </span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="num fw-800 text-dark">@c.Number</div>
+                                        @if (!string.IsNullOrEmpty(c.OwnerName) && c.OwnerName != c.PartyName)
+                                        {
+                                            <div class="fs-9 text-muted">صاحب: @c.OwnerName</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="fw-700 text-dark">@c.PartyName</div>
+                                        @if (!string.IsNullOrEmpty(c.PartyMobile))
+                                        {
+                                            <div class="fs-9 text-muted num">@c.PartyMobile</div>
+                                        }
+                                    </td>
+                                    <td class="fs-8">
+                                        <div class="text-dark">@(c.BankName ?? "—")</div>
+                                        @if (!string.IsNullOrEmpty(c.AccountInfo))
+                                        {
+                                            <div class="fs-9 text-muted">@c.AccountInfo</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="num fs-8 fw-700 text-indigo">@c.OrderNumber</span>
+                                    </td>
+                                    <td class="text-start num fw-800 fs-7.5 @(c.Status == ChequeStatus.Bounced ? "text-danger" : c.IsCleared ? "text-emerald" : "text-dark")">
+                                        @c.Amount.Money()
+                                    </td>
+                                    <td class="num fs-8">
+                                        <div class="fw-600">@c.DueDate.ToFa()</div>
+                                        @if (!c.IsCleared && c.Status != ChequeStatus.Bounced)
+                                        {
+                                            if (c.DaysOverdue > 0)
+                                            {
+                                                <span class="badge bg-danger-subtle text-danger rounded-pill fs-9 mt-0.5">معوق (@c.DaysOverdue.Num() روز)</span>
+                                            }
+                                            else if (c.DueDate.Date == DateTime.Today)
+                                            {
+                                                <span class="badge bg-amber-subtle text-amber rounded-pill fs-9 mt-0.5">سررسید امروز</span>
+                                            }
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (c.Status == ChequeStatus.Bounced)
+                                        {
+                                            <span class="badge bg-danger text-white rounded-pill px-2.5">
+                                                <i class="bi bi-x-octagon me-1"></i> برگشت خورده
+                                            </span>
+                                            @if (!string.IsNullOrEmpty(c.BounceReason))
+                                            {
+                                                <div class="fs-9 text-danger mt-1">@c.BounceReason</div>
+                                            }
+                                        }
+                                        else if (c.IsCleared)
+                                        {
+                                            <span class="badge bg-emerald-subtle text-emerald border border-emerald-subtle rounded-pill px-2.5">
+                                                <i class="bi bi-check2-all me-1"></i> وصول‌شده
+                                            </span>
+                                            @if (c.ClearedAt.HasValue)
+                                            {
+                                                <div class="fs-9 text-muted mt-0.5 num">@c.ClearedAt.Value.ToFa()</div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2.5">
+                                                <i class="bi bi-clock me-1"></i> در جریان وصول
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="d-flex justify-content-center gap-1">
+                                            @if (!c.IsCleared && c.Status != ChequeStatus.Bounced)
+                                            {
+                                                <button class="btn btn-sm btn-outline-success fin-btn-pill fs-9 py-1 px-2.5" title="وصول / پاس شدن چک" @onclick="() => ConfirmClearCheque(c)">
+                                                    <i class="bi bi-check-lg me-1"></i> وصول
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger fin-btn-pill fs-9 py-1 px-2" title="ثبت برگشت چک" @onclick="() => PromptBounce(c)">
+                                                    <i class="bi bi-x-octagon"></i> برگشت
+                                                </button>
+                                            }
+                                            else if (c.Status == ChequeStatus.Bounced)
+                                            {
+                                                <button class="btn btn-sm btn-success fin-btn-pill fs-9 py-1 px-2.5" title="وصول چک" @onclick="() => ConfirmClearCheque(c)">
+                                                    <i class="bi bi-check-lg me-1"></i> وصول شد
+                                                </button>
+                                                <button class="btn btn-sm btn-light fin-btn-pill fs-9 py-1 px-2" title="بازگردانی" @onclick="() => ResetCheque(c)">
+                                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                                </button>
+                                            }
+                                            else if (c.IsCleared)
+                                            {
+                                                <button class="btn btn-sm btn-light fin-btn-pill fs-9 py-1 px-2" title="لغو وضعیت وصولی" @onclick="() => ResetCheque(c)">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i> لغو وصول
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- نوار فیلتر اقساط -->
+        <div class="fin-filter-card mb-4">
+            <div class="row g-2.5 align-items-end">
+                <div class="col-12 col-md-6 col-xl-5">
+                    <label class="fin-label">جستجوی مشتری، شماره موبایل یا شماره فاکتور</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control border-start-0 fin-input"
+                               placeholder="جستجوی نام مشتری، تلفن، کد..."
+                               @bind="installmentSearch" @bind:event="oninput" @onkeyup="ApplyInstallmentFilter" />
+                    </div>
+                </div>
+
+                <div class="col-6 col-md-4 col-xl-4">
+                    <label class="fin-label">وضعیت تسویه اقساط</label>
+                    <select class="form-select form-select-sm fin-input" @bind="installmentPaidFilter" @bind:after="ApplyInstallmentFilter">
+                        <option value="">همه اقساط</option>
+                        <option value="false">پرداخت‌نشده / معوق (بدهکار)</option>
+                        <option value="true">پرداخت‌شده (تسویه‌شده)</option>
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-2 col-xl-3 text-md-end pb-1">
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 num fs-8">
+                        @filteredInstallments.Count.Num() قسط
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول اقساط -->
+        <div class="fin-table-card">
+            @if (loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+                    <div class="text-secondary fs-8">در حال بارگذاری اقساط...</div>
+                </div>
+            }
+            else if (filteredInstallments.Count == 0)
+            {
+                <div class="fin-empty-state text-center py-5">
+                    <i class="bi bi-calendar-x fs-1 text-muted opacity-50"></i>
+                    <div class="fw-bold text-secondary mt-2">هیچ قسطی یافت نشد</div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table fin-table align-middle">
+                        <thead>
+                            <tr>
+                                <th>نوبت قسط</th>
+                                <th>مشتری بدهکار</th>
+                                <th>شماره فاکتور</th>
+                                <th class="text-start">مبلغ قسط (ریال)</th>
+                                <th>تاریخ سررسید</th>
+                                <th>وضعیت زمانی</th>
+                                <th>وضعیت تسویه</th>
+                                <th class="text-center" style="width: 140px;">عملیات تسویه</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var i in filteredInstallments)
+                            {
+                                <tr class="fin-table-row @(i.IsPaid ? "table-success-subtle" : i.DaysOverdue > 0 ? "table-danger-subtle" : "")">
+                                    <td>
+                                        <span class="badge bg-light text-dark border rounded-pill px-2.5 num">
+                                            قسط @i.No.Num()
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="fw-700 text-dark">@i.PartyName</div>
+                                        @if (!string.IsNullOrEmpty(i.PartyMobile))
+                                        {
+                                            <div class="fs-9 text-muted num">@i.PartyMobile</div>
+                                        }
+                                    </td>
+                                    <td><span class="num fs-8 fw-700 text-indigo">@i.OrderNumber</span></td>
+                                    <td class="text-start num fw-800 fs-7.5 @(i.IsPaid ? "text-emerald" : i.DaysOverdue > 0 ? "text-rose" : "text-dark")">
+                                        @i.Amount.Money()
+                                    </td>
+                                    <td class="num fs-8 fw-600">@i.DueDate.ToFa()</td>
+                                    <td>
+                                        @if (i.IsPaid)
+                                        {
+                                            <span class="text-muted fs-8">—</span>
+                                        }
+                                        else if (i.DaysOverdue > 0)
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger rounded-pill fs-9 fw-bold">معوق (@i.DaysOverdue.Num() روز)</span>
+                                        }
+                                        else if (i.DueDate.Date == DateTime.Today)
+                                        {
+                                            <span class="badge bg-amber-subtle text-amber rounded-pill fs-9">سررسید امروز</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-info-subtle text-info rounded-pill fs-9">آتی</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (i.IsPaid)
+                                        {
+                                            <span class="badge bg-emerald-subtle text-emerald border border-emerald-subtle rounded-pill px-2.5">
+                                                <i class="bi bi-check2-circle me-1"></i> پرداخت‌شده
+                                            </span>
+                                            @if (i.PaidAt.HasValue)
+                                            {
+                                                <div class="fs-9 text-muted mt-0.5 num">@i.PaidAt.Value.ToFa()</div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger text-white rounded-pill px-2.5">
+                                                <i class="bi bi-clock me-1"></i> پرداخت‌نشده (بدهکار)
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="text-center">
+                                        @if (!i.IsPaid)
+                                        {
+                                            <button class="btn btn-sm btn-success fin-btn-pill fs-9 py-1 px-3" title="تأیید وصول و تسویه قسط" @onclick="() => PayInstallment(i)">
+                                                <i class="bi bi-check2 me-1"></i> تسویه قسط
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light fin-btn-pill fs-9 py-1 px-2.5" title="لغو تسویه قسط" @onclick="() => UnpayInstallment(i)">
+                                                <i class="bi bi-arrow-counterclockwise me-1"></i> لغو تسویه
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- ================== مدال شیک ثبت برگشت چک ================== -->
+@if (showBounceModal && bounceTarget != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+                <div class="modal-header bg-danger text-white px-4 py-3">
+                    <h5 class="modal-title fs-6 fw-800"><i class="bi bi-exclamation-triangle-fill me-2"></i> ثبت برگشت چک در سیستم</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => showBounceModal = false"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="fs-8 text-dark mb-3">
+                        آیا از ثبت برگشت چک شماره <strong class="num text-danger">@bounceTarget.Number</strong> به مبلغ <strong class="num text-danger">@bounceTarget.Amount.Money() ریال</strong> طرف حساب <strong>@bounceTarget.PartyName</strong> اطمینان دارید؟
+                    </p>
+                    <div class="alert alert-warning fs-8 rounded-3 d-flex align-items-center gap-2 mb-3">
+                        <i class="bi bi-info-circle-fill fs-5 text-warning"></i>
+                        <div>با ثبت برگشت، چک به عنوان چک لاوصول علامت‌گذاری شده و مانده بدهی مشتری در کلیه گزارش‌های مالی احیا خواهد شد.</div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="fin-label">علت برگشت چک:</label>
+                        <input type="text" class="form-control form-control-sm fin-input" @bind="bounceReason" placeholder="مثلاً: کسر موجودی، انسداد حساب یا نقص امضا" />
+                    </div>
+                </div>
+                <div class="modal-footer bg-light px-4 py-2.5">
+                    <button type="button" class="btn btn-light fin-btn-pill px-3" @onclick="() => showBounceModal = false">انصراف</button>
+                    <button type="button" class="btn btn-danger fin-btn-pill px-3" @onclick="ConfirmBounce">
+                        <i class="bi bi-x-octagon me-1"></i> ثبت قطعی برگشت چک
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+<style>
+.op-tabs-nav-wrapper {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.05);
+    border: 1px solid #e2e8f0;
+}
+.op-tabs-nav {
+    display: grid;
+    gap: 6px;
+}
+.op-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    text-align: right;
+    outline: none !important;
+}
+.op-tab-icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    background: #f1f5f9;
+    color: #64748b;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.op-tab-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex-grow: 1;
+}
+.op-tab-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+    transition: color 0.2s;
+}
+.op-tab-sub {
+    font-size: 0.7rem;
+    color: #64748b;
+}
+.op-tab-counter {
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+}
+.op-tab-btn:hover:not(.is-active) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.op-tab-btn.is-active {
+    background: #ffffff;
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #4f46e5;
+}
+.op-tab-btn.is-active.tab-cheques {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #d97706;
+}
+.op-tab-btn.is-active.tab-cheques .op-tab-icon-box {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #ffffff;
+}
+.op-tab-btn.is-active.tab-installments {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #059669;
+}
+.op-tab-btn.is-active.tab-installments .op-tab-icon-box {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+}
+</style>
+
+
+@code {
+    private string activeTab = "cheques";
+    private bool loading = true;
+    private ShopCreditSummary? summary;
+
+    private List<ShopChequeItem> cheques = new();
+    private List<ShopChequeItem> filteredCheques = new();
+    private string chequeSearch = "";
+    private string chequeStatusFilter = "";
+    private string chequeTxnTypeFilter = "";
+
+    private List<ShopInstallmentItem> installments = new();
+    private List<ShopInstallmentItem> filteredInstallments = new();
+    private string installmentSearch = "";
+    private string installmentPaidFilter = "";
+
+    private bool showBounceModal;
+    private ShopChequeItem? bounceTarget;
+    private string bounceReason = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private void SetTab(string tab)
+    {
+        activeTab = tab;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        loading = true;
+        try
+        {
+            summary = await DashboardSvc.GetShopCreditSummaryAsync();
+            cheques = await DashboardSvc.GetShopChequesAsync();
+            installments = await DashboardSvc.GetShopInstallmentsAsync();
+
+            ApplyChequeFilter();
+            ApplyInstallmentFilter();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در بارگذاری داده‌ها: " + ex.Message);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ApplyChequeFilter()
+    {
+        var q = cheques.AsEnumerable();
+
+        if (int.TryParse(chequeStatusFilter, out var st))
+        {
+            var status = (ChequeStatus)st;
+            if (status == ChequeStatus.Cleared)
+                q = q.Where(c => c.IsCleared || c.Status == ChequeStatus.Cleared);
+            else if (status == ChequeStatus.Bounced)
+                q = q.Where(c => c.Status == ChequeStatus.Bounced);
+            else
+                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced);
+        }
+
+        if (int.TryParse(chequeTxnTypeFilter, out var tt))
+        {
+            var type = (TransactionType)tt;
+            q = q.Where(c => c.TransactionType == type);
+        }
+
+        if (!string.IsNullOrWhiteSpace(chequeSearch))
+        {
+            var s = chequeSearch.Trim().ToLower();
+            q = q.Where(c => c.Number.ToLower().Contains(s) ||
+                             c.PartyName.ToLower().Contains(s) ||
+                             c.OrderNumber.ToLower().Contains(s) ||
+                             (c.BankName != null && c.BankName.ToLower().Contains(s)));
+        }
+
+        filteredCheques = q.OrderBy(c => c.DueDate).ToList();
+    }
+
+    private void ApplyInstallmentFilter()
+    {
+        var q = installments.AsEnumerable();
+
+        if (bool.TryParse(installmentPaidFilter, out var paid))
+        {
+            q = q.Where(i => i.IsPaid == paid);
+        }
+
+        if (!string.IsNullOrWhiteSpace(installmentSearch))
+        {
+            var s = installmentSearch.Trim().ToLower();
+            q = q.Where(i => i.PartyName.ToLower().Contains(s) ||
+                             i.OrderNumber.ToLower().Contains(s) ||
+                             (i.PartyMobile != null && i.PartyMobile.Contains(s)));
+        }
+
+        filteredInstallments = q.OrderBy(i => i.DueDate).ToList();
+    }
+
+    private async Task ConfirmClearCheque(ShopChequeItem c)
+    {
+        try
+        {
+            await DashboardSvc.ClearChequeAsync(c.Id);
+            Toast.Success($"چک {c.Number} با موفقیت وصول شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void PromptBounce(ShopChequeItem c)
+    {
+        bounceTarget = c;
+        bounceReason = "کسر موجودی حساب";
+        showBounceModal = true;
+    }
+
+    private async Task ConfirmBounce()
+    {
+        if (bounceTarget == null) return;
+        try
+        {
+            await DashboardSvc.BounceChequeAsync(bounceTarget.Id, bounceReason);
+            Toast.Error($"چک {bounceTarget.Number} برگشت خورد و در وضعیت بدهی ثبت شد.");
+            showBounceModal = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task ResetCheque(ShopChequeItem c)
+    {
+        try
+        {
+            await DashboardSvc.ResetChequeAsync(c.Id);
+            Toast.Info($"وضعیت چک {c.Number} به در جریان بازگردانده شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task PayInstallment(ShopInstallmentItem i)
+    {
+        try
+        {
+            await DashboardSvc.PayInstallmentAsync(i.Id);
+            Toast.Success($"قسط شماره {i.No} مشتری {i.PartyName} با موفقیت تسویه شد.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task UnpayInstallment(ShopInstallmentItem i)
+    {
+        try
+        {
+            await DashboardSvc.UnpayInstallmentAsync(i.Id);
+            Toast.Warning($"تسویه قسط شماره {i.No} لغو شد و به عنوان بدهی معوق منظور گردید.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+}

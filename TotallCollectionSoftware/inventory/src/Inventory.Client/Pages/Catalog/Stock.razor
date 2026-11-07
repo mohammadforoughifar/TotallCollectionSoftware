@@ -1,0 +1,647 @@
+@namespace Inventory.Client.Pages
+@page "/stock"
+@inject IStockService StockSvc
+@inject IWarehouseService WarehouseSvc
+@inject IProductService ProductSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+
+<PageTitle>موجودی لحظه‌ای انبارها</PageTitle>
+
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ ================== -->
+    <div class="fin-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-indigo-gradient">
+                    <i class="bi bi-boxes"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">وضعیت موجودی لحظه‌ای انبارها</h1>
+                        <span class="badge rounded-pill fin-badge-indigo">کاردکس و انبارداری</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        پایش موجودی فیزیکی، ارزش ریالی، هشدار کسری نقطه سفارش و ثبت تعدیل انبارگردانی
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button class="btn btn-primary fin-btn-pill" @onclick="OpenAdjust">
+                    <i class="bi bi-sliders me-1"></i> اصلاح و تعدیل موجودی
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== نوار فیلتر ================== -->
+    <div class="fin-filter-card mb-4">
+        <div class="row g-2.5 align-items-end">
+            <div class="col-12 col-md-4 col-xl-3">
+                <label class="fin-label">انتخاب انبار</label>
+                <SearchSelect Items="whLookup" Value="filterWarehouseId" ValueChanged="v => filterWarehouseId = v" Placeholder="همه انبارها" />
+            </div>
+
+            <div class="col-12 col-md-5 col-xl-4">
+                <label class="fin-label">جستجوی کالا</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                    <input class="form-control border-start-0 fin-input" placeholder="نام یا کد کالا…"
+                           @bind="search" @onkeydown="OnSearchKey" />
+                </div>
+            </div>
+
+            <div class="col-6 col-md-3 col-xl-3 pb-1">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="belowChk" checked="@belowOnly" @onchange="OnBelowChanged" />
+                    <label class="form-check-label fs-8 fw-bold text-danger" for="belowChk">
+                        <i class="bi bi-exclamation-triangle me-1"></i> فقط زیر نقطه سفارش
+                    </label>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-auto col-xl-2 ms-auto text-end">
+                <button class="btn btn-primary fin-btn-submit w-100" @onclick="OnSearch">
+                    <i class="bi bi-funnel-fill me-1"></i> فیلتر موجودی
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== جدول موجودی ================== -->
+    <div class="fin-table-card">
+        <div class="fin-table-header">
+            <div class="d-flex align-items-center gap-2">
+                <div class="fin-table-header-icon bg-indigo-subtle text-indigo">
+                    <i class="bi bi-box-seam"></i>
+                </div>
+                <div>
+                    <h3 class="fin-table-title">موجودی اقلام انبار</h3>
+                    <p class="fin-table-sub">فهرست تعداد، بهای تمام‌شده و ارزش ریالی ذخیره انبار</p>
+                </div>
+            </div>
+            <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 num fs-8">
+                @total.Num() ردیف کالا
+            </span>
+        </div>
+
+        @if (loading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary mb-3" style="width: 2.8rem; height: 2.8rem;"></div>
+                <div class="text-secondary fs-8">در حال شمارش موجودی انبارها...</div>
+            </div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="fin-empty-state text-center py-5">
+                <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
+                <div class="fw-bold text-secondary mt-2">موجودی برای این انبار ثبت نشده است</div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table fin-table align-middle">
+                    <thead>
+                        <tr>
+                            <th>کد و نام کالا</th>
+                            <th>گروه کالا</th>
+                            <th>انبار</th>
+                            <th>واحد سنجش</th>
+                            <th class="text-start">موجودی فعلی</th>
+                            <th class="text-start">میانگین خرید (ریال)</th>
+                            <th class="text-start">ارزش کل موجودی</th>
+                            <th class="text-start">نقطه سفارش</th>
+                            <th class="text-center">وضعیت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in items)
+                        {
+                            <tr class="fin-table-row @(s.BelowReorder ? "table-danger-subtle" : "")">
+                                <td>
+                                    <div class="fw-800 text-dark">@s.ProductName</div>
+                                    <div class="fs-9 text-muted num">کد: @s.ProductCode</div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-secondary border rounded-pill px-2 fs-9">
+                                        @(s.Category ?? "عمومی")
+                                    </span>
+                                </td>
+                                <td class="text-secondary fw-500 fs-8">@s.WarehouseName</td>
+                                <td class="text-dark fs-8">@s.Unit</td>
+                                <td class="text-start num fw-900 fs-7.5 @(s.BelowReorder ? "text-danger" : "text-emerald")">
+                                    @s.Quantity.Qty()
+                                </td>
+                                <td class="text-start num fs-8 text-secondary">@s.AvgCost.Money()</td>
+                                <td class="text-start num fw-800 fs-8 text-dark">
+                                    @((s.Quantity * s.AvgCost).Money()) <small class="fs-9 text-muted">ریال</small>
+                                </td>
+                                <td class="text-start num fs-8 text-muted">@s.ReorderPoint.Qty()</td>
+                                <td class="text-center">
+                                    @if (s.BelowReorder)
+                                    {
+                                        <span class="badge bg-danger text-white rounded-pill px-2.5">
+                                            <i class="bi bi-exclamation-triangle me-1"></i> زیر نقطه سفارش
+                                        </span>
+                                    }
+                                    else if (s.Quantity == 0)
+                                    {
+                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2.5">
+                                            ناموجود
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-emerald-subtle text-emerald border border-emerald-subtle rounded-pill px-2.5">
+                                            مطلوب
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-3 border-top bg-light">
+                <Pager Page="page" PageCount="pageCount" OnPageChanged="GoToPage" />
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ================== مودال شیک اصلاح موجودی ================== -->
+<Modal Visible="showAdjust" Title="اصلاح موجودی کالا (تعدیل انبارگردانی)" OnClose="() => showAdjust = false">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="fin-label">انبار مقصد <span class="text-danger">*</span></label>
+                <SearchSelect Items="whLookup" Value="adjWarehouseId" ValueChanged="v => adjWarehouseId = v" Placeholder="انتخاب انبار…" />
+            </div>
+            <div class="col-12">
+                <label class="fin-label">کالای مورد نظر <span class="text-danger">*</span></label>
+                <SearchSelect Items="productLookup" Value="adjProductId" ValueChanged="v => adjProductId = v" Placeholder="جستجوی کالا…" />
+            </div>
+            <div class="col-md-6">
+                <label class="fin-label">موجودی شمارش‌شده جدید <span class="text-danger">*</span></label>
+                <input class="form-control form-control-sm fin-input num text-center fw-bold" inputmode="decimal" @bind="adjQty" />
+            </div>
+            <div class="col-md-6">
+                <label class="fin-label">تاریخ مؤثر سند</label>
+                <DatePicker @bind-Value="adjDate" />
+            </div>
+            <div class="col-12">
+                <label class="fin-label">شرح / دلیل اصلاح</label>
+                <input class="form-control form-control-sm fin-input" @bind="adjDesc" placeholder="مثلاً: انبارگردانی پایان سال، شکستگی یا مغایرت شمارش" />
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light fin-btn-pill px-3" @onclick="() => showAdjust = false">انصراف</button>
+        <button class="btn btn-primary fin-btn-pill px-4" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveAdjust" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-check2-circle me-1"></i> ثبت و اعمال اصلاح
+        </button>
+    </Footer>
+</Modal>
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+@code {
+    private List<StockItem> items = new();
+    private int total, page = 1, pageCount = 1;
+    private const int PageSize = 15;
+    private bool loading = true;
+    private string search = "";
+    private bool belowOnly;
+    private int filterWarehouseId;
+    private List<LookupItem> whLookup = new();
+    private List<LookupItem> productLookup = new();
+
+    private bool showAdjust, saving;
+    private int adjWarehouseId, adjProductId;
+    private string adjQty = "";
+    private DateTime? adjDate;
+    private string adjDesc = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("موجودی انبار");
+        await LoadLookups();
+        await Load();
+    }
+
+    private async Task LoadLookups()
+    {
+        try
+        {
+            whLookup = await WarehouseSvc.GetLookupsAsync();
+            productLookup = await ProductSvc.GetLookupsAsync();
+        }
+        catch { }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            var res = await StockSvc.GetStockAsync(filterWarehouseId, search, belowOnly, page, PageSize);
+            items = res.Items;
+            total = res.TotalCount;
+            pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task OnSearch() { page = 1; await Load(); }
+
+    private async Task OnBelowChanged(ChangeEventArgs e)
+    {
+        belowOnly = e.Value is bool b && b;
+        page = 1;
+        await Load();
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { page = 1; await Load(); }
+    }
+
+    private void OpenAdjust()
+    {
+        adjWarehouseId = filterWarehouseId;
+        adjProductId = 0;
+        adjQty = "";
+        adjDate = DateTime.Now;
+        adjDesc = "";
+        showAdjust = true;
+    }
+
+    private async Task SaveAdjust()
+    {
+        if (adjWarehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return; }
+        if (adjProductId == 0) { Toast.Error("کالا را انتخاب کنید."); return; }
+        var qty = Fa.ParseDecimal(adjQty);
+        if (qty <= 0) { Toast.Error("موجودی جدید باید بزرگ‌تر از صفر باشد."); return; }
+
+        saving = true;
+        try
+        {
+            await StockSvc.AdjustAsync(new AdjustmentCommand
+            {
+                WarehouseId = adjWarehouseId,
+                ProductId = adjProductId,
+                Quantity = qty,
+                Date = adjDate ?? DateTime.Now,
+                Description = adjDesc
+            });
+            Toast.Success("موجودی اصلاح شد.");
+            showAdjust = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task GoToPage(int p)
+    {
+        page = p;
+        await Load();
+    }
+}

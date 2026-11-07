@@ -1,0 +1,83 @@
+@page "/operations/reports/warranty"
+@inject IApiClient Api
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>گزارش گارانتی</PageTitle>
+<div class="warranty-report" dir="rtl" @ref="printRoot">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+        <div><h1 class="h4 fw-bold"><i class="bi bi-shield-check text-primary ms-2"></i>گزارش گارانتی</h1><div class="text-muted fs-8">پذیرش‌های تحویل‌شده و هزینه داخلی واقعی، بدون دریافتی مشتری</div></div>
+        <button class="btn btn-outline-secondary d-print-none" @onclick="Print" disabled="@loading"><i class="bi bi-printer ms-1"></i> پیش‌نمایش چاپ</button>
+    </div>
+    <div class="card mb-3 d-print-none"><div class="card-body"><div class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label">از تاریخ تحویل</label><DatePicker @bind-Value="from" AllowClear="true" /></div>
+        <div class="col-md-4"><label class="form-label">تا تاریخ تحویل</label><DatePicker @bind-Value="to" AllowClear="true" /></div>
+        <div class="col-md-4"><button class="btn btn-primary w-100" @onclick="Load" disabled="@loading">اعمال فیلتر</button></div>
+    </div></div></div>
+    @if (loading) { <div class="text-center p-4">در حال دریافت گزارش…</div> }
+    else if (loaded)
+    {
+        <div class="text-muted fs-8 mb-3">از @appliedFrom تا @appliedTo — براساس تاریخ تحویل</div>
+        <div class="row g-2 mb-3">
+            <div class="col-6 col-md-3"><div class="card p-3"><span class="text-muted fs-8">پذیرش تحویل‌شده</span><b class="num fs-5">@rows.Count.Num()</b></div></div>
+            <div class="col-6 col-md-3"><div class="card p-3"><span class="text-muted fs-8">ردیف پذیرفته</span><b class="num fs-5">@accepted.Num()</b></div></div>
+            <div class="col-6 col-md-3"><div class="card p-3"><span class="text-muted fs-8">ردیف پذیرفته‌نشده</span><b class="num fs-5">@rejected.Num()</b></div></div>
+            <div class="col-6 col-md-3"><div class="card p-3"><span class="text-muted fs-8">جمع هزینه داخلی (ریال)</span><b class="num fs-5">@total.MoneyExact()</b></div></div>
+        </div>
+        @if (rows.Count == 0) { <div class="card p-4 text-muted">پذیرش تحویل‌شده‌ای در این بازه یافت نشد.</div> }
+        else
+        {
+            <div class="card"><div class="table-responsive"><table class="table align-middle warranty-report-table">
+                <thead><tr><th>پذیرش / تحویل</th><th>مشتری و دستگاه</th><th>کار یا قطعه</th><th>تصمیم</th><th>تحویل‌شده</th><th>مقدار</th><th class="text-start">هزینه داخلی (ریال)</th></tr></thead>
+                <tbody>@foreach (var w in rows)
+                {
+                    @foreach (var item in w.Items)
+                    {
+                        <tr><td><b>@w.Number</b><div class="num fs-8">@w.FinalizedAt!.Value.ToFa()</div></td><td>@w.PartyName<div class="fs-8 text-muted">
+                            @w.DeviceType @w.DeviceModel
+                            @if (w.Devices.Count > 1) { <span>و @(w.Devices.Count - 1) دستگاه دیگر</span> }
+                        </div></td><td>@item.Description</td><td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td><td>@(item.Supplied ? "بله" : "خیر")</td><td class="num">@item.Quantity.Qty()</td><td class="num text-start">@((item.ProductId is null or 0 || item.Supplied ? decimal.Round(item.Quantity * item.UnitCost, 0, MidpointRounding.AwayFromZero) : 0m).MoneyExact())</td></tr>
+                    }
+                }</tbody>
+                <tfoot><tr><th colspan="6">جمع هزینه داخلی — دریافتی مشتری صفر</th><th class="num text-start">@total.MoneyExact()</th></tr></tfoot>
+            </table></div></div>
+        }
+    }
+</div>
+<style>
+.warranty-report { max-width:1500px; margin:auto; }
+@@media print { .warranty-report .table-responsive { overflow:visible; } .warranty-report-table { font-size:9pt; } .warranty-report tr { break-inside:avoid; } }
+</style>
+@code {
+    private List<ShopWarrantyDto> rows = new();
+    private DateTime? from, to;
+    private string appliedFrom = "ابتدای سوابق", appliedTo = "پایان سوابق";
+    private decimal total;
+    private int accepted, rejected;
+    private bool loading, loaded;
+    private ElementReference printRoot;
+    protected override async Task OnInitializedAsync() { Layout.SetTitle("گزارش گارانتی"); await Load(); }
+    private async Task Load()
+    {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date) { Toast.Error("تاریخ شروع پس از تاریخ پایان است."); return; }
+        var start = from; var end = to; var url = "api/shop-warranties/report?";
+        if (start.HasValue) url += $"from={start:yyyy-MM-dd}&";
+        if (end.HasValue) url += $"to={end:yyyy-MM-dd}&";
+        loading = true;
+        try
+        {
+            rows = await Api.GetAsync<List<ShopWarrantyDto>>(url.TrimEnd('?', '&'));
+            total = rows.Sum(w => w.InternalCost); accepted = rows.Sum(w => w.Items.Count(i => i.Decision == WarrantyDecision.Accepted));
+            rejected = rows.Sum(w => w.Items.Count(i => i.Decision == WarrantyDecision.Rejected));
+            appliedFrom = start.HasValue ? start.Value.ToFa() : "ابتدای سوابق"; appliedTo = end.HasValue ? end.Value.ToFa() : "پایان سوابق"; loaded = true;
+        }
+        catch (Exception ex) { loaded = false; Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+    private async Task Print()
+    {
+        try { if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش گارانتی")) Toast.Error("پیش‌نمایش چاپ باز نشد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

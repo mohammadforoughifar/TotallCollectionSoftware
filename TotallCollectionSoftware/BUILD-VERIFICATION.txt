@@ -1,0 +1,58 @@
+BUILD VERIFICATION — VERSION 2
+Date: 2026-10-02
+Repository: mohammadforoughifar/TotallCollectionSoftware
+Pinned baseline commit: 1c5d9e258bc7bbafb6c2721eaf0bd65f19fe6903
+SDK: .NET 8.0.425; OS: Linux
+
+Production solution: inventory/Inventory.sln
+Projects: Inventory.Shared, Inventory.Api, Inventory.Client, Agent.Console
+No production files, settings pages or migrations were excluded from either build.
+Existing archive authorization fixes were retained.
+
+RELEASE: BUILD SUCCEEDED; 0 errors; 49 warnings; elapsed 00:02:51.20
+DEBUG: BUILD SUCCEEDED; 0 errors; 49 warnings; elapsed 00:02:56.52
+
+Warnings remain in existing nullable/async/platform/EF raw-SQL code; this is not a warning-free or full security-audit verdict.
+Earlier validation attempts exhausted this 2 GiB sandbox's memory. The final SUCCESSFUL builds used sequential MSBuild and workstation GC with a bounded 1 GiB managed heap. No source files were removed to bypass memory limits.
+
+Final commands (from repository root):
+  dotnet restore inventory/Inventory.sln
+  dotnet build inventory/Inventory.sln --no-restore -c Release -m:1 -p:UseSharedCompilation=false -nr:false
+  dotnet build inventory/Inventory.sln --no-restore -c Debug -m:1 -p:UseSharedCompilation=false -nr:false
+  dotnet run --project inventory/tests/DocArchiveSecurity/DocArchiveSecurity.csproj -c Release
+
+Sandbox memory environment only (not a change to project code):
+  DOTNET_GCHeapHardLimit=40000000
+  DOTNET_GCConserveMemory=9
+  DOTNET_gcServer=0
+  COMPlus_gcServer=0
+  MSBUILDDISABLENODEREUSE=1
+
+Regression project: PASS; 0 build errors; 24 warnings.
+Tests reference the ACTUAL production API assembly including all controllers and migrations.
+UiProbe compiles every real Client Razor page, including both repaired settings pages.
+Database: real relational SQLite AppDbContext in memory.
+SQL Server provider: ACL/paging expression translation and idempotent migration-script generation OFFLINE; no SQL Server connection or execution.
+API controller actions are invoked directly, not through the full HTTP/JWT pipeline.
+Actual Razor components are rendered statically for Read-only UI checks.
+Only notifications/indexing/browser I/O are test doubles.
+
+PASS: permission precedence, separate download, creator/manager exceptions and inactive/temporary roles (27 checks so far)
+PASS: SQL/bulk/detail/list/search parity and database pagination (49 checks so far)
+PASS: backend edit/version/delete/upload/permission escalation protections (65 checks so far)
+PASS: preview allowed, download/ZIP/print/report blocked without explicit permission (82 checks so far)
+PASS: authorized Write still works without granting download or security management (89 checks so far)
+PASS: real Razor read-only controls and fail-closed defaults (102 checks so far)
+PASS: migration discovery/idempotent SQL and repaired IT controller endpoints (104 checks so far)
+ALL 104 SECURITY REGRESSION CHECKS PASSED.
+
+Coverage added in v2:
+- EF discovers 20261001130000_ItRemoteRequestChannel with a single DbContext attribute.
+- The main AppDbContext has exactly one ModelSnapshot.
+- Existing migration Up operations remain present; idempotent SQL script generates offline.
+- Editing a missing IT client company returns 404.
+- Combined IT manager-inbox filters run as IQueryable.
+
+No live databases or GitHub repositories were changed. No live migrations, full browser/authentication or all-module integration tests were executed. Stage and back up before deployment; migration metadata now correctly registers an existing IT migration.
+Old stored CanDownload=true grants were not wiped; review unintended download opt-ins.
+Browser preview is not DRM and cannot prohibit screenshots or saving received preview bytes.

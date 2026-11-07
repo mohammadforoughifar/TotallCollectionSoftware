@@ -1,0 +1,231 @@
+@inject IJSRuntime JS
+
+@code {
+    private readonly string _uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8);
+}
+
+<div class="ss">
+    <input type="text"
+           class="form-control @CssClass"
+           value="@query"
+           placeholder="@Placeholder"
+           @ref="_input"
+           @onfocus="OnFocus"
+           @oninput="OnInput"
+           @onkeydown="OnKeyDown"
+           @onfocusout="OnBlur" />
+    @if (open)
+    {
+        @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
+        @if (!ConstrainToModal)
+        {
+            <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
+        }
+        <div class="ss-menu" style="@MenuStyle" data-order-constrained="@(ConstrainToModal ? "true" : null)" @ref="_menu" @onclick:stopPropagation="true">
+            @if (filtered.Count == 0)
+            {
+                <div class="ss-empty">موردی یافت نشد</div>
+            }
+            else
+            {
+                @for (var i = 0; i < filtered.Count; i++)
+                {
+                    var idx = i;
+                    var it = filtered[idx];
+                    var isSelected = it == Value;
+                    var isHighlighted = idx == highlightIndex;
+                    <div id="@($"ss-opt-{_uniqueId}-{idx}")"
+                         class="ss-item @(isSelected ? "selected" : "") @(isHighlighted ? "highlighted" : "")"
+                         @onmousedown='@(() => Select(it))'
+                         @onmousedown:preventDefault="true"
+                         @onclick='@(() => Select(it))'
+                         @onmouseover="@(() => highlightIndex = idx)">
+                        <span class="ss-item-name">@it</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>کمبوی سرچ‌دار با مقادیر رشته‌ای — همه‌ی گزینه‌ها با تایپ فیلتر می‌شوند.</summary>
+    [Parameter] public List<string> Items { get; set; } = new();
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public bool AllowCustomValue { get; set; }
+    [Parameter] public bool AdvanceOnEnter { get; set; }
+    [Parameter] public bool ShowAllOnFocus { get; set; }
+    [Parameter] public bool ConstrainToModal { get; set; }
+    private bool showAll, focused;
+    protected override void OnParametersSet()
+    {
+        if (!focused) query = Value ?? "";
+    }
+    private ElementReference _menu;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (open && ConstrainToModal)
+        {
+            try { await JS.InvokeVoidAsync("orderEntry.placeSearchMenu", _input, _menu); }
+            catch (JSException) { }
+        }
+    }
+
+
+    private string query = "";
+    private bool open;
+    private int highlightIndex = 0;
+
+    private ElementReference _input;
+    private double _mTop, _mLeft, _mWidth;
+
+    /// <summary>منو با position:fixed هم‌عرض ورودی زیر آن باز می‌شود (الگوی منوی شناور) —
+    /// مصون از stacking context کارت‌ها و overflow جدول/مودال</summary>
+    private string MenuStyle => Popover.FixedStyle(_mTop, _mLeft, _mWidth);
+
+    private List<string> filtered
+    {
+        get
+        {
+            if (showAll || string.IsNullOrWhiteSpace(query)) return Items;
+            return Items.Where(i => i.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    private async Task OnFocus()
+    {
+        focused = true;
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _input);
+            (_mTop, _mLeft, _mWidth) = Popover.Below(r);
+        }
+        catch (JSException) { }
+        if (!focused) return;
+        open = true;
+        showAll = ShowAllOnFocus;
+        highlightIndex = 0;
+        if (!string.IsNullOrEmpty(Value))
+        {
+            query = Value;
+            var idx = filtered.IndexOf(Value);
+            if (idx >= 0) highlightIndex = idx;
+        }
+    }
+
+    private void CloseMenu() => open = false;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        showAll = false;
+        if (AllowCustomValue && Value != query)
+        {
+            Value = query;
+            await ValueChanged.InvokeAsync(query);
+        }
+        highlightIndex = 0;
+        if (!open)
+        {
+            try
+            {
+                var r = await JS.InvokeAsync<UiRect>("uiRect", _input);
+                (_mTop, _mLeft, _mWidth) = Popover.Below(r);
+            }
+            catch (JSException) { }
+            open = true;
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (!open)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp")
+            {
+                await OnFocus();
+                return;
+            }
+            return;
+        }
+
+        if (e.Key == "Escape") { CloseMenu(); return; }
+        if (filtered.Count == 0)
+        {
+            if (e.Key == "Enter" && AllowCustomValue && AdvanceOnEnter)
+            {
+                CloseMenu();
+                try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); } catch (JSException) { }
+            }
+            return;
+        }
+
+        if (e.Key == "ArrowDown")
+        {
+            if (highlightIndex < filtered.Count - 1)
+                highlightIndex++;
+            else
+                highlightIndex = 0;
+
+            await ScrollHighlightedIntoView();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (highlightIndex > 0)
+                highlightIndex--;
+            else
+                highlightIndex = filtered.Count - 1;
+
+            await ScrollHighlightedIntoView();
+        }
+        else if (e.Key == "Enter")
+        {
+            if (filtered.Count > 0)
+            {
+                var clamped = Math.Clamp(highlightIndex, 0, filtered.Count - 1);
+                await Select(filtered[clamped]);
+                if (AdvanceOnEnter)
+                {
+                    try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); } catch (JSException) { }
+                }
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            CloseMenu();
+        }
+    }
+
+    private async Task ScrollHighlightedIntoView()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollIntoViewById", $"ss-opt-{_uniqueId}-{highlightIndex}");
+        }
+        catch { }
+    }
+
+    private async Task OnBlur()
+    {
+        focused = false;
+        await Task.Delay(160);
+        if (focused) return;
+        open = false;
+        query = Value ?? "";
+    }
+
+    private async Task Select(string item)
+    {
+        query = item;
+        showAll = false;
+        open = false;
+        if (Value != item)
+        {
+            Value = item;
+            await ValueChanged.InvokeAsync(item);
+        }
+    }
+}
