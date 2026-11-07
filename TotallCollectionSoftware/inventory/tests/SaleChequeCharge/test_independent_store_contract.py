@@ -41,10 +41,11 @@ class IndependentStoreContract(unittest.TestCase):
                       'line.UnitCost = null', 'line.Profit = null', 'line.Commission = null'):
             self.assertIn(token, controller)
         sections = read('Inventory.Shared/ShopSections.cs')
-        self.assertIn('section.Writable && granted.Equals(section.ManagePermission', sections)
-        self.assertIn('IsViewLike(action) || kardexRead', sections)
-        self.assertNotIn('IsViewLike(action) || !section.Writable', sections)
-        self.assertIn('action.Equals("ViewProfit"', sections)
+        # Direct ERP permissions stay independent of shop section permissions.
+        # Only explicitly scoped Orders endpoints may use a shop permission.
+        self.assertRegex(sections, r'AliasAllows\([^\n]*\)\s*=>\s*false')
+        self.assertIn('action.Equals("ViewProfit"', auth)
+        self.assertIn('return false;', auth.split('action.Equals("ViewProfit"', 1)[1])
 
     def test_bank_history_and_company_checks_are_explicit(self):
         guard = read('Inventory.Api/Services/Invoicing/SaleChequeTreasuryGuard.cs')
