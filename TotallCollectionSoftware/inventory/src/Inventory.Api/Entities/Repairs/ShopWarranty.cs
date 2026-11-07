@@ -29,7 +29,23 @@ public class ShopWarranty : ICompanyOwned
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     [MaxLength(120)] public string? CreatedBy { get; set; }
     [MaxLength(120)] public string? FinalizedBy { get; set; }
+    public List<ShopWarrantyDevice> Devices { get; set; } = new();
     public List<ShopWarrantyItem> Items { get; set; } = new();
+}
+
+/// <summary>دستگاه‌های متعلق به یک پذیرش؛ قطعات بین کل پذیرش مشترک‌اند.</summary>
+public class ShopWarrantyDevice : ICompanyOwned
+{
+    public int Id { get; set; }
+    public int? CompanyId { get; set; }
+    public int ShopWarrantyId { get; set; }
+    public ShopWarranty ShopWarranty { get; set; } = null!;
+    public int Position { get; set; }
+    [MaxLength(100)] public string DeviceType { get; set; } = "";
+    [MaxLength(200)] public string? DeviceModel { get; set; }
+    [MaxLength(100)] public string? SerialNumber { get; set; }
+    [MaxLength(1000)] public string? ProblemDescription { get; set; }
+    [MaxLength(500)] public string? Accessories { get; set; }
 }
 
 public class ShopWarrantyItem : ICompanyOwned

@@ -30,6 +30,7 @@ public class ShopWarrantyService
     private IQueryable<ShopWarranty> FullQuery() => _db.ShopWarranties.AsNoTracking()
         .Include(w => w.Party).Include(w => w.Technician).Include(w => w.Warehouse)
         .Include(w => w.Items).ThenInclude(i => i.Product)
+        .Include(w => w.Devices)
         .Include(w => w.StockTransaction).ThenInclude(t => t!.Lines).AsSplitQuery();
 
     public async Task<List<ShopWarrantyDto>> ListAsync(DateTime? from = null, DateTime? to = null, bool finalizedOnly = false)
@@ -50,6 +51,7 @@ public class ShopWarrantyService
         if (w.OperationId == Guid.Empty || w.Party.CompanyId != w.CompanyId || w.Warehouse.CompanyId != w.CompanyId ||
             (w.Technician is not null && w.Technician.CompanyId != w.CompanyId) || w.ReceivedAt == default ||
             (w.FinalizedAt.HasValue && w.FinalizedAt.Value.Date < w.ReceivedAt.Date) ||
+            w.Devices.Any(d => d.CompanyId != w.CompanyId || d.Position <= 0 || string.IsNullOrWhiteSpace(d.DeviceType)) ||
             w.Items.Any(i => i.CompanyId != w.CompanyId || i.Quantity <= 0 || i.UnitCost < 0 ||
                 i.Decision is not (WarrantyDecision.Accepted or WarrantyDecision.Rejected) ||
                 (i.ProductId is > 0 && i.Product is null) ||
@@ -79,6 +81,13 @@ public class ShopWarrantyService
             DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber,
             ProblemDescription = w.ProblemDescription, Accessories = w.Accessories, Note = w.Note,
             ReceivedAt = w.ReceivedAt, FinalizedAt = w.FinalizedAt, StockTransactionId = w.StockTransactionId,
+            Devices = w.Devices.Count == 0 ? new List<ShopWarrantyDeviceDto> { new() {
+                DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber,
+                ProblemDescription = w.ProblemDescription, Accessories = w.Accessories
+            } } : w.Devices.OrderBy(d => d.Position).ThenBy(d => d.Id).Select(d => new ShopWarrantyDeviceDto {
+                Id = d.Id, DeviceType = d.DeviceType, DeviceModel = d.DeviceModel, SerialNumber = d.SerialNumber,
+                ProblemDescription = d.ProblemDescription, Accessories = d.Accessories
+            }).ToList(),
             Items = w.Items.OrderBy(i => i.Id).Select(i => new ShopWarrantyItemDto
             {
                 Id = i.Id, Description = i.Description, ProductId = i.ProductId, ProductName = i.Product?.Name,
@@ -97,10 +106,16 @@ public class ShopWarrantyService
     public async Task<ShopWarrantyDto> SaveDraftAsync(ShopWarrantyDto dto, string? user)
     {
         ArgumentNullException.ThrowIfNull(dto);
+        // Older clients send only the top-level device; keep them compatible.
+        var devices = dto.Devices is { Count: > 0 } ? dto.Devices : new List<ShopWarrantyDeviceDto> { new() {
+            DeviceType = dto.DeviceType, DeviceModel = dto.DeviceModel, SerialNumber = dto.SerialNumber,
+            ProblemDescription = dto.ProblemDescription, Accessories = dto.Accessories
+        } };
         if (dto.OperationId == Guid.Empty || dto.PartyId <= 0 || dto.WarehouseId <= 0 || dto.ReceivedAt == default ||
-            string.IsNullOrWhiteSpace(dto.DeviceType) || dto.DeviceType.Trim().Length > 100 || dto.DeviceModel?.Trim().Length > 200 ||
-            dto.SerialNumber?.Trim().Length > 100 || dto.ProblemDescription?.Trim().Length > 1000 ||
-            dto.Accessories?.Trim().Length > 500 || dto.Note?.Trim().Length > 500 || user?.Length > 120 ||
+            dto.Note?.Trim().Length > 500 || user?.Length > 120 || devices.Count > 100 ||
+            devices.Any(d => d is null || string.IsNullOrWhiteSpace(d.DeviceType) || d.DeviceType.Trim().Length > 100 ||
+                d.DeviceModel?.Trim().Length > 200 || d.SerialNumber?.Trim().Length > 100 ||
+                d.ProblemDescription?.Trim().Length > 1000 || d.Accessories?.Trim().Length > 500) ||
             dto.Items is null || dto.Items.Count == 0 || dto.Items.Count > 100)
             throw new InvalidOperationException("مشخصات پذیرش گارانتی معتبر نیست.");
         if (dto.Items.Any(i => string.IsNullOrWhiteSpace(i.Description) || i.Description.Trim().Length > 300 ||
@@ -129,9 +144,10 @@ public class ShopWarrantyService
                 if (existing.CompanyId != party.CompanyId) throw new InvalidOperationException("شناسه عملیات قبلاً استفاده شده است.");
                 var previous = await GetAsync(existing.Id);
                 var same = previous.PartyId == dto.PartyId && previous.WarehouseId == dto.WarehouseId && previous.TechnicianId == dto.TechnicianId &&
-                    previous.ReceivedAt.Date == dto.ReceivedAt.Date && previous.DeviceType == dto.DeviceType.Trim() &&
-                    previous.DeviceModel == Optional(dto.DeviceModel) && previous.SerialNumber == Optional(dto.SerialNumber) &&
-                    previous.ProblemDescription == Optional(dto.ProblemDescription) && previous.Accessories == Optional(dto.Accessories) &&
+                    previous.ReceivedAt.Date == dto.ReceivedAt.Date && previous.Devices.Count == devices.Count &&
+                    previous.Devices.Zip(devices).All(pair => pair.First.DeviceType == pair.Second.DeviceType.Trim() &&
+                        pair.First.DeviceModel == Optional(pair.Second.DeviceModel) && pair.First.SerialNumber == Optional(pair.Second.SerialNumber) &&
+                        pair.First.ProblemDescription == Optional(pair.Second.ProblemDescription) && pair.First.Accessories == Optional(pair.Second.Accessories)) &&
                     previous.Note == Optional(dto.Note) && previous.Items.Count == dto.Items.Count &&
                     previous.Items.Zip(dto.Items).All(pair => pair.First.Description == pair.Second.Description.Trim() &&
                         pair.First.ProductId == (pair.Second.ProductId is > 0 ? pair.Second.ProductId : null) && pair.First.Quantity == pair.Second.Quantity &&
@@ -145,7 +161,7 @@ public class ShopWarrantyService
         }
         else
         {
-            record = await _db.ShopWarranties.Include(w => w.Items).FirstOrDefaultAsync(w => w.Id == dto.Id)
+            record = await _db.ShopWarranties.Include(w => w.Items).Include(w => w.Devices).AsSplitQuery().FirstOrDefaultAsync(w => w.Id == dto.Id)
                 ?? throw new InvalidOperationException("پذیرش گارانتی یافت نشد.");
             if (record.FinalizedAt.HasValue || record.OperationId != dto.OperationId)
                 throw new InvalidOperationException("پذیرش گارانتی نهایی‌شده قابل ویرایش نیست.");
@@ -153,9 +169,26 @@ public class ShopWarrantyService
             record.Items.Clear();
         }
         record.PartyId = party.Id; record.WarehouseId = warehouse.Id; record.TechnicianId = dto.TechnicianId is > 0 ? dto.TechnicianId : null;
-        record.DeviceType = dto.DeviceType.Trim(); record.DeviceModel = Optional(dto.DeviceModel); record.SerialNumber = Optional(dto.SerialNumber);
-        record.ProblemDescription = Optional(dto.ProblemDescription); record.Accessories = Optional(dto.Accessories);
+        var primary = devices[0];
+        record.DeviceType = primary.DeviceType.Trim(); record.DeviceModel = Optional(primary.DeviceModel); record.SerialNumber = Optional(primary.SerialNumber);
+        record.ProblemDescription = Optional(primary.ProblemDescription); record.Accessories = Optional(primary.Accessories);
         record.Note = Optional(dto.Note); record.ReceivedAt = dto.ReceivedAt.Date;
+        var existingDevices = record.Devices.OrderBy(d => d.Position).ToList();
+        if (existingDevices.Where((d, index) => d.CompanyId != record.CompanyId || d.Position != index + 1).Any())
+            throw new InvalidOperationException("ترتیب دستگاه‌های گارانتی معتبر نیست؛ ابتدا سوابق را بررسی کنید.");
+        for (var index = 0; index < devices.Count; index++)
+        {
+            var d = devices[index];
+            var target = index < existingDevices.Count ? existingDevices[index] : new ShopWarrantyDevice { Position = index + 1 };
+            if (index >= existingDevices.Count) record.Devices.Add(target);
+            target.DeviceType = d.DeviceType.Trim(); target.DeviceModel = Optional(d.DeviceModel); target.SerialNumber = Optional(d.SerialNumber);
+            target.ProblemDescription = Optional(d.ProblemDescription); target.Accessories = Optional(d.Accessories);
+        }
+        foreach (var removed in existingDevices.Skip(devices.Count))
+        {
+            _db.ShopWarrantyDevices.Remove(removed);
+            record.Devices.Remove(removed);
+        }
         foreach (var i in dto.Items) record.Items.Add(new ShopWarrantyItem
         {
             Description = i.Description.Trim(), ProductId = i.ProductId is > 0 ? i.ProductId : null,

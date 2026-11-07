@@ -34,7 +34,10 @@
                 {
                     @foreach (var item in w.Items)
                     {
-                        <tr><td><b>@w.Number</b><div class="num fs-8">@w.FinalizedAt!.Value.ToFa()</div></td><td>@w.PartyName<div class="fs-8 text-muted">@w.DeviceType @w.DeviceModel</div></td><td>@item.Description</td><td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td><td>@(item.Supplied ? "بله" : "خیر")</td><td class="num">@item.Quantity.Qty()</td><td class="num text-start">@((item.ProductId is null or 0 || item.Supplied ? decimal.Round(item.Quantity * item.UnitCost, 0, MidpointRounding.AwayFromZero) : 0m).MoneyExact())</td></tr>
+                        <tr><td><b>@w.Number</b><div class="num fs-8">@w.FinalizedAt!.Value.ToFa()</div></td><td>@w.PartyName<div class="fs-8 text-muted">
+                            @w.DeviceType @w.DeviceModel
+                            @if (w.Devices.Count > 1) { <span>و @(w.Devices.Count - 1) دستگاه دیگر</span> }
+                        </div></td><td>@item.Description</td><td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td><td>@(item.Supplied ? "بله" : "خیر")</td><td class="num">@item.Quantity.Qty()</td><td class="num text-start">@((item.ProductId is null or 0 || item.Supplied ? decimal.Round(item.Quantity * item.UnitCost, 0, MidpointRounding.AwayFromZero) : 0m).MoneyExact())</td></tr>
                     }
                 }</tbody>
                 <tfoot><tr><th colspan="6">جمع هزینه داخلی — دریافتی مشتری صفر</th><th class="num text-start">@total.MoneyExact()</th></tr></tfoot>

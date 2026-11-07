@@ -18,7 +18,10 @@ else
         <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th>تصمیم ردیف‌ها</th><th class="text-start">هزینه داخلی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
         <tbody>@foreach (var w in items)
         {
-            <tr><td><b>@w.Number</b><div class="num fs-8 text-muted">@w.ReceivedAt.ToFa()</div></td><td>@w.PartyName</td><td>@w.DeviceType @w.DeviceModel</td>
+            <tr><td><b>@w.Number</b><div class="num fs-8 text-muted">@w.ReceivedAt.ToFa()</div></td><td>@w.PartyName</td><td>
+                @DeviceSummary(w)
+                @if (w.Devices.Count > 1) { <div class="fs-8 text-muted">@w.Devices.Count دستگاه در یک پذیرش</div> }
+            </td>
                 <td>@(w.Items.Count(i => i.Decision == WarrantyDecision.Accepted).Num()) پذیرفته / @(w.Items.Count(i => i.Decision == WarrantyDecision.Rejected).Num()) رد</td>
                 <td class="num text-start">@w.InternalCost.MoneyExact()</td><td>@(w.FinalizedAt.HasValue ? "تحویل‌شده" : "پیش‌نویس")</td><td class="text-nowrap">
                     <button class="btn btn-sm btn-light" @onclick="() => view = w">جزئیات</button>
@@ -35,15 +38,30 @@ else
             <div class="col-md-4"><label class="form-label">مشتری *</label><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div>
             <div class="col-md-4"><label class="form-label">تعمیرکار</label><select class="form-select" @bind="technicianId"><option value="0">— بعداً تعیین می‌شود —</option>@foreach (var t in technicians) { <option value="@t.Id">@t.Name</option> }</select></div>
             <div class="col-md-4"><label class="form-label">تاریخ پذیرش *</label><DatePicker @bind-Value="receivedAt" /></div>
-            <div class="col-md-4"><label class="form-label">نوع دستگاه *</label><input class="form-control" maxlength="100" @bind="form.DeviceType" /></div>
-            <div class="col-md-4"><label class="form-label">مدل</label><input class="form-control" maxlength="200" @bind="form.DeviceModel" /></div>
-            <div class="col-md-4"><label class="form-label">سریال</label><input class="form-control" maxlength="100" @bind="form.SerialNumber" /></div>
-            <div class="col-md-6"><label class="form-label">شرح ایراد</label><input class="form-control" maxlength="1000" @bind="form.ProblemDescription" /></div>
-            <div class="col-md-6"><label class="form-label">لوازم همراه</label><input class="form-control" maxlength="500" @bind="form.Accessories" /></div>
             <div class="col-md-6"><label class="form-label">انبار برداشت *</label><select class="form-select" @bind="form.WarehouseId"><option value="0">— انتخاب انبار —</option>@foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }</select></div>
             <div class="col-md-6"><label class="form-label">یادداشت</label><input class="form-control" maxlength="500" @bind="form.Note" /></div>
         </div>
-        <div class="d-flex align-items-center gap-2 mt-4 mb-2"><b>کارها و قطعات گارانتی</b><button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">افزودن ردیف (F2)</button></div>
+        <div class="d-flex align-items-center gap-2 mt-4 mb-2">
+            <b>دستگاه‌های پذیرش‌شده</b><span class="badge badge-soft-primary">@form.Devices.Count</span>
+            <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddDevice" disabled="@(form.Devices.Count >= 100)"><i class="bi bi-plus-lg"></i> افزودن دستگاه</button>
+        </div>
+        <datalist id="warranty-device-types"><option value="لپ‌تاپ" /><option value="کامپیوتر" /><option value="مانیتور" /><option value="دوربین" /><option value="پرینتر" /><option value="موبایل" /><option value="تبلت" /></datalist>
+        @for (var index = 0; index < form.Devices.Count; index++)
+        {
+            var deviceIndex = index;
+            var device = form.Devices[deviceIndex];
+            <div class="border rounded-3 p-3 mb-2" @key="device">
+                <div class="d-flex align-items-center mb-2"><b>دستگاه @(deviceIndex + 1)</b><button type="button" class="btn btn-sm btn-light me-auto" title="حذف دستگاه" disabled="@(form.Devices.Count <= 1)" @onclick="() => RemoveDevice(deviceIndex)"><i class="bi bi-trash text-danger"></i></button></div>
+                <div class="row g-2">
+                    <div class="col-md-4"><label class="form-label">نوع دستگاه *</label><input class="form-control" list="warranty-device-types" maxlength="100" @bind="device.DeviceType" /></div>
+                    <div class="col-md-4"><label class="form-label">برند و مدل</label><input class="form-control" maxlength="200" @bind="device.DeviceModel" /></div>
+                    <div class="col-md-4"><label class="form-label">سریال دستگاه</label><input class="form-control num" dir="ltr" maxlength="100" @bind="device.SerialNumber" /></div>
+                    <div class="col-md-6"><label class="form-label">ایراد اعلامی مشتری</label><textarea class="form-control" rows="2" maxlength="1000" @bind="device.ProblemDescription"></textarea></div>
+                    <div class="col-md-6"><label class="form-label">لوازم همراه</label><input class="form-control" maxlength="500" @bind="device.Accessories" placeholder="شارژر، کیف…" /></div>
+                </div>
+            </div>
+        }
+        <div class="d-flex align-items-center gap-2 mt-4 mb-2"><b>کارها و قطعات مشترک پذیرش</b><button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">افزودن ردیف (F2)</button></div>
         @for (var index = 0; index < form.Items.Count; index++)
         {
             var i = index;
@@ -68,7 +86,12 @@ else
 <Modal Visible="view is not null" Title="جزئیات گارانتی" Size="modal-lg" OnClose="() => view = null">
     <ChildContent>@if (view is not null)
     {
-        <div class="mb-3"><b>@view.Number — @view.PartyName</b><div>@view.DeviceType @view.DeviceModel — @view.SerialNumber</div><div class="text-muted">@view.ProblemDescription</div></div>
+        <div class="mb-3"><b>@view.Number — @view.PartyName</b>
+            @foreach (var device in DevicesFor(view))
+            {
+                <div class="border rounded-3 p-2 mt-2"><b>@DeviceLabel(device)</b><span class="num text-muted"> — @device.SerialNumber</span><div class="text-muted">@device.ProblemDescription</div><div class="text-muted fs-8">لوازم همراه: @(device.Accessories ?? "—")</div></div>
+            }
+        </div>
         <div class="table-responsive"><table class="table"><thead><tr><th>شرح</th><th>تصمیم</th><th>تحویل / مصرف</th><th>مقدار</th><th>هزینه واحد</th></tr></thead><tbody>
             @foreach (var item in view.Items) { <tr><td>@item.Description @(item.ProductName is null ? "" : $"({item.ProductName})")</td><td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td><td>@(item.Supplied ? "بله" : "خیر")</td><td class="num">@item.Quantity.Qty()</td><td class="num">@item.UnitCost.MoneyExact()</td></tr> }
         </tbody></table></div>
@@ -102,19 +125,27 @@ else
     private void New()
     {
         form = new ShopWarrantyDto { OperationId = Guid.NewGuid(), ReceivedAt = DateTime.Today, WarehouseId = warehouses.FirstOrDefault()?.Id ?? 0 };
-        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); AddItem(); showForm = true;
+        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); AddDevice(); AddItem(); showForm = true;
     }
     private void Edit(ShopWarrantyDto w)
     {
         form = new ShopWarrantyDto { Id = w.Id, OperationId = w.OperationId, Number = w.Number, PartyId = w.PartyId, TechnicianId = w.TechnicianId,
             WarehouseId = w.WarehouseId, DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber,
             ProblemDescription = w.ProblemDescription, Accessories = w.Accessories, Note = w.Note, ReceivedAt = w.ReceivedAt,
+            Devices = DevicesFor(w).Select(d => new ShopWarrantyDeviceDto { Id = d.Id, DeviceType = d.DeviceType, DeviceModel = d.DeviceModel,
+                SerialNumber = d.SerialNumber, ProblemDescription = d.ProblemDescription, Accessories = d.Accessories }).ToList(),
             Items = w.Items.Select(i => new ShopWarrantyItemDto { Id = i.Id, Description = i.Description, ProductId = i.ProductId,
                 Quantity = i.Quantity, UnitCost = i.UnitCost, Decision = i.Decision, Supplied = i.Supplied }).ToList() };
         receivedAt = w.ReceivedAt; technicianId = w.TechnicianId ?? 0;
         quantities = w.Items.Select(i => i.Quantity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).ToList();
         costs = w.Items.Select(i => Fa.FormatTyping(i.UnitCost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))).ToList(); showForm = true;
     }
+    private static List<ShopWarrantyDeviceDto> DevicesFor(ShopWarrantyDto w) => w.Devices is { Count: > 0 } ? w.Devices : new() { new ShopWarrantyDeviceDto {
+        DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber, ProblemDescription = w.ProblemDescription, Accessories = w.Accessories } };
+    private static string DeviceLabel(ShopWarrantyDeviceDto d) => string.IsNullOrWhiteSpace(d.DeviceModel) ? d.DeviceType : $"{d.DeviceType} {d.DeviceModel}";
+    private static string DeviceSummary(ShopWarrantyDto w) => DeviceLabel(DevicesFor(w)[0]);
+    private void AddDevice() { if (form.Devices.Count < 100) form.Devices.Add(new ShopWarrantyDeviceDto()); }
+    private void RemoveDevice(int i) { if (form.Devices.Count > 1) form.Devices.RemoveAt(i); }
     private void AddItem() { form.Items.Add(new ShopWarrantyItemDto()); quantities.Add("1"); costs.Add(""); }
     private void RemoveItem(int i) { form.Items.RemoveAt(i); quantities.RemoveAt(i); costs.RemoveAt(i); }
     private void SetProduct(int i, int value) { form.Items[i].ProductId = value > 0 ? value : null; if (value <= 0) form.Items[i].Supplied = false; }

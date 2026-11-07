@@ -565,6 +565,7 @@ public class AppDbContext : DbContext
     public DbSet<ShopTradeInUse> ShopTradeInUses => Set<ShopTradeInUse>();
     public DbSet<ShopWarranty> ShopWarranties => Set<ShopWarranty>();
     public DbSet<ShopWarrantyItem> ShopWarrantyItems => Set<ShopWarrantyItem>();
+    public DbSet<ShopWarrantyDevice> ShopWarrantyDevices => Set<ShopWarrantyDevice>();
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
     public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
@@ -791,6 +792,8 @@ public class AppDbContext : DbContext
         mb.Entity<ShopWarranty>().HasOne(w => w.Warehouse).WithMany().HasForeignKey(w => w.WarehouseId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopWarranty>().HasOne(w => w.StockTransaction).WithMany().HasForeignKey(w => w.StockTransactionId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopWarranty>().HasIndex(w => w.StockTransactionId).IsUnique().HasFilter("[StockTransactionId] IS NOT NULL");
+        mb.Entity<ShopWarrantyDevice>().HasOne(d => d.ShopWarranty).WithMany(w => w.Devices).HasForeignKey(d => d.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ShopWarrantyDevice>().HasIndex(d => new { d.ShopWarrantyId, d.Position }).IsUnique();
         mb.Entity<ShopWarrantyItem>().Property(i => i.Quantity).HasPrecision(18, 3);
         mb.Entity<ShopWarrantyItem>().Property(i => i.UnitCost).HasPrecision(18, 2);
         mb.Entity<ShopWarrantyItem>().HasOne(i => i.ShopWarranty).WithMany(w => w.Items).HasForeignKey(i => i.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
@@ -1854,6 +1857,7 @@ public class AppDbContext : DbContext
         mb.Entity<ShopTradeInUse>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopWarranty>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopWarrantyItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopWarrantyDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopOrderCreditReceipt>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopOrderCashEntry>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

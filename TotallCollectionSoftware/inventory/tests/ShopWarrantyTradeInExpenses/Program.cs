@@ -55,12 +55,22 @@ var warranty = new ShopWarrantyService(db, inventory);
 var draft = await warranty.SaveDraftAsync(new ShopWarrantyDto
 {
     OperationId = Guid.NewGuid(), PartyId = customer.Id, WarehouseId = warehouse.Id, DeviceType = "دستگاه",
-    ReceivedAt = today.AddDays(-1), Items = new()
+    ReceivedAt = today.AddDays(-1), Devices = new()
+    {
+        new ShopWarrantyDeviceDto { DeviceType = "دستگاه اول", DeviceModel = "مدل ۱", SerialNumber = "SN-1" },
+        new ShopWarrantyDeviceDto { DeviceType = "دستگاه دوم", DeviceModel = "مدل ۲", SerialNumber = "SN-2" }
+    }, Items = new()
     {
         new ShopWarrantyItemDto { Description = "قطعه پذیرفته", ProductId = product.Id, Quantity = 1, UnitCost = 80, Decision = WarrantyDecision.Accepted, Supplied = true },
         new ShopWarrantyItemDto { Description = "قطعه پذیرفته‌نشده", ProductId = product.Id, Quantity = 1, UnitCost = 80, Decision = WarrantyDecision.Rejected, Supplied = true }
     }
 }, "test");
+Check(draft.Devices.Count == 2 && draft.Devices[0].SerialNumber == "SN-1" && draft.Devices[1].SerialNumber == "SN-2",
+      "one warranty acceptance retains multiple devices in order");
+draft.Devices[0].DeviceModel = "مدل ویرایش‌شده";
+draft = await warranty.SaveDraftAsync(draft, "test");
+Check(draft.Devices.Count == 2 && draft.Devices[0].DeviceModel == "مدل ویرایش‌شده",
+      "editing a multi-device draft keeps the device order and data");
 var completed = await warranty.FinalizeAsync(draft.Id, "test");
 await warranty.FinalizeAsync(draft.Id, "test");
 var movement = await db.Transactions.Include(t => t.Lines).SingleAsync(t => t.Id == completed.StockTransactionId);

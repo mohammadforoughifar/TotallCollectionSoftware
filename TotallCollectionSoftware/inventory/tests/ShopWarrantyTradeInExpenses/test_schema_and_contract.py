@@ -26,7 +26,7 @@ def database():
     for table in ('Parties', 'Technicians', 'Warehouses', 'Transactions', 'Products', 'Expenses', 'Cheques', 'TrsAccounts', 'TrsVouchers'):
         db.execute(f'CREATE TABLE [{table}] (Id INTEGER PRIMARY KEY)')
         db.execute(f'INSERT INTO [{table}] (Id) VALUES (1), (2), (3)')
-    for name in ('ShopTradeIn', 'ShopWarranty', 'ShopExpenseCheque'):
+    for name in ('ShopTradeIn', 'ShopWarranty', 'ShopWarrantyDevice', 'ShopExpenseCheque'):
         sql = schema(name)
         db.executescript(sql)
         db.executescript(sql)  # startup repair must be idempotent
@@ -48,7 +48,7 @@ class SchemaTests(unittest.TestCase):
 
     def test_all_schema_repair_and_tables(self):
         names = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        self.assertTrue({'ShopTradeIns', 'ShopTradeInUses', 'ShopWarranties', 'ShopWarrantyItems', 'ShopExpenseCheques'} <= names)
+        self.assertTrue({'ShopTradeIns', 'ShopTradeInUses', 'ShopWarranties', 'ShopWarrantyItems', 'ShopWarrantyDevices', 'ShopExpenseCheques'} <= names)
 
     def test_expense_issued_uniqueness_and_no_duplicate_active(self):
         expense(self.db, 'op-1')
@@ -82,6 +82,23 @@ class SchemaTests(unittest.TestCase):
         self.db.execute(sql, row)
         with self.assertRaises(sqlite3.IntegrityError): self.db.execute(sql, (1,'w-2','WR-2',1,1,'phone','2026-11-01','2026-11-07',1,'2026-11-01'))
         with self.assertRaises(sqlite3.IntegrityError): self.db.execute('DELETE FROM Transactions WHERE Id=1')
+
+    def test_warranty_device_migration_preserves_history_and_allows_multiple(self):
+        self.db.execute("""INSERT INTO ShopWarranties (CompanyId,OperationId,Number,PartyId,WarehouseId,
+          DeviceType,DeviceModel,SerialNumber,ProblemDescription,Accessories,ReceivedAt,CreatedAt)
+          VALUES (1,'legacy','WR-old',1,1,'phone','model','serial','problem','charger','2026-11-01','2026-11-01')""")
+        sql = schema('ShopWarrantyDevice')
+        self.db.executescript(sql)
+        self.db.executescript(sql)
+        device = self.db.execute('SELECT CompanyId,Position,DeviceType,DeviceModel,SerialNumber,ProblemDescription,Accessories FROM ShopWarrantyDevices').fetchall()
+        self.assertEqual(device, [(1,1,'phone','model','serial','problem','charger')])
+        self.db.execute("INSERT INTO ShopWarrantyDevices (CompanyId,ShopWarrantyId,Position,DeviceType) VALUES (1,1,2,'tablet')")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("INSERT INTO ShopWarrantyDevices (CompanyId,ShopWarrantyId,Position,DeviceType) VALUES (1,1,2,'duplicate')")
+        self.db.executescript(sql)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM ShopWarrantyDevices').fetchone()[0], 2)
+        self.db.execute('DELETE FROM ShopWarranties WHERE Id=1')
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM ShopWarrantyDevices').fetchone()[0], 0)
 
     def test_tradein_use_idempotency_and_source_is_retained(self):
         self.db.execute("INSERT INTO ShopTradeIns (CompanyId,OperationId,Number,PartyId,DeviceType,Value,ReceivedAt,CreatedAt) VALUES (1,'t1','TI-1',1,'phone','50','2026-11-01','2026-11-01')")
@@ -123,6 +140,17 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn('TransactionType.WarrantyOut', source('src/Inventory.Api/Services/Warehousing/WarehousingService.cs'))
         self.assertIn('TransactionType.WarrantyOut', source('src/Inventory.Api/Services/Invoicing/SaleChequeReturnService.cs'))
         self.assertIn('WarrantyDecision.Accepted or WarrantyDecision.Rejected', source('src/Inventory.Api/Services/Repairs/ShopWarrantyService.cs'))
+
+    def test_warranty_multi_device_contract(self):
+        service = source('src/Inventory.Api/Services/Repairs/ShopWarrantyService.cs')
+        ui = source('src/Inventory.Client/Pages/Repairs/WarrantyTab.razor')
+        mapping = source('src/Inventory.Api/Data/AppDbContext.cs')
+        for term in ('.Include(w => w.Devices)', 'previous.Devices.Zip(devices)', 'record.Devices.Add(target)', 'record.Devices.Remove(removed)'):
+            self.assertIn(term, service)
+        for term in ('AddDevice', 'RemoveDevice', 'DevicesFor(w)', 'DevicesFor(view)'):
+            self.assertIn(term, ui)
+        self.assertIn('HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId)', mapping)
+        self.assertIn('mb.Entity<ShopWarrantyDevice>().HasQueryFilter', mapping)
 
     def test_tradein_no_inventory_and_statement_allocations(self):
         s = source('src/Inventory.Api/Services/Repairs/ShopTradeInService.cs')

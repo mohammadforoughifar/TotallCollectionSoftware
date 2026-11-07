@@ -21,9 +21,21 @@ public class ShopWarrantyDto
     public DateTime ReceivedAt { get; set; }
     public DateTime? FinalizedAt { get; set; }
     public int? StockTransactionId { get; set; }
+    // The legacy top-level device fields mirror the first device for older clients.
+    public List<ShopWarrantyDeviceDto> Devices { get; set; } = new();
     public List<ShopWarrantyItemDto> Items { get; set; } = new();
     public decimal InternalCost => Items.Where(i => i.ProductId is null or 0 || i.Supplied)
         .Sum(i => decimal.Round(i.Quantity * i.UnitCost, 0, MidpointRounding.AwayFromZero));
+}
+
+public class ShopWarrantyDeviceDto
+{
+    public int Id { get; set; }
+    public string DeviceType { get; set; } = "";
+    public string? DeviceModel { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? ProblemDescription { get; set; }
+    public string? Accessories { get; set; }
 }
 
 public class ShopWarrantyItemDto
