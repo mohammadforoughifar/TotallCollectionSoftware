@@ -21,7 +21,17 @@ else
             <h1>مدیریت کاربران</h1>
             <p class="lead">مدیریت حساب‌های کاربری، سطوح دسترسی و ارتباطات سازمانی</p>
         </div>
-        <div class="d-flex gap-2 me-auto">
+        <div class="d-flex gap-2 flex-wrap me-auto">
+            <input class="form-control form-control-sm" placeholder="جستجوی کاربران…"
+                   @bind="userSearch" @bind:event="oninput"
+                   style="max-width:260px" />
+            <select class="form-select form-select-sm" @bind="companyFilter" style="max-width:200px">
+                <option value="">همهٔ شرکت‌ها</option>
+                @foreach (var c in companyOptions.OrderBy(c => c.Name))
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
             <button class="btn btn-primary" @onclick="OpenNew">
                 <i class="bi bi-person-plus"></i> کاربر جدید
             </button>
@@ -59,7 +69,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var u in items)
+                            @foreach (var u in FilteredItems)
                             {
                                 <tr>
                                     <td class="fw-500" dir="ltr" style="text-align:right">
@@ -156,7 +166,7 @@ else
 
                 @* ---------- نمای کارتی (موبایل) ---------- *@
                 <div class="cards-mobile">
-                    @foreach (var u in items)
+                    @foreach (var u in FilteredItems)
                     {
                         <div class="m-card @(u.Role == "Admin" ? "st-received" : u.Role == "Operator" ? "st-progress" : "st-ready")">
                             <div class="m-card-head">
@@ -514,6 +524,21 @@ else
 @code {
     private List<UserDto> items = new();
     private List<CompanyOption> companyOptions = new();
+    private string userSearch = "";
+    private int? companyFilter = null;
+    private Dictionary<int, HashSet<int>> userCompanyMap = new();
+
+    private IEnumerable<UserDto> FilteredItems =>
+        items.Where(u =>
+        {
+            var matchSearch = string.IsNullOrWhiteSpace(userSearch)
+                || u.Username.Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                || FullName(u).Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                || (u.Mobile ?? "").Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+            var matchCompany = !companyFilter.HasValue
+                || (userCompanyMap.TryGetValue(u.Id, out var uc) && uc.Contains(companyFilter.Value));
+            return matchSearch && matchCompany;
+        });
     private HashSet<int> selectedCompanyIds = new();
 
     // ---------- واحدهای سازمانی (تعریف‌شده به‌ازای هر شرکت) ----------
@@ -834,6 +859,7 @@ else
             }
             catch { organizations = new(); }
             referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
+            await LoadUserCompanyMap();
             try { allRoles = (await Http.GetFromJsonAsync<List<RoleOpt>>("/api/roles") ?? new()).Where(r => r.IsActive).ToList(); }
             catch (Exception rex)
             {
@@ -843,6 +869,20 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    private async Task LoadUserCompanyMap()
+    {
+        userCompanyMap = new();
+        foreach (var u in items)
+        {
+            try
+            {
+                var ids = await Http.GetFromJsonAsync<List<int>>($"/api/company-context/users/{u.Id}") ?? new();
+                userCompanyMap[u.Id] = ids.ToHashSet();
+            }
+            catch { userCompanyMap[u.Id] = new HashSet<int>(); }
+        }
     }
 
     private void OpenNew()
