@@ -1579,15 +1579,27 @@ context.Customers.Any(x =>
 
                             }).ToList();
 
+                            // محاسبه قاعده ارسال (ماده ۹ قانون پایانه‌های فروشگاهی و سامانه مودیان):
+                            // اگر فاصله زمانی بینwydheid صدور و ارسال بیش از ۱۲ روز باشد → insr=۱
+                            var issueDate = invoiceForEdit.DateOrder?.ToDateTime(TimeOnly.MinValue) ?? DateTime.UtcNow;
+                            var daysFromIssue = (DateTime.UtcNow - issueDate).TotalDays;
+                            var isMada9 = daysFromIssue > 12;
+                            var indati2mNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
                             var header = new InvoiceHeaderDto
                             {
                                 Taxid = taxId,
                                 Inno = inno,
                                 Indatim = indatim,
-                                Indati2m = indatim,
+                                Indati2m = indati2mNow, // تاریخ و زمان ثبت (فعلی، نهwydheid)
                                 Inty = SafeInvoiceType(invoiceForEdit.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
                                 Inp = 1, // الگوی فروش عادی
                                 Ins = 1,///invoiceSubject
+                                /// ⚠️ فیلد Insr (قاعده ارسال) در نسخه فعلی TaxCollectData.Library (0.0.27)
+                                /// در InvoiceHeaderDto وجود ندارد. برای ارسال insr=۱ وقتی isMada9=true،
+                                /// کتابخانه باید به نسخه‌ای که فیلد insr را در هدر JSON پشتیبانی می‌کند،
+                                /// ارتقا یابد. فعلاً مقدار در مدل InvoiceVM (Insr) نگهداری می‌شود.
+                                // Insr = isMada9 ? 1 : 0,
                                 Tins = cpInfo.EconomicNumber,
                                 Tinb = IsNoBuyerDisclosureType(SafeInvoiceType(invoiceForEdit.TypePattern)) ? null : customer.EconomicNumber,
                                 Bid = IsNoBuyerDisclosureType(SafeInvoiceType(invoiceForEdit.TypePattern)) ? null : customer.NationalID,
@@ -1791,6 +1803,7 @@ context.Customers.Any(x =>
                             Taxid = taxId1,
                             Inno = inno1,
                             Indatim = indatim1,
+                            Indati2m = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             Inty = SafeInvoiceType(invoiceForEdit.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
                             Inp = 1, // الگوی فروش عادی
                             Ins = 4,
@@ -3194,6 +3207,7 @@ context.Customers.Any(x =>
                             Taxid = taxId,
                             Inno = inno,
                             Indatim = indatim,
+                            Indati2m = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             Inty = SafeInvoiceType(invoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
                             Inp = 1, // الگوی فروش عادی
                             Ins = 2,
@@ -3426,6 +3440,7 @@ context.Customers.Any(x =>
                             Taxid = taxId,
                             Inno = inno,
                             Indatim = indatim,
+                            Indati2m = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             Inty = SafeInvoiceType(invoice.TypePattern), // نوع صورتحساب (سرادم): ۱/۲/۳
                             Inp = 1, // الگوی فروش عادی
                             Ins = 3,
