@@ -129,6 +129,9 @@
     /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
     [Parameter] public string? InvoiceFormKey { get; set; }
 
+    /// <summary>فقط برای ثبت سریع مشتری یا تأمین‌کننده از فرم‌های فروشگاهی.</summary>
+    [Parameter] public bool ShopQuickCreate { get; set; }
+
     /// <summary>نمایش/عدم نمایش فرم.</summary>
     [Parameter] public bool Visible { get; set; }
 
@@ -223,7 +226,9 @@
         saving = true;
         try
         {
-            var saved = await PartySvc.SaveAsync(party);
+            var saved = ShopQuickCreate && !IsEdit
+                ? await PartySvc.SaveShopQuickAsync(party)
+                : await PartySvc.SaveAsync(party);
             Notify(IsEdit ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.", false);
             await OnSaved.InvokeAsync(saved);
         }

@@ -288,7 +288,7 @@
    همان کامپوننت فرم «طرف حسابها» (/parties) — هیچ فرم موازی/خلاصهای در این صفحه
    تعریف نمیشود تا فیلدها، اعتبارسنجی و قواعد معرف در همهجا یکسان باشند.
    ============================================================= *@
-<PartyFormModal Visible="showNewParty"
+<PartyFormModal ShopQuickCreate="true" Visible="showNewParty"
                 Type="PartyType.Customer"
                 AllowReferrerPicker="true"
                 OnSaved="OnNewPartySaved"
@@ -341,7 +341,7 @@
         : "\u062d\u0648\u0627\u0644\u0647 \u062a\u062d\u0648\u06cc\u0644 \u06a9\u0627\u0644\u0627 \u062c\u062f\u06cc\u062f";
 
     /// <summary>حذف حواله نیاز به مجوز مستقل دارد.</summary>
-    private bool CanDelete => Auth.Has("GoodsIssues.Delete");
+    private bool CanDelete => ShopAccess.CanManage(Auth, "GoodsIssue") || Auth.Has("GoodsIssues.Delete");
 
     protected override async Task OnInitializedAsync()
     {
@@ -354,7 +354,9 @@
     {
         try
         {
-            partyLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            partyLookup = ShopAccess.CanSee(Auth, "GoodsIssue")
+                ? await PartySvc.GetShopCustomerLookupsAsync("goods-issue")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
@@ -561,7 +563,7 @@
     /// <summary>حذف حواله پس از تأییدیه.</summary>
     private async Task Delete(GoodsIssueDto g)
     {
-        if (!Auth.Has("GoodsIssues.Delete")) return;
+        if (!CanDelete) return;
         loading = true;
         try
         {

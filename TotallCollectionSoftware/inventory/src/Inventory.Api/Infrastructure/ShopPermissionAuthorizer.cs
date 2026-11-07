@@ -41,6 +41,29 @@ public static class ShopPermissionAuthorizer
             var writeShop = !ShopSections.IsViewLike(action);
             var controller = shopAction.ControllerName;
             var operation = shopAction.ActionName;
+            // Catalog/issue endpoints are allowed only for their own shop section,
+            // never as a general Products, Warehouses or GoodsIssues permission.
+            if (module.Equals("Products", StringComparison.OrdinalIgnoreCase))
+            {
+                return controller switch
+                {
+                    "Products" when operation is "GetAll" or "GetLookups" or "GetById" or "Save" or "Delete" or "Import" or "DownloadTemplate"
+                        => Section(permissions, "Products", writeShop),
+                    "Categories" when operation is "GetAll" or "Save" or "Delete"
+                        => Section(permissions, "Categories", writeShop),
+                    "Units" when operation is "GetAll" or "Save" or "Delete"
+                        => Section(permissions, "Units", writeShop),
+                    _ => false
+                };
+            }
+            if (module.Equals("Warehouses", StringComparison.OrdinalIgnoreCase))
+                return controller == "Warehouses" && (operation is "GetAll" or "Save" or "Delete") && Section(permissions, "Warehouses", writeShop);
+            if (module.Equals("GoodsIssues", StringComparison.OrdinalIgnoreCase))
+                return controller == "GoodsIssues" && (operation is "GetAll" or "Get" or "Save" or "Delete") && Section(permissions, "GoodsIssue", writeShop);
+            if (module.Equals("Referrers", StringComparison.OrdinalIgnoreCase))
+                return controller == "Referrers" && (operation is "GetAll" or "Save" or "Delete") && Section(permissions, "Referrers", writeShop);
+            if (module.Equals("ReportPages", StringComparison.OrdinalIgnoreCase) && action.Equals("Kardex", StringComparison.OrdinalIgnoreCase))
+                return controller == "Kardex" && operation == "Get" && Section(permissions, "Kardex", false);
             if (module.Equals("Repairs", StringComparison.OrdinalIgnoreCase))
             {
                 var known = controller switch

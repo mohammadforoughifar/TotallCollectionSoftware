@@ -45,14 +45,16 @@ public class TrsAccountsController : RbacControllerBase
     [HttpPost]
     public async Task<ActionResult<TrsAccount>> Save([FromBody] TrsAccount dto)
     {
-        if (await ForbiddenUnlessAsync("TrsAccounts", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
+        if (!await HasAsync("Shop", "Banks.Manage") &&
+            await ForbiddenUnlessAsync("TrsAccounts", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
         return Ok(await _svc.SaveAccountAsync(dto));
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (await ForbiddenUnlessAsync("TrsAccounts", "Delete") is ObjectResult forbidden) return forbidden;
+        if (!await HasAsync("Shop", "Banks.Manage") &&
+            await ForbiddenUnlessAsync("TrsAccounts", "Delete") is ObjectResult forbidden) return forbidden;
         await _svc.DeleteAccountAsync(id);
         return NoContent();
     }

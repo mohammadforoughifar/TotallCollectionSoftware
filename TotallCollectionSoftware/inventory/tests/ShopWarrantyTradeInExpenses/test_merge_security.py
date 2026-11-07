@@ -34,5 +34,49 @@ class ShopMergeSecurityTests(unittest.TestCase):
         self.assertIn('action.Equals("ViewProfit", StringComparison.OrdinalIgnoreCase)', auth)
 
 
+    def test_catalog_permissions_are_scoped_to_matching_endpoints(self):
+        auth = (ROOT / 'src/Inventory.Api/Infrastructure/ShopPermissionAuthorizer.cs').read_text(encoding='utf-8')
+        for controller, section in (('Products', 'Products'), ('Categories', 'Categories'), ('Units', 'Units')):
+            self.assertRegex(auth, rf'"{controller}" when operation is [^\n]+\n\s*=> Section\(permissions, "{section}", writeShop\)')
+        for section in ('Warehouses', 'GoodsIssue', 'Referrers'):
+            self.assertIn(f'Section(permissions, "{section}", writeShop)', auth)
+        self.assertIn('controller == "Kardex" && operation == "Get"', auth)
+        treasury = (ROOT / 'src/Inventory.Api/Controllers/Treasury/TreasuryController.cs').read_text(encoding='utf-8')
+        account_controller = treasury.split('class TrsAccountsController', 1)[1].split('class TrsVouchersController', 1)[0]
+        self.assertEqual(account_controller.count('HasAsync("Shop", "Banks.Manage")'), 2)
+
+    def test_quick_party_create_cannot_edit_or_grant_directory_access(self):
+        controller = (ROOT / 'src/Inventory.Api/Controllers/Catalog/PartiesController.cs').read_text(encoding='utf-8')
+        quick = controller.split('ShopQuickCreate(', 1)[1].split('/// <summary>ایجاد یا ویرایش طرف حساب.', 1)[0]
+        self.assertIn('party.Id != 0', quick)
+        self.assertIn('PartyType.Customer or PartyType.Supplier', quick)
+        for perm in ('Shop.Sale.Manage', 'Shop.Purchase.Manage', 'Shop.Repairs.Manage', 'Shop.GoodsIssue.Manage'):
+            self.assertIn(perm, quick)
+        self.assertIn('if (!allowed) return await Save(party)', quick)
+        self.assertIn('_db.Referrers.AsNoTracking().AnyAsync', quick)
+        self.assertIn('PersistWithAuditAsync(party)', quick)
+        direct_read = controller.split('private static bool CanReadAll(', 1)[1].split('private static bool CanReadDirectory(', 1)[0]
+        self.assertNotIn('Shop.Parties.', direct_read)  # statements retain a separate permission
+        lookup = controller.split('ShopCustomers(', 1)[1].split('ShopQuickCreate(', 1)[0]
+        self.assertIn('GetInvoicePartiesAsync(PartyType.Customer)', lookup)
+        self.assertIn('"repairs" => "Repairs"', lookup)
+        self.assertIn('"goods-issue" => "GoodsIssue"', lookup)
+        self.assertIn('_ => null', lookup)
+        modal = (ROOT / 'src/Inventory.Client/Shared/PartyFormModal.razor').read_text(encoding='utf-8')
+        self.assertIn('ShopQuickCreate && !IsEdit', modal)
+        self.assertIn('PartySvc.SaveShopQuickAsync(party)', modal)
+        visit = (ROOT / 'src/Inventory.Client/Pages/SalesVisit/VisitForm.razor').read_text(encoding='utf-8')
+        self.assertNotIn('ShopQuickCreate=', visit)  # visitor referrer scope remains enforced
+
+    def test_financial_cross_section_filters_remain_independent(self):
+        expenses = (ROOT / 'src/Inventory.Api/Controllers/Finance/ExpensesController.cs').read_text(encoding='utf-8')
+        for action, method in (('Read', 'AvailableReceivedCheques'), ('Update', 'CreateReceivedCheque'), ('Update', 'ReceivedChequeStatus')):
+            self.assertRegex(expenses, rf'\[RequirePermission\("Orders", "{action}"\)\]\s+public async Task<IActionResult> {method}')
+        tradein = (ROOT / 'src/Inventory.Api/Controllers/Repairs/ShopTradeInController.cs').read_text(encoding='utf-8')
+        self.assertIn('[RequirePermission("Orders", "Update")]', tradein)
+        auth = (ROOT / 'src/Inventory.Api/Infrastructure/ShopPermissionAuthorizer.cs').read_text(encoding='utf-8')
+        self.assertIn('Section(permissions, "Sale", true) || Section(permissions, "Installments", true)', auth)
+
+
 if __name__ == '__main__':
     unittest.main()

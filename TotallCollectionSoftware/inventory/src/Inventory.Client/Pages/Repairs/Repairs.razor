@@ -988,7 +988,7 @@
 @* ---------------- تعریف مشتری ----------------
    همان کامپوننت فرم «طرف حسابها» (/parties)، نه یک فرم خلاصهٔ موازی.
    ------------------------------------------------ *@
-<PartyFormModal Visible="showNewCustomer"
+<PartyFormModal ShopQuickCreate="true" Visible="showNewCustomer"
                 Type="PartyType.Customer"
                 AllowReferrerPicker="true"
                 OnSaved="OnNewCustomerSaved"
@@ -1250,7 +1250,9 @@ else
         try
         {
             technicians = await RepairSvc.GetTechniciansAsync();
-            customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            customerLookup = ShopAccess.CanSee(Auth, "Repairs")
+                ? await PartySvc.GetShopCustomerLookupsAsync("repairs")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
             warehouses = await WarehouseSvc.GetAllAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1888,7 +1890,9 @@ else
         if (created is null) { Toast.Error("مشتری ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
         try
         {
-            customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            customerLookup = ShopAccess.CanSee(Auth, "Repairs")
+                ? await PartySvc.GetShopCustomerLookupsAsync("repairs")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
             form.PartyId = created.Id;   // انتخاب خودکار مشتری جدید
             Toast.Success($"مشتری «{created.Name}» ثبت شد و انتخاب شد.");
         }

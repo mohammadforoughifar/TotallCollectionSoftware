@@ -1077,7 +1077,7 @@
 
 
 @* فرم سریع ایجاد مشتری / تأمین‌کننده و انتخاب خودکار در سند *@
-<PartyFormModal InvoiceFormKey="@(UseInvoiceWizard ? formKey : null)" Visible="showNewPartyModal"
+<PartyFormModal ShopQuickCreate="true" InvoiceFormKey="@(UseInvoiceWizard ? formKey : null)" Visible="showNewPartyModal"
                 Type="@(Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier)"
                 AllowReferrerPicker="@(Type == TransactionType.Sale)"
                 OnSaved="OnQuickPartyCreated"

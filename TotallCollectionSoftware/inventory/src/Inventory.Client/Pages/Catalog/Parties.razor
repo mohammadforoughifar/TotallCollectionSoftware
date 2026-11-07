@@ -655,14 +655,14 @@
     private List<Party> items = new();
 
     // ==================== دسترسی‌ها (مشتری و تأمین‌کننده مستقل) ====================
-    private bool CanSeeCustomers => Auth.Has("Parties.Read") || Auth.HasModule("Customers");
-    private bool CanSeeSuppliers => Auth.Has("Parties.Read") || Auth.HasModule("Suppliers");
+    private bool CanSeeCustomers => ShopAccess.CanSee(Auth, "Parties") || Auth.Has("Parties.Read") || Auth.HasModule("Customers");
+    private bool CanSeeSuppliers => ShopAccess.CanSee(Auth, "Parties") || Auth.Has("Parties.Read") || Auth.HasModule("Suppliers");
 
     private string ModuleCurrent => type == PartyType.Supplier ? "Suppliers" : "Customers";
 
-    private bool CanCreateCurrent => Auth.Has("Parties.Create") || Auth.Has($"{ModuleCurrent}.Create");
-    private bool CanUpdateCurrent => Auth.Has("Parties.Update") || Auth.Has($"{ModuleCurrent}.Update");
-    private bool CanDeleteCurrent => Auth.Has("Parties.Delete") || Auth.Has($"{ModuleCurrent}.Delete");
+    private bool CanCreateCurrent => ShopAccess.CanManage(Auth, "Parties") || Auth.Has("Parties.Create") || Auth.Has($"{ModuleCurrent}.Create");
+    private bool CanUpdateCurrent => ShopAccess.CanManage(Auth, "Parties") || Auth.Has("Parties.Update") || Auth.Has($"{ModuleCurrent}.Update");
+    private bool CanDeleteCurrent => ShopAccess.CanManage(Auth, "Parties") || Auth.Has("Parties.Delete") || Auth.Has($"{ModuleCurrent}.Delete");
 
     private bool AnyAccess => CanSeeCustomers || CanSeeSuppliers;
 

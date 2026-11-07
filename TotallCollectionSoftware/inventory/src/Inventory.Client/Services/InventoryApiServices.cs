@@ -202,8 +202,17 @@ public class PartyService : IPartyService
         };
     }
 
+    public async Task<List<LookupItem>> GetShopCustomerLookupsAsync(string context)
+    {
+        var parties = await _api.GetAsync<List<Party>>($"api/parties/shop-customers?context={Uri.EscapeDataString(context)}");
+        return parties.Where(p => p.IsActive).Select(p => ToLookup(p)).ToList();
+    }
+
     public Task<Party> SaveAsync(Party party)
         => _api.PostAsync<Party>("api/parties", party);
+
+    public Task<Party> SaveShopQuickAsync(Party party)
+        => _api.PostAsync<Party>("api/parties/shop-quick", party);
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/parties/{id}");

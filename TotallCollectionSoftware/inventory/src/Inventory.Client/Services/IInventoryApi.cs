@@ -88,7 +88,9 @@ public interface IPartyService
     Task<PagedResult<Party>> GetPagedAsync(PartyType type, int skip, int take);
     Task<List<Party>> GetAsync(PartyType type);
     Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false);
+    Task<List<LookupItem>> GetShopCustomerLookupsAsync(string context);
     Task<Party> SaveAsync(Party party);
+    Task<Party> SaveShopQuickAsync(Party party);
     Task DeleteAsync(int id);
     Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
     Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);

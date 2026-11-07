@@ -65,13 +65,20 @@ public class PartiesController : ControllerBase
     private static bool CanReadAll(IReadOnlySet<string> perms, PartyType type)
         => Has(perms, "Parties", "Read") || Has(perms, ModuleOf(type), "Read");
 
+    // Shop party-directory access is limited to the directory CRUD endpoints;
+    // it does not itself grant the separate statements-report permission.
+    private static bool CanReadDirectory(IReadOnlySet<string> perms, PartyType type)
+        => CanReadAll(perms, type) || perms.Contains("Shop.Parties.View") || perms.Contains("Shop.Parties.Manage");
+
     /// <summary>اجازهٔ کار با این نوع (ثبت/ویرایش) — حتی اگر محدود به پروندهٔ خودش باشد.</summary>
     private static bool CanWrite(IReadOnlySet<string> perms, PartyType type, bool update)
         => Has(perms, "Parties", update ? "Update" : "Create")
-           || Has(perms, ModuleOf(type), update ? "Update" : "Create");
+           || Has(perms, ModuleOf(type), update ? "Update" : "Create")
+           || perms.Contains("Shop.Parties.Manage");
 
     private static bool CanDelete(IReadOnlySet<string> perms, PartyType type)
-        => Has(perms, "Parties", "Delete") || Has(perms, ModuleOf(type), "Delete");
+        => Has(perms, "Parties", "Delete") || Has(perms, ModuleOf(type), "Delete")
+           || perms.Contains("Shop.Parties.Manage");
 
     private int MyReferrerId =>
         int.TryParse(User.FindFirstValue("referrerId"), out var rid) && rid > 0 ? rid : 0;
@@ -98,7 +105,7 @@ public class PartiesController : ControllerBase
     public async Task<ActionResult> GetAll([FromQuery] PartyType type, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var perms = await MyPermissionsAsync();
-        var all = CanReadAll(perms, type);
+        var all = CanReadDirectory(perms, type);
         var scoped = !all && MyReferrerId > 0 && CanWrite(perms, type, update: false);
 
         if (!all && !scoped)
@@ -110,6 +117,34 @@ public class PartiesController : ControllerBase
 
         return Ok(await Paging.ResultAsync(async pagination =>
             await _service.GetPartiesAsync(type, pagination, scope), skip, take));
+    }
+
+    /// <summary>گزینه‌های مشتری برای پذیرش تعمیرات یا بیجک؛ بدون گردش و ماندهٔ حساب.</summary>
+    [HttpGet("shop-customers")]
+    public async Task<ActionResult> ShopCustomers([FromQuery] string context)
+    {
+        var perms = await MyPermissionsAsync();
+        var section = context switch { "repairs" => "Repairs", "goods-issue" => "GoodsIssue", _ => null };
+        if (section is null || !(perms.Contains("*") || perms.Contains($"Shop.{section}.View") || perms.Contains($"Shop.{section}.Manage")))
+            return Denied("شما به انتخاب مشتری در این بخش دسترسی ندارید.");
+        return Ok(await _service.GetInvoicePartiesAsync(PartyType.Customer));
+    }
+
+    /// <summary>ثبت سریع در فرم فروشگاه؛ صرفاً ایجاد و فقط نوع مجاز همان بخش.</summary>
+    [HttpPost("shop-quick")]
+    public async Task<ActionResult> ShopQuickCreate([FromBody] Inventory.Shared.Dtos.Party party)
+    {
+        if (party.Id != 0 || party.Type is not (PartyType.Customer or PartyType.Supplier) || string.IsNullOrWhiteSpace(party.Name))
+            return BadRequest(new { message = "اطلاعات طرف حساب جدید معتبر نیست." });
+        var perms = await MyPermissionsAsync();
+        var allowed = party.Type == PartyType.Customer
+            ? perms.Contains("Shop.Sale.Manage") || perms.Contains("Shop.Repairs.Manage") || perms.Contains("Shop.GoodsIssue.Manage")
+            : perms.Contains("Shop.Purchase.Manage");
+        // Existing ERP users keep their normal customer/supplier and referrer rules.
+        if (!allowed) return await Save(party);
+        if (party.ReferrerId is > 0 && !await _db.Referrers.AsNoTracking().AnyAsync(r => r.Id == party.ReferrerId))
+            return BadRequest(new { message = "معرف انتخاب‌شده در شرکت جاری یافت نشد." });
+        return await PersistWithAuditAsync(party);
     }
 
     /// <summary>ایجاد یا ویرایش طرف حساب.</summary>
@@ -125,7 +160,7 @@ public class PartiesController : ControllerBase
                 : "شما مجوز ثبت یا ویرایش مشتری را ندارید.");
 
         // کاربر محدود به پروندهٔ خودش (ویزیتور): هرگز تأمین‌کننده نمی‌سازد و از پرونده بیرون نمی‌زند
-        if (!CanReadAll(perms, type))
+        if (!CanReadDirectory(perms, type))
         {
             if (MyReferrerId <= 0 && party.Id == 0)
                 return Denied("حساب کاربری شما به هیچ معرفی متصل نیست؛ از مدیر سیستم بخواهید معرف شما را تعیین کند.");
@@ -148,6 +183,11 @@ public class PartiesController : ControllerBase
             }
         }
 
+        return await PersistWithAuditAsync(party);
+    }
+
+    private async Task<ActionResult> PersistWithAuditAsync(Inventory.Shared.Dtos.Party party)
+    {
         // ثبت‌کننده را سرور تعیین می‌کند، نه کلاینت
         if (party.Id == 0)
         {
