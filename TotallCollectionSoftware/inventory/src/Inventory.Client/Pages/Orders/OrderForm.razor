@@ -77,7 +77,7 @@
                             <i class="bi bi-plus-circle-fill text-success"></i> @(Type == TransactionType.Sale ? "مشتری جدید" : "تأمین‌کننده جدید")
                         </button>
                     </div>
-                    <SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard" ConstrainToModal="UseInvoiceWizard" AdvanceOnEnter="UseInvoiceWizard" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب…" />
+                    <SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard" ConstrainToModal="UseInvoiceWizard" AdvanceOnEnter="UseInvoiceWizard" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب — نام، موبایل یا تلفن…" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
@@ -1092,6 +1092,9 @@
         if (UseInvoiceWizard) pendingSectionFocus = "[data-order-child]";
     }
 
+    private static string CustomerDisplay(Party c) => c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
+        : string.IsNullOrWhiteSpace(c.ReferrerName) ? $"{c.Name} — معرف: نامشخص" : $"{c.Name} — معرف: {c.ReferrerName}";
+
     private async Task OnQuickPartyCreated(Party newParty)
     {
         showNewPartyModal = false;
@@ -1101,17 +1104,13 @@
             {
                 customers = await OrderSvc.GetInvoicePartiesAsync(TransactionType.Sale);
                 partyLookup = customers.Where(c => c.IsActive)
-                    .Select(c => new LookupItem
-                    {
-                        Id = c.Id,
-                        Name = c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {(string.IsNullOrWhiteSpace(c.ReferrerName) ? "نامشخص" : c.ReferrerName)}"
-                    }).ToList();
+                    .Select(c => PartyService.ToLookup(c, CustomerDisplay(c)))
+                    .ToList();
             }
             else
             {
                 partyLookup = (await OrderSvc.GetInvoicePartiesAsync(TransactionType.Purchase)).Where(p => p.IsActive)
-                    .Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+                    .Select(p => PartyService.ToLookup(p)).ToList();
             }
 
             // انتخاب خودکار طرف حساب جدید در کمبوباکس
@@ -1988,7 +1987,7 @@
             whLookup = await whTask;
             var invoiceParties = await partiesTask;
             if (Type == TransactionType.Purchase)
-                partyLookup = invoiceParties.Where(p => p.IsActive).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+                partyLookup = invoiceParties.Where(p => p.IsActive).Select(p => PartyService.ToLookup(p)).ToList();
             var prods = await prodTask;
 
             try
@@ -2017,12 +2016,8 @@
                 // فهرست مشتری‌ها با نمایش وضعیت معرف: «بدون معرف» یا نام معرف
                 customers = invoiceParties;
                 partyLookup = customers.Where(c => c.IsActive)
-                    .Select(c => new LookupItem
-                    {
-                        Id = c.Id,
-                        Name = c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {(string.IsNullOrWhiteSpace(c.ReferrerName) ? "نامشخص" : c.ReferrerName)}"
-                    }).ToList();
+                    .Select(c => PartyService.ToLookup(c, CustomerDisplay(c)))
+                    .ToList();
             }
 
             activeWarehouseIds = whLookup.Select(w => w.Id).ToHashSet();

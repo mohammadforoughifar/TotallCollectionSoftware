@@ -33,7 +33,39 @@ public static class ShopPermissionAuthorizer
     {
         if (permissions.Contains($"{module}.{action}")) return true;
         if (!module.Equals("Orders", StringComparison.OrdinalIgnoreCase))
-            return permissions.Any(p => ShopSections.AliasAllows($"{module}.{action}", p));
+        {
+            // Main deliberately separates shop and ERP permissions. Never turn a shop
+            // permission into a general legacy-module grant: only allow these explicit
+            // shop repair/expense operations, with independent view/manage checks.
+            if (context.ActionDescriptor is not ControllerActionDescriptor shopAction) return false;
+            var writeShop = !ShopSections.IsViewLike(action);
+            var controller = shopAction.ControllerName;
+            var operation = shopAction.ActionName;
+            if (module.Equals("Repairs", StringComparison.OrdinalIgnoreCase))
+            {
+                var known = controller switch
+                {
+                    "ShopWarranty" => operation is "GetAll" or "Lookups" or "Report" or "Save" or "FinalizeWarranty",
+                    "ShopTradeIn" => operation is "GetAll" or "Customers" or "TargetSales" or "Save" or "FinalizeTradeIn" or "Use",
+                    "Repairs" => operation is "GetAll" or "Get" or "Save" or "Delete" or "SetStatus" or "Invoice",
+                    "Technicians" => operation is "GetAll" or "Save" or "Delete",
+                    _ => false
+                };
+                return known && Section(permissions, "Repairs", writeShop);
+            }
+            if (module.Equals("Expenses", StringComparison.OrdinalIgnoreCase))
+            {
+                var known = controller switch
+                {
+                    "Expenses" => operation is "GetAll" or "Report" or "ChequeBanks" or "AvailableReceivedCheques" or
+                        "CreateIssuedCheque" or "CreateReceivedCheque" or "IssuedChequeStatus" or "ReceivedChequeStatus" or "Save" or "Delete",
+                    "ExpenseCategories" => operation is "GetAll" or "Save" or "Delete",
+                    _ => false
+                };
+                return known && Section(permissions, "Expenses", writeShop);
+            }
+            return false;
+        }
         // ViewProfit is never implied by a shop section.
         if (action.Equals("ViewProfit", StringComparison.OrdinalIgnoreCase)) return false;
         if (context.ActionDescriptor is not ControllerActionDescriptor descriptor) return false;

@@ -838,7 +838,7 @@
             if (whLookup.Count == 0)
                 whLookup = await OrderSvc.GetInvoiceWarehousesAsync(txnType);
             partyLookup = (await OrderSvc.GetInvoicePartiesAsync(txnType))
-                .Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+                .Select(p => PartyService.ToLookup(p)).ToList();
         }
         catch { }
     }

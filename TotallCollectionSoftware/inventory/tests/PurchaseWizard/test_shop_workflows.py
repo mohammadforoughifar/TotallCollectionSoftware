@@ -14,8 +14,10 @@ def read(path):
 class ShopWorkflows(unittest.TestCase):
     def test_profit_requires_explicit_permission_even_with_shop_aliases(self):
         aliases = read('Inventory.Shared/ShopSections.cs').split('public static bool AliasAllows', 1)[1]
-        self.assertLess(aliases.index('action.Equals("ViewProfit"'), aliases.index('foreach (var section in All)'))
-        self.assertIn('StringComparison.OrdinalIgnoreCase', aliases)
+        self.assertIn('=> false;', aliases)  # shop permissions never imply ERP module grants
+        authorizer = read('Inventory.Api/Infrastructure/ShopPermissionAuthorizer.cs')
+        self.assertIn('action.Equals("ViewProfit", StringComparison.OrdinalIgnoreCase)', authorizer)
+        self.assertIn('return false;', authorizer.split('action.Equals("ViewProfit"', 1)[1])
         for page in ('OrderForm', 'Orders'):
             source = read(f'Inventory.Client/Pages/Orders/{page}.razor')
             self.assertIn('OrderSvc.CanViewProfitAsync()', source)

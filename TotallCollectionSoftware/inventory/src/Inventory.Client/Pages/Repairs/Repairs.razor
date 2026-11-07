@@ -303,7 +303,7 @@
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="جستجو: شماره پذیرش، دستگاه، سریال، مشتری…"
+                    <input class="form-control" placeholder="جستجو: شماره پذیرش، دستگاه، سریال، نام/تلفن مشتری…"
                            value="@search" @oninput="OnSearchInput" />
                 </div>
             </div>
@@ -985,36 +985,14 @@
                 DefaultKind="quickBankDefaultKind"
                 OnAccountCreated="OnQuickBankCreated" />
 
-@* ---------------- تعریف سریع مشتری ---------------- *@
-<Modal Visible="showNewCustomer" Title="مشتری جدید" OnClose="() => showNewCustomer = false">
-    <ChildContent>
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label">نام مشتری <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="newCustomer.Name" placeholder="نام و نام خانوادگی / نام فروشگاه" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">موبایل</label>
-                <input class="form-control" @bind="newCustomer.Mobile" dir="ltr" placeholder="0912…" data-digits="" inputmode="numeric" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">تلفن</label>
-                <input class="form-control" @bind="newCustomer.Phone" dir="ltr" data-digits="tel" inputmode="tel" />
-            </div>
-            <div class="col-12">
-                <label class="form-label">آدرس</label>
-                <input class="form-control" @bind="newCustomer.Address" />
-            </div>
-        </div>
-    </ChildContent>
-    <Footer>
-        <button class="btn btn-light" @onclick="() => showNewCustomer = false">انصراف (Esc)</button>
-        <button class="btn btn-primary" data-hotkey="f1" @onclick="SaveNewCustomer" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            ثبت و انتخاب (F1)
-        </button>
-    </Footer>
-</Modal>
+@* ---------------- تعریف مشتری ----------------
+   همان کامپوننت فرم «طرف حسابها» (/parties)، نه یک فرم خلاصهٔ موازی.
+   ------------------------------------------------ *@
+<PartyFormModal Visible="showNewCustomer"
+                Type="PartyType.Customer"
+                AllowReferrerPicker="true"
+                OnSaved="OnNewCustomerSaved"
+                OnCancel="() => showNewCustomer = false" />
 
 @* ---------------- تعمیرکارها ---------------- *@
 <Modal Visible="showTechs" Title="تعمیرکارها" Size="modal-lg" OnClose="() => showTechs = false">
@@ -1898,31 +1876,23 @@ else
 
     private Task PrintRepair(RepairOrderDto repairSummary) => PrintDeliveryReceipt(repairSummary);
 
-    // ---------------- تعریف سریع مشتری ----------------
+    // ---------------- تعریف مشتری (همان فرم مشترک /parties) ----------------
     private bool showNewCustomer;
-    private Party newCustomer = new() { Type = PartyType.Customer, IsActive = true };
 
-    private void OpenNewCustomer()
-    {
-        newCustomer = new Party { Type = PartyType.Customer, IsActive = true };
-        showNewCustomer = true;
-    }
+    private void OpenNewCustomer() => showNewCustomer = true;
 
-    private async Task SaveNewCustomer()
+    /// <summary>پس از ثبت در فرم واقعی طرف حساب: به‌روزرسانی فهرست و انتخاب خودکار.</summary>
+    private async Task OnNewCustomerSaved(Party created)
     {
-        if (saving) return;
-        if (string.IsNullOrWhiteSpace(newCustomer.Name)) { Toast.Error("نام مشتری را وارد کنید."); return; }
-        saving = true;
+        showNewCustomer = false;
+        if (created is null) { Toast.Error("مشتری ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
         try
         {
-            var saved = await PartySvc.SaveAsync(newCustomer);
-            Toast.Success($"مشتری «{saved.Name}» ثبت شد.");
-            showNewCustomer = false;
             customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
-            form.PartyId = saved.Id;   // انتخاب خودکار مشتری تازه‌ساخته
+            form.PartyId = created.Id;   // انتخاب خودکار مشتری جدید
+            Toast.Success($"مشتری «{created.Name}» ثبت شد و انتخاب شد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { saving = false; }
     }
 
     // ---------------- تعمیرکارها ----------------

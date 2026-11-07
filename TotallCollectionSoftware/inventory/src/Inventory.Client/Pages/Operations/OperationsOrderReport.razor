@@ -889,7 +889,7 @@ else
             var parties = OrderSvc.GetInvoicePartiesAsync(selectedType);
             var warehouses = OrderSvc.GetInvoiceWarehousesAsync(selectedType);
             await Task.WhenAll(parties, warehouses);
-            partyLookup = (await parties).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+            partyLookup = (await parties).Select(p => PartyService.ToLookup(p)).ToList();
             warehouseLookup = await warehouses;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

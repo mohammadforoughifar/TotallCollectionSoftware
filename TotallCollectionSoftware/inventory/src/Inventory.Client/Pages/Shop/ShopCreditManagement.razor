@@ -166,11 +166,11 @@
         <div class="fin-filter-card mb-4">
             <div class="row g-2.5 align-items-end">
                 <div class="col-12 col-md-5 col-xl-4">
-                    <label class="fin-label">جستجوی سریال چک، طرف حساب یا شماره فاکتور</label>
+                    <label class="fin-label">جستجوی سریال چک، نام/تلفن مشتری یا شماره فاکتور</label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
-                               placeholder="جستجوی سریال، کد صیاد، نام مشتری..."
+                               placeholder="جستجوی سریال، کد صیاد، نام یا تلفن مشتری..."
                                @bind="chequeSearch" @bind:event="oninput" @onkeyup="ApplyChequeFilter" />
                     </div>
                 </div>
@@ -384,7 +384,7 @@
         <div class="fin-filter-card mb-4">
             <div class="row g-2.5 align-items-end">
                 <div class="col-12 col-md-6 col-xl-5">
-                    <label class="fin-label">جستجوی مشتری، شماره موبایل یا شماره فاکتور</label>
+                    <label class="fin-label">جستجوی نام مشتری، موبایل، تلفن یا شماره فاکتور</label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
@@ -1406,7 +1406,8 @@
             q = q.Where(c => c.Number.ToLower().Contains(s) ||
                              c.PartyName.ToLower().Contains(s) ||
                              c.OrderNumber.ToLower().Contains(s) ||
-                             (c.BankName != null && c.BankName.ToLower().Contains(s)));
+                             (c.BankName != null && c.BankName.ToLower().Contains(s)) ||
+                             PhoneSearch.Matches(s, c.PartyMobile, c.PartyPhone));
         }
 
         filteredCheques = q.OrderBy(c => c.DueDate).ToList();
@@ -1426,7 +1427,7 @@
             var s = installmentSearch.Trim().ToLower();
             q = q.Where(i => i.PartyName.ToLower().Contains(s) ||
                              i.OrderNumber.ToLower().Contains(s) ||
-                             (i.PartyMobile != null && i.PartyMobile.Contains(s)));
+                             PhoneSearch.Matches(s, i.PartyMobile, i.PartyPhone));
         }
 
         filteredInstallments = q.OrderBy(i => i.DueDate).ToList();

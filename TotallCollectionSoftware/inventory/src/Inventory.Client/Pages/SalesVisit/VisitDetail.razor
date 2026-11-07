@@ -7,29 +7,48 @@
 
 <PageTitle>@(order?.Number ?? "سفارش ویزیتوری")</PageTitle>
 
-<div class="page-head">
-    <div>
-        <h1>@(order?.Number ?? "…")</h1>
-        <p class="lead">
+<div class="vis-detail">
+<div class="vis-detail-head">
+    <div class="vis-detail-head-main">
+        <div class="vis-detail-eyebrow">سفارش ویزیتوری</div>
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <h1 class="vis-detail-title">@(order?.Number ?? "…")</h1>
             @if (order is not null)
             {
-                <span class="@VisUi.BadgeCss(order.Status)">@VisUi.StatusText(order.Status)</span>
-                <span class="ms-2">@order.PartyName — @order.Date.ToFa()</span>
+                <span class="@VisUi.BadgeCss(order.Status) vis-status">@VisUi.StatusText(order.Status)</span>
             }
-        </p>
+        </div>
+        @if (order is not null)
+        {
+            <div class="vis-detail-sub">
+                <span><i class="bi bi-person-vcard"></i> @order.PartyName</span>
+                <span><i class="bi bi-calendar3"></i> @order.Date.ToFa()</span>
+                <span><i class="bi bi-cash-coin"></i> @Fa.Money(order.TotalNet) ریال</span>
+            </div>
+        }
     </div>
-    <button class="btn btn-light ms-auto" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
-        <i class="bi bi-arrow-right"></i> فهرست
+    <button class="btn btn-light vis-back-btn" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
+        <i class="bi bi-arrow-right"></i> فهرست سفارشها
     </button>
 </div>
-
 @if (loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div class="vis-detail-loading" data-loading-skeleton>
+        <div class="vis-detail-skeleton vis-detail-skel-head"></div>
+        <div class="vis-detail-skeleton"></div>
+        <div class="vis-detail-skeleton"></div>
+        <div class="vis-detail-skeleton"></div>
+    </div>
 }
 else if (order is null)
 {
-    <div class="empty-state"><i class="bi bi-search"></i><h5>سفارش یافت نشد یا به شما تعلق ندارد</h5></div>
+    <div class="empty-state" data-detail-empty>
+        <i class="bi bi-search"></i>
+        <h5>سفارش یافت نشد یا به شما تعلق ندارد</h5>
+        <button class="btn btn-sm btn-outline-primary mt-2" @onclick="@(() => Nav.NavigateTo("/sales/visits"))">
+            <i class="bi bi-arrow-right"></i> بازگشت به فهرست سفارشها
+        </button>
+    </div>
 }
 else
 {
@@ -45,60 +64,47 @@ else
         </div>
     }
 
-    <div class="row g-3">
+    <div class="row vis-grid">
         <div class="col-12 col-lg-8">
             <div class="card">
-                <div class="card-header"><i class="bi bi-box-seam"></i><span class="card-title">اقلام سفارش</span></div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>کالا</th>
-                                    <th class="text-start">مقدار</th>
-                                    <th class="text-start">قیمت واحد</th>
-                                    <th class="text-start">تخفیف</th>
-                                    <th class="text-start">جمع</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var (l, i) in order.Lines.Select((l, i) => (l, i)))
-                                {
-                                    <tr>
-                                        <td class="fs-8 text-muted">@Fa.Digits(i + 1)</td>
-                                        <td>
-                                            <div class="fw-600 fs-8">@l.ProductName</div>
-                                            <div class="fs-9 text-muted">@l.ProductCode @(string.IsNullOrWhiteSpace(l.Note) ? "" : $"— {l.Note}")</div>
-                                        </td>
-                                        <td class="text-start fs-8">@Fa.Number(l.Quantity) @l.Unit</td>
-                                        <td class="text-start fs-8">@Fa.Money(l.UnitPrice)</td>
-                                        <td class="text-start fs-8">@l.DiscountText</td>
-                                        <td class="text-start fs-8 fw-600">@Fa.Money(l.LineTotal)</td>
-                                    </tr>
-                                }
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="5" class="text-start fs-8">جمع کل</td>
-                                    <td class="text-start fs-8">@Fa.Money(order.TotalGross)</td>
-                                </tr>
-                                <tr>
-                                    <td colspan="5" class="text-start fs-8">تخفیف</td>
-                                    <td class="text-start fs-8 text-danger">@Fa.Money(order.TotalDiscount)</td>
-                                </tr>
-                                <tr>
-                                    <td colspan="5" class="text-start fw-700">قابل پرداخت</td>
-                                    <td class="text-start fw-700">@Fa.Money(order.TotalNet)</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                <div class="card-header vis-card-header"><i class="bi bi-box-seam"></i><span class="card-title">اقلام سفارش</span></div>
+                <div class="card-body">
+                    @* اقلام: گرید واکنشگرا، بدون جدول پهن و بدون هیچ اسکرول داخلی *@
+                    <div class="vis-detail-lines" data-no-scroll>
+                        <div class="vis-detail-lines-head">
+                            <span class="vis-h-idx">#</span>
+                            <span class="vis-h-name">کالا</span>
+                            <span class="vis-h-qty">مقدار</span>
+                            <span class="vis-h-price">قیمت واحد</span>
+                            <span class="vis-h-disc">تخفیف</span>
+                            <span class="vis-h-total">جمع</span>
+                        </div>
+                        @foreach (var (l, i) in order.Lines.Select((l, i) => (l, i)))
+                        {
+                            <div @key="l" class="vis-detail-line">
+                                <div class="vis-cell c-idx"><span class="vis-cell-label">ردیف</span>@Fa.Digits(i + 1)</div>
+                                <div class="vis-cell c-name">
+                                    <span class="vis-cell-label">کالا</span>
+                                    <b>@l.ProductName</b>
+                                    <span class="vis-cell-note">@l.ProductCode @(string.IsNullOrWhiteSpace(l.Note) ? "" : $"— {l.Note}")</span>
+                                </div>
+                                <div class="vis-cell c-qty"><span class="vis-cell-label">مقدار</span><b class="num">@Fa.Number(l.Quantity) @l.Unit</b></div>
+                                <div class="vis-cell c-price"><span class="vis-cell-label">قیمت واحد</span><b class="num">@Fa.Money(l.UnitPrice)</b></div>
+                                <div class="vis-cell c-disc"><span class="vis-cell-label">تخفیف</span><b class="num">@l.DiscountText</b></div>
+                                <div class="vis-cell c-total"><span class="vis-cell-label">جمع سطر</span><b class="num">@Fa.Money(l.LineTotal)</b></div>
+                            </div>
+                        }
+                    </div>
+                    <div class="vis-review" data-review-bar>
+                        <div class="vis-kpi"><span>جمع کل</span><b class="num">@Fa.Money(order.TotalGross) <small>ریال</small></b></div>
+                        <div class="vis-kpi"><span>تخفیف</span><b class="num text-danger">@Fa.Money(order.TotalDiscount) <small>ریال</small></b></div>
+                        <div class="vis-kpi vis-kpi-total"><span>قابل پرداخت</span><b class="num">@Fa.Money(order.TotalNet) <small>ریال</small></b></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card mt-3">
-                <div class="card-header"><i class="bi bi-clock-history"></i><span class="card-title">گردش سفارش</span></div>
+            <div class="card vis-stack">
+                <div class="card-header vis-card-header"><i class="bi bi-clock-history"></i><span class="card-title">گردش سفارش</span></div>
                 <div class="card-body">
                     @if (order.History.Count == 0)
                     {
@@ -132,7 +138,7 @@ else
 
         <div class="col-12 col-lg-4">
             <div class="card">
-                <div class="card-header"><i class="bi bi-info-circle"></i><span class="card-title">اطلاعات</span></div>
+                <div class="card-header vis-card-header"><i class="bi bi-info-circle"></i><span class="card-title">اطلاعات</span></div>
                 <div class="card-body fs-8">
                     <div class="vis-row"><span>ویزیتور</span><b>@order.ReferrerName</b></div>
                     <div class="vis-row"><span>مشتری</span><b>@order.PartyName</b></div>
@@ -162,7 +168,7 @@ else
                     </div>
                     @if (order.FinalDateSetBy is not null)
                     {
-                        <div class="fs-9 text-muted mb-1">
+                        <div class="vis-info-note">
                             تعیین‌شده توسط @order.FinalDateSetBy
                             @if (order.FinalDateSetAt is not null)
                             {
@@ -200,15 +206,16 @@ else
                 </div>
             </div>
 
-            <div class="card mt-3">
-                <div class="card-header"><i class="bi bi-lightning-charge"></i><span class="card-title">اقدام‌ها</span></div>
-                <div class="card-body d-grid gap-2">
+            <div class="card vis-stack">
+                <div class="card-header vis-card-header"><i class="bi bi-lightning-charge"></i><span class="card-title">اقدام‌ها</span></div>
+                <div class="card-body vis-actions">
                     @if (order.Status == VisOrderStatus.Submitted && me?.CanApprove != true)
                     {
                         <div class="alert alert-info py-2 px-2 fs-8 mb-1" data-edit-window>
                             <i class="bi bi-pencil-square"></i>
                             تا زمانی که مدیر سفارش را تأیید نکرده می‌توانید آن را ویرایش کنید؛
                             ویرایش، سفارش را در صف تأیید نگه می‌دارد و به مدیر اطلاع داده می‌شود.
+                            نیازی به ارسال دوباره نیست.
                         </div>
                     }
 
@@ -218,7 +225,12 @@ else
                                 @onclick="@(() => Nav.NavigateTo($"/sales/visits/{order.Id}/edit"))">
                             <i class="bi bi-pencil"></i> ویرایش
                         </button>
-                        <button class="btn btn-success" @onclick="SubmitAsync">
+                    }
+                    @* سفارش «در انتظار تأیید» قبلاً ارسال شده است؛ دکمهٔ ارسال
+                       فقط برای پیشنویس و سفارش برگشتی نمایش داده میشود. *@
+                    @if (CanSubmit)
+                    {
+                        <button class="btn btn-success" data-submit-btn @onclick="SubmitAsync">
                             <i class="bi bi-send"></i> ارسال برای تأیید
                         </button>
                     }
@@ -281,22 +293,369 @@ else
 
 <VisFinanceModal Visible="showFinance" Order="order" OnClose="@(() => showFinance = false)" OnDone="OnFinanceDone" />
 
+</div>
+
 <style>
-    .vis-row { display: flex; justify-content: space-between; gap: .5rem; padding: .25rem 0; border-bottom: 1px dashed #eef2f7; }
-    .vis-tl-item { display: flex; gap: .55rem; padding: .35rem 0; position: relative; }
-    .vis-tl-dot { width: 9px; height: 9px; border-radius: 50%; background: #2563eb; margin-top: .45rem; flex: 0 0 auto; }
-    .vis-modal-back { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
-    .vis-modal { background: #fff; border-radius: 14px; padding: 1.1rem 1.2rem; width: 100%; max-width: 460px; }
-    .vis-badge { display: inline-block; font-size: .68rem; border-radius: 99px; padding: .1rem .5rem; border: 1px solid transparent; }
-    .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-    .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
-    .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
-    .vis-orange { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
-    .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
-    .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
-    .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
-    .fs-8 { font-size: .78rem; }
-    .fs-9 { font-size: .7rem; }
+/* ==========================================================================
+   طراحی یکدست «جزئیات سفارش»
+   همان مقیاس فاصلهگذاری فرم ثبت سفارش: --vis-gap برای ستونها/ردیفها،
+   --vis-pad برای حاشیهٔ کارتها و --vis-gap-sm برای عناصر داخل یک ردیف.
+   ========================================================================== */
+.vis-detail {
+    max-width: 100%; overflow-x: clip;
+    /* فاصلهٔ آیکون و متن کف دارد */
+    --vis-icon-gap: .55rem;
+    --vis-gap: 1rem;
+    --vis-gap-sm: .5rem;
+    --vis-pad: 1.15rem;
+    --vis-radius: 14px;
+    --vis-line: #e6ecf4;
+    --vis-ink: #0f172a;
+    --vis-muted: #64748b;
+    --vis-accent: #4f46e5;
+}
+/* تنها منبع فاصلهٔ بین ستونها — هم افقی و هم عمودی */
+.vis-detail, .vis-detail * { box-sizing: border-box; }
+.vis-detail .vis-grid {
+    --bs-gutter-x: var(--vis-gap);
+    --bs-gutter-y: var(--vis-gap);
+}
+.vis-detail .vis-stack { margin-top: var(--vis-gap); }
+
+/* سربرگ */
+.vis-detail .vis-detail-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--vis-gap);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: var(--vis-gap);
+    border: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius);
+    background: linear-gradient(135deg, #ffffff, #f8fafc);
+    box-shadow: 0 3px 16px rgba(15, 23, 42, .04);
+}
+.vis-detail .vis-detail-eyebrow {
+    margin-bottom: .3rem;
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--vis-accent);
+}
+.vis-detail .vis-detail-title {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 800;
+    line-height: 1.4;
+}
+.vis-detail .vis-detail-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem 1rem;
+    margin-top: var(--vis-gap-sm);
+    font-size: .78rem;
+    color: var(--vis-muted);
+}
+.vis-detail .vis-detail-sub i { margin-inline-end: var(--vis-icon-gap); color: var(--vis-accent); }
+.vis-detail .vis-status { font-size: .72rem; padding: .2rem .6rem; }
+.vis-detail .vis-back-btn {
+    border-radius: 10px;
+    font-size: .8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.vis-detail > .alert { margin-bottom: var(--vis-gap); font-size: .78rem; }
+
+/* کارتها */
+.vis-detail .card {
+    border: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius);
+    box-shadow: 0 3px 16px rgba(15, 23, 42, .04);
+}
+.vis-detail .card-header.vis-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--vis-icon-gap);
+    padding: .8rem var(--vis-pad);
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
+    border-bottom: 1px solid var(--vis-line);
+    border-radius: var(--vis-radius) var(--vis-radius) 0 0;
+}
+.vis-detail .vis-card-header > i { color: var(--vis-accent); font-size: .95rem; }
+.vis-detail .vis-card-header .card-title { margin: 0; font-size: .85rem; font-weight: 800; }
+.vis-detail .card-body { padding: var(--vis-pad); }
+
+/* ===== اقلام: گرید واکنشگرا، بدون جدول پهن و بدون اسکرول داخلی =====
+   هیچ پهنای حداقل، لبهٔ اسکرول، محدودیت ارتفاع یا جدول واکنشگرای پهن وجود ندارد. */
+.vis-detail .vis-detail-lines { margin-top: 0; }
+.vis-detail .vis-detail-lines-head,
+.vis-detail .vis-detail-line {
+    display: grid;
+    grid-template-columns: minmax(0, .5fr) minmax(0, 2.6fr) minmax(0, 1.1fr) minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1.25fr);
+    grid-template-areas: "idx name qty price disc total";
+    gap: var(--vis-gap-sm);
+    align-items: start;
+    min-width: 0;
+}
+.vis-detail .vis-detail-lines-head {
+    padding: .5rem .6rem;
+    background: #f8fafc;
+    border: 1px solid var(--vis-line);
+    border-radius: 10px;
+    font-size: .74rem;
+    font-weight: 700;
+    color: var(--vis-muted);
+}
+.vis-detail .vis-detail-lines-head > span { min-width: 0; }
+.vis-detail .vis-h-idx { grid-area: idx; }
+.vis-detail .vis-h-name { grid-area: name; }
+.vis-detail .vis-h-qty { grid-area: qty; }
+.vis-detail .vis-h-price { grid-area: price; }
+.vis-detail .vis-h-disc { grid-area: disc; }
+.vis-detail .vis-h-total { grid-area: total; }
+.vis-detail .vis-detail-line {
+    margin-top: var(--vis-gap-sm);
+    padding: .6rem;
+    border: 1px solid var(--vis-line);
+    border-radius: 12px;
+    background: #fff;
+    font-size: .8rem;
+    transition: box-shadow 180ms cubic-bezier(.2,.8,.2,1), transform 180ms cubic-bezier(.2,.8,.2,1);
+}
+.vis-detail .vis-detail-line:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgba(15,23,42,.22); }
+.vis-detail .vis-cell { min-width: 0; }
+.vis-detail .c-idx { grid-area: idx; color: var(--vis-muted); font-size: .74rem; }
+.vis-detail .c-name { grid-area: name; }
+.vis-detail .c-qty { grid-area: qty; }
+.vis-detail .c-price { grid-area: price; }
+.vis-detail .c-disc { grid-area: disc; }
+.vis-detail .c-total { grid-area: total; font-weight: 800; }
+.vis-detail .vis-cell > b { display: block; overflow-wrap: anywhere; font-weight: 700; }
+.vis-detail .vis-cell-label { display: none; margin-bottom: .2rem; font-size: .62rem; font-weight: 700; color: var(--vis-muted); }
+.vis-detail .vis-cell-note { display: block; margin-top: .2rem; font-size: .7rem; color: var(--vis-muted); overflow-wrap: anywhere; }
+
+/* نوار بازبینی مالی: ۳ شاخص کنارهم (حتی روی موبایل) */
+.vis-detail .vis-review {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--vis-gap-sm);
+    margin-top: var(--vis-gap);
+    min-width: 0;
+}
+.vis-detail .vis-kpi {
+    display: flex; flex-direction: column; gap: .2rem;
+    min-width: 0;
+    padding: .7rem .8rem;
+    border: 1px solid var(--vis-line);
+    border-radius: 12px;
+    background: #fff;
+}
+.vis-detail .vis-kpi > span { font-size: .72rem; color: var(--vis-muted); }
+.vis-detail .vis-kpi > b { font-size: .9rem; font-weight: 800; color: var(--vis-ink); overflow-wrap: anywhere; }
+.vis-detail .vis-kpi small { font-size: .68rem; font-weight: 500; color: var(--vis-muted); }
+.vis-detail .vis-kpi-total { border-color: #dbe4ff; background: linear-gradient(135deg, #eef2ff, #f8fafc); }
+.vis-detail .vis-kpi-total > b { color: var(--vis-accent); font-size: 1.05rem; }
+
+/* حالت خالی و اسکلتون */
+.vis-detail .empty-state .btn { margin-top: .5rem; }
+@@keyframes vis-detail-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.vis-detail .vis-detail-loading { display: grid; gap: var(--vis-gap-sm); }
+.vis-detail .vis-detail-skeleton {
+    height: 2.6rem; border-radius: 12px;
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: vis-detail-shimmer 1.4s linear infinite;
+}
+.vis-detail .vis-detail-skel-head { height: 3.6rem; }
+
+/* ردیفهای اطلاعات: فاصلهٔ یکسان و تراز یکدست برچسب / مقدار */
+.vis-detail .vis-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .5rem 0;
+    border-bottom: 1px dashed #eef2f7;
+    font-size: .8rem;
+}
+.vis-detail .vis-row > span { flex: 0 1 auto; color: var(--vis-muted); }
+.vis-detail .vis-row > b {
+    min-width: 0;
+    text-align: end;
+    overflow-wrap: anywhere;
+    color: var(--vis-ink);
+    font-weight: 700;
+}
+.vis-detail .vis-info-note {
+    padding: .3rem 0;
+    font-size: .72rem;
+    color: var(--vis-muted);
+}
+.vis-detail .card-body > .alert { margin-top: var(--vis-gap); margin-bottom: 0; }
+
+/* گردش سفارش */
+.vis-detail .vis-tl-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--vis-icon-gap);
+    padding: .55rem 0;
+    border-bottom: 1px dashed #eef2f7;
+}
+.vis-detail .vis-tl-item:last-child { border-bottom: 0; }
+.vis-detail .vis-tl-dot {
+    width: 9px;
+    height: 9px;
+    margin-top: .5rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--vis-accent);
+    box-shadow: 0 0 0 3px #eef2ff;
+}
+
+/* اقدامها */
+.vis-detail .vis-actions { display: grid; gap: var(--vis-gap-sm); }
+.vis-detail .vis-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vis-icon-gap);
+    padding: .6rem .9rem;
+    border-radius: 10px;
+    font-size: .82rem;
+    font-weight: 700;
+}
+.vis-detail .vis-actions .alert {
+    margin: 0 0 .25rem;
+    font-size: .74rem;
+    line-height: 1.7;
+}
+
+/* فاصلهٔ آیکون و متن: دکمهها flex با gap کفدار، یادداشتها margin منطقی */
+.vis-detail .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: var(--vis-icon-gap);
+}
+.vis-detail .btn > i { margin: 0 !important; flex: 0 0 auto; }
+.vis-detail .vis-info-note > i,
+.vis-detail .alert > i,
+.vis-detail .vis-row > span > i,
+.vis-detail .vis-tl-item > i,
+.vis-detail .vis-detail-sub > span > i { margin-inline-end: var(--vis-icon-gap); flex: 0 0 auto; }
+
+
+/* پنجرهٔ تصمیم */
+.vis-detail .vis-modal-back {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .5);
+}
+.vis-detail .vis-modal {
+    width: 100%;
+    max-width: 460px;
+    padding: 1.25rem;
+    border-radius: var(--vis-radius);
+    background: #fff;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, .25);
+}
+
+/* نشانهای وضعیت */
+.vis-detail .vis-badge {
+    display: inline-block;
+    padding: .1rem .5rem;
+    border: 1px solid transparent;
+    border-radius: 99px;
+    font-size: .68rem;
+}
+.vis-detail .vis-secondary { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.vis-detail .vis-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.vis-detail .vis-primary { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.vis-detail .vis-orange { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+.vis-detail .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
+.vis-detail .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.vis-detail .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
+
+/* ---------- تراکم پیوسته: هرچی نما کوچیکتر، باکسها و ردیفها کوچیکتر ----------
+   توکنها با clamp()+vw ساخته شدند تا از ۱۰۸۰px تا ۳۲۰px نرم کوچک شوند (نه دو پرش ثابت). */
+@@media (max-width: 1080px) {
+    .vis-detail {
+        --vis-gap: clamp(.26rem, calc(.55vw + .16rem), .5rem);
+        --vis-gap-sm: clamp(.14rem, calc(.3vw + .09rem), .28rem);
+        --vis-pad: clamp(.34rem, calc(.72vw + .22rem), .6rem);
+        --vis-radius: clamp(8px, calc(.9vw + 5px), 11px);
+        /* کوچک میشود ولی هیچگاه کمتر از ۶٫۷px نمیشود */
+        --vis-icon-gap: clamp(.42rem, calc(.2vw + .36rem), .6rem);
+        --vis-ctl-f: clamp(.66rem, calc(.5vw + .5rem), .76rem);
+        line-height: 1.32;
+    }
+    .vis-detail .vis-detail-head { padding: var(--vis-pad); }
+    .vis-detail .vis-detail-title { font-size: clamp(.82rem, calc(.6vw + .64rem), .94rem); }
+    .vis-detail .vis-detail-sub { font-size: clamp(.6rem, calc(.4vw + .5rem), .68rem); margin-top: var(--vis-gap-sm); }
+    .vis-detail .card-header.vis-card-header { padding: var(--vis-pad) var(--vis-pad); }
+    .vis-detail .card-header.vis-card-header .card-title { font-size: clamp(.7rem, calc(.5vw + .54rem), .78rem); }
+    .vis-detail .card-body { padding: var(--vis-pad); }
+    .vis-detail .vis-stack { gap: var(--vis-gap) !important; }
+    .vis-detail .vis-detail-lines-head { display: none; }
+    .vis-detail .vis-detail-line {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        grid-template-areas: "name name" "qty price" "disc total" !important;
+        row-gap: var(--vis-gap-sm);
+        padding: var(--vis-gap-sm);
+        border-radius: var(--vis-radius);
+    }
+    .vis-detail .vis-detail-line:hover { transform: none; }
+    .vis-detail .c-idx { display: none; }
+    .vis-detail .c-name { grid-area: name; }
+    .vis-detail .c-qty { grid-area: qty; }
+    .vis-detail .c-price { grid-area: price; }
+    .vis-detail .c-disc { grid-area: disc; }
+    .vis-detail .c-total { grid-area: total; }
+    /* برچسب کنار مقدار، نه بالای آن → هر سلول یک خط بهجای دو خط */
+    .vis-detail .vis-detail-line .vis-cell:not(.c-name) {
+        display: flex; align-items: center; flex-wrap: wrap; gap: var(--vis-icon-gap);
+    }
+    .vis-detail .vis-detail-line .vis-cell-label {
+        display: block; flex: 0 0 auto; max-width: 44%; margin: 0;
+        font-size: clamp(.48rem, calc(.32vw + .4rem), .56rem); line-height: 1.1;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .vis-detail .vis-detail-line .vis-cell > b {
+        flex: 1 1 45%; min-width: 0; margin: 0;
+        font-size: var(--vis-ctl-f); line-height: 1.2; overflow-wrap: anywhere;
+    }
+    .vis-detail .vis-detail-line .vis-cell > .vis-cell-note { flex: 1 1 100%; }
+    .vis-detail .vis-cell-note { font-size: clamp(.52rem, calc(.36vw + .44rem), .6rem); }
+    .vis-detail .vis-review { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: var(--vis-gap-sm); }
+    .vis-detail .vis-kpi { padding: var(--vis-gap-sm) var(--vis-pad); }
+    .vis-detail .vis-kpi > span { font-size: clamp(.5rem, calc(.35vw + .42rem), .58rem); }
+    .vis-detail .vis-kpi > b { font-size: clamp(.62rem, calc(.5vw + .48rem), .76rem); }
+    .vis-detail .vis-kpi small { display: none; }
+    .vis-detail .vis-kpi-total > b { font-size: clamp(.72rem, calc(.6vw + .56rem), .88rem); }
+    .vis-detail .vis-row { padding: var(--vis-gap-sm) 0; font-size: var(--vis-ctl-f); }
+    .vis-detail .vis-tl-item { padding: var(--vis-gap-sm) 0; border-bottom: 0; font-size: var(--vis-ctl-f); }
+    .vis-detail .vis-tl-dot { margin-top: var(--vis-gap-sm); }
+    /* نوار اقدام چسبان، بالاتر از نوار پایین اپ در حالت موبایل */
+    .vis-detail .vis-actions {
+        position: sticky; bottom: 0; z-index: 20;
+        padding: var(--vis-gap-sm); border-radius: var(--vis-radius); background: #fff;
+        box-shadow: 0 -6px 20px -8px rgba(15, 23, 42, .18);
+    }
+    .app-mobile .vis-detail .vis-actions { bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+    .vis-detail .card-header.vis-card-header,
+    .vis-detail .vis-actions .btn,
+    .vis-detail .btn,
+    .vis-detail .vis-tl-item { gap: var(--vis-icon-gap); }
+    .vis-detail .vis-actions .btn { padding: var(--vis-gap-sm); font-size: var(--vis-ctl-f); }
+}
+@@media (max-width: 720px) {
+    .vis-detail { line-height: 1.28; }
+    .vis-detail .vis-kpi { padding: var(--vis-gap-sm); }
+    .vis-detail .vis-cell-label { font-size: clamp(.46rem, calc(.3vw + .4rem), .54rem); }
+}
 </style>
 
 @code {
@@ -312,6 +671,14 @@ else
     private string? comment;
 
     /// <summary>ویرایش تا زمانی که مدیر تأیید نکرده: پیش‌نویس، ارسال‌شده و برگشتی.</summary>
+    /// <summary>
+    /// ارسال فقط برای پیشنویس یا سفارش برگشتی مجاز است. سفارش «در انتظار تأیید»
+    /// قبلاً ارسال شده است، پس دکمهٔ «ارسال برای تأیید» نباید دیده شود.
+    /// </summary>
+    private bool CanSubmit => order is not null
+        && order.Status is VisOrderStatus.Draft or VisOrderStatus.Returned
+        && (me?.CanCreate == true || me?.CanApprove == true);
+
     private bool CanEdit => order is not null
         && order.Status is VisOrderStatus.Draft or VisOrderStatus.Submitted or VisOrderStatus.Returned
         && (me?.CanCreate == true || me?.CanApprove == true);

@@ -175,7 +175,31 @@ public class PartyService : IPartyService
     {
         var parties = await GetAsync(type);
         if (activeOnly) parties = parties.Where(p => p.IsActive).ToList();
-        return parties.Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+        return parties.Select(p => ToLookup(p)).ToList();
+    }
+
+    /// <summary>
+    /// ساخت گزینهٔ انتخابگر طرف حساب. تلفن و موبایل به <c>SearchText</c> میروند تا
+    /// «جستجوی مشتری» در <b>تمام</b> فرمهایی که از این سرویس استفاده میکنند روی شماره
+    /// هم کار کند، بیآنکه <c>Name</c> (که در اسناد و عناوین فرمها بهکار میرود) عوض شود؛
+    /// <c>InfoText</c> همان شمارهها را زیر نام نشان میدهد تا نتیجه قابل تشخیص باشد.
+    /// </summary>
+    /// <param name="p">طرف حساب کامل (DTO شامل Phone/Mobile).</param>
+    /// <param name="displayName">عنوان سفارشی، مثلاً نام مشتری بههمراه معرف در فرم سفارش.</param>
+    public static LookupItem ToLookup(Party p, string? displayName = null)
+    {
+        var phones = new[] { p.Mobile, p.Phone }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new LookupItem
+        {
+            Id = p.Id,
+            Name = displayName ?? p.Name,
+            SearchText = phones.Length == 0 ? null : string.Join(" ", phones),
+            InfoText = phones.Length == 0 ? null : string.Join(" · ", phones)
+        };
     }
 
     public Task<Party> SaveAsync(Party party)

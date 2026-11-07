@@ -663,6 +663,8 @@ public class ShopChequeItem
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";
     public string? PartyMobile { get; set; }
+    /// <summary>تلفن ثابت طرف حساب — برای جستجوی مشتری با شماره تلفن.</summary>
+    public string? PartyPhone { get; set; }
     public string Number { get; set; } = "";
     public int? TrsAccountId { get; set; }
     public string? BankName { get; set; }
@@ -691,6 +693,8 @@ public class ShopInstallmentItem
     public int PartyId { get; set; }
     public string PartyName { get; set; } = "";
     public string? PartyMobile { get; set; }
+    /// <summary>تلفن ثابت طرف حساب — برای جستجوی مشتری با شماره تلفن.</summary>
+    public string? PartyPhone { get; set; }
     public int No { get; set; }
     public decimal Amount { get; set; }
     public DateTime DueDate { get; set; }

@@ -1427,7 +1427,7 @@ public class InventoryService : IInventoryService
     {
         var parties = await _db.Parties.AsNoTracking().Where(p => p.Type == type)
             .OrderBy(p => p.Name).ThenBy(p => p.Id)
-            .Select(p => new Party { Id = p.Id, Type = p.Type, Name = p.Name, IsActive = p.IsActive, ReferrerId = p.ReferrerId })
+            .Select(p => new Party { Id = p.Id, Type = p.Type, Name = p.Name, Phone = p.Phone, Mobile = p.Mobile, IsActive = p.IsActive, ReferrerId = p.ReferrerId })
             .ToListAsync();
         var referrerIds = parties.Where(p => p.ReferrerId.HasValue).Select(p => p.ReferrerId!.Value).Distinct().ToList();
         var names = await _db.Referrers.AsNoTracking().Where(r => referrerIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name);
@@ -3651,6 +3651,7 @@ public class InventoryService : IInventoryService
                 PartyId = t?.PartyId ?? 0,
                 PartyName = party?.Name ?? (c.OwnerName ?? "—"),
                 PartyMobile = party?.Mobile,
+                PartyPhone = party?.Phone,
                 Number = c.Number,
                 TrsAccountId = c.TrsAccountId,
                 BankName = c.BankName,
@@ -3673,7 +3674,8 @@ public class InventoryService : IInventoryService
                 bool match = item.Number.ToLower().Contains(s) ||
                              item.PartyName.ToLower().Contains(s) ||
                              (item.BankName != null && item.BankName.ToLower().Contains(s)) ||
-                             item.OrderNumber.ToLower().Contains(s);
+                             item.OrderNumber.ToLower().Contains(s) ||
+                             PhoneSearch.Matches(s, item.PartyMobile, item.PartyPhone);
                 if (!match) continue;
             }
 
@@ -3734,6 +3736,7 @@ public class InventoryService : IInventoryService
                 PartyId = t?.PartyId ?? 0,
                 PartyName = party?.Name ?? "—",
                 PartyMobile = party?.Mobile,
+                PartyPhone = party?.Phone,
                 No = i.No,
                 Amount = i.Amount,
                 DueDate = i.DueDate,
@@ -3747,7 +3750,7 @@ public class InventoryService : IInventoryService
                 var s = search.Trim().ToLower();
                 bool match = item.PartyName.ToLower().Contains(s) ||
                              item.OrderNumber.ToLower().Contains(s) ||
-                             (item.PartyMobile != null && item.PartyMobile.Contains(s));
+                             PhoneSearch.Matches(s, item.PartyMobile, item.PartyPhone);
                 if (!match) continue;
             }
 
@@ -4069,8 +4072,8 @@ public class InventoryService : IInventoryService
         if (type.HasValue) partiesQ = partiesQ.Where(p => p.Type == type.Value);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
-            partiesQ = partiesQ.Where(p => p.Name.Contains(s) || (p.Mobile != null && p.Mobile.Contains(s)));
+            // نام، موبایل و تلفن ثابت — با همسانسازی شماره (ارقام فارسی، +98، صفر آغازین)
+            partiesQ = partiesQ.MatchingPhone(search.Trim());
         }
 
         var parties = await partiesQ.OrderBy(p => p.Name).ToListAsync();

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>InventoryRemoteAgent</AssemblyName>
+    <RootNamespace>InventoryRemoteAgent</RootNamespace>
+    <Version>0.1.0</Version>
+    <Description>ایجنت ریموت دسکتاپ ماژول RemoteDesktop — فاز ۱: ویندوز، با رضایت کاربر، relay JPEG</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.30" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.30" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="remote-agent.sample.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

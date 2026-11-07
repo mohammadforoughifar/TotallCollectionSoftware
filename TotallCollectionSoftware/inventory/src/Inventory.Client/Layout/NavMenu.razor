@@ -571,15 +571,10 @@
                                     <i class="bi bi-journal-text"></i><span>سفارش‌های من</span>
                                 </NavLink>
                                 }
-                                @* ثبت سفارش برای هر کسی که مجوز «SalesVisit.Create» دارد:
-                                   ویزیتور، کارشناس و مدیر سیستم (ادمین). مدیر فروشِ صرف که این
-                                   مجوز را ندارد، هیچ نقطهٔ ورودیِ «ثبت سفارش جدید» نمی‌بیند. *@
-                                @if (Auth.Has("SalesVisit.Create"))
-                                {
-                                    <NavLink class="nav-link" href="sales/visits/new" @onclick="NotifyClose">
-                                        <i class="bi bi-plus-square"></i><span>ثبت سفارش جدید</span>
-                                    </NavLink>
-                                }
+                                @* «ثبت سفارش جدید» از سایدبار حذف شد: همان دکمه در صفحهٔ
+                                   «سفارش‌های من» (sales/visits) وجود دارد و تکرار آن در منو
+                                   ورودی اضافی و مسیر نگهداری دوباره ایجاد میکرد. محافظ مسیر
+                                   sales/visits/new در RouteGuardsـه MainLayout همچنان پابرجاست. *@
                                 @if (Auth.Has("SalesVisit.Approve"))
                                 {
                                     <NavLink class="nav-link" href="sales/approvals" @onclick="NotifyClose">
