@@ -283,7 +283,7 @@
                                     </td>
                                     <td class="num fs-8">
                                         <div class="fw-600">@c.DueDate.ToFa()</div>
-                                        @if (!c.IsCleared && c.Status != ChequeStatus.Bounced)
+                                        @if (!c.IsCleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Endorsed)
                                         {
                                             if (c.DaysOverdue > 0)
                                             {
@@ -316,6 +316,10 @@
                                                 <div class="fs-9 text-muted mt-0.5 num">@c.ClearedAt.Value.ToFa()</div>
                                             }
                                         }
+                                        else if (c.Status == ChequeStatus.Endorsed)
+                                        {
+                                            <span class="badge bg-info-subtle text-info border rounded-pill px-2.5">خرج‌شده بابت هزینه</span>
+                                        }
                                         else if (c.Status == ChequeStatus.Cancelled)
                                         {
                                             <span class="badge bg-secondary text-white rounded-pill px-2.5">
@@ -335,12 +339,12 @@
                                             {
                                                 <button class="btn btn-sm btn-outline-secondary fin-btn-pill fs-9 py-1 px-2" title="تاریخچه وضعیت چک" @onclick="() => OpenChequeHistory(c)">تاریخچه</button>
                                             }
-                                            @if (c.HasChequeCharge && !c.IsCleared && c.Status != ChequeStatus.Cancelled && Auth.Has("Orders.Update"))
+                                            @if (c.HasChequeCharge && !c.IsCleared && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && Auth.Has("Orders.Update"))
                                             {
                                                 <button class="btn btn-sm btn-outline-primary fin-btn-pill fs-9 py-1 px-2" title="تغییر سررسید و محاسبه تعدیل" @onclick="() => OpenReschedule(c)">سررسید</button>
                                                 <button class="btn btn-sm btn-outline-warning fin-btn-pill fs-9 py-1 px-2" title="تعویض چک وصول‌نشده" @onclick="() => OpenReplaceCheque(c)">تعویض</button>
                                             }
-                                            @if (c.Status != ChequeStatus.Cancelled && !c.IsCleared && c.Status != ChequeStatus.Bounced)
+                                            @if (c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && !c.IsCleared && c.Status != ChequeStatus.Bounced)
                                             {
                                                 <button class="btn btn-sm btn-outline-success fin-btn-pill fs-9 py-1 px-2.5" title="وصول / پاس شدن چک" @onclick="() => ConfirmClearCheque(c)">
                                                     <i class="bi bi-check-lg me-1"></i> وصول

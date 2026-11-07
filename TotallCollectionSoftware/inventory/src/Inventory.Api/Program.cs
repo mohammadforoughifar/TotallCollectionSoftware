@@ -212,6 +212,9 @@ builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت ا
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();
+builder.Services.AddScoped<Inventory.Api.Services.Finance.ShopExpenseChequeService>();
 
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
 builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();

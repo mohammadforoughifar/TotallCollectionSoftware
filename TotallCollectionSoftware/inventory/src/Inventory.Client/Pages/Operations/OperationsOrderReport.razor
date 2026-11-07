@@ -247,24 +247,42 @@ else
                             }
                             else
                             {
-                                var maxAmount = summary.Trend.Max(x => x.Amount);
-                                <div class="d-flex flex-column gap-3">
+                                var maxAmount = Math.Max(0m, summary.Trend.Max(x => x.Amount));
+                                var minAmount = Math.Min(0m, summary.Trend.Min(x => x.Amount));
+                                <div class="order-trend-scroll" role="region" aria-label="نمودار ستونی روند زمانی">
+                                    <div class="order-trend-bars" dir="ltr">
+                                        @foreach (var point in summary.Trend)
+                                        {
+                                            <div class="order-trend-column" tabindex="0"
+                                                 title="@($"{point.Label}: {point.Amount.MoneyExact()} ریال، {point.DocumentCount.Num()} سند")"
+                                                 aria-label="@($"{point.Label}: {point.Amount.MoneyExact()} ریال، {point.DocumentCount.Num()} سند")">
+                                                <div class="order-trend-plot">
+                                                    <span class="order-trend-zero" style="@TrendZeroStyle(minAmount, maxAmount)"></span>
+                                                    <span class="order-trend-bar @(point.Amount < 0 ? "order-trend-negative" : isPurchase ? "order-trend-purchase" : "order-trend-sale")"
+                                                          style="@TrendBarStyle(point.Amount, minAmount, maxAmount)"></span>
+                                                </div>
+                                                <span class="order-trend-label" dir="rtl">@point.Label</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="text-muted fs-9 mt-2 d-print-none">برای مشاهده مبلغ و تعداد اسناد، روی هر ستون مکث یا آن را انتخاب کنید.</div>
+                                <details class="mt-2 d-print-none">
+                                    <summary class="text-secondary fs-8">جدول مبالغ و تعداد اسناد</summary>
+                                    <table class="table table-sm mt-2"><thead><tr><th>تاریخ</th><th>تعداد اسناد</th><th>مبلغ (ریال)</th></tr></thead><tbody>
                                     @foreach (var point in summary.Trend)
                                     {
-                                        <div>
-                                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                                <span class="text-secondary fs-8 fw-600">
-                                                    @point.Label
-                                                    <span class="text-muted num ms-1 fs-9">(@point.DocumentCount.Num() سند)</span>
-                                                </span>
-                                                <b class="num fs-7 text-dark">@point.Amount.Money() <small class="text-muted fs-9">ریال</small></b>
-                                            </div>
-                                            <div class="progress" style="height: 8px; border-radius: 6px; background: #f1f5f9;">
-                                                <div class="progress-bar @(isPurchase ? "bg-indigo-gradient" : "bg-emerald-gradient")"
-                                                     role="progressbar" style="@BarStyle(point.Amount, maxAmount)"></div>
-                                            </div>
-                                        </div>
+                                        <tr><td>@point.Label</td><td class="num">@point.DocumentCount.Num()</td><td class="num">@point.Amount.MoneyExact()</td></tr>
                                     }
+                                    </tbody></table>
+                                </details>
+                                <div class="d-none d-print-block mt-2">
+                                    <table class="table table-sm"><thead><tr><th>تاریخ</th><th>تعداد اسناد</th><th>مبلغ (ریال)</th></tr></thead><tbody>
+                                    @foreach (var point in summary.Trend)
+                                    {
+                                        <tr><td>@point.Label</td><td class="num">@point.DocumentCount.Num()</td><td class="num">@point.Amount.MoneyExact()</td></tr>
+                                    }
+                                    </tbody></table>
                                 </div>
                             }
                         </div>
@@ -756,6 +774,25 @@ else
 </style>
 
 <style>
+/* Only the purchase/sale trend is vertical; the data and filters remain unchanged. */
+.order-trend-scroll { overflow-x: auto; padding: .3rem .25rem .1rem; }
+.order-trend-bars { display: flex; align-items: end; min-width: max-content; gap: .35rem; }
+.order-trend-column { flex: 1 0 3.25rem; min-width: 3.25rem; text-align: center; outline-offset: 2px; }
+.order-trend-plot { position: relative; height: 200px; border-left: 1px solid #e2e8f0;
+    background: repeating-linear-gradient(to top, #fff 0, #fff 48px, #edf1f7 49px, #edf1f7 50px); }
+.order-trend-zero { position: absolute; left: 0; right: 0; border-top: 1px solid #94a3b8; z-index: 1; }
+.order-trend-bar { position: absolute; left: 25%; width: 50%; border-radius: 4px 4px 0 0; min-height: 0; }
+.order-trend-purchase { background: linear-gradient(180deg, #818cf8, #4f46e5); }
+.order-trend-sale { background: linear-gradient(180deg, #60a5fa, #2563eb); }
+.order-trend-negative { background: #e87979; border-radius: 0 0 4px 4px; }
+.order-trend-label { display: block; color: #64748b; font-size: .68rem; white-space: nowrap; margin-top: .4rem; }
+@@media print {
+    .order-trend-scroll { overflow: visible; }
+    .order-trend-column { min-width: 0; flex-basis: 0; }
+    .order-trend-bars { min-width: 0; gap: 1px; }
+    .order-trend-label { font-size: .5rem; white-space: normal; overflow-wrap: anywhere; }
+}
+
 /* ========================================================
    استایل‌های مدرن گزارش خرید و فروش
    ======================================================== */
@@ -893,10 +930,21 @@ else
         ? Fa.Digits(value.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture).Replace('.', '٫')) + "٪"
         : "—";
 
-    private static string BarStyle(decimal value, decimal max)
+    private static string TrendZeroStyle(decimal min, decimal max)
     {
-        var pct = max <= 0 ? 0 : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
-        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+        var range = max - min;
+        var zero = range <= 0 ? 0m : -min / range * 100m;
+        return $"bottom:{zero.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    private static string TrendBarStyle(decimal value, decimal min, decimal max)
+    {
+        var range = max - min;
+        if (range <= 0) return "bottom:0%;height:0%";
+        var zero = -min / range * 100m;
+        var height = Math.Abs(value) / range * 100m;
+        var bottom = value < 0 ? zero - height : zero;
+        return $"bottom:{bottom.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%;height:{height.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
     }
 
     private async Task Print()

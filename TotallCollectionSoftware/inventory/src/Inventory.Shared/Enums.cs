@@ -23,7 +23,10 @@ public enum TransactionType
     Adjustment = 3,
 
     /// <summary>برگشت کالای فروش؛ فقط از گردش برگشت فاکتور ایجاد می‌شود.</summary>
-    SaleReturn = 4
+    SaleReturn = 4,
+
+    /// <summary>خروج واقعی قطعه یا دستگاه برای گارانتی، بدون فروش و درآمد مشتری.</summary>
+    WarrantyOut = 5
 }
 
 /// <summary>وضعیت پذیرش تعمیر</summary>

@@ -12,6 +12,7 @@ public interface IExpenseService
 
     // ---------------- اسناد هزینه ----------------
     Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize);
+    Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to);
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto dto);
     Task DeleteExpenseAsync(int id);
 

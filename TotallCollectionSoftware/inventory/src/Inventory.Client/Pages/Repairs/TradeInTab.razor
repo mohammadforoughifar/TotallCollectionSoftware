@@ -1,0 +1,175 @@
+@namespace Inventory.Client.Pages
+@inject IApiClient Api
+@inject IOrderService OrderSvc
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<div class="page-head">
+    <div><h1>طرح تعویض</h1><p class="lead">ارزش دستگاه را فروشگاه تعیین می‌کند؛ دستگاه فعلاً وارد موجودی نمی‌شود.</p></div>
+    @if (CanManage)
+    {
+        <button class="btn btn-primary me-auto" type="button" @onclick="New"><i class="bi bi-plus-lg"></i> پذیرش تعویض</button>
+    }
+</div>
+<div class="alert alert-light border fs-8">پس از نهایی‌سازی، ارزش دستگاه به اعتبار مشتری افزوده می‌شود و در صورت‌حساب، تسویه فروش یا پرداخت وجه قابل پیگیری است.</div>
+@if (loading) { <div class="text-center p-4" role="status">در حال دریافت پذیرش‌ها…</div> }
+else if (items.Count == 0) { <div class="empty-state"><i class="bi bi-arrow-left-right"></i><h5>پذیرش تعویضی ثبت نشده است</h5></div> }
+else
+{
+    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+        <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th class="text-start">ارزش (ریال)</th><th class="text-start">اعتبار باقیمانده</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody>@foreach (var item in items)
+        {
+            <tr>
+                <td><b>@item.Number</b><div class="text-muted fs-8 num">@item.ReceivedAt.ToFa()</div></td>
+                <td>@item.PartyName</td><td>@item.DeviceType @item.DeviceModel <div class="text-muted fs-9">@item.SerialNumber</div></td>
+                <td class="num text-start">@item.Value.MoneyExact()</td><td class="num text-start fw-bold">@item.AvailableCredit.MoneyExact()</td>
+                <td>@(item.FinalizedAt.HasValue ? "نهایی‌شده" : "پیش‌نویس")</td>
+                <td class="text-nowrap">
+                    @if (!item.FinalizedAt.HasValue && CanManage)
+                    {
+                        <button class="btn btn-sm btn-light" type="button" @onclick="() => Edit(item)">ویرایش</button>
+                        <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => Finalize(item)" disabled="@saving">نهایی‌سازی</button>
+                    }
+                    @if (item.FinalizedAt.HasValue && item.AvailableCredit > 0 && CanManage && CanSettle)
+                    {
+                        <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => OpenUse(item)">مصرف / پرداخت اعتبار</button>
+                    }
+                    @if (item.Uses.Count > 0) { <button class="btn btn-sm btn-light" type="button" @onclick="() => history = item">گردش‌ها</button> }
+                </td>
+            </tr>
+        }</tbody>
+    </table></div></div>
+}
+
+<Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش طرح تعویض" : $"ویرایش {form.Number}")" OnClose="() => showForm = false">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">مشتری *</label><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div>
+            <div class="col-md-6"><label class="form-label">تاریخ پذیرش *</label><DatePicker @bind-Value="receivedAt" /></div>
+            <div class="col-md-6"><label class="form-label">نوع دستگاه *</label><input class="form-control" maxlength="100" @bind="form.DeviceType" /></div>
+            <div class="col-md-6"><label class="form-label">مدل</label><input class="form-control" maxlength="200" @bind="form.DeviceModel" /></div>
+            <div class="col-md-6"><label class="form-label">سریال</label><input class="form-control" maxlength="100" @bind="form.SerialNumber" /></div>
+            <div class="col-md-6"><label class="form-label">ارزش تعیین‌شده (ریال) *</label><input class="form-control num" dir="ltr" inputmode="numeric" value="@valueText" @oninput="e => valueText = Fa.FormatTyping(e.Value?.ToString())" /></div>
+            <div class="col-12"><label class="form-label">یادداشت</label><input class="form-control" maxlength="500" @bind="form.Note" /></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="btn btn-light" @onclick="() => showForm = false">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">ذخیره پیش‌نویس</button></Footer>
+</Modal>
+
+<Modal Visible="useTarget is not null" Title="مصرف یا پرداخت اعتبار مشتری" OnClose="CloseUse">
+    <ChildContent>
+        @if (useTarget is not null)
+        {
+            <div class="alert alert-light border">@useTarget.PartyName — اعتبار باقیمانده: <b class="num">@useTarget.AvailableCredit.MoneyExact()</b> ریال</div>
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label">نوع عملیات</label><select class="form-select" @bind="useKind"><option value="1">تسویه فاکتور فروش</option><option value="2">پرداخت وجه به مشتری</option></select></div>
+                <div class="col-md-6"><label class="form-label">تاریخ عملیات</label><DatePicker @bind-Value="useDate" /></div>
+                @if (useKind == 1)
+                {
+                    <div class="col-12"><label class="form-label">فاکتور فروش همین مشتری</label>
+                        <select class="form-select" @bind="targetSaleId"><option value="0">— انتخاب فاکتور —</option>
+                            @foreach (var order in orders) { <option value="@order.Id">@order.Number — @order.Date.ToFa() — @order.TotalAmount.MoneyExact() ریال</option> }
+                        </select>
+                        <small class="text-muted">مبلغ فقط تا مانده نسیه آزاد فاکتور قابل مصرف است؛ چک و اقساط جداگانه حفظ می‌شوند.</small>
+                    </div>
+                }
+                else
+                {
+                    <div class="col-12"><label class="form-label">صندوق / بانک پرداخت</label><select class="form-select" @bind="accountId"><option value="0">— انتخاب حساب —</option>@foreach (var account in accounts) { <option value="@account.Id">@account.DisplayName</option> }</select></div>
+                }
+                <div class="col-12"><label class="form-label">مبلغ عملیات (ریال)</label><input class="form-control num" dir="ltr" inputmode="numeric" value="@useAmountText" @oninput="e => useAmountText = Fa.FormatTyping(e.Value?.ToString())" /></div>
+            </div>
+        }
+    </ChildContent>
+    <Footer><button class="btn btn-light" @onclick="CloseUse">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="SaveUse" disabled="@saving">ثبت عملیات</button></Footer>
+</Modal>
+
+<Modal Visible="history is not null" Title="گردش اعتبار تعویض" OnClose="() => history = null">
+    <ChildContent>@if (history is not null)
+    {
+        <div class="table-responsive"><table class="table"><thead><tr><th>تاریخ</th><th>عملیات</th><th>مقصد</th><th>مبلغ</th></tr></thead><tbody>
+            @foreach (var u in history.Uses)
+            { <tr><td>@u.Date.ToFa()</td><td>@(u.Kind == TradeInUseKind.ApplyToSale ? "تسویه فروش" : "پرداخت وجه")</td><td>@(u.TargetSaleNumber ?? u.TrsAccountName ?? "—")</td><td class="num">@u.Amount.MoneyExact()</td></tr> }
+        </tbody></table></div>
+    }</ChildContent>
+</Modal>
+
+@code {
+    private List<ShopTradeInDto> items = new();
+    private List<LookupItem> customers = new();
+    private List<ShopTradeInTargetSaleDto> orders = new();
+    private List<TrsAccount> accounts = new();
+    private ShopTradeInDto form = new();
+    private ShopTradeInDto? useTarget, history;
+    private DateTime? receivedAt, useDate;
+    private string valueText = "", useAmountText = "";
+    private int useKind = 1, targetSaleId, accountId;
+    private Guid useOperation;
+    private bool loading, saving, showForm;
+    private bool CanManage => ShopAccess.CanManage(Auth, "Repairs");
+    private bool CanSettle => Auth.IsAdmin || Auth.HasDirect("Orders.Update") || ShopAccess.CanManage(Auth, "Sale") || ShopAccess.CanManage(Auth, "Installments");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { customers = await Api.GetAsync<List<LookupItem>>("api/shop-trade-ins/customers"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        await Load();
+    }
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await Api.GetAsync<List<ShopTradeInDto>>("api/shop-trade-ins"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+    private void New()
+    {
+        form = new ShopTradeInDto { OperationId = Guid.NewGuid(), ReceivedAt = DateTime.Today };
+        receivedAt = DateTime.Today; valueText = ""; showForm = true;
+    }
+    private void Edit(ShopTradeInDto t)
+    {
+        form = new ShopTradeInDto { Id = t.Id, OperationId = t.OperationId, Number = t.Number, PartyId = t.PartyId,
+            DeviceType = t.DeviceType, DeviceModel = t.DeviceModel, SerialNumber = t.SerialNumber, Note = t.Note, Value = t.Value, ReceivedAt = t.ReceivedAt };
+        receivedAt = t.ReceivedAt; valueText = Fa.FormatTyping(t.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture)); showForm = true;
+    }
+    private async Task Save()
+    {
+        if (saving) return;
+        form.Value = Fa.ParseDecimal(valueText); form.ReceivedAt = receivedAt ?? default;
+        saving = true;
+        try { await Api.PostAsync<ShopTradeInDto>("api/shop-trade-ins", form); showForm = false; Toast.Success("پیش‌نویس تعویض ثبت شد."); await Load(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private async Task Finalize(ShopTradeInDto t)
+    {
+        if (saving || !await JS.InvokeAsync<bool>("confirm", $"نهایی‌سازی {t.Number} و ثبت اعتبار {t.Value.MoneyExact()} ریالی برای {t.PartyName}؟")) return;
+        saving = true;
+        try { await Api.PostAsync<ShopTradeInDto>($"api/shop-trade-ins/{t.Id}/finalize", new ShopTradeInFinalizationCommand { Date = DateTime.Today }); Toast.Success("اعتبار مشتری ثبت شد."); await Load(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private async Task OpenUse(ShopTradeInDto t)
+    {
+        useTarget = t; useOperation = Guid.NewGuid(); useKind = 1; targetSaleId = 0; accountId = 0; useDate = DateTime.Today; useAmountText = "";
+        try { orders = await Api.GetAsync<List<ShopTradeInTargetSaleDto>>($"api/shop-trade-ins/target-sales/{t.PartyId}"); }
+        catch (Exception ex) { orders = new(); Toast.Error(ex.Message); }
+        try { accounts = await OrderSvc.GetActiveTreasuryAccountsAsync(); }
+        catch (Exception ex) { accounts = new(); Toast.Error(ex.Message); }
+    }
+    private void CloseUse() => useTarget = null;
+    private async Task SaveUse()
+    {
+        if (saving || useTarget is null) return;
+        var cmd = new ShopTradeInUseCommand { OperationId = useOperation, Kind = (TradeInUseKind)useKind, Date = useDate ?? default,
+            Amount = Fa.ParseDecimal(useAmountText), TargetSaleId = useKind == 1 && targetSaleId > 0 ? targetSaleId : null,
+            TrsAccountId = useKind == 2 && accountId > 0 ? accountId : null };
+        saving = true;
+        try { await Api.PostAsync<object>($"api/shop-trade-ins/{useTarget.Id}/use", cmd); useTarget = null; Toast.Success("عملیات اعتبار ثبت شد."); await Load(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

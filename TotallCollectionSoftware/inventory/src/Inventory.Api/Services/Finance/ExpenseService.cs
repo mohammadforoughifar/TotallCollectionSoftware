@@ -1,5 +1,6 @@
 using Db = Inventory.Api.Data;
 using Inventory.Shared.Dtos;
+using Inventory.Api.Services.Finance;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services;
@@ -101,9 +102,7 @@ public class ExpenseService : IExpenseService
 
         var catNames = await _db.ExpenseCategories.ToDictionaryAsync(c => c.Id, c => c.Name);
 
-        return new PagedResult<ExpenseDto>
-        {
-            Items = items.Select(e => new ExpenseDto
+        var mapped = items.Select(e => new ExpenseDto
             {
                 Id = e.Id,
                 Number = e.Number,
@@ -117,13 +116,69 @@ public class ExpenseService : IExpenseService
                 Payee = e.Payee,
                 Description = e.Description,
                 CreatedAt = e.CreatedAt
-            }).ToList(),
-            TotalCount = total
+            }).ToList();
+        await AttachChequeHistoryAsync(mapped);
+        return new PagedResult<ExpenseDto> { Items = mapped, TotalCount = total };
+    }
+
+    private async Task AttachChequeHistoryAsync(List<ExpenseDto> rows)
+    {
+        var ids = rows.Select(r => r.Id).ToList();
+        if (ids.Count == 0) return;
+        var cheques = await _db.ShopExpenseCheques.AsNoTracking().Include(c => c.Expense)
+            .Include(c => c.SettlementVoucher).ThenInclude(v => v!.Lines)
+            .Where(c => ids.Contains(c.ExpenseId)).OrderBy(c => c.Id).ToListAsync();
+        foreach (var cheque in cheques) ShopExpenseChequeIntegrity.Validate(cheque);
+        var byExpense = cheques.ToLookup(c => c.ExpenseId);
+        foreach (var row in rows) row.Cheques = byExpense[row.Id].Select(c => new ExpenseChequeDto
+        {
+            Id = c.Id, Kind = c.Kind, State = c.State, SourceChequeId = c.SourceChequeId, IssuingAccountId = c.IssuingAccountId,
+            IssuingAccountName = c.Kind == ExpenseChequeKind.Issued ? c.BankName : null, Number = c.Number,
+            BankName = c.BankName, Recipient = c.Recipient, Amount = c.Amount, DueDate = c.DueDate,
+            HandedAt = c.HandedAt, SettledAt = c.SettledAt, Reason = c.Reason
+        }).ToList();
+    }
+
+    public async Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to)
+    {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+            throw new InvalidOperationException("تاریخ شروع نمی‌تواند پس از تاریخ پایان باشد.");
+        var q = _db.Expenses.AsNoTracking().AsQueryable();
+        if (categoryId is > 0) q = q.Where(e => e.CategoryId == categoryId);
+        if (from.HasValue) q = q.Where(e => e.Date >= from.Value.Date);
+        if (to.HasValue && to.Value.Date < DateTime.MaxValue.Date)
+            q = q.Where(e => e.Date < to.Value.Date.AddDays(1));
+        // SQLite cannot SUM decimal natively. Project only report columns and total in memory;
+        // the rows and totals come from the same filtered snapshot, never from a page.
+        var rows = await q.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+            .Select(e => new ExpenseDto
+            {
+                Id = e.Id, Number = e.Number, CategoryId = e.CategoryId, Amount = e.Amount,
+                Date = e.Date, PayType = e.PayType, TrsAccountId = e.TrsAccountId,
+                TrsAccountName = e.TrsAccountName, Payee = e.Payee, Description = e.Description,
+                CreatedAt = e.CreatedAt
+            }).ToListAsync();
+        var ids = rows.Select(r => r.CategoryId).Distinct().ToList();
+        var names = await _db.ExpenseCategories.AsNoTracking().Where(c => ids.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
+        foreach (var row in rows)
+            row.CategoryName = names.TryGetValue(row.CategoryId, out var name) ? name : "—";
+        await AttachChequeHistoryAsync(rows);
+        return new ExpenseReportDto
+        {
+            Count = rows.Count, TotalAmount = rows.Sum(r => r.Amount), Items = rows,
+            Categories = rows.GroupBy(r => r.CategoryId).Select(g => new ExpenseReportCategoryDto
+            {
+                CategoryId = g.Key, Name = names.TryGetValue(g.Key, out var name) ? name : "—",
+                Count = g.Count(), Amount = g.Sum(r => r.Amount)
+            }).OrderByDescending(c => c.Amount).ThenBy(c => c.Name).ToList()
         };
     }
 
     public async Task<ExpenseDto> SaveExpenseAsync(ExpenseDto dto)
     {
+        if (dto.Cheques is { Count: > 0 } || (dto.Id > 0 && await _db.ShopExpenseCheques.AnyAsync(c => c.ExpenseId == dto.Id)))
+            throw new InvalidOperationException("هزینه دارای تاریخچه چک از مسیر معمول قابل ویرایش نیست.");
         if (dto.CategoryId <= 0)
             throw new InvalidOperationException("نوع هزینه را انتخاب کنید.");
         if (dto.Amount <= 0)
@@ -170,6 +225,8 @@ public class ExpenseService : IExpenseService
     {
         var e = await _db.Expenses.FindAsync(id);
         if (e is null) return;
+        if (await _db.ShopExpenseCheques.AnyAsync(c => c.ExpenseId == id))
+            throw new InvalidOperationException("هزینه دارای سابقه چک برای حفظ تاریخچه قابل حذف نیست.");
         _db.Expenses.Remove(e);
         await _db.SaveChangesAsync();
     }

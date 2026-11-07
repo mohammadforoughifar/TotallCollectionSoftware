@@ -535,6 +535,22 @@ public class ExpenseService : IExpenseService
         return _api.GetAsync<PagedResult<ExpenseDto>>(url);
     }
 
+    public Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to)
+    {
+        var url = "api/expenses/report?";
+        if (categoryId is > 0) url += $"categoryId={categoryId}&";
+        if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
+        if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
+        return _api.GetAsync<ExpenseReportDto>(url.TrimEnd('?', '&'));
+    }
+
+    public Task<List<TrsAccount>> GetChequeBanksAsync() => _api.GetAsync<List<TrsAccount>>("api/expenses/cheque-banks");
+    public Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync() => _api.GetAsync<List<ShopChequeItem>>("api/expenses/available-received-cheques");
+    public Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command)
+        => _api.PostAsync<ExpenseChequeCreatedResult>($"api/expenses/{(command.Kind == ExpenseChequeKind.Issued ? "issued-cheque" : "received-cheque")}", command);
+    public async Task ChangeChequeStatusAsync(int id, ExpenseChequeKind kind, ExpenseChequeStatusCommand command)
+        => await _api.PostAsync<object>($"api/expenses/cheques/{id}/{(kind == ExpenseChequeKind.Issued ? "issued-status" : "received-status")}", command);
+
     public Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense)
         => _api.PostAsync<ExpenseDto>("api/expenses", expense);
 

@@ -2,6 +2,7 @@ using System.Data;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
+using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -70,6 +71,10 @@ public static class SaleChequeCancellationService
             throw new InvalidOperationException("قسط پرداخت‌شده فعال روی این فاکتور وجود دارد؛ ابتدا دریافت قسط را لغو کنید.");
         if (await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && r.ReversalDate == null))
             throw new InvalidOperationException("تسویه نسیه فعالی روی این فاکتور وجود دارد؛ ابتدا آن را لغو کنید.");
+        if (await db.ShopExpenseCheques.AnyAsync(c => c.SourceTransactionId == sale.Id && c.State != ExpenseChequeState.Returned))
+            throw new InvalidOperationException("چکی از این فاکتور خرج شده است و ابطال مستقیم فاکتور مجاز نیست.");
+        if (await db.ShopTradeInUses.AnyAsync(u => u.TargetSaleId == sale.Id))
+            throw new InvalidOperationException("این فاکتور از اعتبار تعویض تسویه شده است و ابطال مستقیم آن مجاز نیست.");
         if (await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id || s.TargetSaleTransactionId == sale.Id))
             throw new InvalidOperationException("روی این فاکتور تسویه یا انتقال بستانکاری ثبت شده است؛ ابطال خودکار مجاز نیست.");
 

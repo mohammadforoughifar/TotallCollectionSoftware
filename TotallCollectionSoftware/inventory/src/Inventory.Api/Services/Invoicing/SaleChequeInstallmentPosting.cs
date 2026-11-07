@@ -87,6 +87,7 @@ public static class SaleChequeInstallmentPosting
         if ((charge is not null && await db.SaleChequeReschedules.AnyAsync(x => x.SaleChequeChargeId == charge.Id && x.Date > date)) ||
             await db.SaleChequeReturns.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(x => x.SaleTransactionId == sale.Id && x.Date > date) ||
+            await db.ShopTradeInUses.AnyAsync(u => u.TargetSaleId == sale.Id && u.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.ShopOrderCreditReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(x => x.TransactionId == sale.Id && (x.Date > date || x.ReversalDate > date)))
@@ -168,6 +169,7 @@ public static class SaleChequeInstallmentPosting
         if (await db.SaleChequeChargeEvents.AnyAsync(e => e.SaleChequeCharge.TransactionId == sale.Id && e.Date > date) ||
             await db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == sale.Id && r.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
+            await db.ShopTradeInUses.AnyAsync(u => u.TargetSaleId == sale.Id && u.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))

@@ -466,6 +466,18 @@
                                         <i class="bi bi-cart-check"></i><span>گزارش فروش</span>
                                     </NavLink>
                                 }
+                                @if (ShopAccess.CanSee(Auth, "Repairs"))
+                                {
+                                    <NavLink class="nav-link" href="operations/reports/warranty" @onclick="NotifyClose">
+                                        <i class="bi bi-shield-check"></i><span>گزارش گارانتی</span>
+                                    </NavLink>
+                                }
+                                @if (ShopAccess.CanSee(Auth, "Expenses"))
+                                {
+                                    <NavLink class="nav-link" href="operations/reports/expenses" @onclick="NotifyClose">
+                                        <i class="bi bi-receipt"></i><span>گزارش هزینه‌ها</span>
+                                    </NavLink>
+                                }
                                 @if (ShopAccess.CanSee(Auth, "PartyStatements"))
                                 {
                                     <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
@@ -949,7 +961,7 @@
     private bool ShowOpsBaseSub => ShopAccess.CanSeeAny(Auth, "Products", "Categories", "Units", "Warehouses",
                                                         "Parties", "Referrers", "Banks", "Pricing");
     private bool ShowOpsDashSub => Auth.Has("Dashboards.Financial") || ShopAccess.CanSee(Auth, "Dashboard");
-    private bool ShowOpsReportsSub => ShopAccess.CanSeeAny(Auth, "Kardex", "OrderReports", "PartyStatements");
+    private bool ShowOpsReportsSub => ShopAccess.CanSeeAny(Auth, "Kardex", "OrderReports", "PartyStatements", "Expenses", "Repairs");
     private bool ShowVisGroup => ShopAccess.CanSee(Auth, "SalesVisit");
     // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
     // منوی او کاملاً خالی می‌ماند.

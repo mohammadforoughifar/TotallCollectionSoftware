@@ -15,8 +15,20 @@
 @inject LayoutState Layout
 @inject IJSRuntime JS
 
-<PageTitle>تعمیرات</PageTitle>
+<PageTitle>تعمیرات و گارانتی</PageTitle>
 
+<div class="repair-section-tabs d-print-none" role="tablist" aria-label="بخش پذیرش">
+    <button type="button" role="tab" aria-selected="@(repairTab == 0)" class="@(repairTab == 0 ? "active" : "")" @onclick="() => repairTab = 0">تعمیرات</button>
+    <button type="button" role="tab" aria-selected="@(repairTab == 1)" class="@(repairTab == 1 ? "active" : "")" @onclick="() => repairTab = 1">گارانتی</button>
+    <button type="button" role="tab" aria-selected="@(repairTab == 2)" class="@(repairTab == 2 ? "active" : "")" @onclick="() => repairTab = 2">طرح تعویض</button>
+</div>
+<style>
+.repair-section-tabs { display:flex; gap:.25rem; border-bottom:1px solid #dbe3ef; background:#fff; padding:.2rem .4rem 0; margin-bottom:1rem; overflow-x:auto; }
+.repair-section-tabs button { border:0; background:transparent; color:#64748b; font-weight:700; white-space:nowrap; padding:.7rem 1.15rem; border-bottom:3px solid transparent; }
+.repair-section-tabs button.active { color:#3730a3; border-bottom-color:#4f46e5; }
+</style>
+@if (repairTab == 0)
+{
 <div class="page-head">
     <div>
         <h1>پذیرش تعمیرات</h1>
@@ -1048,8 +1060,18 @@
         </table>
     </ChildContent>
 </Modal>
+}
+else if (repairTab == 1)
+{
+    <WarrantyTab />
+}
+else
+{
+    <TradeInTab />
+}
 
 @code {
+    private int repairTab;
     private List<RepairOrderDto> items = new();
     private List<Technician> technicians = new();
     private List<LookupItem> customerLookup = new();

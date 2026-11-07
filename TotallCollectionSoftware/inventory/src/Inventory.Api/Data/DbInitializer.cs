@@ -55,6 +55,9 @@ public static class DbInitializer
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     await ShopOrderCashSchemaV1.EnsureAsync(db);
                     await ShopOrderCreditSchemaV1.EnsureAsync(db);
+                    await ShopTradeInSchemaV1.EnsureAsync(db);
+                    await ShopWarrantySchemaV1.EnsureAsync(db);
+                    await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
@@ -128,6 +131,9 @@ public static class DbInitializer
                     await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                     await ShopOrderCashSchemaV1.EnsureAsync(db);
                     await ShopOrderCreditSchemaV1.EnsureAsync(db);
+                    await ShopTradeInSchemaV1.EnsureAsync(db);
+                    await ShopWarrantySchemaV1.EnsureAsync(db);
+                    await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);

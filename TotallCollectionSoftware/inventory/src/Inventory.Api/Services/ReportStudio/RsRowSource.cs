@@ -974,6 +974,7 @@ public sealed class RsRowSource : IRsRowSource
         TransactionType.Purchase => "رسید خرید",
         TransactionType.Sale => "حواله فروش",
         TransactionType.SaleReturn => "برگشت از فروش",
+        TransactionType.WarrantyOut => "خروج گارانتی",
         TransactionType.Adjustment => "تعدیل",
         _ => "نامشخص"
     };

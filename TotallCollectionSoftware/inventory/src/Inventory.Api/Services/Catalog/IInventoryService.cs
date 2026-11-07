@@ -66,6 +66,8 @@ public interface IInventoryService
     // ---------------- موجودی ----------------
     Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize);
     Task AdjustStockAsync(AdjustmentCommand cmd);
+    /// <summary>خروج واقعی گارانتی؛ فقط داخل تراکنش سریال‌پذیر پذیرش گارانتی فراخوانی شود.</summary>
+    Task<int?> ConsumeWarrantyStockAsync(int warehouseId, int partyId, string warrantyNumber, DateTime at, IReadOnlyCollection<ShopWarrantyItemDto> supplied);
 
     // ---------------- خرید و فروش ----------------
     Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true);

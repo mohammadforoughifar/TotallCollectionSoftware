@@ -42,6 +42,15 @@ public static class ShopPermissionAuthorizer
         if (descriptor.ControllerName == "Dashboard" && (name is "ClearCheque" or "BounceCheque" or "ResetCheque" or
             "PayInstallment" or "UnpayInstallment" or "GetShopCreditSummary" or "GetShopCheques" or "GetShopInstallments"))
             return Section(permissions, "Installments", write);
+        if (descriptor.ControllerName == "Expenses" && name == "AvailableReceivedCheques")
+            return !write && (Section(permissions, "Sale", false) || Section(permissions, "Installments", false));
+        if (descriptor.ControllerName == "Expenses" && (name is "CreateReceivedCheque" or "ReceivedChequeStatus"))
+            return Section(permissions, "Sale", true) || Section(permissions, "Installments", true);
+        if (descriptor.ControllerName == "ShopTradeIn" && name == "TargetSales")
+            return !write && (Section(permissions, "Sale", false) || Section(permissions, "Installments", false));
+        // Consuming a trade-in credit also modifies a sale or pays from a real account.
+        if (descriptor.ControllerName == "ShopTradeIn" && name == "Use")
+            return Section(permissions, "Sale", true) || Section(permissions, "Installments", true);
         if (descriptor.ControllerName != "Orders") return false;
         if (name is "ProfitAccess" or "PricingAccess" or "DatedSalePrice" or "WarehouseStock" or "ActiveTreasuryAccounts")
             return !write && (Section(permissions, "Sale", false) || Section(permissions, "Purchase", false) ||

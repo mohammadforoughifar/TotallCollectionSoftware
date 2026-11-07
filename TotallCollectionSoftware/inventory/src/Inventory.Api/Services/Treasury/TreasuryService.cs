@@ -1310,7 +1310,9 @@ public class TreasuryService : ITreasuryService
         if (await _db.ShopOrderCashEntries.IgnoreQueryFilters().AnyAsync(c => c.MatchedTrsVoucherId == id) ||
             await _db.SaleChequeCharges.IgnoreQueryFilters().AnyAsync(c => c.InitialCashTrsVoucherId == id) ||
             await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(c => c.TrsVoucherId == id) ||
-            await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(c => c.RefundTrsVoucherId == id))
+            await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(c => c.RefundTrsVoucherId == id) ||
+            await _db.ShopTradeInUses.IgnoreQueryFilters().AnyAsync(u => u.TrsVoucherId == id) ||
+            await _db.ShopExpenseCheques.IgnoreQueryFilters().AnyAsync(c => c.SettlementVoucherId == id))
             throw new InvalidOperationException("گردش مربوط به فاکتور چک فقط از همان فاکتور قابل اصلاح است.");
     }
 
@@ -2129,7 +2131,8 @@ public class TreasuryService : ITreasuryService
         var lines = await _db.TrsVoucherLines.AsNoTracking()
             .Where(l => l.TrsAccountId == accountId && l.TrsVoucher!.Status == TreasuryStatus.Confirmed
                         && (l.TrsVoucher.Kind == TreasuryKind.Receipt || l.TrsVoucher.Kind == TreasuryKind.Payment)
-                        && l.Method != PayMethod.Cheque && l.Method != PayMethod.Discount)
+                        && l.Method != PayMethod.Discount && (l.Method != PayMethod.Cheque ||
+                           _db.ShopExpenseCheques.Any(c => c.SettlementVoucherId == l.TrsVoucherId && c.Kind == ExpenseChequeKind.Issued && c.State == ExpenseChequeState.Cleared)))
             .Select(l => new
             {
                 l.TrsVoucher!.Id,
@@ -2157,6 +2160,7 @@ public class TreasuryService : ITreasuryService
                 {
                     PayMethod.Cash => "نقد",
                     PayMethod.Card => "کارتخوان",
+                    PayMethod.Cheque => "پاس چک هزینه",
                     _ => "حواله بانکی"
                 },
                 PartyName = l.PartyName,

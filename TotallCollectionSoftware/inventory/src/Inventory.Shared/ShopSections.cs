@@ -71,10 +71,10 @@ public static class ShopSections
             ["GoodsIssues"], ["goods-issues"]),
 
         new("Repairs",         "تعمیرات",                                  "bi-tools",          true,
-            ["Repairs"], ["repairs"]),
+            ["Repairs"], ["repairs", "operations/reports/warranty"]),
 
         new("Expenses",        "هزینه‌ها",                                 "bi-cash-coin",      true,
-            ["Expenses"], ["expenses"]),
+            ["Expenses"], ["expenses", "operations/reports/expenses"]),
 
         new("Installments",    "مدیریت اقساط و چک‌ها",                     "bi-wallet2",        true,
             ["Orders", "TrsVouchers", "TrsCheques"], ["shop/credit-management"]),

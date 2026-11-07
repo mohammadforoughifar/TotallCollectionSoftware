@@ -1,6 +1,8 @@
 using System.Data;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
+using Inventory.Api.Services.Finance;
+using Inventory.Shared.Dtos;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -30,7 +32,8 @@ public static class TreasuryBalanceCalculator
             .Where(l => l.TrsAccountId != null && ids.Contains(l.TrsAccountId.Value) &&
                         l.TrsVoucher!.Status == TreasuryStatus.Confirmed &&
                         (l.TrsVoucher.Kind == TreasuryKind.Receipt || l.TrsVoucher.Kind == TreasuryKind.Payment) &&
-                        l.Method != PayMethod.Cheque && l.Method != PayMethod.Discount)
+                        l.Method != PayMethod.Discount && (l.Method != PayMethod.Cheque ||
+                            db.ShopExpenseCheques.IgnoreQueryFilters().Any(c => c.SettlementVoucherId == l.TrsVoucherId && c.Kind == ExpenseChequeKind.Issued && c.State == ExpenseChequeState.Cleared)))
             .Select(l => new { AccountId = l.TrsAccountId!.Value, l.TrsVoucherId, l.TrsVoucher!.Kind, l.TrsVoucher.CompanyId, l.Amount }).ToListAsync();
         var transfers = await db.TrsVouchers.IgnoreQueryFilters().AsNoTracking()
             .Where(v => v.Kind == TreasuryKind.Transfer && v.Status == TreasuryStatus.Confirmed &&
@@ -42,6 +45,10 @@ public static class TreasuryBalanceCalculator
         var cheques = await db.TrsCheques.IgnoreQueryFilters().AsNoTracking()
             .Where(c => c.Status == ChequeStatus.Cleared && c.TrsAccountId != null && ids.Contains(c.TrsAccountId.Value))
             .Select(c => new { AccountId = c.TrsAccountId!.Value, c.Kind, c.CompanyId, c.Amount }).ToListAsync();
+        var expenseCheques = await db.ShopExpenseCheques.IgnoreQueryFilters().AsNoTracking().Include(c => c.Expense)
+            .Include(c => c.SettlementVoucher).ThenInclude(v => v!.Lines)
+            .Where(c => c.IssuingAccountId.HasValue && ids.Contains(c.IssuingAccountId.Value)).ToListAsync();
+        foreach (var cheque in expenseCheques) ShopExpenseChequeIntegrity.Validate(cheque);
         var orderCash = await db.ShopOrderCashEntries.IgnoreQueryFilters().AsNoTracking()
             .Where(e => ids.Contains(e.TrsAccountId)).ToListAsync();
         await ShopOrderCashLedger.EnsureMatchedVouchersValidAsync(db, orderCash);
@@ -97,7 +104,8 @@ public static class TreasuryBalanceCalculator
                 cheques.Any(c => !owners.TryGetValue(c.AccountId, out var owner) || !Matches(owner, c.CompanyId)) ||
                 transfers.Any(t => t.FromAccountId is not > 0 || t.ToAccountId is not > 0 ||
                     !Matches(t.FromCompany, t.CompanyId) || !Matches(t.ToCompany, t.CompanyId)) ||
-                orderCash.Any(e => !owners.TryGetValue(e.TrsAccountId, out var owner) || !Matches(owner, e.CompanyId)))
+                orderCash.Any(e => !owners.TryGetValue(e.TrsAccountId, out var owner) || !Matches(owner, e.CompanyId)) ||
+                expenseCheques.Any(c => !owners.TryGetValue(c.IssuingAccountId!.Value, out var owner) || !Matches(owner, c.CompanyId)))
                 throw new InvalidOperationException("مالک بخشی از گردش خزانه مشخص نیست یا با شرکت حساب مطابقت ندارد؛ پیش از محاسبه مانده تاریخچه را تطبیق دهید.");
             if (saleReceipts.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)) ||
                 installments.Any(r => !owners.TryGetValue(r.TrsAccountId, out var owner) || !Matches(owner, r.CompanyId)) ||

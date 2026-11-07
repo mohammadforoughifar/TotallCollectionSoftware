@@ -567,6 +567,7 @@ else
     private static RenderFragment TypeBadge(TransactionType type) => type switch
     {
         TransactionType.Sale => @<span class="badge badge-out">فروش</span>,
+        TransactionType.WarrantyOut => @<span class="badge badge-out">گارانتی</span>,
         TransactionType.Purchase => @<span class="badge badge-in">خرید</span>,
         TransactionType.SaleReturn => @<span class="badge badge-in">برگشت فروش</span>,
         _ => @<span class="badge badge-adjust">اصلاح موجودی</span>

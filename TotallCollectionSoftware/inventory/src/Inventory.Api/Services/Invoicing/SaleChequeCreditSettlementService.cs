@@ -251,6 +251,7 @@ public static class SaleChequeCreditSettlementService
             await db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == sale.Id && r.Date > date) ||
             await db.SaleChequeReschedules.AnyAsync(r => r.SaleChequeChargeId == charge.Id && r.Date > date) ||
             await db.SaleChequeCreditSettlements.AnyAsync(s => s.SaleTransactionId == sale.Id && s.Date > date) ||
+            await db.ShopTradeInUses.AnyAsync(u => u.TargetSaleId == sale.Id && u.Date > date) ||
             await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)) ||
             await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == sale.Id && (r.Date > date || r.ReversalDate > date)))

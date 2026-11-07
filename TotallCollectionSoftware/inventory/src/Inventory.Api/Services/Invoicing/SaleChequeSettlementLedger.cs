@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Shared;
+using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services.Invoicing;
@@ -23,11 +24,17 @@ public static class SaleChequeSettlementLedger
         var inboundAllocations = (await db.SaleChequeCreditSettlements.AsNoTracking()
             .Where(s => s.Kind == SaleChequeCreditSettlementKind.ApplyToSale && s.TargetSaleTransactionId == sale.Id)
             .Select(s => s.Amount).ToListAsync()).Sum();
+        var tradeInAllocations = (await db.ShopTradeInUses.IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.Kind == TradeInUseKind.ApplyToSale && u.TargetSaleId == sale.Id)
+            .Select(u => u.Amount).ToListAsync()).Sum();
+        var endorsedCleared = (await db.ShopExpenseCheques.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.SourceTransactionId == sale.Id && c.Kind == ExpenseChequeKind.Received && c.State == ExpenseChequeState.Cleared)
+            .Select(c => c.Amount).ToListAsync()).Sum();
         var refundedInitialCash = (await db.SaleChequeCancellations.AsNoTracking()
             .Where(c => c.SaleTransactionId == sale.Id)
             .Select(c => c.RefundedCashAmount).ToListAsync()).Sum();
 
-        return sale.CashAmount - refundedInitialCash + activeCheques + activeInstallments + activeCreditReceipts + inboundAllocations;
+        return sale.CashAmount - refundedInitialCash + activeCheques + activeInstallments + activeCreditReceipts + inboundAllocations + tradeInAllocations + endorsedCleared;
     }
 
     public static async Task EnsureSettledAmountConsistentAsync(AppDbContext db, Transaction sale, bool allowUnpostedLegacy = false)
@@ -91,6 +98,35 @@ public static class SaleChequeSettlementLedger
                     (i.IsPaid && !installments.Any(r => r.InstallmentId == i.Id && !r.ReversalDate.HasValue))))
                 throw new InvalidOperationException("چک یا قسط پرداخت‌شده بدون تاریخچه معتبر حساب وجود دارد؛ ابتدا سوابق قدیمی را بررسی کنید.");
         }
+        // Trade-in allocations have no bank receipt: they consume an already recorded customer liability.
+        var tradeUses = await db.ShopTradeInUses.IgnoreQueryFilters().AsNoTracking().Include(u => u.TradeIn)
+            .Where(u => u.TargetSaleId == sale.Id).ToListAsync();
+        if (tradeUses.Any(u => u.Kind != TradeInUseKind.ApplyToSale || u.CompanyId != sale.CompanyId ||
+                u.TradeIn.CompanyId != sale.CompanyId || u.TradeIn.PartyId != sale.PartyId ||
+                !u.TradeIn.FinalizedAt.HasValue || u.OperationId == Guid.Empty || u.Amount <= 0 ||
+                u.Date.Date < u.TradeIn.FinalizedAt.Value.Date || u.Date.Date < sale.Date.Date ||
+                u.TrsAccountId.HasValue || u.TrsVoucherId.HasValue))
+            throw new InvalidOperationException("گردش اعتبار تعویض با فاکتور مطابقت ندارد.");
+        if (tradeUses.Count > 0)
+        {
+            var sourceIds = tradeUses.Select(u => u.TradeInId).Distinct().ToList();
+            var allUses = await db.ShopTradeInUses.IgnoreQueryFilters().AsNoTracking()
+                .Where(u => sourceIds.Contains(u.TradeInId)).ToListAsync();
+            if (tradeUses.Any(u => allUses.Where(x => x.TradeInId == u.TradeInId).Sum(x => x.Amount) > u.TradeIn.Value))
+                throw new InvalidOperationException("مصرف اعتبار تعویض بیش از ارزش پذیرش است.");
+        }
+        var endorsements = await db.ShopExpenseCheques.IgnoreQueryFilters().AsNoTracking().Include(c => c.Expense).Include(c => c.SourceCheque)
+            .Where(c => c.SourceTransactionId == sale.Id).ToListAsync();
+        if (endorsements.Any(c => c.CompanyId != sale.CompanyId || c.Expense.CompanyId != sale.CompanyId ||
+                c.Kind != ExpenseChequeKind.Received || c.SourceCheque is null || c.SourceCheque.TransactionId != sale.Id ||
+                c.SourceCheque.CompanyId != sale.CompanyId || c.OperationId == Guid.Empty || c.Amount <= 0 ||
+                c.Amount != c.Expense.Amount || c.HandedAt == default || c.HandedAt.Date < sale.Date.Date ||
+                c.State is not (ExpenseChequeState.Outstanding or ExpenseChequeState.Cleared or ExpenseChequeState.Returned) ||
+                (c.State == ExpenseChequeState.Outstanding && (c.SettledAt.HasValue || c.StatusOperationId.HasValue)) ||
+                (c.State != ExpenseChequeState.Outstanding && (!c.SettledAt.HasValue || !c.StatusOperationId.HasValue || c.SettledAt.Value.Date < c.HandedAt.Date)) ||
+                (c.State != ExpenseChequeState.Returned && (c.SourceCheque.Status != ChequeStatus.Endorsed || c.SourceCheque.IsCleared ||
+                    c.SourceCheque.Amount != c.Amount || c.SourceCheque.Number != c.Number || c.SourceCheque.DueDate.Date != c.DueDate.Date))))
+            throw new InvalidOperationException("گردش چک خرج‌شده با هزینه یا فاکتور مبدأ مطابقت ندارد.");
         var expected = await ExpectedSettledAmountAsync(db, sale);
         if (sale.SettledAmount != expected)
             throw new InvalidOperationException("مبلغ تسویه فاکتور با تاریخچه دریافت‌ها و تخصیص‌ها مطابقت ندارد.");

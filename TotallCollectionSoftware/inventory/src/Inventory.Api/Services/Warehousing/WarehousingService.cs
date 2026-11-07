@@ -1907,7 +1907,7 @@ public class WarehousingService : IWarehousingService
                 {
                     TransactionType.Purchase => qty + l.Quantity,
                     TransactionType.SaleReturn => qty + l.Quantity,
-                    TransactionType.Sale => qty - l.Quantity,
+                    TransactionType.Sale or TransactionType.WarrantyOut => qty - l.Quantity,
                     _ => l.Quantity
                 };
         return qty;

@@ -45,6 +45,11 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
             ["Referrers.GetPayments"] = new("ReferrerWallets", "Read"),
             ["Referrers.AddPayment"] = new("ReferrerWallets", "Update"),
             ["Referrers.DeletePayment"] = new("ReferrerWallets", "Update"),
+            ["Expenses.IssuedChequeStatus"] = new("Expenses", "Update"),
+            ["Expenses.ReceivedChequeStatus"] = new("Expenses", "Update"),
+            ["ShopWarranty.FinalizeWarranty"] = new("Repairs", "Update"),
+            ["ShopTradeIn.FinalizeTradeIn"] = new("Repairs", "Update"),
+            ["ShopTradeIn.Use"] = new("Repairs", "Update"),
             ["Orders.ReconcileCash"] = new("Orders", "Update"),
             ["Orders.ReceiveCredit"] = new("Orders", "Update"),
             ["Orders.ReverseCreditReceipt"] = new("Orders", "Update"),
@@ -95,6 +100,11 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
     {
         if (Overrides.TryGetValue($"{descriptor.ControllerName}.{descriptor.ActionName}", out var specific))
             return specific;
+
+        if (descriptor.ControllerName == "Expenses" && (descriptor.ActionName is "CreateIssuedCheque" or "CreateReceivedCheque") &&
+            context.ActionArguments.TryGetValue("cmd", out var chequeCommand) &&
+            chequeCommand is Inventory.Shared.Dtos.ExpenseChequeCreateCommand { Expense.Id: > 0 })
+            return new PermissionTarget("Expenses", "Update");
 
         var method = context.HttpContext.Request.Method;
         if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method))

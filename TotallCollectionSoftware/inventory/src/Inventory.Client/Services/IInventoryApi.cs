@@ -218,6 +218,11 @@ public interface IExpenseService
     Task DeleteCategoryAsync(int id);
 
     Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize);
+    Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to);
+    Task<List<TrsAccount>> GetChequeBanksAsync();
+    Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync();
+    Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command);
+    Task ChangeChequeStatusAsync(int id, ExpenseChequeKind kind, ExpenseChequeStatusCommand command);
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense);
     Task DeleteExpenseAsync(int id);
 }

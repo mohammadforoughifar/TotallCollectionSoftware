@@ -47,7 +47,9 @@ public static class ShopOrderCreditPosting
            await db.SaleChequeCreditSettlements.AnyAsync(s => (s.SaleTransactionId == id || s.TargetSaleTransactionId == id) && s.Date > date) ||
            await db.SaleChequeReceipts.AnyAsync(r => r.TransactionId == id && (r.Date > date || r.ReversalDate > date)) ||
            await db.SaleChequeInstallmentReceipts.AnyAsync(r => r.TransactionId == id && (r.Date > date || r.ReversalDate > date)) ||
-           await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == id && (r.Date > date || r.ReversalDate > date));
+           await db.ShopOrderCreditReceipts.AnyAsync(r => r.TransactionId == id && (r.Date > date || r.ReversalDate > date)) ||
+           await db.ShopTradeInUses.AnyAsync(u => u.TargetSaleId == id && u.Date > date) ||
+           await db.ShopExpenseCheques.AnyAsync(c => c.SourceTransactionId == id && (c.HandedAt > date || c.SettledAt > date));
 
     private static async Task<(decimal Outstanding, decimal Cheques, decimal Installments, decimal Available)> CalculateAsync(AppDbContext db, Transaction order)
     {
@@ -57,7 +59,10 @@ public static class ShopOrderCreditPosting
                 c.IsCleared != (c.Status == ChequeStatus.Cleared)) ||
             installments.Any(i => i.CompanyId != order.CompanyId || i.Amount <= 0))
             throw new InvalidOperationException("شرکت یا وضعیت چک‌ها و اقساط فاکتور نیازمند بررسی است.");
-        var chequeAmount = cheques.Where(c => !c.IsCleared && c.Status != ChequeStatus.Cancelled).Sum(c => c.Amount);
+        var externallyCleared = await db.ShopExpenseCheques.AsNoTracking().Where(c => c.SourceTransactionId == order.Id &&
+            c.Kind == ExpenseChequeKind.Received && c.State == ExpenseChequeState.Cleared && c.SourceChequeId.HasValue)
+            .Select(c => c.SourceChequeId!.Value).ToListAsync();
+        var chequeAmount = cheques.Where(c => !c.IsCleared && c.Status != ChequeStatus.Cancelled && !externallyCleared.Contains(c.Id)).Sum(c => c.Amount);
         var installmentAmount = installments.Where(i => !i.IsPaid).Sum(i => i.Amount);
         var outstanding = await SaleChequeSettlementLedger.UnpaidSaleBalanceAsync(db, order);
         return (outstanding, chequeAmount, installmentAmount, Math.Max(0m, outstanding - chequeAmount - installmentAmount));

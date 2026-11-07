@@ -631,6 +631,25 @@ public class ExpenseDto
 
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>سوابق چک پرداخت هزینه؛ خالی برای پرداخت‌های غیرچکی و اسناد قدیمی.</summary>
+    public List<ExpenseChequeDto> Cheques { get; set; } = new();
+}
+
+/// <summary>گزارش هزینه؛ جمع و جزئیات از تمام اسناد فیلترشده هستند، نه فقط صفحه جاری.</summary>
+public class ExpenseReportDto
+{
+    public int Count { get; set; }
+    public decimal TotalAmount { get; set; }
+    public List<ExpenseReportCategoryDto> Categories { get; set; } = new();
+    public List<ExpenseDto> Items { get; set; } = new();
+}
+
+public class ExpenseReportCategoryDto
+{
+    public int CategoryId { get; set; }
+    public string Name { get; set; } = "";
+    public int Count { get; set; }
+    public decimal Amount { get; set; }
 }
 
 /// <summary>مدل مدیریت چک در سامانه فروشگاهی (دریافتی و پرداختی)</summary>

@@ -1,6 +1,7 @@
 using System.Data;
 using Inventory.Api.Data;
 using Inventory.Shared;
+using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -259,6 +260,10 @@ public static class SaleChequeReturnService
 
         if (await db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
             throw new InvalidOperationException("فاکتور ابطال شده است و امکان ثبت برگشت مجدد ندارد.");
+        if (await db.ShopExpenseCheques.AnyAsync(c => c.SourceTransactionId == sale.Id && c.State == ExpenseChequeState.Outstanding))
+            throw new InvalidOperationException("ابتدا وضعیت چک خرج‌شده این فاکتور را تعیین کنید.");
+        if (await ShopOrderCreditPosting.HasLaterEventsAsync(db, sale.Id, operationDate))
+            throw new InvalidOperationException("تاریخ برگشت نمی‌تواند پیش از آخرین گردش فاکتور باشد.");
 
         var events = await db.SaleChequeChargeEvents.AsNoTracking()
             .Where(e => e.SaleChequeChargeId == charge.Id).ToListAsync();
@@ -410,6 +415,7 @@ public static class SaleChequeReturnService
                         qty = newQty;
                         break;
                     case TransactionType.Sale:
+                    case TransactionType.WarrantyOut:
                         qty -= l.Quantity;
                         break;
                     case TransactionType.SaleReturn:
