@@ -4,6 +4,8 @@ using Inventory.Api.Services.Invoicing;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using TrsVoucher = Inventory.Api.Data.TrsVoucher;
+using TrsVoucherLine = Inventory.Api.Data.TrsVoucherLine;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services.Repairs;

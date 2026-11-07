@@ -2,6 +2,7 @@ using System.Data;
 using Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using Product = Inventory.Api.Data.Product;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 

@@ -1,6 +1,7 @@
 using Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using TrsAccount = Inventory.Api.Data.TrsAccount;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services.Invoicing;

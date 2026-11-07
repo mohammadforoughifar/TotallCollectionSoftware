@@ -3,6 +3,10 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using Product = Inventory.Api.Data.Product;
+using TrsAccount = Inventory.Api.Data.TrsAccount;
+using TrsVoucher = Inventory.Api.Data.TrsVoucher;
+using TrsVoucherLine = Inventory.Api.Data.TrsVoucherLine;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
