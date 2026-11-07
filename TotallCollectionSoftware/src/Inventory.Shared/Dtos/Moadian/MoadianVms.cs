@@ -263,14 +263,6 @@ public class VmInvoiceItems
         public double? TotallValueAddedPercentage { get; set; }
         public decimal? TotallMoney { get; set; }
         public string? Subject { get; set; }
-        /// <summary>قاعده ارسال صورتحساب به سامانه مودیان: ۱ وقتی بیش از ۱۲ روز ازwydheid گذشته (ماده ۹)</summary>
-        public int? Insr { get; set; }
-        /// <summary>تاریخ و زمان ثبت صورتحساب (میلادی) — timestamp یونیکس میلی‌ثانیه؛ توسط سیستم تنظیم می‌شود</summary>
-        public long? Indati2m { get; set; }
-        /// <summary>یادداشت ۱ (اختیاری)</summary>
-        public string? Nti1 { get; set; }
-        /// <summary>یادداشت ۲ (اختیاری)</summary>
-        public string? Nti2 { get; set; }
         public bool ShowButtons { get; set; } = true;
         public bool IsNew { get; set; } = false;
         public int? GoodsOrServicesId { get; set; }
