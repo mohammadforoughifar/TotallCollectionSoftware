@@ -113,7 +113,7 @@ else
                             <div class="ct-icon" style="background:#2563eb"><i class="bi bi-envelope"></i></div>
                             <div class="flex-grow-1 min-w-0">
                                 <div class="fw-600 fs-8">@n.Title</div>
-                                <div class="fs-9 text-muted">@n.FormName — از: @n.FromName — @n.CreatedAt.ToFa()</div>
+                                <div class="fs-9 text-muted">@n.FormName@(string.IsNullOrWhiteSpace(n.CompanyName) ? "" : " · " + n.CompanyName) — از: @n.FromName — @n.CreatedAt.ToFa()</div>
                             </div>
                             @if (!n.IsRead)
                             {
@@ -257,7 +257,7 @@ else
     }
     private List<ActionItem> actions = new();
 
-    public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } }
+    public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } public int? CompanyId { get; set; } public string? CompanyName { get; set; } }
     public class ActionItem { public string Title { get; set; } = ""; public string Sub { get; set; } = ""; public string Link { get; set; } = "/"; public string Icon { get; set; } = "bi-lightning"; public string Color { get; set; } = "#2563eb"; }
     private class AccessInfo { public int UserId { get; set; } public bool CanCreate { get; set; } public bool IsExpert { get; set; } public bool IsManager { get; set; } }
     private class ReqLite { public int Id { get; set; } public string Title { get; set; } = ""; public string Status { get; set; } = ""; public List<AsgLite> Assignments { get; set; } = new(); }

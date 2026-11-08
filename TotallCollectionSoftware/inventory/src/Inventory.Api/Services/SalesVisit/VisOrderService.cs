@@ -1634,7 +1634,8 @@ public class VisOrderService : IVisOrderService
         if (userId <= 0) return;
         try
         {
-            await _notify.SendAsync(userId, title, body, "سامانه ویزیتوری", FormName, link);
+            // شرکتِ سفارش (نه شرکتِ درخواست): اعلان فقط در همان شرکت فعال نمایش داده می‌شود.
+            await _notify.SendAsync(userId, title, body, "سامانه ویزیتوری", FormName, link, order.CompanyId);
         }
         catch (Exception ex)
         {
@@ -1648,7 +1649,7 @@ public class VisOrderService : IVisOrderService
         if (userIds.Count == 0) return;
         try
         {
-            await _notify.SendManyAsync(userIds, title, body, "سامانه ویزیتوری", FormName, link);
+            await _notify.SendManyAsync(userIds, title, body, "سامانه ویزیتوری", FormName, link, order?.CompanyId);
         }
         catch (Exception ex)
         {

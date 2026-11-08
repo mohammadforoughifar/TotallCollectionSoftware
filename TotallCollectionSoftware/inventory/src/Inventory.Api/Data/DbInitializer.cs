@@ -62,6 +62,8 @@ public static class DbInitializer
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
+                    // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
+                    await NotificationCompanySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
@@ -141,6 +143,8 @@ public static class DbInitializer
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
+                    // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
+                    await NotificationCompanySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);

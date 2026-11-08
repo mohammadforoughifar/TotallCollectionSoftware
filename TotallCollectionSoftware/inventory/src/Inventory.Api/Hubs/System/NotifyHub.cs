@@ -39,9 +39,14 @@ public class NotifyHub : Hub
 /// <summary>سرویس ارسال اعلان: تفکیک دقیق پیام‌ها بر اساس شناسه، نقش و دسترسی کاربران.</summary>
 public interface INotifyService
 {
-    Task SendAsync(int userId, string title, string? body, string fromName, string formName, string? link);
-    Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link);
-    Task SendToRoleAsync(string roleName, string title, string? body, string fromName, string formName, string? link);
+    /// <param name="companyId">
+    /// شرکتِ صاحب اعلان. <c>null</c> = اعلان عمومی/سیستمی (چت، IT، منابع انسانی، اتوماسیون اداری) که در
+    /// همهٔ شرکت‌ها دیده می‌شود. مقدار عددی = اعلان دادهٔ همان شرکت (مثلاً سفارش ویزیتوری) و فقط وقتی
+    /// آن شرکت در کمبوی بالای برنامه فعال باشد نمایش داده می‌شود.
+    /// </param>
+    Task SendAsync(int userId, string title, string? body, string fromName, string formName, string? link, int? companyId = null);
+    Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link, int? companyId = null);
+    Task SendToRoleAsync(string roleName, string title, string? body, string fromName, string formName, string? link, int? companyId = null);
     Task BroadcastChangedAsync(string scope);
 }
 
@@ -60,9 +65,10 @@ public class NotifyService : INotifyService
         _push = push;
     }
 
-    public async Task SendAsync(int userId, string title, string? body, string fromName, string formName, string? link)
+    public async Task SendAsync(int userId, string title, string? body, string fromName, string formName, string? link, int? companyId = null)
     {
         if (userId <= 0) return;
+        if (companyId is <= 0) companyId = null;   // ۰ یعنی «بدون شرکت» → عمومی
         var n = new AppNotification
         {
             UserId = userId,
@@ -70,10 +76,17 @@ public class NotifyService : INotifyService
             Body = body,
             FromName = fromName,
             FormName = formName,
-            Link = link
+            Link = link,
+            CompanyId = companyId
         };
         _db.AppNotifications.Add(n);
-        await Inventory.Api.Services.PushQueue.StageAsync(_db, new[] { userId }, title, body, link);
+
+        // متن اعلان گوشی، نام شرکت را همراه دارد؛ روی گوشی «شرکت فعال» معنا ندارد و
+        // بدون آن کاربر نمی‌داند اعلان به کدام شرکت مربوط است.
+        var pushTitle = companyId is int scopedCompanyId
+            ? await PrefixCompanyAsync(title, scopedCompanyId)
+            : title;
+        await Inventory.Api.Services.PushQueue.StageAsync(_db, new[] { userId }, pushTitle, body, link);
         await _db.SaveChangesAsync();
 
         try
@@ -81,7 +94,7 @@ public class NotifyService : INotifyService
             // ارسال بلادرنگ فقط به گروه اختصاصی کاربر مقصد
             await _hub.Clients.Group($"u{userId}").SendAsync("notify", new
             {
-                n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.CreatedAt
+                n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.CreatedAt, n.CompanyId
             });
         }
         catch { /* عدم اتصال کاربر مانع ذخیره اعلان نمی‌شود */ }
@@ -93,16 +106,33 @@ public class NotifyService : INotifyService
         // Durable delivery is staged in the same SaveChanges as the notification.
     }
 
-    public async Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link)
+    /// <summary>
+    /// نام شرکت را پیش از عنوان اعلان گوشی می‌گذارد (فقط وقتی اعلان متعلق به یک شرکت است).
+    /// خطای این پرس‌وجو نباید ارسال اعلان را بشکند؛ در آن صورت عنوان بدون پیشوند می‌رود.
+    /// </summary>
+    private async Task<string> PrefixCompanyAsync(string title, int companyId)
+    {
+        try
+        {
+            var name = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => c.Id == companyId)
+                .Select(c => c.Name)
+                .FirstOrDefaultAsync();
+            return string.IsNullOrWhiteSpace(name) ? title : $"[{name}] {title}";
+        }
+        catch { return title; }
+    }
+
+    public async Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link, int? companyId = null)
     {
         foreach (var id in userIds.Distinct())
         {
             if (id > 0)
-                await SendAsync(id, title, body, fromName, formName, link);
+                await SendAsync(id, title, body, fromName, formName, link, companyId);
         }
     }
 
-    public async Task SendToRoleAsync(string roleName, string title, string? body, string fromName, string formName, string? link)
+    public async Task SendToRoleAsync(string roleName, string title, string? body, string fromName, string formName, string? link, int? companyId = null)
     {
         if (string.IsNullOrWhiteSpace(roleName)) return;
         var role = roleName.Trim();
@@ -114,7 +144,7 @@ public class NotifyService : INotifyService
 
         if (targetUserIds.Count > 0)
         {
-            await SendManyAsync(targetUserIds, title, body, fromName, formName, link);
+            await SendManyAsync(targetUserIds, title, body, fromName, formName, link, companyId);
         }
     }
 

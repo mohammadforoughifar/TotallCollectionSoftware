@@ -1258,6 +1258,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LinkedLeaveRequestId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // اعلان‌ها: ایندکس جست‌وجوی زنگوله/شمارنده بر اساس کاربر و شرکت فعال.
+        // (فیلتر شرکتی این‌جا اعمال نمی‌شود؛ اعلان‌های عمومی CompanyId = NULL دارند و باید دیده شوند.)
+        mb.Entity<AppNotification>()
+            .HasIndex(n => new { n.UserId, n.CompanyId, n.IsRead });
+
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasQueryFilter(w => w.DeletedAt == null);
         mb.Entity<WorkOrder>().HasIndex(w => new { w.RecurrenceSeriesId, w.RecurrenceScheduledAt })
