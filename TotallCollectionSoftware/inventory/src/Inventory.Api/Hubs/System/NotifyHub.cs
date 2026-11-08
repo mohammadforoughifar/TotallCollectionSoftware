@@ -94,7 +94,9 @@ public class NotifyService : INotifyService
             // ارسال بلادرنگ فقط به گروه اختصاصی کاربر مقصد
             await _hub.Clients.Group($"u{userId}").SendAsync("notify", new
             {
-                n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.CreatedAt, n.CompanyId
+                n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.CreatedAt, n.CompanyId,
+                // دستهٔ کارتابل («main» / «sub») تا اعلان زنده در تب درست بنشیند
+                Category = Inventory.Api.Services.NotificationCategory.Classify(n.Title)
             });
         }
         catch { /* عدم اتصال کاربر مانع ذخیره اعلان نمی‌شود */ }

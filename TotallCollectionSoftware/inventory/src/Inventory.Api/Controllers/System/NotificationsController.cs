@@ -79,21 +79,39 @@ public class NotificationsController : ControllerBase
     /// صفحهٔ اعلان‌ها همراه با شمارش‌ها — تا شمارندهٔ زنگوله (که همهٔ نخوانده‌ها را می‌شمارد)
     /// با فهرست نمایش‌داده‌شده ناهم‌خوان نشود. پیش‌تر فهرست فقط ۵۰/۱۵ ردیف اول را می‌داد و
     /// کاربر با «+۹۹» فقط چند اعلان می‌دید.
+    /// <para>
+    /// پارامتر <paramref name="category"/> فهرست را به یکی از دو گروه کارتابل محدود می‌کند:
+    /// <c>main</c> = اقدامات اصلی (مورد تازه: نامه، دستور کار، درخواست، تیکت…) و
+    /// <c>sub</c> = اقدامات فرعی (تأیید/رد، ارجاع، پاسخ، کامنت، تمدید، بسته‌شدن…).
+    /// خالی = همه. شمارش‌های هر دو گروه همیشه برگردانده می‌شوند تا برچسب تب‌ها درست باشد.
+    /// </para>
     /// </summary>
     [HttpGet("page")]
-    public async Task<IActionResult> Page([FromQuery] int take = 25, [FromQuery] int skip = 0, [FromQuery] bool unreadOnly = false)
+    public async Task<IActionResult> Page([FromQuery] int take = 25, [FromQuery] int skip = 0,
+        [FromQuery] bool unreadOnly = false, [FromQuery] string? category = null)
     {
         if (MyUserId <= 0) return Unauthorized();
 
         take = Math.Clamp(take, 1, 200);
         skip = Math.Max(0, skip);
+        category = (category ?? "").Trim().ToLowerInvariant();
 
-        var q = VisibleToActiveCompany(_db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId));
-        var total = await q.CountAsync();
-        var unread = await q.CountAsync(n => !n.IsRead);
+        var visible = VisibleToActiveCompany(_db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId));
+        var mainExpr = NotificationCategory.MainPredicate();
+        var subExpr = NotificationCategory.SubPredicate();
+
+        // شمارش کل و اصلی‌ها روی «همهٔ» اعلان‌های قابل‌مشاهده (بدون فیلتر تب)؛ فرعی‌ها = تفاضل.
+        var total = await visible.CountAsync();
+        var unread = await visible.CountAsync(n => !n.IsRead);
+        var mainTotal = await visible.CountAsync(mainExpr);
+        var mainUnread = await visible.Where(mainExpr).CountAsync(n => !n.IsRead);
+
+        var q = visible;
+        if (category == NotificationCategory.Main) q = q.Where(mainExpr);
+        else if (category == NotificationCategory.Sub) q = q.Where(subExpr);
         if (unreadOnly) q = q.Where(n => !n.IsRead);
 
-        var filteredTotal = unreadOnly ? unread : total;
+        var filteredTotal = await q.CountAsync();
 
         var rows = await q
             .OrderByDescending(n => n.Id)
@@ -108,7 +126,9 @@ public class NotificationsController : ControllerBase
         {
             x.Id, x.Title, x.Body, x.FromName, x.FormName, x.Link, x.IsRead, x.CreatedAt,
             x.CompanyId,
-            CompanyName = x.CompanyId is int cid && companyNames.TryGetValue(cid, out var cn) ? cn : null
+            CompanyName = x.CompanyId is int cid && companyNames.TryGetValue(cid, out var cn) ? cn : null,
+            // دستهٔ همین ردیف (در حافظه، چون تابع C# به SQL ترجمه نمی‌شود)
+            Category = NotificationCategory.Classify(x.Title)
         }).ToList();
 
         return Ok(new
@@ -119,6 +139,12 @@ public class NotificationsController : ControllerBase
             filteredTotal,
             skip,
             take,
+            category,
+            // برچسب تب‌های کارتابل
+            mainTotal,
+            mainUnread,
+            subTotal = total - mainTotal,
+            subUnread = unread - mainUnread,
             hasMore = skip + items.Count < filteredTotal
         });
     }
