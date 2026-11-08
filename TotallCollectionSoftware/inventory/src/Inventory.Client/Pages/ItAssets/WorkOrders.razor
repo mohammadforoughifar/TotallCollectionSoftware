@@ -4498,13 +4498,17 @@ else
     private async Task UploadFile(int id, Microsoft.AspNetCore.Components.Forms.IBrowserFile f)
     {
         // پیوست دستور کار: wwwroot/uploads/WorkOrders/{id}/
+        // پاسخ سرور بررسی می‌شود؛ قبلاً خطای آپلود بی‌صدا نادیده گرفته می‌شد و فایل
+        // «گم» می‌شد در حالی که پیام «دستور کار ثبت شد» نمایش داده می‌شد.
         try
         {
             using var content = new MultipartFormDataContent();
             var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
             sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
             content.Add(sc, "file", f.Name);
-            await Http.PostAsync($"/api/workorders/{id}/attachments", content);
+            var resp = await Http.PostAsync($"/api/workorders/{id}/attachments", content);
+            if (!resp.IsSuccessStatusCode)
+                Toast.Error($"بارگذاری {f.Name} ناموفق بود ({(int)resp.StatusCode}).");
         }
         catch (Exception ex) { Toast.Error($"بارگذاری {f.Name} ناموفق: {ex.Message}"); }
     }
