@@ -415,10 +415,7 @@
 
 /* چاپ */
 @media print {
-    /* This stylesheet is global and is also copied into shop preview frames.
-       Isolate a letter only when this document actually contains the letter UI.
-       :where keeps specificity low so .paper and guide visibility overrides win. */
-    body:where(:has(.ltx)) * { visibility:hidden !important; }
+    body * { visibility:hidden !important; }
     .ltx .paper, .ltx .paper * { visibility:visible !important; }
     .ltx .paper { position:absolute; inset:0; border:0; }
     .ltx .letter-body { width:100%; padding:10mm 0; font-size:11pt; line-height:1.65; overflow:visible; }

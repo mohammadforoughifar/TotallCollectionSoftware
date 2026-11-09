@@ -195,6 +195,8 @@ test('report snapshot keeps live values and printed styles while leaving the ori
     await ready(page);
     const frame = await htmlFrame(page);
     assert.equal(await frame.$eval('.report-title', el => getComputedStyle(el).visibility), 'visible');
+    assert.equal(await frame.$$eval('link', links => links.some(link => new URL(link.href).pathname.endsWith('/css/letters.css'))), false);
+    assert.equal(await page.$$eval('link', links => links.some(link => new URL(link.href).pathname.endsWith('/css/letters.css'))), true);
     assert.equal(await frame.$eval('#amount', el => el.value), '20000000');
     assert.equal(await frame.$eval('#checked', el => el.checked), true);
     assert.equal(await frame.$eval('#choice', el => el.value), 'B');
@@ -540,6 +542,7 @@ test('letter print isolation hides surrounding UI but preserves paper and office
         letter.appendChild(guide);
     });
     assert.equal(await page.$eval('#office-guide-text', el => getComputedStyle(el).visibility), 'visible');
+    // The office stylesheet and its original global isolation are unchanged.
     await page.evaluate(() => document.querySelector('.ltx').remove());
-    assert.equal(await page.$eval('.report-title', el => getComputedStyle(el).visibility), 'visible');
+    assert.equal(await page.$eval('.report-title', el => getComputedStyle(el).visibility), 'hidden');
 });
