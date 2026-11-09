@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Inventory.Shared;
+using Inventory.Shared.Dtos;
 namespace Inventory.Api.Data;
 
 /// <summary>ردیف کار/قطعه مصرفی روی دستگاه تعمیری</summary>
@@ -24,6 +25,11 @@ public class RepairItem : ICompanyOwned
 
     /// <summary>مبلغ دریافتی از مشتری بابت این ردیف</summary>
     public decimal Price { get; set; }
+
+    // Unspecified means the original ordinary-repair behavior, including legacy rows.
+    public WarrantyDecision WarrantyDecision { get; set; }
+    public bool WarrantySupplied { get; set; } = true;
+    public bool WarrantyPerformed { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

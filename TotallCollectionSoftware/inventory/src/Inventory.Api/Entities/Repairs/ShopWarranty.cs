@@ -3,7 +3,7 @@ using Inventory.Shared.Dtos;
 
 namespace Inventory.Api.Data;
 
-/// <summary>پذیرش گارانتی مستقل از فاکتور فروش و مبلغ مشتری.</summary>
+/// <summary>پذیرش گارانتی با پیوند قابل پیگیری به خروج قطعات و بدهی مشتری.</summary>
 public class ShopWarranty : ICompanyOwned
 {
     public int Id { get; set; }
@@ -26,6 +26,11 @@ public class ShopWarranty : ICompanyOwned
     public DateTime? FinalizedAt { get; set; }
     public int? StockTransactionId { get; set; }
     public Transaction? StockTransaction { get; set; }
+    // صفر: سابقه قدیمیِ نهایی‌شده (همه قطعات در خروج گارانتی، بدون بدهی).
+    // یک: قطعات پذیرفته در خروج گارانتی و ردیف‌های ردشده قابل دریافت در فروش نسیه.
+    public int ChargePolicyVersion { get; set; }
+    public int? ChargeTransactionId { get; set; }
+    public Transaction? ChargeTransaction { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     [MaxLength(120)] public string? CreatedBy { get; set; }
     [MaxLength(120)] public string? FinalizedBy { get; set; }
@@ -59,6 +64,9 @@ public class ShopWarrantyItem : ICompanyOwned
     public Product? Product { get; set; }
     public decimal Quantity { get; set; }
     public decimal UnitCost { get; set; }
+    /// <summary>قیمت واحدی که کاربر برای مشتری وارد کرده است؛ مستقل از هزینه داخلی.</summary>
+    public decimal? CustomerUnitPrice { get; set; }
     public WarrantyDecision Decision { get; set; }
     public bool Supplied { get; set; }
+    public bool Performed { get; set; } = true;
 }

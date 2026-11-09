@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <!-- Compile the production contracts, not copied implementations. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Shared/Enums.cs" Link="Enums.cs" />
+    <Compile Include="../../src/Inventory.Shared/PaymentMix.cs" Link="PaymentMix.cs" />
+    <Compile Include="../../src/Inventory.Shared/OrderLineAmounts.cs" Link="OrderLineAmounts.cs" />
+    <Compile Include="../../src/Inventory.Shared/ShopInvoiceAmounts.cs" Link="ShopInvoiceAmounts.cs" />
+    <Compile Include="../../src/Inventory.Api/Data/ICompanyOwned.cs" Link="ICompanyOwned.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairOrder.cs" Link="RepairOrder.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairItem.cs" Link="RepairItem.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairDevice.cs" Link="RepairDevice.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairReportTotals.cs" Link="RepairReportTotals.cs" />
+    <Compile Include="../../src/Inventory.Shared/PersianDate.cs" Link="PersianDate.cs" />
+    <Compile Include="../../src/Inventory.Shared/PersianText.cs" Link="PersianText.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/CompanyProfileDto.cs" Link="CompanyProfileDto.cs" />
+    <Compile Include="../../src/Inventory.Client/Extensions/PersianExtensions.cs" Link="PersianExtensions.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/Orders/SaleInvoicePrint.cs" Link="SaleInvoicePrint.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/Repairs/RepairInvoicePrint.cs" Link="RepairInvoicePrint.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/Repairs/RepairDeliveryReceiptPrint.cs" Link="RepairDeliveryReceiptPrint.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/RepairDtos.cs" Link="RepairDtos.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/ShopWarrantyDtos.cs" Link="ShopWarrantyDtos.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/OperationDtos.cs" Link="OperationDtos.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/ShopExpenseChequeDtos.cs" Link="ShopExpenseChequeDtos.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Catalog/ShopInvoiceLineMath.cs" Link="ShopInvoiceLineMath.cs" />
+  </ItemGroup>
+</Project>

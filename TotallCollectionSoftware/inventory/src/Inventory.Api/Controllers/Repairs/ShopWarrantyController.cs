@@ -29,4 +29,23 @@ public class ShopWarrantyController : ApiControllerBase
 
     [HttpPost("{id:int}/finalize")]
     public async Task<ActionResult<ShopWarrantyDto>> FinalizeWarranty(int id) => Ok(await _service.FinalizeAsync(id, Actor));
+
+    [HttpGet("accounts")]
+    public async Task<ActionResult<List<TrsAccount>>> Accounts() => Ok(await _service.AccountsAsync());
+
+    [HttpGet("{id:int}/credit")]
+    public async Task<ActionResult<ShopOrderCreditState>> CreditState(int id) => Ok(await _service.CreditStateAsync(id));
+
+    [HttpPost("{id:int}/credit-receipts")]
+    public async Task<IActionResult> ReceiveCredit(int id, [FromBody] ShopOrderCreditReceiptCommand cmd)
+    {
+        await _service.ReceiveCreditAsync(id, cmd, Actor);
+        return Ok(new { ok = true });
+    }
+    [HttpPost("{id:int}/credit-receipts/{receiptId:int}/reverse")]
+    public async Task<IActionResult> ReverseCredit(int id, int receiptId, [FromBody] ShopOrderCreditReversalCommand cmd)
+    {
+        await _service.ReverseCreditAsync(id, receiptId, cmd, Actor);
+        return Ok(new { ok = true });
+    }
 }

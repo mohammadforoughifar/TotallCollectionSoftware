@@ -52,6 +52,8 @@ public class RepairOrderDto
 
     /// <summary>شناسه فاکتور فروش صادرشده</summary>
     public int? InvoiceTransactionId { get; set; }
+    public bool WarrantyProcessed { get; set; }
+    public int? WarrantyStockTransactionId { get; set; }
 
     /// <summary>شماره فاکتور فروش صادرشده (پر شده توسط سرور)</summary>
     public string? InvoiceNumber { get; set; }
@@ -108,6 +110,19 @@ public class RepairItemDto
 
     /// <summary>مبلغ دریافتی از مشتری</summary>
     public decimal Price { get; set; }
+
+    /// <summary>عادی، گارانتی پذیرفته یا گارانتی ردشده.</summary>
+    public WarrantyDecision WarrantyDecision { get; set; }
+    /// <summary>فقط برای قطعه گارانتی؛ قطعه استفاده‌نشده نه هزینه و نه بدهی ایجاد می‌کند.</summary>
+    public bool WarrantySupplied { get; set; } = true;
+    public bool WarrantyPerformed { get; set; } = true;
+    public bool ProductIsService { get; set; }
+    public bool IsUnusedWarrantyPart => WarrantyDecision != WarrantyDecision.Unspecified &&
+        ProductId is > 0 && !ProductIsService && !WarrantySupplied;
+    public bool IsUnperformedWarrantyWork => WarrantyDecision != WarrantyDecision.Unspecified &&
+        (ProductId is null or 0 || ProductIsService) && !WarrantyPerformed;
+    public decimal CustomerUnitPrice => WarrantyDecision == WarrantyDecision.Accepted || IsUnusedWarrantyPart || IsUnperformedWarrantyWork ? 0m : Price;
+    public decimal EffectiveUnitCost => IsUnusedWarrantyPart || IsUnperformedWarrantyWork ? 0m : Cost;
 }
 
 /// <summary>درخواست صدور فاکتور فروش از روی پذیرش تعمیر.</summary>

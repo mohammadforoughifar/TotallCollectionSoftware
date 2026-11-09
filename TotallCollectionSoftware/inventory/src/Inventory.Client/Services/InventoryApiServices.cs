@@ -541,6 +541,8 @@ public class RepairService : IRepairService
 
     public Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId)
         => InvoiceAsync(id, new RepairInvoiceRequest { WarehouseId = warehouseId });
+
+    public Task<Order> LinkedInvoiceAsync(int id) => _api.GetAsync<Order>($"api/repairs/{id}/invoice-detail");
 }
 
 

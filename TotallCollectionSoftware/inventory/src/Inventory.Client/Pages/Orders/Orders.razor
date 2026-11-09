@@ -319,6 +319,8 @@
                             <tr>
                                 <td>
                                     @l.ProductName
+                                    @if (!string.IsNullOrWhiteSpace(l.Description) && l.Description != l.ProductName)
+                                    { <div class="fs-8 text-muted">@l.Description</div> }
                                     @if (l.IsService)
                                     {
                                         <span class="badge badge-soft-primary fs-8 me-1">خدمات</span>
@@ -522,7 +524,7 @@
                         {
                             var currentQty = returnQuantities.GetValueOrDefault(line.Id);
                             <tr>
-                                <td>@line.ProductName <span class="text-muted fs-8">(@line.Unit)</span></td>
+                                <td>@line.ProductName <span class="text-muted fs-8">(@line.Unit)</span>@if (!string.IsNullOrWhiteSpace(line.Description)) { <div class="fs-8 text-muted">@line.Description</div> }</td>
                                 <td class="text-start num">@line.Quantity.Qty()</td>
                                 <td class="text-start num">@line.ReturnedQuantity.Qty()</td>
                                 <td class="text-start num fw-700">@line.RemainingQuantity.Qty()</td>

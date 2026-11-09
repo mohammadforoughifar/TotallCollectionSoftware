@@ -5,17 +5,17 @@
 @inject IJSRuntime JS
 
 <div class="page-head">
-    <div><h1>گارانتی</h1><p class="lead">پذیرش، تصمیم گارانتی و ثبت قطعات تحویل‌شده بدون دریافت از مشتری</p></div>
+    <div><h1>گارانتی</h1><p class="lead">پذیرش، تصمیم گارانتی و ثبت هزینه و بدهی قابل پیگیری</p></div>
     <a class="btn btn-outline-primary me-auto" href="operations/reports/warranty"><i class="bi bi-bar-chart-line"></i> گزارش گارانتی</a>
     @if (CanManage) { <button class="btn btn-primary" @onclick="New"><i class="bi bi-plus-lg"></i> پذیرش گارانتی</button> }
 </div>
-<div class="alert alert-light border fs-8">مبلغ حساب مشتری در هر دو حالت «پذیرفته» و «پذیرفته‌نشده» صفر است. فقط کالای انتخاب‌شده‌ای که واقعاً تحویل یا مصرف شده باشد، هنگام نهایی‌سازی از انبار کسر می‌شود.</div>
+<div class="alert alert-light border fs-8">ردیف‌های پذیرفته رایگان‌اند. برای کار انجام‌شده یا قطعه مصرف‌شدهٔ پذیرفته‌نشده قیمت مشتری را جداگانه وارد کنید؛ مبلغ هنگام تحویل در حساب مشتری بدهکار می‌شود. قطعه استفاده‌نشده از انبار خارج و به مشتری محاسبه نمی‌شود.</div>
 @if (loading) { <div class="text-center p-4" role="status">در حال دریافت پذیرش‌ها…</div> }
 else if (items.Count == 0) { <div class="empty-state"><i class="bi bi-shield-check"></i><h5>پذیرش گارانتی ثبت نشده است</h5></div> }
 else
 {
     <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
-        <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th>تصمیم ردیف‌ها</th><th class="text-start">هزینه داخلی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th>تصمیم ردیف‌ها</th><th class="text-start">هزینه داخلی</th><th class="text-start">مبلغ مشتری / مانده</th><th>وضعیت</th><th>عملیات</th></tr></thead>
         <tbody>@foreach (var w in items)
         {
             <tr><td><b>@w.Number</b><div class="num fs-8 text-muted">@w.ReceivedAt.ToFa()</div></td><td>@w.PartyName</td><td>
@@ -23,8 +23,11 @@ else
                 @if (w.Devices.Count > 1) { <div class="fs-8 text-muted">@w.Devices.Count دستگاه در یک پذیرش</div> }
             </td>
                 <td>@(w.Items.Count(i => i.Decision == WarrantyDecision.Accepted).Num()) پذیرفته / @(w.Items.Count(i => i.Decision == WarrantyDecision.Rejected).Num()) رد</td>
-                <td class="num text-start">@w.InternalCost.MoneyExact()</td><td>@(w.FinalizedAt.HasValue ? "تحویل‌شده" : "پیش‌نویس")</td><td class="text-nowrap">
+                <td class="num text-start">@w.InternalCost.MoneyExact()</td>
+                <td class="num text-start">@w.CustomerAmount.MoneyExact() @if (w.FinalizedAt.HasValue && w.ChargeTransactionId.HasValue) { <div class="fs-8 text-muted">مانده: @w.UnpaidAmount.MoneyExact()</div> }</td>
+                <td>@(w.FinalizedAt.HasValue ? "تحویل‌شده" : "پیش‌نویس")</td><td class="text-nowrap">
                     <button class="btn btn-sm btn-light" @onclick="() => view = w">جزئیات</button>
+                    @if (w.ChargeTransactionId.HasValue) { <button class="btn btn-sm btn-outline-primary" @onclick="() => credit = w">مانده / تسویه</button> }
                     @if (!w.FinalizedAt.HasValue && CanManage)
                     { <button class="btn btn-sm btn-light" @onclick="() => Edit(w)">ویرایش</button><button class="btn btn-sm btn-outline-primary" @onclick="() => FinalizeWarranty(w)" disabled="@saving">تحویل / نهایی‌سازی</button> }
                 </td></tr>
@@ -69,16 +72,24 @@ else
                 <div class="col-md-3"><label class="form-label">شرح کار یا قطعه *</label><input class="form-control form-control-sm" maxlength="300" @bind="form.Items[i].Description" /></div>
                 <div class="col-md-3"><label class="form-label">کالای انبار (اختیاری)</label><SearchSelect Items="products" Value="@(form.Items[i].ProductId ?? 0)" ValueChanged="v => SetProduct(i, v)" Placeholder="انتخاب کالا" ConstrainToModal="true" /></div>
                 <div class="col-6 col-md-1"><label class="form-label">مقدار</label><input class="form-control form-control-sm num" dir="ltr" inputmode="decimal" @bind="quantities[i]" /></div>
-                <div class="col-6 col-md-2"><label class="form-label">هزینه هر واحد</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@costs[i]" @oninput="e => costs[i] = Fa.FormatTyping(e.Value?.ToString())" /></div>
-                <div class="col-md-2"><label class="form-label">تصمیم گارانتی *</label><select class="form-select form-select-sm" @bind="form.Items[i].Decision"><option value="@WarrantyDecision.Unspecified">انتخاب کنید</option><option value="@WarrantyDecision.Accepted">پذیرفته</option><option value="@WarrantyDecision.Rejected">پذیرفته‌نشده</option></select></div>
+                <div class="col-6 col-md-2"><label class="form-label">هزینه داخلی واحد</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@costs[i]" @oninput="e => costs[i] = Fa.FormatTyping(e.Value?.ToString())" /></div>
+                <div class="col-md-2"><label class="form-label">تصمیم گارانتی *</label><select class="form-select form-select-sm" value="@form.Items[i].Decision" @onchange="e => SetDecision(i, e)"><option value="@WarrantyDecision.Unspecified">انتخاب کنید</option><option value="@WarrantyDecision.Accepted">پذیرفته</option><option value="@WarrantyDecision.Rejected">پذیرفته‌نشده</option></select></div>
                 <div class="col-md-1"><button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
+                @if (form.Items[i].Decision == WarrantyDecision.Rejected && (form.Items[i].ProductId is > 0 ? form.Items[i].Supplied : form.Items[i].Performed))
+                {
+                    <div class="col-12 col-md-4"><label class="form-label">قیمت واحد مشتری (ریال) *</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@prices[i]" @oninput="e => prices[i] = FormatRial(e.Value?.ToString())" placeholder="قیمت را دستی وارد کنید" /></div>
+                }
                 @if (form.Items[i].ProductId is > 0)
                 {
-                    <div class="col-12"><label class="form-check-label"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].Supplied" /> این کالا واقعاً تحویل یا مصرف شده است و باید از انبار کسر شود</label></div>
+                    <div class="col-12"><label class="form-check-label"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].Supplied" /> این قطعه واقعاً تحویل یا مصرف شده است</label></div>
+                }
+                else
+                {
+                    <div class="col-12"><label class="form-check-label"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].Performed" /> این کار واقعاً انجام شده است</label></div>
                 }
             </div></div>
         }
-        <div class="text-secondary fs-8">دریافتی مشتری: <b>صفر ریال</b> — هزینه داخلی هر ردیف برای گزارش گارانتی نگهداری می‌شود.</div>
+        <div class="text-secondary fs-8">مبلغ مشتری در زمان تحویل: <b class="num">@DraftCustomerAmount().MoneyExact()</b> ریال — هزینه داخلی جداگانه ثبت می‌شود.</div>
     </ChildContent>
     <Footer><button class="btn btn-light" @onclick="() => showForm = false">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">ذخیره پیش‌نویس</button></Footer>
 </Modal>
@@ -92,20 +103,37 @@ else
                 <div class="border rounded-3 p-2 mt-2"><b>@DeviceLabel(device)</b><span class="num text-muted"> — @device.SerialNumber</span><div class="text-muted">@device.ProblemDescription</div><div class="text-muted fs-8">لوازم همراه: @(device.Accessories ?? "—")</div></div>
             }
         </div>
-        <div class="table-responsive"><table class="table"><thead><tr><th>شرح</th><th>تصمیم</th><th>تحویل / مصرف</th><th>مقدار</th><th>هزینه واحد</th></tr></thead><tbody>
-            @foreach (var item in view.Items) { <tr><td>@item.Description @(item.ProductName is null ? "" : $"({item.ProductName})")</td><td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td><td>@(item.Supplied ? "بله" : "خیر")</td><td class="num">@item.Quantity.Qty()</td><td class="num">@item.UnitCost.MoneyExact()</td></tr> }
+        <div class="table-responsive"><table class="table"><thead><tr><th>شرح</th><th>تصمیم</th><th>انجام / مصرف</th><th>مقدار</th><th>هزینه واحد</th><th>مبلغ مشتری</th></tr></thead><tbody>
+            @foreach (var item in view.Items)
+            {
+                <tr><td>@item.Description @(item.ProductName is null ? "" : $"({item.ProductName})")</td>
+                    <td>@(item.Decision == WarrantyDecision.Accepted ? "پذیرفته" : "پذیرفته‌نشده")</td>
+                    <td>@((item.ProductId is > 0 ? item.Supplied : item.Performed) ? "بله" : "خیر")</td>
+                    <td class="num">@item.Quantity.Qty()</td><td class="num">@item.UnitCost.MoneyExact()</td>
+                    <td class="num">@((view.FinalizedAt.HasValue && view.ChargePolicyVersion == 0 ? 0m : item.CustomerAmount).MoneyExact())</td></tr>
+            }
         </tbody></table></div>
-        <div>جمع هزینه داخلی: <b class="num">@view.InternalCost.MoneyExact()</b> ریال — مبلغ مشتری: <b>صفر</b></div>
+        <div class="d-flex flex-wrap gap-3"><div>هزینه داخلی: <b class="num">@view.InternalCost.MoneyExact()</b> ریال</div><div>مبلغ مشتری: <b class="num">@view.CustomerAmount.MoneyExact()</b> ریال</div>
+            @if (view.ChargeTransactionId.HasValue) { <div>فاکتور: <b>@view.ChargeTransactionNumber</b> — مانده: <b class="num">@view.UnpaidAmount.MoneyExact()</b> ریال</div> }
+        </div>
+        @if (view.FinalizedAt.HasValue && view.ChargePolicyVersion == 0) { <div class="text-muted fs-8 mt-2">این پذیرش پیش از تغییر سیاست نهایی شده و همان سابقه قبلی حفظ شده است.</div> }
     }</ChildContent>
 </Modal>
+
+@if (credit is not null)
+{
+    <RepairCreditDialog DocumentNumber="@credit.Number" StateUrl="@($"api/shop-warranties/{credit.Id}/credit")"
+        ReceiptUrl="@($"api/shop-warranties/{credit.Id}/credit-receipts")" CanManage="@CanManage"
+        OnClose="() => credit = null" OnChanged="Load" />
+}
 
 @code {
     private List<ShopWarrantyDto> items = new();
     private List<LookupItem> customers = new(), products = new();
     private List<LookupItem> warehouses = new(), technicians = new();
     private ShopWarrantyDto form = new();
-    private ShopWarrantyDto? view;
-    private List<string> quantities = new(), costs = new();
+    private ShopWarrantyDto? view, credit;
+    private List<string> quantities = new(), costs = new(), prices = new();
     private DateTime? receivedAt;
     private int technicianId;
     private bool loading, saving, showForm;
@@ -125,7 +153,7 @@ else
     private void New()
     {
         form = new ShopWarrantyDto { OperationId = Guid.NewGuid(), ReceivedAt = DateTime.Today, WarehouseId = warehouses.FirstOrDefault()?.Id ?? 0 };
-        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); AddDevice(); AddItem(); showForm = true;
+        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); prices = new(); AddDevice(); AddItem(); showForm = true;
     }
     private void Edit(ShopWarrantyDto w)
     {
@@ -135,10 +163,12 @@ else
             Devices = DevicesFor(w).Select(d => new ShopWarrantyDeviceDto { Id = d.Id, DeviceType = d.DeviceType, DeviceModel = d.DeviceModel,
                 SerialNumber = d.SerialNumber, ProblemDescription = d.ProblemDescription, Accessories = d.Accessories }).ToList(),
             Items = w.Items.Select(i => new ShopWarrantyItemDto { Id = i.Id, Description = i.Description, ProductId = i.ProductId,
-                Quantity = i.Quantity, UnitCost = i.UnitCost, Decision = i.Decision, Supplied = i.Supplied }).ToList() };
+                Quantity = i.Quantity, UnitCost = i.UnitCost, CustomerUnitPrice = i.CustomerUnitPrice,
+                Decision = i.Decision, Supplied = i.Supplied, Performed = i.Performed }).ToList() };
         receivedAt = w.ReceivedAt; technicianId = w.TechnicianId ?? 0;
         quantities = w.Items.Select(i => i.Quantity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).ToList();
-        costs = w.Items.Select(i => Fa.FormatTyping(i.UnitCost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))).ToList(); showForm = true;
+        costs = w.Items.Select(i => Fa.FormatTyping(i.UnitCost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))).ToList();
+        prices = w.Items.Select(i => i.CustomerUnitPrice.HasValue ? FormatRial(i.CustomerUnitPrice.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture)) : "").ToList(); showForm = true;
     }
     private static List<ShopWarrantyDeviceDto> DevicesFor(ShopWarrantyDto w) => w.Devices is { Count: > 0 } ? w.Devices : new() { new ShopWarrantyDeviceDto {
         DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber, ProblemDescription = w.ProblemDescription, Accessories = w.Accessories } };
@@ -146,22 +176,64 @@ else
     private static string DeviceSummary(ShopWarrantyDto w) => DeviceLabel(DevicesFor(w)[0]);
     private void AddDevice() { if (form.Devices.Count < 100) form.Devices.Add(new ShopWarrantyDeviceDto()); }
     private void RemoveDevice(int i) { if (form.Devices.Count > 1) form.Devices.RemoveAt(i); }
-    private void AddItem() { form.Items.Add(new ShopWarrantyItemDto()); quantities.Add("1"); costs.Add(""); }
-    private void RemoveItem(int i) { form.Items.RemoveAt(i); quantities.RemoveAt(i); costs.RemoveAt(i); }
-    private void SetProduct(int i, int value) { form.Items[i].ProductId = value > 0 ? value : null; if (value <= 0) form.Items[i].Supplied = false; }
+    private void AddItem() { form.Items.Add(new ShopWarrantyItemDto { Performed = false }); quantities.Add("1"); costs.Add(""); prices.Add(""); }
+    private void RemoveItem(int i) { form.Items.RemoveAt(i); quantities.RemoveAt(i); costs.RemoveAt(i); prices.RemoveAt(i); }
+    private static string FormatRial(string? value) => Fa.FormatTyping(new string(Fa.ToEn(value).Where(char.IsDigit).ToArray()));
+    private decimal DraftCustomerAmount()
+    {
+        decimal total = 0;
+        for (var i = 0; i < form.Items.Count; i++)
+        {
+            if (!form.Items[i].IsChargeable) continue;
+            var quantity = Fa.ParseDecimal(quantities[i]); var price = Fa.ParseDecimal(prices[i]);
+            if (ShopInvoiceAmounts.TryGross(quantity, price, out var gross)) total += gross;
+        }
+        return total;
+    }
+    private void SetProduct(int i, int value)
+    {
+        var productId = value > 0 ? value : (int?)null;
+        if (form.Items[i].ProductId == productId) return;
+        form.Items[i].ProductId = productId;
+        form.Items[i].Supplied = false;
+        form.Items[i].Performed = false;
+        form.Items[i].CustomerUnitPrice = null;
+        form.Items[i].UnitCost = 0m;
+        prices[i] = ""; costs[i] = "";
+    }
+    private void SetDecision(int i, ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<WarrantyDecision>(e.Value?.ToString(), out var decision)) return;
+        if (decision == WarrantyDecision.Rejected && form.Items[i].Decision != WarrantyDecision.Rejected)
+        {
+            form.Items[i].CustomerUnitPrice = null;
+            prices[i] = "";
+        }
+        form.Items[i].Decision = decision;
+    }
     private async Task Save()
     {
         if (saving) return;
         form.ReceivedAt = receivedAt ?? default; form.TechnicianId = technicianId > 0 ? technicianId : null;
-        for (var i = 0; i < form.Items.Count; i++) { form.Items[i].Quantity = Fa.ParseDecimal(quantities[i]); form.Items[i].UnitCost = Fa.ParseDecimal(costs[i]); }
+        for (var i = 0; i < form.Items.Count; i++)
+        {
+            form.Items[i].Quantity = Fa.ParseDecimal(quantities[i]); form.Items[i].UnitCost = Fa.ParseDecimal(costs[i]);
+            form.Items[i].CustomerUnitPrice = string.IsNullOrWhiteSpace(prices[i]) ? null : Fa.ParseDecimal(prices[i]);
+        }
         saving = true;
         try { await Api.PostAsync<ShopWarrantyDto>("api/shop-warranties", form); showForm = false; Toast.Success("پیش‌نویس گارانتی ثبت شد."); await Load(); }
         catch (Exception ex) { Toast.Error(ex.Message); } finally { saving = false; }
     }
     private async Task FinalizeWarranty(ShopWarrantyDto w)
     {
-        if (saving || !await JS.InvokeAsync<bool>("confirm", $"پذیرش {w.Number} نهایی شود؟ کالاهای علامت‌خورده از انبار کسر می‌شوند و مبلغ مشتری صفر است.")) return;
-        saving = true; try { await Api.PostAsync<ShopWarrantyDto>($"api/shop-warranties/{w.Id}/finalize"); Toast.Success("گارانتی نهایی و خروج قطعات ثبت شد."); await Load(); }
+        if (saving) return;
+        if (w.Items.Any(i => i.IsChargeable && (i.CustomerUnitPrice is not > 0 || i.CustomerAmount <= 0)))
+        {
+            Toast.Error("برای هر ردیف ردشده که انجام یا مصرف شده، قیمت مشتری بزرگ‌تر از صفر را در پیش‌نویس وارد کنید.");
+            return;
+        }
+        if (!await JS.InvokeAsync<bool>("confirm", $"پذیرش {w.Number} نهایی شود؟ مبلغ {w.CustomerAmount.MoneyExact()} ریال به حساب مشتری منظور و قطعات مصرف‌شده از انبار کسر می‌شوند.")) return;
+        saving = true; try { await Api.PostAsync<ShopWarrantyDto>($"api/shop-warranties/{w.Id}/finalize"); Toast.Success("گارانتی نهایی و گردش انبار و بدهی مربوط ثبت شد."); await Load(); }
         catch (Exception ex) { Toast.Error(ex.Message); } finally { saving = false; }
     }
 }

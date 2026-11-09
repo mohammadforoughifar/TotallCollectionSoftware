@@ -76,7 +76,7 @@ AND COL_LENGTH(N'dbo.TransactionLines', N'UnitCostSnapshot') IS NULL
     {
         var repairs = await db.RepairOrders.AsNoTracking()
             .Include(r => r.Items)
-            .Where(r => r.InvoiceTransactionId.HasValue &&
+            .Where(r => !r.WarrantyProcessed && r.InvoiceTransactionId.HasValue &&
                         db.TransactionLines.Any(l => l.TransactionId == r.InvoiceTransactionId!.Value && l.UnitCostSnapshot == null))
             .ToListAsync();
         if (repairs.Count == 0) return;

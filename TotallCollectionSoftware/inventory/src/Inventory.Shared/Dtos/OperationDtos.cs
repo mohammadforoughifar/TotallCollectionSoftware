@@ -9,6 +9,7 @@ public class OrderLine
     public int Id { get; set; }
     public int ProductId { get; set; }
     public string ProductName { get; set; } = "";
+    public string? Description { get; set; }
     public string Unit { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
@@ -202,6 +203,9 @@ public class OrderCommand
     public List<InstallmentDto> Installments { get; set; } = new();
 
     public List<OrderLineInput> Lines { get; set; } = new();
+    /// <summary>فقط مسیر داخلی گارانتی: مانده دقیق نسیه و بدون گردش موجودی برای خدمات.</summary>
+    [JsonIgnore]
+    public bool IsWarrantyInvoice { get; set; }
 }
 
 /// <summary>ورودی ماشین‌حساب و شرایط تعدیل سررسید؛ مبلغ ردیف از کلاینت دریافت نمی‌شود.</summary>
@@ -408,6 +412,9 @@ public class OrderLineInput
     /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
     [JsonIgnore]
     public decimal? UnitCostSnapshot { get; set; }
+    /// <summary>شرح ردیف از پذیرش تعمیر یا گارانتی؛ فقط از سرویس داخلی پذیرفته می‌شود.</summary>
+    [JsonIgnore]
+    public string? SourceDescription { get; set; }
 }
 
 /// <summary>درخواست اصلاح موجودی</summary>

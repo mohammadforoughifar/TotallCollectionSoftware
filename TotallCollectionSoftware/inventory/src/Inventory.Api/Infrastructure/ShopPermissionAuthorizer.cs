@@ -68,9 +68,9 @@ public static class ShopPermissionAuthorizer
             {
                 var known = controller switch
                 {
-                    "ShopWarranty" => operation is "GetAll" or "Lookups" or "Report" or "Save" or "FinalizeWarranty",
+                    "ShopWarranty" => operation is "GetAll" or "Lookups" or "Report" or "Save" or "FinalizeWarranty" or "Accounts" or "CreditState" or "ReceiveCredit" or "ReverseCredit",
                     "ShopTradeIn" => operation is "GetAll" or "Customers" or "TargetSales" or "Save" or "FinalizeTradeIn" or "Use",
-                    "Repairs" => operation is "GetAll" or "Get" or "Save" or "Delete" or "SetStatus" or "Invoice",
+                    "Repairs" => operation is "GetAll" or "Get" or "RepairProducts" or "RepairProduct" or "RepairWarehouses" or "RepairAccounts" or "Save" or "Delete" or "SetStatus" or "Invoice" or "LinkedInvoice" or "WarrantyCreditState" or "ReceiveWarrantyCredit" or "ReverseWarrantyCredit",
                     "Technicians" => operation is "GetAll" or "Save" or "Delete",
                     _ => false
                 };
