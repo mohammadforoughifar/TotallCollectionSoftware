@@ -18,6 +18,7 @@ const fixture = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="u
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/css/bootstrap.min.css"><link rel="stylesheet" href="/css/app.css">
 <link rel="stylesheet" href="/css/shop-print-preview.css">
+<link rel="stylesheet" href="/css/letters.css">
 <style>@media print { .no-print { display:none!important } .report-title { color:rgb(90, 10, 20) } }</style></head><body>
 <div class="tabpane on" data-shop-scope="true">
   <button id="under-save" data-hotkey="f1" onclick="window.saves++">ذخیره</button>
@@ -193,6 +194,7 @@ test('report snapshot keeps live values and printed styles while leaving the ori
     assert.equal(ok, true);
     await ready(page);
     const frame = await htmlFrame(page);
+    assert.equal(await frame.$eval('.report-title', el => getComputedStyle(el).visibility), 'visible');
     assert.equal(await frame.$eval('#amount', el => el.value), '20000000');
     assert.equal(await frame.$eval('#checked', el => el.checked), true);
     assert.equal(await frame.$eval('#choice', el => el.value), 'B');
@@ -514,4 +516,30 @@ test('oversized raster fallback offers the original instead of exhausting browse
     assert.equal(await page.evaluate(() => window.prints), 0);
     assert.equal(await page.$('.shop-print-pdf-render-frame'), null);
     assert.equal(await page.$eval('.shop-print-download', el => el.hidden), false);
+});
+
+
+test('letter print isolation hides surrounding UI but preserves paper and office guides', { skip }, async t => {
+    const page = await setup(t);
+    await page.evaluate(() => {
+        const letter = document.createElement('section');
+        letter.className = 'ltx';
+        letter.innerHTML = '<nav class="rail">Letter tools</nav><article class="paper"><p id="letter-text">LETTER-VISIBLE</p></article>';
+        document.body.appendChild(letter);
+    });
+    await page.emulateMediaType('print');
+    assert.equal(await page.$eval('#letter-text', el => getComputedStyle(el).visibility), 'visible');
+    assert.equal(await page.$eval('.ltx .rail', el => getComputedStyle(el).visibility), 'hidden');
+    assert.equal(await page.$eval('.report-title', el => getComputedStyle(el).visibility), 'hidden');
+    await page.evaluate(() => {
+        const letter = document.querySelector('.ltx');
+        letter.classList.add('guide-open');
+        const guide = document.createElement('div');
+        guide.className = 'guide-workspace';
+        guide.innerHTML = '<p id="office-guide-text">GUIDE-VISIBLE</p>';
+        letter.appendChild(guide);
+    });
+    assert.equal(await page.$eval('#office-guide-text', el => getComputedStyle(el).visibility), 'visible');
+    await page.evaluate(() => document.querySelector('.ltx').remove());
+    assert.equal(await page.$eval('.report-title', el => getComputedStyle(el).visibility), 'visible');
 });

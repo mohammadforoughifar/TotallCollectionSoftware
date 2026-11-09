@@ -74,6 +74,13 @@ class ShopPrintPreviewContracts(unittest.TestCase):
         self.assertIn('"shopPrintPreview.openPdf", data, fileName', exports)
         self.assertIn('"downloadBlob"', exports)
 
+    def test_letter_print_styles_do_not_hide_unrelated_documents(self):
+        css = read('wwwroot/css/letters.css')
+        self.assertNotRegex(css, r'body\s+\*\s*\{\s*visibility:\s*hidden')
+        self.assertIn('body:where(:has(.ltx)) * { visibility:hidden !important; }', css)
+        self.assertIn('.ltx .paper, .ltx .paper * { visibility:visible !important; }', css)
+        self.assertIn('css/letters.css?v=13', read('wwwroot/index.html'))
+
     def test_preview_is_loaded_and_has_only_one_explicit_print_call(self):
         index = read('wwwroot/index.html')
         self.assertIn('css/shop-print-preview.css', index)
