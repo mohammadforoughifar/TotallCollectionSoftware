@@ -2770,6 +2770,7 @@ public class InventoryService : IInventoryService
     {
         var now = DateTime.Now;
         var today = now.Date;
+        var tomorrow = today.AddDays(1);
 
         // بازه‌های شمسی: هفته از شنبه، ماه از ۱ ماه شمسی، فصل از ماه ۱/۴/۷/۱۰
         var dow = (int)today.DayOfWeek; // Saturday=6
@@ -2783,13 +2784,15 @@ public class InventoryService : IInventoryService
         var sixMonthStart = PersianDate.ToGregorian(m6y, m6m, 1);
         var chequeIncomes = await LoadSaleChequeIncomesAsync(sixMonthStart < quarterStart ? sixMonthStart : quarterStart);
 
+        // A week or the 30-day window may cross the current Persian quarter boundary.
+        var salesStart = new[] { quarterStart, weekStart, today.AddDays(-29) }.Min();
         var sales = await _db.Transactions
             .Include(t => t.Cheques)
             .Include(t => t.Installments)
-            .Where(t => t.Type == TransactionType.Sale && t.Date >= quarterStart)
+            .Where(t => t.Type == TransactionType.Sale && t.Date >= salesStart && t.Date < tomorrow)
             .ToListAsync();
         var returnsQuarter = await _db.Transactions.AsNoTracking()
-            .Where(t => t.Type == TransactionType.SaleReturn && t.Date >= quarterStart)
+            .Where(t => t.Type == TransactionType.SaleReturn && t.Date >= salesStart && t.Date < tomorrow)
             .ToListAsync();
 
         var dash = new AdminDashboard
@@ -2797,16 +2800,15 @@ public class InventoryService : IInventoryService
             SalesToday = sales.Where(t => t.Date.Date == today).Sum(t => GoodsAmount(t, chequeIncomes)) - returnsQuarter.Where(r => r.Date.Date == today).Sum(r => r.Amount),
             SalesWeek = sales.Where(t => t.Date >= weekStart).Sum(t => GoodsAmount(t, chequeIncomes)) - returnsQuarter.Where(r => r.Date >= weekStart).Sum(r => r.Amount),
             SalesMonth = sales.Where(t => t.Date >= monthStart).Sum(t => GoodsAmount(t, chequeIncomes)) - returnsQuarter.Where(r => r.Date >= monthStart).Sum(r => r.Amount),
-            SalesQuarter = sales.Sum(t => GoodsAmount(t, chequeIncomes))
+            SalesQuarter = sales.Where(t => t.Date >= quarterStart).Sum(t => GoodsAmount(t, chequeIncomes))
         };
-        dash.SalesQuarter -= returnsQuarter.Sum(r => r.Amount);
+        dash.SalesQuarter -= returnsQuarter.Where(r => r.Date >= quarterStart).Sum(r => r.Amount);
 
         // سود دوره‌ای بعد از محاسبه profitById (پایین‌تر) انجام می‌شود
 
         // ---------- داده نمودارها ----------
         // روند ۳۰ روز اخیر (فروش + سود) — سود از GetOrderAsync قبلاً برای فصل محاسبه شده؛
-        // برای ۳۰ روز، دوباره از همان لیست فصل استفاده می‌کنیم (۳۰ روز داخل فصل است؛
-        // اگر ابتدای فصل باشد روزهای قبل صفر می‌مانند که برای نمودار قابل قبول است).
+        // بازهٔ خواندن از ابتدای فصل یا ۲۹ روز قبل (هرکدام قدیمی‌تر است) شروع می‌شود.
         var profitById = new Dictionary<int, decimal>();
         foreach (var t in sales)
         {
@@ -2821,7 +2823,7 @@ public class InventoryService : IInventoryService
             if (t.Date.Date == today) dash.ProfitToday += profit;
             if (t.Date >= weekStart) dash.ProfitWeek += profit;
             if (t.Date >= monthStart) dash.ProfitMonth += profit;
-            dash.ProfitQuarter += profit;
+            if (t.Date >= quarterStart) dash.ProfitQuarter += profit;
         }
 
         for (var d = 29; d >= 0; d--)
@@ -2839,10 +2841,10 @@ public class InventoryService : IInventoryService
 
         // ۶ ماه شمسی اخیر — نیاز به همه اسناد ۶ ماه (فراتر از فصل)
         var sales6m = await _db.Transactions
-            .Where(t => t.Type == TransactionType.Sale && t.Date >= sixMonthStart)
+            .Where(t => t.Type == TransactionType.Sale && t.Date >= sixMonthStart && t.Date < tomorrow)
             .ToListAsync();
         var returns6m = await _db.Transactions.AsNoTracking()
-            .Where(t => t.Type == TransactionType.SaleReturn && t.Date >= sixMonthStart)
+            .Where(t => t.Type == TransactionType.SaleReturn && t.Date >= sixMonthStart && t.Date < tomorrow)
             .ToListAsync();
         var profit6m = new Dictionary<int, decimal>(profitById);
         foreach (var t in sales6m.Where(t => !profit6m.ContainsKey(t.Id)))
@@ -2872,7 +2874,7 @@ public class InventoryService : IInventoryService
         static decimal InstOf(Db.Transaction t) => t.Installments.Sum(i => i.Amount);
         static decimal CreditOf(Db.Transaction t, decimal customerCredit, decimal returnedGoods = 0m) =>
             Math.Max(0, t.Amount - customerCredit - CashOf(t) - ChequeOf(t) - InstOf(t) - returnedGoods);
-        var quarterIds = sales.Select(t => t.Id).ToList();
+        var quarterIds = sales.Where(t => t.Date >= quarterStart).Select(t => t.Id).ToList();
         var quarterCredits = quarterIds.Count == 0 ? new Dictionary<int, decimal>() :
             (await _db.SaleChequeCharges.AsNoTracking().Where(c => quarterIds.Contains(c.TransactionId))
                 .Select(c => new { c.TransactionId, c.CustomerCredit }).ToListAsync())
@@ -2884,9 +2886,9 @@ public class InventoryService : IInventoryService
 
         var cancelledAll = (await _db.SaleChequeCancellations.AsNoTracking()
             .Select(c => c.SaleTransactionId).ToListAsync()).ToHashSet();
-        var activeQuarterSales = sales.Where(t => !cancelledAll.Contains(t.Id)).ToList();
+        var activeQuarterSales = sales.Where(t => t.Date >= quarterStart && !cancelledAll.Contains(t.Id)).ToList();
         dash.PayCash = activeQuarterSales.Sum(CashOf);
-        dash.PayCheque = sales.Sum(ChequeOf);
+        dash.PayCheque = activeQuarterSales.Sum(ChequeOf);
         dash.PayInstallment = activeQuarterSales.Sum(InstOf);
         dash.PayCredit = activeQuarterSales.Sum(t => CreditOf(t, quarterCredits.GetValueOrDefault(t.Id), quarterReturnedGoods.GetValueOrDefault(t.Id)));
 
@@ -2899,7 +2901,7 @@ public class InventoryService : IInventoryService
             .Include(t => t.Installments)
             .Where(t => t.Type == TransactionType.Sale &&
                         (t.PaymentMethod == PaymentMethod.Credit || t.PaymentMethod == PaymentMethod.Mixed) &&
-                        t.DueDate != null && t.DueDate <= today && t.SettledAmount < t.Amount)
+                        t.DueDate != null && t.DueDate < tomorrow && t.SettledAmount < t.Amount)
             .ToListAsync();
         creditTxns = creditTxns.Where(t => !cancelledAll.Contains(t.Id)).ToList();
         var overdueIds = creditTxns.Select(t => t.Id).ToList();
@@ -2944,7 +2946,7 @@ public class InventoryService : IInventoryService
         }
 
         var dueInstallments = await _db.Installments
-            .Where(i => !i.IsPaid && i.DueDate <= today)
+            .Where(i => !i.IsPaid && i.DueDate < tomorrow)
             .ToListAsync();
         if (dueInstallments.Count > 0)
         {
@@ -2953,7 +2955,7 @@ public class InventoryService : IInventoryService
             foreach (var i in dueInstallments)
             {
                 if (cancelledAll.Contains(i.TransactionId)) continue;
-                if (!instTxns.TryGetValue(i.TransactionId, out var t)) continue;
+                if (!instTxns.TryGetValue(i.TransactionId, out var t) || t.Type != TransactionType.Sale) continue;
                 var party = t.PartyId.HasValue && partyNames.TryGetValue(t.PartyId.Value, out var pp) ? pp : null;
                 dash.OverdueDebtors.Add(new DebtorItem
                 {
@@ -2973,7 +2975,7 @@ public class InventoryService : IInventoryService
 
         // چک‌های دریافتی از مشتری و چک‌های پرداختی ما (شامل سررسید امروز/گذشته یا برگشتی‌ها)
         var uncleanedCheques = await _db.Cheques
-            .Where(c => c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && ((!c.IsCleared && c.DueDate <= today) || c.Status == ChequeStatus.Bounced))
+            .Where(c => c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && c.Status != ChequeStatus.Cleared && ((!c.IsCleared && c.DueDate < tomorrow) || c.Status == ChequeStatus.Bounced))
             .OrderBy(c => c.DueDate)
             .ToListAsync();
 
@@ -2983,7 +2985,8 @@ public class InventoryService : IInventoryService
             var chTxns = await _db.Transactions.Where(t => chTxnIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id);
             foreach (var c in uncleanedCheques)
             {
-                chTxns.TryGetValue(c.TransactionId, out var t);
+                if (!chTxns.TryGetValue(c.TransactionId, out var t) ||
+                    t.Type is not (TransactionType.Sale or TransactionType.Purchase)) continue;
                 var party = t?.PartyId != null && partyNames.TryGetValue(t.PartyId.Value, out var pp) ? pp : null;
                 var alertItem = new ChequeAlertItem
                 {
@@ -3011,6 +3014,40 @@ public class InventoryService : IInventoryService
                 }
             }
         }
+
+        // Opening-balance/manual cheques are stored in treasury, not invoice Cheques.
+        // Keep company query filters intact. Only read here; actions remain in their owning screen.
+        var treasuryCheques = await _db.TrsCheques.AsNoTracking()
+            .Where(c => (c.Status == ChequeStatus.InHand || c.Status == ChequeStatus.InCollection || c.Status == ChequeStatus.Bounced) &&
+                        (c.DueDate < tomorrow || c.Status == ChequeStatus.Bounced))
+            .OrderBy(c => c.DueDate).ToListAsync();
+        foreach (var c in treasuryCheques)
+        {
+            var alert = new ChequeAlertItem
+            {
+                Source = "Treasury", ChequeId = c.Id, Number = c.Number, BankName = c.BankName,
+                OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate, Status = c.Status,
+                PartyName = c.PartyId.HasValue && partyNames.TryGetValue(c.PartyId.Value, out var party) ? party.Name : "—",
+                OrderNumber = "ثبت مستقل / افتتاح حساب"
+            };
+            if (c.Kind == ChequeKind.Issued) dash.IssuedCheques.Add(alert);
+            else dash.TodayCheques.Add(alert);
+        }
+
+        // Own issued expense cheques are a third source. Endorsed customer cheques
+        // are not our issued cheques and must not be counted twice.
+        var expenseCheques = await _db.ShopExpenseCheques.AsNoTracking()
+            .Where(c => c.Kind == ExpenseChequeKind.Issued && c.State == ExpenseChequeState.Outstanding && c.DueDate < tomorrow)
+            .OrderBy(c => c.DueDate).ToListAsync();
+        foreach (var c in expenseCheques)
+            dash.IssuedCheques.Add(new ChequeAlertItem
+            {
+                Source = "Expense", ChequeId = c.Id, Number = c.Number, BankName = c.BankName,
+                PartyName = c.Recipient, Amount = c.Amount, DueDate = c.DueDate,
+                Status = ChequeStatus.InHand, OrderNumber = "چک هزینه"
+            });
+        dash.TodayCheques = dash.TodayCheques.OrderBy(c => c.DueDate).ThenBy(c => c.Number).ToList();
+        dash.IssuedCheques = dash.IssuedCheques.OrderBy(c => c.DueDate).ThenBy(c => c.Number).ToList();
 
         return dash;
     }
