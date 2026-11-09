@@ -1,4 +1,6 @@
 using Inventory.Api.Data;
+using Inventory.Api.Services.ItAssets;
+using Microsoft.Extensions.Options;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -9,19 +11,26 @@ namespace Inventory.Api.Services.Repairs;
 /// <summary>Outbox is committed with the repair, and is never retried after a send starts.</summary>
 public static class RepairSmsQueue
 {
-    public static async Task StageAsync(AppDbContext db, IKavenegarSmsGateway gateway, RepairOrder repair,
-        DbParty? party, RepairSmsEventType kind)
+    public static async Task StageAsync(AppDbContext db, IKavenegarSmsGateway gateway, KavenegarSmsOptions options,
+        RepairOrder repair, DbParty? party, RepairSmsEventType kind)
     {
         if (await db.RepairSmsNotifications.AnyAsync(n => n.RepairOrderId == repair.Id && n.EventType == kind)) return;
         // A party from another company, a landline or a missing number can never be a recipient.
         var mobile = party is not null && party.Id == repair.PartyId && party.CompanyId == repair.CompanyId
             ? party.Mobile : null;
+        // This read occurs in the repair's serializable transaction. A concurrent revocation
+        // therefore cannot miss a newly committed Pending row and resurrect it on re-enable.
+        var revision = await CompanySmsServicePolicy.GetEnabledRevisionAsync(db, repair.CompanyId, SmsModuleCatalog.ShopRepairs);
+        var companyName = await db.SystemCompanies.AsNoTracking().Where(c => c.Id == repair.CompanyId && c.IsActive)
+            .Select(c => c.Name).SingleOrDefaultAsync();
+        var template = RepairSmsPolicy.TemplateName(kind, options);
+        var configured = gateway.IsLookupConfigured && KavenegarSmsValidation.TemplateName(template);
         var now = DateTime.UtcNow;
-        var state = RepairSmsPolicy.InitialStatus(mobile, gateway.IsEnabled, gateway.IsConfigured);
+        var state = RepairSmsPolicy.InitialStatus(mobile, revision.HasValue, gateway.IsEnabled, configured, companyName, repair.Number);
         db.RepairSmsNotifications.Add(new RepairSmsNotification
         {
             CompanyId = repair.CompanyId, RepairOrderId = repair.Id, PartyId = repair.PartyId,
-            EventType = kind, Status = state,
+            EventType = kind, Status = state, PermissionRevision = revision,
             Recipient = state == RepairSmsStatus.Pending ? RepairSmsPolicy.NormalizeMobile(mobile) : null,
             CreatedAtUtc = now, CompletedAtUtc = state == RepairSmsStatus.Pending ? null : now
         });
@@ -29,7 +38,7 @@ public static class RepairSmsQueue
 }
 
 /// <summary>One atomic claim per event, even across server processes. No network call uses a DB transaction.</summary>
-public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGateway gateway)
+public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGateway gateway, IOptions<KavenegarSmsOptions> options)
 {
     // Much longer than the gateway's 120-second maximum timeout. A crashed in-flight send
     // becomes Unknown, never Pending: it may already have reached the provider.
@@ -68,20 +77,36 @@ public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGateway ga
             .Select(r => new { r.Number, r.Status }).SingleOrDefaultAsync(ct);
         var party = await db.Parties.AsNoTracking().Where(p => p.Id == job.PartyId && p.CompanyId == job.CompanyId)
             .Select(p => new { p.Mobile }).SingleOrDefaultAsync(ct);
-        if (!gateway.IsEnabled) state = RepairSmsStatus.Disabled;
-        else if (!gateway.IsConfigured) state = RepairSmsStatus.NotConfigured;
-        else if (repair is not null && party is not null && job.Recipient is not null &&
-                 RepairSmsPolicy.NormalizeMobile(party.Mobile) == job.Recipient &&
-                 (job.EventType == RepairSmsEventType.Registration ||
-                  job.EventType == RepairSmsEventType.Ready && repair.Status == RepairStatus.Ready) &&
-                 await db.RepairSmsNotifications.AnyAsync(n => n.Id == job.Id && n.Status == RepairSmsStatus.Sending, ct))
+        var companyName = await db.SystemCompanies.AsNoTracking()
+            .Where(c => c.Id == job.CompanyId && c.IsActive).Select(c => c.Name).SingleOrDefaultAsync(ct);
+        var template = RepairSmsPolicy.TemplateName(job.EventType, options.Value);
+        var token = RepairSmsPolicy.NumberToken(repair?.Number);
+        if (repair is null || party is null || job.Recipient is null ||
+            RepairSmsPolicy.NormalizeMobile(party.Mobile) != job.Recipient ||
+            !(job.EventType == RepairSmsEventType.Registration ||
+              job.EventType == RepairSmsEventType.Ready && repair.Status == RepairStatus.Ready))
+            state = RepairSmsStatus.Cancelled;
+        else if (!await CompanySmsServicePolicy.IsEnabledForRevisionAsync(db, job.CompanyId, SmsModuleCatalog.ShopRepairs, job.PermissionRevision, ct))
+            state = RepairSmsStatus.ModuleDisabled;
+        else if (!gateway.IsEnabled) state = RepairSmsStatus.Disabled;
+        else if (!gateway.IsLookupConfigured || !KavenegarSmsValidation.TemplateName(template))
+            state = RepairSmsStatus.NotConfigured;
+        else if (!KavenegarSmsValidation.CompanyToken(companyName))
+            state = RepairSmsStatus.InvalidCompanyName;
+        else if (token is null) state = RepairSmsStatus.InvalidRepairNumber;
+        else if (await db.RepairSmsNotifications.AnyAsync(n => n.Id == job.Id && n.Status == RepairSmsStatus.Sending, ct))
         {
             try
             {
-                // The SDK has no cancellation-token overload. A thrown error may mean the
-                // provider received the request; never log the exception or retry it.
-                result = await gateway.SendAsync(job.Recipient, RepairSmsPolicy.Message(job.EventType, repair.Number));
-                state = RepairSmsPolicy.Result(result.State);
+                // Recheck the exact company/module immediately before handing the request to
+                // the SDK. A request already in flight cannot be recalled by a later revocation.
+                if (!await CompanySmsServicePolicy.IsEnabledForRevisionAsync(db, job.CompanyId, SmsModuleCatalog.ShopRepairs, job.PermissionRevision, ct))
+                    state = RepairSmsStatus.ModuleDisabled;
+                else
+                {
+                    result = await gateway.SendLookupAsync(job.Recipient, token, companyName!, template!);
+                    state = RepairSmsPolicy.Result(result.State);
+                }
             }
             catch { state = RepairSmsStatus.Unknown; }
         }

@@ -4,7 +4,8 @@ public enum RepairSmsEventType { Registration = 1, Ready = 2 }
 public enum RepairSmsStatus
 {
     Pending = 1, Sending = 2, Accepted = 3, Delivered = 4, Failed = 5,
-    Unknown = 6, InvalidMobile = 7, Disabled = 8, NotConfigured = 9, Cancelled = 10
+    Unknown = 6, InvalidMobile = 7, Disabled = 8, NotConfigured = 9, Cancelled = 10,
+    ModuleDisabled = 11, InvalidCompanyName = 12, InvalidRepairNumber = 13
 }
 
 /// <summary>وضعیت پیامک این پذیرش؛ شماره و متن پیام در این خروجی تکرار نمی‌شوند.</summary>

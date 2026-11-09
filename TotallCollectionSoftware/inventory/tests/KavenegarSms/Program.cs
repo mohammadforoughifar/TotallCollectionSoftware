@@ -136,6 +136,56 @@ result = await gateway.SendAsync("09120000000", "متن");
 Check(result.State == KavenegarSmsSendState.Unknown && fake.Count == beforeTimeout + 1,
     "A timeout has unknown delivery state and must not trigger an automatic retry.");
 
+// Lookup must not require a sender: it uses an approved pattern, token and token10.
+fake.ThrowTimeout = false;
+fake.Body = Response();
+var lookupOptions = Config(); lookupOptions.Sender = "";
+gateway = Create(lookupOptions, fake);
+var companyName = "نام فارسی & + = درصد%20";
+var lookupBefore = fake.Count;
+result = await gateway.SendLookupAsync("09120000000", "0001", companyName, "RepairAccept");
+Check(result.State == KavenegarSmsSendState.Accepted && gateway.IsLookupConfigured && !gateway.IsConfigured,
+    "Lookup is accepted without an ordinary sender, not claimed delivered.");
+Check(fake.Count == lookupBefore + 1 && fake.Uri?.AbsolutePath.EndsWith("/verify/lookup.json") == true,
+    "Repair lookup posts once to verify/lookup, not sms/send.");
+var fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(fields.Count == 8 && fields["receptor"] == "09120000000" && fields["token"] == "0001" &&
+    fields["token10"] == companyName && fields["template"] == "RepairAccept",
+    "Form decode preserves Persian, literal percent, ampersand, plus, equals and exactly one company value.");
+Check(!fields.ContainsKey("sender") && !fields.ContainsKey("message"), "Lookup does not pass ordinary SMS fields.");
+lookupBefore = fake.Count;
+foreach (var (recipient, token, name, template) in new[] {
+    ("09120000000,09120000001", "0001", "نام", "RepairAccept"),
+    ("09120000000", "RP-0001", "نام", "RepairAccept"),
+    ("09120000000", "0001", new string('ا', 101), "RepairAccept"),
+    ("09120000000", "0001", "یک دو سه چهار پنج شش هفت", "RepairAccept"),
+    ("09120000000", "0001", "نام_شرکت", "RepairAccept"),
+    ("09120000000", "0001", "نام\nشرکت", "RepairAccept"),
+    ("09120000000", "0001", "نام", "Repair_Accept") })
+{
+    result = await gateway.SendLookupAsync(recipient, token, name, template);
+    Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+        "Invalid lookup input must not reach the provider.");
+}
+fake.Body = Response(providerStatus: 427);
+result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
+Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 427,
+    "Lookup preserves a definite provider rejection.");
+fake.ThrowNetworkError = true;
+lookupBefore = fake.Count;
+result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
+Check(result.State == KavenegarSmsSendState.Unknown && fake.Count == lookupBefore + 1,
+    "Uncertain lookup never retries automatically.");
+fake.ThrowNetworkError = false;
+lookupOptions.SdkSendEnabled = false;
+gateway = Create(lookupOptions, fake);
+lookupBefore = fake.Count;
+result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
+Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
+    "Default-off gateway prevents a lookup.");
+
 Console.WriteLine($"Kavenegar SDK gateway: {assertions} offline assertions passed.");
 
 sealed class FakeHandler : HttpMessageHandler

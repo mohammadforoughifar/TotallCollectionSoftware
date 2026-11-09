@@ -4,6 +4,7 @@ using System.Text.Json;
 using Inventory.Api.Services.ItAssets;
 using Kavenegar;
 using Kavenegar.Exceptions;
+using Kavenegar.Models;
 using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services;
@@ -35,7 +36,9 @@ public interface IKavenegarSmsGateway
 {
     bool IsEnabled { get; }
     bool IsConfigured { get; }
+    bool IsLookupConfigured { get; }
     Task<KavenegarSmsSendResult> SendAsync(string recipient, string message);
+    Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template);
 }
 
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
@@ -59,6 +62,8 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
     // Presence only; this does not verify the key, sender ownership or network connectivity.
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey)
                                 && !string.IsNullOrWhiteSpace(_options.Sender);
+    // verify/lookup uses the account's approved template, not the ordinary sender line.
+    public bool IsLookupConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
 
     public async Task<KavenegarSmsSendResult> SendAsync(string recipient, string message)
     {
@@ -70,6 +75,27 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
             || recipient.IndexOfAny(new[] { ',', ';', '\r', '\n' }) >= 0)
             return new(KavenegarSmsSendState.InvalidRequest);
 
+        return await SendCoreAsync(api => api.SendAsync(_options.Sender.Trim(), recipient.Trim(), message));
+    }
+
+    public async Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template)
+    {
+        if (!IsEnabled) return new(KavenegarSmsSendState.Disabled);
+        if (!IsLookupConfigured) return new(KavenegarSmsSendState.NotConfigured);
+        if (!KavenegarSmsValidation.Recipient(recipient) || !KavenegarSmsValidation.NumericToken(token)
+            || !KavenegarSmsValidation.CompanyToken(companyName) || !KavenegarSmsValidation.TemplateName(template))
+            return new(KavenegarSmsSendState.InvalidRequest);
+
+        // The SDK source examined concatenates form fields without encoding. Encode each value
+        // exactly once before calling it: Persian, &, +, = and % must survive as one value and
+        // must not inject additional form fields. Do not use this for the separate SendAsync path.
+        return await SendCoreAsync(api => api.VerifyLookupAsync(
+            Uri.EscapeDataString(recipient), Uri.EscapeDataString(token), null!, null!,
+            Uri.EscapeDataString(companyName), Uri.EscapeDataString(template)));
+    }
+
+    private async Task<KavenegarSmsSendResult> SendCoreAsync(Func<KavenegarApi, Task<SendResult>> send)
+    {
         // Kavenegar requires the key in the URL path. Do not use IHttpClientFactory's default
         // request-URI logging, allow redirects, log exceptions or return their raw messages.
         using var capture = new ReturnStatusHandler(_handlerFactory());
@@ -82,9 +108,8 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
         {
             var key = Uri.EscapeDataString(_options.ApiKey.Trim());
             var api = new KavenegarApi(key, http);
-            var sent = await api.SendAsync(_options.Sender.Trim(), recipient.Trim(), message).ConfigureAwait(false);
+            var sent = await send(api).ConfigureAwait(false);
 
-            // SDK 2.0.1 can return entries without checking return.status on an HTTP 200 response.
             // Require both a successful provider return and an identifiable message result.
             if (capture.ProviderCode != 200)
                 return FromProviderCode(capture.ProviderCode);
@@ -106,8 +131,8 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
         }
         catch (Exception)
         {
-            // Timeouts, malformed/empty SDK responses and transport errors may happen after the
-            // provider received the request. Never retry automatically or leak exception text.
+            // A timeout or malformed response may happen after the provider received the request.
+            // Never retry automatically or leak exception text.
             return FromProviderCode(capture.ProviderCode);
         }
     }

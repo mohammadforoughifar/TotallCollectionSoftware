@@ -12,6 +12,8 @@ public sealed class RepairSmsNotification : ICompanyOwned
     public int PartyId { get; set; }
     public RepairSmsEventType EventType { get; set; }
     public RepairSmsStatus Status { get; set; }
+    // NULL on pre-integration events: never send them merely because access was enabled later.
+    public long? PermissionRevision { get; set; }
     [MaxLength(20)] public string? Recipient { get; set; }
     public long? ProviderMessageId { get; set; }
     public int? ProviderCode { get; set; }

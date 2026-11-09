@@ -1,6 +1,8 @@
 using Db = Inventory.Api.Data;
 using System.Data;
 using Inventory.Api.Services.Repairs;
+using Inventory.Api.Services.ItAssets;
+using Microsoft.Extensions.Options;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -17,12 +19,14 @@ public class RepairService : IRepairService
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
     private readonly IKavenegarSmsGateway _smsGateway;
+    private readonly KavenegarSmsOptions _smsOptions;
 
-    public RepairService(Db.AppDbContext db, IInventoryService inventory, IKavenegarSmsGateway smsGateway)
+    public RepairService(Db.AppDbContext db, IInventoryService inventory, IKavenegarSmsGateway smsGateway, IOptions<KavenegarSmsOptions> smsOptions)
     {
         _db = db;
         _inventory = inventory;
         _smsGateway = smsGateway;
+        _smsOptions = smsOptions.Value;
     }
 
     // =============================== تعمیرکارها ===============================
@@ -361,7 +365,7 @@ public class RepairService : IRepairService
             var smsEvent = RepairSmsPolicy.EventFor(isNew, previousStatus, entity.Status);
             if (smsEvent.HasValue)
             {
-                await RepairSmsQueue.StageAsync(_db, _smsGateway, entity, party, smsEvent.Value);
+                await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, entity, party, smsEvent.Value);
                 await _db.SaveChangesAsync();
             }
             var result = (await GetRepairAsync(entity.Id))!;
@@ -418,7 +422,7 @@ public class RepairService : IRepairService
             if (smsEvent.HasValue)
             {
                 var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
-                await RepairSmsQueue.StageAsync(_db, _smsGateway, r, party, smsEvent.Value);
+                await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, r, party, smsEvent.Value);
                 await _db.SaveChangesAsync();
             }
             var result = (await GetRepairAsync(id))!;

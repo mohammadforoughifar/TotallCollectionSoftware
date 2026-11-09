@@ -293,6 +293,7 @@ public class AppDbContext : DbContext
     public DbSet<SystemHandover> SystemHandovers => Set<SystemHandover>();
     public DbSet<SystemRemoteCommand> SystemRemoteCommands => Set<SystemRemoteCommand>();
     public DbSet<SystemCompany> SystemCompanies => Set<SystemCompany>();
+    public DbSet<CompanySmsSetting> CompanySmsSettings => Set<CompanySmsSetting>();
     public DbSet<UserCompanyAccess> UserCompanyAccesses => Set<UserCompanyAccess>();
     public DbSet<SystemDepartment> SystemDepartments => Set<SystemDepartment>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
@@ -637,6 +638,8 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(c => c.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<CompanySmsSetting>().HasKey(x => new { x.CompanyId, x.ModuleKey });
+        mb.Entity<CompanySmsSetting>().HasOne<SystemCompany>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
@@ -1907,6 +1910,7 @@ public class AppDbContext : DbContext
         mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<CompanySmsSetting>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairSmsNotification>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

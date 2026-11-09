@@ -87,6 +87,8 @@ public static class DbInitializer
                     // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     await RepairSmsSchemaV1.EnsureAsync(db);
+                    await CompanySmsSettingsSchemaV1.EnsureAsync(db);
+                    await RepairSmsPermissionRevisionSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید
@@ -170,6 +172,8 @@ public static class DbInitializer
                     // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     await RepairSmsSchemaV1.EnsureAsync(db);
+                    await CompanySmsSettingsSchemaV1.EnsureAsync(db);
+                    await RepairSmsPermissionRevisionSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید

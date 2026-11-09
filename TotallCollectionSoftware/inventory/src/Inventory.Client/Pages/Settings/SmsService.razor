@@ -1,0 +1,119 @@
+@page "/settings/sms-service"
+@inject IApiClient Api
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<PageTitle>سرویس پیامکی</PageTitle>
+
+<div class="page-head sms-page-head">
+    <div>
+        <h1>سرویس پیامکی</h1>
+        <p class="lead">تنظیم دسترسی ماژول‌ها به پیامک برای شرکت فعال</p>
+    </div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (model is null)
+{
+    <div class="alert alert-danger" role="alert">@(error ?? "دریافت تنظیمات پیامکی ممکن نشد.")</div>
+    <button class="btn btn-outline-primary" @onclick="Load"><i class="bi bi-arrow-clockwise"></i> تلاش دوباره</button>
+}
+else
+{
+    <div class="sms-settings" dir="rtl">
+        <section class="card sms-card">
+            <div class="card-header sms-card-header">
+                <div class="sms-heading"><i class="bi bi-building"></i><div><span class="sms-eyebrow">شرکت فعال</span><strong>@model.CompanyName</strong></div></div>
+                <span class="sms-company-hint">برای تغییر شرکت، از انتخاب‌گر بالای برنامه استفاده کنید.</span>
+            </div>
+            <div class="card-body">
+                <div class="sms-section-title">
+                    <div><h2>دسترسی ارسال پیامک</h2><p>ماژول‌هایی را که این شرکت اجازه استفاده از سرویس پیامکی دارد انتخاب کنید.</p></div>
+                    <span class="sms-saved">@savedCount.Num() ماژول فعال در تنظیمات ذخیره‌شده</span>
+                </div>
+                @if (!CanManage)
+                {
+                    <div class="sms-readonly"><i class="bi bi-lock"></i> شما فقط مجوز مشاهده تنظیمات را دارید.</div>
+                }
+                @foreach (var group in model.Modules.GroupBy(m => m.Group))
+                {
+                    <div class="sms-module-group">
+                        <div class="sms-group-title"><i class="bi bi-grid"></i> @group.Key</div>
+                        @foreach (var module in group)
+                        {
+                            <label class="sms-module" @key="module.Key">
+                                <span class="sms-module-detail"><strong>@module.Title</strong><small>اجازه ارسال پیامک برای این بخش از شرکت فعال</small></span>
+                                <span class="sms-module-control"><span class="sms-choice @(module.Enabled ? "on" : "")">@(module.Enabled ? "مجاز" : "غیرفعال")</span><input class="form-check-input" type="checkbox" @bind="module.Enabled" disabled="@(!CanManage || busy)" aria-label="@($"اجازه ارسال پیامک {module.Group} - {module.Title}")" /></span>
+                            </label>
+                        }
+                    </div>
+                }
+                @if (model.Modules.Count == 0)
+                {
+                    <div class="sms-empty">در حال حاضر ماژول پیامکی متصلی وجود ندارد.</div>
+                }
+                <div class="sms-actions">
+                    <span>تغییر تیک‌ها پس از ذخیره اعمال می‌شود.</span>
+                    @if (CanManage)
+                    {
+                        <button class="btn btn-primary" @onclick="Save" disabled="@(busy || model.Modules.Count == 0)">
+                            @if (busy) { <span class="spinner-border spinner-border-sm" role="status"></span> }
+                            else { <i class="bi bi-check2"></i> }
+                            ذخیره تنظیمات
+                        </button>
+                    }
+                </div>
+            </div>
+        </section>
+        <div class="sms-notes">
+            <div><i class="bi bi-info-circle"></i><p>ارسال علاوه بر تیک این صفحه، به فعال‌بودن درگاه و تأیید الگوها در حساب کاوه‌نگار روی سرور نیاز دارد. این تیک به‌تنهایی به معنی ارسال یا تحویل موفق نیست.</p></div>
+            <div><i class="bi bi-clock-history"></i><p>پیام‌های ثبت‌شده هنگام غیرفعال‌بودن، بعداً خودکار ارسال نمی‌شوند. با قطع دسترسی، پیام‌های در صف همان ماژول لغو می‌شوند؛ درخواست تحویل‌شده به درگاه قابل بازگشت نیست.</p></div>
+            <div><i class="bi bi-card-text"></i><p>در الگوهای تعمیرات، نام شرکت ابتدای پیام قرار می‌گیرد. نام باید با محدودیت الگو سازگار باشد (حداکثر ۱۰۰ نویسه و ۵ فاصله)؛ نام نامعتبر یا شماره پذیرش ناسازگار با هشدار ثبت می‌شود و مانع ثبت تعمیر نیست.</p></div>
+        </div>
+    </div>
+}
+
+@code {
+    private CompanySmsSettingsDto? model;
+    private bool loading = true, busy;
+    private string? error;
+    private int savedCount;
+    private bool CanManage => Auth.IsAdmin || Auth.Has("SmsSettings.Update");
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            model = await Api.GetAsync<CompanySmsSettingsDto>("api/company-sms-settings");
+            savedCount = model.Modules.Count(m => m.Enabled);
+        }
+        catch (Exception ex) { model = null; error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task Save()
+    {
+        if (!CanManage || model is null || busy) return;
+        busy = true;
+        try
+        {
+            var request = new SaveCompanySmsSettingsDto
+            {
+                CompanyId = model.CompanyId,
+                Modules = model.Modules.Select(m => new SaveCompanySmsModuleDto { Key = m.Key, Enabled = m.Enabled }).ToList()
+            };
+            model = await Api.PutAsync<CompanySmsSettingsDto>("api/company-sms-settings", request);
+            savedCount = model.Modules.Count(m => m.Enabled);
+            Toast.ShowAtTopRight("تنظیمات پیامکی شرکت ذخیره شد.", "success");
+        }
+        catch (Exception ex) { Toast.ShowAtTopRight(ex.Message, "error"); }
+        finally { busy = false; }
+    }
+}

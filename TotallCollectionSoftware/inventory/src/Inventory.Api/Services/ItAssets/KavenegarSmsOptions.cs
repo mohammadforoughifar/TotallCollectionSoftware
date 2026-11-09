@@ -10,7 +10,10 @@ public sealed class KavenegarSmsOptions
     public string Sender { get; set; } = "";
     public int TimeoutSeconds { get; set; } = 20;
 
-    // This is deliberately independent of the existing work-order and profile SMS services.
-    // The new SDK gateway stays inactive until a future integration is explicitly enabled.
+    // Names must match the approved lookup templates on the server's Kavenegar account.
+    public string RepairAcceptTemplate { get; set; } = "RepairAccept";
+    public string RepairReadyTemplate { get; set; } = "RepairReady";
+
+    // Independent of the existing work-order and profile SMS services; default is off.
     public bool SdkSendEnabled { get; set; }
 }

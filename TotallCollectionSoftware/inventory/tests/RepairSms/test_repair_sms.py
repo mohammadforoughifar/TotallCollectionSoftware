@@ -103,7 +103,7 @@ class RepairContracts(unittest.TestCase):
         self.assertNotIn('party.Phone', src)
         self.assertIn('r.CompanyId == job.CompanyId && r.PartyId == job.PartyId', src)
         self.assertIn('p.CompanyId == job.CompanyId', src)
-        self.assertIn('NormalizeMobile(party.Mobile) == job.Recipient', src)
+        self.assertIn('NormalizeMobile(party.Mobile) != job.Recipient', src)
         self.assertIn('repair.Status == RepairStatus.Ready', src)
         self.assertIn('n.Status == RepairSmsStatus.Pending', src)
         self.assertIn('n.Status == RepairSmsStatus.Sending && n.AttemptStartedAtUtc < cutoff', src)
@@ -115,16 +115,16 @@ class RepairContracts(unittest.TestCase):
         policy = read('src/Inventory.Api/Services/Repairs/RepairSmsPolicy.cs')
         self.assertIn('previous != RepairStatus.Ready && current == RepairStatus.Ready', policy)
         self.assertIn('RepairSmsStatus.InvalidMobile', policy)
-        self.assertIn('!enabled ? RepairSmsStatus.Disabled', policy)
-        self.assertIn('!configured ? RepairSmsStatus.NotConfigured', policy)
+        self.assertIn('!gatewayEnabled ? RepairSmsStatus.Disabled', policy)
+        self.assertIn('!lookupConfigured ? RepairSmsStatus.NotConfigured', policy)
         self.assertIn('RepairSmsStatus.Unknown', policy)
         self.assertIn('RepairSmsStatus.Accepted', policy)
         self.assertIn('RepairSmsStatus.Delivered', policy)
-        self.assertIn('{number}', policy)
+        self.assertIn('NumberToken(number)', policy)
 
     def test_operator_can_see_all_states_and_refresh(self):
         ui = read('src/Inventory.Client/Pages/Repairs/Repairs.razor')
-        for value in ('InvalidMobile', 'Disabled', 'NotConfigured', 'Accepted', 'Delivered', 'Failed', 'Unknown', 'Cancelled'):
+        for value in ('InvalidMobile', 'Disabled', 'NotConfigured', 'Accepted', 'Delivered', 'Failed', 'Unknown', 'Cancelled', 'ModuleDisabled', 'InvalidCompanyName', 'InvalidRepairNumber'):
             self.assertIn('RepairSmsStatus.' + value, ui)
         self.assertIn('RefreshSmsStatus', ui)
         self.assertIn('تحویل قطعی نیست', ui)

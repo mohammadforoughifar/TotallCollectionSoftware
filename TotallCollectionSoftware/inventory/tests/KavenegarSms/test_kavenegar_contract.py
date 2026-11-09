@@ -66,6 +66,9 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertIn('Uri.EscapeDataString(_options.ApiKey.Trim())', gateway)
         self.assertIn('new KavenegarApi(key, http)', gateway)
         self.assertIn('api.SendAsync(', gateway)
+        self.assertIn('api.VerifyLookupAsync(', gateway)
+        self.assertIn('Uri.EscapeDataString(companyName)', gateway)
+        self.assertIn('IsLookupConfigured', gateway)
         self.assertNotIn('CreateClient(', gateway)
         self.assertNotIn('ex.Message', gateway)
         self.assertNotRegex(gateway, r'Log(?:Information|Warning|Error|Debug)\s*\(')
@@ -79,6 +82,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertNotIn('SocketsHttpHandler', program)
         self.assertIn('HTTP 200 must not hide a provider-level rejection', program)
         self.assertIn('automatic retry', program)
+        self.assertIn('Form decode preserves Persian', program)
 
 
 if __name__ == '__main__':

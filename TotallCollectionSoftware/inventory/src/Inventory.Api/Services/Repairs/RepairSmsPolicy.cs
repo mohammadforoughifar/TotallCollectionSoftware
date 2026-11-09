@@ -1,4 +1,5 @@
 using System.Text;
+using Inventory.Api.Services.ItAssets;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -11,9 +12,30 @@ public static class RepairSmsPolicy
         isNew ? RepairSmsEventType.Registration :
         previous != RepairStatus.Ready && current == RepairStatus.Ready ? RepairSmsEventType.Ready : null;
 
-    public static RepairSmsStatus InitialStatus(string? mobile, bool enabled, bool configured) =>
+    public static RepairSmsStatus InitialStatus(string? mobile, bool moduleEnabled, bool gatewayEnabled,
+        bool lookupConfigured, string? companyName, string? number) =>
         NormalizeMobile(mobile) is null ? RepairSmsStatus.InvalidMobile :
-        !enabled ? RepairSmsStatus.Disabled : !configured ? RepairSmsStatus.NotConfigured : RepairSmsStatus.Pending;
+        !moduleEnabled ? RepairSmsStatus.ModuleDisabled :
+        !gatewayEnabled ? RepairSmsStatus.Disabled :
+        !lookupConfigured ? RepairSmsStatus.NotConfigured :
+        !KavenegarSmsValidation.CompanyToken(companyName) ? RepairSmsStatus.InvalidCompanyName :
+        NumberToken(number) is null ? RepairSmsStatus.InvalidRepairNumber : RepairSmsStatus.Pending;
+
+    public static string? TemplateName(RepairSmsEventType kind, KavenegarSmsOptions options) => kind switch
+    {
+        RepairSmsEventType.Registration => options.RepairAcceptTemplate,
+        RepairSmsEventType.Ready => options.RepairReadyTemplate,
+        _ => null
+    };
+
+    // The proposed template includes literal "RP-" before %token. Refuse legacy numbers
+    // that cannot be represented exactly rather than sending a different acceptance number.
+    public static string? NumberToken(string? number)
+    {
+        if (number is null || !number.StartsWith("RP-", StringComparison.Ordinal)) return null;
+        var suffix = number[3..];
+        return KavenegarSmsValidation.NumericToken(suffix) ? suffix : null;
+    }
 
     // Accept one mobile only, with Persian/Arabic digits and ordinary formatting. Never strip
     // arbitrary letters or separators that could turn a list/landline into another recipient.
@@ -42,13 +64,6 @@ public static class RepairSmsPolicy
         if (digits.Length == 10 && digits[0] == '9') digits = "0" + digits;
         return digits.Length == 11 && digits.StartsWith("09", StringComparison.Ordinal) ? digits : null;
     }
-
-    public static string Message(RepairSmsEventType kind, string number) => kind switch
-    {
-        RepairSmsEventType.Registration => $"مشتری گرامی، پذیرش تعمیر شما با شماره {number} ثبت شد.",
-        RepairSmsEventType.Ready => $"مشتری گرامی، دستگاه‌های پذیرش شماره {number} آماده تحویل هستند.",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind))
-    };
 
     public static RepairSmsStatus Result(KavenegarSmsSendState state) => state switch
     {

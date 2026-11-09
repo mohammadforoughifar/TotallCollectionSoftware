@@ -1,6 +1,8 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Finance;
+using Inventory.Api.Services.ItAssets;
+using Microsoft.Extensions.Options;
 using Inventory.Api.Services.Repairs;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
@@ -197,7 +199,7 @@ Check(serviceDone.CustomerAmount == 1 && serviceDone.UnpaidAmount == 1 && servic
       (await inventory.GetPartyStatementDetailAsync(customer.Id)).ClosingBalance == 81,
       "one-rial rejected labor is credit and does not consume inventory");
 
-var repairs = new RepairService(db, inventory, new DisabledTestSmsGateway());
+var repairs = new RepairService(db, inventory, new DisabledTestSmsGateway(), Options.Create(new KavenegarSmsOptions()));
 var mixed = await repairs.SaveRepairAsync(new RepairOrderDto { PartyId = customer.Id, DeviceType = "دستگاه ترکیبی",
     ReceivedAt = today, Items = new() {
       new RepairItemDto { Description = "پذیرفته", ProductId = product.Id, Quantity = 1, Cost = 80, Price = 900,
@@ -308,6 +310,9 @@ sealed class DisabledTestSmsGateway : IKavenegarSmsGateway
 {
     public bool IsEnabled => false;
     public bool IsConfigured => false;
+    public bool IsLookupConfigured => false;
+    public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
+        throw new InvalidOperationException("The offline warranty test must never send SMS.");
     public Task<KavenegarSmsSendResult> SendAsync(string recipient, string message) =>
         throw new InvalidOperationException("The offline warranty test must never send SMS.");
 }
