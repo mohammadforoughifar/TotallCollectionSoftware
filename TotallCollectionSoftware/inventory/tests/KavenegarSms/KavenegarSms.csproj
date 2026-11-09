@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Kavenegar" Version="2.0.1" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/KavenegarSmsOptions.cs" Link="KavenegarSmsOptions.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs" Link="KavenegarSmsGateway.cs" />
+  </ItemGroup>
+</Project>

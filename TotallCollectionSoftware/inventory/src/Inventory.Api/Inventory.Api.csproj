@@ -58,6 +58,8 @@
     <PackageReference Include="ClosedXML" Version="0.102.2" />
     <!-- ایمیل سازمانی: ارسال SMTP و دریافت IMAP (Gmail/Yahoo/وب‌میل/…) -->
     <PackageReference Include="MailKit" Version="4.16.0" />
+    <!-- SDK پایهٔ پیامک؛ ارسال توسط ماژول‌ها جداگانه و بعداً فعال می‌شود. -->
+    <PackageReference Include="Kavenegar" Version="2.0.1" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="8.0.0" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
     <!-- موتور سروری Stimulsoft: بارگذاری MRT و خروجی PDF؛ Viewer سمت Blazor لازم نیست. -->
