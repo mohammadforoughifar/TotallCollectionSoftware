@@ -279,9 +279,9 @@ public class OrderService : IOrderService
     public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000)
         => _api.GetAsync<PagedResult<InvoiceStockItem>>($"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}");
 
-    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null)
+    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null, bool openingOnly = false)
     {
-        var q = $"api/orders?type={(int)type}&page={page}&pageSize={pageSize}";
+        var q = $"api/orders?type={(int)type}&page={page}&pageSize={pageSize}&openingOnly={openingOnly.ToString().ToLowerInvariant()}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         if (partyId is > 0) q += $"&partyId={partyId}";

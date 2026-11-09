@@ -1822,7 +1822,7 @@ public class InventoryService : IInventoryService
         return await ToOrderDtoAsync(t);
     }
 
-    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null)
+    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null, bool openingOnly = false)
     {
         var q = _db.Transactions.Include(x => x.Lines)
             .Include(x => x.Cheques).Include(x => x.Installments)
@@ -1833,6 +1833,15 @@ public class InventoryService : IInventoryService
         if (warehouseId.HasValue) q = q.Where(t => t.WarehouseId == warehouseId.Value);
         if (hasChequeIncome.HasValue)
             q = q.Where(t => _db.SaleChequeCharges.Any(c => c.TransactionId == t.Id && c.Amount > 0) == hasChequeIncome.Value);
+
+        // Filter before paging: ordinary invoices must not hide older opening entries.
+        if (openingOnly)
+            q = q.Where(t => (t.Description != null &&
+                    (t.Description.StartsWith("[OPENING:") || t.Description.Contains("افتتاح") ||
+                     t.Description == "مانده اقساط بدهی باز اول دوره" ||
+                     t.Description == "موجودی اولیه اول دوره انبار")) ||
+                t.Lines.Any(l => _db.Products.Any(p => p.Id == l.ProductId &&
+                    (p.Code == "OPN-SVC" || p.Code == "OPN-GDS"))));
 
         var total = await q.CountAsync();
         var pageItems = await q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
