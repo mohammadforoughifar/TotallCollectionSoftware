@@ -10,8 +10,16 @@ using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace Inventory.Shared { public enum RepairStatus { Received, InProgress, Ready, Delivered, Cancelled } }
+namespace Inventory.Shared {
+ public enum RepairStatus { Received, InProgress, Ready, Delivered, Cancelled }
+ public enum TransactionType { Sale }
+}
 namespace Inventory.Shared.Dtos {
+ // These duplicate the names of database entities, as the real shared DTO assembly does.
+ // Keeping both names in this fixture catches CS0104 in the production files at compile time.
+ public class Party { }
+ public class Product { }
+ public enum WarrantyDecision { Unspecified, Accepted, Rejected }
  public enum RepairSmsEventType { Registration=1, Ready=2 }
  public enum RepairSmsStatus { Pending=1, Sending=2, Accepted=3, Delivered=4, Failed=5, Unknown=6, InvalidMobile=7, Disabled=8, NotConfigured=9, Cancelled=10 }
 }
@@ -22,9 +30,24 @@ namespace Inventory.Api.Services {
  public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); }
 }
 namespace Inventory.Api.Data {
- public class RepairOrder { public int Id {get;set;} public int? CompanyId {get;set;} public int PartyId {get;set;} public string Number {get;set;}=""; public Inventory.Shared.RepairStatus Status {get;set;} }
+ public class RepairOrder { public int Id {get;set;} public int? CompanyId {get;set;} public int PartyId {get;set;} public string Number {get;set;}=""; public Inventory.Shared.RepairStatus Status {get;set;} public bool WarrantyProcessed {get;set;} public int? InvoiceTransactionId {get;set;} }
  public class Party { public int Id {get;set;} public int? CompanyId {get;set;} public string? Mobile {get;set;} }
- public class AppDbContext { public Microsoft.EntityFrameworkCore.DbSet<RepairSmsNotification> RepairSmsNotifications {get;}=new(); public Microsoft.EntityFrameworkCore.DbSet<RepairOrder> RepairOrders {get;}=new(); public Microsoft.EntityFrameworkCore.DbSet<Party> Parties {get;}=new(); }
+ public class Product { public int Id {get;set;} public bool IsService {get;set;} }
+ public class ShopWarrantyItem { public int? ProductId {get;set;} }
+ public class RepairItem { public int? ProductId {get;set;} public Inventory.Shared.Dtos.WarrantyDecision WarrantyDecision {get;set;} }
+ public class ShopWarranty { public int? ChargeTransactionId {get;set;} }
+ public class TransactionLine { public int TransactionId {get;set;} public int? ProductId {get;set;} }
+ public class Transaction { public Inventory.Shared.TransactionType Type {get;set;} public decimal? ReferrerGoodsPercentSnapshot {get;set;} public decimal? ReferrerServicePercentSnapshot {get;set;} public List<TransactionLine> Lines {get;set;}=new(); }
+ public class AppDbContext {
+   public Microsoft.EntityFrameworkCore.DbSet<RepairSmsNotification> RepairSmsNotifications {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<RepairOrder> RepairOrders {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<Party> Parties {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<ShopWarrantyItem> ShopWarrantyItems {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<RepairItem> RepairItems {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<ShopWarranty> ShopWarranties {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<TransactionLine> TransactionLines {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<Transaction> Transactions {get;}=new();
+ }
 }
 namespace Microsoft.Extensions.Hosting { public abstract class BackgroundService { protected abstract Task ExecuteAsync(CancellationToken token); } }
 namespace Microsoft.Extensions.Logging {

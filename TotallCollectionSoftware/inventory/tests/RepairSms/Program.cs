@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using DbParty = Inventory.Api.Data.Party;
 
 static void Check(bool ok, string message)
 {
@@ -30,11 +31,11 @@ await using var workerDb = new AppDbContext(options); // no HTTP/tenant filter, 
 var gateway = new FakeSmsGateway();
 var repairs = new RepairService(db, new InventoryService(db, NullLogger<InventoryService>.Instance), gateway);
 var worker = new RepairSmsDispatcher(workerDb, gateway);
-var customer = new Party { Name = "مشتری", Type = PartyType.Customer, Mobile = "۰۹۱۲-۳۴۵-۶۷۸۹", Phone = "02111111111" };
-var noMobile = new Party { Name = "بدون موبایل", Type = PartyType.Customer, Phone = "02122222222" };
+var customer = new DbParty { Name = "مشتری", Type = PartyType.Customer, Mobile = "۰۹۱۲-۳۴۵-۶۷۸۹", Phone = "02111111111" };
+var noMobile = new DbParty { Name = "بدون موبایل", Type = PartyType.Customer, Phone = "02122222222" };
 db.Parties.AddRange(customer, noMobile);
 await db.SaveChangesAsync();
-RepairOrderDto NewOrder(Party party) => new() { PartyId = party.Id, DeviceType = "لپ‌تاپ", ReceivedAt = DateTime.Now };
+RepairOrderDto NewOrder(DbParty party) => new() { PartyId = party.Id, DeviceType = "لپ‌تاپ", ReceivedAt = DateTime.Now };
 
 var order = await repairs.SaveRepairAsync(NewOrder(customer));
 Check(order.SmsNotifications.Single().Status == RepairSmsStatus.Pending && gateway.Sent.Count == 0,

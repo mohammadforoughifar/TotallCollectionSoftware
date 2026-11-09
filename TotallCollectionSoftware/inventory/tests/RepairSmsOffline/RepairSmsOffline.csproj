@@ -6,5 +6,6 @@
     <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairSmsNotification.cs" Link="RepairSmsNotification.cs" />
     <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsPolicy.cs" Link="RepairSmsPolicy.cs" />
     <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs" Link="RepairSmsQueue.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Catalog/ShopCommissionProductKindGuard.cs" Link="ShopCommissionProductKindGuard.cs" />
   </ItemGroup>
 </Project>

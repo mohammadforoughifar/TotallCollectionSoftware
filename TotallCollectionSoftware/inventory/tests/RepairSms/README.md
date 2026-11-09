@@ -4,4 +4,6 @@
 
 `python3 -m unittest discover -s tests/RepairSms -p 'test_*.py' -v` runs source/schema contracts and SQLite tests with Python. These are not a substitute for the .NET, EF, Razor, real SQL Server migration, or actual NuGet package tests.
 
-`dotnet run --project tests/RepairSmsOffline/RepairSmsOffline.csproj` compiles the production queue and policy against small in-memory EF/hosting/gateway shims, so it needs no SMS service or external package. It exercises queue decisions but **does not** validate real EF translation, transactions, database concurrency, migrations or Razor.
+`dotnet run --project tests/RepairSmsOffline/RepairSmsOffline.csproj` compiles the production queue, policy, and product-kind guard against small in-memory EF/hosting/gateway shims, so it needs no SMS service or external package. It exercises queue decisions but **does not** validate real EF translation, transactions, database concurrency, migrations or Razor.
+
+The offline fixture deliberately defines the same `Party` and `Product` names in both Data and DTO namespaces, so an ambiguous production signature fails compilation.

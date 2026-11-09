@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using DbProduct = Inventory.Api.Data.Product;
 
 namespace Inventory.Api.Services;
 
@@ -11,7 +12,7 @@ namespace Inventory.Api.Services;
 /// </summary>
 internal static class ShopCommissionProductKindGuard
 {
-    public static async Task EnsureChangeAllowedAsync(AppDbContext db, Product product, bool newKind)
+    public static async Task EnsureChangeAllowedAsync(AppDbContext db, DbProduct product, bool newKind)
     {
         if (product.Id == 0 || product.IsService == newKind) return;
         // The warranty source and its linked stock/sale classify the row as goods

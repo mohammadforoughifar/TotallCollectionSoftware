@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using DbParty = Inventory.Api.Data.Party;
 
 namespace Inventory.Api.Services.Repairs;
 
@@ -9,7 +10,7 @@ namespace Inventory.Api.Services.Repairs;
 public static class RepairSmsQueue
 {
     public static async Task StageAsync(AppDbContext db, IKavenegarSmsGateway gateway, RepairOrder repair,
-        Party? party, RepairSmsEventType kind)
+        DbParty? party, RepairSmsEventType kind)
     {
         if (await db.RepairSmsNotifications.AnyAsync(n => n.RepairOrderId == repair.Id && n.EventType == kind)) return;
         // A party from another company, a landline or a missing number can never be a recipient.

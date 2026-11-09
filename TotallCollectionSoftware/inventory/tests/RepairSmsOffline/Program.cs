@@ -3,11 +3,12 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Repairs;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using DbParty = Inventory.Api.Data.Party;
 class Test {
  static int count; static void C(bool c,string n){if(!c) throw new Exception(n);count++; Console.WriteLine("PASS "+n);}
  static async Task Main() {
    var db=new AppDbContext(); var g=new Fake(); var dispatcher=new RepairSmsDispatcher(db,g);
-   var p=new Party {Id=7,CompanyId=1,Mobile="۰۹۱۲۳۴۵۶۷۸۹"}; db.Parties.Add(p);
+   var p=new DbParty {Id=7,CompanyId=1,Mobile="۰۹۱۲۳۴۵۶۷۸۹"}; db.Parties.Add(p);
    var r=new RepairOrder {Id=1,CompanyId=1,PartyId=7,Number="RP-1",Status=RepairStatus.Received}; db.RepairOrders.Add(r);
    await RepairSmsQueue.StageAsync(db,g,r,p,RepairSmsEventType.Registration);
    db.RepairSmsNotifications.Single().Id=1;
@@ -55,7 +56,7 @@ class Test {
    await RepairSmsQueue.StageAsync(db,g,r9,p,RepairSmsEventType.Registration);var pending=db.RepairSmsNotifications.Last();pending.Id=10;
    g.IsEnabled=false;await dispatcher.ProcessOneAsync();g.IsEnabled=true;
    C(pending.Status==RepairSmsStatus.Disabled && !await dispatcher.ProcessOneAsync(),"disable before dispatch makes event terminal");
-   var noMobile=new Party {Id=8,CompanyId=1,Mobile=null};db.Parties.Add(noMobile);
+   var noMobile=new DbParty {Id=8,CompanyId=1,Mobile=null};db.Parties.Add(noMobile);
    var r10=new RepairOrder {Id=10,CompanyId=1,PartyId=8,Number="RP-10",Status=RepairStatus.Received};db.RepairOrders.Add(r10);
    await RepairSmsQueue.StageAsync(db,g,r10,noMobile,RepairSmsEventType.Registration);var invalid=db.RepairSmsNotifications.Last();invalid.Id=11;
    C(invalid.Status==RepairSmsStatus.InvalidMobile && !await dispatcher.ProcessOneAsync(),"missing mobile produces a terminal warning");
@@ -88,6 +89,24 @@ class Test {
    C(RepairSmsPolicy.Result(KavenegarSmsSendState.Delivered)==RepairSmsStatus.Delivered,"delivered result");
    C(RepairSmsPolicy.Result(KavenegarSmsSendState.Unknown)==RepairSmsStatus.Unknown,"unknown result");
    C(RepairSmsPolicy.Result(KavenegarSmsSendState.Failed)==RepairSmsStatus.Failed,"failed result");
+   var guardDb = new AppDbContext();
+   var product = new Inventory.Api.Data.Product { Id=21, IsService=false };
+   await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(guardDb, product, true);
+   C(true,"product kind change without references remains allowed");
+   guardDb.ShopWarrantyItems.Add(new ShopWarrantyItem { ProductId=21 });
+   var rejected = false;
+   try { await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(guardDb, product, true); }
+   catch (InvalidOperationException) { rejected=true; }
+   C(rejected,"product kind change remains blocked for warranty history");
+   await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(guardDb, product, false);
+   C(true,"saving the existing product kind remains allowed");
+   var saleDb = new AppDbContext();
+   saleDb.Transactions.Add(new Transaction { Type=TransactionType.Sale, ReferrerGoodsPercentSnapshot=10,
+       Lines=new() { new TransactionLine { ProductId=21 } } });
+   rejected=false;
+   try { await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(saleDb, product, true); }
+   catch (InvalidOperationException) { rejected=true; }
+   C(rejected,"product kind change remains blocked for recorded commission");
    Console.WriteLine($"{count} checks passed");
  }
 }
