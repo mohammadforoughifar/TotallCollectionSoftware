@@ -16,11 +16,13 @@ public class RepairService : IRepairService
 {
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
+    private readonly IKavenegarSmsGateway _smsGateway;
 
-    public RepairService(Db.AppDbContext db, IInventoryService inventory)
+    public RepairService(Db.AppDbContext db, IInventoryService inventory, IKavenegarSmsGateway smsGateway)
     {
         _db = db;
         _inventory = inventory;
+        _smsGateway = smsGateway;
     }
 
     // =============================== تعمیرکارها ===============================
@@ -248,8 +250,9 @@ public class RepairService : IRepairService
             if (dto.TechnicianId is > 0 && !await _db.Technicians.AnyAsync(t => t.Id == dto.TechnicianId && t.CompanyId == party.CompanyId))
                 throw new InvalidOperationException("تعمیرکار در شرکت جاری یافت نشد.");
 
+            var isNew = dto.Id == 0;
             Db.RepairOrder entity;
-            if (dto.Id == 0)
+            if (isNew)
             {
                 entity = new Db.RepairOrder
                 {
@@ -293,6 +296,7 @@ public class RepairService : IRepairService
                 if (string.IsNullOrWhiteSpace(deviceInputs[i].DeviceType))
                     throw new InvalidOperationException($"نوع دستگاه کارت شمارهٔ {i + 1} را وارد کنید.");
 
+            var previousStatus = entity.Status;
             entity.PartyId = dto.PartyId;
             entity.TechnicianId = dto.TechnicianId is > 0 ? dto.TechnicianId : null;
 
@@ -354,6 +358,12 @@ public class RepairService : IRepairService
             }
 
             await _db.SaveChangesAsync();
+            var smsEvent = RepairSmsPolicy.EventFor(isNew, previousStatus, entity.Status);
+            if (smsEvent.HasValue)
+            {
+                await RepairSmsQueue.StageAsync(_db, _smsGateway, entity, party, smsEvent.Value);
+                await _db.SaveChangesAsync();
+            }
             var result = (await GetRepairAsync(entity.Id))!;
             await transaction.CommitAsync();
             return result;
@@ -400,9 +410,17 @@ public class RepairService : IRepairService
                 throw new InvalidOperationException("این پذیرش تحویل یا فاکتور شده و وضعیت آن قابل تغییر نیست.");
             if (status is not (RepairStatus.Received or RepairStatus.InProgress or RepairStatus.Ready or RepairStatus.Cancelled))
                 throw new InvalidOperationException("تحویل فقط از طریق صدور فاکتور یا تحویل گارانتی انجام می‌شود.");
+            var previousStatus = r.Status;
             r.Status = status;
             if (status == RepairStatus.Cancelled) r.DeliveredAt = DateTime.Now;
             await _db.SaveChangesAsync();
+            var smsEvent = RepairSmsPolicy.EventFor(false, previousStatus, r.Status);
+            if (smsEvent.HasValue)
+            {
+                var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
+                await RepairSmsQueue.StageAsync(_db, _smsGateway, r, party, smsEvent.Value);
+                await _db.SaveChangesAsync();
+            }
             var result = (await GetRepairAsync(id))!;
             await transaction.CommitAsync();
             return result;
@@ -635,6 +653,13 @@ public class RepairService : IRepairService
             });
         }
         var primaryDevice = devices[0];
+        var smsNotifications = await _db.RepairSmsNotifications.AsNoTracking()
+            .Where(n => n.RepairOrderId == r.Id && n.CompanyId == r.CompanyId)
+            .OrderBy(n => n.Id).Select(n => new RepairSmsNotificationDto
+            {
+                EventType = n.EventType, Status = n.Status, ProviderMessageId = n.ProviderMessageId,
+                ProviderCode = n.ProviderCode, CreatedAtUtc = n.CreatedAtUtc, CompletedAtUtc = n.CompletedAtUtc
+            }).ToListAsync();
 
         return new RepairOrderDto
         {
@@ -665,6 +690,7 @@ public class RepairService : IRepairService
             CreatedAt = r.CreatedAt,
             Devices = devices,
             Items = items,
+            SmsNotifications = smsNotifications,
             TotalPrice = totalPrice,
             TotalCost = totalCost,
             Profit = totalPrice - totalCost

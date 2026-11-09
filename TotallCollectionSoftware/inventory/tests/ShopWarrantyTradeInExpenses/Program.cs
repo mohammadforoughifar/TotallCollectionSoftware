@@ -197,7 +197,7 @@ Check(serviceDone.CustomerAmount == 1 && serviceDone.UnpaidAmount == 1 && servic
       (await inventory.GetPartyStatementDetailAsync(customer.Id)).ClosingBalance == 81,
       "one-rial rejected labor is credit and does not consume inventory");
 
-var repairs = new RepairService(db, inventory);
+var repairs = new RepairService(db, inventory, new DisabledTestSmsGateway());
 var mixed = await repairs.SaveRepairAsync(new RepairOrderDto { PartyId = customer.Id, DeviceType = "دستگاه ترکیبی",
     ReceivedAt = today, Items = new() {
       new RepairItemDto { Description = "پذیرفته", ProductId = product.Id, Quantity = 1, Cost = 80, Price = 900,
@@ -302,3 +302,12 @@ await Rejected(() => expenses.ChangeStatusAsync(receivedLink.Id,
     new ExpenseChequeStatusCommand { OperationId = Guid.NewGuid(), Date = today, State = ExpenseChequeState.Returned },
     ExpenseChequeKind.Received, "test"), "another company cannot change cheque status");
 Console.WriteLine("All warranty, trade-in and expense cheque integration checks passed.");
+
+
+sealed class DisabledTestSmsGateway : IKavenegarSmsGateway
+{
+    public bool IsEnabled => false;
+    public bool IsConfigured => false;
+    public Task<KavenegarSmsSendResult> SendAsync(string recipient, string message) =>
+        throw new InvalidOperationException("The offline warranty test must never send SMS.");
+}

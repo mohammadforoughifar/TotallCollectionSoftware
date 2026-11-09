@@ -391,7 +391,13 @@
                                 <td class="num fs-8">@(r.DeliveredAt.HasValue ? r.DeliveredAt.Value.ToFa() : "—")</td>
                                 <td class="text-start num">@r.TotalPrice.Money()</td>
                                 <td class="text-start num fw-700 @(r.Profit >= 0 ? "text-success" : "text-danger")">@r.Profit.Money()</td>
-                                <td>@StatusBadge(r)</td>
+                                <td>
+                                    @StatusBadge(r)
+                                    @if (!string.IsNullOrEmpty(SmsSummary(r)))
+                                    {
+                                        <div class="fs-8 @SmsSummaryCss(r) mt-1"><i class="bi bi-chat-left-text"></i> @SmsSummary(r)</div>
+                                    }
+                                </td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
                                     <button class="btn btn-sm btn-light text-primary" title="چاپ فیش تحویل دستگاه" @onclick="() => PrintDeliveryReceipt(r)">
@@ -440,6 +446,10 @@
                                 <div class="fs-8 text-muted text-truncate"><i class="bi bi-person"></i> @r.PartyName
                                     @if (!string.IsNullOrWhiteSpace(PartyTel(r))) { <span class="num" dir="ltr"> — @PartyTel(r)</span> }
                                 </div>
+                                @if (!string.IsNullOrEmpty(SmsSummary(r)))
+                                {
+                                    <div class="fs-8 @SmsSummaryCss(r)"><i class="bi bi-chat-left-text"></i> @SmsSummary(r)</div>
+                                }
                             </div>
                         </div>
                         <div class="m-card-body">
@@ -759,6 +769,33 @@
                     <div class="repair-view-shared-item"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
                 }
             </div>
+            <section class="border rounded p-3 mb-3" aria-label="وضعیت پیامک مشتری">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <h6 class="mb-0"><i class="bi bi-chat-left-text ms-1"></i> پیامک مشتری</h6>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefreshSmsStatus" disabled="@refreshingSms">
+                        <i class="bi bi-arrow-clockwise"></i> بروزرسانی وضعیت
+                    </button>
+                </div>
+                @if (viewing.SmsNotifications is not { Count: > 0 })
+                {
+                    <div class="fs-8 text-muted">رویداد پیامکی ثبت نشده است؛ پیام ثبت پذیرش برای پذیرش‌های قدیمی به گذشته ارسال نمی‌شود.</div>
+                }
+                else
+                {
+                    @foreach (var sms in viewing.SmsNotifications)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between gap-2 py-1 fs-8">
+                            <span>@SmsEventName(sms.EventType)</span>
+                            <span class="fw-700">@SmsStatusText(sms.Status)</span>
+                        </div>
+                        @if (sms.ProviderMessageId.HasValue || sms.ProviderCode.HasValue)
+                        {
+                            <div class="fs-8 text-muted">شناسه کاوه‌نگار: @(sms.ProviderMessageId?.ToString() ?? "—") · کد پاسخ: @(sms.ProviderCode?.ToString() ?? "—")</div>
+                        }
+                    }
+                    <div class="fs-8 text-muted mt-2">پذیرش توسط درگاه به معنی تحویل نهایی نیست. نتیجهٔ نامشخص خودکار دوباره ارسال نمی‌شود.</div>
+                }
+            </section>
             <div class="d-flex justify-content-end gap-2 mb-3">
                 <button class="btn btn-sm btn-outline-primary" data-hotkey="f4" @onclick="() => PrintDeliveryReceipt(viewing!)">
                     <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه (F4)
@@ -1131,7 +1168,8 @@ else
         Toast.Success($"حساب «{newAcc.DisplayName}» ایجاد و انتخاب شد.");
     }
 
-    private bool loading = true, saving, showForm, showTechs;
+    private bool loading = true, saving, showForm, showTechs, refreshingSms;
+    private RepairStatus formOriginalStatus;
     /// <summary>نوع پیش‌فرض حساب در فرم تعریف سریع بانک (این صفحه همیشه بانک/کارت‌خوان لازم دارد)</summary>
     private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
     private bool showRepairReports, reportLoading;
@@ -1484,6 +1522,55 @@ else
         _ => "st-cancelled"
     };
 
+    private static string SmsEventName(RepairSmsEventType kind) => kind switch
+    {
+        RepairSmsEventType.Registration => "ثبت پذیرش",
+        RepairSmsEventType.Ready => "آماده تحویل",
+        _ => "رویداد نامشخص"
+    };
+
+    private static string SmsStatusText(RepairSmsStatus status) => status switch
+    {
+        RepairSmsStatus.Pending => "در صف ارسال",
+        RepairSmsStatus.Sending => "در حال ارسال",
+        RepairSmsStatus.Accepted => "پذیرفته‌شده توسط درگاه (تحویل قطعی نیست)",
+        RepairSmsStatus.Delivered => "تحویل‌شده",
+        RepairSmsStatus.Failed => "ارسال ناموفق",
+        RepairSmsStatus.Unknown => "نتیجه نامشخص؛ پیش از هر اقدام در کاوه‌نگار بررسی شود",
+        RepairSmsStatus.InvalidMobile => "موبایل مشتری ثبت نشده یا معتبر نیست؛ ارسال نشد",
+        RepairSmsStatus.Disabled => "درگاه غیرفعال است؛ ارسال نشد",
+        RepairSmsStatus.NotConfigured => "درگاه تنظیم نشده است؛ ارسال نشد",
+        RepairSmsStatus.Cancelled => "اطلاعات مشتری یا وضعیت پذیرش تغییر کرده؛ ارسال نشد",
+        _ => "وضعیت نامشخص"
+    };
+
+    private static string SmsSummary(RepairOrderDto r)
+    {
+        if (r.SmsNotifications is not { Count: > 0 }) return "";
+        var problem = r.SmsNotifications.FirstOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
+            or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled);
+        var current = problem ?? r.SmsNotifications[^1];
+        var shortStatus = current.Status switch
+        {
+            RepairSmsStatus.Pending => "در صف",
+            RepairSmsStatus.Sending => "در حال ارسال",
+            RepairSmsStatus.Accepted => "پذیرش درگاه",
+            RepairSmsStatus.Delivered => "تحویل‌شده",
+            RepairSmsStatus.Failed => "ناموفق",
+            RepairSmsStatus.Unknown => "نیاز به بررسی",
+            RepairSmsStatus.InvalidMobile => "موبایل نامعتبر",
+            RepairSmsStatus.Disabled => "درگاه غیرفعال",
+            RepairSmsStatus.NotConfigured => "درگاه تنظیم نشده",
+            RepairSmsStatus.Cancelled => "ارسال لغو شد",
+            _ => "نامشخص"
+        };
+        return $"پیامک {SmsEventName(current.EventType)}: {shortStatus}";
+    }
+
+    private static string SmsSummaryCss(RepairOrderDto r) =>
+        r.SmsNotifications?.Any(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown or RepairSmsStatus.InvalidMobile
+            or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled) == true ? "text-danger" : "text-muted";
+
     private static string PartyTel(RepairOrderDto r)
         => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!
          : !string.IsNullOrWhiteSpace(r.PartyPhone) ? r.PartyPhone!
@@ -1556,6 +1643,7 @@ else
             Devices = new List<RepairDeviceDto> { new() }
         };
         receivedAt = DateTime.Now;
+        formOriginalStatus = RepairStatus.Received;
         techIdStr = "0"; statusStr = "0";
         deviceQuoteTexts = new List<string> { "" };
         itemQty = new(); itemCost = new(); itemPrice = new();
@@ -1573,6 +1661,7 @@ else
             form = await RepairSvc.GetRepairAsync(r.Id);
             EnsureFormDevices();
             receivedAt = form.ReceivedAt;
+            formOriginalStatus = form.Status;
             techIdStr = (form.TechnicianId ?? 0).ToString();
             statusStr = ((int)form.Status).ToString();
             deviceQuoteTexts = form.Devices
@@ -1801,6 +1890,18 @@ else
             var isNew = form.Id == 0;
             var saved = await RepairSvc.SaveRepairAsync(form);
             Toast.Success(isNew ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
+            var eventType = isNew ? RepairSmsEventType.Registration : RepairSmsEventType.Ready;
+            if (isNew || (formOriginalStatus != RepairStatus.Ready && saved.Status == RepairStatus.Ready))
+            {
+                var sms = saved.SmsNotifications?.FirstOrDefault(x => x.EventType == eventType);
+                if (sms is not null)
+                {
+                    var message = $"پیامک {SmsEventName(eventType)}: {SmsStatusText(sms.Status)}. جزئیات در صفحهٔ پذیرش است.";
+                    if (sms.Status is RepairSmsStatus.Pending or RepairSmsStatus.Sending or RepairSmsStatus.Accepted or RepairSmsStatus.Delivered)
+                        Toast.Info(message);
+                    else Toast.Warning(message);
+                }
+            }
             await CloseForm();
             await LoadLookupsAsync();
             await Load();
@@ -1831,6 +1932,15 @@ else
     {
         try { viewing = await RepairSvc.GetRepairAsync(r.Id); }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RefreshSmsStatus()
+    {
+        if (viewing is null || refreshingSms) return;
+        refreshingSms = true;
+        try { viewing = await RepairSvc.GetRepairAsync(viewing.Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { refreshingSms = false; }
     }
 
     // ---------------- تبدیل به فروش و تحویل ----------------

@@ -174,6 +174,7 @@ public class AppDbContext : DbContext
     public DbSet<RepairOrder> RepairOrders => Set<RepairOrder>();
     public DbSet<RepairDevice> RepairDevices => Set<RepairDevice>();
     public DbSet<RepairItem> RepairItems => Set<RepairItem>();
+    public DbSet<RepairSmsNotification> RepairSmsNotifications => Set<RepairSmsNotification>();
     public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
 
     // ================== درخواست خدمت آی‌تی ==================
@@ -974,6 +975,9 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // ---------- تعمیرات ----------
+        mb.Entity<RepairSmsNotification>().HasIndex(x => new { x.RepairOrderId, x.EventType }).IsUnique();
+        mb.Entity<RepairSmsNotification>().HasIndex(x => new { x.Status, x.CreatedAtUtc });
+        mb.Entity<RepairSmsNotification>().HasOne<RepairOrder>().WithMany().HasForeignKey(x => x.RepairOrderId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<RepairOrder>().HasIndex(r => r.Status);
         mb.Entity<RepairOrder>().HasIndex(r => r.PartyId);
         mb.Entity<RepairOrder>().HasIndex(r => r.TechnicianId);
@@ -1903,6 +1907,7 @@ public class AppDbContext : DbContext
         mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<RepairSmsNotification>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
     }

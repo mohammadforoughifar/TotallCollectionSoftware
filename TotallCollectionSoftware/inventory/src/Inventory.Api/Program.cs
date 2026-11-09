@@ -211,6 +211,8 @@ builder.Services.AddScoped<ForoughAryaHrUsers>(); // کاربران مجاز م�
 builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت اختصاصی فروغ آریا (FaHrPersonnel)
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.RepairSmsDispatcher>();
+builder.Services.AddHostedService<Inventory.Api.Services.Repairs.RepairSmsWorker>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();

@@ -30,7 +30,7 @@ public sealed record KavenegarSmsSendResult(
     int? MessageStatus = null,
     int? ProviderCode = null);
 
-/// <summary>Base server-side SDK gateway. No module or HTTP endpoint calls it yet.</summary>
+/// <summary>Server-side SDK gateway; repair notifications use it through a durable queue.</summary>
 public interface IKavenegarSmsGateway
 {
     bool IsEnabled { get; }

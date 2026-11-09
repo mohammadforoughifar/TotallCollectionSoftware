@@ -21,7 +21,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
             project = ET.parse(SRC / name / f'{name}.csproj')
             self.assertFalse(any(p.get('Include') == 'Kavenegar' for p in project.findall('.//PackageReference')))
 
-    def test_new_gateway_is_registered_without_connecting_a_module_or_controller(self):
+    def test_new_gateway_is_registered_for_repair_outbox_without_controller_or_other_modules(self):
         program = read('src/Inventory.Api/Program.cs')
         self.assertIn('AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>()', program)
         uses = []
@@ -31,6 +31,8 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertEqual(set(uses), {
             'src/Inventory.Api/Program.cs',
             'src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs',
+            'src/Inventory.Api/Services/Repairs/RepairService.cs',
+            'src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs',
         })
 
     def test_sdk_gateway_is_disabled_by_default_and_key_is_blank(self):

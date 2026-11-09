@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <!-- Lightweight in-memory shims, deliberately NOT a substitute for the EF integration fixture. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Api/Data/ICompanyOwned.cs" Link="ICompanyOwned.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairSmsNotification.cs" Link="RepairSmsNotification.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsPolicy.cs" Link="RepairSmsPolicy.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs" Link="RepairSmsQueue.cs" />
+  </ItemGroup>
+</Project>
