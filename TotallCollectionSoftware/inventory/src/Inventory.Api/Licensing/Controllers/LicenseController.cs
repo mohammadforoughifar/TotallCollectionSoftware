@@ -434,6 +434,25 @@ public class LicenseController : ControllerBase
         _licenses.Invalidate();
         var entitlement = await _licenses.GetEffectiveEntitlementAsync(cancellationToken);
 
+        // ---------- ۵.۱) ثبت «مبنای مصرف» ----------
+        // دلیل: برای متریک‌های «تعداد فعال»، رکوردهایی که پیش از فعال‌سازی در دیتابیس
+        // بوده‌اند (مثلاً وارد‌شده از سیستم قبلی) نباید سقف را پر کنند. این‌جا لحظهٔ
+        // فعال‌سازی به‌عنوان مبنا ثبت می‌شود؛ بعد از آن، هر رکورد تازه شمرده می‌شود.
+        try
+        {
+            var quota = HttpContext.RequestServices.GetRequiredService<QuotaService>();
+            var captured = await ActiveCountProbes.CaptureAllAsync(
+                _db, quota, document.Serial, "activation", cancellationToken);
+
+            if (captured > 0)
+                _log.LogInformation("[License] مبنای مصرف برای {Count} متریک ثبت شد (سریال {Serial}).",
+                    captured, document.Serial);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "[License] ثبت مبنای مصرف ناموفق بود؛ سقف‌ها بدون مبنا اعمال می‌شوند.");
+        }
+
         await _events.WriteDataAsync("LICENSE_APPLIED",
             $"فایل لایسنس «{document.Serial}» اعمال شد.",
             new { document.Serial, document.CustomerName, items = document.Items.Count },

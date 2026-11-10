@@ -88,7 +88,8 @@ public sealed class QuotaService
         string? entityId, int? userId, bool recordLedger, CancellationToken cancellationToken)
     {
         var periodKey = PersianPeriodKey.Now(limit.Period);
-        var now = DateTime.Now;
+        // ساعت تهران (نه ساعت سرور): هم کلید دوره و هم زمان ثبت، مبنای ایران دارند.
+        var now = PersianPeriodKey.NowIran();
         var isSqlite = _db.Database.IsSqlite();
 
         for (var attempt = 0; attempt < 3; attempt++)
@@ -225,7 +226,7 @@ UPDATE [dbo].[LicenseUsages] SET [Hmac] = {hmac}
 
     /// <summary>ثبت ردیف در دفتر الحاقی مصرف.</summary>
     private async Task LedgerAsync(MetricLimit limit, string periodKey, int delta, string? entityType,
-        string? entityId, int? userId, CancellationToken cancellationToken)
+        string? entityId, int? userId, CancellationToken cancellationToken, string? reason = null)
     {
         var entry = new LicenseUsageLedger
         {
@@ -235,7 +236,7 @@ UPDATE [dbo].[LicenseUsages] SET [Hmac] = {hmac}
             Delta = delta,
             EntityType = entityType,
             EntityId = entityId,
-            Reason = delta >= 0 ? "create" : "delete",
+            Reason = reason ?? (delta >= 0 ? "create" : "delete"),
             At = DateTime.Now,
             UserId = userId
         };
@@ -271,17 +272,31 @@ UPDATE [dbo].[LicenseUsages] SET [Hmac] = {hmac}
     // ==================== بازگشت مصرف (حذف رکورد) ====================
 
     /// <summary>
-    /// بازگشت مصرف هنگام حذف یک رکورد.
+    /// بازگشت مصرف — <b>فقط برای خطای فنی همان عملیات</b>.
     ///
     /// <para>
-    /// قاعدهٔ سند: <b>دورهٔ دائمی (Lifetime) بازگردانده نمی‌شود</b> — «یک‌بار مصرف شد، تمام».
-    /// ولی رخداد حذف در <c>LicenseEvents</c> ثبت می‌شود تا ممیزی از دست نرود.
+    /// ⛔ <b>این متد هرگز نباید به «حذف رکورد توسط کاربر» وصل شود.</b> قاعدهٔ سند:
+    /// هر رکوردی که یک‌بار شمرده شد، حتی اگر بعداً حذف شود، مصرفش باقی می‌ماند —
+    /// نه در دورهٔ ماهانه و نه در دائمی. وگرنه مشتری می‌توانست با «ایجاد و حذف مکرر»
+    /// بی‌نهایت رکورد بسازد و هیچ سقفی اعمال نشود.
+    /// </para>
+    ///
+    /// <para>
+    /// تنها مورد مجاز: عملیاتی که <b>هرگز کامل نشد</b> و در همان لحظه شکست خورد —
+    /// مثل ارسال به مودیان که با خطای شبکه/استثنا برنگشت. در این حالت هم مصرف
+    /// باید بلافاصله و در همان درخواست برگردد تا مشتری بابت عملیات ناموفق جریمه نشود.
+    /// </para>
+    ///
+    /// <para>
+    /// دورهٔ دائمی (Lifetime) در هر حال بازگردانده نمی‌شود — «یک‌بار مصرف شد، تمام»؛
+    /// فقط رخداد <c>LICENSE_QUOTA_NO_REFUND</c> برای ممیزی ثبت می‌شود.
     /// دوره‌های ماهانه/سالانه با همان شرط اتمیک (منفی نشدن) کم می‌شوند.
     /// </para>
     /// </summary>
+    /// <param name="reason">دلیل بازگشت — پیش‌فرض <c>refund-technical</c> (خطای فنی همان عملیات).</param>
     public async Task<bool> TryRefundAsync(EffectiveEntitlement entitlement, string module, string metric,
         int amount = 1, string? entityType = null, string? entityId = null,
-        CancellationToken cancellationToken = default)
+        string reason = "refund-technical", CancellationToken cancellationToken = default)
     {
         if (amount <= 0) return false;
 
@@ -317,7 +332,7 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
                 {
                     refunded = true;
                     await StampAsync(limit, periodKey, cancellationToken);
-                    await LedgerAsync(limit, periodKey, -amount, entityType, entityId, null, cancellationToken);
+                    await LedgerAsync(limit, periodKey, -amount, entityType, entityId, null, cancellationToken, reason);
                 }
             }
         }
@@ -345,8 +360,110 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
         var definition = MetricCodes.Find(limit.Metric);
         if (definition?.Kind != MetricKind.ActiveCount || liveCount is null) return counter;
 
+        // ---------- معیار شمارش ردیف‌های واقعی ----------
+        // live  = تعداد رکوردهای موجود در همین لحظه
+        // base  = تعدادی که هنگام فعال‌سازی لایسنس از قبل وجود داشت (جدول مبنای مصرف)
+        // ملاک = max(شمارنده, live − base)
+        //
+        // چرا منها؟ چون دادهٔ وارد‌شده از سیستم قبلی (اسکریپت مهاجرت) با نرم‌افزار ما
+        // ساخته نشده و نباید سقف مشتری را پر کند. چرا فقط «قبل از مبنا»؟ چون هر
+        // ایمپورتی که پس از فعال‌سازی انجام شود، رشد واقعی دادهٔ مشتری است و باید
+        // مثل بقیه شمرده شود.
+        var baseline = await ReadBaselineAsync(limit.Module, limit.Metric, cancellationToken);
         var live = await liveCount(cancellationToken);
-        return Math.Max(counter, live);
+
+        return ComputeEffective(counter, live, baseline);
+    }
+
+    /// <summary>
+    /// بررسی <b>فقط-خواندنی</b> باقی‌ماندهٔ سهمیه — برای عملیاتی که «اول باید انجام شود،
+    /// بعد شمرده شود» (مثل ارسال به مودیان که یک تماس شبکه‌ای بیرون دیتابیس است).
+    ///
+    /// <para>
+    /// این متد هیچ ردیفی را قفل یا تغییر نمی‌دهد؛ پس امن است که قبل از یک تماس کند
+    /// صدا زده شود. تضمین قطعی نمی‌دهد (بین بررسی و مصرف ممکن است دیگری جلو بزند)؛
+    /// اگر چنین مسابقه‌ای رخ دهد، در <see cref="TryConsumeAsync"/> یک رد واقعی می‌گیریم
+    /// و آن را لاگ می‌کنیم — عملیاتی که انجام شده دیگر برگشت‌پذیر نیست.
+    /// </para>
+    /// </summary>
+    public async Task<QuotaConsumeResult> PeekAsync(EffectiveEntitlement entitlement, string module,
+        string metric, CancellationToken cancellationToken = default)
+    {
+        foreach (var target in MetricCodes.ConsumeTargets(metric))
+        {
+            foreach (var limit in entitlement.LimitsFor(module, target))
+            {
+                var periodKey = PersianPeriodKey.Now(limit.Period);
+                var used = await ReadUsedAsync(limit, periodKey, cancellationToken) ?? 0;
+
+                if (used < limit.Limit) continue;
+
+                return QuotaConsumeResult.Denied(limit.Metric, used, limit.Limit, periodKey,
+                    $"سقف «{MetricCodes.TitleOf(limit.Metric)}» ({limit.Limit:N0} {MetricCodes.UnitOf(limit.Metric)}) " +
+                    $"در دورهٔ «{PersianPeriodKey.Describe(limit.Period, periodKey)}» پر شده است. " +
+                    "برای افزایش سقف با پشتیبانی تماس بگیرید.");
+            }
+        }
+
+        return QuotaConsumeResult.Unlimited();
+    }
+
+    /// <summary>
+    /// فرمول مصرف مؤثر — یک‌جا و قابل تست:
+    /// <code>effective = max(شمارنده, max(0, تعداد واقعی − مبنا))</code>
+    /// </summary>
+    /// <param name="counter">شمارندهٔ ثبت‌شده در <c>LicenseUsages</c></param>
+    /// <param name="live">تعداد واقعی رکوردهای موجود (شامل حذف‌نرم‌ها)</param>
+    /// <param name="baseline">تعداد رکوردهای پیش از فعال‌سازی (از جدول مبنا)</param>
+    public static long ComputeEffective(long counter, long live, long baseline)
+        => Math.Max(counter, Math.Max(0, live - baseline));
+
+    /// <summary>مبنای ثبت‌شدهٔ یک متریک (۰ اگر ثبت نشده باشد).</summary>
+    public async Task<long> ReadBaselineAsync(string module, string metric, CancellationToken cancellationToken = default)
+        => await _db.LicenseUsageBaselines.AsNoTracking()
+               .Where(b => b.Module == module && b.Metric == metric)
+               .Select(b => (long?)b.BaselineCount)
+               .FirstOrDefaultAsync(cancellationToken) ?? 0;
+
+    /// <summary>
+    /// ثبت مبنا برای یک متریک — یک‌بار و idempotent.
+    ///
+    /// <para>
+    /// اگر قبلاً مبنا ثبت شده باشد، هیچ کاری نمی‌کند (نصب دوبارهٔ لایسنس، مبنا را
+    /// جابه‌جا نمی‌کند؛ وگرنه با تمدید سالانه می‌شد سقف را دور زد).
+    /// </para>
+    /// </summary>
+    /// <returns>true اگر همین حالا ثبت شد؛ false اگر از قبل بود.</returns>
+    public async Task<bool> CaptureBaselineAsync(string module, string metric, long liveCount,
+        string reason = "activation", string? serial = null, CancellationToken cancellationToken = default)
+    {
+        var exists = await _db.LicenseUsageBaselines
+            .AnyAsync(b => b.Module == module && b.Metric == metric, cancellationToken);
+        if (exists) return false;
+
+        _db.LicenseUsageBaselines.Add(new LicenseUsageBaseline
+        {
+            Module = module,
+            Metric = metric,
+            BaselineCount = Math.Max(0, liveCount),
+            CapturedAt = PersianPeriodKey.NowIran(),
+            Reason = reason,
+            Serial = serial
+        });
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _log.LogInformation("[License] مبنای مصرف «{Metric}» ثبت شد: {Count} رکورد پیش از فعال‌سازی از شمارش کسر می‌شود",
+                metric, liveCount);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // دو درخواست هم‌زمان ⇒ یکی به کلید یکتا می‌خورد. بی‌خطر است.
+            _log.LogDebug(ex, "[License] ثبت هم‌زمان مبنای مصرف (بی‌خطر).");
+            return false;
+        }
     }
 
     // ==================== بررسی دست‌کاری ====================
@@ -402,15 +519,52 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[LicenseUsages]
     VALUES ({limit.Module}, {limit.Metric}, {periodKey}, {limit.Limit}, 0, {now})", cancellationToken);
             }
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
             // دو درخواست هم‌زمان خواستند ردیف را بسازند؛ دومی به کلید یکتا می‌خورد. بی‌خطر است.
             _log.LogDebug(ex, "[License] ساخت هم‌زمان ردیف مصرف (بی‌خطر).");
+        }
+        catch (Exception ex) when (IsDuplicateKey(ex))
+        {
+            // SQL Server خطای کلید تکراری را به‌صورت SqlException می‌دهد، نه همیشه DbUpdateException.
+            _log.LogDebug(ex, "[License] ساخت هم‌زمان ردیف مصرف (کلید تکراری، بی‌خطر).");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _log.LogWarning(ex, "[License] ساخت ردیف مصرف ناموفق بود: {Metric}", limit.Metric);
         }
+    }
+
+    /// <summary>
+    /// آیا استثنا «کلید یکتا تکراری» است؟
+    ///
+    /// <para>
+    /// وقتی ۵۰ درخواست هم‌زمان برسند و <b>هیچ ردیفی وجود نداشته باشد</b>، همه سعی می‌کنند
+    /// ردیف را بسازند. <c>INSERT … WHERE NOT EXISTS</c> در SQL Server اتمیک نیست (سطح
+    /// READ COMMITTED)، پس یکی برنده و بقیه به کلید یکتا می‌خورند:
+    /// SQL Server ⇒ خطای ۲۶۲۷ یا ۲۶۰۱، SQLite ⇒ کد ۱۹ (CONSTRAINT).
+    /// این خطا «بی‌خطر» است و نباید مصرف‌کننده را رد کند؛ فقط یعنی ردیف همین حالا ساخته شد.
+    /// </para>
+    /// </summary>
+    private static bool IsDuplicateKey(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.Sqlite.SqliteException sqlite
+                && sqlite.SqliteErrorCode == 19)   // SQLITE_CONSTRAINT
+                return true;
+
+            if (current is Microsoft.Data.SqlClient.SqlException sql)
+            {
+                if (sql.Number is 2627 or 2601) return true;   // unique/PK violation
+                foreach (Microsoft.Data.SqlClient.SqlError error in sql.Errors)
+                    if (error.Number is 2627 or 2601) return true;
+            }
+
+            if (current is DbUpdateException) continue;
+        }
+
+        return false;
     }
 
     private async Task<long?> ReadUsedAsync(MetricLimit limit, string periodKey, CancellationToken cancellationToken)

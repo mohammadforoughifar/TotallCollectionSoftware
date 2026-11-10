@@ -5,6 +5,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
 using Inventory.Licensing.Abstractions;
+using Inventory.Licensing.Periods;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -278,7 +279,13 @@ public class InvoicingService : IInvoicingService
 
     private async Task<int> NextNumberAsync(InvoiceKind kind)
     {
-        var max = await _db.FacInvoices.Where(i => i.Kind == kind).Select(i => (int?)i.Number).MaxAsync();
+        // IgnoreQueryFilters اجباری است: فاکتورهای حذف‌نرم هنوز در جدول‌اند و ایندکس
+        // یکتای (Kind, Number) آن‌ها را می‌بیند؛ اگر نادیده گرفته شوند، شمارهٔ بعدی
+        // با ایندکس یکتا تصادم می‌کند.
+        var max = await _db.FacInvoices.IgnoreQueryFilters()
+            .Where(i => i.Kind == kind)
+            .Select(i => (int?)i.Number)
+            .MaxAsync();
         return (max ?? 0) + 1;
     }
 
@@ -428,7 +435,11 @@ public class InvoicingService : IInvoicingService
             if (!guard.Allowed)
                 throw new LicenseQuotaException(guard.Message, "invoice.create");
 
-            if (guard.Quota?.IsNearLimit == true)
+            // هشدار: «۸۰٪» و «سقف پر شد» دو پیام جدا دارند (نباید ادغام شوند).
+            if (guard.Quota?.IsAtLimit == true)
+                _log.LogWarning("[License] سقف سهمیهٔ صدور فاکتور پر شد: {Used}/{Limit} — ثبت بعدی رد می‌شود",
+                    guard.Quota.Used, guard.Quota.Limit);
+            else if (guard.Quota?.IsNearLimit == true)
                 _log.LogWarning("[License] سهمیهٔ صدور فاکتور به ۸۰٪ سقف رسید: {Used}/{Limit}",
                     guard.Quota.Used, guard.Quota.Limit);
         }
@@ -570,7 +581,18 @@ public class InvoicingService : IInvoicingService
         return (await GetInvoiceAsync(e.Id))!;
     }
 
-    public async Task DeleteInvoiceAsync(int id)
+    /// <summary>
+    /// حذف فاکتور — <b>نرم</b>، با قاعدهٔ صریح سهمیه.
+    ///
+    /// <para>
+    /// قاعدهٔ مرحله ۲: «حذف توسط کاربر، مصرف سهمیه را برنمی‌گرداند» — نه دورهٔ ماهانه،
+    /// نه دائمی. پس این‌جا عمداً هیچ فراخوانی‌ای به <c>TryRefundAsync</c> نیست؛ فقط
+    /// پرچم <c>IsDeleted</c> زده می‌شود. رکورد باقی می‌ماند تا (۱) ممیزی حذف حفظ شود،
+    /// (۲) «تعداد واقعی» که مبنای مصرف مؤثر است صفر نشود. بازگشت مصرف فقط در خطای
+    /// فنی همان عملیات (مثل شکست ارسال مودیان) انجام می‌شود.
+    /// </para>
+    /// </summary>
+    public async Task DeleteInvoiceAsync(int id, string? user = null)
     {
         var e = await _db.FacInvoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id)
                 ?? throw new InvalidOperationException("فاکتور یافت نشد.");
@@ -581,8 +603,10 @@ public class InvoicingService : IInvoicingService
             || await _db.TrsVouchers.AnyAsync(v => v.InvoiceId == e.Id))
             throw new InvalidOperationException("این فاکتور در سوابق دریافت/پرداخت خزانه استفاده شده است؛ برای حفظ سابقه قابل حذف نیست.");
 
-        _db.FacInvoiceLines.RemoveRange(e.Lines);
-        _db.FacInvoices.Remove(e);
+        // حذف نرم — اقلام دست نمی‌خورند (فاکتور حذف‌شده با اقلامش برای ممیزی می‌ماند).
+        e.IsDeleted = true;
+        e.DeletedAt = PersianPeriodKey.NowIran();
+        e.DeletedBy = user;
         await _db.SaveChangesAsync();
     }
 

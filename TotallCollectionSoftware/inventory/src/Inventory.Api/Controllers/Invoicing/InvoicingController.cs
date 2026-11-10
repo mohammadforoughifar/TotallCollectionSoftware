@@ -83,7 +83,7 @@ public class FacInvoicesController : RbacControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         if (await ForbiddenUnlessAsync("FacInvoices", "Delete") is ObjectResult forbidden) return forbidden;
-        await _svc.DeleteInvoiceAsync(id);
+        await _svc.DeleteInvoiceAsync(id, MyUsername);
         return Ok(new { ok = true });
     }
 }

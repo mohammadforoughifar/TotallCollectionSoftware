@@ -54,6 +54,38 @@ public sealed class LicenseGateMiddleware
         "/Moadian"
     };
 
+    /// <summary>
+    /// مسیرهایی که <b>عمداً</b> بیرون از دروازهٔ لایسنس‌اند و اگر لایسنس نباشد هم باید کار کنند.
+    ///
+    /// <para>
+    /// چرا؟ چون ربطی به دادهٔ کسب‌وکار ندارند و دقیقاً در همان لحظه‌ای لازم می‌شوند که
+    /// لایسنسی روی نصب نیست:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>/ca.crt</c> — گواهی CA برای اینکه مرورگر HTTPS را قبول کند؛ پیش از هر ورودی لازم است.</item>
+    ///   <item><c>/https-setup</c> — صفحهٔ نصب گواهی؛ همان مرحلهٔ قبل از ورود.</item>
+    ///   <item><c>/eitaa-app</c> — صفحهٔ برنامک ایتا (Mini App)؛ کاربر آن را از داخل ایتا باز می‌کند و هیچ دادهٔ کسب‌وکاری برنمی‌گرداند.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// ⚠️ این فهرست باید کوچک بماند و هر افزودن تازه نیاز به تأیید دارد. تست
+    /// «پوشش مسیرها» هر مسیر تازه‌ای بیرون از دروازه را می‌شکند تا کسی بی‌صدا
+    /// مسیر جدیدی را از گیت بیرون نگذارد (همان اشتباهی که با <c>/Moadian</c> رخ داد).
+    /// </para>
+    /// </summary>
+    public static readonly string[] IntentionallyPublicPaths =
+    {
+        "/ca.crt",
+        "/https-setup",
+        "/eitaa-app"
+    };
+
+    /// <summary>آیا این مسیر جزء فهرست مستندِ «عمداً بیرون از دروازه» است؟</summary>
+    public static bool IsIntentionallyPublic(string path)
+        => IntentionallyPublicPaths.Any(p =>
+            path.Equals(p, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+
     private static readonly string[] IgnoredPrefixes =
     {
         "/_framework", "/_content", "/css", "/js", "/lib", "/fonts", "/images",
@@ -136,7 +168,11 @@ public sealed class LicenseGateMiddleware
     }
 
     /// <summary>آیا این مسیر متعلق به API است؟ (صفحه‌های Blazor و فایل‌ها آزادند)</summary>
-    private static bool IsApiPath(string path)
+    /// <summary>
+    /// آیا این مسیر زیر پوشش دروازهٔ لایسنس است؟ (عمومی تا تست پوشش مسیرها بتواند
+    /// همان تصمیم زمان اجرا را بسنجد، نه یک کپی دستی.)
+    /// </summary>
+    public static bool IsApiPath(string path)
         => path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
            || path.StartsWith("/radis-hr", StringComparison.OrdinalIgnoreCase)
            || AdditionalApiPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));

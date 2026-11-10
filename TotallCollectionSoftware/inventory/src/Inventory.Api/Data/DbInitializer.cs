@@ -329,6 +329,9 @@ public static class DbInitializer
                 await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                 await ShopPricingSchemaV1.EnsureAsync(db);
 
+                // حذف نرم فاکتور (قاعدهٔ سهمیهٔ لایسنس: حذف توسط کاربر مصرف را برنمی‌گرداند)
+                await InvoiceSoftDeleteSchemaV1.EnsureAsync(db);
+
                 if (seedDemo && !db.Products.Any())
                 {
                     Console.WriteLine("[DB] حالت دمو فعال است؛ در حال بارگذاری داده نمونه...");

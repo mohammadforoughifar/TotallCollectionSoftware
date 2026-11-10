@@ -24,7 +24,40 @@ public sealed class QuotaConsumeResult
     public string Message { get; init; } = "";
 
     /// <summary>آیا به ۸۰٪ سقف رسیده‌ایم؟ (هشدار مرحله ۲)</summary>
-    public bool IsNearLimit => Allowed && Limit > 0 && Used * 100 >= Limit * 80;
+    /// <summary>
+    /// مصرف به ۸۰٪ سقف رسیده ولی <b>هنوز پر نشده</b> (۸۰٪ تا ۹۹٪).
+    /// برای «۱۰۰٪» از <see cref="IsAtLimit"/> استفاده کنید — پیام این دو یکی نیست.
+    /// </summary>
+    public bool IsNearLimit => Allowed && Limit > 0 && Used * 100 >= Limit * 80 && Used < Limit;
+
+    /// <summary>
+    /// سقف <b>پر شد</b> (مصرف به سقف رسید). پیام کاربر باید «سقف پر شد» باشد،
+    /// نه «به ۸۰٪ رسید»؛ این دو حالت عمداً جدا شده‌اند.
+    /// </summary>
+    public bool IsAtLimit => Allowed && Limit > 0 && Used >= Limit;
+
+    /// <summary>
+    /// متن هشدار آمادهٔ نمایش به کاربر.
+    ///
+    /// <para>
+    /// سه حالت متمایز: زیر ۸۰٪ ⇒ هیچ، ۸۰٪ تا ۹۹٪ ⇒ «به ۸۰٪ نزدیک شدید»،
+    /// ۱۰۰٪ ⇒ «سقف پر شد» + توضیح اینکه ثبت بعدی رد می‌شود. ادغام این دو پیام
+    /// (که در نسخهٔ اول بود) باعث می‌شد کاربری که دقیقاً به سقف رسیده، «۸۰٪» ببیند.
+    /// </para>
+    /// </summary>
+    public string? WarningMessage
+    {
+        get
+        {
+            if (!Allowed || Limit <= 0) return null;
+            var title = Inventory.Licensing.Metrics.MetricCodes.TitleOf(Metric);
+            if (IsAtLimit)
+                return $"سقف «{title}» ({Limit:N0}) پر شد؛ ثبت بعدی در این دوره پذیرفته نمی‌شود.";
+            if (IsNearLimit)
+                return $"مصرف «{title}» به {Used * 100 / Limit}٪ سقف رسید ({Used:N0} از {Limit:N0}).";
+            return null;
+        }
+    }
 
     public static QuotaConsumeResult Ok(string metric, long used, long limit, string periodKey)
         => new() { Allowed = true, Metric = metric, Used = used, Limit = limit, PeriodKey = periodKey };

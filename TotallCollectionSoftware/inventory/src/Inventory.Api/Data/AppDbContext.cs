@@ -607,6 +607,7 @@ public class AppDbContext : DbContext
 
     /// <summary>دفتر الحاقی مصرف سهمیه (مصرف/بازگشت) — ممیزی و لاگ حذف.</summary>
     public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
+    public DbSet<LicenseUsageBaseline> LicenseUsageBaselines => Set<LicenseUsageBaseline>();
     public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
     public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
 
@@ -1539,6 +1540,11 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Cascade);
 
         // ============ ماژول فاکتور ============
+        // ---------- حذف نرم فاکتور (مرحله ۲ — قاعدهٔ سهمیه) ----------
+        // فاکتور حذف‌شده از همهٔ کوئری‌های عادی ناپدید می‌شود، ولی ردیفش می‌ماند چون
+        // مصرف سهمیه‌اش برنمی‌گردد و «تعداد واقعی» مبنای مصرف مؤثر است.
+        // جاهایی که به شمارهٔ بعدی می‌نگرند باید IgnoreQueryFilters بزنند (NextNumberAsync).
+        mb.Entity<FacInvoice>().HasQueryFilter(i => !i.IsDeleted);
         mb.Entity<FacInvoice>().HasIndex(i => new { i.Kind, i.Number }).IsUnique();
         mb.Entity<FacInvoice>().HasIndex(i => i.Date);
         mb.Entity<FacInvoice>().HasIndex(i => i.Status);
@@ -1941,6 +1947,7 @@ public class AppDbContext : DbContext
         // دفتر مصرف: ایندکس برای گزارش «چه چیزی این دوره مصرف شد» و برای رکورد مرتبط
         mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
         mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.EntityType, x.EntityId });
+        mb.Entity<LicenseUsageBaseline>().HasIndex(x => new { x.Module, x.Metric }).IsUnique();
 
         mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
         mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });

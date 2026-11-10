@@ -144,6 +144,23 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageLedger_Ke
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageLedger_Entity' AND object_id = OBJECT_ID(N'dbo.LicenseUsageLedger'))
     CREATE INDEX [IX_LicenseUsageLedger_Entity] ON [dbo].[LicenseUsageLedger] ([EntityType], [EntityId]);
 
+-- ---------- مبنای مصرف (استثنا کردن رکوردهای پیش از فعال‌سازی) ----------
+IF OBJECT_ID(N'dbo.LicenseUsageBaselines', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseUsageBaselines] (
+        [Id]            bigint        NOT NULL IDENTITY(1,1),
+        [Module]        nvarchar(32)  NOT NULL,
+        [Metric]        nvarchar(64)  NOT NULL,
+        [BaselineCount] bigint        NOT NULL,
+        [CapturedAt]    datetime2     NOT NULL,
+        [Reason]        nvarchar(20)  NOT NULL,
+        [Serial]        nvarchar(60)  NULL,
+        CONSTRAINT [PK_LicenseUsageBaselines] PRIMARY KEY ([Id])
+    );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageBaselines_Key' AND object_id = OBJECT_ID(N'dbo.LicenseUsageBaselines'))
+    CREATE UNIQUE INDEX [IX_LicenseUsageBaselines_Key] ON [dbo].[LicenseUsageBaselines] ([Module], [Metric]);
+
 -- ---------- نشست کاربر (کاربر هم‌زمان) ----------
 IF OBJECT_ID(N'dbo.LicenseSessions', N'U') IS NULL
 BEGIN
@@ -282,6 +299,17 @@ CREATE TABLE IF NOT EXISTS ""LicenseUsageLedger"" (
     ""UserId"" INTEGER NULL);");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseUsageLedger_Key"" ON ""LicenseUsageLedger"" (""Module"", ""Metric"", ""PeriodKey"");");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseUsageLedger_Entity"" ON ""LicenseUsageLedger"" (""EntityType"", ""EntityId"");");
+
+            await Exec(connection, @"
+CREATE TABLE IF NOT EXISTS ""LicenseUsageBaselines"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_LicenseUsageBaselines"" PRIMARY KEY AUTOINCREMENT,
+    ""Module"" TEXT NOT NULL,
+    ""Metric"" TEXT NOT NULL,
+    ""BaselineCount"" INTEGER NOT NULL,
+    ""CapturedAt"" TEXT NOT NULL,
+    ""Reason"" TEXT NOT NULL,
+    ""Serial"" TEXT NULL);");
+            await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseUsageBaselines_Key"" ON ""LicenseUsageBaselines"" (""Module"", ""Metric"");");
 
             await Exec(connection, @"
 CREATE TABLE IF NOT EXISTS ""LicenseSessions"" (

@@ -26,7 +26,49 @@ public static class PersianPeriodKey
     /// <summary>تقویم شمسی — یک نمونهٔ مشترک (PersianCalendar تغییرناپذیر است).</summary>
     private static readonly PersianCalendar Calendar = new();
 
-    /// <summary>کلید دورهٔ یک لحظهٔ زمانی.</summary>
+    /// <summary>
+    /// منطقهٔ زمانی ایران — <b>مبنای قطعی</b> محاسبهٔ دوره.
+    ///
+    /// <para>
+    /// چرا صریح؟ چون سرور می‌تواند UTC باشد، وقت محلی اروپا باشد یا هر چیز دیگر؛
+    /// «ماه شمسی» باید همیشه بر اساس ساعت دیوارِ تهران حساب شود. نمونهٔ واقعی:
+    /// ساعت ۰۰:۳۰ بامداد ۱ آذر به وقت تهران = ۲۱:۰۰ روز ۳۰ آبان به وقت UTC.
+    /// اگر مبنای محاسبه UTC باشد، مصرف روز اول ماه تازه در سهمیهٔ ماه قبل می‌افتد.
+    /// </para>
+    ///
+    /// <para>
+    /// از سال ۱۴۰۱ ساعت تابستانی در ایران حذف شده و افست ثابت +۰۳:۳۰ است؛ ولی
+    /// از base zone استفاده می‌کنیم تا اگر روزی برگشت، خودکار درست بماند. اگر
+    /// دیتابیس منطقهٔ زمانی نصب نبود، افست ثابت +۰۳:۳۰ جایگزین می‌شود.
+    /// </para>
+    /// </summary>
+    public static readonly TimeZoneInfo IranZone = ResolveIranZone();
+
+    private static TimeZoneInfo ResolveIranZone()
+    {
+        foreach (var id in new[] { "Asia/Tehran", "Iran Standard Time" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { }
+        }
+
+        return TimeZoneInfo.CreateCustomTimeZone("Iran-Fallback", TimeSpan.FromMinutes(210),
+            "Iran (UTC+03:30)", "Iran (UTC+03:30)");
+    }
+
+    /// <summary>تبدیل یک لحظهٔ مطلق به ساعت دیوارِ تهران (بدون Kind محلی).</summary>
+    public static DateTime ToIran(DateTimeOffset instant)
+        => TimeZoneInfo.ConvertTime(instant, IranZone).DateTime;
+
+    /// <summary>کلید دورهٔ یک لحظهٔ مطلق — <b>مبنای درست</b> برای هر محاسبه.</summary>
+    public static string ForInstant(DateTimeOffset instant, QuotaPeriod period)
+        => For(period, ToIran(instant));
+
+    /// <summary>
+    /// کلید دورهٔ یک <see cref="DateTime"/>.
+    /// ⚠️ این ساعت باید <b>وقت تهران</b> باشد؛ برای لحظهٔ مطلق از
+    /// <see cref="ForInstant"/> استفاده کنید.
+    /// </summary>
     public static string For(QuotaPeriod period, DateTime when) => period switch
     {
         QuotaPeriod.Monthly => $"{Year(when):0000}-{Month(when):00}",
@@ -34,8 +76,11 @@ public static class PersianPeriodKey
         _ => Lifetime
     };
 
-    /// <summary>کلید دورهٔ همین لحظه.</summary>
-    public static string Now(QuotaPeriod period) => For(period, DateTime.Now);
+    /// <summary>کلید دورهٔ همین لحظه — بر اساس ساعت تهران، نه ساعت سرور.</summary>
+    public static string Now(QuotaPeriod period) => ForInstant(DateTimeOffset.UtcNow, period);
+
+    /// <summary>ساعت دیوارِ تهران در همین لحظه (برای نمایش/ذخیره).</summary>
+    public static DateTime NowIran() => ToIran(DateTimeOffset.UtcNow);
 
     /// <summary>سال شمسی یک تاریخ.</summary>
     public static int Year(DateTime when) => Calendar.GetYear(when);

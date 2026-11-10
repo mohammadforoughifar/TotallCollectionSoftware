@@ -6,6 +6,7 @@ using Inventory.Licensing.Entitlement;
 using Inventory.Licensing.Metrics;
 using Inventory.Licensing.Model;
 using Inventory.Licensing.Modules;
+using Inventory.Licensing.Abstractions;
 using Inventory.Licensing.Periods;
 using Inventory.Licensing.Validation;
 
@@ -728,6 +729,161 @@ Section("۱۷) پوشش رجیستری کنترلر→ماژول (تست شکس�
     Console.WriteLine(unmapped.Count == 0
         ? $"      کلیدهای کهنه در رجیستری (بی‌خطر): {stale.Count}"
         : "      کلیدهای کهنه گزارش نشد چون خطای اصلی، کنترلرهای نگاشت‌نشده است.");
+}
+
+// ============================================================
+Section("۱۸) مرز ماه شمسی: مبنای محاسبه باید ساعت تهران باشد، نه ساعت/منطقهٔ سرور");
+
+{
+    // لحظه‌های مطلق (UTC):
+    //   A = ۳۰ آبان ۲۳:۵۹ به وقت تهران  ⇒ 2026-11-21T20:29:00Z
+    //   B = ۱ آذر ۰۰:۰۰ به وقت تهران   ⇒ 2026-11-21T20:30:00Z
+    var a = new DateTimeOffset(2026, 11, 21, 20, 29, 0, TimeSpan.Zero);
+    var b = new DateTimeOffset(2026, 11, 21, 20, 30, 0, TimeSpan.Zero);
+
+    var keyA = PersianPeriodKey.ForInstant(a, QuotaPeriod.Monthly);
+    var keyB = PersianPeriodKey.ForInstant(b, QuotaPeriod.Monthly);
+
+    Console.WriteLine($"      منطقهٔ زمانی سرور این اجرا: {TimeZoneInfo.Local.Id} | TZ={Environment.GetEnvironmentVariable("TZ") ?? "(پیش‌فرض)"}");
+    Console.WriteLine($"      کلید A (۳۰ آبان ۲۳:۵۹ تهران) = {keyA} | کلید B (۱ آذر ۰۰:۰۰ تهران) = {keyB}");
+
+    Check(keyA == "1405-08", $"۲۳:۵۹ روز ۳۰ آبان ۱۴۰۵ ⇒ دورهٔ 1405-08 (واقعی: {keyA})");
+    Check(keyB == "1405-09", $"۰۰:۰۰ روز ۱ آذر ۱۴۰۵ ⇒ دورهٔ تازهٔ 1405-09 (واقعی: {keyB})");
+    Check(keyA != keyB, "دقیقاً در نیمه‌شب تهران، دوره عوض می‌شود");
+
+    // ساعت دیوار تهران در همان دو لحظه
+    var wallB = PersianPeriodKey.ToIran(b);
+    var wallA = PersianPeriodKey.ToIran(a);
+    Check(wallB.TimeOfDay == TimeSpan.Zero, $"مرز در نیمه‌شب تهران است (B = {wallB:yyyy-MM-dd HH:mm})");
+    Check(wallA.Date == wallB.Date.AddDays(-1), $"A یک دقیقه پیش از مرز، روز قبل است ({wallA:yyyy-MM-dd HH:mm})");
+
+    // مستقل از منطقهٔ زمانی سرور: تبدیل همیشه با Asia/Tehran انجام می‌شود
+    Check(PersianPeriodKey.IranZone.BaseUtcOffset == TimeSpan.FromMinutes(210)
+          || PersianPeriodKey.IranZone.SupportsDaylightSavingTime == false,
+        $"منطقهٔ ایران تفکیک‌شده است ({PersianPeriodKey.IranZone.Id}، افست {PersianPeriodKey.IranZone.BaseUtcOffset})");
+
+    // Now() هم باید از ساعت تهران بیاید، نه DateTime.Now
+    var nowKey = PersianPeriodKey.Now(QuotaPeriod.Monthly);
+    var expectedKey = PersianPeriodKey.ForInstant(DateTimeOffset.UtcNow, QuotaPeriod.Monthly);
+    Check(nowKey == expectedKey, $"کلید «همین حالا» با مبنای تهران ساخته می‌شود ({nowKey})");
+}
+
+// ============================================================
+Section("۱۹) پیام‌ها: «۸۰٪» و «سقف پر شد» دو پیام جدا هستند");
+
+{
+    var near = QuotaConsumeResult.Ok("invoice.create", used: 80, limit: 100, "'1405-08'");
+    var at = QuotaConsumeResult.Ok("invoice.create", used: 100, limit: 100, "'1405-08'");
+    var low = QuotaConsumeResult.Ok("invoice.create", used: 10, limit: 100, "'1405-08'");
+
+    Check(near.IsNearLimit && !near.IsAtLimit, "مصرف ۸۰ از ۱۰۰ ⇒ «نزدیک سقف» است، نه «پر شده»");
+    Check(at.IsAtLimit && !at.IsNearLimit, "مصرف ۱۰۰ از ۱۰۰ ⇒ «سقف پر شد» است، نه «۸۰٪»");
+    Check(!low.IsNearLimit && !low.IsAtLimit, "مصرف ۱۰ از ۱۰۰ ⇒ هیچ هشداری ندارد");
+    Check(near.WarningMessage?.Contains("80") == true && near.WarningMessage!.Contains('٪'),
+        $"هشدار ۸۰٪ درصد را می‌گوید: «{near.WarningMessage}»");
+    Check(at.WarningMessage?.Contains("پر شد") == true, $"هشدار ۱۰۰٪ می‌گوید «پر شد»: «{at.WarningMessage}»");
+    Check(near.WarningMessage != at.WarningMessage, "دو متن هشدار متفاوت‌اند (ادغام نشده‌اند)");
+}
+
+// ============================================================
+Section("۲۰) پوشش مسیر و رجیستری با بازتاب (reflection) روی اسمبلی واقعی");
+
+{
+    // چرا بازتاب؟ چون تست باید همان RouteAttribute واقعی را بخواند، نه یک regex روی متن.
+    // اگر فردا کسی کنترلر تازه‌ای با مسیر خارج از /api بسازد (دقیقاً مثل ماجرای /Moadian)،
+    // همین تست باید بشکند.
+    var assembly = typeof(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware).Assembly;
+    var allControllers = assembly.GetTypes()
+        .Where(t => !t.IsAbstract && !t.IsInterface
+                    && typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t)
+                    && t.Name.EndsWith("Controller", StringComparison.Ordinal))
+        .ToList();
+
+    // کلاس پایه (مثل BaseApiController) کنترلر نیست: هیچ Route ندارد و خودش سرو نمی‌شود.
+    var controllerTypes = allControllers
+        .Where(t => !allControllers.Any(other => other != t && t.IsAssignableFrom(other)))
+        .ToList();
+
+    Check(controllerTypes.Count > 100, $"کنترلرهای واقعی از اسمبلی خوانده شدند ({controllerTypes.Count} مورد)");
+
+    var problems = new List<string>();
+    var ignoredPrefixes = new[] { "/swagger", "/_framework", "/favicon" };
+
+    foreach (var type in controllerTypes)
+    {
+        var routes = new List<string>();
+        foreach (var attr in type.GetCustomAttributes(inherit: true))
+        {
+            if (attr is Microsoft.AspNetCore.Mvc.RouteAttribute route) routes.Add(route.Template ?? "");
+        }
+
+        // مسیرهای مطلق روی اکشن‌ها (‎~/… یا /…) هم می‌توانند از دروازه بیرون بزنند
+        foreach (var method in type.GetMethods())
+        {
+            foreach (var attr in method.GetCustomAttributes(inherit: true))
+            {
+                var template = attr switch
+                {
+                    Microsoft.AspNetCore.Mvc.RouteAttribute r => r.Template,
+                    Microsoft.AspNetCore.Mvc.HttpGetAttribute g => g.Template,
+                    Microsoft.AspNetCore.Mvc.HttpPostAttribute p => p.Template,
+                    Microsoft.AspNetCore.Mvc.HttpPutAttribute u => u.Template,
+                    Microsoft.AspNetCore.Mvc.HttpDeleteAttribute d => d.Template,
+                    Microsoft.AspNetCore.Mvc.HttpPatchAttribute pa => pa.Template,
+                    _ => null
+                };
+
+                if (!string.IsNullOrWhiteSpace(template) && (template!.StartsWith("~") || template.StartsWith("/")))
+                    routes.Add(template.TrimStart('~'));
+            }
+        }
+
+        if (routes.Count == 0)
+        {
+            problems.Add($"{type.Name}: هیچ [Route] ندارد");
+            continue;
+        }
+
+        foreach (var raw in routes)
+        {
+            var path = raw.Split('?')[0];
+            path = System.Text.RegularExpressions.Regex.Replace(path, @"\{[^}]*\}", "x").TrimStart('~');
+            if (!path.StartsWith('/')) path = "/" + path;
+
+            if (ignoredPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase))) continue;
+
+            var gated = Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.IsApiPath(path);
+            var documentedPublic = Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware
+                .IsIntentionallyPublic(path);
+
+            if (!gated && !documentedPublic)
+                problems.Add($"{type.Name}: مسیر «{raw}» بیرون از دروازه است و در فهرست مستند «عمداً عمومی» هم نیست");
+        }
+
+        // رجیستری کنترلر→ماژول
+        var registry = Inventory.Api.Licensing.Infrastructure.LicenseModuleRegistry.Resolve(
+            type.Name.Replace("Controller", ""));
+        if (registry is null)
+            problems.Add($"{type.Name}: در رجیستری کنترلر→ماژول نگاشت نشده است");
+    }
+
+    if (problems.Count > 0)
+        foreach (var p in problems.Take(10)) Console.WriteLine("      ⚠ " + p);
+
+    Check(problems.Count == 0,
+        problems.Count == 0
+            ? $"همهٔ {controllerTypes.Count} کنترلر: مسیر زیر دروازهٔ لایسنس + نگاشت‌شده در رجیستری"
+            : $"{problems.Count} مشکل در پوشش مسیر/رجیستری (بیشتر از ۱۰ مورد چاپ نشد)");
+
+    // کنترل مکمل: اگر دروازه پیشوند /api را نداشت، همین تست باید می‌شکست.
+    var publicPaths = Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.IntentionallyPublicPaths;
+    Check(publicPaths.Length == 3,
+        $"فهرست «عمداً بیرون از دروازه» دقیقاً ۳ مورد مستند است ({string.Join(", ", publicPaths)})");
+
+    Check(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.IsApiPath("/api/products"),
+        "کنترل مثبت: /api/products داخل دروازه است");
+    Check(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.IsApiPath("/Moadian/SendInvoiceAsync"),
+        "کنترل مثبت: مسیر /Moadian (غیر api) هم داخل دروازه است — همان باگ قبلی");
 }
 
 // ============================================================
