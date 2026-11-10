@@ -151,8 +151,18 @@ public class OutgoingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
         try
         {
-            var id = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
-            return Ok(new { id, message = "نامه صادره با موفقیت ثبت شد." });
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterOutgoingCreate,
+                async () => created = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync()),
+                entityType: "OutgoingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { id = created, message = "نامه صادره با موفقیت ثبت شد." });
         }
         catch (Exception ex)
         {

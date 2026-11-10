@@ -30,6 +30,9 @@ public sealed class LicenseGateMiddleware
     /// <summary>کلید وضعیت در HttpContext.Items — برای کنترلرها و لاگ.</summary>
     public const string StatusItemKey = "LicenseStatus";
 
+    /// <summary>هدر هشدار مهلت — کلاینت بنر «لایسنس خود را فعال کنید» نشان می‌دهد.</summary>
+    public const string GraceHeader = "X-License-Grace";
+
     /// <summary>مسیرهای آزاد (بدون لایسنس معتبر).</summary>
     private static readonly string[] Allowlist =
     {
@@ -41,6 +44,16 @@ public sealed class LicenseGateMiddleware
     };
 
     /// <summary>مسیرهایی که اصلاً بررسی نمی‌شوند (استاتیک/هاپ).</summary>
+    /// <summary>
+    /// مسیرهای API که با <c>/api</c> شروع نمی‌شوند ولی API واقعی‌اند.
+    /// (هنگام بازبینی پیدا شد: <c>MoadianController</c> مسیر <c>/Moadian</c> دارد و
+    /// دروازه آن را نمی‌دید — یعنی بدون لایسنس هم قابل صدا زدن بود.)
+    /// </summary>
+    private static readonly string[] AdditionalApiPrefixes =
+    {
+        "/Moadian"
+    };
+
     private static readonly string[] IgnoredPrefixes =
     {
         "/_framework", "/_content", "/css", "/js", "/lib", "/fonts", "/images",
@@ -87,6 +100,25 @@ public sealed class LicenseGateMiddleware
             return;
         }
 
+        // ---------- مهلت سازگاری «نصب موجود» ----------
+        // نصب قدیمی که بعد از آپدیت هنوز لایسنس نگرفته بی‌درنگ بسته نمی‌شود؛ تا پایان
+        // مهلتِ ثبت‌شده در دیتابیس کار می‌کند و روی پاسخ یک هدر هشدار می‌رود.
+        // این تنها استثنای «باز بودن بدون لایسنس» است: یک‌بار، فقط برای نصب‌های موجود.
+        try
+        {
+            if (await licenses.IsInExistingInstallGraceAsync(context.RequestAborted))
+            {
+                context.Response.Headers[GraceHeader] = "1";
+                await _next(context);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            // اگر بررسی مهلت شکست خورد، رفتار سخت‌گیرانه (بستن) انتخاب می‌شود.
+            _log.LogError(ex, "[License] بررسی مهلت سازگاری ناموفق بود؛ رفتار «لایسنس نامعتبر» اعمال می‌شود.");
+        }
+
         // ---------- لایسنس موجود نیست یا معتبر نیست ----------
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         context.Response.ContentType = "application/json; charset=utf-8";
@@ -106,7 +138,8 @@ public sealed class LicenseGateMiddleware
     /// <summary>آیا این مسیر متعلق به API است؟ (صفحه‌های Blazor و فایل‌ها آزادند)</summary>
     private static bool IsApiPath(string path)
         => path.StartsWith("/api", StringComparison.OrdinalIgnoreCase)
-           || path.StartsWith("/radis-hr", StringComparison.OrdinalIgnoreCase);
+           || path.StartsWith("/radis-hr", StringComparison.OrdinalIgnoreCase)
+           || AdditionalApiPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
     private static bool IsIgnored(string path)
         => IgnoredPrefixes.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));

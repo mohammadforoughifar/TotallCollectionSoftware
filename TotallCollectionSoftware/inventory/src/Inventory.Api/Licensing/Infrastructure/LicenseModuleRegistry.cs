@@ -53,6 +53,11 @@ public static class LicenseModuleRegistry
         ["License"] = ModuleCodes.Licensing,
 
         // ---------- کالا و فروش ----------
+        ["Attachments"] = ModuleCodes.Core,      // پیوست عمومی (ArchiveController) — زیرساخت، نه ماژول فروش
+        ["MyPanel"] = ModuleCodes.Core,          // پنل شخصی کاربر
+        ["Users"] = ModuleCodes.Core,            // مدیریت کاربران (AuthController)
+        ["Referrers"] = ModuleCodes.Core,        // معرف‌ها (SettingsController)
+
         ["Categories"] = ModuleCodes.Catalog,
         ["Parties"] = ModuleCodes.Catalog,
         ["Products"] = ModuleCodes.Catalog,
@@ -69,25 +74,53 @@ public static class LicenseModuleRegistry
         ["InvBaseData"] = ModuleCodes.Warehousing,
         ["InvDocs"] = ModuleCodes.Warehousing,
         ["InvProducts"] = ModuleCodes.Warehousing,
+        ["InvAttributes"] = ModuleCodes.Warehousing,
+        ["InvCategories"] = ModuleCodes.Warehousing,
+        ["InvDocTypes"] = ModuleCodes.Warehousing,
+        ["InvReports"] = ModuleCodes.Warehousing,
+        ["InvSettings"] = ModuleCodes.Warehousing,
+        ["InvWarehouses"] = ModuleCodes.Warehousing,
 
         ["Stocktaking"] = ModuleCodes.Stocktaking,
+        ["StkSessions"] = ModuleCodes.Stocktaking,
+        ["StkReports"] = ModuleCodes.Stocktaking,
+        ["BcdBarcodes"] = ModuleCodes.Stocktaking,   // بارکد شمارش انبارگردانی
 
         ["Invoicing"] = ModuleCodes.Invoicing,
+        ["FacInvoices"] = ModuleCodes.Invoicing,   // صدور صورتحساب
+        ["FacReports"] = ModuleCodes.Invoicing,
+        ["FacRules"] = ModuleCodes.Invoicing,
 
         ["Moadian"] = ModuleCodes.Moadian,
 
         // ---------- مالی ----------
         ["AccDimensions"] = ModuleCodes.Accounting,
         ["Accounting"] = ModuleCodes.Accounting,
+        ["AccAccounts"] = ModuleCodes.Accounting,
+        ["AccFiscalYears"] = ModuleCodes.Accounting,
+        ["AccInvRules"] = ModuleCodes.Accounting,
+        ["AccReports"] = ModuleCodes.Accounting,
+        ["AccVouchers"] = ModuleCodes.Accounting,
         ["Budgets"] = ModuleCodes.Accounting,
         ["FixedAssets"] = ModuleCodes.Accounting,
+        ["FixedAssetCategories"] = ModuleCodes.Accounting,
+        ["FixedAssetRuns"] = ModuleCodes.Accounting,
+
         ["Treasury"] = ModuleCodes.Treasury,
+        ["TrsAccounts"] = ModuleCodes.Treasury,
+        ["TrsCheques"] = ModuleCodes.Treasury,
+        ["TrsReports"] = ModuleCodes.Treasury,
+        ["TrsRules"] = ModuleCodes.Treasury,
+        ["TrsVouchers"] = ModuleCodes.Treasury,
+
         ["Expenses"] = ModuleCodes.Expenses,
+        ["ExpenseCategories"] = ModuleCodes.Expenses,
 
         // ---------- عملیات ----------
         ["Repairs"] = ModuleCodes.Repairs,
         ["ShopTradeIn"] = ModuleCodes.Repairs,
         ["ShopWarranty"] = ModuleCodes.Repairs,
+        ["Technicians"] = ModuleCodes.Repairs,
 
         ["Karfarmas"] = ModuleCodes.Projects,
         ["ProjectAttach"] = ModuleCodes.Projects,
@@ -142,6 +175,17 @@ public static class LicenseModuleRegistry
         ["Chat"] = ModuleCodes.Chat,
 
         // ---------- منابع انسانی ----------
+        // کنترلرهای ماژول RadisHr (پوشهٔ Modules/RadisHr) — همه زیر ماژول «منابع انسانی بن‌سازه».
+        // مسیرشان با /radis-hr شروع می‌شود و ResolveFromPath هم همین را برمی‌گرداند؛
+        // ولی نگاشت صریح، هم قابل‌مشاهده‌تر است و هم اگر مسیر عوض شود محافظت می‌کند.
+        ["Analytics"] = ModuleCodes.BonHr,
+        ["Employees"] = ModuleCodes.BonHr,
+        ["Hse"] = ModuleCodes.BonHr,
+        ["Organization"] = ModuleCodes.BonHr,
+        ["Payroll"] = ModuleCodes.BonHr,
+        ["StatutoryRules"] = ModuleCodes.BonHr,
+        ["Workflows"] = ModuleCodes.BonHr,
+
         ["Attendance"] = ModuleCodes.HrFa,
         ["FaHrPersonnel"] = ModuleCodes.HrFa,
         ["HrPay"] = ModuleCodes.HrFa,
@@ -165,6 +209,8 @@ public static class LicenseModuleRegistry
         ["ReportStudio"] = ModuleCodes.Reports,
         ["OperationsReports"] = ModuleCodes.Reports,
         ["Reports"] = ModuleCodes.Reports,
+        ["Kardex"] = ModuleCodes.Reports,
+        ["Reorder"] = ModuleCodes.Reports,
 
         ["Ai"] = ModuleCodes.Ai,
 
@@ -199,6 +245,29 @@ public static class LicenseModuleRegistry
         return null;
     }
 
-    /// <summary>همهٔ کنترلرهای نگاشت‌نشده (برای تست و ابزار نگه‌داری).</summary>
+    /// <summary>همهٔ کنترلرهای نگاشت‌شده (برای تست و ابزار نگه‌داری).</summary>
     public static IReadOnlyCollection<string> MappedControllers => ByController.Keys.ToList();
+
+    /// <summary>
+    /// رفتار کنترلر نگاشت‌نشده — آگاهانه و مستند:
+    ///
+    /// <para>
+    /// <b>در زمان اجرا:</b> <c>LicenseWriteGuardFilter</c> کنترلر ناشناخته را <b>رد نمی‌کند</b>
+    /// (fail-open) و فقط یک‌بار در لاگ هشدار می‌دهد. دلیل: یک کنترلر تازه که فراموش شده،
+    /// نباید بعد از آپدیت کار مشتری را بخواباند.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>در زمان بیلد/تست:</b> همین‌جا سخت‌گیر است — <c>tests/Licensing</c> بخش «پوشش
+    /// رجیستری» هر کنترلر موجود در سورس را با این جدول مقایسه می‌کند و اگر یکی جا افتاده
+    /// باشد <b>تست شکست می‌خورد</b>. یعنی شکاف از راه CI بسته می‌شود، نه از راه قطع‌شدن
+    /// سرویس مشتری.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>در زمان راه‌اندازی:</b> <c>LicenseStartup</c> کل کنترلرهای واقعی اسمبلی را با این
+    /// جدول مقایسه و نتیجه را یک‌بار در لاگ ثبت می‌کند تا حتی بدون اجرای تست هم دیده شود.
+    /// </para>
+    /// </summary>
+    public const string UnmappedBehavior = "fail-open + هشدار لاگ، و شکست تست پوشش رجیستری";
 }

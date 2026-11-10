@@ -136,9 +136,19 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddInnerLetterDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        int created = 0;
         try
         {
-            var id = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            // هم‌خوان با نامهٔ وارده/صادره: اگر ثبت رکورد شکست بخورد، مصرف سهمیه هم برمی‌گردد.
+            var quota = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
+                async () => created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync()),
+                entityType: "InnerLetter");
+            if (!quota.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = quota.Message });
+            var id = created;
             return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }

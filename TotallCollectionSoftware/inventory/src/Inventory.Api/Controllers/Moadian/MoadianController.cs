@@ -162,7 +162,36 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpPost("SendInvoiceAsync")]
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {
-            return await connectService.SendInvoiceAsync(model);
+            // سهمیهٔ «ارسال به مودیان» (مرحله ۲).
+            // ترتیب: اول مصرف (اتمیک)، سپس ارسال. اگر ارسال شکست بخورد، مصرف برمی‌گردد
+            // تا سقف مشتری بابت ارسال ناموفق کم نشود.
+            var quota = await Licenses.TryConsumeAsync(
+                Inventory.Licensing.Modules.ModuleCodes.Moadian,
+                Inventory.Licensing.Metrics.MetricCodes.MoadianInvoiceSend);
+
+            if (!quota.Allowed)
+                return new ApiModel { Success = false, Message = quota.Message };
+
+            var result = await connectService.SendInvoiceAsync(model);
+
+            if (result.Success == false)
+            {
+                // بازگشت مصرف — فقط اگر سقف دوره‌ای باشد (دائمی بازگشت ندارد).
+                try
+                {
+                    var db = HttpContext.RequestServices.GetRequiredService<Inventory.Api.Data.AppDbContext>();
+                    var entitlement = await Licenses.GetEffectiveEntitlementAsync();
+                    await HttpContext.RequestServices
+                        .GetRequiredService<Inventory.Api.Licensing.Services.QuotaService>()
+                        .TryRefundAsync(entitlement,
+                            Inventory.Licensing.Modules.ModuleCodes.Moadian,
+                            Inventory.Licensing.Metrics.MetricCodes.MoadianInvoiceSend,
+                            entityType: "MoadianInvoice");
+                }
+                catch { /* بازگشت مصرف هرگز نباید پاسخ ارسال را بشکند */ }
+            }
+
+            return result;
         }
 
         [HttpPost("PreviewSendInvoiceAsync")]

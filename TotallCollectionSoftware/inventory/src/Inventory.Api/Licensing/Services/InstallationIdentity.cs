@@ -64,6 +64,7 @@ public sealed class InstallationIdentity : IInstallationIdentity
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     private readonly AppDbContext _db;
+    private readonly LicensingOptions _options;
     private readonly LicensePaths _paths;
     private readonly DeploymentKind _deployment;
     private readonly ILogger<InstallationIdentity> _log;
@@ -72,6 +73,7 @@ public sealed class InstallationIdentity : IInstallationIdentity
         IConfiguration configuration, ILogger<InstallationIdentity> log)
     {
         _db = db;
+        _options = options;
         _paths = paths;
         _deployment = LicenseDeployment.FromConfiguration(configuration);
         _log = log;
@@ -84,6 +86,81 @@ public sealed class InstallationIdentity : IInstallationIdentity
     /// <summary>نام مشتریِ ثبت‌شده در نصب (برای پیش‌پر کردن فایل درخواست).</summary>
     public async Task<string?> GetCustomerNameAsync(CancellationToken cancellationToken = default)
         => (await EnsureAsync(cancellationToken)).CustomerName;
+
+    /// <summary>
+    /// ردیف نصب + برچسب «نصب موجود» — برای سرویس لایسنس.
+    /// </summary>
+    public async Task<LicenseInstallation> EnsureWithGraceAsync(CancellationToken cancellationToken = default)
+    {
+        var row = await EnsureAsync(cancellationToken);
+
+        // مهلت فقط یک‌بار و فقط وقتی تصمیم «نصب موجود بودن» گرفته نشده باشد.
+        if (row.IsLegacyInstall is null)
+        {
+            var business = await CountBusinessDataAsync(cancellationToken);
+            var graceDays = Math.Clamp(_options.ExistingInstallGraceDays, 0, 3650);
+
+            row.IsLegacyInstall = business.IsLegacy;
+            row.GraceReason = business.Describe;
+
+            if (business.IsLegacy && graceDays > 0)
+            {
+                row.GraceUntil = DateTime.Now.Date.AddDays(graceDays);
+                _log.LogWarning(
+                    "[License] نصب موجود تشخیص داده شد ({Reason}). مهلت سازگاری تا {Until:yyyy-MM-dd} ثبت شد؛ " +
+                    "تا آن تاریخ برنامه باز می‌ماند تا لایسنس صادر شود.", row.GraceReason, row.GraceUntil);
+            }
+            else if (business.IsLegacy)
+            {
+                _log.LogWarning("[License] نصب موجود تشخیص داده شد ({Reason}) ولی ExistingInstallGraceDays=0 است؛ " +
+                    "برنامه از همین حالا به لایسنس نیاز دارد.", row.GraceReason);
+            }
+
+            row.UpdatedAt = DateTime.Now;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return row;
+    }
+
+    /// <summary>
+    /// آیا این دیتابیس «از قبل» دادهٔ واقعی مشتری دارد؟
+    ///
+    /// <para>
+    /// ⚠️ معیار عمداً <b>سند تجاری</b> است، نه کاربر یا شرکت. دلیلش را در اجرای واقعی دیدم:
+    /// نصب تازه هم در اولین راه‌اندازی، کاربر «admin»، انبار پیش‌فرض، سال مالی و کدینگ حساب
+    /// می‌سازد. اگر «کاربر داریم» معیار بود، هر نصب تازه در بوت دوم خودش را «نصب موجود»
+    /// می‌دید و سی روز بی‌لایسنس کار می‌کرد — یعنی لایسنس عملاً بی‌اثر می‌شد.
+    /// </para>
+    ///
+    /// <para>
+    /// پس فقط چیزی شمرده می‌شود که seed نمی‌سازد و فقط از کار واقعی مشتری می‌آید:
+    /// فاکتور، کالا، نامهٔ وارده/صادره/داخلی.
+    /// </para>
+    /// </summary>
+    private async Task<(bool IsLegacy, string Describe)> CountBusinessDataAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var invoices = await _db.FacInvoices.AsNoTracking().CountAsync(cancellationToken);
+            var products = await _db.Products.AsNoTracking().CountAsync(cancellationToken);
+            var incoming = await _db.IncomingLetters.AsNoTracking().CountAsync(cancellationToken);
+            var outgoing = await _db.OutgoingLetters.AsNoTracking().CountAsync(cancellationToken);
+            var inner = await _db.InnerLetters.AsNoTracking().CountAsync(cancellationToken);
+
+            var documents = invoices + products + incoming + outgoing + inner;
+            var isLegacy = documents > 0;
+            var description = $"فاکتور={invoices}، کالا={products}، نامه‌ها={incoming + outgoing + inner}";
+            return (isLegacy, description);
+        }
+        catch (Exception ex)
+        {
+            // اگر حتی شمارش هم ممکن نشد، محافظه‌کارانه «نصب موجود» فرض نمی‌کنیم —
+            // ولی هیچ‌وقت هم برنامه را نمی‌اندازیم.
+            _log.LogWarning(ex, "[License] شمارش دادهٔ کسب‌وکار برای تشخیص نصب موجود ناموفق بود.");
+            return (false, "تشخیص ممکن نشد");
+        }
+    }
 
     /// <summary>ردیف نصب؛ ساخت/همگام‌سازی در صورت نبود.</summary>
     public async Task<LicenseInstallation> EnsureAsync(CancellationToken cancellationToken = default)

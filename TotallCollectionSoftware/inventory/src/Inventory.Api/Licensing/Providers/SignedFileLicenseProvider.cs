@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Licensing.Services;   // LicenseDeployment
 using Inventory.Licensing.Abstractions;
 using Inventory.Licensing.Crypto;
 using Inventory.Licensing.Entitlement;

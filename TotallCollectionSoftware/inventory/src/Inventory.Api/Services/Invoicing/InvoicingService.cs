@@ -1,6 +1,10 @@
+using System.Globalization;
+using Inventory.Api.Licensing.Infrastructure;
+using Inventory.Api.Licensing.Services;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
+using Inventory.Licensing.Abstractions;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -22,14 +26,16 @@ public class InvoicingService : IInvoicingService
     private readonly Db.AppDbContext _db;
     private readonly IWarehousingService _wh;
     private readonly IAccountingService _acc;
+    private readonly ILicenseService _licenses;
     private readonly ILogger<InvoicingService> _log;
 
     public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc,
-        ILogger<InvoicingService> log)
+        ILicenseService licenses, ILogger<InvoicingService> log)
     {
         _db = db;
         _wh = wh;
         _acc = acc;
+        _licenses = licenses;
         _log = log;
     }
 
@@ -405,7 +411,32 @@ public class InvoicingService : IInvoicingService
 
         Recalculate(entity);
 
-        await _db.SaveChangesAsync();
+        // ---------- سهمیهٔ «صدور فاکتور» (مرحله ۲) ----------
+        // مصرف سهمیه و ثبت فاکتور در یک تراکنش‌اند: اگر ثبت شکست بخورد، شمارنده هم برمی‌گردد.
+        // فقط برای فاکتور تازه (نه ویرایش) تا ویرایش پیش‌نویس سهمیه مصرف نکند.
+        if (dto.Id == 0)
+        {
+            var guard = await QuotaGuard.ExecuteAsync(_licenses, _db,
+                Inventory.Licensing.Modules.ModuleCodes.Invoicing,
+                Inventory.Licensing.Metrics.MetricCodes.InvoiceCreate,
+                () => _db.SaveChangesAsync(),
+                entityType: "FacInvoice",
+                // شناسهٔ فاکتور تا لحظهٔ SaveChanges ساخته نمی‌شود؛ دفتر مصرف بعد از ثبت
+                // و با همین شناسه نوشته می‌شود (همه داخل یک تراکنش).
+                entityIdFactory: () => entity.Id.ToString(CultureInfo.InvariantCulture));
+
+            if (!guard.Allowed)
+                throw new LicenseQuotaException(guard.Message, "invoice.create");
+
+            if (guard.Quota?.IsNearLimit == true)
+                _log.LogWarning("[License] سهمیهٔ صدور فاکتور به ۸۰٪ سقف رسید: {Used}/{Limit}",
+                    guard.Quota.Used, guard.Quota.Limit);
+        }
+        else
+        {
+            await _db.SaveChangesAsync();
+        }
+
         return (await GetInvoiceAsync(entity.Id))!;
     }
 

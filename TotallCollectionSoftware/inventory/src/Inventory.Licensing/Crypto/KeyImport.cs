@@ -87,7 +87,22 @@ public static class KeyVerify
             case Model.LicenseFormat.AlgorithmEcdsaP256Sha256:
             {
                 var ecdsa = KeyImport.EcdsaFromPem(publicKeyPem);
-                var ok = ecdsa.VerifyData(payload, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+
+                // ⚠️ دو قالب امضای ECDSA در دنیای واقعی وجود دارد و هر دو را می‌پذیریم:
+                //   • DER (X9.62 / RFC 3279) — خروجی openssl و اکثر ابزارهای بیرونی.
+                //     برای P-256 حدود ۷۰ تا ۷۲ بایت است.
+                //   • P1363 (r‖s با طول ثابت) — پیش‌فرض .NET و قالب JWS.
+                //     برای P-256 دقیقاً ۶۴ بایت است.
+                // عدم پذیرش DER یعنی هر ابزار امضای خارج از .NET (مثل openssl یا
+                // LicenseTool آینده که ممکن است از کتابخانهٔ دیگری استفاده کند) بلااستفاده
+                // می‌شد — و این دقیقاً همان چیزی است که تست سازگاری نشان داد.
+                var ok = ecdsa.VerifyData(payload, signature, HashAlgorithmName.SHA256,
+                    DSASignatureFormat.Rfc3279DerSequence);
+
+                if (!ok && signature.Length == 64)
+                    ok = ecdsa.VerifyData(payload, signature, HashAlgorithmName.SHA256,
+                        DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+
                 if (!ok) error = "امضای فایل لایسنس معتبر نیست (محتوای فایل تغییر کرده یا کلید اشتباه است).";
                 return ok;
             }
@@ -117,7 +132,9 @@ public static class KeySign
             case Model.LicenseFormat.AlgorithmEcdsaP256Sha256:
             {
                 using var ecdsa = KeyImport.EcdsaPrivateFromPem(privateKeyPem);
-                return ecdsa.SignData(payload, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                // خروجی در قالب DER/X9.62 — همان قالبی که openssl تولید می‌کند، تا ابزار
+                // صدور آینده بتواند مستقل از .NET باشد. (بررسی، هر دو قالب را می‌پذیرد.)
+                return ecdsa.SignData(payload, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
             }
             default:
                 throw new ArgumentException($"الگوریتم امضای «{algorithm}» پشتیبانی نمی‌شود.", nameof(algorithm));

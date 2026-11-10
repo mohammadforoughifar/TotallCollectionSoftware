@@ -79,7 +79,7 @@ public static class EntitlementMerger
             {
                 var (state, from, until) = EvaluateTerm(item.Term, at);
 
-                var modules = item.Scope
+                var itemModules = item.Scope
                     .Select(ModuleCodes.Normalize)
                     .Where(c => c.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -97,7 +97,7 @@ public static class EntitlementMerger
                     UserMax = item.Users.Max,
                     UserExempt = item.Users.Exempt,
                     UserScope = item.Users.AppliesTo,
-                    Modules = modules,
+                    Modules = itemModules,
                     CarryOverUsage = item.CarryOverUsage,
                     FirstExpiry = until,
                     IsActive = state == TermState.Active,
@@ -107,7 +107,7 @@ public static class EntitlementMerger
                 items.Add(entity);
                 quotaSources.Add((entity, item));
 
-                foreach (var code in modules)
+                foreach (var code in itemModules)
                 {
                     if (!moduleItems.TryGetValue(code, out var list))
                         moduleItems[code] = list = new List<ItemEntitlement>();
@@ -183,9 +183,9 @@ public static class EntitlementMerger
 
         // ---------- نسخه و آیتم دائمی ----------
         var perpetual = items.Where(i => i.TermType == LicenseTermType.Perpetual).ToList();
-        var hasPerpetual = perpetual.Count > 0;
+        var hasPerpetualItem = perpetual.Count > 0;
         DateTime? updatesUntil = null;
-        if (hasPerpetual && perpetual.Any(p => p.UpdatesUntil is not null))
+        if (hasPerpetualItem && perpetual.Any(p => p.UpdatesUntil is not null))
             updatesUntil = perpetual.Where(p => p.UpdatesUntil is not null).Max(p => p.UpdatesUntil);
 
         // ماژول‌های همیشه‌فعال باید در همهٔ حالت‌ها Valid باشند
@@ -205,7 +205,7 @@ public static class EntitlementMerger
             Seats = seats,
             Issues = issues,
             UpdatesUntil = updatesUntil,
-            HasPerpetualItem = hasPerpetual,
+            HasPerpetualItem = hasPerpetualItem,
             AppliedSerials = documents.Select(d => d.Serial).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList()
         };
     }

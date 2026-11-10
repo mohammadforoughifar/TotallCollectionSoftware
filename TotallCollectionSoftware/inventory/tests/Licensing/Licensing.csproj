@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     تست‌های موتور لایسنس — به سبک پروژه‌های تست موجود همین مخزن: برنامهٔ کنسولی با
-    متد Check()، نه xUnit. دلیل: کل ۲۵ پروژهٔ tests/ همین سبک‌اند و با
-    `dotnet run --project tests/Licensing` بدون نیاز به test runner اجرا می‌شوند.
+    متد Check()، نه xUnit. دلیل: کل ۲۵ پروژهٔ tests/ همین سبک‌اند و بدون نیاز به
+    test runner و فقط با اجرای سادهٔ پروژه (dotnet run) کار می‌کنند.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

@@ -604,6 +604,9 @@ public class AppDbContext : DbContext
     public DbSet<LicenseGrant> LicenseGrants => Set<LicenseGrant>();
     public DbSet<LicenseItemRow> LicenseItemRows => Set<LicenseItemRow>();
     public DbSet<LicenseUsage> LicenseUsages => Set<LicenseUsage>();
+
+    /// <summary>دفتر الحاقی مصرف سهمیه (مصرف/بازگشت) — ممیزی و لاگ حذف.</summary>
+    public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
     public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
     public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
 
@@ -1934,6 +1937,10 @@ public class AppDbContext : DbContext
 
         // کلید طبیعی مصرف: ماژول + متریک + دوره (نه آیتم — مصرف با تغییر آیتم ریست نمی‌شود)
         mb.Entity<LicenseUsage>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        // دفتر مصرف: ایندکس برای گزارش «چه چیزی این دوره مصرف شد» و برای رکورد مرتبط
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.EntityType, x.EntityId });
 
         mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
         mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });

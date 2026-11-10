@@ -44,6 +44,27 @@ public class LicenseInstallation
     [MaxLength(600)]
     public string? MachineFingerprint { get; set; }
 
+    /// <summary>
+    /// پایان مهلت سازگاری برای نصب‌های موجود (فقط یک‌بار ست می‌شود).
+    ///
+    /// <para>
+    /// چرا؟ نسخه‌ای که از قبل روی سرور مشتری اجرا می‌شود، بعد از آپدیت نه لایسنس دارد و نه
+    /// شناسهٔ نصب. اگر بی‌درنگ بسته می‌شد، مشتری با یک آپدیت از کار می‌افتاد — که خلاف
+    /// قرارداد است. پس در «اولین اجرای نسخهٔ لایسنس‌دار روی یک دیتابیس موجود»، یک مهلت
+    /// مشخص ثبت می‌شود (رویداد LICENSE_EXISTING_INSTALL_GRACE) تا فرصت صدور لایسنس باشد.
+    /// </para>
+    /// </summary>
+    public DateTime? GraceUntil { get; set; }
+
+    /// <summary>
+    /// آیا نسخهٔ لایسنس‌دار، روز اول این نصب را «نصب موجود» تشخیص داد؟
+    /// اسنپ‌شات دادهٔ کسب‌وکار هنگام تشخیص در <see cref="GraceReason"/> می‌آید.
+    /// </summary>
+    public bool? IsLegacyInstall { get; set; }
+
+    /// <summary>توضیح تشخیص (تعداد کاربران/فاکتورهای موجود در لحظهٔ اولین اجرا).</summary>
+    public string? GraceReason { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public DateTime UpdatedAt { get; set; } = DateTime.Now;

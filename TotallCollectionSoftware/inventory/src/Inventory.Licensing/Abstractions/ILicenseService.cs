@@ -90,11 +90,36 @@ public interface ILicenseService
     /// اگر سقف پر باشد <see cref="QuotaConsumeResult.Allowed"/> = false برمی‌گردد و
     /// فراخوان موظف است ثبت رکورد را متوقف کند.
     /// </summary>
-    Task<QuotaConsumeResult> TryConsumeAsync(string module, string metric, int amount = 1, CancellationToken cancellationToken = default);
+    /// <param name="entityType">نوع رکوردی که مصرف به‌خاطرش انجام می‌شود (مثل <c>FacInvoice</c>) — برای دفتر مصرف.</param>
+    /// <param name="entityId">شناسهٔ رکورد — تا «لاگ حذف» به رکورد واقعی وصل باشد و بازگشت مصرف قابل ردیابی باشد.</param>
+    /// <param name="userId">کاربری که مصرف را ایجاد کرده (برای ممیزی).</param>
+    /// <param name="recordLedger">
+    /// اگر false باشد، ردیف دفتر مصرف نوشته نمی‌شود. فقط وقتی استفاده می‌شود که فراخوان
+    /// می‌خواهد دفتر را بعد از ثبت رکورد و با شناسهٔ واقعی بنویسد
+    /// (<see cref="QuotaTransactionResult"/> مسیر QuotaGuard.ExecuteAsync).
+    /// </param>
+    Task<QuotaConsumeResult> TryConsumeAsync(string module, string metric, int amount = 1,
+        string? entityType = null, string? entityId = null, int? userId = null,
+        bool recordLedger = true, CancellationToken cancellationToken = default);
+
+    /// <summary>ثبت ردیف دفتر مصرف با شناسهٔ واقعی رکورد (داخل همان تراکنش مصرف).</summary>
+    Task RecordUsageAsync(string module, string metric, int amount = 1, string? entityType = null,
+        string? entityId = null, int? userId = null, CancellationToken cancellationToken = default);
 
     /// <summary>آیا این کاربر اجازهٔ ورود دارد؟ (سیاست صندلی Named/Concurrent)</summary>
     Task<SeatCheckResult> CanLoginUserAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>ابطال کش — پس از بارگذاری/تمدید/غیرفعال‌سازی فایل لایسنس (بدون ری‌استارت).</summary>
     void Invalidate();
+
+    /// <summary>
+    /// آیا این نصب در «مهلت سازگاری نصب موجود» است؟ (نصب قدیمی که هنوز لایسنس نگرفته)
+    ///
+    /// <para>
+    /// جدا از <see cref="GetOverallStatus"/> است چون یک وضعیت <b>موقت و ثبت‌شده</b> است،
+    /// نه بخشی از لایسنس: نه ماژولی را باز می‌کند و نه سقفی می‌دهد؛ فقط مانع بسته‌شدن کل
+    /// برنامه در فاصلهٔ میان «آپدیت» و «صدور لایسنس» می‌شود.
+    /// </para>
+    /// </summary>
+    Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default);
 }

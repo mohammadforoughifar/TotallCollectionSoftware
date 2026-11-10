@@ -43,6 +43,14 @@ BEGIN
     );
 END;
 
+-- ---------- ستون‌های مهلت سازگاری (افزایشی) ----------
+IF OBJECT_ID(N'dbo.LicenseInstallations', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.LicenseInstallations', 'GraceUntil') IS NULL
+    ALTER TABLE [dbo].[LicenseInstallations] ADD [GraceUntil] datetime2 NULL;
+IF OBJECT_ID(N'dbo.LicenseInstallations', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.LicenseInstallations', 'IsLegacyInstall') IS NULL
+    ALTER TABLE [dbo].[LicenseInstallations] ADD [IsLegacyInstall] bit NULL;
+IF OBJECT_ID(N'dbo.LicenseInstallations', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.LicenseInstallations', 'GraceReason') IS NULL
+    ALTER TABLE [dbo].[LicenseInstallations] ADD [GraceReason] nvarchar(600) NULL;
+
 -- ---------- فایل‌های لایسنس اعمال‌شده ----------
 IF OBJECT_ID(N'dbo.LicenseGrants', N'U') IS NULL
 BEGIN
@@ -112,6 +120,29 @@ BEGIN
     -- کلید یکتا: یک ردیف مصرف برای هر (ماژول، متریک، دوره)
     CREATE UNIQUE INDEX [IX_LicenseUsages_Key] ON [dbo].[LicenseUsages] ([Module], [Metric], [PeriodKey]);
 END;
+
+-- ---------- دفتر الحاقی مصرف (مصرف/بازگشت) ----------
+IF OBJECT_ID(N'dbo.LicenseUsageLedger', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseUsageLedger] (
+        [Id]         bigint        NOT NULL IDENTITY(1,1),
+        [Module]     nvarchar(32)  NOT NULL,
+        [Metric]     nvarchar(64)  NOT NULL,
+        [PeriodKey]  nvarchar(16)  NOT NULL,
+        [Delta]      int           NOT NULL,
+        [EntityType] nvarchar(60)  NULL,
+        [EntityId]   nvarchar(64)  NULL,
+        [Reason]     nvarchar(20)  NOT NULL,
+        [Hmac]       nvarchar(88)  NULL,
+        [At]         datetime2     NOT NULL,
+        [UserId]     int           NULL,
+        CONSTRAINT [PK_LicenseUsageLedger] PRIMARY KEY ([Id])
+    );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageLedger_Key' AND object_id = OBJECT_ID(N'dbo.LicenseUsageLedger'))
+    CREATE INDEX [IX_LicenseUsageLedger_Key] ON [dbo].[LicenseUsageLedger] ([Module], [Metric], [PeriodKey]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageLedger_Entity' AND object_id = OBJECT_ID(N'dbo.LicenseUsageLedger'))
+    CREATE INDEX [IX_LicenseUsageLedger_Entity] ON [dbo].[LicenseUsageLedger] ([EntityType], [EntityId]);
 
 -- ---------- نشست کاربر (کاربر هم‌زمان) ----------
 IF OBJECT_ID(N'dbo.LicenseSessions', N'U') IS NULL
@@ -199,7 +230,12 @@ CREATE TABLE IF NOT EXISTS ""LicenseGrants"" (
     ""AppliedAt"" TEXT NOT NULL,
     ""AppliedByUserId"" INTEGER NULL,
     ""ValidationNote"" TEXT NULL);");
-            await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseGrants_Serial"" ON ""LicenseGrants"" (""Serial"");");
+                        // ---------- ستون‌های مهلت سازگاری (افزایشی؛ جدول ممکن است از قبل بدون این‌ها باشد) ----------
+            await AddColumnIfMissingAsync(connection, "LicenseInstallations", "GraceUntil", "TEXT NULL");
+            await AddColumnIfMissingAsync(connection, "LicenseInstallations", "IsLegacyInstall", "INTEGER NULL");
+            await AddColumnIfMissingAsync(connection, "LicenseInstallations", "GraceReason", "TEXT NULL");
+
+await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseGrants_Serial"" ON ""LicenseGrants"" (""Serial"");");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseGrants_Status"" ON ""LicenseGrants"" (""Status"", ""AppliedAt"");");
 
             await Exec(connection, @"
@@ -230,6 +266,22 @@ CREATE TABLE IF NOT EXISTS ""LicenseUsages"" (
     ""Hmac"" TEXT NULL,
     ""UpdatedAt"" TEXT NOT NULL);");
             await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseUsages_Key"" ON ""LicenseUsages"" (""Module"", ""Metric"", ""PeriodKey"");");
+
+            await Exec(connection, @"
+CREATE TABLE IF NOT EXISTS ""LicenseUsageLedger"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_LicenseUsageLedger"" PRIMARY KEY AUTOINCREMENT,
+    ""Module"" TEXT NOT NULL,
+    ""Metric"" TEXT NOT NULL,
+    ""PeriodKey"" TEXT NOT NULL,
+    ""Delta"" INTEGER NOT NULL,
+    ""EntityType"" TEXT NULL,
+    ""EntityId"" TEXT NULL,
+    ""Reason"" TEXT NOT NULL,
+    ""Hmac"" TEXT NULL,
+    ""At"" TEXT NOT NULL,
+    ""UserId"" INTEGER NULL);");
+            await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseUsageLedger_Key"" ON ""LicenseUsageLedger"" (""Module"", ""Metric"", ""PeriodKey"");");
+            await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseUsageLedger_Entity"" ON ""LicenseUsageLedger"" (""EntityType"", ""EntityId"");");
 
             await Exec(connection, @"
 CREATE TABLE IF NOT EXISTS ""LicenseSessions"" (
@@ -275,6 +327,24 @@ CREATE TABLE IF NOT EXISTS ""LicenseEvents"" (
             }
         }
         finally { if (close) await connection.CloseAsync(); }
+    }
+
+    /// <summary>افزودن ستون در صورت نبود (فقط SQLite؛ SQL Server بلوک SQL خودش را دارد).</summary>
+    private static async Task AddColumnIfMissingAsync(System.Data.Common.DbConnection connection,
+        string table, string column, string sqlType)
+    {
+        var present = false;
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"PRAGMA table_info('{table}')";
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase)) present = true;
+        }
+
+        if (!present)
+            // نام ستون/جدول فقط از مقادیر ثابت همین فایل می‌آید (نه ورودی کاربر)؛ نوع هم ثابت است.
+            await Exec(connection, $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {sqlType};");
     }
 
     private static async Task Exec(System.Data.Common.DbConnection connection, string sql)

@@ -3,6 +3,22 @@ using Inventory.Licensing.Modules;
 namespace Inventory.Licensing.Metrics;
 
 /// <summary>
+/// نوع شمارش یک متریک.
+/// </summary>
+public enum MetricKind
+{
+    /// <summary>شمارنده: هر ثبت، یک واحد مصرف می‌کند (پیش‌فرض).</summary>
+    Counter = 0,
+
+    /// <summary>
+    /// «تعداد فعال»: ملاک، تعداد واقعی رکوردهای موجود است، نه تعداد ثبت‌ها.
+    /// مصرف مؤثر = بیشترینِ (شمارنده، تعداد واقعی ردیف‌ها) — چون رکوردهایی که قبل از
+    /// فعال‌شدن سامانهٔ لایسنس ساخته شده‌اند هم باید شمرده شوند.
+    /// </summary>
+    ActiveCount = 1
+}
+
+/// <summary>
 /// تعریف یک متریک قابل سهمیه.
 /// </summary>
 /// <param name="Code">کد پایدار در فایل لایسنس.</param>
@@ -20,7 +36,8 @@ public sealed record MetricDefinition(
     string Title,
     string Unit,
     bool IsAggregate = false,
-    IReadOnlyList<string>? Components = null);
+    IReadOnlyList<string>? Components = null,
+    MetricKind Kind = MetricKind.Counter);
 
 /// <summary>
 /// رجیستری متریک‌ها — منبع واحد حقیقت.

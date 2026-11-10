@@ -146,8 +146,19 @@ public class IncomingLettersController : RbacControllerBase
         if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "ثبت نامه وارده فقط از طریق دبیرخانه مجاز است." });
         try
         {
-            var id = await _letters.AddAsync(dto, MyUserId);
-            return Ok(new { id, message = "نامه وارده با موفقیت ثبت شد." });
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            // متریک تجمیعی letter.create هم خودکار شمرده می‌شود.
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterIncomingCreate,
+                async () => created = await _letters.AddAsync(dto, MyUserId),
+                entityType: "IncomingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { id = created, message = "نامه وارده با موفقیت ثبت شد." });
         }
         catch (Exception ex)
         {

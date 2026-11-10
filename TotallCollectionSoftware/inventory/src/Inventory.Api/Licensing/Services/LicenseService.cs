@@ -20,14 +20,64 @@ public sealed class LicenseService : ILicenseService
     private readonly EntitlementCache _cache;
     private readonly QuotaService _quota;
     private readonly AppDbContext _db;
+    private readonly LicenseEventLogger _events;
     private readonly ILogger<LicenseService> _log;
 
-    public LicenseService(EntitlementCache cache, QuotaService quota, AppDbContext db, ILogger<LicenseService> log)
+    /// <summary>آخرین روزی که برایش رخداد مهلت ثبت شده — جلوگیری از پر شدن جدول رخداد.</summary>
+    private static DateTime _graceLoggedFor = DateTime.MinValue;
+
+    public LicenseService(EntitlementCache cache, QuotaService quota, AppDbContext db,
+        LicenseEventLogger events, ILogger<LicenseService> log)
     {
         _cache = cache;
         _quota = quota;
         _db = db;
+        _events = events;
         _log = log;
+    }
+
+    // ==================== مهلت نصب موجود ====================
+
+    /// <summary>
+    /// آیا این نصب «موقتاً» به‌خاطر سازگاری باز است؟ (نصب قدیمی + مهلت ثبت‌شده + مهلت نگذشته)
+    ///
+    /// <para>
+    /// این وضعیت فقط وقتی معنا دارد که هنوز هیچ سند معتبری اعمال نشده باشد؛ به‌محض اعمال
+    /// اولین لایسنس، رفتار عادی (ادغام اسناد) جای آن را می‌گیرد.
+    /// </para>
+    /// </summary>
+    public async Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var row = await _db.LicenseInstallations.AsNoTracking()
+                .Where(x => x.GraceUntil != null)
+                .OrderBy(x => x.Id)
+                .Select(x => new { x.GraceUntil, x.GraceReason, x.InstallationId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (row?.GraceUntil is null) return false;
+            if (DateTime.Now.Date > row.GraceUntil.Value.Date) return false;
+
+            // ثبت رخداد: حداکثر یک‌بار در روز، تا معلوم باشد کدام نصب بدون لایسنس کار می‌کند.
+            var today = DateTime.Now.Date;
+            if (_graceLoggedFor != today)
+            {
+                _graceLoggedFor = today;
+                await _events.WriteAsync("LICENSE_EXISTING_INSTALL_GRACE",
+                    $"برنامه در مهلت سازگاری «نصب موجود» کار می‌کند (تا {row.GraceUntil:yyyy-MM-dd}). " +
+                    $"لایسنس این نصب باید صادر و بارگذاری شود. ({row.GraceReason})",
+                    severity: "Warning");
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // خطای خواندن مهلت نباید برنامه را باز کند یا ببندد — محافظه‌کارانه «نه».
+            _log.LogWarning(ex, "[License] بررسی مهلت نصب موجود ناموفق بود.");
+            return false;
+        }
     }
 
     // ==================== وضعیت ماژول ====================
@@ -71,7 +121,8 @@ public sealed class LicenseService : ILicenseService
     // ==================== سهمیه ====================
 
     public async Task<QuotaConsumeResult> TryConsumeAsync(string module, string metric, int amount = 1,
-        CancellationToken cancellationToken = default)
+        string? entityType = null, string? entityId = null, int? userId = null,
+        bool recordLedger = true, CancellationToken cancellationToken = default)
     {
         var entitlement = await _cache.GetAsync(cancellationToken);
 
@@ -81,7 +132,17 @@ public sealed class LicenseService : ILicenseService
             return QuotaConsumeResult.Denied(metric, 0, 0, "-",
                 $"ماژول «{ModuleCodes.TitleOf(module)}» در وضعیت «{StateTitle(state)}» است و ثبت رکورد در آن مجاز نیست.");
 
-        return await _quota.TryConsumeAsync(entitlement, module, metric, amount, cancellationToken);
+        return await _quota.TryConsumeAsync(entitlement, module, metric, amount,
+            entityType, entityId, userId, recordLedger, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task RecordUsageAsync(string module, string metric, int amount = 1, string? entityType = null,
+        string? entityId = null, int? userId = null, CancellationToken cancellationToken = default)
+    {
+        var entitlement = await _cache.GetAsync(cancellationToken);
+        await _quota.RecordUsageAsync(entitlement, module, metric, amount, entityType, entityId, userId,
+            cancellationToken);
     }
 
     // ==================== ورود کاربر ====================

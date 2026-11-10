@@ -38,8 +38,12 @@ public static class LicenseStartup
         services.AddScoped<ILicenseProvider, SignedFileLicenseProvider>();
 #endif
 
-        services.AddScoped<IInstallationIdentity, InstallationIdentity>();
+        // هم قرارداد و هم کلاس مشخص ثبت می‌شود: راه‌اندازی به EnsureWithGraceAsync نیاز دارد
+        // و آن جزو قرارداد ILicenseProvider نیست. (نبودش در اجرای واقعی، خطای «No service for type» داد.)
+        services.AddScoped<InstallationIdentity>();
+        services.AddScoped<IInstallationIdentity>(sp => sp.GetRequiredService<InstallationIdentity>());
         services.AddScoped<LicenseEventLogger>();
+        services.AddSingleton<QuotaIntegrity>();      // کلید HMAC سهمیه، یک‌بار خوانده می‌شود
         services.AddScoped<QuotaService>();
         services.AddScoped<LicenseSessionService>();
 
@@ -52,7 +56,59 @@ public static class LicenseStartup
         // گارد سراسری نوشتن — برای کنترلرهایی که [RequireModule] ندارند
         services.Configure<MvcOptions>(o => o.Filters.Add<LicenseWriteGuardFilter>());
 
+        // تبدیل «سقف سهمیه پر است» به ۴۰۳ با کد مشخص.
+        // AddLicensing قبل از AddControllers صدا زده می‌شود، پس فیلتر ما زودتر از
+        // ApiExceptionFilter (که هر استثنا را به ۴۰۰ تبدیل می‌کند) اجرا می‌شود.
+        // ترتیب صریح لازم است: overload بدون order یک TypeFilterAttribute می‌سازد که
+        // Order خودش صفر است و IOrderedFilter درونی نادیده گرفته می‌شود؛ در نتیجه
+        // ApiExceptionFilter عمومی زودتر اجرا می‌شد و پاسخ ۴۰۰ می‌داد نه ۴۰۳.
+        services.Configure<MvcOptions>(o => o.Filters.Add<LicenseQuotaExceptionFilter>(int.MinValue));
+
         return services;
+    }
+
+    /// <summary>
+    /// مقایسهٔ کنترلرهای واقعی اسمبلی با رجیستری ماژول‌ها و ثبت نتیجه در لاگ.
+    ///
+    /// <para>
+    /// چرا؟ رفتار زمان اجرا برای کنترلر نگاشت‌نشده «fail-open با هشدار» است تا سرویس
+    /// مشتری با یک کنترلر تازه نخوابد. ولی اگر کسی هشدار را نبیند، پوشش لایسنس بی‌سروصدا
+    /// سوراخ می‌شود. این بررسی، کل تصویر را یک‌بار در بوت می‌دهد (و تست
+    /// <c>tests/Licensing</c> همان را سخت‌گیرانه و شکست‌خور چک می‌کند).
+    /// </para>
+    /// </summary>
+    private static void LogRegistryCoverage(ILogger log)
+    {
+        try
+        {
+            var allTypes = typeof(LicenseStartup).Assembly.GetTypes()
+                .Where(t => t.IsClass && typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t))
+                .ToList();
+
+            // کلاس پایه (BaseApiController) کنترلر مسیرپذیر نیست: از آن ارث‌بری می‌شود ولی
+            // خودش هیچ مسیری ندارد. پس هر کلاسی که کلاس دیگری از آن مشتق شده، حذف می‌شود.
+            var controllers = allTypes
+                .Where(t => t.IsPublic && !t.IsAbstract)
+                .Where(t => !allTypes.Any(other => other != t && t.IsAssignableFrom(other)))
+                .Select(t => t.Name.EndsWith("Controller", StringComparison.Ordinal) ? t.Name[..^"Controller".Length] : t.Name)
+                .ToList();
+
+            var unmapped = controllers
+                .Where(name => !LicenseModuleRegistry.IsExempt(name) && LicenseModuleRegistry.Resolve(name) is null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n)
+                .ToList();
+
+            if (unmapped.Count == 0)
+                log.LogInformation("[License] پوشش رجیستری: همهٔ {Count} کنترلر به ماژول نگاشت شده‌اند.", controllers.Count);
+            else
+                log.LogWarning("[License] پوشش رجیستری: {Count} کنترلر نگاشت نشده‌اند (رفتار: عبور با هشدار): {Names}",
+                    unmapped.Count, string.Join(", ", unmapped));
+        }
+        catch (Exception ex)
+        {
+            log.LogDebug(ex, "[License] خودبازبینی پوشش رجیستری انجام نشد.");
+        }
     }
 
     /// <summary>
@@ -68,6 +124,10 @@ public static class LicenseStartup
         var services = scope.ServiceProvider;
         var log = services.GetRequiredService<ILoggerFactory>().CreateLogger("License");
 
+        // ۰) خودبازبینی پوشش رجیستری — قبل از هر چیز دیگری و بیرون از try، چون این
+        //    بررسی هیچ ربطی به لایسنس این نصب ندارد و باید همیشه در لاگ باشد.
+        LogRegistryCoverage(log);
+
         try
         {
             // ۱) کلیدهای عمومی (بارگذاری همان لحظه انجام می‌شود؛ خطای اثر انگشت هم لاگ می‌شود)
@@ -78,10 +138,11 @@ public static class LicenseStartup
                 log.LogInformation("[License] {Count} کلید عمومی امضا فعال است: {Keys}",
                     keys.Ring.KeyIds.Count, string.Join(", ", keys.Ring.KeyIds));
 
-            // ۲) شناسهٔ نصب
-            var identity = services.GetRequiredService<IInstallationIdentity>();
-            var installationId = await identity.GetInstallationIdAsync();
-            log.LogInformation("[License] شناسهٔ نصب: {InstallationId}", installationId);
+            // ۲) شناسهٔ نصب + تشخیص «نصب موجود» و ثبت مهلت سازگاری (فقط یک‌بار در عمر نصب)
+            var identity = services.GetRequiredService<InstallationIdentity>();
+            var installation = await identity.EnsureWithGraceAsync();
+            log.LogInformation("[License] شناسهٔ نصب: {InstallationId} | نصب موجود: {Legacy} | مهلت: {Grace}",
+                installation.InstallationId, installation.IsLegacyInstall, installation.GraceUntil?.ToString("yyyy-MM-dd") ?? "-");
 
             // ۳) کش وضعیت
             var cache = services.GetRequiredService<EntitlementCache>();
