@@ -45,6 +45,7 @@ public static class LicenseStartup
         services.AddScoped<LicenseEventLogger>();
         services.AddSingleton<QuotaIntegrity>();      // کلید HMAC سهمیه، یک‌بار خوانده می‌شود
         services.AddScoped<QuotaService>();
+        services.AddScoped<QuotaSendCoordinator>();   // رزرو ← تماس ← تسویه (مودیان)
         services.AddScoped<LicenseSessionService>();
 
         services.AddSingleton<EntitlementCache>();

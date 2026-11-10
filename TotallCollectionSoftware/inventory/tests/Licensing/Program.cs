@@ -887,5 +887,127 @@ Section("۲۰) پوشش مسیر و رجیستری با بازتاب (reflection
 }
 
 // ============================================================
+Section("۲۱) انقضا و مهلت تنفس با ساعت ایران + جایگزین +03:30 (و نه UTC)");
+
+{
+    // بخش الف: «امروز» باید تاریخ تهران باشد، نه تاریخ سرور.
+    // اگر سرور UTC باشد، بین ۰۰:۰۰ تا ۰۳:۳۰ بامداد تهران هنوز «دیروز» است و
+    // لایسنسی که امروز منقضی می‌شود یک روز بیشتر زنده می‌ماند.
+    var todayIran = Inventory.Licensing.Entitlement.EntitlementMerger.Today();
+    var expectedIran = Inventory.Licensing.Periods.PersianPeriodKey.NowIran().Date;
+    Check(todayIran == expectedIran,
+        $"«امروز» = تاریخ تهران ({todayIran:yyyy-MM-dd}) — مستقل از منطقهٔ زمانی سرور (سرور: {TimeZoneInfo.Local.Id})");
+
+    // بخش ب: سند منقضی‌شده «دیروزِ تهران» باید Expired باشد — با now:null (ساعت سیستم)
+    var yesterday = expectedIran.AddDays(-1);
+    var doc = new Inventory.Licensing.Model.LicenseDocument
+    {
+        Serial = "TZ-1", KeyId = "dev-2026a", CustomerId = "C", CustomerName = "تست",
+        Deployment = Inventory.Licensing.Model.DeploymentKind.OnPrem, InstallationId = "i",
+        Items = new List<Inventory.Licensing.Model.LicenseItem>
+        {
+            new()
+            {
+                Id = "I1", Scope = new List<string> { Inventory.Licensing.Modules.ModuleCodes.Invoicing },
+                Term = new Inventory.Licensing.Model.LicenseTerm
+                {
+                    Type = Inventory.Licensing.Model.LicenseTermType.Subscription,
+                    ValidFrom = yesterday.AddDays(-30), ValidUntil = yesterday
+                }
+            }
+        }
+    };
+
+    var expired = Inventory.Licensing.Entitlement.EntitlementMerger.Merge(new[] { doc });
+    Check(expired.Modules.TryGetValue(Inventory.Licensing.Modules.ModuleCodes.Invoicing, out var st1)
+          && st1.State != Inventory.Licensing.Entitlement.ModuleState.Valid,
+        $"سندی که «دیروزِ تهران» تمام شده، معتبر نیست (وضعیت: {(st1 is null ? "?" : st1.State.ToString())})");
+
+    // و سندی که «امروزِ تهران» تمام می‌شود تا پایان امروز معتبر است
+    doc.Items[0].Term.ValidUntil = expectedIran;
+    var stillValid = Inventory.Licensing.Entitlement.EntitlementMerger.Merge(new[] { doc });
+    Check(stillValid.Modules[Inventory.Licensing.Modules.ModuleCodes.Invoicing].State
+          is Inventory.Licensing.Entitlement.ModuleState.Valid
+             or Inventory.Licensing.Entitlement.ModuleState.ExpiringSoon,
+        "سندی که امروزِ تهران تمام می‌شود، کل امروز معتبر است");
+
+    // بخش ج: مهلت تنفس (Grace) هم با همان مبنا
+    doc.Items[0].Term.ValidUntil = expectedIran.AddDays(-3);   // ۳ روز پیش
+    var grace = Inventory.Licensing.Entitlement.EntitlementMerger.Merge(new[] { doc });
+    var graceState = grace.Modules[Inventory.Licensing.Modules.ModuleCodes.Invoicing].State;
+    Check(graceState == Inventory.Licensing.Entitlement.ModuleState.Grace,
+        $"۳ روز پس از انقضا ⇒ مهلت تنفس (وضعیت: {graceState})");
+
+    doc.Items[0].Term.ValidUntil = expectedIran.AddDays(-400);
+    var readOnly = Inventory.Licensing.Entitlement.EntitlementMerger.Merge(new[] { doc });
+    var roState = readOnly.Modules[Inventory.Licensing.Modules.ModuleCodes.Invoicing].State;
+    Check(roState == Inventory.Licensing.Entitlement.ModuleState.ReadOnly,
+        $"۴۰۰ روز پس از انقضا ⇒ فقط‌خواندنی (وضعیت: {roState})");
+}
+
+// ============================================================
+Section("۲۲) جایگزین منطقهٔ زمانی: اگر Asia/Tehran و Iran Standard Time نبودند ⇒ +03:30");
+
+{
+    // سناریوی واقعی: کانتینر لاغر یا ویندوز بدون tzdata. قبلاً در چنین حالتی
+    // TimeZoneInfo.FindSystemTimeZoneById خطا می‌داد و برنامه می‌افتاد؛ حالا افست ثابت.
+    var noZones = Inventory.Licensing.Periods.PersianPeriodKey.ResolveZone(_ => null);
+    Check(noZones.BaseUtcOffset == TimeSpan.FromMinutes(210),
+        $"افست جایگزین +03:30 است، نه UTC (واقعی: {noZones.BaseUtcOffset})");
+    Check(noZones.BaseUtcOffset != TimeSpan.Zero, "جایگزین هرگز UTC نیست");
+
+    // همان لحظهٔ UTC باید به ساعت تهران (۳:۳۰ جلوتر) تبدیل شود
+    var utc = new DateTimeOffset(2026, 11, 21, 20, 30, 0, TimeSpan.Zero);   // = ۰۰:۰۰ تهران
+    var asIran = TimeZoneInfo.ConvertTime(utc, noZones).DateTime;
+    Check(asIran == new DateTime(2026, 11, 22, 0, 0, 0),
+        $"تبدیل با جایگزین: ۲۰:۳۰ UTC ⇒ ۰۰:۰۰ روز بعد به وقت تهران (واقعی: {asIran:yyyy-MM-dd HH:mm})");
+
+    // فقط «Asia/Tehran» غایب باشد ⇒ باید «Iran Standard Time» را امتحان کند
+    var triedIds = new List<string>();
+    var windowsZone = Inventory.Licensing.Periods.PersianPeriodKey.ResolveZone(id =>
+    {
+        triedIds.Add(id);
+        return id == "Iran Standard Time"
+            ? TimeZoneInfo.CreateCustomTimeZone("Iran Standard Time", TimeSpan.FromMinutes(210), "IRST", "IRST")
+            : null;
+    });
+    Check(triedIds.SequenceEqual(new[] { "Asia/Tehran", "Iran Standard Time" }),
+        $"ترتیب تلاش: {string.Join(" ⇒ ", triedIds)}");
+    Check(windowsZone.Id == "Iran Standard Time", $"شناسهٔ ویندوز پذیرفته شد ({windowsZone.Id})");
+
+    // و وقتی سرور به‌درستی Asia/Tehran دارد، همان استفاده می‌شود
+    var real = Inventory.Licensing.Periods.PersianPeriodKey.IranZone;
+    Console.WriteLine($"   (اطلاع) منطقهٔ ایران روی این سرور: {real.Id} با افست {real.BaseUtcOffset}");
+    Check(real.BaseUtcOffset == TimeSpan.FromMinutes(210) || real.BaseUtcOffset == TimeSpan.FromMinutes(210),
+        "افست منطقهٔ ایران +03:30 است (ایران از ۱۴۰۱ ساعت تابستانی ندارد)");
+}
+
+// ============================================================
+Section("۲۳) فهرست کنترلرها (برای تطبیق با گزارش مرحله ۰)");
+
+{
+    // با متغیر محیطی LICENSING_DUMP_CONTROLLERS=1 فهرست کامل چاپ می‌شود تا با
+    // عدد ۱۲۵ گزارش مرحله ۰ مقایسه شود. حالت پیش‌فرض: فقط خلاصه.
+    var assembly = typeof(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware).Assembly;
+    var all = assembly.GetTypes()
+        .Where(t => !t.IsAbstract && !t.IsInterface
+                    && typeof(Microsoft.AspNetCore.Mvc.ControllerBase).IsAssignableFrom(t)
+                    && t.Name.EndsWith("Controller", StringComparison.Ordinal))
+        .ToList();
+    var real = all.Where(t => !all.Any(o => o != t && t.IsAssignableFrom(o)))
+        .Select(t => t.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
+
+    Check(real.Count >= 150, $"تعداد کنترلرهای واقعی: {real.Count}");
+
+    if (Environment.GetEnvironmentVariable("LICENSING_DUMP_CONTROLLERS") == "1")
+    {
+        Console.WriteLine("----- BEGIN CONTROLLERS -----");
+        foreach (var name in real) Console.WriteLine(name);
+        Console.WriteLine("----- END CONTROLLERS -----");
+    }
+}
+
+// ============================================================
+// ============================================================
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;

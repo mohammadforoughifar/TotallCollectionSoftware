@@ -45,6 +45,40 @@ Directory.CreateDirectory(storage);
 var sqlServerConnection = Environment.GetEnvironmentVariable("LICENSING_TEST_CONN");
 var useSqlServer = !string.IsNullOrWhiteSpace(sqlServerConnection);
 
+// ============================================================
+//  قفل ایمنی (بازبینی مرحله ۲): نام دیتابیس باید شامل «Test» باشد.
+//
+//  چرا؟ این برنامه با هر بخش، ردیف‌های جدول‌های مصرف/دفتر/رخداد/مبنا و همین‌طور
+//  فاکتورهای آزمون را پاک می‌کند. اگر کسی اشتباهاً رشتهٔ اتصال تولید را بگذارد،
+//  دادهٔ واقعی مشتری در چند ثانیه پاک می‌شود. «Test» در نام، ساده‌ترین قفلِ
+//  قابل‌اعتماد است که شانسی رد نمی‌شود.
+// ============================================================
+if (useSqlServer)
+{
+    var pretty = System.Text.RegularExpressions.Regex.Replace(
+        sqlServerConnection!, "(?i)(password|pwd)=[^;]*", "Password=***");
+
+    var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(sqlServerConnection!);
+    var databaseName = builder.InitialCatalog;
+
+    if (string.IsNullOrWhiteSpace(databaseName) || !databaseName.Contains("Test", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine();
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine("⛔ اجرا متوقف شد — نام دیتابیس تست نیست.");
+        Console.WriteLine($"   رشتهٔ اتصال: {pretty}");
+        Console.WriteLine($"   نام دیتابیس: «{databaseName}»");
+        Console.WriteLine();
+        Console.WriteLine("   این آزمون جدول‌های سهمیه و فاکتورها را پاک می‌کند. برای اینکه");
+        Console.WriteLine("   اشتباهی روی دیتابیس تولید اجرا نشود، نام دیتابیس باید شامل");
+        Console.WriteLine("   «Test» باشد (بی‌توجه به بزرگی/کوچکی حروف).");
+        Console.WriteLine();
+        Console.WriteLine("   نمونهٔ درست: Database=InventoryLicenseTest");
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        return 2;
+    }
+}
+
 string ConnectionString() => $"Data Source={dbPath};Cache=Shared;Default Timeout=30";
 
 DbContextOptions<AppDbContext> Options() => useSqlServer
@@ -537,10 +571,321 @@ Section("۱۳) حذف نرم: رکورد از فهرست‌ها ناپدید م�
 }
 
 // ============================================================
+Section("۱۴) رزرو ← تماس ← تسویه: ۵۰ درخواست روی آخرین واحد، فقط یک تماس واقعی");
+
+{
+    // این بخش دقیقاً همان سناریویی است که در بازبینی خواسته شد:
+    //   سقف = ۱، ۵۰ درخواست هم‌زمان، ارسال به مودیان با Mock.
+    // انتظار: فقط **یک** تماس با بیرون انجام شود؛ ۴۹ درخواست پیش از تماس رد شوند.
+    await ResetAsync();
+
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 1, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+
+    var sendCalls = 0;
+    var gate = new object();
+
+    async Task<int> RunOne()
+    {
+        await using var db = NewDb();
+        var quota = Service(db, NewIntegrity());
+        var coordinator = new Inventory.Api.Licensing.Services.QuotaSendCoordinator(
+            quota, Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Services.QuotaSendCoordinator>.Instance);
+
+        var (result, outcome) = await coordinator.SendAsync(
+            ent,
+            _ =>
+            {
+                // «تماس با مودیان» — جای Mock. شمارش با قفل، چون چند ترد هم‌زمان.
+                lock (gate) { sendCalls++; }
+                return Task.FromResult(new Inventory.Shared.Dtos.Moadian.ApiModel { Success = true, Status = 201, Message = "ارسال شد" });
+            });
+
+        return outcome == Inventory.Api.Licensing.Services.QuotaSendOutcome.Sent ? 1 : 0;
+    }
+
+    var outcomes = await Task.WhenAll(Enumerable.Range(0, 50).Select(_ => RunOne()));
+
+    var sent = outcomes.Count(o => o == 1);
+    Check(sent == 1, $"دقیقاً یک درخواست مجاز شد (واقعی: {sent})");
+    Check(sendCalls == 1, $"دقیقاً یک تماس با مودیان انجام شد — Mock (واقعی: {sendCalls})");
+    Check(outcomes.Count(o => o == 0) == 49, $"۴۹ درخواست پیش از هر تماسی رد شدند (واقعی: {outcomes.Count(o => o == 0)})");
+
+    await using var check = NewDb();
+    var used = await check.LicenseUsages.AsNoTracking()
+        .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend)
+        .Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? -1;
+    Check(used == 1, $"شمارنده دقیقاً ۱ است (واقعی: {used})");
+}
+
+// ============================================================
+Section("۱۴.۱) شکست قطعی ⇒ بازگشت همان واحد + رخداد؛ نتیجهٔ نامعلوم ⇒ بدون بازگشت و Pending");
+
+{
+    await ResetAsync();
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+    var coordinator = new Inventory.Api.Licensing.Services.QuotaSendCoordinator(
+        quota, Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Services.QuotaSendCoordinator>.Instance);
+
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 10, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+
+    // ---------- الف) شکست قطعی ----------
+    var (r1, o1) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel { Success = false, Status = 400, Message = "شناسهٔ صورتحساب نامعتبر است." }));
+
+    Check(o1 == Inventory.Api.Licensing.Services.QuotaSendOutcome.Failed, $"شکست قطعی ⇒ Failure (واقعی: {o1})");
+
+    await using (var q = NewDb())
+    {
+        var usedAfterFail = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+        Check(usedAfterFail == 0, $"سهمیه پس از شکست قطعی برگشت (واقعی: {usedAfterFail})");
+
+        var evt = await q.LicenseEvents.AsNoTracking()
+            .Where(e => e.Kind == "LICENSE_QUOTA_REFUND_TECHNICAL").CountAsync();
+        Check(evt >= 1, $"رخداد LICENSE_QUOTA_REFUND_TECHNICAL ثبت شد (تعداد: {evt})");
+
+        var ledgerReason = await q.LicenseUsageLedger.AsNoTracking()
+            .Where(l => l.Reason == "refund-technical").CountAsync();
+        Check(ledgerReason >= 1, $"ردیف دفتر با reason=refund-technical ثبت شد (تعداد: {ledgerReason})");
+    }
+
+    // ---------- ب) نتیجهٔ نامعلوم (Timeout پس از ارسال) ----------
+    var (r2, o2) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel
+        {
+            Success = false, Status = 500, DeliveryUncertain = true,
+            Message = "ارسال انجام شد ولی پاسخ برنگشت."
+        }));
+
+    Check(o2 == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending, $"نتیجهٔ نامعلوم ⇒ Pending (واقعی: {o2})");
+
+    await using (var q = NewDb())
+    {
+        var usedAfterUnknown = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+        Check(usedAfterUnknown == 1, $"سهمیه پس از نتیجهٔ نامعلوم برنگشت (واقعی: {usedAfterUnknown})");
+
+        var pending = await q.LicenseUsageLedger.AsNoTracking().Where(l => l.Reason == "pending").CountAsync();
+        Check(pending >= 1, $"ردیف دفتر با reason=pending ثبت شد (تعداد: {pending})");
+
+        var evt = await q.LicenseEvents.AsNoTracking().Where(e => e.Kind == "LICENSE_QUOTA_PENDING").CountAsync();
+        Check(evt >= 1, $"رخداد LICENSE_QUOTA_PENDING ثبت شد (تعداد: {evt})");
+    }
+}
+
+// ============================================================
+Section("۱۵) سناریوی بازبینی: لایسنس بدون سقف ⇒ ۵۰۰۰ فاکتور ⇒ لایسنس با سقف ۳۰");
+
+{
+    // پرسش صریح: مبنای مصرف «یک‌بار برای کل نصب» است یا «به ازای هر متریک، وقتی سقف آمد»؟
+    // و وقتی لایسنس اول سقفی برای invoice.create نداشت، ۵۰۰۰ فاکتورِ قبل از آمدن سقف
+    // چه بلایی سر سقف ۳۰ می‌آورد؟
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var wh = new Inventory.Api.Data.Warehouse { Name = "انبار مبن‌آزمایی", Code = "W-BASE" };
+    db.Warehouses.Add(wh);
+    await db.SaveChangesAsync();
+
+    // (۱) لایسنس اول: هیچ سقفی برای invoice.create ندارد (بی‌نهایت)
+    var noQuota = Entitlement(MetricCodes.LetterInnerCreate, 5, QuotaPeriod.Monthly, ModuleCodes.Invoicing);
+    Check(!QuotaService.HasLimit(noQuota, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate),
+        "لایسنس اول سقفی برای invoice.create ندارد");
+
+    // ۵۰۰۰ فاکتور ساخته می‌شود (شبیه‌سازی مستقیم درج، معادل ۵۰۰۰ ثبت واقعی)
+    var rows = Enumerable.Range(1, 5000).Select(i => new Inventory.Api.Data.FacInvoice
+    {
+        Number = 100_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today.AddDays(-1),
+        WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+    }).ToList();
+
+    await db.FacInvoices.AddRangeAsync(rows);
+    await db.SaveChangesAsync();
+
+    var liveInDb = await db.FacInvoices.IgnoreQueryFilters().CountAsync();
+    Check(liveInDb == 5000, $"۵۰۰۰ فاکتور در دیتابیس ثبت شد (واقعی: {liveInDb})");
+
+    // (۲) لایسنس دوم با سقف ۳۰ می‌آید ⇒ همین‌جا باید مبنا گرفته شود
+    var withQuota = Entitlement(MetricCodes.InvoiceCreate, 30, QuotaPeriod.Monthly, ModuleCodes.Invoicing);
+    var quota = Service(db, NewIntegrity());
+    var captured = await Inventory.Api.Licensing.Services.ActiveCountProbes.CaptureAllAsync(
+        db, quota, withQuota, "TEST-2", "activation");
+
+    // امروز هیچ متریکی در رجیستری از نوع ActiveCount نیست ⇒ حلقهٔ مبنا خالی است.
+    // این تست همان حقیقت را قفل می‌کند تا اگر فردا متریکی ActiveCount شد، رفتار دیده شود.
+    var activeCountMetrics = Inventory.Licensing.Metrics.MetricCodes.All
+        .Count(m => m.Kind == Inventory.Licensing.Metrics.MetricKind.ActiveCount);
+    Console.WriteLine($"   (اطلاع) متریک‌های ActiveCount در این نسخه: {activeCountMetrics} — مبناهای ثبت‌شده: {captured}");
+
+    var limit = withQuota.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
+    var effective = await quota.GetEffectiveUsageAsync(withQuota, limit, _ => Task.FromResult((long)liveInDb));
+
+    Check(effective == 0,
+        $"مصرف مؤثر «صدور صورتحساب» با سقف ۳۰ = ۰ (واقعی: {effective}) — ۵۰۰۰ فاکتور قبل از آمدن سقف، سقف را پر نکرد");
+    Check(effective < limit.Limit, $"سقف ۳۰ باز است (مصرف {effective} < سقف {limit.Limit})");
+
+    // و واقعاً می‌شود ۳۰ تا ثبت کرد
+    for (var i = 0; i < 30; i++)
+        await quota.TryConsumeAsync(withQuota, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+
+    var afterThirty = await quota.TryConsumeAsync(withQuota, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+    Check(!afterThirty.Allowed, "بعد از ۳۰ ثبت، سی‌ویکمی رد می‌شود");
+}
+
+// ============================================================
+Section("۱۵.۱) فرمول دورهٔ ماهانه برای متریک ActiveCount: فقط رکوردهای همین ماه");
+
+{
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var wh = new Inventory.Api.Data.Warehouse { Name = "انبار ماهانه", Code = "W-MONTH" };
+    db.Warehouses.Add(wh);
+    await db.SaveChangesAsync();
+
+    var (from, to) = Inventory.Licensing.Periods.PersianPeriodKey.CurrentRange(
+        Inventory.Licensing.Model.QuotaPeriod.Monthly);
+
+    // ۳۰ فاکتور در همین ماه شمسی + ۷۰ فاکتور در خارج از پنجره
+    var inWindow = Enumerable.Range(1, 30).Select(i => new Inventory.Api.Data.FacInvoice
+    {
+        Number = 200_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale,
+        Date = from.AddHours(1), WarehouseId = wh.Id,
+        Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+    });
+    var outWindow = Enumerable.Range(1, 70).Select(i => new Inventory.Api.Data.FacInvoice
+    {
+        Number = 300_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale,
+        Date = from.AddMonths(-2), WarehouseId = wh.Id,
+        Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+    });
+
+    await db.FacInvoices.AddRangeAsync(inWindow);
+    await db.FacInvoices.AddRangeAsync(outWindow);
+    await db.SaveChangesAsync();
+
+    var inPeriod = await Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+        db, MetricCodes.InvoiceCreate, Inventory.Licensing.Model.QuotaPeriod.Monthly,
+        Inventory.Licensing.Periods.PersianPeriodKey.NowIran());
+
+    Check(inPeriod == 30, $"شمارش «همین ماه» فقط ۳۰ رکورد را دید، نه ۱۰۰ (واقعی: {inPeriod})");
+    Check(to > from, $"مرز بازهٔ ماه شمسی معتبر است ({from:yyyy-MM-dd} تا {to:yyyy-MM-dd})");
+
+    var empty = await Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+        db, MetricCodes.InvoiceCreate, Inventory.Licensing.Model.QuotaPeriod.Monthly,
+        Inventory.Licensing.Periods.PersianPeriodKey.NowIran().AddMonths(2));
+    Check(empty == 0, $"ماه دو ماه بعد خالی است (واقعی: {empty}) — سقف ماهانه از صفر شروع می‌شود");
+}
+
+// ============================================================
+Section("۱۶) carryOverUsage: سقف دائمی ۳۰ با مصرف ۳۰، بعد لایسنس دوم با سقف دائمی ۱۰۰۰");
+
+{
+    // ⚠️ carryOverUsage عمداً پیاده نشده (تصمیم با کارفرما). این تست فقط **رفتار فعلی** را
+    // ثبت می‌کند تا تصمیم روی عدد واقعی گرفته شود، نه روی حدس.
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+
+    var first = Entitlement(MetricCodes.InvoiceCreate, 30, QuotaPeriod.Lifetime, ModuleCodes.Invoicing);
+    for (var i = 0; i < 30; i++)
+        await quota.TryConsumeAsync(first, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+
+    var deniedAt30 = await quota.TryConsumeAsync(first, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+    Check(!deniedAt30.Allowed, "لایسنس اول: سی‌ویکمی روی سقف ۳۰ رد شد");
+
+    // لایسنس دوم با سقف دائمی ۱۰۰۰ — همان نصب، همان جدول شمارنده
+    var second = Entitlement(MetricCodes.InvoiceCreate, 1000, QuotaPeriod.Lifetime, ModuleCodes.Invoicing);
+    await using var q2 = NewDb();
+    var quota2 = Service(q2, NewIntegrity());
+
+    var usedBefore = await q2.LicenseUsages.AsNoTracking()
+        .Where(u => u.Metric == MetricCodes.InvoiceCreate && u.PeriodKey == "-")
+        .Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+
+    var afterUpgrade = await quota2.TryConsumeAsync(second, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+
+    Console.WriteLine($"   ⟶ نتیجهٔ سنجش: پس از لایسنس دوم، ‹Used› روی {afterUpgrade.Used} از {afterUpgrade.Limit} رفت " +
+                      $"(پیش از ثبت: {usedBefore})");
+
+    Check(usedBefore == 30,
+        $"مصرف لایسنس اول (۳۰) به لایسنس دوم منتقل شد — Used = {usedBefore} از ۱۰۰۰");
+    Check(afterUpgrade.Allowed, "ثبت بعد از ارتقا مجاز است (۳۰ < ۱۰۰۰)");
+    Check(afterUpgrade.Used == 31, $"مصرف جدید ۳۱ شد (واقعی: {afterUpgrade.Used})");
+}
+
+// ============================================================
+Section("۱۷) حذف نرم فاکتور: از گزارش‌ها و مانده‌ها حذف، از سهمیه نه");
+
+{
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var wh = new Inventory.Api.Data.Warehouse { Name = "انبار گزارش", Code = "W-RPT" };
+    db.Warehouses.Add(wh);
+    await db.SaveChangesAsync();
+
+    db.FacInvoices.Add(new Inventory.Api.Data.FacInvoice
+    {
+        Number = 700_001, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today,
+        WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test",
+        Status = Inventory.Shared.InvoiceStatus.Confirmed, TotalNet = 1_000_000
+    });
+    db.FacInvoices.Add(new Inventory.Api.Data.FacInvoice
+    {
+        Number = 700_002, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today,
+        WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test",
+        Status = Inventory.Shared.InvoiceStatus.Confirmed, TotalNet = 5_000_000,
+        IsDeleted = true, DeletedAt = DateTime.Now, DeletedBy = "admin"
+    });
+    await db.SaveChangesAsync();
+
+    // (۱) گزارش‌ها: همه از همان DbSet با فیلتر سراسری می‌خوانند
+    var reportSum = (await db.FacInvoices.AsNoTracking().Select(i => i.TotalNet).ToListAsync()).Sum();
+    var reportCount = await db.FacInvoices.AsNoTracking().CountAsync();
+    Check(reportSum == 1_000_000, $"جمع گزارش فقط فاکتور زنده را دید (واقعی: {reportSum:N0})");
+    Check(reportCount == 1, $"تعداد گزارش ۱ است (واقعی: {reportCount})");
+
+    // (۲) مانده‌ها/خزانه هم از همان مسیر
+    var receivable = (await db.FacInvoices.AsNoTracking()
+        .Where(i => i.Status == Inventory.Shared.InvoiceStatus.Confirmed && i.Settlement == Inventory.Shared.SettlementType.Credit)
+        .Select(i => i.TotalNet).ToListAsync()).Sum();
+    Check(receivable == 0, $"فاکتور حذف‌شده در مانده‌ها نیامد (واقعی: {receivable:N0})");
+
+    // (۳) سهمیه: حذف‌شده می‌ماند
+    var quotaCount = await db.FacInvoices.IgnoreQueryFilters().CountAsync();
+    Check(quotaCount == 2, $"سهمیه هر دو را شمرد (واقعی: {quotaCount})");
+
+    // (۴) شمارهٔ فاکتور حذف‌شده دوباره صادر نمی‌شود
+    var maxNumber = await db.FacInvoices.IgnoreQueryFilters().MaxAsync(i => i.Number);
+    Check(maxNumber == 700_002, $"شمارهٔ بعدی از حداکثر (شامل حذف‌شده) شروع می‌شود (واقعی: {maxNumber})");
+
+    // (۵) ایندکس یکتای شماره سرِ جایش است ⇒ شمارهٔ تکراری در سطح دیتابیس ممکن نیست
+    if (useSqlServer)
+    {
+        var idx = await db.Database
+            .SqlQueryRaw<string>("SELECT name AS Value FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.FacInvoices') AND is_unique = 1")
+            .ToListAsync();
+        Check(idx.Any(n => n.Contains("Kind_Number")),
+            $"ایندکس یکتای (Kind, Number) روی FacInvoices هست: {string.Join(", ", idx)}");
+    }
+    else
+    {
+        var idx = await db.Database
+            .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type='index' AND tbl_name='FacInvoices' AND sql LIKE '%UNIQUE%'")
+            .ToListAsync();
+        Check(idx.Any(n => n.Contains("Kind_Number")), $"ایندکس یکتای (Kind, Number) در SQLite هست: {string.Join(", ", idx)}");
+    }
+}
+
+// ============================================================
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌های مرحله ۲ موفق بود." : $"{failures} تست شکست خورد.")}");
 
 try { File.Delete(dbPath); Directory.Delete(storage, true); } catch { /* بی‌صدا */ }
 Environment.ExitCode = failures == 0 ? 0 : 1;
+return Environment.ExitCode;
 
 // ============================================================
 //  کلاس کمکی: سرویس لایسنس «مستقیم» برای تست تراکنش

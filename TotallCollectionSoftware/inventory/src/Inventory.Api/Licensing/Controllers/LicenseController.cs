@@ -441,8 +441,9 @@ public class LicenseController : ControllerBase
         try
         {
             var quota = HttpContext.RequestServices.GetRequiredService<QuotaService>();
+            // فقط متریک‌هایی که در همین لایسنس سقف گرفتند؛ نه یک‌بار برای کل نصب.
             var captured = await ActiveCountProbes.CaptureAllAsync(
-                _db, quota, document.Serial, "activation", cancellationToken);
+                _db, quota, entitlement, document.Serial, "activation", cancellationToken);
 
             if (captured > 0)
                 _log.LogInformation("[License] مبنای مصرف برای {Count} متریک ثبت شد (سریال {Serial}).",

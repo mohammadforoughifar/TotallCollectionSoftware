@@ -42,18 +42,49 @@ public static class PersianPeriodKey
     /// دیتابیس منطقهٔ زمانی نصب نبود، افست ثابت +۰۳:۳۰ جایگزین می‌شود.
     /// </para>
     /// </summary>
+    // ⚠️ ترتیب مهم است: این دو **پیش از** IranZone تعریف شده‌اند، چون
+    // مقدارگیری فیلدهای static از بالا به پایین است و ResolveIranZone به هر دو نیاز دارد.
+    /// <summary>شناسه‌های منطقه‌زمانی ایران به ترتیب تلاش (لینوکس، سپس ویندوز).</summary>
+    public static readonly string[] IranZoneIds = { "Asia/Tehran", "Iran Standard Time" };
+
+    /// <summary>افست ثابت جایگزین — <b>+03:30</b>، نه UTC.</summary>
+    public static readonly TimeSpan IranFallbackOffset = TimeSpan.FromMinutes(210);
+
     public static readonly TimeZoneInfo IranZone = ResolveIranZone();
 
-    private static TimeZoneInfo ResolveIranZone()
+    private static TimeZoneInfo ResolveIranZone() => ResolveZone(FindZone);
+
+    /// <summary>
+    /// حل منطقهٔ زمانی ایران با یک تابع جست‌وجوی تزریق‌شدنی (برای تست).
+    ///
+    /// <para>
+    /// ⚠️ <b>چرا جایگزین +03:30 و نه UTC؟</b> اگر دیتابیس منطقه‌زمانی سیستم ناقص باشد
+    /// (کانتینرهای لاغر، ویندوز بدون tzdata)، افتادن به UTC یعنی ساعت تهران ۳:۳۰ عقب
+    /// می‌رود و مرز ماه شمسی، انقضا و مهلت تنفس همه جابه‌جا می‌شوند. ایران از ۱۴۰۱
+    /// ساعت تابستانی ندارد، پس +03:30 ثابت <b>امروز دقیقاً درست</b> است؛ UTC هیچ‌وقت
+    /// درست نیست.
+    /// </para>
+    /// </summary>
+    public static TimeZoneInfo ResolveZone(Func<string, TimeZoneInfo?> find)
     {
-        foreach (var id in new[] { "Asia/Tehran", "Iran Standard Time" })
+        foreach (var id in IranZoneIds)
         {
-            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            try
+            {
+                var zone = find(id);
+                if (zone is not null) return zone;
+            }
             catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { }
         }
 
-        return TimeZoneInfo.CreateCustomTimeZone("Iran-Fallback", TimeSpan.FromMinutes(210),
+        return TimeZoneInfo.CreateCustomTimeZone("Iran-Fallback", IranFallbackOffset,
             "Iran (UTC+03:30)", "Iran (UTC+03:30)");
+    }
+
+    private static TimeZoneInfo? FindZone(string id)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { return null; }
     }
 
     /// <summary>تبدیل یک لحظهٔ مطلق به ساعت دیوارِ تهران (بدون Kind محلی).</summary>
@@ -75,6 +106,43 @@ public static class PersianPeriodKey
         QuotaPeriod.Yearly => $"{Year(when):0000}",
         _ => Lifetime
     };
+
+    /// <summary>
+    /// بازهٔ <b>میلادی</b> متناظر با یک دورهٔ شمسی — برای پرس‌وجو روی ستون تاریخ.
+    ///
+    /// <para>
+    /// چرا لازم است؟ برای متریک‌های «تعداد فعال» با دورهٔ ماهانه/سالانه، تعداد رکوردهای
+    /// <b>همین دوره</b> ملاک است، نه کل تاریخچه. ستون تاریخ دیتابیس میلادی است، پس
+    /// مرز ماه شمسی باید به بازهٔ میلادی برگردانده شود.
+    /// </para>
+    ///
+    /// <para>پایان بازه <b>انحصاری</b> است: <c>[From, To)</c>.</para>
+    /// </summary>
+    public static (DateTime From, DateTime To) RangeOf(QuotaPeriod period, DateTime iranWhen)
+    {
+        var (year, month) = (Year(iranWhen), Month(iranWhen));
+
+        switch (period)
+        {
+            case QuotaPeriod.Monthly:
+            {
+                var from = Calendar.ToDateTime(year, month, 1, 0, 0, 0, 0);
+                var to = month == 12
+                    ? Calendar.ToDateTime(year + 1, 1, 1, 0, 0, 0, 0)
+                    : Calendar.ToDateTime(year, month + 1, 1, 0, 0, 0, 0);
+                return (from, to);
+            }
+            case QuotaPeriod.Yearly:
+                return (Calendar.ToDateTime(year, 1, 1, 0, 0, 0, 0),
+                        Calendar.ToDateTime(year + 1, 1, 1, 0, 0, 0, 0));
+            default:
+                return (DateTime.MinValue, DateTime.MaxValue);
+        }
+    }
+
+    /// <summary>بازهٔ میلادی دورهٔ همین لحظه (ساعت تهران).</summary>
+    public static (DateTime From, DateTime To) CurrentRange(QuotaPeriod period)
+        => RangeOf(period, NowIran());
 
     /// <summary>کلید دورهٔ همین لحظه — بر اساس ساعت تهران، نه ساعت سرور.</summary>
     public static string Now(QuotaPeriod period) => ForInstant(DateTimeOffset.UtcNow, period);

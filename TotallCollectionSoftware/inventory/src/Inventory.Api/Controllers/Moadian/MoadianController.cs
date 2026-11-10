@@ -164,69 +164,42 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpPost("SendInvoiceAsync")]
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {
-            // ==================== سهمیهٔ «ارسال به مودیان» (مرحله ۲) ====================
+            // ==================== سهمیهٔ «ارسال به مودیان» (مرحله ۲ — بازبینی) ====================
             //
-            // چرا مصرف <b>بعد</b> از تماس است؟
-            //   ارسال به مودیان یک تماس شبکه‌ای است و بی‌نهایت تضمین ندارد. اگر قبل از
-            //   تماس مصرف کنیم و تماس شکست بخورد، سهمیهٔ مشتری بی‌دلیل کم شده و باید
-            //   «بازگشت» بزنیم؛ ولی قاعدهٔ سند می‌گوید بازگشت فقط در خطای فنی همان
-            //   عملیات مجاز است — یعنی یک مسیر پیچیده و مستعد ناسازگاری.
-            //   ترتیب درست: (۱) بررسی فقط-خواندنی که جا داریم، (۲) تماس با مودیان
-            //   <b>بیرون از هر تراکنش</b>، (۳) مصرف اتمیک فقط اگر ارسال موفق بود.
-            //   این‌طور نه قفلی در طول تماس شبکه نگه داشته می‌شود، نه بازگشتی لازم است.
+            // ترتیب: (۱) رزرو اتمیک در تراکنش جدا و کوتاه، (۲) تماس با مودیان بیرون از هر
+            // تراکنش، (۳) تسویه بر اساس یکی از سه سرنوشت.
             //
-            // ⚠️ پنجرهٔ مسابقه: اگر دو درخواست هم‌زمان از «آخرین واحد» رد شوند، ممکن است
-            //   یکی ارسال شود و مصرفش رد شود. این حالت نادر است و در لاگ به‌صورت
-            //   LICENSE_QUOTA_RACE ثبت می‌شود؛ عملیاتی که انجام شده را نمی‌توان برگرداند.
+            // چرا «رزرو قبل از تماس» و نه «بررسی فقط‌خواندنی قبل، مصرف بعد»؟
+            //   با بررسی فقط‌خواندنی، دو درخواست هم‌زمان روی آخرین واحد هر دو رد می‌شوند و
+            //   هر دو ارسال انجام می‌شود — یعنی سقف یکی رد می‌شود. رزرو اتمیک این پنجره را
+            //   کامل می‌بندد: دقیقاً یک درخواست واحد آخر را می‌گیرد.
+            //
+            // چرا بازگشت در شکست اشکالی ندارد؟ چون سند صریح می‌گوید بازگشت <b>فقط</b> برای
+            //   «خطای فنی همان عملیات» مجاز است — و شکست تماس دقیقاً همان است. بازگشت با
+            //   رخداد LICENSE_QUOTA_REFUND_TECHNICAL ثبت می‌شود.
+            //
+            // و اگر نتیجه نامعلوم باشد (Timeout پس از ارسال)؟ نه بازگشت، نه تکرار خودکار؛
+            //   ردیف دفتر با reason='pending' و رخداد LICENSE_QUOTA_PENDING ثبت می‌شود.
             var db = HttpContext.RequestServices.GetRequiredService<Inventory.Api.Data.AppDbContext>();
             var log = HttpContext.RequestServices
                 .GetRequiredService<ILoggerFactory>().CreateLogger("License.Moadian");
 
-            // (۰) اطمینان از اینکه هیچ تراکنشی باز نیست — قفل ردیف نباید تا پایان تماس بماند.
+            // قفل/تراکنش باز نباید تا پایان تماس بماند.
             if (db.Database.CurrentTransaction is not null)
-                log.LogWarning("[License] تراکنش باز در ابتدای ارسال مودیان؛ مصرف سهمیه در طول تماس شبکه نگه داشته می‌شود.");
+                log.LogWarning("[License] تراکنش باز در ابتدای ارسال مودیان؛ رزرو سهمیه داخل آن انجام می‌شود.");
 
             var entitlement = await Licenses.GetEffectiveEntitlementAsync();
-            var quotaService = HttpContext.RequestServices
-                .GetRequiredService<Inventory.Api.Licensing.Services.QuotaService>();
 
-            // (۱) بررسی فقط-خواندنی (بدون قفل، بدون تغییر)
-            var peek = await quotaService.PeekAsync(
+            var coordinator = HttpContext.RequestServices
+                .GetRequiredService<Inventory.Api.Licensing.Services.QuotaSendCoordinator>();
+
+            var (result, outcome) = await coordinator.SendAsync(
                 entitlement,
-                Inventory.Licensing.Modules.ModuleCodes.Moadian,
-                Inventory.Licensing.Metrics.MetricCodes.MoadianInvoiceSend);
+                ct => connectService.SendInvoiceAsync(model),
+                entityId: model?.Id.ToString());
 
-            if (!peek.Allowed)
-                return new ApiModel { Success = false, Message = peek.Message };
-
-            // (۲) تماس با مودیان — بیرون از هر تراکنش دیتابیس
-            var result = await connectService.SendInvoiceAsync(model);
-
-            // (۳) مصرف اتمیک فقط در صورت موفقیت
-            if (result.Success)
-            {
-                var consume = await quotaService.TryConsumeAsync(
-                    entitlement,
-                    Inventory.Licensing.Modules.ModuleCodes.Moadian,
-                    Inventory.Licensing.Metrics.MetricCodes.MoadianInvoiceSend,
-                    entityType: "MoadianInvoice");
-
-                if (!consume.Allowed)
-                {
-                    // عملیات انجام شده ولی واحد آخر را دیگری گرفته بود.
-                    log.LogWarning("[License] LICENSE_QUOTA_RACE: ارسال مودیان موفق بود ولی مصرف سهمیه رد شد: {Message}",
-                        consume.Message);
-
-                    result.Message = string.IsNullOrWhiteSpace(result.Message)
-                        ? "ارسال انجام شد، ولی سقف سهمیهٔ ارسال به مودیان پر شده بود؛ برای دورهٔ بعد سقف را افزایش دهید."
-                        : result.Message + " | توجه: سقف سهمیهٔ ارسال به مودیان پر شده بود.";
-                }
-                else if (consume.WarningMessage is { } warning)
-                {
-                    log.LogWarning("[License] هشدار سهمیهٔ مودیان: {Warning} ({Used}/{Limit})",
-                        warning, consume.Used, consume.Limit);
-                }
-            }
+            if (outcome == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending)
+                log.LogWarning("[License] LICENSE_QUOTA_PENDING: نتیجهٔ ارسال مودیان نامعلوم است (صورتحساب {Id}).", model?.Id);
 
             return result;
         }

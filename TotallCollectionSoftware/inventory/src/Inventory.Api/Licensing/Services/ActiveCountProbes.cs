@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Licensing.Metrics;
+using Inventory.Licensing.Model;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Licensing.Services;
@@ -20,26 +21,43 @@ namespace Inventory.Api.Licensing.Services;
 /// قاعدهٔ سهمیه این است: «حذف توسط کاربر، مصرف را برنمی‌گرداند». اگر حذف‌شده‌ها را
 /// نشماریم، مشتری می‌تواند با حذف و ایجاد مکرر از سقف عبور کند.
 /// </para>
+///
+/// <para>
+/// <b>⚠️ بازه‌دار شد (بازبینی مرحله ۲):</b> هر probe حالا بازهٔ <c>[From, To)</c> می‌گیرد.
+/// قبلاً فقط «کل تاریخچه» شمرده می‌شد و برای سقف <b>ماهانه</b> این غلط بود: مشتری که
+/// ۵٬۰۰۰ فاکتور در ماه قبل ساخته بود، ماه بعد هم «۵٬۰۰۰ مصرف‌شده» می‌دید و سقف ماهانهٔ
+/// تازه‌اش از روز اول پر به‌نظر می‌رسید. قاعدهٔ درست:
+/// <b>برای دورهٔ ماهانه/سالانه، رکوردهای همان دوره شمرده می‌شوند.</b>
+/// </para>
 /// </summary>
 public static class ActiveCountProbes
 {
-    /// <summary>متریک → تابع شمارش رکوردهای همین لحظه (با احتساب حذف‌نرم‌ها).</summary>
-    public static readonly IReadOnlyDictionary<string, Func<AppDbContext, CancellationToken, Task<long>>> Probes =
-        new Dictionary<string, Func<AppDbContext, CancellationToken, Task<long>>>(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// متریک → تابع شمارش در بازهٔ <c>[from, to)</c>.
+    /// برای دورهٔ دائمی، بازه <c>(DateTime.MinValue, DateTime.MaxValue)</c> می‌آید.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>>> Probes =
+        new Dictionary<string, Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>>>(StringComparer.OrdinalIgnoreCase)
         {
-            [MetricCodes.InvoiceCreate] = (db, ct) =>
-                db.FacInvoices.IgnoreQueryFilters().LongCountAsync(ct),
+            [MetricCodes.InvoiceCreate] = (db, from, to, ct) =>
+                db.FacInvoices.IgnoreQueryFilters()
+                  .Where(i => i.Date >= from && i.Date < to)
+                  .LongCountAsync(ct),
 
-            [MetricCodes.LetterIncomingCreate] = (db, ct) =>
-                db.IncomingLetters.IgnoreQueryFilters().LongCountAsync(ct),
+            [MetricCodes.LetterIncomingCreate] = (db, from, to, ct) =>
+                db.IncomingLetters.IgnoreQueryFilters()
+                  .Where(l => l.Date >= from && l.Date < to)
+                  .LongCountAsync(ct),
 
-            [MetricCodes.LetterOutgoingCreate] = (db, ct) =>
-                db.OutgoingLetters.IgnoreQueryFilters().LongCountAsync(ct)
+            [MetricCodes.LetterOutgoingCreate] = (db, from, to, ct) =>
+                db.OutgoingLetters.IgnoreQueryFilters()
+                  .Where(l => l.DateSabt >= from && l.DateSabt < to)
+                  .LongCountAsync(ct)
         };
 
     /// <summary>همهٔ متریک‌های ActiveCount که probe دارند.</summary>
     public static IEnumerable<(string Module, string Metric,
-        Func<AppDbContext, CancellationToken, Task<long>> Count)> All()
+        Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>> Count)> All()
     {
         foreach (var metric in MetricCodes.All)
         {
@@ -49,19 +67,44 @@ public static class ActiveCountProbes
         }
     }
 
+    /// <summary>شمارش واقعی یک متریک در بازهٔ دورهٔ مشخص.</summary>
+    public static Task<long> CountAsync(AppDbContext db, string metric, QuotaPeriod period,
+        DateTime iranNow, CancellationToken cancellationToken = default)
+    {
+        if (!Probes.TryGetValue(metric, out var probe)) return Task.FromResult(0L);
+        return probe(db, Inventory.Licensing.Periods.PersianPeriodKey.RangeOf(period, iranNow).From,
+            Inventory.Licensing.Periods.PersianPeriodKey.RangeOf(period, iranNow).To, cancellationToken);
+    }
+
     /// <summary>
-    /// ثبت مبنای مصرف برای همهٔ متریک‌های ActiveCount که تازه فعال شده‌اند.
-    /// اگر هیچ متریکی از این نوع نباشد، هیچ کاری نمی‌کند (وضعیت امروز).
+    /// ثبت «مبنای مصرف» برای متریک‌هایی که <b>در همین لایسنس سقف دارند</b>.
+    ///
+    /// <para>
+    /// <b>چه زمانی اجرا می‌شود؟</b> در فعال‌سازی لایسنس. اما نه برای همهٔ متریک‌ها:
+    /// فقط برای متریک‌هایی که <b>همین حالا سقف گرفتند</b>. دلیلش این سناریو است:
+    /// لایسنس اول اصلاً سقف «صدور صورتحساب» ندارد (بی‌نهایت)، مشتری ۵٬۰۰۰ فاکتور
+    /// می‌سازد، بعد لایسنس دوم با سقف ۳۰ می‌آید. اگر مبنا همان اول (بدون سقف) گرفته
+    /// می‌شد، این ۵٬۰۰۰ فاکتور سقف تازه را از روز اول پر می‌کرد. حالا مبنا <b>همان
+    /// لحظه‌ای</b> گرفته می‌شود که سقف برای اولین بار می‌آید.
+    /// </para>
+    ///
+    /// <para>همچنان idempotent است: هر متریک فقط یک مبنا دارد و تمدید/فعال‌سازی دوباره آن را جابه‌جا نمی‌کند.</para>
     /// </summary>
     /// <returns>تعداد متریک‌هایی که همین حالا مبنا گرفتند.</returns>
-    public static async Task<int> CaptureAllAsync(AppDbContext db, QuotaService quota, string? serial,
+    public static async Task<int> CaptureAllAsync(AppDbContext db, QuotaService quota,
+        Inventory.Licensing.Entitlement.EffectiveEntitlement entitlement, string? serial,
         string reason = "activation", CancellationToken cancellationToken = default)
     {
         var captured = 0;
 
         foreach (var (module, metric, count) in All())
         {
-            var live = await count(db, cancellationToken);
+            // فقط متریکی که در لایسنس مؤثر سقف دارد (مستقیم یا از طریق متریک تجمیعی).
+            var hasLimit = MetricCodes.ConsumeTargets(metric)
+                .Any(t => entitlement.LimitsFor(module, t).Count > 0);
+            if (!hasLimit) continue;
+
+            var live = await count(db, DateTime.MinValue, DateTime.MaxValue, cancellationToken);
             if (await quota.CaptureBaselineAsync(module, metric, live, reason, serial, cancellationToken))
                 captured++;
         }

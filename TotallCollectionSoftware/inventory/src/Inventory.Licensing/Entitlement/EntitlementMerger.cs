@@ -1,6 +1,7 @@
 using Inventory.Licensing.Metrics;
 using Inventory.Licensing.Model;
 using Inventory.Licensing.Modules;
+using Inventory.Licensing.Periods;
 
 namespace Inventory.Licensing.Entitlement;
 
@@ -43,9 +44,22 @@ public static class EntitlementMerger
     /// </summary>
     /// <param name="documents">اسناد اعمال‌شده (ممکن است خالی باشد).</param>
     /// <param name="now">زمان مرجع محاسبه (پیش‌فرض: اکنون).</param>
+    /// <summary>
+    /// «امروز» برای ارزیابی انقضا و مهلت تنفس — <b>تاریخ تهران</b>، نه تاریخ سرور.
+    /// یک‌جا و قابل تست، تا هیچ‌جا کسی دوباره <c>DateTime.Now</c> ننویسد.
+    /// </summary>
+    public static DateTime Today() => PersianPeriodKey.NowIran().Date;
+
     public static EffectiveEntitlement Merge(IReadOnlyCollection<LicenseDocument>? documents, DateTime? now = null)
     {
-        var at = (now ?? DateTime.Now).Date;
+        // ⚠️ مبنای زمانی = **تاریخ تهران**، نه تاریخ سرور.
+        //
+        // چرا؟ انقضا و مهلت تنفس (Grace) باید با «امروزِ مشتری» سنجیده شوند. سروری که
+        // ساعتش UTC یا وقت اروپا است، در بازهٔ ۰۰:۰۰ تا ۰۳:۳۰ بامداد تهران هنوز «دیروز»
+        // است؛ نتیجه اینکه لایسنسی که امروز منقضی می‌شود یک روز بیشتر زنده می‌ماند (یا
+        // برعکس، یک روز زودتر می‌میرد) — بسته به اینکه سرور کدام سمت مرز باشد.
+        // همان دلیلی که کلید دورهٔ سهمیه را تهران‌محور کردیم، این‌جا هم صادق است.
+        var at = (now ?? Today()).Date;
         if (documents is null || documents.Count == 0)
             return new EffectiveEntitlement
             {

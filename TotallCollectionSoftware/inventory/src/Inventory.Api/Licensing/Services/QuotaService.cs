@@ -340,6 +340,170 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
         return refunded;
     }
 
+    // ==================== رزرو برای عملیات شبکه‌ای (مرحله ۲ — بازبینی) ====================
+
+    /// <summary>
+    /// <b>رزرو اتمیک یک واحد در تراکنش جدا و کوتاه</b> — برای عملیاتی که بعدش یک تماس
+    /// شبکه‌ای می‌آید (ارسال به مودیان).
+    ///
+    /// <para>
+    /// چرا جدا از <see cref="QuotaGuard.ExecuteAsync"/>؟ چون آن متد شمارنده و ثبت
+    /// رکورد را در <b>یک</b> تراکنش نگه می‌دارد و تراکنش تا پایان بلوک باز می‌ماند. اگر
+    /// تماس شبکه داخل همان بلوک باشد، قفل ردیف شمارنده در طول تماس (که می‌تواند ده‌ها
+    /// ثانیه طول بکشد) نگه داشته می‌شود و بقیهٔ درخواست‌ها پشت آن صف می‌بندند.
+    /// </para>
+    ///
+    /// <para>
+    /// ترتیب درست: رزرو (تراکنش جدا، بلافاصله Commit) ← تماس شبکه بیرون از هر تراکنش ←
+    /// یکی از سه سرنوشت:
+    /// <list type="number">
+    ///   <item>موفق ⇒ <see cref="ConfirmAsync"/> (فقط مهر تأیید در دفتر؛ شمارنده دست‌نخورده)</item>
+    ///   <item>شکست <b>قطعی</b> ⇒ <see cref="RefundTechnicalAsync"/> + رخداد <c>LICENSE_QUOTA_REFUND_TECHNICAL</c></item>
+    ///   <item>نتیجهٔ <b>نامعلوم</b> ⇒ <see cref="MarkPendingAsync"/> — <b>بدون</b> بازگشت، چون ممکن است عملیات انجام شده باشد</item>
+    /// </list>
+    /// </para>
+    ///
+    /// <para>
+    /// ⛔ اگر تراکنشی از قبل باز باشد، این متد استثنا می‌دهد: رزروی که داخل تراکنش
+    /// فراخوان بماند، همان قفل طولانی را می‌سازد که می‌خواهیم از آن پرهیز کنیم.
+    /// </para>
+    /// </summary>
+    public async Task<QuotaConsumeResult> ReserveAsync(EffectiveEntitlement entitlement, string module,
+        string metric, int amount = 1, string? entityType = null, string? entityId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (amount <= 0) return QuotaConsumeResult.Unlimited();
+
+        if (_db.Database.CurrentTransaction is not null)
+            throw new InvalidOperationException(
+                "رزرو سهمیه نباید داخل تراکنش باز انجام شود؛ تراکنش باید کوتاه و جدا باشد.");
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            // دفتر این‌جا با Reason='reserve' نوشته می‌شود تا از لحظهٔ رزرو معلوم باشد
+            // چه چیزی در جریان است؛ سرنوشت نهایی با ردیف بعدی (confirm/refund-technical/pending) می‌آید.
+            var result = await TryConsumeAsync(entitlement, module, metric, amount, entityType, entityId,
+                userId: null, recordLedger: false, cancellationToken: cancellationToken);
+
+            if (!result.Allowed)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return result;
+            }
+
+            foreach (var target in MetricCodes.ConsumeTargets(metric))
+                foreach (var limit in entitlement.LimitsFor(module, target))
+                    await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), amount, entityType, entityId,
+                        null, cancellationToken, "reserve");
+
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// بازگشت مصرف به دلیل <b>خطای فنی قطعیِ همان عملیات</b>.
+    ///
+    /// <para>
+    /// تفاوتش با <see cref="TryRefundAsync"/>: آن یکی قاعدهٔ «حذف کاربر مصرف را برنمی‌گرداند»
+    /// را اجرا می‌کند و دورهٔ دائمی را بازنمی‌گرداند. اما این‌جا عملیات <b>هرگز انجام
+    /// نشده</b> (تماس شبکه قطعاً شکست خورد، نه اینکه کاربر رکورد را پاک کند)؛ پس
+    /// واحد رزروشده باید برگردد — <b>حتی برای دورهٔ دائمی</b> — وگرنه مشتری بابت
+    /// عملیاتی که انجام نشده جریمه می‌شود. رخداد <c>LICENSE_QUOTA_REFUND_TECHNICAL</c>
+    /// برای ممیزی ثبت می‌شود.
+    /// </para>
+    /// </summary>
+    public async Task<bool> RefundTechnicalAsync(EffectiveEntitlement entitlement, string module, string metric,
+        int amount = 1, string? entityType = null, string? entityId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (amount <= 0) return false;
+
+        var isSqlite = _db.Database.IsSqlite();
+        var refunded = false;
+
+        foreach (var target in MetricCodes.ConsumeTargets(metric))
+        {
+            foreach (var limit in entitlement.LimitsFor(module, target))
+            {
+                var periodKey = PersianPeriodKey.Now(limit.Period);
+                var now = PersianPeriodKey.NowIran();
+
+                var affected = isSqlite
+                    ? await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE ""LicenseUsages"" SET ""Used"" = ""Used"" - {amount}, ""UpdatedAt"" = {now}
+ WHERE ""Module"" = {limit.Module} AND ""Metric"" = {limit.Metric} AND ""PeriodKey"" = {periodKey}
+   AND ""Used"" - {amount} >= 0", cancellationToken)
+                    : await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
+ WHERE [Module] = {limit.Module} AND [Metric] = {limit.Metric} AND [PeriodKey] = {periodKey}
+   AND [Used] - {amount} >= 0", cancellationToken);
+
+                if (affected <= 0) continue;
+
+                refunded = true;
+                await StampAsync(limit, periodKey, cancellationToken);
+                await LedgerAsync(limit, periodKey, -amount, entityType, entityId, null, cancellationToken,
+                    "refund-technical");
+            }
+        }
+
+        var title = MetricCodes.TitleOf(metric);
+        await _events.WriteAsync("LICENSE_QUOTA_REFUND_TECHNICAL",
+            refunded
+                ? $"عملیات «{title}» با خطای فنی قطعی شکست خورد؛ یک واحد از سهمیهٔ رزروشده بازگردانده شد."
+                : $"عملیات «{title}» با خطای فنی قطعی شکست خورد؛ ولی واحد رزروشده‌ای برای بازگشت پیدا نشد.",
+            severity: refunded ? "Info" : "Warning");
+
+        _log.LogWarning("[License] بازگشت فنی سهمیه «{Metric}»: {Result}", metric, refunded ? "انجام شد" : "ردیفی نبود");
+        return refunded;
+    }
+
+    /// <summary>
+    /// علامت‌زدن رزرو به‌عنوان <b>«در انتظار»</b> — برای وقتی نتیجهٔ عملیات نامعلوم است
+    /// (مثلاً Timeout پس از ارسال).
+    ///
+    /// <para>
+    /// این‌جا مصرف <b>برنمی‌گردد</b>: اگر درخواست به سامانه رسیده باشد، عملیات انجام شده و
+    /// بازگرداندن واحد یعنی «مجانی» شدن آن. در عوض ردیف دفتر با <c>delta = 0</c> و
+    /// <c>reason = pending</c> نوشته می‌شود و رخداد <c>LICENSE_QUOTA_PENDING</c> ثبت
+    /// می‌شود تا پشتیبانی بتواند دستی بررسی و در صورت لزوم اصلاح کند.
+    /// </para>
+    /// </summary>
+    public async Task MarkPendingAsync(EffectiveEntitlement entitlement, string module, string metric,
+        string? entityType = null, string? entityId = null, string? note = null,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var target in MetricCodes.ConsumeTargets(metric))
+            foreach (var limit in entitlement.LimitsFor(module, target))
+                await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), 0, entityType, entityId, null,
+                    cancellationToken, "pending");
+
+        var title = MetricCodes.TitleOf(metric);
+        await _events.WriteAsync("LICENSE_QUOTA_PENDING",
+            $"نتیجهٔ عملیات «{title}» نامعلوم است (احتمالاً پس از ارسال قطع شد)؛ مصرف رزروشده "
+            + "بازگردانده نشد و برای بررسی دستی علامت‌گذاری شد." + (string.IsNullOrWhiteSpace(note) ? "" : $" جزئیات: {note}"),
+            severity: "Warning");
+
+        _log.LogWarning("[License] نتیجهٔ نامعلوم برای «{Metric}» — رزرو در وضعیت Pending ماند.", metric);
+    }
+
+    /// <summary>ثبت «تأیید» رزرو — فقط برای زنجیرهٔ رویدادها؛ شمارنده تغییر نمی‌کند.</summary>
+    public async Task ConfirmAsync(EffectiveEntitlement entitlement, string module, string metric,
+        string? entityType = null, string? entityId = null, CancellationToken cancellationToken = default)
+    {
+        foreach (var target in MetricCodes.ConsumeTargets(metric))
+            foreach (var limit in entitlement.LimitsFor(module, target))
+                await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), 0, entityType, entityId, null,
+                    cancellationToken, "confirm");
+    }
+
     // ==================== خواندن مصرف مؤثر ====================
 
     /// <summary>
@@ -353,24 +517,44 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
     /// </summary>
     public async Task<long> GetEffectiveUsageAsync(EffectiveEntitlement entitlement, MetricLimit limit,
         Func<CancellationToken, Task<long>>? liveCount, CancellationToken cancellationToken = default)
+        => await GetEffectiveUsageAsync(entitlement, limit,
+            liveCount is null ? null : (_, ct) => liveCount(ct), cancellationToken);
+
+    /// <summary>
+    /// مصرف مؤثر یک متریک — نسخهٔ <b>بازه‌دار</b> (بازبینی مرحله ۲).
+    ///
+    /// <para>
+    /// برای متریک‌های «تعداد فعال» دو چیز باید با هم دیده شود:
+    /// </para>
+    /// <list type="number">
+    ///   <item><b>دورهٔ ماهانه/سالانه:</b> فقط رکوردهای <b>همین دوره</b> شمرده می‌شوند.
+    ///   فرمول: <c>max(شمارنده، رکوردهای این دوره)</c>. مبنا این‌جا لازم نیست؛ چون
+    ///   دادهٔ قدیمی تاریخ گذشته دارد و بیرون از پنجره می‌افتد.</item>
+    ///   <item><b>دورهٔ دائمی:</b> کل تاریخچه با کسر مبنا.
+    ///   فرمول: <c>max(شمارنده، max(0, کل رکوردها − مبنا))</c>.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// ⚠️ پیش از این اصلاح، برای سقف ماهانه هم «کل تاریخچه − مبنا» حساب می‌شد؛ نتیجه
+    /// اینکه سقف ماهانهٔ تازه، از روز اول پر به‌نظر می‌رسید.
+    /// </para>
+    /// </summary>
+    public async Task<long> GetEffectiveUsageAsync(EffectiveEntitlement entitlement, MetricLimit limit,
+        Func<QuotaPeriod, CancellationToken, Task<long>>? liveInPeriod,
+        CancellationToken cancellationToken = default)
     {
         var periodKey = PersianPeriodKey.Now(limit.Period);
         var counter = await ReadUsedAsync(limit, periodKey, cancellationToken) ?? 0;
 
         var definition = MetricCodes.Find(limit.Metric);
-        if (definition?.Kind != MetricKind.ActiveCount || liveCount is null) return counter;
+        if (definition?.Kind != MetricKind.ActiveCount || liveInPeriod is null) return counter;
 
-        // ---------- معیار شمارش ردیف‌های واقعی ----------
-        // live  = تعداد رکوردهای موجود در همین لحظه
-        // base  = تعدادی که هنگام فعال‌سازی لایسنس از قبل وجود داشت (جدول مبنای مصرف)
-        // ملاک = max(شمارنده, live − base)
-        //
-        // چرا منها؟ چون دادهٔ وارد‌شده از سیستم قبلی (اسکریپت مهاجرت) با نرم‌افزار ما
-        // ساخته نشده و نباید سقف مشتری را پر کند. چرا فقط «قبل از مبنا»؟ چون هر
-        // ایمپورتی که پس از فعال‌سازی انجام شود، رشد واقعی دادهٔ مشتری است و باید
-        // مثل بقیه شمرده شود.
-        var baseline = await ReadBaselineAsync(limit.Module, limit.Metric, cancellationToken);
-        var live = await liveCount(cancellationToken);
+        var live = await liveInPeriod(limit.Period, cancellationToken);
+
+        // دورهٔ دائمی: مبنا کسر می‌شود. دورهٔ ماهانه/سالانه: پنجره خودش دادهٔ قدیمی را حذف می‌کند.
+        var baseline = limit.Period == QuotaPeriod.Lifetime
+            ? await ReadBaselineAsync(limit.Module, limit.Metric, cancellationToken)
+            : 0;
 
         return ComputeEffective(counter, live, baseline);
     }
