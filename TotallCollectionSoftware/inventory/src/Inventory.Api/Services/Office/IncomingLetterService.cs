@@ -460,6 +460,12 @@ public class IncomingLetterService : IIncomingLetterService
             // EditAsync خودش به کسانی که نامه را دیده‌اند اعلانِ «ویرایش نامه» می‌فرستد.
             CanEdit = letter.CreateUserId == userId || isAdmin || canDabirkhane,
 
+            // افزودن پیوست: هم‌راستا با کنترلر (UploadAttachment → CanAccessLetterAsync) و
+            // با نامهٔ داخلی/صادره. «حاضر در گردش» = ردیف ارجاعی برای همین کاربر وجود دارد.
+            // پیش‌تر دکمهٔ «افزودن پیوست» در ریدر فقط با CanEdit رندر می‌شد و کاربرانِ
+            // در گردش (که حق قانونی افزودن پیوست را دارند) آن را نمی‌دیدند.
+            CanAttach = letter.CreateUserId == userId || isAdmin || canDabirkhane || inFlow,
+
             // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
             // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
             IsBayegani = myErjas.Any(e => e.IsBayegani == true)
