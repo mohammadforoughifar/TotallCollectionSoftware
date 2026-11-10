@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    تست‌های موتور لایسنس — به سبک پروژه‌های تست موجود همین مخزن: برنامهٔ کنسولی با
+    متد Check()، نه xUnit. دلیل: کل ۲۵ پروژهٔ tests/ همین سبک‌اند و با
+    `dotnet run --project tests/Licensing` بدون نیاز به test runner اجرا می‌شوند.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Inventory.Licensing/Inventory.Licensing.csproj" />
+  </ItemGroup>
+</Project>

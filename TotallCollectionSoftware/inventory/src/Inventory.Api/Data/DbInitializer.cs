@@ -105,6 +105,8 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -186,6 +188,8 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
                 }
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.

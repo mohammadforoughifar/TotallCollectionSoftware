@@ -4,6 +4,7 @@ using Inventory.Api.Controllers;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
+using Inventory.Api.Licensing;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -445,6 +446,11 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o.MaxRequestBodySize = null);
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
+// ================== لایسنس ==================
+// ترتیب: اول مایگریشن (در DbInitializer)، بعد بررسی لایسنس (InitializeLicensingAsync) —
+// و شکست بررسی لایسنس، مانع بالا آمدن برنامه نمی‌شود.
+builder.Services.AddLicensing(builder.Configuration);
+
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
@@ -682,6 +688,12 @@ else if (schemaVerbose)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
 
+// ================== آماده‌سازی لایسنس ==================
+// «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز
+// استثنا پرتاب نمی‌کند؛ در بدترین حالت برنامه با وضعیت «لایسنس نامعتبر» بالا می‌آید.
+if (!EF.IsDesignTime)
+    await app.InitializeLicensingAsync();
+
 // اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
 await app.InitializeRadisHrAsync(EF.IsDesignTime);
 schemaInitializing = false;
@@ -744,6 +756,12 @@ if (app.Environment.IsDevelopment() && !runningUnderIis)
     app.UseMiddleware<DevelopmentClientRedirect>();
 
 app.UseAuthentication();
+
+// ================== دروازهٔ لایسنس ==================
+// چرا این‌جا؟ (۱) بعد از احراز هویت تا پاسخ وابسته به کاربر باشد؛
+// (۲) قبل از ActiveCompanyMiddleware تا وقتی لایسنس نامعتبر است، کوئری شرکت فعال هم زده نشود.
+// با لایسنس نامعتبر برنامه Crash نمی‌کند: صفحهٔ ورود و صفحهٔ بارگذاری لایسنس باز می‌مانند.
+app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>();
 
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
 // هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.

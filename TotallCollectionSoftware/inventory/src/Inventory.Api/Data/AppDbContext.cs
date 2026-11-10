@@ -597,6 +597,16 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
 
+    // ==================== لایسنس ====================
+    // نکته: هیچ‌کدام از این جدول‌ها فیلتر «شرکت فعال» ندارند؛ لایسنس مال کل نصب است،
+    // نه یک شرکت. اگر فیلتر می‌خوردند، با تغییر شرکت در کمبوی بالا وضعیت لایسنس عوض می‌شد.
+    public DbSet<LicenseInstallation> LicenseInstallations => Set<LicenseInstallation>();
+    public DbSet<LicenseGrant> LicenseGrants => Set<LicenseGrant>();
+    public DbSet<LicenseItemRow> LicenseItemRows => Set<LicenseItemRow>();
+    public DbSet<LicenseUsage> LicenseUsages => Set<LicenseUsage>();
+    public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
+    public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -606,6 +616,7 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        ConfigureLicensing(mb);
         // بک‌آپ خودکار: کلیدهای رشته‌ای و تک‌ردیفی تنظیمات نباید Identity بگیرند.
         mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
         mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);
@@ -1900,5 +1911,34 @@ public class AppDbContext : DbContext
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+    }
+
+    /// <summary>
+    /// پیکربندی جداول لایسنس.
+    /// <para>
+    /// همهٔ ایندکس‌های یکتا این‌جا تعریف شده‌اند تا هم مایگریشن EF و هم
+    /// <c>LicenseSchemaV1</c> (مسیر SQLite) یک نتیجه بدهند.
+    /// </para>
+    /// </summary>
+    private static void ConfigureLicensing(ModelBuilder mb)
+    {
+        // تک‌ردیفی بودن نصب با منطق برنامه تضمین می‌شود (همیشه Id = 1)؛ Identity نگه داشته می‌شود.
+        mb.Entity<LicenseInstallation>().HasIndex(x => x.InstallationId).IsUnique();
+
+        // هر فایل لایسنس فقط یک‌بار: سریال یکتا
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Serial).IsUnique();
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Status);
+
+        mb.Entity<LicenseItemRow>().HasIndex(x => x.GrantId);
+        mb.Entity<LicenseItemRow>().HasIndex(x => new { x.GrantId, x.ItemId });
+
+        // کلید طبیعی مصرف: ماژول + متریک + دوره (نه آیتم — مصرف با تغییر آیتم ریست نمی‌شود)
+        mb.Entity<LicenseUsage>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
+        mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });
+        mb.Entity<LicenseSession>().HasIndex(x => x.UserId);
+
+        mb.Entity<LicenseEvent>().HasIndex(x => x.At);
     }
 }
