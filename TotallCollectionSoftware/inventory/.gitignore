@@ -48,3 +48,16 @@ sql/legacy-aria/
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.pdf
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.png
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.jpg
+
+# ===================== دادهٔ اجرایی و کلیدها (خارج از گیت) =====================
+# App_Data شامل چیزهایی است که **مخصوص همین نصب** است و نباید در مخزن باشد:
+#   vault/vault.key        کلید رمزنگاری گاوصندوق رمزها
+#   https/ca.key           کلید خصوصی CA داخلی
+#   https/server.pfx       گواهی سرور با کلید خصوصی
+#   DataProtectionKeys/    کلیدهای ASP.NET Data Protection
+#   Licensing/             فایل لایسنس اعمال‌شده و quota.key
+# اگر این‌ها در گیت بمانند، هر کسی که به مخزن دسترسی دارد کلید نصب را دارد.
+src/Inventory.Api/App_Data/
+
+# کلید رمزنگاری پوشه‌های پیوست که در زمان اجرا در uploads ساخته می‌شود
+src/Inventory.Api/wwwroot/uploads/**/.key
