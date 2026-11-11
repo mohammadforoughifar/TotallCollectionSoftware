@@ -221,41 +221,76 @@ else
                             }
                             else
                             {
-                                <div class="d-flex flex-column gap-3.5">
-                                    @foreach (var point in data.Trend)
+                                <div class="ops-line-readout" aria-live="polite">
+                                    @if (ActiveTrendIndex >= 0)
                                     {
-                                        <div class="p-2.5 rounded-3 bg-light-subtle border">
-                                            <div class="fw-700 text-dark fs-8 mb-2">@point.Label</div>
-                                            @if (Auth.CanSee("Orders"))
-                                            {
-                                                <div class="d-flex align-items-center gap-2 mb-1.5">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">خرید</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-indigo-gradient" style="@BarStyle(point.Purchase)"></div>
-                                                    </div>
-                                                    <span class="num fs-9 fw-700 text-indigo" style="width: 100px; text-align: left;">@point.Purchase.Money()</span>
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2 mb-1.5">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">فروش</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-emerald-gradient" style="@BarStyle(point.Sale)"></div>
-                                                    </div>
-                                                    <span class="num fs-9 fw-700 text-emerald" style="width: 100px; text-align: left;">@point.Sale.Money()</span>
-                                                </div>
-                                            }
-                                            @if (Auth.CanSee("Repairs"))
-                                            {
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">تعمیرات</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-warning" style="@BarStyle(point.RepairRevenue)"></div>
-                                                    </div>
-                                                    <span class="num fs-9 fw-700 text-amber" style="width: 100px; text-align: left;">@point.RepairRevenue.Money()</span>
-                                                </div>
-                                            }
-                                        </div>
+                                        var selected = data.Trend[ActiveTrendIndex];
+                                        <strong>@selected.Label</strong>
+                                        @if (Auth.CanSee("Orders"))
+                                        {
+                                            <span class="ops-line-purchase">خرید: @selected.Purchase.Money() ریال</span>
+                                            <span class="ops-line-sale">فروش: @selected.Sale.Money() ریال</span>
+                                        }
+                                        @if (Auth.CanSee("Repairs"))
+                                        {
+                                            <span class="ops-line-repair">تعمیرات: @selected.RepairRevenue.Money() ریال</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span>برای مشاهدهٔ مبالغ، نشانگر را در نمودار حرکت دهید یا یک تاریخ را لمس کنید.</span>
                                     }
                                 </div>
+                                <div class="ops-line-scroll" role="region" aria-label="نمودار خطی عملکرد؛ با کلید Tab تاریخ‌ها را انتخاب کنید">
+                                    <svg class="ops-line-svg" viewBox="0 0 900 320" role="group" aria-label="روند خرید، فروش و تعمیرات" @onpointerleave="ClearTrendHover">
+                                        @for (var tick = 0; tick <= 4; tick++)
+                                        {
+                                            var y = 270 - tick * 60;
+                                            var amount = ChartMin + ChartRange * tick / 4m;
+                                            <g><line x1="110" y1="@y" x2="880" y2="@y" class="ops-line-grid" />
+                                            <text x="100" y="@(y + 4)" text-anchor="end" class="ops-line-label">@amount.Money()</text></g>
+                                        }
+                                        @if (Auth.CanSee("Orders"))
+                                        {
+                                            <polyline points="@TrendPoints(0)" class="ops-line-stroke ops-line-purchase" />
+                                            <polyline points="@TrendPoints(1)" class="ops-line-stroke ops-line-sale" />
+                                        }
+                                        @if (Auth.CanSee("Repairs"))
+                                        {
+                                            <polyline points="@TrendPoints(2)" class="ops-line-stroke ops-line-repair" />
+                                        }
+                                        @for (var i = 0; i < data.Trend.Count; i++)
+                                        {
+                                            var index = i;
+                                            var point = data.Trend[i];
+                                            var x = TrendX(i);
+                                            <g>
+                                                @if (ActiveTrendIndex == i)
+                                                {
+                                                    <line x1="@SvgNumber(x)" y1="25" x2="@SvgNumber(x)" y2="270" class="ops-line-crosshair" />
+                                                }
+                                                @if (Auth.CanSee("Orders"))
+                                                {
+                                                    <circle cx="@SvgNumber(x)" cy="@SvgNumber(TrendY(point.Purchase))" r="4" class="ops-line-dot ops-line-purchase" />
+                                                    <circle cx="@SvgNumber(x)" cy="@SvgNumber(TrendY(point.Sale))" r="4" class="ops-line-dot ops-line-sale" />
+                                                }
+                                                @if (Auth.CanSee("Repairs"))
+                                                {
+                                                    <circle cx="@SvgNumber(x)" cy="@SvgNumber(TrendY(point.RepairRevenue))" r="4" class="ops-line-dot ops-line-repair" />
+                                                }
+                                                @if (i % Math.Max(1, (int)Math.Ceiling(data.Trend.Count / 9d)) == 0 || i == data.Trend.Count - 1)
+                                                {
+                                                    <g><text x="@SvgNumber(x)" y="300" text-anchor="middle" class="ops-line-label">@point.Label</text></g>
+                                                }
+                                                <rect x="@SvgNumber(TrendHitLeft(i))" y="15" width="@SvgNumber(TrendHitRight(i) - TrendHitLeft(i))" height="270"
+                                                      class="ops-line-hit" tabindex="0" role="button" aria-label="@TrendAccessibleLabel(i)"
+                                                      @onpointerenter="() => hoveredTrendIndex = index" @onpointerdown="() => hoveredTrendIndex = index"
+                                                      @onfocus="() => focusedTrendIndex = index" @onblur="() => focusedTrendIndex = -1" />
+                                            </g>
+                                        }
+                                    </svg>
+                                </div>
+                                <div class="ops-trend-note">مبالغ به ریال · در هر قسمت نمودار، اطلاعات نزدیک‌ترین تاریخ ثبت‌شده نمایش داده می‌شود.</div>
                             }
                         </div>
                     </div>
@@ -735,9 +770,12 @@ else
 
     private string RangeText => $"{(from.HasValue ? from.Value.ToFa() : "از ابتدا")} تا {(to.HasValue ? to.Value.ToFa() : "امروز")}";
     private string TrendPeriod => data?.Trend.Any(p => p.Label.Contains('/')) == true ? "روزانه" : "ماهانه";
-    private decimal ChartMax => data is null || data.Trend.Count == 0
-        ? 0m
-        : data.Trend.SelectMany(p => new[] { p.Purchase, p.Sale, p.RepairRevenue }).DefaultIfEmpty(0m).Max();
+    private IEnumerable<decimal> ChartValues => data is null ? Enumerable.Empty<decimal>() : data.Trend.SelectMany(p =>
+        (Auth.CanSee("Orders") ? new[] { p.Purchase, p.Sale } : Array.Empty<decimal>())
+        .Concat(Auth.CanSee("Repairs") ? new[] { p.RepairRevenue } : Array.Empty<decimal>()));
+    private decimal ChartMax => Math.Max(0m, ChartValues.DefaultIfEmpty(0m).Max());
+    private decimal ChartMin => Math.Min(0m, ChartValues.DefaultIfEmpty(0m).Min());
+    private decimal ChartRange => Math.Max(1m, ChartMax - ChartMin);
 
     protected override async Task OnInitializedAsync()
     {
@@ -748,15 +786,30 @@ else
     private async Task Load()
     {
         loading = true;
+        hoveredTrendIndex = focusedTrendIndex = -1;
         try { data = await DashboardSvc.GetOperationsDashboardAsync(from, to); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 
-    private string BarStyle(decimal value)
+    private int hoveredTrendIndex = -1;
+    private int focusedTrendIndex = -1;
+    private int ActiveTrendIndex => data is null ? -1 :
+        (hoveredTrendIndex >= 0 && hoveredTrendIndex < data.Trend.Count ? hoveredTrendIndex :
+        focusedTrendIndex >= 0 && focusedTrendIndex < data.Trend.Count ? focusedTrendIndex : -1);
+    private void ClearTrendHover() => hoveredTrendIndex = -1;
+    private static string SvgNumber(decimal value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    private decimal TrendX(int i) => data!.Trend.Count == 1 ? 495m : 125m + i * 740m / (data.Trend.Count - 1);
+    private decimal TrendY(decimal value) => 270m - (value - ChartMin) / ChartRange * 240m;
+    private decimal TrendHitLeft(int i) => i == 0 ? 110m : (TrendX(i - 1) + TrendX(i)) / 2m;
+    private decimal TrendHitRight(int i) => i == data!.Trend.Count - 1 ? 880m : (TrendX(i) + TrendX(i + 1)) / 2m;
+    private string TrendPoints(int series) => string.Join(" ", data!.Trend.Select((p, i) =>
+        $"{SvgNumber(TrendX(i))},{SvgNumber(TrendY(series == 0 ? p.Purchase : series == 1 ? p.Sale : p.RepairRevenue))}"));
+    private string TrendAccessibleLabel(int i)
     {
-        var pct = ChartMax <= 0m ? 0d : Math.Clamp((double)(value / ChartMax) * 100d, 0d, 100d);
-        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+        var point = data!.Trend[i];
+        return point.Label + (Auth.CanSee("Orders") ? $"، خرید: {point.Purchase.Money()} ریال، فروش: {point.Sale.Money()} ریال" : "")
+            + (Auth.CanSee("Repairs") ? $"، تعمیرات: {point.RepairRevenue.Money()} ریال" : "");
     }
 
     private async Task Print()

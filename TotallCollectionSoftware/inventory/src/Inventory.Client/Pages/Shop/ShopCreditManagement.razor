@@ -176,7 +176,7 @@
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
                                placeholder="جستجوی سریال، کد صیاد، نام یا تلفن مشتری..."
-                               @bind="chequeSearch" @bind:event="oninput" @onkeyup="ApplyChequeFilter" />
+                               @bind="chequeSearch" @bind:event="oninput" @bind:after="ApplyChequeFilter" />
                     </div>
                 </div>
 
@@ -394,7 +394,7 @@
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
                                placeholder="جستجوی نام مشتری، تلفن، کد..."
-                               @bind="installmentSearch" @bind:event="oninput" @onkeyup="ApplyInstallmentFilter" />
+                               @bind="installmentSearch" @bind:event="oninput" @bind:after="ApplyInstallmentFilter" />
                     </div>
                 </div>
 

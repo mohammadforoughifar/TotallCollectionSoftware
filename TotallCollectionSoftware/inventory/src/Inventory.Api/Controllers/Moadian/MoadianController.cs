@@ -4,8 +4,11 @@ using Inventory.Shared.Dtos.Moadian;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Inventory.Api.Infrastructure;
 using static Inventory.Shared.Dtos.Moadian.VmInvoiceItems;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Moadian
 {
@@ -162,9 +165,47 @@ namespace Inventory.Api.Controllers.Moadian
         [HttpPost("SendInvoiceAsync")]
         public async Task<ApiModel> SendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {
-            return await connectService.SendInvoiceAsync(model);
+            // ==================== سهمیهٔ «ارسال به مودیان» (مرحله ۲ — بازبینی) ====================
+            //
+            // ترتیب: (۱) رزرو اتمیک در تراکنش جدا و کوتاه، (۲) تماس با مودیان بیرون از هر
+            // تراکنش، (۳) تسویه بر اساس یکی از سه سرنوشت.
+            //
+            // چرا «رزرو قبل از تماس» و نه «بررسی فقط‌خواندنی قبل، مصرف بعد»؟
+            //   با بررسی فقط‌خواندنی، دو درخواست هم‌زمان روی آخرین واحد هر دو رد می‌شوند و
+            //   هر دو ارسال انجام می‌شود — یعنی سقف یکی رد می‌شود. رزرو اتمیک این پنجره را
+            //   کامل می‌بندد: دقیقاً یک درخواست واحد آخر را می‌گیرد.
+            //
+            // چرا بازگشت در شکست اشکالی ندارد؟ چون سند صریح می‌گوید بازگشت <b>فقط</b> برای
+            //   «خطای فنی همان عملیات» مجاز است — و شکست تماس دقیقاً همان است. بازگشت با
+            //   رخداد LICENSE_QUOTA_REFUND_TECHNICAL ثبت می‌شود.
+            //
+            // و اگر نتیجه نامعلوم باشد (Timeout پس از ارسال)؟ نه بازگشت، نه تکرار خودکار؛
+            //   ردیف دفتر با reason='pending' و رخداد LICENSE_QUOTA_PENDING ثبت می‌شود.
+            var db = HttpContext.RequestServices.GetRequiredService<Inventory.Api.Data.AppDbContext>();
+            var log = HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>().CreateLogger("License.Moadian");
+
+            // قفل/تراکنش باز نباید تا پایان تماس بماند.
+            if (db.Database.CurrentTransaction is not null)
+                log.LogWarning("[License] تراکنش باز در ابتدای ارسال مودیان؛ رزرو سهمیه داخل آن انجام می‌شود.");
+
+            var entitlement = await Licenses.GetEffectiveEntitlementAsync();
+
+            var coordinator = HttpContext.RequestServices
+                .GetRequiredService<Inventory.Api.Licensing.Services.QuotaSendCoordinator>();
+
+            var (result, outcome) = await coordinator.SendAsync(
+                entitlement,
+                ct => connectService.SendInvoiceAsync(model),
+                entityId: model?.Id.ToString());
+
+            if (outcome == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending)
+                log.LogWarning("[License] LICENSE_QUOTA_PENDING: نتیجهٔ ارسال مودیان نامعلوم است (صورتحساب {Id}).", model?.Id);
+
+            return result;
         }
 
+        [AllowInReadOnly]
         [HttpPost("PreviewSendInvoiceAsync")]
         public async Task<ApiModel> PreviewSendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {

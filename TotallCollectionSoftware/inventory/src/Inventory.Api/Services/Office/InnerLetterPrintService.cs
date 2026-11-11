@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Infrastructure;
@@ -20,10 +21,29 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
+    private readonly int _letterheadDpi;
+    private readonly string? _templateRoot;
 
-    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
+    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
+        IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
     {
         _db = db; _files = files; _env = env; _http = http; _log = log;
+        _letterheadDpi = ReadLetterheadDpi(configuration);
+        _templateRoot = configuration?["Reporting:InnerLetters:TemplateRoot"];
+    }
+
+    /// <summary>
+    /// DPI سربرگ برای چاپ. پیش‌فرض ۲۰۰ (تصویر اصلی ۳۰۰dpi و ۸٫۷ مگاپیکسل است؛ همان تصویر
+    /// در چاپ نهایی به حدود ۲۰۰dpi نیاز دارد). صفر = تصویر اصلی بدون تغییر.
+    /// کلید: Reporting:InnerLetters:LetterheadDpi
+    /// </summary>
+    private static int ReadLetterheadDpi(IConfiguration? configuration)
+    {
+        var raw = configuration?["Reporting:InnerLetters:LetterheadDpi"];
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dpi)
+               && dpi is >= 0 and <= 600
+            ? dpi
+            : InnerLetterheadTemplates.DefaultArtworkDpi;
     }
 
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, int userId, CancellationToken ct = default, bool withHamesh = false)
@@ -77,22 +97,57 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         // جانشین نمی‌شود. پیش‌تر شناسه‌های ۱۰۰۳ و ۱۰۰۵ در کد ثابت بودند و در نبود سربرگ،
         // فایل نمونهٔ «forough-letterhead.pdf» به‌صورت بی‌صدا استفاده می‌شد؛ نتیجه این بود
         // که روی نصب مشتری، نامه‌ها روی سربرگ شرکتی دیگر چاپ می‌شدند.
+        // تصویر و هندسهٔ سربرگ برای هر نسخهٔ فایل کش می‌شوند؛ چاپ دوم به بعد فایل ۶۲۰KB را
+        // نمی‌خواند و تصویر ۸٫۷ مگاپیکسلی را دوباره دیکد نمی‌کند.
+        var timing = Stopwatch.StartNew();
+        // مسیر قالب به ترتیب اولویت: تنظیمات → فایل داخل مخزن (inventory/src/…) → ContentRoot → BaseDirectory.
+        // یعنی ویرایش قالب در «inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1003»
+        // مستقیماً مبنای چاپ است و نیازی به کپی/بیلد مجدد ندارد.
+        var templatePath = company is null ? null
+            : InnerLetterheadTemplates.ResolveCompanyTemplatePath(
+                  _env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5, _templateRoot)
+              ?? InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company.Id, a5);
         var companyArt = company is null ? null
-            : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5);
+            : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5,
+                _letterheadDpi, _templateRoot);
         if (companyArt != null)
         {
+            var loadMs = timing.ElapsedMilliseconds;
             try
             {
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts);
+                // هندسهٔ شماره/تاریخ/پیوست از خودِ قالب همان شرکت خوانده می‌شود تا مقادیر
+                // دقیقاً روی خط برچسب‌های چاپ‌شده بنشینند (نه یک ردیف بالاتر).
+                var meta = InnerLetterheadTemplates.TryLoadMetaLayout(
+                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
+                byte[] pdf;
+                try
+                {
+                    pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
+                        meta, company!.Id);
+                }
+                catch (Exception metaFailure) when (meta != null)
+                {
+                    // اگر رسم کادرهای شماره/تاریخ/پیوست شکست خورد، «نامه چاپ نشود» بدترین
+                    // نتیجه است: نامه با همان سربرگ و متن، فقط بدون این سه مقدار، دوباره
+                    // ساخته می‌شود تا کاربر PDF بگیرد و علت در لاگ بماند.
+                    _log.LogError(metaFailure,
+                        "رسم کادرهای شماره/تاریخ/پیوست ناموفق بود؛ چاپ بدون این سه مقدار تکرار می‌شود. LetterId={LetterId}, CompanyId={CompanyId}",
+                        letterId, company!.Id);
+                    pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
+                        null, company!.Id);
+                }
                 _log.LogInformation(
-                    "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}",
-                    letterId, company!.Id, InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company!.Id, a5));
+                    "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
+                    letterId, company!.Id, templatePath,
+                    loadMs, timing.ElapsedMilliseconds - loadMs, companyArt.Length / 1024, _letterheadDpi,
+                    pdf.Length / 1024);
                 return pdf;
             }
             catch (Exception ex)
             {
                 throw new InnerLetterPrintException(
-                    $"تولید PDF نامه داخلی روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ چاپ بدون سربرگ انجام نشد.", ex);
+                    $"تولید PDF نامه داخلی روی سربرگ شرکت «{company!.Name}» ناموفق بود؛ چاپ بدون سربرگ انجام نشد. " +
+                    $"علت: {ex.Message} | قالب: {templatePath ?? "—"} | فایل سربرگ: {company.LetterheadFileName ?? "—"}", ex);
             }
         }
 
@@ -122,9 +177,13 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 _log.LogError(
                     "چاپ نامه داخلی متوقف شد: سربرگ شرکت {CompanyId} ({CompanyName}) تنظیم نشده. Status={Status}",
                     company!.Id, company!.Name, status);
+                var searchedTemplates = InnerLetterheadTemplates.CompanyCandidates(
+                    _env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5, _templateRoot);
                 throw new InnerLetterPrintException(
                     $"سربرگ شرکت «{company!.Name}» تنظیم نشده است؛ چاپ متوقف شد تا نامه روی سربرگ شرکت دیگری چاپ نشود. " +
-                    $"وضعیت: {status}. از مسیر «سیستم ← شرکت‌ها» فایل PDF سربرگ این شرکت را بارگذاری کنید.");
+                    $"وضعیت: {status}. از مسیر «سیستم ← شرکت‌ها» فایل PDF سربرگ این شرکت را بارگذاری کنید. " +
+                    $"مسیرهای بررسی‌شدهٔ قالب: {PrintAssetResolver.Describe(searchedTemplates)} | " +
+                    $"پوشه‌های سربرگ: {PrintAssetResolver.Describe(PrintAssetResolver.LetterheadFolders(_env.WebRootPath, _env.ContentRootPath, AppContext.BaseDirectory), 6)}");
             }
             _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
             return content;
@@ -152,15 +211,26 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         var clean = value.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..", StringComparison.Ordinal)) return null;
         var noUploads = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase) ? clean["uploads/".Length..] : clean;
-        var candidates = new[]
-        {
-            _files.ToFull(clean), _files.ToFull(noUploads),
-            Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), clean),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(AppContext.BaseDirectory, clean),
-            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
-        };
-        return candidates.FirstOrDefault(x => x != null && File.Exists(x));
+
+        // مسیرهای فایل‌های ثبت‌شده در خودِ برنامه (FileStore) اول، بعد قاعدهٔ مشترک چاپ:
+        // مقدار می‌تواند مسیر نسبی کامل یا فقط نام فایل باشد و فایل در
+        // wwwroot/uploads/letterheads (یا در مخزن سورس) باشد.
+        var direct = new[] { _files.ToFull(clean), _files.ToFull(noUploads) }
+            .FirstOrDefault(path => path != null && File.Exists(path));
+        if (direct != null) return direct;
+
+        var found = PrintAssetResolver.Letterhead(clean,
+            _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"),
+            _env.ContentRootPath, AppContext.BaseDirectory);
+
+        if (found == null)
+            _log.LogWarning(
+                "فایل سربرگ نامه داخلی پیدا نشد. Value={Value}, Searched={Searched}",
+                value, PrintAssetResolver.Describe(
+                    PrintAssetResolver.LetterheadCandidates(clean, _env.WebRootPath, _env.ContentRootPath,
+                        AppContext.BaseDirectory)));
+
+        return found;
     }
 
     private async Task<int?> ActiveCompanyIdAsync(int userId, CancellationToken ct)
@@ -184,7 +254,19 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     {
         using var input = new MemoryStream(content); using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import); using var output = new PdfDocument();
         var isPdf = headerPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase); using var form = isPdf ? XPdfForm.FromFile(headerPath) : null; using var image = !isPdf ? XImage.FromFile(headerPath) : null; using var cs = new MemoryStream(content); using var contentForm = XPdfForm.FromStream(cs);
-        for (var i = 0; i < source.PageCount; i++) { var sp = source.Pages[i]; var p = output.AddPage(); p.Width = sp.Width; p.Height = sp.Height; using var g = XGraphics.FromPdfPage(p); var r = new XRect(0, 0, p.Width.Point, p.Height.Point); if (form != null) { form.PageNumber = 1; g.DrawImage(form, r); } else if (image != null) g.DrawImage(image, r); contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
+        for (var i = 0; i < source.PageCount; i++) { var sp = source.Pages[i]; var p = output.AddPage(); p.Width = sp.Width; p.Height = sp.Height; using var g = XGraphics.FromPdfPage(p); var r = new XRect(0, 0, p.Width.Point, p.Height.Point);
+            // سربرگِ با نسبت نامناسب، بی‌کشیدگی رسم می‌شود (نقطه‌چین‌ها جابه‌جا نشوند).
+            var art = form != null ? ArtRect(p, form.PointWidth, form.PointHeight)
+                : image != null ? ArtRect(p, image.PointWidth, image.PointHeight) : r;
+            if (form != null) { form.PageNumber = 1; g.DrawImage(form, art); } else if (image != null) g.DrawImage(image, art); contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
         using var ms = new MemoryStream(); output.Save(ms); return ms.ToArray();
+    }
+
+    /// <summary>مستطیل رسم سربرگ با حفظ نسبت (جزئیات در <see cref="PrintAssetResolver.LetterheadRect"/>).</summary>
+    private static XRect ArtRect(PdfSharp.Pdf.PdfPage page, double assetWidth, double assetHeight)
+    {
+        var (x, y, width, height) = PrintAssetResolver.LetterheadRect(
+            page.Width.Point, page.Height.Point, assetWidth, assetHeight);
+        return new XRect(x, y, width, height);
     }
 }

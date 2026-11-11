@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Inventory.Api.Security;
 
 namespace Inventory.Api.Services.Chat;
 
@@ -19,17 +20,23 @@ namespace Inventory.Api.Services.Chat;
 public static class ChatFileToken
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// برچسب کاربرد — کلید HMAC از همین برچسب با HKDF از کلید ریشهٔ همین نصب مشتق
+    /// می‌شود؛ یعنی توکن چت و JWT <b>دو کلید جدا</b> دارند و لو رفتن یکی، دیگری را
+    /// بی‌اعتبار نمی‌کند. (قبل از این، هر دو از یک رشتهٔ ثابت در کد می‌آمدند.)
+    /// </summary>
     private const string Purpose = "chat-file-v1";
 
-    public static (string Token, DateTime ExpiresAtUtc) Create(int userId, DateTime? nowUtc = null)
+    public static (string Token, DateTime ExpiresAtUtc) Create(int userId, ISigningKeys keys, DateTime? nowUtc = null)
     {
         var exp = (nowUtc ?? DateTime.UtcNow).Add(Lifetime);
         var unix = new DateTimeOffset(exp).ToUnixTimeSeconds();
         var payload = $"{userId}.{unix}";
-        return ($"{payload}.{Sign(payload)}", exp);
+        return ($"{payload}.{Sign(payload, keys)}", exp);
     }
 
-    public static bool TryValidate(string? token, out int userId, DateTime? nowUtc = null)
+    public static bool TryValidate(string? token, ISigningKeys keys, out int userId, DateTime? nowUtc = null)
     {
         userId = 0;
         if (string.IsNullOrWhiteSpace(token) || token.Length > 200) return false;
@@ -39,16 +46,16 @@ public static class ChatFileToken
         if (!long.TryParse(parts[1], out var unix)) return false;
         if (DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime < (nowUtc ?? DateTime.UtcNow)) return false;
 
-        var expected = Sign($"{parts[0]}.{parts[1]}");
+        var expected = Sign($"{parts[0]}.{parts[1]}", keys);
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(parts[2])))
             return false;
         userId = uid;
         return true;
     }
 
-    private static string Sign(string payload)
+    private static string Sign(string payload, ISigningKeys keys)
     {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(AuthService.JwtKey + "|" + Purpose));
+        using var hmac = new HMACSHA256(keys.Derive(Purpose));
         var mac = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return Convert.ToBase64String(mac).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }

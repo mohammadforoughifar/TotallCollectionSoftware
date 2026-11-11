@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AppDbContext = Inventory.Api.Data.AppDbContext;
+using Inventory.Api.Licensing.Infrastructure;
+using Inventory.Api.Licensing.Services;
 
 namespace Inventory.Api.Controllers;
 
@@ -22,27 +24,63 @@ public class AuthController : ControllerBase
     private readonly AppDbContext _db;
     private readonly FileStore _store;
     private readonly UserPhotoService _photos;
+    private readonly SeatService? _seats;
 
-    public AuthController(IAuthService auth, AppDbContext db, FileStore store, UserPhotoService photos)
+    public AuthController(IAuthService auth, AppDbContext db, FileStore store, UserPhotoService photos,
+        SeatService? seats = null)
     {
         _auth = auth;
         _db = db;
         _store = store;
         _photos = photos;
+        _seats = seats;
     }
 
     /// <summary>ورود به سیستم.</summary>
+    [AllowInReadOnly]
     [HttpPost("login")]
     [AllowAnonymous]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
-        var result = await _auth.LoginAsync(request);
-        return result is null
-            ? Unauthorized(new { message = "نام کاربری یا رمز عبور اشتباه است." })
-            : Ok(result);
+        try
+        {
+            var result = await _auth.LoginAsync(request);
+            return result is null
+                ? Unauthorized(new { message = "نام کاربری یا رمز عبور اشتباه است." })
+                : Ok(result);
+        }
+        catch (SeatException seat)
+        {
+            // مرحله ۳: سقف صندلی، نشست بسته‌شده، قفل مشغول یا اسکیمای خراب — همه با یک
+            // شکل پاسخ (code/message) تا کلاینت بتواند «تلاش دوباره» را از «پر است» جدا کند.
+            var status = SeatGrant.StatusFor(seat.Code);
+            return StatusCode(status, new { code = seat.Code, message = seat.Message });
+        }
+    }
+
+    /// <summary>
+    /// خروج از سیستم — نشست سرور را می‌بندد و صندلی را همان لحظه آزاد می‌کند (مرحله ۳).
+    ///
+    /// <para>
+    /// چرا POST و نه فقط پاک‌کردن توکن در مرورگر؟ چون بدون بستن ردیف نشست، صندلی تا
+    /// پایان پنجرهٔ بی‌فعالیتی اشغال می‌ماند. اگر توکن منقضی/نامعتبر باشد هم نباید خطا
+    /// بدهد: خروج باید همیشه «موفق» باشد.
+    /// </para>
+    /// </summary>
+    [AllowInReadOnly]
+    [HttpPost("logout")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Logout()
+    {
+        var sid = User?.FindFirstValue("sid");
+        if (!string.IsNullOrWhiteSpace(sid) && _seats is not null)
+            await _seats.ReleaseAsync(sid);
+
+        return Ok(new { ok = true });
     }
 
     /// <summary>تغییر رمز عبور توسط خود کاربر — هر نقشی (مدیر یا معرف).</summary>
+    [AllowInReadOnly]
     [HttpPost("change-password")]
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -118,6 +156,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
+    [AllowInReadOnly]
     [HttpPost("users/signature/{id:int}")]
     [Authorize(Roles = "Admin")]
     [RequestSizeLimit(11 * 1024 * 1024)]
@@ -237,6 +276,7 @@ public class AuthController : ControllerBase
     }
 
         /// <summary>تغییر عکس کاربر لاگین — فقط ادمین.</summary>
+    [AllowInReadOnly]
     [HttpPost("users/photo/{id:int}")]
     [Authorize(Roles = "Admin")]
     [DisableRequestSizeLimit]

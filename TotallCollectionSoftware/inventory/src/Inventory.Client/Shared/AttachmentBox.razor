@@ -472,12 +472,7 @@
         OnDropReset();
         var files = e.GetMultipleFiles(int.MaxValue).ToList();
 
-        // پیش‌چک حجم/تعداد با پیام واضح
-        var oversized = files.Where(f => f.Size > 20 * 1024 * 1024).Select(f => f.Name).ToList();
-        foreach (var n in oversized) files.RemoveAll(f => f.Name == n);
-        if (oversized.Count > 0)
-            Toast.Error($"{string.Join("، ", oversized.Take(3))}{(oversized.Count > 3 ? " و …" : "")} حذف شد: هر فایل حداکثر ۱۰ مگابایت.");
-
+        // حجم و تعداد فایل سقف ندارد (هم‌راستا با متن جعبهٔ پیوست و سقف برداشته‌شده در سرور).
         if (files.Count == 0) { await Reload(); return; }
 
         uploading = true;
@@ -497,8 +492,9 @@
                     var resp = await Http.PostAsync($"/api/attachments/{Module}/{RefId}", content);
                     if (!resp.IsSuccessStatusCode)
                     {
-                        var body = await resp.Content.ReadAsStringAsync();
-                        Toast.Error($"بارگذاری {f.Name} ناموفق بود ({(int)resp.StatusCode}).");
+                        // پیام فارسی سرور (حجم/دسترسی/خطای دیسک) نمایش داده می‌شود، نه فقط کد وضعیت.
+                        var reason = await ReadErrorAsync(resp);
+                        Toast.Error($"بارگذاری {f.Name} ناموفق بود: {reason}");
                     }
                     else ok++;
                 }
@@ -514,9 +510,35 @@
         finally { uploading = false; pendingUploads.Clear(); }
     }
 
+    /// <summary>خواندن پیام خطای فارسی سرور برای توست (بدنهٔ غیر JSON هم امن است).</summary>
+    private static async Task<string> ReadErrorAsync(HttpResponseMessage resp)
+    {
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<AttachmentApiError>();
+            if (!string.IsNullOrWhiteSpace(err?.message)) return err!.message!;
+        }
+        catch { /* بدنهٔ JSON نیست */ }
+        return resp.StatusCode switch
+        {
+            System.Net.HttpStatusCode.Forbidden => "اجازهٔ افزودن پیوست به این مورد را ندارید.",
+            System.Net.HttpStatusCode.Unauthorized => "نشست شما منقضی شده است؛ دوباره وارد شوید.",
+            System.Net.HttpStatusCode.NotFound => "مورد مرتبط پیدا نشد.",
+            _ => $"خطای سرور ({(int)resp.StatusCode})"
+        };
+    }
+
+    private sealed class AttachmentApiError { public string? message { get; set; } }
+
     private async Task Delete(int id)
     {
-        try { await Http.DeleteAsync($"/api/attachments/{id}"); await Reload(); } catch { }
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/attachments/{id}");
+            if (!resp.IsSuccessStatusCode) Toast.Error($"حذف پیوست انجام نشد: {await ReadErrorAsync(resp)}");
+            await Reload();
+        }
+        catch (Exception ex) { Toast.Error($"حذف پیوست انجام نشد: {ex.Message}"); }
     }
 
     private static string FormatSize(long b) =>

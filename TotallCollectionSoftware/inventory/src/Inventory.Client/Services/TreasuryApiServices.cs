@@ -26,6 +26,9 @@ public class TrsAccountService : ITrsAccountService
     public Task<TrsAccount> SaveAsync(TrsAccount account)
         => _api.PostAsync<TrsAccount>("api/trs/accounts", account);
 
+    public Task<TrsAccount> SaveShopAsync(TrsAccount account)
+        => _api.PostAsync<TrsAccount>("api/trs/accounts/shop", account);
+
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/trs/accounts/{id}");
 }
@@ -106,6 +109,9 @@ public class TrsChequeService : ITrsChequeService
 
     public Task<TrsCheque> SaveAsync(TrsCheque cheque)
         => _api.PostAsync<TrsCheque>("api/trs/cheques", cheque);
+
+    public Task<TrsCheque> SaveShopAsync(TrsCheque cheque)
+        => _api.PostAsync<TrsCheque>("api/trs/cheques/shop", cheque);
 
     public Task<TrsCheque> RunActionAsync(TrsChequeCommand cmd)
         => _api.PostAsync<TrsCheque>("api/trs/cheques/action", cmd);

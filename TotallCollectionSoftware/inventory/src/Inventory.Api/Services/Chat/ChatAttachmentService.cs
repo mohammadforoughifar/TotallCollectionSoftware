@@ -12,7 +12,7 @@ public record ChatFileResult(string Path, string FileName, string ContentType);
 /// <summary>ذخیرهٔ خصوصی فایل، اعتبارسنجی مالکیت و دانلود با کنترل عضویت در گفتگو.</summary>
 public sealed class ChatAttachmentService
 {
-    private const long MaxFileBytes = 50L * 1024L * 1024L;
+    // سقف حجم فایل در پیام‌رسان برداشته شد؛ تنها محدودیت باقی‌مانده فضای ذخیره‌سازی سرور است.
     private const string UrlPrefix = "/api/chat/attachments/";
     private readonly AppDbContext _db;
     private readonly ILogger<ChatAttachmentService> _logger;
@@ -156,7 +156,6 @@ public sealed class ChatAttachmentService
         if (conversationId is <= 0) throw new ArgumentException("شناسهٔ گفتگو نامعتبر است.");
         await RequireAccessAsync(userId, conversationId, ct);
         if (file.Length <= 0) throw new ArgumentException("فایل خالی قابل ارسال نیست.");
-        if (file.Length > MaxFileBytes) throw new ArgumentException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
 
         var name = Path.GetFileName(file.FileName.Replace('\\', '/')).Trim();
         name = new string(name.Where(c => !char.IsControl(c)).ToArray());
@@ -185,7 +184,6 @@ public sealed class ChatAttachmentService
                     while ((read = await source.ReadAsync(buffer.AsMemory(0, 65536), ct)) > 0)
                     {
                         length += read;
-                        if (length > MaxFileBytes) throw new ArgumentException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
                         await destination.WriteAsync(buffer.AsMemory(0, read), ct);
                     }
                     if (length != file.Length) throw new IOException("بارگذاری فایل کامل نشد؛ دوباره تلاش کنید.");

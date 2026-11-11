@@ -1,6 +1,7 @@
 using Inventory.Api.Services.Office;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -33,6 +34,7 @@ public class OfficeMachineAgentController : ControllerBase
     }
 
     /// <summary>⚠️ باید [AllowAnonymous] بماند؛ وگرنه DefaultAuthorizeConvention آن را پشت JWT می‌برد و ایجنت‌ها 401 می‌گیرند.</summary>
+    [AllowInReadOnly]
     [AllowAnonymous]
     [HttpPost("printers")]
     [RequestSizeLimit(512 * 1024)]

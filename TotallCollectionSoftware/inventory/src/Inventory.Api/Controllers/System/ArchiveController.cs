@@ -297,15 +297,16 @@ public class AttachmentsController : ControllerBase
             return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
 
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // سقف حجم فایل برداشته شده است (هم‌راستا با متن «بدون محدودیت حجم» در جعبهٔ پیوست).
+        // به‌جای کپی‌کردن فایل در MemoryStream، جریان فایل مستقیم روی دیسک نوشته می‌شود؛
+        // وگرنه یک فایل چند صد مگابایتی تمام حافظهٔ سرور را می‌بلعید و چند کاربر هم‌زمان
+        // می‌توانستند سرویس را از کار بیندازند. نوشتن توسط FileStore اتمیک است (.part + Rename).
         string relPath;
         try
         {
-            relPath = await _store.SaveAsync(module, refId, ms, file.FileName);
+            await using var uploadStream = file.OpenReadStream();
+            relPath = await _store.SaveAsync(module, refId, uploadStream, file.FileName);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {

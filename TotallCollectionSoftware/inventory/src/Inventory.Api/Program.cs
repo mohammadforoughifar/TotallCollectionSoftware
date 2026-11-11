@@ -1,19 +1,26 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Controllers;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
+using Inventory.Api.Licensing;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
+using Inventory.Licensing;
+using Inventory.Licensing.Abstractions;
+using Inventory.Licensing.Entitlement;
+using Inventory.Licensing.Periods;
 
 Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -342,6 +349,17 @@ builder.Services.AddSingleton<UserPhotoService>();
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
 builder.Services.AddSingleton<IProjectFileProtection, ProjectFileProtection>();
 
+// ================== کلیدهای امضا (JWT + توکن فایل چت) ==================
+// هیچ رشتهٔ کلید ثابتی در کد نیست: یا از Jwt:Key پیکربندی خوانده می‌شود (با اعتبارسنجی
+// حداقل ۳۲ بایت)، یا یک‌بار برای همین نصب ساخته و در ProgramData/Totall/security/jwt.key
+// نگه‌داری می‌شود. (بازبینی چهارم بند ۶ + بند ۱ دستور بعدی کارفرما)
+var signingKeys = Inventory.Api.Security.SigningKeys.Create(
+    builder.Configuration["Jwt:Key"],
+    keyFilePath: builder.Configuration["Jwt:KeyFile"],
+    log: m => Console.WriteLine(m));
+builder.Services.AddSingleton<Inventory.Api.Security.ISigningKeys>(signingKeys);
+builder.Services.AddSingleton(signingKeys);
+
 // ================== احراز هویت JWT ==================
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -357,7 +375,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = AuthService.JwtIssuer,
             ValidAudience = AuthService.JwtIssuer,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(signingKeys.JwtKey)
         };
         // دانلود پیوست با لینک مستقیم (تگ <a>) هدر Authorization ندارد؛
         // برای مسیرهای دانلود، توکن از query string خوانده می‌شود (الگوی استاندارد SignalR).
@@ -374,7 +392,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     path.StartsWith("/api/chat/", StringComparison.OrdinalIgnoreCase) &&
                     (path.EndsWith("/download", StringComparison.OrdinalIgnoreCase) ||
                      path.EndsWith("/preview", StringComparison.OrdinalIgnoreCase)) &&
-                    Inventory.Api.Services.Chat.ChatFileToken.TryValidate(fileToken, out var fileUserId))
+                    Inventory.Api.Services.Chat.ChatFileToken.TryValidate(fileToken, signingKeys, out var fileUserId))
                 {
                     var identity = new System.Security.Claims.ClaimsIdentity(new[]
                     {
@@ -445,6 +463,12 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o.MaxRequestBodySize = null);
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
+// ================== لایسنس ==================
+// ترتیب: اول مایگریشن (در DbInitializer)، بعد بررسی لایسنس (InitializeLicensingAsync) —
+// و شکست بررسی لایسنس، مانع بالا آمدن برنامه نمی‌شود.
+builder.Services.AddLicensing(builder.Configuration);
+builder.Services.AddScoped<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
+
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
@@ -469,6 +493,11 @@ builder.Services.AddControllers(options =>
 builder.Services.AddSignalR(o =>
 {
     o.MaximumReceiveMessageSize = 4 * 1024 * 1024; // فریم‌های JPEG ریموت دسکتاپ
+
+    // گارد لایسنس روی کانال بلادرنگ. دروازهٔ HTTP فقط /api/* را می‌بیند و هاب‌ها روی
+    // /hubs/* هستند؛ بدون این فیلتر، پنج هاب (داشبورد، اعلان، چت، ریموت، ایجنت ریموت)
+    // هیچ بررسی لایسنسی نداشتند. فهرست کامل و دلایل، در خودِ HubLicenseFilter است.
+    o.AddFilter<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
 }).AddJsonProtocol(o =>
 {
     o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
@@ -682,6 +711,12 @@ else if (schemaVerbose)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
 
+// ================== آماده‌سازی لایسنس ==================
+// «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز
+// استثنا پرتاب نمی‌کند؛ در بدترین حالت برنامه با وضعیت «لایسنس نامعتبر» بالا می‌آید.
+if (!EF.IsDesignTime)
+    await app.InitializeLicensingAsync();
+
 // اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
 await app.InitializeRadisHrAsync(EF.IsDesignTime);
 schemaInitializing = false;
@@ -745,6 +780,14 @@ if (app.Environment.IsDevelopment() && !runningUnderIis)
 
 app.UseAuthentication();
 
+// ================== دروازهٔ لایسنس ==================
+// چرا این‌جا؟ (۱) بعد از احراز هویت تا پاسخ وابسته به کاربر باشد؛
+// (۲) قبل از ActiveCompanyMiddleware تا وقتی لایسنس نامعتبر است، کوئری شرکت فعال هم زده نشود.
+// با لایسنس نامعتبر برنامه Crash نمی‌کند: صفحهٔ ورود و صفحهٔ بارگذاری لایسنس باز می‌مانند.
+app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>();
+// مرحله ۳: دروازهٔ صندلی — بعد از دروازهٔ لایسنس (وضعیت نصب) و قبل از همهٔ کنترلرها.
+app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.SeatGateMiddleware>();
+
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
 // هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.
 // از این‌جا به بعد، AppDbContext همهٔ کوئری‌های دادهٔ فروشگاهی را به همان شرکت محدود می‌کند.
@@ -784,7 +827,9 @@ app.MapGet("/radis-hr", () => Results.Redirect("/bon-hr"));
 // کاربرد: تست سریع «آیا مرورگر به API وصل می‌شود؟» — http://192.168.30.104:8181/api/health
 // کلاینت Blazor هم در زمان بالا آمدن همین مسیر را آزمایش می‌کند و آدرس درست API را انتخاب می‌کند
 // (اگر آدرس اشتباهی ذخیره شده باشد، خودکار به آدرس درست برمی‌گردد).
-app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
+app.MapGet("/api/health", (HttpContext ctx,
+    // ?nullable: حتی اگر سرویس لایسنس در این هاست ثبت نشده باشد، health نباید بشکند.
+    ILicenseService? licenseService) => Results.Json(new
 {
     ok = true,
     app = "TotallCollectionSoftware",
@@ -793,7 +838,33 @@ app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
     database = provider,
     httpAddress = httpEndpoint.Display,
     httpsPorts = httpsCerts.AllPorts.ToArray(),
-    serverTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+    // ⚠️ ارزش پیشین: "yyyy-MM-dd HH:mm:ss" — وقت دیوارِ تهران ولی **بدون افست**.
+    // در بازبینی سوم معلوم شد هیچ مصرف‌کننده‌ای آن را تجزیه نمی‌کند (grep روی کل مخزن:
+    // هیچ اسکریپت/کلاینت/RemoteAgent این رشته را parse نمی‌کند؛ فقط نمایش)، ولی یک
+    // رشتهٔ بدون افست برای هر مصرف‌کنندهٔ بیرونیِ آینده قابل اشتباه با UTC است.
+    // اکنون: ISO-8601 با افست صریح (+03:30). هیچ چیزی که این فیلد را می‌خواند وجود
+    // ندارد، پس تغییر شکننده نیست؛ serverTimeUtc هم اضافه شد تا مقایسه ساده باشد.
+    serverTime = PersianPeriodKey.NowIranOffset().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
+    serverTimeUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+    serverTimeZone = "Asia/Tehran (+03:30)",
+
+    // ==================== موتور لایسنس ====================
+    // چرا در health؟ چون اسکریپت‌های انتشار/به‌روزرسانی (و هر ناظر خارجی) باید بتوانند
+    // بفهمند این خروجی موتور لایسنس دارد یا نه. نسخهٔ سورس قدیمی ریشه (src/) این فیلد
+    // را ندارد؛ پس «ناخواسته منتشر شدن نسخهٔ بدون لایسنس» از همین‌جا گرفته می‌شود.
+    // این مسیر در allowlist دروازه است، پس در حالت «بدون لایسنس» هم پاسخ می‌دهد.
+    licensing = new
+    {
+        engine = LicenseEngineInfo.FullVersion,
+        assembly = LicenseEngineInfo.AssemblyName,
+        stage = LicenseEngineInfo.Stage,
+        schema = LicenseEngineInfo.SchemaVersion,
+        // وضعیت کلی لایسنس این نصب (Missing/Invalid/Valid) — برای پایش.
+        status = licenseService?.GetOverallStatus().ToString() ?? "Unknown",
+        // آیا سامانه در حالت فقط‌خواندنی است؟ (بدون لایسنس معتبر: خواندن آزاد، نوشتن ۴۰۳)
+        readOnly = licenseService is null
+                   || licenseService.GetOverallStatus() is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid
+    }
 })).AllowAnonymous();
 
 // هاب بلادرنگ داشبورد
@@ -839,34 +910,43 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// ================== مسدودسازی مسیرهای فایل کاربران — همیشه، مستقل از پوسته ==================
+// چرا این‌جا و نه داخل بلوک «اگر index.html هست»؟ چون در استقرار فقط-API (بدون پوستهٔ
+// Blazor در wwwroot) آن بلوک اجرا نمی‌شد و در نتیجه هیچ میدل‌وری مسیر
+// /uploads/projects را نمی‌بست؛ فایل‌های رمزنگاری‌شده و پیوست‌ها می‌توانستند به‌صورت
+// استاتیک (بدون احراز هویت و بدون بررسی RBAC) سرو شوند. (بازبینی چهارم، بند ۵)
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path;
+
+    if (path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    // پیوست نامهٔ صادره، نامهٔ داخلی و ایمیل سازمانی هم فقط از API سرو می‌شوند.
+    if (path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/office/outgoingletter", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/office/email", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.html")))
 {
-    // امنیت پیوست‌ها: فایل‌های رمزنگاری‌شده زیر wwwroot/SecureFiles هرگز به‌صورت استاتیک و بدون احراز هویت
-    // سرو نشوند — دسترسی به آن‌ها فقط از مسیر API (ProjectAttachController با RBAC) مجاز است.
-    app.Use(async (ctx, next) =>
-    {
-        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        // پیوست نامه صادره و پیوست ایمیل سازمانی هرگز به‌صورت استاتیک سرو نمی‌شوند —
-        // دانلود فقط از مسیر API مجاز با کنترل دسترسی انجام می‌شود.
-        if (ctx.Request.Path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/office/outgoingletter", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/office/email", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        await next();
-    });
+    // امنیت پیوست‌ها: میدل‌ور ۴۰۴ این مسیرها بالاتر و بیرون از این شرط ثبت شد
+    // (تا در استقرار فقط-API هم فعال باشد — بازبینی چهارم، بند ۵).
     // نصب زیر Application/Virtual Directory در IIS (مثلاً http://server/erp/): base href پوستهٔ Blazor باید
     // مسیر پایه را داشته باشد، وگرنه _framework و همهٔ آدرس‌های نسبی از ریشهٔ سایت خوانده می‌شوند و برنامه باز نمی‌شود.
     // روی ریشهٔ سایت (PathBase خالی) هیچ تغییری در رفتار قبلی ایجاد نمی‌شود.

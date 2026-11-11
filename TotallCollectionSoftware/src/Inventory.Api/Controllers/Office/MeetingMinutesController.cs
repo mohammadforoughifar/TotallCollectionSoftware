@@ -310,8 +310,20 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            var letterId = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername);
-            return Ok(new { letterId });
+            // سهمیهٔ «ثبت نامه» — این مسیر هم یک نامهٔ واقعی می‌سازد و باید مثل
+            // ثبت مستقیم در کارتابل شمرده شود (وگرنه با «تبدیل صورتجلسه به نامه»
+            // می‌شد سقف را دور زد).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
+                async () => created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername),
+                entityType: "InnerLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { letterId = created });
         }
         catch (Exception ex)
         {
@@ -349,8 +361,19 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            var letterId = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername);
-            return Ok(new { letterId });
+            // سهمیهٔ «ثبت نامهٔ صادره» — همان قاعدهٔ نامهٔ داخلی (بدون این گارد،
+            // تبدیل صورتجلسه به نامهٔ صادره سقف را دور می‌زد).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterOutgoingCreate,
+                async () => created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername),
+                entityType: "OutgoingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { letterId = created });
         }
         catch (Exception ex)
         {
@@ -404,16 +427,18 @@ public class MeetingMinutesController : RbacControllerBase
 
     [HttpGet("{id:int}/print")]
     [HttpGet("{id:int}/print.pdf")]
-    public async Task<IActionResult> Print(int id)
+    public async Task<IActionResult> Print(int id, [FromQuery] string? size = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Print") is { } f) return f;
         // چاپ هم فقط برای صورتجلسه‌های در گردش کاربر (جلوگیری از دانلود PDF با حدس شناسه)
         if (await GuardAsync(id) is { } notAccessible) return notAccessible;
         try
         {
-            var pdf = await _print.GeneratePdfAsync(id);
+            // اندازهٔ کاغذ: A4 پیش‌فرض، A5 با ?size=A5 (همان دو قالبی که در Stimulsoft هست)
+            var paper = string.Equals(size?.Trim(), "A5", StringComparison.OrdinalIgnoreCase) ? "A5" : "A4";
+            var pdf = await _print.GeneratePdfAsync(id, paper);
             if (pdf is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
-            var fileName = $"صورتجلسه-{id}.pdf";
+            var fileName = $"صورتجلسه-{id}-{paper}.pdf";
             return File(pdf, "application/pdf", fileName);
         }
         catch (Exception ex)

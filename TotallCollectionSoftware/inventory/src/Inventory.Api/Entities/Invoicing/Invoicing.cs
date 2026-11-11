@@ -55,9 +55,25 @@ public class FacInvoice
 
     // ---------- ردیابی ----------
     [MaxLength(120)] public string? CreatedBy { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; set; } = Services.Core.TehranClock.Now();
     [MaxLength(120)] public string? ConfirmedBy { get; set; }
     public DateTime? ConfirmedAt { get; set; }
+
+    // ---------- حذف نرم (مرحله ۲ — قاعدهٔ سهمیه) ----------
+    /// <summary>
+    /// فاکتور حذف‌شده. حذف فیزیکی ممنوع شد چون فاکتور مصرفِ سهمیه دارد:
+    /// «حذف توسط کاربر سهمیه را برنمی‌گرداند»، و اگر ردیف فیزیکی پاک شود
+    /// شمارش «تعداد واقعی» و لاگ حذف بی‌معنا می‌شود. رکورد می‌ماند، فقط
+    /// از کوئری‌های عادی (فیلتر سراسری) حذف می‌شود و سهمیه مصرف‌شده را
+    /// همچنان پر می‌کند.
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>زمان حذف نرم (ساعت تهران).</summary>
+    public DateTime? DeletedAt { get; set; }
+
+    /// <summary>کاربری که حذف کرده — برای ممیزی.</summary>
+    [MaxLength(120)] public string? DeletedBy { get; set; }
 
     public List<FacInvoiceLine> Lines { get; set; } = new();
 }

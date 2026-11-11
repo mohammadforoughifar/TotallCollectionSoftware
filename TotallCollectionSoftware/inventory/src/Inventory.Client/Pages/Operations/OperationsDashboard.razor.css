@@ -1,0 +1,14 @@
+.ops-line-readout { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 70px; padding: 14px 18px; margin-top: 12px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 12px; font-size: 12px; color: #64748b; }
+.ops-line-scroll { overflow-x: auto; scrollbar-width: thin; }
+.ops-line-svg { display: block; width: 100%; min-width: 680px; direction: ltr; }
+.ops-line-grid { stroke: #e2e8f0; stroke-width: 1; }
+.ops-line-label { fill: #64748b; font-size: 10px; }
+.ops-line-stroke { fill: none; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.ops-line-purchase { color: #818cf8; }
+.ops-line-sale { color: #059669; }
+.ops-line-repair { color: #d97706; }
+.ops-line-dot { fill: white; stroke: currentColor; stroke-width: 2; }
+.ops-line-crosshair { stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 4 4; }
+.ops-line-hit { fill: transparent; pointer-events: all; cursor: crosshair; }
+.ops-line-hit:focus-visible { outline: none; stroke: #6366f1; stroke-width: 1; fill: #6366f108; }
+.ops-trend-note { padding: 12px 16px; background: #f8fafc; border-radius: 10px; color: #64748b; font-size: 11px; line-height: 1.9; }

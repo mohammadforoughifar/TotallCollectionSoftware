@@ -23,7 +23,7 @@
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="جستجوی نام گروه…" @bind="search" @bind:event="oninput" />
+                    <input class="form-control" placeholder="جستجوی نام گروه…" @bind="search" @bind:event="oninput" @bind:after="ResetSearchPage" />
                 </div>
             </div>
             <div class="col-md-auto">
@@ -193,6 +193,7 @@
     private List<ProductCategory> items = new();
     private bool loading = true, activeOnly;
     private string search = "";
+    private void ResetSearchPage() => page = 1;
 
     private ProductCategory form = new();
     private bool showModal, saving;

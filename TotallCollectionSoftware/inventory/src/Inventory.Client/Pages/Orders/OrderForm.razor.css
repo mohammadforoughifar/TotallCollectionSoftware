@@ -46,12 +46,12 @@
 .purchase-summary-main > div:last-child { border: 0; padding-inline-end: 0; }
 .purchase-summary-main span { display: block; color: #64748b; font-size: .75rem; }
 .purchase-summary-main strong { display: block; color: #1e293b; font-size: .86rem; font-weight: 600; overflow-wrap: anywhere; }
-.purchase-summary-main .purchase-summary-total strong { color: #4f46e5; font-size: 1.15rem; font-weight: 700; }
+.purchase-summary-main .purchase-summary-total strong { color: #4f46e5; font-size: 1.2rem; font-weight: 900; }
 .purchase-summary-breakdown { display: block; margin-top: .15rem; color: #64748b; font-size: .67rem; line-height: 1.5; overflow-wrap: anywhere; }
 .purchase-summary-pay { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)) minmax(0,1.4fr); align-items: center; gap: .75rem; padding: .65rem 1rem; border-top: 1px solid #eef2f7; background: #fbfcfe; }
 .purchase-summary-pay > div { display: flex; align-items: center; gap: .6rem; min-width: 0; font-size: .78rem; }
 .purchase-summary-pay span { color: #64748b; white-space: nowrap; }
-.purchase-summary-pay strong { color: #334155; font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.purchase-summary-pay strong { color: #334155; font-weight: 800; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .purchase-summary-pay .purchase-summary-remaining { justify-content: space-between; background: #eef2ff; border: 1px solid #e0e7ff; color: #4338ca; border-radius: 8px; padding: .35rem .65rem; }
 .purchase-summary-remaining span, .purchase-summary-remaining strong { color: #4338ca; }
 .purchase-summary-pay .purchase-summary-remaining.is-warning { background: #fffbeb; border-color: #fde68a; }

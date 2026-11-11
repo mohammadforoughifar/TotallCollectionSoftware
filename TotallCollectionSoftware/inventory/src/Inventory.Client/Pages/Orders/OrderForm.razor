@@ -849,7 +849,7 @@
                         @if (basis.CompanyId.HasValue) { <small class="text-muted"> · شرکت @basis.CompanyId.Value.Num()</small> }
                         @if (basis.PurchaseId.HasValue)
                         {
-                            <div class="mt-1">خرید مبنا: <b>@basis.PurchaseNumber</b> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
+                            <div class="mt-1">خرید مبنا: <button type="button" class="btn btn-link p-0 fw-bold" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(basis.PurchaseId.Value)">@basis.PurchaseNumber <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
                                 · مقدار <b class="num">@(basis.PurchaseQuantity.HasValue ? basis.PurchaseQuantity.Value.Qty() : "—")</b>
                                 · مبلغ کالا <b class="num">@(basis.PurchaseGross.HasValue ? basis.PurchaseGross.Value.MoneyExact() : "—")</b>
                                 · تخفیف خرید <b class="num">@(basis.PurchaseDiscount.HasValue ? basis.PurchaseDiscount.Value.MoneyExact() : "—")</b> ریال</div>
@@ -875,7 +875,7 @@
                 <div class="d-flex flex-wrap gap-3 mb-3">
                     <div class="flex-grow-1">
                         <div class="fs-8 text-muted">شماره سند</div>
-                        <div class="fw-700 text-primary doc-number">@lastPurchase.Number</div>
+                        <button type="button" class="btn btn-link p-0 fw-700 text-primary doc-number" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(lastPurchase.Id)" title="باز کردن فرم خرید">@lastPurchase.Number <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button>
                     </div>
                     <div class="flex-grow-1">
                         <div class="fs-8 text-muted">تاریخ</div>
@@ -935,6 +935,13 @@
     </Modal>
 }
 
+@if (purchaseFormOrder is not null)
+{
+    @* Keep the sale component/draft mounted while opening the authorized purchase form. *@
+    <OrderForm @key="purchaseFormOrder.Id" Type="TransactionType.Purchase" EditOrder="purchaseFormOrder"
+               OnSaved="OnPurchaseFormSaved" OnCancel="ClosePurchaseForm" />
+}
+
 <Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
@@ -988,6 +995,8 @@
                 {
                     <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">فاکتور دارای گردش بعدی قابل ویرایش مستقیم نیست؛ برای آن از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید. سابقه کامل هنگام ثبت در سرور کنترل می‌شود.</div></div>
                 }
+                @if (!calcInterestOnly)
+                {
                 <div class="col-12">
                     <details class="fs-8">
                         <summary class="text-secondary">شرایط اختیاری تعدیل سررسید (پیش‌فرض: نرخ ماهانه، هر ۳۰ روز)</summary>
@@ -1005,6 +1014,7 @@
                         </div>
                     </details>
                 </div>
+                }
             }
             @if (calcInterestOnly)
             {
@@ -1908,6 +1918,8 @@
 
     // ---------- آخرین فاکتور خرید ----------
     private Order? lastPurchase;
+    private Order? purchaseFormOrder;
+    private bool openingPurchaseForm;
     private ShopMinimumProfitBasisDto? minimumProfitBasis;
     private string? lastPurchaseError, minimumProfitBasisError;
     private bool showLastPurchaseModal, lastPurchaseLoading;
@@ -1949,6 +1961,36 @@
         lastPurchaseError = purchaseError;
         minimumProfitBasisError = basisError;
         lastPurchaseLoading = false;
+    }
+
+    private async Task OpenPurchaseForm(int purchaseId)
+    {
+        if (openingPurchaseForm || purchaseId <= 0) return;
+        openingPurchaseForm = true;
+        var version = lastPurchaseRequestVersion;
+        try
+        {
+            // Use the normal API, including its current-company and purchase read permissions.
+            var order = await OrderSvc.GetAsync(purchaseId);
+            if (version != lastPurchaseRequestVersion || !showLastPurchaseModal) return;
+            if (order is null || order.Type != TransactionType.Purchase)
+            {
+                InvoiceError("سند خرید در دسترس نیست.");
+                return;
+            }
+            purchaseFormOrder = order;
+        }
+        catch (Exception ex) { InvoiceError("باز کردن خرید ناموفق بود: " + ex.Message); }
+        finally { openingPurchaseForm = false; }
+    }
+
+    private void ClosePurchaseForm() => purchaseFormOrder = null;
+
+    private async Task OnPurchaseFormSaved()
+    {
+        purchaseFormOrder = null;
+        // Refresh the purchase summary/basis without replacing any sale lines or payment data.
+        if (showLastPurchaseModal) await ShowLastPurchase(lastPurchaseProductId);
     }
 
     private void CloseLastPurchase()

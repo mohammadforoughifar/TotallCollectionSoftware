@@ -33,6 +33,9 @@ public class DashboardHub : Hub
 
     public override async Task OnConnectedAsync()
     {
+        // مرحله ۳ (بند ۶): پیش از هر چیز، نشست صندلی. اگر sid بسته/ناشناخته باشد
+        // اتصال رد می‌شود؛ وگرنه کاربرِ بیرون‌انداخته‌شده کانال بلادرنگ را باز نگه می‌داشت.
+        await Inventory.Api.Licensing.Infrastructure.SeatHubGuard.ValidateAsync(this);
         var canSeeManagement = await HasAsync("Management");
         var canSeeHardware = await HasAsync("Hardware");
         if (!canSeeManagement && !canSeeHardware)

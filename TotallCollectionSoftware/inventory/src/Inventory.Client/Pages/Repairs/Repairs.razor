@@ -1,3 +1,4 @@
+@implements IDisposable
 @namespace Inventory.Client.Pages
 @page "/repairs"
 @using Inventory.Client.Pages.Orders
@@ -186,7 +187,7 @@
                                     <div class="mb-3">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <span class="fs-8">@bucket.Label</span>
-                                            <span class="fs-8 num"><b>@bucket.Count.Num()</b> <span class="text-muted">(@((bucket.Count * 100 / openTotal)).Num()٪)</span></span>
+                                            <span class="fs-8 num"><b>@bucket.Count.Num()</b> <span class="text-muted">(@((bucket.Count * 100 / openTotal).Num())٪)</span></span>
                                         </div>
                                         <div class="rr-track">
                                             <div class="rr-track-fill" style="width:@RrPct(bucket.Count, openTotal)%;background:@bucket.Color"></div>
@@ -827,7 +828,7 @@
                                         <span class="badge badge-soft-primary fs-8 me-1">@i.ProductName</span>
                                     }
                                 </td>
-                                <td class="text-start num">@i.Quantity.Num()</td>
+                                <td class="text-start num">@i.Quantity.Qty()</td>
                                 <td class="text-start num text-muted">@((i.Cost * i.Quantity).Money())</td>
                                 <td class="text-start num fw-500">@((i.Price * i.Quantity).Money())</td>
                                 <td class="text-start num @((i.Price - i.Cost) * i.Quantity >= 0 ? "text-success" : "text-danger")">@(((i.Price - i.Cost) * i.Quantity).Money())</td>
@@ -1111,7 +1112,8 @@ else
     private int techFilter;
     private int page = 1, pageCount = 1, total;
     private const int PageSize = 15;
-    private System.Timers.Timer? searchTimer;
+    private System.Threading.CancellationTokenSource? searchCts;
+    private int loadVersion;
 
     private RepairOrderDto form = new();
     private RepairOrderDto? viewing, invoicing;
@@ -1405,26 +1407,47 @@ else
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
         try
         {
             var res = await RepairSvc.GetRepairsAsync(search, statusFilter, techFilter, page, PageSize);
+            if (version != loadVersion) return;
             items = res.Items;
             total = res.TotalCount;
             page = Math.Max(1, res.Page);
             pageCount = Math.Max(1, res.PageCount);
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         search = e.Value?.ToString() ?? "";
-        searchTimer?.Stop();
-        searchTimer = new System.Timers.Timer(400) { AutoReset = false };
-        searchTimer.Elapsed += async (_, _) => { page = 1; await InvokeAsync(async () => { await Load(); StateHasChanged(); }); };
-        searchTimer.Start();
+        searchCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        searchCts = cts;
+        var version = ++loadVersion; // invalidate an older in-flight response immediately
+        page = 1;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(search)) await Task.Delay(300, cts.Token);
+            if (cts.IsCancellationRequested || version != loadVersion) return;
+            await Load();
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (ReferenceEquals(searchCts, cts)) searchCts = null;
+            cts.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        ++loadVersion;
+        searchCts?.Cancel();
     }
 
     private async Task OnStatusFilter(ChangeEventArgs e)

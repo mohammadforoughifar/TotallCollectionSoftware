@@ -7,6 +7,7 @@ using Inventory.Api.Services.Core;
 using Inventory.Api.Services.ItAssets;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -587,6 +588,7 @@ public sealed class ServersController : ControllerBase
         catch { /* هشدار در دیتابیس ثبت شده است؛ خرابی کانال اعلان نباید پاسخ عملیات Redfish را تغییر دهد. */ }
     }
 
+    [AllowInReadOnly]
     [HttpPost("{id:int}/test")]
     public async Task<IActionResult> TestConnection(int id)
     {
