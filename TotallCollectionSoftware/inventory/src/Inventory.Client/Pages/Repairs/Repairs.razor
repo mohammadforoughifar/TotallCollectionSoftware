@@ -515,10 +515,10 @@
                     <div class="col-md-4 repair-customer-focus">
                         <label class="form-label">مشتری (صاحب همه دستگاه‌ها) <span class="text-danger">*</span></label>
                         <div class="d-flex gap-2 align-items-stretch">
-                            <div class="flex-grow-1">
-                                <SearchSelect Items="customerLookup" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری…" />
+                            <div class="flex-grow-1" style="min-width:0">
+                                <SearchSelect Items="customerLookup" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری…" ConstrainToModal="true" />
                             </div>
-                            <button type="button" class="btn btn-new-party" title="تعریف مشتری جدید" @onclick="OpenNewCustomer">
+                            <button type="button" class="btn btn-new-party" disabled="@(!CanManagePeople)" aria-label="تعریف مشتری جدید" title="تعریف مشتری جدید" @onclick="OpenNewCustomer">
                                 <i class="bi bi-person-plus-fill"></i>
                                 <span class="d-none d-sm-inline">جدید</span>
                             </button>
@@ -530,13 +530,20 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">تعمیرکار</label>
-                        <select class="form-select" @bind="techIdStr">
-                            <option value="0">— بعداً تعیین می‌شود —</option>
-                            @foreach (var t in technicians.Where(x => x.IsActive))
-                            {
-                                <option value="@t.Id">@t.Name@(string.IsNullOrWhiteSpace(t.Specialty) ? "" : $" ({t.Specialty})")</option>
-                            }
-                        </select>
+                        <div class="d-flex gap-2 align-items-stretch">
+                            <div class="flex-grow-1" style="min-width:0">
+                                <select class="form-select" @bind="techIdStr">
+                                    <option value="0">— بعداً تعیین می‌شود —</option>
+                                    @foreach (var t in technicians.Where(x => x.IsActive))
+                                    {
+                                        <option value="@t.Id">@t.Name@(string.IsNullOrWhiteSpace(t.Specialty) ? "" : $" ({t.Specialty})")</option>
+                                    }
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-new-party" title="تعریف تعمیرکار جدید" aria-label="تعریف تعمیرکار جدید" disabled="@(!CanManagePeople)" @onclick="OpenNewTechnician">
+                                <i class="bi bi-person-plus-fill"></i><span class="d-none d-sm-inline">جدید</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">تاریخ ورود (پذیرش)</label>
@@ -997,15 +1004,8 @@
 @* ---------------- تعمیرکارها ---------------- *@
 <Modal Visible="showTechs" Title="تعمیرکارها" Size="modal-lg" OnClose="() => showTechs = false">
     <ChildContent>
-        <div class="row g-2 mb-3">
-            <div class="col-md-4"><input class="form-control" placeholder="نام تعمیرکار *" @bind="techForm.Name" /></div>
-            <div class="col-md-3"><input class="form-control" placeholder="موبایل" @bind="techForm.Phone" dir="ltr" data-digits="tel" inputmode="tel" /></div>
-            <div class="col-md-3"><input class="form-control" placeholder="تخصص (لپ‌تاپ، دوربین…)" @bind="techForm.Specialty" /></div>
-            <div class="col-md-2">
-                <button class="btn btn-primary w-100" data-hotkey="f1" @onclick="SaveTech" disabled="@saving">
-                    @(techForm.Id == 0 ? "افزودن" : "ویرایش")
-                </button>
-            </div>
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="btn btn-primary btn-sm" disabled="@(!CanManagePeople)" @onclick="OpenManagedTechnician"><i class="bi bi-person-plus"></i> تعمیرکار جدید</button>
         </div>
         <table class="table table-hover align-middle">
             <thead><tr><th>نام</th><th>موبایل</th><th>تخصص</th><th>پذیرش فعال</th><th>وضعیت</th><th class="text-end">عملیات</th></tr></thead>
@@ -1047,6 +1047,8 @@ else
 {
     <TradeInTab />
 }
+
+<TechnicianFormModal Visible="showTechnicianForm" EditTechnician="editingTechnician" OnSaved="OnTechnicianSaved" OnCancel="() => showTechnicianForm = false" />
 
 @code {
     private int repairTab;
@@ -1113,7 +1115,6 @@ else
 
     private RepairOrderDto form = new();
     private RepairOrderDto? viewing, invoicing;
-    private Technician techForm = new();
     private DateTime? receivedAt;
     private string techIdStr = "0", statusStr = "0", invWarehouseStr = "1";
     private List<string> deviceQuoteTexts = new();
@@ -1881,13 +1882,16 @@ else
     // ---------------- تعریف مشتری (همان فرم مشترک /parties) ----------------
     private bool showNewCustomer;
 
-    private void OpenNewCustomer() => showNewCustomer = true;
+    private void OpenNewCustomer() { if (CanManagePeople) showNewCustomer = true; }
 
     /// <summary>پس از ثبت در فرم واقعی طرف حساب: به‌روزرسانی فهرست و انتخاب خودکار.</summary>
     private async Task OnNewCustomerSaved(Party created)
     {
         showNewCustomer = false;
         if (created is null) { Toast.Error("مشتری ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
+        form.PartyId = created.Id;
+        customerLookup.RemoveAll(c => c.Id == created.Id);
+        customerLookup.Add(new LookupItem { Id = created.Id, Name = created.Name });
         try
         {
             customerLookup = ShopAccess.CanSee(Auth, "Repairs")
@@ -1901,23 +1905,34 @@ else
 
     // ---------------- تعمیرکارها ----------------
 
-    private void OpenTechs() { techForm = new Technician(); showTechs = true; }
-    private void EditTech(Technician t) => techForm = new Technician { Id = t.Id, Name = t.Name, Phone = t.Phone, Specialty = t.Specialty, IsActive = t.IsActive };
-
-    private async Task SaveTech()
+    private bool showTechnicianForm, selectCreatedTechnician;
+    private Technician? editingTechnician;
+    private bool CanManagePeople => ShopAccess.CanManage(Auth, "Repairs");
+    private void OpenTechs() => showTechs = true;
+    private void OpenNewTechnician()
     {
-        if (saving) return;
-        if (string.IsNullOrWhiteSpace(techForm.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
-        saving = true;
-        try
-        {
-            await RepairSvc.SaveTechnicianAsync(techForm);
-            Toast.Success("تعمیرکار ذخیره شد.");
-            techForm = new Technician();
-            technicians = await RepairSvc.GetTechniciansAsync();
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { saving = false; }
+        if (!CanManagePeople) return;
+        editingTechnician = null; selectCreatedTechnician = true; showTechnicianForm = true;
+    }
+    private void OpenManagedTechnician()
+    {
+        if (!CanManagePeople) return;
+        editingTechnician = null; selectCreatedTechnician = false; showTechnicianForm = true;
+    }
+    private void EditTech(Technician t)
+    {
+        if (!CanManagePeople) return;
+        editingTechnician = t; selectCreatedTechnician = false; showTechnicianForm = true;
+    }
+    private async Task OnTechnicianSaved(Technician created)
+    {
+        showTechnicianForm = false;
+        // Use the returned record even if the subsequent lookup refresh fails.
+        technicians.RemoveAll(t => t.Id == created.Id);
+        technicians.Add(created);
+        if (selectCreatedTechnician && created.IsActive) techIdStr = created.Id.ToString();
+        try { technicians = await RepairSvc.GetTechniciansAsync(); }
+        catch (Exception ex) { Toast.Error("تعمیرکار ذخیره شد؛ به‌روزرسانی فهرست ناموفق بود: " + ex.Message); }
     }
 
     private async Task ToggleTech(Technician t)
