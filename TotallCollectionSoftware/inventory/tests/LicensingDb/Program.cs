@@ -7,6 +7,8 @@ using Inventory.Licensing.Model;
 using Inventory.Licensing.Modules;
 using Inventory.Licensing.Periods;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -795,6 +797,93 @@ Section("۱۴.۲) تعریف دقیق DeliveryUncertain: ۴xx = قطعی، ۵xx/
         var pending = await q.LicenseReservations.AsNoTracking()
             .CountAsync(r => r.State == Inventory.Api.Data.LicenseReservation.States.Pending);
         Check(pending >= 2, $"دو رزرو «در انتظار» برای تسویهٔ دستی مانده (واقعی: {pending})");
+    }
+}
+
+// ============================================================
+Section("۱۴.۳) مودیان: ۴۰۸ = نامعلوم (Pending) و ۴۲۹ = قطعی (بازگشت سهمیه) — بازبینی چهارم، مورد ۹");
+
+{
+    // مشکل قبلی: تصمیم «بازگشت یا تعویق» به پرچم DeliveryUncertain واگذار شده بود که
+    // لایهٔ پایین (ConnectService) ست می‌کند و معیارش «بستهٔ ارسال ساخته شد یا نه» است.
+    // آن معیار برای ۴۲۹ غلط است: سامانه صریحاً گفته «پردازش نکردم»، ولی بسته ساخته شده
+    // بود ⇒ پرچم نامعلوم می‌ماند ⇒ سهمیه بی‌دلیل حبس می‌شد.
+    //
+    // قاعدهٔ تازه: کد وضعیت، مرجع نهایی است.
+    //   ۴۰۸ Request Timeout ⇒ «نمی‌دانیم» ⇒ Pending (سهمیه برنمی‌گردد)
+    //   ۴۲۹ Too Many Requests ⇒ «قطعاً پردازش نشد» ⇒ بازگشت با LICENSE_QUOTA_REFUND_TECHNICAL
+    await ResetAsync();
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+    var coordinator = new Inventory.Api.Licensing.Services.QuotaSendCoordinator(
+        quota, Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Services.QuotaSendCoordinator>.Instance);
+
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 100, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+
+    async Task<long> UsedAsync()
+    {
+        await using var q = NewDb();
+        return await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (long?)u.Used).FirstOrDefaultAsync() ?? 0;
+    }
+
+    // ---------- الف) خودِ تابع یکسان‌سازی، مستقل از لایهٔ شبکه ----------
+    var m408 = new Inventory.Shared.Dtos.Moadian.ApiModel
+    { Success = false, Status = 408, DeliveryUncertain = false, Message = "Request Timeout" };
+    Inventory.Api.Licensing.Services.QuotaSendCoordinator.NormalizeByStatusCode(m408);
+    Check(m408.DeliveryUncertain == true,
+        "۴۰۸ ⇒ پرچم روی «نامعلوم» تنظیم می‌شود، حتی اگر لایهٔ پایین «قطعی» گفته باشد");
+
+    var m429 = new Inventory.Shared.Dtos.Moadian.ApiModel
+    { Success = false, Status = 429, DeliveryUncertain = true, Message = "Too Many Requests" };
+    Inventory.Api.Licensing.Services.QuotaSendCoordinator.NormalizeByStatusCode(m429);
+    Check(m429.DeliveryUncertain == false,
+        "۴۲۹ ⇒ پرچم روی «قطعی» تنظیم می‌شود، حتی اگر لایهٔ پایین «نامعلوم» گفته باشد");
+
+    // کنترل منفی: کدهای دیگر دست نمی‌خورند (۴۲۲ و ۵۰۳ همان‌طور که آمده‌اند می‌مانند)
+    var m422 = new Inventory.Shared.Dtos.Moadian.ApiModel
+    { Success = false, Status = 422, DeliveryUncertain = false };
+    Inventory.Api.Licensing.Services.QuotaSendCoordinator.NormalizeByStatusCode(m422);
+    Check(m422.DeliveryUncertain == false, "۴۲۲ (خطای اعتبارسنجی) دست نمی‌خورد ⇒ قطعی می‌ماند");
+
+    var ok200 = new Inventory.Shared.Dtos.Moadian.ApiModel { Success = true, Status = 200, DeliveryUncertain = true };
+    Inventory.Api.Licensing.Services.QuotaSendCoordinator.NormalizeByStatusCode(ok200);
+    Check(ok200.DeliveryUncertain == true,
+        "پاسخ موفق دست نمی‌خورد (تابع فقط روی شکست کار می‌کند)");
+
+    // ---------- ب) ۴۰۸ از مسیر واقعی ارسال ⇒ Pending و بدون بازگشت ----------
+    var before408 = await UsedAsync();
+    var (_, o408) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel
+        { Success = false, Status = 408, DeliveryUncertain = false, Message = "Request Timeout" }),
+        entityType: "MoadianInvoice", entityId: "408-case");
+
+    Check(o408 == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending,
+        $"۴۰۸ از مسیر ارسال ⇒ Pending (واقعی: {o408})");
+    Check(await UsedAsync() == before408 + 1,
+        $"۴۰۸ ⇒ سهمیه برنگشت ({before408} ⇒ {await UsedAsync()}) — «نامعلوم ⇒ تعویق»");
+
+    // ---------- ج) ۴۲۹ از مسیر واقعی ارسال ⇒ Failed و بازگشت سهمیه ----------
+    var before429 = await UsedAsync();
+    var (_, o429) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel
+        { Success = false, Status = 429, DeliveryUncertain = true, Message = "Too Many Requests" }),
+        entityType: "MoadianInvoice", entityId: "429-case");
+
+    Check(o429 == Inventory.Api.Licensing.Services.QuotaSendOutcome.Failed,
+        $"۴۲۹ از مسیر ارسال ⇒ Failed (واقعی: {o429}) — «قطعاً پردازش نشد»");
+    Check(await UsedAsync() == before429,
+        $"۴۲۹ ⇒ سهمیه برگشت ({before429} ⇒ {await UsedAsync()})");
+
+    await using (var q = NewDb())
+    {
+        var refunds = await q.LicenseEvents.AsNoTracking()
+            .Where(e => e.Kind == "LICENSE_QUOTA_REFUND_TECHNICAL").CountAsync();
+        Check(refunds >= 1, $"رخداد LICENSE_QUOTA_REFUND_TECHNICAL برای ۴۲۹ ثبت شد (تعداد: {refunds})");
+
+        var pendingRows = await q.LicenseReservations.AsNoTracking()
+            .CountAsync(r => r.State == Inventory.Api.Data.LicenseReservation.States.Pending);
+        Check(pendingRows >= 1, $"رزرو «در انتظار» برای ۴۰۸ مانده (تعداد: {pendingRows})");
     }
 }
 
@@ -1753,6 +1842,106 @@ Section("۲۲) بخشودگی گذشته (Grandfather): ۳۰۰ نامهٔ همی
 // ============================================================
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌های مرحله ۲ موفق بود." : $"{failures} تست شکست خورد.")}");
 
+// ============================================================
+Section("۲۳) هاب‌های SignalR: نگاشت ماژول، اتصال در Missing/Invalid، رد متد نوشتاری (بازبینی چهارم، مورد ۲)");
+
+{
+    // هاب‌ها روی /hubs/* سرو می‌شوند و دروازهٔ HTTP آن‌ها را نمی‌بیند؛ تنها سد،
+    // HubLicenseFilter است. اگر این تست سبز باشد، «کانال بلادرنگِ بدون بررسی» نداریم.
+    using var provider = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
+
+    var catalog = Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.Catalog;
+    var expectedHubs = new[] { "DashboardHub", "NotifyHub", "ChatHub", "RemoteHub", "RemoteAgentHub" };
+
+    Check(expectedHubs.All(catalog.ContainsKey),
+        $"همهٔ هاب‌های واقعی در نگاشت هستند (موجود: {string.Join(", ", catalog.Keys.OrderBy(x => x))})");
+    Check(catalog.Count == expectedHubs.Length,
+        $"هیچ هاب اضافه/ناشناخته‌ای در نگاشت نیست (تعداد: {catalog.Count})");
+    Check(catalog.Values.All(v => !string.IsNullOrWhiteSpace(v.ModuleCode) && !string.IsNullOrWhiteSpace(v.Reason)),
+        "هر هاب ماژول و دلیل مستند دارد");
+
+    Check(catalog["RemoteHub"].ConnectInReadOnly == false && catalog["RemoteAgentHub"].ConnectInReadOnly == false,
+        "هاب‌های ریموت در حالت فقط‌خواندنی بسته‌اند (قابلیتِ کنشی)");
+    Check(catalog["DashboardHub"].ConnectInReadOnly && catalog["NotifyHub"].ConnectInReadOnly,
+        "داشبورد و اعلان باز می‌مانند (کانال نمایش وضعیت لایسنس)");
+
+    var safe = Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.ReadOnlySafeMethods;
+    Check(safe.Count == 5, $"فهرست متدهای مجاز دقیقاً ۵ مورد است (واقعی: {safe.Count})");
+
+    var writeMethods = new[] { "SendAsync", "SendManyAsync", "SendToRoleAsync", "BroadcastChangedAsync",
+                               "SendInput", "EndSession", "JoinSession", "Frame", "ConsentResult" };
+    Check(writeMethods.All(m => !safe.ContainsKey(m)),
+        $"هیچ متد نوشتاری/ارسالی در فهرست مجاز نیست (نشتی: {string.Join(", ", writeMethods.Where(safe.ContainsKey))})");
+
+    // ---------- اتصال: داشبورد در Missing ⇒ باز ----------
+    var log = Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>.Instance;
+    var filter = new Inventory.Api.Licensing.Infrastructure.HubLicenseFilter(new GateLicenseService(LicenseOverallStatus.Missing, false), log);
+
+    bool connected;
+    async Task<bool> TryConnect(Hub hub, LicenseOverallStatus status)
+    {
+        var f = new Inventory.Api.Licensing.Infrastructure.HubLicenseFilter(new GateLicenseService(status, false), log);
+        var reachable = false;
+        try
+        {
+            await f.OnConnectedAsync(
+                new HubLifetimeContext(new StubHubCallerContext(), provider, hub),
+                _ => { reachable = true; return ValueTask.CompletedTask; });
+        }
+        // هر استثنای دیگری هم «رد شدن» است؛ ولی چاپ می‌شود تا اگر روزی خطای
+        // غیرمنتظره‌ای (نه HubException) رخ داد، در لاگ تست دیده شود.
+        catch (HubException) { return false; }
+        catch (Exception e) { Console.WriteLine($"   [هشدار] رد شد با {e.GetType().Name}: {e.Message}"); return false; }
+        return reachable;
+    }
+
+    Check(await TryConnect(new HubTestDoubles.DashboardHub(), LicenseOverallStatus.Missing),
+        "DashboardHub در Missing ⇒ اتصال برقرار می‌شود (پوسته باید بنر وضعیت را نشان دهد)");
+    Check(await TryConnect(new HubTestDoubles.NotifyHub(), LicenseOverallStatus.Invalid),
+        "NotifyHub در Invalid ⇒ اتصال برقرار می‌شود");
+    Check(!await TryConnect(new HubTestDoubles.RemoteHub(), LicenseOverallStatus.Missing),
+        "RemoteHub در Missing ⇒ اتصال با HubException رد می‌شود");
+    Check(!await TryConnect(new HubTestDoubles.RemoteAgentHub(), LicenseOverallStatus.Invalid),
+        "RemoteAgentHub در Invalid ⇒ اتصال رد می‌شود");
+    Check(await TryConnect(new HubTestDoubles.RemoteHub(), LicenseOverallStatus.Valid),
+        "RemoteHub با لایسنس معتبر ⇒ اتصال برقرار می‌شود");
+
+    // ---------- هاب ناشناخته ⇒ fail-closed ----------
+    Check(!await TryConnect(new HubTestDoubles.GhostHub(), LicenseOverallStatus.Valid),
+        "هاب نگاشت‌نشده حتی با لایسنس معتبر هم بسته می‌شود (fail-closed)");
+
+    // ---------- متدها در حالت فقط‌خواندنی ----------
+    var dashMethod = typeof(HubTestDoubles.DashboardHub).GetMethod(nameof(HubTestDoubles.DashboardHub.RequestHardwareCheck))!;
+    var chatMethod = typeof(HubTestDoubles.ChatHub).GetMethod(nameof(HubTestDoubles.ChatHub.SendTyping))!;
+
+    async Task<bool> TryInvoke(Hub hub, System.Reflection.MethodInfo method, LicenseOverallStatus status)
+    {
+        var f = new Inventory.Api.Licensing.Infrastructure.HubLicenseFilter(new GateLicenseService(status, false), log);
+        var reached = false;
+        try
+        {
+            await f.InvokeMethodAsync(
+                new HubInvocationContext(new StubHubCallerContext(), provider, hub, method, Array.Empty<object>()),
+                _ => { reached = true; return ValueTask.FromResult<object?>(null); });
+        }
+        catch (HubException) { return false; }
+        return reached;
+    }
+
+    Check(await TryInvoke(new HubTestDoubles.DashboardHub(), dashMethod, LicenseOverallStatus.Missing),
+        "RequestHardwareCheck در Missing ⇒ مجاز (فقط آمار سخت‌افزار)");
+    Check(await TryInvoke(new HubTestDoubles.ChatHub(), chatMethod, LicenseOverallStatus.Invalid),
+        "SendTyping در Invalid ⇒ مجاز (وضعیت گذرا، نه پیام)");
+    Check(!await TryInvoke(new HubTestDoubles.NotifyHub(), typeof(HubTestDoubles.NotifyHub).GetMethod(nameof(HubTestDoubles.NotifyHub.SendAsync))!, LicenseOverallStatus.Missing),
+        "NotifyHub.SendAsync (ارسال) در Missing ⇒ رد می‌شود");
+    Check(!await TryInvoke(new HubTestDoubles.ChatHub(), typeof(HubTestDoubles.ChatHub).GetMethod(nameof(HubTestDoubles.ChatHub.NotifyMessage))!, LicenseOverallStatus.Missing),
+        "متد هابِ ناشناخته/نوشتاری در Missing ⇒ رد می‌شود (allowlist، نه denylist)");
+    Check(await TryInvoke(new HubTestDoubles.NotifyHub(), typeof(HubTestDoubles.NotifyHub).GetMethod(nameof(HubTestDoubles.NotifyHub.SendAsync))!, LicenseOverallStatus.Valid),
+        "همان متد با لایسنس معتبر ⇒ مجاز");
+
+    _ = filter; // فقط برای اطمینان از ساخت نمونه با وضعیت Missing
+}
+
 try { File.Delete(dbPath); Directory.Delete(storage, true); } catch { /* بی‌صدا */ }
 Environment.ExitCode = failures == 0 ? 0 : 1;
 return Environment.ExitCode;
@@ -1770,6 +1959,20 @@ return Environment.ExitCode;
 /// سرویس لایسنس «ساختگی» برای تست دروازه — فقط وضعیت کلی و مهلت سازگاری را کنترل می‌کند.
 /// (تست دروازه نباید به دیتابیس یا فایل لایسنس وابسته باشد.)
 /// </summary>
+/// <summary>زمینهٔ اتصال ساختگی — تست فیلتر هاب به نمونهٔ واقعی SignalR نیاز ندارد.</summary>
+file sealed class StubHubCallerContext : HubCallerContext
+{
+    private readonly CancellationTokenSource _cts = new();
+    public override string ConnectionId => "test-connection";
+    public override string? UserIdentifier => "1";
+    public override System.Security.Claims.ClaimsPrincipal? User => new(new System.Security.Claims.ClaimsIdentity());
+    public override IDictionary<object, object?> Items { get; } = new Dictionary<object, object?>();
+    public override Microsoft.AspNetCore.Http.Features.IFeatureCollection Features
+        => new Microsoft.AspNetCore.Http.Features.FeatureCollection();
+    public override CancellationToken ConnectionAborted => _cts.Token;
+    public override void Abort() => _cts.Cancel();
+}
+
 file sealed class GateLicenseService(LicenseOverallStatus status, bool grace)
     : Inventory.Licensing.Abstractions.ILicenseService
 {

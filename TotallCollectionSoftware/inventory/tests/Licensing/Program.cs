@@ -634,8 +634,27 @@ Section("۱۶) کلید: فقط عمومی در مخزن، اثر انگشت م�
 {
     // حلقهٔ جاسازی‌شدهٔ خود اسمبلی (همان چیزی که سرور مشتری در دست دارد)
     var embedded = PublicKeyRing.FromEmbedded();
+#if DEBUG
     Check(embedded.LoadErrors.Count == 0, $"کلیدهای جاسازی‌شده بدون خطا بارگذاری می‌شوند ({string.Join(" | ", embedded.LoadErrors)})");
     Check(embedded.KeyIds.Contains("dev-2026a"), "کلید dev-2026a در حلقهٔ جاسازی‌شده هست");
+#else
+    // در Release، نبودِ کلید توسعه خطای بارگذاری نیست؛ یک «رد شدن عمدی» با یادداشت است.
+    // آنچه باید بررسی شود این است: هیچ خطای واقعی دیگری وجود ندارد و کلید توسعه بارگذاری نشده.
+    // دو پیام «عمدی» در Release کنار گذاشته می‌شوند: رد شدن کلید توسعه، و هشدار
+    // «حلقه خالی است» — که تا وقتی ردیف کلید تولیدی به manifest اضافه نشده طبیعی است
+    // و در §۵ همین خروجی هم به‌صورت هشدار چاپ می‌شود. هر خطای دیگری «واقعی» است.
+    var realErrors = embedded.LoadErrors
+        .Where(e => !e.Contains("dev-2026a", StringComparison.OrdinalIgnoreCase))
+        .Where(e => !(embedded.KeyIds.Count == 0 && e.Contains("هیچ کلید عمومی معتبری")))
+        .ToList();
+    Check(realErrors.Count == 0,
+        $"کلیدهای جاسازی‌شده بدون خطای واقعی بارگذاری می‌شوند ({string.Join(" | ", realErrors)})");
+    Check(embedded.KeyIds.Count > 0 || embedded.LoadErrors.Any(e => e.Contains("هیچ کلید عمومی معتبری")),
+        "بیلد Release بدون کلید تولیدی: هشدار خالی‌بودن حلقه صادر می‌شود (تا ردیف کلید تولیدی افزوده شود)");
+    Check(embedded.LoadErrors.Any(e => e.Contains("dev-2026a", StringComparison.OrdinalIgnoreCase)),
+        "بیلد Release: رد شدن کلید توسعه با یادداشت گزارش شده است");
+    Check(!embedded.KeyIds.Contains("dev-2026a"), "بیلد Release: کلید dev-2026a در حلقهٔ جاسازی‌شده نیست");
+#endif
 
     // اثر انگشت در manifest باید با فایل کلید بخواند (اگر دست‌کاری شود، بارگذاری رد می‌کند)
     var pem = File.ReadAllText(LocateRepoFile("src/Inventory.Licensing/Keys/dev-2026a.pem"));

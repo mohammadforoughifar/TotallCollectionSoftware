@@ -138,6 +138,10 @@ public static class LicenseModuleRegistry
         ["IncomingLetters"] = ModuleCodes.Letters,
         ["InnerLetters"] = ModuleCodes.Letters,
         ["MeetingMinutes"] = ModuleCodes.Letters,
+        // «چرا چاپ انجام نمی‌شود؟» — تشخیص قالب MRT و سربرگ برای نامه/صورت‌جلسه.
+        // همان ماژول «نامه‌ها»: این کنترلر فقط منابع چاپِ همان سه سند را گزارش می‌کند،
+        // پس اگر ماژول نامه‌ها بسته باشد، این هم نباید باز بماند.
+        ["PrintAssets"] = ModuleCodes.Letters,
         ["OutgoingLetters"] = ModuleCodes.Letters,
 
         ["CctvCameras"] = ModuleCodes.OfficeAssets,
