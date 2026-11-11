@@ -110,6 +110,7 @@ public static class EntitlementMerger
                     UserMode = item.Users.Mode,
                     UserMax = item.Users.Max,
                     UserExempt = item.Users.Exempt,
+                    UserExemptNames = item.Users.ExemptUsers?.ToArray() ?? Array.Empty<string>(),
                     UserScope = item.Users.AppliesTo,
                     Modules = itemModules,
                     FirstExpiry = until,
@@ -353,12 +354,30 @@ public static class EntitlementMerger
             foreach (var m in item.Modules)
                 moduleMax[m] = moduleMax.TryGetValue(m, out var current) ? Math.Max(current, item.UserMax) : item.UserMax;
 
+        // معاف‌ها: ترتیب سند حفظ می‌شود (نام اول، اولی است)؛ تکراری‌ها یک‌بار شمرده
+        // می‌شوند و بیشتر از سقف امضاشده جمع نمی‌شوند.
+        var maxExempt = withPolicy.Max(i => i.UserExempt);
+        var exemptNames = new List<string>();
+        var seenExempt = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in withPolicy.Where(i => i.UserMode == mode))
+        {
+            foreach (var raw in item.UserExemptNames)
+            {
+                if (exemptNames.Count >= maxExempt) break;
+                var name = raw?.Trim();
+                if (string.IsNullOrEmpty(name) || !seenExempt.Add(name)) continue;
+                exemptNames.Add(name);
+            }
+            if (exemptNames.Count >= maxExempt) break;
+        }
+
         return new UserSeatPolicy
         {
             Mode = mode,
             GlobalMax = globalMax,
             ModuleMax = moduleMax,
-            MaxExempt = withPolicy.Max(i => i.UserExempt)
+            MaxExempt = maxExempt,
+            ExemptUsernames = exemptNames
         };
     }
 }

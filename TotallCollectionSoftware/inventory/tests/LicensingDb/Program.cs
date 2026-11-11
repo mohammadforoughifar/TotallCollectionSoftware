@@ -20,10 +20,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 // ============================================================
 
 var failures = 0;
+var passes = 0;
+var failedChecks = new List<string>();
+
 void Check(bool ok, string message)
 {
-    if (ok) { Console.WriteLine("PASS: " + message); return; }
+    if (ok) { passes++; Console.WriteLine("PASS: " + message); return; }
     failures++;
+    failedChecks.Add(message);
     Console.WriteLine("FAIL: " + message);
 }
 void Section(string title) => Console.WriteLine($"\n=== {title} ===");
@@ -1300,6 +1304,9 @@ Section("۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی
         "BackupSessionController.Close", "BackupSessionController.Heartbeat",
         "CentralBackupController.DeleteCompany", "CentralBackupController.DeleteReceipt",
         "CentralBackupController.RotateKey", "CentralBackupController.SaveCompany", "CentralBackupController.Upload",
+        // مرحله ۳: خروج باید در حالت فقط‌خواندنی هم کار کند — وگرنه کاربرِ فقط‌خواندنی
+        // نمی‌تواند صندلی‌اش را آزاد کند (بستن نشست هیچ داده‌ای را تغییر نمی‌دهد).
+        "AuthController.Logout",
         "AuthController.ChangePassword", "AuthController.Login", "AuthController.ResetPassword",
         "AuthController.UploadUserPhoto", "AuthController.UploadUserSignature",
         "UserProfileController.VerifyEmailOtp", "UserProfileController.VerifyMobileOtp",
@@ -1840,7 +1847,7 @@ Section("۲۲) بخشودگی گذشته (Grandfather): ۳۰۰ نامهٔ همی
 }
 
 // ============================================================
-Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌های مرحله ۲ موفق بود." : $"{failures} تست شکست خورد.")}");
+Console.WriteLine($"\n(جمع میانی بخش‌های ۱..۲۲: {passes} موفق / {failures} ناموفق — ادامه: بخش ۲۳ به بعد)");
 
 // ============================================================
 Section("۲۳) هاب‌های SignalR: نگاشت ماژول، اتصال در Missing/Invalid، رد متد نوشتاری (بازبینی چهارم، مورد ۲)");
@@ -2259,8 +2266,848 @@ Section("۲۷) ساعت ثبت سیستمی (CreatedAt): تهران، از DTO �
     }
 }
 
+
+// ---------- کمکی‌های بخش صندلی: ریشهٔ مخزن و گرفتن استثنای صندلی ----------
+string FindRepoRoot()
+{
+    var dir = new DirectoryInfo(AppContext.BaseDirectory);
+    while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Inventory.Api")))
+        dir = dir.Parent;
+    return dir?.FullName ?? throw new InvalidOperationException("ریشهٔ مخزن پیدا نشد.");
+}
+
+async Task<Inventory.Api.Licensing.Infrastructure.SeatException?> CaptureSeatException(Func<Task> action)
+{
+    try { await action(); return null; }
+    catch (Inventory.Api.Licensing.Infrastructure.SeatException ex) { return ex; }
+}
+
+// ============================================================
+Section("۲۸) صندلی لایسنس (مرحله ۳): قاعدهٔ کاربر، معافیت امضاشده، بازپس‌گیری، حالت تخریب، کلمپ، هم‌زمانی");
+
+// ---------- کلیدهای تنظیمات: کف‌ها و پیش‌فرض‌ها (بند ۵) ----------
+{
+    static Inventory.Api.Licensing.LicensingOptions Opt(int idle = 0, int cache = 0, string? evict = null, int minIdle = 0)
+        => new()
+        {
+            SessionIdleMinutes = idle,
+            SeatCacheSeconds = cache,
+            SeatEviction = evict,
+            SeatEvictionMinIdleMinutes = minIdle
+        };
+
+    var def = new Inventory.Api.Licensing.LicensingOptions();
+    Check(def.EffectiveIdleMinutes() == 15, $"IdleMinutes پیش‌فرض ۱۵ (واقعی: {def.EffectiveIdleMinutes()})");
+    Check(Opt(0).EffectiveIdleMinutes() == 15, $"IdleMinutes(صفر) ⇒ 15 (واقعی: {Opt(0).EffectiveIdleMinutes()}) — «بدون محدودیت» وجود ندارد");
+    Check(Opt(-7).EffectiveIdleMinutes() == 15, $"IdleMinutes(منفی) ⇒ 15 (واقعی: {Opt(-7).EffectiveIdleMinutes()}) — «بدون محدودیت» وجود ندارد");
+    Check(Opt(1).EffectiveIdleMinutes() == 10, $"IdleMinutes(۱ ⇒ کف ۱۰) ⇒ 10 (واقعی: {Opt(1).EffectiveIdleMinutes()}) — «بدون محدودیت» وجود ندارد");
+    Check(Opt(9).EffectiveIdleMinutes() == 10, $"IdleMinutes(۹ ⇒ کف ۱۰) ⇒ 10 (واقعی: {Opt(9).EffectiveIdleMinutes()}) — «بدون محدودیت» وجود ندارد");
+    Check(Opt(60).EffectiveIdleMinutes() == 60, $"IdleMinutes(۶۰ ⇒ همان) ⇒ 60 (واقعی: {Opt(60).EffectiveIdleMinutes()})");
+    Check(Opt(99999).EffectiveIdleMinutes() == 240, $"IdleMinutes(بزرگ ⇒ سقف ۲۴۰) ⇒ 240 (واقعی: {Opt(99999).EffectiveIdleMinutes()})");
+
+    Check(Opt(cache: 0).EffectiveSeatCacheSeconds() == 45, $"SeatCacheSeconds(0) ⇒ 45 (واقعی: {Opt(cache: 0).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: -1).EffectiveSeatCacheSeconds() == 45, $"SeatCacheSeconds(-1) ⇒ 45 (واقعی: {Opt(cache: -1).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: 1).EffectiveSeatCacheSeconds() == 15, $"SeatCacheSeconds(1) ⇒ 15 (واقعی: {Opt(cache: 1).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: 5).EffectiveSeatCacheSeconds() == 15, $"SeatCacheSeconds(5) ⇒ 15 (واقعی: {Opt(cache: 5).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: 45).EffectiveSeatCacheSeconds() == 45, $"SeatCacheSeconds(45) ⇒ 45 (واقعی: {Opt(cache: 45).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: 120).EffectiveSeatCacheSeconds() == 120, $"SeatCacheSeconds(120) ⇒ 120 (واقعی: {Opt(cache: 120).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+    Check(Opt(cache: 500).EffectiveSeatCacheSeconds() == 120, $"SeatCacheSeconds(500) ⇒ 120 (واقعی: {Opt(cache: 500).EffectiveSeatCacheSeconds()}) — همیشه در ۱۵..۱۲۰");
+
+    Check(Opt(evict: null).EffectiveSeatEviction() == "deny", $"SeatEviction(«null») ⇒ deny (واقعی: {Opt(evict: null).EffectiveSeatEviction()})");
+    Check(Opt(evict: "").EffectiveSeatEviction() == "deny", $"SeatEviction(«») ⇒ deny (واقعی: {Opt(evict: "").EffectiveSeatEviction()})");
+    Check(Opt(evict: "deny").EffectiveSeatEviction() == "deny", $"SeatEviction(«deny») ⇒ deny (واقعی: {Opt(evict: "deny").EffectiveSeatEviction()})");
+    Check(Opt(evict: "whatever").EffectiveSeatEviction() == "deny", $"SeatEviction(«whatever») ⇒ deny (واقعی: {Opt(evict: "whatever").EffectiveSeatEviction()})");
+    Check(Opt(evict: "evict-oldest-idle").EffectiveSeatEviction() == "evict-oldest-idle", $"SeatEviction(«evict-oldest-idle») ⇒ evict-oldest-idle (واقعی: {Opt(evict: "evict-oldest-idle").EffectiveSeatEviction()})");
+    Check(Opt(evict: "EVICT-OLDEST-IDLE").EffectiveSeatEviction() == "evict-oldest-idle", $"SeatEviction(«EVICT-OLDEST-IDLE») ⇒ evict-oldest-idle (واقعی: {Opt(evict: "EVICT-OLDEST-IDLE").EffectiveSeatEviction()})");
+
+    Check(Opt(minIdle: 0).EffectiveSeatEvictionMinIdleMinutes() == 5, $"SeatEvictionMinIdleMinutes(0) ⇒ 5 (واقعی: {Opt(minIdle: 0).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+    Check(Opt(minIdle: -2).EffectiveSeatEvictionMinIdleMinutes() == 5, $"SeatEvictionMinIdleMinutes(-2) ⇒ 5 (واقعی: {Opt(minIdle: -2).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+    Check(Opt(minIdle: 1).EffectiveSeatEvictionMinIdleMinutes() == 5, $"SeatEvictionMinIdleMinutes(1) ⇒ 5 (واقعی: {Opt(minIdle: 1).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+    Check(Opt(minIdle: 5).EffectiveSeatEvictionMinIdleMinutes() == 5, $"SeatEvictionMinIdleMinutes(5) ⇒ 5 (واقعی: {Opt(minIdle: 5).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+    Check(Opt(minIdle: 60).EffectiveSeatEvictionMinIdleMinutes() == 60, $"SeatEvictionMinIdleMinutes(60) ⇒ 60 (واقعی: {Opt(minIdle: 60).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+    Check(Opt(minIdle: 9999).EffectiveSeatEvictionMinIdleMinutes() == 120, $"SeatEvictionMinIdleMinutes(9999) ⇒ 120 (واقعی: {Opt(minIdle: 9999).EffectiveSeatEvictionMinIdleMinutes()}) — کف ۵");
+}
+
+// ---------- کمکی‌های بخش صندلی ----------
+EffectiveEntitlement SeatEnt(LicenseUserMode mode, int max, int exemptCap = 0, params string[] exemptNames)
+{
+    var doc = new LicenseDocument
+    {
+        Serial = "TEST-SEAT", KeyId = "dev-2026a", CustomerId = "C-1", CustomerName = "تست صندلی",
+        Deployment = DeploymentKind.OnPrem, InstallationId = "inst", IssuedAt = new DateTime(2026, 1, 1),
+        Items = new List<LicenseItem>
+        {
+            new()
+            {
+                Id = "SEAT-1",
+                Scope = new List<string> { ModuleCodes.Core, ModuleCodes.Invoicing, ModuleCodes.Chat },
+                Term = new LicenseTerm { Type = LicenseTermType.Perpetual },
+                Users = new LicenseUsers
+                {
+                    Mode = mode,
+                    Max = max,
+                    AppliesTo = LicenseUserScope.Global,
+                    Exempt = exemptCap,
+                    ExemptUsers = exemptNames.ToList()
+                }
+            }
+        }
+    };
+    return EntitlementMerger.Merge(new[] { doc });
+}
+
+Inventory.Api.Licensing.Services.SeatService NewSeats(AppDbContext db, EffectiveEntitlement ent,
+    Inventory.Api.Licensing.Services.SeatCache cache, Inventory.Api.Licensing.LicensingOptions opts,
+    Inventory.Api.Licensing.Services.SeatDegradedJournal journal)
+    => new(db,
+        new SeatOnlyLicenseService(ent),
+        new LicenseSessionService(db, opts, NullLogger<LicenseSessionService>.Instance),
+        cache,
+        journal,
+        opts,
+        NullLogger<Inventory.Api.Licensing.Services.SeatService>.Instance);
+
+async Task SeedSeatUsersAsync(int count)
+{
+    await using var db = NewDb();
+    var existing = await db.Users.Where(u => u.Username.StartsWith("su")).Select(u => u.Username).ToListAsync();
+    for (var i = 1; i <= count; i++)
+    {
+        var name = $"su{i}";
+        if (existing.Contains(name)) continue;
+        db.Users.Add(new Inventory.Api.Data.User
+        {
+            Username = name,
+            PasswordHash = "Zm9vYmFy",   // قالب salt.hash — قابل احراز نیست، ولی «حساب سیستمی» هم نیست
+            Role = "Operator",
+            IsActive = true
+        });
+    }
+    await db.SaveChangesAsync();
+}
+
+async Task<List<Inventory.Api.Data.User>> SeatUsersAsync()
+{
+    await using var db = NewDb();
+    return await db.Users.Where(u => u.Username.StartsWith("su")).OrderBy(u => u.Id).ToListAsync();
+}
+
+async Task ClearSessionsAsync()
+{
+    await using var db = NewDb();
+    var all = await db.LicenseSessions.ToListAsync();
+    db.LicenseSessions.RemoveRange(all);
+    await db.SaveChangesAsync();
+}
+
+// ============================================================
+//  ۲۸.۱) دو ورود اول با سقف ۲ — و رد شدن سوم، بدون قفل سراسری
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(4);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 2);
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var g1 = await svc.BeginLoginAsync(su[0].Id, su[0].Username, "PC-1", "10.0.0.1");
+        var g2 = await svc.BeginLoginAsync(su[1].Id, su[1].Username, "PC-2", "10.0.0.2");
+        Check(g1.Allowed && g2.Allowed, "دو ورود اول با سقف ۲ پذیرفته می‌شوند");
+
+        var g3 = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+        Check(!g3.Allowed && g3.Code == "LICENSE_SEAT_FULL",
+            $"ورود سوم رد می‌شود با کد LICENSE_SEAT_FULL (واقعی: {g3.Code})");
+        Check(g3.Message.Contains("ظرفیت صندلی‌های لایسنس پر است"), $"پیام فارسی «ظرفیت پر است» برگردانده می‌شود: «{g3.Message}»");
+
+        // همان کاربر از تب دوم: صندلی تازه نمی‌گیرد
+        var again = await svc.BeginLoginAsync(su[0].Id, su[0].Username, "PC-1", "10.0.0.1");
+        Check(again.Allowed, "ورود دوبارهٔ همان کاربر (تب/دستگاه دوم) صندلی تازه نمی‌گیرد");
+
+        var distinct = await svc.CountConcurrentAsync(0);
+        Check(distinct == 2, $"شمارش صندلی «کاربر یگانه» است (واقعی: {distinct} — انتظار: ۲)");
+    }
+}
+
+// ============================================================
+//  ۲۸.۲) معافیت فقط از فهرست امضاشده و فقط تا سقف exempt
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(3);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 1, 1, su[0].Username);
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var g1 = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        var g2 = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        var g3 = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+
+        Check(g1.Allowed, "کاربر معاف (اولین نام فهرست) با وجود سقف ۱ پذیرفته می‌شود");
+        Check(g2.Allowed,
+            "نام دوم فهرست معاف نیست (از سقف «exempt»=۱ گذشته) و چون کاربر معاف صندلی مصرف نمی‌کند، " +
+            $"صندلی آزاد را می‌گیرد (کد: {g2.Code})");
+        Check(!g3.Allowed && g3.Code == "LICENSE_SEAT_FULL",
+            $"و نام سوم هم معاف نیست؛ با پر شدن تک‌صندلی، رد می‌شود (کد: {g3.Code}) — یعنی فقط «{su[0].Username}» واقعاً معاف بود");
+    }
+}
+
+// ============================================================
+//  ۲۸.۳) نقش Admin معاف نیست؛ ستون LicenseSeatExempt اثری ندارد
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(3);
+
+    await using (var db = NewDb())
+    {
+        var all = await db.Users.Where(u => u.Username.StartsWith("su")).OrderBy(u => u.Id).ToListAsync();
+        all[0].Role = "Admin";
+        all[1].Role = "Admin";
+        all[2].LicenseSeatExempt = true;   // ستون میراثی — باید بی‌اثر باشد
+        await db.SaveChangesAsync();
+    }
+
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 2);
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var a = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        var b = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        Check(a.Allowed && b.Allowed, "دو «مدیر» صندلی می‌گیرند (هیچ معافیت نقشی وجود ندارد)");
+
+        var c = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+        Check(!c.Allowed && c.Code == "LICENSE_SEAT_FULL",
+            $"ستون LicenseSeatExempt=1 هیچ اثری ندارد؛ کاربر سوم رد می‌شود (کد: {c.Code})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۴) Named: ترتیب Id، پیام «نفرm»، و نبود قفل سراسری
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(4);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Named, 2);
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var g1 = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        var g2 = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        Check(g1.Allowed && g2.Allowed, "Named با سقف ۲: نفرات ۱ و ۲ (به ترتیب Id) وارد می‌شوند");
+
+        var g3 = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+        Check(!g3.Allowed && g3.Code == "LICENSE_SEAT_FULL", $"Named: نفر سوم (Id بزرگ‌تر) رد می‌شود (کد: {g3.Code})");
+        Check(g3.Message.Contains("نفر 3 از 2"), $"پیام، «نفرم» را نشان می‌دهد: «{g3.Message}»");
+
+        // ورود دوبارهٔ نفر اول همچنان مجاز است — رد شدن یکی، بقیه را قفل نمی‌کند
+        var g4 = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        Check(g4.Allowed, "رد شدن یک کاربر، ورود بقیه را قفل نمی‌کند (هیچ شرط سراسری وجود ندارد)");
+
+        // ساخت/فعال‌سازی بالاتر از سقف
+        var createAbove = await CaptureSeatException(() => svc.EnsureUserSlotAvailableAsync(null, "su9", true));
+        Check(createAbove is not null && createAbove.Code == "LICENSE_SEAT_FULL",
+            $"ساخت کاربر بالاتر از سقف رد می‌شود (پیام: «{createAbove?.Message}»)");
+
+        var activateAbove = await CaptureSeatException(() => svc.EnsureUserSlotAvailableAsync(su[3].Id, su[3].Username, true));
+        Check(activateAbove is not null && activateAbove.Code == "LICENSE_SEAT_FULL",
+            "فعال‌سازی کاربر غیرفعالِ بالاتر از سقف رد می‌شود");
+
+        var deactivate = await CaptureSeatException(() => svc.EnsureUserSlotAvailableAsync(su[0].Id, su[0].Username, false));
+        Check(deactivate is null, "غیرفعال‌کردن کاربر هرگز به‌خاطر سقف رد نمی‌شود");
+    }
+}
+
+// ============================================================
+//  ۲۸.۵) sid تصادفی + بازپس‌گیری بعد از پاک‌شدن جدول
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(4);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 3);
+
+    string? sid1, sid2, sid3;
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var g1 = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        var g2 = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        var g3 = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+        sid1 = g1.SessionId; sid2 = g2.SessionId; sid3 = g3.SessionId;
+
+        Check(g1.Allowed && g1.SessionId is { Length: 32 } && Guid.TryParseExact(g1.SessionId, "N", out _),
+            $"ورود su1: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: {g1.SessionId?.Length})");
+        Check(g2.Allowed && g2.SessionId is { Length: 32 }, $"ورود su2: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: {g2.SessionId?.Length})");
+        Check(g3.Allowed && g3.SessionId is { Length: 32 }, $"ورود su3: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: {g3.SessionId?.Length})");
+
+        var g4 = await svc.BeginLoginAsync(su[3].Id, su[3].Username, null, null);
+        Check(!g4.Allowed, "کاربر چهارم با سقف ۳ رد می‌شود");
+    }
+
+    // ری‌استارت/آپدیت: جدول نشست‌ها خالی می‌شود. سه توکن معتبر نباید بیرون بیفتند.
+    await ClearSessionsAsync();
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var r1 = await svc.AuthorizeRequestAsync(su[0].Id, sid1, su[0].Username, true);
+        var r2 = await svc.AuthorizeRequestAsync(su[1].Id, sid2, su[1].Username, true);
+        var r3 = await svc.AuthorizeRequestAsync(su[2].Id, sid3, su[2].Username, true);
+        Check(r1.Allowed && r2.Allowed && r3.Allowed,
+            "بعد از خالی‌شدن جدول، سه توکن معتبر صندلی را بازپس می‌گیرند (کسی بیرون نمی‌افتد)");
+
+        var g4 = await svc.BeginLoginAsync(su[3].Id, su[3].Username, null, null);
+        Check(!g4.Allowed && g4.Code == "LICENSE_SEAT_FULL",
+            $"و چون ظرفیت هنوز پر است، کاربر چهارم همان ۴۰۳ «ظرفیت پر است» را می‌گیرد (کد: {g4.Code})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۶) نشست Closed/Evicted/Expired و نشست Active با LastSeen قدیمی
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(4);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 3);
+    var opts2 = new Inventory.Api.Licensing.LicensingOptions { SessionIdleMinutes = 15 };
+
+    string sidA, sidB, sidC;
+    await using (var db = NewDb())
+    {
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts2, journal);
+        sidA = (await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null)).SessionId!;
+        sidB = (await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null)).SessionId!;
+        sidC = (await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null)).SessionId!;
+    }
+
+    await using (var db = NewDb())
+    {
+        var a = await db.LicenseSessions.FirstAsync(s => s.SessionId == sidA);
+        a.Status = "Closed";
+        var b = await db.LicenseSessions.FirstAsync(s => s.SessionId == sidB);
+        b.Status = "Evicted";
+        await db.SaveChangesAsync();
+    }
+
+    await using (var db = NewDb())
+    {
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts2, journal);
+
+        var a = await svc.AuthorizeRequestAsync(su[0].Id, sidA, su[0].Username, true);
+        Check(!a.Allowed && a.Code == "LICENSE_SEAT_ENDED", $"نشست Closed ⇒ LICENSE_SEAT_ENDED (واقعی: {a.Code})");
+
+        var b = await svc.AuthorizeRequestAsync(su[1].Id, sidB, su[1].Username, true);
+        Check(!b.Allowed && b.Code == "LICENSE_SEAT_ENDED", $"نشست Evicted ⇒ LICENSE_SEAT_ENDED (واقعی: {b.Code})");
+    }
+
+    // Expired با ظرفیت آزاد: بازپس‌گیری، بدون ورود دوباره
+    await using (var db = NewDb())
+    {
+        var c = await db.LicenseSessions.FirstAsync(s => s.SessionId == sidC);
+        c.Status = "Expired";
+        await db.SaveChangesAsync();
+    }
+    await using (var db = NewDb())
+    {
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts2, journal);
+        var c = await svc.AuthorizeRequestAsync(su[2].Id, sidC, su[2].Username, true);
+        Check(c.Allowed, "نشست Expired با ظرفیت آزاد بازپس گرفته می‌شود (کاربر مجبور به ورود دوباره نیست)");
+    }
+
+    // Active ولی ۹۰ دقیقه بیکار: نباید شمرده شود
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await using (var db = NewDb())
+    {
+        db.LicenseSessions.Add(new Inventory.Api.Data.LicenseSession
+        {
+            SessionId = "stale-one", UserId = su[0].Id, Status = "Active",
+            StartedAt = Inventory.Api.Licensing.ClockAnchor.Now().AddHours(-3),
+            LastSeen = Inventory.Api.Licensing.ClockAnchor.Now().AddMinutes(-90)
+        });
+        await db.SaveChangesAsync();
+    }
+
+    await using (var db = NewDb())
+    {
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts2, journal);
+
+        var used = await svc.CountConcurrentAsync(0);
+        Check(used == 0, $"نشست Active با LastSeen قدیمی شمرده نمی‌شود (واقعی: {used})");
+
+        var g = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        Check(g.Allowed, "پس یک صندلی آزاد واقعاً آزاد است و ورود تازه پذیرفته می‌شود");
+    }
+}
+
+// ============================================================
+//  ۲۸.۷) کش: ۱۰۰ درخواست در پنجره، حداکثر یک کوئری بررسی
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(2);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 5);
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions { SeatCacheSeconds = 45 };
+        var cache = new Inventory.Api.Licensing.Services.SeatCache();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, cache, opts, journal);
+
+        var login = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        var sid = login.SessionId;
+
+        var hitsBefore = cache.Hits;
+        var missesBefore = cache.Misses;
+        var allowedAll = true;
+        for (var i = 0; i < 100; i++)
+            if (!(await svc.AuthorizeRequestAsync(su[0].Id, sid, su[0].Username, i % 3 == 0)).Allowed) allowedAll = false;
+
+        Check(allowedAll, "همهٔ ۱۰۰ درخواست عبور می‌کنند");
+        var hits = cache.Hits - hitsBefore;
+        var misses = cache.Misses - missesBefore;
+        Check(hits >= 99 && misses <= 1,
+            $"۱۰۰ درخواست در پنجرهٔ کش ⇒ حداکثر ۱ کوئری بررسی (هیت: {hits}، میس: {misses})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۸) «فعالیت واقعی»: فقط پولینگ GET مستثناست
+{
+    Check(!Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("GET", "/api/notifications/unread-count"),
+        "GET اعلان‌ها (شمارش/فهرست) فعالیت نیست");
+    Check(!Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("GET", "/api/chat/conversations"),
+        "GET فهرست گفتگو فعالیت نیست");
+    Check(!Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("GET", "/api/system/live-metrics"),
+        "GET متریک زنده فعالیت نیست");
+    Check(Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("POST", "/api/notifications/read-all"),
+        "POST read-all در اعلان‌ها فعالیت است");
+    Check(Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("POST", "/api/notifications/1/read"),
+        "POST read در اعلان‌ها فعالیت است");
+    Check(Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("POST", "/api/chat/messages"),
+        "ارسال پیام در چت فعالیت است");
+    Check(Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("GET", "/api/invoices"),
+        "GET دادهٔ کسب‌وکار (فاکتورها) فعالیت است");
+    Check(!Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("GET", "/hubs/chat")
+          && !Inventory.Api.Licensing.Infrastructure.SeatActivityRules.IsActivity("POST", "/hubs/chat/negotiate"),
+        "اتصال هاب هیچ‌وقت فعالیت نیست");
+}
+
+// ============================================================
+//  ۲۸.۹) خطای گذرا: پنجرهٔ ۱۰ دقیقه، ژورنال، و رد بعد از پنجره
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(2);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 2);   // شمارش از مسیر Concurrent می‌گذرد
+
+    Microsoft.Data.Sqlite.SqliteConnection? locker = null;
+    DbContextOptions<AppDbContext> transientOptions;
+
+    if (!useSqlServer)
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        locker = new SqliteConnection($"Data Source={dbPath};Default Timeout=30");
+        await locker.OpenAsync();
+        await using var cmd = locker.CreateCommand();
+        cmd.CommandText = "BEGIN EXCLUSIVE";
+        await cmd.ExecuteNonQueryAsync();
+
+        transientOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={dbPath};Default Timeout=1").Options;
+    }
+    else
+    {
+        // SQL Server: رشتهٔ اتصال به پورت بسته ⇒ خطای شبکه/Timeout (گذرا).
+        transientOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=localhost,65000;Database=InventoryLicenseTest;" +
+                          "User Id=sa;Password=not-used;Connect Timeout=2;TrustServerCertificate=True")
+            .Options;
+    }
+
+    var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+    try
+    {
+        await using var brokenDb = new AppDbContext(transientOptions);
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var svc = NewSeats(brokenDb, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var g = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+        Check(g.Allowed, "خطای گذرا (Timeout/قطع اتصال/Busy) در پنجرهٔ ۱۰ دقیقه‌ای، ورود را نمی‌شکند");
+
+        journal.Append("SEAT_DEGRADED_LOGIN", su[0].Id, su[0].Username, "ورود در حالت تخریب‌شده");
+        Check(journal.PendingCount >= 1, $"ورود در حالت تخریب‌شده در ژورنال محلی ثبت شد (خطوط: {journal.PendingCount})");
+
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(Inventory.Api.Licensing.ClockAnchor.Now().AddMinutes(11)))
+        {
+            var late = await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+            Check(!late.Allowed && late.Code == "LICENSE_SEAT_UNAVAILABLE",
+                $"بعد از ۱۰ دقیقهٔ بدون بررسی موفق، ورود جدید رد می‌شود (کد: {late.Code})");
+        }
+    }
+    finally
+    {
+        if (locker is not null)
+        {
+            try { await using var rollback = locker.CreateCommand(); rollback.CommandText = "ROLLBACK"; await rollback.ExecuteNonQueryAsync(); } catch { }
+            try { await locker.CloseAsync(); } catch { }
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { if (File.Exists(journal.FilePath)) File.Delete(journal.FilePath); } catch { }
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۰) خطای ساختاری: رد ورود جدید، رخداد Warning، نشست موجود ادامه
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(2);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 3);
+
+    await using (var db = NewDb())
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            useSqlServer ? "DROP TABLE [dbo].[LicenseSessions]" : "DROP TABLE IF EXISTS \"LicenseSessions\"");
+    }
+
+    try
+    {
+        await using (var db = NewDb())
+        {
+            var opts = new Inventory.Api.Licensing.LicensingOptions();
+            var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+            var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+            var g = await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null);
+            Check(!g.Allowed && g.Code == "LICENSE_SEAT_UNAVAILABLE",
+                $"خطای ساختاری ⇒ ورود جدید رد می‌شود (کد: {g.Code})");
+
+            var ev = await db.LicenseEvents.AsNoTracking()
+                .Where(e => e.Kind == "SEAT_SCHEMA_BROKEN").OrderByDescending(e => e.Id).FirstOrDefaultAsync();
+            Check(ev is not null && ev.Severity == "Warning",
+                $"رخداد SEAT_SCHEMA_BROKEN با شدت Warning ثبت شد (شدت: {ev?.Severity})");
+
+            var v = await svc.AuthorizeRequestAsync(su[0].Id, "any-sid", su[0].Username, true);
+            Check(v.Allowed && v.Degraded,
+                $"در خطای ساختاری، نشست موجود ادامه می‌دهد ولی پاسخ برچسب degraded دارد (Allowed={v.Allowed}، Code={v.Code}، Degraded={v.Degraded})");
+        }
+    }
+    finally
+    {
+        // جدول را برمی‌گردانیم؛ روی SQL Server دیتابیس پایدار است و بخش‌های بعدی به آن نیاز دارند.
+        await using var db = NewDb();
+        await LicenseSchemaV1.EnsureAsync(db);
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۱) sid کاربر دیگر و بررسی هاب
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(3);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 3);
+
+    string sidOther;
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+        sidOther = (await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null)).SessionId!;
+    }
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var v = await svc.AuthorizeRequestAsync(su[0].Id, sidOther, su[0].Username, true);
+        Check(!v.Allowed && v.Code == "LICENSE_SESSION_MISMATCH",
+            $"sid کاربر دیگر با این توکن معتبر نیست (کد: {v.Code})");
+
+        var hv = await svc.ValidateHubAsync(su[0].Id, sidOther, su[0].Username);
+        Check(!hv.Allowed && hv.Code == "LICENSE_SESSION_MISMATCH", $"همان قاعده در بررسی هاب هم برقرار است (کد: {hv.Code})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۲) هاب: sid بسته‌شده و sid ناشناخته
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(2);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 2);
+
+    string sid;
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+        sid = (await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null)).SessionId!;
+        await svc.ReleaseAsync(sid);   // خروج
+    }
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+
+        var h = await svc.ValidateHubAsync(su[0].Id, sid, su[0].Username);
+        Check(!h.Allowed && h.Code == "LICENSE_SEAT_ENDED", $"اتصال هاب با sid بسته‌شده رد می‌شود (کد: {h.Code})");
+
+        var unknown = await svc.ValidateHubAsync(su[0].Id, "no-such-sid", su[0].Username);
+        Check(!unknown.Allowed && unknown.Code == "LICENSE_SEAT_UNKNOWN",
+            $"هاب با sid ناموجود هم رد می‌شود (بدون بازپس‌گیری؛ درخواست API بعدی صندلی را می‌گیرد) (کد: {unknown.Code})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۳) سیاست بیرون‌انداختن: پیش‌فرض deny، و evict-oldest-idle
+{
+    async Task<string> RunEvictionAsync(string policy)
+    {
+        await ResetAsync();
+        await ClearSessionsAsync();
+        await SeedSeatUsersAsync(3);
+        var su = await SeatUsersAsync();
+        var ent = SeatEnt(LicenseUserMode.Concurrent, 2);
+
+        string oldSid;
+        await using (var db = NewDb())
+        {
+            var opts = new Inventory.Api.Licensing.LicensingOptions { SeatEviction = policy, SeatEvictionMinIdleMinutes = 5 };
+            var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+            var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+            oldSid = (await svc.BeginLoginAsync(su[0].Id, su[0].Username, null, null)).SessionId!;
+            await svc.BeginLoginAsync(su[1].Id, su[1].Username, null, null);
+        }
+
+        // نشست اول را ۱۰ دقیقه بیکار می‌کنیم
+        await using (var db = NewDb())
+        {
+            var s = await db.LicenseSessions.FirstAsync(x => x.SessionId == oldSid);
+            s.LastSeen = Inventory.Api.Licensing.ClockAnchor.Now().AddMinutes(-10);
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = NewDb())
+        {
+            var opts = new Inventory.Api.Licensing.LicensingOptions { SeatEviction = policy, SeatEvictionMinIdleMinutes = 5 };
+            var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+            var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+            var g = await svc.BeginLoginAsync(su[2].Id, su[2].Username, null, null);
+            return g.Allowed ? "allowed" : g.Code;
+        }
+    }
+
+    var denyResult = await RunEvictionAsync("deny");
+    Check(denyResult == "LICENSE_SEAT_FULL", $"پیش‌فرض deny: هیچ‌کس بیرون انداخته نمی‌شود و ورود تازه ۴۰۳ می‌گیرد (واقعی: {denyResult})");
+
+    var evictResult = await RunEvictionAsync("evict-oldest-idle");
+    Check(evictResult == "allowed", $"با evict-oldest-idle، قدیمی‌ترین نشست بیکار بیرون می‌رود و ورود تازه پذیرفته می‌شود (واقعی: {evictResult})");
+
+    await using (var db = NewDb())
+    {
+        var evicted = await db.LicenseSessions.AsNoTracking().CountAsync(s => s.Status == "Evicted");
+        Check(evicted >= 1, $"ردیف قدیمی وضعیت Evicted گرفت (واقعی: {evicted})");
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۴) users: None ⇒ هیچ سقفی اعمال نمی‌شود (لایسنس پل)
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(4);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.None, 0);
+    Check(!ent.Seats.HasUserLimit, "سیاست users:None سقف کاربر ندارد (HasUserLimit=false)");
+
+    await using (var db = NewDb())
+    {
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+        var ok = 0;
+        foreach (var u in su.Take(4))
+            if ((await svc.BeginLoginAsync(u.Id, u.Username, null, null)).Allowed) ok++;
+        Check(ok == 4, $"با users.mode = None هیچ سقفی اعمال نمی‌شود (ورود موفق: {ok} از ۴)");
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۵) هم‌زمانی: ۲۰ ورود موازی با سقف ۵ ⇒ دقیقاً ۵ (قفل واقعی)
+{
+    await ResetAsync();
+    await ClearSessionsAsync();
+    await SeedSeatUsersAsync(20);
+    var su = await SeatUsersAsync();
+    var ent = SeatEnt(LicenseUserMode.Concurrent, 5);
+
+    var grants = await Task.WhenAll(su.Select(async u =>
+    {
+        await using var db = NewDb();
+        var opts = new Inventory.Api.Licensing.LicensingOptions();
+        var journal = new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths, NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance);
+        // عمداً کش تازه برای هر درخواست — وگرنه کش، مسابقه را پنهان می‌کند.
+        var svc = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts, journal);
+        return await svc.BeginLoginAsync(u.Id, u.Username, null, null);
+    }));
+
+    var ok = grants.Count(g => g.Allowed);
+    var full = grants.Count(g => !g.Allowed && g.Code == "LICENSE_SEAT_FULL");
+    var other = grants.Where(g => !g.Allowed && g.Code != "LICENSE_SEAT_FULL").Select(g => g.Code).Distinct().ToList();
+
+    Check(ok == 5, $"۲۰ ورود هم‌زمان با سقف ۵ ⇒ دقیقاً ۵ موفق (واقعی: {ok})");
+    Check(full == 15, $"و ۱۵ رد با کد LICENSE_SEAT_FULL (واقعی: {full}) — خطاهای دیگر: {string.Join(", ", other)}");
+
+    await using (var db = NewDb())
+    {
+        var active = await db.LicenseSessions.CountAsync(s => s.Status == "Active");
+        Check(active == 5, $"تعداد ردیف‌های Active دقیقاً ۵ است (واقعی: {active}) — قفل از صندلی دوتایی جلوگیری کرد");
+    }
+}
+
+// ============================================================
+//  ۲۸.۱۶) قفل: sp_getapplock با owner=Transaction، و گرفته‌نشدن ⇒ BUSY
+{
+    var repoRoot = FindRepoRoot();
+    var seatText = File.ReadAllText(Path.Combine(repoRoot, "src", "Inventory.Api", "Licensing", "Services", "SeatService.cs"));
+
+    Check(seatText.Contains("sp_getapplock", StringComparison.Ordinal)
+          && seatText.Contains("@LockOwner = 'Transaction'", StringComparison.Ordinal)
+          && seatText.Contains("LockTimeoutMs", StringComparison.Ordinal),
+        "قفل روی SQL Server با sp_getapplock و owner=Transaction و timeout مشخص است");
+
+    Check(seatText.Contains("LICENSE_SEAT_BUSY", StringComparison.Ordinal)
+          && !seatText.Contains("Busy() => SeatGrant.Ok", StringComparison.Ordinal),
+        "گرفته‌نشدن قفل ⇒ کد LICENSE_SEAT_BUSY (نه degraded و نه عبور)");
+}
+
+// ============================================================
+//  ۲۸.۱۷) گارد هاب‌ها: چهار هاب کاربری، و RemoteAgentHub دست‌نخورده
+{
+    var repoRoot = FindRepoRoot();
+    var hubs = new[] { "NotifyHub.cs", "ChatHub.cs", "DashboardHub.cs", "RemoteHub.cs" };
+
+    var missing = new List<string>();
+    foreach (var hub in hubs)
+    {
+        var path = Directory.GetFiles(Path.Combine(repoRoot, "src", "Inventory.Api", "Hubs"), hub,
+            SearchOption.AllDirectories).FirstOrDefault();
+        if (path is null || !File.ReadAllText(path).Contains("SeatHubGuard.ValidateAsync(this)", StringComparison.Ordinal))
+            missing.Add(hub);
+    }
+    Check(missing.Count == 0, $"هر چهار هاب کاربری در OnConnectedAsync گارد صندلی دارند (بدون: {string.Join(", ", missing)})");
+
+    var agentHubPath = Directory.GetFiles(Path.Combine(repoRoot, "src", "Inventory.Api", "Hubs"), "RemoteAgentHub.cs",
+        SearchOption.AllDirectories).First();
+    Check(!File.ReadAllText(agentHubPath).Contains("SeatHubGuard", StringComparison.Ordinal),
+        "RemoteAgentHub دست‌نخورده است (ایجنت بدون توکن کاربر و بدون صندلی)");
+}
+
+// ============================================================
+//  ۲۸.۱۸) ستون میراثی و نگهبان رانش صدور توکن
+{
+    var repoRoot = FindRepoRoot();
+    var Api = Path.Combine(repoRoot, "src", "Inventory.Api");
+
+    var licensingFiles = Directory.GetFiles(Path.Combine(Api, "Licensing"), "*.cs", SearchOption.AllDirectories)
+        .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                    && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+        .ToList();
+    var offenders = licensingFiles
+        .Where(f => File.ReadAllText(f).Contains("LicenseSeatExempt", StringComparison.Ordinal))
+        .Select(Path.GetFileName).ToList();
+    Check(offenders.Count == 0,
+        $"ستون Users.LicenseSeatExempt از خدمات تصمیم لایسنس حذف شد (هیچ کوئری‌ای رویش نمانده) — فایل‌ها: {string.Join(", ", offenders)}");
+
+    var seedingSources = Directory.GetFiles(Api, "*.cs", SearchOption.AllDirectories)
+        .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                    && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+        .Where(f => File.ReadAllText(f).Contains("LicenseSeatExempt", StringComparison.Ordinal))
+        .Select(Path.GetFileName).Distinct().ToList();
+    Check(seedingSources.All(n => n is "User.cs" or "LicenseSchemaV1.cs"),
+        $"LicenseSeatExempt فقط در تعریف/اسکیما مانده (فایل‌ها: {string.Join(", ", seedingSources)})");
+
+    var issuanceSites = Directory.GetFiles(Api, "*.cs", SearchOption.AllDirectories)
+        .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                    && !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"))
+        .Where(f => File.ReadAllText(f).Contains("new JwtSecurityToken(", StringComparison.Ordinal)
+                    || File.ReadAllText(f).Contains(".WriteToken(", StringComparison.Ordinal))
+        .Select(Path.GetFileName).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
+    Check(issuanceSites.SequenceEqual(new[] { "AuthService.cs", "TokenService.cs" }),
+        $"تنها دو محل صدور توکن وجود دارد (واقعی: {string.Join(", ", issuanceSites)}) — مسیر سوم یعنی صندلی دور زده می‌شود");
+
+    var authServiceText = File.ReadAllText(Path.Combine(Api, "Services", "Core", "AuthService.cs"));
+    Check(authServiceText.Contains("\"sid\"", StringComparison.Ordinal),
+        "توکن نشست کاربر در AuthService همیشه ادعای sid دارد");
+
+    var radisTokenText = File.ReadAllText(Path.Combine(Api, "Modules", "RadisHr", "Services", "TokenService.cs"));
+    Check(radisTokenText.Contains("Derive(", StringComparison.Ordinal)
+          && !radisTokenText.Contains("RADIS-HR-V019-DOTNET8-DEFAULT-SIGNING-KEY", StringComparison.Ordinal),
+        "توکن RadisHr با کلید مشتق‌شده و بدون رشتهٔ ثابت صادر می‌شود (در میزبان پذیرفته نمی‌شود ⇒ صندلی نمی‌گیرد)");
+}
+
+
+Console.WriteLine();
+Console.WriteLine(new string('═', 96));
+if (failures == 0)
+{
+    Console.WriteLine($"✅ همهٔ {passes} بررسی موفق بود (شامل بخش ۲۸ — صندلی لایسنس).");
+    Environment.ExitCode = 0;
+}
+else
+{
+    Console.WriteLine($"⛔ {failures} بررسی شکست خورد از {passes + failures}:");
+    foreach (var item in failedChecks) Console.WriteLine("   • " + item);
+    Environment.ExitCode = 1;
+}
+Console.WriteLine(new string('═', 96));
+
 try { File.Delete(dbPath); Directory.Delete(storage, true); } catch { /* بی‌صدا */ }
-Environment.ExitCode = failures == 0 ? 0 : 1;
 return Environment.ExitCode;
 
 // ============================================================
@@ -2309,10 +3156,6 @@ file sealed class GateLicenseService(LicenseOverallStatus status, bool grace)
         string? entityId = null, int? userId = null, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
-    public Task<Inventory.Licensing.Abstractions.SeatCheckResult> CanLoginUserAsync(int userId,
-        CancellationToken cancellationToken = default)
-        => Task.FromResult(Inventory.Licensing.Abstractions.SeatCheckResult.Ok());
-
     public void Invalidate() { }
 
     public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
@@ -2339,8 +3182,33 @@ file sealed class FixedLicenseService(EffectiveEntitlement entitlement, QuotaSer
         string? entityId = null, int? userId = null, CancellationToken cancellationToken = default)
         => quota.RecordUsageAsync(entitlement, module, metric, amount, entityType, entityId, userId, cancellationToken);
 
-    public Task<Inventory.Licensing.Abstractions.SeatCheckResult> CanLoginUserAsync(int userId, CancellationToken cancellationToken = default)
-        => Task.FromResult(Inventory.Licensing.Abstractions.SeatCheckResult.Ok());
+    public void Invalidate() { }
+
+    public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+}
+
+// ============================================================
+//  سرویس لایسنس ساختگی برای بخش صندلی — فقط Entitlement می‌دهد.
+// ============================================================
+file sealed class SeatOnlyLicenseService(EffectiveEntitlement entitlement)
+    : Inventory.Licensing.Abstractions.ILicenseService
+{
+    public ModuleState GetModuleState(string module) => entitlement.GetState(module);
+    public ModuleEntitlement? GetModule(string module) => entitlement.FindModule(module);
+    public EffectiveEntitlement GetEffectiveEntitlement() => entitlement;
+    public Task<EffectiveEntitlement> GetEffectiveEntitlementAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(entitlement);
+    public LicenseOverallStatus GetOverallStatus() => entitlement.Status;
+
+    public Task<Inventory.Licensing.Abstractions.QuotaConsumeResult> TryConsumeAsync(string module, string metric,
+        int amount = 1, string? entityType = null, string? entityId = null, int? userId = null,
+        bool recordLedger = true, CancellationToken cancellationToken = default)
+        => Task.FromResult(Inventory.Licensing.Abstractions.QuotaConsumeResult.Unlimited());
+
+    public Task RecordUsageAsync(string module, string metric, int amount = 1, string? entityType = null,
+        string? entityId = null, int? userId = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 
     public void Invalidate() { }
 

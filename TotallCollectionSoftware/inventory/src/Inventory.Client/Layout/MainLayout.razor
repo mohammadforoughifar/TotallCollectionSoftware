@@ -1416,6 +1416,15 @@ else
 
     private async Task Logout()
     {
+        // مرحله ۳ (بند ۹): نشست سرور را ببند تا صندلی همان لحظه آزاد شود، نه بعد از
+        // پنجرهٔ بی‌فعالیتی. fire-and-forget عمدی است: خروج کاربر هرگز نباید به شبکه
+        // وابسته باشد؛ اگر پاسخ نیاید، نشست با بی‌فعالیتی آزاد می‌شود.
+        _ = Task.Run(async () =>
+        {
+            try { using var resp = await Http.PostAsync("api/auth/logout", null); }
+            catch { /* بی‌صدا — خروج محلی در هر حال انجام می‌شود */ }
+        });
+
         try { await JS.InvokeAsync<PushState>("appPush.logout", PushApiRoot, Auth.Token); } catch { }
         await Rt.StopAsync();
         try { await Tabs.CloseAllAsync(); } catch { }

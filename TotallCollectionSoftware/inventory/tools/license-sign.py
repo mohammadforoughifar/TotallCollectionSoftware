@@ -20,6 +20,7 @@
       --module catalog:perpetual \
       --module letters:subscription:2027-11-08 \
       --users named:10 \
+      --exempt-user admin --exempt-user backup-service \
       --quota letter.create:2000:Monthly \
       --out license.lic
 
@@ -39,6 +40,10 @@
             TERM = perpetual | subscription | trial
             UNTIL = تاریخ پایان (YYYY-MM-DD)؛ برای اشتراکی/آزمایشی اجباری
   --users   named:N یا concurrent:N یا none
+  --exempt-user NAME   نام کاربری معاف از صندلی (تکرارشدنی) — فقط از سند امضاشده،
+                       نه از appsettings/نقش Admin/ستون LicenseSeatExempt
+  --exempt-cap  N      سقف تعداد معاف‌های اثرگذار؛ پیش‌فرض = تعداد نام‌ها.
+                       اگر نام بیشتر از سقف باشد فقط N نام اول معاف شمرده می‌شود.
   --quota   METRIC:LIMIT:PERIOD[:PACKID]
             PERIOD = lifetime | monthly | yearly
             PACKID = فقط برای بستهٔ افزایشی (stackable)
@@ -141,11 +146,25 @@ def build_item(spec: str) -> dict:
     }
 
 
-def apply_users(items: list[dict], spec: str) -> None:
+def apply_users(items: list[dict], spec: str,
+                exempt_names: list[str] | None = None,
+                exempt_cap: int | None = None) -> None:
     """سیاست کاربر روی همهٔ آیتم‌ها اعمال می‌شود (در یک نصب فقط یک سیاست مجاز است)."""
+    exempt_names = [n.strip() for n in (exempt_names or []) if n and n.strip()]
+    seen: set[str] = set()
+    unique_names: list[str] = []
+    for name in exempt_names:
+        if name.lower() in seen:
+            print(f"⚠️  نام معاف تکراری نادیده گرفته شد: {name}")
+            continue
+        seen.add(name.lower())
+        unique_names.append(name)
+
     mode, _, max_seats = spec.partition(":")
     mode = mode.strip().lower()
     if mode == "none":
+        if unique_names:
+            raise SystemExit("در حالت --users none صندلی‌ای وجود ندارد؛ --exempt-user معنا ندارد.")
         for item in items:
             item["users"] = {"mode": "None", "max": 0, "appliesTo": "Global", "exempt": 0}
         return
@@ -156,8 +175,24 @@ def apply_users(items: list[dict], spec: str) -> None:
     except ValueError:
         raise SystemExit(f"--users بدون سقف: {spec}")
 
+    # سقف معاف: اگر داده نشده باشد، برابر تعداد نام‌های داده‌شده (یعنی همه اثرگذار).
+    cap = len(unique_names) if exempt_cap is None else int(exempt_cap)
+    if cap < 0:
+        raise SystemExit("--exempt-cap نمی‌تواند منفی باشد.")
+    if cap > 0 and not unique_names:
+        print("⚠️  --exempt-cap بدون --exempt-user: هیچ حسابی معاف نمی‌شود (فهرست خالی است).")
+    if unique_names and cap < len(unique_names):
+        print(f"⚠️  {len(unique_names) - cap} نام معاف به‌خاطر سقف exempt={cap} اثر ندارد "
+              f"(فقط {cap} نام اول معاف شمرده می‌شود).")
+
     for item in items:
-        item["users"] = {"mode": mode.capitalize(), "max": seats, "appliesTo": "Global", "exempt": 0}
+        item["users"] = {
+            "mode": mode.capitalize(),
+            "max": seats,
+            "appliesTo": "Global",
+            "exempt": cap,
+            "exemptUsers": list(unique_names),
+        }
 
 
 def apply_quota(items: list[dict], spec: str) -> None:
@@ -230,6 +265,10 @@ def main() -> int:
     parser.add_argument("--serial", default=None, help="شماره سریال؛ پیش‌فرض: تصادفی")
     parser.add_argument("--module", action="append", default=[], help="CODE:TERM[:UNTIL] — تکرارشدنی")
     parser.add_argument("--users", default=None, help="named:N | concurrent:N | none")
+    parser.add_argument("--exempt-user", action="append", default=[], dest="exempt_users",
+                        help="نام کاربری معاف از صندلی — تکرارشدنی (فقط با --users named/concurrent)")
+    parser.add_argument("--exempt-cap", type=int, default=None, dest="exempt_cap",
+                        help="سقف تعداد معاف‌های اثرگذار؛ پیش‌فرض: تعداد نام‌های --exempt-user")
     parser.add_argument("--quota", action="append", default=[], help="METRIC:LIMIT:PERIOD[:PACKID]")
     parser.add_argument("--out", required=True, help="مسیر فایل لایسنس خروجی")
     parser.add_argument("--bridge", action="store_true",
@@ -240,7 +279,7 @@ def main() -> int:
 
     if args.bridge:
         # ---- حالت پل ----
-        if args.module or args.quota:
+        if args.module or args.quota or args.exempt_users or args.exempt_cap:
             raise SystemExit("در حالت --bridge، --module و --quota معنا ندارد: پل همهٔ ماژول‌ها را "
                              "بدون سقف می‌دهد. برای لایسنس عادی، --bridge را برندارید.")
 
@@ -259,7 +298,10 @@ def main() -> int:
 
     if not args.bridge:
         if args.users:
-            apply_users(items, args.users)
+            apply_users(items, args.users, args.exempt_users, args.exempt_cap)
+        elif args.exempt_users or args.exempt_cap:
+            raise SystemExit("--exempt-user/--exempt-cap بدون --users معنا ندارد "
+                             "(اول سیاست صندلی را با named:N یا concurrent:N مشخص کنید).")
         for quota_spec in args.quota:
             apply_quota(items, quota_spec)
 

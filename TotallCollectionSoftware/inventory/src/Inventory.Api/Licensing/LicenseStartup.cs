@@ -48,6 +48,13 @@ public static class LicenseStartup
         services.AddScoped<QuotaSendCoordinator>();   // رزرو ← تماس ← تسویه (مودیان)
         services.AddScoped<LicenseSessionService>();
 
+        // ---- مرحله ۳: صندلی ----
+        // SeatCache و SeatDegradedJournal تک‌نمونه‌اند: کش باید بین درخواست‌ها یکی باشد
+        // (وگرنه هر درخواست یک کوئری می‌زند) و دفتر تخریب هم یک فایل دارد.
+        services.AddSingleton<SeatCache>();
+        services.AddSingleton<SeatDegradedJournal>();
+        services.AddScoped<SeatService>();
+
         services.AddSingleton<EntitlementCache>();
         services.AddSingleton<LicenseActivationThrottle>();
         services.AddScoped<ILicenseService, LicenseService>();

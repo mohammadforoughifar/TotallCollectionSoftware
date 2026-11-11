@@ -92,6 +92,7 @@ public static class Program
         // ---------- ۱) لایسنس (اختیاری) ----------
         var limits = new Dictionary<string, MetricLimit>(StringComparer.OrdinalIgnoreCase);
         IReadOnlyList<LicenseDocument>? licenseDocsA = null;
+        EffectiveEntitlement? entitlement = null;
         var status = "بدون فایل لایسنس — فقط مصرف واقعی نشان داده می‌شود";
 
         if (!string.IsNullOrWhiteSpace(licensePath))
@@ -105,6 +106,7 @@ public static class Program
 
             licenseDocsA = loaded.Documents!;
             var merged = EntitlementMerger.Merge(loaded.Documents!);
+            entitlement = merged;
             foreach (var l in merged.Limits) limits[l.Metric] = l;
             status = $"وضعیت: {merged.Status} — {limits.Count} سقف در {loaded.Documents!.Count} سند";
         }
@@ -130,6 +132,9 @@ public static class Program
             Console.Error.WriteLine($"❌ اتصال به دیتابیس برقرار نشد: {ex.Message}");
             return 4;
         }
+
+        // ---------- ۲٫۵) کاربران و صندلی (مرحله ۳) ----------
+        await PrintSeatsAsync(connection, entitlement);
 
         var metrics = MetricCodes.All
             .Where(d => !d.IsAggregate)                    // تجمیعی‌ها از اجزای خودشان محاسبه می‌شوند
@@ -733,6 +738,143 @@ VALUES (@id, @mode, NULL, NULL, NULL, @now, @now)", connection))
             return false;
 #endif
         }
+    }
+
+    /// <summary>
+    /// بلوک «کاربران و صندلی» — پیش از صدور لایسنس نشان می‌دهد سقفِ پیشنهادی روی کدام
+    /// دیتابیس چه اثری دارد: چقدر کاربر فعال داریم، چقدرشان معاف‌اند، و با سیاست
+    /// Named کدام حساب‌ها رد می‌شوند (ترتیب، صعودی بر اساس Id).
+    ///
+    /// <para>همهٔ کوئری‌ها SELECT هستند. اگر جدول‌ها وجود نداشته باشند، پیام راهنما چاپ
+    /// می‌شود و شبیه‌ساز سهمیه ادامه می‌دهد.</para>
+    /// </summary>
+    private static async Task PrintSeatsAsync(SqlConnection connection, EffectiveEntitlement? ent)
+    {
+        var seats = ent?.Seats ?? new UserSeatPolicy();
+        const int idleMinutes = 15;   // پیش‌فرض appsettings:Licensing:SessionIdleMinutes
+
+        Console.WriteLine();
+        Console.WriteLine("────────── کاربران و صندلی (مرحله ۳) ──────────");
+
+        var modeText = seats.Mode switch
+        {
+            LicenseUserMode.Named => "Named — کاربر نام‌دار (رتبهٔ صعودی Id)",
+            LicenseUserMode.Concurrent => "Concurrent — کاربر هم‌زمان (نشست فعال)",
+            _ => "None — لایسنس سقف کاربر ندارد (همهٔ حساب‌ها مجازند)"
+        };
+        Console.WriteLine($"  سیاست صندلی: {modeText}");
+
+        var capText = seats.GlobalMax?.ToString(CultureInfo.InvariantCulture)
+                      ?? (seats.ModuleMax.Count > 0 ? "به‌ازای ماژول" : "—");
+        var exemptText = seats.EffectiveExemptUsernames.Count == 0
+            ? "—"
+            : string.Join("، ", seats.EffectiveExemptUsernames);
+        Console.WriteLine($"  سقف پیشنهادی (max): {capText}   |   سقف معاف (exempt): {seats.MaxExempt}"
+                          + $"   |   معاف‌های اثرگذار: {exemptText}");
+        if (seats.ExemptUsernames.Count > seats.EffectiveExemptUsernames.Count)
+            Console.WriteLine($"  ⚠️ {seats.ExemptUsernames.Count - seats.EffectiveExemptUsernames.Count} نامِ معاف "
+                              + "به‌خاطر سقف «exempt» اثر ندارد (فقط نام‌های اول تا سقف شمرده می‌شوند).");
+
+        List<(int Id, string Username, bool IsActive)> users;
+        try
+        {
+            users = await ReadUsersAsync(connection);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠️ جدول Users خوانده نشد ({ex.Message}) — بلوک صندلی ناقص است.");
+            return;
+        }
+
+        if (users.Count == 0)
+        {
+            Console.WriteLine("  ℹ️ جدول کاربران خالی است (نصب تازه).");
+            return;
+        }
+
+        var active = users.Where(u => u.IsActive).ToList();
+        var activeExempt = active.Where(u => seats.IsExempt(u.Username)).ToList();
+        var activeNonExempt = active.Where(u => !seats.IsExempt(u.Username)).ToList();
+
+        Console.WriteLine($"  کاربران فعال (IsActive=1): {active.Count}   |   معافِ فعال: {activeExempt.Count}"
+                          + $"   |   فعالِ غیرمعاف: {activeNonExempt.Count}");
+        if (activeExempt.Count > 0)
+            Console.WriteLine($"  معاف‌ها: {string.Join("، ", activeExempt.Select(u => u.Username))}");
+
+        if (seats.Mode == LicenseUserMode.Named && seats.GlobalMax is int max)
+        {
+            var allowed = activeNonExempt.Take(max).ToList();
+            var denied = activeNonExempt.Skip(max).ToList();
+            Console.WriteLine($"  با سقف {max}: مجاز {allowed.Count} نفر، رد (403 LICENSE_SEAT_FULL) {denied.Count} نفر.");
+            if (allowed.Count > 0)
+                Console.WriteLine($"     مجاز: {string.Join("، ", allowed.Select(u => $"{u.Username}(#{u.Id})"))}");
+            if (denied.Count > 0)
+                Console.WriteLine($"     رد می‌شوند: {string.Join("، ", denied.Select(u => $"{u.Username}(#{u.Id})"))}");
+
+            if (activeNonExempt.Count > max)
+                Console.WriteLine($"  ⛔ با این سقف، {activeNonExempt.Count - max} حسابِ فعال نمی‌تواند وارد شود. "
+                                  + "یا سقف را بالا ببرید، یا حساب‌ها را غیرفعال کنید، یا آن‌ها را در فهرست معاف بگذارید.");
+        }
+        else if (seats.Mode == LicenseUserMode.Concurrent && seats.GlobalMax is int concurrentMax)
+        {
+            int used;
+            try
+            {
+                used = await ReadConcurrentAsync(connection, seats, idleMinutes);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ⚠️ جدول LicenseSessions خوانده نشد ({ex.Message}).");
+                return;
+            }
+            Console.WriteLine($"  نشست‌های معتبر همین لحظه (Status='Active' و LastSeen > now−{idleMinutes}m): "
+                              + $"{used} از {concurrentMax}");
+            if (used >= concurrentMax)
+                Console.WriteLine("  ⛔ همین حالا ظرفیت پر است؛ ورود بعدی با 403 LICENSE_SEAT_FULL رد می‌شود.");
+            else
+                Console.WriteLine($"  ✅ {concurrentMax - used} صندلی آزاد است.");
+        }
+        else if (seats.Mode == LicenseUserMode.None)
+        {
+            Console.WriteLine("  ℹ️ لایسنس کاربران را محدود نمی‌کند؛ هیچ ورودی با کد صندلی رد نمی‌شود.");
+            Console.WriteLine("     (در «لایسنس پل» هم وضع همین است — users:None یعنی همه مجازند.)");
+        }
+        else
+        {
+            Console.WriteLine("  ℹ️ سقف سراسری صندلی در لایسنس نیست؛ محدودیتی اعمال نمی‌شود.");
+        }
+    }
+
+    private static async Task<List<(int Id, string Username, bool IsActive)>> ReadUsersAsync(SqlConnection connection)
+    {
+        var list = new List<(int, string, bool)>();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT [Id], [Username], [IsActive] FROM [dbo].[Users] ORDER BY [Id];";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            list.Add((reader.GetInt32(0), reader.IsDBNull(1) ? "" : reader.GetString(1),
+                !reader.IsDBNull(2) && reader.GetBoolean(2)));
+        return list;
+    }
+
+    private static async Task<int> ReadConcurrentAsync(SqlConnection connection, UserSeatPolicy seats, int idleMinutes)
+    {
+        await using var cmd = connection.CreateCommand();
+        var exemptNames = seats.EffectiveExemptUsernames.ToList();
+        var notIn = exemptNames.Count == 0
+            ? ""
+            : " AND [UserId] NOT IN (SELECT [Id] FROM [dbo].[Users] WHERE [Username] IN ("
+              + string.Join(", ", exemptNames.Select((_, i) => "@e" + i)) + "))";
+
+        cmd.CommandText =
+            "SELECT COUNT(DISTINCT [UserId]) FROM [dbo].[LicenseSessions] "
+            + "WHERE [Status] = N'Active' AND [LastSeen] > DATEADD(minute, -@idle, GETDATE())" + notIn + ";";
+        cmd.Parameters.AddWithValue("@idle", idleMinutes);
+        for (var i = 0; i < exemptNames.Count; i++)
+            cmd.Parameters.AddWithValue("@e" + i, exemptNames[i]);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null or DBNull ? 0 : Convert.ToInt32(result);
     }
 
     private static void PrintHelp()

@@ -61,6 +61,9 @@ public sealed class ItemEntitlement
     public LicenseUserMode UserMode { get; init; }
     public int UserMax { get; init; }
     public int UserExempt { get; init; }
+
+    /// <summary>نام‌کاربری معاف‌های همین آیتم (از سند امضاشده).</summary>
+    public IReadOnlyList<string> UserExemptNames { get; init; } = Array.Empty<string>();
     public LicenseUserScope UserScope { get; init; }
     public IReadOnlyList<string> Modules { get; init; } = Array.Empty<string>();
 
@@ -84,6 +87,51 @@ public sealed class UserSeatPolicy
 
     /// <summary>حداکثر تعداد حساب معاف از صندلی — از سند امضاشده.</summary>
     public int MaxExempt { get; init; }
+
+    /// <summary>
+    /// نام‌کاربری معاف‌ها — <b>همان‌طور که در سند آمده</b> (بدون برش).
+    /// برای تصمیم‌گیری از <see cref="EffectiveExemptUsernames"/> استفاده کنید.
+    /// </summary>
+    public IReadOnlyList<string> ExemptUsernames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// معاف‌های <b>اثرگذار</b>: فقط <see cref="MaxExempt"/> نام اول، بدون تکرار و بدون
+    /// فاصلهٔ اضافه.
+    ///
+    /// <para>
+    /// سقف عمداً <b>دو جا</b> اعمال می‌شود: یک‌بار موقع ساخت سیاست (EntitlementMerger) و
+    /// یک‌بار همین‌جا. دلیلش یک نقص واقعی بود: سیاستی که در تست/مسیر دیگری ساخته می‌شد،
+    /// سقف را دور می‌زد و همهٔ نام‌ها معاف می‌شدند.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> EffectiveExemptUsernames
+    {
+        get
+        {
+            if (MaxExempt <= 0 || ExemptUsernames.Count == 0) return Array.Empty<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<string>(Math.Min(MaxExempt, ExemptUsernames.Count));
+            foreach (var raw in ExemptUsernames)
+            {
+                if (list.Count >= MaxExempt) break;
+                var name = raw?.Trim();
+                if (string.IsNullOrEmpty(name)) continue;
+                if (!seen.Add(name)) continue;
+                list.Add(name);
+            }
+            return list;
+        }
+    }
+
+    /// <summary>آیا این نام‌کاربری معاف است؟ (بدون حساسیت به بزرگی/کوچکی حروف)</summary>
+    public bool IsExempt(string? username)
+    {
+        var name = username?.Trim();
+        if (string.IsNullOrEmpty(name) || MaxExempt <= 0) return false;
+        foreach (var candidate in EffectiveExemptUsernames)
+            if (string.Equals(candidate, name, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
 
     public bool HasUserLimit => Mode != LicenseUserMode.None;
 

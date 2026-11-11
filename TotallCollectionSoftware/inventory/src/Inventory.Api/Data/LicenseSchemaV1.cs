@@ -226,6 +226,13 @@ BEGIN
     CREATE INDEX [IX_LicenseSessions_Status] ON [dbo].[LicenseSessions] ([Status], [LastSeen]);
 END;
 
+-- مرحله ۳: شمارش «کاربر هم‌زمان» و بررسی «نشست خودِ کاربر» روی (Status, UserId) است.
+-- افزودنی و بی‌خطر: اگر ایندکس از قبل باشد، دوباره ساخته نمی‌شود.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                   WHERE name = N'IX_LicenseSessions_StatusUser'
+                     AND object_id = OBJECT_ID(N'dbo.LicenseSessions'))
+    CREATE INDEX [IX_LicenseSessions_StatusUser] ON [dbo].[LicenseSessions] ([Status], [UserId]);
+
 -- ---------- لاگ رخداد ----------
 IF OBJECT_ID(N'dbo.LicenseEvents', N'U') IS NULL
 BEGIN
@@ -399,6 +406,7 @@ CREATE TABLE IF NOT EXISTS ""LicenseSessions"" (
     ""EndReason"" TEXT NULL);");
             await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseSessions_SessionId"" ON ""LicenseSessions"" (""SessionId"");");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseSessions_Status"" ON ""LicenseSessions"" (""Status"", ""LastSeen"");");
+            await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseSessions_StatusUser"" ON ""LicenseSessions"" (""Status"", ""UserId"");");
 
             await Exec(connection, @"
 CREATE TABLE IF NOT EXISTS ""LicenseEvents"" (

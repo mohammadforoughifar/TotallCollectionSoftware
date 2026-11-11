@@ -785,6 +785,8 @@ app.UseAuthentication();
 // (۲) قبل از ActiveCompanyMiddleware تا وقتی لایسنس نامعتبر است، کوئری شرکت فعال هم زده نشود.
 // با لایسنس نامعتبر برنامه Crash نمی‌کند: صفحهٔ ورود و صفحهٔ بارگذاری لایسنس باز می‌مانند.
 app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>();
+// مرحله ۳: دروازهٔ صندلی — بعد از دروازهٔ لایسنس (وضعیت نصب) و قبل از همهٔ کنترلرها.
+app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.SeatGateMiddleware>();
 
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
 // هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.

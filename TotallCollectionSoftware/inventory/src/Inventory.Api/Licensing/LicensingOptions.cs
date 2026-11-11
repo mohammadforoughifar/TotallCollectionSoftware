@@ -69,4 +69,79 @@ public sealed class LicensingOptions
 
     /// <summary>نسخهٔ نرم‌افزار — در فایل درخواست و مقایسهٔ Build استفاده می‌شود.</summary>
     public string? ProductVersion { get; set; }
+
+    // ==================================================================
+    //  مرحله ۳ — صندلی. همهٔ این‌ها «رفتار شمارش» را تنظیم می‌کنند، نه سقف را.
+    //  سقف و فهرست معاف فقط از سند امضاشده می‌آید؛ هیچ‌کدام از این کلیدها
+    //  نمی‌تواند صندلی اضافه کند. مثل RefundPolicy، هر کدام کفِ کد دارند.
+    // ==================================================================
+
+    /// <summary>پیش‌فرض پنجرهٔ بی‌فعالیتی (دقیقه).</summary>
+    public const int DefaultIdleMinutes = 15;
+
+    /// <summary>کف پنجرهٔ بی‌فعالیتی — کمتر از ۱۰ دقیقه یعنی «هر تب باز یک صندلی». </summary>
+    public const int MinIdleMinutes = 10;
+
+    /// <summary>سقف پنجرهٔ بی‌فعالیتی (دقیقه).</summary>
+    public const int MaxIdleMinutes = 240;
+
+    /// <summary>پیش‌فرض عمر کش تصمیم صندلی (ثانیه).</summary>
+    public const int DefaultSeatCacheSeconds = 45;
+
+    /// <summary>کف عمر کش — کمتر یعنی هر درخواست یک کوئری.</summary>
+    public const int MinSeatCacheSeconds = 15;
+
+    /// <summary>سقف عمر کش — بیشتر یعنی «بیرون‌انداخته‌شده» تا دو دقیقه کار می‌کند.</summary>
+    public const int MaxSeatCacheSeconds = 120;
+
+    /// <summary>سیاست پیش‌فرض: کسی را بیرون نینداز (بند ۱۲).</summary>
+    public const string SeatEvictionDeny = "deny";
+
+    /// <summary>سیاست اختیاری: قدیمی‌ترین نشست بیکار بیرون برود.</summary>
+    public const string SeatEvictionOldestIdle = "evict-oldest-idle";
+
+    /// <summary>پیش‌فرض کف بیکاری برای بیرون‌انداختن (دقیقه).</summary>
+    public const int DefaultSeatEvictionMinIdleMinutes = 5;
+
+    /// <summary>کف بیکاری برای بیرون‌انداختن — کمتر از ۵ دقیقه یعنی «کاربر فعال را بینداز بیرون».</summary>
+    public const int MinSeatEvictionMinIdleMinutes = 5;
+
+    /// <summary>سقف کف بیکاری برای بیرون‌انداختن (دقیقه).</summary>
+    public const int MaxSeatEvictionMinIdleMinutes = 120;
+
+    /// <summary>عمر کش تصمیم صندلی (ثانیه) — کلمپ‌شده در ۱۵..۱۲۰؛ صفر/منفی ⇒ پیش‌فرض.</summary>
+    public int SeatCacheSeconds { get; set; } = DefaultSeatCacheSeconds;
+
+    /// <summary>
+    /// وقتی ظرفیت «هم‌زمان» پر است: <c>deny</c> (پیش‌فرض) یا <c>evict-oldest-idle</c>.
+    /// هر مقدار ناشناخته = <c>deny</c>؛ یعنی «غلط نوشتن» هرگز رفتار تهاجمی نمی‌سازد.
+    /// </summary>
+    public string? SeatEviction { get; set; } = SeatEvictionDeny;
+
+    /// <summary>کف بی‌فعالیتی برای اینکه کسی «بیکار» و قابل‌بیرون‌انداختن شمرده شود (دقیقه).</summary>
+    public int SeatEvictionMinIdleMinutes { get; set; } = DefaultSeatEvictionMinIdleMinutes;
+
+    /// <summary>پنجرهٔ بی‌فعالیتی مؤثر — صفر/منفی ⇒ پیش‌فرض، بیرون بازه ⇒ کلمپ.</summary>
+    public int EffectiveIdleMinutes()
+        => SessionIdleMinutes <= 0
+            ? DefaultIdleMinutes
+            : Math.Clamp(SessionIdleMinutes, MinIdleMinutes, MaxIdleMinutes);
+
+    /// <summary>عمر کش مؤثر — صفر/منفی ⇒ پیش‌فرض، بیرون بازه ⇒ کلمپ.</summary>
+    public int EffectiveSeatCacheSeconds()
+        => SeatCacheSeconds <= 0
+            ? DefaultSeatCacheSeconds
+            : Math.Clamp(SeatCacheSeconds, MinSeatCacheSeconds, MaxSeatCacheSeconds);
+
+    /// <summary>سیاست بیرون‌انداختن مؤثر — هر مقدار ناشناخته ⇒ <c>deny</c>.</summary>
+    public string EffectiveSeatEviction()
+        => string.Equals(SeatEviction?.Trim(), SeatEvictionOldestIdle, StringComparison.OrdinalIgnoreCase)
+            ? SeatEvictionOldestIdle
+            : SeatEvictionDeny;
+
+    /// <summary>کف بیکاری مؤثر برای بیرون‌انداختن — صفر/منفی ⇒ پیش‌فرض، بیرون بازه ⇒ کلمپ.</summary>
+    public int EffectiveSeatEvictionMinIdleMinutes()
+        => SeatEvictionMinIdleMinutes <= 0
+            ? DefaultSeatEvictionMinIdleMinutes
+            : Math.Clamp(SeatEvictionMinIdleMinutes, MinSeatEvictionMinIdleMinutes, MaxSeatEvictionMinIdleMinutes);
 }

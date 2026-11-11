@@ -145,6 +145,19 @@ public sealed class LicenseUsers
     /// </summary>
     [JsonPropertyName("exempt")]
     public int Exempt { get; set; }
+
+    /// <summary>
+    /// نام‌کاربری حساب‌های <b>معاف از صندلی</b> — فهرست امضاشده، نه تنظیمات.
+    ///
+    /// <para>
+    /// مرحله ۳: معافیت فقط از همین‌جا می‌آید. ستون <c>Users.LicenseSeatExempt</c> و نقش
+    /// <c>Admin</c> هیچ اثری ندارند (وگرنه مشتری با یک ویرایش دیتابیس سقف را دور می‌زد).
+    /// سقف تعداد اثرگذار همان <see cref="Exempt"/> است: اگر فهرست بلندتر باشد، فقط
+    /// <c>Exempt</c> نام اول معاف شمرده می‌شود.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("exemptUsers")]
+    public List<string> ExemptUsers { get; set; } = new();
 }
 
 /// <summary>یک سهمیه روی یک متریک.</summary>

@@ -31,7 +31,22 @@ public sealed class LicenseSessionService
     }
 
     /// <summary>مهلت بیکاری؛ بعد از این مدت صندلی آزاد می‌شود.</summary>
-    public DateTime IdleCutoff => DateTime.Now.AddMinutes(-Math.Clamp(_options.SessionIdleMinutes, 1, 24 * 60));
+    public DateTime IdleCutoff => ClockAnchor.Now().AddMinutes(-_options.EffectiveIdleMinutes());
+
+    /// <summary>یافتن نشست با شناسه (بدون فیلتر وضعیت — تصمیم با فراخوان).</summary>
+    public Task<LicenseSession?> FindAsync(string sessionId, CancellationToken cancellationToken = default)
+        => _db.LicenseSessions.FirstOrDefaultAsync(s => s.SessionId == sessionId, cancellationToken);
+
+    /// <summary>
+    /// نشست فعالِ همین کاربر (برای «یک صندلی برای هر کاربر»): تب/دستگاه دوم صندلی تازه
+    /// نمی‌گیرد و همان <c>sid</c> را می‌گیرد.
+    /// </summary>
+    public Task<LicenseSession?> FindActiveForUserAsync(int userId, DateTime idleCutoff,
+        CancellationToken cancellationToken = default)
+        => _db.LicenseSessions
+            .Where(s => s.UserId == userId && s.Status == "Active" && s.LastSeen > idleCutoff)
+            .OrderByDescending(s => s.LastSeen)
+            .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>ساخت/فعال‌سازی نشست برای کاربر.</summary>
     public async Task<LicenseSession> StartAsync(int userId, string sessionId, string? machineName, string? ip,
@@ -41,7 +56,7 @@ public sealed class LicenseSessionService
         if (existing is not null)
         {
             existing.Status = "Active";
-            existing.LastSeen = DateTime.Now;
+            existing.LastSeen = ClockAnchor.Now();
             existing.EndedAt = null;
             existing.EndReason = null;
             await _db.SaveChangesAsync(cancellationToken);
@@ -52,8 +67,8 @@ public sealed class LicenseSessionService
         {
             SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId,
             UserId = userId,
-            StartedAt = DateTime.Now,
-            LastSeen = DateTime.Now,
+            StartedAt = ClockAnchor.Now(),
+            LastSeen = ClockAnchor.Now(),
             MachineName = Truncate(machineName, 100),
             Ip = Truncate(ip, 64),
             Status = "Active"
@@ -64,14 +79,15 @@ public sealed class LicenseSessionService
     }
 
     /// <summary>به‌روزرسانی آخرین فعالیت (heartbeat).</summary>
-    public async Task TouchAsync(string sessionId, CancellationToken cancellationToken = default)
+    /// <param name="force">در ورود دوباره، حتی اگر کمتر از یک دقیقه گذشته، تازه شود.</param>
+    public async Task TouchAsync(string sessionId, CancellationToken cancellationToken = default, bool force = false)
     {
         if (string.IsNullOrWhiteSpace(sessionId)) return;
         var session = await _db.LicenseSessions.FirstOrDefaultAsync(s => s.SessionId == sessionId && s.Status == "Active", cancellationToken);
         if (session is null) return;
         // برای کاهش نوشتن، حداکثر یک‌بار در دقیقه
-        if ((DateTime.Now - session.LastSeen).TotalSeconds < 60) return;
-        session.LastSeen = DateTime.Now;
+        if (!force && (ClockAnchor.Now() - session.LastSeen).TotalSeconds < 60) return;
+        session.LastSeen = ClockAnchor.Now();
         await _db.SaveChangesAsync(cancellationToken);
     }
 
@@ -82,7 +98,7 @@ public sealed class LicenseSessionService
         var session = await _db.LicenseSessions.FirstOrDefaultAsync(s => s.SessionId == sessionId && s.Status == "Active", cancellationToken);
         if (session is null) return;
         session.Status = "Closed";
-        session.EndedAt = DateTime.Now;
+        session.EndedAt = ClockAnchor.Now();
         session.EndReason = Truncate(reason, 60);
         await _db.SaveChangesAsync(cancellationToken);
     }
@@ -107,12 +123,33 @@ public sealed class LicenseSessionService
         foreach (var session in stale)
         {
             session.Status = "Evicted";
-            session.EndedAt = DateTime.Now;
+            session.EndedAt = ClockAnchor.Now();
             session.EndReason = $"بیکاری بیش از {_options.SessionIdleMinutes} دقیقه";
         }
         await _db.SaveChangesAsync(cancellationToken);
         _log.LogInformation("[License] {Count} نشست بیکار آزاد شد.", stale.Count);
         return stale.Count;
+    }
+
+    /// <summary>
+    /// حذف فیزیکی ردیف‌های کهنه (پیش‌فرض ۳۰ روز) — جدول نشست‌ها نباید بی‌نهایت رشد کند.
+    /// «کهنه» = نشستی که دیگر <c>Active</c> نیست و از پایانش بیش از <paramref name="days"/> گذشته.
+    /// </summary>
+    public async Task<int> PurgeOldAsync(int days = 30, CancellationToken cancellationToken = default)
+    {
+        var span = Math.Clamp(days, 1, 365);
+        var cutoff = ClockAnchor.Now().AddDays(-span);
+
+        var old = await _db.LicenseSessions
+            .Where(s => s.Status != "Active" && s.LastSeen < cutoff)
+            .ToListAsync(cancellationToken);
+
+        if (old.Count == 0) return 0;
+
+        _db.LicenseSessions.RemoveRange(old);
+        await _db.SaveChangesAsync(cancellationToken);
+        _log.LogInformation("[License] {Count} نشست قدیمی‌تر از {Days} روز پاک شد.", old.Count, span);
+        return old.Count;
     }
 
     private static string? Truncate(string? value, int max)

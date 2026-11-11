@@ -140,7 +140,6 @@ public interface ILicenseService
         string? entityId = null, int? userId = null, CancellationToken cancellationToken = default);
 
     /// <summary>آیا این کاربر اجازهٔ ورود دارد؟ (سیاست صندلی Named/Concurrent)</summary>
-    Task<SeatCheckResult> CanLoginUserAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>ابطال کش — پس از بارگذاری/تمدید/غیرفعال‌سازی فایل لایسنس (بدون ری‌استارت).</summary>
     void Invalidate();

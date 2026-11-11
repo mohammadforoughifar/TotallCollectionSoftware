@@ -108,6 +108,52 @@ update-database.bat
 
 ---
 
+## مرحله ۳ — صندلی کاربر
+
+مرحله ۳ «تعداد کاربر» را واقعاً اعمال می‌کند. سه چیز را از قبل به مشتری بگویید
+(جزئیات کامل: `docs/LICENSING-SEATS-FA.md`):
+
+### ۱) «لایسنس پل» هیچ محدودیت کاربری ندارد
+
+پل با `users: None` امضا می‌شود؛ در طول ۳۰ روز پل همهٔ حساب‌ها مجازند و هیچ‌کس
+`LICENSE_SEAT_FULL` نمی‌گیرد. سقف صندلی فقط با لایسنس اصلی (`--users named:N` یا
+`concurrent:N`) فعال می‌شود.
+
+### ۲) همه یک بار دوباره وارد می‌شوند
+
+توکن‌های نسخهٔ قبل `sid` ندارند و از این نسخه رد می‌شوند. کاربران یک بار «نشست نامعتبر»
+می‌بینند و با ورود دوباره توکن تازه می‌گیرند. هیچ داده‌ای از دست نمی‌رود.
+
+### ۳) حساب‌های خدماتی باید در فهرست معاف امضا شوند
+
+```bash
+python tools/license-sign.py --private-key <key.pem> \
+    --installation-id <شناسهٔ نصب> --customer-name "…" \
+    --module invoicing:Subscription:2027-01-01 \
+    --users concurrent:10 \
+    --exempt-user backup-svc --exempt-user moadian-agent \
+    --out customer.lic
+```
+
+`--exempt-cap N` سقف تعداد معاف‌های اثرگذار است (پیش‌فرض = تعداد نام‌ها).
+
+### ۴) پیش از امضا ظرفیت واقعی را ببینید
+
+```bash
+LicenseCheck --simulate --conn "<connection string>" --license customer.lic
+```
+
+بلوک «کاربران و صندلی» می‌گوید با این سقف چند حساب فعال مجازند و **کدام‌ها** رد می‌شوند.
+
+### ۵) `appsettings` دست نمی‌خورد
+
+`update.bat` فایل `appsettings*` را جایگزین نمی‌کند. کلیدهای جدید
+(`SeatCacheSeconds`, `SeatEviction`, `SeatEvictionMinIdleMinutes`) و
+`SessionIdleMinutes` پیش‌فرض امن دارند و همه کفِ کد دارند؛ دست‌زدن به آن‌ها **سقف را
+بالا نمی‌برد**.
+
+---
+
 ## بازگشت (rollback)
 
 | مرحله | کار |
