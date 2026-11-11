@@ -886,17 +886,23 @@ Section("۱۵.۱) فرمول دورهٔ ماهانه برای متریک ActiveC
     var (from, to) = Inventory.Licensing.Periods.PersianPeriodKey.CurrentRange(
         Inventory.Licensing.Model.QuotaPeriod.Monthly);
 
-    // ۳۰ فاکتور در همین ماه شمسی + ۷۰ فاکتور در خارج از پنجره
+    // ۳۰ فاکتور در همین ماه شمسی + ۷۰ فاکتور با «زمان ثبت سیستمی» در دو ماه قبل.
+    //
+    // ⚠️ بازبینی چهارم، مورد ۷: مبنای شمارش CreatedAt است، نه Date.
+    // گروه دوم عمداً تاریخِ کاربر (Date) را **داخل** همین ماه می‌گذارد و فقط CreatedAt را
+    // عقب می‌برد؛ اگر روزی کسی شمارش را به Date برگرداند، این تست ۱۰۰ می‌بیند و قرمز می‌شود.
     var inWindow = Enumerable.Range(1, 30).Select(i => new Inventory.Api.Data.FacInvoice
     {
         Number = 200_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale,
-        Date = from.AddHours(1), WarehouseId = wh.Id,
+        Date = from.AddHours(1), CreatedAt = from.AddHours(2), WarehouseId = wh.Id,
         Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
     });
     var outWindow = Enumerable.Range(1, 70).Select(i => new Inventory.Api.Data.FacInvoice
     {
         Number = 300_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale,
-        Date = from.AddMonths(-2), WarehouseId = wh.Id,
+        Date = from.AddHours(3),                     // تاریخ کاربر: داخل پنجره
+        CreatedAt = from.AddMonths(-2),              // زمان ثبت سیستمی: بیرون پنجره
+        WarehouseId = wh.Id,
         Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
     });
 
@@ -908,7 +914,27 @@ Section("۱۵.۱) فرمول دورهٔ ماهانه برای متریک ActiveC
         db, MetricCodes.InvoiceCreate, Inventory.Licensing.Model.QuotaPeriod.Monthly,
         Inventory.Licensing.Periods.PersianPeriodKey.NowIran());
 
-    Check(inPeriod == 30, $"شمارش «همین ماه» فقط ۳۰ رکورد را دید، نه ۱۰۰ (واقعی: {inPeriod})");
+    Check(inPeriod == 30,
+        $"شمارش «همین ماه» فقط ۳۰ رکورد را دید (مبنا CreatedAt، نه Date) — واقعی: {inPeriod}");
+
+    // ---------- اثبات مستقیم مورد ۷: دست‌کاری تاریخ کاربر سقف را باز نمی‌کند ----------
+    // یک فاکتور تازه ثبت می‌کنیم و بلافاصله تاریخِ کاربرش را به ماه قبل می‌بریم.
+    // اگر مبنا Date بود، این رکورد از ماه جاری بیرون می‌رفت و سقف «آزاد» می‌شد.
+    var moved = new Inventory.Api.Data.FacInvoice
+    {
+        Number = 400_001, Kind = Inventory.Shared.InvoiceKind.Sale,
+        Date = from.AddMonths(-1), WarehouseId = wh.Id,
+        Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+    };
+    db.FacInvoices.Add(moved);
+    await db.SaveChangesAsync();
+
+    var afterMove = await Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+        db, MetricCodes.InvoiceCreate, Inventory.Licensing.Model.QuotaPeriod.Monthly,
+        Inventory.Licensing.Periods.PersianPeriodKey.NowIran());
+
+    Check(afterMove == 31,
+        $"عقب‌بردن تاریخ کاربر، رکورد را از سقف ماه جاری خارج نمی‌کند (۳۱ = ۳۰ + ۱ تازه، واقعی: {afterMove})");
     Check(to > from, $"مرز بازهٔ ماه شمسی معتبر است ({from:yyyy-MM-dd} تا {to:yyyy-MM-dd})");
 
     var empty = await Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
@@ -1092,12 +1118,25 @@ Section("۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی
     var invalidDelete = await Run(LicenseOverallStatus.Invalid, "DELETE", "/api/fac/invoices/5", marked: false);
     Check(!invalidDelete.NextCalled && invalidDelete.StatusCode == 403, "Invalid + DELETE ⇒ ۴۰۳");
 
-    // ---------- Grace ----------
-    // در مهلت سازگاری نصب موجود، همه‌چیز کار می‌کند (تصمیم: نصب قدیمی بی‌درنگ قفل نمی‌شود).
+    // ---------- «Grace»: حذف‌شده (بازبینی چهارم، مورد ۱) ----------
+    //
+    // پیش‌تر اگر سرویس می‌گفت «این نصب در مهلت سازگاری است»، دروازه همه‌چیز را باز می‌کرد.
+    // آن Grace محلی حذف شد: هیچ نصبی نمی‌تواند با پرچمِ خودش به خودش مهلت بدهد. پنجرهٔ
+    // موقت فقط با «لایسنس پُل» امضاشده ممکن است — و آن هم یک سند Valid است، نه حالت سوم.
+    //
+    // این تست عمداً سرویسِ «در حال Grace» می‌سازد و ثابت می‌کند دروازه به آن اعتنا نمی‌کند:
+    // اگر روزی کسی Grace را برگرداند، همین‌جا قرمز می‌شود.
     var gracePost = await Run(LicenseOverallStatus.Missing, "POST", "/api/fac/invoices", marked: false, grace: true);
-    Check(gracePost.NextCalled, "Grace + POST ساده ⇒ عبور می‌کند (مهلت سازگاری)");
-    Check(gracePost.GraceHeader, "Grace ⇒ هدر X-License-Grace دارد");
-    Check(!gracePost.ReadOnlyHeader, "Grace ⇒ هدر فقط‌خواندنی ندارد (پیام‌ها نباید قاطی شوند)");
+    Check(!gracePost.NextCalled && gracePost.StatusCode == 403,
+        $"پرچم Grace اثری ندارد: POST ساده همچنان ۴۰۳ (واقعی: {gracePost.StatusCode})");
+    Check(!gracePost.GraceHeader, "هدر X-License-Grace دیگر صادر نمی‌شود (Grace محلی حذف شد)");
+    Check(gracePost.ReadOnlyHeader, "با پرچم Grace هم هدر فقط‌خواندنی درست ست می‌شود");
+
+    var graceGet = await Run(LicenseOverallStatus.Missing, "GET", "/api/fac/invoices", marked: false, grace: true);
+    Check(graceGet.NextCalled, "پرچم Grace خواندن را هم نمی‌بندد (خواندن همیشه آزاد است)");
+
+    var graceMarked = await Run(LicenseOverallStatus.Missing, "POST", "/api/reports/run", marked: true, grace: true);
+    Check(graceMarked.NextCalled, "پرچم Grace + اکشن علامت‌خورده ⇒ عبور (تصمیم با ویژگی است، نه با Grace)");
 
     // ---------- Valid ----------
     var validPost = await Run(LicenseOverallStatus.Valid, "POST", "/api/fac/invoices", marked: false);
@@ -1164,11 +1203,10 @@ Section("۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی
     var expectedMarked = new[]
     {
         // ---- ۱) زیرساختی / حساب کاربری / نگهداری ----
-        "AiController.BriefingSendNow", "AiController.CategorizeLetter", "AiController.Chat",
-        "AiController.DeleteConversation", "AiController.DigestSendNow", "AiController.DraftLetter",
-        "AiController.DraftMinutes", "AiController.DraftReply", "AiController.ExtractTasks",
-        "AiController.FeedbackSubmit", "AiController.SuggestReceivers", "AiController.SuggestReferral",
-        "AiController.SummarizeLetter",
+        // ⚠️ بازبینی چهارم، مورد ۳: فقط دو اکشن مانده. یازده اکشن دیگر (send-now، draft،
+        // summarize، categorize، extract-tasks، draft-reply، suggest-*، feedback، minutes/draft)
+        // از فهرست بیرون رفتند، چون ابزار نوشتاری/ارسالی را در حلقهٔ مدل اجرا می‌کردند.
+        "AiController.Chat", "AiController.DeleteConversation",
         "BackupController.Retry", "BackupController.Run", "BackupController.SaveSettings", "BackupController.Test",
         "BackupSessionController.Close", "BackupSessionController.Heartbeat",
         "CentralBackupController.DeleteCompany", "CentralBackupController.DeleteReceipt",

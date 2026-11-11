@@ -39,19 +39,31 @@ public static class ActiveCountProbes
     public static readonly IReadOnlyDictionary<string, Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>>> Probes =
         new Dictionary<string, Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>>>(StringComparer.OrdinalIgnoreCase)
         {
+            // ⚠️ مبنا: CreatedAt (زمان ثبت سیستمی) — بازبینی چهارم، مورد ۷.
+            //
+            // چرا نه FacInvoices.Date؟ چون آن تاریخ را کاربر/فرم تعیین می‌کند و قابل
+            // ویرایش است: مشتری می‌توانست تاریخ یک فاکتور را به ماه قبل ببرد تا ماه جاری
+            // «خالی» شود و سقف آزاد گردد — بدون حذف هیچ ردیفی. CreatedAt فقط در لحظهٔ
+            // درج توسط خود سیستم نوشته می‌شود و هیچ اکشنی آن را تغییر نمی‌دهد.
+            //
+            // ردیف‌های قدیمی (قبل از ستون) در استارتاپ یک‌بار از همان تاریخ کاربر پر
+            // می‌شوند (QuotaCountingSchemaV1) تا شمارش ناقص نشود.
+            //
+            // IgnoreQueryFilters: حذف‌نرم‌شده‌ها هم شمرده می‌شوند (قاعدهٔ «حذف مصرف را
+            // برنمی‌گرداند») — مستقل از مبنای تاریخ، این قاعده پابرجاست.
             [MetricCodes.InvoiceCreate] = (db, from, to, ct) =>
                 db.FacInvoices.IgnoreQueryFilters()
-                  .Where(i => i.Date >= from && i.Date < to)
+                  .Where(i => i.CreatedAt >= from && i.CreatedAt < to)
                   .LongCountAsync(ct),
 
             [MetricCodes.LetterIncomingCreate] = (db, from, to, ct) =>
                 db.IncomingLetters.IgnoreQueryFilters()
-                  .Where(l => l.Date >= from && l.Date < to)
+                  .Where(l => l.CreatedAt >= from && l.CreatedAt < to)
                   .LongCountAsync(ct),
 
             [MetricCodes.LetterOutgoingCreate] = (db, from, to, ct) =>
                 db.OutgoingLetters.IgnoreQueryFilters()
-                  .Where(l => l.DateSabt >= from && l.DateSabt < to)
+                  .Where(l => l.CreatedAt >= from && l.CreatedAt < to)
                   .LongCountAsync(ct)
         };
 

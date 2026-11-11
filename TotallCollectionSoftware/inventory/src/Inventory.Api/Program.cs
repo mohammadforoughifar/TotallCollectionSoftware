@@ -11,6 +11,7 @@ using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
@@ -455,6 +456,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o
 // ترتیب: اول مایگریشن (در DbInitializer)، بعد بررسی لایسنس (InitializeLicensingAsync) —
 // و شکست بررسی لایسنس، مانع بالا آمدن برنامه نمی‌شود.
 builder.Services.AddLicensing(builder.Configuration);
+builder.Services.AddScoped<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
 
 builder.Services.AddControllers(options =>
     {
@@ -480,6 +482,11 @@ builder.Services.AddControllers(options =>
 builder.Services.AddSignalR(o =>
 {
     o.MaximumReceiveMessageSize = 4 * 1024 * 1024; // فریم‌های JPEG ریموت دسکتاپ
+
+    // گارد لایسنس روی کانال بلادرنگ. دروازهٔ HTTP فقط /api/* را می‌بیند و هاب‌ها روی
+    // /hubs/* هستند؛ بدون این فیلتر، پنج هاب (داشبورد، اعلان، چت، ریموت، ایجنت ریموت)
+    // هیچ بررسی لایسنسی نداشتند. فهرست کامل و دلایل، در خودِ HubLicenseFilter است.
+    o.AddFilter<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
 }).AddJsonProtocol(o =>
 {
     o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;

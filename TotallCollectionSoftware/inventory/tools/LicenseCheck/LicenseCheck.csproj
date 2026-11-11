@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ابزار «بررسی و شبیه‌سازی سهمیه» — فقط‌خواندنی.
+
+    چرا پروژهٔ جدا؟
+      • باید بدون بالا آمدن API، بدون EF و بدون هیچ وابستگی به وب اجرا شود؛
+        روی ماشین مشتری، قبل از صدور لایسنس، صرفاً «الان چند تا مصرف شده» را
+        گزارش می‌کند تا سقف‌ها و بخشودگی گذشته با چشم باز انتخاب شوند.
+      • فقط SELECT می‌زند. هیچ INSERT/UPDATE/DELETE در این پروژه نیست و
+        رشتهٔ اتصال با «ApplicationIntent=ReadOnly» پیشنهاد می‌شود.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LicenseCheck</AssemblyName>
+    <RootNamespace>LicenseCheck</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- موتور لایسنس: باز کردن و اعتبارسنجی فایل + ادغام آیتم‌ها (بدون EF) -->
+    <ProjectReference Include="..\..\src\Inventory.Licensing\Inventory.Licensing.csproj" />
+    <!-- فقط برای خواندن شمارش‌ها از دیتابیس مشتری -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.3" />
+  </ItemGroup>
+
+</Project>

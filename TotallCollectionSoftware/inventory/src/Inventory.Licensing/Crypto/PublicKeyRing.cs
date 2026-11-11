@@ -34,6 +34,18 @@ internal sealed class PublicKeyManifestEntry
     [JsonPropertyName("algorithm")] public string Algorithm { get; set; } = "RS256";
     [JsonPropertyName("file")] public string File { get; set; } = "";
     [JsonPropertyName("sha256")] public string? Sha256 { get; set; }
+
+    /// <summary>
+    /// کلیدِ توسعه — فقط در بیلد <c>Debug</c> بارگذاری می‌شود.
+    ///
+    /// <para>
+    /// <b>چرا لازم شد؟</b> تا پیش از این، کلید عمومی <c>dev-2026a</c> در هر بیلدی — از جمله
+    /// نسخه‌ای که به مشتری تحویل داده می‌شود — وجود داشت. یعنی هر کسی که کلید خصوصیِ
+    /// توسعه را داشت (روی ماشین توسعه‌دهنده، بیرون از مخزن) می‌توانست برای **هر** نصب
+    /// تولیدی، لایسنس معتبر بسازد. حالا بیلد Release این ردیف را حتی نمی‌بیند.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("debugOnly")] public bool DebugOnly { get; set; }
     [JsonPropertyName("note")] public string? Note { get; set; }
 }
 
@@ -76,6 +88,24 @@ public sealed class PublicKeyRing
         return ring;
     }
 
+    /// <summary>
+    /// آیا کلیدی با این پرچم در <b>همین بیلد</b> قابل بارگذاری است؟
+    ///
+    /// <para>
+    /// جدا شد تا تست بتواند بدون ساختن حلقهٔ کامل، قاعده را بسنجد: در بیلد Debug همهٔ
+    /// کلیدها مجازند؛ در Release فقط کلیدهایی که <c>debugOnly=false</c> دارند.
+    /// (بازبینی چهارم، مورد ۵: بیلد تولیدی نباید کلید توسعه را حتی بشناسد.)
+    /// </para>
+    /// </summary>
+    public static bool IsKeyAllowedInBuild(bool debugOnly)
+    {
+#if DEBUG
+        return true;
+#else
+        return !debugOnly;
+#endif
+    }
+
     /// <summary>ساخت حلقه از منابع Embedded اسمبلی جاری.</summary>
     public static PublicKeyRing FromEmbedded()
     {
@@ -111,6 +141,16 @@ public sealed class PublicKeyRing
             if (string.IsNullOrWhiteSpace(entry.KeyId) || string.IsNullOrWhiteSpace(entry.File))
             {
                 ring._loadErrors.Add("ردیف کلید بدون keyId یا file در manifest نادیده گرفته شد.");
+                continue;
+            }
+
+            // ⚠️ بیلد Release کلید توسعه را بارگذاری نمی‌کند (بازبینی چهارم، مورد ۵).
+            // شرط عمداً روی «DEBUG نبودن» است، نه روی نام فایل: اگر روزی کلید توسعهٔ
+            // دومی اضافه شود، همین یک شرط آن را هم می‌بندد.
+            if (!IsKeyAllowedInBuild(entry.DebugOnly))
+            {
+                ring._loadErrors.Add(
+                    $"کلید «{entry.KeyId}» فقط مخصوص Debug است و در بیلد Release بارگذاری نشد.");
                 continue;
             }
 

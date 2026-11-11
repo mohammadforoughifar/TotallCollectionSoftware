@@ -23,6 +23,17 @@
       --quota letter.create:2000:Monthly \
       --out license.lic
 
+حالت «لایسنس پل» (برای مشتری موجودی که تازه نسخهٔ لایسنس‌دار را نصب می‌کند):
+
+  python tools/license-sign.py --private-key ... --installation-id 3f2a... \
+      --customer-name "شرکت نمونه" --bridge --days 30 --out bridge.lic
+
+  لایسنس پل = یک Subscription کوتاه با **همهٔ** ماژول‌های فعلی و **بدون هیچ سقفی**.
+  فرقش با مهلت داخلیِ نسخهٔ قبل: آن مهلت را خودِ نصب روی ماشین مشتری برای خودش
+  تعیین می‌کرد و مشتری می‌توانست پاکش کند؛ این یکی **امضای ما** را دارد و در همان
+  چارچوب سند لایسنس است. وقتی لایسنس اصلی صادر شد، فایل پل را می‌شود حذف کرد
+  (ادغام اسناد: هر دو معتبر می‌مانند ولی سقف‌ها از آیتم دائمی می‌آیند).
+
 قالب‌ها:
   --module  CODE:TERM[:UNTIL]
             TERM = perpetual | subscription | trial
@@ -56,6 +67,46 @@ def iso_day(value: str | None) -> str | None:
         return None
     parsed = date.fromisoformat(value)
     return datetime(parsed.year, parsed.month, parsed.day).isoformat(timespec="seconds")
+
+
+# ============================================================
+#  کد ماژول‌ها — باید با src/Inventory.Licensing/Modules/ModuleCodes.cs یکی باشد.
+#  (تست tests/Licensing این فهرست را با کد مقایسه می‌کند تا از هم جدا نیفتند.)
+# ============================================================
+ALL_MODULES = [
+    "core", "dashboard", "cartable", "backup", "licensing",
+    "catalog", "sales", "salesvisit", "warehousing", "stocktaking", "invoicing", "moadian",
+    "accounting", "treasury", "expenses", "repairs", "projects", "workorders", "letters",
+    "office_assets", "docarchive", "it_assets", "chat",
+    "hr_fa", "hr_core", "faham_att", "faham_pay", "faham_lms", "faham_com", "bon_hr",
+    "ai", "reports", "devteam",
+]
+
+
+def build_bridge_item(days: int, start: date | None = None) -> dict:
+    """«لایسنس پل»: یک آیتم Subscription با همهٔ ماژول‌ها و بدون سقف.
+
+    چرا **یک** آیتم و نه یکی برای هر ماژول؟
+      • یک آیتم، یک `validUntil` دارد ⇒ یک تاریخ انقضا برای همه‌چیز، ساده و بی‌ابهام.
+      • سقف‌ها خالی می‌ماند ⇒ «بدون سقف» (رفتار پیش‌فرض لایسنس برای متریک بی‌سهمیه).
+      • ادغام با لایسنس اصلی: هر چه لایسنس اصلی بگوید (سقف/ماژول)، حاکم است چون
+        سقف مؤثر = بیشترین سقف، و آیتم پل هیچ سقفی ندارد.
+    """
+    start = start or date.today()
+    end = start + timedelta(days=int(days))
+
+    return {
+        "id": f"bridge-{uuid.uuid4().hex[:8]}",
+        "scope": list(ALL_MODULES),
+        "term": {
+            "type": "Subscription",
+            "validFrom": iso_day(start.isoformat()),
+            "validUntil": iso_day(end.isoformat()),
+        },
+        "users": {"mode": "None", "max": 0, "appliesTo": "Global", "exempt": 0},
+        "quotas": [],
+        "note": f"لایسنس پل {days} روزه — همهٔ ماژول‌ها، بدون سقف",
+    }
 
 
 def build_item(spec: str) -> dict:
@@ -181,17 +232,36 @@ def main() -> int:
     parser.add_argument("--users", default=None, help="named:N | concurrent:N | none")
     parser.add_argument("--quota", action="append", default=[], help="METRIC:LIMIT:PERIOD[:PACKID]")
     parser.add_argument("--out", required=True, help="مسیر فایل لایسنس خروجی")
+    parser.add_argument("--bridge", action="store_true",
+                        help="ساخت «لایسنس پل»: Subscription کوتاه با همهٔ ماژول‌ها و بدون سقف")
+    parser.add_argument("--days", type=int, default=30,
+                        help="طول لایسنس پل به روز (پیش‌فرض ۳۰؛ حداکثر ۹۰)")
     args = parser.parse_args()
 
-    if not args.module:
-        raise SystemExit("حداقل یک --module لازم است.")
+    if args.bridge:
+        # ---- حالت پل ----
+        if args.module or args.quota:
+            raise SystemExit("در حالت --bridge، --module و --quota معنا ندارد: پل همهٔ ماژول‌ها را "
+                             "بدون سقف می‌دهد. برای لایسنس عادی، --bridge را برندارید.")
 
-    items = [build_item(m) for m in args.module]
+        days = max(1, min(int(args.days), 90))
+        if days != args.days:
+            print(f"⚠️  --days به {days} محدود شد (بازهٔ مجاز ۱..۹۰).")
 
-    if args.users:
-        apply_users(items, args.users)
-    for quota_spec in args.quota:
-        apply_quota(items, quota_spec)
+        items = [build_bridge_item(days)]
+        target_document_note = "لایسنس پل"
+    else:
+        if not args.module:
+            raise SystemExit("حداقل یک --module لازم است (یا از --bridge استفاده کنید).")
+
+        items = [build_item(m) for m in args.module]
+        target_document_note = None
+
+    if not args.bridge:
+        if args.users:
+            apply_users(items, args.users)
+        for quota_spec in args.quota:
+            apply_quota(items, quota_spec)
 
     document = {
         "version": 3,
@@ -224,6 +294,11 @@ def main() -> int:
     print(f"  مشتری: {document['customerName']}")
     print(f"  آیتم‌ها: {len(items)}")
     print(f"  ماژول‌ها: {', '.join(m for i in items for m in i['scope'])}")
+
+    if args.bridge:
+        print(f"  نوع: لایسنس پل — اعتبار تا {items[0]['term']['validUntil'][:10]}")
+        print("  ⚠️  این فایل یک راه‌حل موقت برای شروع کار است؛ لایسنس اصلی را جدا صادر کنید.")
+
     return 0
 
 

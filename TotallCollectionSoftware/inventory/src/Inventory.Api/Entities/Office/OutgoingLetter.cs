@@ -17,6 +17,23 @@ namespace Inventory.Api.Data;
 /// </summary>
 public class OutgoingLetter
 {
+    /// <summary>
+    /// <b>زمان ثبت سیستمی</b> — مبنای شمارش سقف ماهانه/سالانه.
+    ///
+    /// <para>
+    /// <b>چرا جدا از تاریخ‌های کاربر؟</b> تاریخ‌هایی مثل <c>DateSabt</c> را کاربر
+    /// (یا فرم) تعیین می‌کند و <b>قابل ویرایش</b> است. اگر سقف ماهانه روی آن‌ها حساب شود،
+    /// مشتری می‌تواند تاریخ یک رکورد را به ماه قبل/بعد ببرد و سقف را آزاد کند — بدون
+    /// اینکه چیزی حذف شود. این ستون فقط یک‌بار، در لحظهٔ درج، توسط خودِ سیستم پر می‌شود.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <c>nullable</c> است به یک دلیل: ردیف‌های موجود (قبل از این تغییر) مقدار ندارند.
+    /// در استارتاپ یک‌بار از <c>DateSabt</c> پر می‌شوند
+    /// (<c>QuotaCountingSchemaV1</c>) تا هیچ ردیفی از شمارش جا نیفتد.
+    /// </para>
+    /// </summary>
+    public DateTime? CreatedAt { get; set; } = DateTime.Now;
     /// <summary>کلید مشترک با LetterSource — دستی مقداردهی می‌شود</summary>
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public int Id { get; set; }

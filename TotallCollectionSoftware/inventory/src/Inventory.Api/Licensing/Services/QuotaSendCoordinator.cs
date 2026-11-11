@@ -50,6 +50,41 @@ public sealed class QuotaSendCoordinator
         _log = log;
     }
 
+    /// <summary>کد وضعیت 408 — «سرور در مهلت پاسخ نداد» (نتیجه نامعلوم).</summary>
+    public const int StatusRequestTimeout = 408;
+
+    /// <summary>کد وضعیت 429 — «درخواست پردازش نشد» (قطعی: انجام نشد).</summary>
+    public const int StatusTooManyRequests = 429;
+
+    /// <summary>
+    /// یکسان‌سازی تصمیم بر پایهٔ کد وضعیت — یک‌جا و قابل تست.
+    ///
+    /// <list type="bullet">
+    ///   <item><b>408</b> ⇒ <c>DeliveryUncertain = true</c> (نامعلوم). سرور نگفته «رد شد»؛
+    ///   گفته «در مهلت دریافت/پاسخ ندادم». درخواست ممکن است در صف پردازش باشد.</item>
+    ///   <item><b>429</b> ⇒ <c>DeliveryUncertain = false</c> (قطعی). سامانه صریحاً گفته
+    ///   «پردازش نکردم، زیادی درخواست دادی»؛ سهمیه باید برگردد.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// این قاعده بر پرچمی که لایهٔ پایین ست کرده اولویت دارد، چون آن لایه به «بستهٔ ارسال
+    /// ساخته شد یا نه» نگاه می‌کند و ممکن است در ۴۲۹ هم بسته ساخته باشد.
+    /// </para>
+    /// </summary>
+    public static void NormalizeByStatusCode(ApiModel? model)
+    {
+        if (model is null || model.Success) return;
+
+        if (model.Status == StatusTooManyRequests)
+        {
+            model.DeliveryUncertain = false;
+            return;
+        }
+
+        if (model.Status == StatusRequestTimeout)
+            model.DeliveryUncertain = true;
+    }
+
     /// <summary>
     /// ارسال با رزرو سهمیه.
     /// </summary>
@@ -95,6 +130,16 @@ public sealed class QuotaSendCoordinator
                 DeliveryUncertain = true
             };
         }
+
+        // ---------- ۲.۵) بازتنظیم دقیق بر پایهٔ کد وضعیت ----------
+        //
+        // دو کد HTTP معنايی دارند که نباید به حدسِ لایهٔ پایین واگذار شود (بازبینی چهارم):
+        //   • 408 Request Timeout ⇒ سرور درخواست را در مهلت مقرر دریافت **نکرد**؛ در عمل
+        //     یعنی «نمی‌دانیم رسیده یا نه» ⇒ نامعلوم ⇒ Pending (سهمیه برنمی‌گردد).
+        //   • 429 Too Many Requests ⇒ درخواست **پردازش نشد** (سهمیهٔ ارسال سامانه پر بود)
+        //     ⇒ قطعیِ «انجام نشد» ⇒ بازگشت سهمیه با LICENSE_QUOTA_REFUND_TECHNICAL.
+        // اگر لایهٔ پایین برعکس این‌ها را ست کرده باشد، همین‌جا اصلاح می‌شود؛ مرجع، کد است.
+        NormalizeByStatusCode(result);
 
         // ---------- ۳) تسویه ----------
         if (result.Success)

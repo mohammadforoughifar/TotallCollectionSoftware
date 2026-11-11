@@ -39,46 +39,33 @@ public sealed class LicenseService : ILicenseService
     // ==================== مهلت نصب موجود ====================
 
     /// <summary>
-    /// آیا این نصب «موقتاً» به‌خاطر سازگاری باز است؟ (نصب قدیمی + مهلت ثبت‌شده + مهلت نگذشته)
+    /// ❌ <b>این متد بازنشسته شد</b> — همیشه <c>false</c>.
     ///
     /// <para>
-    /// این وضعیت فقط وقتی معنا دارد که هنوز هیچ سند معتبری اعمال نشده باشد؛ به‌محض اعمال
-    /// اولین لایسنس، رفتار عادی (ادغام اسناد) جای آن را می‌گیرد.
+    /// <b>تصمیم بازبینی چهارم (کارفرما):</b> «هیچ نصبی نباید به خودش مهلت بدهد.»
+    /// نسخهٔ قبلی در اولین اجرا روی دیتابیسی که داده داشت، یک بازهٔ بی‌درنگ-قفل‌نشدن
+    /// در دیتابیس خودِ مشتری ثبت می‌کرد. سه ایراد داشت:
+    /// </para>
+    /// <list type="number">
+    ///   <item>مشتری می‌توانست آن را پاک/ریست کند (سه راه، دو تای‌شان به نفع او).</item>
+    ///   <item>در آن بازه «همه‌چیز» باز بود — از جمله نوشتن؛ یعنی عملاً لایسنس لازم نبود.</item>
+    ///   <item>تصمیمِ «چقدر مهلت» را نرم‌افزارِ روی ماشین مشتری می‌گرفت، نه ما.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// <b>جایگزین: «لایسنس پل».</b> برای مشتری موجود، یک فایل لایسنس امضاشدهٔ کوتاه
+    /// (Subscription، همهٔ ماژول‌ها) صادر می‌کنیم با
+    /// <c>tools/license-sign.py --bridge --days 30</c>. تفاوت بنیادی: آن مهلت،
+    /// <b>امضای ما</b> را دارد و در همان چارچوب سند لایسنس می‌گنجد؛ نه یک قاعدهٔ داخلی
+    /// که خودِ نصب برای خودش تعیین کند.
     /// </para>
     /// </summary>
-    public async Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var row = await _db.LicenseInstallations.AsNoTracking()
-                .Where(x => x.GraceUntil != null)
-                .OrderBy(x => x.Id)
-                .Select(x => new { x.GraceUntil, x.GraceReason, x.InstallationId })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (row?.GraceUntil is null) return false;
-            if (DateTime.Now.Date > row.GraceUntil.Value.Date) return false;
-
-            // ثبت رخداد: حداکثر یک‌بار در روز، تا معلوم باشد کدام نصب بدون لایسنس کار می‌کند.
-            var today = DateTime.Now.Date;
-            if (_graceLoggedFor != today)
-            {
-                _graceLoggedFor = today;
-                await _events.WriteAsync("LICENSE_EXISTING_INSTALL_GRACE",
-                    $"برنامه در مهلت سازگاری «نصب موجود» کار می‌کند (تا {row.GraceUntil:yyyy-MM-dd}). " +
-                    $"لایسنس این نصب باید صادر و بارگذاری شود. ({row.GraceReason})",
-                    severity: "Warning");
-            }
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            // خطای خواندن مهلت نباید برنامه را باز کند یا ببندد — محافظه‌کارانه «نه».
-            _log.LogWarning(ex, "[License] بررسی مهلت نصب موجود ناموفق بود.");
-            return false;
-        }
-    }
+    /// <remarks>
+    /// متد عمداً نگه داشته شده (بدون حذف از رابط) تا کدها/تست‌های موجود نشکنند؛ ولی
+    /// هیچ‌جا دیگر «باز» نمی‌کند.
+    /// </remarks>
+    public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
 
     // ==================== وضعیت ماژول ====================
 

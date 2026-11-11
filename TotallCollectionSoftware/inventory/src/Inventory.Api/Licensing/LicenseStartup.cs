@@ -147,8 +147,15 @@ public static class LicenseStartup
             // ۲) شناسهٔ نصب + تشخیص «نصب موجود» و ثبت مهلت سازگاری (فقط یک‌بار در عمر نصب)
             var identity = services.GetRequiredService<InstallationIdentity>();
             var installation = await identity.EnsureWithGraceAsync();
-            log.LogInformation("[License] شناسهٔ نصب: {InstallationId} | نصب موجود: {Legacy} | مهلت: {Grace}",
-                installation.InstallationId, installation.IsLegacyInstall, installation.GraceUntil?.ToString("yyyy-MM-dd") ?? "-");
+            // ⚠️ مهلت «نصب موجود» حذف شد (بازبینی چهارم). این‌جا فقط گزارش وضعیت است:
+            // «نصب موجود» یعنی دادهٔ قبلی وجود دارد ⇒ پیش از استفاده، «لایسنس پل» صادر کنید.
+            log.LogInformation("[License] شناسهٔ نصب: {InstallationId} | نصب موجود: {Legacy} ({Reason})",
+                installation.InstallationId, installation.IsLegacyInstall, installation.GraceReason ?? "-");
+
+            if (installation.IsLegacyInstall == true)
+                log.LogWarning(
+                    "[License] این نصب دادهٔ قبلی دارد و مهلت خودکار نمی‌گیرد. " +
+                    "اگر هنوز لایسنس صادر نشده، «لایسنس پل» صادر کنید: tools/license-sign.py --bridge");
 
             // ۳) کش وضعیت
             var cache = services.GetRequiredService<EntitlementCache>();

@@ -88,33 +88,43 @@ public sealed class InstallationIdentity : IInstallationIdentity
         => (await EnsureAsync(cancellationToken)).CustomerName;
 
     /// <summary>
-    /// ردیف نصب + برچسب «نصب موجود» — برای سرویس لایسنس.
+    /// ردیف نصب + برچسب «نصب موجود» — <b>فقط برای تشخیص و نمایش</b> (دیگر مهلت نمی‌دهد).
+    ///
+    /// <para>
+    /// ⚠️ <b>تغییر بازبینی چهارم:</b> این متد قبلاً <c>GraceUntil</c> را در دیتابیس
+    /// می‌نوشت و برنامه تا آن تاریخ بدون لایسنس (با نوشتنِ آزاد) کار می‌کرد.
+    /// تصمیم کارفرما: هیچ نصبی به خودش مهلت نمی‌دهد. پس:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>IsLegacyInstall</c> و <c>GraceReason</c> هنوز ثبت می‌شوند (یک‌بار) —
+    ///   برای اینکه بدانیم این نصب از قبل داده داشته، در گزارش و «فایل درخواست» مفید است.</item>
+    ///   <item><c>GraceUntil</c> <b>نوشته نمی‌شود</b>. اگر ردیفی از نسخهٔ قبل مقدار داشته
+    ///   باشد، عمداً پاک نمی‌شود (تغییر افزایشی، بدون حذف داده) ولی هیچ‌جا خوانده نمی‌شود.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// 🟢 <b>جایگزین برای مشتری موجود:</b> «لایسنس پل» —
+    /// <c>tools/license-sign.py --bridge --days 30 --installation-id …</c>
+    /// که یک Subscription کوتاه با همهٔ ماژول‌های فعلی و بدون سقف صادر می‌کند.
+    /// </para>
     /// </summary>
     public async Task<LicenseInstallation> EnsureWithGraceAsync(CancellationToken cancellationToken = default)
     {
         var row = await EnsureAsync(cancellationToken);
 
-        // مهلت فقط یک‌بار و فقط وقتی تصمیم «نصب موجود بودن» گرفته نشده باشد.
+        // تصمیم «نصب موجود بودن» فقط یک‌بار و فقط برای برچسب‌گذاری.
         if (row.IsLegacyInstall is null)
         {
             var business = await CountBusinessDataAsync(cancellationToken);
-            var graceDays = Math.Clamp(_options.ExistingInstallGraceDays, 0, 3650);
 
             row.IsLegacyInstall = business.IsLegacy;
             row.GraceReason = business.Describe;
 
-            if (business.IsLegacy && graceDays > 0)
-            {
-                row.GraceUntil = DateTime.Now.Date.AddDays(graceDays);
+            if (business.IsLegacy)
                 _log.LogWarning(
-                    "[License] نصب موجود تشخیص داده شد ({Reason}). مهلت سازگاری تا {Until:yyyy-MM-dd} ثبت شد؛ " +
-                    "تا آن تاریخ برنامه باز می‌ماند تا لایسنس صادر شود.", row.GraceReason, row.GraceUntil);
-            }
-            else if (business.IsLegacy)
-            {
-                _log.LogWarning("[License] نصب موجود تشخیص داده شد ({Reason}) ولی ExistingInstallGraceDays=0 است؛ " +
-                    "برنامه از همین حالا به لایسنس نیاز دارد.", row.GraceReason);
-            }
+                    "[License] این نصب از قبل داده دارد ({Reason}). مهلت خودکار داده نمی‌شود؛ " +
+                    "برای باز ماندن برنامه تا صدور لایسنس، «لایسنس پل» صادر کنید " +
+                    "(tools/license-sign.py --bridge).", business.Describe);
 
             row.UpdatedAt = DateTime.Now;
             await _db.SaveChangesAsync(cancellationToken);

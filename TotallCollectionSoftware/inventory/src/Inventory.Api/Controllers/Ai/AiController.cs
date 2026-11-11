@@ -80,6 +80,16 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>گفتگو با دستیار.</summary>
+    /// <remarks>
+    /// <b>چرا در حالت فقط‌خواندنی مجاز است؟</b> دو دلیل، هر دو آگاهانه:
+    /// <list type="number">
+    ///   <item>این تنها کانال درون‌برنامه‌ای است که می‌تواند به کاربر بگوید «چرا ثبت بسته
+    ///   است و چه کاری کند»؛ بستنش کاربر را با خطاهای ۴۰۳ بی‌توضیح تنها می‌گذارد.</item>
+    ///   <item>متن گفتگو <b>دادهٔ کسب‌وکار مشتری نیست</b>؛ فقط حافظهٔ همان گفت‌وگوست.</item>
+    /// </list>
+    /// در عوض، در همین حالت (۱) هیچ تماس با مدل زبانی بیرونی زده نمی‌شود — موتور محلی
+    /// جواب می‌دهد ⇒ هزینهٔ API صفر، و (۲) همهٔ ابزارهای نوشتاری خاموش‌اند.
+    /// </remarks>
     [AllowInReadOnly]
     [HttpPost("chat")]
     public async Task<IActionResult> Chat([FromBody] AiChatRequest req, CancellationToken ct)
@@ -116,6 +126,10 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>حذف (بایگانی) گفتگو.</summary>
+    /// <remarks>
+    /// حذف گفتگوی خودِ کاربر — دادهٔ کسب‌وکار نیست و اگر بسته باشد، کاربر نمی‌تواند
+    /// حافظهٔ گفتگویی را که در حالت بدون لایسنس ساخته پاک کند.
+    /// </remarks>
     [AllowInReadOnly]
     [HttpDelete("conversations/{id:int}")]
     public async Task<IActionResult> DeleteConversation(int id)
@@ -128,7 +142,6 @@ public class AiController : RbacControllerBase
     // ==================== هوش نامه‌ها ====================
 
     /// <summary>۶) پیش‌نویس هوشمند نامه.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/draft")]
     public async Task<IActionResult> DraftLetter([FromBody] AiLetterDraftRequest req, CancellationToken ct)
     {
@@ -138,7 +151,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>۷) خلاصه نامه + وضعیت گردش.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/{id:int}/summarize")]
     public async Task<IActionResult> SummarizeLetter(int id, CancellationToken ct)
     {
@@ -149,7 +161,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>۸) پیشنهاد ارجاع هوشمند.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/{id:int}/suggest-referral")]
     public async Task<IActionResult> SuggestReferral(int id, CancellationToken ct)
     {
@@ -160,7 +171,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>۹) استخراج اقدام‌ها و مهلت‌ها از نامه.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/{id:int}/extract-tasks")]
     public async Task<IActionResult> ExtractTasks(int id, CancellationToken ct)
     {
@@ -171,7 +181,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>۱۱) دسته‌بندی و اولویت نامه.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/{id:int}/categorize")]
     public async Task<IActionResult> CategorizeLetter(int id, CancellationToken ct)
     {
@@ -182,7 +191,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>پاسخ‌نویسی هوشمند: پیش‌نویس پاسخ آماده برای باز شدن در فرم نامه.</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/{id:int}/draft-reply")]
     public async Task<IActionResult> DraftReply(int id, [FromBody] AiReplyHintRequest? req, CancellationToken ct)
     {
@@ -193,7 +201,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>پیشنهاد گیرنده هنگام نوشتن نامه جدید (از روی موضوع و متن).</summary>
-    [AllowInReadOnly]
     [HttpPost("letters/suggest-receivers")]
     public async Task<IActionResult> SuggestReceivers([FromBody] AiReceiversSuggestRequest? req, CancellationToken ct)
     {
@@ -217,7 +224,6 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>۱۰) پیش‌نویس صورتجلسه از متن خام.</summary>
-    [AllowInReadOnly]
     [HttpPost("minutes/draft")]
     public async Task<IActionResult> DraftMinutes([FromBody] AiMinutesDraftRequest req, CancellationToken ct)
     {
@@ -238,7 +244,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ارسال فوری گزارش صبحگاهی به همه کاربران واجد شرایط (مدیر — برای تست).</summary>
-    [AllowInReadOnly]
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: این اکشن پیام می‌فرستد
     [HttpPost("briefing/send-now")]
     public async Task<IActionResult> BriefingSendNow(CancellationToken ct)
     {
@@ -260,7 +266,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ارسال فوری خلاصه هفته به مدیران واجد شرایط (مدیر — برای تست).</summary>
-    [AllowInReadOnly]
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: این اکشن پیام می‌فرستد
     [HttpPost("digest/send-now")]
     public async Task<IActionResult> DigestSendNow(CancellationToken ct)
     {
@@ -270,7 +276,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ثبت امتیاز به یک پاسخ دستیار (§۲۴).</summary>
-    [AllowInReadOnly]
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: نوشتن ردیف در دیتابیس است.
     [HttpPost("feedback/submit")]
     public async Task<IActionResult> FeedbackSubmit([FromBody] AiFeedbackSubmitRequest req, CancellationToken ct)
     {

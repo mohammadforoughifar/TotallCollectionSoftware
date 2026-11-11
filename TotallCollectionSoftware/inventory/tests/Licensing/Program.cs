@@ -1071,6 +1071,40 @@ Section("۲۴) سازگاری رو به جلو: فیلد ناشناخته در �
 
 // ============================================================
 // ============================================================
+// ============================================================
+Section("۲۵) کلید توسعه فقط در بیلد Debug — بیلد Release نباید آن را بشناسد (بازبینی چهارم، مورد ۵)");
+
+{
+    // قاعدهٔ خالص: در Debug همه مجازند، در Release فقط کلیدهای غیرتوسعه.
+    Check(Inventory.Licensing.Crypto.PublicKeyRing.IsKeyAllowedInBuild(false),
+        "کلید تولیدی (debugOnly=false) در هر بیلدی مجاز است");
+
+#if DEBUG
+    Check(Inventory.Licensing.Crypto.PublicKeyRing.IsKeyAllowedInBuild(true),
+        "بیلد Debug: کلید توسعه (debugOnly=true) مجاز است");
+#else
+    Check(!Inventory.Licensing.Crypto.PublicKeyRing.IsKeyAllowedInBuild(true),
+        "بیلد Release: کلید توسعه (debugOnly=true) رد می‌شود");
+#endif
+
+    var ring = Inventory.Licensing.Crypto.PublicKeyRing.FromEmbedded();
+
+#if DEBUG
+    Check(ring.KeyIds.Contains("dev-2026a"),
+        $"بیلد Debug: کلید dev-2026a در حلقه هست (کلیدها: {string.Join(", ", ring.KeyIds)})");
+#else
+    Check(!ring.KeyIds.Contains("dev-2026a"),
+        $"بیلد Release: کلید dev-2026a در حلقه نیست (کلیدها: {string.Join(", ", ring.KeyIds)})");
+#endif
+
+    // ⚠️ هشدار عملیاتی: بیلد Release بدون کلید تولیدی یعنی «هیچ لایسنسی معتبر نیست».
+    // این تست آن را قرمز نمی‌کند (چون در مرحلهٔ توسعه طبیعی است) ولی چاپ می‌کند تا
+    // لحظهٔ بسته‌بندی فراموش نشود.
+    if (ring.KeyIds.Count == 0)
+        Console.WriteLine("   ⚠️ یادآوری: این بیلد هیچ کلید عمومی ندارد ⇒ پیش از تحویل، " +
+                          "ردیف کلید تولیدی را به Keys/manifest.json اضافه کنید.");
+}
+
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;
 
