@@ -221,41 +221,36 @@ else
                             }
                             else
                             {
-                                <div class="d-flex flex-column gap-3.5">
-                                    @foreach (var point in data.Trend)
-                                    {
-                                        <div class="p-2.5 rounded-3 bg-light-subtle border">
-                                            <div class="fw-700 text-dark fs-8 mb-2">@point.Label</div>
-                                            @if (Auth.CanSee("Orders"))
+                                <div class="ops-trend-scroll" tabindex="0" role="region" aria-label="نمودار مقایسه خرید، فروش و تعمیرات؛ برای مشاهده تاریخ‌های بیشتر پیمایش کنید">
+                                    <div class="ops-trend-chart" style="@($"min-width:{Math.Max(520, data.Trend.Count * 74)}px")">
+                                        <div class="ops-trend-axis">
+                                            <span>@ChartMax.Money()</span>
+                                            <span>@((ChartMin + (ChartMax - ChartMin) / 2).Money())</span>
+                                            <span>@ChartMin.Money()</span>
+                                        </div>
+                                        <div class="ops-trend-plot">
+                                            <div class="ops-trend-zero" style="@($"bottom:{ChartZero.ToString(System.Globalization.CultureInfo.InvariantCulture)}%")"></div>
+                                            @foreach (var point in data.Trend)
                                             {
-                                                <div class="d-flex align-items-center gap-2 mb-1.5">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">خرید</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-indigo-gradient" style="@BarStyle(point.Purchase)"></div>
+                                                <div class="ops-trend-column">
+                                                    <div class="ops-trend-bars">
+                                                        @if (Auth.CanSee("Orders"))
+                                                        {
+                                                            <div class="ops-trend-slot"><button type="button" class="ops-trend-bar ops-purchase" style="@BarStyle(point.Purchase)" aria-label="@($"{point.Label}، خرید: {point.Purchase.Money()} ریال")"><span>خرید: @point.Purchase.Money() ریال</span></button></div>
+                                                            <div class="ops-trend-slot"><button type="button" class="ops-trend-bar ops-sale" style="@BarStyle(point.Sale)" aria-label="@($"{point.Label}، فروش: {point.Sale.Money()} ریال")"><span>فروش: @point.Sale.Money() ریال</span></button></div>
+                                                        }
+                                                        @if (Auth.CanSee("Repairs"))
+                                                        {
+                                                            <div class="ops-trend-slot"><button type="button" class="ops-trend-bar ops-repair" style="@BarStyle(point.RepairRevenue)" aria-label="@($"{point.Label}، تعمیرات: {point.RepairRevenue.Money()} ریال")"><span>تعمیرات: @point.RepairRevenue.Money() ریال</span></button></div>
+                                                        }
                                                     </div>
-                                                    <span class="num fs-9 fw-700 text-indigo" style="width: 100px; text-align: left;">@point.Purchase.Money()</span>
-                                                </div>
-                                                <div class="d-flex align-items-center gap-2 mb-1.5">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">فروش</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-emerald-gradient" style="@BarStyle(point.Sale)"></div>
-                                                    </div>
-                                                    <span class="num fs-9 fw-700 text-emerald" style="width: 100px; text-align: left;">@point.Sale.Money()</span>
-                                                </div>
-                                            }
-                                            @if (Auth.CanSee("Repairs"))
-                                            {
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <span class="text-secondary fs-9" style="width: 48px;">تعمیرات</span>
-                                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px; background: #e2e8f0;">
-                                                        <div class="progress-bar bg-warning" style="@BarStyle(point.RepairRevenue)"></div>
-                                                    </div>
-                                                    <span class="num fs-9 fw-700 text-amber" style="width: 100px; text-align: left;">@point.RepairRevenue.Money()</span>
+                                                    <div class="ops-trend-date">@point.Label</div>
                                                 </div>
                                             }
                                         </div>
-                                    }
+                                    </div>
                                 </div>
+                                <div class="ops-trend-note">مبالغ به ریال · برای مشاهده مبلغ دقیق، روی ستون مکث کنید یا با کلید Tab انتخاب کنید.</div>
                             }
                         </div>
                     </div>
@@ -735,9 +730,13 @@ else
 
     private string RangeText => $"{(from.HasValue ? from.Value.ToFa() : "از ابتدا")} تا {(to.HasValue ? to.Value.ToFa() : "امروز")}";
     private string TrendPeriod => data?.Trend.Any(p => p.Label.Contains('/')) == true ? "روزانه" : "ماهانه";
-    private decimal ChartMax => data is null || data.Trend.Count == 0
-        ? 0m
-        : data.Trend.SelectMany(p => new[] { p.Purchase, p.Sale, p.RepairRevenue }).DefaultIfEmpty(0m).Max();
+    private IEnumerable<decimal> ChartValues => data is null ? Enumerable.Empty<decimal>() : data.Trend.SelectMany(p =>
+        (Auth.CanSee("Orders") ? new[] { p.Purchase, p.Sale } : Array.Empty<decimal>())
+        .Concat(Auth.CanSee("Repairs") ? new[] { p.RepairRevenue } : Array.Empty<decimal>()));
+    private decimal ChartMax => Math.Max(0m, ChartValues.DefaultIfEmpty(0m).Max());
+    private decimal ChartMin => Math.Min(0m, ChartValues.DefaultIfEmpty(0m).Min());
+    private decimal ChartRange => Math.Max(1m, ChartMax - ChartMin);
+    private decimal ChartZero => -ChartMin / ChartRange * 100m;
 
     protected override async Task OnInitializedAsync()
     {
@@ -755,8 +754,9 @@ else
 
     private string BarStyle(decimal value)
     {
-        var pct = ChartMax <= 0m ? 0d : Math.Clamp((double)(value / ChartMax) * 100d, 0d, 100d);
-        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+        var height = Math.Abs(value) / ChartRange * 100m;
+        var bottom = ChartZero - (value < 0 ? height : 0m);
+        return FormattableString.Invariant($"height:{height:F3}%;bottom:{bottom:F3}%");
     }
 
     private async Task Print()
