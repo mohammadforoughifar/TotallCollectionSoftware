@@ -141,7 +141,7 @@ else
                     <div class="card-body p-0">
                         @if (admin.OverdueDebtors.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-emoji-smile"></i><h6>بدهکار سررسیدشده‌ای ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">نسیه یا قسط فروشِ پرداخت‌نشده با سررسید امروز یا گذشته ثبت نشده است. <a href="shop/credit-management">بررسی اقساط و چک‌ها</a></div>
                         }
                         else
                         {
@@ -209,7 +209,14 @@ else
                     <div class="card-body p-0">
                         @if (admin.TodayCheques.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-check2-circle"></i><h6>چک دریافتی سررسیدشده‌ای ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">
+                                @if (admin.PendingReceivedChequesCount > 0)
+                                {
+                                    <span>@admin.PendingReceivedChequesCount.Num() چک دریافتی باز دارید؛ موعد آن‌ها در آینده است.</span>
+                                }
+                                else { <span>چک دریافتی باز در فاکتورهای فروش ثبت نشده است.</span> }
+                                <a href="shop/credit-management">مشاهدهٔ چک‌ها</a>
+                            </div>
                         }
                         else
                         {
@@ -315,7 +322,14 @@ else
                     <div class="card-body p-0">
                         @if (admin.IssuedCheques.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-check2-all"></i><h6>چک پرداختیِ سررسیدشده یا موعد امروزی برای پرداخت ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">
+                                @if (admin.PendingIssuedChequesCount > 0)
+                                {
+                                    <span>@admin.PendingIssuedChequesCount.Num() چک پرداختی باز دارید؛ موعد آن‌ها در آینده است.</span>
+                                }
+                                else { <span>چک پرداختی باز در فاکتورهای خرید ثبت نشده است.</span> }
+                                <a href="shop/credit-management">مشاهدهٔ چک‌ها</a>
+                            </div>
                         }
                         else
                         {
@@ -600,6 +614,7 @@ else
             await LoadSectionAsync(async () => { recent = await DashboardSvc.GetRecentAsync(8); }, "فعالیت‌های اخیر");
             await LoadSectionAsync(async () => { lowStock = (await ReportSvc.GetReorderAsync()).Take(5).ToList(); }, "کالاهای نیازمند سفارش");
         }
+        catch (Exception ex) { Toast.Error("بارگذاری داشبورد کامل نشد: " + ex.Message); }
         finally { loading = false; }
     }
 

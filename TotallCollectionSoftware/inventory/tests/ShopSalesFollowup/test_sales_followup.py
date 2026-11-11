@@ -9,7 +9,7 @@ JS = (SRC/'Inventory.Client/wwwroot/js/order-entry.js').read_text()
 class SalesFollowupTests(unittest.TestCase):
     def test_short_action_label_precedes_the_single_f8_shortcut(self):
         button = FORM.split('data-order-last-purchase',1)[1].split('</button>',1)[0]
-        self.assertIn('<span>آخرین خرید</span><kbd>F8</kbd>', button)
+        self.assertIn('<span>آخرین خرید</span><kbd dir="ltr">F8</kbd>', button)
         self.assertNotIn('F7', button)
         self.assertNotIn("event.key === 'F7' && isInvoice", JS)
         self.assertIn("if (event.key === 'F8')", JS)

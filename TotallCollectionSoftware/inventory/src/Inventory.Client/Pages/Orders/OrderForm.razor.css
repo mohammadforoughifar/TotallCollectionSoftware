@@ -156,50 +156,44 @@
 
 .invoice-price-hint { color: #526281; font-size: .73rem; line-height: 1.7; margin: 0 0 .45rem; }
 
-/* Invoice-only footer: equal grid cells, not the shared modal's flex button sizing. */
-.invoice-footer-actions {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    grid-auto-rows: minmax(48px, 1fr);
-    align-items: stretch;
-    gap: .5rem;
-    width: 100%;
-    min-width: 0;
-    margin: 0;
+/* The reserved sale action column keeps history and delete on one baseline. */
+.purchase-items .last-purchase-action {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    flex: 0 0 auto; width: max-content; max-width: 100%; min-height: 36px;
+    margin-top: 0; padding: .3rem .55rem;
+    border: 1px solid #c7d2fe; border-radius: 9px;
+    background: #eef2ff; color: #4338ca; font: inherit; font-size: .78rem;
+    font-weight: 600; line-height: 1.5; white-space: nowrap;
+    word-break: normal; overflow-wrap: normal; cursor: pointer;
 }
-.invoice-footer-actions.is-initial-step { grid-template-columns: minmax(0,1fr) minmax(0,2fr); }
-.invoice-footer-actions.is-legacy { grid-template-columns: repeat(3,minmax(0,1fr)); }
-.invoice-footer-actions .btn, .invoice-print-actions .btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: .3rem;
-    width: 100%;
-    min-width: 0;
-    min-height: 46px;
-    margin: 0;
-    padding: .65rem .5rem;
-    line-height: 1.65;
-    font-size: .8rem;
-    font-weight: 700;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    border-radius: 10px;
+.purchase-items .last-purchase-action span { white-space: nowrap; }
+.purchase-items .last-purchase-action kbd {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    min-width: 28px; padding: .1rem .3rem; border: 1px solid #c7d2fe;
+    border-radius: 5px; background: #fff; color: #4338ca;
+    font: 600 11px/1.4 ui-monospace, monospace; white-space: nowrap;
 }
-.invoice-footer-actions .btn i { flex-shrink: 0; }
-.invoice-print-actions { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); gap: .5rem; width: 100%; margin: 0; }
-.invoice-paper-option { display: flex; align-items: center; gap: .7rem; padding: .8rem; margin-bottom: .55rem; border: 1px solid #dbe3ee; border-radius: 10px; cursor: pointer; }
-.invoice-paper-option.is-selected { border-color: #6366f1; background: #eef2ff; color: #4338ca; font-weight: 700; }
-@media (max-width: 600px) {
-    .invoice-footer-actions, .invoice-footer-actions.is-legacy { grid-template-columns: repeat(2,minmax(0,1fr)); }
-    .invoice-footer-actions.is-initial-step { grid-template-columns: minmax(0,1fr) minmax(0,2fr); }
-    .invoice-footer-actions .btn { min-height: 48px; }
-    .purchase-summary-pay strong { font-size: .9rem; }
+.purchase-items .last-purchase-action:hover { background: #e0e7ff; border-color: #a5b4fc; }
+.purchase-items .last-purchase-action:focus-visible { outline: 2px solid #6366f1; outline-offset: 3px; }
+@media (max-width: 991px) {
+    .sale-items tbody td:first-child { padding-left: 0; grid-column: 1 / -1; }
+    .sale-items tbody td:last-child { position: static; grid-column: 1 / -1; justify-content: flex-end; }
+    .purchase-items .last-purchase-action { min-height: 40px; }
 }
 
-/* Label first, shortcut second; fit narrow sale action cells without growing the table. */
-.purchase-items tbody .order-line-actions .last-purchase-action {
-    display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center;
-    justify-content: center; gap: .2rem; min-width: 0; white-space: normal; line-height: 1.4;
+.purchase-items tbody .order-line-actions { gap: .4rem; white-space: nowrap; }
+.purchase-items tbody .order-line-actions > button { flex: 0 0 auto; }
+.purchase-items tbody .order-line-actions > .btn { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; min-height: 36px; padding: .3rem; border-radius: 8px; }
+/* Local wrapper opts out of the modal's full-width mobile buttons. */
+.invoice-footer-actions { display: flex; flex: 1 1 100%; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.invoice-footer-actions > .btn { flex: 0 0 auto; width: auto; min-height: 36px; padding: .4rem .85rem; border-radius: 8px; font-size: .8rem; line-height: 1.5; white-space: nowrap; box-shadow: none; }
+.invoice-footer-actions > .btn-primary { background: #4f46e5; border-color: #4f46e5; }
+.invoice-footer-actions > .btn-primary:hover { background: #4338ca; border-color: #4338ca; }
+.invoice-footer-actions > label { flex: 0 0 auto; }
+@media (max-width: 991px) {
+    .sale-items tbody .order-line-actions > .btn { min-width: 40px; min-height: 40px; }
 }
-.last-purchase-action kbd { padding: .1rem .25rem; border: 1px solid #c7d2fe; border-radius: 4px; background: #eef2ff; color: #4338ca; font-size: .65rem; }
+@media (max-width: 575px) {
+    .invoice-footer-actions { gap: .4rem; }
+    .invoice-footer-actions > .btn { flex: 0 0 auto; min-height: 40px; padding: .4rem .65rem; font-size: .76rem; }
+}

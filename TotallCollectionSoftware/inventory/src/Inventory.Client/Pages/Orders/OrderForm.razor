@@ -540,6 +540,7 @@
                                             }
                                         </div>
                                     }
+
                                 </td>
                                 <td data-label="مقدار">
                                     <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="@(QuantityAllowsFraction(l) == false ? "numeric" : "decimal")" dir="ltr" placeholder="1"
@@ -625,7 +626,9 @@
                                     <div class="order-line-actions">
                                         @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
-                                            <button type="button" class="btn btn-sm btn-light text-primary last-purchase-action" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین خرید، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)"><span>آخرین خرید</span><kbd>F8</kbd></button>
+                                            <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
+                                                <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
+                                            </button>
                                         }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
@@ -738,19 +741,19 @@
     </ChildContent>
 
     <Footer>
-        <div class="invoice-footer-actions @(UseInvoiceWizard && invoiceStep == 1 ? "is-initial-step" : !UseInvoiceWizard ? "is-legacy" : "")">
+        <div class="invoice-footer-actions">
         <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
         @if (!loading && UseInvoiceWizard && invoiceStep == 1)
         {
             <button type="button" class="btn btn-primary" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
-                ادامه و انتخاب روش پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
+                ادامه پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
             </button>
         }
         else if (!loading)
         {
             @if (UseInvoiceWizard)
             {
-                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" aria-label="@(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید")" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> مرحله قبل (F3)</button>
+                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)</button>
             }
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
@@ -765,24 +768,20 @@
     </Footer>
 </Modal>
 
-<Modal Visible="showPrintOptions" Title="انتخاب اندازه چاپ فاکتور" Size="modal-sm" OnClose="ClosePrintOptions">
+<Modal Visible="showPrintPaperChooser" Title="انتخاب کاغذ چاپ" Size="modal-sm" OnClose="ClosePrintPaperChooser">
     <ChildContent>
-        <div class="invoice-print-options" data-order-child="@formKey" data-invoice-paper-size>
-            <p class="text-muted fs-8 mb-3">اندازه کاغذ را انتخاب کنید؛ فاکتور پس از تأیید ثبت و پیش‌نمایش چاپ باز می‌شود.</p>
-            @foreach (var option in InvoicePaperOptions)
-            {
-                <label class="invoice-paper-option @(printPaperSize == option.Value ? "is-selected" : "")">
-                    <input type="radio" name="invoice-paper-@formKey" value="@option.Value" checked="@(printPaperSize == option.Value)"
-                           @onchange="() => printPaperSize = option.Value" disabled="@saving" />
-                    <span>@option.Label</span>
-                </label>
-            }
+        <div data-order-child="print-paper">
+            <label class="form-label fs-8" for="invoice-print-paper-@formKey">اندازهٔ کاغذ</label>
+            <select id="invoice-print-paper-@formKey" class="form-select form-select-sm" @bind="printPaperSize" data-invoice-paper-size>
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+            </select>
         </div>
     </ChildContent>
     <Footer>
-        <div class="invoice-print-actions">
-            <button type="button" class="btn btn-light" @onclick="ClosePrintOptions" disabled="@saving">انصراف</button>
-            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="ConfirmSaveAndPrint" disabled="@saving">تأیید و ثبت و چاپ (F1)</button>
+        <div class="invoice-footer-actions">
+            <button type="button" class="btn btn-light" @onclick="ClosePrintPaperChooser">انصراف (Esc)</button>
+            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="ConfirmPrintPaper" disabled="@saving">تأیید و چاپ (F1)</button>
         </div>
     </Footer>
 </Modal>
@@ -1297,7 +1296,7 @@
     // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
     // table the percentage columns share the space left by this fixed-width action column.
     // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
-    private const decimal SaleActionsColumnRem = 4.5m;
+    private const decimal SaleActionsColumnRem = 11m;
     private const int SaleBaseColumnWeight = 95;
     private const int SaleExtraColumnWeight = 11;
     private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
@@ -1315,7 +1314,8 @@
         var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
         var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
         var weight = saleWeight ?? purchaseWeight;
-        return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        var ratio = (decimal)weight / totalWeight;
+        return FormattableString.Invariant($"calc({100m * ratio:0.######}% - {SaleActionsColumnRem * ratio:0.######}rem)");
     }
 
 
@@ -2575,19 +2575,18 @@
 
     private Task Save() => SaveInternal(printAfterSave: false);
 
-    /// <summary>انتخاب کاغذ هنگام درخواست چاپ؛ ذخیره فقط پس از تأیید و با اعتبارسنجی مشترک انجام می‌شود.</summary>
-    private Task SaveAndPrint()
+    /// <summary>ثبت/ذخیره و سپس چاپ فاکتور (دکمهٔ «ثبت و چاپ» در پایین فرم).</summary>
+    private bool showPrintPaperChooser;
+    private void SaveAndPrint()
     {
-        if (!saving && (!UseInvoiceWizard || invoiceStep == 2)) showPrintOptions = true;
-        return Task.CompletedTask;
+        if (saving || loading || showPrintPaperChooser || (UseInvoiceWizard && invoiceStep != 2)) return;
+        showPrintPaperChooser = true;
     }
-
-    private void ClosePrintOptions() => showPrintOptions = false;
-
-    private async Task ConfirmSaveAndPrint()
+    private void ClosePrintPaperChooser() => showPrintPaperChooser = false;
+    private async Task ConfirmPrintPaper()
     {
-        if (saving || !showPrintOptions) return;
-        showPrintOptions = false;
+        if (!showPrintPaperChooser || saving || (printPaperSize != "A4" && printPaperSize != "A5")) return;
+        showPrintPaperChooser = false;
         await SaveInternal(printAfterSave: true);
     }
 
@@ -2615,12 +2614,7 @@
     }
 
     private CompanyProfileDto? companyProfile;
-    private string printPaperSize = "default";
-    private bool showPrintOptions;
-    private static readonly (string Value, string Label)[] InvoicePaperOptions =
-    {
-        ("default", "تنظیم شرکت"), ("A4", "A4"), ("A5", "A5")
-    };
+    private string printPaperSize = "A4";
 
     private bool ValidateInvoice()
     {

@@ -34,29 +34,29 @@ class ShopInvoiceMobileTests(unittest.TestCase):
         self.assertIn('aria-invalid=', BANK)
         self.assertIn('ShopIdentifierRules.ValidateBank(form)', BANK)
 
-    def test_footer_has_no_size_selector_and_uses_equal_grid_buttons(self):
+    def test_footer_has_no_size_selector_and_uses_compact_buttons(self):
         footer = FORM.split('<Footer>', 1)[1].split('</Footer>', 1)[0]
         self.assertIn('invoice-footer-actions', footer)
         self.assertNotIn('printPaperSize', footer)
         self.assertNotIn('<select', footer)
         self.assertNotIn('me-auto', footer)
-        self.assertIn('مرحله قبل (F3)', footer)
-        self.assertIn('repeat(2,minmax(0,1fr))', CSS)
-        self.assertIn('min-height: 48px', CSS)
+        self.assertIn('بازگشت (F3)', footer)
+        self.assertIn('.invoice-footer-actions > .btn { flex: 0 0 auto; width: auto;', CSS)
+        self.assertIn('min-height: 40px', CSS)
 
     def test_print_selection_precedes_save_and_confirmation_reuses_validation(self):
-        open_dialog = FORM.split('private Task SaveAndPrint()', 1)[1].split('private void ClosePrintOptions', 1)[0]
-        self.assertIn('showPrintOptions = true', open_dialog)
+        open_dialog = FORM.split('private void SaveAndPrint()', 1)[1].split('private void ClosePrintPaperChooser', 1)[0]
+        self.assertIn('showPrintPaperChooser = true', open_dialog)
         self.assertNotIn('SaveInternal(', open_dialog)
         self.assertNotIn('OrderSvc.', open_dialog)
-        confirm = FORM.split('private async Task ConfirmSaveAndPrint()', 1)[1].split('/// <summary>', 1)[0]
-        self.assertIn('if (saving || !showPrintOptions) return;', confirm)
+        confirm = FORM.split('private async Task ConfirmPrintPaper()', 1)[1].split('/// <summary>', 1)[0]
+        self.assertIn('!showPrintPaperChooser || saving', confirm)
         self.assertIn('await SaveInternal(printAfterSave: true);', confirm)
-        self.assertLess(confirm.index('showPrintOptions = false;'), confirm.index('SaveInternal('))
-        self.assertIn('private void ClosePrintOptions() => showPrintOptions = false;', FORM)
-        for size in ('default', 'A4', 'A5'):
-            self.assertIn(f'("{size}",', FORM)
-        self.assertIn('data-order-child="@formKey" data-invoice-paper-size', FORM)
+        self.assertLess(confirm.index('showPrintPaperChooser = false;'), confirm.index('SaveInternal('))
+        self.assertIn('private void ClosePrintPaperChooser() => showPrintPaperChooser = false;', FORM)
+        for size in ('A4', 'A5'):
+            self.assertIn(f'<option value="{size}">{size}</option>', FORM)
+        self.assertIn('data-order-child="print-paper"', FORM)
         self.assertIn('if (printAfterSave) await PrintOrderAsync(saved.Id);', FORM)
 
     def test_amounts_are_explicitly_bold(self):

@@ -497,6 +497,10 @@ public class DashboardSummary
 /// <summary>داشبورد مدیریتی: فروش/سود دوره‌ای + بدهکاران سررسیدشده + چک‌های امروز (فقط ادمین).</summary>
 public class AdminDashboard
 {
+    /// <summary>تعداد چک‌های باز فروش/خرید، حتی با موعد آینده؛ برای تفکیک نبود داده از نبود سررسید.</summary>
+    public int PendingReceivedChequesCount { get; set; }
+    public int PendingIssuedChequesCount { get; set; }
+
     // فروش دوره‌ای (شمسی)
     public decimal SalesToday { get; set; }
     public decimal SalesWeek { get; set; }

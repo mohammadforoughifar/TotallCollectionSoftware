@@ -30,9 +30,8 @@ class PurchaseWizardContract(unittest.TestCase):
 
     def test_save_and_print_share_validation_and_cannot_skip_payment(self):
         self.assertIn('private Task Save() => SaveInternal(printAfterSave: false);', FORM)
-        self.assertIn('private Task SaveAndPrint()', FORM)
-        confirmation = method('private async Task ConfirmSaveAndPrint()', '/// <summary>')
-        self.assertIn('await SaveInternal(printAfterSave: true);', confirmation)
+        self.assertIn('private void SaveAndPrint()', FORM)
+        self.assertIn('await SaveInternal(printAfterSave: true);', FORM)
         save = method('private async Task SaveInternal(bool printAfterSave)', 'var cmd = new OrderCommand')
         self.assertIn('UseInvoiceWizard && invoiceStep != 2', save)
         self.assertIn('!ValidateInvoice()', save)
@@ -60,7 +59,7 @@ class PurchaseWizardContract(unittest.TestCase):
     def test_sale_features_are_preserved_in_first_step(self):
         self.assertIn('Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید"', FORM)
         self.assertIn('Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده"', FORM)
-        self.assertIn('Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش"', FORM)
+        self.assertIn('@onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)', FORM)
         self.assertIn('Type == TransactionType.Sale && invoiceStep == 1 && CanSeeProfit', FORM)
         self.assertIn('data-label="سود"', FORM)
         self.assertIn('data-label="پورسانت"', FORM)
@@ -100,7 +99,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('<SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard"', FORM)
         self.assertIn('if (AdvanceOnEnter)', SEARCH)
         self.assertIn('await JS.InvokeVoidAsync("orderEntry.focusNextField", _input)', SEARCH)
-        self.assertLess(INDEX.index('js/order-entry.js?v=8'), INDEX.index("document.addEventListener('keydown'"))
+        self.assertLess(INDEX.index('js/order-entry.js?v='), INDEX.index("document.addEventListener('keydown'"))
 
     def test_invoice_row_controls_and_values_share_alignment(self):
         items_section = FORM.split('<div data-order-entry', 1)[1]
@@ -156,10 +155,11 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertEqual(sum(sale_weights), base)
         self.assertEqual(colgroup.count('InvoiceColumnWidth(SaleExtraColumnWeight)'), 2)
         self.assertIn('<col style="width:@InvoiceActionsColumnWidth" />', colgroup)
-        self.assertIn('SaleActionsColumnRem = 4.5m', FORM)
+        self.assertIn('SaleActionsColumnRem = 11m', FORM)
         self.assertIn('SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns', FORM)
         self.assertIn('(CanSeeProfit && referrerId > 0 ? 1 : 0)', FORM)
-        self.assertIn('100m * weight / totalWeight', FORM)
+        self.assertIn('100m * ratio:0.######', FORM)
+        self.assertIn('SaleActionsColumnRem * ratio:0.######', FORM)
         self.assertIn('if (Type != TransactionType.Sale)', FORM)
         self.assertIn(': InvoiceColumnWidth(5)', FORM)
 
@@ -173,6 +173,10 @@ class PurchaseWizardContract(unittest.TestCase):
             visible = sale_weights + [extra] * (profit + commission)
             self.assertEqual(sum(visible), denominator)
             self.assertAlmostEqual(sum(100 * w / denominator for w in visible), 100)
+            # Percentage columns reserve their proportional share of the action width.
+            for width in (992, 1280, 1568):
+                available = width - 11 * 16
+                self.assertAlmostEqual(sum(available * w / denominator for w in visible) + 11 * 16, width)
 
         desktop_sale = CSS.split('@media (min-width: 992px)', 1)[1].split('}', 1)[0]
         self.assertIn('.sale-items table thead th, .sale-items tbody td', desktop_sale)
