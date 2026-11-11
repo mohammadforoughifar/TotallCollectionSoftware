@@ -373,24 +373,14 @@ public class IncomingLettersController : RbacControllerBase
         if (!await CanAccessLetterAsync(id)) return StatusCode(403, new { message = "فقط افراد حاضر در گردش نامه می‌توانند پیوست اضافه کنند." });
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
-        // سقف مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت — با احتساب پیوست‌های قبلیِ همین نامه
-        var existingSize = (await Db.AppAttachments.AsNoTracking()
-                .Where(a => a.Module == Module && a.RefId == id)
-                .Select(a => new { a.FilePath, a.Data })
-                .ToListAsync())
-            .Sum(a => a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length);
-        if (existingSize + file.Length > 100L * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم مجموع پیوست‌های هر نامه ۱۰۰ مگابایت است." });
+        // حجم پیوست محدود نیست (خواستهٔ کارفرما): نه سقف هر فایل و نه سقف مجموع پیوست‌های نامه.
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // بدون بافر کردن کل فایل در حافظه — حجم پیوست سقف ندارد و فایل مستقیم روی دیسک نوشته می‌شود
+        await using var uploadStream = file.OpenReadStream();
 
         // ذخیره فیزیکی زیر wwwroot/uploads/IncomingLetters/{id}/{guid}_{name}
-        var relPath = await _store.SaveAsync("IncomingLetters", id, ms, file.FileName);
+        var relPath = await _store.SaveAsync("IncomingLetters", id, uploadStream, file.FileName);
 
         var att = new AppAttachment
         {
