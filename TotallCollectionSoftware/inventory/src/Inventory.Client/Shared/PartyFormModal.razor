@@ -63,7 +63,7 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد پستی خریدار</label>
-                    <input class="form-control" dir="ltr" inputmode="numeric" @bind="party.PostalCode" />
+                    <input class="form-control" dir="ltr" inputmode="numeric" maxlength="10" @bind="party.PostalCode" />
                 </div>
             }
             @if (Type == PartyType.Customer && AllowReferrerPicker)
@@ -221,6 +221,9 @@
     {
         if (saving) return;
         if (string.IsNullOrWhiteSpace(party.Name)) { Notify("نام طرف حساب را وارد کنید.", true); return; }
+
+        var identifierError = ShopIdentifierRules.ValidateParty(party);
+        if (identifierError is not null) { Notify(identifierError, true); return; }
 
         party.ReferrerId = AllowReferrerPicker && int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : party.ReferrerId;
         saving = true;

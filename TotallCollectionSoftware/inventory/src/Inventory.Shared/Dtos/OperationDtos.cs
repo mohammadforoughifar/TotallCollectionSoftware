@@ -561,6 +561,8 @@ public class DebtorItem
 /// <summary>چک قابل وصول امروز.</summary>
 public class ChequeAlertItem
 {
+    /// <summary>منبع هشدار: Invoice، Treasury یا Expense؛ شناسه‌ها بین منابع مشترک نیستند.</summary>
+    public string Source { get; set; } = "Invoice";
     public int ChequeId { get; set; }
     public string Number { get; set; } = "";
     public string? BankName { get; set; }

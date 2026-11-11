@@ -125,14 +125,14 @@ class PriceAndDeclutterContracts(unittest.TestCase):
         self.assertIn('@bind="description"', FORM)
 
     def test_shortcut_asset_is_updated_and_scoped(self):
-        self.assertIn('js/order-entry.js?v=7', INDEX)
-        self.assertIn('Inventory.Client.styles.css?v=9', INDEX)
-        self.assertIn("event.key === 'F7' && isInvoice", JS)
+        self.assertIn('js/order-entry.js?v=8', INDEX)
+        self.assertRegex(INDEX, r'Inventory\.Client\.styles\.css\?v=(?:9|[1-9][0-9]+)')
+        self.assertNotIn("event.key === 'F7' && isInvoice", JS)
         self.assertIn("event.key === 'F7' && !modal", JS)
         self.assertIn("target.closest('[data-order-line]')", JS)
         self.assertIn("row.querySelector('[data-order-last-purchase]')", JS)
         self.assertIn('Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId)', FORM)
-        self.assertIn('F7 یا F8', FORM)
+        self.assertIn('<span>آخرین خرید</span><kbd>F8</kbd>', FORM)
         self.assertIn('data-order-copy-context', ORDERS)
         self.assertIn('data-hotkey="f7"', ORDERS)
 

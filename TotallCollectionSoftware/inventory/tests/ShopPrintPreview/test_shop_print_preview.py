@@ -74,6 +74,14 @@ class ShopPrintPreviewContracts(unittest.TestCase):
         self.assertIn('"shopPrintPreview.openPdf", data, fileName', exports)
         self.assertIn('"downloadBlob"', exports)
 
+    def test_only_shop_snapshots_exclude_the_office_stylesheet(self):
+        script = read('wwwroot/js/shop-print-preview.js')
+        self.assertIn(r'/\/css\/letters\.css$/i.test(new URL(node.href, document.baseURI).pathname)', script)
+        # Office print isolation remains unchanged in the main application.
+        self.assertIn('body * { visibility:hidden !important; }', read('wwwroot/css/letters.css'))
+        self.assertIn('css/letters.css?v=12', read('wwwroot/index.html'))
+        self.assertIn('js/shop-print-preview.js?v=2', read('wwwroot/index.html'))
+
     def test_preview_is_loaded_and_has_only_one_explicit_print_call(self):
         index = read('wwwroot/index.html')
         self.assertIn('css/shop-print-preview.css', index)

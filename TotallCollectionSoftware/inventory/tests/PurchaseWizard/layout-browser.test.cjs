@@ -74,7 +74,7 @@ function fixture({ sale, profit, commission, service, amount, purchasePrice }) {
     const units = amount ? 'ریال' : '٪';
     const rateValue = amount ? '100,000' : '100';
     const lastPurchase = sale && !service
-        ? '<button class="btn btn-sm btn-light text-primary" aria-label="آخرین فاکتور خرید این کالا">F7</button>'
+        ? '<button class="btn btn-sm btn-light text-primary last-purchase-action" aria-label="آخرین فاکتور خرید این کالا"><span>آخرین خرید</span><kbd>F8</kbd></button>'
         : '';
     const row = [
         `${openCell(0)}<div class="ss"><input class="form-control order-line-control" value="P-0001 — روغن ترمز DOT4"><button class="ss-clear"><i class="bi bi-x-lg"></i></button></div>
