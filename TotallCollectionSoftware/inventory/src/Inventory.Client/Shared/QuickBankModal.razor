@@ -64,34 +64,33 @@
                 <div class="col-md-6"></div>
             }
 
-            <!-- عنوان حساب -->
-            <div class="col-md-6">
-                <label class="form-label fs-8 fw-bold">نام / عنوان حساب <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Name" placeholder="مثال: بانک ملت - حساب جاری ۱۲۳" />
+            <!-- عنوان حساب، مستقل از بانک انتخاب‌شده -->
+            <div class="col-12">
+                <label class="form-label fs-8 fw-bold">عنوان حساب <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="form.Name" placeholder="مثال: حساب جاری شرکت یا صندوق مرکزی" />
             </div>
 
-            <!-- نام بانک (دستی یا خودکار) -->
+            <!-- مشخصات حساب؛ نام بانک فقط از انتخابگر بالای فرم گرفته می‌شود -->
             @if (form.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos)
             {
-                <div class="col-md-6">
-                    <label class="form-label fs-8 fw-bold">نام بانک <span class="text-danger">*</span></label>
-                    <input class="form-control" @bind="form.BankName" placeholder="مثال: ملت، صادرات، ملی، سامان…" />
-                </div>
-
                 <div class="col-md-4">
                     <label class="form-label fs-8">شماره حساب</label>
                     <input class="form-control num" @bind="form.AccountNumber" dir="ltr" placeholder="شماره حساب بانکی" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fs-8">شماره کارت (۱۶ رقم)</label>
-                    <input class="form-control num" @bind="form.CardNumber" dir="ltr" maxlength="19" placeholder="xxxx-xxxx-xxxx-xxxx" />
+                    <input class="form-control num @(CardNumberError is not null ? "is-invalid" : "")" @bind="form.CardNumber" @bind:event="oninput" dir="ltr" inputmode="numeric"
+                           aria-invalid="@(CardNumberError is not null ? "true" : "false")" aria-describedby="quick-bank-card-error" placeholder="xxxx-xxxx-xxxx-xxxx" />
+                    @if (CardNumberError is not null) { <div id="quick-bank-card-error" class="invalid-feedback d-block" role="status">@CardNumberError</div> }
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fs-8">شماره شبا (بدون IR)</label>
                     <div class="input-group" dir="ltr">
                         <span class="input-group-text">IR</span>
-                        <input class="form-control num" @bind="form.Iban" maxlength="34" placeholder="۲۴ رقم شبا" inputmode="text" />
+                        <input class="form-control num @(IbanError is not null ? "is-invalid" : "")" @bind="form.Iban" @bind:event="oninput" placeholder="۲۴ رقم شبا" inputmode="text"
+                               aria-invalid="@(IbanError is not null ? "true" : "false")" aria-describedby="quick-bank-iban-error" />
                     </div>
+                    @if (IbanError is not null) { <div id="quick-bank-iban-error" class="invalid-feedback d-block" role="status">@IbanError</div> }
                 </div>
 
                 <div class="col-md-6">
@@ -213,6 +212,9 @@
     [Parameter] public int InitialSortOrder { get; set; }
     private bool wasVisible;
     private TrsAccount form = new();
+    // Validate copies for live feedback; normalization must not rewrite text while typing.
+    private string? CardNumberError => ShopIdentifierRules.ValidateBank(new TrsAccount { CardNumber = form.CardNumber });
+    private string? IbanError => ShopIdentifierRules.ValidateBank(new TrsAccount { Iban = form.Iban });
     private string openingText = "0";
     private bool saving = false;
     private bool showBankManager;
@@ -260,7 +262,11 @@
     private async Task RemoveBank(string name)
     {
         customBanks.RemoveAll(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
-        if (string.Equals(selectedBank, name, StringComparison.OrdinalIgnoreCase)) selectedBank = "";
+        if (string.Equals(selectedBank, name, StringComparison.OrdinalIgnoreCase))
+        {
+            selectedBank = "";
+            form.BankName = null;
+        }
         await SaveCustomBanks();
     }
 
@@ -321,6 +327,7 @@
             IsActive = true
         };
         openingText = "0";
+        selectedBank = "";
     }
 
     private void SetKind(TreasuryAccountKind kind)
@@ -338,7 +345,7 @@
     {
         var picked = e.Value?.ToString() ?? "";
         selectedBank = picked;
-        if (string.IsNullOrWhiteSpace(picked)) return;
+        if (string.IsNullOrWhiteSpace(picked)) { form.BankName = null; return; }
         ApplyBankSelection(picked);
     }
 
@@ -359,13 +366,13 @@
         if (saving) return;
         if (string.IsNullOrWhiteSpace(form.Name))
         {
-            NotifyError("لطفاً نام / عنوان حساب را وارد کنید.");
+            NotifyError("لطفاً عنوان حساب را وارد کنید.");
             return;
         }
 
-        if (form.Kind == TreasuryAccountKind.Bank && string.IsNullOrWhiteSpace(form.BankName))
+        if ((form.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos) && string.IsNullOrWhiteSpace(form.BankName))
         {
-            NotifyError("لطفاً نام بانک را مشخص کنید.");
+            NotifyError("لطفاً بانک را از فهرست انتخاب کنید؛ برای بانک جدید از دکمهٔ + استفاده کنید.");
             return;
         }
 

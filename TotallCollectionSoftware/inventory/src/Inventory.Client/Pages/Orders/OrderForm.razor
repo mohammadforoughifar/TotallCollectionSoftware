@@ -738,10 +738,11 @@
     </ChildContent>
 
     <Footer>
+        <div class="invoice-footer-actions @(UseInvoiceWizard && invoiceStep == 1 ? "is-initial-step" : !UseInvoiceWizard ? "is-legacy" : "")">
         <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
         @if (!loading && UseInvoiceWizard && invoiceStep == 1)
         {
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
+            <button type="button" class="btn btn-primary" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
                 ادامه و انتخاب روش پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
             </button>
         }
@@ -749,23 +750,40 @@
         {
             @if (UseInvoiceWizard)
             {
-                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
+                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" aria-label="@(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید")" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> مرحله قبل (F3)</button>
             }
-            <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="invoice-print-paper-@formKey">
-                کاغذ چاپ
-                <select id="invoice-print-paper-@formKey" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size disabled="@saving">
-                    <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
-                </select>
-            </label>
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
             </button>
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            <button type="button" class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : Type == TransactionType.Purchase ? "ثبت فاکتور خرید (F1)" : "ثبت فاکتور فروش (F1)")
             </button>
         }
+        </div>
+    </Footer>
+</Modal>
+
+<Modal Visible="showPrintOptions" Title="انتخاب اندازه چاپ فاکتور" Size="modal-sm" OnClose="ClosePrintOptions">
+    <ChildContent>
+        <div class="invoice-print-options" data-order-child="@formKey" data-invoice-paper-size>
+            <p class="text-muted fs-8 mb-3">اندازه کاغذ را انتخاب کنید؛ فاکتور پس از تأیید ثبت و پیش‌نمایش چاپ باز می‌شود.</p>
+            @foreach (var option in InvoicePaperOptions)
+            {
+                <label class="invoice-paper-option @(printPaperSize == option.Value ? "is-selected" : "")">
+                    <input type="radio" name="invoice-paper-@formKey" value="@option.Value" checked="@(printPaperSize == option.Value)"
+                           @onchange="() => printPaperSize = option.Value" disabled="@saving" />
+                    <span>@option.Label</span>
+                </label>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <div class="invoice-print-actions">
+            <button type="button" class="btn btn-light" @onclick="ClosePrintOptions" disabled="@saving">انصراف</button>
+            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="ConfirmSaveAndPrint" disabled="@saving">تأیید و ثبت و چاپ (F1)</button>
+        </div>
     </Footer>
 </Modal>
 
@@ -2515,8 +2533,21 @@
 
     private Task Save() => SaveInternal(printAfterSave: false);
 
-    /// <summary>ثبت/ذخیره و سپس چاپ فاکتور (دکمهٔ «ثبت و چاپ» در پایین فرم).</summary>
-    private Task SaveAndPrint() => SaveInternal(printAfterSave: true);
+    /// <summary>انتخاب کاغذ هنگام درخواست چاپ؛ ذخیره فقط پس از تأیید و با اعتبارسنجی مشترک انجام می‌شود.</summary>
+    private Task SaveAndPrint()
+    {
+        if (!saving && (!UseInvoiceWizard || invoiceStep == 2)) showPrintOptions = true;
+        return Task.CompletedTask;
+    }
+
+    private void ClosePrintOptions() => showPrintOptions = false;
+
+    private async Task ConfirmSaveAndPrint()
+    {
+        if (saving || !showPrintOptions) return;
+        showPrintOptions = false;
+        await SaveInternal(printAfterSave: true);
+    }
 
     /// <summary>
     /// چاپ فاکتور فروش/رسید خرید با قالب مستقل (همان SaleInvoicePrint که در چاپ فاکتورِ
@@ -2543,6 +2574,11 @@
 
     private CompanyProfileDto? companyProfile;
     private string printPaperSize = "default";
+    private bool showPrintOptions;
+    private static readonly (string Value, string Label)[] InvoicePaperOptions =
+    {
+        ("default", "تنظیم شرکت"), ("A4", "A4"), ("A5", "A5")
+    };
 
     private bool ValidateInvoice()
     {

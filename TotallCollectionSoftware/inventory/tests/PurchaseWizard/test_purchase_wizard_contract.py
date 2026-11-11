@@ -30,7 +30,9 @@ class PurchaseWizardContract(unittest.TestCase):
 
     def test_save_and_print_share_validation_and_cannot_skip_payment(self):
         self.assertIn('private Task Save() => SaveInternal(printAfterSave: false);', FORM)
-        self.assertIn('private Task SaveAndPrint() => SaveInternal(printAfterSave: true);', FORM)
+        self.assertIn('private Task SaveAndPrint()', FORM)
+        confirmation = method('private async Task ConfirmSaveAndPrint()', '/// <summary>')
+        self.assertIn('await SaveInternal(printAfterSave: true);', confirmation)
         save = method('private async Task SaveInternal(bool printAfterSave)', 'var cmd = new OrderCommand')
         self.assertIn('UseInvoiceWizard && invoiceStep != 2', save)
         self.assertIn('!ValidateInvoice()', save)
