@@ -370,6 +370,10 @@
         const loads = [];
         for (const node of Array.from(document.querySelectorAll('link[rel~="stylesheet"], style'))) {
             if (node.closest('.shop-print-preview')) continue;
+            // The global office stylesheet hides every non-letter element in print.
+            // Exclude it only from this isolated shop snapshot; never change its
+            // rules or its loading/printing behavior in the main application.
+            if (node.tagName === 'LINK' && /\/css\/letters\.css$/i.test(new URL(node.href, document.baseURI).pathname)) continue;
             const copy = doc.importNode(node, true);
             if (node.tagName === 'LINK') {
                 copy.href = node.href;

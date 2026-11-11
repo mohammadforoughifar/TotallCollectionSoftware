@@ -28,7 +28,7 @@ else
     <!-- ---------- کارت‌های خلاصه ---------- -->
     <div class="row g-3 mb-3">
         <div class="col-6 col-lg-3">
-            <div class="stat-card">
+            <div class="stat-card shop-account-stat">
                 <div class="stat-icon bg-soft-success"><i class="bi bi-wallet2 text-success"></i></div>
                 <div>
                     <div class="stat-label">جمع مانده</div>
@@ -37,7 +37,7 @@ else
             </div>
         </div>
         <div class="col-6 col-lg-3">
-            <div class="stat-card">
+            <div class="stat-card shop-account-stat">
                 <div class="stat-icon bg-soft-primary"><i class="bi bi-cash-stack text-primary"></i></div>
                 <div>
                     <div class="stat-label">صندوق‌ها</div>
@@ -46,7 +46,7 @@ else
             </div>
         </div>
         <div class="col-6 col-lg-3">
-            <div class="stat-card">
+            <div class="stat-card shop-account-stat">
                 <div class="stat-icon bg-soft-info"><i class="bi bi-bank text-info"></i></div>
                 <div>
                     <div class="stat-label">حساب‌های بانکی</div>
@@ -55,7 +55,7 @@ else
             </div>
         </div>
         <div class="col-6 col-lg-3">
-            <div class="stat-card">
+            <div class="stat-card shop-account-stat">
                 <div class="stat-icon bg-soft-warning"><i class="bi bi-list-ol text-warning"></i></div>
                 <div>
                     <div class="stat-label">تعداد حساب</div>
@@ -195,8 +195,12 @@ else
     }
 }
 
+<QuickBankModal @bind-Visible="showQuickCreate" DefaultKind="@(kindFilter ?? TreasuryAccountKind.Bank)"
+                InitialCompanyId="activeCompanyId" InitialSortOrder="@(items.Count + 1)"
+                Title="تعریف بانک و حساب جدید" OnAccountCreated="OnAccountCreated" />
+
 <!-- ===================== فرم صندوق/بانک ===================== -->
-<Modal Visible="showForm" Title="@(form.Id == 0 ? "صندوق / بانک جدید" : "ویرایش صندوق / بانک")" Size="lg" OnClose="() => showForm = false">
+<Modal Visible="showForm" Title="@(form.Id == 0 ? "صندوق / بانک جدید" : "ویرایش صندوق / بانک")" Size="modal-lg" OnClose="() => showForm = false">
     <ChildContent>
     <div class="row g-3">
         <div class="col-md-4">
@@ -271,7 +275,7 @@ else
             </div>
             <div class="col-md-4">
                 <label class="form-label">شبا (بدون IR)</label>
-                <input class="form-control num" @bind="form.Iban" dir="ltr" maxlength="24" />
+                <input class="form-control num" @bind="form.Iban" dir="ltr" maxlength="34" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">شماره کارت</label>
@@ -326,6 +330,13 @@ else
     private TreasuryAccountKind? kindFilter;
     private bool loading = true, showForm, saving;
 
+    private bool showQuickCreate;
+    private async Task OnAccountCreated(TrsAccount account)
+    {
+        kindFilter = account.Kind;
+        await Load();
+    }
+
     private TrsAccount form = new();
     private string openingText = "";
 
@@ -377,9 +388,8 @@ else
 
     private void OpenForm(TrsAccount? a)
     {
-        form = a is null
-            ? new TrsAccount { CompanyId = activeCompanyId, IsActive = true, SortOrder = items.Count + 1 }
-            : new TrsAccount
+        if (a is null) { showQuickCreate = true; return; }
+        form = new TrsAccount
             {
                 Id = a.Id, CompanyId = a.CompanyId, Code = a.Code, Name = a.Name, Kind = a.Kind,
                 AccountId = a.AccountId, BankName = a.BankName, BranchName = a.BranchName,
@@ -405,10 +415,12 @@ else
     private async Task Save()
     {
         if (saving) return;
+        var identifierError = ShopIdentifierRules.ValidateBank(form);
+        if (identifierError is not null) { Toast.Error(identifierError); return; }
         saving = true;
         try
         {
-            await AccountSvc.SaveAsync(form);
+            await AccountSvc.SaveShopAsync(form);
             Toast.Success("صندوق/بانک ذخیره شد.");
             showForm = false;
             await Load();

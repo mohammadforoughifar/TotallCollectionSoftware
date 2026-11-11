@@ -774,17 +774,17 @@ else
 </style>
 
 <style>
-/* Only the purchase/sale trend is vertical; the data and filters remain unchanged. */
+/* Keep sparse trends slim without changing time spacing, values or print scaling. */
 .order-trend-scroll { overflow-x: auto; padding: .3rem .25rem .1rem; }
 .order-trend-bars { display: flex; align-items: end; min-width: max-content; gap: .35rem; }
 .order-trend-column { flex: 1 0 3.25rem; min-width: 3.25rem; text-align: center; outline-offset: 2px; }
-.order-trend-plot { position: relative; height: 200px; border-left: 1px solid #e2e8f0;
-    background: repeating-linear-gradient(to top, #fff 0, #fff 48px, #edf1f7 49px, #edf1f7 50px); }
-.order-trend-zero { position: absolute; left: 0; right: 0; border-top: 1px solid #94a3b8; z-index: 1; }
-.order-trend-bar { position: absolute; left: 25%; width: 50%; border-radius: 4px 4px 0 0; min-height: 0; }
-.order-trend-purchase { background: linear-gradient(180deg, #818cf8, #4f46e5); }
-.order-trend-sale { background: linear-gradient(180deg, #60a5fa, #2563eb); }
-.order-trend-negative { background: #e87979; border-radius: 0 0 4px 4px; }
+.order-trend-plot { position: relative; height: 180px;
+    background: repeating-linear-gradient(to top, #fff 0, #fff 48px, #f1f5f9 49px, #f1f5f9 50px); }
+.order-trend-zero { position: absolute; left: 0; right: 0; border-top: 1px solid #cbd5e1; z-index: 1; }
+.order-trend-bar { position: absolute; left: 50%; transform: translateX(-50%); width: 40%; max-width: 20px; border-radius: 3px 3px 0 0; min-height: 0; }
+.order-trend-purchase { background: #818cf8; }
+.order-trend-sale { background: #34b995; }
+.order-trend-negative { background: #e87979; border-radius: 0 0 3px 3px; }
 .order-trend-label { display: block; color: #64748b; font-size: .68rem; white-space: nowrap; margin-top: .4rem; }
 @@media print {
     .order-trend-scroll { overflow: visible; }

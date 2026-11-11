@@ -80,13 +80,13 @@ public class OrdersController : ApiControllerBase
         [FromQuery] TransactionType type, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
         [FromQuery] int? partyId, [FromQuery] int? warehouseId,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
-        [FromQuery] bool? hasChequeIncome = null)
+        [FromQuery] bool? hasChequeIncome = null, [FromQuery] bool openingOnly = false)
     {
         var canViewProfit = await CanSeeProfitAsync();
         if (hasChequeIncome.HasValue && !canViewProfit)
             return StatusCode(403, new { message = "فیلتر درآمد چک به مجوز مستقل مشاهده سود نیاز دارد." });
         var result = await _service.GetOrdersAsync(type, from, to, partyId, warehouseId,
-            Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), hasChequeIncome);
+            Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), hasChequeIncome, openingOnly);
         if (result.Items.Any(o => o.Type is TransactionType.Sale or TransactionType.SaleReturn) && !canViewProfit)
             foreach (var order in result.Items) RemoveSaleProfit(order);
         return Ok(result);

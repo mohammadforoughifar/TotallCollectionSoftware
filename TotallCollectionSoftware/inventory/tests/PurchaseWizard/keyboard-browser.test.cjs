@@ -126,11 +126,13 @@ test('shop shortcuts and notification stacking in Chromium', { skip, timeout: 30
         } finally { await page.close(); }
     });
 
-    await t.test('F7 and F8 use the focused product row, never an unrelated or covered row', async () => {
+    await t.test('F8 uses the focused product row; F7 is removed from the invoice', async () => {
         const page = await createPage(browser);
         try {
             await show(page, 'invoice');
             await page.focus('#line-a'); await page.keyboard.press('F7');
+            assert.deepEqual(await actions(page), []);
+            await page.keyboard.press('F8');
             await page.focus('#line-b'); await page.keyboard.press('F8');
             assert.deepEqual(await actions(page), ['last-a', 'last-b']);
             await page.evaluate(() => { document.getElementById('last-b').disabled = true; });

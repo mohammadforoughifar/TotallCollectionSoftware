@@ -177,17 +177,17 @@ else
                                         </span>
                                     </td>
                                     <td class="text-secondary fs-8">@r.Unit</td>
-                                    <td class="text-start num fw-800 text-danger">@r.TotalStock.Num()</td>
-                                    <td class="text-start num text-secondary">@r.ReorderPoint.Num()</td>
-                                    <td class="text-start num text-secondary">@r.MaxStock.Num()</td>
+                                    <td class="text-start num fw-800 text-danger">@r.TotalStock.Qty()</td>
+                                    <td class="text-start num text-secondary">@r.ReorderPoint.Qty()</td>
+                                    <td class="text-start num text-secondary">@r.MaxStock.Qty()</td>
                                     <td class="text-start num fw-800 text-danger">
                                         <span class="badge bg-rose-subtle text-rose rounded-pill px-2.5">
-                                            @r.Shortage.Num() -
+                                            @r.Shortage.Qty() -
                                         </span>
                                     </td>
                                     <td class="text-start">
                                         <span class="badge bg-emerald-subtle text-emerald rounded-pill px-3 py-1.5 fw-800 num fs-8">
-                                            <i class="bi bi-cart-plus me-1"></i> @r.Suggested.Num() @r.Unit
+                                            <i class="bi bi-cart-plus me-1"></i> @r.Suggested.Qty() @r.Unit
                                         </span>
                                     </td>
                                 </tr>
