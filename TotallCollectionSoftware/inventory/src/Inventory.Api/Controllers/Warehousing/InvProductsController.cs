@@ -1,5 +1,6 @@
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Core;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -47,9 +48,13 @@ public class InvProductsController : RbacControllerBase
 
     /// <summary>ایجاد یا ویرایش کالا.</summary>
     [HttpPost]
-    public async Task<ActionResult<InvProduct>> Save([FromBody] InvProduct dto)
+    public async Task<ActionResult<InvProduct>> Save([FromBody] InvProduct dto, [FromServices] IEffectivePermissions permissions)
     {
         if (await ForbiddenUnlessAsync("Products", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
+        var current = dto.Id > 0 ? await _svc.GetProductAsync(dto.Id) : null;
+        if ((current is null ? dto.SalePrice != 0 : current.SalePrice != dto.SalePrice) &&
+            !await permissions.IsLegacyAdminAsync(User) && !(await permissions.GetAsync(User)).Contains("Shop.Pricing.Manage"))
+            return StatusCode(403, new { message = "تغییر قیمت فروش به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
         return Ok(await _svc.SaveProductAsync(dto));
     }
 

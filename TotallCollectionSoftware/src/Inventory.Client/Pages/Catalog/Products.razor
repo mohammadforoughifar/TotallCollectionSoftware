@@ -343,7 +343,23 @@
             </div>
         </div>
         <div class="col-12">
-            <label class="form-label">فایل اکسل (xlsx)</label>
+            <label class="form-label fw-bold">انبار مقصد <span class="text-danger">*</span></label>
+            <select class="form-select @(importWarehouseId == 0 ? "border-danger" : "")" @bind="importWarehouseId">
+                <option value="0">— انتخاب انبار جهت ورود کالاها (الزامی) —</option>
+                @foreach (var w in whLookup)
+                {
+                    <option value="@w.Id">@w.Name</option>
+                }
+            </select>
+            @if (importWarehouseId == 0)
+            {
+                <div class="fs-8 text-danger mt-1">
+                    <i class="bi bi-exclamation-circle ms-1"></i>انتخاب انبار برای ورود اکسل الزامی است تا کالاها به تفکیک انبار مدیریت شوند.
+                </div>
+            }
+        </div>
+        <div class="col-12">
+            <label class="form-label">فایل اکسل (xlsx) <span class="text-danger">*</span></label>
             <InputFile class="form-control" OnChange="OnFileSelected" accept=".xlsx" />
         </div>
         @if (importResult is not null)
@@ -373,7 +389,7 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseImport">بستن</button>
-        <button class="btn btn-primary" @onclick="DoImport" disabled="@(importing || importFile is null)">
+        <button class="btn btn-primary" @onclick="DoImport" disabled="@(importing || importFile is null || importWarehouseId <= 0)">
             @if (importing) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             بارگذاری و ثبت
         </button>
@@ -410,6 +426,7 @@
 
     // ---------- ورود اکسل ----------
     private bool showImport, importing, downloadingTemplate;
+    private int importWarehouseId;
     private IBrowserFile? importFile;
     private ExcelImportResult? importResult;
 
@@ -435,6 +452,7 @@
     {
         importFile = null;
         importResult = null;
+        importWarehouseId = 0;
         downloadingTemplate = false;
         showImport = true;
     }
@@ -473,7 +491,16 @@
 
     private async Task DoImport()
     {
-        if (importFile is null) { Toast.Error("ابتدا فایل اکسل را انتخاب کنید."); return; }
+        if (importWarehouseId <= 0)
+        {
+            Toast.Error("لطفاً ابتدا انبار موردنظر را انتخاب کنید. ورود اکسل بدون انتخاب انبار امکان‌پذیر نیست.");
+            return;
+        }
+        if (importFile is null)
+        {
+            Toast.Error("ابتدا فایل اکسل را انتخاب کنید.");
+            return;
+        }
 
         importing = true;
         try
@@ -483,7 +510,7 @@
             await stream.CopyToAsync(ms);
             ms.Position = 0;
 
-            importResult = await ProductSvc.ImportExcelAsync(ms, importFile.Name);
+            importResult = await ProductSvc.ImportExcelAsync(ms, importFile.Name, importWarehouseId);
 
             if (importResult.Imported > 0)
                 Toast.Success($"{importResult.Imported} کالا با موفقیت ثبت شد.");

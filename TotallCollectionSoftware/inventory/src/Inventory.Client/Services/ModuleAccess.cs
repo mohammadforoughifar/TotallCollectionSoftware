@@ -51,6 +51,21 @@ public static class ModuleAccess
         return PerSectionModules.Contains(module) && auth.HasModule(module);
     }
 
+    /// <summary>
+    /// همان <see cref="CanSee"/> اما فقط با مجوز «خام» (بدون لایهٔ بخش‌های سامانه فروشگاهی).
+    /// لازم است چون خرید و فروش هر دو مجوز قدیمی <c>Orders</c> را دارند و اگر لایهٔ بخش
+    /// در اینجا هم اعمال شود، مجوز «فروش» منوی «خرید» را هم باز می‌کند.
+    /// </summary>
+    public static bool CanSeeDirect(IAuthState auth, string module)
+    {
+        if (string.IsNullOrWhiteSpace(module)) return false;
+
+        foreach (var action in StandardViewActions)
+            if (auth.HasDirect($"{module}.{action}")) return true;
+
+        return PerSectionModules.Contains(module) && auth.HasModuleDirect(module);
+    }
+
     /// <summary>آیا کاربر مجوز مشاهدهٔ حداقل یکی از این ماژول‌ها را دارد؟ (برای عنوان گروه‌های منو)</summary>
     public static bool CanSeeAny(IAuthState auth, params string[] modules) =>
         modules.Any(m => CanSee(auth, m));

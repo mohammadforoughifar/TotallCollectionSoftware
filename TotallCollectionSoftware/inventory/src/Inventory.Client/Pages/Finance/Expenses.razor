@@ -84,12 +84,20 @@
                                 <td class="num fs-8">@e.Date.ToFa()</td>
                                 <td><span class="badge badge-soft-warning">@e.CategoryName</span></td>
                                 <td>@(e.Payee ?? "—")</td>
-                                <td>@PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" ({e.TrsAccountName})")</td>
+                                <td>
+                                    @if (e.Cheques.Count > 0) { <span class="badge badge-pay-cheque fs-8">@ChequeSummary(e)</span> }
+                                    else { @PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" ({e.TrsAccountName})") }
+                                </td>
                                 <td class="text-start num fw-700 text-danger">@e.Amount.Money()</td>
                                 <td class="text-muted fs-8">@(string.IsNullOrWhiteSpace(e.Description) ? "—" : e.Description)</td>
                                 <td class="text-end text-nowrap">
-                                    <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(e)"><i class="bi bi-pencil text-primary"></i></button>
-                                    <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(e)"><i class="bi bi-trash text-danger"></i></button>
+                                    @if (e.Cheques.Count > 0)
+                                    { <button class="btn btn-sm btn-outline-primary" @onclick="() => chequeDetail = e">چک / وضعیت</button> }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(e)"><i class="bi bi-pencil text-primary"></i></button>
+                                        <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(e)"><i class="bi bi-trash text-danger"></i></button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -118,12 +126,20 @@
                             <div class="text-end">
                                 <div class="fs-8 text-muted">مبلغ</div>
                                 <div class="num fw-800 text-danger">@e.Amount.Money()</div>
-                                <div class="mt-1">@PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" — {e.TrsAccountName}")</div>
+                                <div class="mt-1">
+                                    @if (e.Cheques.Count > 0) { <span class="badge badge-pay-cheque fs-8">@ChequeSummary(e)</span> }
+                                    else { @PayTypeBadge(e.PayType)@(string.IsNullOrWhiteSpace(e.TrsAccountName) ? "" : $" — {e.TrsAccountName}") }
+                                </div>
                             </div>
                         </div>
                         <div class="m-card-actions">
-                            <button class="btn btn-light text-primary" @onclick="() => OpenEdit(e)"><i class="bi bi-pencil"></i> ویرایش</button>
-                            <button class="btn btn-light text-danger" @onclick="() => Delete(e)"><i class="bi bi-trash"></i></button>
+                            @if (e.Cheques.Count > 0)
+                            { <button class="btn btn-light text-primary" @onclick="() => chequeDetail = e">جزئیات و وضعیت چک</button> }
+                            else
+                            {
+                                <button class="btn btn-light text-primary" @onclick="() => OpenEdit(e)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                <button class="btn btn-light text-danger" @onclick="() => Delete(e)"><i class="bi bi-trash"></i></button>
+                            }
                         </div>
                     </div>
                 }
@@ -138,13 +154,13 @@
 </div>
 
 @* ---------------- فرم سند هزینه ---------------- *@
-<Modal Visible="showForm" Title="@(form.Id == 0 ? "هزینه جدید" : $"ویرایش سند {form.Number}")" OnClose="() => showForm = false">
+<Modal Visible="showForm" Title="@(replacement ? $"چک جایگزین برای {form.Number}" : form.Id == 0 ? "هزینه جدید" : $"ویرایش سند {form.Number}")" OnClose="() => showForm = false">
     <ChildContent>
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">نوع هزینه <span class="text-danger">*</span></label>
                 <div class="input-group">
-                    <select class="form-select" @bind="catIdStr">
+                    <select class="form-select" @bind="catIdStr" disabled="@replacement">
                         <option value="0">— انتخاب کنید —</option>
                         @foreach (var c in categories.Where(x => x.IsActive || x.Id == form.CategoryId))
                         {
@@ -159,32 +175,40 @@
             <div class="col-md-6">
                 <label class="form-label">مبلغ (ریال) <span class="text-danger">*</span></label>
                 <input class="form-control num" value="@fAmount"
-                       @oninput="@(e => fAmount = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
+                       @oninput="@(e => fAmount = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" disabled="@replacement" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
-                <DatePicker @bind-Value="expDate" />
+                @if (replacement) { <div class="form-control bg-light">@form.Date.ToFa()</div> }
+                else { <DatePicker @bind-Value="expDate" /> }
             </div>
             <div class="col-md-6">
                 <label class="form-label d-block">نحوه پرداخت</label>
                 <div class="d-flex flex-wrap gap-3 pt-1">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epCash"
-                               checked="@(form.PayType == CashType.Cash)" @onchange="@(() => form.PayType = CashType.Cash)" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.Cash)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.Cash; })" />
                         <label class="form-check-label" for="epCash">وجه نقد</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epPos"
-                               checked="@(form.PayType == CashType.CardReader)" @onchange="@(() => form.PayType = CashType.CardReader)" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardReader)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.CardReader; })" />
                         <label class="form-check-label" for="epPos">کارت‌خوان</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epC2C"
-                               checked="@(form.PayType == CashType.CardTransfer)" @onchange="@(() => form.PayType = CashType.CardTransfer)" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardTransfer)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.CardTransfer; })" />
                         <label class="form-check-label" for="epC2C">کارت به کارت</label>
                     </div>
+                    @if (form.Id == 0 || replacement)
+                    {
+                        <div class="form-check"><input class="form-check-input" type="radio" name="expPay" id="epIssued" checked="@(paymentMode == "issued")" @onchange='() => PrepareMode("issued")' /><label class="form-check-label" for="epIssued">چک صادره</label></div>
+                        <div class="form-check"><input class="form-check-input" type="radio" name="expPay" id="epReceived" checked="@(paymentMode == "received")" @onchange='() => PrepareMode("received")' /><label class="form-check-label" for="epReceived">خرج چک دریافتی</label></div>
+                    }
                 </div>
             </div>
+            @if (paymentMode == "ordinary")
+            {
             <div class="col-md-6">
                 <label class="form-label">صندوق / بانک پرداخت</label>
                 <div class="input-group">
@@ -201,13 +225,29 @@
                     </button>
                 </div>
             </div>
+            }
+            @if (paymentMode == "issued")
+            {
+                <div class="col-md-6"><label class="form-label">بانک صادرکننده *</label><div class="input-group"><select class="form-select" @bind="issuedBankId"><option value="0">— انتخاب بانک —</option>@foreach (var a in chequeBanks) { <option value="@a.Id">@a.DisplayName</option> }</select><button type="button" class="btn btn-outline-primary" title="افزودن بانک" @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)"><i class="bi bi-plus-lg"></i></button></div></div>
+                <div class="col-md-6"><label class="form-label">شماره چک *</label><input class="form-control" maxlength="50" @bind="chequeNumber" /></div>
+                <div class="col-md-6"><label class="form-label">سررسید چک *</label><DatePicker @bind-Value="chequeDue" /></div>
+            }
+            @if (paymentMode == "received")
+            {
+                <div class="col-12"><label class="form-label">چک دریافتی در دست فروشگاه *</label><select class="form-select" @bind="sourceChequeId"><option value="0">— انتخاب چک —</option>@foreach (var c in receivedCheques) { <option value="@c.Id">@c.Number — @c.PartyName — @c.Amount.MoneyExact() ریال — @c.DueDate.ToFa()</option> }</select><small class="text-muted">مبلغ چک باید دقیقاً برابر مبلغ هزینه باشد و تا تعیین وضعیت دوباره قابل خرج یا وصول نیست.</small></div>
+            }
+            @if (paymentMode != "ordinary")
+            {
+                <div class="col-md-6"><label class="form-label">تاریخ تحویل چک *</label><DatePicker @bind-Value="handedAt" /></div>
+                <div class="col-12"><div class="alert alert-light border mb-0 py-2 fs-8">@(paymentMode == "issued" ? "بانک فقط هنگام ثبت پاس‌شدن کسر می‌شود." : "پاس چک نزد گیرنده، بدون ثبت ورود وجه به بانک فروشگاه، تسویه فاکتور مبدأ را ثبت می‌کند.")</div></div>
+            }
             <div class="col-md-6">
-                <label class="form-label">دریافت‌کننده / طرف هزینه</label>
+                <label class="form-label">دریافت‌کننده / طرف هزینه @(paymentMode != "ordinary" ? "*" : "")</label>
                 <input class="form-control" @bind="form.Payee" placeholder="مثلاً موجر، اداره برق…" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">توضیحات</label>
-                <input class="form-control" @bind="form.Description" />
+                <input class="form-control" @bind="form.Description" disabled="@replacement" />
             </div>
         </div>
     </ChildContent>
@@ -220,6 +260,43 @@
     </Footer>
 </Modal>
 
+<Modal Visible="chequeDetail is not null" Title="سابقه چک‌های هزینه" Size="modal-lg" OnClose="() => chequeDetail = null">
+    <ChildContent>
+        @if (chequeDetail is not null)
+        {
+            <div class="text-muted mb-2">سند @chequeDetail.Number — مبلغ هزینه <b class="num">@chequeDetail.Amount.MoneyExact()</b> ریال</div>
+            @foreach (var ch in chequeDetail.Cheques)
+            {
+                <div class="border rounded p-2 mb-2">
+                    <div class="d-flex justify-content-between gap-2 flex-wrap"><b>@(ch.Kind == ExpenseChequeKind.Issued ? "چک صادره" : "چک دریافتی خرج‌شده") — @ch.Number</b><span>@ChequeStateName(ch.State)</span></div>
+                    <div class="text-muted fs-8 mt-1">بانک: @(ch.BankName ?? "—") | گیرنده: @ch.Recipient | سررسید: @ch.DueDate.ToFa() | تحویل: @ch.HandedAt.ToFa()</div>
+                    @if (ch.SettledAt.HasValue) { <div class="fs-8">تاریخ تعیین وضعیت: @ch.SettledAt.Value.ToFa() @(string.IsNullOrWhiteSpace(ch.Reason) ? "" : $" — {ch.Reason}")</div> }
+                    @if (ch.State == ExpenseChequeState.Outstanding)
+                    {
+                        <div class="d-flex gap-2 mt-2"><button class="btn btn-sm btn-outline-primary" @onclick="() => OpenChequeStatus(ch, ExpenseChequeState.Cleared)">ثبت پاس‌شدن</button><button class="btn btn-sm btn-outline-danger" @onclick="() => OpenChequeStatus(ch, ExpenseChequeState.Returned)">برگشت / ابطال</button></div>
+                    }
+                </div>
+            }
+            @if (chequeDetail.Cheques.All(c => c.State == ExpenseChequeState.Returned))
+            { <button class="btn btn-outline-primary" @onclick="() => OpenReplacement(chequeDetail)">ثبت چک جایگزین برای همین هزینه</button> }
+        }
+    </ChildContent>
+    <Footer><button class="btn btn-light" @onclick="() => chequeDetail = null">بستن</button></Footer>
+</Modal>
+
+<Modal Visible="statusCheque is not null" Title="تعیین وضعیت چک" OnClose="() => statusCheque = null">
+    <ChildContent>
+        @if (statusCheque is not null)
+        {
+            <div class="alert alert-light border">چک @statusCheque.Number — @ChequeStateName(statusState)
+                <div class="fs-8 mt-1">@(statusState == ExpenseChequeState.Cleared ? (statusCheque.Kind == ExpenseChequeKind.Issued ? "در این تاریخ مبلغ از بانک صادرکننده کسر می‌شود." : "تسویه فاکتور مبدأ ثبت می‌شود؛ وجهی به بانک فروشگاه وارد نمی‌شود.") : (statusCheque.Kind == ExpenseChequeKind.Received ? "چک مبدأ برگشتی می‌شود و هزینه همچنان ثبت است." : "چک پرداخت‌نشده بسته می‌شود و هزینه همچنان ثبت است."))</div>
+            </div>
+            <div class="row g-2"><div class="col-md-6"><label class="form-label">تاریخ عملیات *</label><DatePicker @bind-Value="statusDate" /></div><div class="col-md-6"><label class="form-label">توضیح</label><input class="form-control" maxlength="200" @bind="statusReason" /></div></div>
+        }
+    </ChildContent>
+    <Footer><button class="btn btn-light" @onclick="() => statusCheque = null">انصراف</button><button class="btn btn-primary" @onclick="SaveChequeStatus" disabled="@saving">ثبت وضعیت</button></Footer>
+</Modal>
+
 <QuickBankModal @bind-Visible="showQuickBank"
                 DefaultKind="quickBankKind"
                 OnAccountCreated="OnQuickBankCreated" />
@@ -230,7 +307,7 @@
         <div class="row g-2 mb-3">
             <div class="col-md-8"><input class="form-control" placeholder="نام نوع هزینه *" @bind="catForm.Name" /></div>
             <div class="col-md-4">
-                <button class="btn btn-primary w-100" @onclick="SaveCat" disabled="@saving">
+                <button class="btn btn-primary w-100" data-hotkey="f1" @onclick="SaveCat" disabled="@saving">
                     @(catForm.Id == 0 ? "افزودن" : "ویرایش")
                 </button>
             </div>
@@ -304,6 +381,64 @@
     private string catIdStr = "0", fAmount = "";
     private DateTime? expDate;
 
+    private bool replacement;
+    private string paymentMode = "ordinary", chequeNumber = "", statusReason = "";
+    private int issuedBankId, sourceChequeId;
+    private DateTime? chequeDue, handedAt, statusDate;
+    private Guid chequeOperation, statusOperation;
+    private List<TrsAccount> chequeBanks = new();
+    private List<ShopChequeItem> receivedCheques = new();
+    private ExpenseDto? chequeDetail;
+    private ExpenseChequeDto? statusCheque;
+    private ExpenseChequeState statusState;
+
+    private static string ChequeStateName(ExpenseChequeState state) => state switch
+    {
+        ExpenseChequeState.Outstanding => "در جریان", ExpenseChequeState.Cleared => "پاس‌شده", _ => "برگشتی / ابطال"
+    };
+    private static string ChequeSummary(ExpenseDto e)
+    {
+        var ch = e.Cheques.Last();
+        return (ch.Kind == ExpenseChequeKind.Issued ? "چک صادره" : "چک دریافتی") + " — " + ChequeStateName(ch.State);
+    }
+    private async Task PrepareMode(string mode)
+    {
+        paymentMode = mode;
+        try
+        {
+            if (mode == "issued") chequeBanks = await ExpenseSvc.GetChequeBanksAsync();
+            if (mode == "received") receivedCheques = await ExpenseSvc.GetAvailableReceivedChequesAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task OpenReplacement(ExpenseDto expense)
+    {
+        form = new ExpenseDto { Id = expense.Id, Number = expense.Number, CategoryId = expense.CategoryId,
+            Amount = expense.Amount, Date = expense.Date, Payee = expense.Payee, Description = expense.Description };
+        catIdStr = expense.CategoryId.ToString(); fAmount = Fa.FormatTyping(expense.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        expDate = expense.Date; handedAt = DateTime.Today; chequeDue = DateTime.Today; chequeNumber = "";
+        chequeOperation = Guid.NewGuid(); sourceChequeId = 0; issuedBankId = 0; replacement = true; chequeDetail = null; showForm = true;
+        await PrepareMode("issued");
+    }
+    private void OpenChequeStatus(ExpenseChequeDto cheque, ExpenseChequeState state)
+    {
+        statusCheque = cheque; statusState = state; statusDate = DateTime.Today; statusReason = ""; statusOperation = Guid.NewGuid();
+    }
+    private async Task SaveChequeStatus()
+    {
+        if (saving || statusCheque is null) return;
+        if (!statusDate.HasValue) { Toast.Error("تاریخ عملیات را وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            await ExpenseSvc.ChangeChequeStatusAsync(statusCheque.Id, statusCheque.Kind,
+                new ExpenseChequeStatusCommand { OperationId = statusOperation, Date = statusDate.Value, State = statusState, Reason = statusReason });
+            statusCheque = null; Toast.Success("وضعیت چک ثبت شد."); await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
     // ---------- بانک / صندوق نحوهٔ پرداخت ----------
     private List<TrsAccount> bankAccounts = new();
     private bool showQuickBank;
@@ -342,6 +477,10 @@
         try { bankAccounts = await AccountSvc.GetAllAsync(true); } catch { }
         form.TrsAccountId = acc.Id;
         form.TrsAccountName = acc.DisplayName;
+        if (paymentMode == "issued")
+        {
+            try { chequeBanks = await ExpenseSvc.GetChequeBanksAsync(); issuedBankId = acc.Id; } catch (Exception ex) { Toast.Error(ex.Message); }
+        }
     }
 
     private async Task LoadCats()
@@ -359,6 +498,7 @@
             items = res.Items;
             total = res.TotalCount;
             pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+            if (chequeDetail is not null) chequeDetail = items.FirstOrDefault(e => e.Id == chequeDetail.Id);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -393,12 +533,15 @@
     private void OpenNew()
     {
         form = new ExpenseDto { Date = DateTime.Now, PayType = CashType.Cash };
+        replacement = false; paymentMode = "ordinary"; chequeOperation = Guid.NewGuid();
+        chequeNumber = ""; issuedBankId = 0; sourceChequeId = 0; chequeDue = DateTime.Today; handedAt = DateTime.Today;
         catIdStr = "0"; fAmount = ""; expDate = DateTime.Now;
         showForm = true;
     }
 
     private void OpenEdit(ExpenseDto e)
     {
+        replacement = false; paymentMode = "ordinary";
         form = new ExpenseDto
         {
             Id = e.Id, Number = e.Number, CategoryId = e.CategoryId, Amount = e.Amount,
@@ -413,6 +556,7 @@
 
     private async Task Save()
     {
+        if (saving) return;
         form.CategoryId = int.TryParse(catIdStr, out var cid) ? cid : 0;
         form.Amount = Fa.ParseDecimal(fAmount);
         form.Date = expDate ?? DateTime.Now;
@@ -423,8 +567,26 @@
         saving = true;
         try
         {
-            await ExpenseSvc.SaveExpenseAsync(form);
-            Toast.Success(form.Id == 0 ? "سند هزینه ثبت شد." : "سند هزینه ویرایش شد.");
+            if (paymentMode == "ordinary")
+                await ExpenseSvc.SaveExpenseAsync(form);
+            else
+            {
+                if (string.IsNullOrWhiteSpace(form.Payee) || !handedAt.HasValue)
+                    throw new InvalidOperationException("دریافت‌کننده و تاریخ تحویل چک را وارد کنید.");
+                if (paymentMode == "issued" && (issuedBankId <= 0 || string.IsNullOrWhiteSpace(chequeNumber) || !chequeDue.HasValue))
+                    throw new InvalidOperationException("بانک، شماره و سررسید چک صادره را وارد کنید.");
+                if (paymentMode == "received" && sourceChequeId <= 0)
+                    throw new InvalidOperationException("چک دریافتی را انتخاب کنید.");
+                await ExpenseSvc.CreateChequeExpenseAsync(new ExpenseChequeCreateCommand
+                {
+                    OperationId = chequeOperation, Kind = paymentMode == "issued" ? ExpenseChequeKind.Issued : ExpenseChequeKind.Received,
+                    Expense = form, Recipient = form.Payee, HandedAt = handedAt.Value,
+                    IssuingAccountId = paymentMode == "issued" ? issuedBankId : null,
+                    SourceChequeId = paymentMode == "received" ? sourceChequeId : null,
+                    Number = chequeNumber, DueDate = chequeDue ?? default
+                });
+            }
+            Toast.Success(replacement ? "چک جایگزین ثبت شد." : form.Id == 0 ? "سند هزینه ثبت شد." : "سند هزینه ویرایش شد.");
             showForm = false;
             await LoadCats();
             await Load();
@@ -454,6 +616,7 @@
 
     private async Task SaveCat()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(catForm.Name)) { Toast.Error("نام نوع هزینه را وارد کنید."); return; }
         saving = true;
         var savedName = catForm.Name.Trim();

@@ -1,0 +1,158 @@
+@page "/operations/reports/expenses"
+@inject IExpenseService ExpenseSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>گزارش هزینه‌ها</PageTitle>
+
+<div class="expense-report" dir="rtl" @ref="printRoot">
+    <div class="expense-report-head">
+        <div>
+            <h1 class="h4 fw-bold mb-1"><i class="bi bi-receipt text-primary ms-2"></i>گزارش هزینه‌ها</h1>
+            <div class="text-muted fs-8">جمع و جزئیات اسناد هزینه در بازه و نوع انتخاب‌شده</div>
+        </div>
+        <button type="button" class="btn btn-outline-secondary d-print-none" @onclick="Print" disabled="@(report is null || loading)">
+            <i class="bi bi-printer ms-1"></i> پیش‌نمایش چاپ
+        </button>
+    </div>
+
+    <div class="card mb-3 d-print-none">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label">نوع هزینه</label>
+                    <select class="form-select" @bind="categoryId">
+                        <option value="0">همه انواع هزینه</option>
+                        @foreach (var c in categories)
+                        {
+                            <option value="@c.Id">@c.Name@(!c.IsActive ? " (غیرفعال)" : "")</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-6 col-md-3"><label class="form-label">از تاریخ</label><DatePicker @bind-Value="from" AllowClear="true" /></div>
+                <div class="col-6 col-md-3"><label class="form-label">تا تاریخ</label><DatePicker @bind-Value="to" AllowClear="true" /></div>
+                <div class="col-12 col-md-2"><button type="button" class="btn btn-primary w-100" @onclick="Load" disabled="@loading">اعمال فیلتر</button></div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center p-5" role="status">در حال دریافت گزارش…</div>
+    }
+    else if (report is not null)
+    {
+        <div class="expense-report-applied">نوع هزینه: <b>@appliedCategory</b> <span> | </span> از <b>@appliedFrom</b> تا <b>@appliedTo</b></div>
+        <div class="expense-report-summary">
+            <div><span>تعداد اسناد</span><strong class="num">@report.Count.Num()</strong></div>
+            <div><span>جمع هزینه‌ها (ریال)</span><strong class="num">@report.TotalAmount.MoneyExact()</strong></div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header fw-bold">جمع به تفکیک نوع هزینه</div>
+            @if (report.Categories.Count == 0)
+            {
+                <div class="card-body text-muted">سندی با این فیلتر یافت نشد.</div>
+            }
+            else
+            {
+                <div class="table-responsive"><table class="table align-middle mb-0">
+                    <thead><tr><th>نوع هزینه</th><th class="text-start">تعداد</th><th class="text-start">مبلغ (ریال)</th></tr></thead>
+                    <tbody>@foreach (var category in report.Categories)
+                    {
+                        <tr><td>@category.Name</td><td class="text-start num">@category.Count.Num()</td><td class="text-start num fw-bold">@category.Amount.MoneyExact()</td></tr>
+                    }</tbody>
+                </table></div>
+            }
+        </div>
+        <div class="card">
+            <div class="card-header fw-bold">جزئیات همه اسناد</div>
+            <div class="table-responsive"><table class="table align-middle mb-0 expense-report-details">
+                <thead><tr><th>شماره</th><th>تاریخ</th><th>نوع</th><th>دریافت‌کننده</th><th>روش پرداخت</th><th>توضیحات</th><th class="text-start">مبلغ (ریال)</th></tr></thead>
+                <tbody>@foreach (var row in report.Items)
+                {
+                    <tr><td class="num">@row.Number</td><td class="num">@row.Date.ToFa()</td><td>@row.CategoryName</td><td>@(row.Payee ?? "—")</td><td>@PayTypeName(row)</td><td>@(row.Description ?? "—")</td><td class="text-start num">@row.Amount.MoneyExact()</td></tr>
+                }</tbody>
+                @if (report.Items.Count > 0)
+                {
+                    <tfoot><tr><th colspan="6">جمع کل</th><th class="text-start num">@report.TotalAmount.MoneyExact()</th></tr></tfoot>
+                }
+            </table></div>
+        </div>
+    }
+</div>
+
+<style>
+.expense-report { max-width: 1500px; margin: auto; }
+.expense-report-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+.expense-report-applied { color:#475569; font-size:.85rem; padding:.65rem 0; }
+.expense-report-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; margin-bottom:1rem; }
+.expense-report-summary > div { background:#fff; border:1px solid #e2e8f0; border-radius:.75rem; padding:1rem; }
+.expense-report-summary span { display:block; color:#64748b; font-size:.8rem; }
+.expense-report-summary strong { display:block; color:#312e81; margin-top:.3rem; font-size:1.2rem; }
+@@media (max-width: 480px) { .expense-report-summary { grid-template-columns:1fr; } }
+@@media print { .expense-report .table-responsive { overflow:visible; } .expense-report-details { font-size:9pt; } .expense-report .card { break-inside:auto; } .expense-report tr { break-inside:avoid; } }
+</style>
+
+@code {
+    private List<ExpenseCategoryDto> categories = new();
+    private ExpenseReportDto? report;
+    private int categoryId;
+    private DateTime? from;
+    private DateTime? to;
+    private string appliedCategory = "همه", appliedFrom = "ابتدای سوابق", appliedTo = "پایان سوابق";
+    private bool loading;
+    private ElementReference printRoot;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("گزارش هزینه‌ها");
+        try { categories = await ExpenseSvc.GetCategoriesAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+        {
+            Toast.Error("تاریخ شروع نمی‌تواند پس از تاریخ پایان باشد.");
+            return;
+        }
+        loading = true;
+        try
+        {
+            var selectedCategory = categoryId;
+            var start = from;
+            var end = to;
+            var result = await ExpenseSvc.GetReportAsync(selectedCategory > 0 ? selectedCategory : null, start, end);
+            report = result;
+            appliedCategory = selectedCategory > 0 ? categories.FirstOrDefault(c => c.Id == selectedCategory)?.Name ?? "—" : "همه";
+            appliedFrom = start.HasValue ? start.Value.ToFa() : "ابتدای سوابق";
+            appliedTo = end.HasValue ? end.Value.ToFa() : "پایان سوابق";
+        }
+        catch (Exception ex) { report = null; Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task Print()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", printRoot, "گزارش هزینه‌ها"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
+
+    private static string PayTypeName(ExpenseDto row) => row.Cheques.Count > 0
+        ? (row.Cheques.Last().Kind == ExpenseChequeKind.Issued ? "چک صادره" : "چک دریافتی خرج‌شده") + " — " +
+          (row.Cheques.Last().State == ExpenseChequeState.Outstanding ? "در جریان" : row.Cheques.Last().State == ExpenseChequeState.Cleared ? "پاس‌شده" : "برگشتی / ابطال")
+        : row.PayType switch
+    {
+        CashType.Cash => "نقدی",
+        CashType.CardReader => "کارت‌خوان",
+        CashType.CardTransfer => "کارت به کارت",
+        _ => "—"
+    };
+}

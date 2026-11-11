@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AppDbContext = Inventory.Api.Data.AppDbContext;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -32,6 +33,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>ورود به سیستم.</summary>
+    [AllowInReadOnly]
     [HttpPost("login")]
     [AllowAnonymous]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
@@ -43,6 +45,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>تغییر رمز عبور توسط خود کاربر — هر نقشی (مدیر یا معرف).</summary>
+    [AllowInReadOnly]
     [HttpPost("change-password")]
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
@@ -118,6 +121,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
+    [AllowInReadOnly]
     [HttpPost("users/signature/{id:int}")]
     [Authorize(Roles = "Admin")]
     [RequestSizeLimit(11 * 1024 * 1024)]
@@ -237,6 +241,7 @@ public class AuthController : ControllerBase
     }
 
         /// <summary>تغییر عکس کاربر لاگین — فقط ادمین.</summary>
+    [AllowInReadOnly]
     [HttpPost("users/photo/{id:int}")]
     [Authorize(Roles = "Admin")]
     [DisableRequestSizeLimit]

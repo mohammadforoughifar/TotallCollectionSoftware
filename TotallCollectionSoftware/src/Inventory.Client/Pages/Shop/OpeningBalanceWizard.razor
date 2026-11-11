@@ -1,0 +1,1855 @@
+@page "/shop/opening-balance"
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject IPartyService PartySvc
+@inject IOrderService OrderSvc
+@inject IWarehouseService WarehouseSvc
+@inject IProductService ProductSvc
+@inject ITrsChequeService ChequeSvc
+@inject ITrsAccountService AccountSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>افتتاح حساب و ثبت مانده‌های اولیه</PageTitle>
+
+<div class="opening-balance-container fade-in">
+    <!-- ================== سربرگ مدرن صفحه ================== -->
+    <div class="op-header mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="op-header-icon">
+                    <i class="bi bi-safe2"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">افتتاح حساب و ثبت مانده‌های اولیه</h1>
+                        <span class="badge rounded-pill op-badge-start">آغاز دوره مالی</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        سامانه جامع ثبت مانده مطالبات، بدهی‌های اولیه، چک‌های اول دوره، اقساط باز و کاردکس اولیه انبار
+                    </div>
+                </div>
+            </div>
+
+            <!-- آمارهای سریع بالا -->
+            <div class="d-flex gap-2 flex-wrap">
+                <div class="op-stat-pill">
+                    <div class="op-stat-pill-icon text-indigo"><i class="bi bi-people-fill"></i></div>
+                    <div>
+                        <div class="op-stat-pill-label">ثبت‌های اشخاص</div>
+                        <div class="op-stat-pill-val num">@recentPartyBalances.Count</div>
+                    </div>
+                </div>
+                <div class="op-stat-pill">
+                    <div class="op-stat-pill-icon text-amber"><i class="bi bi-credit-card-2-front-fill"></i></div>
+                    <div>
+                        <div class="op-stat-pill-label">چک‌های دوره</div>
+                        <div class="op-stat-pill-val num">@chequesList.Count</div>
+                    </div>
+                </div>
+                <div class="op-stat-pill">
+                    <div class="op-stat-pill-icon text-emerald"><i class="bi bi-boxes"></i></div>
+                    <div>
+                        <div class="op-stat-pill-label">اقلام انبار</div>
+                        <div class="op-stat-pill-val num">@recentStockLines.Count</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== تب‌های شیک و ارگونومیک (Segmented Modern Tabs) ================== -->
+    <div class="op-tabs-nav-wrapper mb-4">
+        <div class="op-tabs-nav">
+            <button type="button" class="op-tab-btn @(activeTab == "parties" ? "is-active tab-parties" : "")"
+                    @onclick='() => activeTab = "parties"'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-person-lines-fill"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">طرف حساب‌ها</span>
+                    <span class="op-tab-sub">طلب و بدهی اولیه اشخاص</span>
+                </div>
+                @if (recentPartyBalances.Count > 0)
+                {
+                    <span class="op-tab-counter">@recentPartyBalances.Count</span>
+                }
+            </button>
+
+            <button type="button" class="op-tab-btn @(activeTab == "cheques" ? "is-active tab-cheques" : "")"
+                    @onclick='() => activeTab = "cheques"'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-credit-card-2-front"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">چک‌های اول دوره</span>
+                    <span class="op-tab-sub">دریافتی از مشتری / پرداختی</span>
+                </div>
+                @if (chequesList.Count > 0)
+                {
+                    <span class="op-tab-counter">@chequesList.Count</span>
+                }
+            </button>
+
+            <button type="button" class="op-tab-btn @(activeTab == "installments" ? "is-active tab-installments" : "")"
+                    @onclick='() => activeTab = "installments"'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-calendar2-week"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">اقساط باز و معوق</span>
+                    <span class="op-tab-sub">تقسیط بدهی‌های گذشته</span>
+                </div>
+                @if (recentInstallmentOrders.Count > 0)
+                {
+                    <span class="op-tab-counter">@recentInstallmentOrders.Count</span>
+                }
+            </button>
+
+            <button type="button" class="op-tab-btn @(activeTab == "stock" ? "is-active tab-stock" : "")"
+                    @onclick='() => activeTab = "stock"'>
+                <div class="op-tab-icon-box">
+                    <i class="bi bi-boxes"></i>
+                </div>
+                <div class="op-tab-text">
+                    <span class="op-tab-title">موجودی اولیه کالاها</span>
+                    <span class="op-tab-sub">انبار اولیه و ورودی اکسل</span>
+                </div>
+                @if (recentStockLines.Count > 0)
+                {
+                    <span class="op-tab-counter">@recentStockLines.Count</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- ================== محتوای اصلی تب‌ها ================== -->
+    @if (loading)
+    {
+        <div class="op-form-card text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+            <div class="text-secondary fw-500 fs-7">در حال بارگذاری اطلاعات پایه‌ای و حساب‌ها...</div>
+        </div>
+    }
+    else
+    {
+        @* ==================== تب ۱: طلب و بدهی طرف حساب‌ها ==================== *@
+        @if (activeTab == "parties")
+        {
+            <div class="row g-4">
+                <!-- فرم ورود اطلاعات شخص -->
+                <div class="col-12 col-xl-5">
+                    <div class="op-form-card">
+                        <div class="op-form-header">
+                            <div class="op-form-header-icon bg-indigo-subtle text-indigo">
+                                <i class="bi bi-person-fill-add"></i>
+                            </div>
+                            <div>
+                                <h2 class="op-form-title">ثبت مانده افتتاحیه شخص</h2>
+                                <p class="op-form-desc">تعیین طلبکاری یا بدهکاری مشتری و تأمین‌کننده در ابتدای دوره</p>
+                            </div>
+                        </div>
+
+                        <div class="op-form-body">
+                            <!-- انتخاب طرف حساب -->
+                            <div class="mb-3">
+                                <label class="op-label">طرف حساب (مشتری یا تأمین‌کننده) <span class="text-danger">*</span></label>
+                                <SearchSelect Items="allPartiesLookup" Value="partyBalance.PartyId" ValueChanged="OnPartySelected" Placeholder="جستجو با نام یا کد طرف حساب…" />
+                            </div>
+
+                            <!-- سگمنت انتخاب نوع حساب با طراحی مدرن -->
+                            <div class="mb-3">
+                                <label class="op-label">ماهیت مانده حساب <span class="text-danger">*</span></label>
+                                <div class="op-segment-group">
+                                    <div class="op-segment-item @(partyBalance.IsDebtor ? "selected debtor" : "")"
+                                         @onclick="() => partyBalance.IsDebtor = true">
+                                        <div class="op-segment-radio"></div>
+                                        <div class="op-segment-content">
+                                            <div class="op-segment-title text-danger">
+                                                <i class="bi bi-arrow-down-left-circle-fill me-1"></i> بدهکار (طلب ما از شخص)
+                                            </div>
+                                            <div class="op-segment-desc">شخص به مجموعه ما بدهکار است و باید پرداخت کند</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="op-segment-item @(!partyBalance.IsDebtor ? "selected creditor" : "")"
+                                         @onclick="() => partyBalance.IsDebtor = false">
+                                        <div class="op-segment-radio"></div>
+                                        <div class="op-segment-content">
+                                            <div class="op-segment-title text-success">
+                                                <i class="bi bi-arrow-up-right-circle-fill me-1"></i> بستانکار (بدهی ما به شخص)
+                                            </div>
+                                            <div class="op-segment-desc">ما به این طرف حساب بدهکاریم (طلب تأمین‌کننده)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- مبلغ مانده افتتاحیه -->
+                            <div class="mb-3">
+                                <label class="op-label">مبلغ مانده افتتاحیه (ریال) <span class="text-danger">*</span></label>
+                                <div class="op-money-wrapper @(partyBalance.IsDebtor ? "border-danger-glow" : "border-success-glow")">
+                                    <MoneyInput @bind-Value="partyBalance.Amount" CssClass="form-control op-money-input num" />
+                                    <span class="op-currency-tag">ریال</span>
+                                </div>
+                                <div class="op-helper-text">
+                                    @if (partyBalance.Amount > 0)
+                                    {
+                                        <span class="text-secondary">معادل: <b>@((partyBalance.Amount / 10).ToString("N0")) تومان</b></span>
+                                    }
+                                    else
+                                    {
+                                        <span>مبلغ را به ریال وارد کنید</span>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- تاریخ‌ها -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="op-label">تاریخ سند افتتاحیه</label>
+                                    <DatePicker @bind-Value="partyBalance.Date" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="op-label">سررسید تسویه نسیه <span class="text-danger">*</span></label>
+                                    <DatePicker @bind-Value="partyBalance.DueDate" />
+                                </div>
+                            </div>
+
+                            <!-- شرح سند -->
+                            <div class="mb-4">
+                                <label class="op-label">شرح سند / بابت</label>
+                                <input class="form-control form-control-sm op-input" @bind="partyBalance.Description" placeholder="مثال: مانده افتتاحیه انتقال از سال مالی قبل / طلب قدیمی" />
+                            </div>
+
+                            <!-- دکمه ثبت -->
+                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SavePartyBalanceAsync" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>در حال ثبت سند افتتاحیه...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check2-circle fs-6 me-2"></i>
+                                    <span>ثبت سند افتتاح حساب شخص</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- سابقه و گزارش ثبت‌ها در این نشست -->
+                <div class="col-12 col-xl-7">
+                    <div class="op-table-card">
+                        <div class="op-table-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="op-icon-badge bg-indigo-subtle text-indigo">
+                                    <i class="bi bi-journal-text"></i>
+                                </div>
+                                <div>
+                                    <h3 class="op-table-title">افتتاح حساب‌های ثبت‌شده اخیر</h3>
+                                    <p class="op-table-sub">فهرست حساب‌های اشخاص که در این بخش صادر شده‌اند</p>
+                                </div>
+                            </div>
+                            <a href="/operations/reports/party-statements" class="btn btn-sm btn-outline-primary op-btn-rounded">
+                                <i class="bi bi-file-earmark-spreadsheet me-1"></i> گزارش جامع طلب و بدهی
+                            </a>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table op-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>طرف حساب</th>
+                                        <th>نوع شخص</th>
+                                        <th>ماهیت مانده</th>
+                                        <th class="text-start">مبلغ افتتاحیه</th>
+                                        <th>تاریخ ثبت</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (recentPartyBalances.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5">
+                                                <div class="op-empty-state">
+                                                    <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
+                                                    <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در این نشست ثبت نشده است</div>
+                                                    <div class="fs-8 text-muted mt-1">پس از تکمیل فرم سمت راست و زدن دکمه ثبت، سوابق در این جدول نمایش داده می‌شوند.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var item in recentPartyBalances)
+                                        {
+                                            <tr class="op-table-row">
+                                                <td class="fw-bold text-dark">
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <span class="op-avatar">@item.PartyName.Substring(0, Math.Min(1, item.PartyName.Length))</span>
+                                                        <span>@item.PartyName</span>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @(item.PartyType == PartyType.Customer ? "bg-info-subtle text-info border border-info-subtle" : "bg-purple-subtle text-purple border border-purple-subtle") rounded-pill px-2.5">
+                                                        @(item.PartyType == PartyType.Customer ? "مشتری" : "تأمین‌کننده")
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge @(item.IsDebtor ? "bg-danger-subtle text-danger border border-danger-subtle" : "bg-success-subtle text-success border border-success-subtle") rounded-pill px-2.5">
+                                                        <i class="bi @(item.IsDebtor ? "bi-arrow-down-left" : "bi-arrow-up-right") me-1"></i>
+                                                        @(item.IsDebtor ? "بدهکار (طلب ما)" : "بستانکار (بدهی ما)")
+                                                    </span>
+                                                </td>
+                                                <td class="text-start fw-bold num @(item.IsDebtor ? "text-danger" : "text-success") fs-7">
+                                                    @item.Amount.Money() <span class="fs-9 fw-normal text-muted">ریال</span>
+                                                </td>
+                                                <td class="num text-secondary fs-8">@(item.Date.HasValue ? item.Date.Value.ToFa() : "—")</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ==================== تب ۲: چک‌های اول دوره ==================== *@
+        @if (activeTab == "cheques")
+        {
+            <div class="row g-4">
+                <!-- فرم ثبت چک اول دوره -->
+                <div class="col-12 col-xl-5">
+                    <div class="op-form-card">
+                        <div class="op-form-header">
+                            <div class="op-form-header-icon bg-amber-subtle text-amber">
+                                <i class="bi bi-credit-card-2-front-fill"></i>
+                            </div>
+                            <div>
+                                <h2 class="op-form-title">ثبت چک افتتاحیه اول دوره</h2>
+                                <p class="op-form-desc">ثبت چک‌های مشتریان نزد ما یا چک‌های صادره از حساب خودمان</p>
+                            </div>
+                        </div>
+
+                        <div class="op-form-body">
+                            <!-- نوع چک: دریافتی یا پرداختی -->
+                            <div class="mb-3">
+                                <label class="op-label">نوع چک <span class="text-danger">*</span></label>
+                                <div class="op-segment-group">
+                                    <div class="op-segment-item @(newCheque.Kind == ChequeKind.Received ? "selected debtor" : "")"
+                                         @onclick="() => OnChequeKindChanged(ChequeKind.Received)">
+                                        <div class="op-segment-radio"></div>
+                                        <div class="op-segment-content">
+                                            <div class="op-segment-title text-primary">
+                                                <i class="bi bi-box-arrow-in-down-left me-1"></i> چک دریافتی (نزد صندوق)
+                                            </div>
+                                            <div class="op-segment-desc">چکی که مشتری در دوره قبل بابت حسابش داده است</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="op-segment-item @(newCheque.Kind == ChequeKind.Issued ? "selected creditor" : "")"
+                                         @onclick="() => OnChequeKindChanged(ChequeKind.Issued)">
+                                        <div class="op-segment-radio"></div>
+                                        <div class="op-segment-content">
+                                            <div class="op-segment-title text-danger">
+                                                <i class="bi bi-box-arrow-up-right me-1"></i> چک پرداختی (دسته چک ما)
+                                            </div>
+                                            <div class="op-segment-desc">چکی که به تأمین‌کننده کشیده‌ایم و سررسیدش نرسیده</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- طرف حساب -->
+                            <div class="mb-3">
+                                <label class="op-label">
+                                    @(newCheque.Kind == ChequeKind.Received ? "مشتری صادرکننده چک" : "تأمین‌کننده / گیرنده چک") <span class="text-danger">*</span>
+                                </label>
+                                <SearchSelect Items="@(newCheque.Kind == ChequeKind.Received ? customersLookup : suppliersLookup)"
+                                              Value="newCheque.PartyId ?? 0"
+                                              ValueChanged="id => newCheque.PartyId = id"
+                                              Placeholder="@(newCheque.Kind == ChequeKind.Received ? "انتخاب یا جستجوی مشتری…" : "انتخاب یا جستجوی تأمین‌کننده…")" />
+                            </div>
+
+                            @if (newCheque.Kind == ChequeKind.Issued)
+                            {
+                                <div class="mb-3 p-2.5 bg-danger-subtle rounded-3 border border-danger-subtle">
+                                    <label class="op-label text-danger">حساب بانکی صادرکننده (دسته چک شرکت) <span class="text-danger">*</span></label>
+                                    <select class="form-select form-select-sm op-input" @bind="newCheque.TrsAccountId">
+                                        <option value="0">— انتخاب حساب بانکی صادرکننده —</option>
+                                        @foreach (var b in myBankAccounts)
+                                        {
+                                            <option value="@b.Id">@b.DisplayName</option>
+                                        }
+                                    </select>
+                                    <div class="fs-9 text-secondary mt-1">مبلغ این چک در زمان وصول از موجودی این حساب بانکی کسر خواهد شد.</div>
+                                </div>
+                            }
+
+                            <!-- مبلغ و تاریخ سررسید -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-7">
+                                    <label class="op-label">مبلغ چک (ریال) <span class="text-danger">*</span></label>
+                                    <MoneyInput @bind-Value="newCheque.Amount" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
+                                </div>
+                                <div class="col-5">
+                                    <label class="op-label">تاریخ سررسید <span class="text-danger">*</span></label>
+                                    <DatePicker @bind-Value="chequeDueDate" />
+                                </div>
+                            </div>
+
+                            <!-- شماره چک و شناسه صیاد -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="op-label">شماره سریال چک</label>
+                                    <input class="form-control form-control-sm num text-center op-input" @bind="newCheque.Number" placeholder="مثال: ۱۲۳۴۵۶" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="op-label">شناسه صیادی (۱۶ رقم)</label>
+                                    <input class="form-control form-control-sm num text-center op-input" maxlength="16" @bind="newCheque.SayadId" placeholder="کد ۱۶ رقمی صیاد" />
+                                </div>
+                            </div>
+
+                            <!-- نام بانک و شعبه -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="op-label">نام بانک</label>
+                                    <input class="form-control form-control-sm op-input" @bind="newCheque.BankName" placeholder="مثال: صادرات، ملت، ملی…" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="op-label">نام یا کد شعبه</label>
+                                    <input class="form-control form-control-sm op-input" @bind="newCheque.BranchName" placeholder="مثال: شعبه مرکزی کد ۲۱" />
+                                </div>
+                            </div>
+
+                            <!-- شرح چک -->
+                            <div class="mb-4">
+                                <label class="op-label">بابت / توضیحات</label>
+                                <input class="form-control form-control-sm op-input" @bind="newCheque.Description" placeholder="بابت مانده حساب اول دوره / فاکتورهای سال قبل" />
+                            </div>
+
+                            <!-- دکمه ثبت چک -->
+                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SaveChequeAsync" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>در حال ثبت چک در دفتر خزانه...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check2-circle fs-6 me-2"></i>
+                                    <span>ثبت چک در دفتر اسناد دریافتنی/پرداختنی</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- فهرست چک‌های ثبت‌شده -->
+                <div class="col-12 col-xl-7">
+                    <div class="op-table-card">
+                        <div class="op-table-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="op-icon-badge bg-amber-subtle text-amber">
+                                    <i class="bi bi-credit-card"></i>
+                                </div>
+                                <div>
+                                    <h3 class="op-table-title">آخرین چک‌های موجود در سامانه</h3>
+                                    <p class="op-table-sub">فهرست چک‌های دریافتی و پرداختی با سررسیدهای پیش‌رو</p>
+                                </div>
+                            </div>
+                            <a href="/trs/cheques" class="btn btn-sm btn-outline-primary op-btn-rounded">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> مشاهده کل دفتر چک
+                            </a>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table op-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>نوع چک</th>
+                                        <th>طرف حساب</th>
+                                        <th>مشخصات بانک / سریال</th>
+                                        <th>سررسید</th>
+                                        <th class="text-start">مبلغ چک</th>
+                                        <th>وضعیت</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (chequesList.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="6" class="text-center py-5">
+                                                <div class="op-empty-state">
+                                                    <i class="bi bi-credit-card fs-1 text-muted opacity-50"></i>
+                                                    <div class="fw-bold text-secondary mt-2">چکی در سامانه ثبت نشده است</div>
+                                                    <div class="fs-8 text-muted mt-1">با فرم سمت راست چک‌های اول دوره را در دفتر ثبت کنید.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var ch in chequesList.Take(10))
+                                        {
+                                            <tr class="op-table-row">
+                                                <td>
+                                                    <span class="badge @(ch.Kind == ChequeKind.Received ? "bg-primary-subtle text-primary border border-primary-subtle" : "bg-danger-subtle text-danger border border-danger-subtle") rounded-pill px-2.5">
+                                                        @(ch.Kind == ChequeKind.Received ? "دریافتی" : "پرداختی")
+                                                    </span>
+                                                </td>
+                                                <td class="fw-bold text-dark">@ch.PartyName</td>
+                                                <td>
+                                                    <div class="fw-500">@(string.IsNullOrWhiteSpace(ch.BankName) ? "نامشخص" : ch.BankName)</div>
+                                                    <div class="num fs-9 text-muted">سریال: @(string.IsNullOrWhiteSpace(ch.Number) ? "—" : ch.Number)</div>
+                                                </td>
+                                                <td class="num fs-8 fw-500">@ch.DueDate.ToFa()</td>
+                                                <td class="text-start fw-bold num text-dark fs-7">
+                                                    @ch.Amount.Money() <span class="fs-9 fw-normal text-muted">ریال</span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-secondary-subtle text-secondary rounded-pill">@GetChequeStatusName(ch.Status)</span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ==================== تب ۳: اقساط بدهی اولیه ==================== *@
+        @if (activeTab == "installments")
+        {
+            <div class="row g-4">
+                <!-- فرم صدور دفترچه اقساط -->
+                <div class="col-12 col-xl-5">
+                    <div class="op-form-card">
+                        <div class="op-form-header">
+                            <div class="op-form-header-icon bg-emerald-subtle text-emerald">
+                                <i class="bi bi-calendar2-range-fill"></i>
+                            </div>
+                            <div>
+                                <h2 class="op-form-title">ثبت و تقسیط مانده اول دوره</h2>
+                                <p class="op-form-desc">تبدیل بدهی مشتری به دفترچه اقساط با سررسیدهای منظم</p>
+                            </div>
+                        </div>
+
+                        <div class="op-form-body">
+                            <!-- انتخاب مشتری -->
+                            <div class="mb-3">
+                                <label class="op-label">مشتری بدهکار <span class="text-danger">*</span></label>
+                                <SearchSelect Items="customersLookup" Value="instPartyId" ValueChanged="id => instPartyId = id" Placeholder="انتخاب یا جستجوی مشتری…" />
+                            </div>
+
+                            <!-- کل مبلغ و تعداد اقساط -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-7">
+                                    <label class="op-label">کل مبلغ بدهی (ریال) <span class="text-danger">*</span></label>
+                                    <MoneyInput @bind-Value="instTotalAmount" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
+                                </div>
+                                <div class="col-5">
+                                    <label class="op-label">تعداد اقساط <span class="text-danger">*</span></label>
+                                    <input type="number" min="1" max="60" class="form-control form-control-sm num text-center op-input" @bind="instCount" />
+                                </div>
+                            </div>
+
+                            <!-- محاسبه سریع مبلغ هر قسط -->
+                            @if (instTotalAmount > 0 && instCount > 0)
+                            {
+                                <div class="p-2 mb-3 bg-light rounded-3 border d-flex justify-content-between align-items-center fs-8">
+                                    <span class="text-secondary">مبلغ میانگین هر قسط:</span>
+                                    <span class="fw-bold text-primary num fs-7">@((instTotalAmount / instCount).ToString("N0")) ریال</span>
+                                </div>
+                            }
+
+                            <!-- تاریخ سررسید و دوره -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="op-label">سررسید اولین قسط <span class="text-danger">*</span></label>
+                                    <DatePicker @bind-Value="instFirstDueDate" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="op-label">فاصله زمانی اقساط</label>
+                                    <select class="form-select form-select-sm op-input" @bind="instIntervalMonths">
+                                        <option value="1">ماهانه (هر ۱ ماه)</option>
+                                        <option value="2">دوماهه (هر ۲ ماه)</option>
+                                        <option value="3">فصلی (هر ۳ ماه)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- بابت اقساط -->
+                            <div class="mb-4">
+                                <label class="op-label">شرح و توضیحات دفترچه</label>
+                                <input class="form-control form-control-sm op-input" @bind="instNote" placeholder="مثال: اقساط باقی‌مانده خرید کالای سال قبل" />
+                            </div>
+
+                            <!-- دکمه ثبت -->
+                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="GenerateInstallmentsAsync" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>در حال تقسیط و صدور دفترچه...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-calendar-plus fs-6 me-2"></i>
+                                    <span>ثبت و صدور دفترچه اقساط مشتری</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- سوابق اقساط -->
+                <div class="col-12 col-xl-7">
+                    <div class="op-table-card">
+                        <div class="op-table-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="op-icon-badge bg-emerald-subtle text-emerald">
+                                    <i class="bi bi-list-columns-reverse"></i>
+                                </div>
+                                <div>
+                                    <h3 class="op-table-title">دفترچه‌های اقساط ثبت‌شده</h3>
+                                    <p class="op-table-sub">فهرست حساب‌های تقسیط‌شده اول دوره</p>
+                                </div>
+                            </div>
+                            <a href="/shop/credit-management" class="btn btn-sm btn-outline-primary op-btn-rounded">
+                                <i class="bi bi-wallet2 me-1"></i> پیگیری و وصول اقساط
+                            </a>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table op-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>شماره سند</th>
+                                        <th>مشتری</th>
+                                        <th class="text-start">مبلغ کل</th>
+                                        <th>تعداد اقساط</th>
+                                        <th>تاریخ صدور</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (recentInstallmentOrders.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5">
+                                                <div class="op-empty-state">
+                                                    <i class="bi bi-calendar-x fs-1 text-muted opacity-50"></i>
+                                                    <div class="fw-bold text-secondary mt-2">هنوز اقساط اولیه‌ای در این بخش ثبت نشده است</div>
+                                                    <div class="fs-8 text-muted mt-1">از فرم سمت راست برای تبدیل مطالبات گذشته به اقساط استفاده فرمایید.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var o in recentInstallmentOrders)
+                                        {
+                                            <tr class="op-table-row">
+                                                <td class="fw-bold num text-dark">#@o.Id</td>
+                                                <td class="fw-bold text-dark">@o.PartyName</td>
+                                                <td class="num text-primary fw-bold fs-7 text-start">@o.TotalAmount.Money() <span class="fs-9 fw-normal text-muted">ریال</span></td>
+                                                <td>
+                                                    <span class="badge bg-secondary-subtle text-secondary rounded-pill num">@o.Installments.Count قسط</span>
+                                                </td>
+                                                <td class="num text-secondary fs-8">@o.Date.ToFa()</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ==================== تب ۴: موجودی اولیه کالاها (انبار) ==================== *@
+        @if (activeTab == "stock")
+        {
+            <div class="row g-4">
+                <!-- فرم ورود موجودی کالا -->
+                <div class="col-12 col-xl-5">
+                    <div class="op-form-card">
+                        <div class="op-form-header">
+                            <div class="op-form-header-icon bg-rose-subtle text-rose">
+                                <i class="bi bi-box-seam-fill"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h2 class="op-form-title">ثبت موجودی اولیه انبار</h2>
+                                <p class="op-form-desc">نقطه شروع کاردکس کالاها در انبارهای مختلف</p>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-success op-btn-rounded" @onclick="OpenExcelImport">
+                                <i class="bi bi-file-earmark-excel-fill me-1"></i> ورود با اکسل
+                            </button>
+                        </div>
+
+                        <div class="op-form-body">
+                            <!-- انبار مقصد -->
+                            <div class="mb-3">
+                                <label class="op-label">انبار مقصد کالا <span class="text-danger">*</span></label>
+                                <SearchSelect Items="warehouseLookup" Value="stockWarehouseId" ValueChanged="id => stockWarehouseId = id" Placeholder="انتخاب انبار…" />
+                            </div>
+
+                            <!-- انتخاب کالا -->
+                            <div class="mb-3">
+                                <label class="op-label">کالای مورد نظر <span class="text-danger">*</span></label>
+                                <SearchSelect Items="productLookup" Value="stockProductId" ValueChanged="id => stockProductId = id" Placeholder="انتخاب یا جستجوی کالا بر اساس نام یا بارکد…" />
+                            </div>
+
+                            <!-- تعداد و فی تمام شده -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="op-label">تعداد موجودی اولیه <span class="text-danger">*</span></label>
+                                    <input type="number" step="any" min="0.01" class="form-control form-control-sm text-center fw-bold num op-input" @bind="stockQuantity" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="op-label">بهای تمام‌شده واحد (ریال)</label>
+                                    <MoneyInput @bind-Value="stockUnitPrice" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
+                                </div>
+                            </div>
+
+                            <!-- شرح سند انبار -->
+                            <div class="mb-4">
+                                <label class="op-label">شرح سند انبار</label>
+                                <input class="form-control form-control-sm op-input" @bind="stockDescription" placeholder="ثبت موجودی افتتاحیه اول دوره انبار" />
+                            </div>
+
+                            <!-- دکمه ثبت -->
+                            <button class="btn btn-primary w-100 op-btn-submit" @onclick="SaveOpeningStockAsync" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    <span>در حال ثبت در کاردکس انبار...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-check2-circle fs-6 me-2"></i>
+                                    <span>ثبت موجودی اولیه در کاردکس انبار</span>
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- سابقه ثبت کالاهای اول دوره -->
+                <div class="col-12 col-xl-7">
+                    <div class="op-table-card">
+                        <div class="op-table-header">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="op-icon-badge bg-rose-subtle text-rose">
+                                    <i class="bi bi-box-seam"></i>
+                                </div>
+                                <div>
+                                    <h3 class="op-table-title">کالاهای ثبت‌شده اولیه در این نشست</h3>
+                                    <p class="op-table-sub">اقلامی که موجودی نقطه صفر آن‌ها ذخیره شده است</p>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-success op-btn-rounded" @onclick="OpenExcelImport">
+                                <i class="bi bi-file-earmark-excel me-1"></i> ورود گروهی از اکسل
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table op-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>انبار</th>
+                                        <th>نام کالا</th>
+                                        <th class="text-center">تعداد موجودی</th>
+                                        <th class="text-start">فی تمام‌شده</th>
+                                        <th>تاریخ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (recentStockLines.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center py-5">
+                                                <div class="op-empty-state">
+                                                    <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
+                                                    <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در این نشست ثبت نشده است</div>
+                                                    <div class="fs-8 text-muted mt-1">می‌توانید کالاها را تک‌تک ثبت کنید یا با دکمه بالا اکسل را به صورت گروهی بارگذاری نمایید.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var sl in recentStockLines)
+                                        {
+                                            <tr class="op-table-row">
+                                                <td class="text-secondary fw-500">@sl.WarehouseName</td>
+                                                <td class="fw-bold text-dark">@sl.ProductName</td>
+                                                <td class="text-center fw-bold num text-emerald fs-7">@sl.Quantity.Num()</td>
+                                                <td class="text-start num text-secondary fs-8">@sl.UnitPrice.Money() ریال</td>
+                                                <td class="num text-muted fs-8">@sl.Date.ToFa()</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<!-- ================== مودال شیک و استاندارد ورود کالا و موجودی از اکسل ================== -->
+<Modal Visible="showExcelModal" Title="ورود اکسل کالا و موجودی اول دوره" OnClose="() => showExcelModal = false">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="alert alert-info d-flex align-items-center gap-2 fs-8 mb-0 rounded-3">
+                    <i class="bi bi-info-circle-fill fs-5 text-info"></i>
+                    <div>
+                        ابتدا
+                        <button type="button" class="btn btn-link p-0 fw-bold text-primary align-baseline" @onclick="DownloadTemplate" disabled="@downloadingTemplate">
+                            @if (downloadingTemplate) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            فایل اکسل نمونه استاندارد
+                        </button>
+                        را دانلود فرمایید، ستون‌های نام، بارکد و موجودی را تکمیل کرده و سپس فایل را در زیر بارگذاری نمایید.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label fw-bold fs-8">۱. انتخاب انبار مقصد کالاها <span class="text-danger">*</span></label>
+                <select class="form-select @(excelWarehouseId == 0 ? "border-danger" : "")" @bind="excelWarehouseId">
+                    <option value="0">— انبار مورد نظر را انتخاب کنید (الزامی) —</option>
+                    @foreach (var w in warehouseLookup)
+                    {
+                        <option value="@w.Id">@w.Name</option>
+                    }
+                </select>
+                @if (excelWarehouseId == 0)
+                {
+                    <div class="fs-9 text-danger mt-1">
+                        <i class="bi bi-exclamation-circle me-1"></i>انتخاب انبار جهت قرارگیری موجودی‌ها الزامی است.
+                    </div>
+                }
+            </div>
+
+            <div class="col-12">
+                <label class="form-label fw-bold fs-8">۲. بارگذاری فایل اکسل (xlsx.) <span class="text-danger">*</span></label>
+                <InputFile class="form-control" OnChange="OnExcelFileSelected" accept=".xlsx" disabled="@(excelWarehouseId == 0)" />
+                @if (excelWarehouseId == 0)
+                {
+                    <div class="fs-9 text-muted mt-1">پس از انتخاب انبار، فیلد فایل فعال خواهد شد.</div>
+                }
+            </div>
+
+            @if (excelResult is not null)
+            {
+                <div class="col-12">
+                    <div class="alert @(excelResult.Failed == 0 ? "alert-success" : "alert-warning") fs-8 mb-0 rounded-3">
+                        <div class="fw-bold mb-1">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            @excelResult.Imported.Num() کالا با موفقیت وارد و در کاردکس انبار درج شد.
+                            @if (excelResult.Failed > 0)
+                            {
+                                <span class="text-danger"> — @excelResult.Failed.Num() سطر با خطا مواجه شد:</span>
+                            }
+                        </div>
+                        @foreach (var err in excelResult.Errors.Take(6))
+                        {
+                            <div class="text-secondary fs-9">• @err</div>
+                        }
+                        @if (excelResult.Errors.Count > 6)
+                        {
+                            <div class="text-muted fs-9">… و @((excelResult.Errors.Count - 6).Num()) خطای دیگر</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light rounded-pill px-4" @onclick="() => showExcelModal = false">بستن</button>
+        <button class="btn btn-success rounded-pill px-4" @onclick="DoExcelImport" disabled="@(importingExcel || excelWarehouseId == 0 || excelFile == null)">
+            @if (importingExcel) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-cloud-arrow-up me-1"></i> شروع ورود داده‌ها از فایل اکسل
+        </button>
+    </Footer>
+</Modal>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز صفحه افتتاح حساب
+   ======================================================== */
+.opening-balance-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.op-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.4rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+}
+.op-header-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.op-badge-start {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 600;
+    font-size: 0.72rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+
+/* پیل‌های آماری سریع */
+.op-stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.5rem 0.9rem;
+}
+.op-stat-pill-icon {
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+}
+.op-stat-pill-label {
+    font-size: 0.68rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.op-stat-pill-val {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.1;
+}
+
+/* رنگ‌های کمکی */
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+/* ========================================================
+   نوار تب‌های سگمنتی جدید (طراحی مدرن، بدون باگ هایلایت تیره)
+   ======================================================== */
+.op-tabs-nav-wrapper {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.05);
+    border: 1px solid #e2e8f0;
+}
+.op-tabs-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+@@media (max-width: 991.98px) {
+    .op-tabs-nav {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@@media (max-width: 575.98px) {
+    .op-tabs-nav {
+        grid-template-columns: 1fr;
+    }
+}
+
+.op-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    text-align: right;
+    outline: none !important;
+}
+
+.op-tab-icon-box {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    background: #f1f5f9;
+    color: #64748b;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.op-tab-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex-grow: 1;
+}
+
+.op-tab-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+    transition: color 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.op-tab-sub {
+    font-size: 0.7rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.op-tab-counter {
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+/* هاور روی تب غیرفعال */
+.op-tab-btn:hover:not(.is-active) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.op-tab-btn:hover:not(.is-active) .op-tab-icon-box {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+/* حالت فعال تب‌ها بر اساس تِم */
+.op-tab-btn.is-active {
+    background: #ffffff;
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #4f46e5;
+}
+.op-tab-btn.is-active .op-tab-title {
+    color: #1e1b4b;
+    font-weight: 800;
+}
+.op-tab-btn.is-active.tab-parties .op-tab-icon-box {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.35);
+}
+.op-tab-btn.is-active.tab-cheques {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #d97706;
+}
+.op-tab-btn.is-active.tab-cheques .op-tab-icon-box {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(217, 119, 6, 0.35);
+}
+.op-tab-btn.is-active.tab-installments {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #059669;
+}
+.op-tab-btn.is-active.tab-installments .op-tab-icon-box {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(5, 150, 105, 0.35);
+}
+.op-tab-btn.is-active.tab-stock {
+    box-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 0 0 1.5px #e11d48;
+}
+.op-tab-btn.is-active.tab-stock .op-tab-icon-box {
+    background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(225, 29, 72, 0.35);
+}
+.op-tab-btn.is-active .op-tab-counter {
+    background: #4f46e5;
+    color: #ffffff;
+}
+
+/* ========================================================
+   کارت‌های فرم و جداول
+   ======================================================== */
+.op-form-card, .op-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.op-form-header, .op-table-header {
+    padding: 1.2rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+}
+.op-table-header {
+    justify-content: space-between;
+}
+.op-form-header-icon, .op-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+.op-form-title, .op-table-title {
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.15rem;
+}
+.op-form-desc, .op-table-sub {
+    font-size: 0.74rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.op-form-body {
+    padding: 1.4rem;
+    flex-grow: 1;
+}
+
+/* برچسب‌ها و اینپوت‌ها */
+.op-label {
+    font-size: 0.79rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 0.4rem;
+    display: block;
+}
+.op-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    padding: 0.55rem 0.75rem;
+    transition: all 0.18s;
+}
+.op-input:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+/* سگمنت رادیویی شکیل */
+.op-segment-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.op-segment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.op-segment-item:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+.op-segment-radio {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #94a3b8;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.18s;
+}
+.op-segment-item.selected.debtor {
+    background: #fef2f2;
+    border-color: #ef4444;
+}
+.op-segment-item.selected.debtor .op-segment-radio {
+    border-color: #ef4444;
+    background: #ef4444;
+    box-shadow: inset 0 0 0 3px #ffffff;
+}
+.op-segment-item.selected.creditor {
+    background: #f0fdf4;
+    border-color: #10b981;
+}
+.op-segment-item.selected.creditor .op-segment-radio {
+    border-color: #10b981;
+    background: #10b981;
+    box-shadow: inset 0 0 0 3px #ffffff;
+}
+.op-segment-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.op-segment-desc {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 1px;
+}
+
+/* فیلد مبلغ */
+.op-money-wrapper {
+    position: relative;
+    border-radius: 12px;
+    border: 1.5px solid #cbd5e1;
+    overflow: hidden;
+    background: #ffffff;
+    transition: all 0.2s;
+}
+.border-danger-glow:focus-within {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+.border-success-glow:focus-within {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+.op-money-input {
+    border: none !important;
+    font-size: 1.25rem !important;
+    padding: 0.65rem 3.5rem 0.65rem 0.9rem !important;
+    text-align: center;
+    background: transparent;
+    color: #0f172a;
+}
+.op-money-input:focus {
+    box-shadow: none !important;
+}
+.op-currency-tag {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #64748b;
+    pointer-events: none;
+}
+.op-helper-text {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 0.35rem;
+    padding: 0 0.25rem;
+}
+
+/* دکمه ثبت فرم */
+.op-btn-submit {
+    border-radius: 12px;
+    padding: 0.8rem 1.2rem;
+    font-weight: 800;
+    font-size: 0.92rem;
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    border: none;
+    box-shadow: 0 6px 18px -2px rgba(79, 70, 229, 0.4);
+    transition: all 0.2s;
+}
+.op-btn-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px -2px rgba(79, 70, 229, 0.5);
+}
+.op-btn-rounded {
+    border-radius: 20px;
+    padding: 0.35rem 0.85rem;
+    font-weight: 600;
+    font-size: 0.78rem;
+}
+
+/* جداول */
+.op-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.op-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1.5px solid #e2e8f0;
+}
+.op-table tbody td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.op-table-row:hover {
+    background: #f8fafc;
+}
+.op-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.75rem;
+}
+.op-empty-state {
+    padding: 2rem 1rem;
+}
+
+.fade-in {
+    animation: opFadeIn 0.25s ease-in-out;
+}
+@@keyframes opFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+
+@code {
+    // داده‌های ورود از اکسل
+    private bool showExcelModal;
+    private int excelWarehouseId;
+    private IBrowserFile? excelFile;
+    private ExcelImportResult? excelResult;
+    private bool importingExcel;
+    private bool downloadingTemplate;
+
+    private void OpenExcelImport()
+    {
+        excelWarehouseId = stockWarehouseId > 0 ? stockWarehouseId : (warehouseLookup.FirstOrDefault()?.Id ?? 0);
+        excelFile = null;
+        excelResult = null;
+        showExcelModal = true;
+    }
+
+    private void OnExcelFileSelected(InputFileChangeEventArgs e)
+    {
+        excelFile = e.File;
+        excelResult = null;
+    }
+
+    private async Task DownloadTemplate()
+    {
+        downloadingTemplate = true;
+        try
+        {
+            var tpl = await ProductSvc.DownloadTemplateAsync();
+            using var streamRef = new DotNetStreamReference(new MemoryStream(tpl.Data));
+            await JS.InvokeVoidAsync("downloadFileFromStream", tpl.FileName, streamRef);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { downloadingTemplate = false; }
+    }
+
+    private async Task DoExcelImport()
+    {
+        if (excelWarehouseId <= 0)
+        {
+            Toast.Error("لطفاً ابتدا انبار موردنظر را انتخاب کنید.");
+            return;
+        }
+        if (excelFile is null)
+        {
+            Toast.Error("ابتدا فایل اکسل را انتخاب کنید.");
+            return;
+        }
+
+        importingExcel = true;
+        try
+        {
+            await using var stream = excelFile.OpenReadStream(long.MaxValue);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            excelResult = await ProductSvc.ImportExcelAsync(ms, excelFile.Name, excelWarehouseId);
+
+            if (excelResult.Imported > 0)
+            {
+                Toast.Success($"{excelResult.Imported} کالا با موفقیت وارد و در انبار ثبت شد.");
+                var prods = await ProductSvc.GetProductsAsync(pageSize: 1000);
+                productLookup = prods.Items.Where(p => p.IsActive && !p.IsService)
+                    .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" })
+                    .ToList();
+            }
+            if (excelResult.Failed > 0)
+            {
+                Toast.Error($"{excelResult.Failed} سطر رد شد؛ جزئیات در پنجره ورود.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در ورود اکسل: " + ex.Message);
+        }
+        finally
+        {
+            importingExcel = false;
+        }
+    }
+
+    private string activeTab = "parties";
+    private bool loading = true;
+    private bool saving;
+
+    private List<LookupItem> allPartiesLookup = new();
+    private List<LookupItem> customersLookup = new();
+    private List<LookupItem> suppliersLookup = new();
+    private List<TrsAccount> myBankAccounts = new();
+    private Product? openingServiceProduct;
+    private Product? openingGoodsProduct;
+    private List<LookupItem> warehouseLookup = new();
+    private List<LookupItem> productLookup = new();
+    private List<TrsCheque> chequesList = new();
+
+    // داده‌های تب طرف حساب
+    private PartyBalanceItem partyBalance = new() { Date = DateTime.Today };
+    private List<PartyBalanceItem> recentPartyBalances = new();
+
+    // داده‌های تب چک
+    private TrsCheque newCheque = new() { Kind = ChequeKind.Received, DueDate = DateTime.Today.AddMonths(1) };
+    private DateTime? chequeDueDate = DateTime.Today.AddMonths(1);
+
+    // داده‌های تب اقساط
+    private int instPartyId;
+    private decimal instTotalAmount;
+    private int instCount = 4;
+    private DateTime? instFirstDueDate = DateTime.Today.AddMonths(1);
+    private int instIntervalMonths = 1;
+    private string instNote = "مانده اقساط بدهی باز اول دوره";
+    private List<Order> recentInstallmentOrders = new();
+
+    // داده‌های تب موجودی کالا
+    private int stockWarehouseId;
+    private int stockProductId;
+    private decimal stockQuantity = 1;
+    private decimal stockUnitPrice = 0;
+    private string stockDescription = "موجودی اولیه اول دوره انبار";
+    private List<OpeningStockLine> recentStockLines = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("افتتاح حساب و مانده‌های اولیه");
+        await LoadDataAsync();
+    }
+
+    private static string GetChequeStatusName(ChequeStatus status) => status switch
+    {
+        ChequeStatus.InHand => "نزد صندوق",
+        ChequeStatus.InCollection => "در جریان وصول",
+        ChequeStatus.Cleared => "وصول شده",
+        ChequeStatus.Bounced => "برگشتی",
+        ChequeStatus.Endorsed => "خرج شده",
+        _ => "ابطال شده"
+    };
+
+    private async Task LoadDataAsync()
+    {
+        loading = true;
+        try
+        {
+            var custs = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            var supps = await PartySvc.GetLookupsAsync(PartyType.Supplier, activeOnly: true);
+
+            customersLookup = custs;
+            suppliersLookup = supps;
+            allPartiesLookup = custs.Select(c => new LookupItem { Id = c.Id, Name = $"مشتری: {c.Name}" })
+                .Concat(supps.Select(s => new LookupItem { Id = s.Id, Name = $"تأمین‌کننده: {s.Name}" }))
+                .ToList();
+
+            // دریافت یا ساخت خدمت افتتاح حساب (چون خدمات موجودی انبار نمی‌خواهد و خطا نمی‌دهد)
+            await EnsureOpeningProductsAsync();
+
+            warehouseLookup = await WarehouseSvc.GetLookupsAsync(activeOnly: true);
+            if (warehouseLookup.Count > 0) stockWarehouseId = warehouseLookup[0].Id;
+
+            var prods = await ProductSvc.GetProductsAsync(pageSize: 1000);
+            productLookup = prods.Items.Where(p => p.IsActive && !p.IsService)
+                .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" })
+                .ToList();
+            if (productLookup.Count > 0) stockProductId = productLookup[0].Id;
+
+            try
+            {
+                var allAccs = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                myBankAccounts = allAccs.Where(a => a.Kind == TreasuryAccountKind.Bank).ToList();
+            }
+            catch { myBankAccounts = new(); }
+
+            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+            chequesList = chqRes.Items;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OnChequeKindChanged(ChequeKind k)
+    {
+        newCheque.Kind = k;
+        newCheque.PartyId = 0;
+    }
+
+    private void OnPartySelected(int id)
+    {
+        partyBalance.PartyId = id;
+        var p = allPartiesLookup.FirstOrDefault(x => x.Id == id);
+        if (p != null) partyBalance.PartyName = p.Name;
+    }
+
+    private async Task EnsureOpeningProductsAsync()
+    {
+        try
+        {
+            // ۱) خدمت افتتاحیه برای فروش (طلب ما از مشتری)
+            var res = await ProductSvc.GetProductsAsync(search: "مانده افتتاح حساب", pageSize: 10);
+            openingServiceProduct = res.Items.FirstOrDefault(p => p.IsService && p.Name.Contains("افتتاح"));
+            if (openingServiceProduct == null)
+            {
+                var newProd = new Product
+                {
+                    Code = "OPN-SVC",
+                    Name = "مانده افتتاح حساب (خدمات)",
+                    IsService = true,
+                    IsActive = true,
+                    PurchasePrice = 0,
+                    SalePrice = 0,
+                    Description = "خدمت سیستمی برای ثبت مانده‌های افتتاحیه طلب از مشتریان"
+                };
+                openingServiceProduct = await ProductSvc.SaveAsync(newProd);
+            }
+
+            // ۲) کالای عمومی افتتاحیه برای خرید (بدهی ما به تأمین‌کننده)
+            var resGoods = await ProductSvc.GetProductsAsync(search: "مانده بستانکاری افتتاحیه", pageSize: 10);
+            openingGoodsProduct = resGoods.Items.FirstOrDefault(p => !p.IsService && p.Name.Contains("افتتاح"));
+            if (openingGoodsProduct == null)
+            {
+                var newGoods = new Product
+                {
+                    Code = "OPN-GDS",
+                    Name = "مانده بستانکاری افتتاحیه (کالا)",
+                    IsService = false,
+                    IsActive = true,
+                    WarehouseId = null, // بدون انبار اختصاصی (قابل استفاده در همه انبارها)
+                    PurchasePrice = 0,
+                    SalePrice = 0,
+                    Description = "آیتم سیستمی برای ثبت مانده‌های افتتاحیه بدهی به تأمین‌کنندگان"
+                };
+                openingGoodsProduct = await ProductSvc.SaveAsync(newGoods);
+            }
+            else if (openingGoodsProduct.WarehouseId.HasValue)
+            {
+                // اگر قبلاً با انبار اختصاصی ذخیره شده بود، انبار اختصاصی آن را برمی‌داریم تا عمومی شود
+                openingGoodsProduct.WarehouseId = null;
+                await ProductSvc.SaveAsync(openingGoodsProduct);
+            }
+        }
+        catch
+        {
+            // نادیده‌گیری خطا
+        }
+    }
+
+    private async Task SavePartyBalanceAsync()
+    {
+        if (partyBalance.PartyId <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
+        if (partyBalance.Amount <= 0) { Toast.Error("مبلغ افتتاح حساب باید بزرگ‌تر از صفر باشد."); return; }
+
+        saving = true;
+        try
+        {
+            var isSale = partyBalance.IsDebtor;
+            if (openingServiceProduct == null || openingGoodsProduct == null) await EnsureOpeningProductsAsync();
+
+            var selectedProd = isSale ? openingServiceProduct : openingGoodsProduct;
+            var targetProdId = selectedProd?.Id ?? (productLookup.FirstOrDefault(p => isSale || !p.Name.Contains("خدمات"))?.Id ?? 1);
+
+            // انبار سند: اگر کالا انبار اختصاصی داشت همان انبار، در غیر این صورت اولین انبار معتبر سیستم
+            int effectiveWarehouseId = (selectedProd?.WarehouseId is > 0)
+                ? selectedProd.WarehouseId.Value
+                : (warehouseLookup.FirstOrDefault()?.Id ?? 1);
+
+            var docDate = partyBalance.Date ?? DateTime.Today;
+            var dueDate = partyBalance.DueDate ?? docDate.AddMonths(1);
+
+            var cmd = new OrderCommand
+            {
+                Type = isSale ? TransactionType.Sale : TransactionType.Purchase,
+                PartyId = partyBalance.PartyId,
+                WarehouseId = effectiveWarehouseId,
+                Date = docDate,
+                PaymentMethod = PaymentMethod.Credit,
+                DueDate = dueDate,
+                Description = string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description,
+                Lines = new List<OrderLineInput>
+                {
+                    new()
+                    {
+                        ProductId = targetProdId,
+                        Quantity = 1,
+                        Price = partyBalance.Amount
+                    }
+                }
+            };
+
+            await OrderSvc.CreateAsync(cmd);
+            Toast.Success($"افتتاح حساب طرف حساب «{partyBalance.PartyName}» با موفقیت ثبت شد.");
+
+            recentPartyBalances.Insert(0, new PartyBalanceItem
+            {
+                PartyId = partyBalance.PartyId,
+                PartyName = partyBalance.PartyName,
+                PartyType = partyBalance.PartyName.StartsWith("مشتری") ? PartyType.Customer : PartyType.Supplier,
+                Amount = partyBalance.Amount,
+                IsDebtor = partyBalance.IsDebtor,
+                Date = partyBalance.Date ?? DateTime.Today
+            });
+
+            partyBalance = new PartyBalanceItem { Date = DateTime.Today, DueDate = DateTime.Today.AddMonths(1) };
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در ثبت افتتاح حساب: " + ex.Message);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task SaveChequeAsync()
+    {
+        if ((newCheque.PartyId ?? 0) <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
+        if (newCheque.Amount <= 0) { Toast.Error("مبلغ چک باید بزرگ‌تر از صفر باشد."); return; }
+        if (newCheque.Kind == ChequeKind.Issued && (newCheque.TrsAccountId ?? 0) <= 0)
+        {
+            Toast.Error("لطفاً حساب بانکی صادرکننده را انتخاب کنید.");
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            newCheque.DueDate = chequeDueDate ?? DateTime.Today.AddMonths(1);
+            newCheque.IssueDate = DateTime.Today;
+            newCheque.Status = ChequeStatus.InHand;
+
+            var saved = await ChequeSvc.SaveAsync(newCheque);
+            Toast.Success($"چک شماره {saved.Number} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
+            
+            try
+            {
+                var allAccs = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                myBankAccounts = allAccs.Where(a => a.Kind == TreasuryAccountKind.Bank).ToList();
+            }
+            catch { myBankAccounts = new(); }
+
+            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+            chequesList = chqRes.Items;
+
+            newCheque = new TrsCheque { Kind = newCheque.Kind, DueDate = DateTime.Today.AddMonths(1) };
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در ثبت چک: " + ex.Message);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task GenerateInstallmentsAsync()
+    {
+        if (instPartyId <= 0) { Toast.Error("لطفاً مشتری را انتخاب کنید."); return; }
+        if (instTotalAmount <= 0) { Toast.Error("مبلغ بدهی اقساطی باید بزرگ‌تر از صفر باشد."); return; }
+        if (instCount <= 0) { Toast.Error("تعداد اقساط باید حداقل ۱ قسط باشد."); return; }
+
+        saving = true;
+        try
+        {
+            if (openingServiceProduct == null) await EnsureOpeningProductsAsync();
+            var svcProdId = openingServiceProduct?.Id ?? (productLookup.FirstOrDefault()?.Id ?? 1);
+            var dummyWh = warehouseLookup.FirstOrDefault();
+            var eachAmount = Math.Round(instTotalAmount / instCount, 0);
+
+            var insts = new List<InstallmentDto>();
+            var startDate = instFirstDueDate ?? DateTime.Today.AddMonths(1);
+
+            for (int i = 0; i < instCount; i++)
+            {
+                var dueDate = startDate.AddMonths(i * instIntervalMonths);
+                var amt = (i == instCount - 1) ? (instTotalAmount - (eachAmount * (instCount - 1))) : eachAmount;
+                insts.Add(new InstallmentDto
+                {
+                    No = i + 1,
+                    DueDate = dueDate,
+                    Amount = amt
+                });
+            }
+
+            var lastDueDate = startDate.AddMonths(instCount * instIntervalMonths);
+
+            var cmd = new OrderCommand
+            {
+                Type = TransactionType.Sale,
+                PartyId = instPartyId,
+                WarehouseId = dummyWh?.Id ?? 1,
+                Date = DateTime.Today,
+                PaymentMethod = PaymentMethod.Installment,
+                DueDate = lastDueDate,
+                Description = instNote,
+                Lines = new List<OrderLineInput>
+                {
+                    new()
+                    {
+                        ProductId = svcProdId,
+                        Quantity = 1,
+                        Price = instTotalAmount
+                    }
+                },
+                Installments = insts
+            };
+
+            var created = await OrderSvc.CreateAsync(cmd);
+            Toast.Success($"دفترچه اقساط بدهی افتتاحیه با {instCount} قسط با موفقیت صادر شد.");
+            recentInstallmentOrders.Insert(0, created);
+
+            instTotalAmount = 0;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در ثبت اقساط: " + ex.Message);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task SaveOpeningStockAsync()
+    {
+        if (stockWarehouseId <= 0) { Toast.Error("لطفاً انبار را انتخاب کنید."); return; }
+        if (stockProductId <= 0) { Toast.Error("لطفاً کالا را انتخاب کنید."); return; }
+        if (stockQuantity <= 0) { Toast.Error("تعداد کالا باید بزرگ‌تر از صفر باشد."); return; }
+
+        saving = true;
+        try
+        {
+            var cmd = new OrderCommand
+            {
+                Type = TransactionType.Purchase,
+                PartyId = allPartiesLookup.FirstOrDefault()?.Id ?? 1,
+                WarehouseId = stockWarehouseId,
+                Date = DateTime.Today,
+                PaymentMethod = PaymentMethod.Cash,
+                Description = stockDescription,
+                Lines = new List<OrderLineInput>
+                {
+                    new()
+                    {
+                        ProductId = stockProductId,
+                        Quantity = stockQuantity,
+                        Price = stockUnitPrice
+                    }
+                }
+            };
+
+            await OrderSvc.CreateAsync(cmd);
+            var prodName = productLookup.FirstOrDefault(p => p.Id == stockProductId)?.Name ?? "";
+            var whName = warehouseLookup.FirstOrDefault(w => w.Id == stockWarehouseId)?.Name ?? "";
+
+            Toast.Success($"موجودی اولیه کالای «{prodName}» به تعداد {stockQuantity} در انبار «{whName}» ثبت شد.");
+
+            recentStockLines.Insert(0, new OpeningStockLine
+            {
+                WarehouseName = whName,
+                ProductName = prodName,
+                Quantity = stockQuantity,
+                UnitPrice = stockUnitPrice,
+                Date = DateTime.Today
+            });
+
+            stockQuantity = 1;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("خطا در ثبت موجودی: " + ex.Message);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private class PartyBalanceItem
+    {
+        public int PartyId { get; set; }
+        public string PartyName { get; set; } = "";
+        public PartyType PartyType { get; set; } = PartyType.Customer;
+        public decimal Amount { get; set; }
+        public bool IsDebtor { get; set; } = true;
+        public DateTime? Date { get; set; } = DateTime.Today;
+        public DateTime? DueDate { get; set; } = DateTime.Today.AddMonths(1);
+        public string? Description { get; set; }
+    }
+
+    private class OpeningStockLine
+    {
+        public string WarehouseName { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public DateTime Date { get; set; }
+    }
+}

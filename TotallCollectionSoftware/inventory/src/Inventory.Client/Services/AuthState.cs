@@ -1,3 +1,4 @@
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.JSInterop;
 
@@ -21,11 +22,27 @@ public interface IAuthState
     /// <summary>شناسه معرف مرتبط با کاربر جاری (اگر کاربر معرف باشد)</summary>
     int? ReferrerId { get; }
 
-    /// <summary>بررسی دسترسی دقیق: Has("Orders.Read") یا Has("Dashboards.Financial")</summary>
+    /// <summary>
+    /// بررسی دسترسی دقیق: Has("Orders.Read") یا Has("Dashboards.Financial")
+    /// <para>
+    /// این بررسی «لایهٔ بخش» را هم لحاظ می‌کند: مجوز <c>Shop.Sale.View/Manage</c> مجوزهای
+    /// قدیمی همان بخش (مثل <c>Orders.Read</c>) را پوشش می‌دهد تا نقش‌هایی که فقط از
+    /// «تنظیمات ← نقش‌ها ← سامانه فروشگاهی» مجوز گرفته‌اند در همهٔ صفحات درست کار کنند.
+    /// </para>
+    /// </summary>
     bool Has(string permission);
+
+    /// <summary>
+    /// بررسی «خام» بدون لایهٔ بخش — فقط همان مجوزی که دقیقاً در توکن است.
+    /// برای تفکیک بخش‌هایی که ماژول قدیمی مشترک دارند (خرید و فروش هر دو <c>Orders</c> بودند).
+    /// </summary>
+    bool HasDirect(string permission);
 
     /// <summary>آیا کاربر حداقل یک دسترسی از این ماژول دارد؟</summary>
     bool HasModule(string module);
+
+    /// <summary>همان <see cref="HasModule"/> بدون لایهٔ بخش.</summary>
+    bool HasModuleDirect(string module);
 
     /// <summary>
     /// آیا کاربر مجوز «مشاهده» این ماژول را دارد؟ مبنای نمایش آیتم در منوی کناری.
@@ -64,9 +81,15 @@ public class AuthState : IAuthState
     private HashSet<string> Perms =>
         _permCache ??= new HashSet<string>(_session?.Permissions ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
 
-    public bool Has(string permission) => Perms.Contains(permission);
+    public bool Has(string permission)
+        => HasDirect(permission)
+           || Perms.Any(granted => ShopSections.AliasAllows(permission, granted));
 
-    public bool HasModule(string module) =>
+    public bool HasDirect(string permission) => Perms.Contains(permission);
+
+    public bool HasModule(string module) => HasModuleDirect(module);
+
+    public bool HasModuleDirect(string module) =>
         Perms.Any(p => p.StartsWith(module + ".", StringComparison.OrdinalIgnoreCase));
 
     public bool CanSee(string module) => ModuleAccess.CanSee(this, module);

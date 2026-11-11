@@ -1,0 +1,273 @@
+using Inventory.Licensing.Modules;
+
+namespace Inventory.Api.Licensing.Infrastructure;
+
+/// <summary>
+/// نگاشت کنترلرها به کد ماژول لایسنس — <b>ثابت در کد</b>.
+///
+/// <para>
+/// چرا لازم است؟ چون فقط ۱۵ کنترلر از ۱۲۶ کنترلر پروژه صفت <c>[ModulePermission]</c>
+/// دارند؛ تکیه بر صفت‌های موجود یعنی ۱۱۱ کنترلر بدون هیچ بررسی لایسنسی می‌ماند.
+/// این جدول همان شکاف را می‌بندد و مستقل از RBAC است.
+/// </para>
+///
+/// <para>
+/// برای کنترلری که این‌جا نیست (کنترلر تازه)، سیاست «باز ولی لاگ‌شده» است تا انتشار
+/// تازه باعث قطع کار مشتری نشود؛ ولی در لاگ API یک خط هشدار ثبت می‌شود تا تیم متوجه شود
+/// و ردیف آن را به همین فایل اضافه کند. (fail-open آگاهانه برای پوشش، با ردیابی)
+/// </para>
+/// </summary>
+public static class LicenseModuleRegistry
+{
+    private static readonly Dictionary<string, string> ByController = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // ---------- پایه ----------
+        ["Auth"] = ModuleCodes.Core,
+        ["UserProfile"] = ModuleCodes.Core,
+        ["AuditLogs"] = ModuleCodes.Core,
+        ["CompanyContext"] = ModuleCodes.Core,
+        ["CompanyProfile"] = ModuleCodes.Core,
+        ["Files"] = ModuleCodes.Core,
+        ["Https"] = ModuleCodes.Core,
+        ["Permissions"] = ModuleCodes.Core,
+        ["Roles"] = ModuleCodes.Core,
+        ["Settings"] = ModuleCodes.Core,
+        ["SystemCompanies"] = ModuleCodes.Core,
+        ["SystemDepartments"] = ModuleCodes.Core,
+        ["SystemOrganizations"] = ModuleCodes.Core,
+        ["SystemUsers"] = ModuleCodes.Core,
+        ["LetterStructures"] = ModuleCodes.Core,
+
+        ["Dashboard"] = ModuleCodes.Dashboard,
+        ["Dashboards"] = ModuleCodes.Dashboard,
+
+        ["Archive"] = ModuleCodes.Cartable,
+        ["Cartable"] = ModuleCodes.Cartable,
+        ["Notifications"] = ModuleCodes.Cartable,
+        ["NotifyTiming"] = ModuleCodes.Cartable,
+
+        ["Backup"] = ModuleCodes.Backup,
+        ["BackupSession"] = ModuleCodes.Backup,
+        ["CentralBackup"] = ModuleCodes.Backup,
+
+        ["License"] = ModuleCodes.Licensing,
+
+        // ---------- کالا و فروش ----------
+        ["Attachments"] = ModuleCodes.Core,      // پیوست عمومی (ArchiveController) — زیرساخت، نه ماژول فروش
+        ["MyPanel"] = ModuleCodes.Core,          // پنل شخصی کاربر
+        ["Users"] = ModuleCodes.Core,            // مدیریت کاربران (AuthController)
+        ["Referrers"] = ModuleCodes.Core,        // معرف‌ها (SettingsController)
+
+        ["Categories"] = ModuleCodes.Catalog,
+        ["Parties"] = ModuleCodes.Catalog,
+        ["Products"] = ModuleCodes.Catalog,
+        ["ShopPricing"] = ModuleCodes.Catalog,
+        ["Stock"] = ModuleCodes.Catalog,
+        ["Units"] = ModuleCodes.Catalog,
+        ["Warehouses"] = ModuleCodes.Catalog,
+
+        ["GoodsIssues"] = ModuleCodes.Sales,
+        ["Orders"] = ModuleCodes.Sales,
+
+        ["SalesVisit"] = ModuleCodes.SalesVisit,
+
+        ["InvBaseData"] = ModuleCodes.Warehousing,
+        ["InvDocs"] = ModuleCodes.Warehousing,
+        ["InvProducts"] = ModuleCodes.Warehousing,
+        ["InvAttributes"] = ModuleCodes.Warehousing,
+        ["InvCategories"] = ModuleCodes.Warehousing,
+        ["InvDocTypes"] = ModuleCodes.Warehousing,
+        ["InvReports"] = ModuleCodes.Warehousing,
+        ["InvSettings"] = ModuleCodes.Warehousing,
+        ["InvWarehouses"] = ModuleCodes.Warehousing,
+
+        ["Stocktaking"] = ModuleCodes.Stocktaking,
+        ["StkSessions"] = ModuleCodes.Stocktaking,
+        ["StkReports"] = ModuleCodes.Stocktaking,
+        ["BcdBarcodes"] = ModuleCodes.Stocktaking,   // بارکد شمارش انبارگردانی
+
+        ["Invoicing"] = ModuleCodes.Invoicing,
+        ["FacInvoices"] = ModuleCodes.Invoicing,   // صدور صورتحساب
+        ["FacReports"] = ModuleCodes.Invoicing,
+        ["FacRules"] = ModuleCodes.Invoicing,
+
+        ["Moadian"] = ModuleCodes.Moadian,
+
+        // ---------- مالی ----------
+        ["AccDimensions"] = ModuleCodes.Accounting,
+        ["Accounting"] = ModuleCodes.Accounting,
+        ["AccAccounts"] = ModuleCodes.Accounting,
+        ["AccFiscalYears"] = ModuleCodes.Accounting,
+        ["AccInvRules"] = ModuleCodes.Accounting,
+        ["AccReports"] = ModuleCodes.Accounting,
+        ["AccVouchers"] = ModuleCodes.Accounting,
+        ["Budgets"] = ModuleCodes.Accounting,
+        ["FixedAssets"] = ModuleCodes.Accounting,
+        ["FixedAssetCategories"] = ModuleCodes.Accounting,
+        ["FixedAssetRuns"] = ModuleCodes.Accounting,
+
+        ["Treasury"] = ModuleCodes.Treasury,
+        ["TrsAccounts"] = ModuleCodes.Treasury,
+        ["TrsCheques"] = ModuleCodes.Treasury,
+        ["TrsReports"] = ModuleCodes.Treasury,
+        ["TrsRules"] = ModuleCodes.Treasury,
+        ["TrsVouchers"] = ModuleCodes.Treasury,
+
+        ["Expenses"] = ModuleCodes.Expenses,
+        ["ExpenseCategories"] = ModuleCodes.Expenses,
+
+        // ---------- عملیات ----------
+        ["Repairs"] = ModuleCodes.Repairs,
+        ["ShopTradeIn"] = ModuleCodes.Repairs,
+        ["ShopWarranty"] = ModuleCodes.Repairs,
+        ["Technicians"] = ModuleCodes.Repairs,
+
+        ["Karfarmas"] = ModuleCodes.Projects,
+        ["ProjectAttach"] = ModuleCodes.Projects,
+        ["ProjectCartable"] = ModuleCodes.Projects,
+        ["Projects"] = ModuleCodes.Projects,
+        ["ReportWorks"] = ModuleCodes.Projects,
+        ["TypeFactors"] = ModuleCodes.Projects,
+
+        ["WorkOrders"] = ModuleCodes.WorkOrders,
+        ["StandaloneMindFlows"] = ModuleCodes.WorkOrders,
+        ["WorkProjects"] = ModuleCodes.WorkOrders,
+
+        // ---------- اتوماسیون اداری ----------
+        ["Email"] = ModuleCodes.Letters,
+        ["IncomingLetters"] = ModuleCodes.Letters,
+        ["InnerLetters"] = ModuleCodes.Letters,
+        ["MeetingMinutes"] = ModuleCodes.Letters,
+        ["OutgoingLetters"] = ModuleCodes.Letters,
+
+        ["CctvCameras"] = ModuleCodes.OfficeAssets,
+        ["CctvNvrs"] = ModuleCodes.OfficeAssets,
+        ["CctvScan"] = ModuleCodes.OfficeAssets,
+        ["NetworkScan"] = ModuleCodes.OfficeAssets,
+        ["OfficeMachineAgent"] = ModuleCodes.OfficeAssets,
+        ["OfficeMachines"] = ModuleCodes.OfficeAssets,
+
+        // ---------- آرشیو و IT ----------
+        ["DocAccessRequests"] = ModuleCodes.DocArchive,
+        ["DocBulk"] = ModuleCodes.DocArchive,
+        ["DocChat"] = ModuleCodes.DocArchive,
+        ["DocCollab"] = ModuleCodes.DocArchive,
+        ["DocContentCompare"] = ModuleCodes.DocArchive,
+        ["DocEntityLinks"] = ModuleCodes.DocArchive,
+        ["DocEvolution"] = ModuleCodes.DocArchive,
+        ["DocFavorites"] = ModuleCodes.DocArchive,
+        ["DocFolders"] = ModuleCodes.DocArchive,
+        ["DocImport"] = ModuleCodes.DocArchive,
+        ["DocPrint"] = ModuleCodes.DocArchive,
+        ["DocSearch"] = ModuleCodes.DocArchive,
+        ["DocSemantic"] = ModuleCodes.DocArchive,
+        ["DocSettings"] = ModuleCodes.DocArchive,
+        ["DocTags"] = ModuleCodes.DocArchive,
+        ["Documents"] = ModuleCodes.DocArchive,
+
+        ["Ipam"] = ModuleCodes.ItAssets,
+        ["ItRemote"] = ModuleCodes.ItAssets,
+        ["ItRequests"] = ModuleCodes.ItAssets,
+        ["ItVault"] = ModuleCodes.ItAssets,
+        ["Servers"] = ModuleCodes.ItAssets,
+        ["SystemInfo"] = ModuleCodes.ItAssets,
+
+        ["Chat"] = ModuleCodes.Chat,
+
+        // ---------- منابع انسانی ----------
+        // کنترلرهای ماژول RadisHr (پوشهٔ Modules/RadisHr) — همه زیر ماژول «منابع انسانی بن‌سازه».
+        // مسیرشان با /radis-hr شروع می‌شود و ResolveFromPath هم همین را برمی‌گرداند؛
+        // ولی نگاشت صریح، هم قابل‌مشاهده‌تر است و هم اگر مسیر عوض شود محافظت می‌کند.
+        ["Analytics"] = ModuleCodes.BonHr,
+        ["Employees"] = ModuleCodes.BonHr,
+        ["Hse"] = ModuleCodes.BonHr,
+        ["Organization"] = ModuleCodes.BonHr,
+        ["Payroll"] = ModuleCodes.BonHr,
+        ["StatutoryRules"] = ModuleCodes.BonHr,
+        ["Workflows"] = ModuleCodes.BonHr,
+
+        ["Attendance"] = ModuleCodes.HrFa,
+        ["FaHrPersonnel"] = ModuleCodes.HrFa,
+        ["HrPay"] = ModuleCodes.HrFa,
+        ["HrPerf"] = ModuleCodes.HrFa,
+        ["HrTime"] = ModuleCodes.HrFa,
+        ["LeaveRequests"] = ModuleCodes.HrFa,
+
+        ["HrCore"] = ModuleCodes.HrCore,
+        ["Recruitment"] = ModuleCodes.HrCore,
+        ["HrMain"] = ModuleCodes.HrCore,
+        ["HrTalent"] = ModuleCodes.HrCore,
+
+        ["FaAtt"] = ModuleCodes.FahamAtt,
+        ["FaPay"] = ModuleCodes.FahamPay,
+        ["FaPayExtra"] = ModuleCodes.FahamPay,
+        ["FaLms"] = ModuleCodes.FahamLms,
+        ["FaCom"] = ModuleCodes.FahamCom,
+
+        // ---------- گزارش و ابزار ----------
+        ["Export"] = ModuleCodes.Reports,
+        ["ReportStudio"] = ModuleCodes.Reports,
+        ["OperationsReports"] = ModuleCodes.Reports,
+        ["Reports"] = ModuleCodes.Reports,
+        ["Kardex"] = ModuleCodes.Reports,
+        ["Reorder"] = ModuleCodes.Reports,
+
+        ["Ai"] = ModuleCodes.Ai,
+
+        ["DevTeam"] = ModuleCodes.DevTeam,
+        ["DevTeamGitWebhook"] = ModuleCodes.DevTeam,
+
+        ["Remote"] = ModuleCodes.ItAssets
+    };
+
+    /// <summary>کنترلرهای معاف از بررسی لایسنس (زیرساخت خود لایسنس و احراز هویت).</summary>
+    private static readonly HashSet<string> ExemptControllers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "License", "Auth", "Health"
+    };
+
+    /// <summary>آیا این کنترلر از بررسی لایسنس معاف است؟</summary>
+    public static bool IsExempt(string? controllerName)
+        => !string.IsNullOrWhiteSpace(controllerName) && ExemptControllers.Contains(controllerName);
+
+    /// <summary>کد ماژول یک کنترلر؛ null یعنی نگاشت نشده.</summary>
+    public static string? Resolve(string? controllerName)
+    {
+        if (string.IsNullOrWhiteSpace(controllerName)) return null;
+        return ByController.TryGetValue(controllerName, out var module) ? module : null;
+    }
+
+    /// <summary>کد ماژول از مسیر درخواست — برای کنترلرهای ماژول RadisHr (پیشوند /radis-hr).</summary>
+    public static string? ResolveFromPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        if (path.StartsWith("/radis-hr", StringComparison.OrdinalIgnoreCase)) return ModuleCodes.BonHr;
+        return null;
+    }
+
+    /// <summary>همهٔ کنترلرهای نگاشت‌شده (برای تست و ابزار نگه‌داری).</summary>
+    public static IReadOnlyCollection<string> MappedControllers => ByController.Keys.ToList();
+
+    /// <summary>
+    /// رفتار کنترلر نگاشت‌نشده — آگاهانه و مستند:
+    ///
+    /// <para>
+    /// <b>در زمان اجرا:</b> <c>LicenseWriteGuardFilter</c> کنترلر ناشناخته را <b>رد نمی‌کند</b>
+    /// (fail-open) و فقط یک‌بار در لاگ هشدار می‌دهد. دلیل: یک کنترلر تازه که فراموش شده،
+    /// نباید بعد از آپدیت کار مشتری را بخواباند.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>در زمان بیلد/تست:</b> همین‌جا سخت‌گیر است — <c>tests/Licensing</c> بخش «پوشش
+    /// رجیستری» هر کنترلر موجود در سورس را با این جدول مقایسه می‌کند و اگر یکی جا افتاده
+    /// باشد <b>تست شکست می‌خورد</b>. یعنی شکاف از راه CI بسته می‌شود، نه از راه قطع‌شدن
+    /// سرویس مشتری.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>در زمان راه‌اندازی:</b> <c>LicenseStartup</c> کل کنترلرهای واقعی اسمبلی را با این
+    /// جدول مقایسه و نتیجه را یک‌بار در لاگ ثبت می‌کند تا حتی بدون اجرای تست هم دیده شود.
+    /// </para>
+    /// </summary>
+    public const string UnmappedBehavior = "fail-open + هشدار لاگ، و شکست تست پوشش رجیستری";
+}

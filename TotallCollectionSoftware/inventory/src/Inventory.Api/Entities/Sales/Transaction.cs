@@ -24,6 +24,10 @@ public class Transaction : ICompanyOwned
     /// <summary>معرف (بازاریاب) سند فروش</summary>
     public int? ReferrerId { get; set; }
 
+    /// <summary>نرخ توافق‌شده هنگام ثبت؛ null در اسناد قدیمی یعنی سابقه نرخ موجود نیست.</summary>
+    public decimal? ReferrerGoodsPercentSnapshot { get; set; }
+    public decimal? ReferrerServicePercentSnapshot { get; set; }
+
     public decimal Amount { get; set; }
 
     // ---------- پرداخت (فقط فروش) ----------
@@ -34,8 +38,14 @@ public class Transaction : ICompanyOwned
     /// <summary>نوع دریافت نقدی (نقد/کارت‌خوان/کارت به کارت) — برای نقدی یا بخش نقدی پرداخت ترکیبی</summary>
     public CashType? CashType { get; set; }
 
+    [MaxLength(100)]
+    public string? CashTrackingNumber { get; set; }
+
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط + مقداری نقد)</summary>
     public decimal CashAmount { get; set; }
+
+    /// <summary>گردش نقدی این فاکتور از ابتدا در دفتر مستقل فروشگاه ثبت می‌شود؛ فاکتورهای قدیمی خودکار بازسازی نمی‌شوند.</summary>
+    public bool ShopCashLedgerEnabled { get; set; }
 
     /// <summary>حساب بانکی / صندوق انتخابی برای تسویه</summary>
     public int? TrsAccountId { get; set; }

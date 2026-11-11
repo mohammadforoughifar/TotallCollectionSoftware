@@ -29,6 +29,9 @@ public static class PersianExtensions
     /// <summary>مبلغ با ارقام فارسی و جداکننده هزارگان</summary>
     public static string Money(this decimal v) => Fa.Money(v);
 
+    /// <summary>مبلغ ثبت‌شده با حفظ اعشار مالی.</summary>
+    public static string MoneyExact(this decimal v) => Fa.MoneyExact(v);
+
     /// <summary>عدد صحیح با ارقام فارسی</summary>
     public static string Num(this decimal v) => Fa.Number(v);
 

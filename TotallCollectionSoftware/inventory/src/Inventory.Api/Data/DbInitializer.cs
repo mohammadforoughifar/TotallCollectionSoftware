@@ -27,12 +27,44 @@ public static class DbInitializer
                 {
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
+                    await OrderVatSchemaV1.EnsureAsync(db);
+                    await OrderTrackingSchemaV1.EnsureAsync(db);
+                    await SaleChequeChargeSchemaV1.EnsureAsync(db);
+                    await SaleChequeCalculatorSchemaV1.EnsureAsync(db);
+                    await SaleChequeAccountsSnapshotSchemaV1.EnsureAsync(db);
+                    await SaleChequeChargeEventsSchemaV1.EnsureAsync(db);
+                    await SaleChequeRescheduleSchemaV1.EnsureAsync(db);
+                    await SaleChequeReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeReceiptReversalSchemaV1.EnsureAsync(db);
+                    await SaleChequeStatusEventSchemaV1.EnsureAsync(db);
+                    await SaleChequeReturnSchemaV1.EnsureAsync(db);
+                    await SaleChequeReplacementSchemaV1.EnsureAsync(db);
+                    await TreasuryAccountCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
+                    await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeCancellationSchemaV1.EnsureAsync(db);
+                    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
+                    await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
+                    await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
                     await SalesCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+                    await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await ShopOrderCreditSchemaV1.EnsureAsync(db);
+                    await ShopTradeInSchemaV1.EnsureAsync(db);
+                    await ShopWarrantySchemaV1.EnsureAsync(db);
+                    await ShopWarrantyDeviceSchemaV1.EnsureAsync(db);
+                    await ShopExpenseChequeSchemaV1.EnsureAsync(db);
+                    await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
+                    await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopQuantitySchemaV1.EnsureAsync(db);
+                    // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
+                    await NotificationCompanySchemaV1.EnsureAsync(db);
+                    await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
@@ -55,8 +87,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -67,15 +103,51 @@ public static class DbInitializer
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                     // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
+                await BackupSchemaV1.EnsureAsync(db);
+                await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
                     MigrateSqlServer(db);
+                    await OrderVatSchemaV1.EnsureAsync(db);
+                    await OrderTrackingSchemaV1.EnsureAsync(db);
+                    await SaleChequeChargeSchemaV1.EnsureAsync(db);
+                    await SaleChequeCalculatorSchemaV1.EnsureAsync(db);
+                    await SaleChequeAccountsSnapshotSchemaV1.EnsureAsync(db);
+                    await SaleChequeChargeEventsSchemaV1.EnsureAsync(db);
+                    await SaleChequeRescheduleSchemaV1.EnsureAsync(db);
+                    await SaleChequeReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeReceiptReversalSchemaV1.EnsureAsync(db);
+                    await SaleChequeStatusEventSchemaV1.EnsureAsync(db);
+                    await SaleChequeReturnSchemaV1.EnsureAsync(db);
+                    await SaleChequeReplacementSchemaV1.EnsureAsync(db);
+                    await TreasuryAccountCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCreditSettlementSchemaV1.EnsureAsync(db);
+                    await SaleChequeInstallmentReceiptSchemaV1.EnsureAsync(db);
+                    await SaleChequeCancellationSchemaV1.EnsureAsync(db);
+                    await SaleChequeShopLedgerSchemaV1.EnsureAsync(db);
+                    await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
+                    await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);
+                    await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+                    await ShopOrderCashSchemaV1.EnsureAsync(db);
+                    await ShopOrderCreditSchemaV1.EnsureAsync(db);
+                    await ShopTradeInSchemaV1.EnsureAsync(db);
+                    await ShopWarrantySchemaV1.EnsureAsync(db);
+                    await ShopWarrantyDeviceSchemaV1.EnsureAsync(db);
+                    await ShopExpenseChequeSchemaV1.EnsureAsync(db);
+                    await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
+                    await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopQuantitySchemaV1.EnsureAsync(db);
+                    // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
+                    await NotificationCompanySchemaV1.EnsureAsync(db);
+                    await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
                     // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی) — مایگریشن squash شده این‌ها را نمی‌سازد
@@ -98,8 +170,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -110,6 +186,10 @@ public static class DbInitializer
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                     // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
+                await BackupSchemaV1.EnsureAsync(db);
+                await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
                 }
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
@@ -246,6 +326,11 @@ public static class DbInitializer
                 // جدول‌هایی را پوشش می‌دهد که در همین راه‌اندازی تازه ساخته می‌شوند
                 // (GoodsIssues/GoodsIssueLines و RepairDevices) و در اجرای اول وجود نداشتند.
                 await SalesCompanySchemaV1.EnsureAsync(db);
+                await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
+                await ShopPricingSchemaV1.EnsureAsync(db);
+
+                // حذف نرم فاکتور (قاعدهٔ سهمیهٔ لایسنس: حذف توسط کاربر مصرف را برنمی‌گرداند)
+                await InvoiceSoftDeleteSchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {
@@ -338,17 +423,24 @@ public static class DbInitializer
 
                 // بازسازی واحدهای شمارش برای دیتابیس‌های قدیمی:
                 // واحدهای پیش‌فرض + واحدهای استفاده‌شده روی کالاها که در جدول نیستند اضافه می‌شوند.
-                var knownUnits = db.MeasureUnits.Select(u => u.Name).ToHashSet();
-                var wanted = Seeder.DefaultUnits
-                    .Concat(db.Products.Select(p => p.Unit).Distinct().ToList())
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .Distinct()
-                    .Where(n => !knownUnits.Contains(n))
-                    .ToList();
+                // Unit names are company-owned even though products store the name as text.
+                // Rebuild a missing unit only for the known owner, never copy another
+                // company's custom precision decision or guess an unowned product's owner.
+                var knownUnits = db.MeasureUnits.Select(u => new { u.CompanyId, u.Name }).ToList()
+                    .Select(u => (u.CompanyId, u.Name)).ToHashSet();
+                var defaultCompany = db.ResolveDefaultCompanyId();
+                var owners = db.SystemCompanies.Where(c => c.IsActive).Select(c => (int?)c.Id).ToList();
+                if (owners.Count == 0) owners.Add(null);
+                var usedUnits = db.Products.Where(p => !p.IsService).Select(p => new { p.CompanyId, p.Unit }).Distinct().ToList()
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Unit) && (p.CompanyId.HasValue || !defaultCompany.HasValue))
+                    .Select(p => (p.CompanyId, Name: p.Unit.Trim()));
+                var builtIns = owners.SelectMany(owner => Seeder.DefaultUnits.Select(name => (CompanyId: owner, Name: name)));
+                var wanted = usedUnits.Concat(builtIns).Distinct().Where(key => !knownUnits.Contains(key)).ToList();
                 if (wanted.Count > 0)
                 {
-                    foreach (var name in wanted)
-                        db.MeasureUnits.Add(new MeasureUnit { Name = name, CreatedAt = DateTime.Now });
+                    foreach (var (companyId, name) in wanted)
+                        db.MeasureUnits.Add(new MeasureUnit { CompanyId = companyId, Name = name,
+                            AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(name), CreatedAt = DateTime.Now });
                     db.SaveChanges();
                     Console.WriteLine($"[DB] {wanted.Count} واحد شمارش اضافه شد.");
                 }

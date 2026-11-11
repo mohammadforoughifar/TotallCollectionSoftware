@@ -1,3 +1,4 @@
+using Inventory.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -7,6 +8,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Catalog;
 using Microsoft.AspNetCore.Authorization;
 using Inventory.Shared.Dtos;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -51,23 +53,68 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> Admin()
         => Ok(await _inventory.GetAdminDashboardAsync());
 
-    /// <summary>پاس کردن چک از روی داشبورد مدیریتی.</summary>
+    /// <summary>پاس کردن چک از روی داشبورد مدیریتی یا مدیریت چک‌های فروشگاهی.</summary>
     [HttpPost("cheques/{chequeId:int}/clear")]
-    [RequirePermission("Dashboards", "Financial")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> ClearCheque(int chequeId)
     {
         await _inventory.ClearChequeAsync(chequeId);
         return Ok(new { ok = true });
     }
 
-    /// <summary>پرداخت یک قسط از روی داشبورد مدیریتی.</summary>
+    /// <summary>برگشت زدن چک.</summary>
+    [HttpPost("cheques/{chequeId:int}/bounce")]
+    [RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> BounceCheque(int chequeId, [FromQuery] string? reason)
+    {
+        await _inventory.BounceChequeAsync(chequeId, reason);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>برگرداندن وضعیت چک به در جریان وصول.</summary>
+    [HttpPost("cheques/{chequeId:int}/reset")]
+    [RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> ResetCheque(int chequeId)
+    {
+        await _inventory.ResetChequeAsync(chequeId);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>پرداخت یک قسط.</summary>
     [HttpPost("installments/{installmentId:int}/pay")]
-    [RequirePermission("Dashboards", "Financial")]
+    [RequirePermission("Orders", "Update")]
     public async Task<IActionResult> PayInstallment(int installmentId)
     {
         await _inventory.PayInstallmentAsync(installmentId);
         return Ok(new { ok = true });
     }
+
+    /// <summary>لغو پرداخت یک قسط (بازگشت به معوق/پرداخت‌نشده).</summary>
+    [HttpPost("installments/{installmentId:int}/unpay")]
+    [RequirePermission("Orders", "Update")]
+    public async Task<IActionResult> UnpayInstallment(int installmentId)
+    {
+        await _inventory.UnpayInstallmentAsync(installmentId);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>دریافت خلاصه وضعیت چک‌ها و اقساط فروشگاهی.</summary>
+    [HttpGet("shop-credit/summary")]
+    [RequirePermission("Orders", "Read")]
+    public async Task<IActionResult> GetShopCreditSummary()
+        => Ok(await _inventory.GetShopCreditSummaryAsync());
+
+    /// <summary>فهرست چک‌های فروشگاهی با فیلتر وضعیت و نوع سند (خرید/فروش).</summary>
+    [HttpGet("shop-credit/cheques")]
+    [RequirePermission("Orders", "Read")]
+    public async Task<IActionResult> GetShopCheques([FromQuery] ChequeStatus? status, [FromQuery] TransactionType? txnType, [FromQuery] string? search)
+        => Ok(await _inventory.GetShopChequesAsync(status, txnType, search));
+
+    /// <summary>فهرست اقساط فروشگاهی با فیلتر وضعیت پرداخت.</summary>
+    [HttpGet("shop-credit/installments")]
+    [RequirePermission("Orders", "Read")]
+    public async Task<IActionResult> GetShopInstallments([FromQuery] bool? isPaid, [FromQuery] string? search)
+        => Ok(await _inventory.GetShopInstallmentsAsync(isPaid, search));
 
     /// <summary>تسویهٔ نسیه/اعتبار مشتری از روی داشبورد مدیریتی.</summary>
     [HttpPost("credits/{transactionId:int}/settle")]
@@ -96,6 +143,7 @@ public async Task<IActionResult> HardwareStats()
 }
 
     /// <summary>اجرای فوری یک دور پینگ همه‌ی دستگاه‌ها.</summary>
+    [AllowInReadOnly]
     [HttpPost("hardware-check")]
     [RequirePermission("Dashboards", "Hardware")]
     public async Task<IActionResult> HardwareCheck()

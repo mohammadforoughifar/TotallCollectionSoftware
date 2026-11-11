@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
     /// </list>
     /// </summary>
     public int? ActiveCompanyId => ReadActiveCompanyId();
+    public string? CurrentUserName => _http?.HttpContext?.User?.Identity?.Name
+        ?? _http?.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
     private int? ReadActiveCompanyId()
     {
@@ -70,6 +72,10 @@ public class AppDbContext : DbContext
         {
             if (entry.State == EntityState.Added)
             {
+                if (active == 0)
+                    throw new InvalidOperationException("کاربر به هیچ شرکتی دسترسی ندارد و امکان ثبت اطلاعات نیست.");
+                if (active is > 0 && entry.Entity.CompanyId is > 0 && entry.Entity.CompanyId != active)
+                    throw new InvalidOperationException("رکورد جدید باید متعلق به شرکت فعال باشد.");
                 if ((entry.Entity.CompanyId ?? 0) <= 0)
                 {
                     // کاربرِ بدون شرکت (۰) اجازهٔ ساخت رکورد ندارد؛ زمینهٔ تعیین‌نشده (null) → شرکت پیش‌فرض
@@ -133,11 +139,24 @@ public class AppDbContext : DbContext
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
     public DbSet<MeasureUnit> MeasureUnits => Set<MeasureUnit>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ShopPricingPolicy> ShopPricingPolicies => Set<ShopPricingPolicy>();
+    public DbSet<ShopSalePrice> ShopSalePrices => Set<ShopSalePrice>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<Stock> Stocks => Set<Stock>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<TransactionLine> TransactionLines => Set<TransactionLine>();
+    public DbSet<SaleChequeCharge> SaleChequeCharges => Set<SaleChequeCharge>();
+    public DbSet<SaleChequeChargeEvent> SaleChequeChargeEvents => Set<SaleChequeChargeEvent>();
+    public DbSet<SaleChequeReschedule> SaleChequeReschedules => Set<SaleChequeReschedule>();
+    public DbSet<SaleChequeReceipt> SaleChequeReceipts => Set<SaleChequeReceipt>();
+    public DbSet<SaleChequeStatusEvent> SaleChequeStatusEvents => Set<SaleChequeStatusEvent>();
+    public DbSet<SaleChequeReturn> SaleChequeReturns => Set<SaleChequeReturn>();
+    public DbSet<SaleChequeReturnLine> SaleChequeReturnLines => Set<SaleChequeReturnLine>();
+    public DbSet<SaleChequeReplacement> SaleChequeReplacements => Set<SaleChequeReplacement>();
+    public DbSet<SaleChequeCreditSettlement> SaleChequeCreditSettlements => Set<SaleChequeCreditSettlement>();
+    public DbSet<SaleChequeInstallmentReceipt> SaleChequeInstallmentReceipts => Set<SaleChequeInstallmentReceipt>();
+    public DbSet<SaleChequeCancellation> SaleChequeCancellations => Set<SaleChequeCancellation>();
     public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
     public DbSet<GoodsIssueLine> GoodsIssueLines => Set<GoodsIssueLine>();
 
@@ -148,6 +167,7 @@ public class AppDbContext : DbContext
     public DbSet<VisCustomerLink> VisCustomerLinks => Set<VisCustomerLink>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<ShopExpenseCheque> ShopExpenseCheques => Set<ShopExpenseCheque>();
     public DbSet<Cheque> Cheques => Set<Cheque>();
     public DbSet<InstallmentLine> Installments => Set<InstallmentLine>();
     public DbSet<Technician> Technicians => Set<Technician>();
@@ -168,6 +188,17 @@ public class AppDbContext : DbContext
     public DbSet<ItRemoteConnection> ItRemoteConnections => Set<ItRemoteConnection>();
     public DbSet<ItRemoteRequest> ItRemoteRequests => Set<ItRemoteRequest>();
     public DbSet<ItRemoteUserKey> ItRemoteUserKeys => Set<ItRemoteUserKey>();
+
+    // ==================== بک‌آپ خودکار SQL Server و ارسال به سرور مرکزی ====================
+    public DbSet<BackupSetting> BackupSettings => Set<BackupSetting>();
+    public DbSet<BackupBrowserSession> BackupBrowserSessions => Set<BackupBrowserSession>();
+    public DbSet<BackupJob> BackupJobs => Set<BackupJob>();
+    public DbSet<CentralBackupCompany> CentralBackupCompanies => Set<CentralBackupCompany>();
+    public DbSet<CentralBackupReceipt> CentralBackupReceipts => Set<CentralBackupReceipt>();
+    public DbSet<RemoteSetting> RemoteSettings => Set<RemoteSetting>();
+    public DbSet<RemoteDevice> RemoteDevices => Set<RemoteDevice>();
+    public DbSet<RemoteSession> RemoteSessions => Set<RemoteSession>();
+    public DbSet<RemoteAuditLog> RemoteAuditLogs => Set<RemoteAuditLog>();
 
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
@@ -539,6 +570,13 @@ public class AppDbContext : DbContext
     public DbSet<ConnectInfo> ConnectInfos => Set<ConnectInfo>();
 
     // ---------- ماژول خزانه‌داری ----------
+    public DbSet<ShopOrderCashEntry> ShopOrderCashEntries => Set<ShopOrderCashEntry>();
+    public DbSet<ShopOrderCreditReceipt> ShopOrderCreditReceipts => Set<ShopOrderCreditReceipt>();
+    public DbSet<ShopTradeIn> ShopTradeIns => Set<ShopTradeIn>();
+    public DbSet<ShopTradeInUse> ShopTradeInUses => Set<ShopTradeInUse>();
+    public DbSet<ShopWarranty> ShopWarranties => Set<ShopWarranty>();
+    public DbSet<ShopWarrantyItem> ShopWarrantyItems => Set<ShopWarrantyItem>();
+    public DbSet<ShopWarrantyDevice> ShopWarrantyDevices => Set<ShopWarrantyDevice>();
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
     public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
@@ -559,6 +597,22 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
 
+    // ==================== لایسنس ====================
+    // نکته: هیچ‌کدام از این جدول‌ها فیلتر «شرکت فعال» ندارند؛ لایسنس مال کل نصب است،
+    // نه یک شرکت. اگر فیلتر می‌خوردند، با تغییر شرکت در کمبوی بالا وضعیت لایسنس عوض می‌شد.
+    public DbSet<LicenseInstallation> LicenseInstallations => Set<LicenseInstallation>();
+    public DbSet<LicenseGrant> LicenseGrants => Set<LicenseGrant>();
+    public DbSet<LicenseItemRow> LicenseItemRows => Set<LicenseItemRow>();
+    public DbSet<LicenseUsage> LicenseUsages => Set<LicenseUsage>();
+
+    /// <summary>دفتر الحاقی مصرف سهمیه (مصرف/بازگشت) — ممیزی و لاگ حذف.</summary>
+    public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
+    public DbSet<LicenseUsageBaseline> LicenseUsageBaselines => Set<LicenseUsageBaseline>();
+    public DbSet<LicenseReservation> LicenseReservations => Set<LicenseReservation>();
+    public DbSet<LicenseGrandfatherBaseline> LicenseGrandfatherBaselines => Set<LicenseGrandfatherBaseline>();
+    public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
+    public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -568,6 +622,18 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        ConfigureLicensing(mb);
+        // بک‌آپ خودکار: کلیدهای رشته‌ای و تک‌ردیفی تنظیمات نباید Identity بگیرند.
+        mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
+        mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);
+        mb.Entity<BackupJob>().HasKey(x => x.Id);
+        mb.Entity<RemoteSetting>().Property(x => x.Id).ValueGeneratedNever();
+        mb.Entity<RemoteDevice>().HasKey(x => x.Id);
+        mb.Entity<RemoteSession>().HasKey(x => x.Id);
+        mb.Entity<RemoteDevice>().HasIndex(x => x.CompanyCode);
+        mb.Entity<RemoteSession>().HasIndex(x => x.DeviceId);
+        mb.Entity<RemoteSession>().HasIndex(x => x.Status);
+        mb.Entity<RemoteAuditLog>().HasIndex(x => x.SessionId);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
         AiSchemaV1.Configure(mb);
@@ -715,8 +781,24 @@ public class AppDbContext : DbContext
         mb.Entity<Product>().Property(p => p.PurchasePrice).HasPrecision(18, 2);
         mb.Entity<Stock>().Property(s => s.AvgCost).HasPrecision(18, 4);
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
+        mb.Entity<Transaction>().Property(t => t.ReferrerGoodsPercentSnapshot).HasPrecision(18, 6);
+        mb.Entity<Transaction>().Property(t => t.ReferrerServicePercentSnapshot).HasPrecision(18, 6);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);
+        mb.Entity<ShopPricingPolicy>().Property(p => p.MinimumMarkupPercent).HasPrecision(9, 2);
+        mb.Entity<ShopPricingPolicy>().HasIndex(p => p.CompanyId).IsUnique();
+        mb.Entity<ShopSalePrice>().Property(p => p.Price).HasPrecision(18, 2);
+        mb.Entity<ShopSalePrice>().Property(p => p.PreviousPrice).HasPrecision(18, 2);
+        mb.Entity<ShopSalePrice>().HasOne(p => p.Product).WithMany().HasForeignKey(p => p.ProductId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ShopSalePrice>().HasIndex(p => new { p.CompanyId, p.ProductId, p.EffectiveDate, p.Id });
+        mb.Entity<ShopSalePrice>().HasIndex(p => new { p.OperationId, p.ProductId }).IsUnique().HasFilter("[OperationId] IS NOT NULL");
+        mb.Entity<ShopSalePrice>().HasIndex(p => p.PurchaseTransactionId);
+        mb.Entity<TransactionLine>().Property(l => l.DiscountAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.GrossAmount).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatValue).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.VatAmount).HasPrecision(18, 2);
+        mb.Entity<Product>().Property(p => p.InvoiceVatValue).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);
@@ -728,15 +810,167 @@ public class AppDbContext : DbContext
         mb.Entity<ReferrerPayment>().Property(p => p.Amount).HasPrecision(18, 2);
         mb.Entity<ReferrerPayment>().HasIndex(p => p.ReferrerId);
 
+        // طرح تعویض، اعتبار و استفاده‌های مستقل از فاکتور و انبار.
+        mb.Entity<ShopTradeIn>().Property(t => t.Value).HasPrecision(18, 2);
+        mb.Entity<ShopTradeIn>().HasIndex(t => t.OperationId).IsUnique();
+        mb.Entity<ShopTradeIn>().HasIndex(t => new { t.CompanyId, t.PartyId, t.FinalizedAt });
+        mb.Entity<ShopTradeIn>().HasOne(t => t.Party).WithMany().HasForeignKey(t => t.PartyId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopTradeInUse>().Property(u => u.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopTradeInUse>().HasIndex(u => u.OperationId).IsUnique();
+        mb.Entity<ShopTradeInUse>().HasIndex(u => u.TradeInId);
+        mb.Entity<ShopTradeInUse>().HasIndex(u => u.TargetSaleId);
+        mb.Entity<ShopTradeInUse>().HasOne(u => u.TradeIn).WithMany().HasForeignKey(u => u.TradeInId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopTradeInUse>().HasOne(u => u.TargetSale).WithMany().HasForeignKey(u => u.TargetSaleId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopTradeInUse>().HasOne(u => u.TrsAccount).WithMany().HasForeignKey(u => u.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopTradeInUse>().HasOne(u => u.TrsVoucher).WithMany().HasForeignKey(u => u.TrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<ShopWarranty>().HasIndex(w => w.OperationId).IsUnique();
+        mb.Entity<ShopWarranty>().HasIndex(w => new { w.CompanyId, w.FinalizedAt });
+        mb.Entity<ShopWarranty>().HasOne(w => w.Party).WithMany().HasForeignKey(w => w.PartyId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopWarranty>().HasOne(w => w.Technician).WithMany().HasForeignKey(w => w.TechnicianId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopWarranty>().HasOne(w => w.Warehouse).WithMany().HasForeignKey(w => w.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopWarranty>().HasOne(w => w.StockTransaction).WithMany().HasForeignKey(w => w.StockTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopWarranty>().HasIndex(w => w.StockTransactionId).IsUnique().HasFilter("[StockTransactionId] IS NOT NULL");
+        mb.Entity<ShopWarrantyDevice>().HasOne(d => d.ShopWarranty).WithMany(w => w.Devices).HasForeignKey(d => d.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ShopWarrantyDevice>().HasIndex(d => new { d.ShopWarrantyId, d.Position }).IsUnique();
+        mb.Entity<ShopWarrantyItem>().Property(i => i.Quantity).HasPrecision(18, 3);
+        mb.Entity<ShopWarrantyItem>().Property(i => i.UnitCost).HasPrecision(18, 2);
+        mb.Entity<ShopWarrantyItem>().HasOne(i => i.ShopWarranty).WithMany(w => w.Items).HasForeignKey(i => i.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ShopWarrantyItem>().HasOne(i => i.Product).WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Restrict);
+
         // ---------- هزینه‌ها ----------
         mb.Entity<ExpenseCategory>().HasIndex(c => new { c.CompanyId, c.Name }).IsUnique();
         mb.Entity<Expense>().Property(e => e.Amount).HasPrecision(18, 2);
         mb.Entity<Expense>().HasIndex(e => e.Date);
         mb.Entity<Expense>().HasIndex(e => e.CategoryId);
+        mb.Entity<ShopExpenseCheque>().Property(c => c.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => c.OperationId).IsUnique();
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => c.StatusOperationId).IsUnique().HasFilter("[StatusOperationId] IS NOT NULL");
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => c.ExpenseId).IsUnique().HasFilter("[State] <> 3");
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => c.SourceChequeId).IsUnique().HasFilter("[SourceChequeId] IS NOT NULL AND [State] <> 3");
+        mb.Entity<ShopExpenseCheque>().HasOne(c => c.Expense).WithMany().HasForeignKey(c => c.ExpenseId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopExpenseCheque>().HasOne(c => c.SourceCheque).WithMany().HasForeignKey(c => c.SourceChequeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopExpenseCheque>().HasOne(c => c.SourceTransaction).WithMany().HasForeignKey(c => c.SourceTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopExpenseCheque>().HasOne(c => c.IssuingAccount).WithMany().HasForeignKey(c => c.IssuingAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopExpenseCheque>().HasOne(c => c.SettlementVoucher).WithMany().HasForeignKey(c => c.SettlementVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => c.SettlementVoucherId).IsUnique().HasFilter("[SettlementVoucherId] IS NOT NULL");
+        mb.Entity<ShopExpenseCheque>().HasIndex(c => new { c.IssuingAccountId, c.Number }).IsUnique().HasFilter("[IssuingAccountId] IS NOT NULL");
 
         // ---------- پرداخت فروش: چک و اقساط ----------
         mb.Entity<Transaction>().Property(t => t.SettledAmount).HasPrecision(18, 2);
         mb.Entity<Transaction>().Property(t => t.CashAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().HasIndex(c => c.TransactionId).IsUnique();
+        mb.Entity<SaleChequeCharge>().HasIndex(c => c.InitialCashTrsVoucherId).IsUnique().HasFilter("[InitialCashTrsVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCharge>().HasOne(c => c.InitialCashTrsVoucher).WithMany().HasForeignKey(c => c.InitialCashTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCharge>().HasOne(c => c.Transaction).WithMany()
+            .HasForeignKey(c => c.TransactionId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<SaleChequeCharge>().Property(c => c.BaseAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.RatePercent).HasPrecision(18, 6);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CalculatorBaseAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CalculatorRatePercent).HasPrecision(18, 6);
+        mb.Entity<SaleChequeCharge>().Property(c => c.InitialAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.Amount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCharge>().Property(c => c.CustomerCredit).HasPrecision(18, 2);
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.OperationId).IsUnique();
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => e.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeChargeEvent>().HasIndex(e => new { e.SaleChequeChargeId, e.Date });
+        mb.Entity<SaleChequeChargeEvent>().HasOne(e => e.SaleChequeCharge).WithMany()
+            .HasForeignKey(e => e.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeChargeEvent>().HasOne(e => e.AccVoucher).WithMany()
+            .HasForeignKey(e => e.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeChargeEvent>().Property(e => e.IncomeDelta).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReschedule>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeReschedule>().HasIndex(x => x.SaleChequeChargeEventId).IsUnique().HasDatabaseName("IX_SaleChequeReschedules_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
+        mb.Entity<SaleChequeReschedule>().HasIndex(x => x.SaleChequeChargeId).HasDatabaseName("IX_SaleChequeReschedules_ChargeId");
+        mb.Entity<SaleChequeReschedule>().HasOne(x => x.Cheque).WithMany().HasForeignKey(x => x.ChequeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReschedule>().HasOne(x => x.SaleChequeCharge).WithMany().HasForeignKey(x => x.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReschedule>().HasOne(x => x.SaleChequeChargeEvent).WithMany().HasForeignKey(x => x.SaleChequeChargeEventId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReschedule>().Property(x => x.BaseAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReschedule>().Property(x => x.RatePercent).HasPrecision(18, 6);
+        mb.Entity<SaleChequeReschedule>().Property(x => x.IncomeDelta).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ChequeId).IsUnique().HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<SaleChequeReceipt>().HasIndex(x => x.ReversalVoucherId).IsUnique().HasFilter("[ReversalVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeReceipt>().HasOne(x => x.Cheque).WithMany().HasForeignKey(x => x.ChequeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReceipt>().HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReceipt>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReceipt>().HasOne(x => x.AccVoucher).WithMany().HasForeignKey(x => x.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReceipt>().HasOne(x => x.ReversalVoucher).WithMany().HasForeignKey(x => x.ReversalVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeReturn>().HasIndex(x => x.ReturnTransactionId).IsUnique();
+        mb.Entity<SaleChequeReturn>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeReturn>().HasIndex(x => x.SaleChequeChargeEventId).IsUnique().HasDatabaseName("IX_SaleChequeReturns_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
+        mb.Entity<SaleChequeReturn>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturn>().HasOne(x => x.ReturnTransaction).WithMany().HasForeignKey(x => x.ReturnTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturn>().HasOne(x => x.SaleChequeCharge).WithMany().HasForeignKey(x => x.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturn>().HasOne(x => x.AccVoucher).WithMany().HasForeignKey(x => x.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturn>().HasOne(x => x.SaleChequeChargeEvent).WithMany().HasForeignKey(x => x.SaleChequeChargeEventId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturn>().Property(x => x.GoodsAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.VatAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.IncomeAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.EpochBase).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.EpochIncome).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.PreviouslyReturnedBaseInEpoch).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.BalanceAfter).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturn>().Property(x => x.UncollectedChequeExcess).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturnLine>().HasIndex(x => x.ReturnLineId).IsUnique();
+        mb.Entity<SaleChequeReturnLine>().HasIndex(x => new { x.SaleChequeReturnId, x.OriginalLineId }).IsUnique().HasDatabaseName("IX_SaleChequeReturnLines_Return_Original");
+        mb.Entity<SaleChequeReturnLine>().HasOne(x => x.SaleChequeReturn).WithMany(x => x.Lines).HasForeignKey(x => x.SaleChequeReturnId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturnLine>().HasOne(x => x.OriginalLine).WithMany().HasForeignKey(x => x.OriginalLineId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturnLine>().HasOne(x => x.ReturnLine).WithMany().HasForeignKey(x => x.ReturnLineId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReturnLine>().Property(x => x.Quantity).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturnLine>().Property(x => x.GoodsAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReturnLine>().Property(x => x.VatAmount).HasPrecision(18, 2);
+        mb.Entity<TrsAccount>().HasIndex(x => x.CompanyId).HasDatabaseName("IX_TrsAccounts_CompanyId");
+        mb.Entity<SaleChequeReplacement>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeReplacement>().HasIndex(x => x.OldChequeId).IsUnique();
+        mb.Entity<SaleChequeReplacement>().HasIndex(x => x.NewChequeId).IsUnique();
+        mb.Entity<SaleChequeReplacement>().HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReplacement>().HasOne(x => x.SaleChequeCharge).WithMany().HasForeignKey(x => x.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReplacement>().HasOne(x => x.OldCheque).WithMany().HasForeignKey(x => x.OldChequeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReplacement>().HasOne(x => x.NewCheque).WithMany().HasForeignKey(x => x.NewChequeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeReplacement>().Property(x => x.OldAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeReplacement>().Property(x => x.NewAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCreditSettlement>().HasIndex(x => x.TrsVoucherId).IsUnique().HasFilter("[TrsVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.TargetSaleTransaction).WithMany().HasForeignKey(x => x.TargetSaleTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.SaleChequeCharge).WithMany().HasForeignKey(x => x.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.AccVoucher).WithMany().HasForeignKey(x => x.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().HasOne(x => x.TrsVoucher).WithMany().HasForeignKey(x => x.TrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCreditSettlement>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.OperationId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_OperationId");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.InstallmentId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ActiveInstallment").HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.AccVoucherId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_AccVoucherId").HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalOperationId").HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasIndex(x => x.ReversalVoucherId).IsUnique().HasDatabaseName("IX_SaleChequeInstReceipts_ReversalVoucherId").HasFilter("[ReversalVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.Installment).WithMany().HasForeignKey(x => x.InstallmentId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.AccVoucher).WithMany().HasForeignKey(x => x.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasOne(x => x.ReversalVoucher).WithMany().HasForeignKey(x => x.ReversalVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeInstallmentReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.AccVoucherId).IsUnique().HasFilter("[AccVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.SaleChequeChargeEventId).IsUnique().HasDatabaseName("IX_SaleChequeCancellations_EventId").HasFilter("[SaleChequeChargeEventId] IS NOT NULL");
+        mb.Entity<SaleChequeCancellation>().HasIndex(x => x.RefundTrsVoucherId).IsUnique().HasFilter("[RefundTrsVoucherId] IS NOT NULL");
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.SaleTransaction).WithMany().HasForeignKey(x => x.SaleTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.SaleChequeCharge).WithMany().HasForeignKey(x => x.SaleChequeChargeId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.ReturnTransaction).WithMany().HasForeignKey(x => x.ReturnTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.AccVoucher).WithMany().HasForeignKey(x => x.AccVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.SaleChequeChargeEvent).WithMany().HasForeignKey(x => x.SaleChequeChargeEventId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().HasOne(x => x.RefundTrsVoucher).WithMany().HasForeignKey(x => x.RefundTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<SaleChequeCancellation>().Property(x => x.ReversedGoodsAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCancellation>().Property(x => x.ReversedVatAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCancellation>().Property(x => x.ReversedIncomeDelta).HasPrecision(18, 2);
+        mb.Entity<SaleChequeCancellation>().Property(x => x.RefundedCashAmount).HasPrecision(18, 2);
+        mb.Entity<SaleChequeStatusEvent>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<SaleChequeStatusEvent>().HasOne(x => x.Cheque).WithMany().HasForeignKey(x => x.ChequeId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<Cheque>().Property(c => c.Amount).HasPrecision(18, 2);
         mb.Entity<Cheque>().HasIndex(c => c.DueDate);
         mb.Entity<Cheque>().HasIndex(c => c.IsCleared);
@@ -1041,6 +1275,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LinkedLeaveRequestId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // اعلان‌ها: ایندکس جست‌وجوی زنگوله/شمارنده بر اساس کاربر و شرکت فعال.
+        // (فیلتر شرکتی این‌جا اعمال نمی‌شود؛ اعلان‌های عمومی CompanyId = NULL دارند و باید دیده شوند.)
+        mb.Entity<AppNotification>()
+            .HasIndex(n => new { n.UserId, n.CompanyId, n.IsRead });
+
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasQueryFilter(w => w.DeletedAt == null);
         mb.Entity<WorkOrder>().HasIndex(w => new { w.RecurrenceSeriesId, w.RecurrenceScheduledAt })
@@ -1303,6 +1542,11 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Cascade);
 
         // ============ ماژول فاکتور ============
+        // ---------- حذف نرم فاکتور (مرحله ۲ — قاعدهٔ سهمیه) ----------
+        // فاکتور حذف‌شده از همهٔ کوئری‌های عادی ناپدید می‌شود، ولی ردیفش می‌ماند چون
+        // مصرف سهمیه‌اش برنمی‌گردد و «تعداد واقعی» مبنای مصرف مؤثر است.
+        // جاهایی که به شمارهٔ بعدی می‌نگرند باید IgnoreQueryFilters بزنند (NextNumberAsync).
+        mb.Entity<FacInvoice>().HasQueryFilter(i => !i.IsDeleted);
         mb.Entity<FacInvoice>().HasIndex(i => new { i.Kind, i.Number }).IsUnique();
         mb.Entity<FacInvoice>().HasIndex(i => i.Date);
         mb.Entity<FacInvoice>().HasIndex(i => i.Status);
@@ -1352,7 +1596,26 @@ public class AppDbContext : DbContext
           .HasForeignKey(a => a.AccountId)
           .OnDelete(DeleteBehavior.SetNull);
 
+        // ثبت و معکوس‌سازی نقد خرید/فروش؛ تاریخچه حتی بعد از حذف فاکتور باقی می‌ماند.
+        mb.Entity<ShopOrderCashEntry>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.TransactionId).IsUnique().HasFilter("[ReversalDate] IS NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.MatchedTrsVoucherId).IsUnique().HasFilter("[MatchedTrsVoucherId] IS NOT NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<ShopOrderCashEntry>().HasIndex(x => new { x.CompanyId, x.TrsAccountId });
+        mb.Entity<ShopOrderCashEntry>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopOrderCashEntry>().HasOne(x => x.MatchedTrsVoucher).WithMany().HasForeignKey(x => x.MatchedTrsVoucherId).OnDelete(DeleteBehavior.Restrict);
+
+        // تسویه‌های تاریخ‌دار نسیه؛ اصل و لغو هر دو حفظ می‌شوند.
+        mb.Entity<ShopOrderCreditReceipt>().Property(x => x.Amount).HasPrecision(18, 2);
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => x.OperationId).IsUnique();
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => x.ReversalOperationId).IsUnique().HasFilter("[ReversalOperationId] IS NOT NULL");
+        mb.Entity<ShopOrderCreditReceipt>().HasIndex(x => new { x.CompanyId, x.TrsAccountId });
+        mb.Entity<ShopOrderCreditReceipt>().HasOne(x => x.Transaction).WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopOrderCreditReceipt>().HasOne(x => x.TrsAccount).WithMany().HasForeignKey(x => x.TrsAccountId).OnDelete(DeleteBehavior.Restrict);
+
         // ---------- سند خزانه ----------
+        mb.Entity<TrsVoucher>().HasIndex(v => v.CompanyId);
         mb.Entity<TrsVoucher>().HasIndex(v => new { v.Kind, v.Number }).IsUnique();
         mb.Entity<TrsVoucher>().HasIndex(v => v.Date);
         mb.Entity<TrsVoucher>().HasIndex(v => v.Status);
@@ -1407,6 +1670,7 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Restrict);
 
         // ---------- چک ----------
+        mb.Entity<TrsCheque>().HasIndex(c => c.CompanyId);
         mb.Entity<TrsCheque>().HasIndex(c => new { c.Kind, c.Number });
         mb.Entity<TrsCheque>().HasIndex(c => c.DueDate);
         mb.Entity<TrsCheque>().HasIndex(c => c.Status);
@@ -1608,6 +1872,8 @@ public class AppDbContext : DbContext
         // هر رکورد فقط در شرکت فعالِ انتخاب‌شده در نوار بالای برنامه دیده می‌شود.
         // ActiveCompanyId == null یعنی زمینهٔ شرکتی تعیین نشده (اجرای پس‌زمینه/نصب اولیه) → بدون فیلتر.
         mb.Entity<Product>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopPricingPolicy>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopSalePrice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ProductCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<MeasureUnit>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Warehouse>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
@@ -1617,6 +1883,17 @@ public class AppDbContext : DbContext
         mb.Entity<Stock>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Transaction>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<TransactionLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeCharge>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeChargeEvent>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeReschedule>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeReceipt>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeStatusEvent>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeReturn>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeReturnLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeReplacement>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeCreditSettlement>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeInstallmentReceipt>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<SaleChequeCancellation>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssue>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<GoodsIssueLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<VisOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
@@ -1624,12 +1901,92 @@ public class AppDbContext : DbContext
         mb.Entity<VisOrderHistory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<VisCustomerLink>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Expense>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopExpenseCheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopTradeIn>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopTradeInUse>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopWarranty>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopWarrantyItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopWarrantyDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ExpenseCategory>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopOrderCreditReceipt>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopOrderCashEntry>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<TrsVoucher>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<TrsCheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        // Child sets are queried directly by balances, settlement and reports too.
+        mb.Entity<TrsVoucherLine>().HasQueryFilter(x => ActiveCompanyId == null || (x.TrsVoucher != null && x.TrsVoucher.CompanyId == ActiveCompanyId));
+        mb.Entity<TrsInvoiceAllocation>().HasQueryFilter(x => ActiveCompanyId == null || (x.TrsVoucher != null && x.TrsVoucher.CompanyId == ActiveCompanyId));
+        mb.Entity<TrsChequeAction>().HasQueryFilter(x => ActiveCompanyId == null || (x.Cheque != null && x.Cheque.CompanyId == ActiveCompanyId));
         mb.Entity<Cheque>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+    }
+
+    /// <summary>
+    /// پیکربندی جداول لایسنس.
+    /// <para>
+    /// همهٔ ایندکس‌های یکتا این‌جا تعریف شده‌اند تا هم مایگریشن EF و هم
+    /// <c>LicenseSchemaV1</c> (مسیر SQLite) یک نتیجه بدهند.
+    /// </para>
+    /// </summary>
+    private static void ConfigureLicensing(ModelBuilder mb)
+    {
+        // ==================== ⛔ هیچ مایگریشنی نباید جدول‌های لایسنس را بسازد ====================
+        //
+        // تصمیم صریح (بازبینی مرحله ۲): «تنها سازندهٔ جدول‌های لایسنس، LicenseSchemaV1 است».
+        // دلیلش یک مشکل واقعی است، نه سلیقه:
+        //  • نصب‌های موجود تاریخچهٔ مایگریشن ناقص دارند (مایگریشن‌ها دستی stamp شده‌اند)،
+        //    پس ترتیب و اجرای مایگریشن قابل اعتماد نیست.
+        //  • LicenseSchemaV1 عمداً idempotent نوشته شده و در هر بالا آمدن اجرا می‌شود؛
+        //    پس جدول‌ها همیشه ساخته/ترمیم می‌شوند.
+        //  • اگر مایگریشن هم همان جدول‌ها را بسازد، دو مسیر موازی برای یک اسکیما داریم و
+        //    در نصب بعدی، «جدول از قبل هست» به خطای مایگریشن تبدیل می‌شود.
+        //
+        // نتیجهٔ عملی: `dotnet ef migrations add` هیچ تغییری برای جدول‌های لایسنس تولید نمی‌کند.
+        // (تست: خروجی واقعی migrations add بررسی شد — صفر جدول License*.)
+        mb.Entity<LicenseInstallation>().ToTable("LicenseInstallations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrant>().ToTable("LicenseGrants", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseItemRow>().ToTable("LicenseItemRows", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsage>().ToTable("LicenseUsages", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageLedger>().ToTable("LicenseUsageLedger", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageBaseline>().ToTable("LicenseUsageBaselines", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseReservation>().ToTable("LicenseReservations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrandfatherBaseline>().ToTable("LicenseGrandfatherBaselines", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseSession>().ToTable("LicenseSessions", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseEvent>().ToTable("LicenseEvents", t => t.ExcludeFromMigrations());
+
+        // تک‌ردیفی بودن نصب با منطق برنامه تضمین می‌شود (همیشه Id = 1)؛ Identity نگه داشته می‌شود.
+        mb.Entity<LicenseInstallation>().HasIndex(x => x.InstallationId).IsUnique();
+
+        // هر فایل لایسنس فقط یک‌بار: سریال یکتا
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Serial).IsUnique();
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Status);
+
+        mb.Entity<LicenseItemRow>().HasIndex(x => x.GrantId);
+        mb.Entity<LicenseItemRow>().HasIndex(x => new { x.GrantId, x.ItemId });
+
+        // کلید طبیعی مصرف: ماژول + متریک + دوره (نه آیتم — مصرف با تغییر آیتم ریست نمی‌شود)
+        mb.Entity<LicenseUsage>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        // دفتر مصرف: ایندکس برای گزارش «چه چیزی این دوره مصرف شد» و برای رکورد مرتبط
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.EntityType, x.EntityId });
+        mb.Entity<LicenseUsageBaseline>().HasIndex(x => new { x.Module, x.Metric }).IsUnique();
+
+        // «مبنای بخشودگی»: یک ردیف برای هر (متریک، دوره) — دوره بخشی از کلید است،
+        // پس ماه تازه کلید تازه دارد و خودبه‌خود از صفر شمرده می‌شود.
+        mb.Entity<LicenseGrandfatherBaseline>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
+        mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });
+        mb.Entity<LicenseSession>().HasIndex(x => x.UserId);
+
+        // رزرو: جست‌وجوی «رزروهای در انتظار» و «رزروهای کهنه» به این ایندکس تکیه دارد.
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.State, x.ReservedAt });
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
+
+        mb.Entity<LicenseEvent>().HasIndex(x => x.At);
     }
 }

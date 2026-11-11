@@ -542,8 +542,22 @@ public class AccountingService : IAccountingService
         return (max ?? 0) + 1;
     }
 
+    private async Task RejectChequeVoucherMutationAsync(int voucherId)
+    {
+        // Accounting vouchers are global. Check every company to avoid orphaning a
+        // cheque event through a different active-company context.
+        if (await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeReturns.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId || e.ReversalVoucherId == voucherId) ||
+            await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId) ||
+            await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(e => e.AccVoucherId == voucherId || e.ReversalVoucherId == voucherId))
+            throw new InvalidOperationException("سند مرتبط با چک فروش فقط از مسیر اصلاح سند مبدأ قابل تغییر است.");
+    }
+
     public async Task<AccVoucher> SaveVoucherAsync(AccVoucher dto, string? user)
     {
+        if (dto.Id > 0) await RejectChequeVoucherMutationAsync(dto.Id);
         var year = dto.FiscalYearId > 0
             ? await _db.AccFiscalYears.FindAsync(dto.FiscalYearId) ?? await CurrentYearAsync()
             : await CurrentYearAsync();
@@ -674,6 +688,7 @@ public class AccountingService : IAccountingService
 
     public async Task<AccVoucher> UnconfirmVoucherAsync(int id, string? user)
     {
+        await RejectChequeVoucherMutationAsync(id);
         var v = await _db.AccVouchers.Include(x => x.FiscalYear).FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new InvalidOperationException("سند یافت نشد.");
         if (v.FiscalYear?.IsClosed == true)
@@ -690,6 +705,7 @@ public class AccountingService : IAccountingService
 
     public async Task<AccVoucher> CancelVoucherAsync(int id, string? user)
     {
+        await RejectChequeVoucherMutationAsync(id);
         var v = await _db.AccVouchers.Include(x => x.FiscalYear).FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new InvalidOperationException("سند یافت نشد.");
         if (v.FiscalYear?.IsClosed == true)
@@ -702,6 +718,7 @@ public class AccountingService : IAccountingService
 
     public async Task DeleteVoucherAsync(int id)
     {
+        await RejectChequeVoucherMutationAsync(id);
         var v = await _db.AccVouchers.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new InvalidOperationException("سند یافت نشد.");
         if (v.Status == VoucherStatus.Confirmed)
@@ -973,8 +990,28 @@ public class AccountingService : IAccountingService
             .Include(l => l.Voucher)
             .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed
                         && (year == null || l.Voucher.FiscalYearId == year.Id))
-            .Select(l => new { l.AccountId, l.Debit, l.Credit })
+            .Select(l => new { l.VoucherId, l.AccountId, l.Debit, l.Credit })
             .ToListAsync();
+        // Accounting vouchers are global in the existing model. Link only events in
+        // confirmed vouchers in this dashboard's fiscal year to their snapshotted account.
+        // Unrelated activity posted to the same account must not be attributed to a cheque.
+        var chargeEvents = await _db.SaleChequeChargeEvents.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.AccVoucherId != null && e.AccVoucher != null && e.AccVoucher.Status == VoucherStatus.Confirmed &&
+                        (year == null || e.AccVoucher.FiscalYearId == year.Id))
+            .Select(e => new { e.AccVoucherId, e.IncomeDelta, e.SaleChequeCharge.IncomeAccountId })
+            .ToListAsync();
+        var linesByVoucher = lines.ToLookup(l => l.VoucherId);
+        var chargeAccounts = new Dictionary<int, int>();
+        foreach (var item in chargeEvents)
+        {
+            if (item.IncomeAccountId is not int incomeAccountId ||
+                !typeOf.TryGetValue(incomeAccountId, out var accountType) || accountType != AccountType.Income)
+                throw new InvalidOperationException("حساب درآمد ثبت‌شده برای گردش تاخیر تادیه چک معتبر نیست.");
+            var incomeLines = linesByVoucher[item.AccVoucherId!.Value].Where(l => l.AccountId == incomeAccountId).ToList();
+            if (incomeLines.Count == 0 || incomeLines.Sum(l => l.Credit - l.Debit) != item.IncomeDelta)
+                throw new InvalidOperationException("گردش تاخیر تادیه چک با آرتیکل سند حسابداری مطابقت ندارد.");
+            chargeAccounts.Add(item.AccVoucherId!.Value, incomeAccountId);
+        }
 
         foreach (var l in lines)
         {
@@ -985,7 +1022,11 @@ public class AccountingService : IAccountingService
                 case AccountType.Asset: dash.AssetTotal += net; break;
                 case AccountType.Liability: dash.LiabilityTotal += -net; break;
                 case AccountType.Equity: dash.EquityTotal += -net; break;
-                case AccountType.Income: dash.IncomeTotal += -net; break;
+                case AccountType.Income:
+                    dash.IncomeTotal += -net;
+                    if (chargeAccounts.TryGetValue(l.VoucherId, out var incomeAccountId) && l.AccountId == incomeAccountId)
+                        dash.ChequeIncomeTotal += -net;
+                    break;
                 case AccountType.Expense: dash.ExpenseTotal += net; break;
             }
         }

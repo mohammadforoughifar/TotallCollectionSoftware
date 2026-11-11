@@ -18,8 +18,40 @@ public class SystemCompaniesController : ControllerBase
 
     [HttpGet] public async Task<ActionResult> Get([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(_db.SystemCompanies, skip, take));
     [HttpGet("{id}")] public async Task<ActionResult> Get(int id) => Ok(await _db.SystemCompanies.FirstOrDefaultAsync(x => x.Id == id));
-    [HttpPost] public async Task<ActionResult> Post([FromBody] SystemCompany c) { _db.SystemCompanies.Add(c); await _db.SaveChangesAsync(); return Ok(new { id = c.Id }); }
-    [HttpPut("{id}")] public async Task<ActionResult> Put(int id, [FromBody] SystemCompany c) { var item = await _db.SystemCompanies.FirstOrDefaultAsync(x => x.Id == id); if (item == null) return NotFound(); item.Name = c.Name; item.Code = c.Code; item.Phone = c.Phone; item.Address = c.Address; item.IsActive = c.IsActive; item.LetterheadFileName = c.LetterheadFileName; await _db.SaveChangesAsync(); return Ok(); }
+    [HttpPost]
+    public async Task<ActionResult> Post([FromBody] SystemCompany c)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        // Lock the company set before adding: a concurrent second company must
+        // not race the single-company assignment of ownerless historical rows.
+        _ = await _db.SystemCompanies.CountAsync();
+        _db.SystemCompanies.Add(c);
+        await _db.SaveChangesAsync();
+        await SalesCompanySchemaV1.BackfillAsync(_db);
+        if (c.IsActive) await Seeder.EnsureUnitsForCompanyAsync(_db, c.Id);
+        await tx.CommitAsync();
+        return Ok(new { id = c.Id });
+    }
+
+    [HttpPut("{id}")]
+    public async Task<ActionResult> Put(int id, [FromBody] SystemCompany c)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        _ = await _db.SystemCompanies.CountAsync();
+        var item = await _db.SystemCompanies.FirstOrDefaultAsync(x => x.Id == id);
+        if (item == null) return NotFound();
+        var activating = !item.IsActive && c.IsActive;
+        item.Name = c.Name; item.Code = c.Code; item.Phone = c.Phone; item.Address = c.Address;
+        item.IsActive = c.IsActive; item.LetterheadFileName = c.LetterheadFileName;
+        await _db.SaveChangesAsync();
+        if (activating)
+        {
+            await SalesCompanySchemaV1.BackfillAsync(_db);
+            await Seeder.EnsureUnitsForCompanyAsync(_db, item.Id);
+        }
+        await tx.CommitAsync();
+        return Ok();
+    }
 
     /// <summary>آپلود فایل PDF سربرگ شرکت و ذخیره در wwwroot/uploads/letterheads</summary>
     [HttpPost("{id}/letterhead")]

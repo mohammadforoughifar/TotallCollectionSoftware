@@ -1,4 +1,3 @@
-@inject IAuthState Auth
 @inject IOrderService OrderSvc
 @inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
@@ -10,27 +9,79 @@
 @inject IJSRuntime JS
 @using Inventory.Client.Pages.Orders
 
-<Modal Visible="true" Title="@FormTitle" Size="modal-xl" OnClose="Cancel">
+<Modal Visible="true" Title="@FormTitle" Size="@(UseInvoiceWizard ? "modal-xl invoice-dialog" : "modal-xl")" HeaderClass="@(UseInvoiceWizard ? "purchase-order-header" : "")" OnClose="Cancel">
 
     <ChildContent>
+        @if (!string.IsNullOrEmpty(formError))
+        {
+            <div class="order-form-error" role="alert"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>@formError</span><button type="button" aria-label="بستن پیام خطا" @onclick="() => formError = null">×</button></div>
+        }
         @if (loading)
         {
             <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
         }
         else
         {
+            @if (KnownLaterChequeActivity)
+            {
+                <div class="alert alert-warning py-2 fs-8" role="status">این فاکتور دارای گردش بعدی است و ویرایش مستقیم آن مجاز نیست؛ برای اصلاح از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید.</div>
+            }
+            @if (IsEdit && !EditOrder!.ShopCashLedgerEnabled && !EditOrder.HasChequeCharge)
+            {
+                <div class="alert alert-warning py-2 d-flex align-items-center justify-content-between gap-2" role="status">
+                    <span>گردش نقدی این فاکتور قدیمی هنوز تطبیق نشده است. پیش از تغییر پرداخت، سابقه صندوق/بانک را بررسی کنید.</span>
+                    <button type="button" class="btn btn-sm btn-outline-dark flex-shrink-0" @onclick="OpenLegacyCashReconciliation">تطبیق نقد</button>
+                </div>
+            }
+            @if (UseInvoiceWizard)
+            {
+                <nav class="purchase-steps" data-order-wizard="@formKey" aria-label="@(Type == TransactionType.Sale ? "مراحل ثبت فروش" : "مراحل ثبت خرید")">
+                    <div class="purchase-step @(invoiceStep == 1 ? "active" : "complete")" aria-current="@(invoiceStep == 1 ? "step" : null)">
+                        <span class="purchase-step-number">@if (invoiceStep == 1) { <span>۱</span> } else { <i class="bi bi-check-lg"></i> }</span>
+                        <span><strong>@(Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید")</strong></span>
+                    </div>
+                    <span class="purchase-step-line" aria-hidden="true"></span>
+                    <div class="purchase-step @(invoiceStep == 2 ? "active" : "")" aria-current="@(invoiceStep == 2 ? "step" : null)">
+                        <span class="purchase-step-number">۲</span>
+                        <span><strong>پرداخت و تأیید</strong></span>
+                    </div>
+                </nav>
+                @if (CopyTemplate is not null && invoiceStep == 1)
+                {
+                    <div class="invoice-copy-notice" role="status">
+                        <i class="bi bi-copy" aria-hidden="true"></i>
+                        <span>این فاکتور جدید است؛ اقلام را بازبینی کنید. اطلاعات پرداخت و گردش فاکتور قبلی کپی نشده است.
+                            @if (CopyTemplate.Lines.Any(l => l.DiscountIsAmount && l.DiscountAmount != Math.Round(l.DiscountAmount, 0)))
+                            {
+                                <br /><strong>تخفیف ریالی اعشاری طبق قواعد ثبت جدید به ریال کامل گرد شده است؛ مبلغ را بررسی کنید.</strong>
+                            }
+                        </span>
+                    </div>
+                }
+                <div class="purchase-section-heading">
+                    <h3>@(invoiceStep == 1 ? "اطلاعات فاکتور" : "پرداخت و تأیید نهایی")</h3>
+                    <span>مرحله @invoiceStep.Num() از ۲</span>
+                </div>
+            }
             <div class="row g-3 mb-3">
-                <div class="col-md-4">
+                @if (!UseInvoiceWizard || invoiceStep == 1)
+                {
+                <div class="col-md-4" data-order-initial>
                     <label class="form-label">انبار <span class="text-danger">*</span></label>
-                    <SearchSelect Items="whLookup" Value="warehouseId" ValueChanged="OnWarehouseChanged" Placeholder="انتخاب انبار…" />
+                    <SearchSelect Items="whLookup" ShowAllOnFocus="UseInvoiceWizard" ConstrainToModal="UseInvoiceWizard" AdvanceOnEnter="UseInvoiceWizard" Value="warehouseId" ValueChanged="OnWarehouseChanged" Placeholder="انتخاب انبار…" />
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده") <span class="text-danger">*</span></label>
-                    <SearchSelect Items="partyLookup" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب…" />
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label mb-0">@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده") <span class="text-danger">*</span></label>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold" title="افزودن طرف حساب" @onclick="OpenQuickParty">
+                            <i class="bi bi-plus-circle-fill text-success"></i> @(Type == TransactionType.Sale ? "مشتری جدید" : "تأمین‌کننده جدید")
+                        </button>
+                    </div>
+                    <SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard" ConstrainToModal="UseInvoiceWizard" AdvanceOnEnter="UseInvoiceWizard" Value="partyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب طرف حساب — نام، موبایل یا تلفن…" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
-                    <DatePicker @bind-Value="date" />
+                    <DatePicker @bind-Value="date" OpenOnFocus="UseInvoiceWizard" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">توضیحات</label>
@@ -41,53 +92,83 @@
                     <div class="col-12">
                         <div class="alert alert-info fs-8 py-2 mb-0">
                             <i class="bi bi-person-badge ms-1"></i>
-                            معرف این مشتری: <b>@(referrers.FirstOrDefault(r => r.Id == referrerId)?.Name)</b>
+                            معرف این مشتری: <b>@(referrers.FirstOrDefault(r => r.Id == referrerId)?.Name ?? customers.FirstOrDefault(c => c.Id == partyId)?.ReferrerName ?? "نامشخص")</b>
                         </div>
                     </div>
                 }
 
-                @if (Type is TransactionType.Sale or TransactionType.Purchase)
+                }
+
+                @if (UseInvoiceWizard && invoiceStep == 2)
                 {
-                    <div class="col-12">
+                    <div class="col-12 purchase-payment" data-order-payment>
+                        @if (UseInvoiceWizard)
+                        {
+                            <section class="purchase-summary" aria-label="خلاصه فاکتور و پرداخت">
+                                <div class="purchase-summary-head"><strong><i class="bi bi-receipt"></i> خلاصه فاکتور</strong><span>مبالغ به ریال</span></div>
+                                <div class="purchase-summary-main">
+                                    <div><span>@(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده")</span><strong>@(partyLookup.FirstOrDefault(p => p.Id == partyId)?.Name ?? "—")</strong></div>
+                                    <div><span>انبار</span><strong>@(whLookup.FirstOrDefault(w => w.Id == warehouseId)?.Name ?? "—")</strong></div>
+                                    <div><span>اقلام</span><strong>@(lines.Count(l => l.ProductId > 0 && l.Qty > 0).Num()) سطر</strong></div>
+                                    <div class="purchase-summary-total">
+                                        <span>مبلغ نهایی فاکتور</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(grandTotal) : grandTotal.Money())</strong>
+                                        @if (HasChequeIncomeArticle)
+                                        {
+                                            <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + تاخیر تادیه چک <b class="num">@ExactMoney(saleChequeIncome)</b></small>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="purchase-summary-pay" aria-live="polite">
+                                    <div><span>نقد</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(CashPart) : CashPart.Money())</strong></div>
+                                    <div><span>چک</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(ChequeSum()) : ChequeSum().Money())</strong></div>
+                                    <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(InstSum()) : InstSum().Money())</strong></div>
+                                    <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > (StrictPaymentBalance ? 0 : 1) ? "is-warning" : "")">
+                                        <span>@(FinalRemaining < 0 ? "مازاد پرداخت" : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده")</span>
+                                        <strong class="num">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
+                                    </div>
+                                </div>
+                                @if (FinalRemaining != 0)
+                                {
+                                    <p class="purchase-summary-status" aria-live="polite">
+                                        @if (FinalRemaining > (StrictPaymentBalance ? 0 : 1))
+                                        {
+                                            @(useCredit ? "مانده فاکتور به نسیه می‌رود؛ تاریخ سررسید را بررسی کنید." : "برای مانده فاکتور، پرداخت دیگری اضافه کنید یا نسیه و سررسید آن را مشخص کنید.")
+                                        }
+                                        else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
+                                        {
+                                            <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
+                                        }
+                                        else
+                                        {
+                                            <span>اختلاف در محدوده تلورانس ثبت است؛ برای برابری دقیق، مبلغ پرداخت‌ها را دستی اصلاح کنید.</span>
+                                        }
+                                    </p>
+                                }
+                            </section>
+                        }
+                        @if (paymentAmountsNeedReview && ((useCheque && chequeAmounts.Any(string.IsNullOrWhiteSpace)) || (useInstallment && instAmounts.Any(string.IsNullOrWhiteSpace))))
+                        {
+                            <div class="alert alert-warning py-2 fs-8" role="status" data-payment-amounts-review>
+                                مبلغ اقلام تغییر کرده است؛ مبلغ ردیف‌های خالی را دوباره وارد کنید. شماره، بانک و تاریخ چک‌ها حفظ شده‌اند.
+                            </div>
+                        }
                         <div class="pay-box">
                             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                 <span class="fw-700"><i class="bi bi-credit-card-2-front text-primary ms-1"></i>روش پرداخت (ترکیبی)</span>
-                                <span class="fs-8 text-muted">
-                                    می‌توانید چند جزء را هم‌زمان فعال کنید (نقد + چک + اقساط + نسیه)؛
-                                    باقی‌ماندهٔ هر سطر بر اساس سطرهای قبلی و مبلغ نقدی محاسبه می‌شود.
-                                </span>
                             </div>
-                            <div class="pay-tabs">
-                                <button type="button" class="pay-tab @(useCash ? "active" : "")" data-pay-comp="cash" @onclick="ToggleCash">
+                            <div class="pay-tabs" aria-label="روش‌های پرداخت">
+                                <button type="button" class="pay-tab @(useCash ? "active" : "")" data-pay-comp="cash" aria-pressed="@(useCash ? "true" : "false")" @onclick="ToggleCash">
                                     <i class="bi bi-cash-coin"></i> نقدی
                                 </button>
-                                <button type="button" class="pay-tab @(useCheque ? "active" : "")" data-pay-comp="cheque" @onclick="ToggleCheque">
+                                <button type="button" class="pay-tab @(useCheque ? "active" : "")" data-pay-comp="cheque" aria-pressed="@(useCheque ? "true" : "false")" @onclick="ToggleCheque">
                                     <i class="bi bi-bank"></i> چک
                                 </button>
-                                <button type="button" class="pay-tab @(useInstallment ? "active" : "")" data-pay-comp="installment" @onclick="ToggleInstallment">
-                                    <i class="bi bi-journal-check"></i> اقساطی
+                                <button type="button" class="pay-tab @(useInstallment ? "active" : "")" data-pay-comp="installment" aria-pressed="@(useInstallment ? "true" : "false")" @onclick="ToggleInstallment">
+                                    <i class="bi bi-journal-check"></i> @(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساطی")
                                 </button>
-                                <button type="button" class="pay-tab @(useCredit ? "active" : "")" data-pay-comp="credit" @onclick="ToggleCredit">
+                                <button type="button" class="pay-tab @(useCredit ? "active" : "")" data-pay-comp="credit" aria-pressed="@(useCredit ? "true" : "false")" @onclick="ToggleCredit">
                                     <i class="bi bi-hourglass-split"></i> نسیه
                                 </button>
-                            </div>
-
-                            @* ---------- نوار خلاصهٔ پرداخت: هر جزء و باقی‌ماندهٔ نهایی ---------- *@
-                            <div class="pay-summary mt-3" data-pay-summary>
-                                <div>مبلغ @(Type == TransactionType.Sale ? "فاکتور" : "سند"): <b class="num text-primary" data-pay-total>@grandTotal.Money()</b> ریال</div>
-                                <div>نقد: <b class="num text-success" data-pay-cash>@CashPart.Money()</b></div>
-                                <div>چک: <b class="num" data-pay-cheques>@ChequeSum().Money()</b></div>
-                                <div>اقساط: <b class="num" data-pay-insts>@InstSum().Money()</b></div>
-                                <div class="fw-700 @(FinalRemaining < -1 ? "text-warning" : FinalRemaining > 1 ? "text-danger" : "text-success")">
-                                    @if (FinalRemaining < -1)
-                                    {
-                                        <span>مازاد (سود مدت‌دار): <b class="num" data-pay-remain>@((-FinalRemaining).Money())</b></span>
-                                    }
-                                    else
-                                    {
-                                        <span>باقی‌مانده: <b class="num" data-pay-remain>@FinalRemaining.Money()</b>@(FinalRemaining > 1 ? " (به نسیه می‌رود)" : "")</span>
-                                    }
-                                </div>
                             </div>
 
                             @* ---------- جزء نقدی ---------- *@
@@ -105,32 +186,31 @@
                                         }
                                         <div class="col-6 col-md-3">
                                             <label class="form-label fs-8">نوع @(Type == TransactionType.Sale ? "دریافت" : "پرداخت") نقدی</label>
-                                            <select class="form-select form-select-sm" value="@cashTypeStr" @onchange="OnCashTypeSelect" data-pay-cashtype>
-                                                <option value="0">وجه نقد</option>
-                                                <option value="1">کارت‌خوان (POS)</option>
-                                                <option value="2">کارت به کارت</option>
-                                            </select>
+                                            <SearchSelect Items="CashTypeLookup" Value="@((int)CashKind + 1)" ValueChanged="OnCashTypePicked"
+                                                          ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="UseInvoiceWizard" AllowClear="false" />
                                         </div>
                                         <div class="col-6 col-md-4">
                                             <label class="form-label fs-8">بانک/صندوق</label>
-                                            <div class="input-group input-group-sm">
-                                                <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
-                                                    <option value="0">— انتخاب بانک —</option>
-                                                    @foreach (var a in AccountsForCashType(CashKind))
-                                                    {
-                                                        <option value="@a.Id">@a.DisplayName</option>
-                                                    }
-                                                </select>
-                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
-                                                        @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)">
-                                                    <i class="bi bi-plus-lg ms-1"></i> تعریف بانک
+                                            <div class="input-group input-group-sm order-bank-select">
+                                                <SearchSelect Items="@CashAccountLookup" Value="@(trsAccountId ?? 0)" ValueChanged="OnCashAccountPicked"
+                                                              Placeholder="انتخاب بانک…" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="UseInvoiceWizard" />
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف صندوق/بانک جدید"
+                                                        @onclick="() => OpenQuickBank(CashKind == CashType.Cash ? TreasuryAccountKind.Cash : TreasuryAccountKind.Bank)">
+                                                    <i class="bi bi-plus-lg ms-1"></i> @(CashKind == CashType.Cash ? "تعریف صندوق" : "تعریف بانک")
                                                 </button>
                                             </div>
                                         </div>
+                                        @if (Type == TransactionType.Sale && CashKind == CashType.CardTransfer)
+                                        {
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label fs-8" for="cash-tracking-@formKey">شماره پیگیری پرداخت <span class="text-danger">*</span></label>
+                                                <input id="cash-tracking-@formKey" class="form-control form-control-sm" @bind="cashTrackingNumber" maxlength="100" dir="ltr" autocomplete="off" />
+                                            </div>
+                                        }
                                         <div class="col-12 col-md-2 fs-8 pb-1">
                                             @if (HasNonCash)
                                             {
-                                                <span>باقی‌مانده پس از نقد: <b class="num text-primary" data-pay-remain-cash>@RemainingAfterCash.Money()</b></span>
+                                                <span>باقی‌مانده پس از نقد: <b class="num text-primary" data-pay-remain-cash>@ExactMoney(RemainingAfterCash)</b></span>
                                             }
                                             else
                                             {
@@ -145,13 +225,19 @@
                             @if (useCheque)
                             {
                                 <div class="mt-3" data-pay-cheque-box>
-                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                         <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
-                                        <button type="button" class="btn btn-sm btn-calc ms-auto" @onclick="() => OpenCalc(true)">
+                                        @if (Type == TransactionType.Sale)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only title="محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها" @onclick="() => OpenCalc(true, interestOnly: true)">
+                                                <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
+                                            </button>
+                                        }
+                                        <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" data-pay-add-cheque @onclick="AddCheque">
-                                            <i class="bi bi-plus-lg"></i> افزودن چک
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-pay-add-cheque data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddCheque">
+                                            <i class="bi bi-plus-lg"></i> افزودن چک (F2)
                                         </button>
                                     </div>
                                     @for (var ci = 0; ci < cheques.Count; ci++)
@@ -164,24 +250,19 @@
                                             </div>
                                             <div class="col-6 col-md-3">
                                                 <label class="form-label fs-8">بانک @(Type == TransactionType.Purchase ? "(حساب ما) *" : "")</label>
-                                                <div class="input-group input-group-sm">
+                                                <div class="input-group input-group-sm order-bank-select">
                                                     @if (Type == TransactionType.Purchase)
                                                     {
-                                                        <select class="form-select form-select-sm" value="@(cheques[i].TrsAccountId ?? 0)"
-                                                                @onchange="@(e => OnChequeAccountChanged(i, e))">
-                                                            <option value="0">— انتخاب حساب بانکی —</option>
-                                                            @foreach (var b in bankAccounts.Where(x => x.Kind == TreasuryAccountKind.Bank))
-                                                            {
-                                                                <option value="@b.Id">@b.DisplayName</option>
-                                                            }
-                                                        </select>
+                                                        <SearchSelect Items="@ChequeAccountLookup" Value="@(cheques[i].TrsAccountId ?? 0)" ValueChanged="@(id => OnChequeAccountPicked(i, id))"
+                                                                      Placeholder="انتخاب حساب بانکی…" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="UseInvoiceWizard" />
                                                     }
                                                     else
                                                     {
-                                                        <input class="form-control form-control-sm" list="orderBankDataList" @bind="cheques[i].BankName" placeholder="نام بانک…" />
+                                                        <SearchSelectStr Items="@ChequeBankNames" Value="@(cheques[i].BankName ?? "")" ValueChanged="@(name => cheques[i].BankName = name)"
+                                                                         Placeholder="نام بانک…" AllowCustomValue="true" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="UseInvoiceWizard" />
                                                     }
-                                                    <button type="button" class="btn btn-outline-primary" title="تعریف بانک جدید"
-                                                            @onclick="() => OpenQuickBankForCheque(i, TreasuryAccountKind.Bank)">
+                                                    <button type="button" class="btn btn-outline-primary" title="افزودن بانک" aria-label="افزودن بانک"
+                                                            @onclick="() => OpenChequeBank(i)">
                                                         <i class="bi bi-plus-lg"></i>
                                                     </button>
                                                 </div>
@@ -197,20 +278,50 @@
                                             </div>
                                             <div class="col-6 col-md-2">
                                                 <label class="form-label fs-8">سررسید چک *</label>
-                                                <DatePicker @bind-Value="chequeDates[i]" />
+                                                <DatePicker @bind-Value="chequeDates[i]" OpenOnFocus="UseInvoiceWizard" />
                                             </div>
                                             <div class="col-6 col-md-1 text-center">
-                                                <button type="button" class="btn btn-sm btn-light" data-pay-remove-cheque="@i" @onclick="() => RemoveCheque(i)"><i class="bi bi-x-lg text-danger"></i></button>
+                                                <button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف چک" aria-label="حذف چک" data-pay-remove-cheque="@i" @onclick="() => RemoveCheque(i)"><i class="bi bi-x-lg text-danger"></i></button>
                                             </div>
                                             <div class="col-12 fs-9">
                                                 <span class="text-muted">باقی‌مانده پس از این چک:</span>
-                                                <b class="num text-primary" data-rem-cheque="@i">@RemainingAfterCheque(i).Money()</b> ریال
+                                                <b class="num text-primary" data-rem-cheque="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterCheque(i)) : RemainingAfterCheque(i).Money())</b> ریال
                                             </div>
                                         </div>
                                     }
                                     @if (cheques.Count == 0)
                                     {
-                                        <div class="fs-8 text-muted">هنوز چکی اضافه نشده است؛ با «افزودن چک» ردیف جدید با مبلغ باقی‌مانده ساخته می‌شود.</div>
+                                        <div class="fs-8 text-muted">هنوز چکی اضافه نشده است.</div>
+                                    }
+                                    @if (Type == TransactionType.Sale && HasChequeIncomeArticle)
+                                    {
+                                        <div class="alert alert-light border py-2 px-3 fs-8 mt-2 mb-0" data-sale-cheque-income-article>
+                                            <div class="d-flex flex-wrap align-items-center gap-3">
+                                                <strong>تاخیر تادیه چک</strong>
+                                                <span>بدهکار مشتری: <b class="num">@saleChequeIncome.Money()</b> ریال</span>
+                                                <span>بستانکار فروشگاه: <b class="num">@saleChequeIncome.Money()</b> ریال</span>
+                                                @if (!IsEdit)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="RemoveSaleChequeCharge">حذف ردیف سود</button>
+                                                }
+                                            </div>
+                                            @if (saleChequeCharge is not null && chargeInvoiceBase != goodsTotal)
+                                            {
+                                                <div class="text-danger fw-bold mt-1" role="status">مبلغ کالا تغییر کرده است؛ پیش از ثبت، تاخیر تادیه چک را دوباره محاسبه کنید.</div>
+                                            }
+                                            <div class="text-muted mt-1">
+                                                @if (saleChequeCharge is not null)
+                                                {
+                                                    <span>مبنای اولیه: <b class="num">@ExactMoney(saleChequeCharge.CalculatorBaseAmount)</b> ریال،
+                                                        نرخ ماهانه <b class="num">@ExactPercent(saleChequeCharge.CalculatorRatePercent)</b>٪ برای <b class="num">@saleChequeCharge.CalculatorMonths.Num()</b> ماه. </span>
+                                                }
+                                                else
+                                                {
+                                                    <span>جزئیات مبنا و نرخ اولیه در سابقه این فاکتور موجود نیست. </span>
+                                                }
+                                                این ردیف جدا از کالا و بدون ارزش افزوده است و @(IsEdit ? "در گردش فاکتور ثبت شده است" : "با ثبت فاکتور در گردش مشتری و درآمد فروشگاه ثبت می‌شود").
+                                            </div>
+                                        </div>
                                     }
                                 </div>
                             }
@@ -226,7 +337,7 @@
                                         </div>
                                         <div class="col-6 col-md-3">
                                             <label class="form-label fs-8">تاریخ اولین قسط</label>
-                                            <DatePicker @bind-Value="instFirstDue" />
+                                            <DatePicker @bind-Value="instFirstDue" OpenOnFocus="UseInvoiceWizard" />
                                         </div>
                                         <div class="col-6 col-md-2">
                                             <label class="form-label fs-8">فاصله (روز)</label>
@@ -238,11 +349,12 @@
                                             </button>
                                         </div>
                                         <div class="col-6 col-md-2">
-                                            <button type="button" class="btn btn-sm btn-calc w-100" @onclick="() => OpenCalc(false)">
+                                            <button type="button" class="btn btn-sm btn-calc w-100" title="محاسبه با سود" @onclick="() => OpenCalc(false)">
                                                 <i class="bi bi-calculator"></i> محاسبه با سود
                                             </button>
                                         </div>
                                     </div>
+                                    <div class="fs-8 text-muted mb-2">رند اقساط: ۱۰٬۰۰۰ ریال؛ جمع دقیق حفظ می‌شود.</div>
                                     @if (installments.Count > 0)
                                     {
                                         <div class="table-responsive">
@@ -259,26 +371,26 @@
                                                         var i = xi;
                                                         <tr data-inst-row="@i">
                                                             <td class="num">قسط @((i + 1).Num())</td>
-                                                            <td style="max-width:170px"><DatePicker @bind-Value="instDates[i]" /></td>
+                                                            <td style="max-width:170px"><DatePicker @bind-Value="instDates[i]" OpenOnFocus="UseInvoiceWizard" /></td>
                                                             <td class="text-start">
                                                                 <input class="form-control form-control-sm num" value="@instAmounts[i]"
                                                                        @oninput="@(e => OnInstAmountInput(i, e))" inputmode="numeric" dir="ltr" />
                                                             </td>
-                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@RemainingAfterInstallment(i).Money()</b></td>
-                                                            <td><button type="button" class="btn btn-sm btn-light" data-pay-remove-inst="@i" @onclick="() => RemoveInstallment(i)"><i class="bi bi-x-lg text-danger"></i></button></td>
+                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterInstallment(i)) : RemainingAfterInstallment(i).Money())</b></td>
+                                                            <td><button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف قسط" aria-label="حذف قسط" data-pay-remove-inst="@i" @onclick="() => RemoveInstallment(i)"><i class="bi bi-x-lg text-danger"></i></button></td>
                                                         </tr>
                                                     }
                                                 </tbody>
                                             </table>
                                         </div>
                                         <div class="fs-8">
-                                            جمع اقساط: <b class="num">@InstSum().Money()</b> —
-                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@FinalRemaining.Money()</b>
+                                            جمع اقساط: <b class="num">@ExactMoney(InstSum())</b> —
+                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@(ExactPaymentDisplay ? ExactMoney(FinalRemaining) : FinalRemaining.Money())</b>
                                         </div>
                                     }
                                     else
                                     {
-                                        <div class="fs-8 text-muted">با «ساخت دفترچه» اقساط بر اساس باقی‌ماندهٔ فعلی ساخته می‌شوند.</div>
+                                        <div class="fs-8 text-muted">هنوز قسطی ساخته نشده است.</div>
                                     }
                                 </div>
                             }
@@ -289,57 +401,73 @@
                                 <div class="mt-3 row g-2 align-items-end" data-pay-credit-box>
                                     <div class="col-6 col-md-4">
                                         <label class="form-label fs-8">تاریخ سررسید نسیه <span class="text-danger">*</span></label>
-                                        <DatePicker @bind-Value="creditDue" />
+                                        <DatePicker @bind-Value="creditDue" OpenOnFocus="UseInvoiceWizard" />
                                     </div>
                                     <div class="col-12 col-md-8 fs-8 pb-1">
-                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@Math.Max(0, FinalRemaining).Money()</b> ریال
+                                        مبلغ نسیه (باقی‌ماندهٔ نهایی): <b class="num text-danger" data-pay-credit-amount>@(ExactPaymentDisplay ? ExactMoney(Math.Max(0, FinalRemaining)) : Math.Max(0, FinalRemaining).Money())</b> ریال
                                     </div>
                                 </div>
                             }
 
-                            <div class="fs-8 mt-2" data-pay-hint>
-                                @if (FinalRemaining > 1)
-                                {
-                                    <span class="text-danger"><i class="bi bi-info-circle"></i> جمع پرداخت‌ها @((grandTotal - FinalRemaining).Money()) ریال است؛ باقی‌ماندهٔ @FinalRemaining.Money() ریال به‌صورت نسیه ثبت می‌شود.</span>
-                                }
-                                else if (FinalRemaining < -1)
-                                {
-                                    <span class="text-warning"><i class="bi bi-info-circle"></i> جمع پرداخت‌ها @((-FinalRemaining).Money()) ریال بیشتر از مبلغ سند است (سود مدت‌دار).</span>
-                                }
-                                else
-                                {
-                                    <span class="text-success"><i class="bi bi-check2-circle"></i> جمع اجزای پرداخت با مبلغ سند برابر است.</span>
-                                }
-                            </div>
                         </div>
                     </div>
                 }
             </div>
 
+            @if (!UseInvoiceWizard || invoiceStep == 1)
+            {
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="fw-700 fs-7"><i class="bi bi-list-ul text-primary ms-1"></i>اقلام فاکتور</span>
-                <button class="btn btn-sm btn-outline-primary" data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
+                <button class="btn btn-sm btn-outline-primary" data-order-add-line data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
                     <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
                 </button>
             </div>
-
-            <div>
+            @if (Type == TransactionType.Sale)
+            {
+                <div class="invoice-price-hint"><i class="bi bi-clock-history"></i> تغییر تاریخ، قیمت سطرهای موجود را خودکار عوض نمی‌کند.</div>
+            }
+            <div data-order-entry class="@(UseInvoiceWizard ? (Type == TransactionType.Sale ? "purchase-items sale-items" : "purchase-items") : "")">
                 <table class="table table-hover align-middle mb-0">
+                    @if (UseInvoiceWizard)
+                    {
+                        <colgroup>
+                            <col style="width:@InvoiceColumnWidth(22, 20)" />
+                            <col style="width:@InvoiceColumnWidth(8)" />
+                            <col style="width:@InvoiceColumnWidth(12, 11)" />
+                            @if (Type == TransactionType.Purchase && canManagePricing) { <col style="width:@InvoiceColumnWidth(11)" /> }
+                            <col style="width:@InvoiceColumnWidth(11, 10)" />
+                            <col style="width:@InvoiceColumnWidth(9, 11)" />
+                            <col style="width:@InvoiceColumnWidth(11, 10)" />
+                            <col style="width:@InvoiceColumnWidth(9, 11)" />
+                            <col style="width:@InvoiceColumnWidth(13, 14)" />
+                            @if (Type == TransactionType.Sale && CanSeeProfit) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
+                            @if (Type == TransactionType.Sale && CanSeeProfit && referrerId > 0) { <col style="width:@InvoiceColumnWidth(SaleExtraColumnWeight)" /> }
+                            <col style="width:@InvoiceActionsColumnWidth" />
+                        </colgroup>
+                    }
                     <thead>
                         <tr>
-                            <th style="width: @(Type == TransactionType.Sale ? "36%" : "42%")">کالا</th>
-                            <th style="width: 13%">مقدار (تا ۲ رقم اعشار)</th>
-                            <th style="width: 20%">قیمت واحد (ریال)</th>
-                            <th class="text-start">جمع</th>
+                            <th><span>کالا</span></th>
+                            <th title="مقدار تا دو رقم اعشار"><span>مقدار</span><small>تا ۲ رقم</small></th>
+                            <th><span>قیمت واحد</span><small>ریال</small></th>
+                            @if (Type == TransactionType.Purchase && canManagePricing)
+                            {
+                                <th title="قیمت اختیاری از تاریخ خرید اعمال می‌شود؛ خالی یعنی بدون تغییر"><span>قیمت فروش جدید</span><small>اختیاری · ریال</small></th>
+                            }
+                            <th><span>مبلغ کل</span><small>ریال</small></th>
+                            <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>تخفیف</span><small>٪ یا ریال</small></th>
+                            <th><span>پس از تخفیف</span><small>ریال</small></th>
+                            <th title="تا ۱۰۰ درصد، بالاتر مبلغ ریالی"><span>ارزش افزوده</span><small>٪ یا ریال</small></th>
+                            <th><span>کل پس از ارزش افزوده</span><small>ریال</small></th>
                             @if (Type == TransactionType.Sale)
                             {
                                 @if (CanSeeProfit)
                                 {
-                                    <th class="text-start">سود</th>
+                                    <th><span>سود</span><small>ریال</small></th>
                                 }
-                                @if (referrerId > 0)
+                                @if (CanSeeProfit && referrerId > 0)
                                 {
-                                    <th class="text-start">پورسانت</th>
+                                    <th><span>پورسانت</span><small>ریال</small></th>
                                 }
                             }
                             <th></th>
@@ -348,134 +476,385 @@
                     <tbody>
                         @foreach (var l in lines)
                         {
-                            <tr>
-                                <td>
+                            <tr @key="l.Key" data-order-line="@l.Key">
+                                <td data-label="کالا">
                                     <SearchSelect Items="productLookup"
+                                                  CssClass="order-line-control"
+                                                  ShowAllOnFocus="UseInvoiceWizard"
+                                                  ConstrainToModal="UseInvoiceWizard"
+                                                  AdvanceOnEnter="UseInvoiceWizard"
                                                   Value="l.ProductId"
                                                   ValueChanged="id => OnProductPicked(l, id)"
-                                                  Placeholder="جستجوی کالا…" />
-                                    @if (!string.IsNullOrEmpty(l.Unit))
+                                                  Placeholder="جستجوی کالا…">
+                                        <ItemDetails Context="option">
+                                            @if (option is InvoiceProductOption productOption && productOption.StockQuantity.HasValue)
+                                            {
+                                                var quantity = productOption.StockQuantity.Value;
+                                                <small class="ss-item-info invoice-stock-info">
+                                                    موجودی این انبار:
+                                                    <span class="invoice-stock-quantity @(productOption.IsStockWarning ? "is-warning" : "")">
+                                                        @if (productOption.IsStockWarning)
+                                                        {
+                                                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                            <span class="visually-hidden">هشدار موجودی صفر یا منفی: </span>
+                                                        }
+                                                        <bdi dir="ltr">@InvoiceProductOption.FormatStock(quantity)</bdi>
+                                                    </span>
+                                                    @productOption.StockUnit
+                                                    @if (Type == TransactionType.Sale && productOption.IsStockWarning)
+                                                    {
+                                                        <strong class="invoice-stock-alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> ناموجود</strong>
+                                                    }
+                                                </small>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(option.InfoText))
+                                            {
+                                                <small class="ss-item-info">@option.InfoText</small>
+                                            }
+                                        </ItemDetails>
+                                    </SearchSelect>
+                                    @if (!string.IsNullOrEmpty(l.Unit) || l.ProductId > 0)
                                     {
-                                        <div class="fs-8 text-muted mt-1">واحد: @l.Unit</div>
+                                        <div class="fs-8 text-muted mt-1 d-flex gap-2 flex-wrap">
+                                            @if (!string.IsNullOrEmpty(l.Unit))
+                                            {
+                                                <span>واحد: @l.Unit</span>
+                                            }
+                                            @if (l.ProductId > 0 && warehouseId > 0 && !IsServiceProduct(l.ProductId))
+                                            {
+                                                @if (warehouseStock.IsLoaded)
+                                                {
+                                                    var avail = warehouseStock.Quantities.TryGetValue(l.ProductId, out var q) ? q : 0m;
+                                                    <span class="@(Type == TransactionType.Sale && avail <= 0 ? "invoice-stock-inline-warning" : avail <= 0 ? "text-danger" : "text-success")" role="status">
+                                                        @if (Type == TransactionType.Sale && avail <= 0)
+                                                        {
+                                                            <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> <strong>ناموجود</strong> <text>—</text>
+                                                        }
+                                                        موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span>· موجودی انبار: @(warehouseStock.IsLoading ? "در حال دریافت…" : "نامشخص")</span>
+                                                }
+                                            }
+                                        </div>
                                     }
                                 </td>
-                                <td>
-                                    <input class="form-control num" inputmode="decimal" dir="ltr" placeholder="1.25"
-                                           title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
-                                           value="@l.QtyText" @oninput="@(e => l.QtyText = FormatQuantity(e.Value))" />
+                                <td data-label="مقدار">
+                                    <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="@(QuantityAllowsFraction(l) == false ? "numeric" : "decimal")" dir="ltr" placeholder="1"
+                                           title="@QuantityTitle(l)"
+                                           value="@l.QtyText" @oninput="@(e => { l.QtyText = FormatQuantity(e.Value); RecalcDiscount(l); })" />
                                 </td>
-                                <td>
-                                    <input class="form-control num" inputmode="decimal" dir="ltr"
-                                           value="@l.PriceText" @oninput="@(e => l.PriceText = FormatNum(e.Value))" />
+                                <td data-label="قیمت واحد (ریال)">
+                                    <input class="form-control num order-line-control" aria-label="قیمت واحد به ریال" inputmode="numeric" dir="ltr" title="قیمت به ریال صحیح و بدون اعشار"
+                                           value="@l.PriceText" @oninput="@(e => { l.PriceRequestVersion++; l.PriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()); l.PriceNotice = null; RecalcDiscount(l); })" />
+                                    @if (!string.IsNullOrEmpty(l.PriceNotice)) { <small class="dated-price-note">@l.PriceNotice</small> }
                                 </td>
-                                <td class="text-start num fw-500">@l.Total.Money()</td>
+                                @if (Type == TransactionType.Purchase && canManagePricing)
+                                {
+                                    <td data-label="قیمت فروش جدید (اختیاری، ریال)">
+                                        <input class="form-control num order-line-control" aria-label="قیمت فروش جدید، اختیاری" inputmode="numeric" dir="ltr"
+                                               title="قیمت اختیاری از تاریخ خرید اعمال می‌شود؛ خالی یعنی بدون تغییر" placeholder="بدون تغییر"
+                                               value="@l.NewSalePriceText" @oninput="@(e => l.NewSalePriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()))" />
+                                    </td>
+                                }
+                                <td data-label="مبلغ کل (ریال)" class="num fw-500"><span class="order-line-value">@l.Gross.MoneyExact()</span></td>
+                                <td data-label="تخفیف (٪ یا ریال)">
+                                    <div class="input-group input-group-sm order-line-rate">
+                                        <input class="form-control form-control-sm text-center num order-line-control" aria-label="تخفیف درصد یا ریال"
+                                               value="@l.DiscountText"
+                                               @oninput="e => OnLineDiscountInput(l, e.Value?.ToString())"
+                                               @onblur="() => OnLineDiscountBlur(l)"
+                                               placeholder="0" inputmode="numeric" dir="ltr" />
+                                        <span class="input-group-text order-line-unit @(l.DiscountIsAmount ? "text-primary" : "")"
+                                              title="@(l.DiscountIsAmount ? "مبلغ ریالی" : "درصد")">
+                                            @(l.DiscountIsAmount ? "ریال" : "٪")
+                                        </span>
+                                    </div>
+                                    <div class="fs-9 mt-1 text-danger num order-line-sub">
+                                        @l.DiscountAmount.Money() ریال
+                                    </div>
+                                </td>
+                                <td data-label="پس از تخفیف (ریال)" class="num fw-500"><span class="order-line-value">@l.AfterDiscount.MoneyExact()</span></td>
+                                <td data-label="ارزش افزوده (٪ یا ریال)">
+                                    <div class="input-group input-group-sm order-line-rate">
+                                        <input class="form-control form-control-sm text-center num order-line-control" aria-label="ارزش افزوده درصد یا ریال" data-order-last-field
+                                               value="@l.VatText" @oninput="@(e => l.VatText = FormatNum(e.Value))" maxlength="24"
+                                               placeholder="0" inputmode="decimal" dir="ltr" />
+                                        <span class="input-group-text order-line-unit" title="@(l.VatValue > 100 ? "مبلغ ریالی" : "درصد")">@(l.VatValue > 100 ? "ریال" : "٪")</span>
+                                    </div>
+                                    <div class="fs-9 mt-1 text-primary num order-line-sub">@l.VatAmount.MoneyExact() ریال</div>
+                                </td>
+                                <td data-label="کل پس از ارزش افزوده (ریال)" class="num fw-700"><span class="order-line-value">@l.Total.MoneyExact()</span></td>
                                 @if (Type == TransactionType.Sale)
                                 {
                                     @if (CanSeeProfit)
                                     {
-                                        <td class="text-start num">
+                                        <td data-label="سود" class="num">
                                             @{ var profit = LineProfit(l); }
-                                            @if (l.ProductId > 0 && l.Qty > 0)
-                                            {
-                                                <span class="fw-500 @(profit >= 0 ? "text-success" : "text-danger")">@profit.Money()</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
+                                            <div class="order-line-value">
+                                                @if (l.ProductId > 0 && l.Qty > 0)
+                                                {
+                                                    <span dir="ltr" class="fw-500 @(profit >= 0 ? "text-success" : "text-danger")">@profit.Money()</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </div>
                                         </td>
                                     }
-                                    @if (referrerId > 0)
+                                    @if (CanSeeProfit && referrerId > 0)
                                     {
-                                        <td class="text-start num">
-                                            @if (l.ProductId > 0 && l.Qty > 0)
-                                            {
-                                                <span class="text-primary">@LineCommission(l).Money()</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">—</span>
-                                            }
+                                        <td data-label="پورسانت" class="num">
+                                            <div class="order-line-value">
+                                                @if (l.ProductId > 0 && l.Qty > 0)
+                                                {
+                                                    <span class="text-primary">@(CommissionRatesKnown ? LineCommission(l).MoneyExact() : "نامشخص")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </div>
                                         </td>
                                     }
                                 }
-                                <td class="text-end text-nowrap">
-                                    @if (Type == TransactionType.Sale && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
-                                    {
-                                        <button class="btn btn-sm btn-light" title="آخرین فاکتور خرید این کالا" @onclick="() => ShowLastPurchase(l.ProductId)">
-                                            <i class="bi bi-receipt text-primary"></i>
+                                <td class="text-nowrap">
+                                    <div class="order-line-actions">
+                                        @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
+                                        {
+                                            <button type="button" class="btn btn-sm btn-light text-primary" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F7 یا F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F7 یا F8" @onclick="() => ShowLastPurchase(l.ProductId)">F7</button>
+                                        }
+                                        <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
+                                            <i class="bi bi-x-lg text-danger"></i>
                                         </button>
-                                    }
-                                    <button class="btn btn-sm btn-light" @onclick="() => RemoveLine(l)">
-                                        <i class="bi bi-x-lg text-danger"></i>
-                                    </button>
+                                    </div>
                                 </td>
                             </tr>
                         }
                     </tbody>
+                    @if (!UseInvoiceWizard)
+                    {
+                    <tfoot class="border-top-2 table-light" style="border-top: 2px solid #cbd5e1;">
+                        <tr class="align-middle">
+                            <td class="fw-bold text-secondary">
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis px-2 py-1 fs-8">جمع اقلام فاکتور</span>
+                                <span class="fs-8 text-muted ms-1">(@lines.Count.Num() سطر)</span>
+                            </td>
+                            <td class="text-center fw-600 num fs-8 text-muted">
+                                @lines.Sum(l => l.Qty).ToString("0.##")
+                            </td>
+                            @* ناخالص زیر ستون قیمت واحد *@
+                            <td class="text-center p-2">
+                                <div class="fs-9 text-muted mb-1">جمع ناخالص:</div>
+                                <div class="fw-bold fs-7 num text-dark">@totalGross.Money()</div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @* تخفیف کل اقلام زیر ستون تخفیف *@
+                            <td class="text-center p-2">
+                                <div class="fs-9 text-muted mb-1">تخفیف کل اقلام:</div>
+                                <div class="fw-bold fs-7 num @(totalLineDiscount > 0 ? "text-danger" : "text-muted")">
+                                    @(totalLineDiscount > 0 ? $"- {totalLineDiscount.Money()}" : "۰")
+                                </div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @* مبلغ نهایی فاکتور زیر ستون مبلغ کل *@
+                            <td class="text-start p-2">
+                                <div class="fs-9 text-muted mb-1">مبلغ نهایی فاکتور:</div>
+                                <div class="fw-900 fs-5 text-primary num" style="letter-spacing:-0.5px;">@grandTotal.Money()</div>
+                                <small class="fs-9 text-muted">ریال</small>
+                            </td>
+                            @if (Type == TransactionType.Sale)
+                            {
+                                @if (CanSeeProfit)
+                                {
+                                    <td class="text-start p-2">
+                                        <div class="fs-9 text-muted mb-1">سود کل:</div>
+                                        <div class="fw-bold fs-7 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</div>
+                                    </td>
+                                }
+                                @if (referrerId > 0 && CanSeeProfit)
+                                {
+                                    <td class="text-start p-2">
+                                        <div class="fs-9 text-muted mb-1">پورسانت:</div>
+                                        <div class="fw-bold fs-7 num text-primary">@(CommissionRatesKnown ? totalCommission.MoneyExact() : "نامشخص")</div>
+                                    </td>
+                                }
+                            }
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                    }
                 </table>
             </div>
+            @if (UseInvoiceWizard)
+            {
 
-            <div class="d-flex justify-content-between align-items-center mt-3 p-2 px-3 rounded-3" style="background:#f8fafc">
-                <span class="text-muted fs-8">@lines.Count سطر</span>
-                <div class="d-flex align-items-center flex-wrap gap-3">
-                    @if (Type == TransactionType.Sale)
+                <div class="purchase-totals-wrap">
+                    <div class="purchase-totals">
+                        @if (Type == TransactionType.Sale)
+                        {
+                            <div><span>جمع مقدار اقلام</span><strong class="num">@TotalLines.Sum(l => l.Qty).ToString("0.##")</strong></div>
+                        }
+                        <div><span>جمع ناخالص</span><strong class="num">@ExactMoney(totalGross) <small>ریال</small></strong></div>
+                        <div><span>تخفیف اقلام</span><strong class="num">@ExactMoney(totalLineDiscount) <small>ریال</small></strong></div>
+                        <div><span>مبلغ پس از تخفیف</span><strong class="num">@TotalLines.Sum(l => l.AfterDiscount).MoneyExact() <small>ریال</small></strong></div>
+                        <div><span>ارزش افزوده</span><strong class="num">@TotalLines.Sum(l => l.VatAmount).MoneyExact() <small>ریال</small></strong></div>
+                        <div class="purchase-totals-final"><span>مبلغ نهایی پس از ارزش افزوده</span><strong class="num">@ExactMoney(goodsTotal) <small>ریال</small></strong></div>
+                    </div>
+                </div>
+            }
+            }
+
+            @if (Type == TransactionType.Sale && invoiceStep == 1 && CanSeeProfit)
+            {
+                <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mt-2 p-2 px-3 rounded-3 border bg-light fs-8">
+                    @if (CanSeeProfit)
                     {
+                        <div>
+                            <span class="text-muted ms-1">سود تخمینی:</span>
+                            <span class="fw-700 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</span> ریال
+                        </div>
+                    }
+                    @if (referrerId > 0)
+                    {
+                        <div>
+                            <span class="text-muted ms-1">پورسانت معرف:</span>
+                            <span class="fw-700 num text-primary">@(CommissionRatesKnown ? totalCommission.MoneyExact() : "نامشخص")</span> @(CommissionRatesKnown ? "ریال" : "")
+                        </div>
                         @if (CanSeeProfit)
                         {
                             <div>
-                                <span class="text-muted ms-1 fs-8">سود تخمینی:</span>
-                                <span class="fw-700 fs-7 num @(totalProfit >= 0 ? "text-success" : "text-danger")">@totalProfit.Money()</span>
+                                <span class="text-muted ms-1">سود خالص:</span>
+                                <span class="fw-700 num @(netProfit >= 0 ? "text-success" : "text-danger")">@(CommissionRatesKnown ? netProfit.MoneyExact() : "نامشخص")</span> @(CommissionRatesKnown ? "ریال" : "")
                             </div>
-                        }
-                        @if (referrerId > 0)
-                        {
-                            <div>
-                                <span class="text-muted ms-1 fs-8">جمع پورسانت:</span>
-                                <span class="fw-700 fs-7 num text-primary">@totalCommission.Money()</span>
-                            </div>
-                            @if (CanSeeProfit)
-                            {
-                                <div>
-                                    <span class="text-muted ms-1 fs-8">سود خالص:</span>
-                                    <span class="fw-700 fs-7 num @(netProfit >= 0 ? "text-success" : "text-danger")">@netProfit.Money()</span>
-                                </div>
-                            }
                         }
                     }
-                    <div>
-                        <span class="text-muted ms-2 fs-7">جمع کل:</span>
-                        <span class="fw-800 fs-5 text-primary num">@grandTotal.Money()</span>
-                        <span class="fs-8 text-muted">ریال</span>
-                    </div>
                 </div>
-            </div>
+            }
         }
     </ChildContent>
 
     <Footer>
-        <button class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ")
-        </button>
-        <button class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : "ثبت فاکتور — خرید/فروش (F1)")
+        <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
+        @if (!loading && UseInvoiceWizard && invoiceStep == 1)
+        {
+            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
+                ادامه و انتخاب روش پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
+            </button>
+        }
+        else if (!loading)
+        {
+            @if (UseInvoiceWizard)
+            {
+                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
+            }
+            <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="invoice-print-paper-@formKey">
+                کاغذ چاپ
+                <select id="invoice-print-paper-@formKey" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size disabled="@saving">
+                    <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
+                </select>
+            </label>
+            <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
+            </button>
+            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : Type == TransactionType.Purchase ? "ثبت فاکتور خرید (F1)" : "ثبت فاکتور فروش (F1)")
+            </button>
+        }
+    </Footer>
+</Modal>
+
+<Modal Visible="showCashReconciliation" Title="تطبیق گردش نقدی فاکتور قدیمی" Size="modal-lg" OnClose="CloseLegacyCashReconciliation">
+    <ChildContent>
+        @if (EditOrder is not null)
+        {
+            <p>فاکتور <strong>@EditOrder.Number</strong> — مبلغ نقد ثبت‌شده: <strong class="num">@EditOrder.CashAmount.Money()</strong> ریال</p>
+            @if (EditOrder.CashAmount > 0)
+            {
+                <div class="alert alert-info py-2">ابتدا گردش صندوق/بانک و اسناد دستی قبلی را بررسی کنید. اگر سند قطعی برای همین پرداخت موجود است، شماره آن را وارد کنید؛ در غیر این صورت گردش نقدی در تاریخ فاکتور ثبت می‌شود. از ثبت دوباره یک پرداخت قبلی خودداری کنید.</div>
+                <div class="row g-2">
+                    <div class="col-md-4"><label class="form-label">نوع پرداخت</label>
+                        <select class="form-select" @bind="legacyCashType" disabled="@(EditOrder.CashType.HasValue)">
+                            <option value="0">وجه نقد</option><option value="1">کارت‌خوان</option><option value="2">کارت به کارت</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8"><label class="form-label">حساب صندوق/بانک</label>
+                        <select class="form-select" @bind="legacyAccountId" disabled="@(EditOrder.TrsAccountId is > 0)">
+                            <option value="0">انتخاب حساب…</option>
+                            @foreach (var account in AccountsForCashType((CashType)legacyCashType))
+                            { <option value="@account.Id">@account.DisplayName</option> }
+                        </select>
+                    </div>
+                    <div class="col-12"><label class="form-label">شماره سند دستی قطعی (در صورت وجود)</label>
+                        <input type="number" min="1" class="form-control" @bind="legacyVoucherNumber" placeholder="اگر سند قبلی وجود ندارد خالی بگذارید" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p>برای مبلغ نقد صفر گردش جدیدی ساخته نمی‌شود. اگر مبلغ نقد در سوابق فاکتور مشخص نیست، ابتدا مدارک آن را بررسی کنید.</p>
+            }
+            <label class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" @bind="legacyCashConfirmed" />
+                <span class="form-check-label">سوابق را بررسی کردم و درستی انتخاب بالا را تأیید می‌کنم.</span>
+            </label>
+            @if (!string.IsNullOrEmpty(legacyCashError)) { <div class="alert alert-danger mt-2 mb-0" role="alert">@legacyCashError</div> }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="CloseLegacyCashReconciliation" disabled="@savingLegacyCash">انصراف</button>
+        <button type="button" class="btn btn-primary" @onclick="ConfirmLegacyCashReconciliation" disabled="@(!legacyCashConfirmed || savingLegacyCash)">
+            @if (savingLegacyCash) { <span class="spinner-border spinner-border-sm ms-1"></span> } تأیید تطبیق
         </button>
     </Footer>
 </Modal>
 
-@if (lastPurchase is not null || lastPurchaseLoading)
+@if (showLastPurchaseModal)
 {
-    <Modal Visible="true" Title="آخرین فاکتور خرید" Size="modal-lg" OnClose="CloseLastPurchase">
+    <Modal Visible="true" Title="آخرین فاکتور خرید و مبنای سود" Size="modal-lg" OnClose="CloseLastPurchase">
         <ChildContent>
             @if (lastPurchaseLoading)
             {
                 <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
             }
-            else if (lastPurchase is not null)
+            else
             {
+                @if (minimumProfitBasis is { } basis)
+                {
+                    <div class="alert alert-light border py-2 mb-3" role="status">
+                        <strong>مبنای کنترل سود در تاریخ فاکتور:</strong>
+                        <span> @(basis.MinimumProfitEnabled ? $"فعال · {basis.MinimumMarkupPercent:0.##}٪" : (basis.PolicyConfigured ? "غیرفعال" : "تنظیم نشده"))</span>
+                        @if (basis.CompanyId.HasValue) { <small class="text-muted"> · شرکت @basis.CompanyId.Value.Num()</small> }
+                        @if (basis.PurchaseId.HasValue)
+                        {
+                            <div class="mt-1">خرید مبنا: <b>@basis.PurchaseNumber</b> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
+                                · مقدار <b class="num">@(basis.PurchaseQuantity.HasValue ? basis.PurchaseQuantity.Value.Qty() : "—")</b>
+                                · مبلغ کالا <b class="num">@(basis.PurchaseGross.HasValue ? basis.PurchaseGross.Value.MoneyExact() : "—")</b>
+                                · تخفیف خرید <b class="num">@(basis.PurchaseDiscount.HasValue ? basis.PurchaseDiscount.Value.MoneyExact() : "—")</b> ریال</div>
+                        }
+                        @if (basis.NetUnitCost.HasValue)
+                        {
+                            <div>بهای خالص تقریبی هر واحد: <b class="num">@basis.NetUnitCost.Value.ToString("#,##0.######", System.Globalization.CultureInfo.InvariantCulture)</b> ریال
+                                @if (basis.MinimumUnitRevenueBeforeSaleDiscountAndCommission.HasValue)
+                                { <span> · حداقل پایه یک واحد: <b class="num">@basis.MinimumUnitRevenueBeforeSaleDiscountAndCommission.Value.MoneyExact()</b> ریال</span> }
+                            </div>
+                            <small class="text-muted">حداقل پایه پیش از تخفیف فروش و پورسانت است؛ کنترل نهایی مبلغ واقعی سطر را می‌سنجد.</small>
+                        }
+                        @if (!string.IsNullOrEmpty(basis.Reason)) { <div class="text-danger">@basis.Reason</div> }
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(minimumProfitBasisError))
+                {
+                    <div class="alert alert-warning py-2">دریافت مبنای سود ناموفق بود: @minimumProfitBasisError</div>
+                }
+                @if (lastPurchase is not null)
+                {
+                <div class="fs-8 text-muted mb-2">آخرین خرید کلی در ادامه است؛ ممکن است تاریخ آن با مبنای بالا متفاوت باشد.</div>
                 <div class="d-flex flex-wrap gap-3 mb-3">
                     <div class="flex-grow-1">
                         <div class="fs-8 text-muted">شماره سند</div>
@@ -515,9 +894,9 @@
                                             <i class="bi bi-arrow-right-short text-primary"></i>
                                         }
                                     </td>
-                                    <td class="text-start num">@l.Quantity.Num()</td>
-                                    <td class="text-start num fw-700">@l.Price.Money()</td>
-                                    <td class="text-start num">@l.Total.Money()</td>
+                                    <td class="text-start num">@l.Quantity.Qty()</td>
+                                    <td class="text-start num fw-700">@l.Price.MoneyExact()</td>
+                                    <td class="text-start num">@l.Total.MoneyExact()</td>
                                 </tr>
                             }
                         </tbody>
@@ -525,9 +904,12 @@
                 </div>
                 <div class="d-flex justify-content-end mt-2">
                     <span class="text-muted ms-2">مبلغ کل:</span>
-                    <span class="fw-800 fs-6 text-primary num">@lastPurchase.TotalAmount.Money()</span>
+                    <span class="fw-800 fs-6 text-primary num">@lastPurchase.TotalAmount.MoneyExact()</span>
                     <span class="fs-8 text-muted">ریال</span>
                 </div>
+                }
+                else if (!string.IsNullOrEmpty(lastPurchaseError))
+                { <div class="text-muted">@lastPurchaseError</div> }
             }
         </ChildContent>
         <Footer>
@@ -536,14 +918,14 @@
     </Modal>
 }
 
-<Modal Visible="showCalc" Title="@(calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
+<Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
-        <div class="row g-3">
+        <div class="row g-3" data-order-calculator="@formKey">
             <div class="col-md-6">
                 <label class="form-label">مبلغ پایه (ریال)</label>
                 <input class="form-control num" value="@calcBaseText"
                        @oninput="@(e => calcBaseText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
-                <div class="fs-8 text-muted mt-1">پیش‌فرض: باقیماندهٔ سند پس از کسر نقد و سطرهای قبلی (@(Math.Max(0, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum()).Money()) ریال)</div>
+                <div class="fs-8 text-muted mt-1">@(calcForCheque && Type == TransactionType.Sale ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط" : "مبنای پیشنهادی: باقیماندهٔ سند پس از کسر سایر پرداخت‌ها") (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">درصد سود ماهانه</label>
@@ -554,73 +936,197 @@
                 </div>
             </div>
             <div class="col-md-4">
-                <label class="form-label">تعداد ماه (قسط)</label>
-                <input class="form-control num" @bind="calcMonths" type="number" min="1" max="60" dir="ltr" />
+                <label class="form-label">@(calcInterestOnly ? "تعداد ماه" : "تعداد ماه (قسط)")</label>
+                <input class="form-control num" @bind="calcMonths" @bind:event="oninput" type="number" min="1" max="60" dir="ltr" />
             </div>
-            <div class="col-md-4">
-                <label class="form-label">تاریخ شروع (اولین سررسید)</label>
-                <DatePicker @bind-Value="calcStart" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">فاصله هر @(calcForCheque ? "چک" : "قسط")</label>
-                <div class="input-group">
-                    <input class="form-control num" @bind="calcIntervalDays" type="number" min="1" dir="ltr" />
-                    <span class="input-group-text">روز</span>
-                </div>
-            </div>
-
-            @if (CalcBase > 0 && calcMonths > 0)
+            @if (!calcInterestOnly)
             {
+                <div class="col-md-4">
+                    <label class="form-label">تاریخ شروع (اولین سررسید)</label>
+                    <DatePicker @bind-Value="calcStart" OpenOnFocus="UseInvoiceWizard" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">فاصله هر @(calcForCheque ? "چک" : "قسط")</label>
+                    <div class="input-group">
+                        <input class="form-control num" @bind="calcIntervalDays" @bind:event="oninput" type="number" min="1" dir="ltr" />
+                        <span class="input-group-text">روز</span>
+                    </div>
+                </div>
+            }
+
+            @if (calcForCheque && Type == TransactionType.Sale)
+            {
+                <div class="col-12 fs-8 text-muted">
+                    سود همین محاسبه، یک‌بار به بدهی مشتری و درآمد فروشگاه اضافه می‌شود؛ به خود سود ارزش افزوده تعلق نمی‌گیرد.
+                </div>
+                @if (IsEdit && EditOrder?.HasChequeCharge != true)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">افزودن سود به فاکتور ثبت‌شده‌ای که ردیف تاخیر تادیه ندارد، در ویرایش پشتیبانی نمی‌شود؛ برای فروش جدید از همین ماشین‌حساب استفاده کنید.</div></div>
+                }
+                else if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">جزئیات محاسبه اولیه فاکتور قدیمی در دسترس نیست و نباید حدس زده شود؛ این فاکتور به بررسی سابقه نیاز دارد.</div></div>
+                }
+                else if (IsEdit && EditOrder?.HasChequeCharge == true)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">فاکتور دارای گردش بعدی قابل ویرایش مستقیم نیست؛ برای آن از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید. سابقه کامل هنگام ثبت در سرور کنترل می‌شود.</div></div>
+                }
+                <div class="col-12">
+                    <details class="fs-8">
+                        <summary class="text-secondary">شرایط اختیاری تعدیل سررسید (پیش‌فرض: نرخ ماهانه، هر ۳۰ روز)</summary>
+                        <div class="row g-2 mt-1">
+                            <div class="col-6">
+                                <label class="form-label">نرخ تعدیل هر بازه (٪)</label>
+                                <input class="form-control form-control-sm num" value="@calcAdjustmentRateText"
+                                       @oninput="@(e => calcAdjustmentRateText = e.Value?.ToString() ?? "")"
+                                       placeholder="همان نرخ ماهانه" inputmode="decimal" dir="ltr" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">بازه تعدیل (روز)</label>
+                                <input class="form-control form-control-sm num" type="number" min="1" @bind="calcAdjustmentDays" @bind:event="oninput" dir="ltr" />
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            }
+            @if (calcInterestOnly)
+            {
+                <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
+            }
+            else
+            {
+                @if (calcForCheque && cheques.Count > 0)
+                {
+                    <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
+                }
+                <div class="col-12 fs-8 text-muted">ردیف‌ها تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف کمتر از این واحد در ردیف آخر می‌ماند و جمع و سود تغییر نمی‌کنند.</div>
+            }
+            @if (CalculatorPlan is { } calc)
+            {
+                var rowAmounts = calcInterestOnly ? Array.Empty<decimal>() : calc.Amounts;
                 <div class="col-12">
                     <div class="calc-preview">
                         <div class="d-flex flex-wrap gap-3 justify-content-between">
-                            <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@CalcBase.Money()</div></div>
-                            <div><div class="fs-8 text-muted">سود کل (@CalcRate.Num()٪ × @calcMonths.Num() ماه)</div><div class="num fw-700 text-warning">@CalcInterest.Money()</div></div>
-                            <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@CalcTotal.Money()</div></div>
-                            <div><div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div><div class="num fw-800 text-success">@CalcPerMonth.Money()</div></div>
+                            <div><div class="fs-8 text-muted">مبلغ پایه</div><div class="num fw-700">@ExactMoney(calc.BaseAmount)</div></div>
+                            <div><div class="fs-8 text-muted">سود کل (@ExactPercent(calc.MonthlyRatePercent)٪ × @calc.Months.Num() ماه)</div><div class="num fw-700 text-warning">@ExactMoney(calc.Interest)</div></div>
+                            <div><div class="fs-8 text-muted">مبلغ نهایی</div><div class="num fw-800 text-primary">@ExactMoney(calc.Total)</div></div>
+                            @if (!calcInterestOnly)
+                            {
+                                <div>
+                                    <div class="fs-8 text-muted">مبلغ هر @(calcForCheque ? "چک" : "قسط")</div>
+                                    <div class="num fw-800 text-success">@CalculatorAmountRange(rowAmounts)</div>
+                                </div>
+                            }
                         </div>
+                        @if (!calcInterestOnly && rowAmounts.Distinct().Skip(1).Any())
+                        {
+                            <div class="fs-8 text-muted mt-2">توزیع ردیف‌ها:
+                                @foreach (var group in rowAmounts.GroupBy(amount => amount))
+                                {
+                                    <span class="me-2">@(group.Count().Num()) × @ExactMoney(group.Key) ریال</span>
+                                }
+                            </div>
+                        }
+                        @if (!calcInterestOnly && calc.Total % RoundedInstallmentDistribution.RoundingUnit != 0m)
+                        {
+                            <div class="fs-8 text-muted mt-1">برای حفظ جمع دقیق، ردیف آخر <b class="num">@ExactMoney(rowAmounts[^1])</b> ریال است.</div>
+                        }
                     </div>
                 </div>
+            }
+            else if (CalcBase > 0)
+            {
+                <div class="col-12 fs-8 text-danger">@(calcInterestOnly ? "مبلغ، نرخ یا تعداد ماه معتبر نیست." : "مبلغ، نرخ یا تعداد معتبر نیست، یا مبلغ برای ساخت این تعداد ردیف مثبت با رند ۱۰٬۰۰۰ ریالی کافی نیست.") مبلغ حداکثر دو رقم اعشار و نرخ حداکثر شش رقم اعشار دارد.</div>
             }
         </div>
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showCalc = false">انصراف (Esc)</button>
-        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalcBase <= 0 || calcMonths < 1 || !calcStart.HasValue)">
-            <i class="bi bi-check2-circle"></i> ساخت ردیف‌ها (F1)
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="ApplyCalc" disabled="@(CalculatorPlan is null || (!calcInterestOnly && (calcIntervalDays < 1 || !calcStart.HasValue)))">
+            <i class="bi bi-check2-circle"></i> @(calcInterestOnly ? "ثبت محاسبه سود در فاکتور (F1)" : "ساخت ردیف‌ها (F1)")
         </button>
     </Footer>
 </Modal>
 
-<datalist id="orderBankDataList">
-    @foreach (var b in bankAccounts.Where(x => !string.IsNullOrWhiteSpace(x.BankName)).Select(x => x.BankName!).Distinct())
-    {
-        <option value="@b" />
-    }
-    <option value="بانک ملت" />
-    <option value="بانک ملی" />
-    <option value="بانک صادرات" />
-    <option value="بانک تجارت" />
-    <option value="بانک سپه" />
-    <option value="بانک سامان" />
-    <option value="بانک پاسارگاد" />
-    <option value="بانک پارسیان" />
-    <option value="بانک رسالت" />
-    <option value="بانک مهر ایران" />
-    <option value="بانک کشاورزی" />
-    <option value="بانک مسکن" />
-    <option value="بانک رفاه" />
-    <option value="بانک آینده" />
-    <option value="بانک شهر" />
-</datalist>
 
-<QuickBankModal @bind-Visible="showQuickBank"
+
+<Modal Visible="showChequeBank" Title="افزودن بانک" Size="modal-sm" OnClose="CloseChequeBank">
+    <ChildContent>
+        <div data-order-child="@formKey">
+            <label class="form-label" for="chequeBankName">نام بانک <span class="text-danger">*</span></label>
+            <input id="chequeBankName" class="form-control" @bind="newChequeBankName" @bind:event="oninput" placeholder="نام بانک را وارد کنید" />
+            @if (Type == TransactionType.Purchase)
+            {
+                <div class="form-text">برای انتخاب در چک پرداختی، یک حساب بانکی ساده با همین نام ساخته می‌شود.</div>
+            }
+            else
+            {
+                <div class="form-text">نام بانک در همین مرورگر برای انتخاب‌های بعدی نگهداری می‌شود.</div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="CloseChequeBank" disabled="@savingChequeBank">انصراف (Esc)</button>
+        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="SaveChequeBank" disabled="@(savingChequeBank || string.IsNullOrWhiteSpace(newChequeBankName))">افزودن بانک (F1)</button>
+    </Footer>
+</Modal>
+
+<QuickBankModal InvoiceFormKey="@(UseInvoiceWizard ? formKey : null)" @bind-Visible="showQuickBank"
                 DefaultKind="quickBankDefaultKind"
                 OnAccountCreated="OnQuickBankCreated" />
 
+
+@* فرم سریع ایجاد مشتری / تأمین‌کننده و انتخاب خودکار در سند *@
+<PartyFormModal ShopQuickCreate="true" InvoiceFormKey="@(UseInvoiceWizard ? formKey : null)" Visible="showNewPartyModal"
+                Type="@(Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier)"
+                AllowReferrerPicker="@(Type == TransactionType.Sale)"
+                OnSaved="OnQuickPartyCreated"
+                OnCancel="() => showNewPartyModal = false" />
+
 @code {
-    /// <summary>دسترسی «مشاهده سود» — Orders.ViewProfit از بخش نقش‌ها و دسترسی‌ها</summary>
-    private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
+    private bool showNewPartyModal;
+
+    private void OpenQuickParty()
+    {
+        showNewPartyModal = true;
+        if (UseInvoiceWizard) pendingSectionFocus = "[data-order-child]";
+    }
+
+    private static string CustomerDisplay(Party c) => c.ReferrerId is not > 0 ? $"{c.Name} — بدون معرف"
+        : string.IsNullOrWhiteSpace(c.ReferrerName) ? $"{c.Name} — معرف: نامشخص" : $"{c.Name} — معرف: {c.ReferrerName}";
+
+    private async Task OnQuickPartyCreated(Party newParty)
+    {
+        showNewPartyModal = false;
+        try
+        {
+            if (Type == TransactionType.Sale)
+            {
+                customers = await OrderSvc.GetInvoicePartiesAsync(TransactionType.Sale);
+                partyLookup = customers.Where(c => c.IsActive)
+                    .Select(c => PartyService.ToLookup(c, CustomerDisplay(c)))
+                    .ToList();
+            }
+            else
+            {
+                partyLookup = (await OrderSvc.GetInvoicePartiesAsync(TransactionType.Purchase)).Where(p => p.IsActive)
+                    .Select(p => PartyService.ToLookup(p)).ToList();
+            }
+
+            // انتخاب خودکار طرف حساب جدید در کمبوباکس
+            activePartyIds.Add(newParty.Id);
+            OnPartyChanged(newParty.Id);
+            InvoiceSuccess($"{(Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده")} «{newParty.Name}» افزوده و انتخاب شد.");
+        }
+        catch (Exception ex)
+        {
+            InvoiceError(ex.Message);
+        }
+    }
+
+    /// <summary>مجوز مؤثر سمت سرور؛ claim ذخیره‌شده در مرورگر ممکن است قدیمی باشد.</summary>
+    private bool canSeeProfit;
+    private bool CanSeeProfit => canSeeProfit;
 
     [Parameter] public TransactionType Type { get; set; } = TransactionType.Sale;
     [Parameter] public EventCallback OnSaved { get; set; }
@@ -628,6 +1134,57 @@
 
     /// <summary>سند در حال ویرایش (null = سند جدید).</summary>
     [Parameter] public Order? EditOrder { get; set; }
+
+    /// <summary>مشخصات تجاری مجاز برای ایجاد فاکتور تازه، بدون شناسه یا اطلاعات تسویهٔ سند قبلی.</summary>
+    [Parameter] public InvoiceCopyTemplate? CopyTemplate { get; set; }
+
+    private bool showCashReconciliation, savingLegacyCash, legacyCashConfirmed;
+    private string? legacyCashError;
+    private Guid legacyCashOperationId;
+    private int legacyCashType, legacyAccountId;
+    private int? legacyVoucherNumber;
+
+    private void OpenLegacyCashReconciliation()
+    {
+        if (EditOrder is null) return;
+        legacyCashType = (int)(EditOrder.CashType ?? CashType.Cash);
+        legacyAccountId = EditOrder.TrsAccountId ?? 0;
+        legacyVoucherNumber = null;
+        legacyCashConfirmed = false;
+        legacyCashError = null;
+        legacyCashOperationId = Guid.NewGuid();
+        showCashReconciliation = true;
+    }
+    private void CloseLegacyCashReconciliation() { if (!savingLegacyCash) showCashReconciliation = false; }
+    private async Task ConfirmLegacyCashReconciliation()
+    {
+        if (savingLegacyCash || !legacyCashConfirmed || EditOrder is null) return;
+        savingLegacyCash = true;
+        legacyCashError = null;
+        try
+        {
+            var command = new ShopCashReconciliationCommand
+            {
+                OperationId = legacyCashOperationId, Confirmed = true, ExpectedCashAmount = EditOrder.CashAmount,
+                TrsAccountId = EditOrder.CashAmount > 0 ? legacyAccountId : null,
+                CashType = EditOrder.CashAmount > 0 ? (CashType)legacyCashType : null,
+                ExistingVoucherNumber = legacyVoucherNumber
+            };
+            await OrderSvc.ReconcileCashAsync(EditOrder.Id, command);
+            EditOrder.ShopCashLedgerEnabled = true;
+            if (EditOrder.CashAmount > 0)
+            {
+                EditOrder.TrsAccountId = legacyAccountId;
+                EditOrder.CashType = (CashType)legacyCashType;
+                trsAccountId = legacyAccountId;
+                cashTypeStr = legacyCashType.ToString();
+            }
+            showCashReconciliation = false;
+            InvoiceSuccess("تطبیق گردش نقدی ثبت شد.");
+        }
+        catch (Exception ex) { legacyCashError = ex.Message; }
+        finally { savingLegacyCash = false; }
+    }
 
     private bool IsEdit => EditOrder is not null;
 
@@ -641,12 +1198,37 @@
         public int Id { get; set; }
         public int ProductId { get; set; }
         public decimal? OriginalQty { get; set; }
+        public int? OriginalProductId { get; set; }
+        public decimal? OriginalPrice { get; set; }
+        public decimal? OriginalGross { get; set; }
+        public decimal? OriginalDiscountAmount { get; set; }
+        public decimal? OriginalDiscountPercent { get; set; }
+        public bool? OriginalDiscountIsAmount { get; set; }
+        public decimal? OriginalVatValue { get; set; }
+        public decimal? OriginalVatAmount { get; set; }
         public string QtyText { get; set; } = "1";
         public string PriceText { get; set; } = "";
+        public string NewSalePriceText { get; set; } = "";
+        public string? PriceNotice { get; set; }
+        public int PriceRequestVersion { get; set; }
         public string Unit { get; set; } = "";
-        public decimal Qty => Fa.ParseDecimal(QtyText);
-        public decimal Price => Fa.ParseDecimal(PriceText);
-        public decimal Total => Qty * Price;
+        public string DiscountText { get; set; } = "";
+        public decimal DiscountPercent { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public bool DiscountIsAmount { get; set; }
+        public decimal Qty => ShopQuantityInput.TryParse(QtyText, out var quantity) ? quantity : 0m;
+        public decimal Price => PurchaseSalePriceInput.TryParseLegacy(PriceText, out var price) ? price : 0m;
+        public bool SameOriginalBasis => Id > 0 && OriginalProductId == ProductId && OriginalQty == Qty && OriginalPrice == Price;
+        public bool SameOriginalDiscount => SameOriginalBasis && OriginalDiscountIsAmount == DiscountIsAmount &&
+            (DiscountIsAmount ? OriginalDiscountAmount == DiscountAmount : OriginalDiscountPercent == DiscountPercent && OriginalDiscountAmount == DiscountAmount);
+        public decimal Gross => SameOriginalBasis && OriginalGross.HasValue ? OriginalGross.Value :
+            ShopInvoiceAmounts.TryGross(Qty, Price, out var gross) ? gross : 0m;
+        public string VatText { get; set; } = "";
+        public decimal VatValue => Math.Max(0, Fa.ParseDecimal(VatText));
+        public decimal AfterDiscount => Math.Max(0, Gross - DiscountAmount);
+        public decimal VatAmount => SameOriginalDiscount && OriginalVatValue == VatValue && OriginalVatAmount.HasValue
+            ? OriginalVatAmount.Value : OrderLineAmounts.Vat(AfterDiscount, VatValue);
+        public decimal Total => AfterDiscount + VatAmount;
     }
 
     private List<LineVm> lines = new() { new LineVm() };
@@ -654,12 +1236,60 @@
     private List<LookupItem> whLookup = new();
     private List<LookupItem> partyLookup = new();
     private List<Product> products = new();
+    private HashSet<int> activeWarehouseIds = new(), activePartyIds = new();
+    private readonly InvoiceWarehouseStock warehouseStock = new();
     private int warehouseId, partyId, referrerId;
     private DateTime? date;
     private string description = "";
-    private bool loading = true, saving;
+    private bool loading = true, saving, canManagePricing;
+    private string? formError;
+    private string? cashTrackingNumber;
+    private void ShowFormError(string message) => formError = message;
+    private void InvoiceSuccess(string message) => Toast.ShowAtTopRight(message, "success");
+    private void InvoiceError(string message) => Toast.ShowAtTopRight(message, "error");
+    private void InvoiceInfo(string message) => Toast.ShowAtTopRight(message, "info");
+    private int invoiceStep = 1;
+    // This is a form-only baseline, never an alteration of a posted payment.
+    private decimal? paymentStepGoodsTotal;
+    private bool paymentAmountsNeedReview;
+    // Only rows generated in this open form are eligible for automatic refresh.
+    private CalculatedChequeSchedule? calculatedChequeSchedule;
+    private readonly string formKey = Guid.NewGuid().ToString("N");
+    private bool invoiceInitialFocusDone;
+    private string? pendingSectionFocus;
+    private bool UseInvoiceWizard => Type is TransactionType.Purchase or TransactionType.Sale;
 
-    private decimal grandTotal => lines.Sum(l => l.Total);
+    // خلاصه و پرداخت فقط سطرهایی را شامل می‌شوند که واقعاً ذخیره خواهند شد.
+    private IEnumerable<LineVm> TotalLines => UseInvoiceWizard
+        ? lines.Where(l => l.ProductId > 0 && l.Qty > 0)
+        : lines;
+    private decimal goodsTotal => TotalLines.Sum(l => l.Total);
+    private decimal grandTotal => goodsTotal + saleChequeIncome;
+
+    // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
+    // table the percentage columns share the space left by this fixed-width action column.
+    // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
+    private const decimal SaleActionsColumnRem = 4.5m;
+    private const int SaleBaseColumnWeight = 95;
+    private const int SaleExtraColumnWeight = 11;
+    private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
+        ? SaleActionsColumnRem.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "rem"
+        : InvoiceColumnWidth(5);
+
+    private string InvoiceColumnWidth(int purchaseWeight, int? saleWeight = null)
+    {
+        if (Type != TransactionType.Sale)
+        {
+            var total = Type == TransactionType.Purchase && canManagePricing ? 111m : 100m;
+            return (100m * purchaseWeight / total).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        }
+
+        var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
+        var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
+        var weight = saleWeight ?? purchaseWeight;
+        return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    }
+
 
     // ---------------- پرداخت ترکیبی (فروش و خرید) ----------------
     // هر جزء مستقل فعال/غیرفعال می‌شود؛ باقی‌ماندهٔ هر سطر = مبلغ سند − (نقد + سطرهای قبلی)
@@ -675,7 +1305,54 @@
     private int? trsAccountId;
     private bool showQuickBank;
     private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
-    private int? quickBankChequeIndex;
+    private bool showChequeBank, savingChequeBank;
+    private int? chequeBankIndex;
+    private string newChequeBankName = "";
+    private List<string> customChequeBanks = new();
+    private static readonly string[] PopularChequeBanks = { "بانک ملت", "بانک ملی", "بانک صادرات", "بانک تجارت", "بانک سپه", "بانک سامان", "بانک پاسارگاد", "بانک پارسیان", "بانک رسالت", "بانک مهر ایران", "بانک کشاورزی", "بانک مسکن", "بانک رفاه", "بانک آینده", "بانک شهر" };
+    private List<string> ChequeBankNames => PopularChequeBanks.Concat(customChequeBanks).Concat(bankAccounts.Where(a => !string.IsNullOrWhiteSpace(a.BankName)).Select(a => a.BankName!)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    private List<LookupItem> CashTypeLookup => new() { new() { Id = 1, Name = "وجه نقد" }, new() { Id = 2, Name = "کارت‌خوان (POS)" }, new() { Id = 3, Name = "کارت به کارت" } };
+    private List<LookupItem> CashAccountLookup => AccountsForCashType(CashKind).Select(a => new LookupItem { Id = a.Id, Name = a.DisplayName }).ToList();
+    private List<LookupItem> ChequeAccountLookup => bankAccounts.Where(a => a.Kind == TreasuryAccountKind.Bank).Select(a => new LookupItem { Id = a.Id, Name = a.DisplayName }).ToList();
+    private void OnCashTypePicked(int id) { cashTypeStr = Math.Max(0, id - 1).ToString(); OnCashTypeChanged(CashKind); }
+    private void OnCashAccountPicked(int id) => trsAccountId = id > 0 ? id : null;
+    private void OnChequeAccountPicked(int index, int id) => OnChequeAccountChanged(index, new ChangeEventArgs { Value = id });
+
+    private void OpenChequeBank(int index)
+    {
+        chequeBankIndex = index;
+        newChequeBankName = "";
+        showChequeBank = true;
+        if (UseInvoiceWizard) pendingSectionFocus = "[data-order-child]";
+    }
+    private void CloseChequeBank() => showChequeBank = false;
+    private async Task SaveChequeBank()
+    {
+        var name = newChequeBankName.Trim();
+        if (savingChequeBank || string.IsNullOrWhiteSpace(name) || chequeBankIndex is not int index || index >= cheques.Count) return;
+        savingChequeBank = true;
+        try
+        {
+            if (Type == TransactionType.Purchase)
+            {
+                var account = await AccountSvc.SaveAsync(new TrsAccount { Kind = TreasuryAccountKind.Bank, Name = name, BankName = name, IsActive = true });
+                bankAccounts.Add(account);
+                cheques[index].TrsAccountId = account.Id;
+                cheques[index].BankName = account.BankName ?? name;
+            }
+            else
+            {
+                var updated = customChequeBanks.Append(name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                await JS.InvokeVoidAsync("localStorage.setItem", "invoiceCheque.customBanks", System.Text.Json.JsonSerializer.Serialize(updated));
+                customChequeBanks = updated;
+                cheques[index].BankName = name;
+            }
+            showChequeBank = false;
+        }
+        catch (Exception ex) { InvoiceError("ثبت بانک انجام نشد: " + ex.Message); }
+        finally { savingChequeBank = false; }
+    }
+
 
     private List<TrsAccount> AccountsForCashType(CashType ct) => ct switch
     {
@@ -696,14 +1373,6 @@
         }
     }
 
-    private void OnCashAccountChanged(ChangeEventArgs e)
-    {
-        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
-            trsAccountId = id;
-        else
-            trsAccountId = null;
-    }
-
     private void OnChequeAccountChanged(int index, ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
@@ -720,16 +1389,9 @@
 
     private void OpenQuickBank(TreasuryAccountKind defaultKind = TreasuryAccountKind.Bank)
     {
-        quickBankChequeIndex = null;
         quickBankDefaultKind = defaultKind;
         showQuickBank = true;
-    }
-
-    private void OpenQuickBankForCheque(int index, TreasuryAccountKind defaultKind = TreasuryAccountKind.Bank)
-    {
-        quickBankChequeIndex = index;
-        quickBankDefaultKind = defaultKind;
-        showQuickBank = true;
+        if (UseInvoiceWizard) pendingSectionFocus = "[data-order-child]";
     }
 
     private void OnQuickBankCreated(TrsAccount newAcc)
@@ -739,15 +1401,10 @@
             bankAccounts.Add(newAcc);
         }
 
-        if (quickBankChequeIndex.HasValue && quickBankChequeIndex.Value < cheques.Count)
-        {
-            cheques[quickBankChequeIndex.Value].TrsAccountId = newAcc.Id;
-            cheques[quickBankChequeIndex.Value].BankName = newAcc.BankName ?? newAcc.Name;
-        }
-        else
-        {
+        if (AccountsForCashType(CashKind).Any(a => a.Id == newAcc.Id))
             trsAccountId = newAcc.Id;
-        }
+        else
+            InvoiceError("حساب ثبت شد، اما با نوع پرداخت انتخاب‌شده سازگار نیست.");
         StateHasChanged();
     }
 
@@ -755,7 +1412,9 @@
     private string cashAmountText = "";
 
     /// <summary>جزء نقدی: اگر تنها جزء فعال باشد تمام مبلغ سند است، وگرنه مبلغی که کاربر وارد می‌کند.</summary>
-    private decimal CashPart => !HasNonCash ? grandTotal : Fa.ParseDecimal(cashAmountText);
+    private decimal CashPart => UseInvoiceWizard && !useCash
+        ? 0m
+        : !HasNonCash ? grandTotal : Fa.ParseDecimal(cashAmountText);
 
     /// <summary>باقی‌ماندهٔ نهایی (می‌تواند منفی باشد = مازاد/سود مدت‌دار).</summary>
     private decimal FinalRemaining => grandTotal - CashPart - ChequeSum() - InstSum();
@@ -782,17 +1441,15 @@
         return grandTotal - s;
     }
 
-    private void OnCashTypeSelect(ChangeEventArgs e)
-    {
-        cashTypeStr = e.Value?.ToString() ?? "0";
-        OnCashTypeChanged(CashKind);
-    }
-
     private void OnCashAmountInput(ChangeEventArgs e)
         => cashAmountText = Fa.FormatTyping(e.Value?.ToString());
 
     private void OnChequeAmountInput(int i, ChangeEventArgs e)
-        => chequeAmounts[i] = Fa.FormatTyping(e.Value?.ToString());
+    {
+        var value = Fa.FormatTyping(e.Value?.ToString());
+        if (value != chequeAmounts[i]) calculatedChequeSchedule = null;
+        chequeAmounts[i] = value;
+    }
 
     private void OnInstAmountInput(int i, ChangeEventArgs e)
         => instAmounts[i] = Fa.FormatTyping(e.Value?.ToString());
@@ -802,24 +1459,44 @@
     {
         useCash = !useCash;
         if (!useCash && !HasNonCash) useCash = true; // حداقل یک جزء باید بماند
+        if (useCash && UseInvoiceWizard) pendingSectionFocus = "[data-pay-cash-box]";
     }
 
     private void ToggleCheque()
     {
+        if (useCheque && (saleChequeCharge is not null || (IsEdit && EditOrder?.HasChequeCharge == true)))
+        {
+            InvoiceInfo(IsEdit
+                ? "چک فاکتور دارای تاخیر تادیه را از این بخش نمی‌توان غیرفعال کرد."
+                : "برای غیرفعال‌کردن چک، ابتدا ردیف سود چک را حذف کنید.");
+            return;
+        }
         useCheque = !useCheque;
+        EnsureInvoicePaymentMethod();
         if (useCheque && cheques.Count == 0) AddCheque();
+        if (useCheque && UseInvoiceWizard) pendingSectionFocus = "[data-pay-cheque-box]";
     }
 
     private void ToggleInstallment()
     {
         useInstallment = !useInstallment;
+        EnsureInvoicePaymentMethod();
         if (useInstallment && installments.Count == 0) BuildInstallments(silent: true);
+        if (useInstallment && UseInvoiceWizard) pendingSectionFocus = "[data-pay-inst-box]";
     }
 
     private void ToggleCredit()
     {
         useCredit = !useCredit;
+        EnsureInvoicePaymentMethod();
         if (useCredit && !creditDue.HasValue) creditDue = DateTime.Now.AddMonths(1);
+        if (useCredit && UseInvoiceWizard) pendingSectionFocus = "[data-pay-credit-box]";
+    }
+
+    // اگر آخرین جزء غیرفعال شد، سند به پرداخت نقدی برمی‌گردد.
+    private void EnsureInvoicePaymentMethod()
+    {
+        if (UseInvoiceWizard && !useCash && !HasNonCash) useCash = true;
     }
 
     /// <summary>روش پرداخت اعلامی به سرور (سرور خودش ترکیبی/تک‌جزء را از اجزا استخراج می‌کند).</summary>
@@ -829,62 +1506,248 @@
         : useInstallment ? PaymentMethod.Installment
         : PaymentMethod.Credit;
 
+    // ردیف مالی از همان محاسبهٔ چک ساخته می‌شود؛ مبالغ چک خارج از «ساخت ردیف‌ها» تغییر نمی‌کنند.
+    private SaleChequeChargeInput? saleChequeCharge;
+    private decimal saleChequeIncome, chargeInvoiceBase, chargeCashBase, chargeInstallmentBase;
+    private bool removedCalculatedChequeIncome;
+    private bool HasChequeIncomeArticle => saleChequeCharge is not null || (IsEdit && EditOrder?.HasChequeCharge == true);
+    private bool StrictPaymentBalance => HasChequeIncomeArticle || removedCalculatedChequeIncome;
+    private bool ExactPaymentDisplay => StrictPaymentBalance || useCheque || useInstallment ||
+        grandTotal % 1m != 0m || CashPart % 1m != 0m;
+
+    private void RemoveSaleChequeCharge()
+    {
+        if (saleChequeCharge is null) return;
+        calculatedChequeSchedule = null;
+        saleChequeCharge = null;
+        saleChequeIncome = 0;
+        chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0;
+        removedCalculatedChequeIncome = true;
+        InvoiceInfo("ردیف سود حذف شد؛ مبلغ چک‌ها تغییر نکرده است. در صورت مازاد، پرداخت‌ها را دستی اصلاح کنید.");
+    }
+
     // ---------------- ماشین‌حساب اقساط/چک با سود ----------------
-    private bool showCalc, calcForCheque;
-    private string calcBaseText = "", calcRateText = "";
-    private int calcMonths = 3, calcIntervalDays = 30;
+    private bool showCalc, calcForCheque, calcInterestOnly;
+    private string calcBaseText = "", calcRateText = "", calcAdjustmentRateText = "";
+    private int calcMonths = 3, calcIntervalDays = 30, calcAdjustmentDays = 30;
     private DateTime? calcStart;
 
     private decimal CalcBase => Fa.ParseDecimal(calcBaseText);
-    private decimal CalcRate => Fa.ParseDecimal(calcRateText);
-    /// <summary>سود ساده ماهانه: پایه × درصد × تعداد ماه</summary>
-    private decimal CalcInterest => Math.Round(CalcBase * CalcRate / 100m * calcMonths, 0);
-    private decimal CalcTotal => CalcBase + CalcInterest;
-    private decimal CalcPerMonth => calcMonths > 0 ? Math.Floor(CalcTotal / calcMonths) : 0;
 
-    private void OpenCalc(bool forCheque)
+    private static bool TryCalculatorPercent(string? value, out decimal result)
+    {
+        if (string.IsNullOrWhiteSpace(value)) { result = 0; return true; }
+        var normalized = Fa.ToEn(value).Trim().Replace(",", "").Replace("٬", "").Replace("٫", ".");
+        return decimal.TryParse(normalized, System.Globalization.NumberStyles.AllowLeadingSign |
+            System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out result);
+    }
+
+    private InvoiceInstallmentCalculation? CalculatorPlan
+    {
+        get
+        {
+            if (!TryCalculatorPercent(calcRateText, out var rate)) return null;
+            try
+            {
+                return calcInterestOnly
+                    ? InvoiceInstallmentCalculation.CreateInterestOnly(CalcBase, rate, calcMonths)
+                    : InvoiceInstallmentCalculation.Create(CalcBase, rate, calcMonths);
+            }
+            catch (ArgumentOutOfRangeException) { return null; }
+        }
+    }
+
+    private decimal CalculatorSuggestedBase => calcForCheque && Type == TransactionType.Sale
+        ? Math.Max(0m, goodsTotal - CashPart - InstSum())
+        : Math.Max(0m, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum());
+
+    private static string ExactMoney(decimal amount) => Fa.MoneyExact(amount);
+
+    private static string CalculatorAmountRange(IReadOnlyList<decimal> amounts)
+    {
+        var minimum = amounts.Min();
+        var maximum = amounts.Max();
+        return minimum == maximum ? ExactMoney(minimum) : $"{ExactMoney(minimum)} تا {ExactMoney(maximum)}";
+    }
+
+    private static string ExactPercent(decimal rate)
+        => Fa.Digits(rate.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture));
+
+    // The server checks the complete history; this avoids replacing form rows when later
+    // activity is already visible on the loaded invoice.
+    private bool KnownLaterChequeActivity
+    {
+        get
+        {
+            if (!IsEdit || EditOrder is not { HasChequeCharge: true } order) return false;
+            if (order.IsCancelled || order.ChequeReturns.Count > 0 ||
+                order.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) ||
+                order.Installments.Any(i => i.IsPaid) || order.SettledAmount != order.CashAmount) return true;
+            if (order.ChequeChargeSnapshot is not { } snapshot) return false;
+            try
+            {
+                return SaleChequeInitialCalculation.Calculate(snapshot.CalculatorBaseAmount, snapshot.CalculatorRatePercent,
+                    snapshot.CalculatorMonths) != order.ChequeIncomeAmount;
+            }
+            catch (ArgumentOutOfRangeException) { return true; }
+        }
+    }
+
+    private void OpenCalc(bool forCheque, bool interestOnly = false)
     {
         calcForCheque = forCheque;
-        // پایهٔ محاسبه = باقی‌مانده پس از نقد و جزء «دیگر» (چک‌ها یا اقساط)
-        var baseRemain = forCheque
-            ? Math.Max(0, grandTotal - CashPart - InstSum())
-            : Math.Max(0, grandTotal - CashPart - ChequeSum());
-        calcBaseText = baseRemain > 0 ? Fa.FormatTyping(baseRemain.ToString("0")) : "";
-        if (!calcStart.HasValue) calcStart = DateTime.Now.AddMonths(1); // پیش‌فرض: یک ماه بعد
+        calcInterestOnly = forCheque && Type == TransactionType.Sale && interestOnly;
+        // هنگام محاسبهٔ مجدد، سود قبلی نباید دوباره بخشی از مبنای چک شود.
+        var baseRemain = CalculatorSuggestedBase;
+        if (forCheque && Type == TransactionType.Sale && saleChequeCharge is not null)
+        {
+            if (chargeInvoiceBase == goodsTotal && chargeCashBase == CashPart && chargeInstallmentBase == InstSum())
+                baseRemain = saleChequeCharge.CalculatorBaseAmount;
+            calcRateText = ExactDecimal(saleChequeCharge.CalculatorRatePercent);
+            calcMonths = saleChequeCharge.CalculatorMonths;
+            calcAdjustmentRateText = saleChequeCharge.AdjustmentRatePercent == saleChequeCharge.CalculatorRatePercent
+                ? "" : ExactDecimal(saleChequeCharge.AdjustmentRatePercent);
+            calcAdjustmentDays = saleChequeCharge.AdjustmentPeriodDays;
+        }
+        else if (forCheque && Type == TransactionType.Sale)
+        {
+            calcAdjustmentRateText = ""; // خالی یعنی همان نرخ ماهانه، بدون ورود دوباره
+            calcAdjustmentDays = 30;
+        }
+        calcBaseText = baseRemain > 0 ? Fa.FormatTyping(ExactDecimal(baseRemain)) : "";
+        if (!calcStart.HasValue)
+            calcStart = forCheque && chequeDates.Count > 0 && chequeDates[0].HasValue
+                ? chequeDates[0] : DateTime.Now.AddMonths(1);
         showCalc = true;
+        if (UseInvoiceWizard) pendingSectionFocus = "[data-order-calculator]";
     }
 
     private void ApplyCalc()
     {
-        if (CalcBase <= 0 || calcMonths < 1 || !calcStart.HasValue) return;
+        var plan = CalculatorPlan;
+        if (plan is null || (!calcInterestOnly && (!calcStart.HasValue || calcIntervalDays < 1)))
+        {
+            InvoiceError("مبنا، نرخ، تعداد، تاریخ یا فاصله اقساط معتبر نیست.");
+            return;
+        }
+        var calculation = plan.Value;
+        var rowAmounts = calcInterestOnly ? Array.Empty<decimal>() : calculation.Amounts;
+        var adjustmentRate = calculation.MonthlyRatePercent;
+        SaleChequeChargeInput? calculatedCharge = null;
+        if (calcForCheque && Type == TransactionType.Sale)
+        {
+            if (KnownLaterChequeActivity)
+            {
+                InvoiceError("فاکتور دارای گردش بعدی است؛ از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+            {
+                InvoiceError("جزئیات سود این فاکتور قدیمی موجود نیست؛ بررسی دستی سابقه لازم است.");
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(calcAdjustmentRateText) &&
+                !TryCalculatorPercent(calcAdjustmentRateText, out adjustmentRate))
+            {
+                InvoiceError("نرخ تعدیل سررسید معتبر نیست.");
+                return;
+            }
+            if (calculation.BaseAmount > goodsTotal)
+            {
+                InvoiceError("مبنای سود بیشتر از مبلغ کالا و ارزش افزوده است.");
+                return;
+            }
+            try { calculatedCharge = calculation.CreateSaleChequeCharge(goodsTotal, adjustmentRate, calcAdjustmentDays); }
+            catch (ArgumentOutOfRangeException)
+            {
+                InvoiceError("نرخ یا بازه تعدیل، یا جمع کالا و سود، خارج از محدوده مجاز است.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge != true && calculatedCharge is not null)
+            {
+                InvoiceError("افزودن سود به فاکتور ثبت‌شده بدون ردیف تاخیر تادیه پشتیبانی نمی‌شود.");
+                return;
+            }
+            if (IsEdit && EditOrder?.HasChequeCharge == true && calculatedCharge is null)
+            {
+                InvoiceError("حذف کامل سود از فاکتور ثبت‌شده با این ویرایش پشتیبانی نمی‌شود.");
+                return;
+            }
+        }
 
-        var per = CalcPerMonth;
-        var last = CalcTotal - per * (calcMonths - 1); // قسط آخر = مانده دقیق
+        if (calcInterestOnly)
+        {
+            // Only replace the pending income article. Manual cheque rows and their
+            // amounts, numbers, banks and dates are deliberately untouched.
+            calculatedChequeSchedule = null;
+            var hadCharge = saleChequeCharge is not null;
+            saleChequeCharge = calculatedCharge;
+            saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
+            chargeInvoiceBase = calculatedCharge is null ? 0m : goodsTotal;
+            chargeCashBase = calculatedCharge is null ? 0m : CashPart;
+            chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
+            removedCalculatedChequeIncome = calculatedCharge is null && (hadCharge || removedCalculatedChequeIncome);
+            showCalc = false;
+            InvoiceInfo(calculatedCharge is null
+                ? "سود محاسبه‌شده صفر است؛ مبلغ چک‌ها تغییر نکرد. جمع پرداخت‌ها را بررسی کنید."
+                : $"تاخیر تادیه چک {ExactMoney(calculation.Interest)} ریال محاسبه شد؛ مبلغ چک‌ها تغییر نکرد. جمع پرداخت‌ها را بررسی کنید.");
+            return;
+        }
+
+        // محاسبه و اعتبارسنجی همه سررسیدها پیش از جایگزینی هر ردیف انجام شود.
+        var dates = new List<DateTime>();
+        try
+        {
+            for (var i = 0; i < calculation.Months; i++)
+                dates.Add(calcStart.Value.Date.AddDays((double)((long)i * calcIntervalDays)));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            InvoiceError("تاریخ یا فاصله سررسیدها خارج از محدوده مجاز است.");
+            return;
+        }
 
         if (calcForCheque)
         {
-            cheques.Clear(); chequeAmounts.Clear(); chequeDates.Clear();
-            for (var i = 0; i < calcMonths; i++)
+            var newCheques = new List<ChequeDto>();
+            var newAmounts = new List<string>();
+            var newDates = new List<DateTime?>();
+            for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calcMonths - 1 ? last : per;
-                cheques.Add(new ChequeDto());
-                chequeAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
-                chequeDates.Add(calcStart.Value.AddDays((double)(i * calcIntervalDays)));
+                var amount = rowAmounts[i];
+                newCheques.Add(new ChequeDto());
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
+                newDates.Add(dates[i]);
             }
-            Toast.Success($"{calcMonths} چک ساخته شد — مبلغ نهایی {CalcTotal.Money()} ریال (شامل {CalcInterest.Money()} سود). شماره و بانک هر چک را تکمیل کنید.");
+            cheques = newCheques; chequeAmounts = newAmounts; chequeDates = newDates;
+            if (Type == TransactionType.Sale)
+            {
+                saleChequeCharge = calculatedCharge;
+                saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
+                chargeInvoiceBase = calculatedCharge is null ? 0m : goodsTotal;
+                chargeCashBase = calculatedCharge is null ? 0m : CashPart;
+                chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
+                removedCalculatedChequeIncome = false;
+            }
+            calculatedChequeSchedule = new CalculatedChequeSchedule(calculation, goodsTotal, CashPart, InstSum(),
+                adjustmentRate, calcAdjustmentDays);
+            InvoiceSuccess($"{calculation.Months} چک ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود). شماره و بانک هر چک را تکمیل کنید.");
         }
         else
         {
-            installments.Clear(); instAmounts.Clear(); instDates.Clear();
-            for (var i = 0; i < calcMonths; i++)
+            var newInstallments = new List<InstallmentDto>();
+            var newAmounts = new List<string>();
+            var newDates = new List<DateTime?>();
+            for (var i = 0; i < calculation.Months; i++)
             {
-                var amount = i == calcMonths - 1 ? last : per;
-                installments.Add(new InstallmentDto { No = i + 1 });
-                instAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
-                instDates.Add(calcStart.Value.AddDays((double)(i * calcIntervalDays)));
+                var amount = rowAmounts[i];
+                newInstallments.Add(new InstallmentDto { No = i + 1 });
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amount)));
+                newDates.Add(dates[i]);
             }
-            instCount = calcMonths;
-            Toast.Success($"دفترچه {calcMonths} قسطی ساخته شد — مبلغ نهایی {CalcTotal.Money()} ریال (شامل {CalcInterest.Money()} سود).");
+            installments = newInstallments; instAmounts = newAmounts; instDates = newDates;
+            instCount = calculation.Months;
+            InvoiceSuccess($"دفترچه {calculation.Months} قسطی ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود).");
         }
         showCalc = false;
     }
@@ -903,14 +1766,17 @@
     /// <summary>سطر چک جدید — مبلغ پیش‌فرض = باقی‌ماندهٔ فعلی سند (نقد + چک‌ها + اقساط کسر شده).</summary>
     private void AddCheque()
     {
+        calculatedChequeSchedule = null;
         var rest = FinalRemaining;
         cheques.Add(new ChequeDto());
-        chequeAmounts.Add(rest > 0 ? Fa.FormatTyping(rest.ToString("0")) : "");
+        chequeAmounts.Add(rest > 0 ? Fa.FormatTyping(ExactDecimal(rest)) : "");
         chequeDates.Add(null);
+        if (UseInvoiceWizard) pendingSectionFocus = $"[data-cheque-row=\"{cheques.Count - 1}\"]";
     }
 
     private void RemoveCheque(int i)
     {
+        calculatedChequeSchedule = null;
         cheques.RemoveAt(i); chequeAmounts.RemoveAt(i); chequeDates.RemoveAt(i);
     }
 
@@ -925,22 +1791,45 @@
 
     private void BuildInstallments(bool silent = false)
     {
-        if (instCount < 1) { if (!silent) Toast.Error("تعداد قسط را وارد کنید."); return; }
-        if (!instFirstDue.HasValue) { if (!silent) Toast.Error("تاریخ اولین قسط را وارد کنید."); return; }
+        if (instCount < 1 || instCount > RoundedInstallmentDistribution.MaximumCount)
+        { if (!silent) InvoiceError("تعداد قسط باید بین ۱ و ۶۰ باشد."); return; }
+        if (!instFirstDue.HasValue) { if (!silent) InvoiceError("تاریخ اولین قسط را وارد کنید."); return; }
+        if (instIntervalDays < 1) { if (!silent) InvoiceError("فاصله اقساط باید حداقل یک روز باشد."); return; }
 
         // مبلغ قابل تقسیم = باقی‌مانده پس از نقد و چک‌ها (سطرهای قبلی)
         var totalDue = Math.Max(0, grandTotal - CashPart - ChequeSum());
-        if (totalDue <= 0) { if (!silent) Toast.Error("ابتدا اقلام فاکتور را وارد کنید."); return; }
+        if (totalDue <= 0) { if (!silent) InvoiceError("ابتدا اقلام فاکتور را وارد کنید."); return; }
+        if (totalDue <= PaymentMix.Tolerance / 2m)
+        { if (!silent) InvoiceError("مبلغ اقساط برای ثبت روش پرداخت کافی نیست."); return; }
 
-        installments.Clear(); instAmounts.Clear(); instDates.Clear();
-        var baseAmount = Math.Floor(totalDue / instCount);
-        for (var i = 0; i < instCount; i++)
+        decimal[] amounts;
+        try { amounts = RoundedInstallmentDistribution.Split(totalDue, instCount); }
+        catch (ArgumentOutOfRangeException)
         {
-            var amount = i == instCount - 1 ? totalDue - baseAmount * (instCount - 1) : baseAmount;
-            installments.Add(new InstallmentDto { No = i + 1 });
-            instAmounts.Add(Fa.FormatTyping(amount.ToString("0")));
-            instDates.Add(instFirstDue.Value.AddDays((double)(i * instIntervalDays)));
+            if (!silent) InvoiceError("مبلغ باید حداکثر دو رقم اعشار داشته باشد و برای این تعداد قسط مثبت با رند ۱۰٬۰۰۰ ریالی کافی باشد.");
+            return;
         }
+
+        // Keep the old rows until every new amount and due date is valid.
+        var newInstallments = new List<InstallmentDto>();
+        var newAmounts = new List<string>();
+        var newDates = new List<DateTime?>();
+        try
+        {
+            for (var i = 0; i < instCount; i++)
+            {
+                newInstallments.Add(new InstallmentDto { No = i + 1 });
+                newAmounts.Add(Fa.FormatTyping(ExactDecimal(amounts[i])));
+                newDates.Add(instFirstDue.Value.AddDays((double)((long)i * instIntervalDays)));
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            if (!silent) InvoiceError("تاریخ یا فاصله سررسیدها خارج از محدوده مجاز است.");
+            return;
+        }
+        installments = newInstallments; instAmounts = newAmounts; instDates = newDates;
+        if (!silent && UseInvoiceWizard) pendingSectionFocus = "[data-inst-row=\"0\"]";
     }
 
     private void RemoveInstallment(int i)
@@ -968,82 +1857,142 @@
         partyId = v;
         if (Type != TransactionType.Sale) return;
         var customer = customers.FirstOrDefault(c => c.Id == v);
-        referrerId = customer?.ReferrerId is > 0 && referrers.Any(r => r.Id == customer.ReferrerId)
-            ? customer.ReferrerId.Value
-            : 0;
+        referrerId = customer?.ReferrerId is > 0 ? customer.ReferrerId.Value : 0;
     }
+
+    private (decimal? Goods, decimal? Service) PreviewCommissionRates
+    {
+        get
+        {
+            // For an edit, only the server can tell whether the saved policy is
+            // historical, legacy or damaged. Do not substitute today's rate.
+            if (IsEdit && EditOrder?.ReferrerId == referrerId)
+                return (EditOrder.ReferrerGoodsCommissionPercent, EditOrder.ReferrerServiceCommissionPercent);
+            var r = referrers.FirstOrDefault(x => x.Id == referrerId);
+            return (r?.GoodsCommissionPercent, r?.ServiceCommissionPercent);
+        }
+    }
+    private bool CommissionRatesKnown => PreviewCommissionRates is (decimal goods, decimal service) &&
+        goods is >= 0 and <= 100 && service is >= 0 and <= 100;
 
     /// <summary>پورسانت تخمینی سطر: کالا = درصد × سود سطر (سود منفی=۰) | خدمات = درصد × مبلغ سطر.</summary>
     private decimal LineCommission(LineVm l)
     {
-        if (referrerId <= 0) return 0;
-        var r = referrers.FirstOrDefault(x => x.Id == referrerId);
-        if (r is null) return 0;
+        if (referrerId <= 0 || !CommissionRatesKnown) return 0;
+        var (goodsRate, serviceRate) = PreviewCommissionRates;
+        var sameEditedReferrer = IsEdit && EditOrder?.ReferrerId == referrerId;
         var p = products.FirstOrDefault(x => x.Id == l.ProductId);
         if (p is null) return 0;
-        if (p.IsService) return decimal.Round(l.Total * r.ServiceCommissionPercent / 100m, 2);
-        var profit = LineProfit(l);
-        return profit > 0 ? decimal.Round(profit * r.GoodsCommissionPercent / 100m, 2) : 0;
+        if (p.IsService && !(sameEditedReferrer && EditOrder?.UsesLegacyCommissionPolicy == true))
+            return SaleReferrerCommission.Service(l.AfterDiscount, serviceRate.Value);
+        return SaleReferrerCommission.Goods(LineProfit(l), p.IsService ? serviceRate.Value : goodsRate.Value);
     }
 
     // ---------- آخرین فاکتور خرید ----------
     private Order? lastPurchase;
-    private bool lastPurchaseLoading;
-    private int lastPurchaseProductId;
+    private ShopMinimumProfitBasisDto? minimumProfitBasis;
+    private string? lastPurchaseError, minimumProfitBasisError;
+    private bool showLastPurchaseModal, lastPurchaseLoading;
+    private int lastPurchaseProductId, lastPurchaseRequestVersion;
 
     private bool IsServiceProduct(int productId)
-        => products.FirstOrDefault(p => p.Id == productId)?.IsService == true;
+    {
+        var product = products.FirstOrDefault(p => p.Id == productId);
+        return product?.IsService
+            ?? EditOrder?.Lines.FirstOrDefault(l => l.ProductId == productId)?.IsService
+            ?? CopyTemplate?.Lines.FirstOrDefault(l => l.ProductId == productId)?.IsService
+            ?? false;
+    }
 
     private async Task ShowLastPurchase(int productId)
     {
+        var version = ++lastPurchaseRequestVersion;
+        var invoiceDate = date;
         lastPurchaseProductId = productId;
+        showLastPurchaseModal = true;
         lastPurchaseLoading = true;
         lastPurchase = null;
-        try
+        minimumProfitBasis = null;
+        lastPurchaseError = minimumProfitBasisError = null;
+        Order? purchase = null;
+        ShopMinimumProfitBasisDto? basis = null;
+        string? purchaseError = null, basisError = null;
+        try { purchase = await OrderSvc.GetLastPurchaseAsync(productId); }
+        catch (Exception ex) { purchaseError = ex.Message; }
+        if (invoiceDate.HasValue)
         {
-            lastPurchase = await OrderSvc.GetLastPurchaseAsync(productId);
+            try { basis = await OrderSvc.GetMinimumProfitBasisAsync(productId, invoiceDate.Value, IsEdit ? EditOrder!.Id : null); }
+            catch (Exception ex) { basisError = ex.Message; }
         }
-        catch (Exception ex)
-        {
-            Toast.Error(ex.Message);
-        }
-        finally
-        {
-            lastPurchaseLoading = false;
-        }
+        else basisError = "ابتدا تاریخ فاکتور را مشخص کنید.";
+        if (version != lastPurchaseRequestVersion) return;
+        lastPurchase = purchase;
+        minimumProfitBasis = basis;
+        lastPurchaseError = purchaseError;
+        minimumProfitBasisError = basisError;
+        lastPurchaseLoading = false;
     }
 
     private void CloseLastPurchase()
     {
+        lastPurchaseRequestVersion++;
+        showLastPurchaseModal = false;
         lastPurchase = null;
+        minimumProfitBasis = null;
         lastPurchaseLoading = false;
     }
 
     /// <summary>سود تخمینی سطر: (قیمت فروش − بهای تمام‌شده میانگین) × مقدار. خدمات = کل مبلغ.</summary>
+    private decimal totalGross => TotalLines.Sum(l => l.Gross);
+    private decimal totalLineDiscount => TotalLines.Sum(l => l.DiscountAmount);
+
     private decimal LineProfit(LineVm l)
     {
         var p = products.FirstOrDefault(x => x.Id == l.ProductId);
         if (p is null) return 0;
-        if (p.IsService) return l.Total;
+        if (p.IsService)
+        {
+            var serviceCost = IsEdit ? EditOrder?.Lines.FirstOrDefault(x => x.Id == l.Id)?.UnitCost ?? 0m : 0m;
+            return l.AfterDiscount - serviceCost * l.Qty;
+        }
         var cost = p.AvgCost > 0 ? p.AvgCost : p.PurchasePrice;
-        return (l.Price - cost) * l.Qty;
+        return l.AfterDiscount - (cost * l.Qty);
     }
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var whTask = WarehouseSvc.GetLookupsAsync(activeOnly: true);
-            var partyTask = PartySvc.GetLookupsAsync(Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier, activeOnly: true);
-            var prodTask = ProductSvc.GetProductsAsync(pageSize: 10000);
-
+            // Independent requests start together; existing/copy warehouse stock can also load immediately.
+            if (IsEdit) warehouseId = EditOrder!.WarehouseId;
+            else if (CopyTemplate is not null) warehouseId = CopyTemplate.WarehouseId;
+            var profitTask = Type == TransactionType.Sale ? OrderSvc.CanViewProfitAsync() : Task.FromResult(false);
+            var pricingTask = OrderSvc.CanManagePricingAsync();
+            var whTask = OrderSvc.GetInvoiceWarehousesAsync(Type, activeOnly: true);
+            var partiesTask = OrderSvc.GetInvoicePartiesAsync(Type);
+            var prodTask = OrderSvc.GetInvoiceProductsAsync(Type);
+            var bankTask = OrderSvc.GetActiveTreasuryAccountsAsync();
+            var referrerTask = Type == TransactionType.Sale ? ReferrerSvc.GetAllAsync(activeOnly: true) : null;
+            var stockTask = LoadWarehouseStocksAsync();
+            try
+            {
+                var savedBanks = await JS.InvokeAsync<string?>("localStorage.getItem", "invoiceCheque.customBanks");
+                if (!string.IsNullOrWhiteSpace(savedBanks)) customChequeBanks = System.Text.Json.JsonSerializer.Deserialize<List<string>>(savedBanks) ?? new();
+            }
+            catch (Exception) { customChequeBanks = new(); }
+            try { canSeeProfit = await profitTask; }
+            catch { canSeeProfit = false; } // fail closed if the permission cannot be verified
+            try { canManagePricing = await pricingTask; }
+            catch { canManagePricing = false; }
             whLookup = await whTask;
-            partyLookup = await partyTask;
+            var invoiceParties = await partiesTask;
+            if (Type == TransactionType.Purchase)
+                partyLookup = invoiceParties.Where(p => p.IsActive).Select(p => PartyService.ToLookup(p)).ToList();
             var prods = await prodTask;
 
             try
             {
-                bankAccounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+                bankAccounts = await bankTask;
             }
             catch
             {
@@ -1054,23 +2003,25 @@
             products = prods.Items
                 .Where(p => p.IsActive && (Type == TransactionType.Sale || !p.IsService))
                 .ToList();
+            await stockTask;
             RebuildProductLookup();
+            if (warehouseId > 0 && !warehouseStock.IsLoaded)
+                InvoiceError("دریافت موجودی انبار ناموفق بود؛ انبار را پاک و دوباره انتخاب کنید.");
 
             if (Type == TransactionType.Sale)
             {
-                referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
+                try { referrers = await referrerTask!; }
+                catch { referrers = new(); } // معرف اختیاری است و مجوز آن پیش‌نیاز فروش نیست.
 
                 // فهرست مشتری‌ها با نمایش وضعیت معرف: «بدون معرف» یا نام معرف
-                customers = await PartySvc.GetAsync(PartyType.Customer);
+                customers = invoiceParties;
                 partyLookup = customers.Where(c => c.IsActive)
-                    .Select(c => new LookupItem
-                    {
-                        Id = c.Id,
-                        Name = string.IsNullOrWhiteSpace(c.ReferrerName)
-                            ? $"{c.Name} — بدون معرف"
-                            : $"{c.Name} — معرف: {c.ReferrerName}"
-                    }).ToList();
+                    .Select(c => PartyService.ToLookup(c, CustomerDisplay(c)))
+                    .ToList();
             }
+
+            activeWarehouseIds = whLookup.Select(w => w.Id).ToHashSet();
+            activePartyIds = partyLookup.Select(p => p.Id).ToHashSet();
 
             if (IsEdit)
             {
@@ -1083,15 +2034,36 @@
                 description = o.Description;
 
                 // بارگذاری اطلاعات پرداخت (خرید و فروش) — اجزای ترکیبی
+                cashTrackingNumber = o.CashTrackingNumber;
                 cashTypeStr = ((int)(o.CashType ?? CashType.Cash)).ToString();
                 trsAccountId = o.TrsAccountId;
                 creditDue = o.DueDate;
                 useCheque = o.Cheques.Count > 0 || o.PaymentMethod == PaymentMethod.Cheque;
                 useInstallment = o.Installments.Count > 0 || o.PaymentMethod == PaymentMethod.Installment;
+                if (o.HasChequeCharge)
+                {
+                    // Even an old charge without calculator terms is still a real, visible amount.
+                    saleChequeIncome = o.ChequeIncomeAmount;
+                    chargeInvoiceBase = o.GoodsAmount;
+                    chargeCashBase = o.CashAmount;
+                    chargeInstallmentBase = o.Installments.Sum(i => i.Amount);
+                    if (o.ChequeChargeSnapshot is { } snapshot)
+                    {
+                        saleChequeCharge = new SaleChequeChargeInput
+                        {
+                            CalculatorBaseAmount = snapshot.CalculatorBaseAmount,
+                            CalculatorRatePercent = snapshot.CalculatorRatePercent,
+                            CalculatorMonths = snapshot.CalculatorMonths,
+                            AdjustmentRatePercent = snapshot.AdjustmentRatePercent,
+                            AdjustmentPeriodDays = snapshot.AdjustmentPeriodDays,
+                            ConfirmedCreditDueDate = snapshot.ConfirmedCreditDueDate
+                        };
+                    }
+                }
                 var loadedCash = o.PaymentMethod == PaymentMethod.Cash ? o.TotalAmount : o.CashAmount;
                 useCash = loadedCash > 0 || (o.Cheques.Count == 0 && o.Installments.Count == 0 && o.PaymentMethod != PaymentMethod.Cheque && o.PaymentMethod != PaymentMethod.Installment);
                 cashAmountText = loadedCash > 0 && (o.Cheques.Count > 0 || o.Installments.Count > 0 || o.PaymentMethod != PaymentMethod.Cash)
-                    ? Fa.FormatTyping(loadedCash.ToString("0")) : "";
+                    ? Fa.FormatTyping(ExactDecimal(loadedCash)) : "";
                 var loadedCredit = o.TotalAmount - loadedCash - o.Cheques.Sum(c => c.Amount) - o.Installments.Sum(i => i.Amount);
                 useCredit = loadedCredit > 1 || o.PaymentMethod == PaymentMethod.Credit;
                 cheques = o.Cheques.Select(c => new ChequeDto
@@ -1100,25 +2072,46 @@
                     OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate, IsCleared = c.IsCleared,
                     ClearedAt = c.ClearedAt, Note = c.Note
                 }).ToList();
-                chequeAmounts = o.Cheques.Select(c => Fa.FormatTyping(c.Amount.ToString("0"))).ToList();
+                chequeAmounts = o.Cheques.Select(c => Fa.FormatTyping(ExactDecimal(c.Amount))).ToList();
                 chequeDates = o.Cheques.Select(c => (DateTime?)c.DueDate).ToList();
                 installments = o.Installments.Select(i => new InstallmentDto
                 {
                     Id = i.Id, No = i.No, Amount = i.Amount, DueDate = i.DueDate, IsPaid = i.IsPaid, PaidAt = i.PaidAt
                 }).ToList();
-                instAmounts = o.Installments.Select(i => Fa.FormatTyping(i.Amount.ToString("0"))).ToList();
+                instAmounts = o.Installments.Select(i => Fa.FormatTyping(ExactDecimal(i.Amount))).ToList();
                 instDates = o.Installments.Select(i => (DateTime?)i.DueDate).ToList();
                 instCount = Math.Max(1, installments.Count);
-                lines = o.Lines.Select(l => new LineVm
+                lines = o.Lines.Select(l =>
                 {
-                    Id = l.Id,
-                    ProductId = l.ProductId,
-                    OriginalQty = l.Quantity,
-                    QtyText = FormatQuantity(l.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)),
-                    PriceText = FormatNum(l.Price.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
-                    Unit = l.Unit
+                    var vm = new LineVm
+                    {
+                        Id = l.Id,
+                        ProductId = l.ProductId,
+                        OriginalQty = l.Quantity,
+                        OriginalProductId = l.ProductId,
+                        OriginalPrice = l.Price,
+                        OriginalGross = l.GrossAmount ?? OrderLineAmounts.Gross(l.Quantity, l.Price),
+                        OriginalDiscountAmount = l.DiscountAmount,
+                        OriginalDiscountPercent = l.DiscountPercent,
+                        OriginalDiscountIsAmount = l.DiscountIsAmount,
+                        OriginalVatValue = l.VatValue,
+                        OriginalVatAmount = l.VatAmount,
+                        QtyText = FormatQuantity(ExactDecimal(l.Quantity)),
+                        PriceText = PurchaseSalePriceInput.Format(ExactDecimal(l.Price)),
+                        Unit = l.Unit,
+                        DiscountPercent = l.DiscountPercent,
+                        DiscountAmount = l.DiscountAmount,
+                        DiscountIsAmount = l.DiscountIsAmount,
+                        VatText = FormatNum(l.VatValue.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
+                    };
+                    if (vm.DiscountIsAmount)
+                        vm.DiscountText = vm.DiscountAmount > 0 ? FormatNum(ExactDecimal(vm.DiscountAmount)) : "";
+                    else
+                        vm.DiscountText = vm.DiscountPercent > 0 ? ExactDecimal(vm.DiscountPercent) : "";
+                    return vm;
                 }).ToList();
                 if (lines.Count == 0) lines.Add(new LineVm());
+                paymentStepGoodsTotal = goodsTotal;
 
                 // فیلتر کالاها بر اساس انبار سند
                 RebuildProductLookup();
@@ -1129,18 +2122,53 @@
                 if (partyId > 0 && !partyLookup.Any(p => p.Id == partyId))
                     partyLookup.Add(new LookupItem { Id = partyId, Name = o.PartyName ?? $"طرف حساب {partyId}" });
                 foreach (var l in o.Lines.Where(l => !productLookup.Any(p => p.Id == l.ProductId)))
-                    productLookup.Add(new LookupItem { Id = l.ProductId, Name = l.ProductName });
+                    productLookup.Add(InvoiceProductOption.Create(l.ProductId, l.ProductName, l.Unit, IsServiceProduct(l.ProductId), warehouseStock));
             }
             else
             {
                 date = DateTime.Now;
                 var def = bankAccounts.FirstOrDefault(a => a.IsDefault) ?? bankAccounts.FirstOrDefault();
                 if (def != null) trsAccountId = def.Id;
+
+                if (CopyTemplate is { } copy && copy.Type == Type)
+                {
+                    warehouseId = copy.WarehouseId;
+                    OnPartyChanged(copy.PartyId); // current customer/referrer, not the old commission snapshot
+                    description = copy.Description;
+                    lines = copy.Lines.Select(l =>
+                    {
+                        var vm = new LineVm
+                        {
+                            ProductId = l.ProductId,
+                            QtyText = FormatQuantity(ExactDecimal(l.Quantity)),
+                            PriceText = PurchaseSalePriceInput.Format(ExactDecimal(l.Price)),
+                            Unit = l.Unit,
+                            DiscountPercent = l.DiscountPercent,
+                            DiscountAmount = l.DiscountAmount,
+                            DiscountIsAmount = l.DiscountIsAmount,
+                            VatText = FormatNum(ExactDecimal(l.VatValue))
+                        };
+                        RecalcDiscount(vm);
+                        vm.DiscountText = vm.DiscountIsAmount
+                            ? (vm.DiscountAmount > 0 ? FormatNum(ExactDecimal(vm.DiscountAmount)) : "")
+                            : (vm.DiscountPercent > 0 ? ExactDecimal(vm.DiscountPercent) : "");
+                        return vm;
+                    }).ToList();
+                    if (lines.Count == 0) lines.Add(new LineVm());
+
+                    // Keep old names visible for review, but validation requires active selections on a new copy.
+                    if (warehouseId > 0 && !whLookup.Any(w => w.Id == warehouseId))
+                        whLookup.Add(new LookupItem { Id = warehouseId, Name = copy.WarehouseName ?? $"انبار {warehouseId}" });
+                    if (partyId > 0 && !partyLookup.Any(p => p.Id == partyId))
+                        partyLookup.Add(new LookupItem { Id = partyId, Name = copy.PartyName ?? $"طرف حساب {partyId}" });
+                    foreach (var l in copy.Lines.Where(l => !productLookup.Any(p => p.Id == l.ProductId)))
+                        productLookup.Add(InvoiceProductOption.Create(l.ProductId, l.ProductName, l.Unit, IsServiceProduct(l.ProductId), warehouseStock));
+                }
             }
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            ShowFormError(ex.Message);
         }
         finally
         {
@@ -1148,102 +2176,236 @@
         }
     }
 
-    /// <summary>بازسازی فهرست کالاها بر اساس انبار انتخاب‌شده: فقط کالاهای همان انبار + بدون انبار + خدمات.</summary>
-    private void RebuildProductLookup()
+    private Task<bool> LoadWarehouseStocksAsync()
+        => warehouseStock.LoadAsync(warehouseId, (id, page, size) =>
+            OrderSvc.GetWarehouseStockAsync(id, page, size));
+
+    // Use the same eligibility rule when selecting a product and when validating
+    // a copy; the temporary old-name entry must not make an ineligible item valid.
+    private bool IsProductSelectable(Product p)
     {
-        var filtered = warehouseId > 0
-            ? products.Where(p => p.IsService || p.WarehouseId is null || p.WarehouseId == warehouseId).ToList()
-            : products;
-        productLookup = filtered
-            .Select(p => new LookupItem { Id = p.Id, Name = p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}" })
-            .ToList();
+        if (warehouseId <= 0) return true;
+        if (p.IsService) return Type == TransactionType.Sale;
+        if (p.WarehouseId is > 0 && p.WarehouseId != warehouseId) return false;
+        if (Type == TransactionType.Sale)
+            return p.WarehouseId == warehouseId || warehouseStock.Quantities.ContainsKey(p.Id);
+        return p.WarehouseId is null || p.WarehouseId == warehouseId;
     }
 
-    private void OnWarehouseChanged(int v)
+    /// <summary>بازسازی فهرست کالاها بر اساس انبار انتخاب‌شده و نمایش موجودی در منوی انتخاب.</summary>
+    private void RebuildProductLookup()
     {
-        warehouseId = v;
-        RebuildProductLookup();
+        var filtered = products.Where(IsProductSelectable);
+        productLookup = filtered
+            .Select(p => (LookupItem)InvoiceProductOption.Create(
+                p.Id, p.IsService ? $"{p.Code} — {p.Name} (خدمات)" : $"{p.Code} — {p.Name}",
+                p.Unit, p.IsService, warehouseStock))
+            .ToList();
 
-        // سطرهایی که کالایشان متعلق به انبار دیگری است، پاک می‌شوند
-        foreach (var l in lines.Where(x => x.ProductId > 0).ToList())
+        // Keep existing line names visible while a new warehouse's stock is unknown;
+        // these temporary entries do not change the eligibility rule used by validation.
+        if (warehouseId > 0 && !warehouseStock.IsLoaded)
         {
-            var p = products.FirstOrDefault(x => x.Id == l.ProductId);
-            if (p is not null && !p.IsService && p.WarehouseId is > 0 && p.WarehouseId != warehouseId)
+            var visible = productLookup.Select(p => p.Id).ToHashSet();
+            foreach (var line in lines.Where(l => l.ProductId > 0 && visible.Add(l.ProductId)))
             {
-                l.ProductId = 0;
-                l.Unit = "";
-                Toast.Info($"کالای «{p.Name}» مخصوص انبار دیگری است و از سطرها حذف شد.");
+                var product = products.FirstOrDefault(p => p.Id == line.ProductId);
+                var name = product is not null
+                    ? $"{product.Code} — {product.Name}" + (product.IsService ? " (خدمات)" : "")
+                    : EditOrder?.Lines.FirstOrDefault(l => l.ProductId == line.ProductId)?.ProductName
+                        ?? CopyTemplate?.Lines.FirstOrDefault(l => l.ProductId == line.ProductId)?.ProductName
+                        ?? $"کالا {line.ProductId}";
+                productLookup.Add(InvoiceProductOption.Create(line.ProductId, name, product?.Unit ?? line.Unit,
+                    IsServiceProduct(line.ProductId), warehouseStock));
             }
         }
     }
 
-    private void AddLine() => lines.Add(new LineVm());
+    private async Task OnWarehouseChanged(int v)
+    {
+        warehouseId = v;
+        var load = LoadWarehouseStocksAsync();
+        RebuildProductLookup(); // immediately replace the previous warehouse's quantities with a loading state
+        if (!await load) return; // a newer warehouse selection has already taken over
+        RebuildProductLookup();
+        if (warehouseId > 0 && !warehouseStock.IsLoaded)
+        {
+            InvoiceError("دریافت موجودی انبار ناموفق بود؛ انبار را پاک و دوباره انتخاب کنید.");
+            return; // an unavailable snapshot must not clear existing invoice lines
+        }
+
+        // سطرهایی که کالایشان دیگر در فهرست مجاز این انبار نیست، پاک می‌شوند
+        var validProductIds = productLookup.Select(x => x.Id).ToHashSet();
+        foreach (var l in lines.Where(x => x.ProductId > 0).ToList())
+        {
+            if (!validProductIds.Contains(l.ProductId))
+            {
+                var p = products.FirstOrDefault(x => x.Id == l.ProductId);
+                l.ProductId = 0;
+                l.Unit = "";
+                l.PriceText = "";
+                l.DiscountText = "";
+                l.DiscountAmount = 0;
+                l.DiscountPercent = 0;
+                l.VatText = "0";
+                InvoiceInfo($"کالای «{p?.Name ?? "انتخاب‌شده"}» در این انبار موجود/مجاز نیست و از سطرها حذف شد.");
+            }
+        }
+    }
+
+    private static void RecalcDiscount(LineVm l)
+    {
+        var gross = l.Gross;
+        if (l.SameOriginalBasis && l.OriginalDiscountIsAmount == l.DiscountIsAmount &&
+            l.OriginalDiscountAmount.HasValue && l.OriginalDiscountPercent.HasValue &&
+            (l.DiscountIsAmount ? Fa.ParseDecimal(l.DiscountText) == l.OriginalDiscountAmount.Value
+                                : l.DiscountPercent == l.OriginalDiscountPercent.Value))
+        {
+            l.DiscountAmount = l.OriginalDiscountAmount.Value;
+            l.DiscountPercent = l.OriginalDiscountPercent.Value;
+            return;
+        }
+        if (l.DiscountIsAmount)
+        {
+            l.DiscountAmount = Math.Clamp(Math.Round(l.DiscountAmount, 0), 0, Math.Max(0, gross));
+            l.DiscountPercent = gross > 0 ? Math.Round(l.DiscountAmount * 100m / gross, 2) : 0;
+        }
+        else
+        {
+            l.DiscountPercent = Math.Clamp(l.DiscountPercent, 0, 100);
+            l.DiscountAmount = Math.Round(gross * l.DiscountPercent / 100m, 0);
+        }
+    }
+
+    private void OnLineDiscountInput(LineVm l, string? raw)
+    {
+        l.DiscountText = raw ?? "";
+        var val = Math.Max(0, Fa.ParseDecimal(raw));
+        if (val <= 100)
+        {
+            l.DiscountIsAmount = false;
+            l.DiscountPercent = val;
+            l.DiscountAmount = 0;
+        }
+        else
+        {
+            l.DiscountIsAmount = true;
+            l.DiscountAmount = val;
+        }
+        RecalcDiscount(l);
+    }
+
+    private void OnLineDiscountBlur(LineVm l)
+    {
+        RecalcDiscount(l);
+        if (l.DiscountIsAmount)
+        {
+            l.DiscountText = l.DiscountAmount > 0 ? FormatNum(ExactDecimal(l.DiscountAmount)) : "";
+        }
+        else
+        {
+            l.DiscountText = l.DiscountPercent > 0 ? l.DiscountPercent.ToString("0.##") : "";
+        }
+    }
+
+    private Guid? pendingLineFocus;
+
+    private void AddLine()
+    {
+        var line = new LineVm();
+        lines.Add(line);
+        if (UseInvoiceWizard) pendingLineFocus = line.Key;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (loading || !UseInvoiceWizard) return;
+        try
+        {
+            if (pendingLineFocus is Guid key)
+            {
+                pendingLineFocus = null;
+                await JS.InvokeVoidAsync("orderEntry.focusLine", formKey, key.ToString());
+            }
+            else if (pendingSectionFocus is string selector)
+            {
+                pendingSectionFocus = null;
+                await JS.InvokeVoidAsync("orderEntry.focusSection", formKey, selector);
+            }
+            else if (!invoiceInitialFocusDone)
+            {
+                invoiceInitialFocusDone = true;
+                await JS.InvokeVoidAsync("orderEntry.focusSection", formKey, "[data-order-initial]");
+            }
+        }
+        catch (JSException) { /* فرم همچنان با Tab قابل استفاده است. */ }
+    }
 
     private void RemoveLine(LineVm l)
     {
         lines.Remove(l);
-        if (lines.Count == 0) lines.Add(new LineVm());
+        if (lines.Count == 0) AddLine();
     }
 
-    private void OnProductPicked(LineVm l, int id)
+    private async Task OnProductPicked(LineVm l, int id)
     {
-        if (l.ProductId != id)
-        {
-            l.OriginalQty = null;
-            l.Id = 0;
-        }
+        if (l.ProductId == id) return; // Never reprice an already saved/selected row.
+        l.OriginalQty = null;
+        l.Id = 0;
         l.ProductId = id;
+        var requestVersion = ++l.PriceRequestVersion;
+        l.PriceText = "";
+        l.NewSalePriceText = "";
+        l.PriceNotice = null;
         var p = products.FirstOrDefault(x => x.Id == id);
-        if (p is not null)
+        if (p is null) { l.VatText = "0"; RecalcDiscount(l); return; }
+        l.Unit = p.Unit;
+        l.VatText = FormatNum(ExactDecimal(p.InvoiceVatValue ?? 0));
+        if (Type != TransactionType.Sale)
         {
-            l.Unit = p.Unit;
-            var price = Type == TransactionType.Sale ? p.SalePrice : p.PurchasePrice;
-            if (price > 0) l.PriceText = FormatNum(((long)price).ToString());
+            if (p.PurchasePrice > 0) l.PriceText = PurchaseSalePriceInput.Format(ExactDecimal(p.PurchasePrice));
+            RecalcDiscount(l);
+            return;
+        }
+        var invoiceDate = date?.Date;
+        if (!invoiceDate.HasValue) { l.PriceNotice = "ابتدا تاریخ فاکتور را مشخص کنید."; return; }
+        try
+        {
+            var suggested = await OrderSvc.GetDatedSalePriceAsync(id, invoiceDate.Value);
+            // An async response must never overwrite a newer selection, date or manual entry.
+            if (l.PriceRequestVersion != requestVersion || l.ProductId != id || date?.Date != invoiceDate || !string.IsNullOrWhiteSpace(l.PriceText)) return;
+            if (suggested.Price.HasValue) l.PriceText = PurchaseSalePriceInput.Format(ExactDecimal(suggested.Price.Value));
+            else l.PriceNotice = "قیمت این تاریخ ثبت نشده؛ دستی وارد کنید.";
+            RecalcDiscount(l);
+        }
+        catch
+        {
+            if (l.PriceRequestVersion == requestVersion && l.ProductId == id && string.IsNullOrWhiteSpace(l.PriceText))
+                l.PriceNotice = "دریافت قیمت تاریخی ناموفق بود؛ دستی وارد کنید.";
         }
     }
 
-    /// <summary>قالب‌بندی مقدار کالا؛ نقطه، ممیز فارسی و ویرگول اعشاری را می‌پذیرد.</summary>
-    private static string FormatQuantity(object? value)
+    private bool? QuantityAllowsFraction(LineVm line) => products.FirstOrDefault(p => p.Id == line.ProductId)?.AllowsFractionalQuantity;
+    private string QuantityTitle(LineVm line) => QuantityAllowsFraction(line) switch
     {
-        var raw = Fa.ToEn(value?.ToString() ?? "").Trim()
-            .Replace('\u066B', '.') // ممیز فارسی
-            .Replace('\u066C', ','); // جداکنندهٔ هزارگان عربی
-        if (string.IsNullOrWhiteSpace(raw)) return "";
+        false => "این واحد فقط مقدار صحیح می‌پذیرد",
+        true => "مقدار می‌تواند تا دو رقم اعشار داشته باشد",
+        null => "نوع مقدار واحد در اطلاعات پایه باید تعیین شود"
+    };
 
-        var dot = raw.LastIndexOf('.');
-        var comma = raw.LastIndexOf(',');
-        if (dot >= 0 && comma >= 0)
-        {
-            // وقتی هر دو جداکننده حاضرند، جداکنندهٔ راستین ممیز اعشار است.
-            // بنابراین 1,234.50 و 1.234,50 هر دو درست خوانده می‌شوند.
-            raw = comma > dot
-                ? raw[..comma].Replace(".", "").Replace(",", "") + "." + raw[(comma + 1)..]
-                : raw.Replace(",", "");
-        }
-        else if (dot < 0 && comma >= 0)
-        {
-            // در کیبوردهای بعضی زبان‌ها ویرگول ممیز اعشار است؛ آخرین ویرگول با حداکثر دو
-            // رقم پس از آن ممیز در نظر گرفته می‌شود. ویرگول‌های قبلی جداکنندهٔ هزارگان‌اند.
-            var fractionDigits = raw[(comma + 1)..].Count(char.IsDigit);
-            raw = fractionDigits <= 2
-                ? raw[..comma].Replace(",", "") + "." + raw[(comma + 1)..]
-                : raw.Replace(",", "");
-        }
+    private static bool TryQuantity(string text, out decimal value)
+        => ShopQuantityInput.TryParse(text, out value);
 
-        var parts = raw.Split('.', 2);
-        var wholeDigits = new string(parts[0].Where(char.IsDigit).ToArray());
-        if (wholeDigits.Length == 0) wholeDigits = "0";
-        if (!decimal.TryParse(wholeDigits, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out var whole)) return "";
+    private static bool TryNewSalePrice(string text, out decimal value)
+        => PurchaseSalePriceInput.TryParse(text, out value);
 
-        var formatted = whole.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture);
-        if (parts.Length == 2)
-        {
-            var fraction = new string(parts[1].Where(char.IsDigit).ToArray());
-            return $"{formatted}.{fraction}";
-        }
-        return formatted;
-    }
+    // A copied legacy value must remain visible in full, even when it needs correction
+    // to meet today's precision rules; formatting must not silently round it.
+    private static string ExactDecimal(decimal value) =>
+        value.ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>قالب‌بندی مقدار کالا با حفظ ورودی نامعتبر برای اصلاح.</summary>
+    private static string FormatQuantity(object? value) => ShopQuantityInput.Format(value?.ToString());
 
     /// <summary>قالب‌بندی زنده ورودی عددی با جداکننده سه‌رقمی (با حفظ اعشار و پشتیبانی از ارقام فارسی).</summary>
     private static string FormatNum(object? value)
@@ -1262,6 +2424,91 @@
             return $"{formatted}.{frac}";
         }
         return formatted;
+    }
+
+    private bool TryRefreshCalculatedCheques()
+    {
+        if (calculatedChequeSchedule is not { } schedule || !useCheque ||
+            chequeDates.Count != cheques.Count) return false;
+        try
+        {
+            // Recalculate before touching any rows. A changed cash/installment amount,
+            // manually edited cheque, or invalid rounded schedule requires review instead.
+            var refreshed = schedule.Recalculate(goodsTotal, CashPart, InstSum(), cheques.Count,
+                chequeAmounts.Select(Fa.ParseDecimal).ToArray());
+            var nextAmounts = refreshed.Calculation.Amounts
+                .Select(amount => Fa.FormatTyping(ExactDecimal(amount))).ToList();
+            SaleChequeChargeInput? nextCharge = null;
+            if (Type == TransactionType.Sale)
+            {
+                nextCharge = refreshed.Calculation.CreateSaleChequeCharge(goodsTotal,
+                    refreshed.AdjustmentRatePercent, refreshed.AdjustmentPeriodDays);
+                if (IsEdit && ((EditOrder?.HasChequeCharge == true && nextCharge is null) ||
+                               (EditOrder?.HasChequeCharge != true && nextCharge is not null))) return false;
+            }
+
+            // Change only amounts and the pending calculation, never cheque metadata.
+            chequeAmounts = nextAmounts;
+            calculatedChequeSchedule = refreshed;
+            if (Type == TransactionType.Sale)
+            {
+                var hadCharge = saleChequeCharge is not null;
+                saleChequeCharge = nextCharge;
+                saleChequeIncome = nextCharge is null ? 0m : refreshed.Calculation.Interest;
+                chargeInvoiceBase = nextCharge is null ? 0m : goodsTotal;
+                chargeCashBase = nextCharge is null ? 0m : CashPart;
+                chargeInstallmentBase = nextCharge is null ? 0m : InstSum();
+                removedCalculatedChequeIncome = nextCharge is null && (hadCharge || removedCalculatedChequeIncome);
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private void GoToPayment()
+    {
+        formError = null;
+        if (!saving && ValidateInvoice())
+        {
+            var hasKnownHistory = IsEdit && EditOrder is { } order &&
+                (KnownLaterChequeActivity || order.IsCancelled || order.ChequeReturns.Count > 0 ||
+                 order.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) ||
+                 order.Installments.Any(i => i.IsPaid));
+            if (paymentStepGoodsTotal.HasValue && paymentStepGoodsTotal.Value != goodsTotal && !hasKnownHistory)
+            {
+                var wasCalculated = calculatedChequeSchedule is not null && useCheque;
+                var refreshed = TryRefreshCalculatedCheques();
+                if (!refreshed)
+                {
+                    // Manual, unknown or inconsistent rows require explicit amounts.
+                    for (var i = 0; i < chequeAmounts.Count; i++) chequeAmounts[i] = "";
+                    calculatedChequeSchedule = null;
+                    if (wasCalculated) InvoiceInfo("تقسیم خودکار ممکن نیست؛ مبلغ چک‌ها را بررسی یا دوباره محاسبه کنید.");
+                }
+                else InvoiceInfo("مبلغ چک‌ها و سود با تنظیمات قبلی دوباره محاسبه شد.");
+
+                // The previous review rule for non-cheque installments remains unchanged.
+                // Their amounts are not redistributed or absorbed into the cheque calculation.
+                for (var i = 0; i < instAmounts.Count; i++) instAmounts[i] = "";
+                paymentAmountsNeedReview = chequeAmounts.Count > 0 || instAmounts.Count > 0;
+            }
+            paymentStepGoodsTotal = goodsTotal;
+            invoiceStep = 2;
+            pendingSectionFocus = "[data-order-payment]";
+        }
+    }
+
+    private void BackToInvoice()
+    {
+        if (!saving)
+        {
+            paymentStepGoodsTotal = goodsTotal;
+            invoiceStep = 1;
+            pendingSectionFocus = "[data-order-initial]";
+        }
     }
 
     private async Task Cancel() => await OnCancel.InvokeAsync();
@@ -1283,34 +2530,130 @@
             var order = await OrderSvc.GetAsync(orderId);
             if (order is null || order.Lines.Count == 0)
             {
-                Toast.Error("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
+                InvoiceError("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
                 return;
             }
-            var html = SaleInvoicePrint.Build(order, companyProfile);
-            var opened = await JS.InvokeAsync<bool>("giPrint", html);
+            var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened)
-                Toast.Error("پنجرهٔ چاپ باز نشد؛ لطفاً اجازهٔ پنجرهٔ بازشو (pop-up) را در مرورگر فعال کنید.");
+                InvoiceError("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
         }
-        catch (Exception ex) { Toast.Error("چاپ انجام نشد: " + ex.Message); }
+        catch (Exception ex) { InvoiceError("چاپ انجام نشد: " + ex.Message); }
     }
 
     private CompanyProfileDto? companyProfile;
+    private string printPaperSize = "default";
+
+    private bool ValidateInvoice()
+    {
+        if (warehouseId == 0) { ShowFormError("انبار را انتخاب کنید."); return false; }
+        if (partyId == 0) { ShowFormError("طرف حساب را انتخاب کنید."); return false; }
+        if (!date.HasValue) { ShowFormError("تاریخ سند را وارد کنید."); return false; }
+
+        var selectedLines = lines.Where(l => l.ProductId > 0).ToList();
+        if (selectedLines.Any(l => !TryQuantity(l.QtyText, out var quantity) || quantity <= 0))
+        { ShowFormError("مقدار هر کالای انتخاب‌شده باید عددی معتبر و بزرگ‌تر از صفر باشد."); return false; }
+        var validLines = selectedLines.Where(l => l.Qty > 0).ToList();
+        if (validLines.Count == 0) { ShowFormError("حداقل یک سطر کالای معتبر وارد کنید."); return false; }
+        foreach (var l in validLines)
+        {
+            var priceText = Type == TransactionType.Purchase && string.IsNullOrWhiteSpace(l.PriceText) ? "0" : l.PriceText;
+            var unchangedFractionalPrice = l.SameOriginalBasis && l.OriginalPrice.HasValue &&
+                !ShopInvoiceAmounts.IsWholePrice(l.OriginalPrice.Value);
+            if (!PurchaseSalePriceInput.TryParse(priceText, out _) &&
+                !(unchangedFractionalPrice && PurchaseSalePriceInput.TryParseLegacy(priceText, out _)))
+            { ShowFormError("قیمت هر سطر باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد؛ قیمت قدیمی را اصلاح کنید."); return false; }
+            var unchangedQuantity = l.Id > 0 && l.OriginalProductId == l.ProductId && l.OriginalQty == l.Qty;
+            if (!unchangedQuantity && l.Qty > ShopInvoiceAmounts.MaximumQuantity)
+            { ShowFormError("مقدار سطر خارج از محدوده قابل ثبت است."); return false; }
+            if (!l.SameOriginalBasis && !ShopInvoiceAmounts.TryGross(l.Qty, l.Price, out _))
+            { ShowFormError("مبلغ سطر خارج از محدوده قابل ثبت است."); return false; }
+            if (!IsServiceProduct(l.ProductId) && !unchangedQuantity)
+            {
+                var allows = QuantityAllowsFraction(l);
+                if (!allows.HasValue)
+                { ShowFormError($"نوع مقدار واحد «{l.Unit}» مشخص نیست؛ ابتدا آن را در واحدهای شمارش تعیین کنید."); return false; }
+                if (!allows.Value && !ShopQuantityRules.IsWhole(l.Qty))
+                { ShowFormError($"مقدار کالا با واحد «{l.Unit}» باید عدد صحیح باشد."); return false; }
+            }
+        }
+        if (Type == TransactionType.Sale && validLines.Any(l => string.IsNullOrWhiteSpace(l.PriceText)))
+        {
+            ShowFormError("قیمت فروش سطرهایی را که قیمت تاریخی ندارند وارد کنید.");
+            return false;
+        }
+        if (Type == TransactionType.Purchase && validLines.Any(l => !string.IsNullOrWhiteSpace(l.NewSalePriceText) && !TryNewSalePrice(l.NewSalePriceText, out _)))
+        {
+            ShowFormError("قیمت فروش اختیاری باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد.");
+            return false;
+        }
+        if (CopyTemplate is not null && !IsEdit)
+        {
+            if (!activeWarehouseIds.Contains(warehouseId)) { ShowFormError("انبار فاکتور قبلی غیرفعال است؛ انبار فعال انتخاب کنید."); return false; }
+            if (!activePartyIds.Contains(partyId)) { ShowFormError("طرف حساب فاکتور قبلی غیرفعال است؛ طرف حساب فعال انتخاب کنید."); return false; }
+            if (validLines.Any(l => l.Price != decimal.Round(l.Price, 2) ||
+                                    (!l.DiscountIsAmount && l.DiscountPercent != decimal.Round(l.DiscountPercent, 2))))
+            {
+                ShowFormError("در فاکتور کپی‌شده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند؛ مقادیر قدیمی را اصلاح کنید.");
+                return false;
+            }
+            if (validLines.Any(l => !products.Any(p => p.Id == l.ProductId && IsProductSelectable(p))))
+            {
+                ShowFormError("کالای غیرفعال یا نامجاز در انبار را از فاکتور کپی‌شده حذف یا جایگزین کنید.");
+                return false;
+            }
+        }
+        if (validLines.Any(l => l.Qty != decimal.Round(l.Qty, 2, MidpointRounding.AwayFromZero)
+                                && !(l.Id > 0 && l.OriginalProductId == l.ProductId && l.OriginalQty == l.Qty)))
+        {
+            ShowFormError("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            return false;
+        }
+        if (validLines.Any(l => l.VatValue > 0 &&
+                (l.Price != decimal.Round(l.Price, 2) || (!l.DiscountIsAmount && l.DiscountPercent != decimal.Round(l.DiscountPercent, 2)))))
+        {
+            ShowFormError("در سطر مشمول ارزش افزوده، قیمت و درصد تخفیف حداکثر دو رقم اعشار دارند.");
+            return false;
+        }
+        if (validLines.Any(l => !OrderLineAmounts.IsValidVatValue(l.VatValue)))
+        {
+            ShowFormError("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            return false;
+        }
+        return true;
+    }
 
     private async Task SaveInternal(bool printAfterSave)
     {
-        if (warehouseId == 0) { Toast.Error("انبار را انتخاب کنید."); return; }
-        if (partyId == 0) { Toast.Error("طرف حساب را انتخاب کنید."); return; }
-        if (!date.HasValue) { Toast.Error("تاریخ سند را وارد کنید."); return; }
-
-        var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
-        if (validLines.Count == 0) { Toast.Error("حداقل یک سطر کالای معتبر وارد کنید."); return; }
-        if (validLines.Any(l => l.Qty != decimal.Round(l.Qty, 2, MidpointRounding.AwayFromZero)
-                                && (!l.OriginalQty.HasValue || l.Qty != l.OriginalQty.Value)))
+        if (saving || (UseInvoiceWizard && invoiceStep != 2)) return;
+        formError = null;
+        if (!ValidateInvoice())
         {
-            Toast.Error("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            if (UseInvoiceWizard)
+            {
+                invoiceStep = 1;
+                pendingSectionFocus = "[data-order-initial]";
+            }
             return;
         }
 
+        if (IsEdit && EditOrder?.HasChequeCharge == true && saleChequeCharge is null)
+        {
+            ShowFormError("جزئیات اولیه سود این فاکتور قدیمی موجود نیست؛ ویرایش بدون بررسی سابقه مجاز نیست.");
+            return;
+        }
+        if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
+        {
+            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها را تغییر نمی‌دهد.");
+            return;
+        }
+        if (CashPart > 0 && trsAccountId is not > 0 &&
+            (!IsEdit || EditOrder?.ShopCashLedgerEnabled == true || saleChequeCharge is not null))
+        {
+            ShowFormError("برای پرداخت نقدی، حساب فعال صندوق یا بانک را انتخاب کنید.");
+            return;
+        }
+        var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
         var cmd = new OrderCommand
         {
             WarehouseId = warehouseId,
@@ -1319,7 +2662,18 @@
             Date = date.Value,
             Description = description,
             ReferrerId = Type == TransactionType.Sale && referrerId > 0 ? referrerId : null,
-            Lines = validLines.Select(l => new OrderLineInput { Id = l.Id, ProductId = l.ProductId, Quantity = l.Qty, Price = l.Price }).ToList()
+            Lines = validLines.Select(l => new OrderLineInput
+            {
+                Id = l.Id,
+                ProductId = l.ProductId,
+                Quantity = l.Qty,
+                Price = l.Price,
+                NewSalePrice = Type == TransactionType.Purchase && !string.IsNullOrWhiteSpace(l.NewSalePriceText) && TryNewSalePrice(l.NewSalePriceText, out var newPrice) ? newPrice : null,
+                DiscountPercent = l.DiscountPercent,
+                DiscountAmount = l.DiscountAmount,
+                DiscountIsAmount = l.DiscountIsAmount,
+                VatValue = l.VatValue
+            }).ToList()
         };
 
         // اطلاعات پرداخت (خرید و فروش)
@@ -1328,12 +2682,18 @@
             // ---------- پرداخت ترکیبی: نقد + چک + اقساط + نسیه ----------
             if (HasNonCash && CashPart > 0 && CashPart >= grandTotal)
             {
-                Toast.Error("مبلغ نقدی نمی‌تواند برابر یا بیشتر از مبلغ سند باشد؛ در این صورت فقط «نقدی» را فعال کنید.");
+                ShowFormError("مبلغ نقدی نمی‌تواند برابر یا بیشتر از مبلغ سند باشد؛ در این صورت فقط «نقدی» را فعال کنید.");
                 return;
             }
             var cash = HasNonCash ? CashPart : grandTotal;
 
             cmd.PaymentMethod = DeclaredMethod;
+            if (Type == TransactionType.Sale && cash > 0 && CashKind == CashType.CardTransfer && string.IsNullOrWhiteSpace(cashTrackingNumber))
+            {
+                ShowFormError("شماره پیگیری پرداخت کارت به کارت را وارد کنید.");
+                return;
+            }
+            cmd.CashTrackingNumber = Type == TransactionType.Sale && cash > 0 && CashKind == CashType.CardTransfer ? cashTrackingNumber?.Trim() : null;
             cmd.CashType = CashKind;
             cmd.TrsAccountId = trsAccountId > 0 ? trsAccountId : null;
             cmd.CashAmount = HasNonCash ? cash : 0;
@@ -1342,29 +2702,34 @@
             var chequeList = new List<ChequeDto>();
             if (useCheque)
             {
-                if (cheques.Count == 0) { Toast.Error("حداقل یک چک ثبت کنید."); return; }
+                if (cheques.Count == 0) { ShowFormError("حداقل یک چک ثبت کنید."); return; }
                 for (var i = 0; i < cheques.Count; i++)
                 {
-                    if (string.IsNullOrWhiteSpace(cheques[i].Number)) { Toast.Error($"شماره چک ردیف {i + 1} را وارد کنید."); return; }
-                    if (!chequeDates[i].HasValue) { Toast.Error($"سررسید چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (string.IsNullOrWhiteSpace(cheques[i].Number)) { ShowFormError($"شماره چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (!chequeDates[i].HasValue) { ShowFormError($"سررسید چک ردیف {i + 1} را وارد کنید."); return; }
                     cheques[i].Amount = Fa.ParseDecimal(chequeAmounts[i]);
                     cheques[i].DueDate = chequeDates[i]!.Value;
-                    if (cheques[i].Amount <= 0) { Toast.Error($"مبلغ چک ردیف {i + 1} را وارد کنید."); return; }
+                    if (cheques[i].Amount <= 0) { ShowFormError($"مبلغ چک ردیف {i + 1} را وارد کنید."); return; }
                 }
                 chequeList = cheques;
+            }
+            if (saleChequeCharge is not null && chequeList.Sum(c => c.Amount) <= PaymentMix.Tolerance / 2m)
+            {
+                ShowFormError("برای ثبت تاخیر تادیه چک، جمع چک‌های معتبر باید بیش از نیم ریال باشد.");
+                return;
             }
 
             // جزء اقساط
             var instList = new List<InstallmentDto>();
             if (useInstallment)
             {
-                if (installments.Count == 0) { Toast.Error("ابتدا دفترچه اقساط را بسازید."); return; }
+                if (installments.Count == 0) { ShowFormError("ابتدا دفترچه اقساط را بسازید."); return; }
                 for (var i = 0; i < installments.Count; i++)
                 {
-                    if (!instDates[i].HasValue) { Toast.Error($"سررسید قسط {i + 1} را وارد کنید."); return; }
+                    if (!instDates[i].HasValue) { ShowFormError($"سررسید قسط {i + 1} را وارد کنید."); return; }
                     installments[i].Amount = Fa.ParseDecimal(instAmounts[i]);
                     installments[i].DueDate = instDates[i]!.Value;
-                    if (installments[i].Amount <= 0) { Toast.Error($"مبلغ قسط {i + 1} را وارد کنید."); return; }
+                    if (installments[i].Amount <= 0) { ShowFormError($"مبلغ قسط {i + 1} را وارد کنید."); return; }
                 }
                 instList = installments;
             }
@@ -1375,15 +2740,30 @@
             // ماندهٔ نهایی = نسیه
             var paid = cash + chequeList.Sum(c => c.Amount) + instList.Sum(i => i.Amount);
             var remainder = grandTotal - paid;
-            if (remainder > 1)
+            if ((saleChequeCharge is not null || removedCalculatedChequeIncome) && remainder < 0)
+            {
+                ShowFormError("جمع پرداخت‌ها بیش از مبلغ فاکتور است؛ لطفاً اجزای پرداخت را دستی اصلاح کنید.");
+                return;
+            }
+            if (removedCalculatedChequeIncome && saleChequeCharge is null && remainder > 0 && remainder <= PaymentMix.Tolerance)
+            {
+                ShowFormError("مانده پس از حذف سود کمتر از حد ثبت نسیه است؛ مبلغ پرداخت‌ها را دقیقاً اصلاح کنید.");
+                return;
+            }
+            if (remainder > (HasChequeIncomeArticle ? 0 : PaymentMix.Tolerance))
             {
                 if (!useCredit || !creditDue.HasValue)
                 {
-                    Toast.Error($"جمع پرداخت‌ها ({paid.Money()}) کمتر از مبلغ سند ({grandTotal.Money()}) است؛ " +
-                                "باقی‌ماندهٔ " + remainder.Money() + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
+                    ShowFormError($"جمع پرداخت‌ها ({ExactMoney(paid)}) کمتر از مبلغ سند ({ExactMoney(grandTotal)}) است؛ " +
+                                "باقی‌ماندهٔ " + ExactMoney(remainder) + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
                     return;
                 }
                 cmd.DueDate = creditDue;
+            }
+            if (saleChequeCharge is not null)
+            {
+                saleChequeCharge.ConfirmedCreditDueDate = cmd.DueDate;
+                cmd.ChequeCharge = saleChequeCharge;
             }
         }
 
@@ -1391,22 +2771,27 @@
         try
         {
             Order saved;
-            if (IsEdit)
+            if (IsEdit && EditOrder!.HasChequeCharge)
+            {
+                saved = await OrderSvc.EditChequeOrderAsync(EditOrder.Id, cmd);
+                InvoiceSuccess("فاکتور فروش با صدور سند اصلاحی جایگزین شد.");
+            }
+            else if (IsEdit)
             {
                 saved = await OrderSvc.UpdateAsync(EditOrder!.Id, cmd);
-                Toast.Success(Type == TransactionType.Sale ? "فاکتور فروش ویرایش شد." : "فاکتور خرید ویرایش شد.");
+                InvoiceSuccess(Type == TransactionType.Sale ? "فاکتور فروش ویرایش شد." : "فاکتور خرید ویرایش شد.");
             }
             else
             {
                 saved = await OrderSvc.CreateAsync(cmd);
-                Toast.Success(Type == TransactionType.Sale ? "فاکتور فروش ثبت شد." : "فاکتور خرید ثبت شد.");
+                InvoiceSuccess(Type == TransactionType.Sale ? "فاکتور فروش ثبت شد." : "فاکتور خرید ثبت شد.");
             }
             if (printAfterSave) await PrintOrderAsync(saved.Id);
             await OnSaved.InvokeAsync();
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            ShowFormError(ex.Message);
         }
         finally
         {

@@ -30,6 +30,8 @@ public interface IReferrerService
     Task<Referrer> SaveAsync(Referrer referrer);
     Task DeleteAsync(int id);
 
+
+
     /// <summary>کیف پول معرف‌ها با جستجو و مرتب‌سازی (sortBy: name|commission|paid|balance).</summary>
     Task<List<Referrer>> GetWalletsAsync(string? search = null, string sortBy = "name", bool desc = false);
     Task<List<ReferrerPayment>> GetPaymentsAsync(int? referrerId = null);
@@ -64,7 +66,7 @@ public interface IProductService
     Task DeleteAsync(int id);
 
     /// <summary>ورود گروهی کالا از فایل اکسل.</summary>
-    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName);
+    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId);
 
     /// <summary>دانلود فایل اکسل نمونه (با توکن احراز هویت؛ مرورگر را از صفحه خارج نمی‌کند).</summary>
     Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync();
@@ -86,8 +88,12 @@ public interface IPartyService
     Task<PagedResult<Party>> GetPagedAsync(PartyType type, int skip, int take);
     Task<List<Party>> GetAsync(PartyType type);
     Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false);
+    Task<List<LookupItem>> GetShopCustomerLookupsAsync(string context);
     Task<Party> SaveAsync(Party party);
+    Task<Party> SaveShopQuickAsync(Party party);
     Task DeleteAsync(int id);
+    Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);
 }
 
 /// <summary>سرویس موجودی انبار.</summary>
@@ -100,12 +106,44 @@ public interface IStockService
 /// <summary>سرویس اسناد خرید و فروش.</summary>
 public interface IOrderService
 {
-    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20);
+    Task<bool> CanManagePricingAsync();
+    Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date);
+    Task<ShopMinimumProfitBasisDto> GetMinimumProfitBasisAsync(int productId, DateTime date, int? saleId);
+
+    /// <summary>مجوز فعلی سمت سرور برای نمایش سود فروش.</summary>
+    Task<bool> CanViewProfitAsync();
+    Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000);
+    Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false);
+    Task<List<Party>> GetInvoicePartiesAsync(TransactionType type);
+    /// <summary>موجودی تعدادی انبار برای فهرست کالای فاکتور، بدون بهای تمام‌شده.</summary>
+    Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000);
+    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null);
     Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
-        int? partyId = null, int? warehouseId = null);
+        int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null);
+    Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from = null, DateTime? to = null, int? partyId = null);
     Task<Order?> GetAsync(int id);
     Task<Order> CreateAsync(OrderCommand cmd);
     Task<Order> UpdateAsync(int id, OrderCommand cmd);
+    Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd);
+    Task<ShopOrderCreditState> GetCreditStateAsync(int id);
+    Task ReceiveCreditAsync(int id, ShopOrderCreditReceiptCommand cmd);
+    Task ReverseCreditReceiptAsync(int id, int receiptId, ShopOrderCreditReversalCommand cmd);
+    Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
+    Task<SaleChequeReschedulePreview> RescheduleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd);
+    Task ReceiveChequeAsync(int chequeId, SaleChequeReceiptCommand cmd);
+    Task ReverseChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd);
+    Task ChangeChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd);
+    Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId);
+    Task<SaleChequeReturnPreviewDto> PreviewChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req);
+    Task<SaleChequeReturnSummaryDto> ReturnChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd);
+    Task ReplaceChequeAsync(int chequeId, SaleChequeReplaceCommand cmd);
+    Task RefundChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd);
+    Task AllocateChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd);
+    Task ReceiveChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd);
+    Task ReverseChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd);
+    Task CancelChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd);
+    Task<Order> EditChequeOrderAsync(int saleId, OrderCommand cmd);
+    Task<List<TrsAccount>> GetActiveTreasuryAccountsAsync(TreasuryAccountKind? kind = null);
     Task DeleteAsync(int id);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 
@@ -129,8 +167,16 @@ public interface IDashboardService
     Task<List<RecentActivity>> GetRecentAsync(int count = 8);
     Task<AdminDashboard> GetAdminDashboardAsync();
     Task ClearChequeAsync(int chequeId);
+    Task BounceChequeAsync(int chequeId, string? reason = null);
+    Task ResetChequeAsync(int chequeId);
     Task PayInstallmentAsync(int installmentId);
+    Task UnpayInstallmentAsync(int installmentId);
     Task SettleCreditAsync(int transactionId, decimal amount);
+
+    // مدیریت اقساط و چک‌های فروشگاهی
+    Task<ShopCreditSummary> GetShopCreditSummaryAsync();
+    Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status = null, TransactionType? txnType = null, string? search = null);
+    Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid = null, string? search = null);
 }
 
 /// <summary>سرویس اعلان‌ها (Toast).</summary>
@@ -140,7 +186,10 @@ public interface IToastService
     event Action? OnChange;
     void Success(string message);
     void Error(string message);
+    void Warning(string message);
     void Info(string message);
+    /// <summary>اعلان اختصاصی بالای سمت راست برای گردش ثبت فاکتور.</summary>
+    void ShowAtTopRight(string message, string kind);
     void Remove(Guid id);
 }
 
@@ -171,6 +220,11 @@ public interface IExpenseService
     Task DeleteCategoryAsync(int id);
 
     Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize);
+    Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to);
+    Task<List<TrsAccount>> GetChequeBanksAsync();
+    Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync();
+    Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command);
+    Task ChangeChequeStatusAsync(int id, ExpenseChequeKind kind, ExpenseChequeStatusCommand command);
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense);
     Task DeleteExpenseAsync(int id);
 }
@@ -182,4 +236,15 @@ public interface IGoodsIssueService
     Task<GoodsIssueDto?> GetAsync(int id);
     Task<GoodsIssueDto> SaveAsync(GoodsIssueCommand cmd);
     Task DeleteAsync(int id);
+}
+
+/// <summary>Shop-scoped policy, dated batch preview and audit history.</summary>
+public interface IShopPricingClient
+{
+    Task<ShopPricingPolicyDto> GetPolicyAsync();
+    Task<ShopPricingPolicyDto> SavePolicyAsync(ShopPricingPolicyDto policy);
+    Task<List<LookupItem>> GetCategoriesAsync();
+    Task<ShopPriceAdjustmentPreview> PreviewAsync(ShopPriceAdjustmentRequest request);
+    Task<ShopPriceAdjustmentPreview> ApplyAsync(ShopPriceAdjustmentCommand command);
+    Task<List<ShopPriceHistoryItem>> GetHistoryAsync();
 }

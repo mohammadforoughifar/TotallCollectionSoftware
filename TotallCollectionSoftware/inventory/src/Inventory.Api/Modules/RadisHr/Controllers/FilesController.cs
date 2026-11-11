@@ -5,6 +5,7 @@ using RadisHr.Api.Data;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace RadisHr.Api.Controllers;
 
@@ -23,6 +24,8 @@ public class FilesController : ControllerBase
         Ok((await Paging.QueryAsync(_db.StoredFiles.AsNoTracking()
             .OrderByDescending(f => f.StoredAt)
             .Select(f => new { f.Id, f.Uid, f.Name, f.ContentType, f.Size, f.UploadedBy, f.StoredAt }), skip, take, 500)).Result());
+
+    [AllowInReadOnly]
 
     [HttpPost]
     [DisableRequestSizeLimit]

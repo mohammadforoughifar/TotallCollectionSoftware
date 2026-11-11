@@ -26,14 +26,21 @@ public class EmployeesController : ControllerBase
     private bool IsModulePrivileged =>
         User.IsInRole("hr") || User.IsInRole("ceo") || User.IsInRole("Admin") || HasPerm("RadisHr.Access");
     private bool CanCreateEmployee =>
-        IsModulePrivileged || HasPerm("RadisHr.EmployeeCreate") || HasPerm("RadisHr.EmployeeEntry");
+        IsModulePrivileged || HasPerm("RadisHr.EmployeeCreate") || HasPerm("RadisHr.EmployeeEntry")
+            || HasPerm("RadisHr.Employees.Create");
     private bool CanUpdateEmployee =>
-        IsModulePrivileged || HasPerm("RadisHr.EmployeeUpdate") || HasPerm("RadisHr.EmployeeEntry");
+        IsModulePrivileged || HasPerm("RadisHr.EmployeeUpdate") || HasPerm("RadisHr.EmployeeEntry")
+            || HasPerm("RadisHr.Employees.Update");
+    private bool CanDeleteEmployee =>
+        IsModulePrivileged || HasPerm("RadisHr.EmployeeDelete") || HasPerm("RadisHr.EmployeeEntry")
+            || HasPerm("RadisHr.Employees.Delete");
 
     private ObjectResult ForbiddenCreate() => StatusCode(403, new ApiMessage(false,
         "برای ثبت پرسنل جدید مجوز «افزودن پرسنل» (RadisHr.EmployeeCreate) لازم است."));
     private ObjectResult ForbiddenUpdate() => StatusCode(403, new ApiMessage(false,
         "برای ویرایش پروندهٔ پرسنلی مجوز «ویرایش پرسنل» (RadisHr.EmployeeUpdate) لازم است."));
+    private ObjectResult ForbiddenDelete() => StatusCode(403, new ApiMessage(false,
+        "برای حذف پرسنل مجوز «حذف پرسنل» (RadisHr.EmployeeDelete) لازم است."));
 
     [HttpGet]
     public async Task<ActionResult<List<Employee>>> GetAll([FromQuery] string? search, [FromQuery] string? unit, [FromQuery] int skip = 0, [FromQuery] int? take = null)
@@ -71,7 +78,6 @@ public class EmployeesController : ControllerBase
         return employee == null ? NotFound(new ApiMessage(false, "پرسنل یافت نشد.")) : employee;
     }
 
-    [Authorize(Roles = "hr,ceo")]
     [HttpPost]
     public async Task<ActionResult<IdResponse>> Create(Employee employee)
     {
@@ -84,13 +90,13 @@ public class EmployeesController : ControllerBase
             return Conflict(new ApiMessage(false, "کد پرسنلی تکراری است."));
 
         employee.Id = 0;
+        employee.Contracts ??= new List<EmployeeContract>();
         foreach (var c in employee.Contracts) c.Id = 0;
         _db.Employees.Add(employee);
         await _db.SaveChangesAsync();
         return new IdResponse(employee.Id, "اطلاعات پرسنل ثبت شد.");
     }
 
-    [Authorize(Roles = "hr,ceo")]
     [HttpPut("{id:int}")]
     public async Task<ActionResult<ApiMessage>> Update(int id, Employee input)
     {
@@ -102,6 +108,12 @@ public class EmployeesController : ControllerBase
 
         if (await _db.Employees.AnyAsync(e => e.Code == input.Code && e.Id != id))
             return Conflict(new ApiMessage(false, "کد پرسنلی تکراری است."));
+
+        // کلید موجودیت همیشه از مسیر می‌آید، نه از بدنهٔ درخواست؛ وگرنه اگر کلاینت Id=0
+        // بفرستد، SetValues تلاش می‌کند کلیدِ ردیف موجود را تغییر دهد و درخواست با
+        // InvalidOperationException شکست می‌خورد (ذخیرهٔ ویرایش انجام نمی‌شد).
+        input.Id = id;
+        input.Contracts ??= new List<EmployeeContract>();
 
         _db.Entry(employee).CurrentValues.SetValues(input);
 
@@ -116,10 +128,11 @@ public class EmployeesController : ControllerBase
         return new ApiMessage(true, "اطلاعات پرسنل به‌روزرسانی شد.");
     }
 
-    [Authorize(Roles = "hr,ceo")]
     [HttpDelete("{id:int}")]
     public async Task<ActionResult<ApiMessage>> Delete(int id)
     {
+        // مجوز تفکیکی «حذف» — کسی که فقط EmployeeCreate/Update دارد نمی‌تواند حذف کند
+        if (!CanDeleteEmployee) return ForbiddenDelete();
         var employee = await _db.Employees.FindAsync(id);
         if (employee == null) return NotFound(new ApiMessage(false, "پرسنل یافت نشد."));
         _db.Employees.Remove(employee);
@@ -128,7 +141,6 @@ public class EmployeesController : ControllerBase
     }
 
     /// <summary>ورود گروهی اطلاعات پرسنل (جایگزین بارگذاری اکسل نسخهٔ قدیم)</summary>
-    [Authorize(Roles = "hr,ceo")]
     [HttpPost("import")]
     public async Task<ActionResult<ImportEmployeesResult>> Import(ImportEmployeesRequest request)
     {

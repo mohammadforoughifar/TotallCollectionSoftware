@@ -404,6 +404,22 @@ a { text-decoration: none; }
     /* بوت‌استرپ برای .toast-container مقدار pointer-events:none می‌گذارد و به فرزندان ارث می‌رسد */
     pointer-events: none;
 }
+/* Only notifications explicitly sent from invoice entry use this position. */
+.toast-container.toast-container-top-right {
+    top: calc(1rem + var(--invoice-error-stack-offset, 0px));
+    right: 1rem;
+    bottom: auto;
+    left: auto;
+    z-index: 4700;
+    max-width: min(360px, calc(100vw - 2rem));
+    max-height: max(0px, calc(100vh - 2rem - var(--invoice-error-stack-offset, 0px)));
+    overflow-y: auto;
+    pointer-events: auto;
+}
+.toast-container-top-right .toast-item { flex: 0 0 auto; min-width: 0; }
+.toast-container-top-right .toast-item > div:not(.toast-icon) { min-width: 0; overflow-wrap: anywhere; }
+/* Make it clear which invoice receives F7 without changing table geometry. */
+[data-order-copy-context]:focus-visible { outline: 2px solid #4f46e5; outline-offset: -2px; }
 .toast-item {
     pointer-events: auto; /* بدون این، کلیک روی اعلان و دکمهٔ ✕ اصلاً به دکمه نمی‌رسد */
     display: flex;
@@ -1048,42 +1064,67 @@ a { text-decoration: none; }
 }
 .m-card-actions .btn:last-child:not(:first-child) { flex: 0 0 auto; min-width: 44px; }
 
-/* ---------- باکس روش پرداخت (فرم فروش) ---------- */
+/* ---------- باکس روش پرداخت لوکس و مدرن (فرم فروش و خرید) ---------- */
 .pay-box {
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 1rem;
-    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.2rem;
+    background: #ffffff;
+    box-shadow: 0 2px 12px -2px rgba(15, 23, 42, 0.04);
 }
 .pay-tabs {
-    display: flex;
-    gap: .5rem;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: .65rem;
 }
 .pay-tab {
-    flex: 1;
-    min-width: 110px;
-    padding: .55rem .5rem;
-    border: 1.5px solid var(--border);
+    padding: .75rem .8rem;
+    border: 1.5px solid #e2e8f0;
     border-radius: 12px;
-    background: #fff;
+    background: #f8fafc;
     color: #475569;
-    font-size: .85rem;
-    font-weight: 600;
+    font-size: .88rem;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: .4rem;
-    transition: all .15s ease;
+    gap: .5rem;
+    transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
 }
-.pay-tab:hover { border-color: var(--primary); color: var(--primary); }
+.pay-tab:hover {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+    color: #1e293b;
+    transform: translateY(-1px);
+}
 .pay-tab.active {
-    border-color: var(--primary);
-    background: linear-gradient(135deg, rgba(79, 70, 229, .1), rgba(15, 118, 110, .08));
-    color: var(--primary);
-    box-shadow: 0 2px 10px rgba(79, 70, 229, .15);
+    border-color: #4f46e5;
+    background: #ffffff;
+    color: #4f46e5;
+    box-shadow: 0 4px 14px -2px rgba(79, 70, 229, 0.25), 0 0 0 1px #4f46e5;
 }
-.pay-tab i { font-size: 1.05rem; }
+.pay-tab[data-pay-comp=cash].active {
+    border-color: #10b981;
+    color: #059669;
+    box-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.25), 0 0 0 1px #10b981;
+}
+.pay-tab[data-pay-comp=cheque].active {
+    border-color: #f59e0b;
+    color: #d97706;
+    box-shadow: 0 4px 14px -2px rgba(245, 158, 11, 0.25), 0 0 0 1px #f59e0b;
+}
+.pay-tab[data-pay-comp=installment].active {
+    border-color: #7c3aed;
+    color: #7c3aed;
+    box-shadow: 0 4px 14px -2px rgba(124, 58, 237, 0.25), 0 0 0 1px #7c3aed;
+}
+.pay-tab[data-pay-comp=credit].active {
+    border-color: #ef4444;
+    color: #dc2626;
+    box-shadow: 0 4px 14px -2px rgba(239, 68, 68, 0.25), 0 0 0 1px #ef4444;
+}
+.pay-tab i { font-size: 1.15rem; }
 
 .cheque-row {
     border: 1px dashed var(--border);
@@ -1500,22 +1541,17 @@ body {
    بالاتر از کارت‌های هم‌سطح نگه داشته می‌شود. (منوهای اصلیِ تقویم/کمبو از این
    به بعد «شناور» هستند و اصلاً به این شبکه نیاز ندارند؛ این فقط حافظِ
    منوهای inline دیگر است.) */
-.app-content > *:not(.modal):has(.dp-popover),
-.app-content > *:not(.modal):has(.ss-menu),
-.app-content > *:not(.modal):has(.ms-combo-menu),
-.app-content > *:not(.modal):has(.om-combo-menu),
-/* صفحاتِ داخل تب‌ها یک لایه عمیق‌ترند (main.app-content > .tabpane > صفحه) */
-.tabpane > *:not(.modal):has(.dp-popover),
-.tabpane > *:not(.modal):has(.ss-menu),
-.tabpane > *:not(.modal):has(.ms-combo-menu),
-.tabpane > *:not(.modal):has(.om-combo-menu) {
-    position: relative;
-    z-index: 10;
-}
+/* توجه: منوهای شناور (pop-overlay با z=4490 و ss-menu با z=4500) به‌صورت position:fixed
+   در سطح viewport رندر می‌شوند و نیازی به z-index دادن به کانتینر والد ندارند.
+   اعمال z-index روی والدها باعث ایجاد stacking context ناخواسته و در نتیجه افتادن
+   هدر/سایدبار روی عناصر دیگر در رزولوشن‌های متوسط و لپ‌تاپ می‌شد؛ بنابراین این قاعده خنثی شد. */
 
 /* مودال‌ها بالاتر از همه‌ی کارت‌ها باشند (منوهای شناور ۴۵۰۰ بالاتر از مودال می‌مانند) */
-.modal { z-index: 1050; }
-.modal-backdrop { z-index: 1040; }
+/* مودال‌ها و بک‌دراپ باید بالاتر از هدر و سایدبار و اعلان‌ها باشند (z > 2100)
+   تا هیچ هدر، اعلان، منوی کناری یا نوار بالایی روی مودال قرار نگیرد.
+   منوهای شناور کمبو و تقویم نیز با z-index برابر ۴۵۰۰ بالای مودال نمایش داده می‌شوند. */
+.modal { z-index: 3500 !important; }
+.modal-backdrop { z-index: 3490 !important; }
 
 /* کارت‌های داخل مودال نباید overflow:hidden داشته باشند */
 .modal .card { overflow: visible; }
@@ -3979,4 +4015,59 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     .rr-donut-num { font-size: 1.05rem; }
     .rr-trend { height: 170px; }
     .rr-trend-x { display: none; }
+}
+
+/* یکپارچگی سربرگ و نشانگر مراحل در فرم خرید */
+.modal-header.purchase-order-header { background: #fff; }
+
+/* Wider invoice workspace keeps the item table on one line on desktop. */
+@media (min-width: 992px) {
+    .modal-dialog.invoice-dialog { max-width: min(96vw, 1600px); }
+}
+
+/* ============================================================
+   آلارم «موجودی صفر» در سطر اقلام — فقط ماژول فروش و ویزیتوری
+   (Pages/SalesVisit/VisitForm.razor). فقط --danger / --warning موجود
+   بهکار رفته و پالت :root تغییر نکرده است.
+   سطر کامل قرمز نمیشود: آیکون + متن صریح + لبهٔ باریک + حلقهٔ
+   دور فیلد تعداد، تا عددها روی زمینهٔ روشن خوانا بمانند.
+   ============================================================ */
+.zs-alert {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: .45rem; margin-top: .35rem; padding: .35rem .55rem;
+    border: 1px solid #fecdd3; border-radius: 10px;
+    background: #fff1f2; color: #9f1239;
+    font-size: .7rem; line-height: 1.5;
+}
+.zs-alert > i { color: var(--danger); font-size: .84rem; flex: 0 0 auto; }
+.zs-alert > b { font-weight: 800; white-space: nowrap; }
+.zs-alert > span { opacity: .82; overflow-wrap: anywhere; }
+.zs-alert--warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.zs-alert--warn > i { color: var(--warning); }
+
+/* نشانهٔ سطر: فقط تِنت ۳٪ و یک لبهٔ ۳px؛ نه پسزمینهٔ قرمز کامل */
+.zs-row { background: rgba(239, 68, 68, .035) !important; }
+.zs-row--card { border-inline-start: 3px solid var(--danger) !important; }
+.zs-qty-input { border-color: #fca5a5 !important; box-shadow: 0 0 0 2px rgba(239, 68, 68, .12); }
+
+.zs-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .68rem; font-weight: 800; white-space: nowrap;
+    padding: .18rem .55rem; border-radius: 999px;
+    background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3;
+}
+.zs-badge > i { color: var(--danger); }
+.zs-opt {
+    font-style: normal; font-size: .58rem; font-weight: 800; white-space: nowrap;
+    color: #9f1239; background: #ffe4e6; border: 1px solid #fecdd3;
+    border-radius: 999px; padding: .05rem .4rem; flex: 0 0 auto;
+    align-self: flex-start;
+}
+
+/* موبایل: توضیح به خط دوم میرود؛ هیچ max-height / overflow داخلی نیست */
+@media (max-width: 720px) {
+    .zs-alert { padding: .3rem .4rem; font-size: .62rem; gap: .3rem; }
+    .zs-alert > span { flex: 1 1 100%; }
+    .zs-opt { font-size: .54rem; }
+    .zs-badge { font-size: .6rem; padding: .14rem .42rem; }
 }

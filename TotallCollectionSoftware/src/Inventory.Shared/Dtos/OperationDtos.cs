@@ -1,3 +1,4 @@
+using Inventory.Shared;
 using System.Text.Json.Serialization;
 
 namespace Inventory.Shared.Dtos;
@@ -11,7 +12,10 @@ public class OrderLine
     public string Unit { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
-    public decimal Total => Quantity * Price;
+    public decimal DiscountPercent { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public bool DiscountIsAmount { get; set; }
+    public decimal Total => Math.Max(0, (Quantity * Price) - DiscountAmount);
 
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
@@ -120,6 +124,9 @@ public class ChequeDto
     public DateTime DueDate { get; set; }
     public bool IsCleared { get; set; }
     public DateTime? ClearedAt { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public DateTime? BouncedAt { get; set; }
+    public string? BounceReason { get; set; }
     public string? Note { get; set; }
 }
 
@@ -140,6 +147,9 @@ public class OrderLineInput
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
+    public decimal DiscountPercent { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public bool DiscountIsAmount { get; set; }
 
     /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
     [JsonIgnore]
@@ -243,6 +253,9 @@ public class AdminDashboard
     /// <summary>چک‌هایی که امروز باید پاس شوند</summary>
     public List<ChequeAlertItem> TodayCheques { get; set; } = new();
 
+    /// <summary>چک‌های پرداختی ما (صادره به تأمین‌کننده) که سررسید شده یا امروز سررسید دارند</summary>
+    public List<ChequeAlertItem> IssuedCheques { get; set; } = new();
+
     /// <summary>روند فروش/سود ۳۰ روز اخیر (برای نمودار)</summary>
     public List<TrendPoint> DailyTrend { get; set; } = new();
 
@@ -294,6 +307,8 @@ public class ChequeAlertItem
     public string OrderNumber { get; set; } = "";
     public decimal Amount { get; set; }
     public DateTime DueDate { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public string? BounceReason { get; set; }
 }
 
 /// <summary>آیتم فعالیت اخیر برای داشبورد</summary>
@@ -354,4 +369,124 @@ public class ExpenseDto
 
     public string? Description { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>مدل مدیریت چک در سامانه فروشگاهی (دریافتی و پرداختی)</summary>
+public class ShopChequeItem
+{
+    public int Id { get; set; }
+    public int TransactionId { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public TransactionType TransactionType { get; set; }
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? PartyMobile { get; set; }
+    public string Number { get; set; } = "";
+    public string? BankName { get; set; }
+    public string? AccountInfo { get; set; }
+    public string? OwnerName { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime DueDate { get; set; }
+    public bool IsCleared { get; set; }
+    public DateTime? ClearedAt { get; set; }
+    public ChequeStatus Status { get; set; } = ChequeStatus.InHand;
+    public DateTime? BouncedAt { get; set; }
+    public string? BounceReason { get; set; }
+    public string? Note { get; set; }
+    public int DaysOverdue { get; set; }
+}
+
+/// <summary>مدل مدیریت اقساط در سامانه فروشگاهی</summary>
+public class ShopInstallmentItem
+{
+    public int Id { get; set; }
+    public int TransactionId { get; set; }
+    public string OrderNumber { get; set; } = "";
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? PartyMobile { get; set; }
+    public int No { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime DueDate { get; set; }
+    public bool IsPaid { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public int DaysOverdue { get; set; }
+}
+
+/// <summary>آمار و خلاصه وضعیت چک‌ها و اقساط فروشگاهی</summary>
+public class ShopCreditSummary
+{
+    public int InHandChequesCount { get; set; }
+    public decimal InHandChequesTotal { get; set; }
+    public int ClearedChequesCount { get; set; }
+    public decimal ClearedChequesTotal { get; set; }
+    public int BouncedChequesCount { get; set; }
+    public decimal BouncedChequesTotal { get; set; }
+    public int PendingInstallmentsCount { get; set; }
+    public decimal PendingInstallmentsTotal { get; set; }
+    public int PaidInstallmentsCount { get; set; }
+    public decimal PaidInstallmentsTotal { get; set; }
+    public int OverdueInstallmentsCount { get; set; }
+    public decimal OverdueInstallmentsTotal { get; set; }
+}
+
+// ==================== گزارش گردش حساب و مانده اشخاص (طلب و بدهی) ====================
+public class PartyBalanceSummaryDto
+{
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? Mobile { get; set; }
+    public string? NationalCode { get; set; }
+    public PartyType PartyType { get; set; }
+    public PartyType Type => PartyType;
+    public decimal OpeningDebit { get; set; }
+    public decimal OpeningCredit { get; set; }
+    public decimal OpeningBalance => OpeningDebit - OpeningCredit;
+    public decimal PeriodDebit { get; set; }
+    public decimal PeriodCredit { get; set; }
+    public decimal TotalDebit => OpeningDebit + PeriodDebit;
+    public decimal TotalCredit => OpeningCredit + PeriodCredit;
+    public decimal RemainingBalance => TotalDebit - TotalCredit; // مثبت = بدهکار (طلب ما)، منفی = بستانکار (بدهی ما)
+    public decimal ClosingBalance => RemainingBalance;
+    public bool IsDebtor => RemainingBalance > 0;
+    public bool IsCreditor => RemainingBalance < 0;
+    public bool IsSettled => RemainingBalance == 0;
+}
+
+public class PartyStatementReportDto
+{
+    public decimal TotalReceivable { get; set; }
+    public decimal TotalPayable { get; set; }
+    public decimal NetBalance => TotalReceivable - TotalPayable;
+    public int DebtorCount { get; set; }
+    public int CreditorCount { get; set; }
+    public List<PartyBalanceSummaryDto> Items { get; set; } = new();
+}
+
+public class PartyStatementRowDto
+{
+    public DateTime Date { get; set; }
+    public int? TransactionId { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string Title { get; set; } = "";
+    public string Description { get; set; } = "";
+    public bool IsOpening { get; set; }
+    public decimal Debit { get; set; }  // بدهکار (افزایش طلب ما از شخص)
+    public decimal Credit { get; set; } // بستانکار (کاهش طلب ما یا افزایش بدهی ما به شخص)
+    public decimal Balance { get; set; } // مانده پس از این سطر
+}
+
+public class PartyStatementDetailDto
+{
+    public int PartyId { get; set; }
+    public string PartyName { get; set; } = "";
+    public string? Mobile { get; set; }
+    public string? NationalCode { get; set; }
+    public PartyType PartyType { get; set; }
+    public PartyType Type => PartyType;
+    public decimal OpeningBalance { get; set; } // مثبت = بدهکار اولیه، منفی = بستانکار اولیه
+    public decimal TotalDebit { get; set; }
+    public decimal TotalCredit { get; set; }
+    public decimal ClosingBalance { get; set; }
+    public List<PartyStatementRowDto> Rows { get; set; } = new();
 }

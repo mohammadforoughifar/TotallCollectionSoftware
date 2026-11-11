@@ -1,8 +1,13 @@
 @* ================== فرم «طرف حساب جدید / ویرایش طرف حساب» ==================
-   یک نسخهٔ واحد از فرم تعریف طرف حساب که هم در صفحهٔ «طرف حساب‌ها»
-   (/parties) و هم در «فروش و ویزیتوری» (سفارش ویزیتور) استفاده می‌شود؛
-   بنابراین مشتری‌ای که ویزیتور ثبت می‌کند دقیقاً همان فرم/همان رکورد
-   تعریف مشتری است — نه یک فرمول موازی.
+   تنها نسخهٔ فرم تعریف مشتری/تأمین‌کننده در سامانهٔ فروشگاهی. هر جا دکمهٔ
+   «مشتری جدید» هست باید دقیقاً همین کامپوننت باز شود؛ هیچ فرم خلاصهٔ موازی
+   (فقط نام/موبایل/تلفن/آدرس) تعریف نمی‌شود.
+   مصرف‌کنندهها: «طرف حسابها» (/parties، اطلاعات پایه ← مرجع)، «فاکتور فروش/خرید»
+   (Orders/OrderForm)، «ثبت سفارش ویزیتوری» (SalesVisit/VisitForm)،
+   «حوالهٔ تحویل کالا» (Catalog/GoodsIssues) و «پذیرش تعمیرات» (Repairs/Repairs).
+   بنابراین مشتریان ثبت‌شده از هر نقطه دقیقاً همان فیلدها، همان اعتبارسنجی و
+   همان رکورد «تعریف مشتری» را دارند.
+   AllowReferrerPicker=false فقط برای ویزیتور است که معرفش توسط سرور ثابت می‌شود.
    قرارداد مودال: بستن فقط با ×، «انصراف» یا Esc.
    ======================================================================= *@
 @namespace Inventory.Client.Shared
@@ -33,7 +38,7 @@
             </div>
         }
 
-        <div class="row g-3">
+        <div class="row g-3" data-order-child="@InvoiceFormKey">
             <div class="col-12">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
                 <input class="form-control" @bind="party.Name" data-party-field="name" />
@@ -65,13 +70,21 @@
             {
                 <div class="col-12">
                     <label class="form-label">معرف</label>
-                    <select class="form-select" @bind="referrerIdStr">
-                        <option value="0">— بدون معرف —</option>
-                        @foreach (var r in referrerList)
-                        {
-                            <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
-                        }
-                    </select>
+                    @if (!string.IsNullOrWhiteSpace(InvoiceFormKey))
+                    {
+                        <SearchSelect Items="@ReferrerLookup" Value="SelectedReferrer" ValueChanged="@(id => referrerIdStr = id.ToString())"
+                                      Placeholder="بدون معرف" ShowAllOnFocus="true" ConstrainToModal="true" AdvanceOnEnter="true" />
+                    }
+                    else
+                    {
+                        <select class="form-select" @bind="referrerIdStr">
+                            <option value="0">— بدون معرف —</option>
+                            @foreach (var r in referrerList)
+                            {
+                                <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
+                            }
+                        </select>
+                    }
                     <div class="fs-8 text-muted mt-1">در فاکتور فروش این مشتری، معرف به‌صورت خودکار انتخاب می‌شود</div>
                 </div>
             }
@@ -86,6 +99,10 @@
             }
             <div class="col-12">
                 <label class="form-label">یادداشت</label>
+                @if (!string.IsNullOrEmpty(InvoiceFormKey))
+                {
+                    <div class="fs-9 text-muted">Enter: فیلد بعدی · Shift+Enter: خط جدید</div>
+                }
                 <textarea class="form-control" rows="2" @bind="party.Note"></textarea>
             </div>
             <div class="col-12">
@@ -103,12 +120,18 @@
             {
                 <span class="spinner-border spinner-border-sm ms-1"></span>
             }
-            ذخیره
+            ذخیره (F1)
         </button>
     </Footer>
 </Modal>
 
 @code {
+    /// <summary>شناسهٔ فرم فاکتور برای ناوبری کیبورد؛ در سایر صفحات خالی است.</summary>
+    [Parameter] public string? InvoiceFormKey { get; set; }
+
+    /// <summary>فقط برای ثبت سریع مشتری یا تأمین‌کننده از فرم‌های فروشگاهی.</summary>
+    [Parameter] public bool ShopQuickCreate { get; set; }
+
     /// <summary>نمایش/عدم نمایش فرم.</summary>
     [Parameter] public bool Visible { get; set; }
 
@@ -133,16 +156,24 @@
     private bool saving;
     private List<Referrer> referrerList = new();
     private string referrerIdStr = "0";
+    private int SelectedReferrer => int.TryParse(referrerIdStr, out var id) ? id : 0;
+    private List<LookupItem> ReferrerLookup => referrerList.Select(r => new LookupItem
+    {
+        Id = r.Id, Name = r.Name + (string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")
+    }).ToList();
     private bool loadedForKey;
 
     private bool IsEdit => party.Id != 0;
 
+    private PartyType _prevType;
+
     protected override void OnParametersSet()
     {
-        // فرم با هر باز شدن از دادهٔ تازه ساخته می‌شود (تا ویرایشِ لغوشده روی بعدی اثر نگذارد)
+        // با تغییر وضعیت نمایش یا تغییر نوع (مثلاً از فروش به خرید)، فرم باید از نو مقداردهی شود
         if (!Visible) { loadedForKey = false; return; }
-        if (loadedForKey) return;
+        if (loadedForKey && _prevType == Type) return;
         loadedForKey = true;
+        _prevType = Type;
 
         var src = Model;
         party = new Party
@@ -179,19 +210,29 @@
         await OnCancel.InvokeAsync();
     }
 
+    private void Notify(string message, bool error)
+    {
+        if (!string.IsNullOrWhiteSpace(InvoiceFormKey)) Toast.ShowAtTopRight(message, error ? "error" : "success");
+        else if (error) Toast.Error(message);
+        else Toast.Success(message);
+    }
+
     private async Task Save()
     {
-        if (string.IsNullOrWhiteSpace(party.Name)) { Toast.Error("نام طرف حساب را وارد کنید."); return; }
+        if (saving) return;
+        if (string.IsNullOrWhiteSpace(party.Name)) { Notify("نام طرف حساب را وارد کنید.", true); return; }
 
         party.ReferrerId = AllowReferrerPicker && int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : party.ReferrerId;
         saving = true;
         try
         {
-            var saved = await PartySvc.SaveAsync(party);
-            Toast.Success(IsEdit ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.");
+            var saved = ShopQuickCreate && !IsEdit
+                ? await PartySvc.SaveShopQuickAsync(party)
+                : await PartySvc.SaveAsync(party);
+            Notify(IsEdit ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.", false);
             await OnSaved.InvokeAsync(saved);
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { Notify(ex.Message, true); }
         finally { saving = false; }
     }
 }

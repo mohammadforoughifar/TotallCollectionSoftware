@@ -379,7 +379,7 @@
                                         <div>دانلود کلی (ZIP)<small>@activeDetail.Attachments.Count.FaDigits() فایل</small></div>
                                     </button>
                                 }
-                                @if (CanEditLetter)
+                                @if (CanAttachLetter)
                                 {
                                     <label class="att att-add" title="افزودن پیوست جدید">
                                         <div class="ic"><i class="bi @(incomingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
@@ -1029,6 +1029,14 @@
     /// چون ویرایش پس از رویت هم باید ممکن باشد و به بینندگان اعلان می‌رود.
     /// </summary>
     private bool CanEditLetter => activeDetail?.CanEdit == true || Auth.IsAdmin;
+
+    /// <summary>
+    /// حقِ «افزودن پیوست» — عریض‌تر از CanEdit: ثبت‌کننده، دبیرخانه، مدیر، و هر کسی که نامه
+    /// در گردش اوست (ردیف ارجاع دارد). سرور همین را در CanAttach می‌دهد و کنترلر بارگذاری
+    /// هم با CanAccessLetterAsync همین مجموعه را می‌پذیرد؛ پس هیچ کاربری دکمه‌ای نمی‌بیند
+    /// که با آن به ۴۰۳ بخورد.
+    /// </summary>
+    private bool CanAttachLetter => activeDetail?.CanAttach == true || Auth.IsAdmin;
 
     /// <summary>نشان‌کردن/برداشتن نشان از داخل ریدر — روی همان ردیف فهرست هم اعمال می‌شود</summary>
     private async Task ToggleStarReader()

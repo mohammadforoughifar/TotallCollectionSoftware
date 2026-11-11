@@ -55,8 +55,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -98,8 +102,12 @@ public static class DbInitializer
                     await RepairDeviceSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // ستون‌های تخفیف سطر فاکتور فروش/خرید
+                    await TransactionLineDiscountSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
+                    // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
+                    await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -135,6 +143,7 @@ public static class DbInitializer
                 await PushDeliverySchema.EnsureAsync(db);
                 // مدت نمایش اعلان‌ها/پیام‌ها (سراسری، مدیر سامانه) — ستون‌های AppSettings
                 await AppSettingsSchemaV1.EnsureAsync(db);
+                await MeetingMinutesSchemaV1.EnsureAsync(db);
                 await CompanyAccessSchemaV1.EnsureAsync(db);
                 await AiSchemaV1.EnsureAsync(db);
                 // گاوصندوق رمزهای تجهیزات (سرور، سوییچ، میکروتیک، فایروال، سامانه‌ها) — به تفکیک شرکت
@@ -154,9 +163,18 @@ public static class DbInitializer
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.
                 await DabirkhaneSchemaV1.EnsureAsync(db);
 
+                // ایندکس (Module, RefId) روی AppAttachments — باز کردن نامه و
+                // «دارای پیوست» در فهرست کارتابل‌ها بدون این ایندکس کل جدولِ
+                // پیوست‌ها (با ستون فایل) را اسکن می‌کرد و کند بود.
+                await AttachmentIndexSchemaV1.EnsureAsync(db);
+
+                // شرحِ بلند دستور کار (تصاویر inline نامه) — جدول جانبی
+                await WorkOrderDescriptionSchemaV1.EnsureAsync(db);
+
                 // رونوشت‌گیرندگان نامه صادره — این Schema قبلاً تعریف شده بود اما در
                 // راه‌اندازی فراخوانی نمی‌شد و ثبت نامه دارای رونوشت با 400 شکست می‌خورد.
                 await OutgoingCopyToSchemaV1.EnsureAsync(db);
+                await OutgoingSignerReadSchemaV1.EnsureAsync(db);
 
                 // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
                 await MeetingMinutesSchemaV1.EnsureAsync(db);
@@ -408,17 +426,39 @@ public static class DbInitializer
 
                 // ============ اتوماسیون اداری: عملگرهای پیش‌فرض ارجاع ============
                 // عملگر (Amalgar) تعیین می‌کند ارجاع «جهت اطلاع» است یا «جهت اقدام/تایید و امضا».
-                if (!db.Amalgars.Any())
+                // نکته: به‌جای «فقط وقتی هیچ عملگری نیست»، تک‌تک عملگرهای پیش‌فرض چک می‌شوند تا
+                // عملگرهای تازه‌ای که بعداً به این فهرست اضافه می‌شوند (مثل «جهت استحضار») در
+                // پایگاه‌داده‌های موجود هم ساخته شوند. عملگرهای ساخته‌شده توسط کاربر دست‌نخورده می‌مانند.
+                var defaultAmalgars = new (string Title, string Taeed)[]
                 {
-                    db.Amalgars.AddRange(
-                        new Amalgar { Title = "جهت اطلاع", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت اقدام", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت بررسی و اعلام نظر", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت تایید و امضا", TaeedEmza = "تایید" },
-                        new Amalgar { Title = "جهت پاسخگویی", TaeedEmza = "" },
-                        new Amalgar { Title = "جهت بایگانی", TaeedEmza = "" });
+                    ("جهت اطلاع", ""),
+                    ("جهت استحضار", ""),
+                    ("جهت اقدام", ""),
+                    ("جهت بررسی و اعلام نظر", ""),
+                    ("جهت تایید و امضا", "تایید"),
+                    ("جهت پاسخگویی", ""),
+                    ("جهت بایگانی", ""),
+                };
+                var addedAmalgars = 0;
+                foreach (var (title, taeed) in defaultAmalgars)
+                {
+                    var existingAmalgar = db.Amalgars.FirstOrDefault(a => a.Title == title);
+                    if (existingAmalgar is null)
+                    {
+                        db.Amalgars.Add(new Amalgar { Title = title, TaeedEmza = taeed });
+                        addedAmalgars++;
+                    }
+                    else if (existingAmalgar.IsDelete)
+                    {
+                        // عملگر پیش‌فرضی که قبلاً حذف نرم شده بود، برگردانده می‌شود
+                        existingAmalgar.IsDelete = false;
+                        addedAmalgars++;
+                    }
+                }
+                if (addedAmalgars > 0)
+                {
                     db.SaveChanges();
-                    Console.WriteLine("[DB] عملگرهای پیش‌فرض ارجاع نامه ساخته شدند.");
+                    Console.WriteLine($"[DB] {addedAmalgars} عملگر پیش‌فرض ارجاع نامه ساخته/بازگردانده شد.");
                 }
 
                 // ============ اتوماسیون اداری: سازمان‌ها — مبنای جزء «واحد» در شماره نامه ============
@@ -589,7 +629,9 @@ public static class DbInitializer
                     Console.WriteLine("     در appsettings.json مقدار Server=. را به Server=.\\SQLEXPRESS تغییر دهید.");
                     Console.WriteLine("  3) پروتکل TCP/IP یا Shared Memory در SQL Server Configuration Manager فعال باشد.");
                     Console.WriteLine("  4) رشته اتصال فعلی:");
-                    Console.WriteLine($"     {config.GetConnectionString("Default")}");
+                    var safeConnection = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(config.GetConnectionString("Default"));
+                    safeConnection.Password = "***";
+                    Console.WriteLine($"     {safeConnection.ConnectionString}");
                     Console.WriteLine("  5) برای تست بدون SQL Server، در appsettings.json مقدار");
                     Console.WriteLine("     Database:Provider را روی \"Sqlite\" و ConnectionStrings:Default را روی");
                     Console.WriteLine("     \"Data Source=inventory.db\" بگذارید.");

@@ -559,6 +559,12 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+        configurationBuilder.Properties<decimal>().HavePrecision(18, 4);
+    }
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
@@ -667,6 +673,13 @@ public class AppDbContext : DbContext
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.DocumentId, l.Module, l.EntityId });
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.Module, l.EntityId });
 
+        // پیوست‌ها: هر «باز کردن نامه/مدرک» و هر ردیف فهرست، یک EXISTS روی
+        // (Module, RefId) می‌زند. بدون این ایندکس، آن جست‌وجو «اسکن کل جدول» بود و
+        // چون جدول ستون varbinary(max) دارد (پیوست‌های قدیمی)، خواندن یک نامه
+        // به‌طور محسوسی سنگین می‌شد. رکوردهای تازه‌تر فایل را روی دیسک دارند و
+        // همین ستون را در همان ردیف خالی نگه می‌دارند.
+        mb.Entity<AppAttachment>().HasIndex(a => new { a.Module, a.RefId });
+
         // لاگ دسترسی به پیوست‌ها (گردانه دانلود/مشاهده)
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => new { l.Module, l.RefId });
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.AttachmentId);
@@ -704,6 +717,8 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.DiscountPercent).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.DiscountAmount).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);

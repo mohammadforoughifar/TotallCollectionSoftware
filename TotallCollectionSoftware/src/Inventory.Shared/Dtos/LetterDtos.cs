@@ -91,7 +91,21 @@ public class RelatedLetterDto
     public int RelateLetterId { get; set; }
     public string? RelateLetterNumber { get; set; }
     public string? RelateLetterTitle { get; set; }
+
+    /// <summary>
+    /// دفتر نامهٔ مرتبط: 1=داخلی، 2=صادره، 3=وارده (0=نامشخص).
+    /// ریدر با همین مقدار برچسب «وارده/داخلی/صادره» را کنار رابطه نشان می‌دهد.
+    /// </summary>
+    public int RelateSourceType { get; set; }
+
     public string RelatedTitle => Related == 2 ? "عطف" : "پیرو";
+    public string RelateSourceTitle => RelateSourceType switch
+    {
+        1 => "داخلی",
+        2 => "صادره",
+        3 => "وارده",
+        _ => ""
+    };
 }
 
 /// <summary>سطر لیست کارتابل — معادل viewInnerLetterList</summary>

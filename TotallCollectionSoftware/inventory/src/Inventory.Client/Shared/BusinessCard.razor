@@ -1,7 +1,8 @@
 @inject IJSRuntime JS
+@inject IToastService Toast
 
 <div class="bcard-wrap">
-    <div class="bcard" id="bcardPrint">
+    <div class="bcard" id="bcardPrint" @ref="cardRoot">
         <div class="bcard-deco-1"></div>
         <div class="bcard-deco-2"></div>
 
@@ -28,8 +29,8 @@
 </div>
 
 <div class="text-center mt-3 no-print">
-    <button class="btn btn-primary" @onclick="Print">
-        <i class="bi bi-printer"></i> چاپ کارت ویزیت
+    <button class="btn btn-primary" data-hotkey="f4" title="کلید میانبر: F4" @onclick="Print">
+        <i class="bi bi-printer"></i> چاپ کارت ویزیت (F4)
     </button>
 </div>
 
@@ -37,6 +38,9 @@
     [Parameter] public string Name { get; set; } = "";
     [Parameter] public string? Shop { get; set; }
     [Parameter] public string? Phone { get; set; }
+    [Parameter] public bool UsePrintPreview { get; set; }
+
+    private ElementReference cardRoot;
 
     private string qrText =>
         $"BEGIN:VCARD\nVERSION:3.0\nFN:{Name}\n" +
@@ -57,7 +61,19 @@
 
     private async Task Print()
     {
-        try { await JS.InvokeVoidAsync("printBusinessCard"); }
-        catch { }
+        try
+        {
+            if (UsePrintPreview)
+            {
+                if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", cardRoot, "کارت ویزیت", "card"))
+                    Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+            }
+            else
+                await JS.InvokeVoidAsync("printBusinessCard");
+        }
+        catch (Exception ex)
+        {
+            if (UsePrintPreview) Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message);
+        }
     }
 }

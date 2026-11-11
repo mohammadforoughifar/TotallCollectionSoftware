@@ -11,6 +11,7 @@
 @inject RealtimeService Rt
 @inject IChatClientService Chat
 @inject TabService Tabs
+@inject IBackupSessionTracker BackupTracker
 @implements IDisposable
 
 @if (!Auth.IsLoggedIn)
@@ -427,7 +428,14 @@ else
                                             {
                                                 <div class="fs-8 text-muted mt-1">@n.Body</div>
                                             }
-                                            <div class="fs-9 mt-1"><span class="badge bg-light text-secondary">@n.FormName</span> <span class="text-muted">از: @n.FromName</span></div>
+                                            <div class="fs-9 mt-1">
+                                                <span class="badge bg-light text-secondary">@n.FormName</span>
+                                                @if (!string.IsNullOrWhiteSpace(n.CompanyName) && companyOptions.Count > 1)
+                                                {
+                                                    <span class="badge ntf-company" title="این اعلان متعلق به همین شرکت است">@n.CompanyName</span>
+                                                }
+                                                <span class="text-muted">از: @n.FromName</span>
+                                            </div>
                                         </div>
                                     }
 
@@ -630,6 +638,7 @@ else
         var version = ++companyContextVersion;
         if (!Auth.IsLoggedIn)
         {
+            try { await BackupTracker.StopAsync(); } catch { }
             ClearCompanyContext();
             await InvokeAsync(StateHasChanged);
             return;
@@ -749,6 +758,7 @@ else
             // زمینهٔ شرکت باید قبل از هر درخواست/اتصال پس از ورود آماده باشد.
             // این ترتیب، نمایش انتخاب‌گر و X-Company-Id را مستقل از کلیک روی پیام‌رسان می‌کند.
             await LoadCompanyContextAsync();
+            try { await BackupTracker.StartAsync(); } catch { }
             await InitNotificationsAsync();
         }
         await InvokeAsync(StateHasChanged);
@@ -1044,6 +1054,10 @@ else
         public string? Link { get; set; }
         public bool IsRead { get; set; }
         public DateTime CreatedAt { get; set; }
+        /// <summary>شرکتِ صاحب اعلان؛ null = عمومی (چت، IT، منابع انسانی…).</summary>
+        public int? CompanyId { get; set; }
+        /// <summary>نام همان شرکت برای برچسب کنار عنوان (از API).</summary>
+        public string? CompanyName { get; set; }
     }
 
     /// <summary>پاسخ صفحه‌بندی‌شدهٔ اعلان‌ها — همراه با شمارش کل/نخوانده.</summary>
@@ -1120,7 +1134,15 @@ else
 
     private async void OnRtNotify(RtNotification rn)
     {
-        var n = new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt };
+        // اعلانِ شرکت دیگر نباید در این شرکت فعال دیده شود (اعلان عمومی CompanyId = null است).
+        if (rn.CompanyId is int cid && activeCompanyId is int current && cid != current) return;
+
+        var n = new NtfItem
+        {
+            Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName,
+            Link = rn.Link, CreatedAt = rn.CreatedAt, CompanyId = rn.CompanyId,
+            CompanyName = rn.CompanyId is int cid2 ? companyOptions.FirstOrDefault(c => c.Id == cid2)?.Name : null
+        };
         unreadCount++;
         ntfList.Insert(0, n);
         liveToasts.Insert(0, n);
@@ -1290,6 +1312,7 @@ else
         if (Auth.IsLoggedIn)
         {
             await LoadCompanyContextAsync();
+            try { await BackupTracker.StartAsync(); } catch { }
 
             // توست خوش‌آمد بعد از ورود موفق
             try
@@ -1461,6 +1484,7 @@ else
         Rt.DataChanged -= OnRtDataChanged;
         // ابتدا شنوندهٔ تغییر اندازه در JS جدا می‌شود تا دیگر به مرجعِ در حال آزادشدن فراخوانی نکند.
         try { _ = JS.InvokeVoidAsync("appShell.unwatch"); } catch { }
+        try { _ = BackupTracker.StopAsync(); } catch { }
         try { selfRef?.Dispose(); } catch { }
         selfRef = null;
     }
@@ -1641,6 +1665,7 @@ else
     .ntf-item { padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background .12s; }
     .ntf-item:hover { background: #f8fafc; }
     .ntf-item.unread { background: #eff6ff; border-right: 3px solid #2563eb; }
+    .ntf-company { background: #e8f1ff; color: #1d4ed8; border: 1px solid #c7dcff; }
     .fs-9 { font-size: .7rem; }
 
     /* ================== توست اعلان — بالای صفحه (شبیه نوتیف گوشی) ================== */

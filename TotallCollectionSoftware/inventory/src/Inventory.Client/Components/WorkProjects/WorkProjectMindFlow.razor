@@ -4,9 +4,44 @@
 @inject IJSRuntime JS
 @inject IAuthState Auth
 
-<div class="wpmf-root @(_isFullscreen ? "wpmf-fullscreen" : "")" dir="rtl">
+<div class="wpmf-root @(_isFullscreen ? "wpmf-fullscreen" : "")" dir="rtl" @onkeydown="OnDocumentKeyDown">
     <div class="wpmf-head">
-        <div><div class="wpmf-kicker">نگار ذهنی</div><input class="wpmf-title" value="@_map.Title" @oninput="OnTitleInput" disabled="@(!CanEdit)" /></div>
+        <div class="wpmf-head-title">
+            <div class="wpmf-kicker">نگار ذهنی</div>
+            <div class="wpmf-head-titlerow">
+                <input class="wpmf-title" value="@_map.Title" @oninput="OnTitleInput" disabled="@(!CanEdit)" />
+                <div class="wpmf-head-hint-wrap" @onclick:stopPropagation="true">
+                    <button type="button"
+                            class="wpmf-head-hint @(_hintOpen ? "open" : "")"
+                            title="راهنمای کار با نقشه"
+                            aria-label="راهنمای کار با نقشه"
+                            aria-expanded="@_hintOpen"
+                            @onclick="ToggleHint">
+                        <i class="bi bi-question-circle"></i><span>راهنما</span>
+                    </button>
+                    @if (_hintOpen)
+                    {
+                        <div class="wpmf-head-hint-pop" role="note">
+                            <header><i class="bi bi-lightbulb"></i> راهنمای نقشه<button type="button" class="wpmf-head-hint-x" aria-label="بستن" @onclick="ToggleHint">×</button></header>
+                            <ul>
+                                <li><i class="bi bi-arrows-move"></i> برای دیدن بخش‌های بیرون قاب، <b>افقی یا عمودی اسکرول</b> کن.</li>
+                                @if (CanEdit)
+                                {
+                                    <li><i class="bi bi-hand-index"></i> گره را <b>بکش</b> تا جابه‌جا شود.</li>
+                                    <li><i class="bi bi-bounding-box"></i> گره را <b>روی گرهٔ مقصد رها کن</b> تا زیرشاخهٔ آن شود.</li>
+                                    <li><i class="bi bi-pencil"></i> <b>دوبار کلیک</b> روی گره = تغییر عنوان در همان کادر.</li>
+                                }
+                                else
+                                {
+                                    <li><i class="bi bi-cursor"></i> برای دیدن جزئیات، روی گره کلیک کن.</li>
+                                }
+                                <li><i class="bi bi-zoom-in"></i> با <b>＋ / −</b> یا «نمای کامل» بزرگ‌نمایی را تنظیم کن.</li>
+                            </ul>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
         <div class="wpmf-head-actions"><span class="wpmf-save-state">@(_dirty ? "تغییرات ذخیره‌نشده" : _status)</span><button class="btn btn-sm btn-outline-secondary wpmf-maximize" type="button" @onclick="ToggleFullscreen" title="@(_isFullscreen ? "بازگشت به اندازهٔ معمول" : "بزرگ‌نمایی تمام‌صفحه")" aria-label="@(_isFullscreen ? "بازگشت به اندازهٔ معمول" : "بزرگ‌نمایی تمام‌صفحه")"><i class="bi @(_isFullscreen ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i></button><button class="btn btn-sm btn-primary" @onclick="SaveAsync" disabled="@(!CanEdit || _saving)"><i class="bi bi-cloud-check"></i> @(_saving ? "در حال ذخیره…" : "ذخیره نقشه")</button></div>
     </div>
     <div class="wpmf-toolbar">
@@ -38,6 +73,13 @@
         <div class="wpmf-zoom"><input class="form-control form-control-sm" placeholder="جست‌وجو در نقشه" @bind="_search" @bind:event="oninput" /><button class="btn btn-sm btn-light" @onclick="ZoomOut">−</button><span>@((int)(Zoom * 100))٪</span><button class="btn btn-sm btn-light" @onclick="ZoomIn">＋</button><button class="btn btn-sm btn-light" @onclick="Fit">نمای کامل</button></div>
     </div>
     @if (!string.IsNullOrWhiteSpace(_message)) { <div class="alert alert-warning py-2 px-3 mb-2">@_message</div> }
+    @if (_dragUnavailable)
+    {
+        <div class="alert alert-info py-2 px-3 mb-2 fs-9">
+            <i class="bi bi-info-circle"></i>
+            جابه‌جایی گره‌ها با کشیدن ماوس در این نشست فعال نشد؛ از تنظیمات گره استفاده کنید یا صفحه را با <b>Ctrl+F5</b> تازه کنید.
+        </div>
+    }
     @if (_loading)
     {
         <div class="wpmf-loading"><span class="spinner-border spinner-border-sm"></span> در حال بارگذاری نقشهٔ پروژه…</div>
@@ -95,7 +137,29 @@
                                 </foreignObject>
                             }
                             <foreignObject x="@N(-width / 2 + (node.ParentId is null ? 8 : 0) + actionSpace)" y="@N(-height / 2)" width="@N(width - (progress.HasValue ? 34 : 8) - actionSpace)" height="@N(height)">
-                                <div xmlns="http://www.w3.org/1999/xhtml" class="wpmf-node-label @(node.ParentId is null ? "root" : "")">@node.Text</div>
+                                @if (node.Id == _nodeTitleEditingId)
+                                {
+                                    <div xmlns="http://www.w3.org/1999/xhtml" class="wpmf-node-label editing @(node.ParentId is null ? "root" : "")">
+                                        <input class="wpmf-node-title-input"
+                                               data-wpmf-title-input
+                                               type="text"
+                                               value="@node.Text"
+                                               maxlength="120"
+                                               aria-label="عنوان گره"
+                                               @oninput="e => OnNodeTitleInput(node, e)"
+                                               @onkeydown="e => OnNodeTitleKeyDown(node, e)"
+                                               @onblur="() => EndNodeTitleEdit(node, commit: true)"
+                                               @onclick:stopPropagation="true"
+                                               @onpointerdown:stopPropagation="true" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div xmlns="http://www.w3.org/1999/xhtml" class="wpmf-node-label @(node.ParentId is null ? "root" : "")"
+                                         title="@(CanEdit ? "دوبار کلیک برای تغییر عنوان" : null)"
+                                         @ondblclick="() => BeginNodeTitleEdit(node)"
+                                         @ondblclick:stopPropagation="true">@node.Text</div>
+                                }
                             </foreignObject>
                             @if (progress is double pct)
                             {
@@ -108,7 +172,6 @@
                     }
                     </svg>
                 </div>
-                <div class="wpmf-hint">@(CanEdit ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود." : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن.")</div>
             </div>
             <aside class="wpmf-inspector" aria-label="پنل تنظیمات و طراحی؛ برای دیدن گزینه‌های بیشتر عمودی اسکرول کنید">
                 @if (SelectedNode is not null)
@@ -143,6 +206,28 @@
                     </section>
                     <section class="wpmf-inspector-card wpmf-order-card">
                         <header class="wpmf-card-heading"><i class="bi bi-clipboard-check"></i><span>دستورکارهای این گره</span><b class="wpmf-card-count">@NodeWorkOrderIds(SelectedNode).Count</b></header>
+                        @if (NodeWorkOrderIds(SelectedNode).Count > 1)
+                        {
+                            <div class="wpmf-order-search">
+                                <i class="bi bi-search" aria-hidden="true"></i>
+                                <input type="search"
+                                       class="wpmf-order-search-input"
+                                       placeholder="جست‌وجو در دستورکارهای این گره…"
+                                       aria-label="جست‌وجو در دستورکارهای این گره"
+                                       value="@_orderSearch"
+                                       @oninput="OnOrderSearchInput" />
+                                @if (!string.IsNullOrEmpty(_orderSearch))
+                                {
+                                    <button type="button" class="wpmf-order-search-clear" title="پاک‌کردن جست‌وجو" aria-label="پاک‌کردن جست‌وجو" @onclick="ClearOrderSearch">×</button>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_orderSearch))
+                            {
+                                <div class="wpmf-order-search-meta">
+                                    @FilteredNodeWorkOrders.Count از @NodeWorkOrderIds(SelectedNode).Count دستورکار
+                                </div>
+                            }
+                        }
                         @if (CanEdit)
                         {
                             <button type="button" class="wpmf-add-order-btn" @onclick="ToggleWorkOrderOptions" aria-expanded="@_showWorkOrderOptions" disabled="@_loadingOrders">
@@ -180,9 +265,10 @@
                     @if (NodeWorkOrderIds(SelectedNode).Count > 0)
                     {
                         <div class="wpmf-order-chips">
-                            @foreach (var orderId in NodeWorkOrderIds(SelectedNode))
+                            @foreach (var row in FilteredNodeWorkOrders)
                             {
-                                var orderChip = FindWorkOrder(orderId);
+                                var orderId = row.Id;
+                                var orderChip = row.Order;
                                 <span class="wpmf-order-chip @(orderId == _selectedWorkOrderId ? "active" : "")" @key="orderId">
                                     <button type="button" class="wpmf-order-chip-main" @onclick="() => SelectNodeWorkOrderAsync(orderId)">
                                         <i class="bi bi-clipboard-check"></i> @(orderChip is null ? $"#{orderId}" : orderChip.Number)
@@ -196,9 +282,14 @@
                     {
                         <div class="wpmf-node-order-list">
                             <div class="small fw-semibold mb-1">دستورکارهای این گره</div>
-                            @foreach (var orderId in NodeWorkOrderIds(SelectedNode))
+                            @if (FilteredNodeWorkOrders.Count == 0)
                             {
-                                var row = FindWorkOrder(orderId);
+                                <div class="wpmf-combo-empty">دستورکاری با «@_orderSearch» پیدا نشد.</div>
+                            }
+                            @foreach (var item in FilteredNodeWorkOrders)
+                            {
+                                var orderId = item.Id;
+                                var row = item.Order;
                                 <button type="button" class="wpmf-node-order-row" @key="orderId" @onclick="() => SelectNodeWorkOrderAsync(orderId)">
                                     <strong>@(row?.Number ?? $"دستورکار #{orderId}")</strong>
                                     <span>@(row?.Title ?? "برای مشاهده کلیک کن")</span>
@@ -330,17 +421,31 @@
                             <div class="wpmf-combobox mb-2">
                                 <input class="form-control form-control-sm" role="combobox" aria-expanded="@_showCandidateOptions" aria-controls="wpmf-candidate-options"
                                        placeholder="نام یا نام کاربری را جست‌وجو کن…" value="@_memberSearch"
-                                       @oninput="SearchMindFlowCandidatesAsync" @onfocus="ShowCandidateOptions" disabled="@_peopleLoading" />
+                                       @oninput="SearchMindFlowCandidatesAsync" @onfocus="ShowCandidateOptions"
+                                       @onkeydown="OnCandidateSearchKeyDown" />
+                                @if (_candidatesLoading) { <span class="wpmf-combo-spinner spinner-border spinner-border-sm" aria-hidden="true"></span> }
                                 @if (_showCandidateOptions)
                                 {
                                     <div id="wpmf-candidate-options" class="wpmf-combo-options" role="listbox" aria-multiselectable="true">
-                                        @if (_peopleLoading)
+                                        @if (_candidates.Count > 0)
+                                        {
+                                            <div class="wpmf-combo-head">
+                                                <span>@_candidates.Count کاربر در دسترس</span>
+                                                @if (_selectedCandidateIds.Count > 0) { <b>@_selectedCandidateIds.Count انتخاب‌شده</b> }
+                                                <button type="button" class="wpmf-combo-close" aria-label="بستن فهرست" @onclick="CloseCandidateOptions">×</button>
+                                            </div>
+                                        }
+                                        @if (_candidatesLoading && _candidates.Count == 0)
                                         {
                                             <div class="wpmf-combo-empty">در حال جست‌وجو…</div>
                                         }
                                         else if (_candidates.Count == 0)
                                         {
-                                            <div class="wpmf-combo-empty">فرد فعالی برای دعوت در شرکت جاری پیدا نشد؛ اتصال کاربر به همین شرکت را بررسی کن.</div>
+                                            <div class="wpmf-combo-empty">
+                                                @(string.IsNullOrWhiteSpace(_memberSearch)
+                                                    ? "فرد فعالی برای دعوت نمانده است — مدیر و اعضای پروژه از قبل دسترسی دارند."
+                                                    : "کسی با این نام پیدا نشد.")
+                                            </div>
                                         }
                                         else
                                         {
@@ -425,9 +530,22 @@
     private int _checklistLoadGeneration, _workOrderLoadGeneration, _workOrderSkip, _candidateSearchGeneration;
     private bool _hasMoreWorkOrders;
     private string _memberSearch = "", _mindFlowSearch = "", _inviteRole = "Viewer";
-    private bool _peopleLoading, _savingMembers, _wasCanManageAccess, _loadingOrders, _showWorkOrderOptions, _showCandidateOptions, _showMindFlowOptions, _mindFlowsLoading;
+    private bool _peopleLoading, _candidatesLoading, _savingMembers, _wasCanManageAccess, _loadingOrders, _showWorkOrderOptions, _showCandidateOptions, _showMindFlowOptions, _mindFlowsLoading;
     private bool _loading = true, _saving, _dirty, _attached, _loadingChecklist, _isFullscreen;
+    private IJSObjectReference? _dragModule;
+    private bool _dragUnavailable;
     private string _message = "", _accessMessage = "", _status = "ذخیره نشده", _search = "";
+    /// <summary>راهنمای بالای نقشه باز است؟ (پیش‌فرض: بسته تا جلوی چشم نباشد)</summary>
+    private bool _hintOpen;
+    /// <summary>گره‌ای که همین حالا در حال تایپ عنوانش روی بوم است — ورودی در رندر دوباره ساخته نمی‌شود.</summary>
+    private Guid? _nodeTitleEditingId;
+    /// <summary>متن اولیهٔ ویرایش، برای «Esc» = بازگشت به مقدار قبلی.</summary>
+    private string _nodeTitleBefore = "";
+    /// <summary>افزودن/ویرایش عنوان گره در صف رندر است — فوکوس را در OnAfterRender می‌گذاریم.</summary>
+    private bool _focusNodeTitlePending;
+
+    /// <summary>فیلتر فهرست «دستورکارهای این گره» — شماره، عنوان یا نام پروژه.</summary>
+    private string _orderSearch = "";
     private double Zoom = 1;
     private bool IsStandalone => StandaloneMapId is > 0;
     private string _svgId => IsStandalone ? $"wpmf-canvas-standalone-{StandaloneMapId}" : $"wpmf-canvas-{ProjectId}";
@@ -445,6 +563,30 @@
         .GroupBy(o => o.Id).Select(g => g.First())
         .Where(o => !_map.Nodes.SelectMany(NodeWorkOrderIds).Contains(o.Id))
         .ToList();
+
+    /// <summary>
+    /// دستورکارهای متصل به گرهٔ انتخاب‌شده، فیلترشده با <see cref="_orderSearch"/>.
+    /// جست‌وجو روی شماره، عنوان و نام پروژه، بدون حساسیت به فاصلهٔ ابتدا/انتها.
+    /// شناسه‌هایی که جزئیاتشان هنوز بارگذاری نشده (FindWorkOrder == null) هم با «#شماره» قابل جست‌وجو هستند.
+    /// </summary>
+    private List<(int Id, MindFlowWorkOrder? Order)> FilteredNodeWorkOrders
+    {
+        get
+        {
+            var term = (_orderSearch ?? "").Trim();
+            var rows = NodeWorkOrderIds(SelectedNode).Select(id => (Id: id, Order: FindWorkOrder(id)));
+            if (term.Length == 0) return rows.ToList();
+            return rows.Where(r =>
+            {
+                var o = r.Order;
+                if (o is null) return $"#{r.Id}".Contains(term, StringComparison.OrdinalIgnoreCase) || r.Id.ToString().Contains(term, StringComparison.Ordinal);
+                return o.Number.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || o.Title.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || (o.ProjectName ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || o.Id.ToString().Contains(term, StringComparison.Ordinal);
+            }).ToList();
+        }
+    }
     private List<WorkProjectMindFlowAccessibleProjectDto> FilteredMindFlows => _availableMindFlows.Where(flow =>
         flow.ProjectId != ProjectId
         && !_map.Nodes.Any(n => n.LinkedMindFlowProjectId == flow.ProjectId)
@@ -466,6 +608,7 @@
             _wasCanManageAccess = CanManageAccess;
             return;
         }
+        DetachDrag();
         _self?.Dispose(); _self = null; _attached = false;
         _workOrderLoadGeneration++; _candidateSearchGeneration++;
         _loadedProjectId = ProjectId; _loadedStandaloneMapId = StandaloneMapId; _loadedSubFlowPath = subPath;
@@ -511,9 +654,54 @@
         if (!_attached && !_loading && _map.Nodes.Count > 0)
         {
             _self ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
-            _attached = true;
+            await AttachDragAsync();
         }
+        if (_focusNodeTitlePending)
+        {
+            _focusNodeTitlePending = false;
+            try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.focusNodeTitle", _svgId); }
+            catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException) { /* فوکوس اختیاری است */ }
+        }
+    }
+
+    /// <summary>
+    /// اتصال «کشیدنِ گره‌ها» به ماژول JS — دو لایه تا حتی با index.html قدیمیِ کش‌شده هم کار کند.
+    /// هر خطای JS فقط «کشیدن با ماوس» را از کار می‌اندازد، نه رندر صفحه.
+    /// </summary>
+    private async Task AttachDragAsync()
+    {
+        var wasUnavailable = _dragUnavailable;
+        try
+        {
+            // مسیر اول: اسکریپت کلاسیکِ index.html (window.inventoryWorkProjectMindFlow).
+            // بدون «eval» بررسی می‌شود تا با CSP سخت‌گیرانه هم کار کند؛ اگر تگ script نباشد،
+            // فراخوانی JSException می‌دهد و به مسیر ماژول می‌رویم.
+            var attached = false;
+            try
+            {
+                attached = await JS.InvokeAsync<bool>("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
+            }
+            catch (JSException) { /* تگ script در index.html نیست (نسخهٔ کش‌شده یا فراموش‌شده) */ }
+
+            if (!attached)
+            {
+                _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
+                    "./js/inventory-workproject-mindflow.module.js?v=3");
+                attached = await _dragModule.InvokeAsync<bool>("attachDrag", _svgId, _self);
+            }
+
+            _attached = true;
+            _dragUnavailable = !attached;
+        }
+        catch (Exception ex)
+        {
+            _attached = true;
+            _dragUnavailable = true;
+            Console.WriteLine($"[MindFlow] فعال‌سازی کشیدن گره‌ها انجام نشد: {ex.Message}");
+        }
+
+        // پیام «کشیدن فعال نشد» فقط وقتی نمایش داده می‌شود که وضعیت عوض شده باشد.
+        if (wasUnavailable != _dragUnavailable) await InvokeAsync(StateHasChanged);
     }
 
     private void CreateStarter()
@@ -634,6 +822,85 @@
         try { var data = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>(); return data?.GetValueOrDefault("message") ?? $"ذخیره ناموفق بود ({(int)response.StatusCode})."; }
         catch { return $"ذخیره ناموفق بود ({(int)response.StatusCode})."; }
     }
+    // ─────────────────── ویرایش عنوان گره روی بوم ───────────────────
+
+    /// <summary>عنوان گره را در همان کادر خودش قابل ویرایش می‌کند (دوبار کلیک روی برچسب).</summary>
+    private void BeginNodeTitleEdit(WorkProjectMindFlowNodeDto node)
+    {
+        if (!CanEdit || node.Id == _nodeTitleEditingId) return;
+        Snapshot();
+        _nodeTitleEditingId = node.Id;
+        _nodeTitleBefore = node.Text;
+        _focusNodeTitlePending = true;
+        _hintOpen = false;
+    }
+
+    private void OnNodeTitleInput(WorkProjectMindFlowNodeDto node, ChangeEventArgs e)
+    {
+        if (!CanEdit) return;
+        // عمداً Snapshot نمی‌گیریم: کل تایپ یک قدم undo حساب می‌شود، از BeginNodeTitleEdit.
+        node.Text = e.Value?.ToString() ?? "";
+        Dirty();
+    }
+
+    private void OnNodeTitleKeyDown(WorkProjectMindFlowNodeDto node, KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter")
+        {
+            EndNodeTitleEdit(node, commit: true);
+        }
+        else if (e.Key == "Escape")
+        {
+            node.Text = _nodeTitleBefore;
+            EndNodeTitleEdit(node, commit: false);
+        }
+    }
+
+    /// <summary>پایان ویرایش. با <paramref name="commit"/>=false متن به حالت قبل برمی‌گردد.</summary>
+    private void EndNodeTitleEdit(WorkProjectMindFlowNodeDto node, bool commit)
+    {
+        if (node.Id != _nodeTitleEditingId) return;
+        if (!commit) node.Text = _nodeTitleBefore;
+        if (string.IsNullOrWhiteSpace(node.Text)) node.Text = string.IsNullOrWhiteSpace(_nodeTitleBefore) ? "بدون عنوان" : _nodeTitleBefore;
+        _nodeTitleEditingId = null;
+        Dirty();
+    }
+
+    // ─────────────────── راهنمای سرصفحه ───────────────────
+
+    private void ToggleHint() => _hintOpen = !_hintOpen;
+
+    /// <summary>
+    /// Esc = ترک ویرایش عنوان، Ctrl+Enter = پایان ویرایش. ورودی‌ها فقط وقتی متن را می‌فرستند
+    /// که فوکوس روی خودشان باشد؛ این میان‌بر برای وقتی است که فوکوس جای دیگری رفته باشد.
+    /// </summary>
+    private async Task OnDocumentKeyDown(KeyboardEventArgs e)
+    {
+        if (_nodeTitleEditingId is not Guid editing) return;
+        if (_map.Nodes.FirstOrDefault(n => n.Id == editing) is not { } node) { _nodeTitleEditingId = null; return; }
+        switch (e.Key)
+        {
+            case "Escape": EndNodeTitleEdit(node, commit: false); break;
+            case "Enter" when e.CtrlKey: EndNodeTitleEdit(node, commit: true); break;
+            default: return;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string HintText => CanEdit
+        ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود. دوبار کلیک روی گره = تغییر عنوان."
+        : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن.";
+
+    /// <summary>شروع ویرایش عنوان برای گرهی که تازه ساخته شده تا کاربر بلافاصله تایپ کند.</summary>
+    private void FocusNewNodeTitle(WorkProjectMindFlowNodeDto node)
+    {
+        if (!CanEdit) return;
+        _nodeTitleEditingId = node.Id;
+        _nodeTitleBefore = node.Text;
+        _focusNodeTitlePending = true;
+        _hintOpen = false;
+    }
+
     private void AddChild()
     {
         if (!CanEdit || SelectedNode is null) return; Snapshot();
@@ -641,6 +908,7 @@
         var siblings = _map.Nodes.Count(n => n.ParentId == p.Id); var sign = p.X < 800 ? -1 : 1;
         var node = new WorkProjectMindFlowNodeDto { ParentId = p.Id, Text = "کار جدید", X = Math.Clamp(p.X + sign * 240, 120, 1480), Y = Math.Clamp(p.Y + (siblings % 2 == 0 ? 115 : -115), 90, 810), Color = p.ParentId is null ? Palette[_map.Nodes.Count % Palette.Length] : p.Color };
         _map.Nodes.Add(node); _selectedId = node.Id; Dirty();
+        FocusNewNodeTitle(node);
     }
     private void AddSibling()
     {
@@ -649,6 +917,7 @@
         Snapshot(); var n = SelectedNode; var p = _map.Nodes.FirstOrDefault(x => x.Id == parentId); if (p is null) return;
         var sibling = new WorkProjectMindFlowNodeDto { ParentId = parentId, Text = "کار جدید", X = n.X, Y = Math.Clamp(p.Y + (_map.Nodes.Count(x => x.ParentId == parentId) % 2 == 0 ? 115 : -115), 90, 810), Color = n.Color };
         _map.Nodes.Add(sibling); _selectedId = sibling.Id; Dirty();
+        FocusNewNodeTitle(sibling);
     }
     private void DeleteSelected()
     {
@@ -658,6 +927,14 @@
         _map.Nodes.RemoveAll(n => remove.Contains(n.Id)); _selectedId = parent; Dirty();
     }
     private void ToggleCollapse() { if (!CanEdit || SelectedNode is null || ChildCount(_selectedId) == 0) return; Snapshot(); SelectedNode.Collapsed = !SelectedNode.Collapsed; Dirty(); }
+    /// <summary>ورودی جست‌وجوی دستورکارهای همین گره — بدون رفت‌وبرگشت سرور.</summary>
+    private void OnOrderSearchInput(ChangeEventArgs e)
+    {
+        _orderSearch = e.Value?.ToString() ?? "";
+    }
+
+    private void ClearOrderSearch() => _orderSearch = "";
+
     private async Task ToggleWorkOrderOptions()
     {
         if (!CanEdit) return;
@@ -738,6 +1015,7 @@
             await Task.WhenAll((Task)membersTask, (Task)candidatesTask);
             var members = await membersTask ?? new();
             var candidates = await candidatesTask ?? new();
+
             _mindFlowMembers.Clear(); _mindFlowMembers.AddRange(members);
             if (generation == _candidateSearchGeneration) ReplaceCandidates(candidates);
         }
@@ -754,7 +1032,11 @@
         var generation = ++_candidateSearchGeneration;
         await Task.Delay(250);
         if (generation != _candidateSearchGeneration || !CanManageAccess) return;
-        _peopleLoading = true;
+
+        // عمداً _peopleLoading را دست نمی‌زنیم: آن فلگ کل بخش دسترسی را قفل می‌کرد،
+        // از جمله خودِ ورودی جست‌وجو؛ نتیجه‌اش این بود که بعد از اولین کلید،
+        // فیلد disabled می‌شد و فوکوس می‌پرید و بقیهٔ تایپ گم می‌شد.
+        _candidatesLoading = true;
         try
         {
             var candidates = await FetchMindFlowCandidatesAsync(_memberSearch);
@@ -764,8 +1046,21 @@
         {
             if (generation == _candidateSearchGeneration) _accessMessage = "جست‌وجوی افراد انجام نشد؛ شرکت فعال یا اتصال سرور را بررسی کن.";
         }
-        finally { if (generation == _candidateSearchGeneration) _peopleLoading = false; }
+        finally { if (generation == _candidateSearchGeneration) _candidatesLoading = false; }
     }
+
+    /// <summary>Esc = بستن فهرست، Enter = افزودن انتخاب‌شده‌ها.</summary>
+    private async Task OnCandidateSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { CloseCandidateOptions(); return; }
+        if (e.Key is "Enter" or "NumpadEnter")
+        {
+            if (!e.ShiftKey) return;   // Enter تنها = ارسال فرم نشود
+            if (_selectedCandidateIds.Count > 0 && !_savingMembers) await AddMindFlowMemberAsync();
+        }
+    }
+
+    private void CloseCandidateOptions() => _showCandidateOptions = false;
     private Task<List<WorkProjectMindFlowUserDto>?> FetchMindFlowCandidatesAsync(string search)
     {
         var url = $"{ShareApiUrl}/candidates?take=100";
@@ -982,6 +1277,12 @@
     {
         if (!_map.Nodes.Any(n => n.Id == id)) return;
         var changed = _selectedId != id;
+        // اگر عنوان گرهٔ دیگری در حال ویرایش بود، همان‌جا ذخیره‌اش کن تا تایپ‌های نیمه‌کاره گم نشوند.
+        if (_nodeTitleEditingId is Guid editing && editing != id
+            && _map.Nodes.FirstOrDefault(n => n.Id == editing) is { } editingNode)
+        {
+            EndNodeTitleEdit(editingNode, commit: true);
+        }
         _selectedId = id; _message = "";
         if (!changed) { await LoadLinkedChecklistAsync(); return; }
         _showWorkOrderOptions = false; _showNodeWorkOrderList = false;
@@ -990,6 +1291,16 @@
         await EnsureWorkOrderDetailsAsync(ids);
         await LoadLinkedChecklistAsync(force: true);
     }
+    /// <summary>دوبار کلیک روی گره در بوم — ویرایش عنوان همان گره در کادر خودش.</summary>
+    [JSInvokable]
+    public Task BeginNodeTitleEditFromCanvas(string nodeId)
+    {
+        if (!Guid.TryParse(nodeId, out var id)) return Task.CompletedTask;
+        if (_map.Nodes.FirstOrDefault(n => n.Id == id) is not { } node) return Task.CompletedTask;
+        BeginNodeTitleEdit(node);
+        return InvokeAsync(StateHasChanged);
+    }
+
     [JSInvokable]
     public async Task SelectNodeFromCanvas(Guid id)
     {
@@ -1069,6 +1380,25 @@
         _workOrderLoadGeneration++;
         _candidateSearchGeneration++;
         _self?.Dispose();
+        DetachDrag();
+    }
+    /// <summary>برداشتن شنونده‌های کشیدن از SVG/window (جلوگیری از نشتی و تداخل بین نشست‌ها).</summary>
+    private void DetachDrag()
+    {
+        if (!_attached) return;
+        _attached = false;
+        _ = SafeDetachAsync();
+    }
+
+    private async Task SafeDetachAsync()
+    {
+        try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.detachDrag", _svgId); }
+        catch { /* صفحه/JS در حال تخریب است */ }
+        if (_dragModule is not null)
+        {
+            var module = _dragModule; _dragModule = null;
+            try { await module.DisposeAsync(); } catch { }
+        }
     }
     public sealed class DragPoint { public Guid Id { get; set; } public double X { get; set; } public double Y { get; set; } }
     public sealed class MindFlowWorkOrder

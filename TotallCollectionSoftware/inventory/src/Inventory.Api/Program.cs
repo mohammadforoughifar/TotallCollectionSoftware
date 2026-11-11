@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Controllers;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
+using Inventory.Api.Licensing;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -14,6 +16,10 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
+using Inventory.Licensing;
+using Inventory.Licensing.Abstractions;
+using Inventory.Licensing.Entitlement;
+using Inventory.Licensing.Periods;
 
 Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -163,6 +169,7 @@ builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionStr
 
 // ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP)
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<ShopPricingService>();
 builder.Services.AddScoped<Inventory.Api.Services.Reports.IOperationsReportsService, Inventory.Api.Services.Reports.OperationsReportsService>(); // گزارش‌های بخش عملیات
 builder.Services.AddScoped<Inventory.Api.Services.Catalog.IGoodsIssueService, Inventory.Api.Services.Catalog.GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
 builder.Services.AddScoped<Inventory.Api.Services.SalesVisit.IVisOrderService, Inventory.Api.Services.SalesVisit.VisOrderService>(); // ماژول ویزیتوری (پیش‌سند فروش)
@@ -211,6 +218,9 @@ builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت ا
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();
+builder.Services.AddScoped<Inventory.Api.Services.Finance.ShopExpenseChequeService>();
 
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
 builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
@@ -310,6 +320,21 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 builder.Services.AddSingleton<FileStore>();
 // کانال شرکت‌های راه‌دور: احراز هویت کلید API بین نصبِ شرکت و سرور مرکزی
 builder.Services.AddScoped<Inventory.Api.Services.ItExternalAuthService>();
+
+// ================== بک‌آپ خودکار SQL Server + ارسال به سرور مرکزی ==================
+builder.Services.AddHttpClient("backup", c => c.Timeout = TimeSpan.FromMinutes(30));
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupSettingsService, Inventory.Api.Services.Backup.BackupSettingsService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupSessionService, Inventory.Api.Services.Backup.BackupSessionService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.ISqlServerBackupService, Inventory.Api.Services.Backup.SqlServerBackupService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.IBackupUploadService, Inventory.Api.Services.Backup.BackupUploadService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.CentralBackupAuthService>();
+builder.Services.AddScoped<Inventory.Api.Services.Backup.ICentralBackupStorageService, Inventory.Api.Services.Backup.CentralBackupStorageService>();
+builder.Services.AddHostedService<Inventory.Api.Services.Backup.BackupWorker>();
+
+// ================== ریموت دسکتاپ (ماژول RemoteDesktop) ==================
+builder.Services.AddScoped<Inventory.Api.Services.Remote.IRemoteAuthService, Inventory.Api.Services.Remote.RemoteAuthService>();
+builder.Services.AddScoped<Inventory.Api.Services.Remote.IRemoteSessionService, Inventory.Api.Services.Remote.RemoteSessionService>();
+builder.Services.AddHostedService<Inventory.Api.Services.Remote.RemoteSessionWorker>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
 builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
 // واترمارک سمت سرور (حک روی بایت تصویر/PDF) برای مدارکِ دارای فلگ واترمارک
@@ -370,6 +395,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (!string.IsNullOrEmpty(token) &&
                     (ctx.Request.Path.StartsWithSegments("/hubs/chat") ||
                      ctx.Request.Path.StartsWithSegments("/hubs/notify") ||
+                     ctx.Request.Path.StartsWithSegments("/hubs/remote") ||
                      path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/preview", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/export-zip", StringComparison.OrdinalIgnoreCase) ||
@@ -425,6 +451,11 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o.MaxRequestBodySize = null);
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
+// ================== لایسنس ==================
+// ترتیب: اول مایگریشن (در DbInitializer)، بعد بررسی لایسنس (InitializeLicensingAsync) —
+// و شکست بررسی لایسنس، مانع بالا آمدن برنامه نمی‌شود.
+builder.Services.AddLicensing(builder.Configuration);
+
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
@@ -446,7 +477,10 @@ builder.Services.AddControllers(options =>
 
 // ================== Swagger — مستندات و تست تعاملی API (/swagger) ==================
 // ================== SignalR — داشبورد بلادرنگ ==================
-builder.Services.AddSignalR().AddJsonProtocol(o =>
+builder.Services.AddSignalR(o =>
+{
+    o.MaximumReceiveMessageSize = 4 * 1024 * 1024; // فریم‌های JPEG ریموت دسکتاپ
+}).AddJsonProtocol(o =>
 {
     o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
 });
@@ -659,6 +693,12 @@ else if (schemaVerbose)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
 
+// ================== آماده‌سازی لایسنس ==================
+// «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز
+// استثنا پرتاب نمی‌کند؛ در بدترین حالت برنامه با وضعیت «لایسنس نامعتبر» بالا می‌آید.
+if (!EF.IsDesignTime)
+    await app.InitializeLicensingAsync();
+
 // اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
 await app.InitializeRadisHrAsync(EF.IsDesignTime);
 schemaInitializing = false;
@@ -722,6 +762,12 @@ if (app.Environment.IsDevelopment() && !runningUnderIis)
 
 app.UseAuthentication();
 
+// ================== دروازهٔ لایسنس ==================
+// چرا این‌جا؟ (۱) بعد از احراز هویت تا پاسخ وابسته به کاربر باشد؛
+// (۲) قبل از ActiveCompanyMiddleware تا وقتی لایسنس نامعتبر است، کوئری شرکت فعال هم زده نشود.
+// با لایسنس نامعتبر برنامه Crash نمی‌کند: صفحهٔ ورود و صفحهٔ بارگذاری لایسنس باز می‌مانند.
+app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>();
+
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
 // هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.
 // از این‌جا به بعد، AppDbContext همهٔ کوئری‌های دادهٔ فروشگاهی را به همان شرکت محدود می‌کند.
@@ -761,7 +807,9 @@ app.MapGet("/radis-hr", () => Results.Redirect("/bon-hr"));
 // کاربرد: تست سریع «آیا مرورگر به API وصل می‌شود؟» — http://192.168.30.104:8181/api/health
 // کلاینت Blazor هم در زمان بالا آمدن همین مسیر را آزمایش می‌کند و آدرس درست API را انتخاب می‌کند
 // (اگر آدرس اشتباهی ذخیره شده باشد، خودکار به آدرس درست برمی‌گردد).
-app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
+app.MapGet("/api/health", (HttpContext ctx,
+    // ?nullable: حتی اگر سرویس لایسنس در این هاست ثبت نشده باشد، health نباید بشکند.
+    ILicenseService? licenseService) => Results.Json(new
 {
     ok = true,
     app = "TotallCollectionSoftware",
@@ -770,13 +818,41 @@ app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
     database = provider,
     httpAddress = httpEndpoint.Display,
     httpsPorts = httpsCerts.AllPorts.ToArray(),
-    serverTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+    // ⚠️ ارزش پیشین: "yyyy-MM-dd HH:mm:ss" — وقت دیوارِ تهران ولی **بدون افست**.
+    // در بازبینی سوم معلوم شد هیچ مصرف‌کننده‌ای آن را تجزیه نمی‌کند (grep روی کل مخزن:
+    // هیچ اسکریپت/کلاینت/RemoteAgent این رشته را parse نمی‌کند؛ فقط نمایش)، ولی یک
+    // رشتهٔ بدون افست برای هر مصرف‌کنندهٔ بیرونیِ آینده قابل اشتباه با UTC است.
+    // اکنون: ISO-8601 با افست صریح (+03:30). هیچ چیزی که این فیلد را می‌خواند وجود
+    // ندارد، پس تغییر شکننده نیست؛ serverTimeUtc هم اضافه شد تا مقایسه ساده باشد.
+    serverTime = PersianPeriodKey.NowIranOffset().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
+    serverTimeUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+    serverTimeZone = "Asia/Tehran (+03:30)",
+
+    // ==================== موتور لایسنس ====================
+    // چرا در health؟ چون اسکریپت‌های انتشار/به‌روزرسانی (و هر ناظر خارجی) باید بتوانند
+    // بفهمند این خروجی موتور لایسنس دارد یا نه. نسخهٔ سورس قدیمی ریشه (src/) این فیلد
+    // را ندارد؛ پس «ناخواسته منتشر شدن نسخهٔ بدون لایسنس» از همین‌جا گرفته می‌شود.
+    // این مسیر در allowlist دروازه است، پس در حالت «بدون لایسنس» هم پاسخ می‌دهد.
+    licensing = new
+    {
+        engine = LicenseEngineInfo.FullVersion,
+        assembly = LicenseEngineInfo.AssemblyName,
+        stage = LicenseEngineInfo.Stage,
+        schema = LicenseEngineInfo.SchemaVersion,
+        // وضعیت کلی لایسنس این نصب (Missing/Invalid/Valid) — برای پایش.
+        status = licenseService?.GetOverallStatus().ToString() ?? "Unknown",
+        // آیا سامانه در حالت فقط‌خواندنی است؟ (بدون لایسنس معتبر: خواندن آزاد، نوشتن ۴۰۳)
+        readOnly = licenseService is null
+                   || licenseService.GetOverallStatus() is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid
+    }
 })).AllowAnonymous();
 
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
 app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
+app.MapHub<Inventory.Api.Hubs.Remote.RemoteHub>("/hubs/remote");
+app.MapHub<Inventory.Api.Hubs.Remote.RemoteAgentHub>("/hubs/remote-agent").AllowAnonymous();
 
 // ایجاد و یکدست‌سازی ساختار پوشه‌های آپلود بر اساس ماژول در wwwroot/uploads
 var uploadsRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads");

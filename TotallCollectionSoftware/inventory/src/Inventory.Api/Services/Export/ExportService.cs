@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Invoicing;
 using Inventory.Api.Services.Stocktaking;
@@ -167,13 +168,13 @@ public class ExportService : IExportService
                 new ExportColumn("شماره سند", ExportValueKind.Text, 66),
                 new ExportColumn("نوع سند"),
                 new ExportColumn("طرف حساب") { Wrap = true },
-                new ExportColumn("مقدار ورود", ExportValueKind.Number) { Sum = true },
+                new ExportColumn("مقدار ورود", ExportValueKind.Number) { Sum = true, PreserveFractionalDigits = true },
                 new ExportColumn("بهای ورود", ExportValueKind.Money),
                 new ExportColumn("ارزش ورود", ExportValueKind.Money) { Sum = true },
-                new ExportColumn("مقدار خروج", ExportValueKind.Number) { Sum = true },
+                new ExportColumn("مقدار خروج", ExportValueKind.Number) { Sum = true, PreserveFractionalDigits = true },
                 new ExportColumn("بهای خروج", ExportValueKind.Money),
                 new ExportColumn("ارزش خروج", ExportValueKind.Money) { Sum = true },
-                new ExportColumn("مانده", ExportValueKind.Number),
+                new ExportColumn("مانده", ExportValueKind.Number) { PreserveFractionalDigits = true },
                 new ExportColumn("ارزش مانده", ExportValueKind.Money),
                 new ExportColumn("شرح") { ExcelOnly = true, Wrap = true }
             }
@@ -183,9 +184,9 @@ public class ExportService : IExportService
         spec.Meta.Add(new ExportMeta("واحد", k.Unit));
         spec.Meta.Add(new ExportMeta("روش قیمت‌گذاری", k.MethodTitle));
 
-        spec.Summary.Add(new ExportMeta("مانده اول دوره", $"{Fa.Number(k.OpeningQty)} {k.Unit}"));
+        spec.Summary.Add(new ExportMeta("مانده اول دوره", $"{Fa.Digits(k.OpeningQty.ToString("#,##0.###", CultureInfo.InvariantCulture))} {k.Unit}"));
         spec.Summary.Add(new ExportMeta("ارزش اول دوره", Fa.Money(k.OpeningValue)));
-        spec.Summary.Add(new ExportMeta("مانده پایان دوره", $"{Fa.Number(k.ClosingQty)} {k.Unit}"));
+        spec.Summary.Add(new ExportMeta("مانده پایان دوره", $"{Fa.Digits(k.ClosingQty.ToString("#,##0.###", CultureInfo.InvariantCulture))} {k.Unit}"));
         spec.Summary.Add(new ExportMeta("ارزش پایان دوره", Fa.Money(k.ClosingValue)));
 
         // سطر افتتاحیه
@@ -220,7 +221,7 @@ public class ExportService : IExportService
                 new ExportColumn("گروه"),
                 new ExportColumn("انبار"),
                 new ExportColumn("واحد", ExportValueKind.Text, 40),
-                new ExportColumn("موجودی", ExportValueKind.Number) { Sum = true },
+                new ExportColumn("موجودی", ExportValueKind.Number) { Sum = true, PreserveFractionalDigits = true },
                 new ExportColumn("بهای میانگین", ExportValueKind.Money),
                 new ExportColumn("ارزش موجودی", ExportValueKind.Money) { Sum = true },
                 new ExportColumn("نقطه سفارش", ExportValueKind.Number) { ExcelOnly = true }
@@ -268,9 +269,10 @@ public class ExportService : IExportService
                 new ExportColumn("واحد", ExportValueKind.Text, 42),
                 new ExportColumn("بارکد", ExportValueKind.Text, 78),
                 new ExportColumn("کد مالیاتی", ExportValueKind.Text, 66),
-                new ExportColumn("قیمت خرید", ExportValueKind.Money),
-                new ExportColumn("قیمت فروش", ExportValueKind.Money),
-                new ExportColumn("موجودی کل", ExportValueKind.Number) { Sum = true },
+                // Keep normal exports unchanged except affected stock and legacy price values.
+                new ExportColumn("قیمت خرید", ExportValueKind.Money) { PreserveFractionalDigits = true },
+                new ExportColumn("قیمت فروش", ExportValueKind.Money) { PreserveFractionalDigits = true },
+                new ExportColumn("موجودی کل", ExportValueKind.Number) { Sum = true, PreserveFractionalDigits = true },
                 new ExportColumn("نقطه سفارش", ExportValueKind.Number) { ExcelOnly = true },
                 new ExportColumn("فعال", ExportValueKind.Bool, 40)
             }
@@ -886,6 +888,9 @@ public class ExportService : IExportService
         VoucherSource.InventoryDoc => "سند انبار",
         VoucherSource.Invoice => "فاکتور",
         VoucherSource.StoreSale => "فروش فروشگاه",
+        VoucherSource.StoreSaleChequeAdjustment => "اصلاح تاخیر تادیه چک فروش",
+        VoucherSource.StoreSaleChequeReceipt => "وصول چک فروش",
+        VoucherSource.StoreSaleChequeReceiptReversal => "لغو وصول چک فروش",
         VoucherSource.Opening => "افتتاحیه",
         VoucherSource.Closing => "اختتامیه",
         _ => "دستی"

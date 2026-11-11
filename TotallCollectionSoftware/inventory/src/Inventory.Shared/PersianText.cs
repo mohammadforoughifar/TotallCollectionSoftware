@@ -72,6 +72,9 @@ public static class Fa
         return Digits(s);
     }
 
+    /// <summary>مبلغ مالی با حفظ حداکثر دو رقم اعشار ثبت‌شده و جداکننده هزارگان.</summary>
+    public static string MoneyExact(decimal amount) => Digits(amount.ToString("#,##0.##", CultureInfo.InvariantCulture));
+
     /// <summary>قالب‌بندی عدد صحیح با جداکننده هزارگان و ارقام فارسی.</summary>
     public static string Number(decimal n)
     {
@@ -85,7 +88,7 @@ public static class Fa
     /// <summary>قالب‌بندی زنده ورودی عددی حین تایپ با جداکننده سه‌رقمی (حفظ اعشار + ارقام فارسی).</summary>
     public static string FormatTyping(string? value)
     {
-        var raw = ToEn(value ?? "").Replace(",", "").Trim();
+        var raw = ToEn(value ?? "").Replace(",", "").Replace("٬", "").Replace("٫", ".").Trim();
         if (string.IsNullOrWhiteSpace(raw)) return "";
 
         var parts = raw.Split('.', 2);

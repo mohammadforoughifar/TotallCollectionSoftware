@@ -1685,6 +1685,17 @@ context.Customers.Any(x =>
                                 : model.Message = ex.Message;
                             model.Status = 500;
                             model.Success = false;
+
+                            // ---------- آیا نتیجه **نامعلوم** است؟ ----------
+                            // اگر استثنا بعد از ساخته‌شدن بستهٔ ارسال رخ داده باشد، ممکن است
+                            // درخواست به سامانه رسیده باشد (مثلاً Timeout/قطع اتصال پس از
+                            // ارسال) و برگرداندن «قطعاً ناموفق» مشتری را به تکرار ارسال
+                            // وادار می‌کند. درخواست‌هایی که پیش از ساخت بسته شکست خورده‌اند
+                            // (اعتبارسنجی، نبود اتصال) نامعلوم نیستند و این پرچم را نمی‌گیرند.
+                            model.DeliveryUncertain = requestJsonSnapshot is not null
+                                || ex is TimeoutException
+                                || ex is TaskCanceledException
+                                || ex.InnerException is TimeoutException;
                             return model;
                         }
 
@@ -1886,11 +1897,11 @@ context.Customers.Any(x =>
             return await UpdateInvoiceAsync(modeldata);
         }
 
-        /// <summary>محاسبهٔ داخلیٔ شمارهٔ صورتحساب بعدی یک شرکت (حداکثر + ۱).</summary>
+        /// <summary>شمارهٔ بعدی همان خدمات‌دهنده: بیشترین شمارهٔ حذف‌نشده + ۱؛ در نبود آن ۱.</summary>
         private async Task<int> NextInvoiceNoCoreAsync(int? cpinfo)
         {
             int? max = await context.Invoices
-                .Where(i => i.CpInfo == cpinfo)
+                .Where(i => i.CpInfo == cpinfo && !i.IsDelete)
                 .MaxAsync(i => (int?)i.InvoiceNumber);
             return (max ?? 0) + 1;
         }
@@ -3824,228 +3835,180 @@ context.Customers.Any(x =>
                 }
             }
         }
-        private async Task<ApiModel> UpdateInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
+        // A tax goods/service code is not a catalog primary key: several products/providers
+        // may legitimately use it. Resolve the selected row Id before writing anything.
+        private async Task<ApiModel?> ResolveInvoiceGoodsAsync(InvoiceVM invoice)
         {
-            ApiModel model = new ApiModel();
-            
-            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
-            modeldata.InvoiceItems == null)
+            if (invoice.CPInfoId is not > 0 || invoice.InvoiceItems is null || invoice.InvoiceItems.Count == 0)
+                return InvoiceGoodsError("شرکت مودیان و حداقل یک ردیف کالا/خدمت را انتخاب کنید.");
+
+            var selectedIds = invoice.InvoiceItems.Where(i => i.GoodsOrServicesId is > 0)
+                .Select(i => i.GoodsOrServicesId!.Value).Distinct().ToList();
+            var fallbackCodes = invoice.InvoiceItems.Where(i => i.GoodsOrServicesId is null or 0)
+                .Select(i => i.UniqueIdentifier).Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct().ToList();
+            var goods = await context.GoodsOrServices.AsNoTracking()
+                .Where(g => g.CpInfo == invoice.CPInfoId.Value && !g.IsDelete
+                    && (selectedIds.Contains(g.Id) || fallbackCodes.Contains(g.UniqueIdentifier)))
+                .ToListAsync();
+            var byId = goods.ToDictionary(g => g.Id);
+            var byCode = goods.Where(g => !string.IsNullOrWhiteSpace(g.UniqueIdentifier))
+                .ToLookup(g => g.UniqueIdentifier!, StringComparer.Ordinal);
+            var resolved = new List<(VmInvoiceItems Row, GoodsOrService Goods)>();
+
+            for (var index = 0; index < invoice.InvoiceItems.Count; index++)
             {
-                model.Data = null;
-                model.Status = 400;
-                model.Message = MessageCode.StatusCode.TryGetValue(400, out string messagers) == true
-                    ? model.Message = messagers
-                    : model.Message = "کد وضعیت نامعتبر است.";
-                model.Success = false;
-                return model;
+                var row = invoice.InvoiceItems[index];
+                GoodsOrService? selected;
+                if (row.GoodsOrServicesId is > 0)
+                {
+                    if (!byId.TryGetValue(row.GoodsOrServicesId.Value, out selected))
+                        return InvoiceGoodsError($"کالا/خدمت ردیف {index + 1} در شرکت مودیان انتخاب‌شده موجود یا فعال نیست؛ آن را دوباره انتخاب کنید.");
+                    if (!string.IsNullOrWhiteSpace(row.UniqueIdentifier)
+                        && !string.Equals(row.UniqueIdentifier, selected.UniqueIdentifier, StringComparison.Ordinal))
+                        return InvoiceGoodsError($"شناسهٔ کالا/خدمت ردیف {index + 1} با کالای انتخاب‌شده تطابق ندارد؛ آن را دوباره انتخاب کنید.");
+                }
+                else
+                {
+                    // Compatibility for old callers without the catalog Id. Never choose
+                    // First() arbitrarily when two active rows share the same tax code.
+                    if (row.GoodsOrServicesId is < 0 || string.IsNullOrWhiteSpace(row.UniqueIdentifier))
+                        return InvoiceGoodsError($"کالا/خدمت ردیف {index + 1} را انتخاب کنید.");
+                    var matches = byCode[row.UniqueIdentifier].ToList();
+                    if (matches.Count == 0)
+                        return InvoiceGoodsError($"کالا/خدمت ردیف {index + 1} در شرکت مودیان انتخاب‌شده موجود یا فعال نیست.");
+                    if (matches.Count > 1)
+                        return InvoiceGoodsError($"شناسهٔ کالا/خدمت {row.UniqueIdentifier} در شرکت مودیان انتخاب‌شده چند رکورد فعال دارد؛ کالای ردیف {index + 1} را از فهرست دوباره انتخاب کنید.");
+                    selected = matches[0];
+                }
+                if (string.IsNullOrWhiteSpace(selected.UniqueIdentifier))
+                    return InvoiceGoodsError($"کالا/خدمت ردیف {index + 1} شناسهٔ معتبر ندارد.");
+                resolved.Add((row, selected));
             }
-            List<InvoiceItem> list = new List<InvoiceItem>();
-            ////ویرایش صورت حساب ارسال نشده
-            var invoiceForEdit = context.Invoices.Where(c => c.Id == modeldata.Id).FirstOrDefault();
-            invoiceForEdit.DateOrder = (DateOnly)modeldata.DateOrder;
+
+            // All rows are valid; normalize only now. Repeated invoice rows stay separate.
+            foreach (var (row, selected) in resolved)
+            {
+                row.GoodsOrServicesId = selected.Id;
+                row.UniqueIdentifier = selected.UniqueIdentifier;
+            }
+            return null;
+        }
+
+        private static ApiModel InvoiceGoodsError(string message) => new ApiModel
+        {
+            Data = null, Success = false, Status = 400, Message = message
+        };
+
+        private static InvoiceItem BuildInvoiceItem(VmInvoiceItems item, int invoiceId) => new InvoiceItem
+        {
+            InvoiceId = invoiceId,
+            GoodsOrServicesId = item.GoodsOrServicesId!.Value,
+            UniqueIdentifier = item.UniqueIdentifier,
+            Count = (decimal)item.Count,
+            GoodsOrServicesDescripton = item.DescriptionKala,
+            PriceUnit = (int)item.PriceUnit,
+            ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
+            Discount = (decimal)item.Discount,
+        };
+
+        private async Task<ApiModel> UpdateInvoiceAsync(InvoiceVM modeldata)
+        {
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0))
+                || modeldata.StatusSentToSystem == "" || modeldata.DateOrder is null)
+                return CreateErrorResponse(400);
+
+            // Do not let a valid CPInfo header authorize editing a different provider's invoice.
+            var invoiceForEdit = await context.Invoices.FirstOrDefaultAsync(c => c.Id == modeldata.Id && c.CpInfo == modeldata.CPInfoId);
+            if (invoiceForEdit is null)
+                return CreateErrorResponse(404);
+            if (await ResolveInvoiceGoodsAsync(modeldata) is { } goodsError)
+                return goodsError;
+
+            // Build/validate replacements before modifying the tracked invoice or deleting rows.
+            var replacements = modeldata.InvoiceItems.Select(item => BuildInvoiceItem(item, modeldata.Id)).ToList();
+            invoiceForEdit.DateOrder = modeldata.DateOrder;
             invoiceForEdit.CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId;
             invoiceForEdit.PaymentType = modeldata.PaymentType;
             invoiceForEdit.Description = modeldata.Description;
-            if (invoiceForEdit.PaymentType == "نقدی")
-            {
-                invoiceForEdit.PriceNesye = null;
-                invoiceForEdit.PriceNaghd = modeldata.PriceNaghd;
-            }
-            else if(invoiceForEdit.PaymentType == "نسیه")
-            {
-                invoiceForEdit.PriceNesye = modeldata.PriceNesye;
-                invoiceForEdit.PriceNaghd = null;
-            }
-            else
-            {
-                invoiceForEdit.PriceNesye = modeldata.PriceNesye;
-                invoiceForEdit.PriceNaghd = modeldata.PriceNaghd;
-            }
-         
+            invoiceForEdit.PriceNesye = modeldata.PaymentType == "نقدی" ? null : modeldata.PriceNesye;
+            invoiceForEdit.PriceNaghd = modeldata.PaymentType == "نسیه" ? null : modeldata.PriceNaghd;
             invoiceForEdit.TypePattern = TypePatternToCode(modeldata.TypePattern);
-
-            context.InvoiceItems.RemoveRange(context.InvoiceItems.Where(x => x.InvoiceId == modeldata.Id));
-
-            if (modeldata.InvoiceItems.Count > 0)
-            {
-                foreach (var item in modeldata.InvoiceItems)
-                {
-                    InvoiceItem invoiceItem2 = new InvoiceItem()
-                    {
-                        InvoiceId = modeldata.Id,
-                        GoodsOrServicesId = (int)item.GoodsOrServicesId,
-                        UniqueIdentifier = item.UniqueIdentifier,
-                        Count = (decimal)item.Count,
-                        GoodsOrServicesDescripton=item.DescriptionKala,
-                        //PriceNesye = Convert.ToDecimal(modeldata.NesyeText),
-                        //PriceNaghd = Convert.ToDecimal(modeldata.NaghdText),
-                        PriceUnit = (int)item.PriceUnit,
-                        ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                        Discount = (decimal)item.Discount,
-                    };
-                    list.Add(invoiceItem2);
-
-
-                }
-                try
-                {
-                    await context.InvoiceItems.AddRangeAsync(list);
-                    await context.SaveChangesAsync();
-                }
-                catch (Exception ex)
-                {
-
-                    Console.WriteLine(ex.Message);
-                }
-
-             
-            }
-            model.Data = modeldata;
-            model.Status = 201;
-            model.Message = MessageCode.StatusCode.TryGetValue(201, out string messager) == true
-                ? model.Message = messager
-                : model.Message = "کد وضعیت نامعتبر است.";
-            model.Success = true;
-
-            return model;
-        }
-        private async Task<ApiModel> CreateInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
-        {
-            ApiModel model = new ApiModel();
-
-            // نرمال‌سازی نوع صورتحساب در ورودی: هر مقداری که از کلاینت برسد («نوع دوم»، «2»، با نیم‌فاصله و…)
-            // به یکی از سه مقدار قطعی تبدیل می‌شود تا همهٔ تصمیم‌های بعدی (از جمله رد/قبول مشتری) یکی باشند.
-            var rawType = modeldata.TypePattern;
-            var typeCode = TypePatternToCode(rawType);
-            modeldata.TypePattern = typeCode == 3 ? "نوع سوم" : typeCode == 2 ? "نوع دوم" : "نوع اول";
-            Console.WriteLine($"[Moadian] CreateInvoice typePattern='{rawType}' code={typeCode} customerId={modeldata.CustomerId} cpinfo={modeldata.CPInfoId}");
-
-            // Validation اولیه
-            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) && (modeldata.CustomerId == null || modeldata.CustomerId == 0)) || modeldata.StatusSentToSystem == "" ||
-                modeldata.InvoiceItems == null || !modeldata.InvoiceItems.Any())
-            {
-                return CreateErrorResponse(400);
-            }
-
-            // واکشی کالاها با Dictionary برای دسترسی سریعتر
-            var goodsIds = modeldata.InvoiceItems
-                .Select(i => i.UniqueIdentifier)
-                .Distinct()
-                .ToList();
+            context.InvoiceItems.RemoveRange(await context.InvoiceItems.Where(x => x.InvoiceId == modeldata.Id).ToListAsync());
+            await context.InvoiceItems.AddRangeAsync(replacements);
             try
             {
-                var goodsDictionary = await context.GoodsOrServices
-               .Where(g => goodsIds.Contains(g.UniqueIdentifier))
-               .ToDictionaryAsync(
-                   g => g.UniqueIdentifier,  // Key
-                   g => g.Id                  // Value (کلید اصلی)
-               );
-                // بررسی missing IDs
-                var missingIds = goodsIds.Where(id => !goodsDictionary.ContainsKey(id)).ToList();
-
-                if (missingIds.Any())
-                {
-                    model.Success = false;
-                    model.Status = 400;
-                    model.Message = $"کالا(های) با شناسه {string.Join(", ", missingIds)} در سیستم یافت نشد.";
-                    return model;
-                }
-                // چک مشتری — برای نوع ۲/۳ (بدون خریدار) نیازی به مشتری نیست
-                if (!IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))))
-                {
-                    var customerExists = await context.Customers.AnyAsync(c => c.Id == modeldata.CustomerId);
-                    if (!customerExists)
-                    {
-                        model.Success = false;
-                        model.Status = 400;
-                        model.Message = "مشتری موردنظر یافت نشد.";
-                        return model;
-                    }
-                }
-
-                try
-                {
-                    // ایجاد فاکتور — اگر شماره ارسال نشده، شمارهٔ بعدیِ همان شرکت تخصیص می‌یابد
-                    int nextNumber = modeldata.NumberInvoice is > 0
-                        ? modeldata.NumberInvoice.Value
-                        : await NextInvoiceNoCoreAsync(modeldata.CPInfoId);
-                    var invoice = new Invoice()
-                    {
-                        CustomerId = IsNoBuyerDisclosureType(SafeInvoiceType(TypePatternToCode(modeldata.TypePattern))) ? null : modeldata.CustomerId,
-                        CpInfo = modeldata.CPInfoId,
-                        InvoiceNumber = nextNumber,
-                        FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
-                        DateOrder = (DateOnly)modeldata.DateOrder,
-                        TypePattern = TypePatternToCode(modeldata.TypePattern),
-                        PaymentType = modeldata.PaymentType,
-                        PriceNaghd = modeldata.PriceNaghd,
-                        PriceNesye = modeldata.PriceNesye,
-                        Description = modeldata.Description,
-                        StatusSentToSystem = "0",
-                        ShowButtons = true,
-                        Subject = "اصلی"
-                    };
-
-                    await context.AddAsync(invoice);
-                    await context.SaveChangesAsync();
-
-                    // ایجاد آیتم‌های فاکتور
-                    var invoiceItems = modeldata.InvoiceItems.Select(item => new InvoiceItem()
-                    {
-                        InvoiceId = invoice.Id,
-                        GoodsOrServicesId = goodsDictionary[item.UniqueIdentifier],  // گرفتن کلید اصلی از Dictionary
-                        UniqueIdentifier = item.UniqueIdentifier,
-                        Count = (decimal)item.Count,
-                        GoodsOrServicesDescripton = item.DescriptionKala,
-                        PriceUnit = (int)item.PriceUnit,
-                        ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                        Discount = (decimal)item.Discount,
-                    }).ToList();
-
-                    await context.InvoiceItems.AddRangeAsync(invoiceItems);
-                    await context.SaveChangesAsync();
-
-                    // پاسخ غنی‌شده: Id و شمارهٔ واقعی صورتحساب برای ناوبری کلاینت
-                    modeldata.Id = invoice.Id;
-                    modeldata.NumberInvoice = invoice.InvoiceNumber;
-                    modeldata.DateOrder = invoice.DateOrder;
-                    modeldata.Subject = invoice.Subject;
-                    modeldata.StatusSentToSystem = invoice.StatusSentToSystem;
-                    modeldata.StatusSentToSystemInt = invoice.StatusSentToSystem;
-                    modeldata.ShowButtons = true;
-
-                    model.Data = modeldata;
-                    model.Status = 201;
-                    model.Message = MessageCode.StatusCode.TryGetValue(201, out string messager) == true
-                        ? model.Message = messager
-                        : model.Message = "کد وضعیت نامعتبر است.";
-                    model.Success = true;
-
-                    return model;
-                }
-                catch (Exception e)
-                {
-                    // لاگ کردن خطا
-                    Console.WriteLine($"Error in CreateInvoiceAsync: {e.Message}");
-                    Console.WriteLine($"Stack Trace: {e.StackTrace}");
-
-                    return CreateErrorResponse(500);
-                }
+                // A single relational SaveChanges is atomic; never report success on failure.
+                await context.SaveChangesAsync();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-
-                throw;
+                Console.WriteLine($"Error in UpdateInvoiceAsync: {ex.Message}");
+                return CreateErrorResponse(500);
             }
-           
-
-           
-
-         
+            return new ApiModel { Data = modeldata, Status = 201, Success = true,
+                Message = MessageCode.StatusCode.TryGetValue(201, out var message) ? message : "ثبت شد." };
         }
 
-    
-   
+        private async Task<ApiModel> CreateInvoiceAsync(InvoiceVM modeldata)
+        {
+            var typeCode = TypePatternToCode(modeldata.TypePattern);
+            modeldata.TypePattern = typeCode == 3 ? "نوع سوم" : typeCode == 2 ? "نوع دوم" : "نوع اول";
+            if (modeldata.PaymentType == "" || (!IsNoBuyerDisclosureType(typeCode) && modeldata.CustomerId is not > 0)
+                || modeldata.StatusSentToSystem == "" || modeldata.DateOrder is null)
+                return CreateErrorResponse(400);
+            if (await ResolveInvoiceGoodsAsync(modeldata) is { } goodsError)
+                return goodsError;
+            if (!IsNoBuyerDisclosureType(typeCode)
+                && !await context.Customers.AnyAsync(c => c.Id == modeldata.CustomerId && c.CpInfoId == modeldata.CPInfoId && !c.IsDelete))
+                return InvoiceGoodsError("مشتری موردنظر در شرکت مودیان انتخاب‌شده موجود یا فعال نیست.");
+
+            try
+            {
+                var invoice = new Invoice
+                {
+                    CustomerId = IsNoBuyerDisclosureType(typeCode) ? null : modeldata.CustomerId,
+                    CpInfo = modeldata.CPInfoId,
+                    InvoiceNumber = modeldata.NumberInvoice is > 0 ? modeldata.NumberInvoice.Value : await NextInvoiceNoCoreAsync(modeldata.CPInfoId),
+                    FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
+                    DateOrder = modeldata.DateOrder,
+                    TypePattern = typeCode,
+                    PaymentType = modeldata.PaymentType,
+                    PriceNaghd = modeldata.PriceNaghd,
+                    PriceNesye = modeldata.PriceNesye,
+                    Description = modeldata.Description,
+                    StatusSentToSystem = "0",
+                    ShowButtons = true,
+                    Subject = "اصلی"
+                };
+                var items = modeldata.InvoiceItems.Select(item => BuildInvoiceItem(item, 0)).ToList();
+                // The header and its lines must either both persist or both roll back.
+                await using var transaction = context.Database.CurrentTransaction is null
+                    ? await context.Database.BeginTransactionAsync() : null;
+                await context.Invoices.AddAsync(invoice);
+                await context.SaveChangesAsync();
+                foreach (var item in items) item.InvoiceId = invoice.Id;
+                await context.InvoiceItems.AddRangeAsync(items);
+                await context.SaveChangesAsync();
+                if (transaction is not null) await transaction.CommitAsync();
+
+                modeldata.Id = invoice.Id;
+                modeldata.NumberInvoice = invoice.InvoiceNumber;
+                modeldata.DateOrder = invoice.DateOrder;
+                modeldata.Subject = invoice.Subject;
+                modeldata.StatusSentToSystem = invoice.StatusSentToSystem;
+                modeldata.StatusSentToSystemInt = invoice.StatusSentToSystem;
+                modeldata.ShowButtons = true;
+                return new ApiModel { Data = modeldata, Status = 201, Success = true,
+                    Message = MessageCode.StatusCode.TryGetValue(201, out var message) ? message : "ثبت شد." };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in CreateInvoiceAsync: {ex.Message}");
+                return CreateErrorResponse(500);
+            }
+        }
+
         //    private async Task<ApiModel> CreateInvoiceAsync(VmInvoiceItems.InvoiceVM modeldata)
         //    {
         //        ApiModel model = new ApiModel();

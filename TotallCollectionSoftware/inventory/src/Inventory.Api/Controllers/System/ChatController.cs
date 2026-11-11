@@ -202,7 +202,7 @@ public class ChatController : ControllerBase
         return Ok(summary);
     }
 
-    /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)، حداکثر ۵۰ MiB.</summary>
+    /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)؛ بدون سقف حجم (سقف ۵۰ مگابایتی برداشته شد).</summary>
     [HttpPost("conversations/{id:int}/attachments")]
     [RequirePermission("Chat", "Send")]
     [DisableRequestSizeLimit]

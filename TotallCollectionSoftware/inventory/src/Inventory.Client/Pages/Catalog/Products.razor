@@ -7,6 +7,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@using Inventory.Client.Pages.Orders
 
 <PageTitle>کالاها</PageTitle>
 
@@ -18,8 +19,9 @@
     <div class="ms-auto d-flex flex-wrap gap-2">
         <ExportButtons ReportKey="inv-products"
                        Query="@ProductExportQuery"
+                       PreviewPdf="true"
                        PdfLabel="چاپ فهرست"
-                       PdfTitle="دریافت نسخه چاپی از همه کالاهای فهرست"
+                       PdfTitle="پیش‌نمایش و چاپ فهرست کالاها"
                        ExcelLabel="خروجی اکسل"
                        ExcelTitle="خروجی اکسل از همه کالاهای فهرست"
                        ButtonClass="btn-sm btn-outline-secondary" />
@@ -111,10 +113,10 @@
                                     }
                                 </td>
                                 <td>@p.Unit</td>
-                                <td class="text-start num">@p.PurchasePrice.Money()</td>
-                                <td class="text-start num fw-500">@p.SalePrice.Money()</td>
-                                <td class="text-start num">@p.TotalStock.Num()</td>
-                                <td class="text-start num">@p.ReorderPoint.Num()</td>
+                                <td class="text-start num">@p.PurchasePrice.MoneyExact()</td>
+                                <td class="text-start num fw-500">@p.SalePrice.MoneyExact()</td>
+                                <td class="text-start num">@p.TotalStock.Qty()</td>
+                                <td class="text-start num">@p.ReorderPoint.Qty()</td>
                                 <td class="num fs-8">@p.CreatedAt.ToFa()</td>
                                 <td>
                                     @if (p.BelowReorder)
@@ -162,16 +164,16 @@
                         <div class="m-card-body">
                             <div class="m-card-row">
                                 <span><i class="bi bi-boxes text-muted"></i> موجودی</span>
-                                <b class="num">@p.TotalStock.Num()</b>
+                                <b class="num">@p.TotalStock.Qty()</b>
                             </div>
                             <div class="m-card-money">
                                 <div>
                                     <div class="fs-8 text-muted">قیمت خرید</div>
-                                    <div class="num fw-500">@p.PurchasePrice.Money()</div>
+                                    <div class="num fw-500">@p.PurchasePrice.MoneyExact()</div>
                                 </div>
                                 <div class="text-end">
                                     <div class="fs-8 text-muted">قیمت فروش</div>
-                                    <div class="num fw-800 text-primary">@p.SalePrice.Money()</div>
+                                    <div class="num fw-800 text-primary">@p.SalePrice.MoneyExact()</div>
                                 </div>
                             </div>
                         </div>
@@ -203,7 +205,7 @@
                        checked="@form.IsService" @onchange="@(() => form.IsService = true)" />
                 <label class="form-check-label" for="prodService">خدمات</label>
             </div>
-            <div class="fs-8 text-muted">خدمات موجودی انبار ندارد و فقط در فروش انتخاب می‌شود</div>
+            <div class="fs-8 text-muted">خدمت: بدون موجودی، فقط فروش</div>
         </div>
         <div class="col-md-5">
             <label class="form-label">@(form.IsService ? "نام خدمت" : "نام کالا") <span class="text-danger">*</span></label>
@@ -250,11 +252,11 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">قیمت خرید (ریال)</label>
-                <input class="form-control num" value="@fPurchase" @oninput="@(e => fPurchase = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fPurchase" @oninput="@(e => fPurchase = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
             <div class="col-md-3">
                 <label class="form-label">قیمت فروش (ریال)</label>
-                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">نقطه سفارش (حداقل موجودی)</label>
@@ -269,9 +271,14 @@
         {
             <div class="col-md-4">
                 <label class="form-label">قیمت خدمات (ریال) <span class="text-danger">*</span></label>
-                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
+                <input class="form-control num" value="@fSale" @oninput="@(e => fSale = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
             </div>
         }
+        <div class="col-md-4">
+            <label class="form-label">ارزش افزوده پیش‌فرض فاکتور</label>
+            <input type="number" min="0" step="0.01" class="form-control num" @bind="form.InvoiceVatValue" dir="ltr" />
+            <div class="fs-8 text-muted mt-1">صفر تا ۱۰۰ درصد؛ بالاتر از ۱۰۰ مبلغ ریالی است.</div>
+        </div>
         <div class="col-md-6">
             <label class="form-label">شناسه مالیاتی @(form.IsService ? "خدمت" : "کالا")</label>
             <input class="form-control font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="شناسه رسمی کالا/خدمت" />
@@ -301,7 +308,7 @@
                         <option value="@w.Id">@w.Name</option>
                     }
                 </select>
-                <div class="fs-8 text-muted mt-1">در صورت انتخاب، این کالا فقط در همان انبار قابل خرید/فروش است</div>
+                <div class="fs-8 text-muted mt-1">خرید و فروش فقط در انبار انتخابی.</div>
             </div>
         }
         @if (editing)
@@ -343,7 +350,23 @@
             </div>
         </div>
         <div class="col-12">
-            <label class="form-label">فایل اکسل (xlsx)</label>
+            <label class="form-label fw-bold">انبار مقصد <span class="text-danger">*</span></label>
+            <select class="form-select @(importWarehouseId == 0 ? "border-danger" : "")" @bind="importWarehouseId">
+                <option value="0">— انتخاب انبار جهت ورود کالاها (الزامی) —</option>
+                @foreach (var w in whLookup)
+                {
+                    <option value="@w.Id">@w.Name</option>
+                }
+            </select>
+            @if (importWarehouseId == 0)
+            {
+                <div class="fs-8 text-danger mt-1">
+                    <i class="bi bi-exclamation-circle ms-1"></i>انتخاب انبار برای ورود اکسل الزامی است تا کالاها به تفکیک انبار مدیریت شوند.
+                </div>
+            }
+        </div>
+        <div class="col-12">
+            <label class="form-label">فایل اکسل (xlsx) <span class="text-danger">*</span></label>
             <InputFile class="form-control" OnChange="OnFileSelected" accept=".xlsx" />
         </div>
         @if (importResult is not null)
@@ -373,7 +396,7 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseImport">بستن</button>
-        <button class="btn btn-primary" @onclick="DoImport" disabled="@(importing || importFile is null)">
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="DoImport" disabled="@(importing || importFile is null || importWarehouseId <= 0)">
             @if (importing) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             بارگذاری و ثبت
         </button>
@@ -410,6 +433,7 @@
 
     // ---------- ورود اکسل ----------
     private bool showImport, importing, downloadingTemplate;
+    private int importWarehouseId;
     private IBrowserFile? importFile;
     private ExcelImportResult? importResult;
 
@@ -435,6 +459,7 @@
     {
         importFile = null;
         importResult = null;
+        importWarehouseId = 0;
         downloadingTemplate = false;
         showImport = true;
     }
@@ -473,7 +498,17 @@
 
     private async Task DoImport()
     {
-        if (importFile is null) { Toast.Error("ابتدا فایل اکسل را انتخاب کنید."); return; }
+        if (importing) return;
+        if (importWarehouseId <= 0)
+        {
+            Toast.Error("لطفاً ابتدا انبار موردنظر را انتخاب کنید. ورود اکسل بدون انتخاب انبار امکان‌پذیر نیست.");
+            return;
+        }
+        if (importFile is null)
+        {
+            Toast.Error("ابتدا فایل اکسل را انتخاب کنید.");
+            return;
+        }
 
         importing = true;
         try
@@ -483,7 +518,7 @@
             await stream.CopyToAsync(ms);
             ms.Position = 0;
 
-            importResult = await ProductSvc.ImportExcelAsync(ms, importFile.Name);
+            importResult = await ProductSvc.ImportExcelAsync(ms, importFile.Name, importWarehouseId);
 
             if (importResult.Imported > 0)
                 Toast.Success($"{importResult.Imported} کالا با موفقیت ثبت شد.");
@@ -548,7 +583,7 @@
     private async Task OpenNew()
     {
         await LoadLookups();
-        form = new Product { IsActive = true, Unit = "عدد" };
+        form = new Product { IsActive = true, Unit = "عدد", InvoiceVatValue = 0 };
         fSale = fPurchase = fReorder = fMax = "";
         prodWarehouseIdStr = "0";
         showModal = true;
@@ -560,7 +595,7 @@
         {
             Id = p.Id, Code = p.Code, Name = p.Name, Category = p.Category, Barcode = p.Barcode,
             Unit = p.Unit, SalePrice = p.SalePrice, PurchasePrice = p.PurchasePrice,
-            TaxCode = p.TaxCode, ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
+            InvoiceVatValue = p.InvoiceVatValue ?? 0, TaxCode = p.TaxCode, ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
             IsActive = p.IsActive, IsService = p.IsService, WarehouseId = p.WarehouseId, CreatedAt = p.CreatedAt
         };
         prodWarehouseIdStr = (p.WarehouseId ?? 0).ToString();
@@ -568,8 +603,10 @@
         // اگر گروه کالای فعلی در فهرست گروه‌های فعال نبود، موقتاً اضافه می‌شود تا انتخاب حفظ شود
         if (!string.IsNullOrWhiteSpace(p.Category) && !categories.Any(c => c.Name == p.Category))
             categories.Add(new ProductCategory { Name = p.Category });
-        fSale = Fa.Money(p.SalePrice); fPurchase = Fa.Money(p.PurchasePrice);
-        fReorder = Fa.Money(p.ReorderPoint); fMax = Fa.Money(p.MaxStock);
+        // Do not round a pre-existing fractional price merely by opening the editor.
+        fSale = Fa.MoneyExact(p.SalePrice); fPurchase = Fa.MoneyExact(p.PurchasePrice);
+        fReorder = Fa.Digits(p.ReorderPoint.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
+        fMax = Fa.Digits(p.MaxStock.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
         showModal = true;
     }
 
@@ -577,16 +614,31 @@
 
     private async Task Save()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(form.Name))
         {
             Toast.Error(form.IsService ? "نام خدمت را وارد کنید." : "نام کالا را وارد کنید.");
             return;
         }
 
+        // Blank optional prices mean zero, as before. Keep an unchanged legacy
+        // fractional value, but require whole rials for every new/changed price.
+        var saleText = string.IsNullOrWhiteSpace(fSale) ? "0" : fSale;
+        var purchaseText = string.IsNullOrWhiteSpace(fPurchase) ? "0" : fPurchase;
+        decimal purchasePrice = 0m;
+        if (!PurchaseSalePriceInput.TryParseLegacy(saleText, out var salePrice) ||
+            (!PurchaseSalePriceInput.TryParse(saleText, out _) &&
+             !(editing && salePrice == form.SalePrice && !ShopInvoiceAmounts.IsWholePrice(form.SalePrice))))
+        { Toast.Error("قیمت فروش باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."); return; }
+        if (!form.IsService && (!PurchaseSalePriceInput.TryParseLegacy(purchaseText, out purchasePrice) ||
+            (!PurchaseSalePriceInput.TryParse(purchaseText, out _) &&
+             !(editing && purchasePrice == form.PurchasePrice && !ShopInvoiceAmounts.IsWholePrice(form.PurchasePrice)))))
+        { Toast.Error("قیمت خرید باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."); return; }
+
         if (form.IsService)
         {
             // خدمات: فقط نام، کد و قیمت — بقیه فیلدها پاک می‌شوند
-            form.SalePrice = Fa.ParseDecimal(fSale);
+            form.SalePrice = salePrice;
             if (form.SalePrice <= 0) { Toast.Error("قیمت خدمات را وارد کنید."); return; }
             form.PurchasePrice = 0;
             form.ReorderPoint = 0;
@@ -598,11 +650,18 @@
         }
         else
         {
-            form.SalePrice = Fa.ParseDecimal(fSale);
-            form.PurchasePrice = Fa.ParseDecimal(fPurchase);
+            form.SalePrice = salePrice;
+            form.PurchasePrice = purchasePrice;
             form.ReorderPoint = Fa.ParseDecimal(fReorder);
             form.MaxStock = Fa.ParseDecimal(fMax);
             form.WarehouseId = int.TryParse(prodWarehouseIdStr, out var pw) && pw > 0 ? pw : null;
+        }
+
+        form.InvoiceVatValue ??= 0;
+        if (!OrderLineAmounts.IsValidVatValue(form.InvoiceVatValue.Value))
+        {
+            Toast.Error("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            return;
         }
 
         saving = true;

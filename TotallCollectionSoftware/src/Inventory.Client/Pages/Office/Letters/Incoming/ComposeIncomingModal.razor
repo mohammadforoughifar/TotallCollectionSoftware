@@ -1,4 +1,7 @@
+@using Inventory.Shared.Security
 @inject IIncomingLetterService IncomingSvc
+@inject ILetterService LetterSvc
+@inject IOutgoingLetterService OutgoingSvc
 @inject IEmailClientService EmailSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
@@ -30,7 +33,7 @@
             <div class="row2">
                 <div class="fcard @(errTitle ? "err" : "")">
                     <label>موضوع / عنوان نامه <span class="req">*</span></label>
-                    <input class="tin" placeholder="عنوان یا موضوع نامه وارده…" @bind="title" @bind:event="oninput" />
+                    <input class="tin" maxlength="200" placeholder="عنوان یا موضوع نامه وارده…" @bind="title" @bind:event="oninput" />
                     @if (errTitle)
                     {
                         <div class="ferr"><i class="bi bi-exclamation-circle"></i> موضوع نامه الزامی است</div>
@@ -38,7 +41,7 @@
                 </div>
                 <div class="fcard @(errFerestande ? "err" : "")">
                     <label>فرستنده (سازمان / شخص مبدأ) <span class="req">*</span></label>
-                    <input class="tin" placeholder="نام شرکت، اداره یا شخص فرستنده…" @bind="ferestande" @bind:event="oninput" />
+                    <input class="tin" maxlength="200" placeholder="نام شرکت، اداره یا شخص فرستنده…" @bind="ferestande" @bind:event="oninput" />
                     @if (errFerestande)
                     {
                         <div class="ferr"><i class="bi bi-exclamation-circle"></i> فرستنده نامه الزامی است</div>
@@ -81,7 +84,16 @@
                 </div>
                 <div class="fcard">
                     <label>شماره اندیکاتور / رزرو شده</label>
-                    @if (reservations.Count > 0)
+                    @if (editLetterId > 0)
+                    {
+                        @* در ویرایش، شمارهٔ اندیکاتور تغییر نمی‌کند (EditIncomingLetterDto این
+                           فیلد را ندارد). پیش‌تر کمبوی رزرو فعال بود و کاربر شماره را عوض
+                           می‌کرد ولی ذخیره نمی‌شد — یک «کار بی‌اثر» بی‌هیچ پیامی. *@
+                        <input class="tin num" value="@selectedSabt" disabled
+                               title="شمارهٔ اندیکاتور پس از ثبت نامه تغییر نمی‌کند" />
+                        <small class="text-muted" style="font-size:11px">شمارهٔ اندیکاتور پس از ثبت تغییر نمی‌کند.</small>
+                    }
+                    else if (reservations.Count > 0)
                     {
                         <select class="tin" @bind="selectedSabt">
                             <option value="0">خودکار (اولین شماره آزاد)</option>
@@ -123,7 +135,7 @@
             @* ---------- متن / توضیحات نامه (ادیتور پیشرفته) ---------- *@
             <div class="fcard">
                 <label>توضیحات / خلاصه متن نامه</label>
-                <RichTextEditor @bind-Value="description" Placeholder="خلاصه متن یا توضیحات نامه وارده را وارد کنید…" Height="220" Module="IncomingLetters" />
+                <RichTextEditor @ref="_richDesc" Id="ltxIncomingDesc" @bind-Value="description" Placeholder="خلاصه متن یا توضیحات نامه وارده را وارد کنید…" Height="220" Module="IncomingLetters" />
             </div>
 
             @* ---------- ارجاع اولیه انفرادی و گروهی ---------- *@
@@ -136,11 +148,100 @@
                                      Users="users" Groups="groups"
                                      SelectedUsers="selUsers" SelectedGroups="selGroups" />
 
-                    <div style="display:flex; gap:10px; margin-top:10px">
-                        <input class="tin" style="flex:1" placeholder="دستور / متن ارجاع اولیه (پاراف)…" @bind="initialMatnErja" />
+                    <div style="display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap">
+                        <input class="tin" style="flex:1; min-width:220px" placeholder="دستور / متن ارجاع اولیه (پاراف)…" @bind="initialMatnErja" />
+                        <div style="width:200px">
+                            <DatePicker Value="initialMohlat" ValueChanged="d => initialMohlat = d" AllowClear="true" Placeholder="مهلت پاسخ" />
+                        </div>
                     </div>
+                    <small class="text-muted" style="display:block; margin-top:6px; font-size:11px">
+                        مهلت پاسخ فقط روی ارجاع اولیه ثبت می‌شود؛ خالی گذاشتن آن یعنی بدون مهلت.
+                    </small>
                 </div>
             }
+
+            @* ---------- نامه‌های مرتبط (عطف / پیرو) ---------- *@
+            <div class="fcard" style="margin-top:8px">
+                <label><i class="bi bi-link-45deg" style="color:var(--p)"></i> نامه‌های مرتبط (عطف / پیرو) <span class="opt">اختیاری</span></label>
+
+                @if (related.Count > 0)
+                {
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px">
+                        @foreach (var r in related)
+                        {
+                            var rr = r;
+                            <span class="rl-pill">
+                                <b>@(rr.Related == 2 ? "عطف به" : "پیرو")</b>
+                                @if (!string.IsNullOrWhiteSpace(rr.RelateLetterNumber))
+                                {
+                                    <span class="num"># @rr.RelateLetterNumber.FaDigits()</span>
+                                }
+                                <span class="rl-pill-ttl">@rr.RelateLetterTitle</span>
+                                <button type="button" class="rl-pill-x" @onclick="() => RemoveRel(rr)" title="حذف رابطه"><i class="bi bi-x-lg"></i></button>
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:12px; color:#64748b; margin-bottom:8px">
+                        اگر این نامه پاسخ/پیگیری نامهٔ دیگری است، آن را به‌عنوان «عطف» یا «پیرو» ثبت کنید.
+                    </div>
+                }
+
+                <div style="display:flex; gap:6px; flex-wrap:wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenRel(2)">
+                        <i class="bi bi-arrow-90deg-right"></i> افزودن عطف
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenRel(1)">
+                        <i class="bi bi-arrow-return-left"></i> افزودن پیرو
+                    </button>
+                </div>
+
+                @if (relOpen)
+                {
+                    <div class="rl-panel">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px">
+                            @foreach (var tab in new[] { (3, "وارده"), (1, "داخلی"), (2, "صادره") })
+                            {
+                                <button type="button" class="@RelTabCls(tab.Item1)" @onclick="() => relSourceType = tab.Item1">@tab.Item2</button>
+                            }
+                            <span style="flex:1"></span>
+                            <span style="font-size:11px; color:#64748b">
+                                نوع رابطه: <b>@(relType == 2 ? "عطف به" : "پیرو")</b>
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseRel"><i class="bi bi-x-lg"></i> بستن</button>
+                        </div>
+
+                        <input class="tin" placeholder="جستجوی شماره یا عنوان نامه…" @bind="relSearch" @bind:event="oninput" @bind:after="SearchRel" />
+
+                        <div class="rl-list">
+                            @if (relBusy)
+                            {
+                                <div class="rl-empty"><span class="spinner-border spinner-border-sm"></span> در حال جستجو…</div>
+                            }
+                            else if (!relResults.Any(x => x.SourceType == relSourceType))
+                            {
+                                <div class="rl-empty">نامه‌ای برای افزودن پیدا نشد (یا همهٔ نتایج پیش‌تر افزوده شده‌اند).</div>
+                            }
+                            else
+                            {
+                                @foreach (var rl in relResults.Where(x => x.SourceType == relSourceType))
+                                {
+                                    var pick = rl;
+                                    <div class="rl-row" @onclick="() => AddRel(pick)">
+                                        <i class="bi bi-plus-circle"></i>
+                                        <div style="flex:1">
+                                            <b>@pick.Title</b>
+                                            <small class="num"># @pick.LetterNumber.FaDigits() · @pick.Date.ToFa()</small>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
 
             @* ---------- پنل پیشرفته پیوست‌ها (اسکن + سیستم) ---------- *@
             <div class="fcard" style="margin-top:8px">
@@ -248,6 +349,9 @@
     private int foriat = 0;
     private string description = "";
 
+    /// <summary>ادیتور توضیحات — برای تزریق متن در حالت‌های «تبدیل از ایمیل»، ویرایش و کپی.</summary>
+    private RichTextEditor? _richDesc;
+
     private LetterPickCombo? combo;
     private List<LetterReciverDto> users = new();
     private List<LetterGroupDto> groups = new();
@@ -261,6 +365,27 @@
     private List<LetterNumberReservationDto> reservations = new();
     private List<IBrowserFile> pendingFiles = new();
 
+    // ---------- مهلت پاسخ ارجاع اولیه ----------
+    private DateTime? initialMohlat;
+
+    // ---------- نامه‌های مرتبط (عطف / پیرو) ----------
+    private List<RelatedLetterDto> related = new();
+    private bool relOpen = false;
+    private int relType = 2;          // 2 = عطف، 1 = پیرو
+    private int relSourceType = 3;    // 3 = وارده، 1 = داخلی، 2 = صادره
+    private string relSearch = "";
+    private bool relBusy = false;
+    private List<RelatedPick> relResults = new();
+
+    private sealed class RelatedPick
+    {
+        public int LetterId { get; set; }
+        public string LetterNumber { get; set; } = "";
+        public string Title { get; set; } = "";
+        public DateTime Date { get; set; }
+        public int SourceType { get; set; }
+    }
+
     public async Task OpenCreate()
     {
         editLetterId = 0;
@@ -270,11 +395,16 @@
         typeErsal = "دستی / پیک"; deliveryName = ""; selectedSabt = 0;
         mahramanegi = 0; foriat = 0; description = "";
         selUsers.Clear(); selGroups.Clear(); initialMatnErja = "";
+        initialMohlat = null;
+        related.Clear(); relOpen = false; relSearch = ""; relResults = new(); relType = 2; relSourceType = 3;
         pendingFiles.Clear();
         errTitle = false; errFerestande = false;
         visible = true;
 
         await LoadLookups();
+        StateHasChanged();
+        await SyncDescriptionAsync();
+
         StateHasChanged();
     }
 
@@ -293,11 +423,28 @@
         mahramanegi = letter.Mahramanegi;
         foriat = letter.Foriat;
         description = letter.Description ?? "";
+        // عطف/پیرو فرم ویرایش باید وضعیت فعلی نامه را نشان دهد؛ وگرنه ذخیرهٔ ویرایش
+        // (که فهرست کامل رابطه‌ها را جایگزین می‌کند) رابطه‌های موجود را پاک می‌کرد.
+        initialMohlat = null;
+        related = (letter.RelatedLetters ?? new List<RelatedLetterDto>())
+            .Where(r => r.RelateLetterId > 0)
+            .Select(r => new RelatedLetterDto
+            {
+                Related = r.Related,
+                RelateLetterId = r.RelateLetterId,
+                RelateLetterNumber = r.RelateLetterNumber,
+                RelateLetterTitle = r.RelateLetterTitle
+            })
+            .ToList();
+        relOpen = false; relSearch = ""; relResults = new(); relType = 2; relSourceType = 3;
         pendingFiles.Clear();
         errTitle = false; errFerestande = false;
         visible = true;
 
         await LoadLookups();
+        StateHasChanged();
+        await SyncDescriptionAsync();
+
         StateHasChanged();
     }
 
@@ -313,55 +460,53 @@
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
         sourceDate = email.Date; entryDate = email.Date;
-        // متن نامه «مثل خودِ ایمیل دریافتی» ساخته می‌شود: یک خطِ کوتاهِ منبع (تاریخ)،
-        // سپس بدنه با همان قالب و تصاویرِ داخل متن. تصاویر به‌صورت data URI داخل متن
-        // جاسازی می‌شوند (آدرسِ نسبیِ پیوستِ ایمیل در متن نامه کار نمی‌کرد).
-        var letterContent = await EmailLetterContent.BuildAsync(email, EmailSvc);
+        // متن نامه از روی ایمیل ساخته می‌شود: بدنهٔ پاک‌سازی‌شده و «خوانا» (حذف <style>
+        // و پس‌زمینهٔ تیره، تبدیل متن سفید به تیره) + تصاویرِ داخل متن + تصاویرِ پیوستی.
+        // تصاویر به‌صورت data URI داخل خودِ متن جاسازی می‌شوند، چون آدرسِ نسبیِ پیوستِ
+        // ایمیل در متن نامه به میزبانِ برنامه می‌خورد و بدون توکن هم ۴۰۱ می‌گیرد.
+        var letterBody = await EmailLetterBodyBuilder.BuildAsync(email, EmailSvc);
+
+        // متن نامه «مثل خودِ ایمیل دریافتی»: یک خطِ کوتاهِ منبع و سپس بدنه با همان قالب
+        // و تصاویرِ داخل متن (بدون برچسب یا نام فایل).
         description = "<p style='color:#64748b;font-size:12px;margin:0 0 10px'>"
                     + $"برگرفته از ایمیل دریافتی — {email.Date.ToFaDateTime()}</p>"
-                    + letterContent.Html;
+                    + letterBody.Html;
 
-        var transferred = letterContent.InlineImages + letterContent.AttachedImages;
-        if (transferred > 0)
-            Toast.Success($"{transferred.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
-        if (letterContent.Skipped > 0)
-            Toast.Error($"{letterContent.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
+        var transferredImages = letterBody.InlineImages + letterBody.AttachedImages;
+        var emailImageCount = email.Attachments.Count(a => a.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
+        if (transferredImages > 0)
+            Toast.Success($"{transferredImages.FaDigits()} تصویر ایمیل داخل متن نامه قرار گرفت.");
+        else if (emailImageCount > 0)
+            Toast.Error("هیچ‌یک از تصاویر این ایمیل به متن نامه منتقل نشد؛ پیام اصلی را در پست الکترونیک ببینید.");
+        if (letterBody.Skipped > 0)
+            Toast.Error($"{letterBody.Skipped.FaDigits()} تصویر منتقل نشد (حجم بیش از ۵ مگابایت یا قالب پشتیبانی‌نشده).");
 
-        // پیوست‌های ایمیل باید قبل از ثبت نامه به صف پیوست‌های نامه وارده منتقل شوند.
-        // کنترل حجم دو بار انجام می‌شود: یک‌بار با Sizeِ اعلامی «پیش از دانلود» و
-        // یک‌بار با طول واقعی «پس از دانلود». ContentType هم از DTO می‌آید (سمت سرور
-        // از پسوند فایل استنباط شده) تا همهٔ فایل‌ها application/octet-stream نباشند.
+        // ---------- پیوست‌های واقعیِ ایمیل، با هر فرمتی ----------
+        // منطقِ برداشت پیوست‌ها یک‌جا در EmailAttachmentTransferService است تا «تبدیل به
+        // نامهٔ وارده» و «تبدیل به نامهٔ داخلی» دقیقاً یک رفتار داشته باشند: هیچ فیلتری
+        // روی نوع/پسوند نیست، ولی تصویر/لوگوی «درونِ متن» (inline) فایل ضمیمه نمی‌شود —
+        // فقط داخل متن نامه می‌آید.
         pendingFiles.Clear();
-        long totalAttBytes = 0;
-        var skippedAtt = 0;
-        foreach (var attachment in email.Attachments)
-        {
-            // تصویری که داخل متن نامه جاسازی شده، «دوباره» به‌عنوان فایل پیوست ثبت
-            // نمی‌شود؛ وگرنه کاربر همان تصویر را هم داخل متن می‌بیند و هم به‌شکل فایل.
-            if (letterContent.EmbeddedIds.Contains(attachment.AttachmentId)) continue;
+        var transfer = await EmailAttachmentTransferService.CollectAsync(
+            email.Attachments, EmailSvc, MaxFileBytes, MaxTotalBytes);
+        foreach (var file in transfer.Files) pendingFiles.Add(file);
 
-            // ۱) کنترل پیش از دانلود پیوست از ایمیل
-            if (attachment.Size > MaxFileBytes || totalAttBytes + attachment.Size > MaxTotalBytes)
-            {
-                skippedAtt++;
-                continue;
-            }
+        if (transfer.Count > 0)
+            Toast.Success($"{transfer.Count.FaDigits()} پیوست ایمیل به نامه اضافه شد.");
+        if (transfer.InlineCount > 0)
+            Toast.Info($"{transfer.InlineCount.FaDigits()} تصویر/لوگوی داخل متن ایمیل فقط در متن نامه قرار گرفت و به‌عنوان فایل ضمیمه نشد.");
+        if (transfer.TooBig.Count > 0)
+            Toast.Error($"{transfer.TooBig.Count.FaDigits()} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد: "
+                        + string.Join("، ", transfer.TooBig.Take(5)));
+        if (transfer.Failed.Count > 0)
+            Toast.Error($"دریافت {transfer.Failed.Count.FaDigits()} پیوست از سرور ایمیل ناموفق بود: "
+                        + string.Join("، ", transfer.Failed.Take(5)));
 
-            var (data, name) = await EmailSvc.DownloadAttachmentAsync(attachment.AttachmentId);
-            if (data is not { Length: > 0 }) continue;
-
-            // ۲) کنترل پس از دانلود واقعی فایل (Size اعلامی ممکن است دقیق نباشد)
-            if (data.Length > MaxFileBytes || totalAttBytes + data.Length > MaxTotalBytes)
-            {
-                skippedAtt++;
-                continue;
-            }
-
-            totalAttBytes += data.Length;
-            pendingFiles.Add(new MemoryBrowserFile(name, attachment.ContentType, data));
-        }
-        if (skippedAtt > 0)
-            Toast.Error($"{skippedAtt} پیوست به دلیل عبور از سقف مجاز (۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع) منتقل نشد.");
+        // بدنهٔ ایمیل باید «داخل» ادیتور هم نوشته شود؛ فقط ست‌کردن متغیر description
+        // کافی نیست، چون contenteditable خودکار پر نمی‌شود و اگر کاربر ذخیره کند،
+        // همان مقدار متغیر (که ممکن است پس از هر input از ادیتور بازخوانی شود) ذخیره می‌شود.
+        StateHasChanged();
+        await SyncDescriptionAsync();
         StateHasChanged();
     }
 
@@ -406,6 +551,29 @@
         }
 
         StateHasChanged();
+        await SyncDescriptionAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// نوشتن مقدار فعلی «توضیحات» داخل ادیتورِ متن غنی. بعد از هر بازکردن فرم
+    /// (ثبت تازه، ویرایش، تبدیل از ایمیل، کپی) صدا زده می‌شود تا آنچه کاربر
+    /// می‌بیند دقیقاً همان چیزی باشد که ذخیره می‌شود.
+    /// </summary>
+    private async Task SyncDescriptionAsync()
+    {
+        // یک تیک صبر تا contenteditable رندر شده باشد (مثل InitEditorAsync در فرم نامه).
+        await Task.Delay(50);
+        if (_richDesc == null) return;
+
+        // ادیتور خودش «تأیید و تلاش مجدد» دارد؛ این‌جا یک تلاش دیگر پس از رندر مجدد
+        // انجام می‌شود تا متن/تصویر ایمیل هرگز بی‌صدا در کادر خالی نماند.
+        if (await _richDesc.SetContentAsync(description)) return;
+
+        StateHasChanged();
+        await Task.Delay(150);
+        if (!await _richDesc.SetContentAsync(description) && !string.IsNullOrWhiteSpace(description))
+            Toast.Error("متن نامه در کادر ویرایشگر نمایش داده نشد؛ فرم را یک‌بار ببندید و دوباره باز کنید.");
     }
 
     private async Task LoadLookups()
@@ -479,6 +647,12 @@
             return;
         }
 
+        // آخرین وضعیت ادیتور ملاک ذخیره است — اگر رویداد input به هر دلیلی
+        // مقدار را به روز نکرده باشد، اینجا مستقیم از خود ادیتور خوانده می‌شود
+        // تا متن نوشته‌شده هرگز در «توضیحات نامه» گم نشود.
+        if (_richDesc != null)
+            description = await _richDesc.GetContentAsync();
+
         saving = true;
         try
         {
@@ -506,7 +680,9 @@
                     Foriat = foriat,
                     Description = description,
                     InitialReciverUserIds = recUserIds,
-                    InitialMatnErja = initialMatnErja
+                    InitialMatnErja = initialMatnErja,
+                    InitialMohlatPasokh = initialMohlat,
+                    RelatedLetters = RelatedPayload()
                 };
                 letterId = await IncomingSvc.AddAsync(dto);
 
@@ -544,18 +720,41 @@
                     DeliveryName = deliveryName.Trim(),
                     Mahramanegi = mahramanegi,
                     Foriat = foriat,
-                    Description = description
+                    Description = description,
+                    RelatedLetters = RelatedPayload()
                 };
-                await IncomingSvc.EditAsync(editLetterId, dto);
-
-                // در ویرایش فقط پیوست‌های تازه بارگذاری می‌شوند؛ اعلان دوباره
-                // ارسال نمی‌شود و Finalize صدا زده نمی‌شود (اعلانِ ثبت یک‌بار است).
+                // ترتیب عمدی: اول پیوست‌های تازه، بعد ذخیرهٔ فیلدها — چون سرور در پایانِ
+                // EditAsync به کسانی که نامه را دیده‌اند اعلانِ «نامه ویرایش شد» می‌فرستد و
+                // باید همهٔ تغییرات (از جمله پیوست‌ها) پیش از اعلان ذخیره شده باشند.
+                //
+                // نکتهٔ مهم: خطای یک پیوست «نباید» ذخیرهٔ فیلدهای فرم را متوقف کند —
+                // پیش‌تر استثنا باعث می‌شد هیچ‌کدام از تغییرات متن/عنوان ذخیره نشود و
+                // کاربر فقط یک پیام خطا می‌دید (کارِ انجام‌شده از دست می‌رفت).
+                var failedAttachments = new List<string>();
                 foreach (var f in pendingFiles)
                 {
-                    using var stream = f.OpenReadStream(long.MaxValue);
-                    await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
+                    try
+                    {
+                        using var stream = f.OpenReadStream(long.MaxValue);
+                        await IncomingSvc.UploadAttachmentAsync(editLetterId, stream, f.Name, f.ContentType);
+                    }
+                    catch (Exception upEx)
+                    {
+                        failedAttachments.Add($"{f.Name} — {upEx.Message}");
+                    }
                 }
-                Toast.Success("تغییرات نامه وارده ذخیره شد.");
+
+                // Finalize در ویرایش صدا زده نمی‌شود (اعلانِ «نامهٔ جدید» یک‌بار در ثبت است)؛
+                // تنها اعلانی که ویرایش می‌فرستد «نامه ویرایش شد» برای بینندگان قبلی است.
+                var editNotified = await IncomingSvc.EditAsync(editLetterId, dto);
+
+                Toast.Success(editNotified > 0
+                    ? $"تغییرات نامه وارده ذخیره شد؛ اعلان «نامه ویرایش شد» برای {editNotified.FaDigits()} نفر از کسانی که نامه را دیده بودند ارسال شد."
+                    : "تغییرات نامه وارده ذخیره شد.");
+
+                if (failedAttachments.Count > 0)
+                    Toast.Error($"{failedAttachments.Count.FaDigits()} پیوست بارگذاری نشد (تغییرات متن ذخیره شد): "
+                                + string.Join("، ", failedAttachments.Take(3)));
             }
 
             visible = false;
@@ -578,6 +777,118 @@
             !await JS.InvokeAsync<bool>("confirm", "اطلاعات فرم وارد شده است. فرم بسته شود؟")) return;
         visible = false;
     }
+
+    // ==================== عطف / پیرو (نامه‌های مرتبط) ====================
+
+    private string RelTabCls(int t) => relSourceType == t
+        ? "btn btn-sm btn-primary"
+        : "btn btn-sm btn-outline-secondary";
+
+    private async Task OpenRel(int type)
+    {
+        relType = type == 1 ? 1 : 2;
+        relOpen = true;
+        await SearchRel();
+    }
+
+    private void CloseRel() => relOpen = false;
+
+    /// <summary>
+    /// جستجوی نامه برای عطف/پیرو در سه دفتر: وارده، داخلی و صادره.
+    /// هر سرویس try/catch مستقل دارد؛ خطای یکی (مثلاً نداشتن مجوز) بقیه را از کار نمی‌اندازد.
+    /// </summary>
+    private async Task SearchRel()
+    {
+        if (relBusy) return;
+        relBusy = true;
+        StateHasChanged();
+        try
+        {
+            var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch.Trim();
+            var all = new List<RelatedPick>();
+
+            try
+            {
+                var res = await IncomingSvc.PickAsync(term, 1, 30);
+                all.AddRange(res.Items.Select(x => new RelatedPick
+                {
+                    LetterId = x.SourceId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 3
+                }));
+            }
+            catch { }
+
+            try
+            {
+                var items = await LetterSvc.PickAsync(term);
+                all.AddRange(items.Select(x => new RelatedPick
+                {
+                    LetterId = x.LetterId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 1
+                }));
+            }
+            catch { }
+
+            try
+            {
+                var items = await OutgoingSvc.PickAsync(term);
+                all.AddRange(items.Select(x => new RelatedPick
+                {
+                    LetterId = x.LetterId,
+                    LetterNumber = x.LetterNumber,
+                    Title = x.Title,
+                    Date = x.Date,
+                    SourceType = 2
+                }));
+            }
+            catch { }
+
+            relResults = all
+                .Where(x => x.LetterId > 0 && x.LetterId != editLetterId)          // نامه به خودش
+                .Where(x => related.All(r => r.RelateLetterId != x.LetterId))      // تکراری
+                .GroupBy(x => x.LetterId).Select(g => g.First())
+                .OrderByDescending(x => x.Date)
+                .ToList();
+        }
+        finally
+        {
+            relBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddRel(RelatedPick p)
+    {
+        if (p == null || p.LetterId <= 0) return;
+        if (related.Any(r => r.RelateLetterId == p.LetterId)) return;
+        related.Add(new RelatedLetterDto
+        {
+            Related = relType,
+            RelateLetterId = p.LetterId,
+            RelateLetterNumber = p.LetterNumber,
+            RelateLetterTitle = p.Title
+        });
+        relResults = relResults.Where(x => x.LetterId != p.LetterId).ToList();
+    }
+
+    private void RemoveRel(RelatedLetterDto r) => related.Remove(r);
+
+    private List<RelatedLetterDto> RelatedPayload() => related
+        .Where(r => r.RelateLetterId > 0)
+        .Select(r => new RelatedLetterDto
+        {
+            Related = r.Related == 2 ? 2 : 1,
+            RelateLetterId = r.RelateLetterId,
+            RelateLetterNumber = r.RelateLetterNumber,
+            RelateLetterTitle = r.RelateLetterTitle
+        })
+        .ToList();
 
     private string FmtSize(long sz) =>
         sz switch

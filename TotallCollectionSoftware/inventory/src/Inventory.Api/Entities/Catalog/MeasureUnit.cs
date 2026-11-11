@@ -13,5 +13,7 @@ public class MeasureUnit : ICompanyOwned
     public string Name { get; set; } = "";
 
     public bool IsActive { get; set; } = true;
+    /// <summary>null یعنی نوع مقدار هنوز برای این واحد تعیین نشده است.</summary>
+    public bool? AllowsFractionalQuantity { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

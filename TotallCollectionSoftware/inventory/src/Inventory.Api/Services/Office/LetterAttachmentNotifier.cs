@@ -28,9 +28,14 @@ public static class LetterAttachmentNotifier
     /// <param name="fileName">نام فایل پیوست‌شده.</param>
     /// <param name="uploaderUserId">کاربری که پیوست را افزوده است.</param>
     /// <param name="uploaderName">نام نمایشی همان کاربر.</param>
+    /// <param name="extraUserIds">
+    /// گیرندگان اضافی که «حاضر در گردش» نیستند ولی باید باخبر شوند؛
+    /// مثل مسئول دبیرخانهٔ نامه‌های وارده (مجوز <c>IncomingLetters.Dabirkhane</c>).
+    /// </param>
     /// <returns>تعداد افرادی که اعلان گرفتند.</returns>
     public static async Task<int> NotifyNewAttachmentAsync(AppDbContext db, IServiceProvider services,
-        int letterSourceId, string? fileName, int uploaderUserId, string? uploaderName)
+        int letterSourceId, string? fileName, int uploaderUserId, string? uploaderName,
+        IEnumerable<int>? extraUserIds = null)
     {
         if (letterSourceId <= 0) return 0;
 
@@ -75,6 +80,10 @@ public static class LetterAttachmentNotifier
 
         // ایجادکنندهٔ نامه هم در گردش است و نامه را دیده
         if (letter.CreatorUserId is > 0) readers.Add(letter.CreatorUserId.Value);
+
+        // گیرندگان اضافی (دبیرخانه) — حتی اگر نامه را باز نکرده باشند باید از پیوست تازه باخبر شوند،
+        // چون مرجع نگه‌داری سند در سازمان‌اند.
+        if (extraUserIds is not null) readers.AddRange(extraUserIds);
 
         var targets = readers.Where(id => id > 0 && id != uploaderUserId).Distinct().ToList();
         if (targets.Count == 0) return 0;

@@ -10,8 +10,8 @@
 @* =====================================================================
    حواله تحویل کالا — سند «فقط مقدار» (بدون هیچ مبلغ/ریالی)
    • نام کالا آزاد تایپ می‌شود (بدون انتخاب از فهرست کالاها)
-   • Enter = جابه‌جایی بین سطرها | F1 = سطر تازه | F2 = ذخیره
-   • مشتری از فهرست + دکمه «مشتری جدید» برای تعریف سریع همان‌جا
+   • Enter = جابه‌جایی بین سطرها | F2 = سطر تازه | F1 = ذخیره
+   • مشتری از فهرست + دکمه «مشتری جدید» با همان فرم تعریف مشتری (/parties)
    • چاپ A4 با طراحی اختصاصی
    ===================================================================== *@
 
@@ -47,7 +47,7 @@
                 <div style="min-width:200px" class="flex-grow-1">
                     <label class="form-label">جستجو</label>
                     <input class="form-control" @bind="search" @bind:event="oninput"
-                           @onkeydown="OnSearchKeyDown" placeholder="شماره حواله، مشتری یا کالا…" />
+                           @onkeydown="OnSearchKeyDown" placeholder="شماره حواله، نام/تلفن مشتری یا کالا…" />
                 </div>
                 <button class="btn btn-primary" @onclick="ApplyFilter"><i class="bi bi-funnel"></i> اعمال فیلتر</button>
             </div>
@@ -154,7 +154,7 @@
         else
         {
             <div class="row g-3 mb-3">
-                @* --- مشتری + دکمه تعریف سریع --- *@
+                @* --- مشتری + دکمهٔ فرم مشترک تعریف مشتری --- *@
                 <div class="col-md-6">
                     <label class="form-label">مشتری <span class="text-danger">*</span></label>
                     @if (viewing)
@@ -168,11 +168,11 @@
                                 <SearchSelect Items="partyLookup" Value="form.PartyId" ValueChanged="OnPartyChanged" Placeholder="انتخاب مشتری…" />
                             </div>
                             <button type="button" class="btn btn-outline-primary text-nowrap" @onclick="OpenNewParty"
-                                    title="تعریف مشتری جدید بدون بازکردن صفحه مشتری‌ها">
+                                    title="تعریف مشتری جدید — همان فرم طرف حسابها">
                                 <i class="bi bi-person-plus"></i> مشتری جدید
                             </button>
                         </div>
-                        <div class="fs-8 text-muted mt-1">اگر مشتری در فهرست نیست، با دکمه کنار سریع تعریفش کنید.</div>
+                        <div class="fs-8 text-muted mt-1">اگر مشتری در فهرست نیست، با همان فرم «تعریف مشتری» طرف حسابها ثبتش کنید.</div>
                     }
                 </div>
                 <div class="col-md-3">
@@ -200,12 +200,12 @@
             <div class="gi-lines-head">
                 <div class="fw-700">
                     <i class="bi bi-boxes text-primary ms-1"></i>اقلام حواله
-                    <span class="fs-8 fw-400 text-muted">— نام کالا را آزادانه تایپ کنید؛ فقط مقدار ثبت می‌شود</span>
+                    <span class="fs-8 fw-400 text-muted">— نام آزاد، بدون قیمت</span>
                 </div>
                 @if (!viewing)
                 {
-                    <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" @onclick="AddEmptyLine">
-                        <i class="bi bi-plus-lg"></i> سطر تازه (F1)
+                    <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" data-hotkey="f2" @onclick="AddEmptyLine">
+                        <i class="bi bi-plus-lg"></i> سطر تازه (F2)
                     </button>
                 }
             </div>
@@ -261,8 +261,8 @@
             {
                 <div class="gi-hints">
                     <span><kbd>Enter</kbd> سطر بعدی</span>
-                    <span><kbd>F1</kbd> سطر تازه</span>
-                    <span><kbd>F2</kbd> ذخیره</span>
+                    <span><kbd>F2</kbd> سطر تازه</span>
+                    <span><kbd>F1</kbd> ذخیره</span>
                     <span><kbd>Esc</kbd> انصراف</span>
                 </div>
             }
@@ -272,48 +272,27 @@
         <button class="btn btn-light" @onclick="CloseForm">@(viewing ? "بستن" : "انصراف (Esc)")</button>
         @if (viewing)
         {
-            <button class="btn btn-outline-primary" @onclick="PrintCurrent"><i class="bi bi-printer"></i> چاپ</button>
+            <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="PrintCurrent"><i class="bi bi-printer"></i> چاپ (F4)</button>
         }
         else
         {
-            <button class="btn btn-primary" data-hotkey="f2" @onclick="Save" disabled="@saving">
+            <button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                ذخیره (F2)
+                ذخیره (F1)
             </button>
         }
     </Footer>
 </Modal>
 
-@* ==================== تعریف سریع مشتری ==================== *@
-<Modal Visible="showNewParty" Title="مشتری جدید" OnClose="CloseNewParty">
-    <ChildContent>
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label">نام مشتری <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="newParty.Name" @onkeydown="OnNewPartyKeyDown" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">موبایل</label>
-                <input class="form-control" @bind="newParty.Mobile" inputmode="tel" data-digits="tel" dir="ltr" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">تلفن ثابت</label>
-                <input class="form-control" @bind="newParty.Phone" inputmode="tel" data-digits="tel" dir="ltr" />
-            </div>
-            <div class="col-12">
-                <label class="form-label">آدرس</label>
-                <input class="form-control" @bind="newParty.Address" />
-            </div>
-        </div>
-    </ChildContent>
-    <Footer>
-        <button class="btn btn-light" @onclick="CloseNewParty">انصراف</button>
-        <button class="btn btn-primary" @onclick="SaveNewParty" disabled="@savingParty">
-            @if (savingParty) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            ذخیره مشتری
-        </button>
-    </Footer>
-</Modal>
+@* ==================== تعریف مشتری ====================
+   همان کامپوننت فرم «طرف حسابها» (/parties) — هیچ فرم موازی/خلاصهای در این صفحه
+   تعریف نمیشود تا فیلدها، اعتبارسنجی و قواعد معرف در همهجا یکسان باشند.
+   ============================================================= *@
+<PartyFormModal ShopQuickCreate="true" Visible="showNewParty"
+                Type="PartyType.Customer"
+                AllowReferrerPicker="true"
+                OnSaved="OnNewPartySaved"
+                OnCancel="CloseNewParty" />
 
 <style>
     /* ---------- سربرگ بخش اقلام + راهنای کلیدها ---------- */
@@ -353,9 +332,8 @@
     private GoodsIssueDto form = new();
     private DateTime? date;
 
-    // ---------- تعریف سریع مشتری ----------
-    private bool showNewParty, savingParty;
-    private Party newParty = new();
+    // ---------- تعریف مشتری (همان فرم مشترک /parties) ----------
+    private bool showNewParty;
 
     private bool editing => form.Id != 0;
     private string FormTitle => viewing ? $"\u0645\u0634\u0627\u0647\u062f\u0647 \u062d\u0648\u0627\u0644\u0647 {form.Number}"
@@ -363,7 +341,7 @@
         : "\u062d\u0648\u0627\u0644\u0647 \u062a\u062d\u0648\u06cc\u0644 \u06a9\u0627\u0644\u0627 \u062c\u062f\u06cc\u062f";
 
     /// <summary>حذف حواله نیاز به مجوز مستقل دارد.</summary>
-    private bool CanDelete => Auth.Has("GoodsIssues.Delete");
+    private bool CanDelete => ShopAccess.CanManage(Auth, "GoodsIssue") || Auth.Has("GoodsIssues.Delete");
 
     protected override async Task OnInitializedAsync()
     {
@@ -376,7 +354,9 @@
     {
         try
         {
-            partyLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            partyLookup = ShopAccess.CanSee(Auth, "GoodsIssue")
+                ? await PartySvc.GetShopCustomerLookupsAsync("goods-issue")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
@@ -472,7 +452,7 @@
 
     // ---------- سطرها ----------
 
-    /// <summary>سطر تازه (F1) — فوکوس بعد از رندر روی نام کالای سطر جدید می‌رود.</summary>
+    /// <summary>سطر تازه (F2) — فوکوس بعد از رندر روی نام کالای سطر جدید می‌رود.</summary>
     private void AddEmptyLine()
     {
         if (viewing) return;
@@ -521,6 +501,7 @@
 
     private async Task Save()
     {
+        if (saving) return;
         if (viewing) { CloseForm(); return; }
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
 
@@ -559,42 +540,30 @@
         finally { saving = false; }
     }
 
-    // ==================== تعریف سریع مشتری ====================
+    // ==================== تعریف مشتری (همان فرم مشترک /parties) ====================
 
     private void OpenNewParty() => showNewParty = true;
 
     private void CloseNewParty() => showNewParty = false;
 
-    private async Task SaveNewParty()
+    /// <summary>پس از ثبت در فرم واقعی طرف حساب: به‌روزرسانی فهرست و انتخاب خودکار در حواله.</summary>
+    private async Task OnNewPartySaved(Party created)
     {
-        if (string.IsNullOrWhiteSpace(newParty.Name)) { Toast.Error("نام مشتری را وارد کنید."); return; }
-
-        savingParty = true;
+        showNewParty = false;
+        if (created is null) { Toast.Error("مشتری ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
         try
         {
-            newParty.Type = PartyType.Customer;
-            newParty.IsActive = true;
-            var saved = await PartySvc.SaveAsync(newParty);
-
             await LoadLookups();
-            newParty = new Party();
-            showNewParty = false;
-            Toast.Success($"مشتری «{saved.Name}» ثبت شد و در حواله انتخاب شد.");
-            OnPartyChanged(saved.Id);      // مشتری تازه، همان‌جا انتخاب می‌شود
+            OnPartyChanged(created.Id);
+            Toast.Success($"مشتری «{created.Name}» ثبت شد و در حواله انتخاب شد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { savingParty = false; }
-    }
-
-    private void OnNewPartyKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") _ = SaveNewParty();
     }
 
     /// <summary>حذف حواله پس از تأییدیه.</summary>
     private async Task Delete(GoodsIssueDto g)
     {
-        if (!Auth.Has("GoodsIssues.Delete")) return;
+        if (!CanDelete) return;
         loading = true;
         try
         {
@@ -622,22 +591,16 @@
         finally { loading = false; }
     }
 
-    /// <summary>چاپ از داخل پنجره مشاهده (مشاهده بسته و بازگشت به فهرست).</summary>
-    private async Task PrintCurrent()
-    {
-        showForm = false;
-        viewing = false;
-        await PrintDoc(form);
-    }
+    /// <summary>پیش‌نمایش از جزئیات، بدون بستن پنجرهٔ زیر آن.</summary>
+    private async Task PrintCurrent() => await PrintDoc(form);
 
     /// <summary>
-    /// سند چاپ را در یک iframe جداگانه می‌سازد تا هیچ استایلی از صفحهٔ برنامه در آن تأثیر نداشد
-    /// (اگر از حالت فرمل، ظهر نمی‌شد و چاپ سفید می‌شد).
+    /// پیش‌نمایش سند در iframe مستقل نمایش داده می‌شود تا استایل فرم روی نسخهٔ چاپی اثر نگذارد.
     /// </summary>
     private async Task PrintDoc(GoodsIssueDto d)
     {
         if (d is null) return;
-        var ok = await JS.InvokeAsync<bool>("giPrint", GoodsIssuesPrint.Build(d, companyName));
-        if (!ok) Toast.Error("پنجرهٔ چاپ باز نشد.");
+        var ok = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", GoodsIssuesPrint.Build(d, companyName));
+        if (!ok) Toast.Error("پیش‌نمایش چاپ باز نشد.");
     }
 }

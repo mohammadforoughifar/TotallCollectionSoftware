@@ -17,6 +17,8 @@ namespace Inventory.Api.Data;
 public class TrsAccount
 {
     public int Id { get; set; }
+    /// <summary>مالکیت شرکت برای تفکیک ایمن حساب‌های بانکی/خزانه در محیط چندشرکتی؛ در تک‌شرکتی قدیمی می‌تواند null باشد.</summary>
+    public int? CompanyId { get; set; }
 
     [MaxLength(40)] public string Code { get; set; } = "";
     [MaxLength(200)] public string Name { get; set; } = "";
@@ -44,9 +46,11 @@ public class TrsAccount
 }
 
 /// <summary>سند دریافت / پرداخت / انتقال بین حساب‌ها</summary>
-public class TrsVoucher
+public class TrsVoucher : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>مالک سند؛ سوابق قدیمی نامشخص تا تطبیق صریح بدون مالک می‌مانند.</summary>
+    public int? CompanyId { get; set; }
 
     /// <summary>شماره سند در هر نوع (دریافت/پرداخت/انتقال) به‌صورت مستقل</summary>
     public int Number { get; set; }
@@ -138,9 +142,11 @@ public class TrsVoucherLine
 }
 
 /// <summary>برگ چک دریافتی یا پرداختی</summary>
-public class TrsCheque
+public class TrsCheque : ICompanyOwned
 {
     public int Id { get; set; }
+    /// <summary>مالک چک؛ سوابق قدیمی نامشخص تا تطبیق صریح بدون مالک می‌مانند.</summary>
+    public int? CompanyId { get; set; }
 
     public ChequeKind Kind { get; set; } = ChequeKind.Received;
 

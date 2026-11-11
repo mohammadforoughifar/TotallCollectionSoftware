@@ -44,6 +44,9 @@ public static class RbacSeeder
         // Create: ثبت درخواست | ViewCompany: دیدن سیستم‌های کل شرکت | ViewDepartment: دیدن سیستم‌های واحد خود
         // Expert: کارشناس آی‌تی (دریافت ارجاع) | Manage: مدیر آی‌تی (ارجاع و تایید)
         ["ItRequests"] = new[] { "Create", "ViewCompany", "ViewDepartment", "Expert", "Manage" },
+        // ================== ریموت دسکتاپ (پشتیبانی از راه دور) ==================
+        // View: مشاهده دستگاه‌ها/جلسه‌ها | Control: کنترل موس/کیبورد | Manage: مدیریت دستگاه‌ها، کلیدها، تنظیمات و لاگ
+        ["RemoteDesktop"] = new[] { "View", "Control", "Manage" },
         // ================== دستور کار ==================
         // View: مشاهده ماژول (مبنای نمایش در منو) | Create: ساخت دستور کار (حداقل برای خود)
         // AssignOthers: دستور کار به دیگران | Delete: حذف — فقط با مجوز مستقل، به نقش‌های عادی خودکار اعطا نمی‌شود
@@ -231,7 +234,30 @@ public static class RbacSeeder
         ["LetterStructures"] = new[] { "Read", "Update" },
         // ================== هوش مصنوعی فروغ آریا ==================
         // Use: گفتگو با دستیار + هوش نامه‌ها + منشی کارمندی | Manage: مدیریت (آینده)
-        ["AiAssistant"] = new[] { "Use", "Manage" }
+        ["AiAssistant"] = new[] { "Use", "Manage" },
+        // ================== سامانه فروشگاهی — دسترسی تفکیکی «هر بخش» ==================
+        // هر آیتم منوی «سامانه فروشگاهی» یک مجوز مستقل دارد تا مدیر بتواند مثلاً فقط
+        // «فروش» و «کالاها» را به یک نقش بدهد و «خرید»، «تسویه» یا «اطلاعات پایه» را ندهد:
+        //   Shop.{Section}.View   → دیدن بخش در منو و باز شدن صفحهٔ آن
+        //   Shop.{Section}.Manage → ثبت/ویرایش/حذف در همان بخش (فقط بخش‌های عملیاتی)
+        // فهرست بخش‌ها در Inventory.Shared/ShopSections.cs است (منبع واحد حقیقت)؛ همین
+        // فهرست منوی کناری و نگهبان مسیر صفحه را هم می‌سازد، پس این دو هرگز از هم جدا نمی‌شوند.
+        // مجوزهای قدیمی (Orders، GoodsIssues، Products، …) برای سازگاری معتبر می‌مانند.
+        [Inventory.Shared.ShopSections.Module] = Inventory.Shared.ShopSections.AllActions,
+        // ================== منابع انسانی بن‌سازه — دسترسی تفکیکی «هر فرم» ==================
+        // هر فرم/page در ماژول بن‌سازه که دکمه «ثبت»، «ویرایش» یا «حذف» دارد، یک مجوز
+        // مستقل دارد تا مدیر بتواند مثلاً فقط «مشاهده پرسنل» و «ویرایش پرسنل» را به یک
+        // نقش بدهد و «حذف پرسنل» را ندهد:
+        //   RadisHr.{Section}.View    → دیدن بخش در منو و باز شدن صفحهٔ آن
+        //   RadisHr.{Section}.Create  → ثبت/ایجاد ردیف جدید
+        //   RadisHr.{Section}.Update  → ویرایش/ذخیره ردیف موجود
+        //   RadisHr.{Section}.Delete  → حذف ردیف
+        // فهرست بخش‌ها در Inventory.Shared/BonHrSections.cs است (منبع واحد حقیقت)؛ همین
+        // فهرست منوی کناری، نگهبان مسیر صفحه و BonHrGuard را هم می‌سازد، پس این سه هرگز
+        // از هم جدا نمی‌شوند.
+        // مجوزهای قدیمی (RadisHr.Access، RadisHr.Employees، RadisHr.EmployeeEntry، …)
+        // برای سازگاری با نقش‌های موجود معتبر می‌مانند.
+        [Inventory.Shared.BonHrSections.Module] = Inventory.Shared.BonHrSections.AllActions
     };
 
     public static async Task SeedAsync(AppDbContext db)

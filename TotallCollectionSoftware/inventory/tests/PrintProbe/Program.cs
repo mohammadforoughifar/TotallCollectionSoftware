@@ -1,6 +1,7 @@
 using System.Text;
 using Inventory.Client.Pages.Invoicing;
 using Inventory.Client.Pages.Orders;
+using Inventory.Client.Pages.Operations;
 using Inventory.Client.Pages;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -83,6 +84,45 @@ Check("شماره حساب در پاورقی", saleHtml.Contains("1234567890"));
 Check("کادر امضا", saleHtml.Contains("امضای") || saleHtml.Contains("مهر"));
 Check("محل فونت برای iframe چاپ", saleHtml.Contains("__FONT_BASE__"));
 Check("جهت RTL", saleHtml.Contains("dir=\"rtl\""));
+
+// Per-print paper choice overrides (but never modifies) the company default.
+var compactSale = new Order
+{
+    Type = TransactionType.Sale, Number = "<S-42>", PartyName = "<مشتری>", Date = sale.Date,
+    TotalAmount = 1150m, ChequeIncomeAmount = 50m, HasChequeCharge = true,
+    Lines = { new OrderLine { Id = 1, ProductName = "کالا <script>", Unit = "عدد", Quantity = 2, Price = 600,
+        DiscountAmount = 200, VatValue = 10, VatAmount = 100 } },
+    Cheques = { new ChequeDto { Number = "CHK<1>", BankName = "بانک", Amount = 1150m, DueDate = sale.Date.AddMonths(1) } }
+};
+var a5Html = SaleInvoicePrint.Build(compactSale, profile, "A5");
+Check("A5 شامل اقلام، سود چک و جدول سررسید", a5Html.Contains("size:A5 portrait") &&
+    a5Html.Contains("compact-items") && a5Html.Contains("تاخیر تادیه چک") && a5Html.Contains("CHK&lt;1&gt;"));
+Check("مقادیر فاکتور HTML امن هستند", !a5Html.Contains("کالا <script>") && a5Html.Contains("&lt;script&gt;") &&
+    a5Html.Contains("&lt;مشتری&gt;"));
+Check("انتخاب کاغذ تنظیم شرکت را تغییر نمی‌دهد", profile.PrintPaperSize == "A4" &&
+    SaleInvoicePrint.Build(compactSale, new CompanyProfileDto { PrintPaperSize = "A5" }, "A4").Contains("size:A4 portrait"));
+compactSale.IsCancelled = true;
+Check("فاکتور ابطال‌شده برچسب دارد", SaleInvoicePrint.Build(compactSale, profile).Contains("این فاکتور ابطال شده است"));
+var fractional = new Order { Type = TransactionType.Purchase, Number = "F", Date = sale.Date, TotalAmount = 3m,
+    Lines = { new OrderLine { ProductName = "جزئی", Quantity = 2m, Price = 1.5m } } };
+var fractionalHtml = SaleInvoicePrint.Build(fractional, profile);
+Check("فی اعشاری با جمع صحیح نیز حفظ می‌شود", Has(fractionalHtml, "1.5") || fractionalHtml.Contains("۱٫۵"));
+
+var statement = new PartyStatementDetailDto
+{
+    PartyName = "<مشتری>", OpeningBalance = 100, SaleGoodsTotal = 1100, SaleIssuedDiscountTotal = 200,
+    SaleChequeIncomeTotal = 50, TotalDebit = 1150, TotalCredit = 400, ClosingBalance = 850,
+    Rows = { new PartyStatementRowDto { Date = sale.Date, Title = "فاکتور فروش", Description = "<unsafe>",
+        DocumentNumber = "S-42", SaleInvoiceDiscount = 200, Debit = 1100, Balance = 1200 },
+        new PartyStatementRowDto { Date = sale.Date, Title = "تاخیر تادیه چک", Debit = 50, Balance = 1250 },
+        new PartyStatementRowDto { Date = sale.Date.AddDays(1), Title = "وصول چک", Credit = 400, Balance = 850 } }
+};
+var statementHtml = Save("out-customer-statement.html", CustomerStatementPrint.Build(statement, profile, null, null));
+Check("گردش مشتری شامل تخفیف، سود چک، وصول و مانده", statementHtml.Contains("تخفیف فاکتور") &&
+    statementHtml.Contains("تاخیر تادیه چک") && statementHtml.Contains("وصول چک") && statementHtml.Contains("مانده پایان دوره"));
+Check("گردش مشتری سود و پورسانت فروشگاه را افشا نمی‌کند", !statementHtml.Contains("پورسانت") &&
+    !statementHtml.Contains("سود خالص") && !statementHtml.Contains("سود ناخالص"));
+Check("متن گردش HTML امن است", statementHtml.Contains("&lt;unsafe&gt;") && !statementHtml.Contains("<unsafe>"));
 
 // رسید خرید با همان سازنده
 var purchase = new Order

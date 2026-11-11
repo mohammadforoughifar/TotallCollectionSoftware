@@ -31,6 +31,7 @@ builder.Services.AddScoped<IAuthApi, AuthApi>();
 
 // ---------- ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP) ----------
 builder.Services.AddScoped<IApiClient, ApiClient>();
+builder.Services.AddScoped<IBackupSessionTracker, BackupSessionTracker>();
 builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<IMoadianService, MoadianService>(); // سامانه مودیان (SDK 0.0.27)
 builder.Services.AddScoped<Inventory.Client.Pages.Moadian.MoadianCompanyContext>(); // شرکت انتخاب‌شدهٔ بخش مودیان
@@ -46,6 +47,7 @@ builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IPartyService, PartyService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IShopPricingClient, ShopPricingClient>();
 builder.Services.AddScoped<IGoodsIssueService, GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
 builder.Services.AddScoped<ISalesVisitApi, SalesVisitApi>(); // ماژول ویزیتوری
 builder.Services.AddScoped<ICartableApi, CartableApi>(); // کارتابل یکپارچه

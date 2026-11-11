@@ -1,4 +1,5 @@
 using Inventory.Api.Services.Core;
+using Inventory.Api.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -22,12 +23,14 @@ public sealed class RequirePermissionAttribute : TypeFilterAttribute
 public sealed class RequirePermissionFilter : IAsyncActionFilter
 {
     private readonly IEffectivePermissions _permissions;
+    private readonly AppDbContext _db;
     private readonly string _module;
     private readonly string _action;
 
-    public RequirePermissionFilter(IEffectivePermissions permissions, string module, string action)
+    public RequirePermissionFilter(IEffectivePermissions permissions, AppDbContext db, string module, string action)
     {
         _permissions = permissions;
+        _db = db;
         _module = module;
         _action = action;
     }
@@ -37,7 +40,7 @@ public sealed class RequirePermissionFilter : IAsyncActionFilter
         var user = context.HttpContext.User;
         var allowed = user.Identity?.IsAuthenticated == true
                       && (await _permissions.IsLegacyAdminAsync(user)
-                          || (await _permissions.GetAsync(user)).Contains($"{_module}.{_action}"));
+                          || await ShopPermissionAuthorizer.AllowsAsync(_db, context, await _permissions.GetAsync(user), _module, _action));
         if (!allowed)
         {
             context.Result = new ObjectResult(new { message = "شما مجوز لازم برای این عملیات را ندارید." })

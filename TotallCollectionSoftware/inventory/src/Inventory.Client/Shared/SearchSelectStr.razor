@@ -17,8 +17,11 @@
     @if (open)
     {
         @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
-        <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
-        <div class="ss-menu" style="@MenuStyle" @onclick:stopPropagation="true">
+        @if (!ConstrainToModal)
+        {
+            <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
+        }
+        <div class="ss-menu" style="@MenuStyle" data-order-constrained="@(ConstrainToModal ? "true" : null)" @ref="_menu" @onclick:stopPropagation="true">
             @if (filtered.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
@@ -52,6 +55,25 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
     [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public bool AllowCustomValue { get; set; }
+    [Parameter] public bool AdvanceOnEnter { get; set; }
+    [Parameter] public bool ShowAllOnFocus { get; set; }
+    [Parameter] public bool ConstrainToModal { get; set; }
+    private bool showAll, focused;
+    protected override void OnParametersSet()
+    {
+        if (!focused) query = Value ?? "";
+    }
+    private ElementReference _menu;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (open && ConstrainToModal)
+        {
+            try { await JS.InvokeVoidAsync("orderEntry.placeSearchMenu", _input, _menu); }
+            catch (JSException) { }
+        }
+    }
+
 
     private string query = "";
     private bool open;
@@ -68,20 +90,23 @@
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(query)) return Items;
+            if (showAll || string.IsNullOrWhiteSpace(query)) return Items;
             return Items.Where(i => i.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
 
     private async Task OnFocus()
     {
+        focused = true;
         try
         {
             var r = await JS.InvokeAsync<UiRect>("uiRect", _input);
             (_mTop, _mLeft, _mWidth) = Popover.Below(r);
         }
         catch (JSException) { }
+        if (!focused) return;
         open = true;
+        showAll = ShowAllOnFocus;
         highlightIndex = 0;
         if (!string.IsNullOrEmpty(Value))
         {
@@ -96,6 +121,12 @@
     private async Task OnInput(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? "";
+        showAll = false;
+        if (AllowCustomValue && Value != query)
+        {
+            Value = query;
+            await ValueChanged.InvokeAsync(query);
+        }
         highlightIndex = 0;
         if (!open)
         {
@@ -121,7 +152,16 @@
             return;
         }
 
-        if (filtered.Count == 0) return;
+        if (e.Key == "Escape") { CloseMenu(); return; }
+        if (filtered.Count == 0)
+        {
+            if (e.Key == "Enter" && AllowCustomValue && AdvanceOnEnter)
+            {
+                CloseMenu();
+                try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); } catch (JSException) { }
+            }
+            return;
+        }
 
         if (e.Key == "ArrowDown")
         {
@@ -147,6 +187,10 @@
             {
                 var clamped = Math.Clamp(highlightIndex, 0, filtered.Count - 1);
                 await Select(filtered[clamped]);
+                if (AdvanceOnEnter)
+                {
+                    try { await JS.InvokeVoidAsync("orderEntry.focusNextField", _input); } catch (JSException) { }
+                }
             }
         }
         else if (e.Key == "Escape")
@@ -166,7 +210,9 @@
 
     private async Task OnBlur()
     {
+        focused = false;
         await Task.Delay(160);
+        if (focused) return;
         open = false;
         query = Value ?? "";
     }
@@ -174,6 +220,7 @@
     private async Task Select(string item)
     {
         query = item;
+        showAll = false;
         open = false;
         if (Value != item)
         {

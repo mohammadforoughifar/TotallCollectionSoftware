@@ -5,6 +5,7 @@ public class ToastMessage
     public Guid Id { get; } = Guid.NewGuid();
     public string Message { get; init; } = "";
     public string Kind { get; init; } = "info"; // success | error | info
+    public bool TopRight { get; init; }
 }
 
 /// <summary>نمایش اعلان‌های کوتاه (Toast).</summary>
@@ -16,11 +17,13 @@ public class ToastService : IToastService
 
     public void Success(string message) => Show(message, "success");
     public void Error(string message) => Show(message, "error");
+    public void Warning(string message) => Show(message, "warning");
     public void Info(string message) => Show(message, "info");
+    public void ShowAtTopRight(string message, string kind) => Show(message, kind, topRight: true);
 
-    public void Show(string message, string kind)
+    public void Show(string message, string kind, bool topRight = false)
     {
-        var toast = new ToastMessage { Message = message, Kind = kind };
+        var toast = new ToastMessage { Message = message, Kind = kind, TopRight = topRight };
         _toasts.Add(toast);
         // با مدت نمایش طولانی، چند پیام پشت‌سرهم باید هم‌زمان دیده شوند (قبلاً ۴ بود)
         if (_toasts.Count > 6) _toasts.RemoveAt(0);

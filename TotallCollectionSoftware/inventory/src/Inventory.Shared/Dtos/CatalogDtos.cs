@@ -164,6 +164,9 @@ public class MeasureUnit
     /// <summary>فعال / غیرفعال</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>null یعنی نوع مقدار این واحد هنوز مشخص نشده است.</summary>
+    public bool? AllowsFractionalQuantity { get; set; }
+
     /// <summary>زمان ایجاد</summary>
     public DateTime CreatedAt { get; set; }
 
@@ -198,6 +201,9 @@ public class Product
     /// <summary>واحد شمارش (عدد، کیلوگرم، متر، ...)</summary>
     public string Unit { get; set; } = "عدد";
 
+    /// <summary>نوع مقدارِ واحد در شرکت کالا؛ null یعنی نیازمند تعیین در اطلاعات پایه.</summary>
+    public bool? AllowsFractionalQuantity { get; set; }
+
     /// <summary>گروه / دسته‌بندی کالا</summary>
     public string? Category { get; set; }
 
@@ -212,6 +218,9 @@ public class Product
 
     /// <summary>قیمت خرید (ریال)</summary>
     public decimal PurchasePrice { get; set; }
+
+    /// <summary>ارزش افزوده پیش‌فرض فاکتور: تا ۱۰۰ درصد و بالاتر مبلغ ریالی؛ null در درخواست قدیمی یعنی بدون تغییر.</summary>
+    public decimal? InvoiceVatValue { get; set; }
 
     /// <summary>نقطه سفارش (حداقل موجودی مجاز)</summary>
     public decimal ReorderPoint { get; set; }
@@ -294,6 +303,18 @@ public class Party
 
     /// <summary>مانده حساب (پر شده توسط سرور)</summary>
     public decimal Balance { get; set; }
+
+    /// <summary>تعداد چک‌های برگشتی فعال/پاس‌نشده مشتری</summary>
+    public int BouncedChequesCount { get; set; }
+
+    /// <summary>جمع مبلغ چک‌های برگشتی مشتری (ریال)</summary>
+    public decimal BouncedChequesTotal { get; set; }
+
+    /// <summary>تعداد اقساط معوق پرداخت‌نشده</summary>
+    public int OverdueInstallmentsCount { get; set; }
+
+    /// <summary>جمع اقساط معوق پرداخت‌نشده (ریال)</summary>
+    public decimal OverdueInstallmentsTotal { get; set; }
 }
 
 /// <summary>نتیجه فیلتر/صفحه‌بندی اقلام پایه</summary>
@@ -343,4 +364,11 @@ public class LookupItem
 
     /// <summary>اطلاعات تکمیلی اختیاری برای نمایش زیر عنوان گزینه در انتخابگرها.</summary>
     public string? InfoText { get; set; }
+
+    /// <summary>
+    /// مقادیری که فقط در جستجوی <c>SearchSelect</c> شرکت میکنند و نمایش داده نمیشوند؛
+    /// برای طرف حسابها «تلفن» و «موبایل» است تا جستجوی مشتری با شماره هم ممکن باشد،
+    /// بیآنکه نام گزینه (که در اسناد و فرمها استفاده میشود) تغییر کند.
+    /// </summary>
+    public string? SearchText { get; set; }
 }

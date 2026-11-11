@@ -6,6 +6,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -464,6 +465,7 @@ public class DocumentsController : RbacControllerBase
     /// <summary>تایید مجدد رمز عبور کاربر برای باز کردن قفل دانلود/مشاهده فایل‌های مدرک محرمانه (۱۵ دقیقه اعتبار).</summary>
     public class ConfirmDownloadDto { public string Password { get; set; } = ""; }
 
+    [AllowInReadOnly]
     [HttpPost("{id:int}/confirm-download")]
     public async Task<IActionResult> ConfirmDownload(int id, [FromBody] ConfirmDownloadDto dto)
     {
@@ -1089,6 +1091,7 @@ public class DocumentsController : RbacControllerBase
     }
 
     /// <summary>اجرای دستی بررسی انقضا (فقط مدیر ماژول) — برای تست و اجرای فوری.</summary>
+    [AllowInReadOnly]
     [HttpPost("/api/doc-archive/expiry-check")]
     public async Task<IActionResult> RunExpiryCheck()
     {

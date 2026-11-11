@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject IToastService Toast
 
 <div class="inner-letter-guide" dir="rtl" @ref="guideRoot">
     <header class="guide-hero">
@@ -80,10 +81,24 @@
     [Parameter, EditorRequired] public IReadOnlyList<GuideLink> Sections { get; set; } = Array.Empty<GuideLink>();
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public bool UsePrintPreview { get; set; }
 
     private ElementReference guideRoot;
 
     private Task Back() => OnBack.InvokeAsync();
     private async Task ScrollTo(string id) => await JS.InvokeVoidAsync("officeGuides.scrollTo", guideRoot, id);
-    private async Task PrintGuide() => await JS.InvokeVoidAsync("officeGuides.print", guideRoot);
+    private async Task PrintGuide()
+    {
+        if (!UsePrintPreview)
+        {
+            await JS.InvokeVoidAsync("officeGuides.print", guideRoot);
+            return;
+        }
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openElement", guideRoot, Title, "guide"))
+                Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");
+        }
+        catch (Exception ex) { Toast.Error("پیش‌نمایش چاپ آماده نشد: " + ex.Message); }
+    }
 }

@@ -568,8 +568,9 @@ public class AuthService : IAuthService
         var referrer = await _db.Referrers.FindAsync(referrerId)
             ?? throw new InvalidOperationException("معرف یافت نشد.");
 
-        var wallets = await _inventory.GetReferrerWalletsAsync(null, "name", false);
-        var wallet = wallets.FirstOrDefault(w => w.Id == referrerId);
+        // A different referrer's unresolved historical cost must not prevent
+        // this user's dashboard from loading.
+        var wallet = await _inventory.GetReferrerWalletAsync(referrerId);
 
         var txns = await _db.Transactions
             .Where(t => t.ReferrerId == referrerId && t.Type == TransactionType.Sale)

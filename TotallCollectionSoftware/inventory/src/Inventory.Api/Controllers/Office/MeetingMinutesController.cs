@@ -310,8 +310,20 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            var letterId = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername);
-            return Ok(new { letterId });
+            // سهمیهٔ «ثبت نامه» — این مسیر هم یک نامهٔ واقعی می‌سازد و باید مثل
+            // ثبت مستقیم در کارتابل شمرده شود (وگرنه با «تبدیل صورتجلسه به نامه»
+            // می‌شد سقف را دور زد).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
+                async () => created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername),
+                entityType: "InnerLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { letterId = created });
         }
         catch (Exception ex)
         {
@@ -349,8 +361,19 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            var letterId = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername);
-            return Ok(new { letterId });
+            // سهمیهٔ «ثبت نامهٔ صادره» — همان قاعدهٔ نامهٔ داخلی (بدون این گارد،
+            // تبدیل صورتجلسه به نامهٔ صادره سقف را دور می‌زد).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterOutgoingCreate,
+                async () => created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername),
+                entityType: "OutgoingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { letterId = created });
         }
         catch (Exception ex)
         {

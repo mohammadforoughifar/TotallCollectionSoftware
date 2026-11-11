@@ -21,7 +21,17 @@ else
             <h1>مدیریت کاربران</h1>
             <p class="lead">مدیریت حساب‌های کاربری، سطوح دسترسی و ارتباطات سازمانی</p>
         </div>
-        <div class="d-flex gap-2 me-auto">
+        <div class="d-flex gap-2 flex-wrap me-auto">
+            <input class="form-control form-control-sm" placeholder="جستجوی کاربران…"
+                   @bind="userSearch" @bind:event="oninput"
+                   style="max-width:260px" />
+            <select class="form-select form-select-sm" @bind="companyFilter" style="max-width:200px">
+                <option value="">همهٔ شرکت‌ها</option>
+                @foreach (var c in companyOptions.OrderBy(c => c.Name))
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
             <button class="btn btn-primary" @onclick="OpenNew">
                 <i class="bi bi-person-plus"></i> کاربر جدید
             </button>
@@ -59,7 +69,7 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var u in items)
+                            @foreach (var u in FilteredItems)
                             {
                                 <tr>
                                     <td class="fw-500" dir="ltr" style="text-align:right">
@@ -156,7 +166,7 @@ else
 
                 @* ---------- نمای کارتی (موبایل) ---------- *@
                 <div class="cards-mobile">
-                    @foreach (var u in items)
+                    @foreach (var u in FilteredItems)
                     {
                         <div class="m-card @(u.Role == "Admin" ? "st-received" : u.Role == "Operator" ? "st-progress" : "st-ready")">
                             <div class="m-card-head">
@@ -241,15 +251,20 @@ else
         <div class="border rounded-3 p-3 mb-3 bg-light-subtle">
             <label class="form-label small fw-800 mb-1"><i class="bi bi-pen"></i> امضای کاربر (اختیاری)</label>
             <div class="d-flex align-items-center gap-3">
-                <div class="border rounded bg-white p-2" style="width:180px;height:70px;display:flex;align-items:center;justify-content:center">
-                    @if (luSignaturePreview != null) { <img src="@luSignaturePreview" alt="پیش‌نمایش امضا" style="max-width:165px;max-height:58px;object-fit:contain" /> }
-                    else if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath)) { <img src="/api/auth/users/signature/@form.Id" alt="امضای کاربر" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                <div class="signature-checkerboard border rounded p-2" style="width:180px;height:70px;display:flex;align-items:center;justify-content:center">
+                    @if (luSignaturePreview != null) { <img src="@luSignaturePreview" alt="پیش‌نمایش امضای جدید" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else if (luStoredSignaturePreview != null) { <img src="@luStoredSignaturePreview" alt="امضای ثبت‌شدهٔ کاربر" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else if (signaturePreviewLoading) { <span class="text-muted small">در حال دریافت امضا…</span> }
+                    else if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath)) { <span class="text-muted small">پیش‌نمایش امضا در دسترس نیست</span> }
                     else { <span class="text-muted small">بدون امضا</span> }
                 </div>
                 <div class="d-flex flex-column gap-1">
-                    <InputFile OnChange="OnUserSignaturePicked" Accept="image/png,image/jpeg" class="btn btn-sm btn-outline-primary" style="max-width:220px" />
-                    <span class="text-muted fs-8">PNG یا JPG — بدون محدودیت حجم</span>
-                    @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب</button> }
+                    <label class="btn btn-sm btn-outline-primary mb-0" style="max-width:220px">
+                        <i class="bi bi-cloud-arrow-up-fill"></i> @(string.IsNullOrWhiteSpace(form.SignaturePath) ? "ثبت امضا" : "تغییر امضا")
+                        <InputFile OnChange="OnUserSignaturePicked" Accept="image/png" class="visually-hidden" />
+                    </label>
+                    <span class="text-muted fs-8">فقط PNG — شفافیت حفظ و اندازه هنگام ذخیره بهینه می‌شود</span>
+                    @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب جدید</button> }
                 </div>
             </div>
         </div>
@@ -327,6 +342,29 @@ else
                     </div>
                 </div>
             }
+            <div class="col-md-6">
+                <label class="form-label">
+                    <i class="bi bi-diagram-3 text-primary"></i>
+                    واحد سازمانی (برای شماره نامه)
+                </label>
+                <select class="form-select" @bind="form.OrganizationId">
+                    <option value="">— بدون واحد سازمانی —</option>
+                    @foreach (var o in AvailableOrganizations)
+                    {
+                        <option value="@o.OrganizationId">@o.NameUnit (@o.NameUniq)@(string.IsNullOrWhiteSpace(o.CompanyName) ? "" : $" — {o.CompanyName}")</option>
+                    }
+                </select>
+                <div class="form-text fs-8">
+                    واحدها در «سازمان و کیف پول ← تعریف واحدهای سازمانی» به‌ازای هر شرکت ساخته می‌شوند؛
+                    جزء «واحد» در شمارهٔ نامه از همین‌جا خوانده می‌شود.
+                </div>
+                @if (organizations.Count == 0)
+                {
+                    <div class="alert alert-warning py-2 mt-2 mb-0 fs-8">
+                        واحدی تعریف نشده — اول از صفحهٔ «تعریف واحدهای سازمانی» برای شرکت‌ها واحد بسازید.
+                    </div>
+                }
+            </div>
             <div class="col-12">
                 <label class="form-label d-block">
                     <i class="bi bi-briefcase text-primary"></i>
@@ -486,7 +524,42 @@ else
 @code {
     private List<UserDto> items = new();
     private List<CompanyOption> companyOptions = new();
+    private string userSearch = "";
+    private int? companyFilter = null;
+    private Dictionary<int, HashSet<int>> userCompanyMap = new();
+
+    private IEnumerable<UserDto> FilteredItems =>
+        items.Where(u =>
+        {
+            var matchSearch = string.IsNullOrWhiteSpace(userSearch)
+                || u.Username.Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                || FullName(u).Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+                || (u.Mobile ?? "").Contains(userSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+            var matchCompany = !companyFilter.HasValue
+                || (userCompanyMap.TryGetValue(u.Id, out var uc) && uc.Contains(companyFilter.Value));
+            return matchSearch && matchCompany;
+        });
     private HashSet<int> selectedCompanyIds = new();
+
+    // ---------- واحدهای سازمانی (تعریف‌شده به‌ازای هر شرکت) ----------
+    private List<OrgOption> organizations = new();
+    private sealed class OrgOption
+    {
+        public int OrganizationId { get; set; }
+        public int? CompanyId { get; set; }
+        public string NameUnit { get; set; } = "";
+        public string NameUniq { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public bool IsDefault { get; set; }
+        public string CompanyName { get; set; } = "";
+    }
+
+    /// <summary>واحدهای قابل انتخاب: فعال و در محدودهٔ شرکت‌های مجازِ همین کاربر.</summary>
+    private IEnumerable<OrgOption> AvailableOrganizations =>
+        organizations
+            .Where(o => o.IsActive)
+            .Where(o => o.CompanyId is null or 0 || selectedCompanyIds.Count == 0 || selectedCompanyIds.Contains(o.CompanyId.Value))
+            .OrderBy(o => o.NameUnit);
     private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
     private List<Referrer> referrers = new();
     private bool loading = true;
@@ -526,6 +599,33 @@ else
     private string? luPhotoPreview;
     private byte[]? luSignatureBytes;
     private string? luSignaturePreview;
+    private string? luStoredSignaturePreview;
+    private bool signaturePreviewLoading;
+
+    private async Task LoadStoredSignaturePreviewAsync(int userId)
+    {
+        signaturePreviewLoading = true;
+        try
+        {
+            EnsureAuthHeader();
+            using var response = await Http.GetAsync($"/api/auth/users/signature/{userId}");
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                if (bytes.Length > 0)
+                    luStoredSignaturePreview = "data:image/png;base64," + Convert.ToBase64String(bytes);
+            }
+        }
+        catch
+        {
+            // The saved SignaturePath remains untouched; preview failure must not block editing.
+        }
+        finally
+        {
+            signaturePreviewLoading = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task OnLoginUserPhotoPicked(InputFileChangeEventArgs e)
     {
@@ -543,10 +643,12 @@ else
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > 2 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
-        if (file.ContentType is not ("image/png" or "image/jpeg")) { saveError = "امضا باید PNG یا JPG باشد."; return; }
+        if (file.Size > 10 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۱۰ مگابایت است."; return; }
+        if (file.ContentType != "image/png" || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
+        { saveError = "فقط فایل PNG مجاز است."; return; }
         luSignatureBytes = new byte[file.Size];
-        await file.OpenReadStream(long.MaxValue).ReadAsync(luSignatureBytes);
+        await using (var signatureStream = file.OpenReadStream(10 * 1024 * 1024))
+            await signatureStream.ReadExactlyAsync(luSignatureBytes);
         luSignaturePreview = "data:" + file.ContentType + ";base64," + Convert.ToBase64String(luSignatureBytes);
         StateHasChanged();
     }
@@ -672,8 +774,6 @@ else
     private bool WillLoseAdminLevel =>
         editing && form.Role == "Admin" && selectedRoleIds.Count > 0 && !SelectedIncludesAdminRole;
 
-    // نقش «ویزیتور میدانی» هم مثل معرف به یک پروندهٔ معرف وصل می‌شود، پس فیلد انتخاب معرف
-    // برای او هم نمایش داده می‌شود؛ در غیر این صورت ویزیتور بدون پرونده ذخیره می‌شد.
     private static bool IsReferrerRole(string n) =>
         n.Equals("Referrer", StringComparison.OrdinalIgnoreCase) || n.Contains("معرف")
         || n.Equals("SalesVisitor", StringComparison.OrdinalIgnoreCase) || n.Contains("ویزیتور");
@@ -750,7 +850,16 @@ else
         {
             items = await AuthApi.GetUsersAsync();
             try { companyOptions = await Http.GetFromJsonAsync<List<CompanyOption>>("/api/SystemCompanies") ?? new(); } catch { companyOptions = new(); }
+            try
+            {
+                organizations = await Http.GetFromJsonAsync<List<OrgOption>>("/api/SystemOrganizations") ?? new();
+                var names = companyOptions.ToDictionary(c => c.Id, c => c.Name);
+                foreach (var o in organizations)
+                    o.CompanyName = o.CompanyId is int cid && names.TryGetValue(cid, out var cn) ? cn : "";
+            }
+            catch { organizations = new(); }
             referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
+            await LoadUserCompanyMap();
             try { allRoles = (await Http.GetFromJsonAsync<List<RoleOpt>>("/api/roles") ?? new()).Where(r => r.IsActive).ToList(); }
             catch (Exception rex)
             {
@@ -762,11 +871,31 @@ else
         finally { loading = false; }
     }
 
+    private async Task LoadUserCompanyMap()
+    {
+        userCompanyMap = new();
+        foreach (var u in items)
+        {
+            try
+            {
+                var ids = await Http.GetFromJsonAsync<List<int>>($"/api/company-context/users/{u.Id}") ?? new();
+                userCompanyMap[u.Id] = ids.ToHashSet();
+            }
+            catch { userCompanyMap[u.Id] = new HashSet<int>(); }
+        }
+    }
+
     private void OpenNew()
     {
         // سطح قدیمی (Admin/Operator/Referrer) هنگام ذخیره از روی نقش‌های RBAC انتخاب‌شده تعیین می‌شود؛
         // پس اینجا هرگز «Admin» پیش‌فرض نمی‌گذاریم (اگر فهرست نقش‌ها لود نشده باشد، کاربر بی‌نقش = مدیر کل می‌شد).
-        form = new UserDto { Role = "Operator", IsActive = true };
+        form = new UserDto
+        {
+            Role = "Operator",
+            IsActive = true,
+            // واحد پیش‌فرضِ شرکت (اگر تعریف شده باشد) از ابتدا انتخاب می‌شود
+            OrganizationId = organizations.FirstOrDefault(o => o.IsActive && o.IsDefault)?.OrganizationId
+        };
         referrerIdStr = "0";
         selectedRoleIds = new();
         selectedCompanyIds = new();
@@ -774,10 +903,11 @@ else
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
+        luStoredSignaturePreview = null; signaturePreviewLoading = false;
         showModal = true;
     }
 
-    private void OpenEdit(UserDto u)
+    private async Task OpenEdit(UserDto u)
     {
         form = new UserDto
         {
@@ -793,7 +923,8 @@ else
             RoleIds = u.RoleIds is null ? null : new List<int>(u.RoleIds),
             ReferrerId = u.ReferrerId,
             IsActive = u.IsActive,
-            CreatedAt = u.CreatedAt
+            CreatedAt = u.CreatedAt,
+            OrganizationId = u.OrganizationId
         };
         referrerIdStr = (u.ReferrerId ?? 0).ToString();
         selectedRoleIds = new HashSet<int>(u.RoleIds ?? new List<int>());
@@ -806,8 +937,11 @@ else
         _ = LoadWoAllowed(u.Id);
         _ = LoadCompanyAccess(u.Id);
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
+        luStoredSignaturePreview = null;
         showModal = true;
         StateHasChanged();
+        if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath))
+            await LoadStoredSignaturePreviewAsync(form.Id);
     }
 
     private void CloseModal() => showModal = false;
@@ -963,6 +1097,15 @@ else
 </style>
 
 <style>
+    .signature-checkerboard {
+        background-color: #f8fafc;
+        background-image: linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+            linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+            linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+        background-size: 12px 12px;
+        background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    }
     /* ===== نشان‌های بله و ایتا ===== */
     .msgr-badge {
         display: inline-flex; align-items: center; gap: .2rem;

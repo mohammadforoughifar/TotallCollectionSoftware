@@ -107,8 +107,8 @@ public class ProductService : IProductService
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/products/{id}");
 
-    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName)
-        => _api.PostFileAsync<ExcelImportResult>("api/products/import", fileStream, fileName);
+    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId)
+        => _api.PostFileAsync<ExcelImportResult>($"api/products/import?warehouseId={warehouseId}", fileStream, fileName);
 
     public Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync()
         => _api.GetFileAsync("api/products/import/template");
@@ -175,14 +175,65 @@ public class PartyService : IPartyService
     {
         var parties = await GetAsync(type);
         if (activeOnly) parties = parties.Where(p => p.IsActive).ToList();
-        return parties.Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToList();
+        return parties.Select(p => ToLookup(p)).ToList();
+    }
+
+    /// <summary>
+    /// ساخت گزینهٔ انتخابگر طرف حساب. تلفن و موبایل به <c>SearchText</c> میروند تا
+    /// «جستجوی مشتری» در <b>تمام</b> فرمهایی که از این سرویس استفاده میکنند روی شماره
+    /// هم کار کند، بیآنکه <c>Name</c> (که در اسناد و عناوین فرمها بهکار میرود) عوض شود؛
+    /// <c>InfoText</c> همان شمارهها را زیر نام نشان میدهد تا نتیجه قابل تشخیص باشد.
+    /// </summary>
+    /// <param name="p">طرف حساب کامل (DTO شامل Phone/Mobile).</param>
+    /// <param name="displayName">عنوان سفارشی، مثلاً نام مشتری بههمراه معرف در فرم سفارش.</param>
+    public static LookupItem ToLookup(Party p, string? displayName = null)
+    {
+        var phones = new[] { p.Mobile, p.Phone }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return new LookupItem
+        {
+            Id = p.Id,
+            Name = displayName ?? p.Name,
+            SearchText = phones.Length == 0 ? null : string.Join(" ", phones),
+            InfoText = phones.Length == 0 ? null : string.Join(" · ", phones)
+        };
+    }
+
+    public async Task<List<LookupItem>> GetShopCustomerLookupsAsync(string context)
+    {
+        var parties = await _api.GetAsync<List<Party>>($"api/parties/shop-customers?context={Uri.EscapeDataString(context)}");
+        return parties.Where(p => p.IsActive).Select(p => ToLookup(p)).ToList();
     }
 
     public Task<Party> SaveAsync(Party party)
         => _api.PostAsync<Party>("api/parties", party);
 
+    public Task<Party> SaveShopQuickAsync(Party party)
+        => _api.PostAsync<Party>("api/parties/shop-quick", party);
+
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/parties/{id}");
+
+    public Task<PartyStatementReportDto> GetPartyStatementsSummaryAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    {
+        var q = $"api/parties/statements-summary?search={Uri.EscapeDataString(search ?? "")}";
+        if (type.HasValue) q += $"&type={(int)type.Value}";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PartyStatementReportDto>(q);
+    }
+
+    public Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null)
+    {
+        var q = $"api/parties/{partyId}/statement?";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PartyStatementDetailDto>(q.TrimEnd('?', '&'));
+    }
+
 }
 
 /// <summary>پیاده‌سازی سرویس موجودی.</summary>
@@ -209,25 +260,55 @@ public class OrderService : IOrderService
     private readonly IApiClient _api;
     public OrderService(IApiClient api) => _api = api;
 
-    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20)
+    public Task<bool> CanViewProfitAsync() => _api.GetAsync<bool>("api/orders/profit-access");
+    public Task<bool> CanManagePricingAsync() => _api.GetAsync<bool>("api/orders/pricing-access");
+    public Task<DatedSalePriceDto> GetDatedSalePriceAsync(int productId, DateTime date) =>
+        _api.GetAsync<DatedSalePriceDto>($"api/orders/dated-sale-price?productId={productId}&date={date:yyyy-MM-dd}");
+
+    public Task<ShopMinimumProfitBasisDto> GetMinimumProfitBasisAsync(int productId, DateTime date, int? saleId)
+        => _api.GetAsync<ShopMinimumProfitBasisDto>($"api/orders/minimum-profit-basis?productId={productId}&date={date:yyyy-MM-dd}" +
+            (saleId is > 0 ? $"&saleId={saleId.Value}" : ""));
+
+    public Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000)
+        => _api.GetAsync<PagedResult<Product>>($"api/orders/invoice-products?type={(int)type}&page={page}&pageSize={pageSize}");
+    public Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false)
+        => _api.GetAsync<List<LookupItem>>($"api/orders/invoice-warehouses?type={(int)type}&activeOnly={activeOnly}");
+    public Task<List<Party>> GetInvoicePartiesAsync(TransactionType type)
+        => _api.GetAsync<List<Party>>($"api/orders/invoice-parties?type={(int)type}");
+
+    public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000)
+        => _api.GetAsync<PagedResult<InvoiceStockItem>>($"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}");
+
+    public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null)
     {
         var q = $"api/orders?type={(int)type}&page={page}&pageSize={pageSize}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         if (partyId is > 0) q += $"&partyId={partyId}";
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        if (hasChequeIncome.HasValue) q += $"&hasChequeIncome={hasChequeIncome.Value.ToString().ToLowerInvariant()}";
         return _api.GetAsync<PagedResult<Order>>(q);
     }
 
     public Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
-        int? partyId = null, int? warehouseId = null)
+        int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null)
     {
         var q = $"api/operations/reports/orders?type={(int)type}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         if (partyId is > 0) q += $"&partyId={partyId}";
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        if (hasChequeIncome.HasValue) q += $"&hasChequeIncome={hasChequeIncome.Value.ToString().ToLowerInvariant()}";
         return _api.GetAsync<OperationsOrderReportDto>(q);
+    }
+
+    public Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from = null, DateTime? to = null, int? partyId = null)
+    {
+        var q = "api/operations/reports/cheque-income?";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        if (partyId is > 0) q += $"&partyId={partyId}";
+        return _api.GetAsync<ChequeIncomeReportDto>(q);
     }
 
     public Task<Order?> GetAsync(int id)
@@ -238,6 +319,84 @@ public class OrderService : IOrderService
 
     public Task<Order> UpdateAsync(int id, OrderCommand cmd)
         => _api.PutAsync<Order>($"api/orders/{id}", cmd);
+
+    public async Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/cash-reconciliation", cmd);
+
+    public Task<ShopOrderCreditState> GetCreditStateAsync(int id)
+        => _api.GetAsync<ShopOrderCreditState>($"api/orders/{id}/credit-receipts");
+
+    public async Task ReceiveCreditAsync(int id, ShopOrderCreditReceiptCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/credit-receipts", cmd);
+
+    public async Task ReverseCreditReceiptAsync(int id, int receiptId, ShopOrderCreditReversalCommand cmd)
+        => await _api.PostAsync<object>($"api/orders/{id}/credit-receipts/{receiptId}/reversal", cmd);
+
+    public Task<SaleChequeReschedulePreview> PreviewChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate)
+        => _api.GetAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule-preview?expectedDueDate={expectedDueDate:yyyy-MM-dd}&newDueDate={newDueDate:yyyy-MM-dd}");
+
+    public Task<SaleChequeReschedulePreview> RescheduleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd)
+        => _api.PutAsync<SaleChequeReschedulePreview>($"api/orders/cheques/{chequeId}/reschedule", cmd);
+
+    public async Task ReceiveChequeAsync(int chequeId, SaleChequeReceiptCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/receipt", cmd);
+    }
+
+    public async Task ReverseChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/receipt-reversal", cmd);
+    }
+
+    public async Task ChangeChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/status", cmd);
+    }
+
+    public Task<List<SaleChequeStatusHistoryItem>> GetChequeStatusHistoryAsync(int chequeId)
+        => _api.GetAsync<List<SaleChequeStatusHistoryItem>>($"api/orders/cheques/{chequeId}/status-history");
+
+    public Task<SaleChequeReturnPreviewDto> PreviewChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req)
+        => _api.PostAsync<SaleChequeReturnPreviewDto>($"api/orders/{saleId}/cheque-return-preview", req);
+
+    public Task<SaleChequeReturnSummaryDto> ReturnChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd)
+        => _api.PostAsync<SaleChequeReturnSummaryDto>($"api/orders/{saleId}/cheque-return", cmd);
+
+    public async Task ReplaceChequeAsync(int chequeId, SaleChequeReplaceCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/cheques/{chequeId}/replace", cmd);
+    }
+
+    public async Task RefundChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/credit-refund", cmd);
+    }
+
+    public async Task AllocateChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/credit-allocation", cmd);
+    }
+
+    public async Task ReceiveChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/installments/{installmentId}/receipt", cmd);
+    }
+
+    public async Task ReverseChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd)
+    {
+        await _api.PutAsync<object>($"api/orders/installments/{installmentId}/receipt-reversal", cmd);
+    }
+
+    public async Task CancelChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd)
+    {
+        await _api.PostAsync<object>($"api/orders/{saleId}/cheque-cancel", cmd);
+    }
+
+    public Task<Order> EditChequeOrderAsync(int saleId, OrderCommand cmd)
+        => _api.PutAsync<Order>($"api/orders/{saleId}/cheque-edit", cmd);
+
+    public Task<List<TrsAccount>> GetActiveTreasuryAccountsAsync(TreasuryAccountKind? kind = null)
+        => _api.GetAsync<List<TrsAccount>>(kind.HasValue ? $"api/orders/active-treasury-accounts?kind={(int)kind.Value}" : "api/orders/active-treasury-accounts");
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/orders/{id}");
@@ -302,11 +461,44 @@ public class DashboardService : IDashboardService
     public Task ClearChequeAsync(int chequeId)
         => _api.PostAsync<object>($"api/dashboard/cheques/{chequeId}/clear");
 
+    public Task BounceChequeAsync(int chequeId, string? reason = null)
+    {
+        var url = $"api/dashboard/cheques/{chequeId}/bounce";
+        if (!string.IsNullOrWhiteSpace(reason)) url += $"?reason={Uri.EscapeDataString(reason)}";
+        return _api.PostAsync<object>(url);
+    }
+
+    public Task ResetChequeAsync(int chequeId)
+        => _api.PostAsync<object>($"api/dashboard/cheques/{chequeId}/reset");
+
     public Task PayInstallmentAsync(int installmentId)
         => _api.PostAsync<object>($"api/dashboard/installments/{installmentId}/pay");
 
+    public Task UnpayInstallmentAsync(int installmentId)
+        => _api.PostAsync<object>($"api/dashboard/installments/{installmentId}/unpay");
+
     public Task SettleCreditAsync(int transactionId, decimal amount)
         => _api.PostAsync<object>($"api/dashboard/credits/{transactionId}/settle?amount={amount}");
+
+    public Task<ShopCreditSummary> GetShopCreditSummaryAsync()
+        => _api.GetAsync<ShopCreditSummary>("api/dashboard/shop-credit/summary");
+
+    public Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status = null, TransactionType? txnType = null, string? search = null)
+    {
+        var q = "api/dashboard/shop-credit/cheques?";
+        if (status.HasValue) q += $"status={(int)status.Value}&";
+        if (txnType.HasValue) q += $"txnType={(int)txnType.Value}&";
+        if (!string.IsNullOrWhiteSpace(search)) q += $"search={Uri.EscapeDataString(search)}&";
+        return _api.GetAsync<List<ShopChequeItem>>(q.TrimEnd('?', '&'));
+    }
+
+    public Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid = null, string? search = null)
+    {
+        var q = "api/dashboard/shop-credit/installments?";
+        if (isPaid.HasValue) q += $"isPaid={isPaid.Value}&";
+        if (!string.IsNullOrWhiteSpace(search)) q += $"search={Uri.EscapeDataString(search)}&";
+        return _api.GetAsync<List<ShopInstallmentItem>>(q.TrimEnd('?', '&'));
+    }
 }
 
 /// <summary>پیاده‌سازی سرویس تعمیرات سمت کلاینت.</summary>
@@ -376,6 +568,22 @@ public class ExpenseService : IExpenseService
         return _api.GetAsync<PagedResult<ExpenseDto>>(url);
     }
 
+    public Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to)
+    {
+        var url = "api/expenses/report?";
+        if (categoryId is > 0) url += $"categoryId={categoryId}&";
+        if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
+        if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
+        return _api.GetAsync<ExpenseReportDto>(url.TrimEnd('?', '&'));
+    }
+
+    public Task<List<TrsAccount>> GetChequeBanksAsync() => _api.GetAsync<List<TrsAccount>>("api/expenses/cheque-banks");
+    public Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync() => _api.GetAsync<List<ShopChequeItem>>("api/expenses/available-received-cheques");
+    public Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command)
+        => _api.PostAsync<ExpenseChequeCreatedResult>($"api/expenses/{(command.Kind == ExpenseChequeKind.Issued ? "issued-cheque" : "received-cheque")}", command);
+    public async Task ChangeChequeStatusAsync(int id, ExpenseChequeKind kind, ExpenseChequeStatusCommand command)
+        => await _api.PostAsync<object>($"api/expenses/cheques/{id}/{(kind == ExpenseChequeKind.Issued ? "issued-status" : "received-status")}", command);
+
     public Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense)
         => _api.PostAsync<ExpenseDto>("api/expenses", expense);
 
@@ -407,4 +615,16 @@ public class GoodsIssueService : IGoodsIssueService
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/goods-issues/{id}");
+}
+
+public class ShopPricingClient : IShopPricingClient
+{
+    private readonly IApiClient _api;
+    public ShopPricingClient(IApiClient api) => _api = api;
+    public Task<ShopPricingPolicyDto> GetPolicyAsync() => _api.GetAsync<ShopPricingPolicyDto>("api/shop-pricing/policy");
+    public Task<ShopPricingPolicyDto> SavePolicyAsync(ShopPricingPolicyDto policy) => _api.PutAsync<ShopPricingPolicyDto>("api/shop-pricing/policy", policy);
+    public Task<List<LookupItem>> GetCategoriesAsync() => _api.GetAsync<List<LookupItem>>("api/shop-pricing/categories");
+    public Task<ShopPriceAdjustmentPreview> PreviewAsync(ShopPriceAdjustmentRequest request) => _api.PostAsync<ShopPriceAdjustmentPreview>("api/shop-pricing/preview", request);
+    public Task<ShopPriceAdjustmentPreview> ApplyAsync(ShopPriceAdjustmentCommand command) => _api.PostAsync<ShopPriceAdjustmentPreview>("api/shop-pricing/apply", command);
+    public Task<List<ShopPriceHistoryItem>> GetHistoryAsync() => _api.GetAsync<List<ShopPriceHistoryItem>>("api/shop-pricing/history?take=200");
 }

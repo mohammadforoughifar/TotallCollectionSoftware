@@ -1,0 +1,28 @@
+.pricing-head { background: #fff; }
+.pricing-layout { display: grid; gap: 1rem; grid-template-columns: minmax(290px, .85fr) minmax(0, 1.4fr); align-items: start; }
+.pricing-card { border: 1px solid #e1e7f0; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 16px rgba(30,41,59,.04); }
+.pricing-card .card-header { display: flex; align-items: center; gap: .55rem; background: #fff; border-bottom: 1px solid #edf0f5; padding: .9rem 1.1rem; }
+.pricing-card .card-body { padding: 1rem 1.1rem; }
+.pricing-intro, .pricing-muted { color: #64748b; font-size: .82rem; line-height: 1.9; }
+.pricing-switch { margin: .75rem 0 1rem; font-weight: 600; font-size: .86rem; }
+.pricing-policy-row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+.pricing-policy-row > div { width: min(100%, 180px); }
+.pricing-fields { display: grid; grid-template-columns: 1.5fr .8fr .7fr 1fr; gap: .7rem; }
+.pricing-fields > div { min-width: 0; }
+.pricing-card .form-label { font-size: .78rem; color: #475569; font-weight: 600; }
+.pricing-note { background: #f5f7ff; border: 1px solid #e3e8ff; border-radius: 10px; padding: .45rem .7rem; margin-top: .75rem; color: #475689; font-size: .76rem; line-height: 1.9; }
+.pricing-note summary { cursor: pointer; font-weight: 600; }
+.pricing-note p { margin: .4rem 0 0; }
+.pricing-warning { margin: .7rem 0 0; color: #9a5814; font-size: .76rem; }
+.pricing-muted { margin-top: .6rem; font-size: .72rem; }
+.pricing-actions, .pricing-apply { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .7rem; margin-top: 1rem; font-size: .8rem; }
+.pricing-preview-header { border-top: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: .8rem 0; font-size: .8rem; color: #475569; }
+.pricing-table { max-height: 440px; overflow: auto; }
+.pricing-table th { position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #64748b; font-size: .75rem; white-space: nowrap; }
+.pricing-table td { font-size: .78rem; }
+.pricing-table td, .pricing-table th { padding: .65rem .85rem; }
+.pricing-apply span, .pricing-history-caption, .pricing-history-foot { color: #64748b; font-size: .73rem; }
+.pricing-history-caption { margin-inline-start: auto; }
+.pricing-history-foot, .pricing-empty { padding: .85rem 1.1rem; margin: 0; }
+@media (max-width: 1100px) { .pricing-layout { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .pricing-fields { grid-template-columns: repeat(2,minmax(0,1fr)); } .pricing-card .card-body { padding: .85rem; } }

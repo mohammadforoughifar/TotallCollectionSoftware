@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +35,8 @@ public class GoodsIssueService : IGoodsIssueService
             var s = search.Trim();
             q = q.Where(g => g.Number.Contains(s) || g.PartyName.Contains(s)
                 || (g.Description != null && g.Description.Contains(s))
-                || g.Lines.Any(l => l.ProductName.Contains(s)));
+                || g.Lines.Any(l => l.ProductName.Contains(s))
+                || _db.Parties.MatchingPhone(s).Any(p => p.Id == g.PartyId));
         }
 
         var list = await q.OrderByDescending(g => g.Date).ThenByDescending(g => g.Id).ToListAsync();

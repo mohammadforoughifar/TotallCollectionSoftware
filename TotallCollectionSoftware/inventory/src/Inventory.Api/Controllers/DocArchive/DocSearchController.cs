@@ -5,6 +5,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -40,9 +41,11 @@ public class DocSearchController : RbacControllerBase
     // جستجوی ترکیبی و تمام‌متن
     // =========================================================================
 
+    [AllowInReadOnly]
     [HttpPost("search")]
     public Task<IActionResult> AdvancedSearch([FromBody] DocSearchFilterDto filter) => SearchCore(filter, false);
 
+    [AllowInReadOnly]
     [HttpPost("search-page")]
     public Task<IActionResult> SearchPage([FromBody] DocSearchFilterDto filter) => SearchCore(filter, true);
 

@@ -213,6 +213,9 @@ public class InvProduct
     /// <summary>نرخ مالیات بر ارزش افزوده (درصد)</summary>
     public decimal VatRate { get; set; } = 10;
 
+    /// <summary>پیش‌فرض فاکتور عملیات، مستقل از نرخ درصدی مالیات ماژول انبارداری.</summary>
+    public decimal? InvoiceVatValue { get; set; }
+
     /// <summary>نرخ عوارض (درصد)</summary>
     public decimal DutyRate { get; set; }
 

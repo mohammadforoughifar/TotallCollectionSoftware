@@ -491,6 +491,12 @@ a { text-decoration: none; }
 .ss-item.selected { background: var(--primary); color: #fff; }
 .ss-item.selected.highlighted { background: var(--primary-600, #4338ca) !important; color: #fff !important; }
 .ss-empty { padding: .9rem; color: var(--text-muted); font-size: .85rem; text-align: center; }
+/* یادداشت پایین منو وقتی تعداد نتایج از سقف نمایش بیشتر است (کمبوهای بزرگ مثل «همه پروژه‌ها») */
+.ss-more {
+    position: sticky; bottom: 0; display: flex; gap: .35rem; align-items: flex-start;
+    padding: .45rem .7rem; font-size: .74rem; line-height: 1.5;
+    background: #f8fafc; color: #475569; border-top: 1px solid var(--border);
+}
 
 /* دکمه پاک کردن انتخاب جستجوی انتخاب (کمبوباکس) */
 .ss-clear {
@@ -521,7 +527,55 @@ a { text-decoration: none; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: .1rem;
+    gap: .35rem;
+    padding: 24px;
+    text-align: center;
+}
+/* نشان فروغ آریا در صفحهٔ بارگذاری — با یک نفسِ آرام (pulse) و نوار پیشرفت نامعین */
+.app-loading-card .app-loading-logo {
+    animation: appLoadingLogoPulse 1.9s ease-in-out infinite;
+}
+.app-loading-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #b91c1c;
+    letter-spacing: -.2px;
+}
+.app-loading-sub {
+    font-size: 12.5px;
+    color: #64748b;
+}
+.app-loading-bar {
+    position: relative;
+    width: 148px;
+    height: 4px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+.app-loading-bar::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    bottom: 0;
+    width: 45%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e8352a, #f97316);
+    animation: appLoadingBar 1.15s ease-in-out infinite;
+}
+@keyframes appLoadingLogoPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.045); opacity: .88; }
+}
+@keyframes appLoadingBar {
+    0% { transform: translateX(120%); }
+    100% { transform: translateX(-260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-loading-card .app-loading-logo,
+    .app-loading-bar::after { animation: none; }
 }
 
 /* ---------- blazor-error-ui ---------- */
@@ -994,42 +1048,67 @@ a { text-decoration: none; }
 }
 .m-card-actions .btn:last-child:not(:first-child) { flex: 0 0 auto; min-width: 44px; }
 
-/* ---------- باکس روش پرداخت (فرم فروش) ---------- */
+/* ---------- باکس روش پرداخت لوکس و مدرن (فرم فروش و خرید) ---------- */
 .pay-box {
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 1rem;
-    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 1.2rem;
+    background: #ffffff;
+    box-shadow: 0 2px 12px -2px rgba(15, 23, 42, 0.04);
 }
 .pay-tabs {
-    display: flex;
-    gap: .5rem;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: .65rem;
 }
 .pay-tab {
-    flex: 1;
-    min-width: 110px;
-    padding: .55rem .5rem;
-    border: 1.5px solid var(--border);
+    padding: .75rem .8rem;
+    border: 1.5px solid #e2e8f0;
     border-radius: 12px;
-    background: #fff;
+    background: #f8fafc;
     color: #475569;
-    font-size: .85rem;
-    font-weight: 600;
+    font-size: .88rem;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: .4rem;
-    transition: all .15s ease;
+    gap: .5rem;
+    transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
 }
-.pay-tab:hover { border-color: var(--primary); color: var(--primary); }
+.pay-tab:hover {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+    color: #1e293b;
+    transform: translateY(-1px);
+}
 .pay-tab.active {
-    border-color: var(--primary);
-    background: linear-gradient(135deg, rgba(79, 70, 229, .1), rgba(15, 118, 110, .08));
-    color: var(--primary);
-    box-shadow: 0 2px 10px rgba(79, 70, 229, .15);
+    border-color: #4f46e5;
+    background: #ffffff;
+    color: #4f46e5;
+    box-shadow: 0 4px 14px -2px rgba(79, 70, 229, 0.25), 0 0 0 1px #4f46e5;
 }
-.pay-tab i { font-size: 1.05rem; }
+.pay-tab[data-pay-comp=cash].active {
+    border-color: #10b981;
+    color: #059669;
+    box-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.25), 0 0 0 1px #10b981;
+}
+.pay-tab[data-pay-comp=cheque].active {
+    border-color: #f59e0b;
+    color: #d97706;
+    box-shadow: 0 4px 14px -2px rgba(245, 158, 11, 0.25), 0 0 0 1px #f59e0b;
+}
+.pay-tab[data-pay-comp=installment].active {
+    border-color: #7c3aed;
+    color: #7c3aed;
+    box-shadow: 0 4px 14px -2px rgba(124, 58, 237, 0.25), 0 0 0 1px #7c3aed;
+}
+.pay-tab[data-pay-comp=credit].active {
+    border-color: #ef4444;
+    color: #dc2626;
+    box-shadow: 0 4px 14px -2px rgba(239, 68, 68, 0.25), 0 0 0 1px #ef4444;
+}
+.pay-tab i { font-size: 1.15rem; }
 
 .cheque-row {
     border: 1px dashed var(--border);
@@ -1446,22 +1525,17 @@ body {
    بالاتر از کارت‌های هم‌سطح نگه داشته می‌شود. (منوهای اصلیِ تقویم/کمبو از این
    به بعد «شناور» هستند و اصلاً به این شبکه نیاز ندارند؛ این فقط حافظِ
    منوهای inline دیگر است.) */
-.app-content > *:not(.modal):has(.dp-popover),
-.app-content > *:not(.modal):has(.ss-menu),
-.app-content > *:not(.modal):has(.ms-combo-menu),
-.app-content > *:not(.modal):has(.om-combo-menu),
-/* صفحاتِ داخل تب‌ها یک لایه عمیق‌ترند (main.app-content > .tabpane > صفحه) */
-.tabpane > *:not(.modal):has(.dp-popover),
-.tabpane > *:not(.modal):has(.ss-menu),
-.tabpane > *:not(.modal):has(.ms-combo-menu),
-.tabpane > *:not(.modal):has(.om-combo-menu) {
-    position: relative;
-    z-index: 10;
-}
+/* توجه: منوهای شناور (pop-overlay با z=4490 و ss-menu با z=4500) به‌صورت position:fixed
+   در سطح viewport رندر می‌شوند و نیازی به z-index دادن به کانتینر والد ندارند.
+   اعمال z-index روی والدها باعث ایجاد stacking context ناخواسته و در نتیجه افتادن
+   هدر/سایدبار روی عناصر دیگر در رزولوشن‌های متوسط و لپ‌تاپ می‌شد؛ بنابراین این قاعده خنثی شد. */
 
 /* مودال‌ها بالاتر از همه‌ی کارت‌ها باشند (منوهای شناور ۴۵۰۰ بالاتر از مودال می‌مانند) */
-.modal { z-index: 1050; }
-.modal-backdrop { z-index: 1040; }
+/* مودال‌ها و بک‌دراپ باید بالاتر از هدر و سایدبار و اعلان‌ها باشند (z > 2100)
+   تا هیچ هدر، اعلان، منوی کناری یا نوار بالایی روی مودال قرار نگیرد.
+   منوهای شناور کمبو و تقویم نیز با z-index برابر ۴۵۰۰ بالای مودال نمایش داده می‌شوند. */
+.modal { z-index: 3500 !important; }
+.modal-backdrop { z-index: 3490 !important; }
 
 /* کارت‌های داخل مودال نباید overflow:hidden داشته باشند */
 .modal .card { overflow: visible; }
@@ -3589,6 +3663,11 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     object-fit: contain;
     border-radius: 18px;
     display: block;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 6px 14px rgba(232, 53, 42, .16));
+}
+@media (max-width: 480px) {
+    .app-loading-logo { width: 118px; height: 118px; }
 }
 
 /* ===== پیام صوتی و گفتار به نوشتار چت ===== */

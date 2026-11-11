@@ -80,6 +80,15 @@ else
                                 <SearchSelect Items="accounts" Value="@(rule.VatAccountId ?? 0)"
                                               ValueChanged="v => rule.VatAccountId = v > 0 ? v : null" Placeholder="انتخاب حساب…" />
                             </div>
+                            @if (rule.Kind == InvoiceKind.Sale)
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label">حساب درآمد تاخیر تادیه چک</label>
+                                    <SearchSelect Items="accounts" Value="@(rule.ChequeIncomeAccountId ?? 0)"
+                                                  ValueChanged="v => rule.ChequeIncomeAccountId = v" Placeholder="انتخاب حساب درآمد مستقل…" />
+                                    <small class="text-muted">حساب درآمد غیرعملیاتی، فعال و قابل ثبت را انتخاب کنید.</small>
+                                </div>
+                            }
                             <div class="col-md-6">
                                 <label class="form-label">حساب هزینه حمل</label>
                                 <SearchSelect Items="accounts" Value="@(rule.ShippingAccountId ?? 0)"

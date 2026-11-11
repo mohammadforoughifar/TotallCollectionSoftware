@@ -294,6 +294,18 @@ public class Party
 
     /// <summary>مانده حساب (پر شده توسط سرور)</summary>
     public decimal Balance { get; set; }
+
+    /// <summary>تعداد چک‌های برگشتی فعال/پاس‌نشده مشتری</summary>
+    public int BouncedChequesCount { get; set; }
+
+    /// <summary>جمع مبلغ چک‌های برگشتی مشتری (ریال)</summary>
+    public decimal BouncedChequesTotal { get; set; }
+
+    /// <summary>تعداد اقساط معوق پرداخت‌نشده</summary>
+    public int OverdueInstallmentsCount { get; set; }
+
+    /// <summary>جمع اقساط معوق پرداخت‌نشده (ریال)</summary>
+    public decimal OverdueInstallmentsTotal { get; set; }
 }
 
 /// <summary>نتیجه فیلتر/صفحه‌بندی اقلام پایه</summary>

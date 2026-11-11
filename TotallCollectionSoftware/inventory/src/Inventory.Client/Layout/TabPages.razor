@@ -10,19 +10,29 @@
 
 @foreach (var t in Tabs.Tabs)
 {
-    <div class="tabpane @(t.IsActive ? "on" : "")" @key="t.Key">
+    <div class="tabpane @(t.IsActive ? "on" : "")" data-shop-scope="@(ShopSections.ForRoute(t.Key) is not null ? "true" : null)" @key="t.Key">
         @if (t.RouteData is not null)
         {
             <div class="tabpane-body" @key="t.Version">
+                @* نگهبان «سامانه فروشگاهی»: هر بخش فقط با مجوز همان بخش باز می‌شود
+                   (ورود مستقیم با آدرس هم پوشش داده می‌شود، نه فقط پنهان‌کردن آیتم منو) *@
                 @if (HrNavigation.IsWorkspace(t.Key) && !ForoughAryaHrNavigation.IsWorkspace(t.Key))
                 {
                     <HrWorkspaceShell>
-                        <RouteView RouteData="@t.RouteData" />
+                        <ShopSectionGate Path="@t.Key">
+                            <BonHrSectionGate Path="@t.Key" Action="View">
+                                <RouteView RouteData="@t.RouteData" />
+                            </BonHrSectionGate>
+                        </ShopSectionGate>
                     </HrWorkspaceShell>
                 }
                 else
                 {
-                    <RouteView RouteData="@t.RouteData" />
+                    <ShopSectionGate Path="@t.Key">
+                        <BonHrSectionGate Path="@t.Key" Action="View">
+                            <RouteView RouteData="@t.RouteData" />
+                        </BonHrSectionGate>
+                    </ShopSectionGate>
                 }
             </div>
         }

@@ -1,0 +1,237 @@
+@page "/settings/remote"
+@using Inventory.Shared.Dtos
+@inject IApiClient Api
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>تنظیمات ریموت دسکتاپ</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>ریموت دسکتاپ — مدیریت و تنظیمات</h1>
+        <p class="lead">ثبت دستگاه‌ها، صدور کلید ایجنت، سیاست‌های جلسه و لاگ حسابرسی</p>
+    </div>
+    <a class="btn btn-secondary me-auto" href="/remote"><i class="bi bi-display"></i> صفحه ریموت</a>
+</div>
+
+@if (!canManage)
+{
+    <div class="alert alert-warning">شما مجوز مدیریت ماژول ریموت دسکتاپ را ندارید.</div>
+}
+else if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-12 col-xl-5">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-sliders"></i> سیاست‌های جلسه</div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="rd-en" @bind="settings.Enabled" />
+                        <label class="form-check-label" for="rd-en">ماژول ریموت دسکتاپ فعال باشد</label>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label">مهلت رضایت (ثانیه)</label>
+                            <input type="number" class="form-control num" @bind="settings.ConsentTimeoutSeconds" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">مهلت بی‌فعالیتی (دقیقه)</label>
+                            <input type="number" class="form-control num" @bind="settings.SessionIdleTimeoutMinutes" />
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">فاصله فریم (ms)</label>
+                            <input type="number" class="form-control num" @bind="settings.FrameIntervalMs" />
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">کیفیت JPEG</label>
+                            <input type="number" class="form-control num" @bind="settings.JpegQuality" />
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label">حداکثر عرض</label>
+                            <input type="number" class="form-control num" @bind="settings.MaxWidth" />
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary" disabled="@busy" @onclick="SaveSettingsAsync"><i class="bi bi-check2"></i> ذخیره تنظیمات</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><i class="bi bi-plus-circle"></i> ثبت دستگاه جدید</div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label">نام دستگاه</label>
+                        <input class="form-control" @bind="newName" placeholder="مثلاً PC-ANBAR" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">کد شرکت</label>
+                        <input class="form-control num" dir="ltr" @bind="newCompany" placeholder="ACME" />
+                    </div>
+                    <button class="btn btn-primary" disabled="@busy" @onclick="CreateDeviceAsync"><i class="bi bi-key"></i> ساخت و صدور کلید</button>
+                    @if (!string.IsNullOrEmpty(newKey))
+                    {
+                        <div class="alert alert-success mt-3 fs-8">
+                            <b>کلید ایجنت — فقط یک‌بار نمایش داده می‌شود:</b>
+                            <div class="input-group input-group-sm mt-2" dir="ltr">
+                                <input class="form-control num" readonly value="@newKey" />
+                                <button class="btn btn-outline-secondary" @onclick="CopyKeyAsync"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            <div class="mt-2">این کلید را در فایل <code>remote-agent.json</code> سیستم مقصد قرار دهید.</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-display"></i> دستگاه‌ها</div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead><tr><th>نام</th><th>شرکت</th><th>وضعیت</th><th>کلید</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var d in devices)
+                            {
+                                <tr>
+                                    <td>@d.Name</td>
+                                    <td>@d.CompanyCode</td>
+                                    <td>
+                                        @if (d.IsOnline) { <span class="badge bg-success">آنلاین</span> }
+                                        else { <span class="badge bg-light text-dark">آفلاین</span> }
+                                        @if (!d.IsEnabled) { <span class="badge bg-secondary">غیرفعال</span> }
+                                    </td>
+                                    <td dir="ltr" class="fs-8">@d.KeyHint…</td>
+                                    <td class="text-nowrap">
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ToggleAsync(d)">@(d.IsEnabled ? "غیرفعال" : "فعال")</button>
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => RotateAsync(d)">تعویض کلید</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(d)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <i class="bi bi-journal-text"></i><span class="ms-2">لاگ حسابرسی</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadAuditAsync">تازه‌سازی</button>
+                </div>
+                <div class="table-responsive" style="max-height:320px; overflow:auto;">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>زمان</th><th>اکشن</th><th>دستگاه</th><th>جلسه</th><th>جزئیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var a in audit)
+                            {
+                                <tr>
+                                    <td dir="ltr">@a.CreatedAt.ToString("MM/dd HH:mm:ss")</td>
+                                    <td>@a.Action</td>
+                                    <td dir="ltr" class="fs-8">@Short(a.DeviceId)</td>
+                                    <td dir="ltr" class="fs-8">@Short(a.SessionId)</td>
+                                    <td class="fs-8">@a.Detail</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private RemoteSettingsDto settings = new();
+    private List<RemoteDeviceDto> devices = new();
+    private List<RemoteAuditDto> audit = new();
+    private bool loading = true, busy, canManage;
+    private string newName = "", newCompany = "", newKey = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        canManage = Auth.IsAdmin || Auth.Has("RemoteDesktop.Manage");
+        if (canManage) await LoadAllAsync();
+        loading = false;
+    }
+
+    private async Task LoadAllAsync()
+    {
+        try
+        {
+            settings = await Api.GetAsync<RemoteSettingsDto>("api/remote/settings");
+            devices = await Api.GetAsync<List<RemoteDeviceDto>>("api/remote/devices");
+            await LoadAuditAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task LoadAuditAsync()
+    {
+        try { audit = await Api.GetAsync<List<RemoteAuditDto>>("api/remote/audit?take=100"); }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        busy = true;
+        try { settings = await Api.PutAsync<RemoteSettingsDto>("api/remote/settings", settings); Toast.Success("تنظیمات ذخیره شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task CreateDeviceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) { Toast.Error("نام دستگاه الزامی است."); return; }
+        busy = true;
+        try
+        {
+            var created = await Api.PostAsync<RemoteDeviceCreatedDto>("api/remote/devices", new { name = newName, companyCode = newCompany });
+            newKey = created.DeviceKey;
+            newName = ""; newCompany = "";
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task CopyKeyAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", newKey); Toast.Success("کپی شد."); } catch { }
+    }
+
+    private async Task ToggleAsync(RemoteDeviceDto d)
+    {
+        try { await Api.PutAsync<RemoteDeviceDto>($"api/remote/devices/{d.Id}", new { isEnabled = !d.IsEnabled }); await LoadAllAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RotateAsync(RemoteDeviceDto d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "کلید فعلی این دستگاه باطل می‌شود. ادامه می‌دهید؟")) return;
+        try
+        {
+            var r = await Api.PostAsync<RotateKeyResult>($"api/remote/devices/{d.Id}/rotate-key");
+            newKey = r.DeviceKey;
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteAsync(RemoteDeviceDto d)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"دستگاه {d.Name} حذف شود؟")) return;
+        try { await Api.DeleteAsync($"api/remote/devices/{d.Id}"); await LoadAllAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private static string Short(string? id) => string.IsNullOrEmpty(id) ? "—" : id[..Math.Min(8, id.Length)];
+
+    private sealed class RotateKeyResult { public string DeviceKey { get; set; } = ""; }
+}

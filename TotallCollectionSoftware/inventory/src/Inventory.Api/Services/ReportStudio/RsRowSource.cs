@@ -706,6 +706,8 @@ public sealed class RsRowSource : IRsRowSource
     private async Task<List<RsRow>> ProductsAsync(int limit, CancellationToken ct)
     {
         var raw = await ProductBase().Take(limit).ToListAsync(ct);
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, raw.Select(p => p.Id), DateTime.Today);
+        foreach (var p in raw) if (effectivePrices.TryGetValue(p.Id, out var effective)) p.Sale = effective.Price;
         return raw.Select(p => { var r = new RsRow(); FillProduct(r, p); return r; }).ToList();
     }
 
@@ -720,7 +722,10 @@ public sealed class RsRowSource : IRsRowSource
     {
         var list = ids.Distinct().ToList();
         if (list.Count == 0) return new();
-        return await ProductBase().Where(p => list.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var products = await ProductBase().Where(p => list.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, list, DateTime.Today);
+        foreach (var (id, product) in products) if (effectivePrices.TryGetValue(id, out var effective)) product.Sale = effective.Price;
+        return products;
     }
 
     private async Task<List<RsRow>> InvoicePartyAsync(bool left, int limit, CancellationToken ct)
@@ -968,6 +973,8 @@ public sealed class RsRowSource : IRsRowSource
         TransactionType.Initial => "موجودی اول دوره",
         TransactionType.Purchase => "رسید خرید",
         TransactionType.Sale => "حواله فروش",
+        TransactionType.SaleReturn => "برگشت از فروش",
+        TransactionType.WarrantyOut => "خروج گارانتی",
         TransactionType.Adjustment => "تعدیل",
         _ => "نامشخص"
     };

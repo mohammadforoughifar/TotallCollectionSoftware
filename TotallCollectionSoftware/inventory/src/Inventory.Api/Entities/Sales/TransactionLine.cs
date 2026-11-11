@@ -12,6 +12,20 @@ public class TransactionLine : ICompanyOwned
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
 
+    /// <summary>درصد تخفیف سطر (۰ تا ۱۰۰)</summary>
+    public decimal DiscountPercent { get; set; }
+
+    /// <summary>مبلغ تخفیف محاسبه‌شده سطر (ریال)</summary>
+    public decimal DiscountAmount { get; set; }
+
+    /// <summary>آیا نحوهٔ ورود کاربر به ریال بوده یا درصد؟ (عدد > ۱۰۰ به ریال)</summary>
+    public bool DiscountIsAmount { get; set; }
+
+    /// <summary>مقدار واردشده و مبلغ قطعی ارزش افزوده در زمان ثبت سند.</summary>
+    public decimal? GrossAmount { get; set; }
+    public decimal VatValue { get; set; }
+    public decimal VatAmount { get; set; }
+
     /// <summary>بهای تمام‌شدهٔ قطعیِ واحد برای سطرهایی مثل فاکتور تعمیر؛ برای فروش عادی خالی می‌ماند.</summary>
     public decimal? UnitCostSnapshot { get; set; }
 

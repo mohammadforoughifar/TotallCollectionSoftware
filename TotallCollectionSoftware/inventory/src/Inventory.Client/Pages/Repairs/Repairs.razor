@@ -15,8 +15,20 @@
 @inject LayoutState Layout
 @inject IJSRuntime JS
 
-<PageTitle>تعمیرات</PageTitle>
+<PageTitle>تعمیرات و گارانتی</PageTitle>
 
+<div class="repair-section-tabs d-print-none" role="tablist" aria-label="بخش پذیرش">
+    <button type="button" role="tab" aria-selected="@(repairTab == 0)" class="@(repairTab == 0 ? "active" : "")" @onclick="() => repairTab = 0">تعمیرات</button>
+    <button type="button" role="tab" aria-selected="@(repairTab == 1)" class="@(repairTab == 1 ? "active" : "")" @onclick="() => repairTab = 1">گارانتی</button>
+    <button type="button" role="tab" aria-selected="@(repairTab == 2)" class="@(repairTab == 2 ? "active" : "")" @onclick="() => repairTab = 2">طرح تعویض</button>
+</div>
+<style>
+.repair-section-tabs { display:flex; gap:.25rem; border-bottom:1px solid #dbe3ef; background:#fff; padding:.2rem .4rem 0; margin-bottom:1rem; overflow-x:auto; }
+.repair-section-tabs button { border:0; background:transparent; color:#64748b; font-weight:700; white-space:nowrap; padding:.7rem 1.15rem; border-bottom:3px solid transparent; }
+.repair-section-tabs button.active { color:#3730a3; border-bottom-color:#4f46e5; }
+</style>
+@if (repairTab == 0)
+{
 <div class="page-head">
     <div>
         <h1>پذیرش تعمیرات</h1>
@@ -291,7 +303,7 @@
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="جستجو: شماره پذیرش، دستگاه، سریال، مشتری…"
+                    <input class="form-control" placeholder="جستجو: شماره پذیرش، دستگاه، سریال، نام/تلفن مشتری…"
                            value="@search" @oninput="OnSearchInput" />
                 </div>
             </div>
@@ -555,9 +567,9 @@
                     <div>
                         <h6>دستگاه‌های پذیرش‌شده <span class="badge badge-soft-primary">@form.Devices.Count</span></h6>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f3"
-                            title="افزودن دستگاه (F3)" @onclick="AddDevice">
-                        <i class="bi bi-plus-lg"></i> افزودن دستگاه (F3)
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto"
+                            title="افزودن دستگاه" @onclick="AddDevice">
+                        <i class="bi bi-plus-lg"></i> افزودن دستگاه
                     </button>
                 </div>
 
@@ -624,7 +636,7 @@
                     <div>
                         <h6 class="mb-0">کارها و قطعات مصرفی </h6>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddItem">
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">
                         <i class="bi bi-plus-lg"></i> ردیف جدید (F2)
                     </button>
                 </div>
@@ -687,8 +699,8 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" @onclick="SaveAndPrintReceipt" disabled="@saving">
-            <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل
+        <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="SaveAndPrintReceipt" disabled="@saving">
+            <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل (F4)
         </button>
         <button class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
@@ -729,8 +741,8 @@
                 }
             </div>
             <div class="d-flex justify-content-end gap-2 mb-3">
-                <button class="btn btn-sm btn-outline-primary" @onclick="() => PrintDeliveryReceipt(viewing!)">
-                    <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه
+                <button class="btn btn-sm btn-outline-primary" data-hotkey="f4" @onclick="() => PrintDeliveryReceipt(viewing!)">
+                    <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه (F4)
                 </button>
                 @if (viewing.InvoiceTransactionId is > 0)
                 {
@@ -973,36 +985,14 @@
                 DefaultKind="quickBankDefaultKind"
                 OnAccountCreated="OnQuickBankCreated" />
 
-@* ---------------- تعریف سریع مشتری ---------------- *@
-<Modal Visible="showNewCustomer" Title="مشتری جدید" OnClose="() => showNewCustomer = false">
-    <ChildContent>
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="form-label">نام مشتری <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="newCustomer.Name" placeholder="نام و نام خانوادگی / نام فروشگاه" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">موبایل</label>
-                <input class="form-control" @bind="newCustomer.Mobile" dir="ltr" placeholder="0912…" data-digits="" inputmode="numeric" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">تلفن</label>
-                <input class="form-control" @bind="newCustomer.Phone" dir="ltr" data-digits="tel" inputmode="tel" />
-            </div>
-            <div class="col-12">
-                <label class="form-label">آدرس</label>
-                <input class="form-control" @bind="newCustomer.Address" />
-            </div>
-        </div>
-    </ChildContent>
-    <Footer>
-        <button class="btn btn-light" @onclick="() => showNewCustomer = false">انصراف (Esc)</button>
-        <button class="btn btn-primary" data-hotkey="f1" @onclick="SaveNewCustomer" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            ثبت و انتخاب (F1)
-        </button>
-    </Footer>
-</Modal>
+@* ---------------- تعریف مشتری ----------------
+   همان کامپوننت فرم «طرف حسابها» (/parties)، نه یک فرم خلاصهٔ موازی.
+   ------------------------------------------------ *@
+<PartyFormModal ShopQuickCreate="true" Visible="showNewCustomer"
+                Type="PartyType.Customer"
+                AllowReferrerPicker="true"
+                OnSaved="OnNewCustomerSaved"
+                OnCancel="() => showNewCustomer = false" />
 
 @* ---------------- تعمیرکارها ---------------- *@
 <Modal Visible="showTechs" Title="تعمیرکارها" Size="modal-lg" OnClose="() => showTechs = false">
@@ -1012,7 +1002,7 @@
             <div class="col-md-3"><input class="form-control" placeholder="موبایل" @bind="techForm.Phone" dir="ltr" data-digits="tel" inputmode="tel" /></div>
             <div class="col-md-3"><input class="form-control" placeholder="تخصص (لپ‌تاپ، دوربین…)" @bind="techForm.Specialty" /></div>
             <div class="col-md-2">
-                <button class="btn btn-primary w-100" @onclick="SaveTech" disabled="@saving">
+                <button class="btn btn-primary w-100" data-hotkey="f1" @onclick="SaveTech" disabled="@saving">
                     @(techForm.Id == 0 ? "افزودن" : "ویرایش")
                 </button>
             </div>
@@ -1048,8 +1038,18 @@
         </table>
     </ChildContent>
 </Modal>
+}
+else if (repairTab == 1)
+{
+    <WarrantyTab />
+}
+else
+{
+    <TradeInTab />
+}
 
 @code {
+    private int repairTab;
     private List<RepairOrderDto> items = new();
     private List<Technician> technicians = new();
     private List<LookupItem> customerLookup = new();
@@ -1250,7 +1250,9 @@
         try
         {
             technicians = await RepairSvc.GetTechniciansAsync();
-            customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            customerLookup = ShopAccess.CanSee(Auth, "Repairs")
+                ? await PartySvc.GetShopCustomerLookupsAsync("repairs")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
             warehouses = await WarehouseSvc.GetAllAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1706,6 +1708,7 @@
 
     private async Task SaveInternal(bool printAfterSave)
     {
+        if (saving) return;
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
         EnsureFormDevices();
         if (form.Devices.Count == 0) { Toast.Error("حداقل یک دستگاه اضافه کنید."); return; }
@@ -1797,6 +1800,7 @@
 
     private async Task DoInvoice()
     {
+        if (saving) return;
         if (invoicing is null) return;
         if (invPaymentMethod == PaymentMethod.Credit)
         {
@@ -1841,8 +1845,8 @@
         {
             var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
             var html = RepairDeliveryReceiptPrint.Build(repair, companyName, companyProfile);
-            var opened = await JS.InvokeAsync<bool>("giPrint", html);
-            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
+            if (!opened) Toast.Error("پیش‌نمایش چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -1866,38 +1870,33 @@
             }
 
             var html = SaleInvoicePrint.Build(invoice, companyProfile);
-            var opened = await JS.InvokeAsync<bool>("giPrint", html);
-            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+            var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
+            if (!opened) Toast.Error("پیش‌نمایش چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private Task PrintRepair(RepairOrderDto repairSummary) => PrintDeliveryReceipt(repairSummary);
 
-    // ---------------- تعریف سریع مشتری ----------------
+    // ---------------- تعریف مشتری (همان فرم مشترک /parties) ----------------
     private bool showNewCustomer;
-    private Party newCustomer = new() { Type = PartyType.Customer, IsActive = true };
 
-    private void OpenNewCustomer()
-    {
-        newCustomer = new Party { Type = PartyType.Customer, IsActive = true };
-        showNewCustomer = true;
-    }
+    private void OpenNewCustomer() => showNewCustomer = true;
 
-    private async Task SaveNewCustomer()
+    /// <summary>پس از ثبت در فرم واقعی طرف حساب: به‌روزرسانی فهرست و انتخاب خودکار.</summary>
+    private async Task OnNewCustomerSaved(Party created)
     {
-        if (string.IsNullOrWhiteSpace(newCustomer.Name)) { Toast.Error("نام مشتری را وارد کنید."); return; }
-        saving = true;
+        showNewCustomer = false;
+        if (created is null) { Toast.Error("مشتری ثبت شد ولی اطلاعات آن دریافت نشد؛ از فهرست انتخاب کنید."); return; }
         try
         {
-            var saved = await PartySvc.SaveAsync(newCustomer);
-            Toast.Success($"مشتری «{saved.Name}» ثبت شد.");
-            showNewCustomer = false;
-            customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
-            form.PartyId = saved.Id;   // انتخاب خودکار مشتری تازه‌ساخته
+            customerLookup = ShopAccess.CanSee(Auth, "Repairs")
+                ? await PartySvc.GetShopCustomerLookupsAsync("repairs")
+                : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
+            form.PartyId = created.Id;   // انتخاب خودکار مشتری جدید
+            Toast.Success($"مشتری «{created.Name}» ثبت شد و انتخاب شد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { saving = false; }
     }
 
     // ---------------- تعمیرکارها ----------------
@@ -1907,6 +1906,7 @@
 
     private async Task SaveTech()
     {
+        if (saving) return;
         if (string.IsNullOrWhiteSpace(techForm.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
         saving = true;
         try

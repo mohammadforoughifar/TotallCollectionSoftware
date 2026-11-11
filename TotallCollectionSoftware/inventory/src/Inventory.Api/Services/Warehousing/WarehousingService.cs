@@ -491,10 +491,12 @@ public class WarehousingService : IWarehousingService
         var catMap = catFlat.ToDictionary(c => c.Id);
         var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
         var settingsMethod = await GetSettingsMethodAsync();
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, productIds, DateTime.Today);
 
         foreach (var p in list)
         {
             var dto = MapProduct(p, catMap, whMap, settingsMethod);
+            if (effectivePrices.TryGetValue(p.Id, out var effective)) dto.SalePrice = effective.Price;
             if (qtyMap.TryGetValue(p.Id, out var st))
             {
                 dto.TotalStock = st.Qty;
@@ -516,6 +518,8 @@ public class WarehousingService : IWarehousingService
         var catMap = catFlat.ToDictionary(c => c.Id);
         var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
         var dto = MapProduct(p, catMap, whMap, await GetSettingsMethodAsync());
+        var effectivePrices = await ShopPricingService.ResolveAsync(_db, new[] { id }, DateTime.Today);
+        if (effectivePrices.TryGetValue(id, out var effective)) dto.SalePrice = effective.Price;
 
         var st = await _db.InvStocks.AsNoTracking().Where(s => s.ProductId == id).ToListAsync();
         dto.TotalStock = st.Sum(s => s.Quantity);
@@ -535,6 +539,7 @@ public class WarehousingService : IWarehousingService
             IsActive = true,
             Unit = "عدد",
             VatRate = whSettings.DefaultVatRate > 0 ? whSettings.DefaultVatRate : 10,
+            InvoiceVatValue = 0,
             IsVatIncluded = true,
             CategoryId = categoryId is > 0 ? categoryId : null,
             EffectiveValuation = settingsMethod,
@@ -615,6 +620,12 @@ public class WarehousingService : IWarehousingService
                      ?? throw new InvalidOperationException("کالا یافت نشد.");
         }
 
+        ShopPricingService.ValidatePrice(dto.SalePrice);
+        var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
+            : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
+        decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
+            ? currentPrice.Price : entity.SalePrice;
+        await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
         var catName = dto.CategoryId is > 0
             ? (await _db.ProductCategories.FindAsync(dto.CategoryId.Value))?.Name
             : null;
@@ -641,6 +652,9 @@ public class WarehousingService : IWarehousingService
         entity.TaxUnitCode = NullIfEmpty(dto.TaxUnitCode);
         entity.IsVatIncluded = dto.IsVatIncluded;
         entity.VatRate = dto.VatRate;
+        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+            throw new InvalidOperationException("ارزش افزوده فاکتور باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
         entity.DutyRate = dto.DutyRate;
         entity.OtherTaxRate = dto.OtherTaxRate;
         entity.CustomsCode = NullIfEmpty(dto.CustomsCode);
@@ -664,7 +678,8 @@ public class WarehousingService : IWarehousingService
         entity.Description = NullIfEmpty(dto.Description);
         entity.Note = NullIfEmpty(dto.Note);
         entity.ImageUrl = NullIfEmpty(dto.ImageUrl);
-
+        if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
+            ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
         await _db.SaveChangesAsync();
 
         // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
@@ -695,6 +710,10 @@ public class WarehousingService : IWarehousingService
 
     public async Task DeleteProductAsync(int id)
     {
+        // A product with substantive price changes is retained for audit.
+        if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
+            await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
+            throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
         var entity = await _db.Products.FindAsync(id)
                      ?? throw new InvalidOperationException("کالا یافت نشد.");
 
@@ -859,6 +878,7 @@ public class WarehousingService : IWarehousingService
             TaxUnitCode = p.TaxUnitCode,
             IsVatIncluded = p.IsVatIncluded,
             VatRate = p.VatRate,
+            InvoiceVatValue = p.InvoiceVatValue ?? (p.IsVatIncluded && p.VatRate >= 0 && p.VatRate <= 100 ? p.VatRate : 0),
             DutyRate = p.DutyRate,
             OtherTaxRate = p.OtherTaxRate,
             CustomsCode = p.CustomsCode,
@@ -1886,7 +1906,8 @@ public class WarehousingService : IWarehousingService
                 qty = t.Type switch
                 {
                     TransactionType.Purchase => qty + l.Quantity,
-                    TransactionType.Sale => qty - l.Quantity,
+                    TransactionType.SaleReturn => qty + l.Quantity,
+                    TransactionType.Sale or TransactionType.WarrantyOut => qty - l.Quantity,
                     _ => l.Quantity
                 };
         return qty;

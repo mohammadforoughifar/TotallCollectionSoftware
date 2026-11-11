@@ -174,19 +174,17 @@
             <div class="fs-8 text-muted mt-1">بر مبنای <b>کل مبلغ</b> سطرهای خدمات</div>
         </div>
         <div class="col-md-6">
-            <label class="form-label">شماره کارت</label>
+            <label class="form-label">شماره کارت (۱۶ رقم)</label>
             <input class="form-control num" @bind="form.CardNumber" dir="ltr" maxlength="16"
                    placeholder="6037xxxxxxxxxxxx" inputmode="numeric" />
-            <div class="fs-8 text-muted mt-1">۱۶ رقم — برای واریز پورسانت</div>
         </div>
         <div class="col-md-6">
-            <label class="form-label">شماره شبا (IBAN)</label>
+            <label class="form-label">شماره شبا (۲۴ رقم پس از IR)</label>
             <div class="input-group" dir="ltr">
                 <span class="input-group-text">IR</span>
                 <input class="form-control num" @bind="form.Iban" dir="ltr" maxlength="24"
                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx" inputmode="numeric" />
             </div>
-            <div class="fs-8 text-muted mt-1">۲۴ رقم بعد از IR</div>
         </div>
         <div class="col-md-6">
             <label class="form-label">سقف تخفیف در سفارش ویزیتوری (٪)</label>
@@ -194,7 +192,7 @@
                 <input class="form-control num" value="@fDiscountCap" @oninput="@(e => fDiscountCap = e.Value?.ToString() ?? "")" inputmode="decimal" placeholder="0" dir="ltr" />
                 <span class="input-group-text">٪</span>
             </div>
-            <div class="fs-8 text-muted mt-1">۰ یا خالی = بدون سقف؛ عبور از سقف، سفارش را «نیازمند تأیید ویژه» می‌کند.</div>
+            <div class="fs-8 text-muted mt-1">صفر یا خالی: بدون سقف؛ عبور از سقف نیازمند تأیید ویژه است.</div>
         </div>
         <div class="col-12">
             <div class="form-check form-switch">
@@ -203,7 +201,7 @@
                     <i class="bi bi-eye text-primary"></i> اجازه مشاهده «کالاهای موجود» در پنل معرف
                 </label>
             </div>
-            <div class="fs-8 text-muted mt-1">در صورت فعال بودن، این معرف در پنل خودش فهرست کالاهای دارای موجودی (نام، کد، قیمت فروش) را می‌بیند — بدون قیمت خرید و مقدار موجودی.</div>
+            <div class="fs-8 text-muted mt-1">نمایش نام، کد و قیمت فروش؛ بدون قیمت خرید و تعداد موجودی.</div>
         </div>
         <div class="col-12">
             <label class="form-label d-block">وضعیت</label>
@@ -233,7 +231,7 @@
     <ChildContent>
         @if (cardFor is not null)
         {
-            <BusinessCard Name="@cardFor.Name" Shop="@cardFor.CompanyName" Phone="@cardFor.Phone" />
+            <BusinessCard Name="@cardFor.Name" Shop="@cardFor.CompanyName" Phone="@cardFor.Phone" UsePrintPreview="true" />
         }
     </ChildContent>
 </Modal>

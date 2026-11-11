@@ -22,6 +22,8 @@ public interface IInventoryService
     // ---------------- کیف پول و پرداخت معرف ----------------
     /// <summary>فهرست کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance، desc)</summary>
     Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc, Paging.Request? pagination = null);
+    /// <summary>کیف پول یک معرف، بدون وابسته کردن پنل او به محاسبهٔ سایر معرف‌ها.</summary>
+    Task<Referrer?> GetReferrerWalletAsync(int referrerId);
     Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, Paging.Request? pagination = null);
     Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto);
     Task DeleteReferrerPaymentAsync(int id);
@@ -37,7 +39,7 @@ public interface IInventoryService
     Task DeleteUnitAsync(int id);
 
     // ---------------- ورود اکسل کالا ----------------
-    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream);
+    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null);
     byte[] BuildProductTemplate();
 
     // ---------------- کالا ----------------
@@ -56,28 +58,63 @@ public interface IInventoryService
     // ---------------- طرف حساب ----------------
     /// <param name="referrerScope">محدودکردن به پروندهٔ یک معرف (ویزیتور بدون مجوز دیدن کل مشتریان).</param>
     Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null, int? referrerScope = null);
+    /// <summary>فقط مشخصات انتخاب طرف حساب در ثبت فاکتور، بدون مانده و اطلاعات تماس.</summary>
+    Task<List<Party>> GetInvoicePartiesAsync(PartyType type);
     Task<Party> SavePartyAsync(Party dto);
     Task DeletePartyAsync(int id);
 
     // ---------------- موجودی ----------------
     Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize);
     Task AdjustStockAsync(AdjustmentCommand cmd);
+    /// <summary>خروج واقعی گارانتی؛ فقط داخل تراکنش سریال‌پذیر پذیرش گارانتی فراخوانی شود.</summary>
+    Task<int?> ConsumeWarrantyStockAsync(int warehouseId, int partyId, string warrantyNumber, DateTime at, IReadOnlyCollection<ShopWarrantyItemDto> supplied);
 
     // ---------------- خرید و فروش ----------------
-    Task<Order> CreateOrderAsync(OrderCommand cmd);
-    Task<Order> UpdateOrderAsync(int id, OrderCommand cmd);
+    Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true);
+    Task ReconcileLegacyOrderCashAsync(int id, ShopCashReconciliationCommand cmd, string? user);
+    Task<ShopOrderCreditState> GetOrderCreditStateAsync(int id);
+    Task ReceiveOrderCreditAsync(int id, ShopOrderCreditReceiptCommand cmd, string? user);
+    Task ReverseOrderCreditAsync(int id, int receiptId, ShopOrderCreditReversalCommand cmd, string? user);
+    Task<SaleChequeReschedulePreview> PreviewSaleChequeRescheduleAsync(int chequeId, DateTime expectedDueDate, DateTime newDueDate);
+    Task<SaleChequeReschedulePreview> RescheduleSaleChequeAsync(int chequeId, SaleChequeRescheduleCommand cmd, string? user);
+    Task ReceiveSaleChequeAsync(int chequeId, SaleChequeReceiptCommand cmd, string? user);
+    Task ReverseSaleChequeReceiptAsync(int chequeId, SaleChequeReceiptReversalCommand cmd, string? user);
+    Task ChangeSaleChequeStatusAsync(int chequeId, SaleChequeStatusCommand cmd, string? user);
+    Task<List<SaleChequeStatusHistoryItem>> GetSaleChequeStatusHistoryAsync(int chequeId);
+    Task<SaleChequeReturnPreviewDto> PreviewSaleChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req);
+    Task<SaleChequeReturnSummaryDto> ReturnSaleChequeOrderAsync(int saleId, SaleChequeReturnCommand cmd, string? user);
+    Task ReplaceSaleChequeAsync(int chequeId, SaleChequeReplaceCommand cmd, string? user);
+    Task RefundSaleChequeCreditAsync(int saleId, SaleChequeCreditRefundCommand cmd, string? user);
+    Task ApplySaleChequeCreditAsync(int saleId, SaleChequeCreditAllocationCommand cmd, string? user);
+    Task ReceiveSaleChequeInstallmentAsync(int installmentId, SaleChequeInstallmentReceiptCommand cmd, string? user);
+    Task ReverseSaleChequeInstallmentReceiptAsync(int installmentId, SaleChequeInstallmentReversalCommand cmd, string? user);
+    Task CancelSaleChequeOrderAsync(int saleId, SaleChequeCancelCommand cmd, string? user);
+    Task<Order> EditSaleChequeOrderAsync(int saleId, OrderCommand cmd, string? user);
+    Task<List<TrsAccount>> GetActiveCompanyTreasuryAccountsAsync(TreasuryAccountKind? kind = null);
+    Task<Order> UpdateOrderAsync(int id, OrderCommand cmd, string? user = null);
     Task<Order?> GetOrderAsync(int id);
 
     // ---------------- داشبورد ادمین و پرداخت ----------------
     Task<AdminDashboard> GetAdminDashboardAsync();
+    Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null);
+
     Task ClearChequeAsync(int chequeId);
+    Task BounceChequeAsync(int chequeId, string? reason);
+    Task ResetChequeAsync(int chequeId);
     Task PayInstallmentAsync(int installmentId);
+    Task UnpayInstallmentAsync(int installmentId);
     Task SettleCreditAsync(int transactionId, decimal amount);
+
+    // ---------------- مدیریت چک و اقساط فروشگاهی ----------------
+    Task<ShopCreditSummary> GetShopCreditSummaryAsync();
+    Task<List<ShopChequeItem>> GetShopChequesAsync(ChequeStatus? status, TransactionType? txnType, string? search);
+    Task<List<ShopInstallmentItem>> GetShopInstallmentsAsync(bool? isPaid, string? search);
 
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
     Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false, Paging.Request? pagination = null);
-    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize);
-    Task DeleteOrderAsync(int id);
+    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null);
+    Task DeleteOrderAsync(int id, string? user = null, bool allowUntrackedRollback = false);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 
     /// <summary>آخرین سند خریدی که شامل این کالاست (برای نمایش در فرم فروش).</summary>
