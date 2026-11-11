@@ -1510,6 +1510,8 @@ public class InventoryService : IInventoryService
 
     public async Task<Party> SavePartyAsync(Party dto)
     {
+        var identifierError = ShopIdentifierRules.ValidateParty(dto);
+        if (identifierError is not null) throw new InvalidOperationException(identifierError);
         Db.Party entity;
         if (dto.Id == 0) { entity = new Db.Party(); _db.Parties.Add(entity); }
         else entity = await _db.Parties.FindAsync(dto.Id) ?? throw new InvalidOperationException("طرف حساب یافت نشد.");

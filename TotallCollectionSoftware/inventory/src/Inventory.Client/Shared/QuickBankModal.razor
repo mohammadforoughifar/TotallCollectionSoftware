@@ -90,7 +90,7 @@
                     <label class="form-label fs-8">شماره شبا (بدون IR)</label>
                     <div class="input-group" dir="ltr">
                         <span class="input-group-text">IR</span>
-                        <input class="form-control num" @bind="form.Iban" maxlength="24" placeholder="۲۴ رقم شبا" />
+                        <input class="form-control num" @bind="form.Iban" maxlength="34" placeholder="۲۴ رقم شبا" inputmode="text" />
                     </div>
                 </div>
 
@@ -209,6 +209,9 @@
     [Parameter] public TreasuryAccountKind DefaultKind { get; set; } = TreasuryAccountKind.Bank;
     [Parameter] public string Title { get; set; } = "تعریف بانک و حساب جدید";
 
+    [Parameter] public int? InitialCompanyId { get; set; }
+    [Parameter] public int InitialSortOrder { get; set; }
+    private bool wasVisible;
     private TrsAccount form = new();
     private string openingText = "0";
     private bool saving = false;
@@ -305,10 +308,8 @@
 
     protected override void OnParametersSet()
     {
-        if (Visible && form.Id == 0 && string.IsNullOrWhiteSpace(form.Name))
-        {
-            ResetForm();
-        }
+        if (Visible && !wasVisible) ResetForm();
+        wasVisible = Visible;
     }
 
     private void ResetForm()
@@ -316,6 +317,7 @@
         form = new TrsAccount
         {
             Kind = DefaultKind,
+            CompanyId = InitialCompanyId, SortOrder = InitialSortOrder,
             IsActive = true
         };
         openingText = "0";
@@ -367,18 +369,13 @@
             return;
         }
 
+        var identifierError = ShopIdentifierRules.ValidateBank(form);
+        if (identifierError is not null) { NotifyError(identifierError); return; }
+
         saving = true;
         try
         {
-            // شبا بدون حروف اضافه
-            if (!string.IsNullOrWhiteSpace(form.Iban))
-            {
-                var cleanIban = form.Iban.Trim().ToUpperInvariant();
-                if (cleanIban.StartsWith("IR")) cleanIban = cleanIban.Substring(2);
-                form.Iban = cleanIban;
-            }
-
-            var saved = await AccountSvc.SaveAsync(form);
+            var saved = await AccountSvc.SaveShopAsync(form);
             NotifySuccess($"حساب «{saved.Name}» با موفقیت ثبت و افزوده شد.");
 
             await OnAccountCreated.InvokeAsync(saved);

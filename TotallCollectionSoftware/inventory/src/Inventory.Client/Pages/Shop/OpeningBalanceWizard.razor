@@ -1718,6 +1718,8 @@
     private async Task SaveChequeAsync()
     {
         if (saving) return;
+        var identifierError = ShopIdentifierRules.ValidateCheque(newCheque);
+        if (identifierError is not null) { Toast.Error(identifierError); return; }
         if ((newCheque.PartyId ?? 0) <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
         if (newCheque.Amount <= 0) { Toast.Error("مبلغ چک باید بزرگ‌تر از صفر باشد."); return; }
         if (newCheque.Kind == ChequeKind.Issued && (newCheque.TrsAccountId ?? 0) <= 0)
@@ -1733,7 +1735,7 @@
             newCheque.IssueDate = DateTime.Today;
             newCheque.Status = ChequeStatus.InHand;
 
-            var saved = await ChequeSvc.SaveAsync(newCheque);
+            var saved = await ChequeSvc.SaveShopAsync(newCheque);
             Toast.Success($"چک شماره {saved.Number} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
             
             try

@@ -1,3 +1,4 @@
+@implements IDisposable
 @page "/trs/cheques"
 @inject ITrsChequeService ChequeSvc
 @inject ITrsAccountService AccountSvc
@@ -82,7 +83,7 @@
                     <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                     <input class="form-control border-start-0 fin-input"
                            placeholder="شماره چک، صیاد، بانک یا طرف حساب…"
-                           @bind="search" @bind:event="oninput" @onkeyup="OnSearchKey" />
+                           value="@search" @oninput="OnSearchInput" />
                 </div>
             </div>
             <div class="col-6 col-md-2">
@@ -990,24 +991,50 @@
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
         try
         {
             var res = await ChequeSvc.GetAllAsync(kind, status, null, null, search, from, to, onlyOpen, page, pageSize);
+            if (version != loadVersion) return;
             items = res.Items;
             total = res.TotalCount;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private async Task SetKind(ChequeKind? k) { kind = k; page = 1; await Load(); }
 
-    private async Task OnSearchKey(KeyboardEventArgs e)
+    private System.Threading.CancellationTokenSource? searchCts;
+    private int loadVersion;
+
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
-        if (e.Key != "Enter") return;
+        search = e.Value?.ToString() ?? "";
+        searchCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        searchCts = cts;
+        var version = ++loadVersion; // invalidate an older in-flight response immediately
         page = 1;
-        await Load();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(search)) await Task.Delay(300, cts.Token);
+            if (cts.IsCancellationRequested || version != loadVersion) return;
+            await Load();
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (ReferenceEquals(searchCts, cts)) searchCts = null;
+            cts.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        ++loadVersion;
+        searchCts?.Cancel();
     }
 
     private async Task OnStatus(ChangeEventArgs e)
@@ -1072,10 +1099,13 @@
 
     private async Task SaveCheque()
     {
+        if (saving) return;
+        var identifierError = ShopIdentifierRules.ValidateCheque(form);
+        if (identifierError is not null) { Toast.Error(identifierError); return; }
         saving = true;
         try
         {
-            await ChequeSvc.SaveAsync(form);
+            await ChequeSvc.SaveShopAsync(form);
             Toast.Success("چک ذخیره شد.");
             showForm = false;
             await Load();

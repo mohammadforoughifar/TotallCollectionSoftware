@@ -535,9 +535,9 @@ else
                                                 <div class="fw-500">@r.ProductName</div>
                                                 <div class="fs-8 text-muted">@r.ProductCode</div>
                                             </td>
-                                            <td class="num text-danger fw-700">@r.TotalStock.Num()</td>
-                                            <td class="num">@r.ReorderPoint.Num()</td>
-                                            <td class="num fw-700 text-danger">@r.Shortage.Num()</td>
+                                            <td class="num text-danger fw-700">@r.TotalStock.Qty()</td>
+                                            <td class="num">@r.ReorderPoint.Qty()</td>
+                                            <td class="num fw-700 text-danger">@r.Shortage.Qty()</td>
                                         </tr>
                                     }
                                 </tbody>
