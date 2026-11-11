@@ -540,6 +540,12 @@
                                             }
                                         </div>
                                     }
+                                    @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
+                                    {
+                                        <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
+                                            <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
+                                        </button>
+                                    }
                                 </td>
                                 <td data-label="مقدار">
                                     <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="@(QuantityAllowsFraction(l) == false ? "numeric" : "decimal")" dir="ltr" placeholder="1"
@@ -623,10 +629,6 @@
                                 }
                                 <td class="text-nowrap">
                                     <div class="order-line-actions">
-                                        @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
-                                        {
-                                            <button type="button" class="btn btn-sm btn-light text-primary" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F7 یا F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F7 یا F8" @onclick="() => ShowLastPurchase(l.ProductId)">F7</button>
-                                        }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
                                         </button>

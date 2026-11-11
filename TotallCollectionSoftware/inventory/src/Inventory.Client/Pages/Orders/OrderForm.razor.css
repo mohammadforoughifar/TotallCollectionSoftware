@@ -155,3 +155,27 @@
 .dated-price-note { display: block; color: #9a5814; font-size: .66rem; line-height: 1.5; margin-top: .2rem; }
 
 .invoice-price-hint { color: #526281; font-size: .73rem; line-height: 1.7; margin: 0 0 .45rem; }
+
+/* Keep history next to its product, never squeezed into the narrow delete column. */
+.purchase-items .last-purchase-action {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    flex: 0 0 auto; width: max-content; max-width: 100%; min-height: 36px;
+    margin-top: .45rem; padding: .35rem .65rem;
+    border: 1px solid #c7d2fe; border-radius: 9px;
+    background: #eef2ff; color: #4338ca; font: inherit; font-size: .78rem;
+    font-weight: 600; line-height: 1.5; white-space: nowrap;
+    word-break: normal; overflow-wrap: normal; cursor: pointer;
+}
+.purchase-items .last-purchase-action span { white-space: nowrap; }
+.purchase-items .last-purchase-action kbd {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    min-width: 28px; padding: .1rem .3rem; border: 1px solid #c7d2fe;
+    border-radius: 5px; background: #fff; color: #4338ca;
+    font: 600 11px/1.4 ui-monospace, monospace; white-space: nowrap;
+}
+.purchase-items .last-purchase-action:hover { background: #e0e7ff; border-color: #a5b4fc; }
+.purchase-items .last-purchase-action:focus-visible { outline: 2px solid #6366f1; outline-offset: 3px; }
+@media (max-width: 991px) {
+    .sale-items tbody td:first-child { padding-left: 2.5rem; }
+    .purchase-items .last-purchase-action { min-height: 40px; }
+}
