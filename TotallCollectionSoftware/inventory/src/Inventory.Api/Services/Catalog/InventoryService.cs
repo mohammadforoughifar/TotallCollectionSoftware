@@ -2761,6 +2761,7 @@ public class InventoryService : IInventoryService
     {
         var now = DateTime.Now;
         var today = now.Date;
+        var tomorrow = today.AddDays(1);
 
         // بازه‌های شمسی: هفته از شنبه، ماه از ۱ ماه شمسی، فصل از ماه ۱/۴/۷/۱۰
         var dow = (int)today.DayOfWeek; // Saturday=6
@@ -2889,8 +2890,7 @@ public class InventoryService : IInventoryService
             .Include(t => t.Cheques)
             .Include(t => t.Installments)
             .Where(t => t.Type == TransactionType.Sale &&
-                        (t.PaymentMethod == PaymentMethod.Credit || t.PaymentMethod == PaymentMethod.Mixed) &&
-                        t.DueDate != null && t.DueDate <= today && t.SettledAmount < t.Amount)
+                        t.DueDate != null && t.DueDate < tomorrow)
             .ToListAsync();
         creditTxns = creditTxns.Where(t => !cancelledAll.Contains(t.Id)).ToList();
         var overdueIds = creditTxns.Select(t => t.Id).ToList();
@@ -2935,7 +2935,7 @@ public class InventoryService : IInventoryService
         }
 
         var dueInstallments = await _db.Installments
-            .Where(i => !i.IsPaid && i.DueDate <= today)
+            .Where(i => !i.IsPaid && i.DueDate < tomorrow)
             .ToListAsync();
         if (dueInstallments.Count > 0)
         {
@@ -2944,7 +2944,7 @@ public class InventoryService : IInventoryService
             foreach (var i in dueInstallments)
             {
                 if (cancelledAll.Contains(i.TransactionId)) continue;
-                if (!instTxns.TryGetValue(i.TransactionId, out var t)) continue;
+                if (!instTxns.TryGetValue(i.TransactionId, out var t) || t.Type != TransactionType.Sale) continue;
                 var party = t.PartyId.HasValue && partyNames.TryGetValue(t.PartyId.Value, out var pp) ? pp : null;
                 dash.OverdueDebtors.Add(new DebtorItem
                 {
@@ -2963,10 +2963,19 @@ public class InventoryService : IInventoryService
         dash.OverdueDebtors = dash.OverdueDebtors.OrderByDescending(d => d.DaysOverdue).ThenByDescending(d => d.Amount).ToList();
 
         // چک‌های دریافتی از مشتری و چک‌های پرداختی ما (شامل سررسید امروز/گذشته یا برگشتی‌ها)
-        var uncleanedCheques = await _db.Cheques
-            .Where(c => c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && ((!c.IsCleared && c.DueDate <= today) || c.Status == ChequeStatus.Bounced))
-            .OrderBy(c => c.DueDate)
-            .ToListAsync();
+        // Use the same persisted shop cheque source as credit management. Do not mix
+        // treasury IDs into these alerts: their settlement endpoints are different.
+        var openCheques = await _db.Cheques.AsNoTracking()
+            .Where(c => !c.IsCleared && c.Status != ChequeStatus.Cleared &&
+                        c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed &&
+                        !cancelledAll.Contains(c.TransactionId))
+            .OrderBy(c => c.DueDate).ToListAsync();
+        var openTxnIds = openCheques.Select(c => c.TransactionId).Distinct().ToList();
+        var openTxnTypes = await _db.Transactions.AsNoTracking()
+            .Where(t => openTxnIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Type);
+        dash.PendingReceivedChequesCount = openCheques.Count(c => openTxnTypes.TryGetValue(c.TransactionId, out var type) && type == TransactionType.Sale);
+        dash.PendingIssuedChequesCount = openCheques.Count(c => openTxnTypes.TryGetValue(c.TransactionId, out var type) && type == TransactionType.Purchase);
+        var uncleanedCheques = openCheques.Where(c => c.DueDate < tomorrow || c.Status == ChequeStatus.Bounced).ToList();
 
         if (uncleanedCheques.Count > 0)
         {
@@ -2995,7 +3004,7 @@ public class InventoryService : IInventoryService
                     // چک پرداختی ما به فروشنده/تأمین‌کننده
                     dash.IssuedCheques.Add(alertItem);
                 }
-                else
+                else if (t?.Type == TransactionType.Sale)
                 {
                     // چک دریافتی از مشتری (فروش)
                     dash.TodayCheques.Add(alertItem);
@@ -3572,7 +3581,7 @@ public class InventoryService : IInventoryService
         var cancelledIds = (await _db.SaleChequeCancellations.AsNoTracking()
             .Select(c => c.SaleTransactionId).ToListAsync()).ToHashSet();
 
-        var inHand = cheques.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && !cancelledIds.Contains(c.TransactionId)).ToList();
+        var inHand = cheques.Where(c => !c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && !cancelledIds.Contains(c.TransactionId)).ToList();
         var cleared = cheques.Where(c => c.IsCleared || c.Status == ChequeStatus.Cleared).ToList();
         var bounced = cheques.Where(c => c.Status == ChequeStatus.Bounced && !cancelledIds.Contains(c.TransactionId)).ToList();
 
@@ -3612,7 +3621,7 @@ public class InventoryService : IInventoryService
             else if (status.Value == ChequeStatus.Cancelled)
                 q = q.Where(c => c.Status == ChequeStatus.Cancelled);
             else
-                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed);
+                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed);
         }
 
         var list = await q.OrderBy(c => c.DueDate).ToListAsync();
@@ -3630,9 +3639,12 @@ public class InventoryService : IInventoryService
         var chargedTxnIds = (await _db.SaleChequeCharges.AsNoTracking()
             .Where(c => txnIds.Contains(c.TransactionId)).Select(c => c.TransactionId).ToListAsync()).ToHashSet();
 
+        var cancelledTxnIds = (await _db.SaleChequeCancellations.AsNoTracking()
+            .Where(c => txnIds.Contains(c.SaleTransactionId)).Select(c => c.SaleTransactionId).ToListAsync()).ToHashSet();
         var result = new List<ShopChequeItem>();
         foreach (var c in list)
         {
+            if (cancelledTxnIds.Contains(c.TransactionId) && !c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Cancelled) continue;
             txns.TryGetValue(c.TransactionId, out var t);
             if (t is null || t.CompanyId != c.CompanyId)
                 throw new InvalidOperationException("شرکت چک با فاکتور آن مطابقت ندارد؛ سابقه نیازمند بررسی است.");
