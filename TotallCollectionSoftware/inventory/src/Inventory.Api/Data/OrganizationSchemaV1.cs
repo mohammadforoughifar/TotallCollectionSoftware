@@ -12,14 +12,37 @@ namespace Inventory.Api.Data;
 /// </summary>
 public static class OrganizationSchemaV1
 {
-    public static async Task EnsureAsync(AppDbContext db)
+    /// <summary>
+    /// نسخهٔ اصلی — رشتهٔ اتصال را از <b>خودِ اتصال EF</b> می‌گیرد.
+    ///
+    /// <para>
+    /// ⚠️ <b>این مسیر را در کد تولیدی استفاده نکنید؛</b> از
+    /// <see cref="EnsureAsync(AppDbContext, string?)"/> استفاده کنید.
+    /// دلیل: ADO.NET پس از باز شدن اتصال، رمز را از <c>ConnectionString</c> حذف
+    /// می‌کند (مگر اینکه رشته <c>Persist Security Info=True</c> داشته باشد). نتیجه
+    /// اینکه یک اتصال تازه با رشتهٔ بی‌رمز ساخته می‌شود و ورود با خطای
+    /// <c>18456</c> شکست می‌خورد — با پیام گمراه‌کنندهٔ «مجوز ALTER را بررسی کنید».
+    /// این overload فقط برای ابزارهای تست/تعمیر که خودشان رشته را می‌دهند نگه داشته شده.
+    /// </para>
+    /// </summary>
+    public static Task EnsureAsync(AppDbContext db) => EnsureAsync(db, connectionString: null);
+
+    /// <summary>
+    /// نسخهٔ درست: رشتهٔ اتصال از <b>پیکربندی</b> (appsettings/متغیر محیطی) می‌آید،
+    /// نه از اتصال باز. پس رمز همیشه سرِ جایش است و به
+    /// <c>Persist Security Info</c> وابسته نیستیم.
+    /// </summary>
+    /// <param name="connectionString">
+    /// اگر null باشد، از اتصال EF خوانده می‌شود (رفتار قدیمی). در تولید، همیشه مقدار می‌گیرد.
+    /// </param>
+    public static async Task EnsureAsync(AppDbContext db, string? connectionString)
     {
         try
         {
             if (db.Database.GetDbConnection() is SqliteConnection sqlConn)
-                await EnsureSqliteAsync(sqlConn.ConnectionString);
-            else if (db.Database.GetDbConnection() is SqlConnection sqlServerConn)
-                await EnsureSqlServerAsync(sqlServerConn.ConnectionString);
+                await EnsureSqliteAsync(connectionString ?? sqlConn.ConnectionString);
+            else if (db.Database.GetDbConnection() is SqlConnection)
+                await EnsureSqlServerAsync(connectionString ?? db.Database.GetDbConnection().ConnectionString);
         }
         catch (Exception ex)
         {

@@ -33,14 +33,13 @@ void Section(string title) => Console.WriteLine($"\n=== {title} ===");
 
 // ---------- ابزار ساخت سند ----------
 LicenseItem Item(string id, string[] scope, LicenseTerm term, LicenseUsers? users = null,
-    LicenseQuota[]? quotas = null, bool carryOver = false) => new()
+    LicenseQuota[]? quotas = null) => new()
 {
     Id = id,
     Scope = scope.ToList(),
     Term = term,
     Users = users ?? new LicenseUsers(),
-    Quotas = quotas?.ToList() ?? new List<LicenseQuota>(),
-    CarryOverUsage = carryOver
+    Quotas = quotas?.ToList() ?? new List<LicenseQuota>()
 };
 
 LicenseTerm Sub(DateTime from, DateTime until) => new()

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Inventory.Api.Infrastructure;
 using static Inventory.Shared.Dtos.Moadian.VmInvoiceItems;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Moadian
 {
@@ -204,6 +205,7 @@ namespace Inventory.Api.Controllers.Moadian
             return result;
         }
 
+        [AllowInReadOnly]
         [HttpPost("PreviewSendInvoiceAsync")]
         public async Task<ApiModel> PreviewSendInvoiceAsync(VmInvoiceItems.InvoiceVM model)
         {

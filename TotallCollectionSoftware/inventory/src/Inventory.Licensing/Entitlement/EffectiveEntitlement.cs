@@ -56,7 +56,6 @@ public sealed class ItemEntitlement
     public int UserExempt { get; init; }
     public LicenseUserScope UserScope { get; init; }
     public IReadOnlyList<string> Modules { get; init; } = Array.Empty<string>();
-    public bool CarryOverUsage { get; init; }
 
     /// <summary>هنوز شروع نشده / در جریان / منقضی.</summary>
     public DateTime? FirstExpiry { get; init; }

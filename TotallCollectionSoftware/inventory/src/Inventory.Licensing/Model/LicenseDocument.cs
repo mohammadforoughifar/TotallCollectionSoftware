@@ -90,15 +90,6 @@ public sealed class LicenseItem
     [JsonPropertyName("quotas")]
     public List<LicenseQuota> Quotas { get; set; } = new();
 
-    /// <summary>
-    /// فقط برای آیتمی که <b>جایگزین یک Trial</b> می‌شود:
-    /// اگر true باشد، مصرف دورهٔ آزمایشی از سقف آیتم جدید کسر می‌شود (مشتری که در
-    /// دورهٔ آزمایشی ۵۰ فاکتور زده، از سقف ۱۰۰۰تایی فقط ۹۵۰تا دارد)؛
-    /// اگر false باشد مصرف Trial صفر حساب می‌شود.
-    /// </summary>
-    [JsonPropertyName("carryOverUsage")]
-    public bool CarryOverUsage { get; set; }
-
     /// <summary>یادداشت آزاد صادرکننده.</summary>
     [JsonPropertyName("note")]
     public string? Note { get; set; }

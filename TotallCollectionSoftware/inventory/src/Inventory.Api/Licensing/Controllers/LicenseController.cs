@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Licensing.Providers;
+using Inventory.Api.Licensing.Infrastructure;
 using Inventory.Api.Licensing.Services;
 using Inventory.Licensing.Abstractions;
 using Inventory.Licensing.Crypto;
@@ -97,12 +98,13 @@ public class LicenseController : ControllerBase
     private readonly AppDbContext _db;
     private readonly LicensingOptions _options;
     private readonly IConfiguration _configuration;
+    private readonly QuotaService _quota;
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
         PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
         LicenseEventLogger events, AppDbContext db, LicensingOptions options,
-        IConfiguration configuration, ILogger<LicenseController> log)
+        IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log)
     {
         _licenses = licenses;
         _identity = identity;
@@ -113,6 +115,7 @@ public class LicenseController : ControllerBase
         _db = db;
         _options = options;
         _configuration = configuration;
+        _quota = quota;
         _log = log;
     }
 
@@ -183,8 +186,7 @@ public class LicenseController : ControllerBase
                 i.UserMax,
                 i.UserExempt,
                 userScope = i.UserScope.ToString(),
-                modules = i.Modules.Select(m => new { code = m, title = ModuleCodes.TitleOf(m) }),
-                i.CarryOverUsage
+                modules = i.Modules.Select(m => new { code = m, title = ModuleCodes.TitleOf(m) })
             }),
             modules = ModuleCodes.All.Select(m =>
             {
@@ -513,6 +515,101 @@ public class LicenseController : ControllerBase
             severity: "Warning", userId: CurrentUserIdOrNull(), serial: grant.Serial, cancellationToken: cancellationToken);
 
         return Ok(new { message = "فایل لایسنس غیرفعال شد." });
+    }
+
+    // ==================== ۵) رزروهای سهمیه (مرحله ۲ — بازبینی) ====================
+
+    /// <summary>
+    /// فهرست رزروهای سهمیه.
+    ///
+    /// <para>
+    /// کاربرد اصلی: رزروهایی که در وضعیت <c>Pending</c> مانده‌اند — یعنی ارسال به مودیان
+    /// با نتیجهٔ نامعلوم تمام شد، یا برنامه وسط کار خاموش شد. مصرف این‌ها بازنگشته است
+    /// و باید <b>دستی</b> تصمیم گرفته شود.
+    /// </para>
+    ///
+    /// <para>پارامتر <c>state</c> اختیاری است: <c>Reserved</c> | <c>Pending</c> | <c>Confirmed</c> | <c>Refunded</c>.</para>
+    /// </summary>
+    [HttpGet("reservations")]
+    public async Task<IActionResult> Reservations([FromQuery] string? state,
+        [FromQuery] int take = 100, CancellationToken cancellationToken = default)
+    {
+        if (!IsAdmin()) return AdminOnly();
+
+        var rows = await _quota.ListReservationsAsync(state, take, cancellationToken);
+
+        return Ok(new
+        {
+            count = rows.Count,
+            items = rows.Select(r => new
+            {
+                r.Id, r.Module, r.Metric, r.PeriodKey, r.Amount, r.EntityType, r.EntityId,
+                r.State, r.ReservedAt, r.SettledAt, r.SettledBy, r.Note,
+                ageMinutes = (int)Math.Max(0, (PersianPeriodKey.NowIran() - r.ReservedAt).TotalMinutes)
+            })
+        });
+    }
+
+    /// <summary>
+    /// <b>تسویهٔ دستی</b> یک رزرو «در انتظار».
+    ///
+    /// <para>
+    /// ورودی: <c>{ "action": "Confirm" | "Refund", "note": "..." }</c>
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Confirm</b> ⇒ ارسال انجام شده بود؛ مصرف همان‌جا می‌ماند.<br/>
+    /// <b>Refund</b> ⇒ ارسال انجام <b>نشده</b> بود؛ یک واحد به سهمیهٔ همان دوره برمی‌گردد.
+    /// </para>
+    ///
+    /// <para>
+    /// رخداد <c>LICENSE_QUOTA_MANUAL_SETTLE</c> با <b>نام کاربری</b> و شناسهٔ رزرو ثبت
+    /// می‌شود (ممیزی: این تصمیم انسانی است). دروازهٔ لایسنس این مسیر را آزاد می‌گذارد
+    /// تا در حالت «بدون لایسنس» هم رزروهای معلق قابل بستن باشند.
+    /// </para>
+    /// </summary>
+    [HttpPost("reservations/{id:long}/settle")]
+    [AllowInReadOnly]
+    public async Task<IActionResult> SettleReservation(long id, [FromBody] SettleReservationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAdmin()) return AdminOnly();
+
+        if (request is null || string.IsNullOrWhiteSpace(request.Action))
+            return BadRequest(new { code = "LICENSE_SETTLE_INVALID", message = "عملیات تسویه (Confirm یا Refund) را مشخص کنید." });
+
+        var action = request.Action.Trim();
+        var confirm = action.Equals("Confirm", StringComparison.OrdinalIgnoreCase);
+        var refund = action.Equals("Refund", StringComparison.OrdinalIgnoreCase);
+        if (!confirm && !refund)
+            return BadRequest(new { code = "LICENSE_SETTLE_INVALID", message = "عملیات تسویه فقط Confirm یا Refund می‌تواند باشد." });
+
+        var username = User.Identity?.Name ?? "unknown";
+        var done = await _quota.SettleReservationAsync(id, confirm, username, request.Note, cancellationToken);
+
+        if (!done)
+            return NotFound(new
+            {
+                code = "LICENSE_RESERVATION_NOT_OPEN",
+                message = "رزرو پیدا نشد یا قبلاً تسویه شده است."
+            });
+
+        return Ok(new
+        {
+            message = confirm ? "رزرو تأیید شد؛ مصرف تغییر نکرد." : "رزرو بازگردانده شد؛ سهمیهٔ دوره آزاد شد.",
+            id,
+            action = confirm ? "Confirm" : "Refund"
+        });
+    }
+
+    /// <summary>بدنهٔ درخواست تسویهٔ دستی رزرو.</summary>
+    public sealed class SettleReservationRequest
+    {
+        /// <summary>Confirm یا Refund</summary>
+        public string Action { get; set; } = "";
+
+        /// <summary>یادداشت اختیاری (مثلاً «طبق گزارش سامانهٔ مودیان، ارسال نشده بود»).</summary>
+        public string? Note { get; set; }
     }
 
     // ==================== کمکی‌ها ====================

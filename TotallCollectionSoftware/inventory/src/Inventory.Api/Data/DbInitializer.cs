@@ -47,7 +47,7 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
@@ -131,7 +131,7 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);

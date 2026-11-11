@@ -96,7 +96,6 @@ BEGIN
         [UserMax]        int           NOT NULL,
         [UserExempt]     int           NOT NULL,
         [QuotasJson]     nvarchar(max) NULL,
-        [CarryOverUsage] bit           NOT NULL,
         CONSTRAINT [PK_LicenseItemRows] PRIMARY KEY ([Id])
     );
 END;
@@ -161,6 +160,32 @@ END;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseUsageBaselines_Key' AND object_id = OBJECT_ID(N'dbo.LicenseUsageBaselines'))
     CREATE UNIQUE INDEX [IX_LicenseUsageBaselines_Key] ON [dbo].[LicenseUsageBaselines] ([Module], [Metric]);
 
+-- ---------- رزرو سهمیه (عملیات شبکه‌ای: ارسال به مودیان) ----------
+-- وضعیت صریح لازم است؛ بدون آن، رزروی که برنامه وسط آن خاموش شده «در هوا» می‌ماند.
+IF OBJECT_ID(N'dbo.LicenseReservations', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseReservations] (
+        [Id]         bigint        NOT NULL IDENTITY(1,1),
+        [Module]     nvarchar(32)  NOT NULL,
+        [Metric]     nvarchar(64)  NOT NULL,
+        [PeriodKey]  nvarchar(16)  NOT NULL,
+        [Amount]     int           NOT NULL,
+        [EntityType] nvarchar(64)  NULL,
+        [EntityId]   nvarchar(64)  NULL,
+        [State]      nvarchar(20)  NOT NULL,
+        [ReservedAt] datetime2     NOT NULL,
+        [SettledAt]  datetime2     NULL,
+        [SettledBy]  nvarchar(100) NULL,
+        [Note]       nvarchar(600) NULL,
+        [Hmac]       nvarchar(88)  NULL,
+        CONSTRAINT [PK_LicenseReservations] PRIMARY KEY ([Id])
+    );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseReservations_State' AND object_id = OBJECT_ID(N'dbo.LicenseReservations'))
+    CREATE INDEX [IX_LicenseReservations_State] ON [dbo].[LicenseReservations] ([State], [ReservedAt]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseReservations_Key' AND object_id = OBJECT_ID(N'dbo.LicenseReservations'))
+    CREATE INDEX [IX_LicenseReservations_Key] ON [dbo].[LicenseReservations] ([Module], [Metric], [PeriodKey]);
+
 -- ---------- نشست کاربر (کاربر هم‌زمان) ----------
 IF OBJECT_ID(N'dbo.LicenseSessions', N'U') IS NULL
 BEGIN
@@ -209,6 +234,7 @@ IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', 'Licen
         if (!db.Database.IsSqlite())
         {
             await db.Database.ExecuteSqlRawAsync(SqlServer);
+            await RetireCarryOverUsageSqlServerAsync(db);
             return;
         }
 
@@ -268,8 +294,7 @@ CREATE TABLE IF NOT EXISTS ""LicenseItemRows"" (
     ""UserMode"" TEXT NOT NULL,
     ""UserMax"" INTEGER NOT NULL,
     ""UserExempt"" INTEGER NOT NULL,
-    ""QuotasJson"" TEXT NULL,
-    ""CarryOverUsage"" INTEGER NOT NULL);");
+    ""QuotasJson"" TEXT NULL);");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseItemRows_GrantId"" ON ""LicenseItemRows"" (""GrantId"");");
 
             await Exec(connection, @"
@@ -310,6 +335,24 @@ CREATE TABLE IF NOT EXISTS ""LicenseUsageBaselines"" (
     ""Reason"" TEXT NOT NULL,
     ""Serial"" TEXT NULL);");
             await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseUsageBaselines_Key"" ON ""LicenseUsageBaselines"" (""Module"", ""Metric"");");
+
+            await Exec(connection, @"
+CREATE TABLE IF NOT EXISTS ""LicenseReservations"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_LicenseReservations"" PRIMARY KEY AUTOINCREMENT,
+    ""Module"" TEXT NOT NULL,
+    ""Metric"" TEXT NOT NULL,
+    ""PeriodKey"" TEXT NOT NULL,
+    ""Amount"" INTEGER NOT NULL,
+    ""EntityType"" TEXT NULL,
+    ""EntityId"" TEXT NULL,
+    ""State"" TEXT NOT NULL,
+    ""ReservedAt"" TEXT NOT NULL,
+    ""SettledAt"" TEXT NULL,
+    ""SettledBy"" TEXT NULL,
+    ""Note"" TEXT NULL,
+    ""Hmac"" TEXT NULL);");
+            await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseReservations_State"" ON ""LicenseReservations"" (""State"", ""ReservedAt"");");
+            await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseReservations_Key"" ON ""LicenseReservations"" (""Module"", ""Metric"", ""PeriodKey"");");
 
             await Exec(connection, @"
 CREATE TABLE IF NOT EXISTS ""LicenseSessions"" (
@@ -353,6 +396,7 @@ CREATE TABLE IF NOT EXISTS ""LicenseEvents"" (
                 }
                 if (!present) await Exec(connection, @"ALTER TABLE ""Users"" ADD COLUMN ""LicenseSeatExempt"" INTEGER NOT NULL DEFAULT 0;");
             }
+            await RetireCarryOverUsageSqliteAsync(connection);
         }
         finally { if (close) await connection.CloseAsync(); }
     }
@@ -373,6 +417,102 @@ CREATE TABLE IF NOT EXISTS ""LicenseEvents"" (
         if (!present)
             // نام ستون/جدول فقط از مقادیر ثابت همین فایل می‌آید (نه ورودی کاربر)؛ نوع هم ثابت است.
             await Exec(connection, $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {sqlType};");
+    }
+
+    // ==================== بازنشستگی ستون CarryOverUsage ====================
+
+    /// <summary>
+    /// ستون <c>CarryOverUsage</c> در نصب‌های قدیمی وجود دارد ولی دیگر در مدل نیست.
+    ///
+    /// <para>
+    /// <b>چرا این متد لازم است؟</b> ستون قدیمی <c>bit NOT NULL</c> و <b>بدون مقدار پیش‌فرض</b>
+    /// ساخته شده بود. حالا که موجودیت دیگر این خاصیت را ندارد، EF آن را در
+    /// <c>INSERT</c> نمی‌آورد و SQL Server با «Cannot insert the value NULL» می‌شکند.
+    /// این متد یک <b>مقدار پیش‌فرض</b> روی همان ستون می‌گذارد تا نصب‌های موجود سالم بمانند.
+    /// </para>
+    ///
+    /// <para>
+    /// عمداً ستون را <b>حذف نمی‌کنیم</b>: قاعدهٔ پروژه «اسکیمای افزایشی» است و ستون
+    /// بی‌مصرف هیچ آسیبی نمی‌زند. حذف آن یک تصمیم جدا (و بازگشت‌ناپذیر) است.
+    /// </para>
+    ///
+    /// <para>کاملاً idempotent است: اگر ستون نباشد یا پیش‌فرض داشته باشد، کاری نمی‌کند.</para>
+    /// </summary>
+    private static async Task RetireCarryOverUsageSqlServerAsync(AppDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+IF OBJECT_ID(N'dbo.LicenseItemRows', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.LicenseItemRows', N'CarryOverUsage') IS NOT NULL
+   AND NOT EXISTS (
+        SELECT 1 FROM sys.default_constraints dc
+          JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+         WHERE dc.parent_object_id = OBJECT_ID(N'dbo.LicenseItemRows')
+           AND c.name = N'CarryOverUsage')
+BEGIN
+    ALTER TABLE [dbo].[LicenseItemRows]
+        ADD CONSTRAINT [DF_LicenseItemRows_CarryOverUsage] DEFAULT (0) FOR [CarryOverUsage];
+END;");
+        }
+        catch (Exception)
+        {
+            // اگر این مرحله شکست خورد، برنامه باید همچنان بالا بیاید؛ بدترین حالت
+            // «ثبت آیتم در نصب قدیمی» است، نه از کار افتادن کل سامانه.
+        }
+    }
+
+    /// <summary>
+    /// نسخهٔ SQLite: SQLite امکان افزودن مقدار پیش‌فرض به ستون موجود را نمی‌دهد، پس
+    /// جدول را با ساختار تازه بازسازی می‌کنیم و ردیف‌ها را با نام ستون‌های صریح کپی
+    /// می‌کنیم (بدون آن ستون). اگر ستون نباشد، هیچ کاری نمی‌کنیم.
+    /// </summary>
+    private static async Task RetireCarryOverUsageSqliteAsync(System.Data.Common.DbConnection connection)
+    {
+        try
+        {
+            var hasColumn = false;
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "PRAGMA table_info('LicenseItemRows')";
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    if (string.Equals(reader.GetString(1), "CarryOverUsage", StringComparison.OrdinalIgnoreCase))
+                        hasColumn = true;
+            }
+
+            if (!hasColumn) return;
+
+            await Exec(connection, @"
+BEGIN TRANSACTION;
+CREATE TABLE ""LicenseItemRows_new"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_LicenseItemRows"" PRIMARY KEY AUTOINCREMENT,
+    ""GrantId"" INTEGER NOT NULL,
+    ""ItemId"" TEXT NOT NULL,
+    ""ScopeCsv"" TEXT NOT NULL,
+    ""TermType"" TEXT NOT NULL,
+    ""ValidFrom"" TEXT NULL,
+    ""ValidUntil"" TEXT NULL,
+    ""UpdatesUntil"" TEXT NULL,
+    ""UserMode"" TEXT NOT NULL,
+    ""UserMax"" INTEGER NOT NULL,
+    ""UserExempt"" INTEGER NOT NULL,
+    ""QuotasJson"" TEXT NULL);
+INSERT INTO ""LicenseItemRows_new""
+    (""Id"", ""GrantId"", ""ItemId"", ""ScopeCsv"", ""TermType"", ""ValidFrom"", ""ValidUntil"",
+     ""UpdatesUntil"", ""UserMode"", ""UserMax"", ""UserExempt"", ""QuotasJson"")
+SELECT ""Id"", ""GrantId"", ""ItemId"", ""ScopeCsv"", ""TermType"", ""ValidFrom"", ""ValidUntil"",
+       ""UpdatesUntil"", ""UserMode"", ""UserMax"", ""UserExempt"", ""QuotasJson""
+  FROM ""LicenseItemRows"";
+DROP TABLE ""LicenseItemRows"";
+ALTER TABLE ""LicenseItemRows_new"" RENAME TO ""LicenseItemRows"";
+CREATE INDEX IF NOT EXISTS ""IX_LicenseItemRows_GrantId"" ON ""LicenseItemRows"" (""GrantId"");
+COMMIT;");
+        }
+        catch (Exception)
+        {
+            // مثل نسخهٔ SQL Server: بالا آمدن برنامه مهم‌تر از این پاک‌سازی است.
+        }
     }
 
     private static async Task Exec(System.Data.Common.DbConnection connection, string sql)

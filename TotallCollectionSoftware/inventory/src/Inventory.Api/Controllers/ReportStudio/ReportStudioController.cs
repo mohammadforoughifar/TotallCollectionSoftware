@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -107,6 +108,7 @@ public class ReportStudioController : ControllerBase
     // =====================================================================
     //  پیش‌نمایش زنده (بدون ذخیره)
     // =====================================================================
+    [AllowInReadOnly]
     [HttpPost("preview")]
     public async Task<IActionResult> Preview([FromBody] RsRunRequestDto? req)
     {
@@ -274,6 +276,7 @@ public class ReportStudioController : ControllerBase
     // =====================================================================
     //  اجرا
     // =====================================================================
+    [AllowInReadOnly]
     [HttpPost("reports/{id:int}/run")]
     public async Task<IActionResult> Run(int id, [FromBody] RsRunRequestDto? req)
     {

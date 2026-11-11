@@ -608,6 +608,7 @@ public class AppDbContext : DbContext
     /// <summary>دفتر الحاقی مصرف سهمیه (مصرف/بازگشت) — ممیزی و لاگ حذف.</summary>
     public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
     public DbSet<LicenseUsageBaseline> LicenseUsageBaselines => Set<LicenseUsageBaseline>();
+    public DbSet<LicenseReservation> LicenseReservations => Set<LicenseReservation>();
     public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
     public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
 
@@ -1931,6 +1932,29 @@ public class AppDbContext : DbContext
     /// </summary>
     private static void ConfigureLicensing(ModelBuilder mb)
     {
+        // ==================== ⛔ هیچ مایگریشنی نباید جدول‌های لایسنس را بسازد ====================
+        //
+        // تصمیم صریح (بازبینی مرحله ۲): «تنها سازندهٔ جدول‌های لایسنس، LicenseSchemaV1 است».
+        // دلیلش یک مشکل واقعی است، نه سلیقه:
+        //  • نصب‌های موجود تاریخچهٔ مایگریشن ناقص دارند (مایگریشن‌ها دستی stamp شده‌اند)،
+        //    پس ترتیب و اجرای مایگریشن قابل اعتماد نیست.
+        //  • LicenseSchemaV1 عمداً idempotent نوشته شده و در هر بالا آمدن اجرا می‌شود؛
+        //    پس جدول‌ها همیشه ساخته/ترمیم می‌شوند.
+        //  • اگر مایگریشن هم همان جدول‌ها را بسازد، دو مسیر موازی برای یک اسکیما داریم و
+        //    در نصب بعدی، «جدول از قبل هست» به خطای مایگریشن تبدیل می‌شود.
+        //
+        // نتیجهٔ عملی: `dotnet ef migrations add` هیچ تغییری برای جدول‌های لایسنس تولید نمی‌کند.
+        // (تست: خروجی واقعی migrations add بررسی شد — صفر جدول License*.)
+        mb.Entity<LicenseInstallation>().ToTable("LicenseInstallations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrant>().ToTable("LicenseGrants", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseItemRow>().ToTable("LicenseItemRows", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsage>().ToTable("LicenseUsages", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageLedger>().ToTable("LicenseUsageLedger", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageBaseline>().ToTable("LicenseUsageBaselines", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseReservation>().ToTable("LicenseReservations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseSession>().ToTable("LicenseSessions", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseEvent>().ToTable("LicenseEvents", t => t.ExcludeFromMigrations());
+
         // تک‌ردیفی بودن نصب با منطق برنامه تضمین می‌شود (همیشه Id = 1)؛ Identity نگه داشته می‌شود.
         mb.Entity<LicenseInstallation>().HasIndex(x => x.InstallationId).IsUnique();
 
@@ -1952,6 +1976,10 @@ public class AppDbContext : DbContext
         mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
         mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });
         mb.Entity<LicenseSession>().HasIndex(x => x.UserId);
+
+        // رزرو: جست‌وجوی «رزروهای در انتظار» و «رزروهای کهنه» به این ایندکس تکیه دارد.
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.State, x.ReservedAt });
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
 
         mb.Entity<LicenseEvent>().HasIndex(x => x.At);
     }

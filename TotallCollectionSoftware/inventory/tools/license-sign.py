@@ -87,7 +87,6 @@ def build_item(spec: str) -> dict:
         "term": term,
         "users": {"mode": "None", "max": 0, "appliesTo": "Global", "exempt": 0},
         "quotas": [],
-        "carryOverUsage": False,
     }
 
 
@@ -181,7 +180,6 @@ def main() -> int:
     parser.add_argument("--module", action="append", default=[], help="CODE:TERM[:UNTIL] — تکرارشدنی")
     parser.add_argument("--users", default=None, help="named:N | concurrent:N | none")
     parser.add_argument("--quota", action="append", default=[], help="METRIC:LIMIT:PERIOD[:PACKID]")
-    parser.add_argument("--carry-over", action="store_true", help="انتقال مصرف دورهٔ آزمایشی")
     parser.add_argument("--out", required=True, help="مسیر فایل لایسنس خروجی")
     args = parser.parse_args()
 
@@ -194,9 +192,6 @@ def main() -> int:
         apply_users(items, args.users)
     for quota_spec in args.quota:
         apply_quota(items, quota_spec)
-    if args.carry_over:
-        for item in items:
-            item["carryOverUsage"] = True
 
     document = {
         "version": 3,

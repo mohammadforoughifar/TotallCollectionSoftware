@@ -40,5 +40,4 @@ public class LicenseItemRow
     /// <summary>سهمیه‌ها به‌صورت JSON (لیست LicenseQuota).</summary>
     public string? QuotasJson { get; set; }
 
-    public bool CarryOverUsage { get; set; }
 }

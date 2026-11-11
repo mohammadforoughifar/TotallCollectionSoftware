@@ -112,7 +112,6 @@ public static class EntitlementMerger
                     UserExempt = item.Users.Exempt,
                     UserScope = item.Users.AppliesTo,
                     Modules = itemModules,
-                    CarryOverUsage = item.CarryOverUsage,
                     FirstExpiry = until,
                     IsActive = state == TermState.Active,
                     IsExpired = state == TermState.Expired,

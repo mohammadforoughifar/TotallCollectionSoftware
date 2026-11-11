@@ -70,13 +70,15 @@ public static class MetricCodes
     /// <summary>همهٔ متریک‌های ثبت‌شده.</summary>
     public static readonly IReadOnlyList<MetricDefinition> All = new List<MetricDefinition>
     {
-        new(InvoiceCreate, ModuleCodes.Invoicing, "صدور صورتحساب", "فاکتور"),
+        // Kind = ActiveCount: ملاک مصرف، «تعداد ردیف‌های واقعی» است و probe دارد
+        // (رکوردهای پیش از فعال‌سازی با «مبنا» کسر می‌شوند).
+        new(InvoiceCreate, ModuleCodes.Invoicing, "صدور صورتحساب", "فاکتور", Kind: MetricKind.ActiveCount),
 
         new(MoadianInvoiceSend, ModuleCodes.Moadian, "ارسال صورتحساب به مودیان", "صورتحساب"),
 
         new(LetterInnerCreate,    ModuleCodes.Letters, "ثبت نامهٔ داخلی", "نامه"),
-        new(LetterOutgoingCreate, ModuleCodes.Letters, "ثبت نامهٔ صادره", "نامه"),
-        new(LetterIncomingCreate, ModuleCodes.Letters, "ثبت نامهٔ وارده", "نامه"),
+        new(LetterOutgoingCreate, ModuleCodes.Letters, "ثبت نامهٔ صادره", "نامه", Kind: MetricKind.ActiveCount),
+        new(LetterIncomingCreate, ModuleCodes.Letters, "ثبت نامهٔ وارده", "نامه", Kind: MetricKind.ActiveCount),
 
         new(LetterCreate, ModuleCodes.Letters, "ثبت نامه (همهٔ انواع)", "نامه",
             IsAggregate: true,

@@ -55,17 +55,37 @@ public static class ActiveCountProbes
                   .LongCountAsync(ct)
         };
 
-    /// <summary>همهٔ متریک‌های ActiveCount که probe دارند.</summary>
+    /// <summary>
+    /// همهٔ متریک‌هایی که probe دارند — <b>بدون توجه به نوع متریک</b>.
+    ///
+    /// <para>
+    /// <b>چرا نوع متریک ملاک نیست؟</b> قاعدهٔ سند: «مبنا برای <b>هر</b> متریکی که probe
+    /// دارد گرفته می‌شود، نه فقط ActiveCount». دلیلش ساده است: probe یعنی «ما می‌توانیم
+    /// تعداد واقعی ردیف‌های کسب‌وکار را بشماریم» و همین شمارش است که باید از مبنا مقایسه
+    /// شود. اگر فردا متریکی از نوع شمارنده هم probe بگیرد (مثلاً «تعداد خطوط فاکتور
+    /// در این دوره»)، نباید یادمان برود مبنا برایش ثبت شود و «دادهٔ قبل از لایسنس»
+    /// سقفش را پر کند.
+    /// </para>
+    /// </summary>
     public static IEnumerable<(string Module, string Metric,
-        Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>> Count)> All()
+        Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>> Count)> AllWithProbe()
     {
         foreach (var metric in MetricCodes.All)
         {
-            if (metric.Kind != MetricKind.ActiveCount) continue;
             if (!Probes.TryGetValue(metric.Code, out var count)) continue;
             yield return (metric.Module, metric.Code, count);
         }
     }
+
+    /// <summary>
+    /// متریک‌های ActiveCount که probe دارند — برای سازگاری با کد قبلی نگه داشته شد.
+    /// </summary>
+    public static IEnumerable<(string Module, string Metric,
+        Func<AppDbContext, DateTime, DateTime, CancellationToken, Task<long>> Count)> All()
+        => AllWithProbe().Where(x => MetricCodes.Find(x.Metric)?.Kind == MetricKind.ActiveCount);
+
+    /// <summary>آیا برای این متریک probe داریم؟ (پایهٔ تصمیم «مصرف مؤثر» در QuotaService)</summary>
+    public static bool HasProbe(string metric) => Probes.ContainsKey(metric);
 
     /// <summary>شمارش واقعی یک متریک در بازهٔ دورهٔ مشخص.</summary>
     public static Task<long> CountAsync(AppDbContext db, string metric, QuotaPeriod period,
@@ -97,7 +117,7 @@ public static class ActiveCountProbes
     {
         var captured = 0;
 
-        foreach (var (module, metric, count) in All())
+        foreach (var (module, metric, count) in AllWithProbe())
         {
             // فقط متریکی که در لایسنس مؤثر سقف دارد (مستقیم یا از طریق متریک تجمیعی).
             var hasLimit = MetricCodes.ConsumeTargets(metric)

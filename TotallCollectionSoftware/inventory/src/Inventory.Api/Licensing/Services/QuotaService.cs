@@ -33,6 +33,21 @@ namespace Inventory.Api.Licensing.Services;
 /// افزایش شمارنده هم برمی‌گردد.
 /// </para>
 /// </summary>
+/// <summary>
+/// نتیجهٔ رزرو: هم پاسخ سهمیه، هم شناسهٔ ردیف‌های رزرو.
+///
+/// <para>
+/// چرا شناسه لازم است؟ چون «رزرو» حالا یک ردیف با وضعیت و زمان است
+/// (<see cref="LicenseReservation"/>). بدون شناسه، تسویه نمی‌داند کدام ردیف را
+/// باید <c>Confirmed</c>/<c>Refunded</c> کند و رزروِ نیمه‌کاره برای همیشه
+/// در وضعیت <c>Reserved</c> می‌ماند.
+/// </para>
+/// </summary>
+public readonly record struct QuotaReservationResult(QuotaConsumeResult Result, IReadOnlyList<long> ReservationIds)
+{
+    public static QuotaReservationResult From(QuotaConsumeResult result) => new(result, Array.Empty<long>());
+}
+
 public sealed class QuotaService
 {
     private readonly AppDbContext _db;
@@ -368,11 +383,11 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
     /// فراخوان بماند، همان قفل طولانی را می‌سازد که می‌خواهیم از آن پرهیز کنیم.
     /// </para>
     /// </summary>
-    public async Task<QuotaConsumeResult> ReserveAsync(EffectiveEntitlement entitlement, string module,
+    public async Task<QuotaReservationResult> ReserveAsync(EffectiveEntitlement entitlement, string module,
         string metric, int amount = 1, string? entityType = null, string? entityId = null,
         CancellationToken cancellationToken = default)
     {
-        if (amount <= 0) return QuotaConsumeResult.Unlimited();
+        if (amount <= 0) return QuotaReservationResult.From(QuotaConsumeResult.Unlimited());
 
         if (_db.Database.CurrentTransaction is not null)
             throw new InvalidOperationException(
@@ -389,16 +404,51 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
             if (!result.Allowed)
             {
                 await transaction.RollbackAsync(cancellationToken);
-                return result;
+                return QuotaReservationResult.From(result);
             }
 
+            // ============ ردیف‌های رزرو با وضعیت و زمان ============
+            //
+            // یک ردیف برای هر (ماژول، متریک، دوره) — دقیقاً همان چیزی که در دفتر و در
+            // شمارنده اثر می‌گذارد. اگر متریک تجمیعی هم سقف داشته باشد، ردیف خودش را
+            // می‌گیرد؛ وگرنه تسویهٔ دستی یکی، دیگری را نیمه‌کاره می‌گذاشت.
+            //
+            // ⚠️ این ردیف‌ها هم داخل همان تراکنش کوتاه نوشته می‌شوند تا «مصرفِ بی‌رزرو»
+            // هیچ‌وقت پیش نیاید (شمارنده بالا رفته ولی ردیفی برای پیگیری وجود نداشته باشد).
+            var ids = new List<long>();
+            var reservedAt = PersianPeriodKey.NowIran();
+
             foreach (var target in MetricCodes.ConsumeTargets(metric))
+            {
                 foreach (var limit in entitlement.LimitsFor(module, target))
-                    await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), amount, entityType, entityId,
+                {
+                    var periodKey = PersianPeriodKey.Now(limit.Period);
+
+                    await LedgerAsync(limit, periodKey, amount, entityType, entityId,
                         null, cancellationToken, "reserve");
 
+                    var row = new LicenseReservation
+                    {
+                        Module = limit.Module,
+                        Metric = limit.Metric,
+                        PeriodKey = periodKey,
+                        Amount = amount,
+                        EntityType = entityType,
+                        EntityId = entityId,
+                        State = LicenseReservation.States.Reserved,
+                        ReservedAt = reservedAt
+                    };
+                    row.Hmac = _integrity.ForReservation(row.Module, row.Metric, row.PeriodKey,
+                        row.Amount, row.ReservedAt);
+
+                    _db.LicenseReservations.Add(row);
+                    await _db.SaveChangesAsync(cancellationToken);
+                    ids.Add(row.Id);
+                }
+            }
+
             await transaction.CommitAsync(cancellationToken);
-            return result;
+            return new QuotaReservationResult(result, ids);
         }
         catch
         {
@@ -421,6 +471,7 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {Date
     /// </summary>
     public async Task<bool> RefundTechnicalAsync(EffectiveEntitlement entitlement, string module, string metric,
         int amount = 1, string? entityType = null, string? entityId = null,
+        IReadOnlyList<long>? reservationIds = null,
         CancellationToken cancellationToken = default)
     {
         if (amount <= 0) return false;
@@ -461,6 +512,11 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
                 : $"عملیات «{title}» با خطای فنی قطعی شکست خورد؛ ولی واحد رزروشده‌ای برای بازگشت پیدا نشد.",
             severity: refunded ? "Info" : "Warning");
 
+        // وضعیت ردیف‌های رزرو: Reserved/Pending ⇐ Refunded (حتی اگر شمارنده‌ای برای کاهش نبود،
+        // رزرو نباید در وضعیت «در جریان» بماند وگرنه تسویهٔ دستی دوباره روی آن اجرا می‌شود).
+        await SettleRowsAsync(reservationIds, LicenseReservation.States.Refunded, "system",
+            refunded ? null : "شمارنده‌ای برای کاهش پیدا نشد؛ ردیف رزرو بسته شد.", cancellationToken);
+
         _log.LogWarning("[License] بازگشت فنی سهمیه «{Metric}»: {Result}", metric, refunded ? "انجام شد" : "ردیفی نبود");
         return refunded;
     }
@@ -478,12 +534,16 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
     /// </summary>
     public async Task MarkPendingAsync(EffectiveEntitlement entitlement, string module, string metric,
         string? entityType = null, string? entityId = null, string? note = null,
+        IReadOnlyList<long>? reservationIds = null,
         CancellationToken cancellationToken = default)
     {
         foreach (var target in MetricCodes.ConsumeTargets(metric))
             foreach (var limit in entitlement.LimitsFor(module, target))
                 await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), 0, entityType, entityId, null,
                     cancellationToken, "pending");
+
+        // وضعیت ردیف‌های رزرو: Reserved ⇐ Pending (مصرف **برنمی‌گردد**؛ فقط پیگیری‌پذیر می‌شود).
+        await SettleRowsAsync(reservationIds, LicenseReservation.States.Pending, "system", note, cancellationToken);
 
         var title = MetricCodes.TitleOf(metric);
         await _events.WriteAsync("LICENSE_QUOTA_PENDING",
@@ -496,12 +556,211 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
 
     /// <summary>ثبت «تأیید» رزرو — فقط برای زنجیرهٔ رویدادها؛ شمارنده تغییر نمی‌کند.</summary>
     public async Task ConfirmAsync(EffectiveEntitlement entitlement, string module, string metric,
-        string? entityType = null, string? entityId = null, CancellationToken cancellationToken = default)
+        string? entityType = null, string? entityId = null, IReadOnlyList<long>? reservationIds = null,
+        CancellationToken cancellationToken = default)
     {
         foreach (var target in MetricCodes.ConsumeTargets(metric))
             foreach (var limit in entitlement.LimitsFor(module, target))
                 await LedgerAsync(limit, PersianPeriodKey.Now(limit.Period), 0, entityType, entityId, null,
                     cancellationToken, "confirm");
+
+        // وضعیت ردیف‌های رزرو: Reserved ⇐ Confirmed (مصرف دست‌نخورده می‌ماند).
+        await SettleRowsAsync(reservationIds, LicenseReservation.States.Confirmed, "system", null, cancellationToken);
+    }
+
+    // ==================== تسویهٔ رزرو ====================
+
+    /// <summary>تغییر وضعیت ردیف‌های رزرو — فقط از حالت‌های باز.</summary>
+    private async Task SettleRowsAsync(IReadOnlyList<long>? reservationIds, string state, string settledBy,
+        string? note, CancellationToken cancellationToken)
+    {
+        if (reservationIds is null || reservationIds.Count == 0) return;
+
+        var ids = reservationIds.Distinct().ToList();
+        var rows = await _db.LicenseReservations
+            .Where(r => ids.Contains(r.Id)
+                        && (r.State == LicenseReservation.States.Reserved
+                            || r.State == LicenseReservation.States.Pending))
+            .ToListAsync(cancellationToken);
+
+        if (rows.Count == 0) return;
+
+        var now = PersianPeriodKey.NowIran();
+        foreach (var row in rows)
+        {
+            row.State = state;
+            row.SettledAt = now;
+            row.SettledBy = settledBy;
+            if (!string.IsNullOrWhiteSpace(note))
+                row.Note = note!.Length > 600 ? note[..600] : note;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// <b>جاروی رزروهای کهنه</b> — در راه‌اندازی برنامه و به‌صورت دوره‌ای اجرا می‌شود.
+    ///
+    /// <para>
+    /// <b>مسئله‌ای که حل می‌کند:</b> اگر برنامه <b>بین رزرو و تسویه</b> خاموش/ری‌استارت
+    /// شود (برق، کرش، ری‌استارت سرور در وسط ارسال به مودیان)، رزرو در وضعیت
+    /// <c>Reserved</c> می‌ماند. تا وقتی این حالت پاک نشود، هیچ‌کس نمی‌داند آن واحد
+    /// «مصرف شده» است یا «برگشته» — و پشتیبانی هم راهی برای بستنش ندارد.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>قاعدهٔ سند:</b> نتیجهٔ نامعلوم ⇒ <b>بازگشت نکن</b>. پس رزرو کهنه به
+    /// <c>Pending</c> می‌رود (نه <c>Refunded</c>): مصرف سرِ جایش می‌ماند و برای
+    /// «تسویهٔ دستی مدیر» علامت می‌خورد. اینجا هیچ سهمیه‌ای بخشیده نمی‌شود.
+    /// </para>
+    /// </summary>
+    /// <param name="maxAge">حداکثر عمر مجاز یک رزرو باز. از <c>Licensing:ReservationTimeoutMinutes</c> می‌آید.</param>
+    /// <returns>تعداد رزروهایی که به Pending منتقل شدند.</returns>
+    public async Task<int> SweepStaleReservationsAsync(TimeSpan maxAge, CancellationToken cancellationToken = default)
+    {
+        var cutoff = PersianPeriodKey.NowIran() - maxAge;
+
+        var stale = await _db.LicenseReservations
+            .Where(r => r.State == LicenseReservation.States.Reserved && r.ReservedAt < cutoff)
+            .ToListAsync(cancellationToken);
+
+        if (stale.Count == 0) return 0;
+
+        var now = PersianPeriodKey.NowIran();
+        foreach (var row in stale)
+        {
+            row.State = LicenseReservation.States.Pending;
+            row.Note = $"رزرو بیش از {(int)maxAge.TotalMinutes} دقیقه باز ماند (احتمالاً قطع ناگهانی برنامه)؛ " +
+                       "مصرف بازگردانده نشد و نیاز به تسویهٔ دستی دارد.";
+            row.SettledAt = null;      // تسویهٔ نهایی هنوز انجام نشده
+            row.SettledBy = "system";
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _events.WriteAsync("LICENSE_QUOTA_RESERVATION_STALE",
+            $"{stale.Count} رزرو سهمیه بیش از {(int)maxAge.TotalMinutes} دقیقه تسویه نشده بود و به وضعیت «در انتظار» " +
+            "منتقل شد. مصرف بازگردانده نشد؛ لطفاً از صفحهٔ رزروها تسویه کنید.",
+            severity: "Warning",
+            dataJson: System.Text.Json.JsonSerializer.Serialize(stale.Select(x => new { x.Id, x.Metric, x.EntityType, x.EntityId })),
+            cancellationToken: cancellationToken);
+
+        _log.LogWarning("[License] {Count} رزرو کهنه به وضعیت Pending منتقل شد.", stale.Count);
+        return stale.Count;
+    }
+
+    /// <summary>
+    /// <b>تسویهٔ دستی یک رزرو «در انتظار»</b> (پشتیبانی/مدیر).
+    ///
+    /// <para>
+    /// دو مسیر:
+    /// <list type="bullet">
+    ///   <item><b>تأیید (Confirm):</b> بررسی شد که ارسال انجام شده ⇒ مصرف همان‌جا می‌ماند.</item>
+    ///   <item><b>بازگشت (Refund):</b> بررسی شد که ارسال انجام <b>نشده</b> ⇒ یک واحد از
+    ///   شمارندهٔ همان دوره کسر می‌شود (با شرط «منفی نشود») و ردیف دفتر با
+    ///   <c>-1</c> و علت <c>manual-refund</c> نوشته می‌شود.</item>
+    /// </list>
+    /// </para>
+    ///
+    /// <para>
+    /// هر دو حالت رخداد <c>LICENSE_QUOTA_MANUAL_SETTLE</c> با <b>نام کاربری</b> ثبت
+    /// می‌کنند؛ چون این تصمیم انسانی است و باید در ممیزی رد داشته باشد.
+    /// </para>
+    /// </summary>
+    /// <returns>true اگر رزرو پیدا و تسویه شد؛ false اگر رزرو نبود یا قبلاً بسته شده بود.</returns>
+    public async Task<bool> SettleReservationAsync(long reservationId, bool confirm, string username,
+        string? note = null, CancellationToken cancellationToken = default)
+    {
+        var row = await _db.LicenseReservations.FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
+        if (row is null) return false;
+
+        // فقط رزرو باز (Reserved) یا «در انتظار» (Pending) قابل تسویه است.
+        if (row.State != LicenseReservation.States.Reserved && row.State != LicenseReservation.States.Pending)
+            return false;
+
+        var now = PersianPeriodKey.NowIran();
+        var refunded = false;
+
+        if (!confirm)
+        {
+            var isSqlite = _db.Database.IsSqlite();
+            var affected = isSqlite
+                ? await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE ""LicenseUsages"" SET ""Used"" = ""Used"" - {row.Amount}, ""UpdatedAt"" = {now}
+ WHERE ""Module"" = {row.Module} AND ""Metric"" = {row.Metric} AND ""PeriodKey"" = {row.PeriodKey}
+   AND ""Used"" - {row.Amount} >= 0", cancellationToken)
+                : await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {row.Amount}, [UpdatedAt] = {now}
+ WHERE [Module] = {row.Module} AND [Metric] = {row.Metric} AND [PeriodKey] = {row.PeriodKey}
+   AND [Used] - {row.Amount} >= 0", cancellationToken);
+
+            refunded = affected > 0;
+
+            if (refunded)
+            {
+                // دفتر: همان ردیف دوره، با علت صریح «بازگشت دستی» تا از مصرف عادی جدا باشد.
+                var entry = new LicenseUsageLedger
+                {
+                    Module = row.Module,
+                    Metric = row.Metric,
+                    PeriodKey = row.PeriodKey,
+                    Delta = -row.Amount,
+                    EntityType = row.EntityType,
+                    EntityId = row.EntityId,
+                    Reason = "manual-refund",
+                    At = DateTime.Now
+                };
+                entry.Hmac = _integrity.ForLedger(entry.Module, entry.Metric, entry.PeriodKey, entry.Delta,
+                    entry.EntityType, entry.EntityId, entry.At);
+                _db.LicenseUsageLedger.Add(entry);
+            }
+        }
+
+        row.State = confirm ? LicenseReservation.States.Confirmed : LicenseReservation.States.Refunded;
+        row.SettledAt = now;
+        row.SettledBy = string.IsNullOrWhiteSpace(username) ? "unknown" : username;
+        row.Note = note is { Length: > 600 } ? note[..600] : note;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var title = MetricCodes.TitleOf(row.Metric);
+        await _events.WriteAsync("LICENSE_QUOTA_MANUAL_SETTLE",
+            confirm
+                ? $"رزرو «{title}» (شناسه {row.Id}) توسط «{row.SettledBy}» دستی تأیید شد؛ مصرف {row.Amount} واحد باقی می‌ماند."
+                : refunded
+                    ? $"رزرو «{title}» (شناسه {row.Id}) توسط «{row.SettledBy}» دستی بازگردانده شد؛ {row.Amount} واحد به سهمیهٔ دورهٔ «{row.PeriodKey}» برگشت."
+                    : $"رزرو «{title}» (شناسه {row.Id}) توسط «{row.SettledBy}» دستی بازگردانده شد، ولی ردیف شمارنده‌ای برای کاهش نبود (مقدار مصرف صفر بود).",
+            severity: "Warning",
+            dataJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                reservationId = row.Id,
+                module = row.Module,
+                metric = row.Metric,
+                periodKey = row.PeriodKey,
+                action = confirm ? "confirm" : "refund",
+                refunded,
+                settledBy = row.SettledBy,
+                note = row.Note
+            }),
+            userId: null,
+            cancellationToken: cancellationToken);
+
+        _log.LogWarning("[License] تسویهٔ دستی رزرو {Id}: {Action} توسط {User}",
+            row.Id, confirm ? "تأیید" : "بازگشت", row.SettledBy);
+
+        return true;
+    }
+
+    /// <summary>فهرست رزروها برای صفحهٔ مدیریت (مرحله ۵) و API تسویه.</summary>
+    public async Task<List<LicenseReservation>> ListReservationsAsync(string? state, int take,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.LicenseReservations.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(state))
+            query = query.Where(r => r.State == state);
+
+        return await query
+            .OrderByDescending(r => r.ReservedAt)
+            .Take(Math.Clamp(take, 1, 500))
+            .ToListAsync(cancellationToken);
     }
 
     // ==================== خواندن مصرف مؤثر ====================
@@ -535,6 +794,12 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
     /// </list>
     ///
     /// <para>
+    /// <b>دامنهٔ اعمال (بازبینی مرحله ۲):</b> این فرمول برای <b>هر متریکی که probe دارد</b>
+    /// اعمال می‌شود، نه فقط <c>ActiveCount</c>. ملاک، وجود شمارش واقعی است
+    /// (<see cref="ActiveCountProbes.HasProbe"/>).
+    /// </para>
+    ///
+    /// <para>
     /// ⚠️ پیش از این اصلاح، برای سقف ماهانه هم «کل تاریخچه − مبنا» حساب می‌شد؛ نتیجه
     /// اینکه سقف ماهانهٔ تازه، از روز اول پر به‌نظر می‌رسید.
     /// </para>
@@ -546,8 +811,9 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
         var periodKey = PersianPeriodKey.Now(limit.Period);
         var counter = await ReadUsedAsync(limit, periodKey, cancellationToken) ?? 0;
 
-        var definition = MetricCodes.Find(limit.Metric);
-        if (definition?.Kind != MetricKind.ActiveCount || liveInPeriod is null) return counter;
+        // آیا برای این متریک «شمارش واقعی» داریم؟ ملاک <b>وجود probe</b> است، نه نوع متریک
+        // (بازبینی مرحله ۲: قاعده «مبنا برای همهٔ متریک‌های دارای probe»).
+        if (liveInPeriod is null || !ActiveCountProbes.HasProbe(limit.Metric)) return counter;
 
         var live = await liveInPeriod(limit.Period, cancellationToken);
 

@@ -15,6 +15,10 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
+using Inventory.Licensing;
+using Inventory.Licensing.Abstractions;
+using Inventory.Licensing.Entitlement;
+using Inventory.Licensing.Periods;
 
 Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -802,7 +806,9 @@ app.MapGet("/radis-hr", () => Results.Redirect("/bon-hr"));
 // کاربرد: تست سریع «آیا مرورگر به API وصل می‌شود؟» — http://192.168.30.104:8181/api/health
 // کلاینت Blazor هم در زمان بالا آمدن همین مسیر را آزمایش می‌کند و آدرس درست API را انتخاب می‌کند
 // (اگر آدرس اشتباهی ذخیره شده باشد، خودکار به آدرس درست برمی‌گردد).
-app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
+app.MapGet("/api/health", (HttpContext ctx,
+    // ?nullable: حتی اگر سرویس لایسنس در این هاست ثبت نشده باشد، health نباید بشکند.
+    ILicenseService? licenseService) => Results.Json(new
 {
     ok = true,
     app = "TotallCollectionSoftware",
@@ -811,7 +817,25 @@ app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
     database = provider,
     httpAddress = httpEndpoint.Display,
     httpsPorts = httpsCerts.AllPorts.ToArray(),
-    serverTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+    serverTime = PersianPeriodKey.NowIran().ToString("yyyy-MM-dd HH:mm:ss"),
+
+    // ==================== موتور لایسنس ====================
+    // چرا در health؟ چون اسکریپت‌های انتشار/به‌روزرسانی (و هر ناظر خارجی) باید بتوانند
+    // بفهمند این خروجی موتور لایسنس دارد یا نه. نسخهٔ سورس قدیمی ریشه (src/) این فیلد
+    // را ندارد؛ پس «ناخواسته منتشر شدن نسخهٔ بدون لایسنس» از همین‌جا گرفته می‌شود.
+    // این مسیر در allowlist دروازه است، پس در حالت «بدون لایسنس» هم پاسخ می‌دهد.
+    licensing = new
+    {
+        engine = LicenseEngineInfo.FullVersion,
+        assembly = LicenseEngineInfo.AssemblyName,
+        stage = LicenseEngineInfo.Stage,
+        schema = LicenseEngineInfo.SchemaVersion,
+        // وضعیت کلی لایسنس این نصب (Missing/Invalid/Valid) — برای پایش.
+        status = licenseService?.GetOverallStatus().ToString() ?? "Unknown",
+        // آیا سامانه در حالت فقط‌خواندنی است؟ (بدون لایسنس معتبر: خواندن آزاد، نوشتن ۴۰۳)
+        readOnly = licenseService is null
+                   || licenseService.GetOverallStatus() is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid
+    }
 })).AllowAnonymous();
 
 // هاب بلادرنگ داشبورد

@@ -68,12 +68,15 @@ public sealed class QuotaSendCoordinator
         var reserve = await _quota.ReserveAsync(entitlement, module, metric, 1, entityType, entityId,
             cancellationToken);
 
-        if (!reserve.Allowed)
+        if (!reserve.Result.Allowed)
         {
-            _log.LogWarning("[License] ارسال مودیان پیش از تماس رد شد (سقف پر است): {Message}", reserve.Message);
-            return (new ApiModel { Success = false, Status = 403, Message = reserve.Message },
+            _log.LogWarning("[License] ارسال مودیان پیش از تماس رد شد (سقف پر است): {Message}", reserve.Result.Message);
+            return (new ApiModel { Success = false, Status = 403, Message = reserve.Result.Message },
                 QuotaSendOutcome.Rejected);
         }
+
+        // شناسهٔ ردیف‌های رزرو — تا تسویه بداند کدام ردیف را ببندد.
+        var reservationIds = reserve.ReservationIds;
 
         // ---------- ۲) تماس با بیرون — هیچ تراکنشی باز نیست ----------
         ApiModel result;
@@ -96,11 +99,12 @@ public sealed class QuotaSendCoordinator
         // ---------- ۳) تسویه ----------
         if (result.Success)
         {
-            await _quota.ConfirmAsync(entitlement, module, metric, entityType, entityId, cancellationToken);
+            await _quota.ConfirmAsync(entitlement, module, metric, entityType, entityId, reservationIds,
+                cancellationToken);
 
-            if (reserve.WarningMessage is { } warning)
+            if (reserve.Result.WarningMessage is { } warning)
                 _log.LogWarning("[License] هشدار سهمیهٔ مودیان: {Warning} ({Used}/{Limit})",
-                    warning, reserve.Used, reserve.Limit);
+                    warning, reserve.Result.Used, reserve.Result.Limit);
 
             return (result, QuotaSendOutcome.Sent);
         }
@@ -109,7 +113,7 @@ public sealed class QuotaSendCoordinator
         {
             // ممکن است انجام شده باشد ⇒ نه بازگشت، نه تکرار خودکار؛ فقط علامت.
             await _quota.MarkPendingAsync(entitlement, module, metric, entityType, entityId,
-                note: result.Message, cancellationToken: cancellationToken);
+                note: result.Message, reservationIds: reservationIds, cancellationToken: cancellationToken);
 
             result.Message = string.IsNullOrWhiteSpace(result.Message)
                 ? "نتیجهٔ ارسال نامعلوم است؛ مصرف سهمیه بازگردانده نشد و برای بررسی دستی علامت‌گذاری شد."
@@ -118,7 +122,8 @@ public sealed class QuotaSendCoordinator
             return (result, QuotaSendOutcome.Pending);
         }
 
-        await _quota.RefundTechnicalAsync(entitlement, module, metric, 1, entityType, entityId, cancellationToken);
+        await _quota.RefundTechnicalAsync(entitlement, module, metric, 1, entityType, entityId,
+            reservationIds, cancellationToken);
         return (result, QuotaSendOutcome.Failed);
     }
 }

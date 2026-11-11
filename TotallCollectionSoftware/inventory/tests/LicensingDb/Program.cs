@@ -6,6 +6,7 @@ using Inventory.Licensing.Metrics;
 using Inventory.Licensing.Model;
 using Inventory.Licensing.Modules;
 using Inventory.Licensing.Periods;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -393,16 +394,30 @@ Section("۹) مصرف مؤثر = بیشترین(شمارنده، تعداد وا
     var svc = Service(db, NewIntegrity());
     var limit = ent.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
 
-    // متریک فعلی از نوع Counter است ⇒ تعداد واقعی نادیده گرفته می‌شود
-    var counterOnly = await svc.GetEffectiveUsageAsync(ent, limit, _ => Task.FromResult(999L));
-    var stored = await db.LicenseUsages.AsNoTracking()
-        .Where(u => u.Metric == MetricCodes.InvoiceCreate).Select(u => u.Used).FirstAsync();
-    Check(counterOnly == stored, "متریک Counter فقط شمارنده را برمی‌گرداند");
+    // متریکی که probe ندارد ⇒ فقط شمارنده ملاک است (مثلاً ارسال مودیان که رویداد است، نه ردیف).
+    var noProbe = Entitlement(MetricCodes.MoadianInvoiceSend, 1000, QuotaPeriod.Lifetime, ModuleCodes.Moadian);
+    var noProbeLimit = noProbe.LimitsFor(ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend).First();
+    var counterOnly = await svc.GetEffectiveUsageAsync(noProbe, noProbeLimit, _ => Task.FromResult(999L));
+    var storedCounter = await db.LicenseUsages.AsNoTracking()
+        .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend && u.PeriodKey == "-")
+        .Select(u => (long?)u.Used).FirstOrDefaultAsync() ?? 0;
+    Check(counterOnly == storedCounter,
+        $"متریک بدون probe فقط شمارنده را برمی‌گرداند و ۹۹۹ ردیف را نادیده می‌گیرد (واقعی: {counterOnly}، شمارنده: {storedCounter})");
+    Check(!Inventory.Api.Licensing.Services.ActiveCountProbes.HasProbe(MetricCodes.MoadianInvoiceSend),
+        "ارسال مودیان probe ندارد (رویداد شمرده می‌شود، نه ردیف)");
 
+    // ✅ اصلاح بازبینی دوم: invoice.create و سه نوع نامه، probe دارند و ActiveCount هستند.
     var def = MetricCodes.Find(MetricCodes.InvoiceCreate);
-    Check(def?.Kind == MetricKind.Counter, "نوع متریک invoice.create = Counter");
+    Check(def?.Kind == MetricKind.ActiveCount,
+        $"نوع متریک invoice.create = ActiveCount (واقعی: {def?.Kind}) — قبلاً پیش‌فرض Counter بود و مبنا هرگز ثبت نمی‌شد");
+    Check(MetricCodes.Find(MetricCodes.LetterIncomingCreate)?.Kind == MetricKind.ActiveCount,
+        "نوع متریک letter.incoming.create = ActiveCount");
     Check(MetricCodes.Find(MetricCodes.LetterCreate)?.Kind == MetricKind.Counter,
-        "نوع متریک تجمیعی letter.create = Counter (پیش‌فرض)");
+        "نوع متریک تجمیعی letter.create = Counter (بدون probe)");
+
+    // با probe: بیشترین(شمارنده، تعداد واقعی) — برای دورهٔ دائمی با کسر مبنا
+    var withLive = await svc.GetEffectiveUsageAsync(ent, limit, _ => Task.FromResult(999L));
+    Check(withLive == 999, $"با probe و بدون مبنا: بیشترین(شمارنده، ۹۹۹) = ۹۹۹ (واقعی: {withLive})");
 }
 
 // ============================================================
@@ -707,27 +722,42 @@ Section("۱۵) سناریوی بازبینی: لایسنس بدون سقف ⇒ �
     Check(liveInDb == 5000, $"۵۰۰۰ فاکتور در دیتابیس ثبت شد (واقعی: {liveInDb})");
 
     // (۲) لایسنس دوم با سقف ۳۰ می‌آید ⇒ همین‌جا باید مبنا گرفته شود
-    var withQuota = Entitlement(MetricCodes.InvoiceCreate, 30, QuotaPeriod.Monthly, ModuleCodes.Invoicing);
+    //
+    // ⚠️ دوره عمداً «دائمی» است، نه ماهانه: قاعدهٔ مصوب این است
+    //    Lifetime ⇒ max(شمارنده، کل ردیف‌ها − مبنا)
+    //    Monthly/Yearly ⇒ max(شمارنده، ردیف‌های همان دوره) — بدون کسر مبنا
+    //    (پس برای سقف ماهانه، ۵۰۰۰ فاکتورِ همان ماه شمرده می‌شوند؛ فرمول دورهٔ
+    //     ماهانه در بخش ۱۵.۱ جدا سنجیده می‌شود.)
+    var withQuota = Entitlement(MetricCodes.InvoiceCreate, 30, QuotaPeriod.Lifetime, ModuleCodes.Invoicing);
     var quota = Service(db, NewIntegrity());
     var captured = await Inventory.Api.Licensing.Services.ActiveCountProbes.CaptureAllAsync(
         db, quota, withQuota, "TEST-2", "activation");
 
-    // امروز هیچ متریکی در رجیستری از نوع ActiveCount نیست ⇒ حلقهٔ مبنا خالی است.
-    // این تست همان حقیقت را قفل می‌کند تا اگر فردا متریکی ActiveCount شد، رفتار دیده شود.
+    // ✅ پس از بازبینی دوم: «صدور صورتحساب» نوع ActiveCount دارد و probe دارد، پس
+    // CaptureAllAsync واقعاً مبنا ثبت می‌کند (قبلاً Kind پیش‌فرض Counter بود و حلقهٔ
+    // مبنا خالی می‌ماند؛ همان اشتباهی که این تست حالا قفلش می‌کند).
     var activeCountMetrics = Inventory.Licensing.Metrics.MetricCodes.All
         .Count(m => m.Kind == Inventory.Licensing.Metrics.MetricKind.ActiveCount);
     Console.WriteLine($"   (اطلاع) متریک‌های ActiveCount در این نسخه: {activeCountMetrics} — مبناهای ثبت‌شده: {captured}");
+    Check(captured >= 1, $"برای invoice.create مبنا ثبت شد (تعداد مبناهای این فعال‌سازی: {captured})");
+    Check(activeCountMetrics >= 1, $"دست‌کم یک متریک از نوع ActiveCount وجود دارد (واقعی: {activeCountMetrics})");
 
     var limit = withQuota.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
     var effective = await quota.GetEffectiveUsageAsync(withQuota, limit, _ => Task.FromResult((long)liveInDb));
 
     Check(effective == 0,
-        $"مصرف مؤثر «صدور صورتحساب» با سقف ۳۰ = ۰ (واقعی: {effective}) — ۵۰۰۰ فاکتور قبل از آمدن سقف، سقف را پر نکرد");
+        $"مصرف مؤثر «صدور صورتحساب» با سقف دائمی ۳۰ = ۰ (واقعی: {effective}) — ۵۰۰۰ فاکتور قبل از آمدن سقف، سقف را پر نکرد");
     Check(effective < limit.Limit, $"سقف ۳۰ باز است (مصرف {effective} < سقف {limit.Limit})");
 
     // و واقعاً می‌شود ۳۰ تا ثبت کرد
     for (var i = 0; i < 30; i++)
         await quota.TryConsumeAsync(withQuota, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+
+    var effectiveAfter30 = await quota.GetEffectiveUsageAsync(withQuota, limit,
+        (period, ct) => Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+            db, MetricCodes.InvoiceCreate, period, Inventory.Licensing.Periods.PersianPeriodKey.NowIran(), ct));
+    Check(effectiveAfter30 == 30,
+        $"پس از ۳۰ فاکتور تازه، مصرف مؤثر = ۳۰ (نه ۵۰۳۰) — واقعی: {effectiveAfter30}");
 
     var afterThirty = await quota.TryConsumeAsync(withQuota, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
     Check(!afterThirty.Allowed, "بعد از ۳۰ ثبت، سی‌ویکمی رد می‌شود");
@@ -779,11 +809,12 @@ Section("۱۵.۱) فرمول دورهٔ ماهانه برای متریک ActiveC
 }
 
 // ============================================================
-Section("۱۶) carryOverUsage: سقف دائمی ۳۰ با مصرف ۳۰، بعد لایسنس دوم با سقف دائمی ۱۰۰۰");
+Section("۱۶) مصرف مشترک بین دو لایسنس: سقف دائمی ۳۰ با مصرف ۳۰، بعد لایسنس دوم با سقف دائمی ۱۰۰۰");
 
 {
-    // ⚠️ carryOverUsage عمداً پیاده نشده (تصمیم با کارفرما). این تست فقط **رفتار فعلی** را
-    // ثبت می‌کند تا تصمیم روی عدد واقعی گرفته شود، نه روی حدس.
+    // ✅ فیلد carryOverUsage حذف شد (بازبینی دوم). رفتار درست، همان چیزی است که این تست
+    // نشان می‌دهد: مصرف یک متریک **بین آیتم‌ها/لایسنس‌ها مشترک** است و فقط با تغییر
+    // دورهٔ سهمیه صفر می‌شود — نه با تمدید یا افزودن آیتم.
     await ResetAsync();
 
     await using var db = NewDb();
@@ -881,6 +912,342 @@ Section("۱۷) حذف نرم فاکتور: از گزارش‌ها و مانده�
 }
 
 // ============================================================
+Section("۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی در Missing / Invalid / Grace / ReadOnly");
+
+{
+    // ⛔ درخواست کارفرما (بازبینی دوم):
+    //    «Missing و Invalid ⇒ خواندن آزاد، نوشتن ۴۰۳» و
+    //    «فقط فعل HTTP کافی نیست؛ POSTهای فقط‌خواندنی باید صریح علامت‌گذاری و تست شوند».
+    //
+    // این بخش همان تصمیم را مستقیم روی middleware می‌سنجد (بدون راه‌اندازی وب‌سرور):
+    // برای هر وضعیت، هم GET و هم POST ساده و هم POSTِ علامت‌خورده اجرا می‌شود.
+
+    async Task<(int StatusCode, bool NextCalled, bool ReadOnlyHeader, bool GraceHeader, string Body)> Run(
+        LicenseOverallStatus status, string method, string path, bool marked, bool grace = false)
+    {
+        var nextCalled = false;
+        var metadata = marked
+            ? new EndpointMetadataCollection(
+                new Inventory.Api.Licensing.Infrastructure.AllowInReadOnlyAttribute())
+            : new EndpointMetadataCollection();
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = method;
+        ctx.Request.Path = path;
+        ctx.Response.Body = new MemoryStream();
+        ctx.SetEndpoint(new Endpoint(_ => Task.CompletedTask, metadata, "test-endpoint"));
+
+        var middleware = new Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware(
+            _ => { nextCalled = true; return Task.CompletedTask; },
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>.Instance);
+
+        await middleware.InvokeAsync(ctx, new GateLicenseService(status, grace));
+
+        ctx.Response.Body.Position = 0;
+        var body = new StreamReader(ctx.Response.Body).ReadToEnd();
+
+        return (ctx.Response.StatusCode, nextCalled,
+            ctx.Response.Headers.ContainsKey(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.ReadOnlyHeader),
+            ctx.Response.Headers.ContainsKey(Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware.GraceHeader),
+            body);
+    }
+
+    // ---------- Missing ----------
+    var missingGet = await Run(LicenseOverallStatus.Missing, "GET", "/api/products", marked: false);
+    Check(missingGet.NextCalled, "Missing + GET ⇒ عبور می‌کند (دادهٔ مشتری قفل نمی‌شود)");
+    Check(missingGet.ReadOnlyHeader, "Missing + GET ⇒ هدر X-License-ReadOnly دارد");
+
+    var missingPost = await Run(LicenseOverallStatus.Missing, "POST", "/api/fac/invoices", marked: false);
+    Check(!missingPost.NextCalled && missingPost.StatusCode == 403,
+        $"Missing + POST ساده ⇒ ۴۰۳ (واقعی: {missingPost.StatusCode})");
+    Check(missingPost.Body.Contains("LICENSE_READONLY"),
+        $"Missing + POST ساده ⇒ کد LICENSE_READONLY در بدنه (بدنه: {missingPost.Body.Substring(0, Math.Min(80, missingPost.Body.Length))}…)");
+
+    var missingMarked = await Run(LicenseOverallStatus.Missing, "POST", "/api/reports/run", marked: true);
+    Check(missingMarked.NextCalled,
+        "Missing + POST علامت‌خورده [AllowInReadOnly] ⇒ عبور می‌کند (گزارش/جست‌وجو/Export)");
+
+    // ---------- Invalid (= ReadOnly) ----------
+    var invalidGet = await Run(LicenseOverallStatus.Invalid, "GET", "/api/fac/invoices", marked: false);
+    Check(invalidGet.NextCalled, "Invalid + GET ⇒ عبور می‌کند");
+    Check(invalidGet.ReadOnlyHeader, "Invalid + GET ⇒ هدر X-License-ReadOnly دارد");
+
+    var invalidPost = await Run(LicenseOverallStatus.Invalid, "POST", "/api/fac/invoices", marked: false);
+    Check(!invalidPost.NextCalled && invalidPost.StatusCode == 403,
+        $"Invalid + POST ساده ⇒ ۴۰۳ (واقعی: {invalidPost.StatusCode})");
+    Check(invalidPost.Body.Contains("LICENSE_READONLY"), "Invalid + POST ساده ⇒ کد LICENSE_READONLY");
+
+    var invalidMarked = await Run(LicenseOverallStatus.Invalid, "POST", "/api/reports/run", marked: true);
+    Check(invalidMarked.NextCalled, "Invalid + POST علامت‌خورده ⇒ عبور می‌کند");
+
+    var invalidDelete = await Run(LicenseOverallStatus.Invalid, "DELETE", "/api/fac/invoices/5", marked: false);
+    Check(!invalidDelete.NextCalled && invalidDelete.StatusCode == 403, "Invalid + DELETE ⇒ ۴۰۳");
+
+    // ---------- Grace ----------
+    // در مهلت سازگاری نصب موجود، همه‌چیز کار می‌کند (تصمیم: نصب قدیمی بی‌درنگ قفل نمی‌شود).
+    var gracePost = await Run(LicenseOverallStatus.Missing, "POST", "/api/fac/invoices", marked: false, grace: true);
+    Check(gracePost.NextCalled, "Grace + POST ساده ⇒ عبور می‌کند (مهلت سازگاری)");
+    Check(gracePost.GraceHeader, "Grace ⇒ هدر X-License-Grace دارد");
+    Check(!gracePost.ReadOnlyHeader, "Grace ⇒ هدر فقط‌خواندنی ندارد (پیام‌ها نباید قاطی شوند)");
+
+    // ---------- Valid ----------
+    var validPost = await Run(LicenseOverallStatus.Valid, "POST", "/api/fac/invoices", marked: false);
+    Check(validPost.NextCalled, "Valid + POST ⇒ عبور می‌کند");
+    Check(!validPost.ReadOnlyHeader && !validPost.GraceHeader, "Valid ⇒ هیچ هدر هشداری ندارد");
+
+    // ---------- مسیرهای آزاد ----------
+    var licenseGet = await Run(LicenseOverallStatus.Missing, "POST", "/api/license/activate", marked: false);
+    Check(licenseGet.NextCalled, "Missing + POST /api/license/activate ⇒ عبور می‌کند (صفحهٔ فعال‌سازی)");
+
+    var loginPost = await Run(LicenseOverallStatus.Missing, "POST", "/api/auth/login", marked: false);
+    Check(loginPost.NextCalled, "Missing + POST /api/auth/login ⇒ عبور می‌کند (ورود مدیر)");
+
+    // ---------- فهرست صفت‌ها روی کنترلرهای واقعی ----------
+    //
+    // «فعل HTTP کافی نیست» ⇒ فهرست اکشن‌های علامت‌خورده باید صریح و قابل بازبینی باشد.
+    // اگر فردا کسی اکشن نوشتاری را علامت بزند، این تست می‌شکند و باید توضیح بدهد.
+    var markedActions = typeof(Inventory.Api.Controllers.ProductsController).Assembly.GetTypes()
+        .Where(t => t.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.ControllerBase)) && !t.IsAbstract)
+        .SelectMany(t => t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPostAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPutAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPatchAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpDeleteAttribute), true).Any())
+            .Where(m => m.GetCustomAttributes(typeof(Inventory.Api.Licensing.Infrastructure.AllowInReadOnlyAttribute), true).Any())
+            .Select(m => $"{t.Name}.{m.Name}"))
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToList();
+
+    Console.WriteLine($"   (اطلاع) اکشن‌های نوشتاریِ علامت‌خورده [AllowInReadOnly]: {markedActions.Count}");
+    foreach (var a in markedActions) Console.WriteLine($"      • {a}");
+
+    Check(markedActions.Count == 10,
+        $"دقیقاً ۱۰ اکشن نوشتاری علامت‌خورده‌اند (POSTهای فقط‌خواندنی) — واقعی: {markedActions.Count}");
+
+    // هر اکشن علامت‌خورده باید در فهرست انتظار باشد؛ افزودن تازه = تصمیم آگاهانه، نه فراموشی.
+    var expectedMarked = new[]
+    {
+        "DocSearchController.AdvancedSearch", "DocSearchController.SearchPage",
+        "DocSemanticController.SemanticSearch", "DocSemanticController.Suggest",
+        "HrCoreController.RunReport",
+        "LicenseController.SettleReservation",
+        "MoadianController.PreviewSendInvoiceAsync",
+        "ReportStudioController.Preview", "ReportStudioController.Run",
+        "ShopPricingController.Preview"
+    };
+
+    var unexpected = markedActions.Where(a => !expectedMarked.Contains(a)).ToList();
+    var missingExpected = expectedMarked.Where(a => !markedActions.Contains(a)).ToList();
+    Check(unexpected.Count == 0, $"هیچ اکشن ناشناخته‌ای علامت نخورده (ناشناخته: {string.Join(", ", unexpected)})");
+    Check(missingExpected.Count == 0, $"همهٔ اکشن‌های انتظار علامت دارند (نبود: {string.Join(", ", missingExpected)})");
+}
+
+// ============================================================
+Section("۱۹) رزرو ردیف‌دار: وضعیت Reserved + زمان، جاروی کهنه ⇒ Pending، تسویهٔ دستی");
+
+{
+    // درخواست کارفرما: «رزرو باید وضعیت Reserved + زمان داشته باشد؛ رزروهای کهنه در
+    // startup به Pending بروند؛ API تسویهٔ دستی (Confirm/Refund) با LicenseEvent + نام کاربر».
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 10, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+
+    // ---------- الف) رزرو، ردیف می‌سازد ----------
+    var reserve = await quota.ReserveAsync(ent, ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend, 1,
+        "MoadianInvoice", "9001");
+
+    Check(reserve.Result.Allowed, "رزرو مجاز است (سقف ۱۰)");
+    Check(reserve.ReservationIds.Count == 1, $"یک ردیف رزرو ساخته شد (واقعی: {reserve.ReservationIds.Count})");
+
+    await using (var q = NewDb())
+    {
+        var row = await q.LicenseReservations.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reserve.ReservationIds[0]);
+        Check(row is not null && row.State == Inventory.Api.Data.LicenseReservation.States.Reserved,
+            $"وضعیت ردیف رزرو = Reserved (واقعی: {row?.State})");
+        Check(row is not null && row.ReservedAt > DateTime.Now.AddMinutes(-5),
+            "ردیف رزرو زمان ثبت دارد (ReservedAt پر است)");
+        Check(row is not null && row.PeriodKey.Length > 0,
+            $"کلید دوره در ردیف رزرو ذخیره شد (واقعی: {row?.PeriodKey}) — تسویه به آن نیاز دارد");
+    }
+
+    // ---------- ب) جاروی رزرو کهنه ----------
+    // رزرو را مصنوعاً «یک ساعت پیش» می‌کنیم (شبیه‌سازی خاموشی برنامه پس از رزرو).
+    await using (var q = NewDb())
+    {
+        var row = await q.LicenseReservations.FirstAsync(r => r.Id == reserve.ReservationIds[0]);
+        row.ReservedAt = Inventory.Licensing.Periods.PersianPeriodKey.NowIran().AddHours(-1);
+        await q.SaveChangesAsync();
+    }
+
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var swept = await qs.SweepStaleReservationsAsync(TimeSpan.FromMinutes(15));
+        Check(swept == 1, $"جارو یک رزرو کهنه پیدا کرد (واقعی: {swept})");
+
+        var row = await q.LicenseReservations.AsNoTracking().FirstAsync(r => r.Id == reserve.ReservationIds[0]);
+        Check(row.State == Inventory.Api.Data.LicenseReservation.States.Pending,
+            $"رزرو کهنه ⇒ Pending، نه Refunded (واقعی: {row.State}) — سهمیه بخشیده نمی‌شود");
+
+        var used = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+        Check(used == 1, $"مصرف پس از جارو برنگشت (واقعی: {used}) — قاعدهٔ «نتیجهٔ نامعلوم ⇒ بازگشت نکن»");
+
+        var evt = await q.LicenseEvents.AsNoTracking()
+            .Where(e => e.Kind == "LICENSE_QUOTA_RESERVATION_STALE").CountAsync();
+        Check(evt >= 1, $"رخداد LICENSE_QUOTA_RESERVATION_STALE ثبت شد (تعداد: {evt})");
+    }
+
+    // ---------- ج) تسویهٔ دستی: Confirm ----------
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var ok = await qs.SettleReservationAsync(reserve.ReservationIds[0], confirm: true, username: "support1",
+            note: "طبق گزارش سامانهٔ مودیان، ارسال انجام شده بود.");
+
+        Check(ok, "تسویهٔ دستی Confirm انجام شد");
+
+        var row = await q.LicenseReservations.AsNoTracking().FirstAsync(r => r.Id == reserve.ReservationIds[0]);
+        Check(row.State == Inventory.Api.Data.LicenseReservation.States.Confirmed,
+            $"وضعیت پس از Confirm = Confirmed (واقعی: {row.State})");
+        Check(row.SettledBy == "support1", $"نام کاربر تسویه‌کننده ثبت شد (واقعی: {row.SettledBy})");
+
+        var used = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+        Check(used == 1, $"مصرف پس از Confirm تغییر نکرد (واقعی: {used})");
+
+        var evt = await q.LicenseEvents.AsNoTracking().Where(e => e.Kind == "LICENSE_QUOTA_MANUAL_SETTLE").ToListAsync();
+        Check(evt.Count >= 1 && evt.Any(e => e.Message.Contains("support1")),
+            "رخداد تسویهٔ دستی با نام کاربر ثبت شد");
+
+        // تسویهٔ دوباره باید رد شود (رزرو بسته شده است).
+        var again = await qs.SettleReservationAsync(reserve.ReservationIds[0], confirm: false, username: "support1");
+        Check(!again, "تسویهٔ دوبارهٔ همان رزرو رد می‌شود (وضعیت بسته است)");
+    }
+
+    // ---------- د) تسویهٔ دستی: Refund ----------
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var second = await qs.ReserveAsync(ent, ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend, 1,
+            "MoadianInvoice", "9002");
+
+        // شبیه‌سازی «در انتظار» — بدون جارو، مستقیم با MarkPending.
+        await qs.MarkPendingAsync(ent, ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend,
+            "MoadianInvoice", "9002", note: "timeout", reservationIds: second.ReservationIds);
+
+        var beforeRefund = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+
+        var ok = await qs.SettleReservationAsync(second.ReservationIds[0], confirm: false, username: "support2",
+            note: "ارسال نشده بود؛ سهمیه آزاد شد.");
+        Check(ok, "تسویهٔ دستی Refund انجام شد");
+
+        var afterRefund = await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+        Check(afterRefund == beforeRefund - 1,
+            $"مصرف یک واحد کم شد ({beforeRefund} ⇒ {afterRefund})");
+
+        var refundLedger = await q.LicenseUsageLedger.AsNoTracking()
+            .Where(l => l.Reason == "manual-refund").CountAsync();
+        Check(refundLedger >= 1, $"ردیف دفتر با reason=manual-refund ثبت شد (تعداد: {refundLedger})");
+
+        var row = await q.LicenseReservations.AsNoTracking().FirstAsync(r => r.Id == second.ReservationIds[0]);
+        Check(row.State == Inventory.Api.Data.LicenseReservation.States.Refunded
+              && row.SettledBy == "support2",
+            $"وضعیت پس از Refund = Refunded و کاربر = support2 (واقعی: {row.State}/{row.SettledBy})");
+    }
+}
+
+// ============================================================
+Section("۲۰) مبنا برای همهٔ متریک‌های دارای probe + بازیابی مصرف از ردیف‌ها پس از حذف شمارنده");
+
+{
+    await ResetAsync();
+
+    // ---------- الف) دامنهٔ مبنا = همهٔ متریک‌های دارای probe (نه فقط ActiveCount) ----------
+    var withProbe = Inventory.Api.Licensing.Services.ActiveCountProbes.AllWithProbe().ToList();
+    var activeOnly = Inventory.Api.Licensing.Services.ActiveCountProbes.All().ToList();
+
+    Console.WriteLine($"   (اطلاع) متریک‌های دارای probe: {withProbe.Count} — از نوع ActiveCount: {activeOnly.Count}");
+    Check(withProbe.Count >= 3, $"دست‌کم ۳ متریک probe دارند (واقعی: {withProbe.Count})");
+    Check(withProbe.Count == Inventory.Api.Licensing.Services.ActiveCountProbes.Probes.Count,
+        "AllWithProbe همهٔ probeهای ثبت‌شده را برمی‌گرداند");
+    Check(Inventory.Api.Licensing.Services.ActiveCountProbes.HasProbe(MetricCodes.InvoiceCreate),
+        "HasProbe(invoice.create) = true");
+    Check(!Inventory.Api.Licensing.Services.ActiveCountProbes.HasProbe("no.such.metric"),
+        "HasProbe برای متریک ناشناخته false است (پس مصرف مؤثر = شمارنده می‌ماند)");
+
+    // ---------- ب) بازیابی از ردیف‌ها: حذف و ساخت دوبارهٔ شمارنده ----------
+    await using var db = NewDb();
+    var wh = new Inventory.Api.Data.Warehouse { Name = "انبار بازیابی", Code = "W-RECOVER" };
+    db.Warehouses.Add(wh);
+    await db.SaveChangesAsync();
+
+    var ent = Entitlement(MetricCodes.InvoiceCreate, 1000, QuotaPeriod.Lifetime, ModuleCodes.Invoicing);
+    var quota = Service(db, NewIntegrity());
+
+    // ۵۰ فاکتور «قبل از سقف» (دادهٔ واردشده از سیستم قبلی)
+    var oldInvoices = Enumerable.Range(1, 50).Select(i => new Inventory.Api.Data.FacInvoice
+    {
+        Number = 500_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today.AddDays(-30),
+        WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+    }).ToList();
+    db.FacInvoices.AddRange(oldInvoices);
+    await db.SaveChangesAsync();
+
+    var captured = await Inventory.Api.Licensing.Services.ActiveCountProbes.CaptureAllAsync(
+        db, quota, ent, "TEST-RECOVER", "activation");
+    Check(captured >= 1, $"مبنا ثبت شد برای {captured} متریک (انتظار ≥ ۱)");
+
+    var limit = ent.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
+    Func<Inventory.Licensing.Model.QuotaPeriod, CancellationToken, Task<long>> liveInPeriod =
+        (period, ct) => Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(db, MetricCodes.InvoiceCreate, period,
+            Inventory.Licensing.Periods.PersianPeriodKey.NowIran(), ct);
+
+    var eff0 = await quota.GetEffectiveUsageAsync(ent, limit, liveInPeriod);
+    Check(eff0 == 0, $"پیش از هر ثبت تازه، مصرف مؤثر ۰ است (واقعی: {eff0}) — ۵۰ فاکتور قدیمی از مبنا کسر شد");
+
+    // ۳ فاکتور تازه ⇒ مصرف مؤثر باید ۳ باشد
+    for (var i = 0; i < 3; i++)
+    {
+        db.FacInvoices.Add(new Inventory.Api.Data.FacInvoice
+        {
+            Number = 600_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today,
+            WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "test"
+        });
+        await db.SaveChangesAsync();
+        await quota.TryConsumeAsync(ent, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+    }
+
+    var eff3 = await quota.GetEffectiveUsageAsync(ent, limit, liveInPeriod);
+    Check(eff3 == 3, $"پس از ۳ فاکتور تازه، مصرف مؤثر ۳ است (واقعی: {eff3})");
+
+    // حالا ردیف شمارنده را پاک و دوباره می‌سازیم — مثل دست‌کاری/بازیابی بکاپ.
+    await using (var q = NewDb())
+    {
+        await q.Database.ExecuteSqlRawAsync(useSqlServer
+            ? "DELETE FROM [dbo].[LicenseUsages]"
+            : "DELETE FROM \"LicenseUsages\"");
+    }
+
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var limit2 = ent.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
+        Func<Inventory.Licensing.Model.QuotaPeriod, CancellationToken, Task<long>> live2 =
+            (period, ct) => Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(q, MetricCodes.InvoiceCreate, period,
+                Inventory.Licensing.Periods.PersianPeriodKey.NowIran(), ct);
+
+        var recovered = await qs.GetEffectiveUsageAsync(ent, limit2, live2);
+        Check(recovered == 3,
+            $"پس از حذف ردیف شمارنده، مصرف مؤثر از ردیف‌ها بازیابی شد = ۳ (واقعی: {recovered})");
+    }
+}
+
+// ============================================================
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌های مرحله ۲ موفق بود." : $"{failures} تست شکست خورد.")}");
 
 try { File.Delete(dbPath); Directory.Delete(storage, true); } catch { /* بی‌صدا */ }
@@ -895,6 +1262,40 @@ return Environment.ExitCode;
 /// سرویس لایسنس برای تست — Entitlement ثابت می‌دهد و مصرف را به QuotaService واقعی
 /// همان DbContext می‌سپارد (بدون کش)، تا تراکنش درست سنجیده شود.
 /// </summary>
+
+/// <summary>
+/// سرویس لایسنس «ساختگی» برای تست دروازه — فقط وضعیت کلی و مهلت سازگاری را کنترل می‌کند.
+/// (تست دروازه نباید به دیتابیس یا فایل لایسنس وابسته باشد.)
+/// </summary>
+file sealed class GateLicenseService(LicenseOverallStatus status, bool grace)
+    : Inventory.Licensing.Abstractions.ILicenseService
+{
+    public ModuleState GetModuleState(string module) => ModuleState.Valid;
+    public ModuleEntitlement? GetModule(string module) => null;
+    public EffectiveEntitlement GetEffectiveEntitlement() => new() { Status = status };
+    public Task<EffectiveEntitlement> GetEffectiveEntitlementAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new EffectiveEntitlement { Status = status });
+    public LicenseOverallStatus GetOverallStatus() => status;
+
+    public Task<Inventory.Licensing.Abstractions.QuotaConsumeResult> TryConsumeAsync(string module, string metric,
+        int amount = 1, string? entityType = null, string? entityId = null, int? userId = null,
+        bool recordLedger = true, CancellationToken cancellationToken = default)
+        => Task.FromResult(Inventory.Licensing.Abstractions.QuotaConsumeResult.Unlimited());
+
+    public Task RecordUsageAsync(string module, string metric, int amount = 1, string? entityType = null,
+        string? entityId = null, int? userId = null, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<Inventory.Licensing.Abstractions.SeatCheckResult> CanLoginUserAsync(int userId,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(Inventory.Licensing.Abstractions.SeatCheckResult.Ok());
+
+    public void Invalidate() { }
+
+    public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(grace);
+}
+
 file sealed class FixedLicenseService(EffectiveEntitlement entitlement, QuotaService quota) 
     : Inventory.Licensing.Abstractions.ILicenseService
 {

@@ -51,6 +51,13 @@ public sealed class QuotaIntegrity
     public string? ForUsage(string module, string metric, string periodKey, long limit, long used)
         => Compute($"u|{module}|{metric}|{periodKey}|{limit}|{used}");
 
+    /// <summary>
+    /// HMAC یک ردیف رزرو — تا کسی نتواند رزروِ کهنه را با تغییر <c>ReservedAt</c>
+    /// «تازه» جلوه بدهد یا وضعیتش را بی‌ردپا عوض کند.
+    /// </summary>
+    public string? ForReservation(string module, string metric, string periodKey, int amount, DateTime reservedAt)
+        => Compute($"r|{module}|{metric}|{periodKey}|{amount}|{reservedAt:O}");
+
     /// <summary>HMAC یک ردیف دفتر مصرف.</summary>
     public string? ForLedger(string module, string metric, string periodKey, int delta,
         string? entityType, string? entityId, DateTime at)

@@ -15,6 +15,7 @@ set "CLIENT_PUBLISH=%ROOT%artifacts\client-publish"
 set "API_PUBLISH=%ROOT%artifacts\inventory-server"
 set "DEPLOY=%ROOT%deploy\inventory-server"
 set "DB_CONNECTION=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
+set "VERIFY=%ROOT%tools\verify-licensing.ps1"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
@@ -47,6 +48,24 @@ if errorlevel 1 goto :failed
 echo [5/6] آماده‌سازی پوشه استقرار...
 xcopy "%API_PUBLISH%\*" "%DEPLOY%\" /E /I /Y >nul
 if errorlevel 1 goto :failed
+
+rem ================================================================
+rem [6/6] بررسی موتور لایسنس — شرط پایان موفق انتشار
+rem   آفلاین: Inventory.Licensing.dll در خروجی + فیلد licensing در /api/health
+rem   آنلاین: فقط اگر INVENTORY_HEALTH_URL تنظیم شده باشد
+rem ================================================================
+echo [6/6] بررسی موتور لایسنس در خروجی...
+if not exist "%VERIFY%" (
+  echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
+  goto :failed
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+if errorlevel 1 (
+  echo.
+  echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.
+  echo [ERROR] انتشار متوقف شد.
+  goto :failed
+)
 
 rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
 >"%DEPLOY%\run-server.bat" echo @echo off

@@ -54,6 +54,11 @@ public static class LicenseStartup
 
         services.AddHostedService<LicenseSessionCleanupWorker>();
 
+        // جاروی رزروهای کهنه: اگر برنامه بین «رزرو» و «تسویه» خاموش شود، رزرو در
+        // وضعیت Reserved می‌ماند. این سرویس آن‌ها را به Pending می‌برد تا مدیر
+        // بتواند از API تسویه ببندد. هیچ سهمیه‌ای برنمی‌گردد.
+        services.AddHostedService<LicenseReservationSweeper>();
+
         // گارد سراسری نوشتن — برای کنترلرهایی که [RequireModule] ندارند
         services.Configure<MvcOptions>(o => o.Filters.Add<LicenseWriteGuardFilter>());
 

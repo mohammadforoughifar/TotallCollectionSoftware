@@ -62,6 +62,21 @@ public sealed class LicenseWriteGuardFilter : IAsyncActionFilter
             return;
         }
 
+        // ==================== استثنای «فقط‌خواندنی‌های POST» ====================
+        //
+        // تصمیم بازبینی دوم: یک POST می‌تواند فقط بخواند (گزارش، جست‌وجو، خروجی،
+        // پیش‌نمایش). دروازهٔ لایسنس همین‌ها را با [AllowInReadOnly] عبور می‌دهد، ولی
+        // این گارد دوباره می‌بستشان چون فعل را «نوشتن» می‌دید — یعنی عملاً در حالت
+        // «بدون لایسنس» گزارش‌ها هم بسته می‌ماند؛ همان چیزی که نباید بشود.
+        //
+        // نکته: استثنا **فقط برای خواندن** است؛ خودِ صفت روی اکشن‌هایی است که هیچ
+        // تغییری در داده نمی‌دهند (فهرست آن در تست ۱۸ قفل شده است).
+        if (context.ActionDescriptor.EndpointMetadata.OfType<AllowInReadOnlyAttribute>().Any())
+        {
+            await next();
+            return;
+        }
+
         // اگر اکشن خودش [RequireModule] دارد، همان بررسی کافی است.
         if (context.ActionDescriptor.EndpointMetadata.OfType<RequireModuleAttribute>().Any())
         {

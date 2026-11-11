@@ -33,6 +33,20 @@ public sealed class LicenseGateMiddleware
     /// <summary>هدر هشدار مهلت — کلاینت بنر «لایسنس خود را فعال کنید» نشان می‌دهد.</summary>
     public const string GraceHeader = "X-License-Grace";
 
+    /// <summary>
+    /// هدر حالت «فقط‌خواندنی» — کلاینت بنر «سامانه در حالت مشاهده؛ ثبت غیرفعال است» نشان می‌دهد.
+    ///
+    /// <para>
+    /// چرا هدر جدا از <see cref="GraceHeader"/>؟ چون معنای متفاوتی دارد: Grace یعنی
+    /// «هنوز همه‌چیز کار می‌کند، تمدید کن»؛ ReadOnly یعنی «ثبت بسته است». اگر با هم
+    /// ادغام شوند، کاربر نمی‌داند واقعاً می‌تواند ثبت کند یا نه.
+    /// </para>
+    /// </summary>
+    public const string ReadOnlyHeader = "X-License-ReadOnly";
+
+    /// <summary>کد خطای نوشتن در حالت فقط‌خواندنی (برای UI و پشتیبانی).</summary>
+    public const string ReadOnlyCode = "LICENSE_READONLY";
+
     /// <summary>مسیرهای آزاد (بدون لایسنس معتبر).</summary>
     private static readonly string[] Allowlist =
     {
@@ -151,20 +165,93 @@ public sealed class LicenseGateMiddleware
             _log.LogError(ex, "[License] بررسی مهلت سازگاری ناموفق بود؛ رفتار «لایسنس نامعتبر» اعمال می‌شود.");
         }
 
-        // ---------- لایسنس موجود نیست یا معتبر نیست ----------
+        // ---------- لایسنس موجود نیست یا معتبر نیست: **فقط‌خواندنی** ----------
+        //
+        // ⛔ این‌جا قبلاً همهٔ درخواست‌ها (حتی GET) با ۴۰۳ بسته می‌شد. تصمیم کارفرما:
+        //    «دادهٔ مشتری هرگز قفل نمی‌شود». دو وضعیت Missing و Invalid هر دو ممکن است
+        //    ناشی از چیزی خارج از کنترل مشتری باشند (جابه‌جایی VM ⇒ تغییر InstallationId،
+        //    فایل خراب، کلید، بکاپ روی سخت‌افزار تازه). اگر خواندن هم بسته شود، مشتری برای
+        //    دیدن اطلاعات خودش هم دسترسی ندارد.
+        //
+        // پس: خواندن آزاد، نوشتن بسته. و «نوشتن» فقط با فعل HTTP تعریف نمی‌شود؛
+        // POSTهای فقط‌خواندنی (گزارش‌ها، جست‌وجوی آرشیو، خروجی‌ها) با صفت
+        // [AllowInReadOnly] علامت‌گذاری شده‌اند و از همین‌جا عبور می‌کنند.
+        var isReadOnlyStatus =
+            status is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid;
+
+        if (isReadOnlyStatus)
+        {
+            context.Response.Headers[ReadOnlyHeader] = "1";
+
+            if (IsReadMethod(context.Request.Method) || IsMarkedReadOnlyAllowed(context))
+            {
+                await _next(context);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json; charset=utf-8";
+
+            var readOnlyMessage = status == LicenseOverallStatus.Missing
+                ? "لایسنس این نصب هنوز فعال نشده است. مشاهدهٔ اطلاعات آزاد است، ولی ثبت و تغییر مسدود است. "
+                  + "برای فعال‌سازی، فایل لایسنس را از صفحهٔ «لایسنس» بارگذاری کنید."
+                : "لایسنس این نصب معتبر نیست. مشاهدهٔ اطلاعات آزاد است، ولی ثبت و تغییر مسدود است. "
+                  + "فایل لایسنس را از صفحهٔ «لایسنس» بارگذاری کنید یا با پشتیبانی تماس بگیرید.";
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                code = ReadOnlyCode,
+                status = status.ToString(),
+                readOnly = true,
+                message = readOnlyMessage
+            });
+            return;
+        }
+
+        // ---------- (برای کامل‌بودن) هر وضعیت ناشناخته: فقط‌خواندنی ----------
+        // اگر روزی وضعیت تازه‌ای اضافه شد و این‌جا مدیریت نشد، رفتار پیش‌فرض «قفل نکن» است.
+        context.Response.Headers[ReadOnlyHeader] = "1";
+        if (IsReadMethod(context.Request.Method) || IsMarkedReadOnlyAllowed(context))
+        {
+            await _next(context);
+            return;
+        }
+
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         context.Response.ContentType = "application/json; charset=utf-8";
-
-        var message = status == LicenseOverallStatus.Missing
-            ? "لایسنس این نصب هنوز فعال نشده است. برای شروع، فایل لایسنس را بارگذاری کنید یا با مدیر سیستم تماس بگیرید."
-            : "لایسنس این نصب معتبر نیست. فایل لایسنس را از صفحهٔ فعال‌سازی بارگذاری کنید یا با پشتیبانی تماس بگیرید.";
-
         await context.Response.WriteAsJsonAsync(new
         {
-            code = "LICENSE_REQUIRED",
+            code = ReadOnlyCode,
             status = status.ToString(),
-            message
+            readOnly = true,
+            message = "دسترسی نوشتن در وضعیت فعلی لایسنس مجاز نیست؛ مشاهدهٔ اطلاعات آزاد است."
         });
+    }
+
+    /// <summary>آیا این فعل HTTP فقط می‌خواند؟</summary>
+    public static bool IsReadMethod(string method)
+        => HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+
+    /// <summary>
+    /// آیا این درخواست، هرچند POST است، در واقع فقط می‌خواند و با صفت
+    /// <see cref="AllowInReadOnlyAttribute"/> علامت‌گذاری شده است؟
+    ///
+    /// <para>
+    /// چرا صفت و نه فهرست مسیر؟ چون فهرست مسیر با هر تغییر route کهنه می‌شود و کسی
+    /// یادش نمی‌ماند به‌روزش کند. صفت روی خود اکشن است، در همان فایلی که تغییر می‌کند
+    /// دیده می‌شود، و آزمون پوشش می‌تواند اطمینان دهد فقط اکشن‌های واقعاً فقط‌خواندنی
+    /// آن را دارند.
+    /// </para>
+    /// </summary>
+    private static bool IsMarkedReadOnlyAllowed(HttpContext context)
+    {
+        var endpoint = context.GetEndpoint();
+        if (endpoint is null) return false;
+
+        if (endpoint.Metadata.GetMetadata<AllowInReadOnlyAttribute>() is not null) return true;
+
+        // کنترلر ممکن است کلاس را علامت زده باشد (اکشن‌ها هم ارث می‌برند).
+        return endpoint.Metadata.GetOrderedMetadata<AllowInReadOnlyAttribute>().Count > 0;
     }
 
     /// <summary>آیا این مسیر متعلق به API است؟ (صفحه‌های Blazor و فایل‌ها آزادند)</summary>
