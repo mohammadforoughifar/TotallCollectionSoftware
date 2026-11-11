@@ -97,6 +97,48 @@ public static class ActiveCountProbes
     }
 
     /// <summary>
+    /// ثبت «مبنای بخشودگی گذشته» برای متریک‌هایی که آیتم لایسنس‌شان این گزینه را
+    /// روشن کرده است — <b>فقط برای دورهٔ جاری</b>.
+    ///
+    /// <para>
+    /// منطق: در لحظهٔ فعال‌سازی، تعداد رکوردهای <b>همین دوره</b> را می‌شماریم و ذخیره
+    /// می‌کنیم؛ مصرف مؤثر = <c>max(شمارنده, تعداد این دوره − همین مبنا)</c>. ماه بعد
+    /// کلید دورهٔ دیگری است و ردیفی ندارد ⇒ شمارش از صفر. این دقیقاً خواستهٔ «فقط
+    /// برای همان دوره» است.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ اگر متریک probe ندارد (مثلاً شمارندهٔ خالص)، نمی‌توانیم «رکوردهای موجود»
+    /// را بشماریم؛ در آن حالت مبنا ثبت نمی‌شود و رفتار پیش‌فرض (شمارش کامل) می‌ماند.
+    /// این را در لاگ با هشدار اعلام می‌کنیم تا در تست/استقرار پنهان نماند.
+    /// </para>
+    /// </summary>
+    /// <returns>تعداد متریک‌هایی که همین حالا مبنا گرفتند.</returns>
+    public static async Task<int> CaptureGrandfatherAsync(AppDbContext db, QuotaService quota,
+        Inventory.Licensing.Entitlement.EffectiveEntitlement entitlement, string? serial,
+        CancellationToken cancellationToken = default)
+    {
+        var captured = 0;
+        var iranNow = Inventory.Licensing.Periods.PersianPeriodKey.NowIran();
+
+        foreach (var limit in entitlement.Limits)
+        {
+            if (!limit.Grandfather) continue;
+            if (!Probes.ContainsKey(limit.Metric)) continue;
+
+            var periodKey = Inventory.Licensing.Periods.PersianPeriodKey.Now(limit.Period);
+            var range = Inventory.Licensing.Periods.PersianPeriodKey.RangeOf(limit.Period, iranNow);
+            var live = await Probes[limit.Metric](db, range.From, range.To, cancellationToken);
+
+            if (await quota.CaptureGrandfatherBaselineAsync(limit.Module, limit.Metric, periodKey,
+                    live, serial, cancellationToken))
+                captured++;
+        }
+
+        return captured;
+    }
+
+    /// <summary>
     /// ثبت «مبنای مصرف» برای متریک‌هایی که <b>در همین لایسنس سقف دارند</b>.
     ///
     /// <para>

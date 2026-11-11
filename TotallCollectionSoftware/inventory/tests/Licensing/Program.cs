@@ -1007,6 +1007,76 @@ Section("۲۳) فهرست کنترلرها (برای تطبیق با گزارش 
 }
 
 // ============================================================
+Section("۲۴) سازگاری رو به جلو: فیلد ناشناخته در سند امضاشده، امضا را نمی‌شکند");
+
+{
+    // درخواست کارفرما (بازبینی سوم): «سندی که فیلد ناشناخته (مثلاً carryOverUsage) دارد
+    // باید هنوز تأیید و بارگذاری شود.»
+    //
+    // چرا این مهم است؟ فایل لایسنس را **ما** برای **آن‌ها** امضا می‌کنیم. اگر نسخهٔ نرم‌افزار
+    // مشتری قدیمی‌تر از فیلدهای جدید سند باشد، نباید فایل «معتبر ولی ناخوانا» شود و
+    // مشتری وسط کار بماند. امضا روی بایت‌های خام است، پس فیلد اضافی امضا را نمی‌شکند؛
+    // فقط باید مطمئن شویم Deserialize آن را نادیده می‌گیرد (نه خطا).
+    using var rsa = RSA.Create(2048);
+    var privatePem = rsa.ExportPkcs8PrivateKeyPem();
+    var publicPem = rsa.ExportSubjectPublicKeyInfoPem();
+    var ring = PublicKeyRing.FromEntries(new[] { new PublicKeyEntry { KeyId = "fwd-key", Algorithm = "RS256", PublicKeyPem = publicPem } });
+
+    var document = Doc("FWD-1", Item("I1", new[] { ModuleCodes.Catalog }, Perp()));
+    document.KeyId = "fwd-key";
+
+    // payload پایه، سپس تزریق دستی یک فیلد ناشناخته — همان کاری که ابزار صدور نسخهٔ
+    // آینده می‌کند. امضا روی همین بایت‌های تغییر‌یافته زده می‌شود.
+    var json = Encoding.UTF8.GetString(LicenseJson.ToPayloadBytes(document));
+    var mutated = json.Replace("\"items\":", "\"carryOverUsage\":17,\"someFutureField\":{\"a\":1},\"items\":", StringComparison.Ordinal);
+    Check(mutated != json, "فیلدهای ناشناخته به payload تزریق شدند");
+
+    var payload = Encoding.UTF8.GetBytes(mutated);
+    var signature = KeySign.Sign(payload, privatePem, "RS256");
+
+    var envelope = new SignedLicenseDocument
+    {
+        KeyId = "fwd-key",
+        Algorithm = "RS256",
+        Payload = Convert.ToBase64String(payload),
+        Signature = Convert.ToBase64String(signature)
+    };
+
+    var fileText = JsonSerializer.Serialize(envelope);
+    var verified = LicenseVerifier.Verify(fileText, ring);
+
+    Check(verified.Ok, $"سند با فیلد ناشناخته تأیید می‌شود (خطا: {verified.ErrorText})");
+    Check(verified.Document is not null, "سند با فیلد ناشناخته بارگذاری می‌شود (Document != null)");
+    Check(verified.Document?.Serial == "FWD-1",
+        $"سریال درست خوانده شد (واقعی: {verified.Document?.Serial})");
+    Check(verified.Document?.Items.Count == 1 && verified.Document.Items[0].Quotas.Count == 0,
+        "فیلدهای شناخته‌شدهٔ دیگر سالم ماندند");
+
+    // کنترل: همان payload بدون امضای درست باید رد شود — تا معلوم باشد «نادیده گرفتن
+    // فیلد ناشناخته» به معنی «نادیده گرفتن امضا» نیست.
+    var badSig = new SignedLicenseDocument
+    {
+        KeyId = "fwd-key",
+        Algorithm = "RS256",
+        Payload = Convert.ToBase64String(payload),
+        Signature = Convert.ToBase64String(KeySign.Sign(LicenseJson.ToPayloadBytes(document), privatePem, "RS256"))
+    };
+    Check(!LicenseVerifier.Verify(JsonSerializer.Serialize(badSig), ring).Ok,
+        "کنترل: امضای payload اصلی، payload تغییر‌یافته را تأیید نمی‌کند");
+
+    // و سندِ دارای فیلد ناشناخته باید در ادغام هم بی‌مشکل باشد (نه فقط در تأیید).
+    var merged = merged_ok(verified.Document!);
+    Check(merged, "ادغام سند دارای فیلد ناشناخته بدون خطا انجام شد");
+}
+
+// ============================================================
 // ============================================================
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;
+
+// ---- کمکی: ادغام یک سند و تأیید اینکه نتیجه معتبر است ----
+static bool merged_ok(LicenseDocument doc)
+{
+    var ent = EntitlementMerger.Merge(new[] { doc });
+    return ent.Status == LicenseOverallStatus.Valid && ent.Items.Count > 0;
+}

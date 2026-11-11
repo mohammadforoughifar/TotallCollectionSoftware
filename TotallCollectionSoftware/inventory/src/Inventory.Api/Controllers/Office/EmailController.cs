@@ -4,6 +4,7 @@ using Inventory.Api.Services.Office.Email;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Office;
 
@@ -91,6 +92,7 @@ public class EmailController : RbacControllerBase
     }
 
     /// <summary>تست اتصال SMTP و IMAP — بدون ذخیره حساب</summary>
+    [AllowInReadOnly]
     [HttpPost("test")]
     public async Task<IActionResult> Test([FromBody] SaveEmailAccountDto dto)
     {

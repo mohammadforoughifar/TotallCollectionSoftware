@@ -91,6 +91,29 @@ public static class PersianPeriodKey
     public static DateTime ToIran(DateTimeOffset instant)
         => TimeZoneInfo.ConvertTime(instant, IranZone).DateTime;
 
+    /// <summary>
+    /// «اکنون» به وقت تهران، با <b>افست صریح</b> — برای هر APIای که زمان را به بیرون می‌دهد.
+    ///
+    /// <para>
+    /// <b>چرا این متد لازم شد؟</b> <see cref="NowIran"/> یک <see cref="DateTime"/> با
+    /// Kind ناشناخته برمی‌گرداند؛ وقتی به JSON سریال می‌شود، رشته‌ای <b>بدون افست</b>
+    /// تولید می‌کند (مثلاً <c>2026-11-08 14:30:00</c>) که هر مصرف‌کنندهٔ بیرونی ممکن است
+    /// UTC فرض کند — ۳ ساعت و ۳۰ دقیقه خطا در پایش و همگام‌سازی.
+    /// </para>
+    ///
+    /// <para>
+    /// این متد همان ساعت دیوارِ تهران را با افست واقعی منطقه برمی‌گرداند؛ در JSON به‌صورت
+    /// <c>2026-11-08T14:30:00+03:30</c> درمی‌آید که بدون ابهام تجزیه می‌شود.
+    /// </para>
+    /// </summary>
+    public static DateTimeOffset NowIranOffset()
+    {
+        var instant = DateTimeOffset.UtcNow;
+        var wall = ToIran(instant);
+        return new DateTimeOffset(DateTime.SpecifyKind(wall, DateTimeKind.Unspecified),
+            IranZone.GetUtcOffset(instant));
+    }
+
     /// <summary>کلید دورهٔ یک لحظهٔ مطلق — <b>مبنای درست</b> برای هر محاسبه.</summary>
     public static string ForInstant(DateTimeOffset instant, QuotaPeriod period)
         => For(period, ToIran(instant));

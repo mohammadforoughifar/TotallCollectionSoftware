@@ -99,6 +99,7 @@ public class LicenseController : ControllerBase
     private readonly LicensingOptions _options;
     private readonly IConfiguration _configuration;
     private readonly QuotaService _quota;
+    private readonly RefundPolicy _refundPolicy;
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
@@ -116,6 +117,7 @@ public class LicenseController : ControllerBase
         _options = options;
         _configuration = configuration;
         _quota = quota;
+        _refundPolicy = RefundPolicy.FromConfiguration(configuration);
         _log = log;
     }
 
@@ -204,9 +206,46 @@ public class LicenseController : ControllerBase
                 };
             }),
             limits = usage,
+
+            // رزروهای معلق و بازگشت‌های دستی — بدون این دو عدد، مدیر نمی‌داند
+            // چند ارسال «بلاتکلیف» مانده و چند واحد از سهمیه را دستی آزاد کرده است.
+            reservations = await BuildReservationBlockAsync(cancellationToken),
+
             issues = entitlement.Issues.Select(i => new { i.Code, severity = i.Severity.ToString(), i.Message }),
             grants
         });
+    }
+
+    /// <summary>
+    /// بلوک «رزروها» برای <c>/api/license/status</c>.
+    ///
+    /// <para>
+    /// چرا این‌جا؟ چون تنها جایی است که مدیر وضعیت کامل لایسنس را می‌بیند؛ اگر رزرو
+    /// «در انتظار» نامرئی باشد، ارسال‌هایی که تسویه نشده‌اند برای همیشه سهمیه را
+    /// بلوکه می‌کنند و کسی نمی‌فهمد چرا سقف پر است.
+    /// </para>
+    /// </summary>
+    private async Task<object> BuildReservationBlockAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var quota = HttpContext.RequestServices.GetRequiredService<QuotaService>();
+            var summary = await quota.GetReservationSummaryAsync(_refundPolicy, cancellationToken);
+            return new
+            {
+                summary.Pending,
+                summary.Reserved,
+                summary.Confirmed,
+                summary.Refunded,
+                summary.ManualRefunds,
+                manualRefundPolicy = summary.ManualRefundPolicy
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "[License] خواندن خلاصهٔ رزروها ناموفق بود (وضعیت لایسنس تحت تأثیر قرار نمی‌گیرد).");
+            return new { unavailable = true };
+        }
     }
 
     /// <summary>سلامت لایسنس — بدون ورود، سبک، برای Health Check و صفحهٔ ورود.</summary>
@@ -229,7 +268,9 @@ public class LicenseController : ControllerBase
             warningModules = ModuleCodes.All
                 .Where(m => entitlement.GetState(m.Code) is ModuleState.ExpiringSoon or ModuleState.Grace)
                 .Select(m => m.Code),
-            serverTime = DateTime.Now
+            // ⚠️ ارزش پیشین: DateTime.Now — ساعت محلیِ **سرور** (می‌تواند UTC باشد یا هر چیز).
+            // اکنون: وقت تهران با افست صریح +03:30 (هم‌قاعدهٔ /api/health).
+            serverTime = PersianPeriodKey.NowIranOffset()
         });
     }
 
@@ -252,7 +293,8 @@ public class LicenseController : ControllerBase
             productVersion = _options.ProductVersion ?? typeof(LicenseController).Assembly.GetName().Version?.ToString(),
             machineName = Environment.MachineName,
             osVersion = Environment.OSVersion.VersionString,
-            serverTime = DateTime.Now,
+            // همان ملاحظهٔ /api/health: افست صریح، نه ساعت محلیِ سرور بدون منطقه.
+            serverTime = PersianPeriodKey.NowIranOffset(),
             licenseFolder = _paths.Root,
             keyIds = _keys.Ring.KeyIds
         });
@@ -450,6 +492,22 @@ public class LicenseController : ControllerBase
             if (captured > 0)
                 _log.LogInformation("[License] مبنای مصرف برای {Count} متریک ثبت شد (سریال {Serial}).",
                     captured, document.Serial);
+
+            // ۵.۲) مبنای «بخشودگی گذشته» — فقط برای آیتم‌هایی که Grandfather دارند.
+            // بدون این، مشتری‌ای که ماه جاری ۳۰۰ نامه ثبت کرده و سقف ۱۰۰ می‌خرد، از
+            // دقیقهٔ اول قفل می‌شد.
+            var grandfathered = await ActiveCountProbes.CaptureGrandfatherAsync(
+                _db, quota, entitlement, document.Serial, cancellationToken);
+
+            if (grandfathered > 0)
+            {
+                _log.LogInformation("[License] بخشودگی گذشته برای {Count} متریک ثبت شد (سریال {Serial}).",
+                    grandfathered, document.Serial);
+                await _events.WriteDataAsync("LICENSE_GRANDFATHER_CAPTURED",
+                    $"بخشودگی گذشته برای {grandfathered} متریک در دورهٔ جاری ثبت شد؛ سقف فقط روی رکوردهای تازه اعمال می‌شود.",
+                    new { document.Serial, metrics = grandfathered },
+                    userId: CurrentUserIdOrNull(), serial: document.Serial, cancellationToken: cancellationToken);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -585,20 +643,54 @@ public class LicenseController : ControllerBase
             return BadRequest(new { code = "LICENSE_SETTLE_INVALID", message = "عملیات تسویه فقط Confirm یا Refund می‌تواند باشد." });
 
         var username = User.Identity?.Name ?? "unknown";
-        var done = await _quota.SettleReservationAsync(id, confirm, username, request.Note, cancellationToken);
+        var result = await _quota.SettleReservationDetailedAsync(id, confirm, username, request.Note,
+            _refundPolicy, cancellationToken);
 
-        if (!done)
-            return NotFound(new
+        if (!result.Success)
+        {
+            // هر دلیل، کد و وضعیت HTTP خودش را دارد: مشتری باید بداند «چرا نشد»،
+            // نه فقط «نشد». ۴۲۹ برای سقف پر، تا کلاینت بتواند Retry-After بگذارد.
+            return result.Failure switch
             {
-                code = "LICENSE_RESERVATION_NOT_OPEN",
-                message = "رزرو پیدا نشد یا قبلاً تسویه شده است."
-            });
+                SettleFailure.NotFound => NotFound(new
+                {
+                    code = "LICENSE_RESERVATION_NOT_FOUND",
+                    message = result.Message
+                }),
+                SettleFailure.AlreadySettled => Conflict(new
+                {
+                    code = "LICENSE_RESERVATION_NOT_OPEN",
+                    message = result.Message
+                }),
+                SettleFailure.NoteRequired => BadRequest(new
+                {
+                    code = "LICENSE_REFUND_NOTE_REQUIRED",
+                    message = result.Message
+                }),
+                SettleFailure.TooRecent => BadRequest(new
+                {
+                    code = "LICENSE_REFUND_TOO_RECENT",
+                    message = result.Message
+                }),
+                SettleFailure.RefundLimitReached => StatusCode(429, new
+                {
+                    code = "LICENSE_REFUND_LIMIT_REACHED",
+                    message = result.Message
+                }),
+                _ => BadRequest(new { code = "LICENSE_SETTLE_FAILED", message = result.Message })
+            };
+        }
 
         return Ok(new
         {
-            message = confirm ? "رزرو تأیید شد؛ مصرف تغییر نکرد." : "رزرو بازگردانده شد؛ سهمیهٔ دوره آزاد شد.",
+            message = confirm
+                ? "رزرو تأیید شد؛ مصرف تغییر نکرد."
+                : result.RefundApplied
+                    ? "رزرو بازگردانده شد؛ سهمیهٔ دوره آزاد شد."
+                    : "رزرو بازگردانده شد، ولی شمارنده‌ای برای کاهش نبود (مصرف همان دوره صفر بود).",
             id,
-            action = confirm ? "Confirm" : "Refund"
+            action = confirm ? "Confirm" : "Refund",
+            refundApplied = result.RefundApplied
         });
     }
 

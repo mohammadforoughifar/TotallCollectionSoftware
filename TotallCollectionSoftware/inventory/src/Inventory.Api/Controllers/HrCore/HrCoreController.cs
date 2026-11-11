@@ -350,6 +350,7 @@ public class HrCoreController : RbacControllerBase
         return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAlertsAsync(pagination: pagination), skip, take));
     }
 
+    [AllowInReadOnly]
     [HttpPost("contract-alerts/check")]
     public async Task<IActionResult> CheckAlerts([FromQuery] int days = 30)
     {

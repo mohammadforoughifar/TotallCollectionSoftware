@@ -128,6 +128,11 @@ async Task ResetAsync()
         foreach (var sql in new[]
                  {
                      "DELETE FROM [dbo].[LicenseUsageLedger]",
+                     // رزروها و مبناهای بخشودگی هم پاک می‌شوند؛ وگرنه عددهای «Refunded»
+                     // و «بازگشت دستی» از اجرای قبلی می‌مانند (SQL Server پایدار است،
+                     // برخلاف SQLite که هر اجرا فایل تازه می‌سازد).
+                     "DELETE FROM [dbo].[LicenseReservations]",
+                     "DELETE FROM [dbo].[LicenseGrandfatherBaselines]",
                      "DELETE FROM [dbo].[LicenseUsageBaselines]",
                      "DELETE FROM [dbo].[LicenseUsages]",
                      "DELETE FROM [dbo].[LicenseEvents]",
@@ -170,6 +175,30 @@ EffectiveEntitlement Entitlement(string metric, long limit, QuotaPeriod period, 
                 Scope = modules.ToList(),
                 Term = new LicenseTerm { Type = LicenseTermType.Perpetual },
                 Quotas = new List<LicenseQuota> { new() { Metric = metric, Limit = limit, Period = period } }
+            }
+        }
+    };
+    return EntitlementMerger.Merge(new[] { doc });
+}
+
+/// <summary>همان سند آزمایشی، ولی با گزینهٔ «بخشودگی گذشته» روشن روی سهمیه.</summary>
+EffectiveEntitlement GrandfatherEntitlement(string metric, long limit, QuotaPeriod period, params string[] modules)
+{
+    var doc = new LicenseDocument
+    {
+        Serial = "TEST-GF", KeyId = "dev-2026a", CustomerId = "C-1", CustomerName = "تست",
+        Deployment = DeploymentKind.OnPrem, InstallationId = "inst", IssuedAt = new DateTime(2026, 1, 1),
+        Items = new List<LicenseItem>
+        {
+            new()
+            {
+                Id = "I-GF",
+                Scope = modules.ToList(),
+                Term = new LicenseTerm { Type = LicenseTermType.Perpetual },
+                Quotas = new List<LicenseQuota>
+                {
+                    new() { Metric = metric, Limit = limit, Period = period, Grandfather = true }
+                }
             }
         }
     };
@@ -690,6 +719,86 @@ Section("۱۴.۱) شکست قطعی ⇒ بازگشت همان واحد + رخد�
 }
 
 // ============================================================
+Section("۱۴.۲) تعریف دقیق DeliveryUncertain: ۴xx = قطعی، ۵xx/استثنا = نامعلوم");
+
+{
+    // درخواست کارفرما: «(الف) ۴xx صریح ⇒ بازگشت خودکار با LICENSE_QUOTA_REFUND_TECHNICAL؛
+    // (ب) Timeout بعد از ارسال ⇒ Pending؛ به‌همراه تعریف دقیق DeliveryUncertain.»
+    //
+    // بخش ۱۴.۱ دو حالت نمونه را سنجید؛ این بخش مرز را دقیق‌تر می‌بندد: تفاوت
+    // «۵xx با پرچم نامعلوم» و «۵xx با پرچم قطعی»، و «استثنای رهاشده در ارسال».
+    await ResetAsync();
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+    var coordinator = new Inventory.Api.Licensing.Services.QuotaSendCoordinator(
+        quota, Microsoft.Extensions.Logging.Abstractions.NullLogger<Inventory.Api.Licensing.Services.QuotaSendCoordinator>.Instance);
+
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 100, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+
+    async Task<long> UsedAsync()
+    {
+        await using var q = NewDb();
+        return await q.LicenseUsages.AsNoTracking()
+            .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (long?)u.Used).FirstOrDefaultAsync() ?? 0;
+    }
+
+    // ---------- الف) ۴xx صریح (پاسخ اعتبارسنجی) ⇒ قطعی: بازگشت ----------
+    var before4xx = await UsedAsync();
+    var (_, o4xx) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel
+        {
+            Success = false, Status = 422, DeliveryUncertain = false,
+            Message = "شمارهٔ اقتصادی خریدار نامعتبر است."
+        }), entityType: "MoadianInvoice", entityId: "422-case");
+
+    Check(o4xx == Inventory.Api.Licensing.Services.QuotaSendOutcome.Failed,
+        $"۴۲۲ صریح ⇒ Failed (واقعی: {o4xx})");
+    Check(await UsedAsync() == before4xx,
+        $"۴۲۲ صریح ⇒ سهمیه برگشت (قبل: {before4xx}، بعد: {await UsedAsync()})");
+
+    await using (var q = NewDb())
+    {
+        var refundEvents = await q.LicenseEvents.AsNoTracking()
+            .Where(e => e.Kind == "LICENSE_QUOTA_REFUND_TECHNICAL").CountAsync();
+        Check(refundEvents >= 1, $"رخداد LICENSE_QUOTA_REFUND_TECHNICAL برای خطای قطعی ثبت شد (تعداد: {refundEvents})");
+    }
+
+    // ---------- ب) ۵xx با پرچم «نامعلوم» ⇒ Pending ----------
+    var before5xx = await UsedAsync();
+    var (_, o5xxUnknown) = await coordinator.SendAsync(ent, _ => Task.FromResult(
+        new Inventory.Shared.Dtos.Moadian.ApiModel
+        {
+            Success = false, Status = 503, DeliveryUncertain = true,
+            Message = "Gateway Timeout — پاسخ سامانه نرسید."
+        }), entityType: "MoadianInvoice", entityId: "503-case");
+
+    Check(o5xxUnknown == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending,
+        $"۵۰۳ + DeliveryUncertain ⇒ Pending (واقعی: {o5xxUnknown})");
+    Check(await UsedAsync() == before5xx + 1,
+        $"۵۰۳ نامعلوم ⇒ سهمیه برنگشت ({before5xx} ⇒ {await UsedAsync()})");
+
+    // ---------- ج) استثنای رهاشده در ارسال (Timeout در سطح شبکه) ⇒ Pending ----------
+    var beforeExc = await UsedAsync();
+    var (excResult, oExc) = await coordinator.SendAsync(ent, _ =>
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing."),
+        entityType: "MoadianInvoice", entityId: "timeout-case");
+
+    Check(oExc == Inventory.Api.Licensing.Services.QuotaSendOutcome.Pending,
+        $"استثنای Timeout ⇒ Pending (واقعی: {oExc})");
+    Check(excResult.DeliveryUncertain == true,
+        "هماهنگ‌کننده خودش پرچم DeliveryUncertain را روی نتیجه ست می‌کند (تا کلاینت اشتباه تفسیر نکند)");
+    Check(await UsedAsync() == beforeExc + 1,
+        $"Timeout ⇒ سهمیه برنگشت ({beforeExc} ⇒ {await UsedAsync()}) — قاعدهٔ «نامعلوم ⇒ تعویق»");
+
+    await using (var q = NewDb())
+    {
+        var pending = await q.LicenseReservations.AsNoTracking()
+            .CountAsync(r => r.State == Inventory.Api.Data.LicenseReservation.States.Pending);
+        Check(pending >= 2, $"دو رزرو «در انتظار» برای تسویهٔ دستی مانده (واقعی: {pending})");
+    }
+}
+
+// ============================================================
 Section("۱۵) سناریوی بازبینی: لایسنس بدون سقف ⇒ ۵۰۰۰ فاکتور ⇒ لایسنس با سقف ۳۰");
 
 {
@@ -1018,28 +1127,167 @@ Section("۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی
         .OrderBy(x => x, StringComparer.Ordinal)
         .ToList();
 
-    Console.WriteLine($"   (اطلاع) اکشن‌های نوشتاریِ علامت‌خورده [AllowInReadOnly]: {markedActions.Count}");
-    foreach (var a in markedActions) Console.WriteLine($"      • {a}");
+    // ⚠️ دو کنترلر هم‌نام در دو namespace وجود دارد (Core.AuthController و RadisHr.AuthController،
+    // همین‌طور FilesController). نامِ کوتاه مبهم است؛ پس نام کاملِ فضای‌نام هم چاپ می‌شود.
+    var markedDetailed = typeof(Inventory.Api.Controllers.ProductsController).Assembly.GetTypes()
+        .Where(t => t.IsSubclassOf(typeof(Microsoft.AspNetCore.Mvc.ControllerBase)) && !t.IsAbstract)
+        .SelectMany(t => t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(m => m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPostAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPutAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpPatchAttribute), true).Any()
+                        || m.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpDeleteAttribute), true).Any())
+            .Where(m => m.GetCustomAttributes(typeof(Inventory.Api.Licensing.Infrastructure.AllowInReadOnlyAttribute), true).Any())
+            .Select(m => new { Type = t, Method = m }))
+        .ToList();
 
-    Check(markedActions.Count == 10,
-        $"دقیقاً ۱۰ اکشن نوشتاری علامت‌خورده‌اند (POSTهای فقط‌خواندنی) — واقعی: {markedActions.Count}");
+    Console.WriteLine($"   (اطلاع) اکشن‌های نوشتاریِ علامت‌خورده [AllowInReadOnly]: {markedDetailed.Count}");
+    foreach (var group in markedDetailed.GroupBy(x => x.Type.Namespace ?? "").OrderBy(g => g.Key, StringComparer.Ordinal))
+    {
+        Console.WriteLine($"      [{group.Key}]");
+        foreach (var x in group.OrderBy(x => x.Type.Name, StringComparer.Ordinal).ThenBy(x => x.Method.Name, StringComparer.Ordinal))
+            Console.WriteLine($"         • {x.Type.Name}.{x.Method.Name}");
+    }
 
-    // هر اکشن علامت‌خورده باید در فهرست انتظار باشد؛ افزودن تازه = تصمیم آگاهانه، نه فراموشی.
+    // ============================================================
+    //  فهرست قفل‌شده — «همهٔ» اکشن‌های غیر-GET که عمداً در حالت فقط‌خواندنی مجازند.
+    //
+    //  منبع: کاتالوگ ۹۸۰ اکشن غیر-GET در ۱۲۶ کنترلر (فهرست‌برداری کامل). سه دسته:
+    //    ۱) زیرساختی/حساب کاربری — بدون آن‌ها سیستم در حالت بدون لایسنس قابل
+    //       راه‌اندازی/نگهداری نیست (ورود، تغییر رمز، پشتیبان‌گیری، HTTPS، فایل).
+    //    ۲) کاملاً فقط‌خواندنی — POST است ولی هیچ ردیفی را تغییر نمی‌دهد
+    //       (جست‌وجو، پیش‌نمایش، تست اتصال، گزارش).
+    //    ۳) مجوز/پشتیبانی — فعال‌سازی لایسنس و تسویهٔ دستی رزرو.
+    //
+    //  ⚠️ هر افزودن به این فهرست = تصمیم آگاهانه؛ تست شکست می‌خورد تا کسی بی‌صدا
+    //     یک اکشن نوشتاری را باز نکند.
+    // ============================================================
     var expectedMarked = new[]
     {
+        // ---- ۱) زیرساختی / حساب کاربری / نگهداری ----
+        "AiController.BriefingSendNow", "AiController.CategorizeLetter", "AiController.Chat",
+        "AiController.DeleteConversation", "AiController.DigestSendNow", "AiController.DraftLetter",
+        "AiController.DraftMinutes", "AiController.DraftReply", "AiController.ExtractTasks",
+        "AiController.FeedbackSubmit", "AiController.SuggestReceivers", "AiController.SuggestReferral",
+        "AiController.SummarizeLetter",
+        "BackupController.Retry", "BackupController.Run", "BackupController.SaveSettings", "BackupController.Test",
+        "BackupSessionController.Close", "BackupSessionController.Heartbeat",
+        "CentralBackupController.DeleteCompany", "CentralBackupController.DeleteReceipt",
+        "CentralBackupController.RotateKey", "CentralBackupController.SaveCompany", "CentralBackupController.Upload",
+        "AuthController.ChangePassword", "AuthController.Login", "AuthController.ResetPassword",
+        "AuthController.UploadUserPhoto", "AuthController.UploadUserSignature",
+        "UserProfileController.VerifyEmailOtp", "UserProfileController.VerifyMobileOtp",
+        "CompanyContextController.SetUserCompanies",
+        "HttpsController.ExportPfx", "HttpsController.Regenerate",
+        "FilesController.Upload",
+        "NotificationsController.TestMessenger", "NotificationsController.TestPush",
+        "NotificationsController.PushStatus",
+        "EmailController.Test", "OfficeMachineAgentController.Printers",
+        "DocSettingsController.RunOnce", "DocumentsController.RunExpiryCheck",
+        "FaComController.CheckAnniversaries", "FaComController.CheckBirthdays", "FaComController.CheckDue",
+
+        // ---- ۲) فقط‌خواندنی (POST بی‌اثر روی داده) ----
+        "DashboardController.HardwareCheck",
+        "DocCollabController.DuplicateCheck", "DocFavoritesController.Status",
         "DocSearchController.AdvancedSearch", "DocSearchController.SearchPage",
         "DocSemanticController.SemanticSearch", "DocSemanticController.Suggest",
-        "HrCoreController.RunReport",
-        "LicenseController.SettleReservation",
-        "MoadianController.PreviewSendInvoiceAsync",
-        "ReportStudioController.Preview", "ReportStudioController.Run",
-        "ShopPricingController.Preview"
+        "DocumentsController.ConfirmDownload",
+        "FaLmsController.Suggest", "HrCoreController.CheckAlerts", "HrCoreController.RunReport",
+        "HrPayController.TestFormula", "ItRemoteController.TestConnection", "ServersController.TestConnection",
+        "OfficeMachinesController.TestSnmp", "OrdersController.PreviewChequeReturn",
+        "ReportStudioController.Preview", "ReportStudioController.Run", "ShopPricingController.Preview",
+
+        // ---- ۳) مجوز / پشتیبانی ----
+        "LicenseController.SettleReservation", "MoadianController.PreviewSendInvoiceAsync",
+
+        // ---- ۳.۱) مدیریت داشبورد (تنظیمات نمایشی، نه دادهٔ مشتری) ----
+        "DashboardsController.Create", "DashboardsController.Delete",
+        "DashboardsController.SetDefault", "DashboardsController.Update"
     };
 
-    var unexpected = markedActions.Where(a => !expectedMarked.Contains(a)).ToList();
-    var missingExpected = expectedMarked.Where(a => !markedActions.Contains(a)).ToList();
+    // مقایسه بر پایهٔ «نام کوتاه» — با شمارش تکرارها، تا حذف یکی از دو Upload گم نشود.
+    var expected = expectedMarked.OrderBy(x => x, StringComparer.Ordinal).ToList();
+    var actual = markedActions.OrderBy(x => x, StringComparer.Ordinal).ToList();
+
+    var unexpected = actual.Where(a => !expected.Contains(a)).Distinct().ToList();
+    var missingExpected = expected.Where(a => !actual.Contains(a)).Distinct().ToList();
+
     Check(unexpected.Count == 0, $"هیچ اکشن ناشناخته‌ای علامت نخورده (ناشناخته: {string.Join(", ", unexpected)})");
     Check(missingExpected.Count == 0, $"همهٔ اکشن‌های انتظار علامت دارند (نبود: {string.Join(", ", missingExpected)})");
+    // ⚠️ دو جفت کنترلر هم‌نام (Core/RadisHr ⇒ AuthController، و دو FilesController)
+    // باعث می‌شوند نام کوتاه تکراری شود. مقایسه روی مجموعهٔ یکتا انجام می‌شود و
+    // تکرارها جداگانه بررسی می‌شوند تا «یکی از دو Upload جا افتاده» پنهان نماند.
+    var actualDistinct = actual.Distinct().ToList();
+    Check(expected.Count == actualDistinct.Count,
+        $"تعداد اکشن‌های علامت‌خورده با فهرست قفل‌شده یکی است (فهرست: {expected.Count}، یکتا: {actualDistinct.Count}، خام: {actual.Count})");
+
+    var duplicates = actual.GroupBy(a => a).Where(g => g.Count() > 1).Select(g => $"{g.Key}×{g.Count()}").ToList();
+    var allowedDuplicates = new[] { "AuthController.ChangePassword×2", "AuthController.Login×2", "FilesController.Upload×2" };
+    Check(duplicates.OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(allowedDuplicates.OrderBy(x => x, StringComparer.Ordinal)),
+        $"تکرارها فقط از کنترلرهای هم‌نام‌اند (واقعی: {string.Join(", ", duplicates)})");
+
+    // ============================================================
+    //  اجرای واقعی: هر اکشن علامت‌خورده، با مسیر واقعی‌اش، در حالت Missing اجرا می‌شود.
+    //
+    //  چرا؟ چون «صفت گذاشتن» ثابت نمی‌کند درخواست عبور می‌کند؛ اگر مسیر در allowlist
+    //  دیگری بیفتد یا صفت روی اورلودِ اشتباه بنشیند، تست صفت‌ها سبز می‌ماند و کاربر
+    //  در عمل ۴۰۳ می‌گیرد. این‌جا مسیر از Route/HttpPost خودِ اکشن ساخته می‌شود.
+    // ============================================================
+    var allowlist = new[] { "/api/auth/", "/api/license/", "/api/health" };
+
+    string RouteOf(Type type, System.Reflection.MethodInfo method)
+    {
+        var controllerRoute = type.GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.RouteAttribute), true)
+            .OfType<Microsoft.AspNetCore.Mvc.RouteAttribute>().FirstOrDefault()?.Template ?? "";
+
+        var httpTemplate = method.GetCustomAttributes(true)
+            .OfType<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>()
+            .FirstOrDefault()?.Template ?? "";
+
+        // مسیر مطلق (مثل [HttpPost("/api/doc-archive/expiry-check")]) مسیر کنترلر را
+        // بازنویسی می‌کند، نه اینکه به آن بچسبد — همان قاعدهٔ ASP.NET.
+        var isAbsolute = httpTemplate.StartsWith('/') || httpTemplate.StartsWith("~/", StringComparison.Ordinal);
+
+        var combined = isAbsolute
+            ? httpTemplate
+            : string.Join("/", new[] { controllerRoute, httpTemplate }
+                .Where(z => !string.IsNullOrWhiteSpace(z)));
+
+        combined = combined.Replace("[controller]", type.Name.Replace("Controller", "").ToLowerInvariant());
+
+        // پارامترهای مسیر ({id:int}، {uid}) با مقدار نمونه جایگزین می‌شوند.
+        combined = System.Text.RegularExpressions.Regex.Replace(combined, @"\{[^}]*\}", "1");
+
+        return "/" + combined.Trim('/');
+    }
+
+    var executed = 0;
+    var blockedAnyway = new List<string>();
+    var controlBroken = new List<string>();
+
+    foreach (var x in markedDetailed)
+    {
+        var path = RouteOf(x.Type, x.Method);
+        var label = $"{x.Type.Name}.{x.Method.Name} → {path}";
+
+        var missing = await Run(LicenseOverallStatus.Missing, "POST", path, marked: true);
+        executed++;
+        if (!missing.NextCalled) blockedAnyway.Add($"{label} ({missing.StatusCode})");
+
+        // کنترل: همان مسیر **بدون** صفت باید ۴۰۳ بگیرد — مگر اینکه در allowlist باشد.
+        var isAllowlisted = allowlist.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+        var control = await Run(LicenseOverallStatus.Missing, "POST", path, marked: false);
+        var expectedPass = isAllowlisted;
+        if (control.NextCalled != expectedPass)
+            controlBroken.Add($"{label} (allowlist={isAllowlisted}، عبور={control.NextCalled})");
+    }
+
+    Console.WriteLine($"   (اطلاع) اکشن‌های علامت‌خورده که واقعاً در حالت Missing اجرا شدند: {executed}");
+
+    Check(blockedAnyway.Count == 0,
+        $"همهٔ اکشن‌های علامت‌خورده در Missing عبور می‌کنند (مسدود: {string.Join(" | ", blockedAnyway)})");
+
+    Check(controlBroken.Count == 0,
+        $"کنترل منفی: بدون صفت، همان مسیرها ۴۰۳ می‌گیرند مگر در allowlist (نقض: {string.Join(" | ", controlBroken)})");
 }
 
 // ============================================================
@@ -1140,6 +1388,13 @@ Section("۱۹) رزرو ردیف‌دار: وضعیت Reserved + زمان، جا
 
         var beforeRefund = await q.LicenseUsages.AsNoTracking()
             .Where(u => u.Metric == MetricCodes.MoadianInvoiceSend).Select(u => (int?)u.Used).FirstOrDefaultAsync() ?? 0;
+
+        // ⚠️ سیاست بازبینی سوم: بازگشت دستی فقط برای رزروهای قدیمی‌تر از X ساعت مجاز است.
+        // این رزرو همین حالا ساخته شده؛ پس زمانش را عقب می‌بریم تا «رزرو قدیمی واقعی»
+        // را شبیه‌سازی کنیم — همان حالتی که در عمل پیش می‌آید (کشف خطا چند ساعت بعد).
+        var old = await q.LicenseReservations.FirstAsync(r => r.Id == second.ReservationIds[0]);
+        old.ReservedAt = PersianPeriodKey.NowIran().AddHours(-30);
+        await q.SaveChangesAsync();
 
         var ok = await qs.SettleReservationAsync(second.ReservationIds[0], confirm: false, username: "support2",
             note: "ارسال نشده بود؛ سهمیه آزاد شد.");
@@ -1245,6 +1500,216 @@ Section("۲۰) مبنا برای همهٔ متریک‌های دارای probe +
         Check(recovered == 3,
             $"پس از حذف ردیف شمارنده، مصرف مؤثر از ردیف‌ها بازیابی شد = ۳ (واقعی: {recovered})");
     }
+}
+
+// ============================================================
+Section("۲۱) سیاست بازگشت دستی: سقف دوره، یادداشت اجباری، حداقل عمر رزرو، شمارش در وضعیت");
+
+{
+    // درخواست کارفرما (بازبینی سوم): «سقف بازگشت دستی در هر دوره = min(۲٪ سقف، ۵ مورد)،
+    // فقط برای رزروهای قدیمی‌تر از X ساعت، یادداشت اجباری، رخداد با شدت Warning،
+    // و شمارش Pending/Refund در GET /api/license/status. تست: پس از پر شدن سقف رد شود.»
+    await ResetAsync();
+
+    await using var db = NewDb();
+    var quota = Service(db, NewIntegrity());
+
+    // سقف ماهانه ۱۰۰ ⇒ ۲٪ = ۲ ⇒ min(۲، ۵) = ۲ بازگشت مجاز در این دوره.
+    var ent = Entitlement(MetricCodes.MoadianInvoiceSend, 100, QuotaPeriod.Monthly, ModuleCodes.Moadian);
+    var policy = new Inventory.Api.Licensing.RefundPolicy(
+        Inventory.Api.Licensing.RefundPolicy.DefaultPercentOfLimit,
+        Inventory.Api.Licensing.RefundPolicy.DefaultMaxCount, 24);
+
+    Check(policy.MaxRefundsFor(100) == 2, $"۲٪ سقف ۱۰۰ = ۲ و min(۲،۵) = ۲ (واقعی: {policy.MaxRefundsFor(100)})");
+    Check(policy.MaxRefundsFor(1000) == 5, $"۲٪ سقف ۱۰۰۰ = ۲۰ ⇒ سقف ۵ اعمال می‌شود (واقعی: {policy.MaxRefundsFor(1000)})");
+    Check(policy.MaxRefundsFor(20) == 1, $"سقف کوچک ۲۰ ⇒ ۲٪ = ۰٫۴ ولی حداقل ۱ مجاز است (واقعی: {policy.MaxRefundsFor(20)})");
+
+    // ---------- الف) پنج رزرو؛ همه عقب برده می‌شوند (رزرو قدیمی واقعی) ----------
+    var ids = new List<long>();
+    for (var i = 0; i < 5; i++)
+    {
+        var r = await quota.ReserveAsync(ent, ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend, 1,
+            "MoadianInvoice", $"R-{i + 1}");
+        if (r.Result.Allowed) ids.AddRange(r.ReservationIds);
+    }
+    Check(ids.Count == 5, $"پنج رزرو ساخته شد (واقعی: {ids.Count})");
+
+    await using (var q = NewDb())
+    {
+        var rows = await q.LicenseReservations.Where(r => ids.Contains(r.Id)).ToListAsync();
+        foreach (var row in rows) row.ReservedAt = PersianPeriodKey.NowIran().AddHours(-30);
+        await q.SaveChangesAsync();
+    }
+
+    // ---------- ب) یادداشت اجباری ----------
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var noNote = await qs.SettleReservationDetailedAsync(ids[0], confirm: false, username: "op1",
+            note: "   ", policy: policy);
+        Check(!noNote.Success && noNote.Failure == Inventory.Api.Licensing.SettleFailure.NoteRequired,
+            $"بازگشت بدون یادداشت رد می‌شود (نتیجه: {noNote.Failure} — {noNote.Message})");
+    }
+
+    // ---------- ج) رزرو تازه (کمتر از X ساعت) ----------
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var fresh = await qs.ReserveAsync(ent, ModuleCodes.Moadian, MetricCodes.MoadianInvoiceSend, 1,
+            "MoadianInvoice", "R-fresh");
+        var tooRecent = await qs.SettleReservationDetailedAsync(fresh.ReservationIds[0], confirm: false,
+            username: "op1", note: "اشتباه شد", policy: policy);
+        Check(!tooRecent.Success && tooRecent.Failure == Inventory.Api.Licensing.SettleFailure.TooRecent,
+            $"رزرو تازه (کمتر از ۲۴ ساعت) بازگردانده نمی‌شود (نتیجه: {tooRecent.Failure} — {tooRecent.Message})");
+    }
+
+    // ---------- د) دو بازگشت مجاز، سومی رد ----------
+    var okCount = 0;
+    Inventory.Api.Licensing.SettleFailure thirdFailure = Inventory.Api.Licensing.SettleFailure.None;
+    string? thirdMessage = null;
+
+    for (var i = 0; i < 3; i++)
+    {
+        await using var q = NewDb();
+        var qs = Service(q, NewIntegrity());
+        var res = await qs.SettleReservationDetailedAsync(ids[i], confirm: false, username: $"op{i + 1}",
+            note: $"بازگشت آزمایشی شمارهٔ {i + 1}", policy: policy);
+
+        if (res.Success) okCount++;
+        else { thirdFailure = res.Failure; thirdMessage = res.Message; }
+    }
+
+    Check(okCount == 2, $"دقیقاً ۲ بازگشت دستی در این دوره انجام شد (واقعی: {okCount})");
+    Check(thirdFailure == Inventory.Api.Licensing.SettleFailure.RefundLimitReached,
+        $"بازگشت سوم با «سقف پر شد» رد شد (نتیجه: {thirdFailure} — {thirdMessage})");
+
+    // ---------- ه) سقف با تغییر appsettings قابل دور زدن نیست، ولی کلمپ می‌شود ----------
+    var clamped = new Inventory.Api.Licensing.RefundPolicy(999, 999, -5);
+    Check(clamped.PercentOfLimit == 50 && clamped.MaxCount == 50 && clamped.MinAgeHours == 24,
+        $"مقادیر خارج از بازه کلمپ می‌شوند (درصد={clamped.PercentOfLimit}، تعداد={clamped.MaxCount}، ساعت={clamped.MinAgeHours})");
+
+    var zeroAge = new Inventory.Api.Licensing.RefundPolicy(2, 5, 0);
+    Check(zeroAge.MinAgeHours == 24, $"ساعت صفر ⇒ پیش‌فرض ۲۴ (بدون محدودیت سنی نمی‌شود) — واقعی: {zeroAge.MinAgeHours}");
+
+    // ---------- و) رخداد با شدت Warning ----------
+    await using (var q = NewDb())
+    {
+        var events = await q.LicenseEvents.AsNoTracking()
+            .Where(e => e.Kind == "LICENSE_QUOTA_MANUAL_SETTLE").ToListAsync();
+        Check(events.Count >= 2 && events.All(e => e.Severity == "Warning"),
+            $"رخداد تسویهٔ دستی با شدت Warning ثبت شد (تعداد: {events.Count}، شدت‌ها: {string.Join(",", events.Select(e => e.Severity).Distinct())})");
+    }
+
+    // ---------- ز) شمارش‌ها در وضعیت ----------
+    await using (var q = NewDb())
+    {
+        var qs = Service(q, NewIntegrity());
+        var summary = await qs.GetReservationSummaryAsync(policy);
+        Console.WriteLine($"   (اطلاع) خلاصهٔ رزروها: Pending={summary.Pending}، Reserved={summary.Reserved}، Confirmed={summary.Confirmed}، Refunded={summary.Refunded}، ManualRefunds={summary.ManualRefunds}");
+
+        Check(summary.Refunded == 2, $"۲ رزرو در وضعیت Refunded شمرده شد (واقعی: {summary.Refunded})");
+        Check(summary.ManualRefunds == 2, $"۲ واحد بازگشت دستی در دفتر شمرده شد (واقعی: {summary.ManualRefunds})");
+        Check(summary.Reserved >= 1, $"رزروهای باز شمرده می‌شوند (Reserved={summary.Reserved})");
+    }
+}
+
+// ============================================================
+Section("۲۲) بخشودگی گذشته (Grandfather): ۳۰۰ نامهٔ همین ماه، سقف ماهانه ۱۰۰ ⇒ ثبت تازه مجاز");
+
+{
+    // درخواست کارفرما: «گزینهٔ Grandfather (پیش‌فرض خاموش): ردیف‌های موجود در دورهٔ جاری
+    // در لحظهٔ فعال‌سازی از مصرف مؤثر همان دوره کسر می‌شوند. تست: ۳۰۰ نامهٔ ماه جاری،
+    // سقف ماهانه ۱۰۰ ⇒ ثبت تازه مجاز؛ ماه بعد از صفر.»
+    await ResetAsync();
+
+    await using var db = NewDb();
+
+    // ۳۰۰ سند در همین ماه شمسی — مثل سناریوی واقعی کارفرما («۳۰۰ نامه در ماه جاری»)،
+    // ولی با فاکتور چون درج فاکتور در این تست یک مسیر جاافتاده دارد (§۱۵) و کلید
+    // خارجی نامه (منبع/کاربر) دادهٔ آمادهٔ بیشتری می‌خواهد که به موضوع این بخش ربطی ندارد.
+    var wh = new Inventory.Api.Data.Warehouse { Name = "انبار بخشودگی", Code = "W-GF" };
+    db.Warehouses.Add(wh);
+    await db.SaveChangesAsync();
+
+    var rows = Enumerable.Range(1, 300).Select(i => new Inventory.Api.Data.FacInvoice
+    {
+        Number = 700_000 + i, Kind = Inventory.Shared.InvoiceKind.Sale,
+        Date = PersianPeriodKey.NowIran().Date.AddDays(-1),
+        WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "gf-test"
+    }).ToList();
+
+    await db.FacInvoices.AddRangeAsync(rows);
+    await db.SaveChangesAsync();
+
+    var liveThisMonth = await db.FacInvoices.IgnoreQueryFilters().CountAsync();
+    Check(liveThisMonth >= 300, $"۳۰۰ سند در همین ماه ثبت شد (واقعی: {liveThisMonth})");
+
+    // ---------- الف) بدون گزینهٔ Grandfather: سقف از اول پر است ----------
+    var plain = Entitlement(MetricCodes.InvoiceCreate, 100, QuotaPeriod.Monthly, ModuleCodes.Invoicing);
+    var quota = Service(db, NewIntegrity());
+
+    var plainLimit = plain.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
+    var plainEffective = await quota.GetEffectiveUsageAsync(plain, plainLimit,
+        (period, ct) => Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+            db, MetricCodes.InvoiceCreate, period, PersianPeriodKey.NowIran(), ct));
+
+    Check(plainEffective >= 300, $"بدون Grandfather مصرف مؤثر = ۳۰۰+ (واقعی: {plainEffective})");
+    var plainDenied = await quota.TryConsumeAsync(plain, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+    Check(!plainDenied.Allowed, "بدون Grandfather، ثبت نامهٔ تازه رد می‌شود (سقف از اول پر است)");
+
+    // ---------- ب) با Grandfather روشن: مبنا همان لحظه ثبت می‌شود ----------
+    var grand = GrandfatherEntitlement(MetricCodes.InvoiceCreate, 100, QuotaPeriod.Monthly,
+        ModuleCodes.Invoicing);
+    Check(grand.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First().Grandfather,
+        "گزینهٔ Grandfather در سقف مؤثر منتقل شد (Merger)");
+
+    var captured = await Inventory.Api.Licensing.Services.ActiveCountProbes.CaptureGrandfatherAsync(
+        db, quota, grand, "TEST-GF");
+    Check(captured >= 1, $"مبنای بخشودگی ثبت شد (تعداد: {captured})");
+
+    var grandLimit = grand.LimitsFor(ModuleCodes.Invoicing, MetricCodes.InvoiceCreate).First();
+    var grandEffective = await quota.GetEffectiveUsageAsync(grand, grandLimit,
+        (period, ct) => Inventory.Api.Licensing.Services.ActiveCountProbes.CountAsync(
+            db, MetricCodes.InvoiceCreate, period, PersianPeriodKey.NowIran(), ct));
+
+    Check(grandEffective == 0, $"با Grandfather مصرف مؤثر = ۰ (واقعی: {grandEffective})");
+
+    var allowed = await quota.TryConsumeAsync(grand, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate);
+    Check(allowed.Allowed, $"✅ ثبت نامهٔ تازه با Grandfather مجاز است (سقف ماهانه ۱۰۰، ۳۰۰ نامهٔ موجود)");
+
+    // ---------- ج) سقف هنوز سقف است: ۱۰۰ نامهٔ تازه، صدویکمی رد ----------
+    var accepted = 1; // همان یکی که بالا ثبت شد
+    for (var i = 0; i < 120; i++)
+        if ((await quota.TryConsumeAsync(grand, ModuleCodes.Invoicing, MetricCodes.InvoiceCreate)).Allowed)
+            accepted++;
+
+    Check(accepted == 100, $"دقیقاً ۱۰۰ نامهٔ تازه پذیرفته شد، نه بیشتر (واقعی: {accepted}) — سقف دور زده نشد");
+
+    // ---------- د) دورهٔ بعد: ردیف مبنا وجود ندارد ⇒ از صفر ----------
+    var nextMonth = PersianPeriodKey.Now(QuotaPeriod.Monthly);
+    var baselineNow = await quota.ReadGrandfatherBaselineAsync(ModuleCodes.Invoicing,
+        MetricCodes.InvoiceCreate, nextMonth);
+    Check(baselineNow > 0, $"برای دورهٔ جاری مبنا ثبت است (واقعی: {baselineNow})");
+
+    // کلید دورهٔ بعد را با «اکنون + ۳۵ روز» می‌سازیم — همان ماه شمسی بعدی.
+    var nextKey = PersianPeriodKey.ForInstant(DateTimeOffset.UtcNow.AddDays(35), QuotaPeriod.Monthly);
+    var baselineNext = await quota.ReadGrandfatherBaselineAsync(ModuleCodes.Invoicing,
+        MetricCodes.InvoiceCreate, nextKey);
+    Check(baselineNext == 0, $"برای دورهٔ بعد ({nextKey}) مبنا صفر است ⇒ شمارش از صفر (واقعی: {baselineNext})");
+
+    // و اگر نامهٔ همان ماه بعد وجود داشته باشد، کامل شمرده می‌شود (بدون کسر گذشته).
+    var nextRange = PersianPeriodKey.RangeOf(QuotaPeriod.Monthly, PersianPeriodKey.ToIran(DateTimeOffset.UtcNow.AddDays(35)));
+    var inNext = await Inventory.Api.Licensing.Services.ActiveCountProbes.Probes[MetricCodes.InvoiceCreate](
+        db, nextRange.From, nextRange.To, CancellationToken.None);
+    Check(inNext == 0, $"در ماه بعد هنوز نامه‌ای نیست (واقعی: {inNext}) — پس مصرف مؤثر = ۰ بدون هیچ کسری");
+
+    // ---------- ه) idempotent: فعال‌سازی دوباره مبنا را جابه‌جا نمی‌کند ----------
+    var again = await quota.CaptureGrandfatherBaselineAsync(ModuleCodes.Invoicing,
+        MetricCodes.InvoiceCreate, nextMonth, 999_999, "TEST-GF2");
+    var afterAgain = await quota.ReadGrandfatherBaselineAsync(ModuleCodes.Invoicing,
+        MetricCodes.InvoiceCreate, nextMonth);
+    Check(!again && afterAgain == baselineNow,
+        $"ثبت دوبارهٔ مبنا اثری ندارد (ثبت‌شد={again}، مقدار={afterAgain}، قبلی={baselineNow}) — تمدید لایسنس سقف را بازنمی‌کند");
 }
 
 // ============================================================

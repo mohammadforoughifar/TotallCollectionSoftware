@@ -4,6 +4,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Backup;
 
@@ -23,9 +24,11 @@ public sealed class BackupController : ControllerBase
     [HttpGet("settings")]
     public async Task<ActionResult<BackupSettingsDto>> GetSettings() => Ok(await _settings.GetDtoAsync());
 
+    [AllowInReadOnly]
     [HttpPut("settings")]
     public async Task<ActionResult<BackupSettingsDto>> SaveSettings([FromBody] BackupSettingsDto dto) => Ok(await _settings.SaveAsync(dto));
 
+    [AllowInReadOnly]
     [HttpPost("test")]
     public async Task<IActionResult> Test() => Ok(await _settings.TestCentralAsync());
 
@@ -59,6 +62,7 @@ public sealed class BackupController : ControllerBase
         return Ok(jobs.Select(ToDto).ToList());
     }
 
+    [AllowInReadOnly]
     [HttpPost("run")]
     public async Task<IActionResult> Run()
     {
@@ -76,6 +80,7 @@ public sealed class BackupController : ControllerBase
         return Ok(new { ok = true, jobId = id });
     }
 
+    [AllowInReadOnly]
     [HttpPost("jobs/{id}/retry")]
     public async Task<IActionResult> Retry(string id)
     {

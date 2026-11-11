@@ -313,7 +313,12 @@ public static class EntitlementMerger
                 Period = key.Period,
                 Limit = effective,
                 ItemIds = entries.Select(e => e.Entity.ItemId).Distinct().ToList(),
-                IncludesStackable = stackableGroups > 0
+                IncludesStackable = stackableGroups > 0,
+
+                // بخشودگی: اگر هر آیتمِ این سقف آن را خواسته باشد، روشن است.
+                // چرا OR و نه AND؟ چون خاموش کردنِ این گزینه به ضرر مشتری است و
+                // آیتم «افزایشی» هم نباید آن را از بین ببرد.
+                Grandfather = entries.Any(e => e.Quota.Grandfather)
             });
         }
 

@@ -107,6 +107,45 @@ public sealed class QuotaService
         var now = PersianPeriodKey.NowIran();
         var isSqlite = _db.Database.IsSqlite();
 
+        // ---------- ۰) بررسی «مصرف مؤثر» برای دوره‌های ماهانه/سالانه ----------
+        //
+        // ⚠️ چرا این بررسی لازم شد (بازبینی سوم، بند «بخشودگی گذشته»):
+        // تا پیش از این، شمارندهٔ مصرف از صفر شروع می‌شد و رکوردهایی که **قبلاً** در همان
+        // ماه وجود داشتند هیچ‌وقت در سقف ماهانه حساب نمی‌شدند. نتیجهٔ عملی: مشتری‌ای که
+        // ۳۰۰ نامه در ماه جاری ثبت کرده و لایسنس «۱۰۰ در ماه» می‌خرد، می‌توانست ۱۰۰ نامهٔ
+        // دیگر هم ثبت کند — یعنی سقف ماهانه عملاً بی‌اثر بود و گزینهٔ «بخشودگی گذشته»
+        // هم معنایی نداشت.
+        //
+        // اکنون برای متریک‌هایی که شمارش واقعی دارند، رکوردهای همان دوره هم دیده می‌شوند:
+        //   مصرف مؤثر = max(شمارنده، ردیف‌های همین دوره − مبنا)
+        // با «بخشودگی» روشن، مبنا = ردیف‌های لحظهٔ فعال‌سازی ⇒ مصرف از صفر شروع می‌شود.
+        //
+        // 🔒 فقط دورهٔ ماهانه/سالانه: بازهٔ شمارش کوچک و ایندکس‌شده است. برای دورهٔ دائمی
+        // رفتار قبلی (شمارنده + مبنای فعال‌سازی) حفظ می‌شود تا هر ثبت، یک COUNT روی کل
+        // جدول نخواهد — سقف دائمی با «مبنا»ی همان لحظه کار می‌کند.
+        if (limit.Period != QuotaPeriod.Lifetime && ActiveCountProbes.HasProbe(limit.Metric))
+        {
+            var liveNow = await ActiveCountProbes.CountAsync(_db, limit.Metric, limit.Period, now, cancellationToken);
+            var counterNow = await ReadUsedAsync(limit, periodKey, cancellationToken) ?? 0;
+            var grandfatherNow = limit.Grandfather
+                ? await ReadGrandfatherBaselineAsync(limit.Module, limit.Metric, periodKey, cancellationToken)
+                : 0;
+
+            var effective = ComputeEffective(counterNow, liveNow, grandfatherNow, periodKey);
+
+            if (effective + amount > limit.Limit)
+            {
+                return QuotaConsumeResult.Denied(limit.Metric, effective, limit.Limit, periodKey,
+                    $"سقف «{MetricCodes.TitleOf(limit.Metric)}» ({limit.Limit:N0} {MetricCodes.UnitOf(limit.Metric)}) " +
+                    $"در دورهٔ «{PersianPeriodKey.Describe(limit.Period, periodKey)}» پر شده است. " +
+                    (grandfatherNow > 0
+                        ? $"رکوردهای پیش از فعال‌سازی این دوره ({grandfatherNow:N0} مورد) از شمارش خارج شده‌اند و " +
+                          "سهمیهٔ باقی‌مانده مصرف شده است. "
+                        : $"از این تعداد، {liveNow:N0} مورد در همین دوره در سیستم ثبت شده است. ") +
+                    "برای افزایش سقف با پشتیبانی تماس بگیرید.");
+            }
+        }
+
         for (var attempt = 0; attempt < 3; attempt++)
         {
             // ---------- ۱) اطمینان از وجود ردیف ----------
@@ -666,18 +705,55 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {amount}, [UpdatedAt] = {now}
     /// می‌کنند؛ چون این تصمیم انسانی است و باید در ممیزی رد داشته باشد.
     /// </para>
     /// </summary>
-    /// <returns>true اگر رزرو پیدا و تسویه شد؛ false اگر رزرو نبود یا قبلاً بسته شده بود.</returns>
-    public async Task<bool> SettleReservationAsync(long reservationId, bool confirm, string username,
-        string? note = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// همان تسویه، اما پاسخ <b>ساختاریافته</b> — تا API بتواند دلیل رد شدن را دقیق بگوید.
+    /// </summary>
+    public async Task<SettleReservationResult> SettleReservationDetailedAsync(long reservationId, bool confirm,
+        string username, string? note, RefundPolicy policy, CancellationToken cancellationToken = default)
     {
         var row = await _db.LicenseReservations.FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
-        if (row is null) return false;
+        if (row is null)
+            return SettleReservationResult.Fail(SettleFailure.NotFound, "رزرو پیدا نشد.");
 
         // فقط رزرو باز (Reserved) یا «در انتظار» (Pending) قابل تسویه است.
         if (row.State != LicenseReservation.States.Reserved && row.State != LicenseReservation.States.Pending)
-            return false;
+            return SettleReservationResult.Fail(SettleFailure.AlreadySettled,
+                $"این رزرو قبلاً تسویه شده است (وضعیت: {row.State}).");
 
         var now = PersianPeriodKey.NowIran();
+
+        // ==================== قیدهای بازگشت دستی ====================
+        //
+        // سه قید، هر سه لازم (بازبینی سوم):
+        //   ۱) یادداشت اجباری — تصمیم انسانی بدون دلیل، ممیزی بی‌ارزش است.
+        //   ۲) سن رزرو — جلوی «رزرو کن، فوراً بازگردان» (ارسال مجانی) را می‌گیرد.
+        //   ۳) سقف تعداد در دوره — جلوی آزادسازی تدریجی سهمیه را می‌گیرد.
+        if (!confirm)
+        {
+            if (string.IsNullOrWhiteSpace(note))
+                return SettleReservationResult.Fail(SettleFailure.NoteRequired,
+                    "برای بازگشت دستی، نوشتن یادداشت دلیل الزامی است.");
+
+            if (!policy.IsOldEnough(row.ReservedAt, now))
+            {
+                var ageHours = (now - row.ReservedAt).TotalHours;
+                return SettleReservationResult.Fail(SettleFailure.TooRecent,
+                    $"این رزرو فقط {ageHours:F1} ساعت قدمت دارد؛ بازگشت دستی فقط برای رزروهای قدیمی‌تر از " +
+                    $"{policy.MinAgeHours} ساعت مجاز است.");
+            }
+
+            var alreadyRefunded = await CountManualRefundsAsync(row.Module, row.Metric, row.PeriodKey,
+                cancellationToken);
+
+            var periodLimit = await ReadPeriodLimitAsync(row.Module, row.Metric, row.PeriodKey, cancellationToken);
+            var maxRefunds = policy.MaxRefundsFor(periodLimit);
+
+            if (alreadyRefunded >= maxRefunds)
+                return SettleReservationResult.Fail(SettleFailure.RefundLimitReached,
+                    $"سقف بازگشت دستی این دوره پر شده است ({alreadyRefunded} از {maxRefunds}). " +
+                    policy.Describe(periodLimit));
+        }
+
         var refunded = false;
 
         if (!confirm)
@@ -746,7 +822,80 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {row.Amount}, [UpdatedAt] = {
         _log.LogWarning("[License] تسویهٔ دستی رزرو {Id}: {Action} توسط {User}",
             row.Id, confirm ? "تأیید" : "بازگشت", row.SettledBy);
 
-        return true;
+        return SettleReservationResult.Ok(row.Id, confirm, refunded);
+    }
+
+    /// <summary>
+    /// نسخهٔ ساده (سازگاری): با سیاست پیش‌فرض، فقط true/false.
+    /// ⚠️ برای مسیر API از <see cref="SettleReservationDetailedAsync"/> استفاده کنید تا دلیل رد مشخص باشد.
+    /// </summary>
+    public async Task<bool> SettleReservationAsync(long reservationId, bool confirm, string username,
+        string? note = null, RefundPolicy? policy = null, CancellationToken cancellationToken = default)
+    {
+        var result = await SettleReservationDetailedAsync(reservationId, confirm, username, note,
+            policy ?? new RefundPolicy(RefundPolicy.DefaultPercentOfLimit, RefundPolicy.DefaultMaxCount,
+                RefundPolicy.DefaultMinAgeHours), cancellationToken);
+        return result.Success;
+    }
+
+    /// <summary>
+    /// تعداد بازگشت‌های دستی ثبت‌شده در همین (ماژول، متریک، دوره).
+    ///
+    /// <para>
+    /// ملاک، ردیف‌های دفتر با <c>Reason = manual-refund</c> است — نه ردیف‌های رزرو؛ چون
+    /// یک رزرو ممکن است چند واحد باشد و شمارش باید «تعداد واحدهای بازگردانده‌شده»
+    /// باشد، نه «تعداد کلیک».
+    /// </para>
+    /// </summary>
+    public async Task<int> CountManualRefundsAsync(string module, string metric, string periodKey,
+        CancellationToken cancellationToken = default)
+    {
+        var sum = await _db.LicenseUsageLedger.AsNoTracking()
+            .Where(l => l.Module == module && l.Metric == metric && l.PeriodKey == periodKey
+                        && l.Reason == "manual-refund")
+            .Select(l => (int?)l.Delta)
+            .ToListAsync(cancellationToken);
+
+        // Delta منفی است؛ قدر مطلق جمع را برمی‌گردانیم.
+        return Math.Abs(sum.Sum(x => x ?? 0));
+    }
+
+    /// <summary>سقف ثبت‌شدهٔ همان دوره (برای محاسبهٔ «۲٪ سقف»).</summary>
+    private async Task<long> ReadPeriodLimitAsync(string module, string metric, string periodKey,
+        CancellationToken cancellationToken)
+        => await _db.LicenseUsages.AsNoTracking()
+               .Where(u => u.Module == module && u.Metric == metric && u.PeriodKey == periodKey)
+               .Select(u => (long?)u.Limit)
+               .FirstOrDefaultAsync(cancellationToken) ?? 0;
+
+    /// <summary>شمارش‌های وضعیت برای نمایش در <c>/api/license/status</c>.</summary>
+    public async Task<ReservationSummary> GetReservationSummaryAsync(RefundPolicy policy,
+        CancellationToken cancellationToken = default)
+    {
+        var counts = await _db.LicenseReservations.AsNoTracking()
+            .GroupBy(r => r.State)
+            .Select(g => new { State = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        int Of(string state) => counts.FirstOrDefault(c => c.State == state)?.Count ?? 0;
+
+        var manualRefunds = Math.Abs(await _db.LicenseUsageLedger.AsNoTracking()
+            .Where(l => l.Reason == "manual-refund")
+            .Select(l => (int?)l.Delta)
+            .SumAsync(cancellationToken) ?? 0);
+
+        return new ReservationSummary(
+            Pending: Of(LicenseReservation.States.Pending),
+            Reserved: Of(LicenseReservation.States.Reserved),
+            Confirmed: Of(LicenseReservation.States.Confirmed),
+            Refunded: Of(LicenseReservation.States.Refunded),
+            ManualRefunds: manualRefunds,
+            ManualRefundPolicy: new
+            {
+                percentOfLimit = policy.PercentOfLimit,
+                maxCountPerPeriod = policy.MaxCount,
+                minReservationAgeHours = policy.MinAgeHours
+            });
     }
 
     /// <summary>فهرست رزروها برای صفحهٔ مدیریت (مرحله ۵) و API تسویه.</summary>
@@ -817,12 +966,24 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {row.Amount}, [UpdatedAt] = {
 
         var live = await liveInPeriod(limit.Period, cancellationToken);
 
+        // ---------- مبنا ۱: مبناى دائمی (رفتار قبلی) ----------
         // دورهٔ دائمی: مبنا کسر می‌شود. دورهٔ ماهانه/سالانه: پنجره خودش دادهٔ قدیمی را حذف می‌کند.
         var baseline = limit.Period == QuotaPeriod.Lifetime
             ? await ReadBaselineAsync(limit.Module, limit.Metric, cancellationToken)
             : 0;
 
-        return ComputeEffective(counter, live, baseline);
+        // ---------- مبنا ۲: بخشودگی گذشته (بازبینی سوم) ----------
+        // اگر آیتم لایسنس گزینهٔ Grandfather را روشن کرده باشد، رکوردهای موجود در
+        // «همین دوره» در لحظهٔ فعال‌سازی کسر می‌شوند. برای دوره‌های بعدی ردیفی با آن
+        // کلید دوره وجود ندارد ⇒ Naturally صفر ⇒ شمارش از صفر.
+        //
+        // ⚠️ سقف هرگز کوچک‌تر از «مصرف همین دوره» گزارش نمی‌شود؛ Math.Max در
+        // ComputeEffective با شمارندهٔ واقعی این را تضمین می‌کند.
+        var grandfather = limit.Grandfather
+            ? await ReadGrandfatherBaselineAsync(limit.Module, limit.Metric, periodKey, cancellationToken)
+            : 0;
+
+        return ComputeEffective(counter, live, Math.Max(baseline, grandfather), periodKey);
     }
 
     /// <summary>
@@ -865,8 +1026,66 @@ UPDATE [dbo].[LicenseUsages] SET [Used] = [Used] - {row.Amount}, [UpdatedAt] = {
     /// <param name="counter">شمارندهٔ ثبت‌شده در <c>LicenseUsages</c></param>
     /// <param name="live">تعداد واقعی رکوردهای موجود (شامل حذف‌نرم‌ها)</param>
     /// <param name="baseline">تعداد رکوردهای پیش از فعال‌سازی (از جدول مبنا)</param>
-    public static long ComputeEffective(long counter, long live, long baseline)
+    /// <param name="periodKey">
+    /// کلید دوره — فقط برای مستندسازی/اشکال‌زدایی. در محاسبه نقشی ندارد؛ منطق
+    /// «هر دوره جدا» از این می‌آید که مبنا با کلید همان دوره خوانده می‌شود.
+    /// </param>
+    public static long ComputeEffective(long counter, long live, long baseline, string? periodKey = null)
         => Math.Max(counter, Math.Max(0, live - baseline));
+
+    /// <summary>
+    /// مبنای «بخشودگی گذشته» برای یک (متریک، دوره) — ۰ اگر ثبت نشده باشد.
+    ///
+    /// <para>
+    /// ثبت‌نشده یعنی «همهٔ رکوردهای این دوره شمرده شوند» — یعنی رفتار پیش‌فرضِ امن.
+    /// </para>
+    /// </summary>
+    public async Task<long> ReadGrandfatherBaselineAsync(string module, string metric, string periodKey,
+        CancellationToken cancellationToken = default)
+        => await _db.LicenseGrandfatherBaselines.AsNoTracking()
+               .Where(b => b.Module == module && b.Metric == metric && b.PeriodKey == periodKey)
+               .Select(b => (long?)b.BaselineCount)
+               .FirstOrDefaultAsync(cancellationToken) ?? 0;
+
+    /// <summary>
+    /// ثبت مبنای بخشودگی برای یک دوره — idempotent (دوباره‌نویسی نمی‌کند).
+    ///
+    /// <para>
+    /// ⚠️ <b>چرا idempotent؟</b> اگر هر بار فعال‌سازی/تمدید مبنا را بازنویسی کند، مشتری
+    /// می‌تواند با «تازه‌سازی لایسنس» گذشتهٔ دورهٔ جاری را دوباره بخشوده کند و سقف
+    /// ماهانه را بی‌نهایت بار تمدید کند.
+    /// </para>
+    /// </summary>
+    /// <returns>true اگر همین حالا ثبت شد؛ false اگر از قبل بود.</returns>
+    public async Task<bool> CaptureGrandfatherBaselineAsync(string module, string metric, string periodKey,
+        long liveCount, string? serial, CancellationToken cancellationToken = default)
+    {
+        var exists = await _db.LicenseGrandfatherBaselines
+            .AnyAsync(b => b.Module == module && b.Metric == metric && b.PeriodKey == periodKey, cancellationToken);
+        if (exists) return false;
+
+        _db.LicenseGrandfatherBaselines.Add(new LicenseGrandfatherBaseline
+        {
+            Module = module,
+            Metric = metric,
+            PeriodKey = periodKey,
+            BaselineCount = Math.Max(0, liveCount),
+            CapturedAt = PersianPeriodKey.NowIran(),
+            Serial = serial
+        });
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // مسابقهٔ هم‌زمان (دو فعال‌سازی موازی) — ردیف دیگر زودتر ثبت کرد؛ همان قبول است.
+            _db.ChangeTracker.Clear();
+            return false;
+        }
+    }
 
     /// <summary>مبنای ثبت‌شدهٔ یک متریک (۰ اگر ثبت نشده باشد).</summary>
     public async Task<long> ReadBaselineAsync(string module, string metric, CancellationToken cancellationToken = default)

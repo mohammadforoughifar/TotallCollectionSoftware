@@ -8,6 +8,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Catalog;
 using Microsoft.AspNetCore.Authorization;
 using Inventory.Shared.Dtos;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -142,6 +143,7 @@ public async Task<IActionResult> HardwareStats()
 }
 
     /// <summary>اجرای فوری یک دور پینگ همه‌ی دستگاه‌ها.</summary>
+    [AllowInReadOnly]
     [HttpPost("hardware-check")]
     [RequirePermission("Dashboards", "Hardware")]
     public async Task<IActionResult> HardwareCheck()

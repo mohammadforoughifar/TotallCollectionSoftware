@@ -186,6 +186,26 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseReservations_S
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseReservations_Key' AND object_id = OBJECT_ID(N'dbo.LicenseReservations'))
     CREATE INDEX [IX_LicenseReservations_Key] ON [dbo].[LicenseReservations] ([Module], [Metric], [PeriodKey]);
 
+-- ---------- مبنای «بخشودگی گذشته» (فقط دورهٔ جاری) ----------
+-- چرا جدول تازه و نه ستون در LicenseUsageBaselines؟ چون آن جدول ایندکس یکتای
+-- (Module, Metric) دارد و برای نگه‌داشتن چند دوره باید Drop + ساخت دوباره می‌شد —
+-- که خلاف قرارداد «فقط افزایشی» این فایل است. کلید سه‌گانه، هر دوره را جدا نگه می‌دارد.
+IF OBJECT_ID(N'dbo.LicenseGrandfatherBaselines', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseGrandfatherBaselines] (
+        [Id]            bigint       NOT NULL IDENTITY(1,1),
+        [Module]        nvarchar(32) NOT NULL,
+        [Metric]        nvarchar(64) NOT NULL,
+        [PeriodKey]     nvarchar(16) NOT NULL,
+        [BaselineCount] bigint       NOT NULL,
+        [CapturedAt]    datetime2    NOT NULL,
+        [Serial]        nvarchar(60) NULL,
+        CONSTRAINT [PK_LicenseGrandfatherBaselines] PRIMARY KEY ([Id])
+    );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_LicenseGrandfatherBaselines_Key' AND object_id = OBJECT_ID(N'dbo.LicenseGrandfatherBaselines'))
+    CREATE UNIQUE INDEX [IX_LicenseGrandfatherBaselines_Key] ON [dbo].[LicenseGrandfatherBaselines] ([Module], [Metric], [PeriodKey]);
+
 -- ---------- نشست کاربر (کاربر هم‌زمان) ----------
 IF OBJECT_ID(N'dbo.LicenseSessions', N'U') IS NULL
 BEGIN
@@ -353,6 +373,17 @@ CREATE TABLE IF NOT EXISTS ""LicenseReservations"" (
     ""Hmac"" TEXT NULL);");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseReservations_State"" ON ""LicenseReservations"" (""State"", ""ReservedAt"");");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseReservations_Key"" ON ""LicenseReservations"" (""Module"", ""Metric"", ""PeriodKey"");");
+
+            await Exec(connection, @"
+CREATE TABLE IF NOT EXISTS ""LicenseGrandfatherBaselines"" (
+    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_LicenseGrandfatherBaselines"" PRIMARY KEY AUTOINCREMENT,
+    ""Module"" TEXT NOT NULL,
+    ""Metric"" TEXT NOT NULL,
+    ""PeriodKey"" TEXT NOT NULL,
+    ""BaselineCount"" INTEGER NOT NULL,
+    ""CapturedAt"" TEXT NOT NULL,
+    ""Serial"" TEXT NULL);");
+            await Exec(connection, @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_LicenseGrandfatherBaselines_Key"" ON ""LicenseGrandfatherBaselines"" (""Module"", ""Metric"", ""PeriodKey"");");
 
             await Exec(connection, @"
 CREATE TABLE IF NOT EXISTS ""LicenseSessions"" (

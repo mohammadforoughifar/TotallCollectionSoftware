@@ -50,7 +50,9 @@ public sealed class LicenseGateMiddleware
     /// <summary>مسیرهای آزاد (بدون لایسنس معتبر).</summary>
     private static readonly string[] Allowlist =
     {
-        "/api/auth/login",          // مدیر باید بتواند وارد شود و لایسنس بگذارد
+        // حساب کاربری — «دادهٔ مشتری» نیست؛ قفل کردنش یعنی مشتری حتی نتواند وارد شود
+        // یا رمزش را عوض کند. (بازبینی سوم: Auth/logout/تغییر رمز/پروفایل شخصی)
+        "/api/auth/",
         "/api/license/",            // فعال‌سازی، درخواست فایل، وضعیت کلی، سلامتی
         "/api/health",              // Health Check آپدیت
         "/swagger",                 // مستندات (فقط برای عیب‌یابی)

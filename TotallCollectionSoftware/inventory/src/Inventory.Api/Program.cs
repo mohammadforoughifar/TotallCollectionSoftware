@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Controllers;
@@ -817,7 +818,15 @@ app.MapGet("/api/health", (HttpContext ctx,
     database = provider,
     httpAddress = httpEndpoint.Display,
     httpsPorts = httpsCerts.AllPorts.ToArray(),
-    serverTime = PersianPeriodKey.NowIran().ToString("yyyy-MM-dd HH:mm:ss"),
+    // ⚠️ ارزش پیشین: "yyyy-MM-dd HH:mm:ss" — وقت دیوارِ تهران ولی **بدون افست**.
+    // در بازبینی سوم معلوم شد هیچ مصرف‌کننده‌ای آن را تجزیه نمی‌کند (grep روی کل مخزن:
+    // هیچ اسکریپت/کلاینت/RemoteAgent این رشته را parse نمی‌کند؛ فقط نمایش)، ولی یک
+    // رشتهٔ بدون افست برای هر مصرف‌کنندهٔ بیرونیِ آینده قابل اشتباه با UTC است.
+    // اکنون: ISO-8601 با افست صریح (+03:30). هیچ چیزی که این فیلد را می‌خواند وجود
+    // ندارد، پس تغییر شکننده نیست؛ serverTimeUtc هم اضافه شد تا مقایسه ساده باشد.
+    serverTime = PersianPeriodKey.NowIranOffset().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
+    serverTimeUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+    serverTimeZone = "Asia/Tehran (+03:30)",
 
     // ==================== موتور لایسنس ====================
     // چرا در health؟ چون اسکریپت‌های انتشار/به‌روزرسانی (و هر ناظر خارجی) باید بتوانند

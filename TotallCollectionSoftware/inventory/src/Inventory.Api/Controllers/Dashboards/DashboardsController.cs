@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -227,6 +228,7 @@ public class DashboardsController : ControllerBase
 
     public record SaveDashboardRequest(string? Name, bool IsDefault, List<UserDashWidgetDto>? Widgets);
 
+    [AllowInReadOnly]
     [HttpPost("")]
     public async Task<IActionResult> Create([FromBody] SaveDashboardRequest? req)
     {
@@ -255,6 +257,7 @@ public class DashboardsController : ControllerBase
         return Ok(new { d.Id });
     }
 
+    [AllowInReadOnly]
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SaveDashboardRequest? req)
     {
@@ -282,6 +285,7 @@ public class DashboardsController : ControllerBase
         return Ok(new { d.Id });
     }
 
+    [AllowInReadOnly]
     [HttpPost("{id:int}/default")]
     public async Task<IActionResult> SetDefault(int id)
     {
@@ -295,6 +299,7 @@ public class DashboardsController : ControllerBase
         return Ok(new { id });
     }
 
+    [AllowInReadOnly]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

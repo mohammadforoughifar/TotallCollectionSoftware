@@ -609,6 +609,7 @@ public class AppDbContext : DbContext
     public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
     public DbSet<LicenseUsageBaseline> LicenseUsageBaselines => Set<LicenseUsageBaseline>();
     public DbSet<LicenseReservation> LicenseReservations => Set<LicenseReservation>();
+    public DbSet<LicenseGrandfatherBaseline> LicenseGrandfatherBaselines => Set<LicenseGrandfatherBaseline>();
     public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
     public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
 
@@ -1952,6 +1953,7 @@ public class AppDbContext : DbContext
         mb.Entity<LicenseUsageLedger>().ToTable("LicenseUsageLedger", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseUsageBaseline>().ToTable("LicenseUsageBaselines", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseReservation>().ToTable("LicenseReservations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrandfatherBaseline>().ToTable("LicenseGrandfatherBaselines", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseSession>().ToTable("LicenseSessions", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseEvent>().ToTable("LicenseEvents", t => t.ExcludeFromMigrations());
 
@@ -1972,6 +1974,10 @@ public class AppDbContext : DbContext
         mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
         mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.EntityType, x.EntityId });
         mb.Entity<LicenseUsageBaseline>().HasIndex(x => new { x.Module, x.Metric }).IsUnique();
+
+        // «مبنای بخشودگی»: یک ردیف برای هر (متریک، دوره) — دوره بخشی از کلید است،
+        // پس ماه تازه کلید تازه دارد و خودبه‌خود از صفر شمرده می‌شود.
+        mb.Entity<LicenseGrandfatherBaseline>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
 
         mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
         mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });

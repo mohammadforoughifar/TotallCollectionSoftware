@@ -38,6 +38,13 @@ public sealed class MetricLimit
     /// <summary>آیا بستهٔ افزایشی (stackable) در این سقف نقش داشت؟</summary>
     public bool IncludesStackable { get; set; }
 
+    /// <summary>
+    /// «بخشودگی گذشته» برای همین متریک در همین دوره — از <c>LicenseQuota.Grandfather</c>.
+    /// اگر <b>هر</b> آیتمِ سازندهٔ این سقف آن را روشن کرده باشد، روشن است (بازگشت‌پذیر
+    /// به نفع مشتری و بی‌خطر: فقط گذشتهٔ همین دوره را نادیده می‌گیرد).
+    /// </summary>
+    public bool Grandfather { get; set; }
+
     /// <summary>کلید این سقف در جدول مصرف: ماژول + متریک + دوره.</summary>
     public string UsageKey => $"{Module}|{Metric}|{Period}";
 }
