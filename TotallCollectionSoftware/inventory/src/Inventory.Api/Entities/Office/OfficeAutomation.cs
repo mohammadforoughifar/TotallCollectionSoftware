@@ -57,7 +57,7 @@ public class InnerLetter
     /// (<c>QuotaCountingSchemaV1</c>) تا هیچ ردیفی از شمارش جا نیفتد.
     /// </para>
     /// </summary>
-    public DateTime? CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? CreatedAt { get; set; } = Services.Core.TehranClock.Now();
     /// <summary>کلید مشترک با LetterSource — دستی مقداردهی می‌شود</summary>
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public int Id { get; set; }

@@ -1124,6 +1124,66 @@ Section("۲۵) کلید توسعه فقط در بیلد Debug — بیلد Relea
                           "ردیف کلید تولیدی را به Keys/manifest.json اضافه کنید.");
 }
 
+
+// ============================================================
+Section("۲۶) مرز ماه شمسی و ساعت ثبت سیستمی — مستقل از منطقهٔ زمانی سرور (بازبینی چهارم، بند ۲)");
+
+{
+    // دو لحظهٔ مطلق، دقیقاً روی مرز ماه شمسی به وقت تهران:
+    //   آبان ۱۴۰۵ سی روزه است ⇒ پایانش ۳۰ آبان ۲۳:۵۹:۵۹ به وقت تهران.
+    //   ۳۰ آبان ۲۳:۵۹ تهران = ۲۰:۲۹ UTC همان روز   (افست +03:30)
+    //   آخرین ثانیه: 20:29:59Z      → باید در ۱۴۰۵-۰۸ باشد
+    //   لحظهٔ بعد:    20:30:00Z      → باید در ۱۴۰۵-۰۹ باشد
+    var lastSecondOfAban = new DateTimeOffset(2026, 11, 21, 20, 29, 59, TimeSpan.Zero);
+    var firstSecondOfAzar = new DateTimeOffset(2026, 11, 21, 20, 30, 0, TimeSpan.Zero);
+
+    var keyBefore = PersianPeriodKey.ForInstant(lastSecondOfAban, QuotaPeriod.Monthly);
+    var keyAfter = PersianPeriodKey.ForInstant(firstSecondOfAzar, QuotaPeriod.Monthly);
+
+    Console.WriteLine($"   (اطلاع) منطقهٔ زمانی این اجرا: {TimeZoneInfo.Local.Id} — " +
+                      $"منطقهٔ مبنا: {PersianPeriodKey.IranZone.Id}");
+
+    Check(keyBefore == "1405-08", $"۳۰ آبان ۲۳:۵۹:۵۹ تهران ⇒ ماه ۱۴۰۵-۰۸ (واقعی: {keyBefore})");
+    Check(keyAfter == "1405-09", $"۱ آذر ۰۰:۰۰:۰۰ تهران ⇒ ماه ۱۴۰۵-۰۹ (واقعی: {keyAfter})");
+    Check(keyBefore != keyAfter, "دو لحظهٔ یک‌ثانیه‌ای، دو ماه شمسی متفاوت‌اند (مرز دقیق است)");
+
+    // همان دو لحظه، از مسیر «ساعت دیوار» که ستون CreatedAt با آن نوشته می‌شود:
+    var wallBefore = PersianPeriodKey.ToIran(lastSecondOfAban);
+    var wallAfter = PersianPeriodKey.ToIran(firstSecondOfAzar);
+
+    // ⚠️ توجه: DateTime.Year/Month/Day میلادی است؛ برای شمسی از PersianPeriodKey استفاده می‌کنیم.
+    // ساعت دیوارِ تهران برای لحظهٔ اول: ۳۰ آبان ۱۴۰۵ ساعت ۲۳:۵۹ (= ۲۱ نوامبر ۲۰۲۶ میلادی).
+    Check(PersianPeriodKey.Year(wallBefore) == 1405 && PersianPeriodKey.Month(wallBefore) == 8
+          && wallBefore.Day == 21 && wallBefore.Hour == 23 && wallBefore.Minute == 59,
+        $"ساعت دیوارِ لحظهٔ اول = ۳۰ آبان ۱۴۰۵، ۲۳:۵۹ (واقعی: {wallBefore:yyyy-MM-dd HH:mm} میلادی = "
+        + $"{PersianPeriodKey.Year(wallBefore)}/{PersianPeriodKey.Month(wallBefore):00})");
+    Check(PersianPeriodKey.Year(wallAfter) == 1405 && PersianPeriodKey.Month(wallAfter) == 9
+          && wallAfter.Day == 22 && wallAfter.Hour == 0,
+        $"ساعت دیوارِ لحظهٔ دوم = ۱ آذر ۱۴۰۵، ۰۰:۰۰ (واقعی: {wallAfter:yyyy-MM-dd HH:mm} میلادی = "
+        + $"{PersianPeriodKey.Year(wallAfter)}/{PersianPeriodKey.Month(wallAfter):00})");
+
+    // بازهٔ ماه باید با همان مرزها یکی باشد: [From, To)
+    //   اول آبان ۱۴۰۵ = ۲۳ اکتبر ۲۰۲۶ ؛ اول آذر ۱۴۰۵ = ۲۲ نوامبر ۲۰۲۶
+    var (from, to) = PersianPeriodKey.RangeOf(QuotaPeriod.Monthly, wallBefore);
+    Check(from == new DateTime(2026, 10, 23),
+        $"شروع بازه = ۰۰:۰۰ اول آبان (۲۳ اکتبر ۲۰۲۶) — واقعی: {from:yyyy-MM-dd HH:mm}");
+    Check(to == wallAfter.Date,
+        $"پایان بازه (انحصاری) = ۰۰:۰۰ اول آذر (۲۲ نوامبر ۲۰۲۶) — واقعی: {to:yyyy-MM-dd HH:mm}");
+
+    // ردیفی که ۲۳:۵۹:۵۹ نوشته شده در بازهٔ ماه قبل است، نه ماه بعد.
+    Check(wallBefore >= from && wallBefore < to, "ردیف ۲۳:۵۹:۵۹ در بازهٔ ماه قبل می‌افتد");
+    Check(!(wallAfter >= from && wallAfter < to), "ردیف ۰۰:۰۰:۰۰ در بازهٔ ماه قبل نمی‌افتد");
+
+    // و مستقل از منطقهٔ زمانی *سرور*: هیچ‌کدام از این محاسبات به TimeZoneInfo.Local نگاه نمی‌کند.
+    // (اثبات اجرایی: همین مجموعه با TZ=UTC، Asia/Tehran، Europe/Amsterdam و America/New_York اجرا و
+    //  خروجی یکسان دیده شد — گزارش بند ۲.)
+    Check(PersianPeriodKey.IranZone.Id is "Asia/Tehran" or "Iran Standard Time" or "Iran-Fallback",
+        $"منطقهٔ ایران حل شد، نه UTC (واقعی: {PersianPeriodKey.IranZone.Id})");
+    Check(PersianPeriodKey.IranZone.GetUtcOffset(new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero))
+              == TimeSpan.FromMinutes(210),
+        "افست ایران +03:30 است (بدون ساعت تابستانی)");
+}
+
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;
 

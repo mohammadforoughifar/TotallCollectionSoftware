@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Inventory.Api.Security;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -15,17 +16,22 @@ namespace Inventory.Api.Services;
 /// <summary>پیاده‌سازی احراز هویت JWT و مدیریت کاربران.</summary>
 public class AuthService : IAuthService
 {
-    /// <summary>کلید امضای توکن (در محیط عملیاتی از تنظیمات/متغیر محیطی بخوانید).</summary>
-    public const string JwtKey = "InventoryApp-Jwt-Secret-Key-2026-!@#$%-Very-Long-Key-For-HS256";
     public const string JwtIssuer = "InventoryApp";
 
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
+    private readonly ISigningKeys _keys;
 
-    public AuthService(Db.AppDbContext db, IInventoryService inventory)
+    /// <summary>
+    /// کلید امضا دیگر در کد نیست: از <see cref="ISigningKeys"/> می‌آید — یا «Jwt:Key»
+    /// پیکربندی، یا کلید تصادفیِ مخصوص همین نصب که در ProgramData ساخته می‌شود.
+    /// (بازبینی چهارم، بند ۶ و بند ۱ دستور بعدی: هیچ رشتهٔ کلید ثابتی در کد نماند.)
+    /// </summary>
+    public AuthService(Db.AppDbContext db, IInventoryService inventory, ISigningKeys keys)
     {
         _db = db;
         _inventory = inventory;
+        _keys = keys;
     }
 
     // ---------------- رمزنگاری ----------------
@@ -172,7 +178,7 @@ public class AuthService : IAuthService
                 claims.Add(new Claim(ClaimTypes.Role, "accounting"));
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey));
+        var key = new SymmetricSecurityKey(_keys.JwtKey);
         var token = new JwtSecurityToken(
             issuer: JwtIssuer,
             audience: JwtIssuer,

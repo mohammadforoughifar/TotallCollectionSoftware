@@ -62,6 +62,10 @@ public static class Program
             return 0;
         }
 
+        // ---------- حالت «آماده‌سازی»: ساخت شناسهٔ نصب روی دیتابیس موجود، پیش از آپدیت ----------
+        if (args.Contains("--prepare"))
+            return await PrepareAsync(args);
+
         if (!args.Contains("--simulate"))
         {
             Console.Error.WriteLine(
@@ -69,18 +73,25 @@ public static class Program
             return 2;
         }
 
-        var conn = Arg(args, "--conn") ?? Environment.GetEnvironmentVariable("LICENSING_TEST_CONN");
+        // مثل --prepare: محیط، نه خط فرمان (رمز در تاریخچهٔ شل نمی‌ماند). --conn فقط برای
+        // اجرای آزمایشی/توسعه پذیرفته می‌شود.
+        var conn = Environment.GetEnvironmentVariable("LICENSING_CONNECTION")
+                   ?? Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+                   ?? Environment.GetEnvironmentVariable("LICENSING_TEST_CONN")
+                   ?? Arg(args, "--conn");
         var licensePath = Arg(args, "--license");
         var months = int.TryParse(Arg(args, "--months"), out var m) ? Math.Clamp(m, 0, 24) : 3;
 
         if (string.IsNullOrWhiteSpace(conn))
         {
-            Console.Error.WriteLine("رشتهٔ اتصال لازم است: --conn \"…\" یا متغیر محیطی LICENSING_TEST_CONN");
+            Console.Error.WriteLine("رشتهٔ اتصال لازم است: متغیر محیطی LICENSING_CONNECTION " +
+                                    "(یا ConnectionStrings__Default، یا برای تست LICENSING_TEST_CONN).");
             return 2;
         }
 
         // ---------- ۱) لایسنس (اختیاری) ----------
         var limits = new Dictionary<string, MetricLimit>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<LicenseDocument>? licenseDocsA = null;
         var status = "بدون فایل لایسنس — فقط مصرف واقعی نشان داده می‌شود";
 
         if (!string.IsNullOrWhiteSpace(licensePath))
@@ -92,6 +103,7 @@ public static class Program
                 return 3;
             }
 
+            licenseDocsA = loaded.Documents!;
             var merged = EntitlementMerger.Merge(loaded.Documents!);
             foreach (var l in merged.Limits) limits[l.Metric] = l;
             status = $"وضعیت: {merged.Status} — {limits.Count} سقف در {loaded.Documents!.Count} سند";
@@ -164,10 +176,271 @@ public static class Program
             rows.Add(row);
         }
 
-        // ---------- ۳) گزارش ----------
+        // ---------- ۳) تطبیق شناسهٔ نصب ----------
+        // لایسنس OnPrem به شناسهٔ نصب گره خورده است. اگر شناسهٔ داخل فایل با شناسهٔ همین
+        // دیتابیس یکی نباشد، فایل روی این سرور پذیرفته نمی‌شود — چه حیف که فقط بعد از
+        // آپدیت بفهمیم. این‌جا، پیش از صدور/ارسال، همان مقایسه انجام می‌شود.
+        var dbInstallationId = await ReadInstallationIdAsync(connection);
+        if (dbInstallationId is null)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  ℹ️ جدول نصب در این دیتابیس خالی است (نصب تازه). ");
+            Console.WriteLine("     اگر مشتری از قبل داده دارد، ابتدا «LicenseCheck --prepare» را اجرا کنید " +
+                              "تا شناسهٔ نصب ساخته شود.");
+        }
+        else if (licenseDocsA is not null && licenseDocsA.Count > 0)
+        {
+            Console.WriteLine();
+            foreach (var doc in licenseDocsA!)
+            {
+                var docId = doc.InstallationId;
+                if (string.Equals(docId, dbInstallationId, StringComparison.OrdinalIgnoreCase))
+                    Console.WriteLine($"  ✅ شناسهٔ نصب لایسنس با این دیتابیس یکی است: {dbInstallationId}");
+                else
+                    Console.WriteLine($"  ⛔ شناسهٔ نصب نمی‌خواند — این فایل روی این سرور معتبر نیست.\n" +
+                                      $"     شناسهٔ دیتابیس: {dbInstallationId}\n" +
+                                      $"     شناسهٔ فایل:   {docId ?? "(خالی)"}");
+            }
+        }
+
+        // ---------- ۴) گزارش ----------
         PrintReport(rows, limits, months);
         await connection.CloseAsync();
         return 0;
+    }
+
+    // ============================================================
+    //  --prepare : ساخت شناسهٔ نصب روی دیتابیس موجود، پیش از آپدیت
+    // ============================================================
+
+    /// <summary>
+    /// «آماده‌سازی نصب موجود» — پیش از جایگزینی فایل‌ها روی سرور مشتری اجرا می‌شود.
+    ///
+    /// <para>
+    /// <b>مسئله‌ای که حل می‌کند:</b> شناسهٔ نصب فقط در اولین اجرای نسخهٔ جدید ساخته می‌شود.
+    /// مشتری‌ای که امروز روی نسخهٔ بدون لایسنس کار می‌کند، تا وقتی نسخهٔ جدید بالا نیامده
+    /// شناسه‌ای ندارد؛ پس نمی‌شود پیش از آپدیت برایش «لایسنس پل» صادر کرد. نتیجه: روز
+    /// آپدیت، برنامه تا رسیدن فایل لایسنس فقط‌خواندنی می‌ماند. این دستور همان شکاف را
+    /// می‌بندد: شناسه را از قبل روی دیتابیس موجود می‌سازد و چاپ می‌کند.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>تضمین «کمترین تغییر»:</b> تنها کاری که می‌کند ساخت جدول
+    /// <c>LicenseInstallations</c> (اگر نباشد) و درج <b>یک</b> ردیف در آن است. هیچ جدول
+    /// دیگری ساخته/تغییر نمی‌شود و هیچ ردیف کسب‌وکاری دست نمی‌خورد. اگر شناسه از قبل
+    /// وجود داشته باشد، فقط چاپ می‌شود.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>رشتهٔ اتصال:</b> عمداً <b>از خط فرمان خوانده نمی‌شود</b> (رمز در تاریخچهٔ شل و
+    /// لاگ نصب می‌ماند). ترتیب: متغیر محیطی <c>LICENSING_CONNECTION</c> یا
+    /// <c>ConnectionStrings__Default</c>؛ و اگر هیچ‌کدام نبود، اتصال یکپارچهٔ ویندوز به
+    /// سرور محلی و دیتابیس <c>InventoryDb</c>.
+    /// </para>
+    /// </summary>
+    private static async Task<int> PrepareAsync(string[] args)
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+
+        if (args.Contains("--conn"))
+        {
+            Console.Error.WriteLine(
+                "❌ در حالت --prepare رشتهٔ اتصال از خط فرمان خوانده نمی‌شود (رمز در تاریخچهٔ شل می‌ماند).");
+            Console.Error.WriteLine(
+                "   متغیر محیطی را ست کنید:  set LICENSING_CONNECTION=<رشتهٔ اتصال کامل با احراز هویت دیتابیس>");
+            Console.Error.WriteLine(
+                "   یا اصلاً ست نکنید تا اتصال یکپارچهٔ ویندوز استفاده شود: Server=.;Database=InventoryDb;Trusted_Connection=True");
+            return 2;
+        }
+
+        var conn = FirstNonEmpty(
+            Environment.GetEnvironmentVariable("LICENSING_CONNECTION"),
+            Environment.GetEnvironmentVariable("ConnectionStrings__Default"),
+            Environment.GetEnvironmentVariable("LICENSING_TEST_CONN"))
+            ?? "Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False";
+
+        var showTarget = MaskConnection(conn);
+
+        Console.WriteLine("══════════════════════════════════════════════════════════════════════");
+        Console.WriteLine("  آماده‌سازی نصب موجود — ساخت شناسهٔ نصب پیش از آپدیت");
+        Console.WriteLine($"  مقصد: {showTarget}");
+        Console.WriteLine("  تغییرات: فقط جدول LicenseInstallations + یک ردیف. هیچ چیز دیگری لمس نمی‌شود.");
+        Console.WriteLine("══════════════════════════════════════════════════════════════════════");
+
+        await using var connection = new SqlConnection(conn);
+        try
+        {
+            await connection.OpenAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ اتصال به دیتابیس برقرار نشد: {ex.Message}");
+            Console.Error.WriteLine("   متغیر محیطی LICENSING_CONNECTION را بررسی کنید.");
+            return 4;
+        }
+
+        // ---------- ۱) جدول، دقیقاً هم‌شکل با LicenseSchemaV1 (همان چیزی که برنامه می‌سازد) ----------
+        await ExecuteAsync(connection, @"
+IF OBJECT_ID(N'dbo.LicenseInstallations', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseInstallations] (
+        [Id]               int            NOT NULL IDENTITY(1,1),
+        [InstallationId]   nvarchar(64)   NOT NULL,
+        [DeploymentMode]   nvarchar(20)   NOT NULL,
+        [TenantId]         int            NULL,
+        [CustomerName]     nvarchar(200)  NULL,
+        [MachineFingerprint] nvarchar(600) NULL,
+        [CreatedAt]        datetime2      NOT NULL,
+        [UpdatedAt]        datetime2      NOT NULL,
+        CONSTRAINT [PK_LicenseInstallations] PRIMARY KEY ([Id])
+    );
+END
+");
+
+        // ---------- ۲) شناسهٔ موجود؟ ----------
+        string? existing = null;
+        await using (var cmd = new SqlCommand(
+            "SELECT TOP 1 [InstallationId] FROM [dbo].[LicenseInstallations] ORDER BY [Id]", connection))
+        {
+            var value = await cmd.ExecuteScalarAsync();
+            if (value is string s && !string.IsNullOrWhiteSpace(s)) existing = s;
+        }
+
+        if (existing is not null)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  شناسهٔ نصب از قبل وجود دارد: {existing}");
+            Console.WriteLine("  (ردیف تازه ساخته نشد — یک نصب، یک شناسه.)");
+            WriteInstallationIdFile(existing);
+            PrintNextSteps(existing);
+            return 0;
+        }
+
+        // ---------- ۳) ساخت شناسهٔ تازه ----------
+        // همان قالب برنامه: Guid("N")، ۳۲ نویسهٔ هگز بدون خط تیره.
+        var id = Guid.NewGuid().ToString("N");
+        var nowTehran = Inventory.Licensing.Periods.PersianPeriodKey.NowIran();
+
+        await using (var cmd = new SqlCommand(@"
+INSERT INTO [dbo].[LicenseInstallations]
+       ([InstallationId], [DeploymentMode], [TenantId], [CustomerName], [MachineFingerprint], [CreatedAt], [UpdatedAt])
+VALUES (@id, @mode, NULL, NULL, NULL, @now, @now)", connection))
+        {
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@mode", "OnPrem");
+            cmd.Parameters.AddWithValue("@now", nowTehran);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // تأیید: هم شناسهٔ درج‌شده، هم تنها یک ردیف
+        var count = 0;
+        await using (var cmd = new SqlCommand("SELECT COUNT_BIG(*) FROM [dbo].[LicenseInstallations]", connection))
+            count = Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+
+        Console.WriteLine();
+        Console.WriteLine($"  ✅ شناسهٔ نصب ساخته شد: {id}");
+        Console.WriteLine($"  (تعداد ردیف جدول نصب: {count})");
+
+        WriteInstallationIdFile(id);
+        PrintNextSteps(id);
+        return 0;
+    }
+
+    /// <summary>
+    /// نوشتن فایل <c>installation.id</c> در همان مسیری که برنامه می‌خواند
+    /// (ProgramData/TotallCollection/License). اگر نوشتن ممکن نبود، فقط هشدار می‌دهد —
+    /// شناسه در دیتابیس هست و برنامه از آن استفاده می‌کند.
+    /// </summary>
+    private static void WriteInstallationIdFile(string id)
+    {
+        try
+        {
+            // همان ترتیب برنامه: اول ProgramData، و اگر قابل‌نوشتن نبود App_Data کنار ابزار.
+            var candidates = new List<string>();
+
+            try
+            {
+                var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData,
+                    Environment.SpecialFolderOption.Create);
+                if (!string.IsNullOrWhiteSpace(programData))
+                    candidates.Add(Path.Combine(programData, "TotallCollection", "License"));
+            }
+            catch { /* پرش */ }
+
+            candidates.Add(Path.Combine(AppContext.BaseDirectory, "App_Data", "License"));
+
+            Exception? lastError = null;
+            foreach (var dir in candidates)
+            {
+                try
+                {
+                    Directory.CreateDirectory(dir);
+                    var probe = Path.Combine(dir, ".w");
+                    File.WriteAllText(probe, "1");
+                    File.Delete(probe);
+
+                    var path = Path.Combine(dir, "installation.id");
+                    File.WriteAllText(path, id);
+                    Console.WriteLine($"  فایل شناسه هم نوشته شد: {path}");
+                    return;
+                }
+                catch (Exception ex) { lastError = ex; }
+            }
+
+            throw lastError ?? new IOException("هیچ مسیری قابل نوشتن نبود.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  ⚠️ نوشتن فایل installation.id ممکن نشد ({ex.Message}). " +
+                              "مانعی نیست: شناسه در دیتابیس است.");
+        }
+    }
+
+    private static void PrintNextSteps(string id)
+    {
+        Console.WriteLine();
+        Console.WriteLine("  گام بعد (روی رایانهٔ شما، نه سرور مشتری):");
+        Console.WriteLine($"    python tools/license-sign.py --private-key <key.pem> \\");
+        Console.WriteLine($"        --installation-id {id} --customer-name \"…\" --bridge --days 30 --out bridge.lic");
+        Console.WriteLine();
+        Console.WriteLine("  سپس فایل‌ها را جایگزین کنید و bridge.lic را از صفحهٔ «لایسنس» بارگذاری کنید.");
+        Console.WriteLine("  • اگر لایسنس پل صادر نمی‌کنید، همین شناسه را برای صدور لایسنس اصلی بفرستید.");
+    }
+
+    private static async Task ExecuteAsync(SqlConnection connection, string sql)
+    {
+        await using var cmd = new SqlCommand(sql, connection) { CommandTimeout = 120 };
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>مخفی‌کردن رمز در رشتهٔ اتصال، برای چاپ.</summary>
+    private static string MaskConnection(string conn)
+    {
+        try
+        {
+            var b = new SqlConnectionStringBuilder(conn);
+            if (!string.IsNullOrEmpty(b.Password)) b.Password = "***";
+            return b.ConnectionString;
+        }
+        catch { return "(رشتهٔ اتصال نامعتبر)"; }
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+    /// <summary>شناسهٔ نصب ثبت‌شده در همین دیتابیس (یا null اگر جدول/ردیف نیست). فقط SELECT.</summary>
+    private static async Task<string?> ReadInstallationIdAsync(SqlConnection connection)
+    {
+        try
+        {
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 [InstallationId] FROM [dbo].[LicenseInstallations] ORDER BY [Id]", connection);
+            return await cmd.ExecuteScalarAsync() as string;
+        }
+        catch (SqlException)
+        {
+            return null;   // جدول هنوز ساخته نشده — نصب تازه
+        }
     }
 
     /// <summary>یک ردیف گزارش.</summary>
@@ -234,6 +507,13 @@ public static class Program
             {
                 verdict = limits.Count == 0 ? "بدون لایسنس" : "بدون سقف";
             }
+            else if (!r.HasProbe)
+            {
+                // ⚠️ متریکی که probe ندارد، عدد واقعی‌اش را نمی‌دانیم. پیش از این «🟢 راحت»
+                // نشان داده می‌شد — یعنی «فرض کن صفر است»، که برای انتخاب سقف گمراه‌کننده
+                // بود: مشتری ممکن است ماهی هزار ارسال مودیان داشته باشد و ما «راحت» بگوییم.
+                verdict = "❔ نامشخص (بدون probe)";
+            }
             else
             {
                 var predicted = r.Predicted();
@@ -255,7 +535,7 @@ public static class Program
             Console.WriteLine(
                 $"{Fit(r.Title, 27)} | {Fit(cap, 9)} | {Fit(r.Period.ToString(), 8)} | {Fit(current, 8)} | "
                 + $"{Fit(months1, Math.Max(7 * Math.Max(months, 1) + 3 * (Math.Max(months, 1) - 1), 7))} | "
-                + $"{Fit(r.Predicted().ToString("N0"), 13)} | {verdict}");
+                + $"{Fit(r.HasProbe ? r.Predicted().ToString("N0") : "?", 13)} | {verdict}");
         }
 
         Console.WriteLine(new string('─', 118));
@@ -287,8 +567,9 @@ public static class Program
         Console.WriteLine("  • «مصرف پیش‌بینی» = همان چیزی که روز اول بعد از فعال‌سازی دیده می‌شود.");
         Console.WriteLine("    اگر 🔴 بود، یا سقف را بالاتر بگذارید یا در لایسنس grandfather: true بدهید");
         Console.WriteLine("    (گذشتهٔ همین دوره نادیده گرفته می‌شود و سقف فقط روی مصرف تازه اعمال می‌شود).");
-        Console.WriteLine("  • متریک‌های «بدون probe» (مثل ارسال به مودیان) از شمارندهٔ لایسنس خوانده می‌شوند؛");
-        Console.WriteLine("    پیش از صدور، برای این‌ها عدد را دستی از تیم عملیات بگیرید.");
+        Console.WriteLine("  • متریک‌های «نامشخص (بدون probe)» یعنی شمارندهٔ واقعی‌ای برایشان تعریف نشده");
+        Console.WriteLine("    (مثل ارسال به مودیان)؛ عدد را از شمارندهٔ لایسنس یا تیم عملیات بگیرید.");
+        Console.WriteLine("    این‌ها را «راحت» فرض نکنید — ممکن است مشتری همین حالا سقف را پر کرده باشد.");
     }
 
     private static string Fit(string s, int width)

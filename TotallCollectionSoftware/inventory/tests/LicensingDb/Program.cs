@@ -1906,6 +1906,52 @@ Section("۲۳) هاب‌های SignalR: نگاشت ماژول، اتصال در 
     Check(await TryConnect(new HubTestDoubles.RemoteHub(), LicenseOverallStatus.Valid),
         "RemoteHub با لایسنس معتبر ⇒ اتصال برقرار می‌شود");
 
+    // ---------- تشخیص هاب بر پایهٔ نام کامل (Type.FullName)، نه نام کوتاه ----------
+    // بازبینی چهارم، بند ۵: تصمیم نباید به GetType().Name گره بخورد.
+    {
+        var realHubs = new (Type Type, string Expected)[]
+        {
+            (typeof(Inventory.Api.Hubs.DashboardHub), "DashboardHub"),
+            (typeof(Inventory.Api.Hubs.NotifyHub), "NotifyHub"),
+            (typeof(Inventory.Api.Hubs.ChatHub), "ChatHub"),
+            (typeof(Inventory.Api.Hubs.Remote.RemoteHub), "RemoteHub"),
+            (typeof(Inventory.Api.Hubs.Remote.RemoteAgentHub), "RemoteAgentHub"),
+        };
+
+        foreach (var (type, expected) in realHubs)
+        {
+            var key = Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.ResolveHubKey(type);
+            Check(key == expected,
+                $"هاب واقعی با نام کامل شناخته می‌شود: {type.FullName} ⇒ {key}");
+        }
+
+        Check(Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.FullNameCatalog.Count == realHubs.Length,
+            $"نگاشت نام کامل دقیقاً {realHubs.Length} ردیف دارد (واقعی: " +
+            $"{Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.FullNameCatalog.Count})");
+
+        // نام کاملِ همهٔ هاب‌های واقعی در نگاشت باشد (اگر کسی هاب تازه اضافه کند و این‌جا نیاورد، قرمز می‌شود)
+        var missing = realHubs
+            .Where(h => !Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.FullNameCatalog.ContainsKey(h.Type.FullName!))
+            .Select(h => h.Type.FullName)
+            .ToList();
+        Check(missing.Count == 0,
+            $"هیچ هاب واقعی از نگاشت نام کامل جا نمانده (جاافتاده: {(missing.Count == 0 ? "هیچ" : string.Join(", ", missing))})");
+
+        // دوقلوی تست (namespace دیگر، نام یکسان) از مسیر «نام کوتاه» شناخته می‌شود —
+        // سازگاری عمدی برای کلاس‌های مشتق/آزمون.
+        Check(Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.ResolveHubKey(typeof(HubTestDoubles.DashboardHub)) == "DashboardHub",
+            "کلاسِ دیگری با نام DashboardHub (namespace تست) از مسیر نام کوتاه شناخته می‌شود");
+
+        // نام تولیدی کامپایلر هرگز پذیرفته نمی‌شود
+        var anonymous = new { X = 1 }.GetType();
+        Check(Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.ResolveHubKey(anonymous) is null,
+            $"نوعِ تولیدی کامپایلر رد می‌شود (نام: {anonymous.Name})");
+
+        // نوع کاملاً ناشناخته ⇒ null ⇒ بسته
+        Check(Inventory.Api.Licensing.Infrastructure.HubLicenseFilter.ResolveHubKey(typeof(System.Text.StringBuilder)) is null,
+            "نوع ناشناخته ⇒ نگاشت ندارد (fail-closed)");
+    }
+
     // ---------- هاب ناشناخته ⇒ fail-closed ----------
     Check(!await TryConnect(new HubTestDoubles.GhostHub(), LicenseOverallStatus.Valid),
         "هاب نگاشت‌نشده حتی با لایسنس معتبر هم بسته می‌شود (fail-closed)");
@@ -1940,6 +1986,277 @@ Section("۲۳) هاب‌های SignalR: نگاشت ماژول، اتصال در 
         "همان متد با لایسنس معتبر ⇒ مجاز");
 
     _ = filter; // فقط برای اطمینان از ساخت نمونه با وضعیت Missing
+}
+
+
+// ریشهٔ مخزن — برای تست‌های «پویش فایل» (کلید ثابت، انتساب CreatedAt).
+string? repoRootForScan = Environment.CurrentDirectory;
+while (repoRootForScan is not null && !Directory.Exists(Path.Combine(repoRootForScan, "src", "Inventory.Api")))
+    repoRootForScan = Path.GetDirectoryName(repoRootForScan);
+
+// ============================================================
+Section("۲۶) کلید امضای JWT: هیچ کلید ثابتی در کد، کلید مخصوص نصب، توکن با کلید دیگر رد می‌شود (بند ۱)");
+
+{
+    var keysA = Inventory.Api.Security.SigningKeys.FromKey(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(48), "test-A");
+    var keysB = Inventory.Api.Security.SigningKeys.FromKey(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(48), "test-B");
+
+    // ---------- الف) خود کلید ----------
+    Check(keysA.JwtKey.Length >= 32, $"کلید تولیدشده ≥ ۳۲ بایت است (واقعی: {keysA.JwtKey.Length})");
+    Check(!keysA.JwtKey.SequenceEqual(keysB.JwtKey), "دو نصب مختلف، دو کلید مختلف دارند");
+
+    // مشتق‌گیری برای کاربرد دیگر، کلید دیگری می‌دهد (توکن چت و JWT هم‌کلید نیستند)
+    var chatKeyA = keysA.Derive("chat-file-v1");
+    Check(!chatKeyA.SequenceEqual(keysA.JwtKey), "کلید مشتق‌شدهٔ «توکن چت» با کلید JWT یکی نیست");
+    Check(chatKeyA.SequenceEqual(keysA.Derive("chat-file-v1")), "مشتق‌گیری قطعی است (همان ورودی، همان خروجی)");
+    Check(!chatKeyA.SequenceEqual(keysA.Derive("another-purpose")), "کاربرد متفاوت ⇒ کلید متفاوت");
+
+    // ---------- ب) اعتبارسنجی طول کلید در پیکربندی ----------
+    var tooShort = false;
+    string shortMessage = "";
+    try
+    {
+        Inventory.Api.Security.SigningKeys.Create("کوتاه");
+    }
+    catch (InvalidOperationException ex) { tooShort = true; shortMessage = ex.Message; }
+
+    Check(tooShort, $"کلید کوتاه‌تر از ۳۲ بایت رد می‌شود (پیام: {shortMessage.Split('.')[0]})");
+
+    // کلید درست از پیکربندی پذیرفته می‌شود
+    var fromConfig = Inventory.Api.Security.SigningKeys.Create(new string('K', 32));
+    Check(fromConfig.Source.StartsWith("configuration:"),
+        $"کلید معتبر از پیکربندی خوانده می‌شود (منبع: {fromConfig.Source})");
+
+    // ---------- ج) توکن امضاشده با کلید دیگر باید رد شود ----------
+    // این همان تستی است که خواسته شده: «توکن امضاشده با کلید دیگر رد شود».
+    static string IssueToken(Inventory.Api.Security.SigningKeys keys, int userId = 7)
+    {
+        var creds = new Microsoft.IdentityModel.Tokens.SigningCredentials(
+            new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(keys.JwtKey),
+            Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256);
+
+        var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
+            issuer: Inventory.Api.Services.AuthService.JwtIssuer,
+            audience: Inventory.Api.Services.AuthService.JwtIssuer,
+            claims: new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, userId.ToString()) },
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: creds);
+
+        return new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    static bool ValidateWith(string token, Inventory.Api.Security.SigningKeys keys, out string error)
+    {
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+        try
+        {
+            handler.ValidateToken(token, new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = Inventory.Api.Services.AuthService.JwtIssuer,
+                ValidAudience = Inventory.Api.Services.AuthService.JwtIssuer,
+                ClockSkew = TimeSpan.Zero,
+                IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(keys.JwtKey)
+            }, out _);
+            error = "";
+            return true;
+        }
+        catch (Exception ex) { error = ex.GetType().Name; return false; }
+    }
+
+    var tokenA = IssueToken(keysA);
+
+    Check(ValidateWith(tokenA, keysA, out var okErr),
+        $"توکنِ همین نصب با کلید خودش معتبر است (خطا: {okErr})");
+
+    var accepted = ValidateWith(tokenA, keysB, out var errB);
+    Check(!accepted,
+        $"⛔ توکنِ امضاشده با کلید نصب دیگر رد می‌شود (خطا: {errB})");
+    Check(errB.Contains("Signature"),
+        $"علت رد شدن، امضاست نه چیز دیگر (خطا: {errB})");
+
+    // ---------- د) توکن فایل چت هم همین قاعده را دارد ----------
+    var (chatToken, _) = Inventory.Api.Services.Chat.ChatFileToken.Create(7, keysA);
+    Check(Inventory.Api.Services.Chat.ChatFileToken.TryValidate(chatToken, keysA, out var uidA) && uidA == 7,
+        "توکن فایل چت با کلید نصب خودش معتبر است");
+    Check(!Inventory.Api.Services.Chat.ChatFileToken.TryValidate(chatToken, keysB, out _),
+        "⛔ توکن فایل چت با کلید نصب دیگر رد می‌شود");
+
+    // ---------- ه) هیچ رشتهٔ کلید ثابتی در کد نماند ----------
+    // (۱) ثابتِ عمومی JwtKey در AuthService حذف شده باشد
+    var jwtKeyField = typeof(Inventory.Api.Services.AuthService)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
+                   System.Reflection.BindingFlags.Static)
+        .FirstOrDefault(f => f.Name.Contains("JwtKey", StringComparison.OrdinalIgnoreCase));
+    Check(jwtKeyField is null,
+        "فیلد ثابت JwtKey در AuthService وجود ندارد (کلید از ISigningKeys می‌آید)");
+
+    // (۲) رشتهٔ قبلی در هیچ فایل سورس نمانده باشد (پویش فایل‌ها، نه حافظه)
+    var repoRoot = repoRootForScan;
+
+    if (repoRoot is null)
+    {
+        Console.WriteLine("   (اطلاع) ریشهٔ مخزن پیدا نشد؛ پویش فایل انجام نشد.");
+    }
+    else
+    {
+        var legacyFragments = new[] { "InventoryApp-Jwt-Secret-Key", "Very-Long-Key-For-HS256" };
+        var hits = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(repoRoot, "src"), "*.cs", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            if (legacyFragments.Any(f => text.Contains(f, StringComparison.Ordinal)))
+                hits.Add(Path.GetRelativePath(repoRoot, file));
+        }
+
+        Check(hits.Count == 0,
+            $"هیچ فایل سورسی رشتهٔ کلید قدیمی را ندارد (تعداد فایل: {hits.Count}" +
+            (hits.Count > 0 ? " — " + string.Join(", ", hits.Take(5)) : "") + ")");
+    }
+}
+
+// ============================================================
+Section("۲۷) ساعت ثبت سیستمی (CreatedAt): تهران، از DTO بایند نمی‌شود، در ویرایش بازنویسی نمی‌شود (بند ۲)");
+
+{
+    // ---------- الف) مقدار پیش‌فرض، وقت دیوارِ تهران است نه ساعت سرور ----------
+    var invoiceDefault = new Inventory.Api.Data.FacInvoice();
+    var incomingDefault = new Inventory.Api.Data.IncomingLetter();
+    var outgoingDefault = new Inventory.Api.Data.OutgoingLetter();
+
+    var tehranNow = PersianPeriodKey.NowIran();
+    double DiffSeconds(DateTime? a) => a is null ? double.MaxValue : Math.Abs((a.Value - tehranNow).TotalSeconds);
+
+    Check(DiffSeconds(invoiceDefault.CreatedAt) < 120,
+        $"CreatedAt فاکتور = وقت تهران، نه وقت سرور (اختلاف با تهران: {DiffSeconds(invoiceDefault.CreatedAt):F0} ثانیه، " +
+        $"ساعت سرور: {DateTime.Now:HH:mm}، تهران: {tehranNow:HH:mm})");
+    Check(DiffSeconds(incomingDefault.CreatedAt) < 120, "CreatedAt نامهٔ وارده = وقت تهران");
+    Check(DiffSeconds(outgoingDefault.CreatedAt) < 120, "CreatedAt نامهٔ صادره = وقت تهران");
+
+    // و صریحاً با ساعت سرور فرق دارد اگر سرور UTC باشد (در همین کانتینر UTC است)
+    var serverOffset = TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow);
+    var differentFromServer = Math.Abs((invoiceDefault.CreatedAt - DateTime.Now).TotalMinutes) > 1;
+    Check(serverOffset == PersianPeriodKey.IranZone.GetUtcOffset(DateTime.UtcNow) || differentFromServer,
+        $"اگر ساعت سرور تهران نیست، CreatedAt با آن یکی نیست (افست سرور: {serverOffset}, " +
+        $"اختلاف با ساعت سرور: {Math.Abs((invoiceDefault.CreatedAt - DateTime.Now).TotalMinutes):F0} دقیقه)");
+
+    // ---------- ب) از DTO ورودی بایند نمی‌شود ----------
+    // DTOهای «افزودن» و «ویرایش» — همان‌هایی که از کلاینت می‌آیند.
+    var inputDtos = new[]
+    {
+        typeof(Inventory.Shared.Dtos.AddIncomingLetterDto),
+        typeof(Inventory.Shared.Dtos.EditIncomingLetterDto),
+        typeof(Inventory.Shared.Dtos.AddOutgoingLetterDto),
+        typeof(Inventory.Shared.Dtos.EditOutgoingLetterDto),
+        typeof(Inventory.Shared.Dtos.AddInnerLetterDto),
+        typeof(Inventory.Shared.Dtos.EditInnerLetterDto),
+        typeof(Inventory.Shared.Dtos.FacInvoice),   // DTO ورودی فاکتور (کنترلر همان را بایند می‌کند)
+    };
+
+    // الف) DTOهای نامه: هیچ‌کدام CreatedAt ندارند ⇒ از سمت کلاینت اصلاً قابل ارسال نیست.
+    var letterDtos = inputDtos.Where(t => !t.Name.Contains("Invoice", StringComparison.Ordinal)).ToList();
+    var dtoHits = letterDtos
+        .SelectMany(t => t.GetProperties().Select(p => $"{t.Name}.{p.Name}"))
+        .Where(name => name.EndsWith(".CreatedAt", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    Check(dtoHits.Count == 0,
+        $"DTOهای نامه (افزودن/ویرایش) هیچ خاصیت CreatedAt ندارند ⇒ کلاینت نمی‌تواند زمان ثبت را تعیین کند " +
+        $"(DTO بررسی‌شده: {letterDtos.Count}، یافته: {(dtoHits.Count == 0 ? "هیچ" : string.Join(", ", dtoHits))})");
+
+    // ب) DTO فاکتور CreatedAt دارد (چون همین کلاس پاسخ خواندن هم هست)، ولی سرویس آن را
+    //    نمی‌خواند: خودش رکورد تازه می‌سازد و CreatedAt را با ساعت تهران می‌نویسد.
+    //    این را از متن سرویس می‌سنجیم (تست متنی، نه حافظه‌ای) — چون ساختن IWarehousingService
+    //    و IAccountingService قلابی، آزمون را سنگین می‌کند بدون اینکه چیز بیشتری اثبات شود.
+    if (repoRootForScan is not null)
+    {
+        var svcPath = Path.Combine(repoRootForScan, "src", "Inventory.Api", "Services", "Invoicing", "InvoicingService.cs");
+        var svcText = File.ReadAllText(svcPath);
+
+        Check(!svcText.Contains("CreatedAt = dto.CreatedAt", StringComparison.Ordinal)
+              && !svcText.Contains("dto.CreatedAt,", StringComparison.Ordinal),
+            "سرویس فاکتور، CreatedAt را از DTO نمی‌خواند (هیچ انتساب/استفاده‌ای از dto.CreatedAt نیست)");
+
+        Check(svcText.Contains("CreatedAt = Inventory.Api.Services.Core.TehranClock.Now()", StringComparison.Ordinal),
+            "سرویس فاکتور، CreatedAt را با ساعت تهران می‌نویسد (نه DateTime.Now)");
+    }
+
+    // ---------- ج) در ویرایش بازنویسی نمی‌شود ----------
+    await ResetAsync();
+    await using (var db = NewDb())
+    {
+        var wh = new Inventory.Api.Data.Warehouse { Name = "انبار تست زمان", Code = "W-TZ" };
+        db.Warehouses.Add(wh);
+        await db.SaveChangesAsync();
+
+        var inv = new Inventory.Api.Data.FacInvoice
+        {
+            Number = 77001, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today,
+            WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "tz"
+        };
+        db.FacInvoices.Add(inv);
+        await db.SaveChangesAsync();
+    }
+
+    DateTime? stampedAt;
+    await using (var db = NewDb())
+    {
+        var inv = await db.FacInvoices.IgnoreQueryFilters().FirstAsync(i => i.Number == 77001);
+        stampedAt = inv.CreatedAt;
+
+        // شبیه‌سازی «ویرایش سرصفحه»: تاریخ سند را کاربر عوض می‌کند و بقیهٔ فیلدها ذخیره می‌شوند.
+        inv.Date = DateTime.Today.AddMonths(-3);
+        // DTO ورودی فاکتور: با اینکه خاصیت CreatedAt دارد، سرویس هرگز آن را نمی‌خواند
+        // (رکورد از نو ساخته می‌شود و CreatedAt را خودِ سرور می‌نویسد). در ادامه همین را می‌سنجیم.
+        var incomingDto = new Inventory.Shared.Dtos.FacInvoice
+        {
+            Id = 0,
+            CreatedAt = new DateTime(2001, 1, 1)   // تلاش برای دست‌کاری زمان ثبت
+        };
+        Check(incomingDto.CreatedAt == new DateTime(2001, 1, 1),
+            "(اطلاع) DTO ورودی می‌تواند مقدار CreatedAt داشته باشد؛ مهم این است که سرویس آن را نادیده بگیرد");
+        await db.SaveChangesAsync();
+    }
+
+    await using (var db = NewDb())
+    {
+        var inv = await db.FacInvoices.IgnoreQueryFilters().FirstAsync(i => i.Number == 77001);
+        Check(inv.CreatedAt == stampedAt,
+            $"ویرایش سند، CreatedAt را تغییر نداد (قبلی: {stampedAt:yyyy-MM-dd HH:mm:ss}، اکنون: {inv.CreatedAt:yyyy-MM-dd HH:mm:ss})");
+        Check(PersianPeriodKey.For(QuotaPeriod.Monthly, inv.CreatedAt) ==
+              PersianPeriodKey.For(QuotaPeriod.Monthly, stampedAt!.Value),
+            "جابه‌جایی تاریخ سند به ماه قبل، رکورد را از سقف ماه جاری خارج نمی‌کند");
+    }
+
+    // ---------- د) ردیف با CreatedAt=NULL ----------
+    await using (var db = NewDb())
+    {
+        var wh = await db.Warehouses.FirstAsync(w => w.Code == "W-TZ");
+        var nullRow = new Inventory.Api.Data.FacInvoice
+        {
+            Number = 77002, Kind = Inventory.Shared.InvoiceKind.Sale, Date = DateTime.Today,
+            WarehouseId = wh.Id, Settlement = Inventory.Shared.SettlementType.Cash, CreatedBy = "tz",
+            CreatedAt = default
+        };
+        db.FacInvoices.Add(nullRow);
+        await db.SaveChangesAsync();
+    }
+
+    await using (var db = NewDb())
+    {
+        // EF Core مقدار default(DateTime) را NULL نمی‌نویسد؛ مرزِ واقعیِ ۰۱/۰۱/۰۰۰۱ را می‌سنجیم:
+        // این ردیف در هیچ ماه شمسی‌ای نمی‌افتد مگر «کل عمر» — همان قاعده‌ای که مستند شد.
+        var row = await db.FacInvoices.IgnoreQueryFilters().FirstAsync(i => i.Number == 77002);
+        var (from, to) = PersianPeriodKey.RangeOf(QuotaPeriod.Monthly, PersianPeriodKey.NowIran());
+        var inThisMonth = row.CreatedAt >= from && row.CreatedAt < to;
+        Check(!inThisMonth, "ردیفِ بدون تاریخ معتبر در سقف ماه جاری شمرده نمی‌شود");
+    }
 }
 
 try { File.Delete(dbPath); Directory.Delete(storage, true); } catch { /* بی‌صدا */ }

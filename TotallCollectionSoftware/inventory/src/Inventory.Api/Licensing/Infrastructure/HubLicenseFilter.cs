@@ -100,10 +100,62 @@ public sealed class HubLicenseFilter : IHubFilter
 
     private sealed record HubLicensePolicy(string ModuleCode, bool ConnectInReadOnly, string Reason);
 
+    /// <summary>
+    /// نگاشت <b>نام کامل</b> هاب‌ها به کلید کوتاه همین جدول.
+    ///
+    /// <para>
+    /// <b>چرا نام کامل؟</b> بازبینی چهارم (بند ۵) خواست تصمیم بر پایهٔ
+    /// <c>GetType().Name</c> نباشد. نام کوتاه دو ضعف دارد: (۱) دو کلاس هم‌نام در
+    /// دو namespace از هم تشخیص داده نمی‌شوند؛ (۲) کلاس‌های تولیدی کامپایلر
+    /// (مثل انواع محلیِ تست) نام کوتاه دست‌کاری‌شده می‌گیرند و بی‌صدا از نگاشت
+    /// بیرون می‌افتند.
+    /// </para>
+    ///
+    /// <para>
+    /// قاعدهٔ جدید: اول <c>Type.FullName</c>؛ اگر نبود، نام کوتاه (برای سازگاری با
+    /// کلاس‌های مشتق/تست)؛ و اگر هیچ‌کدام نبود ⇒ <b>بسته</b> (fail-closed).
+    /// نام‌های تولیدی کامپایلر (<c>&lt;…&gt;</c> یا <c>$</c>) همیشه رد می‌شوند.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<string, string> HubFullNames = new(StringComparer.Ordinal)
+    {
+        ["Inventory.Api.Hubs.DashboardHub"] = "DashboardHub",
+        ["Inventory.Api.Hubs.NotifyHub"] = "NotifyHub",
+        ["Inventory.Api.Hubs.ChatHub"] = "ChatHub",
+        ["Inventory.Api.Hubs.Remote.RemoteHub"] = "RemoteHub",
+        ["Inventory.Api.Hubs.Remote.RemoteAgentHub"] = "RemoteAgentHub",
+    };
+
+    /// <summary>
+    /// کلید نگاشت برای یک نوع هاب — یا <c>null</c> اگر هاب شناخته‌شده نباشد (⇒ بسته).
+    /// عمومی است تا تست بتواند بدون ساخت اتصال واقعی، تصمیم را بسنجد.
+    /// </summary>
+    public static string? ResolveHubKey(Type hubType)
+    {
+        ArgumentNullException.ThrowIfNull(hubType);
+
+        var fullName = hubType.FullName;
+
+        // ۱) نام کامل — دقیق‌ترین تشخیص
+        if (!string.IsNullOrEmpty(fullName) && HubFullNames.TryGetValue(fullName, out var byFullName))
+            return byFullName;
+
+        var name = hubType.Name;
+
+        // ۲) نام تولیدی کامپایلر: هرگز به نگاشت راه نمی‌یابد (وگرنه یک type محلی
+        //    می‌تواند با فریب نام، از بررسی رد شود).
+        if (name.Contains('<', StringComparison.Ordinal) || name.Contains('$', StringComparison.Ordinal))
+            return null;
+
+        // ۳) نام کوتاه — سازگاری با کلاس‌های مشتق و دوقلوهای تست
+        return Hubs.ContainsKey(name) ? name : null;
+    }
+
     public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext context,
         Func<HubInvocationContext, ValueTask<object?>> next)
     {
-        var hubName = context.Hub.GetType().Name;
+        var hubType = context.Hub.GetType();
+        var hubName = ResolveHubKey(hubType) ?? hubType.FullName ?? hubType.Name;
         var method = context.HubMethodName;
 
         if (AllowedMethodsInReadOnly.ContainsKey(method))
@@ -119,7 +171,7 @@ public sealed class HubLicenseFilter : IHubFilter
         }
 
         // ماژول غیرفعال: حتی با لایسنس معتبر هم این هاب در دسترس نیست.
-        if (Hubs.TryGetValue(hubName, out var policy))
+        if (ResolveHubKey(hubType) is { } invokeKey && Hubs.TryGetValue(invokeKey, out var policy))
         {
             var state = _licenses.GetModuleState(policy.ModuleCode);
             if (state == ModuleState.Disabled)
@@ -145,10 +197,12 @@ public sealed class HubLicenseFilter : IHubFilter
     /// </summary>
     public async ValueTask OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, ValueTask> next)
     {
-        var hubName = context.Hub.GetType().Name;
+        var hubType = context.Hub.GetType();
+        var hubKey = ResolveHubKey(hubType);
+        var hubName = hubKey ?? hubType.FullName ?? hubType.Name;
         var ct = context.Context.ConnectionAborted;
 
-        if (!Hubs.TryGetValue(hubName, out var policy))
+        if (hubKey is null || !Hubs.TryGetValue(hubKey, out var policy))
         {
             // هاب نگاشت‌نشده: fail-closed + هشدار، تا در تست بعدی معلوم شود.
             _log.LogWarning("[License] هاب «{Hub}» در نگاشت لایسنس نیست؛ اتصال بسته شد. " +
@@ -183,6 +237,9 @@ public sealed class HubLicenseFilter : IHubFilter
         => Hubs.ToDictionary(kv => kv.Key,
             kv => (kv.Value.ModuleCode, kv.Value.ConnectInReadOnly, kv.Value.Reason),
             StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>نگاشت نام کامل ← کلید کوتاه (برای تست و گزارش).</summary>
+    public static IReadOnlyDictionary<string, string> FullNameCatalog => HubFullNames;
 
     /// <summary>متدهایی که در حالت فقط‌خواندنی مجاز می‌مانند (برای تست و گزارش).</summary>
     public static IReadOnlyDictionary<string, string> ReadOnlySafeMethods => AllowedMethodsInReadOnly;

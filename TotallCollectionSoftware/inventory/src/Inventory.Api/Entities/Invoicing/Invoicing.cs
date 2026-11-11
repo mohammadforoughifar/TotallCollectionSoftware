@@ -55,7 +55,7 @@ public class FacInvoice
 
     // ---------- ردیابی ----------
     [MaxLength(120)] public string? CreatedBy { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; set; } = Services.Core.TehranClock.Now();
     [MaxLength(120)] public string? ConfirmedBy { get; set; }
     public DateTime? ConfirmedAt { get; set; }
 

@@ -349,6 +349,17 @@ builder.Services.AddSingleton<UserPhotoService>();
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
 builder.Services.AddSingleton<IProjectFileProtection, ProjectFileProtection>();
 
+// ================== کلیدهای امضا (JWT + توکن فایل چت) ==================
+// هیچ رشتهٔ کلید ثابتی در کد نیست: یا از Jwt:Key پیکربندی خوانده می‌شود (با اعتبارسنجی
+// حداقل ۳۲ بایت)، یا یک‌بار برای همین نصب ساخته و در ProgramData/Totall/security/jwt.key
+// نگه‌داری می‌شود. (بازبینی چهارم بند ۶ + بند ۱ دستور بعدی کارفرما)
+var signingKeys = Inventory.Api.Security.SigningKeys.Create(
+    builder.Configuration["Jwt:Key"],
+    keyFilePath: builder.Configuration["Jwt:KeyFile"],
+    log: m => Console.WriteLine(m));
+builder.Services.AddSingleton<Inventory.Api.Security.ISigningKeys>(signingKeys);
+builder.Services.AddSingleton(signingKeys);
+
 // ================== احراز هویت JWT ==================
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -364,7 +375,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = AuthService.JwtIssuer,
             ValidAudience = AuthService.JwtIssuer,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(signingKeys.JwtKey)
         };
         // دانلود پیوست با لینک مستقیم (تگ <a>) هدر Authorization ندارد؛
         // برای مسیرهای دانلود، توکن از query string خوانده می‌شود (الگوی استاندارد SignalR).
@@ -381,7 +392,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     path.StartsWith("/api/chat/", StringComparison.OrdinalIgnoreCase) &&
                     (path.EndsWith("/download", StringComparison.OrdinalIgnoreCase) ||
                      path.EndsWith("/preview", StringComparison.OrdinalIgnoreCase)) &&
-                    Inventory.Api.Services.Chat.ChatFileToken.TryValidate(fileToken, out var fileUserId))
+                    Inventory.Api.Services.Chat.ChatFileToken.TryValidate(fileToken, signingKeys, out var fileUserId))
                 {
                     var identity = new System.Security.Claims.ClaimsIdentity(new[]
                     {
@@ -897,34 +908,43 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// ================== مسدودسازی مسیرهای فایل کاربران — همیشه، مستقل از پوسته ==================
+// چرا این‌جا و نه داخل بلوک «اگر index.html هست»؟ چون در استقرار فقط-API (بدون پوستهٔ
+// Blazor در wwwroot) آن بلوک اجرا نمی‌شد و در نتیجه هیچ میدل‌وری مسیر
+// /uploads/projects را نمی‌بست؛ فایل‌های رمزنگاری‌شده و پیوست‌ها می‌توانستند به‌صورت
+// استاتیک (بدون احراز هویت و بدون بررسی RBAC) سرو شوند. (بازبینی چهارم، بند ۵)
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path;
+
+    if (path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    // پیوست نامهٔ صادره، نامهٔ داخلی و ایمیل سازمانی هم فقط از API سرو می‌شوند.
+    if (path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/office/outgoingletter", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/office/email", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.html")))
 {
-    // امنیت پیوست‌ها: فایل‌های رمزنگاری‌شده زیر wwwroot/SecureFiles هرگز به‌صورت استاتیک و بدون احراز هویت
-    // سرو نشوند — دسترسی به آن‌ها فقط از مسیر API (ProjectAttachController با RBAC) مجاز است.
-    app.Use(async (ctx, next) =>
-    {
-        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        // پیوست نامه صادره و پیوست ایمیل سازمانی هرگز به‌صورت استاتیک سرو نمی‌شوند —
-        // دانلود فقط از مسیر API مجاز با کنترل دسترسی انجام می‌شود.
-        if (ctx.Request.Path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/office/outgoingletter", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/office/email", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        await next();
-    });
+    // امنیت پیوست‌ها: میدل‌ور ۴۰۴ این مسیرها بالاتر و بیرون از این شرط ثبت شد
+    // (تا در استقرار فقط-API هم فعال باشد — بازبینی چهارم، بند ۵).
     // نصب زیر Application/Virtual Directory در IIS (مثلاً http://server/erp/): base href پوستهٔ Blazor باید
     // مسیر پایه را داشته باشد، وگرنه _framework و همهٔ آدرس‌های نسبی از ریشهٔ سایت خوانده می‌شوند و برنامه باز نمی‌شود.
     // روی ریشهٔ سایت (PathBase خالی) هیچ تغییری در رفتار قبلی ایجاد نمی‌شود.

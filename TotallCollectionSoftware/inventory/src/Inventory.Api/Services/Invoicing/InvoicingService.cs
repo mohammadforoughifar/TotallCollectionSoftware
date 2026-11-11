@@ -341,7 +341,9 @@ public class InvoicingService : IInvoicingService
             {
                 Kind = dto.Kind,
                 Number = dto.Number > 0 ? dto.Number : await NextNumberAsync(dto.Kind),
-                CreatedAt = DateTime.Now,
+                // زمان ثبت سیستمی، وقت دیوارِ تهران — نه DateTime.Now (که تابع تنظیم سرور است)
+                // و نه مقدار DTO ورودی (مشتری نباید بتواند زمان ثبت را تعیین کند).
+                CreatedAt = Inventory.Api.Services.Core.TehranClock.Now(),
                 CreatedBy = user
             };
             _db.FacInvoices.Add(entity);

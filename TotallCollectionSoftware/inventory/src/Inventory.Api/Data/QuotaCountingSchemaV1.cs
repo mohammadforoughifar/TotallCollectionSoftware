@@ -72,9 +72,18 @@ IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.[{table}]'
     ALTER TABLE [dbo].[{table}] ADD [CreatedAt] datetime2 NULL;", cancellationToken);
 
                     // پرکردن ردیف‌های قدیمی از تاریخ کاربر — یک‌بار.
+                    //
+                    // COALESCE: اگر تاریخِ کاربر هم NULL باشد، مقدار ثابت 1900-01-01 گذاشته
+                    // می‌شود تا ردیف هرگز NULL نماند. چرا؟ ردیفِ NULL در هیچ بازه‌ای نمی‌افتد،
+                    // پس در سقف ماهانه/سالانه شمرده نمی‌شود ولی در «کل عمر» هم شمرده نمی‌شد —
+                    // یعنی عملاً از هر شمارشی ناپدید می‌شد. با 1900-01-01:
+                    //   • در سقف ماهانه/سالانهٔ جاری نمی‌افتد (مصرف ماه را الکی پر نمی‌کند)
+                    //   • در سقف «دائمی» شمرده می‌شود (داده دیده می‌شود)
                     backfilled += await Exec(connection, $@"
 IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.[{table}]', 'CreatedAt') IS NOT NULL
-    UPDATE TOP (50000) [dbo].[{table}] SET [CreatedAt] = [{userDate}] WHERE [CreatedAt] IS NULL;", cancellationToken);
+    UPDATE TOP (50000) [dbo].[{table}]
+       SET [CreatedAt] = COALESCE([{userDate}], CONVERT(datetime2, '1900-01-01', 120))
+     WHERE [CreatedAt] IS NULL;", cancellationToken);
 
                     // ایندکس جست‌وجوی بازه‌ای ماه — همان ستونی که سقف روی آن حساب می‌شود.
                     await Exec(connection, $@"
@@ -86,8 +95,10 @@ IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL
                 else
                 {
                     await AddColumnIfMissingAsync(connection, table, "CreatedAt", "TEXT NULL", cancellationToken);
+                    // همان قاعدهٔ SQL Server: تاریخ کاربر، و در نبود آن 1900-01-01 (نه NULL).
                     backfilled += await Exec(connection,
-                        $"UPDATE \"{table}\" SET \"CreatedAt\" = \"{userDate}\" WHERE \"CreatedAt\" IS NULL",
+                        $"UPDATE \"{table}\" SET \"CreatedAt\" = COALESCE(\"{userDate}\", '1900-01-01 00:00:00') " +
+                        "WHERE \"CreatedAt\" IS NULL",
                         cancellationToken, optional: true);
                     await Exec(connection,
                         $"CREATE INDEX IF NOT EXISTS \"IX_{table}_CreatedAt\" ON \"{table}\" (\"CreatedAt\")",
@@ -104,6 +115,15 @@ IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL
             log?.LogInformation(
                 "[License] ستون CreatedAt برای {Count} ردیف قدیمی از تاریخ کاربر پر شد " +
                 "(مبنای شمارش سقف ماهانه). اجرای بعدی کاری انجام نمی‌دهد.", backfilled);
+
+        // تشخیص باقی‌ماندهٔ NULL: پرکردن با TOP (50000) در هر اجرا انجام می‌شود، پس در
+        // جدول‌های خیلی بزرگ ممکن است چند استارت طول بکشد. عدد را چاپ می‌کنیم تا کسی
+        // خیال نکند «صفر شد» در حالی که هنوز ردیف بی‌تاریخ مانده است.
+        var nulls = await CountNullsAsync(connection, isSqlServer, cancellationToken);
+        if (nulls > 0)
+            log?.LogWarning(
+                "[License] {Count} ردیف هنوز CreatedAt ندارد؛ در شمارش سقف ماهانه نمی‌آیند. " +
+                "در استارت بعدی پر می‌شوند (سقف ۵۰۰۰۰ ردیف در هر اجرا).", nulls);
 
         return backfilled;
     }
@@ -170,6 +190,36 @@ IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL
         await using var alter = connection.CreateCommand();
         alter.CommandText = $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {sqlType}";
         try { await alter.ExecuteNonQueryAsync(cancellationToken); } catch { /* جدول نیست */ }
+    }
+
+    /// <summary>
+    /// شمارش ردیف‌های بدون تاریخ در هر چهار جدول — فقط برای تشخیص/لاگ، هیچ تغییری نمی‌دهد.
+    /// </summary>
+    private static async Task<int> CountNullsAsync(System.Data.Common.DbConnection connection,
+        bool isSqlServer, CancellationToken cancellationToken)
+    {
+        var total = 0;
+        foreach (var (table, _) in Targets)
+        {
+            var sql = isSqlServer
+                ? $@"IF OBJECT_ID(N'dbo.[{table}]', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.[{table}]', 'CreatedAt') IS NOT NULL
+                     SELECT COUNT_BIG(*) FROM [dbo].[{table}] WHERE [CreatedAt] IS NULL
+                     ELSE SELECT CAST(0 AS bigint)"
+                : $"SELECT COUNT(*) FROM \"{table}\" WHERE \"CreatedAt\" IS NULL";
+
+            try
+            {
+                await using var cmd = connection.CreateCommand();
+                cmd.CommandText = sql;
+                var value = await cmd.ExecuteScalarAsync(cancellationToken);
+                total += value is null or DBNull ? 0 : Convert.ToInt32(value);
+            }
+            catch
+            {
+                // جدول/ستون در این نصب نیست — صفر، نه خطا.
+            }
+        }
+        return total;
     }
 
     private static async Task<int> Exec(System.Data.Common.DbConnection connection, string sql,

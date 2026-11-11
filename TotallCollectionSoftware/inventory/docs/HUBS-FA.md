@@ -118,3 +118,24 @@ builder.Services.AddScoped<Inventory.Api.Licensing.Infrastructure.HubLicenseFilt
 - هاب ناشناخته ⇒ `HubException` + لاگ هشدار
 - ماژول `Disabled` ⇒ اتصال هر پنج هاب رد
 - متد غیرمجاز در `Invalid` ⇒ `HubException` با پیام فارسی
+
+## ۶. تشخیص هاب: نام کامل نوع، نه نام کوتاه (بازبینی چهارم، بند ۵)
+
+`HubLicenseFilter.ResolveHubKey(Type)` با این ترتیب تصمیم می‌گیرد:
+
+1. **`Type.FullName`** — نگاشت دقیق، مثل `Inventory.Api.Hubs.Remote.RemoteAgentHub`
+2. اگر نبود: **نام کوتاه** — فقط برای سازگاری با کلاس‌های مشتق و دوقلوهای تست
+3. اگر هیچ‌کدام نبود: **بسته** (fail-closed)
+
+نام‌های تولیدی کامپایلر (شامل `<` یا `$`، مثل انواع بی‌نام) هرگز پذیرفته نمی‌شوند.
+
+| نام کامل | کلید |
+|---|---|
+| `Inventory.Api.Hubs.DashboardHub` | DashboardHub |
+| `Inventory.Api.Hubs.NotifyHub` | NotifyHub |
+| `Inventory.Api.Hubs.ChatHub` | ChatHub |
+| `Inventory.Api.Hubs.Remote.RemoteHub` | RemoteHub |
+| `Inventory.Api.Hubs.Remote.RemoteAgentHub` | RemoteAgentHub |
+
+تست `tests/LicensingDb` §۲۳: هر پنج هاب واقعی با نام کامل شناخته می‌شوند؛ اگر هاب تازه‌ای
+اضافه شود و به نگاشت نیاید، تست قرمز می‌شود.
