@@ -4,6 +4,12 @@ namespace Inventory.Client.Services;
 public interface IApiClient
 {
     Task<T> GetAsync<T>(string path);
+
+    /// <summary>
+    /// GET با امکان لغو درخواست — برای جستجو/فیلتر زنده که با هر کلید دوباره فرستاده می‌شود.
+    /// درخواست قبلی لغو می‌شود تا پاسخ‌های قدیمی روی نتیجهٔ تازه نیفتند و صف درخواست ساخته نشود.
+    /// </summary>
+    Task<T> GetAsync<T>(string path, CancellationToken cancellationToken);
     /// <summary>GET با سقف انتظار طولانی (۱۰ دقیقه) برای فراخوانی‌های AI.</summary>
     Task<T> GetLongAsync<T>(string path);
     Task<T> PostAsync<T>(string path, object? body = null);
@@ -22,5 +28,5 @@ public interface IApiClient
     string BuildUrl(string path);
 
     /// <summary>دریافت فایل باینری (PDF/Excel) به‌همراه نام پیشنهادی سرور.</summary>
-    Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path);
+    Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path, CancellationToken cancellationToken = default);
 }

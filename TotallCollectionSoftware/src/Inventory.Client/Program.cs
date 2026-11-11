@@ -123,6 +123,8 @@ builder.Services.AddSingleton<IToastService, ToastService>();
 builder.Services.AddSingleton<LayoutState>();
 builder.Services.AddSingleton<RealtimeService>(); // هسته‌ی بلادرنگ سراسری (SignalR)
 
+// چاپ نامه‌ها از یک مسیر مشترک: بودجهٔ زمانی، تلاش خودکار و پیام خطای یکسان
+builder.Services.AddScoped<LetterPrintWorkflow>();
 var host = builder.Build();
 
 // تعیین آدرس API در زمان اجرا (پشتیبانی از پیش‌نمایش ابری و localhost)

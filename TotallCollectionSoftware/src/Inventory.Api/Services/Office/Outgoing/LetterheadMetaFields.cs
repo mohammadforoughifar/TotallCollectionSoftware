@@ -22,7 +22,12 @@ namespace Inventory.Api.Services.Office.Outgoing;
 /// </summary>
 internal sealed record LetterheadMetaFields(LetterheadMetaFields.Field Number, LetterheadMetaFields.Field Date, LetterheadMetaFields.Field Attachment)
 {
-    /// <summary>یک مقدار متنی روی صفحه، با مختصات فیزیکی point از گوشهٔ بالا-چپ.</summary>
+    /// <summary>
+    /// یک مقدار متنی روی صفحه، با مختصات فیزیکی point از گوشهٔ بالا-چپ.
+    /// <paramref name="Fill"/> همان <c>Brush</c> قالب است: «null» یعنی شفاف، و رنگ (مثل
+    /// <c>White</c> روی سربرگ ۱۰۰۵) یعنی «پلاک» پشت مقدار کشیده شود تا نقطه‌چین از میان
+    /// رقم‌ها رد نشود.
+    /// </summary>
     internal sealed record Field(
         float Left,
         float Top,
@@ -32,7 +37,8 @@ internal sealed record LetterheadMetaFields(LetterheadMetaFields.Field Number, L
         float FontSize,
         bool Bold,
         bool Center,
-        bool IsolateLtr);
+        bool IsolateLtr,
+        string? Fill = null);
 
     private const string NumberColumn = "LetterNumber";
     private const string DateColumn = "DateShams";
@@ -89,7 +95,8 @@ internal sealed record LetterheadMetaFields(LetterheadMetaFields.Field Number, L
                     bold,
                     center,
                     // شماره و تاریخ ارقام/قالب لاتین دارند و باید در متن RTL جدا بمانند.
-                    column is NumberColumn or DateColumn);
+                    column is NumberColumn or DateColumn,
+                    ParseFill(component.Elements().FirstOrDefault(element => element.Name.LocalName == "Brush")?.Value));
             }
 
             var number = Read(NumberColumn);
@@ -172,6 +179,18 @@ internal sealed record LetterheadMetaFields(LetterheadMetaFields.Field Number, L
 
         var bold = parts.Any(part => part.Equals("Bold", StringComparison.OrdinalIgnoreCase));
         return (size, bold);
+    }
+
+    /// <summary>
+    /// پس‌زمینهٔ کادر از تگ <c>Brush</c>؛ <c>Transparent</c> (پیش‌فرض) یعنی شفاف.
+    /// </summary>
+    private static string? ParseFill(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        if (text.Length == 0) return null;
+        if (text.Equals("Transparent", StringComparison.OrdinalIgnoreCase)) return null;
+        if (text.Contains('<') || text.Contains('>')) return null;
+        return ParseColor(text);
     }
 
     /// <summary>رنگ متنِ اعلام‌شده در قالب؛ ناشناخته‌ها با خاکستری تیره (خوانا روی کاغذ سفید) چاپ می‌شوند.</summary>
