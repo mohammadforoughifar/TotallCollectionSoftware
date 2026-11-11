@@ -280,7 +280,7 @@ else
                                                 }
                                                 @if (i % Math.Max(1, (int)Math.Ceiling(data.Trend.Count / 9d)) == 0 || i == data.Trend.Count - 1)
                                                 {
-                                                    <text x="@SvgNumber(x)" y="300" text-anchor="middle" class="ops-line-label">@point.Label</text>
+                                                    <g><text x="@SvgNumber(x)" y="300" text-anchor="middle" class="ops-line-label">@point.Label</text></g>
                                                 }
                                                 <rect x="@SvgNumber(TrendHitLeft(i))" y="15" width="@SvgNumber(TrendHitRight(i) - TrendHitLeft(i))" height="270"
                                                       class="ops-line-hit" tabindex="0" role="button" aria-label="@TrendAccessibleLabel(i)"
@@ -776,7 +776,6 @@ else
     private decimal ChartMax => Math.Max(0m, ChartValues.DefaultIfEmpty(0m).Max());
     private decimal ChartMin => Math.Min(0m, ChartValues.DefaultIfEmpty(0m).Min());
     private decimal ChartRange => Math.Max(1m, ChartMax - ChartMin);
-    private decimal ChartZero => -ChartMin / ChartRange * 100m;
 
     protected override async Task OnInitializedAsync()
     {
