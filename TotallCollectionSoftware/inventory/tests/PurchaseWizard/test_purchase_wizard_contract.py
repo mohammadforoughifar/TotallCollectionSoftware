@@ -82,7 +82,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('JS.InvokeVoidAsync("orderEntry.focusLine", formKey, key.ToString())', FORM)
         self.assertIn('if (lines.Count == 0) AddLine();', FORM)
         self.assertIn('tabindex="-1" title="حذف سطر"', FORM)
-        self.assertIn('title="آخرین فاکتور خرید این کالا (F7 یا F8)"', FORM)
+        self.assertIn('title="آخرین فاکتور خرید این کالا (F8)"', FORM)
         self.assertIn('data-order-add-line', FORM)
         self.assertIn('data-order-add-line data-hotkey="f2"', FORM)
         self.assertIn('Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساطی"', FORM)
@@ -100,7 +100,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('<SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard"', FORM)
         self.assertIn('if (AdvanceOnEnter)', SEARCH)
         self.assertIn('await JS.InvokeVoidAsync("orderEntry.focusNextField", _input)', SEARCH)
-        self.assertLess(INDEX.index('js/order-entry.js?v=7'), INDEX.index("document.addEventListener('keydown'"))
+        self.assertLess(INDEX.index('js/order-entry.js?v=8'), INDEX.index("document.addEventListener('keydown'"))
 
     def test_invoice_row_controls_and_values_share_alignment(self):
         items_section = FORM.split('<div data-order-entry', 1)[1]

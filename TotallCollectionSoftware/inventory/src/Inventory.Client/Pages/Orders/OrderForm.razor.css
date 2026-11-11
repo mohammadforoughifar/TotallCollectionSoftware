@@ -196,3 +196,10 @@
     .invoice-footer-actions .btn { min-height: 48px; }
     .purchase-summary-pay strong { font-size: .9rem; }
 }
+
+/* Label first, shortcut second; fit narrow sale action cells without growing the table. */
+.purchase-items tbody .order-line-actions .last-purchase-action {
+    display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center;
+    justify-content: center; gap: .2rem; min-width: 0; white-space: normal; line-height: 1.4;
+}
+.last-purchase-action kbd { padding: .1rem .25rem; border: 1px solid #c7d2fe; border-radius: 4px; background: #eef2ff; color: #4338ca; font-size: .65rem; }
