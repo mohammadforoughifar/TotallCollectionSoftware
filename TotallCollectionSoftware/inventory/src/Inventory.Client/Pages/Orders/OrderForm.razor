@@ -540,12 +540,7 @@
                                             }
                                         </div>
                                     }
-                                    @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
-                                    {
-                                        <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
-                                            <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
-                                        </button>
-                                    }
+
                                 </td>
                                 <td data-label="مقدار">
                                     <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="@(QuantityAllowsFraction(l) == false ? "numeric" : "decimal")" dir="ltr" placeholder="1"
@@ -629,6 +624,12 @@
                                 }
                                 <td class="text-nowrap">
                                     <div class="order-line-actions">
+                                        @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
+                                        {
+                                            <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
+                                                <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
+                                            </button>
+                                        }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
                                         </button>
@@ -740,18 +741,19 @@
     </ChildContent>
 
     <Footer>
+        <div class="invoice-footer-actions">
         <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
         @if (!loading && UseInvoiceWizard && invoiceStep == 1)
         {
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
-                ادامه و انتخاب روش پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
+            <button type="button" class="btn btn-primary" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
+                ادامه پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
             </button>
         }
         else if (!loading)
         {
             @if (UseInvoiceWizard)
             {
-                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
+                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)</button>
             }
             <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="invoice-print-paper-@formKey">
                 کاغذ چاپ
@@ -763,11 +765,12 @@
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
             </button>
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            <button type="button" class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : Type == TransactionType.Purchase ? "ثبت فاکتور خرید (F1)" : "ثبت فاکتور فروش (F1)")
             </button>
         }
+        </div>
     </Footer>
 </Modal>
 
@@ -1271,7 +1274,7 @@
     // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
     // table the percentage columns share the space left by this fixed-width action column.
     // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
-    private const decimal SaleActionsColumnRem = 4.5m;
+    private const decimal SaleActionsColumnRem = 11m;
     private const int SaleBaseColumnWeight = 95;
     private const int SaleExtraColumnWeight = 11;
     private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
@@ -1289,7 +1292,8 @@
         var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
         var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
         var weight = saleWeight ?? purchaseWeight;
-        return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        var ratio = (decimal)weight / totalWeight;
+        return FormattableString.Invariant($"calc({100m * ratio:0.######}% - {SaleActionsColumnRem * ratio:0.######}rem)");
     }
 
 

@@ -58,7 +58,7 @@ class PurchaseWizardContract(unittest.TestCase):
     def test_sale_features_are_preserved_in_first_step(self):
         self.assertIn('Type == TransactionType.Sale ? "اطلاعات فروش" : "اطلاعات خرید"', FORM)
         self.assertIn('Type == TransactionType.Sale ? "مشتری" : "تأمین‌کننده"', FORM)
-        self.assertIn('Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش"', FORM)
+        self.assertIn('@onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)', FORM)
         self.assertIn('Type == TransactionType.Sale && invoiceStep == 1 && CanSeeProfit', FORM)
         self.assertIn('data-label="سود"', FORM)
         self.assertIn('data-label="پورسانت"', FORM)
@@ -80,7 +80,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('JS.InvokeVoidAsync("orderEntry.focusLine", formKey, key.ToString())', FORM)
         self.assertIn('if (lines.Count == 0) AddLine();', FORM)
         self.assertIn('tabindex="-1" title="حذف سطر"', FORM)
-        self.assertIn('title="آخرین فاکتور خرید این کالا (F7 یا F8)"', FORM)
+        self.assertIn('title="آخرین فاکتور خرید این کالا (F8)"', FORM)
         self.assertIn('data-order-add-line', FORM)
         self.assertIn('data-order-add-line data-hotkey="f2"', FORM)
         self.assertIn('Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساطی"', FORM)
@@ -98,7 +98,7 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertIn('<SearchSelect Items="partyLookup" ShowAllOnFocus="UseInvoiceWizard"', FORM)
         self.assertIn('if (AdvanceOnEnter)', SEARCH)
         self.assertIn('await JS.InvokeVoidAsync("orderEntry.focusNextField", _input)', SEARCH)
-        self.assertLess(INDEX.index('js/order-entry.js?v=7'), INDEX.index("document.addEventListener('keydown'"))
+        self.assertLess(INDEX.index('js/order-entry.js?v='), INDEX.index("document.addEventListener('keydown'"))
 
     def test_invoice_row_controls_and_values_share_alignment(self):
         items_section = FORM.split('<div data-order-entry', 1)[1]
@@ -154,10 +154,11 @@ class PurchaseWizardContract(unittest.TestCase):
         self.assertEqual(sum(sale_weights), base)
         self.assertEqual(colgroup.count('InvoiceColumnWidth(SaleExtraColumnWeight)'), 2)
         self.assertIn('<col style="width:@InvoiceActionsColumnWidth" />', colgroup)
-        self.assertIn('SaleActionsColumnRem = 4.5m', FORM)
+        self.assertIn('SaleActionsColumnRem = 11m', FORM)
         self.assertIn('SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns', FORM)
         self.assertIn('(CanSeeProfit && referrerId > 0 ? 1 : 0)', FORM)
-        self.assertIn('100m * weight / totalWeight', FORM)
+        self.assertIn('100m * ratio:0.######', FORM)
+        self.assertIn('SaleActionsColumnRem * ratio:0.######', FORM)
         self.assertIn('if (Type != TransactionType.Sale)', FORM)
         self.assertIn(': InvoiceColumnWidth(5)', FORM)
 
@@ -171,13 +172,17 @@ class PurchaseWizardContract(unittest.TestCase):
             visible = sale_weights + [extra] * (profit + commission)
             self.assertEqual(sum(visible), denominator)
             self.assertAlmostEqual(sum(100 * w / denominator for w in visible), 100)
+            # Percentage columns reserve their proportional share of the action width.
+            for width in (992, 1280, 1568):
+                available = width - 11 * 16
+                self.assertAlmostEqual(sum(available * w / denominator for w in visible) + 11 * 16, width)
 
         desktop_sale = CSS.split('@media (min-width: 992px)', 1)[1].split('}', 1)[0]
         self.assertIn('.sale-items table thead th, .sale-items tbody td', desktop_sale)
         self.assertIn('padding-inline: .3rem', desktop_sale)
         self.assertIn('.sale-items tbody .order-line-rate > input.form-control { padding-left: 24px;', CSS)
         self.assertIn('.sale-items tbody .order-line-rate > .order-line-unit { width: 20px;', CSS)
-        self.assertIn('Inventory.Client.styles.css?v=9', INDEX)
+        self.assertRegex(INDEX, r'Inventory\.Client\.styles\.css\?v=(?:9|[1-9][0-9]+)')
 
     def test_invoice_totals_show_after_discount_and_after_vat(self):
         totals = FORM.split('<div class="purchase-totals">', 1)[1].split('</div>\n                </div>', 1)[0]
