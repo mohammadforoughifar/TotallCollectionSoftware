@@ -10,7 +10,7 @@
             <!-- نوع حساب -->
             <div class="col-md-6">
                 <label class="form-label fs-8 fw-bold">نوع حساب <span class="text-danger">*</span></label>
-                <div class="btn-group w-100" role="group">
+                <div class="quick-bank-kind-options" role="group" aria-label="نوع حساب">
                     <button type="button" class="btn btn-sm @(form.Kind == TreasuryAccountKind.Bank ? "btn-primary" : "btn-outline-secondary")"
                             @onclick="() => SetKind(TreasuryAccountKind.Bank)">
                         <i class="bi bi-bank ms-1"></i> حساب بانکی

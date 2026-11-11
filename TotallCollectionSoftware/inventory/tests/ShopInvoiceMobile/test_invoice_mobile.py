@@ -16,6 +16,16 @@ class ShopInvoiceMobileTests(unittest.TestCase):
         self.assertIn('OpenBankManager', BANK)
         self.assertIn('TreasuryAccountKind.Bank or TreasuryAccountKind.Pos', BANK)
 
+    def test_account_kind_buttons_are_separately_rounded(self):
+        kinds = BANK.split('<!-- نوع حساب -->', 1)[1].split('<!-- انتخاب سریع نام بانک -->', 1)[0]
+        self.assertIn('quick-bank-kind-options', kinds)
+        self.assertNotIn('btn-group', kinds)
+        self.assertEqual(kinds.count('<button'), 4)
+        css = (SRC / 'Inventory.Client/Shared/QuickBankModal.razor.css').read_text()
+        self.assertIn('border-radius: 10px;', css)
+        self.assertIn('gap: .4rem;', css)
+        self.assertNotIn('.btn-group', css)
+
     def test_card_and_iban_show_live_errors_without_truncating_input(self):
         self.assertIn('@bind="form.CardNumber" @bind:event="oninput"', BANK)
         self.assertIn('@bind="form.Iban" @bind:event="oninput"', BANK)
