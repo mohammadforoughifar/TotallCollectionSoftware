@@ -72,30 +72,6 @@
 .printed-bank-entry bdi { font-size: 11px; }
 .invoice.a5 .printed-bank-entry bdi { font-size: 9px; }
 
-/* Review-only table alternatives, with fixed proportional column groups. */
-.table-proposals{padding:14px 16px;margin-bottom:14px;border:1px solid #dbe2ed;border-radius:10px;background:#fff}
-.table-proposals>span{font-size:11px;color:#64748b}.proposal-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}
-.proposal-buttons button{font-size:12px;padding:7px 13px}.proposal-buttons button[aria-pressed=true]{background:#eef2ff;border-color:#818cf8;color:#4338ca}
-.table-proposals p{font-size:11px;color:#64748b;margin:10px 0 0;line-height:1.9}
-.invoice .proposal-items th,.invoice .proposal-items td{border-left:0;border-right:0;padding:10px 6px;vertical-align:middle;text-align:center;font-size:10px}
-.invoice .proposal-items{border:1px solid #c7cfd9;border-collapse:collapse}
-.invoice .proposal-items th{background:#f1f3f6;color:#475569;font-size:10px;line-height:1.7}
-.invoice .proposal-items tbody tr:nth-child(even){background:#fafbfc}
-.invoice .proposal-items tbody tr:last-child td{border-bottom:1px solid #c7cfd9}
-.invoice .proposal-items .item-description{text-align:right;color:#253247}
-.invoice .proposal-items .item-description strong{display:block;font-size:11px;font-weight:700}
-.invoice .proposal-items .item-description small{display:block;font-size:9px;line-height:1.7;color:#7b8490;margin-top:3px}
-.invoice .proposal-items td[data-column=net]{font-weight:700;background:#f4f6f866}
-.invoice .proposal-items .money{direction:ltr;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:10px}
-.invoice .proposal-items .row-heading{font-size:9px;white-space:nowrap}
-.invoice .proposal-items td[data-column=row]{color:#94a3b8}
-.invoice.a5 .proposal-items th,.invoice.a5 .proposal-items td{padding:7px 3px;font-size:8px}
-.invoice.a5 .proposal-items .money{font-size:8px}
-.invoice.a5 .proposal-items .item-description strong{font-size:9px}
-.invoice.a5 .proposal-items .item-description small{font-size:7px}
-.invoice.a5 .proposal-items .row-heading{font-size:7px}
-@media print{.table-proposals{display:none!important}.invoice .proposal-items th,.invoice .proposal-items td{padding:7px 5px}.invoice.a5 .proposal-items th,.invoice.a5 .proposal-items td{padding:5px 2px}}
-.invoice .proposal-items td[data-column=net]{color:#253247;font-weight:700}
 /* Subtle vertical separators keep all proposed table columns distinct. */
 .invoice .proposal-items th:not(:last-child),
 .invoice .proposal-items td:not(:last-child) {

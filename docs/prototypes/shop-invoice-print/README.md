@@ -164,3 +164,9 @@ small gaps instead of space-between. Monetary summary is restored to the origina
 single narrow column on the left (280px A4 / 210px A5); all five rows stack
 vertically. Payment/quantity stay above the item table. Geometry regression
 checks cover label gaps and stacked summary rows across all proposals/papers.
+
+The three comparison proposals have now been rejected and removed, including
+the selector and dynamic layout code. The original six columns are restored:
+row, description, quantity, unit price, gross amount before deductions, remarks.
+Column separators remain. Single-column totals and payment/quantity above the
+table are unchanged. Earlier proposal descriptions are historical, not active.

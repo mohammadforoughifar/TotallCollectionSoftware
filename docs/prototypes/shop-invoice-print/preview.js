@@ -17,42 +17,15 @@ const lines = [
 const totals = lines.reduce((t,l) => ({gross:t.gross+l.qty*l.price,discount:t.discount+l.discount,qty:t.qty+l.qty}), {gross:0,discount:0,qty:0});
 const net = totals.gross-totals.discount;
 const vat = net*0.1; // Explicitly hypothetical demo rate, NOT a production tax rule.
-// Review alternatives only: not a new persisted shop layout setting.
-const tableLayouts={
- balanced:{description:'پیشنهاد اول: شرح خوانا، سه ستون مبلغ هم‌اندازه و تخفیف مشخص؛ تعادل بین سادگی و شفافیت.',
-  columns:[['row','ردیف',5],['name','شرح کالا / خدمت',40],['qty','تعداد',7],['price','فی واحد',16],['discount','تخفیف',16],['net','پس از تخفیف',16]]},
- detailed:{description:'پیشنهاد دوم: چهار ستون مبلغ هم‌اندازه؛ فی واحد، مبلغ اولیه، تخفیف و مبلغ پس از تخفیف. مناسب کنترل ریز محاسبات.',
-  columns:[['row','ردیف',5],['name','شرح کالا / خدمت',32],['qty','تعداد',7],['price','فی واحد',14],['gross','مبلغ اولیه',14],['discount','تخفیف',14],['net','پس از تخفیف',14]]},
- minimal:{description:'پیشنهاد سوم: پنج ستون و بیشترین فضا برای شرح کالا؛ تخفیف هر ردیف زیر شرح می‌آید و مبلغ پس از تخفیف در آخر است. مناسب چاپ خلوت به‌ویژه A5.',
-  columns:[['row','ردیف',5],['name','شرح کالا / خدمت',51],['qty','تعداد',8],['price','فی واحد',18],['net','پس از تخفیف',18]]}
-};
-function renderTable(layout='balanced'){
- const definition=tableLayouts[layout];
- const table=document.querySelector('.proposal-items');table.dataset.layout=layout;
- $('item-columns').replaceChildren(...definition.columns.map(([, ,width])=>{const col=document.createElement('col');col.style.width=width+'%';return col;}));
- const head=document.createElement('tr');
- for(const [key,label] of definition.columns){const th=document.createElement('th');th.scope='col';th.textContent=label;th.className=key==='row'?'row-heading':key==='name'?'description-heading':'';head.append(th);}
- $('item-head').replaceChildren(head);
- $('item-rows').replaceChildren(...lines.map((line,i)=>{
-  const row=document.createElement('tr');
-  const values={row:i+1,qty:line.qty,price:line.price,gross:line.qty*line.price,discount:line.discount,net:line.qty*line.price-line.discount};
-  for(const [key] of definition.columns){
-   const cell=document.createElement('td');cell.dataset.column=key;
-   if(key==='name'){
-    cell.className='item-description';const name=document.createElement('strong');name.textContent=line.name;cell.append(name);
-    const details=[];if(line.note&&line.note!=='—')details.push(line.note);
-    if(layout==='minimal'&&line.discount)details.push(`تخفیف: ${money(line.discount)} ریال`);
-    if(details.length){const note=document.createElement('small');note.textContent=details.join(' · ');cell.append(note);}
-   }else{cell.textContent=key==='discount'&&!line.discount?'-':money(values[key]);if(!['row','qty'].includes(key))cell.className='money';}
-   row.append(cell);
-  }return row;
- }));
- $('table-proposal-description').textContent=definition.description;
- document.querySelectorAll('[data-table-layout]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.tableLayout===layout)));
- if(typeof fitPaper==='function')requestAnimationFrame(fitPaper);
-}
-document.querySelectorAll('[data-table-layout]').forEach(button=>button.addEventListener('click',()=>renderTable(button.dataset.tableLayout)));
-renderTable();
+$('item-rows').replaceChildren(...lines.map((l,i)=>{
+ const row=document.createElement('tr');
+ [money(i+1),l.name,money(l.qty),money(l.price),money(l.qty*l.price),l.note].forEach((value,j)=>{
+  const cell=document.createElement('td');cell.textContent=value;
+  if(j===3||j===4)cell.className='money';
+  if(j===5)cell.className='remarks';
+  row.append(cell);
+ });return row;
+}));
 for(const [id,value] of Object.entries({gross:totals.gross,discount:totals.discount,net,vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
 const invoice=$('invoice');
 function fitPaper(){

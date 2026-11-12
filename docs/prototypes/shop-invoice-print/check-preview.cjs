@@ -92,8 +92,9 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await page.evaluate(()=>{sampleInvoice.customer=null;update();});
  for(const key of ['name','phone','id','address'])assert.equal(await page.$eval('#printed-customer-'+key,e=>e.textContent),'-');
  await page.reload();await page.evaluate(()=>document.fonts.ready);
- for(const layout of ['balanced','detailed','minimal']){
-  await page.click(`[data-table-layout="${layout}"]`);
+ for(const layout of ['original']){
+  assert.equal(await page.$$('[data-table-layout], .table-proposals').then(a=>a.length),0);
+  assert.deepEqual(await page.$$eval('.items thead th',cells=>cells.map(e=>e.textContent.replace(/\s/g,''))),['ردیف','شرحکالا/خدمت','تعداد','فیواحدریال','مبلغکلریال،پیشازکسورات','ملاحظات']);
   for(const paper of ['A4','A5']){
    await page.select('#paper',paper);
    assert.equal(await page.$$('#item-rows tr').then(a=>a.length),6);
@@ -110,7 +111,6 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    assert.equal(await page.$$('.proposal-items tfoot').then(a=>a.length),0);
    assert(await page.evaluate(()=>document.querySelector('.invoice-info').getBoundingClientRect().bottom<=document.querySelector('.proposal-items').getBoundingClientRect().top+1));
    const geometry=await page.evaluate(()=>[...document.querySelectorAll('#item-rows tr:first-child td.money')].map(e=>({width:e.getBoundingClientRect().width,scroll:e.scrollWidth,client:e.clientWidth})));
-   assert(Math.max(...geometry.map(e=>e.width))-Math.min(...geometry.map(e=>e.width))<2,'Unequal money columns '+layout+'/'+paper);
    assert(geometry.every(e=>e.scroll<=e.client+1),'Money overflow '+layout+'/'+paper);
    assert.equal(await page.$eval('#payable',e=>e.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
    await page.emulateMediaType('print');await checkBrand();
@@ -123,7 +123,6 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    console.log('PASS table '+layout+' / '+paper);
   }
  }
- await page.click('[data-table-layout="balanced"]');
  await page.select('#paper','A4');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await page.$('#invoice').then(el=>el.screenshot({path:'/home/user/outputs/shop-invoice-fixed.png'}));
  for(const width of [320,390,768,1024,1500]){
