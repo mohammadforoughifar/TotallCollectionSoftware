@@ -888,7 +888,9 @@
                 if (selectedPaper is null) return;
                 printPaperSize = selectedPaper;
                 var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
-                var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings);
+                var html = order.IsSale
+                    ? ShopSaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)
+                    : SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings);
                 var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
                 if (!opened)
                     Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");

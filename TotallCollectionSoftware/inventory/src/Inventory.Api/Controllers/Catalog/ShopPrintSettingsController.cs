@@ -18,7 +18,7 @@ public class ShopPrintSettingsController : ControllerBase
         if (await _permissions.IsLegacyAdminAsync(User)) return true;
         var permissions = await _permissions.GetAsync(User);
         return permissions.Contains("Shop.PrintSettings.Manage") || !write &&
-            new[] { "Shop.PrintSettings.View", "Shop.Sale.View", "Shop.Sale.Manage", "Shop.Purchase.View", "Shop.Purchase.Manage" }.Any(permissions.Contains);
+            new[] { "Shop.PrintSettings.View", "Shop.Sale.View", "Shop.Sale.Manage", "Shop.Purchase.View", "Shop.Purchase.Manage", "Shop.Repairs.View", "Shop.Repairs.Manage" }.Any(permissions.Contains);
     }
     [HttpGet]
     public async Task<ActionResult<ShopPrintSettingsDto>> Get()

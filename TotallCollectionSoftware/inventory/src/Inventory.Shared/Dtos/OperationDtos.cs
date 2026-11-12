@@ -47,6 +47,9 @@ public class Order
     public string? WarehouseName { get; set; }
     public int PartyId { get; set; }
     public string? PartyName { get; set; }
+    public string? PartyPhone { get; set; }
+    public string? PartyAddress { get; set; }
+    public string? PartyTaxId { get; set; }
     public TransactionType Type { get; set; }
     public string Number { get; set; } = "";
     public DateTime Date { get; set; }
