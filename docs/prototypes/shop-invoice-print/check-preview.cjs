@@ -9,6 +9,9 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
  assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
+ assert.equal(await page.$$('.invoice-info h3, #bank-details .section-tag').then(a=>a.length),0);
+ assert.equal(await page.$eval('.row-heading',e=>getComputedStyle(e).whiteSpace),'nowrap');
+ assert.equal(await page.$eval('#printed-notes',e=>e.textContent.split('\n').length),2);
  assert.equal(await page.$$('#invoice > .store-contact').then(a=>a.length),0);
  assert.equal(await page.$$('#bank-details .store-contact').then(a=>a.length),1);
  assert.match(await page.$eval('#bank-details .store-contact',e=>e.textContent),/تلفن.*نشانی/);
@@ -31,6 +34,8 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$eval('.bank-card',e=>e.getAttribute('aria-invalid')),'false');
  assert.equal(await page.$eval('.card-error',e=>e.textContent),'');
  assert.match(await page.$eval('#printed-banks',e=>e.textContent),/1234 5678 9012 3456/);
+ assert(!/روش واریز/.test(await page.$eval('#printed-banks',e=>e.textContent)));
+ assert.equal(await page.$eval('.printed-bank-entry>div',e=>getComputedStyle(e).justifyContent),'flex-start');
  await set('.bank-iban','123456789012345678901234');
  assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false');
  assert.match(await page.$eval('#printed-banks',e=>e.textContent),/IR12/);

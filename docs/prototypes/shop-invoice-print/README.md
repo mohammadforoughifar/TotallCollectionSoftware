@@ -98,3 +98,9 @@ validated in this prototype; this does not verify a real account. Nonblank numbe
 are visible in seller information during typing. Incomplete or duplicate values
 are labelled as preview-only, and the print action stays blocked until resolved.
 Customer information remains read-only sample invoice data.
+
+Latest visual simplification: no supplemental-info or seller-info heading and no
+numbered payment-method caption. Seller card labels and numbers are adjacent, not
+justified to opposite edges. The row heading is non-wrapping with a reserved width.
+Supplemental facts are limited to payment method/quantity; generated notes are two
+short, larger-type lines instead of repeating the complete totals breakdown.

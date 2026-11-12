@@ -89,7 +89,6 @@ function updateBanks(){
  }
  $('printed-banks').replaceChildren(...entries.map((entry,i)=>{
   const block=document.createElement('div');block.className='printed-bank-entry';
-  const heading=document.createElement('strong');heading.textContent=`روش واریز ${money(i+1)}`;block.append(heading);
   if(entry.incomplete){const state=document.createElement('small');state.className='preview-bank-state';state.textContent='ناقص یا تکراری — فقط پیش‌نمایش، غیرقابل چاپ';block.append(state);}
   for(const [label,value] of [['شماره کارت',entry.card],['شماره شبا',entry.iban]])if(value){
    const line=document.createElement('div'),name=document.createElement('span'),number=document.createElement('bdi');
@@ -108,7 +107,7 @@ function update(){
  const buyer=sampleInvoice.customer?.name?.trim()||'-';
  $('invoice-number').textContent=sampleInvoice.number;
  $('invoice-date').textContent=sampleInvoice.date;
- $('printed-notes').textContent=`این فاکتور به شمارهٔ ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}» شامل ${money(lines.length)} ردیف و مجموع ${money(totals.qty)} عدد کالا است.\nجمع کالاها ${money(totals.gross)} ریال است؛ با کسر ${money(totals.discount)} ریال تخفیف و افزودن ${money(vat)} ریال مالیات و عوارض نمونه، مبلغ نهایی ${money(net+vat)} ریال می‌شود.\nروش پرداخت این نمونه ${sampleInvoice.paymentMethod} است. درج مبلغ و شماره حساب به معنای تأیید دریافت وجه یا تحویل کالا نیست؛ وضعیت پرداخت باید از سوابق همان سند بررسی شود.`;
+ $('printed-notes').textContent=`فاکتور ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}»؛ ${money(lines.length)} ردیف، ${money(totals.qty)} عدد کالا و مبلغ نهایی ${money(net+vat)} ریال.\nروش پرداخت: ${sampleInvoice.paymentMethod}. این برگه به‌تنهایی تأیید دریافت وجه یا تحویل کالا نیست.`;
  $('paper-label').textContent=`${$('paper').value} · عمودی · ریال`;
  $('paper-rule').textContent=`@page { size: ${$('paper').value} portrait; margin: ${$('paper').value==='A5'?6:10}mm; }`;
  requestAnimationFrame(fitPaper);
