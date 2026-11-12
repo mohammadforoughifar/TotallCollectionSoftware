@@ -140,3 +140,13 @@
 #settlement-breakdown strong{font-size:11px;font-variant-numeric:tabular-nums}
 #settlement-breakdown small{font-size:9px;color:#64748b}
 .a5 #settlement-breakdown>div{padding:7px 8px}.a5 #settlement-breakdown span,.a5 #settlement-breakdown strong{font-size:8px}.a5 #settlement-breakdown small{font-size:7px}
+/* Compact settlement columns: method header, rule, amount and optional detail. */
+#settlement-breakdown>div { padding:0;gap:0; }
+#settlement-breakdown span { display:block;padding:5px 10px;text-align:center;background:#f0f2f5;border-bottom:1px solid #a5afbc;color:#334155;font-weight:700; }
+#settlement-breakdown strong { display:block;padding:7px 10px 4px;text-align:center; }
+#settlement-breakdown small { display:block;padding:0 10px 6px;text-align:center; }
+#settlement-breakdown>div:not(:has(small)) strong { padding-bottom:7px; }
+.invoice.a5 #settlement-breakdown>div { padding:0; }
+.invoice.a5 #settlement-breakdown span { padding:4px 7px; }
+.invoice.a5 #settlement-breakdown strong { padding:5px 7px 3px; }
+.invoice.a5 #settlement-breakdown small { padding:0 7px 4px; }

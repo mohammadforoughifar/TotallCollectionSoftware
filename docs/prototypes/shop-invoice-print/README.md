@@ -199,3 +199,8 @@ not production settlement tracking or a full payment scenario switcher.
 Approved separation: quantity is now beside row count in the item caption.
 Settlement type is the heading of the settlement breakdown below the totals.
 The redundant payment/quantity bar above the table has been removed.
+
+Settlement breakdown compacted vertically: method labels are centered shaded
+column headers, with a continuous horizontal rule separating them from amounts.
+Existing collection/credit-date details stay below each amount; column widths
+and all payment values are unchanged. Header geometry checked in A4/A5.

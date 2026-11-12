@@ -107,6 +107,10 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
   for(const paper of ['A4','A5']){
    await page.select('#paper',paper);
    assert.equal(await page.$$('#item-rows tr').then(a=>a.length),6);
+   const settlementHeaders=await page.$$eval('#settlement-breakdown>div>span',cells=>cells.map(e=>({label:e.textContent,border:getComputedStyle(e).borderBottomStyle,headerBottom:e.getBoundingClientRect().bottom,amountTop:e.nextElementSibling.getBoundingClientRect().top})));
+   assert.deepEqual(settlementHeaders.map(c=>c.label),['نقدی','چکی','نسیه']);
+   assert(settlementHeaders.every(c=>c.border==='solid'&&Math.abs(c.headerBottom-c.amountTop)<1),'Settlement headers must be separated from amounts');
+
    const summary=await page.evaluate(()=>{
     const totals=document.querySelector('.totals'),cells=[...totals.children];
     const boxes=cells.map(e=>e.getBoundingClientRect());
