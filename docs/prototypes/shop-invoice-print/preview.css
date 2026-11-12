@@ -114,3 +114,13 @@
 .invoice.a5 .invoice-info { padding:6px 8px; }
 .invoice.a5 .totals>div { padding:7px 8px; }
 .invoice.a5 .totals .payable { padding:9px 8px; }
+
+/* Invoice facts precede the item table; sums align with each numeric column. */
+.invoice .items-section>.invoice-info { border:1px solid var(--line);border-bottom:0;background:#fff; }
+.invoice .proposal-items tfoot { display:table-row-group;break-inside:avoid; }
+.invoice .proposal-items tfoot th,.invoice .proposal-items tfoot td { background:#edf0f4;font-weight:700;border-top:2px solid #b5bdc8;border-bottom:1px solid #b5bdc8; }
+.invoice .proposal-items tfoot th { text-align:right; }
+.invoice .proposal-items tfoot td[data-column=net] { background:#edf0f4; }
+.invoice .settlement .totals .payable { grid-column:auto;border-right:1px solid #dfe3e9; }
+.invoice .settlement .totals>div { border-bottom:0; }
+.invoice .settlement .totals>div:first-child { border-left:0; }

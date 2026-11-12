@@ -146,3 +146,10 @@ The lower summary now fills the invoice width: a compact payment/quantity strip,
 two equal columns of four summary figures, and a full-width highlighted final
 payable row. This replaces the tall blank right-hand panel in all three table
 proposals. Browser geometry assertions cover equal widths/alignment in A4/A5.
+
+Latest revision supersedes paired totals: payment/quantity are directly ABOVE
+the item table. A final sum row aligns quantities and additive monetary figures
+with their respective columns; unit prices are deliberately not summed. Repeated
+gross/discount/net summary rows below are removed. VAT and final payable remain
+below the table in equal-width cells. Minimal layout still shows row discounts
+in descriptions and the total discount is derivable from those invoice lines.
