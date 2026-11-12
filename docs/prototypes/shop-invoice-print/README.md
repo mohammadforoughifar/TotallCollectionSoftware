@@ -55,3 +55,12 @@ No unapproved production integration is included in this proposal.
   one page. A4 margins 10mm, A5 6mm. Arbitrary many accounts/long notes may naturally
   require additional pages; these are not forced onto one page by shrinking text.
 - Not a .NET build, live Blazor/API test, bank verification or physical printer test.
+
+## Add-row interaction regression
+
+The desktop add-and-type path worked during investigation; the user's exact
+failed state was not reproduced. Adding a row now explicitly scrolls it into view
+and focuses its card input (including mobile), with a numbered heading and fresh
+asset query versions to avoid stale cached scripts. The browser regression now
+uses actual button clicks and keyboard typing in both card and IBAN inputs at all
+five viewport widths, rather than relying only on programmatically assigned values.

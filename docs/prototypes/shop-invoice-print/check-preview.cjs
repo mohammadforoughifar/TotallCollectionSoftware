@@ -37,7 +37,14 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  for(const width of [320,390,768,1024,1500]){
   await page.setViewport({width,height:1000});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);
-  console.log('PASS responsive '+width);
+  await page.click('#add-bank');
+  await page.waitForFunction(()=>document.activeElement===document.querySelector('.bank-entry:last-child .bank-card'));
+  await page.keyboard.type(card);
+  assert.equal(await page.$eval('.bank-entry:last-child .bank-card',e=>e.value),card);
+  await page.click('.bank-entry:last-child .bank-iban');await page.keyboard.type('IR12');
+  assert.equal(await page.$eval('.bank-entry:last-child .bank-iban',e=>e.value),'IR12');
+  await page.click('.bank-entry:last-child .remove-bank');
+  console.log('PASS responsive add/click/type card and IBAN '+width);
  }
  assert.deepEqual(errors,[]);console.log('PASS fixed layout, dynamic notes, validation and duplicate/removal behavior');
  }finally{await browser.close();}

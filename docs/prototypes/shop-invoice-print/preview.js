@@ -38,12 +38,17 @@ function fitPaper(){
  }
 }
 let bankRowNumber=0;
-function addBankRow(){
+function addBankRow({focus=false}={}){
  const id=++bankRowNumber;
  const row=document.createElement('div');row.className='bank-entry';
- row.innerHTML=`<div class="bank-entry-head"><strong>اطلاعات پرداخت</strong><button type="button" class="remove-bank" aria-label="حذف این کارت و شبا">حذف</button></div><label for="card-${id}">شماره کارت<input id="card-${id}" class="bank-card" dir="ltr" inputmode="numeric" placeholder="۱۶ رقم" aria-describedby="card-error-${id}"><small id="card-error-${id}" class="field-error card-error" aria-live="polite"></small></label><label for="iban-${id}">شماره شبا<input id="iban-${id}" class="bank-iban" dir="ltr" placeholder="IR…" aria-describedby="iban-error-${id}"><small id="iban-error-${id}" class="field-error iban-error" aria-live="polite"></small></label>`;
+ row.innerHTML=`<div class="bank-entry-head"><strong>کارت / شبای ${money(id)}</strong><button type="button" class="remove-bank" aria-label="حذف این کارت و شبا">حذف</button></div><label for="card-${id}">شماره کارت<input id="card-${id}" class="bank-card" dir="ltr" inputmode="numeric" placeholder="۱۶ رقم" aria-describedby="card-error-${id}"><small id="card-error-${id}" class="field-error card-error" aria-live="polite"></small></label><label for="iban-${id}">شماره شبا<input id="iban-${id}" class="bank-iban" dir="ltr" placeholder="IR…" aria-describedby="iban-error-${id}"><small id="iban-error-${id}" class="field-error iban-error" aria-live="polite"></small></label>`;
  row.querySelector('button').addEventListener('click',()=>{row.remove();update();});
  $('bank-rows').append(row);update();
+ if(focus)requestAnimationFrame(()=>{
+  // Bring the actual editable row into view, including below the mobile preview.
+  row.scrollIntoView({block:'center',behavior:'instant'});
+  row.querySelector('.bank-card').focus({preventScroll:true});
+ });
 }
 function updateBanks(){
  const seenCards=new Set(),seenIbans=new Set();let invalid=false;const valid=[];
@@ -86,7 +91,7 @@ function update(){
 }
 document.querySelector('.settings').addEventListener('input',update);
 $('paper').addEventListener('change',update);
-$('add-bank').addEventListener('click',addBankRow);
+$('add-bank').addEventListener('click',()=>addBankRow({focus:true}));
 $('reset').addEventListener('click',()=>location.reload());
 $('print').addEventListener('click',()=>{if(updateBanks())window.print();});
 window.addEventListener('resize',fitPaper);
