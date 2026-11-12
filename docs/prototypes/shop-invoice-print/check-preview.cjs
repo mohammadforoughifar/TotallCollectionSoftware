@@ -31,8 +31,12 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$eval('#print',el=>el.disabled),false);
  await page.click('.bank-card');await page.keyboard.press('End');await page.keyboard.type('999');
  assert.equal(await page.$eval('.bank-card',e=>e.value),card);
+ assert.equal(await page.$eval('.bank-card',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('.card-error',e=>e.textContent),'');
  await page.$eval('.bank-card',e=>{const data=new DataTransfer();data.setData('text','12345678901234567');e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
  assert.equal(await page.$eval('.bank-card',e=>e.value),card);
+ assert.equal(await page.$eval('.bank-card',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('.card-error',e=>e.textContent),'');
  await page.click('.bank-iban');await page.keyboard.type('1'.repeat(25));
  assert.equal(await page.$eval('.bank-iban',e=>e.value.length),24);
  assert.equal(await page.$eval('#print',e=>e.disabled),true); // Invalid checksum still blocked.
@@ -40,9 +44,17 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  const bban='0620000000000000000001';const check=String(98-Number(BigInt(bban+'182700')%97n)).padStart(2,'0');const fullIban='IR'+check+bban;
  await set('.bank-iban','');await page.$eval('.bank-iban',(e,text)=>{const data=new DataTransfer();data.setData('text',text);e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));},fullIban);
  assert.equal(await page.$eval('.bank-iban',e=>e.value),fullIban.slice(2));
+ assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('.iban-error',e=>e.textContent),'');
  assert.equal(await page.$eval('#print',e=>e.disabled),false);
  await page.$eval('.bank-iban',e=>{e.select();const data=new DataTransfer();data.setData('text','IR'+'1'.repeat(25));e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
  assert.equal(await page.$eval('.bank-iban',e=>e.value),fullIban.slice(2));
+ assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('.iban-error',e=>e.textContent),'');
+ await page.click('.bank-iban');await page.keyboard.press('End');await page.keyboard.type('999');
+ assert.equal(await page.$eval('.bank-iban',e=>e.value),fullIban.slice(2));
+ assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('#print',e=>e.disabled),false);
  await set('.bank-iban','');await set('.bank-card',card);
 
  assert.equal(await page.$$('input[id^=customer-],textarea[id^=customer-]').then(a=>a.length),0);

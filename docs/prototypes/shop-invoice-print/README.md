@@ -80,3 +80,8 @@ truncating it. Typing cannot exceed the cap. Partial nonblank values remain edit
 but fail validation and block printing; optional unused fields may remain empty.
 Checksum validation remains in place. Browser regression checks extra keystrokes,
 short numbers, valid full-IBAN paste and overlong paste for both fields.
+
+Rejected extra digits/pastes do not mark an unchanged valid value red. Validation
+is recalculated from the actual retained value, so checksum/duplicate/short-number
+errors still apply. Regression checks aria-invalid and empty error messages after
+over-limit attempts on valid cards and IBANs.
