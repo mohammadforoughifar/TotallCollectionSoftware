@@ -130,3 +130,13 @@
 .cheque-number{font-variant-numeric:tabular-nums}
 .a5 .cheque-details{margin-top:10px}.a5 .cheque-caption{font-size:8px}.a5 .cheque-caption span{font-size:7px}
 .a5 .cheque-table{font-size:8px}.a5 .cheque-table th,.a5 .cheque-table td{padding:5px}
+
+.settlement-details{margin-top:14px;break-inside:avoid}
+.settlement-details h3{margin-bottom:7px}
+#settlement-breakdown{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid #a5afbc}
+#settlement-breakdown>div{padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-width:0}
+#settlement-breakdown>div+div{border-right:1px solid #a5afbc}
+#settlement-breakdown span{font-size:10px;color:#64748b}
+#settlement-breakdown strong{font-size:11px;font-variant-numeric:tabular-nums}
+#settlement-breakdown small{font-size:9px;color:#64748b}
+.a5 #settlement-breakdown>div{padding:7px 8px}.a5 #settlement-breakdown span,.a5 #settlement-breakdown strong{font-size:8px}.a5 #settlement-breakdown small{font-size:7px}

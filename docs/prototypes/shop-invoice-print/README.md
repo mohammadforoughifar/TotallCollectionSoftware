@@ -188,3 +188,10 @@ not fabricated identifiers. The panel explicitly shows awaiting collection, not
 receipt of funds. These are static scenario data, no real cheque/payment records,
 no persistence or production integration. Mixed/cash modes are not implemented
 by this visual example. Existing banking settings and invoice table stay intact.
+
+Mixed settlement visual example: cash 100,000,000, cheques 200,000,000
+(two cheques 120,000,000 and 80,000,000), credit 78,840,000 rials. Sum equals
+the invoice payable. Three read-only settlement cells precede cheque details,
+with credit due date and uncollected-cheque status kept distinct. Zero amounts
+are omitted from the breakdown renderer. This is a static mixed-case design,
+not production settlement tracking or a full payment scenario switcher.

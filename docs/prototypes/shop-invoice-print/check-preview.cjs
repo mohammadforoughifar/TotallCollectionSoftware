@@ -8,9 +8,12 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  const set=async(sel,value)=>{await page.$eval(sel,(el,val)=>{el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));},value);};
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
- assert.equal(await page.$eval('#payment-method',e=>e.textContent),'چکی');
+ assert.equal(await page.$eval('#payment-method',e=>e.textContent),'ترکیبی — نقدی، چکی و نسیه');
  assert.equal(await page.$$('#cheque-rows tr').then(a=>a.length),2);
- assert.equal(await page.evaluate(()=>sampleInvoice.cheques.reduce((sum,c)=>sum+c.amount,0)),378840000);
+ assert.equal(await page.evaluate(()=>sampleInvoice.cheques.reduce((sum,c)=>sum+c.amount,0)),200000000);
+ assert.equal(await page.evaluate(()=>sampleInvoice.settlement.cash+sampleInvoice.settlement.credit+sampleInvoice.cheques.reduce((sum,c)=>sum+c.amount,0)),378840000);
+ assert.equal(await page.$$('#settlement-breakdown>div').then(a=>a.length),3);
+ assert.match(await page.$eval('#settlement-breakdown',e=>e.textContent),/موعد: ۱۴۰۵\/۱۱\/۲۰/);
  assert(await page.evaluate(()=>document.querySelector('.settlement').getBoundingClientRect().bottom<=document.querySelector('#cheque-details').getBoundingClientRect().top&&document.querySelector('#cheque-details').getBoundingClientRect().bottom<=document.querySelector('.signatures').getBoundingClientRect().top));
  assert.equal(await page.$eval('#cheque-rows tr td:nth-child(2)',e=>e.textContent),'-');
 
