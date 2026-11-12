@@ -13,3 +13,13 @@ Header alignment correction: equal left/right grid tracks center the title on
 the printable page. Metadata rows align their numbers to the left content edge,
 keeping labels nearby and supplier invoice caption non-wrapping. Print geometry
 checks assert centered title and flush-left values in A4/A5.
+
+Production header integration: the nested inventory Orders print builder now has
+an isolated purchase-only header with symmetric tracks, centered company/title,
+and left-aligned number/date rows. Sales header path is retained. Actual company
+name and order number/date are used. Current Order DTO has no supplier invoice
+number and CompanyProfileDto has no logo: supplier number prints `-`, and the
+existing letter-mark approach is retained rather than embedding demo identities.
+This is header integration only; the complete prototype (including settlement
+layout) is NOT yet wired into production. .NET SDK is unavailable here; source
+contract tests pass, but compilation/runtime verification remains outstanding.
