@@ -1,10 +1,11 @@
-.workspace{display:block;max-width:1000px}.preview-toolbar{max-width:794px;margin-inline:auto}.invoice-header{grid-template-columns:100px 1fr 175px}.document-meta dt{flex-basis:85px!important}.invoice.a5 .invoice-header{grid-template-columns:70px 1fr 145px}.invoice.a5 .document-meta dt{flex-basis:68px!important}.purchase-context{font-size:10px}@media print{.workspace{max-width:none}}
-
-/* Allow the full supplier invoice label without crowding its number. */
-.document-meta dt{white-space:normal;line-height:1.7}.document-meta dd{align-self:center}
-/* Keep the supplier invoice caption on one line in both paper sizes. */
-.invoice .invoice-header{grid-template-columns:100px minmax(0,1fr) 228px}
-.invoice .document-meta dt{flex:0 0 auto!important;white-space:nowrap}
-.invoice .document-meta div{gap:8px}
-.invoice.a5 .invoice-header{grid-template-columns:70px minmax(0,1fr) 180px}
+.workspace{display:block;max-width:1000px}
+.preview-toolbar{max-width:794px;margin-inline:auto}
+/* Equal outer tracks center the title on the paper, not the leftover space. */
+.invoice .invoice-header{grid-template-columns:228px minmax(0,1fr) 228px}
+.invoice .document-meta{width:100%;justify-self:end}
+.invoice .document-meta dt{flex:0 0 auto!important;white-space:nowrap;line-height:1.7}
+.invoice .document-meta dd{align-self:center;text-align:left}
+.invoice .document-meta div{justify-content:flex-end;gap:8px}
+.invoice.a5 .invoice-header{grid-template-columns:180px minmax(0,1fr) 180px}
 .invoice.a5 .document-meta div{gap:5px}
+@media print{.workspace{max-width:none}}

@@ -4,5 +4,12 @@ assert.equal(await page.$eval('#document-title',e=>e.textContent),'فاکتور 
 for(const paper of ['A4','A5']){await page.select('#paper',paper);
 assert.equal(await page.$eval('#supplier-invoice',e=>getComputedStyle(e.previousElementSibling).whiteSpace),'nowrap');
 assert(await page.$eval('.document-meta',e=>e.scrollWidth<=e.clientWidth+1),'Header metadata overflow');
-await page.emulateMediaType('print');await page.pdf({path:`/home/user/outputs/shop-purchase-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});await page.emulateMediaType('screen');console.log('PASS purchase '+paper);}
+await page.emulateMediaType('print');
+const headerGeometry=await page.evaluate(()=>{
+ const header=document.querySelector('.invoice-header').getBoundingClientRect(),title=document.querySelector('.title-cell').getBoundingClientRect();
+ return {center:Math.abs((header.left+header.right)/2-(title.left+title.right)/2),leftGaps:[...document.querySelectorAll('.document-meta dd')].map(e=>Math.abs(e.getBoundingClientRect().left-header.left))};
+});
+assert(headerGeometry.center<1,'Purchase title must be centered on printable width');
+assert(headerGeometry.leftGaps.every(g=>g<1),'Document numbers must align to left content edge');
+await page.pdf({path:`/home/user/outputs/shop-purchase-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});await page.emulateMediaType('screen');console.log('PASS purchase '+paper);}
 await page.select('#paper','A4');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await (await page.$('#invoice')).screenshot({path:'/home/user/outputs/shop-purchase.png'});for(const width of [320,390,768,1024,1500]){await page.setViewport({width,height:1500});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));assert(await page.$eval('#invoice-logo',e=>e.complete&&e.naturalWidth>0));console.log('PASS purchase width '+width);}assert.deepEqual(errors,[]);}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});
