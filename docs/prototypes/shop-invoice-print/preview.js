@@ -5,11 +5,11 @@ const money = value => new Intl.NumberFormat('fa-IR', {maximumFractionDigits: 0}
 // Mock of the invoice-linked customer read model; no customer settings inputs.
 // Production integration must populate this from authorized invoice/customer data.
 const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'نقدی',
- customer:{name:'عقاب افشان — نمونه',phone:'۰۹۱۲–۰۰۰۰۰۰۰',id:'',address:'نشانی نمونهٔ مشتریِ مرتبط با همین فاکتور'}};
+ customer:{name:'عقاب افشان',phone:'۰۹۱۲–۰۰۰۰۰۰۰',id:'',address:''}};
 const lines = [
- {name:'کارت شبکه', qty:6, price:2500000, discount:0, note:'مدل نمونه'},
+ {name:'کارت شبکه', qty:6, price:2500000, discount:0, note:'—'},
  {name:'اسپیکر کامپیوتر', qty:5, price:6800000, discount:1000000, note:'گارانتی طبق سند'},
- {name:'دوربین مداربسته', qty:5, price:24500000, discount:4000000, note:'مدل نمونه'},
+ {name:'دوربین مداربسته', qty:5, price:24500000, discount:4000000, note:'—'},
  {name:'دانگل HDMI', qty:1, price:3900000, discount:0, note:'—'},
  {name:'مانیتور سامسونگ', qty:2, price:85000000, discount:5000000, note:'شماره سریال در سند'},
  {name:'کابل HDMI پنج متری', qty:5, price:1800000, discount:0, note:'—'}
@@ -107,7 +107,7 @@ function update(){
  const buyer=sampleInvoice.customer?.name?.trim()||'-';
  $('invoice-number').textContent=sampleInvoice.number;
  $('invoice-date').textContent=sampleInvoice.date;
- $('printed-notes').textContent=`فاکتور ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}»؛ ${money(lines.length)} ردیف، ${money(totals.qty)} عدد کالا و مبلغ نهایی ${money(net+vat)} ریال.\nروش پرداخت: ${sampleInvoice.paymentMethod}. این برگه به‌تنهایی تأیید دریافت وجه یا تحویل کالا نیست.`;
+ $('printed-notes').textContent=`فاکتور ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}»؛ ${money(lines.length)} ردیف، ${money(totals.qty)} عدد کالا و مبلغ نهایی ${money(net+vat)} ریال.`;
  $('paper-label').textContent=`${$('paper').value} · عمودی · ریال`;
  $('paper-rule').textContent=`@page { size: ${$('paper').value} portrait; margin: ${$('paper').value==='A5'?6:10}mm; }`;
  requestAnimationFrame(fitPaper);

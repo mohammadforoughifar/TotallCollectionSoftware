@@ -104,3 +104,10 @@ numbered payment-method caption. Seller card labels and numbers are adjacent, no
 justified to opposite edges. The row heading is non-wrapping with a reserved width.
 Supplemental facts are limited to payment method/quantity; generated notes are two
 short, larger-type lines instead of repeating the complete totals breakdown.
+
+Visual review revision: invoice-only sample/proposal labels, artificial business
+taglines, sample version and financial disclaimer removed at the user's request.
+The last explanatory sentence is removed; one concise invoice summary remains.
+Unknown addresses render `-` instead of invented placeholder prose. A short notice
+OUTSIDE the printable invoice still states that live data is not connected. This
+remains a static prototype and does not become a real transaction by removing labels.

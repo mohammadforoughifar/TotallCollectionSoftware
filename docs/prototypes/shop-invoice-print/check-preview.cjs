@@ -11,7 +11,9 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
  assert.equal(await page.$$('.invoice-info h3, #bank-details .section-tag').then(a=>a.length),0);
  assert.equal(await page.$eval('.row-heading',e=>getComputedStyle(e).whiteSpace),'nowrap');
- assert.equal(await page.$eval('#printed-notes',e=>e.textContent.split('\n').length),2);
+ assert.equal(await page.$eval('#printed-notes',e=>e.textContent.split('\n').length),1);
+ assert(!/نمونه|پیشنهادی|فاقد اعتبار|تأیید دریافت وجه/.test(await page.$eval('#invoice',e=>e.textContent)));
+ assert.equal(await page.$eval('#printed-customer-address',e=>e.textContent),'-');
  assert.equal(await page.$$('#invoice > .store-contact').then(a=>a.length),0);
  assert.equal(await page.$$('#bank-details .store-contact').then(a=>a.length),1);
  assert.match(await page.$eval('#bank-details .store-contact',e=>e.textContent),/تلفن.*نشانی/);
