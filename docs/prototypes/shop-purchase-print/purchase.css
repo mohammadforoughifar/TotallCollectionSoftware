@@ -2,3 +2,9 @@
 
 /* Allow the full supplier invoice label without crowding its number. */
 .document-meta dt{white-space:normal;line-height:1.7}.document-meta dd{align-self:center}
+/* Keep the supplier invoice caption on one line in both paper sizes. */
+.invoice .invoice-header{grid-template-columns:100px minmax(0,1fr) 228px}
+.invoice .document-meta dt{flex:0 0 auto!important;white-space:nowrap}
+.invoice .document-meta div{gap:8px}
+.invoice.a5 .invoice-header{grid-template-columns:70px minmax(0,1fr) 180px}
+.invoice.a5 .document-meta div{gap:5px}
