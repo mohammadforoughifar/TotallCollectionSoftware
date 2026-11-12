@@ -114,3 +114,8 @@
 .invoice.a5 .detailed-items th,.invoice.a5 .detailed-items td { padding:6px 3px;font-size:8px; }
 .invoice.a5 .detailed-items .money { font-size:8px; }
 .invoice.a5 .detailed-items .item-note { font-size:7px; }
+/* Stronger divider between payment method and item quantity, including print. */
+.invoice .invoice-info dl div+div { border-right:1.5px solid #475569; }
+@media print {
+ .invoice .invoice-info dl div+div { border-right:0.5mm solid #303b4b; }
+}

@@ -114,6 +114,8 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    assert(geometry.every(e=>e.scroll<=e.client+1),'Money overflow '+layout+'/'+paper);
    assert.equal(await page.$eval('#payable',e=>e.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
    await page.emulateMediaType('print');await checkBrand();
+   assert(await page.$eval('.invoice-info dl div+div',e=>parseFloat(getComputedStyle(e).borderRightWidth)>=1.5),'Print facts divider too thin');
+   assert.equal(await page.$eval('.invoice-info dl div+div',e=>getComputedStyle(e).borderRightColor),'rgb(48, 59, 75)');
    await page.pdf({path:`/home/user/outputs/shop-table-${layout}-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});
    assert.equal(await page.$eval('#invoice-notes',e=>getComputedStyle(e).display==='none'),false);
    assert.equal(await page.$eval('#invoice-logo',e=>getComputedStyle(e).display==='none'),false);
