@@ -5,6 +5,7 @@
 @inject IReferrerService ReferrerSvc
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
+@inject IShopPrintSettingsClient PrintSettingsClient
 @inject ICompanyProfileService ProfileSvc
 @inject IJSRuntime JS
 @using Inventory.Client.Pages.Orders
@@ -2531,7 +2532,8 @@
             var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
             if (selectedPaper is null) return;
             printPaperSize = selectedPaper;
-            var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
+            var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
+            var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings);
             var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened)
                 InvoiceError("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");

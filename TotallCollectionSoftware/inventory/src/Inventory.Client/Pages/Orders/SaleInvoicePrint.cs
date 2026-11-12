@@ -15,7 +15,7 @@ namespace Inventory.Client.Pages.Orders;
 public static class SaleInvoicePrint
 {
     /// <summary>سند کامل HTML چاپ را از روی سند خرید/فروش + پروفایل شرکت می‌سازد.</summary>
-    public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null)
+    public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null, ShopPrintSettingsDto? shopSettings = null)
     {
         var company = string.IsNullOrWhiteSpace(profile?.Name) ? "فروغ آریا" : profile!.Name.Trim();
         var isSale = order.IsSale;
@@ -229,7 +229,15 @@ public static class SaleInvoicePrint
 
         // ---------- footer — شامل شماره حساب فروشگاه ----------
         sb.Append("<footer>");
-        if (!string.IsNullOrWhiteSpace(profile?.AccountNumber))
+        if (isSale && shopSettings is not null)
+        {
+            foreach (var bank in ShopPrintBankRules.Validate(shopSettings).Banks)
+            {
+                if (bank.Card.Length > 0) sb.Append("<div class=\"account-line\">شماره کارت: <bdi>").Append(Esc(bank.Card)).Append("</bdi></div>");
+                if (bank.Iban.Length > 0) sb.Append("<div class=\"account-line\">شماره شبا: <bdi>").Append(Esc(bank.Iban)).Append("</bdi></div>");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(profile?.AccountNumber))
             sb.Append("<div class=\"account-line\"><b>شماره حساب:</b> ").Append(Esc(profile!.AccountNumber!.Trim())).Append("</div>");
         var footerLines = SplitLines(profile?.PrintFooterLines);
         if (footerLines.Count > 0)

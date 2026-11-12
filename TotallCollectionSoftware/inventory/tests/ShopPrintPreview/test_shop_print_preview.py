@@ -25,8 +25,8 @@ class ShopPrintPreviewContracts(unittest.TestCase):
                 source = read(path)
                 self.assertEqual(source.count('"shopPrintPreview.openHtml"'), count)
                 self.assertNotIn('"giPrint"', source)
-        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/Orders.razor'))
-        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/OrderForm.razor'))
+        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)', read('Pages/Orders/Orders.razor'))
+        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)', read('Pages/Orders/OrderForm.razor'))
         self.assertIn('CustomerStatementPrint.Build(statement, companyProfile, start, end)', read('Pages/Operations/OperationsOrderReport.razor'))
 
     def test_save_and_print_still_saves_first_and_preview_does_not_close_issue_details(self):

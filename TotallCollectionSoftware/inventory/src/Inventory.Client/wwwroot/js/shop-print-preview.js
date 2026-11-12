@@ -603,6 +603,25 @@
         }
     }
 
+    // Delegated only to shop print-setting bank fields; no other form is affected.
+    function insertBankDigits(event, text) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-shop-bank')) return;
+        event.preventDefault();
+        const max = Number(input.dataset.shopBank);
+        let normalized = String(text || '').replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776))
+            .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632)).replace(/[\s-]/g, '').toUpperCase();
+        if (max === 24) normalized = normalized.replace(/^IR/, '');
+        const start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start;
+        if (!/^\d*$/.test(normalized) || input.value.length - (end - start) + normalized.length > max) return;
+        input.setRangeText(normalized, start, end, 'end');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    document.addEventListener('beforeinput', event => {
+        if (event.inputType === 'insertText' && event.data) insertBankDigits(event, event.data);
+    });
+    document.addEventListener('paste', event => insertBankDigits(event, event.clipboardData?.getData('text') || ''));
+
     let paperChoice = null;
     function choosePaper() {
         if (paperChoice) return paperChoice;

@@ -61,6 +61,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
@@ -140,6 +141,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     await TreasuryCompanyScopeSchemaV1.EnsureAsync(db);
                     EnsureSystemUserPhoneColumn(db);
@@ -320,6 +322,7 @@ public static class DbInitializer
                 await SalesCompanySchemaV1.EnsureAsync(db);
                 await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                 await ShopPricingSchemaV1.EnsureAsync(db);
+                await ShopPrintSettingsSchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {
