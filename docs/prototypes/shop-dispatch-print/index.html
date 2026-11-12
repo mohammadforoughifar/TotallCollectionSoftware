@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>پیش‌نمایش بیجک خروج کالا</title><link rel="stylesheet" href="../shop-invoice-print/preview.css?v=21"><link rel="stylesheet" href="../shop-purchase-print/purchase.css?v=4"><style id="paper-rule">@page { size: A4 portrait; margin: 10mm; }</style><style>.items td:nth-child(5){font-size:9px;color:#64748b}.items td:nth-child(2){font-weight:700}.dispatch-count{margin-top:8px;text-align:left;font-size:10px}</style></head>
+<body>
+<header class="app-header"><div class="app-brand"><span class="app-mark">FA</span><div><strong>پیش‌نمایش بیجک خروج کالا</strong><small>سامانهٔ فروشگاهی / تنظیمات / چاپ فاکتور</small></div></div><span class="scope-badge">مستقل از مکاتبات اداری</span></header>
+<div class="preview-banner"><span>پیش‌نمایش طراحی؛ اتصال به داده‌های واقعی فعال نیست.</span></div>
+<main class="workspace">
+
+<section class="preview-panel" aria-label="پیش‌نمایش فاکتور">
+ <div class="preview-toolbar"><div><strong>پیش‌نمایش زنده</strong><small id="paper-label">A4 · عمودی · ریال</small></div><div class="toolbar-actions"><label for="paper" class="paper-choice">کاغذ این چاپ<select id="paper"><option>A4</option><option>A5</option></select></label><button id="reset" type="button">بازنشانی</button><button id="print" class="primary" type="button">چاپ / ذخیره PDF</button></div></div>
+
+ <div class="paper-viewport"><article class="invoice classic" id="invoice" aria-label="بیجک خروج کالا">
+  <header class="invoice-header"><div class="logo-cell"><img id="invoice-logo" src="../shop-invoice-print/assets/company-logo.png" alt="لوگوی شرکت"></div><div class="title-cell"><span class="document-kind" id="document-title">بیجک خروج کالا</span><h2>مرکز کامپیوتری فروغ آریا</h2></div><dl class="document-meta"><div><dt>شماره بیجک</dt><dd id="invoice-number">۱۴۰۵–۰۰۲۱۸</dd></div><div><dt>شماره فاکتور مرتبط</dt><dd id="supplier-invoice"></dd></div><div><dt>تاریخ</dt><dd id="invoice-date">۱۴۰۵/۰۸/۲۰</dd></div></dl></header>
+  <section class="buyer"><div class="section-tag" id="party-label">گیرندهٔ کالا</div><div class="buyer-details"><div><span>نام / عنوان</span><strong id="printed-customer-name">تأمین‌کننده</strong></div><div><span>تلفن</span><strong id="printed-customer-phone">۰۹۱۲–۰۰۰۰۰۰۰</strong></div><div><span>شناسه / کد ملی</span><strong id="printed-customer-id">-</strong></div><div class="buyer-address"><span>نشانی</span><strong id="printed-customer-address">-</strong></div></div></section>
+  <section class="items-section"><div class="table-caption"><strong>کالاهای خروجی</strong><span><span id="line-count">۶</span> ردیف · <span id="quantity-total"></span> عدد کالا</span></div><table class="items" aria-label="کالاهای خروجی بدون قیمت"><colgroup><col style="width:7%"><col style="width:48%"><col style="width:12%"><col style="width:10%"><col style="width:23%"></colgroup><thead><tr><th class="row-heading" scope="col">ردیف</th><th scope="col">شرح کالا</th><th scope="col">تعداد</th><th scope="col">واحد</th><th scope="col">ملاحظات</th></tr></thead><tbody id="item-rows"></tbody></table></section>
+  <section class="buyer"><div class="section-tag">اطلاعات حمل و تحویل</div><div class="buyer-details"><div><span>انبار مبدأ</span><strong id="warehouse"></strong></div><div><span>حمل‌کننده</span><strong id="carrier"></strong></div><div><span>پلاک خودرو</span><strong id="vehicle"></strong></div><div class="buyer-address"><span>نشانی تحویل</span><strong id="delivery-address"></strong></div></div></section>
+  <section class="signatures" id="signatures"><div><strong>امضای تحویل‌دهنده / انباردار</strong><span>نام و امضا</span></div><div><strong>امضای تحویل‌گیرنده</strong><span>نام، مهر و امضا</span></div></section>
+
+  <section class="invoice-notes" id="invoice-notes"><span class="bank-frame-brand">فروغ آریا <bdi>FOROUGH ARIA</bdi></span><p id="printed-notes"></p></section>
+ </article></div>
+ <p class="preview-footnote">بیجک بدون قیمت · اطلاعات از سند خروج و گیرنده خوانده می‌شود.</p>
+</section>
+</main><script src="dispatch.js?v=1"></script></body></html>
