@@ -9,6 +9,7 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
  assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
+ assert(!/نسخه/.test(await page.$eval('.document-meta',e=>e.textContent)));
  assert.equal(await page.$$('.invoice-info h3, #bank-details .section-tag').then(a=>a.length),0);
  assert.equal(await page.$eval('.row-heading',e=>getComputedStyle(e).whiteSpace),'nowrap');
  assert.equal(await page.$eval('#printed-notes',e=>e.textContent.split('\n').length),1);
@@ -108,7 +109,9 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
   await page.waitForFunction(()=>document.activeElement===document.querySelector('.bank-entry:last-child .bank-card'));
   await page.keyboard.type(card);
   assert.equal(await page.$eval('.bank-entry:last-child .bank-card',e=>e.value),card);
-  await page.click('.bank-entry:last-child .bank-iban');await page.keyboard.type('12');
+  await page.keyboard.press('Enter');
+  assert(await page.$eval('.bank-entry:last-child .bank-iban',e=>document.activeElement===e));
+  await page.keyboard.type('12');
   assert.equal(await page.$eval('.bank-entry:last-child .bank-iban',e=>e.value),'12');
   await page.click('.bank-entry:last-child .remove-bank');
   console.log('PASS responsive add/click/type card and IBAN '+width);

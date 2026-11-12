@@ -64,6 +64,11 @@ function addBankRow({focus=false}={}){
    input.value=ShopPrintBankValidation.normalize(input.value);
   });
  }
+ row.querySelector('.bank-card').addEventListener('keydown',event=>{
+  if(event.key!=='Enter'||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+  event.preventDefault();
+  row.querySelector('.bank-iban').focus();
+ });
  row.querySelector('button').addEventListener('click',()=>{row.remove();update();});
  $('bank-rows').append(row);update();
  if(focus)requestAnimationFrame(()=>{

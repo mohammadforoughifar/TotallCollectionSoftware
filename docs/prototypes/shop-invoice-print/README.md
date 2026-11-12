@@ -111,3 +111,7 @@ The last explanatory sentence is removed; one concise invoice summary remains.
 Unknown addresses render `-` instead of invented placeholder prose. A short notice
 OUTSIDE the printable invoice still states that live data is not connected. This
 remains a static prototype and does not become a real transaction by removing labels.
+
+Header metadata contains only invoice number/date, with no version label. Plain
+Enter in a card field moves focus to the IBAN in the same row, without printing,
+submitting or adding another row. Browser tests verify this in five viewport sizes.
