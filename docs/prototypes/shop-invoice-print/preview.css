@@ -117,3 +117,15 @@
 
 /* Invoice facts precede the item table; sums align with each numeric column. */
 .invoice .items-section>.invoice-info { border:1px solid var(--line);border-bottom:0;background:#fff; }
+/* Keep document labels and their values together. */
+.invoice .document-meta div { justify-content:flex-start;gap:8px; }
+.invoice .document-meta dt { flex:0 0 66px; }
+.invoice .document-meta dd { text-align:right; }
+.invoice.a5 .document-meta dt { flex-basis:53px; }
+.invoice.a5 .document-meta div { gap:5px; }
+/* Restore the original single-column monetary summary on the left. */
+.invoice .settlement { display:flex;justify-content:flex-end;border:0; }
+.invoice .settlement .totals { display:block;width:280px;max-width:100%;border:1px solid var(--line);border-top:0; }
+.invoice .settlement .totals>div { border-left:0;border-right:0;border-bottom:1px solid #dfe3e9; }
+.invoice .settlement .totals .payable { border-bottom:0; }
+.invoice.a5 .settlement .totals { width:210px; }

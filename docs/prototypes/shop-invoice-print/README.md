@@ -158,3 +158,9 @@ Review correction: the item sum footer was rejected and removed. Monetary
 summary restored to the preceding full-width two-column layout, including gross,
 discount, net, VAT and a full-width final payable. Payment method and quantity
 remain above the item table; no other table proposal or bank behavior changed.
+
+Latest review: invoice date/number values sit next to fixed-width labels with
+small gaps instead of space-between. Monetary summary is restored to the original
+single narrow column on the left (280px A4 / 210px A5); all five rows stack
+vertically. Payment/quantity stay above the item table. Geometry regression
+checks cover label gaps and stacked summary rows across all proposals/papers.

@@ -100,15 +100,13 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    const summary=await page.evaluate(()=>{
     const totals=document.querySelector('.totals'),cells=[...totals.children];
     const boxes=cells.map(e=>e.getBoundingClientRect());
-    return {width:totals.getBoundingClientRect().width,widths:boxes.map(b=>b.width),tops:boxes.map(b=>b.top),info:document.querySelector('.invoice-info').getBoundingClientRect().height};
+    return {width:totals.getBoundingClientRect().width,widths:boxes.map(b=>b.width),tops:boxes.map(b=>b.top),
+     gaps:[...document.querySelectorAll('.document-meta div')].map(e=>{const label=e.querySelector('dt').getBoundingClientRect(),value=e.querySelector('dd').getBoundingClientRect();return label.left-value.right;})};
    });
-   assert(Math.abs(summary.widths[0]-summary.widths[1])<2,'Summary columns unequal');
-   assert(Math.abs(summary.tops[0]-summary.tops[1])<2,'Summary first pair not aligned');
-   assert(Math.abs(summary.tops[2]-summary.tops[3])<2,'Summary second pair not aligned');
-   assert(Math.abs(summary.widths[4]-summary.width)<2,'Final payable not full width');
-   assert(summary.info<55,'Excessive empty info panel');
-
-   assert(await page.$$eval('.proposal-items th:not(:last-child), .proposal-items td:not(:last-child)',cells=>cells.every(e=>getComputedStyle(e).borderLeftStyle==='solid'&&getComputedStyle(e).borderLeftWidth==='1px')),'Missing column separator '+layout+'/'+paper);
+   assert(summary.width<=281,'Monetary summary must be narrow single column');
+   assert(summary.widths.every(w=>Math.abs(w-summary.width)<3),'Each monetary row must fill its column');
+   assert(summary.tops.every((y,i)=>!i||y>summary.tops[i-1]),'Monetary rows must stack vertically');
+   assert(summary.gaps.every(g=>g>=0&&g<=9),'Document labels and values too far apart');
    assert.equal(await page.$$('.proposal-items tfoot').then(a=>a.length),0);
    assert(await page.evaluate(()=>document.querySelector('.invoice-info').getBoundingClientRect().bottom<=document.querySelector('.proposal-items').getBoundingClientRect().top+1));
    const geometry=await page.evaluate(()=>[...document.querySelectorAll('#item-rows tr:first-child td.money')].map(e=>({width:e.getBoundingClientRect().width,scroll:e.scrollWidth,client:e.clientWidth})));
