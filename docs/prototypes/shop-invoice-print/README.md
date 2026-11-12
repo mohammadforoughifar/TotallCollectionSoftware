@@ -26,8 +26,8 @@ checksum-valid test values as real bank accounts or proof of account ownership.
   customer, line/quantity count, gross, discount, tax and final total/payment method.
   They do not invent receipt, delivery or warranty acceptance. All values are sample;
   the 10% tax is hypothetical and must not become a production tax calculation.
-- A centered Forough Aria brand label interrupts the bottom line of the seller
-  payment-information frame itself; there is no separate footer frame.
+- A centered Forough Aria brand label interrupts the separator immediately above
+  the invoice notes, below seller payment information; there is no separate footer frame.
   The company name/logo and the software brand footer are distinct concepts.
 
 The supplied logo's near-black backdrop was removed without AI regeneration.

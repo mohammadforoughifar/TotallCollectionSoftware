@@ -11,10 +11,10 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
  assert.equal(await page.$$('.branded-footer').then(a=>a.length),0);
  const checkBrand=async()=>assert(await page.evaluate(()=>{
-  const panel=document.querySelector('#bank-details').getBoundingClientRect();
+  const panel=document.querySelector('#invoice-notes').getBoundingClientRect();
   const brand=document.querySelector('.bank-frame-brand').getBoundingClientRect();
-  return brand.top<panel.bottom && brand.bottom>panel.bottom && Math.abs((brand.left+brand.right)/2-(panel.left+panel.right)/2)<2;
- }),'Brand must straddle the seller panel bottom border at its center');
+  return brand.top<panel.top && brand.bottom>panel.top && Math.abs((brand.left+brand.right)/2-(panel.left+panel.right)/2)<2;
+ }),'Brand must straddle the notes section top border at its center');
  await checkBrand();
  await set('.bank-card','123');assert.equal(await page.$eval('#print',el=>el.disabled),true);
  assert.equal(await page.$eval('.bank-card',el=>el.getAttribute('aria-invalid')),'true');
