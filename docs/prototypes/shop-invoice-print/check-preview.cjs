@@ -8,6 +8,14 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  const set=async(sel,value)=>{await page.$eval(sel,(el,val)=>{el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));},value);};
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
+ assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
+ assert.equal(await page.$$('.branded-footer').then(a=>a.length),0);
+ const checkBrand=async()=>assert(await page.evaluate(()=>{
+  const panel=document.querySelector('#bank-details').getBoundingClientRect();
+  const brand=document.querySelector('.bank-frame-brand').getBoundingClientRect();
+  return brand.top<panel.bottom && brand.bottom>panel.bottom && Math.abs((brand.left+brand.right)/2-(panel.left+panel.right)/2)<2;
+ }),'Brand must straddle the seller panel bottom border at its center');
+ await checkBrand();
  await set('.bank-card','123');assert.equal(await page.$eval('#print',el=>el.disabled),true);
  assert.equal(await page.$eval('.bank-card',el=>el.getAttribute('aria-invalid')),'true');
  const prefix='603799000000000';const card=Array.from({length:10},(_,i)=>prefix+i).find(n=>!validation.card(n).error);
@@ -27,6 +35,7 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await page.reload();await page.evaluate(()=>document.fonts.ready);
  for(const paper of ['A4','A5']){
   await page.select('#paper',paper);await page.emulateMediaType('print');
+  await checkBrand();
   await page.pdf({path:`/home/user/outputs/shop-fixed-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});
   assert.equal(await page.$eval('#invoice-notes',e=>getComputedStyle(e).display==='none'),false);
   assert.equal(await page.$eval('#invoice-logo',e=>getComputedStyle(e).display==='none'),false);

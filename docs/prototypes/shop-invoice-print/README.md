@@ -8,7 +8,8 @@ checksum-valid test values as real bank accounts or proof of account ownership.
 
 ## Current agreed layout
 
-- Fixed supplied company logo at the right, document title/company name centered,
+- Fixed supplied company logo at the right, document title/company name centered
+  (without the invented sample business tagline),
   invoice number/date at the left. No layout/logo/section visibility switches.
 - Only repeatable seller card/IBAN rows can be edited. Customer details are read-only,
   rendered from the sample invoice-linked customer object; no customer form inputs
@@ -25,7 +26,8 @@ checksum-valid test values as real bank accounts or proof of account ownership.
   customer, line/quantity count, gross, discount, tax and final total/payment method.
   They do not invent receipt, delivery or warranty acceptance. All values are sample;
   the 10% tax is hypothetical and must not become a production tax calculation.
-- A centered Forough Aria brand label interrupts the bottom line of the footer frame.
+- A centered Forough Aria brand label interrupts the bottom line of the seller
+  payment-information frame itself; there is no separate footer frame.
   The company name/logo and the software brand footer are distinct concepts.
 
 The supplied logo's near-black backdrop was removed without AI regeneration.
