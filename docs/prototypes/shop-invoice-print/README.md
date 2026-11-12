@@ -195,3 +195,7 @@ the invoice payable. Three read-only settlement cells precede cheque details,
 with credit due date and uncollected-cheque status kept distinct. Zero amounts
 are omitted from the breakdown renderer. This is a static mixed-case design,
 not production settlement tracking or a full payment scenario switcher.
+
+Approved separation: quantity is now beside row count in the item caption.
+Settlement type is the heading of the settlement breakdown below the totals.
+The redundant payment/quantity bar above the table has been removed.

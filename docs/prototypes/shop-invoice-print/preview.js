@@ -29,7 +29,8 @@ $('item-rows').replaceChildren(...lines.map((line,i)=>{
  });return row;
 }));
 for(const [id,value] of Object.entries({gross:totals.gross,discount:totals.discount,net,vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
-$('payment-method').textContent=sampleInvoice.paymentMethod;
+$('payment-method').textContent='تسویهٔ '+sampleInvoice.paymentMethod;
+$('line-count').textContent=money(lines.length);
 const chequeTotal=sampleInvoice.cheques.reduce((sum,cheque)=>sum+cheque.amount,0);
 $('settlement-breakdown').replaceChildren(...[
  ['نقدی',sampleInvoice.settlement.cash,''],

@@ -8,7 +8,7 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  const set=async(sel,value)=>{await page.$eval(sel,(el,val)=>{el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));},value);};
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
- assert.equal(await page.$eval('#payment-method',e=>e.textContent),'ترکیبی — نقدی، چکی و نسیه');
+ assert.equal(await page.$eval('#payment-method',e=>e.textContent),'تسویهٔ ترکیبی — نقدی، چکی و نسیه');
  assert.equal(await page.$$('#cheque-rows tr').then(a=>a.length),2);
  assert.equal(await page.evaluate(()=>sampleInvoice.cheques.reduce((sum,c)=>sum+c.amount,0)),200000000);
  assert.equal(await page.evaluate(()=>sampleInvoice.settlement.cash+sampleInvoice.settlement.credit+sampleInvoice.cheques.reduce((sum,c)=>sum+c.amount,0)),378840000);
@@ -118,13 +118,13 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    assert(summary.tops.every((y,i)=>!i||y>summary.tops[i-1]),'Monetary rows must stack vertically');
    assert(summary.gaps.every(g=>g>=0&&g<=9),'Document labels and values too far apart');
    assert.equal(await page.$$('.proposal-items tfoot').then(a=>a.length),0);
-   assert(await page.evaluate(()=>document.querySelector('.invoice-info').getBoundingClientRect().bottom<=document.querySelector('.proposal-items').getBoundingClientRect().top+1));
+   assert.equal(await page.$$('.invoice-info').then(a=>a.length),0);
+   assert.match(await page.$eval('.table-caption',e=>e.textContent),/۶ ردیف · ۲۴ عدد کالا/);
+   assert(await page.evaluate(()=>document.querySelector('.settlement').getBoundingClientRect().bottom<=document.querySelector('#payment-method').getBoundingClientRect().top));
    const geometry=await page.evaluate(()=>[...document.querySelectorAll('#item-rows tr:first-child td.money')].map(e=>({width:e.getBoundingClientRect().width,scroll:e.scrollWidth,client:e.clientWidth})));
    assert(geometry.every(e=>e.scroll<=e.client+1),'Money overflow '+layout+'/'+paper);
    assert.equal(await page.$eval('#payable',e=>e.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
    await page.emulateMediaType('print');await checkBrand();
-   assert(await page.$eval('.invoice-info dl div+div',e=>parseFloat(getComputedStyle(e).borderRightWidth)>=1.5),'Print facts divider too thin');
-   assert.equal(await page.$eval('.invoice-info dl div+div',e=>getComputedStyle(e).borderRightColor),'rgb(48, 59, 75)');
    await page.pdf({path:`/home/user/outputs/shop-table-${layout}-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});
    assert.equal(await page.$eval('#invoice-notes',e=>getComputedStyle(e).display==='none'),false);
    assert.equal(await page.$eval('#invoice-logo',e=>getComputedStyle(e).display==='none'),false);
