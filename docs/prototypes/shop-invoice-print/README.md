@@ -141,3 +141,8 @@ These checks still exercise only the isolated static prototype, not the applicat
 
 Per review, all three proposals include thin vertical column separators, in
 screen and print, checked for both header and data cells in A4/A5.
+
+The lower summary now fills the invoice width: a compact payment/quantity strip,
+two equal columns of four summary figures, and a full-width highlighted final
+payable row. This replaces the tall blank right-hand panel in all three table
+proposals. Browser geometry assertions cover equal widths/alignment in A4/A5.

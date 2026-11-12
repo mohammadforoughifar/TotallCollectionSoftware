@@ -101,3 +101,16 @@
 .invoice .proposal-items td:not(:last-child) {
  border-left: 1px solid #c7cfd9;
 }
+/* Full-width paired summary: no tall empty panel beside the totals. */
+.invoice .settlement { display:block; }
+.invoice .invoice-info { padding:8px 12px;border-left:0;border-bottom:1px solid var(--line); }
+.invoice .invoice-info dl { display:grid;grid-template-columns:1fr 1fr;gap:0; }
+.invoice .invoice-info dl div { margin:0;align-items:center;gap:10px; }
+.invoice .invoice-info dl div+div { border-right:1px solid #dfe3e9;padding-right:12px; }
+.invoice .totals { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.invoice .totals>div { min-width:0;padding:9px 12px;border-bottom:1px solid #dfe3e9; }
+.invoice .totals>div:nth-child(odd):not(.payable) { border-left:1px solid #dfe3e9; }
+.invoice .totals .payable { grid-column:1/-1;border-bottom:0;padding:12px; }
+.invoice.a5 .invoice-info { padding:6px 8px; }
+.invoice.a5 .totals>div { padding:7px 8px; }
+.invoice.a5 .totals .payable { padding:9px 8px; }
