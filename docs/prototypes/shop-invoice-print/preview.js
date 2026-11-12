@@ -2,7 +2,10 @@
 // Isolated design prototype: no API, no real company settings, no persistence.
 const $ = id => document.getElementById(id);
 const money = value => new Intl.NumberFormat('fa-IR', {maximumFractionDigits: 0}).format(value);
-const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'نقدی'};
+// Mock of the invoice-linked customer read model; no customer settings inputs.
+// Production integration must populate this from authorized invoice/customer data.
+const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'نقدی',
+ customer:{name:'عقاب افشان — نمونه',phone:'۰۹۱۲–۰۰۰۰۰۰۰',id:'',address:'نشانی نمونهٔ مشتریِ مرتبط با همین فاکتور'}};
 const lines = [
  {name:'کارت شبکه', qty:6, price:2500000, discount:0, note:'مدل نمونه'},
  {name:'اسپیکر کامپیوتر', qty:5, price:6800000, discount:1000000, note:'گارانتی طبق سند'},
@@ -70,10 +73,10 @@ function updateBanks(){
 }
 function update(){
  invoice.classList.toggle('a5',$('paper').value==='A5');
- for(const key of ['name','phone','id','address'])$('printed-customer-'+key).textContent=$('customer-'+key).value.trim()||'—';
+ for(const key of ['name','phone','id','address'])$('printed-customer-'+key).textContent=sampleInvoice.customer[key]?.trim()||'—';
  updateBanks();
  // Facts of this sample only; no invented receipt, delivery or warranty assertions.
- const buyer=$('customer-name').value.trim()||'مشتری ثبت‌شده';
+ const buyer=sampleInvoice.customer.name?.trim()||'مشتری ثبت‌شده';
  $('invoice-number').textContent=sampleInvoice.number;
  $('invoice-date').textContent=sampleInvoice.date;
  $('printed-notes').textContent=`این فاکتور به شمارهٔ ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}» شامل ${money(lines.length)} ردیف و مجموع ${money(totals.qty)} عدد کالا است.\nجمع کالاها ${money(totals.gross)} ریال است؛ با کسر ${money(totals.discount)} ریال تخفیف و افزودن ${money(vat)} ریال مالیات و عوارض نمونه، مبلغ نهایی ${money(net+vat)} ریال می‌شود.\nروش پرداخت این نمونه ${sampleInvoice.paymentMethod} است. درج مبلغ و شماره حساب به معنای تأیید دریافت وجه یا تحویل کالا نیست؛ وضعیت پرداخت باید از سوابق همان سند بررسی شود.`;

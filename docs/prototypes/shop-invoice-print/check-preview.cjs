@@ -19,7 +19,10 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await page.click('#add-bank');await set('.bank-entry:last-child .bank-card',secondCard);
  assert.equal(await page.$$('.printed-bank-entry').then(a=>a.length),2);
  assert.equal(await page.$eval('#print',el=>el.disabled),false);
- await set('#customer-name','مشتری آزمایشی <script>');assert.match(await page.$eval('#printed-notes',e=>e.textContent),/مشتری آزمایشی <script>/);
+ assert.equal(await page.$$('input[id^=customer-],textarea[id^=customer-]').then(a=>a.length),0);
+ assert.match(await page.$eval('#printed-customer-name',e=>e.textContent),/عقاب افشان/);
+ assert.match(await page.$eval('#printed-notes',e=>e.textContent),/عقاب افشان/);
+ assert.equal(await page.$eval('#printed-customer-id',e=>e.textContent),'—');
  assert.equal(await page.$eval('#printed-notes',e=>e.children.length),0);
  await page.reload();await page.evaluate(()=>document.fonts.ready);
  for(const paper of ['A4','A5']){

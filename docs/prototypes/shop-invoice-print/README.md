@@ -10,7 +10,9 @@ checksum-valid test values as real bank accounts or proof of account ownership.
 
 - Fixed supplied company logo at the right, document title/company name centered,
   invoice number/date at the left. No layout/logo/section visibility switches.
-- Only customer example data and repeatable seller card/IBAN rows can be edited.
+- Only repeatable seller card/IBAN rows can be edited. Customer details are read-only,
+  rendered from the sample invoice-linked customer object; no customer form inputs
+  or customer print settings exist. The static sample is not a real DB connection.
   A4/A5 remains a per-print choice in the toolbar, not a layout setting.
 - Multiple card/IBAN rows; optional blank fields, live accessible field errors,
   digit normalization, exact card length plus Luhn checksum, Iranian IBAN format
@@ -47,7 +49,7 @@ No unapproved production integration is included in this proposal.
   length, checksum, invalid input and blank fields.
 - `check-preview.cjs`: uses external puppeteer-core / CHROME_BIN / NODE_PATH,
   optional PREVIEW_URL. Tests invalid print blocking, duplicates, multiple valid
-  cards/removal, text-only customer insertion, fixed logo/notes and responsive
+  cards/removal, read-only customer identity and missing-field fallback, fixed logo/notes and responsive
   widths 320/390/768/1024/1500px. Outputs are outside Git in /home/user/outputs.
 - Generated six-line example PDFs were inspected using pypdf: A4 and A5 are each
   one page. A4 margins 10mm, A5 6mm. Arbitrary many accounts/long notes may naturally
