@@ -130,12 +130,14 @@ this does not introduce a persisted layout setting or alter the other fixed sect
 
 All table amounts after discount are before tax; VAT remains explicitly in the
 unchanged invoice totals. Values are rendered from the same sample lines, not
-recomputed differently between styles. Horizontal row rules replace repeated
-vertical dividers; proportional column widths and tabular numeric glyphs improve
-symmetry. Existing manual bank entries survive switching table proposals.
+recomputed differently between styles. Subtle horizontal and vertical rules separate rows and columns; proportional
+column widths and tabular numeric glyphs improve symmetry. Existing manual bank entries survive switching table proposals.
 
 Browser regression checks six sample rows, equal money-column widths, no monetary
 cell overflow and unchanged final total for all three structures in A4 and A5.
 The six generated example PDFs were each confirmed one-page with pypdf. Screen
 captures are outside Git in /home/user/outputs/shop-table-{balanced,detailed,minimal}.png.
 These checks still exercise only the isolated static prototype, not the application.
+
+Per review, all three proposals include thin vertical column separators, in
+screen and print, checked for both header and data cells in A4/A5.

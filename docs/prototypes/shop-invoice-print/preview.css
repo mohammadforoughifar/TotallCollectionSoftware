@@ -96,3 +96,8 @@
 .invoice.a5 .proposal-items .row-heading{font-size:7px}
 @media print{.table-proposals{display:none!important}.invoice .proposal-items th,.invoice .proposal-items td{padding:7px 5px}.invoice.a5 .proposal-items th,.invoice.a5 .proposal-items td{padding:5px 2px}}
 .invoice .proposal-items td[data-column=net]{color:#253247;font-weight:700}
+/* Subtle vertical separators keep all proposed table columns distinct. */
+.invoice .proposal-items th:not(:last-child),
+.invoice .proposal-items td:not(:last-child) {
+ border-left: 1px solid #c7cfd9;
+}
