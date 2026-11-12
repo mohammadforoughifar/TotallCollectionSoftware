@@ -29,6 +29,22 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await page.click('#add-bank');await set('.bank-entry:last-child .bank-card',secondCard);
  assert.equal(await page.$$('.printed-bank-entry').then(a=>a.length),2);
  assert.equal(await page.$eval('#print',el=>el.disabled),false);
+ await page.click('.bank-card');await page.keyboard.press('End');await page.keyboard.type('999');
+ assert.equal(await page.$eval('.bank-card',e=>e.value),card);
+ await page.$eval('.bank-card',e=>{const data=new DataTransfer();data.setData('text','12345678901234567');e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+ assert.equal(await page.$eval('.bank-card',e=>e.value),card);
+ await page.click('.bank-iban');await page.keyboard.type('1'.repeat(25));
+ assert.equal(await page.$eval('.bank-iban',e=>e.value.length),24);
+ assert.equal(await page.$eval('#print',e=>e.disabled),true); // Invalid checksum still blocked.
+ await set('.bank-iban','123');assert.equal(await page.$eval('#print',e=>e.disabled),true);
+ const bban='0620000000000000000001';const check=String(98-Number(BigInt(bban+'182700')%97n)).padStart(2,'0');const fullIban='IR'+check+bban;
+ await set('.bank-iban','');await page.$eval('.bank-iban',(e,text)=>{const data=new DataTransfer();data.setData('text',text);e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));},fullIban);
+ assert.equal(await page.$eval('.bank-iban',e=>e.value),fullIban.slice(2));
+ assert.equal(await page.$eval('#print',e=>e.disabled),false);
+ await page.$eval('.bank-iban',e=>{e.select();const data=new DataTransfer();data.setData('text','IR'+'1'.repeat(25));e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+ assert.equal(await page.$eval('.bank-iban',e=>e.value),fullIban.slice(2));
+ await set('.bank-iban','');await set('.bank-card',card);
+
  assert.equal(await page.$$('input[id^=customer-],textarea[id^=customer-]').then(a=>a.length),0);
  assert.match(await page.$eval('#printed-customer-name',e=>e.textContent),/عقاب افشان/);
  assert.match(await page.$eval('#printed-notes',e=>e.textContent),/عقاب افشان/);
@@ -58,8 +74,8 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
   await page.waitForFunction(()=>document.activeElement===document.querySelector('.bank-entry:last-child .bank-card'));
   await page.keyboard.type(card);
   assert.equal(await page.$eval('.bank-entry:last-child .bank-card',e=>e.value),card);
-  await page.click('.bank-entry:last-child .bank-iban');await page.keyboard.type('IR12');
-  assert.equal(await page.$eval('.bank-entry:last-child .bank-iban',e=>e.value),'IR12');
+  await page.click('.bank-entry:last-child .bank-iban');await page.keyboard.type('12');
+  assert.equal(await page.$eval('.bank-entry:last-child .bank-iban',e=>e.value),'12');
   await page.click('.bank-entry:last-child .remove-bank');
   console.log('PASS responsive add/click/type card and IBAN '+width);
  }

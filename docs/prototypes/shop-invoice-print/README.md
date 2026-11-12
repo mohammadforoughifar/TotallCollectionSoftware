@@ -70,3 +70,13 @@ five viewport widths, rather than relying only on programmatically assigned valu
 Empty, whitespace-only, null or missing customer fields (including a missing customer
 object) render a literal ASCII `-`, never invented contact data. Browser regression
 checks all four fields for empty and missing-customer cases.
+
+## Exact entry lengths
+
+Card inputs have 16-digit min/max constraints. IBAN uses a fixed IR prefix and
+a 24-digit min/max input. Normalized paste supports a full IR-prefixed IBAN and
+Persian/Arabic digits, but rejects an overlong paste as a whole rather than silently
+truncating it. Typing cannot exceed the cap. Partial nonblank values remain editable
+but fail validation and block printing; optional unused fields may remain empty.
+Checksum validation remains in place. Browser regression checks extra keystrokes,
+short numbers, valid full-IBAN paste and overlong paste for both fields.

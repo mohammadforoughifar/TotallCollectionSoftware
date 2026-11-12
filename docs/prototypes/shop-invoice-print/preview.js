@@ -41,7 +41,28 @@ let bankRowNumber=0;
 function addBankRow({focus=false}={}){
  const id=++bankRowNumber;
  const row=document.createElement('div');row.className='bank-entry';
- row.innerHTML=`<div class="bank-entry-head"><strong>کارت / شبای ${money(id)}</strong><button type="button" class="remove-bank" aria-label="حذف این کارت و شبا">حذف</button></div><label for="card-${id}">شماره کارت<input id="card-${id}" class="bank-card" dir="ltr" inputmode="numeric" placeholder="۱۶ رقم" aria-describedby="card-error-${id}"><small id="card-error-${id}" class="field-error card-error" aria-live="polite"></small></label><label for="iban-${id}">شماره شبا<input id="iban-${id}" class="bank-iban" dir="ltr" placeholder="IR…" aria-describedby="iban-error-${id}"><small id="iban-error-${id}" class="field-error iban-error" aria-live="polite"></small></label>`;
+ row.innerHTML=`<div class="bank-entry-head"><strong>کارت / شبای ${money(id)}</strong><button type="button" class="remove-bank" aria-label="حذف این کارت و شبا">حذف</button></div><label for="card-${id}">شماره کارت<input id="card-${id}" class="bank-card" dir="ltr" inputmode="numeric" minlength="16" maxlength="16" pattern="[0-9]{16}" placeholder="۱۶ رقم" aria-describedby="card-error-${id}"><small id="card-error-${id}" class="field-error card-error" aria-live="polite"></small></label><label for="iban-${id}">شماره شبا (۲۴ رقم)<span class="iban-input-wrap" dir="ltr"><span class="iban-prefix" aria-hidden="true">IR</span><input id="iban-${id}" class="bank-iban" dir="ltr" inputmode="numeric" minlength="24" maxlength="24" pattern="[0-9]{24}" placeholder="۲۴ رقم بدون IR" aria-describedby="iban-error-${id}"></span><small id="iban-error-${id}" class="field-error iban-error" aria-live="polite"></small></label>`;
+ for(const [selector,max] of [['.bank-card',16],['.bank-iban',24]]){
+  const input=row.querySelector(selector);
+  const error=row.querySelector(selector==='.bank-card'?'.card-error':'.iban-error');
+  function reject(){error.textContent=`حداکثر ${money(max)} رقم مجاز است؛ شمارهٔ اضافه یا نامعتبر وارد نشد.`;input.setAttribute('aria-invalid','true');}
+  function insert(text,event){
+   event.preventDefault();
+   let normalized=ShopPrintBankValidation.normalize(text);
+   if(max===24)normalized=normalized.replace(/^IR/,'');
+   const start=input.selectionStart??input.value.length,end=input.selectionEnd??start;
+   if(!/^\d*$/.test(normalized)||input.value.length-(end-start)+normalized.length>max){reject();return;}
+   input.setRangeText(normalized,start,end,'end');input.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  input.addEventListener('paste',event=>insert(event.clipboardData.getData('text'),event));
+  input.addEventListener('beforeinput',event=>{
+   if(event.inputType==='insertText'&&event.data)insert(event.data,event);
+  });
+  input.addEventListener('input',()=>{
+   // Mobile keyboards may bypass beforeinput; normalize without truncating data.
+   input.value=ShopPrintBankValidation.normalize(input.value);
+  });
+ }
  row.querySelector('button').addEventListener('click',()=>{row.remove();update();});
  $('bank-rows').append(row);update();
  if(focus)requestAnimationFrame(()=>{

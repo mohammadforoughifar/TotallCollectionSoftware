@@ -44,3 +44,8 @@
 .bank-frame-brand bdi { font-size: 7px; margin-right: 5px; }
 .invoice.a5 .bank-frame-brand { font-size: 8px; }
 @media print { .bank-details { break-inside: avoid; } }
+
+.iban-input-wrap { display:flex; align-items:stretch; margin-top:6px; border:1px solid #dbe1ea; border-radius:7px; overflow:hidden; background:white; }
+.iban-prefix { display:flex; align-items:center; padding:0 9px; background:#f1f5f9; color:#475569; border-right:1px solid #dbe1ea; font-size:12px; }
+.iban-input-wrap input.bank-iban { border:0; margin:0; min-width:0; border-radius:0; }
+.iban-input-wrap:has(input[aria-invalid=true]) { border-color:#dc2626; }
