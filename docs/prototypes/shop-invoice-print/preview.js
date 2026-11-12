@@ -78,10 +78,10 @@ function updateBanks(){
 }
 function update(){
  invoice.classList.toggle('a5',$('paper').value==='A5');
- for(const key of ['name','phone','id','address'])$('printed-customer-'+key).textContent=sampleInvoice.customer[key]?.trim()||'—';
+ for(const key of ['name','phone','id','address'])$('printed-customer-'+key).textContent=sampleInvoice.customer?.[key]?.trim()||'-';
  updateBanks();
  // Facts of this sample only; no invented receipt, delivery or warranty assertions.
- const buyer=sampleInvoice.customer.name?.trim()||'مشتری ثبت‌شده';
+ const buyer=sampleInvoice.customer?.name?.trim()||'-';
  $('invoice-number').textContent=sampleInvoice.number;
  $('invoice-date').textContent=sampleInvoice.date;
  $('printed-notes').textContent=`این فاکتور به شمارهٔ ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}» شامل ${money(lines.length)} ردیف و مجموع ${money(totals.qty)} عدد کالا است.\nجمع کالاها ${money(totals.gross)} ریال است؛ با کسر ${money(totals.discount)} ریال تخفیف و افزودن ${money(vat)} ریال مالیات و عوارض نمونه، مبلغ نهایی ${money(net+vat)} ریال می‌شود.\nروش پرداخت این نمونه ${sampleInvoice.paymentMethod} است. درج مبلغ و شماره حساب به معنای تأیید دریافت وجه یا تحویل کالا نیست؛ وضعیت پرداخت باید از سوابق همان سند بررسی شود.`;

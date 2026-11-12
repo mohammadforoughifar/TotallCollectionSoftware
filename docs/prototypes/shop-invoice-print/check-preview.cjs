@@ -30,8 +30,14 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('input[id^=customer-],textarea[id^=customer-]').then(a=>a.length),0);
  assert.match(await page.$eval('#printed-customer-name',e=>e.textContent),/عقاب افشان/);
  assert.match(await page.$eval('#printed-notes',e=>e.textContent),/عقاب افشان/);
- assert.equal(await page.$eval('#printed-customer-id',e=>e.textContent),'—');
+ assert.equal(await page.$eval('#printed-customer-id',e=>e.textContent),'-');
  assert.equal(await page.$eval('#printed-notes',e=>e.children.length),0);
+ await page.evaluate(()=>{
+  sampleInvoice.customer={name:'  ',phone:null,id:undefined,address:''};update();
+ });
+ for(const key of ['name','phone','id','address'])assert.equal(await page.$eval('#printed-customer-'+key,e=>e.textContent),'-');
+ await page.evaluate(()=>{sampleInvoice.customer=null;update();});
+ for(const key of ['name','phone','id','address'])assert.equal(await page.$eval('#printed-customer-'+key,e=>e.textContent),'-');
  await page.reload();await page.evaluate(()=>document.fonts.ready);
  for(const paper of ['A4','A5']){
   await page.select('#paper',paper);await page.emulateMediaType('print');

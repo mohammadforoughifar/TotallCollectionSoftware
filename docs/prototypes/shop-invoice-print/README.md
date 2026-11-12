@@ -66,3 +66,7 @@ and focuses its card input (including mobile), with a numbered heading and fresh
 asset query versions to avoid stale cached scripts. The browser regression now
 uses actual button clicks and keyboard typing in both card and IBAN inputs at all
 five viewport widths, rather than relying only on programmatically assigned values.
+
+Empty, whitespace-only, null or missing customer fields (including a missing customer
+object) render a literal ASCII `-`, never invented contact data. Browser regression
+checks all four fields for empty and missing-customer cases.
