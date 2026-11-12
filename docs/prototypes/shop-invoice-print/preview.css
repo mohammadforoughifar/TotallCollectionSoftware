@@ -119,3 +119,14 @@
 @media print {
  .invoice .invoice-info dl div+div { border-right:0.6mm solid #303b4b; }
 }
+
+.cheque-details{margin-top:14px;break-inside:avoid}
+.cheque-caption{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:700;margin-bottom:7px}
+.cheque-caption span{font-size:9px;color:#64748b;font-weight:400}
+.cheque-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px}
+.cheque-table th,.cheque-table td{border:1px solid #a5afbc;padding:8px;text-align:center}
+.cheque-table th{background:#f0f2f5;font-weight:700}
+.cheque-table th small{font-size:8px;font-weight:400}
+.cheque-number{font-variant-numeric:tabular-nums}
+.a5 .cheque-details{margin-top:10px}.a5 .cheque-caption{font-size:8px}.a5 .cheque-caption span{font-size:7px}
+.a5 .cheque-table{font-size:8px}.a5 .cheque-table th,.a5 .cheque-table td{padding:5px}

@@ -4,7 +4,8 @@ const $ = id => document.getElementById(id);
 const money = value => new Intl.NumberFormat('fa-IR', {maximumFractionDigits: 0}).format(value);
 // Mock of the invoice-linked customer read model; no customer settings inputs.
 // Production integration must populate this from authorized invoice/customer data.
-const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'نقدی',
+const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'چکی',
+ cheques:[{bank:'ملت',sayad:'',due:'۱۴۰۵/۰۹/۲۰',amount:200000000},{bank:'ملی',sayad:'',due:'۱۴۰۵/۱۰/۲۰',amount:178840000}],
  customer:{name:'عقاب افشان',phone:'۰۹۱۲–۰۰۰۰۰۰۰',id:'',address:''}};
 const lines = [
  {name:'کارت شبکه', qty:6, price:2500000, discount:0, note:'—'},
@@ -27,6 +28,15 @@ $('item-rows').replaceChildren(...lines.map((line,i)=>{
  });return row;
 }));
 for(const [id,value] of Object.entries({gross:totals.gross,discount:totals.discount,net,vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
+$('payment-method').textContent=sampleInvoice.paymentMethod;
+$('cheque-rows').replaceChildren(...sampleInvoice.cheques.map(cheque=>{
+ const row=document.createElement('tr');
+ [cheque.bank,cheque.sayad||'-',cheque.due,money(cheque.amount)].forEach((value,i)=>{
+  const cell=document.createElement('td');cell.textContent=value;
+  if(i>0){cell.dir='ltr';cell.className='cheque-number';}
+  row.append(cell);
+ });return row;
+}));
 const invoice=$('invoice');
 function fitPaper(){
  const viewport=document.querySelector('.paper-viewport');

@@ -178,3 +178,13 @@ facts above items, and single-column summary remain unchanged.
 
 Payment/quantity center divider strengthened to dark 1.5px on screen and 0.6mm
 in print for better printer visibility. Other invoice rules are unchanged.
+
+## Cheque-payment visual review
+
+Current preview illustrates cheque payment with two invoice-read-model cheques
+(200,000,000 + 178,840,000 rials = final total), beneath totals and before signatures.
+Bank, Sayad ID, due date and amount are read-only. Missing Sayad IDs display `-`,
+not fabricated identifiers. The panel explicitly shows awaiting collection, not
+receipt of funds. These are static scenario data, no real cheque/payment records,
+no persistence or production integration. Mixed/cash modes are not implemented
+by this visual example. Existing banking settings and invoice table stay intact.
