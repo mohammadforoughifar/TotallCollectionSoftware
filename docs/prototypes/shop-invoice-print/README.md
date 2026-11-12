@@ -16,12 +16,11 @@ checksum-valid test values as real bank accounts or proof of account ownership.
   or customer print settings exist. The static sample is not a real DB connection.
   A4/A5 remains a per-print choice in the toolbar, not a layout setting.
 - Multiple card/IBAN rows; optional blank fields, live accessible field errors,
-  digit normalization, exact card length plus Luhn checksum, Iranian IBAN format
-  plus ISO mod-97 checksum. IR is accepted explicitly or added to 24 digits.
-  Malformed, all-zero and repeated card values are rejected; duplicate normalized
+  digit normalization, exact card/IBAN digit lengths and format only; no bank checksum. IR is accepted explicitly or added to 24 digits.
+  Malformed or incomplete values are rejected; duplicate normalized
   cards/IBANs within the current list are rejected. No silent truncation.
-- Invalid entered rows disable the print action and are not rendered as payment
-  instructions. Remove/add does not reset other data. No treasury accounts are made.
+- Invalid entered rows disable the print action. All nonblank entries render live
+  on screen, with incomplete/duplicate values explicitly marked as preview only. Remove/add does not reset other data. No treasury accounts are made.
 - Notes are **always present**, generated from the sample invoice number/date,
   customer, line/quantity count, gross, discount, tax and final total/payment method.
   They do not invent receipt, delivery or warranty acceptance. All values are sample;
@@ -48,7 +47,7 @@ No unapproved production integration is included in this proposal.
 ## Validation
 
 - `node --test bank-validation.test.cjs`: three unit groups for normalization,
-  length, checksum, invalid input and blank fields.
+  length, digit normalization, invalid input and blank fields.
 - `check-preview.cjs`: uses external puppeteer-core / CHROME_BIN / NODE_PATH,
   optional PREVIEW_URL. Tests invalid print blocking, duplicates, multiple valid
   cards/removal, read-only customer identity and missing-field fallback, fixed logo/notes and responsive
@@ -78,11 +77,11 @@ a 24-digit min/max input. Normalized paste supports a full IR-prefixed IBAN and
 Persian/Arabic digits, but rejects an overlong paste as a whole rather than silently
 truncating it. Typing cannot exceed the cap. Partial nonblank values remain editable
 but fail validation and block printing; optional unused fields may remain empty.
-Checksum validation remains in place. Browser regression checks extra keystrokes,
+Validation checks exact length/format, not banking checksum. Browser regression checks extra keystrokes,
 short numbers, valid full-IBAN paste and overlong paste for both fields.
 
 Rejected extra digits/pastes do not mark an unchanged valid value red. Validation
-is recalculated from the actual retained value, so checksum/duplicate/short-number
+is recalculated from the actual retained value, so duplicate/short-number
 errors still apply. Regression checks aria-invalid and empty error messages after
 over-limit attempts on valid cards and IBANs.
 
@@ -90,3 +89,12 @@ Seller address and telephone are displayed inside the lower seller information
 panel alongside manually entered payment details, no longer under the header.
 Buyer contact/address remain in the separate buyer section. Contact values here
 are still explicit prototype samples, not a live company-profile connection.
+
+## Latest requested behavior
+
+Exactly 16 card digits or 24 IBAN digits clear length errors immediately, even if
+a banking checksum would not match. Banking checksums are intentionally no longer
+validated in this prototype; this does not verify a real account. Nonblank numbers
+are visible in seller information during typing. Incomplete or duplicate values
+are labelled as preview-only, and the print action stays blocked until resolved.
+Customer information remains read-only sample invoice data.

@@ -73,7 +73,7 @@ function addBankRow({focus=false}={}){
  });
 }
 function updateBanks(){
- const seenCards=new Set(),seenIbans=new Set();let invalid=false;const valid=[];
+ const seenCards=new Set(),seenIbans=new Set();let invalid=false;const valid=[],entries=[];
  for(const row of document.querySelectorAll('.bank-entry')){
   const cardInput=row.querySelector('.bank-card'),ibanInput=row.querySelector('.bank-iban');
   const card=ShopPrintBankValidation.card(cardInput.value),iban=ShopPrintBankValidation.iban(ibanInput.value);
@@ -85,16 +85,18 @@ function updateBanks(){
   }
   invalid ||= Boolean(card.error||iban.error);
   if(!card.error&&!iban.error&&(card.value||iban.value))valid.push({card:card.value,iban:iban.value});
+  if(card.value||iban.value)entries.push({card:card.value,iban:iban.value,incomplete:Boolean(card.error||iban.error)});
  }
- $('printed-banks').replaceChildren(...valid.map((entry,i)=>{
+ $('printed-banks').replaceChildren(...entries.map((entry,i)=>{
   const block=document.createElement('div');block.className='printed-bank-entry';
   const heading=document.createElement('strong');heading.textContent=`روش واریز ${money(i+1)}`;block.append(heading);
+  if(entry.incomplete){const state=document.createElement('small');state.className='preview-bank-state';state.textContent='ناقص یا تکراری — فقط پیش‌نمایش، غیرقابل چاپ';block.append(state);}
   for(const [label,value] of [['شماره کارت',entry.card],['شماره شبا',entry.iban]])if(value){
    const line=document.createElement('div'),name=document.createElement('span'),number=document.createElement('bdi');
    name.textContent=label;number.textContent=value.match(/.{1,4}/g).join(' ');line.append(name,number);block.append(line);
   }return block;
  }));
- if(!valid.length){const msg=document.createElement('p');msg.className='hint';msg.textContent='اطلاعات بانکی معتبری برای نمایش وارد نشده است.';$('printed-banks').append(msg);}
+ if(!entries.length){const msg=document.createElement('p');msg.className='hint';msg.textContent='با ورود شماره کارت یا شبا، همین‌جا نمایش داده می‌شود.';$('printed-banks').append(msg);}
  $('bank-status').textContent=invalid?'خطاهای شماره کارت/شبا را اصلاح کنید؛ چاپ تا رفع خطا غیرفعال است.':`${money(valid.length)} ردیف اطلاعات بانکی معتبر آمادهٔ نمایش است.`;
  $('print').disabled=invalid;return !invalid;
 }

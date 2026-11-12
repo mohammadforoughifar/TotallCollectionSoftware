@@ -25,6 +25,16 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await checkBrand();
  await set('.bank-card','123');assert.equal(await page.$eval('#print',el=>el.disabled),true);
  assert.equal(await page.$eval('.bank-card',el=>el.getAttribute('aria-invalid')),'true');
+ assert.match(await page.$eval('#printed-banks',el=>el.textContent),/123/);
+ assert.match(await page.$eval('#printed-banks',el=>el.textContent),/ناقص/);
+ await set('.bank-card','1234567890123456');
+ assert.equal(await page.$eval('.bank-card',e=>e.getAttribute('aria-invalid')),'false');
+ assert.equal(await page.$eval('.card-error',e=>e.textContent),'');
+ assert.match(await page.$eval('#printed-banks',e=>e.textContent),/1234 5678 9012 3456/);
+ await set('.bank-iban','123456789012345678901234');
+ assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false');
+ assert.match(await page.$eval('#printed-banks',e=>e.textContent),/IR12/);
+ await set('.bank-iban','');
  const prefix='603799000000000';const card=Array.from({length:10},(_,i)=>prefix+i).find(n=>!validation.card(n).error);
  await set('.bank-card',card);assert.equal(await page.$eval('#print',el=>el.disabled),false);
  await page.click('#add-bank');await set('.bank-entry:last-child .bank-card',card);
@@ -44,7 +54,7 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$eval('.card-error',e=>e.textContent),'');
  await page.click('.bank-iban');await page.keyboard.type('1'.repeat(25));
  assert.equal(await page.$eval('.bank-iban',e=>e.value.length),24);
- assert.equal(await page.$eval('#print',e=>e.disabled),true); // Invalid checksum still blocked.
+ assert.equal(await page.$eval('.bank-iban',e=>e.getAttribute('aria-invalid')),'false'); // Exact length restores normal state.
  await set('.bank-iban','123');assert.equal(await page.$eval('#print',e=>e.disabled),true);
  const bban='0620000000000000000001';const check=String(98-Number(BigInt(bban+'182700')%97n)).padStart(2,'0');const fullIban='IR'+check+bban;
  await set('.bank-iban','');await page.$eval('.bank-iban',(e,text)=>{const data=new DataTransfer();data.setData('text',text);e.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));},fullIban);

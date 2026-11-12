@@ -1,19 +1,15 @@
 const test=require('node:test');const assert=require('node:assert/strict');const v=require('./bank-validation.js');
-const prefix='603799000000000';
-const card=Array.from({length:10},(_,n)=>prefix+n).find(n=>!v.card(n).error);
-const bban='0620000000000000000001';
-const digits=bban+'182700';const check=String(98-Number(BigInt(digits)%97n)).padStart(2,'0');const iban='IR'+check+bban;
-module.exports={card,iban};
-test('card format, checksum and Persian/Arabic normalization',()=>{
- assert.equal(v.card(card).error,'');assert.equal(v.card(card.replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d])).value,card);
- for(const n of ['0000000000000000',card.slice(0,15),card+'0','x'+card,card.slice(0,15)+(Number(card[15])+1)%10])assert(v.card(n).error,n);
- assert.equal(v.card('۶۰۳۷-۹۹۰۰ ۰۰۰۰ ۰۰۰'+card[15]).value,card);
+test('exactly 16 card digits accepted regardless of checksum',()=>{
+ for(const n of ['1234567890123456','0000000000000000','6037990000000001'])assert.equal(v.card(n).error,'');
+ for(const n of ['123','1'.repeat(15),'1'.repeat(17),'x'+'1'.repeat(15)])assert(v.card(n).error);
+ assert.equal(v.card('۱۲۳۴-۵۶۷۸ ۹۰۱۲ ۳۴۵۶').value,'1234567890123456');
 });
-test('Iranian IBAN checksum, optional IR prefix, invalid characters',()=>{
- assert.equal(v.iban(iban).error,'');assert.equal(v.iban(iban.slice(2)).value,iban);
- assert.equal(v.iban(iban.toLowerCase()).error,'');
- for(const n of ['IR'+'0'.repeat(24),'DE'+iban.slice(2),iban+'0','IR00'+bban,iban+'x'])assert(v.iban(n).error,n);
+test('exactly 24 IBAN digits with fixed or supplied IR prefix',()=>{
+ const digits='123456789012345678901234';
+ for(const n of [digits,'IR'+digits,'ir'+digits])assert.equal(v.iban(n).error,'');
+ for(const n of ['IR123','IR'+'1'.repeat(25),'DE'+digits,digits+'x'])assert(v.iban(n).error);
+ assert.equal(v.iban('۱۲۳۴۵۶۷۸۹۰۱۲۳۴۵۶۷۸۹۰۱۲۳۴').value,'IR'+digits);
 });
-test('blank optional fields do not become zeros or invented accounts',()=>{
+test('blank unused fields remain optional',()=>{
  assert.deepEqual(v.card(''),{value:'',error:''});assert.deepEqual(v.iban(''),{value:'',error:''});
 });
