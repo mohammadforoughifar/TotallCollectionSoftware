@@ -2535,7 +2535,7 @@
             var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
             var html = order.IsSale
                 ? ShopSaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)
-                : SaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings);
+                : ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize);
             var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened)
                 InvoiceError("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");

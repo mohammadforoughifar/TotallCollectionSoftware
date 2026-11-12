@@ -3,7 +3,8 @@
 The earlier integration retained the legacy sales builder (dark blue table,
 boxed metadata, full-width total). This follow-up routes actual shop sales from
 Orders list, save-and-print and repair-linked sales to `ShopSaleInvoicePrint`.
-Purchases retain their existing builder, as do non-shop invoice/office modules.
+Purchases now use ShopPurchaseInvoicePrint with the same approved renderer in
+purchase mode. Non-shop invoice/office modules retain their original builders.
 
 The new builder embeds a frozen copy of the approved preview's HTML structure and
 stylesheet: right logo, truly centered company/title, left compact metadata,
@@ -40,3 +41,9 @@ Validation:
   exact values, encoding, return/cancel states and payment schedules. It was NOT
   run here: .NET SDK is unavailable. C#/Razor build and full app verification remain
   outstanding and must not be presented as completed.
+
+Full transfer follow-up: GoodsIssuesPrint now embeds the actual simplified approved
+dispatch template, not an approximate reimplementation. Purchase and dispatch
+headers/body are covered by check-complete-layouts.cjs in A4/A5. The executable
+.NET project links and exercises all three production builders (still unrun here).
+See docs/SHOP-PRINT-INTEGRATION.md for the current routing/integration matrix.

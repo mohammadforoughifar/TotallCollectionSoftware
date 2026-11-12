@@ -20,3 +20,16 @@ order.IsCancelled=true;order.ReturnedGoodsAmount=50;order.ChequeIncomeAmount=25;
 var corrected=ShopSaleInvoicePrint.Build(order,profile);
 if(!corrected.Contains("این فاکتور ابطال شده است")||!corrected.Contains("برگشت کالا و مالیات")||!corrected.Contains("تاخیر تادیه چک"))throw new Exception("Financial adjustments hidden");
 Console.WriteLine("PASS shop sales layout, encoding, exact amounts, bank data and payment/return states");
+
+order.Type=TransactionType.Purchase;
+foreach(var paper in new[]{"A4","A5"}) {
+ var html=ShopPurchaseInvoicePrint.Build(order,profile,paper);
+ if(!html.Contains("فاکتور خرید")||!html.Contains("بهای واحد خرید")||!html.Contains("امضای مسئول خرید")||!html.Contains("شماره فاکتور تأمین‌کننده"))throw new Exception("Incomplete purchase template");
+ if(html.Contains("<section class=\"bank-details\"")||html.Contains("در انتظار وصول"))throw new Exception("Sales-only data in purchase");
+ File.WriteAllText(Path.Combine(AppContext.BaseDirectory,$"purchase-{paper}.html"),html);
+ var dispatch=new GoodsIssueDto { Number="HI-0040",Date=order.Date,PartyName="<recipient>",Description="saved note",Lines=new(){new(){ProductName="Item",Quantity=1.25m,Note="remark"}}};
+ var note=Inventory.Client.Pages.Catalog.GoodsIssuesPrint.Build(dispatch,profile.Name,paper);
+ if(!note.Contains("&lt;recipient&gt;")||!note.Contains("saved note")||!note.Contains("remark")||note.Contains("<section class=\"settlement\""))throw new Exception("Incorrect dispatch template");
+ File.WriteAllText(Path.Combine(AppContext.BaseDirectory,$"dispatch-{paper}.html"),note);
+}
+Console.WriteLine("PASS complete purchase and dispatch templates, headers, saved values and escaping");

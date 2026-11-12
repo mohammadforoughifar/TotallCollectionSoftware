@@ -12,7 +12,14 @@ public static class ShopSaleInvoicePrint
 {
     public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null, ShopPrintSettingsDto? settings = null)
     {
-        if (!order.IsSale) throw new ArgumentException("این قالب فقط برای فروش فروشگاهی است.", nameof(order));
+        return BuildDocument(order, profile, paperSize, settings, false);
+    }
+    internal static string BuildPurchase(Order order, CompanyProfileDto? profile, string? paperSize)
+        => BuildDocument(order, profile, paperSize, null, true);
+
+    private static string BuildDocument(Order order, CompanyProfileDto? profile, string? paperSize, ShopPrintSettingsDto? settings, bool purchase)
+    {
+        if (purchase ? !order.IsPurchase : !order.IsSale) throw new ArgumentException("نوع سند با قالب چاپ مطابقت ندارد.", nameof(order));
         var a5 = string.Equals(paperSize, "A5", StringComparison.OrdinalIgnoreCase);
         var lines = order.Lines.OrderBy(l => l.Id).ToList();
         var company = Text(profile?.Name);
@@ -31,13 +38,13 @@ public static class ShopSaleInvoicePrint
             items.Append("</tr>");
         }
         var totals = new StringBuilder();
-        Total(totals, "جمع بهای کالاها", lines.Sum(l => l.Gross), "gross");
+        Total(totals, purchase ? "جمع بهای خرید" : "جمع بهای کالاها", lines.Sum(l => l.Gross), "gross");
         Total(totals, "جمع تخفیف", lines.Sum(l => l.DiscountAmount), "discount");
         Total(totals, "پس از تخفیف", lines.Sum(l => l.AfterDiscount), "net");
         Total(totals, "مالیات و عوارض", lines.Sum(l => l.VatAmount), "vat");
         if (order.ReturnedGoodsAmount > 0) Total(totals, "برگشت کالا و مالیات", -order.ReturnedGoodsAmount, "returned");
         if (order.ChequeIncomeAmount != 0) Total(totals, "تاخیر تادیه چک (بدون مالیات)", order.ChequeIncomeAmount, "cheque-charge");
-        Total(totals, "مبلغ نهایی فاکتور · ریال", order.TotalAmount, "payable", true);
+        Total(totals, purchase ? "مبلغ نهایی خرید · ریال" : "مبلغ نهایی فاکتور · ریال", order.TotalAmount, "payable", true);
         var banks = new StringBuilder();
         foreach (var bank in ShopPrintBankRules.Validate(settings ?? new()).Banks)
         {
@@ -45,28 +52,41 @@ public static class ShopSaleInvoicePrint
             Bank(banks, "شماره کارت", bank.Card); Bank(banks, "شماره شبا", bank.Iban);
             banks.Append("</div>");
         }
-        var notes = $"فاکتور {order.Number} مورخ {order.Date.ToFa()} برای «{Plain(order.PartyName)}»؛ {lines.Count.Num()} ردیف، مجموع مقدار {lines.Sum(l => l.Quantity).Qty()} و مبلغ نهایی {order.TotalAmount.MoneyExact()} ریال.";
+        var notes = $"{(purchase ? "فاکتور خرید" : "فاکتور فروش")} {order.Number} مورخ {order.Date.ToFa()} {(purchase ? "از تأمین‌کننده" : "برای")} «{Plain(order.PartyName)}»؛ {lines.Count.Num()} ردیف، مجموع مقدار {lines.Sum(l => l.Quantity).Qty()} و مبلغ نهایی {order.TotalAmount.MoneyExact()} ریال.";
         if (!string.IsNullOrWhiteSpace(order.Description)) notes += "\n" + order.Description.Trim();
         var values = new Dictionary<string, string>
         {
             ["__CSS__"] = Style.Replace("__PAGE_SIZE__", a5 ? "A5" : "A4").Replace("__PAGE_MARGIN__", a5 ? "6mm" : "10mm"),
-            ["__PAPER_CLASS__"] = a5 ? "a5" : "",
+            ["__PAPER_CLASS__"] = (a5 ? "a5" : "") + (purchase ? " purchase-document" : ""),
+            ["__TITLE__"] = purchase ? "فاکتور خرید" : "فاکتور فروش",
+            ["__NUMBER_LABEL__"] = purchase ? "شماره سند خرید" : "شماره فاکتور",
+            // No supplier invoice number exists in Order DTO. Do not invent a value.
+            ["__SUPPLIER_META__"] = purchase ? "<div><dt>شماره فاکتور تأمین‌کننده</dt><dd>-</dd></div>" : "",
+            ["__PARTY_LABEL__"] = purchase ? "فروشنده / تأمین‌کننده" : "اطلاعات خریدار",
+            ["__ITEM_CAPTION__"] = purchase ? "اقلام خرید از تأمین‌کننده" : "شرح کالاها و خدمات",
+            ["__UNIT_LABEL__"] = purchase ? "بهای واحد خرید" : "فی واحد",
+            ["__SELLER_SECTION__"] = purchase ? "" : SellerSection(profile, banks.ToString()),
             ["__LOGO__"] = profile?.LogoDataUrl?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true
                 ? "<img id=\"invoice-logo\" src=\"" + Text(profile.LogoDataUrl) + "\" alt=\"لوگوی شرکت\">"
-                : "<span class=\"letter-logo\" aria-label=\"بدون لوگو\">ف</span>",
+                : "<span class=\"letter-logo\" aria-label=\"بدون لوگو\">" + (purchase ? "خ" : "ف") + "</span>",
             ["__COMPANY__"] = company, ["__NUMBER__"] = Text(order.Number), ["__DATE__"] = order.Date.ToFa().FaDigits(),
             ["__PARTY__"] = Text(order.PartyName), ["__PHONE__"] = Text(order.PartyPhone),
             ["__TAX_ID__"] = Text(order.PartyTaxId), ["__ADDRESS__"] = Text(order.PartyAddress),
             ["__COUNT__"] = lines.Count.Num(), ["__QUANTITY__"] = lines.Sum(l => l.Quantity).Qty(),
             ["__ITEMS__"] = items.ToString(), ["__TOTALS__"] = totals.ToString(), ["__BANKS__"] = banks.ToString(),
             ["__COMPANY_PHONE__"] = Text(profile?.Phone), ["__COMPANY_ADDRESS__"] = Text(profile?.Address),
-            ["__NOTES__"] = Text(notes), ["__PAYMENTS__"] = Payments(order), ["__SCHEDULE__"] = Schedule(order),
+            ["__NOTES__"] = Text(notes), ["__PAYMENTS__"] = Payments(order, purchase), ["__SCHEDULE__"] = Schedule(order, purchase),
             ["__CANCELLED__"] = order.IsCancelled ? "<div class=\"cancelled\">این فاکتور ابطال شده است</div>" : "",
-            ["__SIGNATURES__"] = "<section class=\"signatures\" id=\"signatures\"><div><strong>امضای خریدار</strong><span>نام و امضا</span></div><div><strong>امضا و مهر فروشنده</strong><span>نام، مهر و امضا</span></div></section>"
+            ["__SIGNATURES__"] = purchase
+                ? "<section class=\"signatures\" id=\"signatures\"><div><strong>امضای مسئول خرید</strong><span>نام و امضا</span></div><div><strong>امضا و مهر تأمین‌کننده</strong><span>نام، مهر و امضا</span></div></section>"
+                : "<section class=\"signatures\" id=\"signatures\"><div><strong>امضای خریدار</strong><span>نام و امضا</span></div><div><strong>امضا و مهر فروشنده</strong><span>نام، مهر و امضا</span></div></section>"
         };
         // Single-pass substitution: invoice text that resembles a token stays literal.
         return Regex.Replace(Template, @"__[A-Z_]+__", match => values.TryGetValue(match.Value, out var value) ? value : match.Value);
     }
+    private static string SellerSection(CompanyProfileDto? profile, string banks)
+        => "<section class=\"bank-details\" id=\"bank-details\"><div class=\"store-contact\"><span>تلفن: <bdi>" + Text(profile?.Phone) + "</bdi></span><span>نشانی: " + Text(profile?.Address) + "</span></div><div id=\"printed-banks\" class=\"bank-list\">" + banks + "</div></section>";
+
     private static string Plain(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
     private static string Text(string? value) => WebUtility.HtmlEncode(Plain(value));
     private static void Total(StringBuilder sb, string label, decimal amount, string id, bool final = false)
@@ -77,7 +97,7 @@ public static class ShopSaleInvoicePrint
         var grouped = string.Join(" ", Enumerable.Range(0, (number.Length + 3) / 4).Select(i => number.Substring(i * 4, Math.Min(4, number.Length - i * 4))));
         sb.Append("<div><span>").Append(Text(label)).Append("</span><bdi>").Append(Text(grouped)).Append("</bdi></div>");
     }
-    private static string Payments(Order order)
+    private static string Payments(Order order, bool purchase)
     {
         // These are issuance components, NOT current collected balances. SettledAmount includes
         // later receipts and must never be presented as the original cash part.
@@ -90,12 +110,12 @@ public static class ShopSaleInvoicePrint
         if (cash > 0) parts.Add(("نقدی", cash, ""));
         if (cheque > 0) parts.Add(("چکی", cheque, "وضعیت هر چک در جدول زیر"));
         if (installments > 0) parts.Add(("اقساطی", installments, ""));
-        if (credit > 0) parts.Add((order.PaymentMethod == PaymentMethod.Cash && cash == 0 ? "مبلغ سند نقدی" : "نسیه هنگام ثبت", credit,
+        if (credit > 0) parts.Add((order.PaymentMethod == PaymentMethod.Cash && cash == 0 ? "مبلغ سند نقدی" : (purchase ? "مانده بدهی هنگام ثبت" : "نسیه هنگام ثبت"), credit,
             order.DueDate.HasValue ? "موعد: " + order.DueDate.Value.ToFa().FaDigits() : ""));
         if (parts.Count == 0) return "";
         var sb = new StringBuilder("<section class=\"settlement-details\" aria-label=\"جزئیات تسویه\"><h3 id=\"payment-method\">تسویهٔ ");
         sb.Append(Text(PaymentMix.Fa(order.PaymentMethod)));
-        if (parts.Count > 1) sb.Append(" — ").Append(Text(string.Join("، ", parts.Select(p => p.Label == "نسیه هنگام ثبت" ? "نسیه" : p.Label))));
+        if (parts.Count > 1) sb.Append(" — ").Append(Text(string.Join("، ", parts.Select(p => p.Label is "نسیه هنگام ثبت" or "مانده بدهی هنگام ثبت" ? "نسیه" : p.Label))));
         sb.Append("</h3>");
         if (order.ReturnedGoodsAmount > 0) sb.Append("<p class=\"hint\">ترکیب تسویه هنگام ثبت؛ برگشت‌ها در جمع نهایی لحاظ شده‌اند.</p>");
         sb.Append("<div id=\"settlement-breakdown\" style=\"--parts:").Append(Math.Max(1, parts.Count)).Append("\">");
@@ -107,20 +127,20 @@ public static class ShopSaleInvoicePrint
         }
         return sb.Append("</div></section>").ToString();
     }
-    private static string Status(ChequeDto cheque) => cheque.Status switch
+    private static string Status(ChequeDto cheque, bool purchase) => cheque.Status switch
     {
-        ChequeStatus.Cleared => "وصول‌شده", ChequeStatus.Bounced => "برگشت‌خورده", ChequeStatus.Cancelled => "ابطال‌شده",
-        ChequeStatus.Endorsed => "واگذارشده", ChequeStatus.InCollection => "در جریان وصول",
-        _ => cheque.IsCleared ? "وصول‌شده" : "در انتظار وصول"
+        ChequeStatus.Cleared => purchase ? "پرداخت‌شده" : "وصول‌شده", ChequeStatus.Bounced => "برگشت‌خورده", ChequeStatus.Cancelled => "ابطال‌شده",
+        ChequeStatus.Endorsed => "واگذارشده", ChequeStatus.InCollection => purchase ? "در جریان پرداخت" : "در جریان وصول",
+        _ => cheque.IsCleared ? (purchase ? "پرداخت‌شده" : "وصول‌شده") : (purchase ? "در انتظار پرداخت" : "در انتظار وصول")
     };
-    private static string Schedule(Order order)
+    private static string Schedule(Order order, bool purchase)
     {
         var sb = new StringBuilder();
         if (order.Cheques.Count > 0)
         {
-            sb.Append("<section class=\"cheque-details\" id=\"cheque-details\"><div class=\"cheque-caption\">مشخصات چک‌های ثبت‌شده</div><table class=\"cheque-table\"><thead><tr><th>بانک</th><th>شماره چک</th><th>سررسید</th><th>مبلغ · ریال</th><th>وضعیت</th></tr></thead><tbody>");
+            sb.Append("<section class=\"cheque-details\" id=\"cheque-details\"><div class=\"cheque-caption\">").Append(purchase ? "چک‌های پرداختی به تأمین‌کننده" : "مشخصات چک‌های ثبت‌شده").Append("</div><table class=\"cheque-table\"><thead><tr><th>بانک</th><th>شماره چک</th><th>سررسید</th><th>مبلغ · ریال</th><th>وضعیت</th></tr></thead><tbody>");
             foreach (var cheque in order.Cheques.OrderBy(c => c.DueDate))
-                sb.Append("<tr><td>").Append(Text(cheque.BankName)).Append("</td><td><bdi>").Append(Text(cheque.Number)).Append("</bdi></td><td>").Append(cheque.DueDate == default ? "-" : cheque.DueDate.ToFa().FaDigits()).Append("</td><td>").Append(cheque.Amount.MoneyExact()).Append("</td><td>").Append(Status(cheque)).Append("</td></tr>");
+                sb.Append("<tr><td>").Append(Text(cheque.BankName)).Append("</td><td><bdi>").Append(Text(cheque.Number)).Append("</bdi></td><td>").Append(cheque.DueDate == default ? "-" : cheque.DueDate.ToFa().FaDigits()).Append("</td><td>").Append(cheque.Amount.MoneyExact()).Append("</td><td>").Append(Status(cheque, purchase)).Append("</td></tr>");
             sb.Append("</tbody></table></section>");
         }
         if (order.Installments.Count > 0)
@@ -134,16 +154,16 @@ public static class ShopSaleInvoicePrint
     }
 
     public const string Template = """
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فاکتور فروش __NUMBER__</title><style>__CSS__</style></head><body><article class="invoice classic __PAPER_CLASS__" id="invoice" aria-label="فاکتور فروش">
-  <header class="invoice-header"><div class="logo-cell">__LOGO__</div><div class="title-cell"><span class="document-kind" id="document-title">فاکتور فروش</span><h2>__COMPANY__</h2></div><dl class="document-meta"><div><dt>شماره فاکتور</dt><dd id="invoice-number">__NUMBER__</dd></div><div><dt>تاریخ</dt><dd id="invoice-date">__DATE__</dd></div></dl></header>
+<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__ __NUMBER__</title><style>__CSS__</style></head><body><article class="invoice classic __PAPER_CLASS__" id="invoice" aria-label="__TITLE__">
+  <header class="invoice-header"><div class="logo-cell">__LOGO__</div><div class="title-cell"><span class="document-kind" id="document-title">__TITLE__</span><h2>__COMPANY__</h2></div><dl class="document-meta"><div><dt>__NUMBER_LABEL__</dt><dd id="invoice-number">__NUMBER__</dd></div>__SUPPLIER_META__<div><dt>تاریخ</dt><dd id="invoice-date">__DATE__</dd></div></dl></header>
   __CANCELLED__
-  <section class="buyer"><div class="section-tag" id="party-label">اطلاعات خریدار</div><div class="buyer-details"><div><span>نام / عنوان</span><strong id="printed-customer-name">__PARTY__</strong></div><div><span>تلفن</span><strong id="printed-customer-phone">__PHONE__</strong></div><div><span>شناسه / کد ملی</span><strong id="printed-customer-id">__TAX_ID__</strong></div><div class="buyer-address"><span>نشانی</span><strong id="printed-customer-address">__ADDRESS__</strong></div></div></section>
-  <section class="items-section"><div class="table-caption"><strong>شرح کالاها و خدمات</strong><span><span id="line-count">__COUNT__</span> ردیف · مجموع مقدار: <span id="quantity-total">__QUANTITY__</span> · مبالغ به ریال</span></div><table class="items proposal-items detailed-items" aria-label="اقلام فاکتور با تفکیک قیمت"><colgroup><col style="width:5%"><col style="width:32%"><col style="width:7%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col style="width:14%"></colgroup><thead><tr><th class="row-heading" scope="col">ردیف</th><th scope="col">شرح کالا / خدمت</th><th scope="col">تعداد</th><th scope="col">فی واحد</th><th scope="col">مبلغ اولیه</th><th scope="col">تخفیف</th><th scope="col">پس از تخفیف</th></tr></thead><tbody id="item-rows">__ITEMS__</tbody></table></section>
+  <section class="buyer"><div class="section-tag" id="party-label">__PARTY_LABEL__</div><div class="buyer-details"><div><span>نام / عنوان</span><strong id="printed-customer-name">__PARTY__</strong></div><div><span>تلفن</span><strong id="printed-customer-phone">__PHONE__</strong></div><div><span>شناسه / کد ملی</span><strong id="printed-customer-id">__TAX_ID__</strong></div><div class="buyer-address"><span>نشانی</span><strong id="printed-customer-address">__ADDRESS__</strong></div></div></section>
+  <section class="items-section"><div class="table-caption"><strong>__ITEM_CAPTION__</strong><span><span id="line-count">__COUNT__</span> ردیف · مجموع مقدار: <span id="quantity-total">__QUANTITY__</span> · مبالغ به ریال</span></div><table class="items proposal-items detailed-items" aria-label="اقلام فاکتور با تفکیک قیمت"><colgroup><col style="width:5%"><col style="width:32%"><col style="width:7%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col style="width:14%"></colgroup><thead><tr><th class="row-heading" scope="col">ردیف</th><th scope="col">شرح کالا / خدمت</th><th scope="col">تعداد</th><th scope="col">__UNIT_LABEL__</th><th scope="col">مبلغ اولیه</th><th scope="col">تخفیف</th><th scope="col">پس از تخفیف</th></tr></thead><tbody id="item-rows">__ITEMS__</tbody></table></section>
   <section class="settlement"><dl class="totals">__TOTALS__</dl></section>
   __PAYMENTS__
   __SCHEDULE__
   __SIGNATURES__
-  <section class="bank-details" id="bank-details"><div class="store-contact"><span>تلفن: <bdi>__COMPANY_PHONE__</bdi></span><span>نشانی: __COMPANY_ADDRESS__</span></div><div id="printed-banks" class="bank-list">__BANKS__</div></section>
+  __SELLER_SECTION__
   <section class="invoice-notes" id="invoice-notes"><span class="bank-frame-brand">__COMPANY__</span><p id="printed-notes">__NOTES__</p></section>
  </article></body></html>
 """;
@@ -314,11 +334,16 @@ body{background:white}.invoice{box-shadow:none;margin:0 auto}
 .invoice .detailed-items .long-number{white-space:normal;overflow-wrap:anywhere;font-size:8px}
 .invoice.a5 .detailed-items .long-number{font-size:7px}
 .invoice .buyer-details strong{overflow-wrap:anywhere;min-width:0}
+.invoice .title-cell h2{overflow-wrap:anywhere}
 #settlement-breakdown{grid-template-columns:repeat(var(--parts,3),minmax(0,1fr))}
 .cancelled{border:2px solid #b91c1c;color:#b91c1c;padding:8px;text-align:center;margin-top:12px;font-weight:700}
 .installment-details{margin-top:12px;break-inside:avoid}.installment-details h3{margin-bottom:7px}
 .printed-bank-entry bdi{font-variant-numeric:tabular-nums}.invoice .printed-bank-entry>div{justify-content:flex-start;gap:10px}
 .invoice .totals dd{overflow-wrap:anywhere;white-space:normal}
+
+.invoice.purchase-document .invoice-header{grid-template-columns:228px minmax(0,1fr) 228px}
+.invoice.a5.purchase-document .invoice-header{grid-template-columns:180px minmax(0,1fr) 180px}
+.invoice.purchase-document .document-meta dt{white-space:nowrap}
 
 """;
 }

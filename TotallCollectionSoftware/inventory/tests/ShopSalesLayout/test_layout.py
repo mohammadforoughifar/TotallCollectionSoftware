@@ -10,14 +10,14 @@ class ShopSaleLayoutTests(unittest.TestCase):
             source=read('Inventory.Client/Pages/'+file)
             self.assertIn('ShopSaleInvoicePrint.Build(',source)
             self.assertIn('"shopPrintPreview.choosePaper"',source)
-        self.assertIn(': SaleInvoicePrint.Build(order',read('Inventory.Client/Pages/Orders/Orders.razor'))
+        self.assertIn(': ShopPurchaseInvoicePrint.Build(order',read('Inventory.Client/Pages/Orders/Orders.razor'))
     def test_template_matches_approved_structure(self):
         source=read('Inventory.Client/Pages/Orders/ShopSaleInvoicePrint.cs')
         template=re.search(r'public const string Template = """\n(.*?)\n""";',source,re.S)[1]
-        for id in ['invoice','invoice-number','invoice-date','printed-customer-name','item-rows','printed-banks','printed-notes']:
+        for id in ['invoice','invoice-number','invoice-date','printed-customer-name','item-rows','printed-notes']:
             self.assertIn('id="'+id+'"',template)
         self.assertEqual(template.count('<th scope="col">'),6) # first heading also has row-heading
-        for text in ['مبلغ اولیه','تخفیف','پس از تخفیف']:
+        for text in ['مبلغ اولیه','تخفیف','پس از تخفیف','__UNIT_LABEL__']:
             self.assertIn(text,template)
         for text in ['invoice-stamp','grand-total','روش واریز','این نمونه']:
             self.assertNotIn(text,source)
@@ -37,3 +37,24 @@ class ShopSaleLayoutTests(unittest.TestCase):
         self.assertIn('WebUtility.HtmlEncode',source)
         self.assertIn('Regex.Replace(Template',source)
         self.assertIn('ShopPrintBankRules.Validate',source)
+
+class CompleteTemplatesTests(unittest.TestCase):
+    def test_purchase_routes_do_not_use_legacy_builder(self):
+        for file in ['Orders.razor','OrderForm.razor']:
+            source=read('Inventory.Client/Pages/Orders/'+file)
+            self.assertIn('ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize)',source)
+            self.assertNotRegex(source,r'(?<!Shop)SaleInvoicePrint\.Build\(')
+        self.assertIn('ShopSaleInvoicePrint.BuildPurchase',read('Inventory.Client/Pages/Orders/ShopPurchaseInvoicePrint.cs'))
+    def test_full_purchase_mode(self):
+        source=read('Inventory.Client/Pages/Orders/ShopSaleInvoicePrint.cs')
+        for text in ['بهای واحد خرید','فروشنده / تأمین‌کننده','امضای مسئول خرید','امضا و مهر تأمین‌کننده','چک‌های پرداختی به تأمین‌کننده','مانده بدهی هنگام ثبت','purchase ? "پرداخت‌شده" : "وصول‌شده"','purchase ? "" : SellerSection']:
+            self.assertIn(text,source)
+        self.assertIn('<dd>-</dd>',source) # Supplier invoice is unavailable, never use a demo number.
+    def test_dispatch_template_contains_no_unpersisted_fields(self):
+        source=read('Inventory.Client/Pages/Catalog/GoodsIssuesPrint.cs')
+        template=re.search(r'public const string Template = """\n(.*?)\n""";',source,re.S)[1]
+        for text in ['invoice-header','title-cell','document-meta','گیرندهٔ کالا','ملاحظات','امضای تحویل‌دهنده','امضای تحویل‌گیرنده','bank-frame-brand']:
+            self.assertIn(text,template)
+        for text in ['فاکتور مرتبط','واحد</th>','انبار مبدأ','حمل‌کننده','تلفن','نشانی','مالیات','تخفیف']:
+            self.assertNotIn(text,template)
+        self.assertIn('ShopSaleInvoicePrint.Style',source)
