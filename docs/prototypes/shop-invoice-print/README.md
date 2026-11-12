@@ -176,5 +176,5 @@ price layout (unit price, gross, discount, net), without bringing back the three
 option selector. Remarks appear below the description. Metadata spacing, payment
 facts above items, and single-column summary remain unchanged.
 
-Payment/quantity center divider strengthened to dark 1.5px on screen and 0.5mm
+Payment/quantity center divider strengthened to dark 1.5px on screen and 0.6mm
 in print for better printer visibility. Other invoice rules are unchanged.

@@ -117,5 +117,5 @@
 /* Stronger divider between payment method and item quantity, including print. */
 .invoice .invoice-info dl div+div { border-right:1.5px solid #475569; }
 @media print {
- .invoice .invoice-info dl div+div { border-right:0.5mm solid #303b4b; }
+ .invoice .invoice-info dl div+div { border-right:0.6mm solid #303b4b; }
 }
