@@ -1,107 +1,44 @@
 using Inventory.Client.Extensions;
 using Inventory.Shared.Dtos;
+using System.Net;
+using System.Text;
 
 namespace Inventory.Client.Pages.Catalog;
 
-/// <summary>
-/// ساخت سند چاپِ «حواله تحویل کالا».
-/// سند به‌صورت یک سند HTML کاملاً مستقل (doctype + CSS خودبساده) تولید می‌شود تا در
-/// یک iframe جداگانه چاپ شود؛ چون استایل‌های <c>@media print</c>ِ خودِ برنامه
-/// (مخفی‌کردن سایدبار/محتوا و …) روی محتوای صفحه اثر می‌گذارد و چاپ را سفید می‌کند.
-/// </summary>
+/// <summary>Shop-only delivery note. Only persisted fields and derived quantities are printed.</summary>
 public static class GoodsIssuesPrint
 {
-    /// <summary>سند کامل HTML چاپ را از روی حواله می‌سازد.</summary>
-    public static string Build(GoodsIssueDto d, string company)
+    public static string Build(GoodsIssueDto d, string company, string? paperSize = null)
     {
-        var companyName = string.IsNullOrWhiteSpace(company) ? "شرکت" : company;
-        var total = d.Lines.Sum(l => l.Quantity);
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append("<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\">");
-        sb.Append("<title>").Append(Esc("حواله بیجک ")).Append(Esc(d.Number)).Append("</title>");
-        sb.Append("<style>").Append(Css).Append("</style></head><body>");
-
-        // ---------- سربرگ ----------
-        sb.Append("<div class=\"head\"><div class=\"brand\"><div class=\"logo\">ح</div><div>")
-          .Append("<div class=\"co\">").Append(Esc(companyName)).Append("</div>")
-          .Append("<div class=\"sub\">حواله بیجک</div></div></div>");
-
-        sb.Append("<div class=\"meta\">");
-        sb.Append("<div><span class=\"l\">شماره حواله</span><span class=\"v\">").Append(Esc(d.Number)).Append("</span></div>");
-        sb.Append("<div><span class=\"l\">تاریخ</span><span class=\"v\">").Append(d.Date.ToFa().FaDigits()).Append("</span></div>");
-        sb.Append("<div><span class=\"l\">تعداد اقلام</span><span class=\"v\">").Append(d.Lines.Count.Num()).Append("</span></div>");
-        sb.Append("</div></div>");
-
-        // ---------- مشتری ----------
-        sb.Append("<div class=\"party\">");
-        sb.Append("<div class=\"item\"><span class=\"l\">مشتری</span><span class=\"v\">").Append(Esc(d.PartyName)).Append("</span></div>");
-        sb.Append("<div class=\"item\"><span class=\"l\">جمع مقدار</span><span class=\"v\">").Append(total.Qty()).Append("</span></div>");
-        if (!string.IsNullOrWhiteSpace(d.Description))
-            sb.Append("<div class=\"item\"><span class=\"l\">توضیحات</span><span class=\"v\">").Append(Esc(d.Description)).Append("</span></div>");
-        sb.Append("</div>");
-
-        // ---------- جدول اقلام ----------
-        sb.Append("<table><thead><tr><th class=\"n\">#</th><th class=\"nm\">نام کالا</th>")
-          .Append("<th class=\"q\">مقدار</th></tr></thead><tbody>");
+        var a5 = string.Equals(paperSize, "A5", StringComparison.OrdinalIgnoreCase);
+        var companyName = string.IsNullOrWhiteSpace(company) ? "-" : company.Trim();
+        var css = Css.Replace("__SIZE__", a5 ? "A5" : "A4")
+            .Replace("__MARGIN__", a5 ? "7mm" : "10mm");
+        var sb = new StringBuilder("<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>بیجک تحویل کالا</title><style>");
+        sb.Append(css).Append("</style></head><body><main class=\"sheet ").Append(a5 ? "a5" : "a4").Append("\">");
+        sb.Append("<header class=\"head\"><div class=\"mark\" aria-hidden=\"true\">ب</div><div class=\"title\"><h1>بیجک تحویل کالا</h1><h2>").Append(Esc(companyName)).Append("</h2></div><dl class=\"meta\">");
+        sb.Append("<div><dt>شماره بیجک</dt><dd>").Append(Esc(d.Number)).Append("</dd></div><div><dt>تاریخ</dt><dd>").Append(d.Date.ToFa().FaDigits()).Append("</dd></div></dl></header>");
+        sb.Append("<section class=\"party\"><h3>گیرندهٔ کالا</h3><div><span>نام / عنوان</span><strong>").Append(Esc(d.PartyName)).Append("</strong></div></section>");
+        sb.Append("<div class=\"caption\"><strong>اقلام بیجک</strong><span>").Append(d.Lines.Count.Num()).Append(" ردیف · جمع مقدار: ").Append(d.TotalQuantity.Qty()).Append("</span></div>");
+        sb.Append("<table><colgroup><col style=\"width:7%\"><col style=\"width:55%\"><col style=\"width:15%\"><col style=\"width:23%\"></colgroup><thead><tr><th>ردیف</th><th>شرح کالا</th><th>تعداد</th><th>ملاحظات</th></tr></thead><tbody>");
         for (var i = 0; i < d.Lines.Count; i++)
         {
-            var l = d.Lines[i];
-            sb.Append("<tr><td class=\"n\">").Append((i + 1).Num()).Append("</td>")
-              .Append("<td class=\"nm\">").Append(Esc(l.ProductName)).Append("</td>")
-              .Append("<td class=\"q\">").Append(l.Quantity.Qty()).Append("</td></tr>");
+            var line = d.Lines[i];
+            sb.Append("<tr><td>").Append((i + 1).Num()).Append("</td><td class=\"name\">").Append(Esc(line.ProductName)).Append("</td><td>").Append(line.Quantity.Qty()).Append("</td><td>").Append(Esc(line.Note)).Append("</td></tr>");
         }
-        sb.Append("</tbody><tfoot><tr><td class=\"tl\" colspan=\"2\">جمع مقادیر</td>")
-          .Append("<td class=\"tv\">").Append(total.Qty()).Append("</td></tr></tfoot></table>");
-
-        // ---------- امضاها ----------
-        sb.Append("<div class=\"signs\"><div>امضای تحویل‌دهنده</div>")
-          .Append("<div>امضای صاحب کالا</div>")
-          .Append("<div>امضای مشتری / دریافت‌کننده</div></div>");
-
-        // ---------- پانوسه ----------
-        sb.Append("<div class=\"foot\">سامانه مدیریت انبار و فروش • ").Append(Esc(companyName))
-          .Append(" • تولیدشده در ").Append(DateTime.Now.ToFaDateTime().FaDigits()).Append("</div>");
-
-        sb.Append("</body></html>");
+        sb.Append("</tbody></table><section class=\"signatures\"><div><strong>امضای تحویل‌دهنده</strong><span>نام و امضا</span></div><div><strong>امضای تحویل‌گیرنده</strong><span>نام و امضا</span></div></section>");
+        sb.Append("<section class=\"notes\"><span class=\"brand\">").Append(Esc(companyName)).Append("</span><p>").Append(Esc(d.Description)).Append("</p></section></main></body></html>");
         return sb.ToString();
     }
 
-    private static string Esc(string? t) => System.Net.WebUtility.HtmlEncode(t ?? "");
+    private static string Esc(string? value) => WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(value) ? "-" : value.Trim());
 
-    /// <summary>استایل سند چاپ (A4) — خودبساده و بدون وابستگی به بوت‌استراپ.</summary>
-    public const string Css = @"@font-face { font-family:'Vazirmatn'; src:url('__FONT_BASE__fonts/Vazirmatn-Regular.woff2') format('woff2'); font-weight:400; font-display:swap; }
-@font-face { font-family:'Vazirmatn'; src:url('__FONT_BASE__fonts/Vazirmatn-Medium.woff2') format('woff2'); font-weight:500; font-display:swap; }
-@font-face { font-family:'Vazirmatn'; src:url('__FONT_BASE__fonts/Vazirmatn-SemiBold.woff2') format('woff2'); font-weight:600; font-display:swap; }
-@font-face { font-family:'Vazirmatn'; src:url('__FONT_BASE__fonts/Vazirmatn-Bold.woff2') format('woff2'); font-weight:700; font-display:swap; }
-@font-face { font-family:'Vazirmatn'; src:url('__FONT_BASE__fonts/Vazirmatn-ExtraBold.woff2') format('woff2'); font-weight:800; font-display:swap; }
-@page { size: A4 portrait; margin: 12mm; }
-* { box-sizing: border-box; }
-body { margin:0; background:#fff; color:#0f172a; font-family:'Vazirmatn',Tahoma,'Segoe UI',sans-serif; font-size:12px; }
-.head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding-bottom:9px; border-bottom:3px solid #4f46e5; }
-.brand { display:flex; align-items:center; gap:10px; }
-.logo { width:46px; height:46px; border-radius:13px; background:#4f46e5; color:#fff; font-size:24px; font-weight:800; text-align:center; line-height:46px; }
-.co { font-size:16px; font-weight:800; color:#312e81; }
-.sub { font-size:11.5px; color:#64748b; margin-top:2px; }
-.meta { min-width:180px; font-size:11px; }
-.meta div { display:flex; justify-content:space-between; gap:12px; padding:1.5px 0; }
-.meta .l { color:#64748b; }
-.meta .v { font-weight:800; }
-.party { display:flex; gap:26px; flex-wrap:wrap; margin:12px 0 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px; padding:9px 13px; }
-.party .item { font-size:12px; }
-.party .l { color:#64748b; margin-inline-end:7px; }
-.party .v { font-weight:800; color:#1e293b; }
-table { width:100%; border-collapse:collapse; }
-thead th { background:#4f46e5; color:#fff; padding:8px 9px; border:1px solid #4338ca; font-size:12px; font-weight:700; }
-tbody td { border:1px solid #e2e8f0; padding:7px 9px; }
-tbody tr:nth-child(even) td { background:#f8fafc; }
-td.n { width:44px; text-align:center; color:#94a3b8; font-weight:800; }
-td.nm { font-weight:600; }
-td.q { width:110px; text-align:center; font-weight:800; }
-tfoot td { background:#eef2ff; border:1px solid #c7d2fe; padding:9px; font-weight:800; color:#3730a3; }
-tfoot .tl { text-align:left; }
-tfoot .tv { text-align:center; font-size:13.5px; }
-.signs { display:flex; gap:34px; margin-top:46px; }
-.signs div { flex:1; text-align:center; font-size:11px; color:#64748b; border-top:1px dashed #94a3b8; padding-top:7px; }
-.foot { margin-top:26px; padding-top:8px; border-top:1px solid #e2e8f0; font-size:9.5px; color:#94a3b8; text-align:center; }";
+    public const string Css = @"@font-face{font-family:Vazirmatn;src:url('__FONT_BASE__fonts/Vazirmatn-Regular.woff2')}@font-face{font-family:Vazirmatn;src:url('__FONT_BASE__fonts/Vazirmatn-Bold.woff2');font-weight:700}
+@page{size:__SIZE__ portrait;margin:__MARGIN__}*{box-sizing:border-box}body{margin:0;background:white;color:#253247;font:11px Vazirmatn,Tahoma,sans-serif}.sheet{max-width:190mm;margin:auto}.sheet.a5{max-width:134mm;font-size:9px}
+.head{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:10px;align-items:center;border-bottom:2px solid #303b4b;padding-bottom:16px}.mark{justify-self:start;border:1px solid #b5bdc8;padding:10px 16px;font-size:22px;font-weight:700}.title{text-align:center}.title h1{font-size:17px;margin:0 0 6px}.title h2{font-size:14px;margin:0;overflow-wrap:anywhere}.meta{margin:0;font-size:9px}.meta div{display:flex;justify-content:flex-end;gap:8px;margin:6px 0}.meta dt{white-space:nowrap;color:#64748b}.meta dd{margin:0;overflow-wrap:anywhere}
+.party{margin-top:16px;border:1px solid #b5bdc8;border-radius:4px;overflow:hidden}.party h3{margin:0;padding:6px 10px;font-size:10px;background:#f0f2f5;border-bottom:1px solid #b5bdc8}.party>div{display:flex;gap:10px;padding:12px}.party span{color:#64748b}.party strong{font-weight:400;overflow-wrap:anywhere}.caption{display:flex;justify-content:space-between;gap:10px;margin:18px 0 8px;font-size:10px}.caption span{color:#64748b}
+table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #a5afbc;text-align:center;padding:9px 7px;overflow-wrap:anywhere}thead{display:table-header-group}th{background:#f0f2f5;font-size:10px}th:first-child{white-space:nowrap}tbody tr:nth-child(even){background:#fafbfc}.name{text-align:right;font-weight:700}
+.signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:22px 0 16px;break-inside:avoid}.signatures>div{border:1px dashed #a5afbc;height:86px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px;font-size:10px}.signatures span{color:#94a3b8;font-size:9px}.notes{position:relative;border-top:1px solid #b5bdc8;margin-top:20px;padding-top:14px;break-inside:avoid}.brand{position:absolute;top:0;left:50%;transform:translate(-50%,-50%);background:white;padding:0 10px;font-size:8px;max-width:80%;text-align:center}.notes p{white-space:pre-wrap;overflow-wrap:anywhere;color:#64748b;line-height:1.9;margin:0}
+.a5 .title h1{font-size:14px}.a5 .title h2{font-size:11px}.a5 .meta{font-size:7px}.a5 th,.a5 td{padding:6px 4px;font-size:8px}.a5 .signatures{gap:20px;margin:14px 0}.a5 .signatures>div{height:60px;font-size:8px}.a5 .signatures span{font-size:7px}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}tr,.head,.party{break-inside:avoid}.sheet{max-width:100%}}";
 }

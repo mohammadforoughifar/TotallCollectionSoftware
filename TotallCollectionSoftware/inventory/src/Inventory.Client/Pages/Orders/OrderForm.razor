@@ -751,12 +751,7 @@
             {
                 <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
             }
-            <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="invoice-print-paper-@formKey">
-                کاغذ چاپ
-                <select id="invoice-print-paper-@formKey" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size disabled="@saving">
-                    <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
-                </select>
-            </label>
+
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
@@ -2533,6 +2528,9 @@
                 InvoiceError("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
                 return;
             }
+            var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
+            if (selectedPaper is null) return;
+            printPaperSize = selectedPaper;
             var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
             var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened)

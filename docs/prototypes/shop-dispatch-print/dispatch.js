@@ -16,4 +16,7 @@ function render(){
 }
 function fit(){const invoice=$('invoice'),viewport=document.querySelector('.paper-viewport');invoice.style.transform='';viewport.style.height='';if(innerWidth<=800){const scale=Math.min(1,viewport.clientWidth/invoice.offsetWidth);invoice.style.transform=`scale(${scale})`;invoice.style.transformOrigin='top right';viewport.style.height=`${Math.ceil(invoice.offsetHeight*scale)+20}px`;}}
 function update(){const paper=$('paper').value;$('invoice').classList.toggle('a5',paper==='A5');$('paper-label').textContent=`${paper} · عمودی · بدون قیمت`;$('paper-rule').textContent=`@page{size:${paper} portrait;margin:${paper==='A5'?6:10}mm}`;requestAnimationFrame(fit);}
-$('paper').addEventListener('change',update);$('print').addEventListener('click',()=>window.print());$('reset').addEventListener('click',()=>location.reload());window.addEventListener('resize',fit);document.fonts.ready.then(fit);render();update();
+$('paper').addEventListener('change',update);$('print').addEventListener('click',()=>$('paper-dialog').showModal());$('reset').addEventListener('click',()=>location.reload());window.addEventListener('resize',fit);document.fonts.ready.then(fit);render();update();
+
+$('cancel-paper').addEventListener('click',()=>$('paper-dialog').close());
+$('confirm-paper').addEventListener('click',()=>{$('paper-dialog').close();window.print();});

@@ -145,8 +145,11 @@ document.querySelector('.settings').addEventListener('input',update);
 $('paper').addEventListener('change',update);
 $('add-bank').addEventListener('click',()=>addBankRow({focus:true}));
 $('reset').addEventListener('click',()=>location.reload());
-$('print').addEventListener('click',()=>{if(updateBanks())window.print();});
+$('print').addEventListener('click',()=>{if(updateBanks())$('paper-dialog').showModal();});
 window.addEventListener('resize',fitPaper);
 document.fonts.ready.then(fitPaper);
 window.addEventListener('load',fitPaper);
 addBankRow();
+
+$('cancel-paper').addEventListener('click',()=>$('paper-dialog').close());
+$('confirm-paper').addEventListener('click',()=>{$('paper-dialog').close();window.print();});

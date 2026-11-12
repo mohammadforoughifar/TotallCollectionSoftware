@@ -38,7 +38,8 @@ class ShopPrintPreviewContracts(unittest.TestCase):
         self.assertLess(preview, callback)
         self.assertIn('data-hotkey="f4"', invoice)
         issue = read('Pages/Catalog/GoodsIssues.razor')
-        self.assertIn('private async Task PrintCurrent() => await PrintDoc(form);', issue)
+        self.assertIn('await Print(form);', issue)
+        self.assertIn('if (form.Id <= 0)', issue)
         self.assertIn('data-hotkey="f4"', issue)
 
     def test_all_shop_report_print_buttons_have_an_explicit_report_root(self):

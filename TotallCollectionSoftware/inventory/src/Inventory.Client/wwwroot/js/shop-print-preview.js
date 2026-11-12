@@ -603,5 +603,30 @@
         }
     }
 
-    window.shopPrintPreview = { openHtml: openHtml, openElement: openElement, openPdf: openPdf };
+    let paperChoice = null;
+    function choosePaper() {
+        if (paperChoice) return paperChoice;
+        const previousFocus = document.activeElement;
+        paperChoice = new Promise(function (resolve) {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'shop-paper-choice';
+            dialog.dir = 'rtl';
+            dialog.setAttribute('aria-labelledby', 'shop-paper-title');
+            dialog.innerHTML = '<form method="dialog"><h2 id="shop-paper-title">اندازهٔ کاغذ این چاپ</h2>' +
+                '<label for="shop-paper-select">کاغذ<select id="shop-paper-select" autofocus><option value="A4">A4</option><option value="A5">A5</option></select></label>' +
+                '<div><button value="cancel">انصراف</button><button value="confirm" class="confirm">ادامهٔ چاپ</button></div></form>';
+            dialog.addEventListener('close', function () {
+                const value = dialog.returnValue === 'confirm' ? dialog.querySelector('select').value : null;
+                dialog.remove();
+                paperChoice = null;
+                if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+                resolve(value);
+            }, { once: true });
+            document.body.appendChild(dialog);
+            dialog.showModal();
+        });
+        return paperChoice;
+    }
+
+    window.shopPrintPreview = { choosePaper: choosePaper, openHtml: openHtml, openElement: openElement, openPdf: openPdf };
 })();

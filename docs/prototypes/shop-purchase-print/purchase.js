@@ -63,4 +63,7 @@ function fitPaper(){
  if(window.innerWidth<=800){const scale=Math.min(1,viewport.clientWidth/invoice.offsetWidth);invoice.style.transform=`scale(${scale})`;invoice.style.transformOrigin='top right';viewport.style.height=`${Math.ceil(invoice.offsetHeight*scale)+20}px`;}
 }
 function update(){invoice.classList.toggle('a5',$('paper').value==='A5');$('paper-label').textContent=`${$('paper').value} · عمودی · ریال`;$('paper-rule').textContent=`@page {size:${$('paper').value} portrait;margin:${$('paper').value==='A5'?6:10}mm}`;requestAnimationFrame(fitPaper);}
-$('paper').addEventListener('change',update);$('print').addEventListener('click',()=>window.print());$('reset').addEventListener('click',()=>location.reload());window.addEventListener('resize',fitPaper);document.fonts.ready.then(fitPaper);update();
+$('paper').addEventListener('change',update);$('print').addEventListener('click',()=>$('paper-dialog').showModal());$('reset').addEventListener('click',()=>location.reload());window.addEventListener('resize',fitPaper);document.fonts.ready.then(fitPaper);update();
+
+$('cancel-paper').addEventListener('click',()=>$('paper-dialog').close());
+$('confirm-paper').addEventListener('click',()=>{$('paper-dialog').close();window.print();});

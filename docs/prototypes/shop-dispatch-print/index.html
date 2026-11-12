@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>پیش‌نمایش بیجک تحویل کالا</title><link rel="stylesheet" href="../shop-invoice-print/preview.css?v=21"><link rel="stylesheet" href="../shop-purchase-print/purchase.css?v=4"><style id="paper-rule">@page { size: A4 portrait; margin: 10mm; }</style><style>.items td:nth-child(5){font-size:9px;color:#64748b}.items td:nth-child(2){font-weight:700}.dispatch-count{margin-top:8px;text-align:left;font-size:10px}</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>پیش‌نمایش بیجک تحویل کالا</title><link rel="stylesheet" href="../shop-invoice-print/preview.css?v=21"><link rel="stylesheet" href="../shop-purchase-print/purchase.css?v=4"><style id="paper-rule">@page { size: A4 portrait; margin: 10mm; }</style><style>.items td:nth-child(5){font-size:9px;color:#64748b}.items td:nth-child(2){font-weight:700}.dispatch-count{margin-top:8px;text-align:left;font-size:10px}</style><style>#paper-dialog{border:1px solid #a5afbc;border-radius:10px;padding:20px;font:inherit}#paper-dialog::backdrop{background:#0f172a66}@media print{#paper-dialog{display:none!important}}</style></head>
 <body>
 <header class="app-header"><div class="app-brand"><span class="app-mark">FA</span><div><strong>پیش‌نمایش بیجک تحویل کالا</strong><small>سامانهٔ فروشگاهی / تنظیمات / چاپ فاکتور</small></div></div><span class="scope-badge">مستقل از مکاتبات اداری</span></header>
 <div class="preview-banner"><span>پیش‌نمایش طراحی؛ اتصال به داده‌های واقعی فعال نیست.</span></div>
 <main class="workspace">
 
 <section class="preview-panel" aria-label="پیش‌نمایش فاکتور">
- <div class="preview-toolbar"><div><strong>پیش‌نمایش زنده</strong><small id="paper-label">A4 · عمودی · بدون قیمت</small></div><div class="toolbar-actions"><label for="paper" class="paper-choice">کاغذ این چاپ<select id="paper"><option>A4</option><option>A5</option></select></label><button id="reset" type="button">بازنشانی</button><button id="print" class="primary" type="button">چاپ / ذخیره PDF</button></div></div>
+ <div class="preview-toolbar"><div><strong>پیش‌نمایش زنده</strong><small id="paper-label">A4 · عمودی · بدون قیمت</small></div><div class="toolbar-actions"><button id="reset" type="button">بازنشانی</button><button id="print" class="primary" type="button">چاپ / ذخیره PDF</button></div></div>
 
  <div class="paper-viewport"><article class="invoice classic" id="invoice" aria-label="بیجک تحویل کالا">
   <header class="invoice-header"><div class="logo-cell"><img id="invoice-logo" src="../shop-invoice-print/assets/company-logo.png" alt="لوگوی شرکت"></div><div class="title-cell"><span class="document-kind" id="document-title">بیجک تحویل کالا</span><h2>مرکز کامپیوتری فروغ آریا</h2></div><dl class="document-meta"><div><dt>شماره بیجک</dt><dd id="invoice-number">۱۴۰۵–۰۰۲۱۸</dd></div><div><dt>تاریخ</dt><dd id="invoice-date">۱۴۰۵/۰۸/۲۰</dd></div></dl></header>
@@ -20,4 +20,4 @@
  </article></div>
  <p class="preview-footnote">بیجک بدون قیمت · فقط اطلاعات قابل ثبت در سند بیجک.</p>
 </section>
-</main><script src="dispatch.js?v=2"></script></body></html>
+</main><dialog id="paper-dialog" dir="rtl"><h3>اندازهٔ کاغذ این چاپ</h3><label for="paper" class="paper-choice">کاغذ این چاپ<select id="paper"><option>A4</option><option>A5</option></select></label><div style="display:flex;gap:8px;margin-top:16px"><button id="cancel-paper" type="button">انصراف</button><button id="confirm-paper" type="button">ادامهٔ چاپ</button></div></dialog><script src="dispatch.js?v=3"></script></body></html>
