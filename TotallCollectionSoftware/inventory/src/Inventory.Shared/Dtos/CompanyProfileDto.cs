@@ -11,6 +11,8 @@ public class CompanyProfileDto
     /// <summary>نام فروشگاه / شرکت — داینامیک روی فاکتور چاپی</summary>
     public string Name { get; set; } = "";
 
+    public string? LogoDataUrl { get; set; }
+
     /// <summary>شماره حساب بانکی</summary>
     public string? AccountNumber { get; set; }
 

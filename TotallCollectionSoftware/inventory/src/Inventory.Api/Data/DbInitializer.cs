@@ -47,6 +47,7 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
+                    await CompanyLogoSchemaV1.EnsureAsync(db);
                     await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
@@ -61,6 +62,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -134,6 +136,7 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
+                    await CompanyLogoSchemaV1.EnsureAsync(db);
                     await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
@@ -147,6 +150,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -334,6 +338,7 @@ public static class DbInitializer
                 await SalesCompanySchemaV1.EnsureAsync(db);
                 await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                 await ShopPricingSchemaV1.EnsureAsync(db);
+                await ShopPrintSettingsSchemaV1.EnsureAsync(db);
 
                 // حذف نرم فاکتور (قاعدهٔ سهمیهٔ لایسنس: حذف توسط کاربر مصرف را برنمی‌گرداند)
                 await InvoiceSoftDeleteSchemaV1.EnsureAsync(db);

@@ -10,6 +10,7 @@
 @inject IProductService ProductSvc
 @inject IWarehouseService WarehouseSvc
 @inject ITrsAccountService AccountSvc
+@inject IShopPrintSettingsClient PrintSettingsClient
 @inject ICompanyProfileService ProfileSvc
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -1893,7 +1894,11 @@ else
                 return;
             }
 
-            var html = SaleInvoicePrint.Build(invoice, companyProfile);
+            var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
+            if (selectedPaper is null) return;
+            companyProfile = await ProfileSvc.GetAsync();
+            var bankSettings = await PrintSettingsClient.GetAsync();
+            var html = ShopSaleInvoicePrint.Build(invoice, companyProfile, selectedPaper, bankSettings);
             var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened) Toast.Error("پیش‌نمایش چاپ باز نشد.");
         }

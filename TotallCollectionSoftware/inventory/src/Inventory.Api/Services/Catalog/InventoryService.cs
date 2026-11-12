@@ -1884,9 +1884,10 @@ public class InventoryService : IInventoryService
             availableCustomerCredit = Math.Max(0m, -signed);
         }
         var products = await _db.Products.Where(p => t.Lines.Select(l => l.ProductId).Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        string? partyName = null;
-        if (t.PartyId.HasValue)
-            partyName = await _db.Parties.Where(p => p.Id == t.PartyId.Value).Select(p => p.Name).FirstOrDefaultAsync();
+        var invoiceParty = t.PartyId.HasValue
+            ? await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == t.PartyId.Value)
+            : null;
+        var partyName = invoiceParty?.Name;
         string? whName = await _db.Warehouses.Where(w => w.Id == t.WarehouseId).Select(w => w.Name).FirstOrDefaultAsync();
         var referrer = t.ReferrerId.HasValue
             ? await _db.Referrers.AsNoTracking().FirstOrDefaultAsync(r => r.Id == t.ReferrerId.Value)
@@ -1943,6 +1944,9 @@ public class InventoryService : IInventoryService
             WarehouseName = whName,
             PartyId = t.PartyId ?? 0,
             PartyName = partyName,
+            PartyPhone = string.IsNullOrWhiteSpace(invoiceParty?.Mobile) ? invoiceParty?.Phone : invoiceParty?.Mobile,
+            PartyAddress = invoiceParty?.Address,
+            PartyTaxId = invoiceParty?.TaxId,
             ReferrerId = t.ReferrerId,
             ReferrerName = referrer?.Name,
             ReferrerGoodsCommissionPercent = goodsRate,

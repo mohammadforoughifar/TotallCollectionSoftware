@@ -106,6 +106,9 @@ public static class ShopSections
         new("Parties",         "طرف حساب‌ها (مشتری و تأمین‌کننده)",         "bi-people",         true,
             Array.Empty<string>(), ["parties"]),
 
+        new("PrintSettings", "تنظیمات چاپ", "bi-printer", true,
+            Array.Empty<string>(), ["shop/print-settings"]),
+
         new("Pricing",         "قیمت‌گذاری و حداقل سود",                     "bi-tags",           true,
             Array.Empty<string>(), ["shop/pricing"]),
 

@@ -63,3 +63,10 @@
     .shop-print-status { padding-inline: .7rem; }
 }
 @media print { .shop-print-preview { display: none !important; } }
+
+.shop-paper-choice{border:1px solid #cbd5e1;border-radius:12px;padding:22px;width:min(340px,90vw);font-family:inherit;color:#253247}
+.shop-paper-choice::backdrop{background:#0f172a66}
+.shop-paper-choice h2{font-size:16px;margin:0 0 18px}.shop-paper-choice label{display:block;font-size:13px}
+.shop-paper-choice select{display:block;width:100%;margin:8px 0 20px;padding:8px;border:1px solid #94a3b8;border-radius:6px;background:white;color:#253247}
+.shop-paper-choice form>div{display:flex;justify-content:flex-end;gap:8px}.shop-paper-choice button{padding:8px 14px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#334155;font:inherit;cursor:pointer}
+.shop-paper-choice .confirm{background:#4338ca;color:white;border-color:#4338ca}

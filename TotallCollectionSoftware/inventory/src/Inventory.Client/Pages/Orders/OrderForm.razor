@@ -5,6 +5,7 @@
 @inject IReferrerService ReferrerSvc
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
+@inject IShopPrintSettingsClient PrintSettingsClient
 @inject ICompanyProfileService ProfileSvc
 @inject IJSRuntime JS
 @using Inventory.Client.Pages.Orders
@@ -755,6 +756,7 @@
             {
                 <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)</button>
             }
+
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
@@ -772,7 +774,7 @@
     <ChildContent>
         <div data-order-child="print-paper">
             <label class="form-label fs-8" for="invoice-print-paper-@formKey">اندازهٔ کاغذ</label>
-            <select id="invoice-print-paper-@formKey" class="form-select form-select-sm" @bind="printPaperSize" data-invoice-paper-size>
+            <select id="invoice-print-paper-@formKey" class="form-select form-select-sm" @bind="printPaperSize">
                 <option value="A4">A4</option>
                 <option value="A5">A5</option>
             </select>
@@ -2598,14 +2600,17 @@
     {
         try
         {
-            companyProfile ??= await ProfileSvc.GetAsync();
+            companyProfile = await ProfileSvc.GetAsync();
             var order = await OrderSvc.GetAsync(orderId);
             if (order is null || order.Lines.Count == 0)
             {
                 InvoiceError("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
                 return;
             }
-            var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
+            var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
+            var html = order.IsSale
+                ? ShopSaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)
+                : ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize);
             var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
             if (!opened)
                 InvoiceError("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");

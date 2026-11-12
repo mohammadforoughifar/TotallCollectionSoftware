@@ -15,11 +15,11 @@ namespace Inventory.Client.Pages.Orders;
 public static class SaleInvoicePrint
 {
     /// <summary>سند کامل HTML چاپ را از روی سند خرید/فروش + پروفایل شرکت می‌سازد.</summary>
-    public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null)
+    public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null, ShopPrintSettingsDto? shopSettings = null)
     {
         var company = string.IsNullOrWhiteSpace(profile?.Name) ? "فروغ آریا" : profile!.Name.Trim();
         var isSale = order.IsSale;
-        var docTitle = isSale ? "فاکتور فروش" : "رسید خرید";
+        var docTitle = isSale ? "فاکتور فروش" : "فاکتور خرید";
         var partyLabel = isSale ? "مشتری" : "فروشنده";
         var lines = order.Lines.OrderBy(l => l.Id).ToList();
         var showSignatures = profile?.PrintShowSignatures ?? true;
@@ -45,11 +45,28 @@ public static class SaleInvoicePrint
         foreach (var hl in SplitLines(profile?.PrintHeaderLines))
             sb.Append("<div class=\"pre-head\">").Append(Esc(hl)).Append("</div>");
 
+        if (!isSale)
+        {
+            // Purchase-only header: equal outer columns keep the company centered.
+            // The current Order DTO has no supplier invoice number; never use a demo value.
+            sb.Append("<header class=\"purchase-header\"><div class=\"purchase-mark\">").Append(CompanyMark(profile, "خ")).Append("</div>");
+            sb.Append("<div class=\"purchase-title\"><div class=\"caption\">فاکتور خرید</div><div class=\"company\">")
+                .Append(Esc(company)).Append("</div></div><div class=\"purchase-meta\">");
+            Meta(sb, "شماره سند خرید", order.Number);
+            Meta(sb, "شماره فاکتور تأمین‌کننده", "-");
+            Meta(sb, "تاریخ", order.Date.ToFa().FaDigits());
+            sb.Append("</div>");
+            if (!string.IsNullOrWhiteSpace(profile?.Phone) || !string.IsNullOrWhiteSpace(profile?.Address))
+                sb.Append("<div class=\"purchase-contact\">").Append(Esc(profile?.Phone)).Append(" ")
+                    .Append(Esc(profile?.Address)).Append("</div>");
+            sb.Append("</header>");
+        }
+        else
+        {
         // ---------- سربرگ — وسط‌چین (نام فروشگاه + عنوان سند) ----------
         sb.Append("<header class=\"header\">");
-        sb.Append("<div class=\"brand-center\"><div class=\"mark\">")
-            .Append(isSale ? "ف" : "ر")
-            .Append("</div><div class=\"company\">")
+        sb.Append("<div class=\"brand-center\">").Append(CompanyMark(profile, isSale ? "ف" : "ر"))
+            .Append("<div class=\"company\">")
             .Append(Esc(company)).Append("</div><div class=\"caption\">").Append(docTitle).Append("</div></div>");
 
         // ---------- اطلاعات تماس فروشگاه — وسط‌چین (تلفن / آدرس / شناسه‌ها) ----------
@@ -64,13 +81,17 @@ public static class SaleInvoicePrint
 
         sb.Append("<div class=\"invoice-stamp\"><span>").Append(docTitle).Append("</span><strong>")
             .Append(Esc(order.Number)).Append("</strong></div></header>");
+        }
         if (order.IsCancelled)
             sb.Append("<div class=\"cancelled\">این فاکتور ابطال شده است</div>");
 
         // ---------- متادیتای سند ----------
         sb.Append("<section class=\"meta\">");
-        Meta(sb, "شماره سند", order.Number);
-        Meta(sb, "تاریخ", order.Date.ToFa().FaDigits());
+        if (isSale)
+        {
+            Meta(sb, "شماره سند", order.Number);
+            Meta(sb, "تاریخ", order.Date.ToFa().FaDigits());
+        }
         Meta(sb, "انبار", string.IsNullOrWhiteSpace(order.WarehouseName) ? "—" : order.WarehouseName!);
         if (isSale)
             Meta(sb, "روش پرداخت", PayLabel(order.PaymentMethod));
@@ -207,7 +228,15 @@ public static class SaleInvoicePrint
 
         // ---------- footer — شامل شماره حساب فروشگاه ----------
         sb.Append("<footer>");
-        if (!string.IsNullOrWhiteSpace(profile?.AccountNumber))
+        if (isSale && shopSettings is not null)
+        {
+            foreach (var bank in ShopPrintBankRules.Validate(shopSettings).Banks)
+            {
+                if (bank.Card.Length > 0) sb.Append("<div class=\"account-line\">شماره کارت: <bdi>").Append(Esc(bank.Card)).Append("</bdi></div>");
+                if (bank.Iban.Length > 0) sb.Append("<div class=\"account-line\">شماره شبا: <bdi>").Append(Esc(bank.Iban)).Append("</bdi></div>");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(profile?.AccountNumber))
             sb.Append("<div class=\"account-line\"><b>شماره حساب:</b> ").Append(Esc(profile!.AccountNumber!.Trim())).Append("</div>");
         var footerLines = SplitLines(profile?.PrintFooterLines);
         if (footerLines.Count > 0)
@@ -278,6 +307,11 @@ public static class SaleInvoicePrint
             .ToList();
     }
 
+    private static string CompanyMark(CompanyProfileDto? profile, string fallback)
+        => profile?.LogoDataUrl?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true
+            ? "<img class=\"mark company-logo\" src=\"" + Esc(profile.LogoDataUrl) + "\" alt=\"لوگوی شرکت\">"
+            : "<span class=\"mark\">" + Esc(fallback) + "</span>";
+
     private static string Esc(string? value) => WebUtility.HtmlEncode(value ?? "");
 
     /// <summary>CSS سند با اندازهٔ کاغذ انتخاب‌شده (A4 یا A5).</summary>
@@ -335,6 +369,21 @@ tbody tr:nth-child(even) td { background:#f8fafc; }
 footer { margin-top:10px; padding-top:7px; border-top:1px solid #e2e8f0; color:#64748b; text-align:center; font-size:8px; overflow-wrap:anywhere; }
 footer div { padding:1px 0; } footer span { padding:0 4px; color:#cbd5e1; } footer .account-line { font-size:9px; font-weight:700; color:#312e81; }
 .paper-a5 .meta { grid-template-columns:repeat(2,minmax(0,1fr)); }.paper-a5 tbody td,.paper-a5 thead th { padding:5px 3px; }
+.purchase-header { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr); gap:8px; align-items:center; padding-bottom:12px; border-bottom:2px solid #303b4b; }
+.company-logo { object-fit:contain; background:none; border:0; border-radius:0; }
+.purchase-mark .company-logo { width:96px; height:64px; }
+.brand-center:has(.company-logo) { grid-template-columns:90px minmax(0,1fr); }
+.brand-center .company-logo { width:90px; height:60px; }
+.purchase-mark { justify-self:start; }.purchase-title { text-align:center; min-width:0; }
+.purchase-title .caption { font-size:15px; color:#182337; font-weight:700; }
+.purchase-title .company { font-size:13px; }
+.purchase-meta { min-width:0; width:100%; }
+.purchase-meta .meta-item { display:flex; justify-content:flex-end; align-items:center; gap:7px; padding:2px 0; border:0; border-radius:0; background:none; }
+.purchase-meta .meta-item span { white-space:nowrap; font-size:8px; }
+.purchase-meta .meta-item strong { font-size:9px; white-space:nowrap; }
+.purchase-contact { grid-column:1/-1; font-size:9px; color:#536278; }
+.paper-a5 .purchase-meta .meta-item { gap:4px; }.paper-a5 .purchase-meta .meta-item span { font-size:6px; }.paper-a5 .purchase-meta .meta-item strong { font-size:7px; }
+.paper-a5 .purchase-title .company { font-size:10px; }.paper-a5 .purchase-title .caption { font-size:12px; }
 @media print {
  body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
  .sheet { width:__SHEET_W__; max-width:100%; margin:0 auto; }

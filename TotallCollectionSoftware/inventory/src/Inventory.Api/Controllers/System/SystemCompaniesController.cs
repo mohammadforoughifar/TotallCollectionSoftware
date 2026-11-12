@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Inventory.Api.Data;
 using Paging = Inventory.Api.Services.Paging;
 using System.IO;
+using Inventory.Api.Services.Core;
 
 namespace Inventory.Api.Controllers;
 
@@ -21,6 +22,8 @@ public class SystemCompaniesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Post([FromBody] SystemCompany c)
     {
+        try { c.LogoDataUrl = CompanyLogoImage.Normalize(c.LogoDataUrl); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         // Lock the company set before adding: a concurrent second company must
         // not race the single-company assignment of ownerless historical rows.
@@ -36,6 +39,8 @@ public class SystemCompaniesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult> Put(int id, [FromBody] SystemCompany c)
     {
+        try { c.LogoDataUrl = CompanyLogoImage.Normalize(c.LogoDataUrl); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         _ = await _db.SystemCompanies.CountAsync();
         var item = await _db.SystemCompanies.FirstOrDefaultAsync(x => x.Id == id);
@@ -43,6 +48,7 @@ public class SystemCompaniesController : ControllerBase
         var activating = !item.IsActive && c.IsActive;
         item.Name = c.Name; item.Code = c.Code; item.Phone = c.Phone; item.Address = c.Address;
         item.IsActive = c.IsActive; item.LetterheadFileName = c.LetterheadFileName;
+        item.LogoDataUrl = c.LogoDataUrl;
         await _db.SaveChangesAsync();
         if (activating)
         {
