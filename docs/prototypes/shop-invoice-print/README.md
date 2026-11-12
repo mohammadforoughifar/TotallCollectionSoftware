@@ -1,55 +1,55 @@
-# Shop-only invoice print design proposal
+# Shop-only invoice print proposal — fixed layout revision
 
-This is an isolated interactive **design preview**, not production functionality.
-No application files, services, APIs, database schema, navigation, accounting,
-letter templates or company settings are modified by this proposal. No settings
-are saved, and no network calls are made except loading this static page's assets.
-All customer, invoice, tax, contact and bank details are explicitly hypothetical.
-The supplied Forough Aria logo is used for the preview; its near-black backdrop
-was removed and the artwork downsampled without AI regeneration. Persian fonts
-are copied from the repository's existing client assets.
+This is an isolated **interactive prototype**, not a production settings page.
+No company data, APIs, database schema, letter templates, application settings or
+financial records are changed. There is no persistence. Serve this directory with
+`python -m http.server 8082 --bind 0.0.0.0`. Bank values start empty; never interpret
+checksum-valid test values as real bank accounts or proof of account ownership.
 
-## Review
+## Current agreed layout
 
-Serve this directory, e.g. `python -m http.server 8082 --bind 0.0.0.0`.
-The right-hand controls switch between classic economical and modern minimal
-variants, A4/A5, document title and visibility of signatures/bank information/
-notes/item remarks. Text inputs update with textContent, never injected HTML.
-No settings save button is shown because this is not connected to persistence.
-PDF output contains only the invoice, not the settings panel or preview UI.
-The ordinary screen view fits narrow mobile viewports without changing paper size.
+- Fixed supplied company logo at the right, document title/company name centered,
+  invoice number/date at the left. No layout/logo/section visibility switches.
+- Only customer example data and repeatable seller card/IBAN rows can be edited.
+  A4/A5 remains a per-print choice in the toolbar, not a layout setting.
+- Multiple card/IBAN rows; optional blank fields, live accessible field errors,
+  digit normalization, exact card length plus Luhn checksum, Iranian IBAN format
+  plus ISO mod-97 checksum. IR is accepted explicitly or added to 24 digits.
+  Malformed, all-zero and repeated card values are rejected; duplicate normalized
+  cards/IBANs within the current list are rejected. No silent truncation.
+- Invalid entered rows disable the print action and are not rendered as payment
+  instructions. Remove/add does not reset other data. No treasury accounts are made.
+- Notes are **always present**, generated from the sample invoice number/date,
+  customer, line/quantity count, gross, discount, tax and final total/payment method.
+  They do not invent receipt, delivery or warranty acceptance. All values are sample;
+  the 10% tax is hypothetical and must not become a production tax calculation.
+- A centered Forough Aria brand label interrupts the bottom line of the footer frame.
+  The company name/logo and the software brand footer are distinct concepts.
 
-## Proposed production boundary (not yet implemented)
+The supplied logo's near-black backdrop was removed without AI regeneration.
+The fonts are from existing repository client assets.
 
-- New shop-only configuration route and company-owned storage for
-  `ShopInvoicePrintSettings`, protected by appropriate shop settings permissions.
-- Read company identity from its authoritative profile; do not duplicate company
-  name or silently overwrite global profile/letter-print settings.
-- Current `CompanyProfileDto` has Name but **no logo field**; `SaleInvoicePrint`
-  currently renders a letter mark instead of an actual company logo. The company
-  logo source must be identified/added with explicit approval before integration.
-  The uploaded preview logo must not be hardcoded as every company's logo.
-- Store shop template style, signature/bank/notes visibility, seller print-only
-  card/IBAN/account holder and notes separately from global company print defaults.
-  These details are for printed payment instructions, not new treasury accounts.
-- At print time use invoice snapshots for number/date, buyer details, real line
-  quantities/prices/discount/VAT and totals. Never recalculate actual tax with the
-  hypothetical 10% used in this static example. No profit/cost should be printed.
-- Independent shop renderer and settings service only; do not reuse or mutate
-  administrative letter-print settings, office/invoicing templates or common CSS.
-- Keep per-print A4/A5 choice. Support long invoices with repeated table headers
-  and non-split rows/totals; broader long-content testing is still required.
+## Required future production boundary — not implemented
 
-## Validation performed
+Use a company-owned, shop-only settings store with shop authorization. Read invoice
+buyer data from the same authorized invoice/customer rather than a global customer
+default. Read company name/logo from authoritative company identity; do not hardcode
+the uploaded logo for every company. Current CompanyProfileDto contains Name but
+no logo field; the real logo source needs identification/explicit integration.
+Use real invoice snapshots/totals and actual payment records for generated notes.
+Validate bank data again server-side before saving; this prototype validates only
+in the browser. Keep administrative letters, accounting and other modules independent.
+No unapproved production integration is included in this proposal.
 
-`node --check preview.js` passed. `check-preview.cjs` uses external puppeteer-core
-and Chromium (`CHROME_BIN`, `NODE_PATH`, optional `PREVIEW_URL`). It verifies six
-sample lines and total 378,840,000 rials, both layouts and paper sizes, text-only
-notes, no browser errors and document overflow at 320/390/768/1024/1500px.
-Four generated PDFs were inspected with pypdf: classic and modern A4 are each one
-210x297mm page; A5 versions are each one 148x210mm page. Prototype print margins are
-10mm A4 / 6mm A5. PDFs and screenshots are generated outside Git in
-`/home/user/outputs`, never committed. The sample is short; no guarantee is made
-for arbitrary long notes, bank values or hundreds of lines. Tests here are not a
-.NET build, live Blazor integration, production profile retrieval or physical
-printer verification.
+## Validation
+
+- `node --test bank-validation.test.cjs`: three unit groups for normalization,
+  length, checksum, invalid input and blank fields.
+- `check-preview.cjs`: uses external puppeteer-core / CHROME_BIN / NODE_PATH,
+  optional PREVIEW_URL. Tests invalid print blocking, duplicates, multiple valid
+  cards/removal, text-only customer insertion, fixed logo/notes and responsive
+  widths 320/390/768/1024/1500px. Outputs are outside Git in /home/user/outputs.
+- Generated six-line example PDFs were inspected using pypdf: A4 and A5 are each
+  one page. A4 margins 10mm, A5 6mm. Arbitrary many accounts/long notes may naturally
+  require additional pages; these are not forced onto one page by shrinking text.
+- Not a .NET build, live Blazor/API test, bank verification or physical printer test.

@@ -1,34 +1,41 @@
-// Requires external puppeteer-core and CHROME_BIN. Tests this prototype, not Blazor.
-const assert=require('node:assert/strict');
-const puppeteer=require('puppeteer-core');
+// Isolated browser prototype test, not production Blazor or database integration.
+const assert=require('node:assert/strict');const puppeteer=require('puppeteer-core');const validation=require('./bank-validation.js');
 (async()=>{
  const browser=await puppeteer.launch({executablePath:process.env.CHROME_BIN,args:['--no-sandbox','--disable-dev-shm-usage'],headless:true});
  try{
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.setViewport({width:1500,height:1400});await page.goto(process.env.PREVIEW_URL||'http://localhost:8082');await page.evaluate(()=>document.fonts.ready);
- assert.equal(await page.$eval('#item-rows',el=>el.children.length),6);
+ await page.setViewport({width:1500,height:1450});await page.goto(process.env.PREVIEW_URL||'http://localhost:8082');await page.evaluate(()=>document.fonts.ready);
+ const set=async(sel,value)=>{await page.$eval(sel,(el,val)=>{el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));},value);};
+ assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
- for(const theme of ['classic','modern']){
-  await page.click(`input[name=template][value=${theme}]`);
-  for(const paper of ['A4','A5']){
-   await page.select('#paper',paper);await page.emulateMediaType('print');
-   const info=await page.$eval('#invoice',el=>({width:el.scrollWidth,client:el.clientWidth,height:el.offsetHeight}));
-   assert(info.width<=info.client+2,`${theme}/${paper} overflow`);
-   await page.pdf({path:`/home/user/outputs/shop-${theme}-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});
-   await page.emulateMediaType('screen');console.log(`PASS ${theme}/${paper}`);
-  }
- }
- await page.select('#paper','A4');await page.click('input[name=template][value=classic]');
- await page.$eval('#notes',el=>{el.value='<script>not executable</script>';el.dispatchEvent(new Event('input',{bubbles:true}));});
- assert.equal(await page.$eval('#printed-notes',el=>el.children.length),0);
+ await set('.bank-card','123');assert.equal(await page.$eval('#print',el=>el.disabled),true);
+ assert.equal(await page.$eval('.bank-card',el=>el.getAttribute('aria-invalid')),'true');
+ const prefix='603799000000000';const card=Array.from({length:10},(_,i)=>prefix+i).find(n=>!validation.card(n).error);
+ await set('.bank-card',card);assert.equal(await page.$eval('#print',el=>el.disabled),false);
+ await page.click('#add-bank');await set('.bank-entry:last-child .bank-card',card);
+ assert.equal(await page.$eval('#print',el=>el.disabled),true);assert.match(await page.$eval('.bank-entry:last-child .card-error',e=>e.textContent),/تکراری/);
+ await page.click('.bank-entry:last-child .remove-bank');assert.equal(await page.$eval('#print',el=>el.disabled),false);
+ const secondPrefix='589210000000000';const secondCard=Array.from({length:10},(_,i)=>secondPrefix+i).find(n=>!validation.card(n).error);
+ await page.click('#add-bank');await set('.bank-entry:last-child .bank-card',secondCard);
+ assert.equal(await page.$$('.printed-bank-entry').then(a=>a.length),2);
+ assert.equal(await page.$eval('#print',el=>el.disabled),false);
+ await set('#customer-name','مشتری آزمایشی <script>');assert.match(await page.$eval('#printed-notes',e=>e.textContent),/مشتری آزمایشی <script>/);
+ assert.equal(await page.$eval('#printed-notes',e=>e.children.length),0);
  await page.reload();await page.evaluate(()=>document.fonts.ready);
- await page.screenshot({path:'/home/user/outputs/shop-print-settings-preview.png',fullPage:true});
- await page.$('#invoice').then(el=>el.screenshot({path:'/home/user/outputs/shop-invoice-classic.png'}));
+ for(const paper of ['A4','A5']){
+  await page.select('#paper',paper);await page.emulateMediaType('print');
+  await page.pdf({path:`/home/user/outputs/shop-fixed-${paper}.pdf`,preferCSSPageSize:true,printBackground:true});
+  assert.equal(await page.$eval('#invoice-notes',e=>getComputedStyle(e).display==='none'),false);
+  assert.equal(await page.$eval('#invoice-logo',e=>getComputedStyle(e).display==='none'),false);
+  await page.emulateMediaType('screen');console.log('PASS print '+paper);
+ }
+ await page.select('#paper','A4');await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+ await page.$('#invoice').then(el=>el.screenshot({path:'/home/user/outputs/shop-invoice-fixed.png'}));
  for(const width of [320,390,768,1024,1500]){
   await page.setViewport({width,height:1000});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Page overflow at ${width}`);
-  console.log(`PASS responsive ${width}`);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'overflow '+width);
+  console.log('PASS responsive '+width);
  }
- assert.deepEqual(errors,[]);
+ assert.deepEqual(errors,[]);console.log('PASS fixed layout, dynamic notes, validation and duplicate/removal behavior');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
