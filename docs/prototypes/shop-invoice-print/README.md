@@ -153,3 +153,8 @@ with their respective columns; unit prices are deliberately not summed. Repeated
 gross/discount/net summary rows below are removed. VAT and final payable remain
 below the table in equal-width cells. Minimal layout still shows row discounts
 in descriptions and the total discount is derivable from those invoice lines.
+
+Review correction: the item sum footer was rejected and removed. Monetary
+summary restored to the preceding full-width two-column layout, including gross,
+discount, net, VAT and a full-width final payable. Payment method and quantity
+remain above the item table; no other table proposal or bank behavior changed.

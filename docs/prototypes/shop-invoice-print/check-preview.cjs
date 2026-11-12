@@ -98,15 +98,19 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
    await page.select('#paper',paper);
    assert.equal(await page.$$('#item-rows tr').then(a=>a.length),6);
    const summary=await page.evaluate(()=>{
-    const table=document.querySelector('.proposal-items'),info=document.querySelector('.invoice-info');
-    const body=[...table.querySelectorAll('tbody tr:first-child td')],foot=[...table.querySelectorAll('tfoot tr>*')];
-    return {above:info.getBoundingClientRect().bottom<=table.getBoundingClientRect().top+1,
-      aligned:body.length===foot.length&&body.every((e,i)=>Math.abs(e.getBoundingClientRect().left-foot[i].getBoundingClientRect().left)<1),
-      net:table.querySelector('tfoot [data-column=net]').textContent};
+    const totals=document.querySelector('.totals'),cells=[...totals.children];
+    const boxes=cells.map(e=>e.getBoundingClientRect());
+    return {width:totals.getBoundingClientRect().width,widths:boxes.map(b=>b.width),tops:boxes.map(b=>b.top),info:document.querySelector('.invoice-info').getBoundingClientRect().height};
    });
-   assert(summary.above,'Payment/quantity must be above items');
-   assert(summary.aligned,'Column totals must align with body columns');
-   assert.equal(summary.net,new Intl.NumberFormat('fa-IR').format(344400000));
+   assert(Math.abs(summary.widths[0]-summary.widths[1])<2,'Summary columns unequal');
+   assert(Math.abs(summary.tops[0]-summary.tops[1])<2,'Summary first pair not aligned');
+   assert(Math.abs(summary.tops[2]-summary.tops[3])<2,'Summary second pair not aligned');
+   assert(Math.abs(summary.widths[4]-summary.width)<2,'Final payable not full width');
+   assert(summary.info<55,'Excessive empty info panel');
+
+   assert(await page.$$eval('.proposal-items th:not(:last-child), .proposal-items td:not(:last-child)',cells=>cells.every(e=>getComputedStyle(e).borderLeftStyle==='solid'&&getComputedStyle(e).borderLeftWidth==='1px')),'Missing column separator '+layout+'/'+paper);
+   assert.equal(await page.$$('.proposal-items tfoot').then(a=>a.length),0);
+   assert(await page.evaluate(()=>document.querySelector('.invoice-info').getBoundingClientRect().bottom<=document.querySelector('.proposal-items').getBoundingClientRect().top+1));
    const geometry=await page.evaluate(()=>[...document.querySelectorAll('#item-rows tr:first-child td.money')].map(e=>({width:e.getBoundingClientRect().width,scroll:e.scrollWidth,client:e.clientWidth})));
    assert(Math.max(...geometry.map(e=>e.width))-Math.min(...geometry.map(e=>e.width))<2,'Unequal money columns '+layout+'/'+paper);
    assert(geometry.every(e=>e.scroll<=e.client+1),'Money overflow '+layout+'/'+paper);

@@ -47,24 +47,13 @@ function renderTable(layout='balanced'){
    row.append(cell);
   }return row;
  }));
- const footer=document.createElement('tr');
- const sums={qty:totals.qty,price:null,gross:totals.gross,discount:totals.discount,net};
- for(const [key] of definition.columns){
-  const cell=document.createElement(key==='name'?'th':'td');
-  if(key==='name'){cell.scope='row';cell.textContent='جمع';}
-  else if(key==='row')cell.textContent='';
-  else if(sums[key]===null)cell.textContent='—';
-  else {cell.textContent=money(sums[key]);if(key!=='qty')cell.className='money';}
-  cell.dataset.column=key;footer.append(cell);
- }
- $('item-foot').replaceChildren(footer);
  $('table-proposal-description').textContent=definition.description;
  document.querySelectorAll('[data-table-layout]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.tableLayout===layout)));
  if(typeof fitPaper==='function')requestAnimationFrame(fitPaper);
 }
 document.querySelectorAll('[data-table-layout]').forEach(button=>button.addEventListener('click',()=>renderTable(button.dataset.tableLayout)));
 renderTable();
-for(const [id,value] of Object.entries({vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
+for(const [id,value] of Object.entries({gross:totals.gross,discount:totals.discount,net,vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
 const invoice=$('invoice');
 function fitPaper(){
  const viewport=document.querySelector('.paper-viewport');
