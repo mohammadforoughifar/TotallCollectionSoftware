@@ -85,3 +85,8 @@ Rejected extra digits/pastes do not mark an unchanged valid value red. Validatio
 is recalculated from the actual retained value, so checksum/duplicate/short-number
 errors still apply. Regression checks aria-invalid and empty error messages after
 over-limit attempts on valid cards and IBANs.
+
+Seller address and telephone are displayed inside the lower seller information
+panel alongside manually entered payment details, no longer under the header.
+Buyer contact/address remain in the separate buyer section. Contact values here
+are still explicit prototype samples, not a live company-profile connection.

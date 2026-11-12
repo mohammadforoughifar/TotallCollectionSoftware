@@ -49,3 +49,7 @@
 .iban-prefix { display:flex; align-items:center; padding:0 9px; background:#f1f5f9; color:#475569; border-right:1px solid #dbe1ea; font-size:12px; }
 .iban-input-wrap input.bank-iban { border:0; margin:0; min-width:0; border-radius:0; }
 .iban-input-wrap:has(input[aria-invalid=true]) { border-color:#dc2626; }
+
+/* Seller contact information belongs with payment details, not the header. */
+.bank-details .store-contact { padding: 9px 12px; flex-wrap: wrap; justify-content: flex-start; gap: 7px 24px; }
+.invoice.a5 .bank-details .store-contact { padding: 6px 9px; gap: 5px 14px; }

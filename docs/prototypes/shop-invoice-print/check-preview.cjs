@@ -9,6 +9,11 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  assert.equal(await page.$$('input[type=checkbox], input[type=radio]').then(a=>a.length),0);
  assert.equal(await page.$eval('#payable',el=>el.textContent),new Intl.NumberFormat('fa-IR').format(378840000));
  assert.equal(await page.$$('.title-cell p').then(a=>a.length),0);
+ assert.equal(await page.$$('#invoice > .store-contact').then(a=>a.length),0);
+ assert.equal(await page.$$('#bank-details .store-contact').then(a=>a.length),1);
+ assert.match(await page.$eval('#bank-details .store-contact',e=>e.textContent),/تلفن.*نشانی/);
+ assert(await page.$('#printed-customer-phone'));
+ assert(await page.$('#printed-customer-address'));
  assert.equal(await page.$$('#invoice-notes h3').then(a=>a.length),0);
  assert(await page.$eval('#printed-notes',e=>e.textContent.trim().length>0));
  assert.equal(await page.$$('.branded-footer').then(a=>a.length),0);
