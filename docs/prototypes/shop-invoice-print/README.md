@@ -115,3 +115,27 @@ remains a static prototype and does not become a real transaction by removing la
 Header metadata contains only invoice number/date, with no version label. Plain
 Enter in a card field moves focus to the IBAN in the same row, without printing,
 submitting or adding another row. Browser tests verify this in five viewport sizes.
+
+## Table design comparison (review only)
+
+Three buttons outside the invoice/settings compare proposed table structures;
+this does not introduce a persisted layout setting or alter the other fixed sections.
+
+- Balanced (default/recommended): row, description, quantity, unit price, discount,
+  amount after discount. Three equal monetary columns; notes under product name.
+- Detailed: same plus gross row amount. Four equal monetary columns, more explicit
+  multiplication/discount audit trail, at the expense of description width.
+- Minimal: row, description, quantity, unit price, amount after discount. Row discount
+  moves to a short note under the description. More room for long descriptions.
+
+All table amounts after discount are before tax; VAT remains explicitly in the
+unchanged invoice totals. Values are rendered from the same sample lines, not
+recomputed differently between styles. Horizontal row rules replace repeated
+vertical dividers; proportional column widths and tabular numeric glyphs improve
+symmetry. Existing manual bank entries survive switching table proposals.
+
+Browser regression checks six sample rows, equal money-column widths, no monetary
+cell overflow and unchanged final total for all three structures in A4 and A5.
+The six generated example PDFs were each confirmed one-page with pypdf. Screen
+captures are outside Git in /home/user/outputs/shop-table-{balanced,detailed,minimal}.png.
+These checks still exercise only the isolated static prototype, not the application.
