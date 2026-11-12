@@ -2,7 +2,7 @@
 @inject IAuthState Auth
 @inject IGoodsIssueService IssueSvc
 @inject IPartyService PartySvc
-@inject ISettingsService SettingsSvc
+@inject ICompanyProfileService ProfileSvc
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -317,7 +317,6 @@
     private List<GoodsIssueDto> items = new();
     private List<LookupItem> partyLookup = new();
     private bool loading = true;
-    private string companyName = "\u0641\u0631\u0648\u063a \u0622\u0631\u06cc\u0627";
 
     private int filterPartyId;
     private DateTime? from, to;
@@ -360,12 +359,7 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
-        try
-        {
-            var st = await SettingsSvc.GetAsync();
-            if (!string.IsNullOrWhiteSpace(st?.ItCompanyName)) companyName = st.ItCompanyName!;
-        }
-        catch { /* نام شرکت اختیاری است */ }
+
     }
 
     private async Task Load()
@@ -606,7 +600,9 @@
         if (d is null) return;
         var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
         if (selectedPaper is null) return;
-        var ok = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", GoodsIssuesPrint.Build(d, companyName, selectedPaper));
+        var companyProfile = await ProfileSvc.GetAsync();
+        var companyName = companyProfile.Name;
+        var ok = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", GoodsIssuesPrint.Build(d, companyName, selectedPaper, companyProfile.LogoDataUrl));
         if (!ok) Toast.Error("پیش‌نمایش چاپ باز نشد.");
     }
 }

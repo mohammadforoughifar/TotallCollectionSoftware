@@ -2522,7 +2522,7 @@
     {
         try
         {
-            companyProfile ??= await ProfileSvc.GetAsync();
+            companyProfile = await ProfileSvc.GetAsync();
             var order = await OrderSvc.GetAsync(orderId);
             if (order is null || order.Lines.Count == 0)
             {

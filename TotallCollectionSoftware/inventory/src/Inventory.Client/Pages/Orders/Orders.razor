@@ -878,7 +878,7 @@
         printingId = o.Id;
         try
         {
-            companyProfile ??= await ProfileSvc.GetAsync();
+            companyProfile = await ProfileSvc.GetAsync();
             var order = await OrderSvc.GetAsync(o.Id) ?? o;   // سند کامل (اقلام/چک‌ها)
             if (order.Lines.Count == 0)
                 Toast.Error("این سند قلمی ندارد؛ چاپ انجام نشد.");

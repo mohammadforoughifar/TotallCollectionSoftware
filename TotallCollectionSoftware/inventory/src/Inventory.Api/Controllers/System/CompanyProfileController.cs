@@ -43,6 +43,7 @@ public class CompanyProfileController : ControllerBase
         var dto = new CompanyProfileDto
         {
             Id = company?.Id ?? 0,
+            LogoDataUrl = company?.LogoDataUrl,
             Name = FirstNonEmpty(company?.Name, _config["Company:Name"], "فروشگاه"),
             Phone = FirstNonEmpty(company?.Phone, _config["Company:Phone"]),
             Address = FirstNonEmpty(company?.Address, _config["Company:Address"]),

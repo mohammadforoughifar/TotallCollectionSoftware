@@ -49,7 +49,7 @@ public static class SaleInvoicePrint
         {
             // Purchase-only header: equal outer columns keep the company centered.
             // The current Order DTO has no supplier invoice number; never use a demo value.
-            sb.Append("<header class=\"purchase-header\"><div class=\"purchase-mark\"><span class=\"mark\">خ</span></div>");
+            sb.Append("<header class=\"purchase-header\"><div class=\"purchase-mark\">").Append(CompanyMark(profile, "خ")).Append("</div>");
             sb.Append("<div class=\"purchase-title\"><div class=\"caption\">فاکتور خرید</div><div class=\"company\">")
                 .Append(Esc(company)).Append("</div></div><div class=\"purchase-meta\">");
             Meta(sb, "شماره سند خرید", order.Number);
@@ -65,9 +65,8 @@ public static class SaleInvoicePrint
         {
         // ---------- سربرگ — وسط‌چین (نام فروشگاه + عنوان سند) ----------
         sb.Append("<header class=\"header\">");
-        sb.Append("<div class=\"brand-center\"><div class=\"mark\">")
-            .Append(isSale ? "ف" : "ر")
-            .Append("</div><div class=\"company\">")
+        sb.Append("<div class=\"brand-center\">").Append(CompanyMark(profile, isSale ? "ف" : "ر"))
+            .Append("<div class=\"company\">")
             .Append(Esc(company)).Append("</div><div class=\"caption\">").Append(docTitle).Append("</div></div>");
 
         // ---------- اطلاعات تماس فروشگاه — وسط‌چین (تلفن / آدرس / شناسه‌ها) ----------
@@ -308,6 +307,11 @@ public static class SaleInvoicePrint
             .ToList();
     }
 
+    private static string CompanyMark(CompanyProfileDto? profile, string fallback)
+        => profile?.LogoDataUrl?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true
+            ? "<img class=\"mark company-logo\" src=\"" + Esc(profile.LogoDataUrl) + "\" alt=\"لوگوی شرکت\">"
+            : "<span class=\"mark\">" + Esc(fallback) + "</span>";
+
     private static string Esc(string? value) => WebUtility.HtmlEncode(value ?? "");
 
     /// <summary>CSS سند با اندازهٔ کاغذ انتخاب‌شده (A4 یا A5).</summary>
@@ -366,6 +370,10 @@ footer { margin-top:10px; padding-top:7px; border-top:1px solid #e2e8f0; color:#
 footer div { padding:1px 0; } footer span { padding:0 4px; color:#cbd5e1; } footer .account-line { font-size:9px; font-weight:700; color:#312e81; }
 .paper-a5 .meta { grid-template-columns:repeat(2,minmax(0,1fr)); }.paper-a5 tbody td,.paper-a5 thead th { padding:5px 3px; }
 .purchase-header { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr); gap:8px; align-items:center; padding-bottom:12px; border-bottom:2px solid #303b4b; }
+.company-logo { object-fit:contain; background:none; border:0; border-radius:0; }
+.purchase-mark .company-logo { width:96px; height:64px; }
+.brand-center:has(.company-logo) { grid-template-columns:90px minmax(0,1fr); }
+.brand-center .company-logo { width:90px; height:60px; }
 .purchase-mark { justify-self:start; }.purchase-title { text-align:center; min-width:0; }
 .purchase-title .caption { font-size:15px; color:#182337; font-weight:700; }
 .purchase-title .company { font-size:13px; }

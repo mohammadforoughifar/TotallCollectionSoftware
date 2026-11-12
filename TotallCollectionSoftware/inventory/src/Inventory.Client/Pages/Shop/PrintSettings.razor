@@ -40,6 +40,7 @@ else
             <p class="text-muted mt-3">نام، تلفن و نشانی از تعریف شرکت خوانده می‌شوند. مشخصات مشتری از سند مربوط خوانده می‌شود و اینجا ورودی ندارد. اندازهٔ کاغذ فقط هنگام چاپ انتخاب می‌شود.</p>
         </div></section>
         <section class="card"><div class="card-header">پیش‌نمایش اطلاعات فروشنده</div><div class="card-body seller-preview">
+            @if (profile?.LogoDataUrl is not null) { <img src="@profile.LogoDataUrl" alt="لوگوی شرکت" style="width:106px;height:74px;object-fit:contain" /> }
             <h2>@(profile?.Name ?? "-")</h2><p>تلفن: @(profile?.Phone ?? "-")</p><p>نشانی: @(profile?.Address ?? "-")</p>
             @foreach (var row in rows.Where(r => r.Card.Length > 0 || r.Iban.Length > 0))
             {

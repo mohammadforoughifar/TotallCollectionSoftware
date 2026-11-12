@@ -8,7 +8,7 @@ class DispatchPrintContracts(unittest.TestCase):
         self.assertIn('await Print(form);',source)
         self.assertIn('await IssueSvc.GetAsync(g.Id)',source)
         self.assertIn('"shopPrintPreview.choosePaper"',source)
-        self.assertIn('GoodsIssuesPrint.Build(d, companyName, selectedPaper)',source)
+        self.assertIn('GoodsIssuesPrint.Build(d, companyName, selectedPaper, companyProfile.LogoDataUrl)',source)
     def test_persisted_print_fields(self):
         source=(ROOT/'Pages/Catalog/GoodsIssuesPrint.cs').read_text()
         for field in ['d.Number','d.Date','d.PartyName','d.TotalQuantity','line.ProductName','line.Quantity','line.Note','d.Description']:
