@@ -21,8 +21,12 @@ class DispatchPrintContracts(unittest.TestCase):
         for file in ['Pages/Orders/Orders.razor','Pages/Orders/OrderForm.razor']:
             source=(ROOT/file).read_text()
             self.assertNotIn('data-invoice-paper-size',source)
-            self.assertIn('"shopPrintPreview.choosePaper"',source)
-            self.assertIn('if (selectedPaper is null) return;',source)
+            if file.endswith('OrderForm.razor'):
+                self.assertIn('showPrintPaperChooser',source)
+                self.assertIn('ConfirmPrintPaper',source)
+            else:
+                self.assertIn('"shopPrintPreview.choosePaper"',source)
+                self.assertIn('if (selectedPaper is null) return;',source)
         script=(ROOT/'wwwroot/js/shop-print-preview.js').read_text()
         self.assertIn('dialog.showModal()',script)
         self.assertIn('resolve(value)',script)

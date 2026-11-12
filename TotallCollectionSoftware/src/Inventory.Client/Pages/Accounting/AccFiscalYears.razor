@@ -285,6 +285,13 @@
     {
         var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف «{y.Title}» مطمئن هستید؟");
         if (!ok) return;
+
+        if (y.VoucherCount > 0)
+        {
+            Toast.Error("این سال مالی در صورتحسابی استفاده شده است؛ امکان حذف وجود ندارد.");
+            return;
+        }
+
         try
         {
             await YearSvc.DeleteAsync(y.Id);

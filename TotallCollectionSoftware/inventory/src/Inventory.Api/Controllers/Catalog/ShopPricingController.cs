@@ -2,6 +2,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Core;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -27,6 +28,7 @@ public class ShopPricingController : ApiControllerBase
     public async Task<ActionResult<ShopPricingPolicyDto>> SavePolicy([FromBody] ShopPricingPolicyDto dto) =>
         await AllowedAsync(true) ? Ok(await _pricing.SavePolicyAsync(dto, CurrentActor)) : StatusCode(403, new { message = "مجوز مدیریت قیمت‌گذاری لازم است." });
 
+    [AllowInReadOnly]
     [HttpPost("preview")]
     public async Task<ActionResult<ShopPriceAdjustmentPreview>> Preview([FromBody] ShopPriceAdjustmentRequest dto) =>
         await AllowedAsync(true) ? Ok(await _pricing.PreviewAsync(dto)) : StatusCode(403, new { message = "مجوز مدیریت قیمت‌گذاری لازم است." });

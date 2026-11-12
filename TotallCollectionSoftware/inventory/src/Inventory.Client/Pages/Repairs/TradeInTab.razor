@@ -46,7 +46,7 @@ else
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش طرح تعویض" : $"ویرایش {form.Number}")" OnClose="() => showForm = false">
     <ChildContent>
         <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">مشتری *</label><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div>
+            <div class="col-md-6"><label class="form-label">مشتری *</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف مشتری جدید" @onclick="() => showNewCustomer = true">جدید</button></div></div>
             <div class="col-md-6"><label class="form-label">تاریخ پذیرش *</label><DatePicker @bind-Value="receivedAt" /></div>
             <div class="col-md-6"><label class="form-label">نوع دستگاه *</label><input class="form-control" maxlength="100" @bind="form.DeviceType" /></div>
             <div class="col-md-6"><label class="form-label">مدل</label><input class="form-control" maxlength="200" @bind="form.DeviceModel" /></div>
@@ -96,7 +96,18 @@ else
     }</ChildContent>
 </Modal>
 
+<PartyFormModal ShopQuickCreate="true" Visible="showNewCustomer" Type="PartyType.Customer" AllowReferrerPicker="true" OnSaved="OnCustomerCreated" OnCancel="() => showNewCustomer = false" />
+
 @code {
+    private bool showNewCustomer;
+    private Task OnCustomerCreated(Party created)
+    {
+        showNewCustomer = false;
+        customers.RemoveAll(c => c.Id == created.Id);
+        customers.Add(new LookupItem { Id = created.Id, Name = created.Name });
+        form.PartyId = created.Id;
+        return Task.CompletedTask;
+    }
     private List<ShopTradeInDto> items = new();
     private List<LookupItem> customers = new();
     private List<ShopTradeInTargetSaleDto> orders = new();

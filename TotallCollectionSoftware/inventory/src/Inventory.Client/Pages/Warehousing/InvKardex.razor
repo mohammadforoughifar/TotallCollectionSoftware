@@ -122,7 +122,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-slate">مانده ابتدای دوره</span>
-                            <div class="fin-kpi-value text-dark num mt-1">@result.OpeningQty.Num() <small class="fs-9 text-secondary">@result.Unit</small></div>
+                            <div class="fin-kpi-value text-dark num mt-1">@QuantityText(result.OpeningQty) <small class="fs-9 text-secondary">@result.Unit</small></div>
                             <div class="fin-kpi-unit">ارزش: @result.OpeningValue.Money() ریال</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-slate-subtle text-slate">
@@ -140,7 +140,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-emerald">جمع کل وارده انبار</span>
-                            <div class="fin-kpi-value text-emerald num mt-1">@result.TotalInQty.Num() <small class="fs-9 text-secondary">@result.Unit</small></div>
+                            <div class="fin-kpi-value text-emerald num mt-1">@QuantityText(result.TotalInQty) <small class="fs-9 text-secondary">@result.Unit</small></div>
                             <div class="fin-kpi-unit">ارزش: @result.TotalInValue.Money() ریال</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
@@ -158,7 +158,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-rose">جمع کل صادره انبار</span>
-                            <div class="fin-kpi-value text-rose num mt-1">@result.TotalOutQty.Num() <small class="fs-9 text-secondary">@result.Unit</small></div>
+                            <div class="fin-kpi-value text-rose num mt-1">@QuantityText(result.TotalOutQty) <small class="fs-9 text-secondary">@result.Unit</small></div>
                             <div class="fin-kpi-unit">ارزش: @result.TotalOutValue.Money() ریال</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
@@ -176,7 +176,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-indigo">مانده پایان دوره</span>
-                            <div class="fin-kpi-value text-indigo num mt-1">@result.ClosingQty.Num() <small class="fs-9 text-secondary">@result.Unit</small></div>
+                            <div class="fin-kpi-value text-indigo num mt-1">@QuantityText(result.ClosingQty) <small class="fs-9 text-secondary">@result.Unit</small></div>
                             <div class="fin-kpi-unit">ارزش دفتری: @result.ClosingValue.Money() ریال</div>
                         </div>
                         <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
@@ -243,7 +243,7 @@
                                     <td class="text-center num text-secondary">—</td>
                                     <td colspan="3" class="text-dark">مانده ابتدای دوره (افتتاحیه)</td>
                                     <td colspan="6" class="border-start border-end"></td>
-                                    <td class="text-center num fw-800 text-indigo">@result.OpeningQty.Num()</td>
+                                    <td class="text-center num fw-800 text-indigo">@QuantityText(result.OpeningQty)</td>
                                     <td class="text-center num text-secondary">@(result.OpeningQty != 0 ? (result.OpeningValue / result.OpeningQty).Money() : "—")</td>
                                     <td class="text-center num fw-800 text-indigo">@result.OpeningValue.Money()</td>
                                 </tr>
@@ -266,13 +266,13 @@
                                                 <div class="text-secondary fs-9">@r.Description</div>
                                             }
                                         </td>
-                                        <td class="text-center num text-emerald fw-700 border-start">@(r.InQty != 0 ? r.InQty.Num() : "")</td>
+                                        <td class="text-center num text-emerald fw-700 border-start">@(r.InQty != 0 ? QuantityText(r.InQty) : "")</td>
                                         <td class="text-center num text-secondary fs-8">@(r.InQty != 0 ? r.InPrice.Money() : "")</td>
                                         <td class="text-center num text-emerald fw-700 border-end">@(r.InQty != 0 ? r.InValue.Money() : "")</td>
-                                        <td class="text-center num text-rose fw-700">@(r.OutQty != 0 ? r.OutQty.Num() : "")</td>
+                                        <td class="text-center num text-rose fw-700">@(r.OutQty != 0 ? QuantityText(r.OutQty) : "")</td>
                                         <td class="text-center num text-secondary fs-8">@(r.OutQty != 0 ? r.OutPrice.Money() : "")</td>
                                         <td class="text-center num text-rose fw-700 border-end">@(r.OutQty != 0 ? r.OutValue.Money() : "")</td>
-                                        <td class="text-center num fw-800 text-indigo">@r.BalanceQty.Num()</td>
+                                        <td class="text-center num fw-800 text-indigo">@QuantityText(r.BalanceQty)</td>
                                         <td class="text-center num text-secondary fs-8">@r.BalanceAvg.Money()</td>
                                         <td class="text-center num fw-800 text-indigo">@r.BalanceValue.Money()</td>
                                     </tr>
@@ -281,13 +281,13 @@
                             <tfoot class="bg-light fw-800">
                                 <tr>
                                     <td colspan="4" class="text-end text-dark py-3">جمع کل گردش دوره:</td>
-                                    <td class="text-center num text-emerald border-start">@result.TotalInQty.Num()</td>
+                                    <td class="text-center num text-emerald border-start">@QuantityText(result.TotalInQty)</td>
                                     <td></td>
                                     <td class="text-center num text-emerald border-end">@result.TotalInValue.Money()</td>
-                                    <td class="text-center num text-rose">@result.TotalOutQty.Num()</td>
+                                    <td class="text-center num text-rose">@QuantityText(result.TotalOutQty)</td>
                                     <td></td>
                                     <td class="text-center num text-rose border-end">@result.TotalOutValue.Money()</td>
-                                    <td class="text-center num text-indigo fs-7">@result.ClosingQty.Num()</td>
+                                    <td class="text-center num text-indigo fs-7">@QuantityText(result.ClosingQty)</td>
                                     <td></td>
                                     <td class="text-center num text-indigo fs-7">@result.ClosingValue.Money()</td>
                                 </tr>
@@ -707,6 +707,14 @@
     {
         to = d;
         await Load();
+    }
+
+    // This component is shared: preserve the separate inventory-module presentation.
+    private string QuantityText(decimal value)
+    {
+        var route = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
+        return route.Equals("operations/reports/kardex-rial", StringComparison.OrdinalIgnoreCase)
+            ? value.Qty() : value.Num();
     }
 
     private async Task Print()

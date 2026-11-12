@@ -39,7 +39,7 @@ class InvoiceStockMenuContract(unittest.TestCase):
         self.assertIn('StockQuantity is <= 0m', STOCK)
         self.assertIn('.invoice-stock-quantity.is-warning', CSS)
         self.assertIn('color: #b91c1c; background: #fff1f2', CSS)
-        self.assertIn('Inventory.Client.styles.css?v=9', INDEX)
+        self.assertRegex(INDEX, r'Inventory\.Client\.styles\.css\?v=(?:9|[1-9][0-9]+)')
 
     def test_snapshot_guards_loading_errors_pagination_and_late_responses(self):
         self.assertIn('var requestVersion = ++version;', STOCK)

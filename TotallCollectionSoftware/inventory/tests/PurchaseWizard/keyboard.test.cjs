@@ -124,13 +124,15 @@ test('payment choices have no shortcuts, including the former Alt keys', () => {
     }
 });
 
-test('F7 and F8 open only the focused invoice row last purchase and respect covering dialogs', () => {
+test('F8 alone opens focused row last purchase; removed F7 and covering dialogs cannot', () => {
     const f = fixture(), firstPurchase = button(), secondPurchase = button();
     const firstRow = { querySelector: selector => selector === '[data-order-last-purchase]' ? firstPurchase : null };
     const secondRow = { querySelector: selector => selector === '[data-order-last-purchase]' ? secondPurchase : null };
     f.modal.contains = el => el === firstRow || el === secondRow;
     const target = row => ({ closest: selector => selector === '[data-order-line]' ? row : null });
     let e = event({ key: 'F7', target: target(firstRow) }); f.handler(e);
+    assert.equal(firstPurchase.clicked, 0); assert.equal(secondPurchase.clicked, 0);
+    e = event({ key: 'F8', target: target(firstRow) }); f.handler(e);
     assert.ok(e.prevented && e.stopped); assert.equal(firstPurchase.clicked, 1); assert.equal(secondPurchase.clicked, 0);
     e = event({ key: 'F8', target: target(secondRow) }); f.handler(e);
     assert.equal(secondPurchase.clicked, 1);

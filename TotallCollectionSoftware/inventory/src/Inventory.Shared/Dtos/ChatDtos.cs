@@ -246,9 +246,12 @@ public class ChatTranscriptResultDto
     public bool FromCache { get; set; }
 }
 
+/// <summary>
+/// سقف حجم فایل پیام‌رسان برداشته شده است. این کلاس برای سازگاری با کدهای قبلی نگه داشته
+/// می‌شود و هیچ محدودیتی اعمال نمی‌کند؛ <c>long.MaxValue</c> یعنی «بدون سقف».
+/// </summary>
 public static class ChatFileLimits
 {
-    public const long MaxFileBytes = 50L * 1024 * 1024;
-    // فضای اضافه برای سربرگ multipart؛ محدودیت خود فایل همچنان ۵۰ MiB است.
-    public const long MaxRequestBytes = MaxFileBytes + 1024 * 1024;
+    public const long MaxFileBytes = long.MaxValue;
+    public const long MaxRequestBytes = long.MaxValue;
 }

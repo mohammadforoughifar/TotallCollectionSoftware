@@ -541,6 +541,7 @@
                                             }
                                         </div>
                                     }
+
                                 </td>
                                 <td data-label="مقدار">
                                     <input class="form-control text-center num order-line-control" aria-label="مقدار" inputmode="@(QuantityAllowsFraction(l) == false ? "numeric" : "decimal")" dir="ltr" placeholder="1"
@@ -626,7 +627,9 @@
                                     <div class="order-line-actions">
                                         @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
                                         {
-                                            <button type="button" class="btn btn-sm btn-light text-primary" tabindex="-1" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F7 یا F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F7 یا F8" @onclick="() => ShowLastPurchase(l.ProductId)">F7</button>
+                                            <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
+                                                <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
+                                            </button>
                                         }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
@@ -739,29 +742,49 @@
     </ChildContent>
 
     <Footer>
+        <div class="invoice-footer-actions">
         <button type="button" class="btn btn-light" @onclick="Cancel">انصراف (Esc)</button>
         @if (!loading && UseInvoiceWizard && invoiceStep == 1)
         {
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
-                ادامه و انتخاب روش پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
+            <button type="button" class="btn btn-primary" data-hotkey="f1" data-order-shortcut="next" title="میانبر: F1" @onclick="GoToPayment" disabled="@saving">
+                ادامه پرداخت (F1) <i class="bi bi-arrow-left me-1"></i>
             </button>
         }
         else if (!loading)
         {
             @if (UseInvoiceWizard)
             {
-                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> @(Type == TransactionType.Sale ? "بازگشت به اطلاعات فروش" : "بازگشت به اطلاعات خرید") (F3)</button>
+                <button type="button" class="btn btn-outline-secondary" data-hotkey="f3" title="میانبر: F3" @onclick="BackToInvoice" disabled="@saving"><i class="bi bi-arrow-right"></i> بازگشت (F3)</button>
             }
 
             <button type="button" class="btn btn-outline-primary" data-hotkey="f4" title="میانبر: F4" @onclick="SaveAndPrint" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-printer"></i> @(IsEdit ? "ذخیره و چاپ" : "ثبت و چاپ") (F4)
             </button>
-            <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            <button type="button" class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 <i class="bi bi-check2"></i> @(IsEdit ? "ذخیره تغییرات (F1)" : Type == TransactionType.Purchase ? "ثبت فاکتور خرید (F1)" : "ثبت فاکتور فروش (F1)")
             </button>
         }
+        </div>
+    </Footer>
+</Modal>
+
+<Modal Visible="showPrintPaperChooser" Title="انتخاب کاغذ چاپ" Size="modal-sm" OnClose="ClosePrintPaperChooser">
+    <ChildContent>
+        <div data-order-child="print-paper">
+            <label class="form-label fs-8" for="invoice-print-paper-@formKey">اندازهٔ کاغذ</label>
+            <select id="invoice-print-paper-@formKey" class="form-select form-select-sm" @bind="printPaperSize">
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+            </select>
+        </div>
+    </ChildContent>
+    <Footer>
+        <div class="invoice-footer-actions">
+            <button type="button" class="btn btn-light" @onclick="ClosePrintPaperChooser">انصراف (Esc)</button>
+            <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="ConfirmPrintPaper" disabled="@saving">تأیید و چاپ (F1)</button>
+        </div>
     </Footer>
 </Modal>
 
@@ -828,7 +851,7 @@
                         @if (basis.CompanyId.HasValue) { <small class="text-muted"> · شرکت @basis.CompanyId.Value.Num()</small> }
                         @if (basis.PurchaseId.HasValue)
                         {
-                            <div class="mt-1">خرید مبنا: <b>@basis.PurchaseNumber</b> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
+                            <div class="mt-1">خرید مبنا: <button type="button" class="btn btn-link p-0 fw-bold" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(basis.PurchaseId.Value)">@basis.PurchaseNumber <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
                                 · مقدار <b class="num">@(basis.PurchaseQuantity.HasValue ? basis.PurchaseQuantity.Value.Qty() : "—")</b>
                                 · مبلغ کالا <b class="num">@(basis.PurchaseGross.HasValue ? basis.PurchaseGross.Value.MoneyExact() : "—")</b>
                                 · تخفیف خرید <b class="num">@(basis.PurchaseDiscount.HasValue ? basis.PurchaseDiscount.Value.MoneyExact() : "—")</b> ریال</div>
@@ -854,7 +877,7 @@
                 <div class="d-flex flex-wrap gap-3 mb-3">
                     <div class="flex-grow-1">
                         <div class="fs-8 text-muted">شماره سند</div>
-                        <div class="fw-700 text-primary doc-number">@lastPurchase.Number</div>
+                        <button type="button" class="btn btn-link p-0 fw-700 text-primary doc-number" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(lastPurchase.Id)" title="باز کردن فرم خرید">@lastPurchase.Number <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button>
                     </div>
                     <div class="flex-grow-1">
                         <div class="fs-8 text-muted">تاریخ</div>
@@ -914,6 +937,13 @@
     </Modal>
 }
 
+@if (purchaseFormOrder is not null)
+{
+    @* Keep the sale component/draft mounted while opening the authorized purchase form. *@
+    <OrderForm @key="purchaseFormOrder.Id" Type="TransactionType.Purchase" EditOrder="purchaseFormOrder"
+               OnSaved="OnPurchaseFormSaved" OnCancel="ClosePurchaseForm" />
+}
+
 <Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
@@ -967,6 +997,8 @@
                 {
                     <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8">فاکتور دارای گردش بعدی قابل ویرایش مستقیم نیست؛ برای آن از برگشت کالا، تغییر سررسید یا تعویض چک استفاده کنید. سابقه کامل هنگام ثبت در سرور کنترل می‌شود.</div></div>
                 }
+                @if (!calcInterestOnly)
+                {
                 <div class="col-12">
                     <details class="fs-8">
                         <summary class="text-secondary">شرایط اختیاری تعدیل سررسید (پیش‌فرض: نرخ ماهانه، هر ۳۰ روز)</summary>
@@ -984,6 +1016,7 @@
                         </div>
                     </details>
                 </div>
+                }
             }
             @if (calcInterestOnly)
             {
@@ -1265,7 +1298,7 @@
     // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
     // table the percentage columns share the space left by this fixed-width action column.
     // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
-    private const decimal SaleActionsColumnRem = 4.5m;
+    private const decimal SaleActionsColumnRem = 11m;
     private const int SaleBaseColumnWeight = 95;
     private const int SaleExtraColumnWeight = 11;
     private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
@@ -1283,7 +1316,8 @@
         var extraColumns = (CanSeeProfit ? 1 : 0) + (CanSeeProfit && referrerId > 0 ? 1 : 0);
         var totalWeight = SaleBaseColumnWeight + SaleExtraColumnWeight * extraColumns;
         var weight = saleWeight ?? purchaseWeight;
-        return (100m * weight / totalWeight).ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        var ratio = (decimal)weight / totalWeight;
+        return FormattableString.Invariant($"calc({100m * ratio:0.######}% - {SaleActionsColumnRem * ratio:0.######}rem)");
     }
 
 
@@ -1886,6 +1920,8 @@
 
     // ---------- آخرین فاکتور خرید ----------
     private Order? lastPurchase;
+    private Order? purchaseFormOrder;
+    private bool openingPurchaseForm;
     private ShopMinimumProfitBasisDto? minimumProfitBasis;
     private string? lastPurchaseError, minimumProfitBasisError;
     private bool showLastPurchaseModal, lastPurchaseLoading;
@@ -1927,6 +1963,36 @@
         lastPurchaseError = purchaseError;
         minimumProfitBasisError = basisError;
         lastPurchaseLoading = false;
+    }
+
+    private async Task OpenPurchaseForm(int purchaseId)
+    {
+        if (openingPurchaseForm || purchaseId <= 0) return;
+        openingPurchaseForm = true;
+        var version = lastPurchaseRequestVersion;
+        try
+        {
+            // Use the normal API, including its current-company and purchase read permissions.
+            var order = await OrderSvc.GetAsync(purchaseId);
+            if (version != lastPurchaseRequestVersion || !showLastPurchaseModal) return;
+            if (order is null || order.Type != TransactionType.Purchase)
+            {
+                InvoiceError("سند خرید در دسترس نیست.");
+                return;
+            }
+            purchaseFormOrder = order;
+        }
+        catch (Exception ex) { InvoiceError("باز کردن خرید ناموفق بود: " + ex.Message); }
+        finally { openingPurchaseForm = false; }
+    }
+
+    private void ClosePurchaseForm() => purchaseFormOrder = null;
+
+    private async Task OnPurchaseFormSaved()
+    {
+        purchaseFormOrder = null;
+        // Refresh the purchase summary/basis without replacing any sale lines or payment data.
+        if (showLastPurchaseModal) await ShowLastPurchase(lastPurchaseProductId);
     }
 
     private void CloseLastPurchase()
@@ -2512,7 +2578,19 @@
     private Task Save() => SaveInternal(printAfterSave: false);
 
     /// <summary>ثبت/ذخیره و سپس چاپ فاکتور (دکمهٔ «ثبت و چاپ» در پایین فرم).</summary>
-    private Task SaveAndPrint() => SaveInternal(printAfterSave: true);
+    private bool showPrintPaperChooser;
+    private void SaveAndPrint()
+    {
+        if (saving || loading || showPrintPaperChooser || (UseInvoiceWizard && invoiceStep != 2)) return;
+        showPrintPaperChooser = true;
+    }
+    private void ClosePrintPaperChooser() => showPrintPaperChooser = false;
+    private async Task ConfirmPrintPaper()
+    {
+        if (!showPrintPaperChooser || saving || (printPaperSize != "A4" && printPaperSize != "A5")) return;
+        showPrintPaperChooser = false;
+        await SaveInternal(printAfterSave: true);
+    }
 
     /// <summary>
     /// چاپ فاکتور فروش/رسید خرید با قالب مستقل (همان SaleInvoicePrint که در چاپ فاکتورِ
@@ -2529,9 +2607,6 @@
                 InvoiceError("سند ذخیره شد، ولی برای چاپ قلمی پیدا نشد.");
                 return;
             }
-            var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
-            if (selectedPaper is null) return;
-            printPaperSize = selectedPaper;
             var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
             var html = order.IsSale
                 ? ShopSaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)
@@ -2544,7 +2619,7 @@
     }
 
     private CompanyProfileDto? companyProfile;
-    private string printPaperSize = "default";
+    private string printPaperSize = "A4";
 
     private bool ValidateInvoice()
     {

@@ -24,11 +24,14 @@ public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
     private readonly ChatAttachmentService _files;
+    private readonly Inventory.Api.Security.ISigningKeys _keys;
 
-    public ChatController(IChatService chatService, ChatAttachmentService files)
+    public ChatController(IChatService chatService, ChatAttachmentService files,
+        Inventory.Api.Security.ISigningKeys keys)
     {
         _chatService = chatService;
         _files = files;
+        _keys = keys;
     }
 
     private int CurrentUserId =>
@@ -202,7 +205,7 @@ public class ChatController : ControllerBase
         return Ok(summary);
     }
 
-    /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)، حداکثر ۵۰ MiB.</summary>
+    /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)؛ بدون سقف حجم (سقف ۵۰ مگابایتی برداشته شد).</summary>
     [HttpPost("conversations/{id:int}/attachments")]
     [RequirePermission("Chat", "Send")]
     [DisableRequestSizeLimit]
@@ -231,7 +234,7 @@ public class ChatController : ControllerBase
     [HttpGet("file-token")]
     public ActionResult<object> GetFileToken()
     {
-        var (token, exp) = ChatFileToken.Create(CurrentUserId);
+        var (token, exp) = ChatFileToken.Create(CurrentUserId, _keys);
         return Ok(new { token, expiresAt = exp });
     }
 

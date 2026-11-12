@@ -1,6 +1,11 @@
+using System.Globalization;
+using Inventory.Api.Licensing.Infrastructure;
+using Inventory.Api.Licensing.Services;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
+using Inventory.Licensing.Abstractions;
+using Inventory.Licensing.Periods;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -22,14 +27,16 @@ public class InvoicingService : IInvoicingService
     private readonly Db.AppDbContext _db;
     private readonly IWarehousingService _wh;
     private readonly IAccountingService _acc;
+    private readonly ILicenseService _licenses;
     private readonly ILogger<InvoicingService> _log;
 
     public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc,
-        ILogger<InvoicingService> log)
+        ILicenseService licenses, ILogger<InvoicingService> log)
     {
         _db = db;
         _wh = wh;
         _acc = acc;
+        _licenses = licenses;
         _log = log;
     }
 
@@ -272,7 +279,13 @@ public class InvoicingService : IInvoicingService
 
     private async Task<int> NextNumberAsync(InvoiceKind kind)
     {
-        var max = await _db.FacInvoices.Where(i => i.Kind == kind).Select(i => (int?)i.Number).MaxAsync();
+        // IgnoreQueryFilters اجباری است: فاکتورهای حذف‌نرم هنوز در جدول‌اند و ایندکس
+        // یکتای (Kind, Number) آن‌ها را می‌بیند؛ اگر نادیده گرفته شوند، شمارهٔ بعدی
+        // با ایندکس یکتا تصادم می‌کند.
+        var max = await _db.FacInvoices.IgnoreQueryFilters()
+            .Where(i => i.Kind == kind)
+            .Select(i => (int?)i.Number)
+            .MaxAsync();
         return (max ?? 0) + 1;
     }
 
@@ -328,7 +341,9 @@ public class InvoicingService : IInvoicingService
             {
                 Kind = dto.Kind,
                 Number = dto.Number > 0 ? dto.Number : await NextNumberAsync(dto.Kind),
-                CreatedAt = DateTime.Now,
+                // زمان ثبت سیستمی، وقت دیوارِ تهران — نه DateTime.Now (که تابع تنظیم سرور است)
+                // و نه مقدار DTO ورودی (مشتری نباید بتواند زمان ثبت را تعیین کند).
+                CreatedAt = Inventory.Api.Services.Core.TehranClock.Now(),
                 CreatedBy = user
             };
             _db.FacInvoices.Add(entity);
@@ -405,7 +420,36 @@ public class InvoicingService : IInvoicingService
 
         Recalculate(entity);
 
-        await _db.SaveChangesAsync();
+        // ---------- سهمیهٔ «صدور فاکتور» (مرحله ۲) ----------
+        // مصرف سهمیه و ثبت فاکتور در یک تراکنش‌اند: اگر ثبت شکست بخورد، شمارنده هم برمی‌گردد.
+        // فقط برای فاکتور تازه (نه ویرایش) تا ویرایش پیش‌نویس سهمیه مصرف نکند.
+        if (dto.Id == 0)
+        {
+            var guard = await QuotaGuard.ExecuteAsync(_licenses, _db,
+                Inventory.Licensing.Modules.ModuleCodes.Invoicing,
+                Inventory.Licensing.Metrics.MetricCodes.InvoiceCreate,
+                () => _db.SaveChangesAsync(),
+                entityType: "FacInvoice",
+                // شناسهٔ فاکتور تا لحظهٔ SaveChanges ساخته نمی‌شود؛ دفتر مصرف بعد از ثبت
+                // و با همین شناسه نوشته می‌شود (همه داخل یک تراکنش).
+                entityIdFactory: () => entity.Id.ToString(CultureInfo.InvariantCulture));
+
+            if (!guard.Allowed)
+                throw new LicenseQuotaException(guard.Message, "invoice.create");
+
+            // هشدار: «۸۰٪» و «سقف پر شد» دو پیام جدا دارند (نباید ادغام شوند).
+            if (guard.Quota?.IsAtLimit == true)
+                _log.LogWarning("[License] سقف سهمیهٔ صدور فاکتور پر شد: {Used}/{Limit} — ثبت بعدی رد می‌شود",
+                    guard.Quota.Used, guard.Quota.Limit);
+            else if (guard.Quota?.IsNearLimit == true)
+                _log.LogWarning("[License] سهمیهٔ صدور فاکتور به ۸۰٪ سقف رسید: {Used}/{Limit}",
+                    guard.Quota.Used, guard.Quota.Limit);
+        }
+        else
+        {
+            await _db.SaveChangesAsync();
+        }
+
         return (await GetInvoiceAsync(entity.Id))!;
     }
 
@@ -539,7 +583,18 @@ public class InvoicingService : IInvoicingService
         return (await GetInvoiceAsync(e.Id))!;
     }
 
-    public async Task DeleteInvoiceAsync(int id)
+    /// <summary>
+    /// حذف فاکتور — <b>نرم</b>، با قاعدهٔ صریح سهمیه.
+    ///
+    /// <para>
+    /// قاعدهٔ مرحله ۲: «حذف توسط کاربر، مصرف سهمیه را برنمی‌گرداند» — نه دورهٔ ماهانه،
+    /// نه دائمی. پس این‌جا عمداً هیچ فراخوانی‌ای به <c>TryRefundAsync</c> نیست؛ فقط
+    /// پرچم <c>IsDeleted</c> زده می‌شود. رکورد باقی می‌ماند تا (۱) ممیزی حذف حفظ شود،
+    /// (۲) «تعداد واقعی» که مبنای مصرف مؤثر است صفر نشود. بازگشت مصرف فقط در خطای
+    /// فنی همان عملیات (مثل شکست ارسال مودیان) انجام می‌شود.
+    /// </para>
+    /// </summary>
+    public async Task DeleteInvoiceAsync(int id, string? user = null)
     {
         var e = await _db.FacInvoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id)
                 ?? throw new InvalidOperationException("فاکتور یافت نشد.");
@@ -550,8 +605,10 @@ public class InvoicingService : IInvoicingService
             || await _db.TrsVouchers.AnyAsync(v => v.InvoiceId == e.Id))
             throw new InvalidOperationException("این فاکتور در سوابق دریافت/پرداخت خزانه استفاده شده است؛ برای حفظ سابقه قابل حذف نیست.");
 
-        _db.FacInvoiceLines.RemoveRange(e.Lines);
-        _db.FacInvoices.Remove(e);
+        // حذف نرم — اقلام دست نمی‌خورند (فاکتور حذف‌شده با اقلامش برای ممیزی می‌ماند).
+        e.IsDeleted = true;
+        e.DeletedAt = PersianPeriodKey.NowIran();
+        e.DeletedBy = user;
         await _db.SaveChangesAsync();
     }
 

@@ -12,6 +12,18 @@ var longBody = string.Concat(Enumerable.Range(1, 100).Select(i =>
     $"<p>بند {i}: متن آزمایشی برای کنترل ادامهٔ نامه در صفحهٔ بعد و تکرار سربرگ شرکت هومپا بدون حذف هیچ بخش از نامه.</p>"));
 Check(InnerLetterPdfRenderer.PlainText("<p>الف</p><p>ب<br>ج</p>") == "الف\nب\nج", "paragraphs and line breaks preserved");
 
+// بدنه‌ای که از Word/Outlook آمده، یک «سند کامل HTML» است: سرِ سند (style + کامنت شرطی xml)
+// نباید روی کاغذ بیاید و شکست‌خط‌های سورس هم نباید خط چاپی بسازند (گزارش: «متن انگلیسی و
+// چند صفحه خالی»).
+var wordBody = "<html xmlns:w=\"urn:schemas-microsoft-com:office:word\"><head>"
+    + "<style>p.MsoNormal{mso-style-name:Normal;mso-fareast-language:EN-US;}</style>"
+    + "<!--[if gte mso 9]><xml><w:View>Normal</w:View><w:Zoom>0</w:Zoom></xml><![endif]-->"
+    + "</head><body><p>سلام</p><p>و احترام،</p></body></html>";
+var wordText = InnerLetterPdfRenderer.PlainText(wordBody);
+Check(wordText == "سلام\nو احترام،", "Word/Outlook document head and conditional xml are not printed");
+Check(!wordText.Contains("mso-") && !wordText.Contains("Normal") && !wordText.Contains("false"),
+    "no document-head junk on the printed letter");
+
 foreach (var a5 in new[] { false, true })
 foreach (var longLetter in new[] { false, true })
 foreach (var withHamesh in new[] { false, true })

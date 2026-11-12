@@ -24,6 +24,9 @@ public sealed class RemoteHub : Hub
 
     public override async Task OnConnectedAsync()
     {
+        // مرحله ۳ (بند ۶): پیش از هر چیز، نشست صندلی. اگر sid بسته/ناشناخته باشد
+        // اتصال رد می‌شود؛ وگرنه کاربرِ بیرون‌انداخته‌شده کانال بلادرنگ را باز نگه می‌داشت.
+        await Inventory.Api.Licensing.Infrastructure.SeatHubGuard.ValidateAsync(this);
         var uid = UserId;
         if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == uid && u.IsActive))
             throw new HubException("حساب کاربری فعال نیست.");

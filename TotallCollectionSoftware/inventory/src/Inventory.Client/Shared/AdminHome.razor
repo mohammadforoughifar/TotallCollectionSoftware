@@ -6,6 +6,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <PageTitle>داشبورد — سامانه جامع انبار و فروش</PageTitle>
 
@@ -24,8 +25,16 @@ else
         </div>
     </div>
 
-    @* ---------- داشبورد مدیریتی: فقط ادمین ---------- *@
-    @if (Auth.IsAdmin && admin is not null)
+    @if (loadErrors.Count > 0)
+    {
+        <div class="alert alert-warning" role="alert">
+            <strong>اطلاعات داشبورد کامل بارگذاری نشده است؛ مقادیر خالی را صفر قطعی در نظر نگیرید.</strong>
+            @foreach (var error in loadErrors) { <div>@error</div> }
+        </div>
+    }
+
+    @* ---------- داشبورد مالی: بر اساس مجوز همین بخش ---------- *@
+    @if (Auth.Has("Dashboards.Financial") && admin is not null)
     {
         <h6 class="mb-2 text-muted"><i class="bi bi-cart-check"></i> فروش دوره‌ای</h6>
         <div class="row g-3 mb-3">
@@ -132,7 +141,7 @@ else
                     <div class="card-body p-0">
                         @if (admin.OverdueDebtors.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-emoji-smile"></i><h6>بدهکار سررسیدشده‌ای ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">نسیه یا قسط فروشِ پرداخت‌نشده با سررسید امروز یا گذشته ثبت نشده است. <a href="shop/credit-management">بررسی اقساط و چک‌ها</a></div>
                         }
                         else
                         {
@@ -200,7 +209,14 @@ else
                     <div class="card-body p-0">
                         @if (admin.TodayCheques.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-check2-circle"></i><h6>چک دریافتی سررسیدشده‌ای ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">
+                                @if (admin.PendingReceivedChequesCount > 0)
+                                {
+                                    <span>@admin.PendingReceivedChequesCount.Num() چک دریافتی باز دارید؛ موعد آن‌ها در آینده است.</span>
+                                }
+                                else { <span>چک دریافتی باز در فاکتورهای فروش ثبت نشده است.</span> }
+                                <a href="shop/credit-management">مشاهدهٔ چک‌ها</a>
+                            </div>
                         }
                         else
                         {
@@ -239,7 +255,11 @@ else
                                                     }
                                                 </td>
                                                 <td class="text-end">
-                                                    @if (c.Status == ChequeStatus.Bounced)
+                                                    @if (c.Source != "Invoice")
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ClearCheque(c)">مدیریت چک</button>
+                                                    }
+                                                    else if (c.Status == ChequeStatus.Bounced)
                                                     {
                                                         <span class="badge badge-soft-danger me-1">برگشت خورده</span>
                                                         <button class="btn btn-sm btn-outline-success" title="وصول مجدد" @onclick="() => ClearCheque(c)">
@@ -273,7 +293,7 @@ else
                                             </div>
                                             <div class="text-end">
                                                 <div class="num fw-800 text-primary">@c.Amount.Money()</div>
-                                                <button class="btn btn-sm btn-success mt-1" @onclick="() => ClearCheque(c)"><i class="bi bi-check2"></i> وصول شد</button>
+                                                <button class="btn btn-sm btn-success mt-1" @onclick="() => ClearCheque(c)"><i class="bi bi-check2"></i> @(c.Source == "Invoice" ? "وصول شد" : "مدیریت چک")</button>
                                             </div>
                                         </div>
                                     </div>
@@ -302,7 +322,14 @@ else
                     <div class="card-body p-0">
                         @if (admin.IssuedCheques.Count == 0)
                         {
-                            <div class="empty-state py-4"><i class="bi bi-check2-all"></i><h6>چک پرداختیِ سررسیدشده یا موعد امروزی برای پرداخت ندارید</h6></div>
+                            <div class="p-3 fs-8 text-secondary">
+                                @if (admin.PendingIssuedChequesCount > 0)
+                                {
+                                    <span>@admin.PendingIssuedChequesCount.Num() چک پرداختی باز دارید؛ موعد آن‌ها در آینده است.</span>
+                                }
+                                else { <span>چک پرداختی باز در فاکتورهای خرید ثبت نشده است.</span> }
+                                <a href="shop/credit-management">مشاهدهٔ چک‌ها</a>
+                            </div>
                         }
                         else
                         {
@@ -342,7 +369,7 @@ else
                                                 </td>
                                                 <td class="text-end">
                                                     <button class="btn btn-sm btn-outline-success" title="علامت‌گذاری به عنوان پاس‌شده از حساب ما" @onclick="() => ClearCheque(c)">
-                                                        <i class="bi bi-check2"></i> پاس شد
+                                                        <i class="bi bi-check2"></i> @(c.Source == "Invoice" ? "پاس شد" : "مدیریت چک")
                                                     </button>
                                                 </td>
                                             </tr>
@@ -362,7 +389,7 @@ else
                                             </div>
                                             <div class="text-end">
                                                 <div class="num fw-800 text-warning">@c.Amount.Money()</div>
-                                                <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => ClearCheque(c)"><i class="bi bi-check2"></i> پاس شد</button>
+                                                <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => ClearCheque(c)"><i class="bi bi-check2"></i> @(c.Source == "Invoice" ? "پاس شد" : "مدیریت چک")</button>
                                             </div>
                                         </div>
                                     </div>
@@ -522,9 +549,9 @@ else
                                                 <div class="fw-500">@r.ProductName</div>
                                                 <div class="fs-8 text-muted">@r.ProductCode</div>
                                             </td>
-                                            <td class="num text-danger fw-700">@r.TotalStock.Num()</td>
-                                            <td class="num">@r.ReorderPoint.Num()</td>
-                                            <td class="num fw-700 text-danger">@r.Shortage.Num()</td>
+                                            <td class="num text-danger fw-700">@r.TotalStock.Qty()</td>
+                                            <td class="num">@r.ReorderPoint.Qty()</td>
+                                            <td class="num fw-700 text-danger">@r.Shortage.Qty()</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -573,24 +600,28 @@ else
     private List<ReorderItem> lowStock = new();
     private bool loading = true;
 
+    private readonly List<string> loadErrors = new();
+
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetTitle("داشبورد");
+        Layout.SetTitle("داشبورد مالی فروشگاه");
         try
         {
-            var dashTask = DashboardSvc.GetSummaryAsync();
-            var recentTask = DashboardSvc.GetRecentAsync(8);
-            var reorderTask = ReportSvc.GetReorderAsync();
-
-            d = await dashTask;
-            recent = await recentTask;
-            lowStock = (await reorderTask).Take(5).ToList();
-
-            if (Auth.IsAdmin)
-                admin = await DashboardSvc.GetAdminDashboardAsync();
+            // An unrelated inventory/report permission failure must not hide financial alerts.
+            if (Auth.Has("Dashboards.Financial"))
+                await LoadSectionAsync(async () => { admin = await DashboardSvc.GetAdminDashboardAsync(); }, "چک‌ها و بدهکاران / آمار مالی");
+            await LoadSectionAsync(async () => { d = await DashboardSvc.GetSummaryAsync(); }, "خلاصه فروشگاه");
+            await LoadSectionAsync(async () => { recent = await DashboardSvc.GetRecentAsync(8); }, "فعالیت‌های اخیر");
+            await LoadSectionAsync(async () => { lowStock = (await ReportSvc.GetReorderAsync()).Take(5).ToList(); }, "کالاهای نیازمند سفارش");
         }
-        catch { }
+        catch (Exception ex) { Toast.Error("بارگذاری داشبورد کامل نشد: " + ex.Message); }
         finally { loading = false; }
+    }
+
+    private async Task LoadSectionAsync(Func<Task> load, string section)
+    {
+        try { await load(); }
+        catch (Exception ex) { loadErrors.Add($"{section}: {ex.Message}"); }
     }
 
     private bool chartsDrawn;
@@ -620,6 +651,12 @@ else
 
     private async Task ClearCheque(ChequeAlertItem c)
     {
+        // IDs belong to different tables: never submit treasury/expense IDs to invoice endpoints.
+        if (c.Source != "Invoice")
+        {
+            Navigation.NavigateTo(c.Source == "Expense" ? "/expenses" : "/trs/cheques");
+            return;
+        }
         try
         {
             await DashboardSvc.ClearChequeAsync(c.ChequeId);
@@ -635,6 +672,7 @@ else
 
     private void PromptBounce(ChequeAlertItem c)
     {
+        if (c.Source != "Invoice") return;
         bounceTarget = c;
         bounceReason = "عدم موجودی کافی";
         showBounceModal = true;

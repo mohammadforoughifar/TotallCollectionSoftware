@@ -77,49 +77,56 @@ public class ApiClient : IApiClient
     /// دریافت فایل باینری از API. نام فایل از هدر Content-Disposition خوانده می‌شود
     /// و اگر نبود از انتهای مسیر ساخته می‌شود.
     /// </summary>
-    public async Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path)
+    public async Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path, CancellationToken cancellationToken = default)
     {
-        var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
+        using var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
         AddAuth(req);
         await AddActiveCompanyHeaderAsync(req);
 
         HttpResponseMessage resp;
         try
         {
-            resp = await _http.SendAsync(req);
+            resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             throw new Exception("ارتباط با سرور برقرار نشد: " + ex.Message);
         }
 
-        if (!resp.IsSuccessStatusCode)
+        using (resp)
         {
-            var text = await resp.Content.ReadAsStringAsync();
-            var msg = $"خطای سرور ({(int)resp.StatusCode})";
-            if (!string.IsNullOrWhiteSpace(text))
+            if (!resp.IsSuccessStatusCode)
             {
-                try
+                var text = await resp.Content.ReadAsStringAsync(cancellationToken);
+                var msg = $"خطای سرور ({(int)resp.StatusCode})";
+                if (!string.IsNullOrWhiteSpace(text))
                 {
-                    using var doc = System.Text.Json.JsonDocument.Parse(text);
-                    if (doc.RootElement.TryGetProperty("message", out var m))
-                        msg = m.GetString() ?? msg;
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(text);
+                        if (doc.RootElement.TryGetProperty("message", out var m))
+                            msg = m.GetString() ?? msg;
+                    }
+                    catch { /* پاسخ JSON نبود */ }
                 }
-                catch { /* پاسخ JSON نبود */ }
+                throw new Exception(msg);
             }
-            throw new Exception(msg);
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync(cancellationToken);
+            var ctype = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+            var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? resp.Content.Headers.ContentDisposition?.FileName;
+            name = name?.Trim('"');
+            if (string.IsNullOrWhiteSpace(name))
+                name = path.Split('/').LastOrDefault()?.Split('?').FirstOrDefault() ?? "download";
+
+            return (bytes, name, ctype);
         }
-
-        var bytes = await resp.Content.ReadAsByteArrayAsync();
-        var ctype = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
-
-        var name = resp.Content.Headers.ContentDisposition?.FileNameStar
-                   ?? resp.Content.Headers.ContentDisposition?.FileName;
-        name = name?.Trim('"');
-        if (string.IsNullOrWhiteSpace(name))
-            name = path.Split('/').LastOrDefault()?.Split('?').FirstOrDefault() ?? "download";
-
-        return (bytes, name, ctype);
     }
 
     public async Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file", string? contentType = null)
@@ -173,6 +180,10 @@ public class ApiClient : IApiClient
     }
 
     public async Task<T> GetAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path);
+
+    /// <summary>GET قابل لغو — برای جستجوهای زنده (هر بار درخواست قبلی کنار می‌رود).</summary>
+    public async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
+        await SendAsync<T>(HttpMethod.Get, path, null, null, cancellationToken);
     public async Task<T> GetLongAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path, null, LongCallTimeout);
 
     public async Task<T> PostAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body);
@@ -184,7 +195,8 @@ public class ApiClient : IApiClient
 
     public async Task<T> DeleteAsync<T>(string path) => await SendAsync<T>(HttpMethod.Delete, path);
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null)
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
     {
         var req = new HttpRequestMessage(method, Url(path));
         AddAuth(req);
@@ -193,11 +205,18 @@ public class ApiClient : IApiClient
             req.Content = JsonContent.Create(body, options: JsonOpts);
 
         var limit = timeout ?? DefaultCallTimeout;
-        using var cts = new CancellationTokenSource(limit);
+        // سقف انتظار + لغو از بیرون (جستجوی زنده): هر کدام زودتر برسد درخواست تمام می‌شود.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(limit);
         HttpResponseMessage resp;
         try
         {
             resp = await _http.SendAsync(req, cts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // لغو از سوی فراخوان (درخواست تازه‌تر جای این را گرفته) — خطا نیست
+            throw;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
@@ -208,7 +227,16 @@ public class ApiClient : IApiClient
             throw new ApiException($"ارتباط با سرور برقرار نشد. ({ex.Message})");
         }
 
-        var text = await resp.Content.ReadAsStringAsync();
+        string text;
+        try
+        {
+            text = await resp.Content.ReadAsStringAsync(cts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            resp.Dispose();
+            throw;
+        }
 
         if (!resp.IsSuccessStatusCode)
         {

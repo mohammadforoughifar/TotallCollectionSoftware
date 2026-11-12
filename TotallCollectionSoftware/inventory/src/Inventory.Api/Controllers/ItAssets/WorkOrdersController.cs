@@ -2705,13 +2705,15 @@ public class WorkOrdersController : ControllerBase
         var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // سقف حجم فایل برداشته شده است؛ جریان فایل مستقیم روی دیسک نوشته می‌شود
+        // (بدون بافر کامل در حافظه) تا فایل‌های بزرگ سرور را از کار نیندازند.
         // فایل‌های دستور کار در wwwroot/uploads/WorkOrders/{id}/ ذخیره می‌شوند.
-        var relPath = await _store.SaveAsync("WorkOrders", id, ms, file.FileName);
+        string relPath;
+        await using (var uploadStream = file.OpenReadStream())
+        {
+            relPath = await _store.SaveAsync("WorkOrders", id, uploadStream, file.FileName);
+        }
         _db.AppAttachments.Add(new AppAttachment
         {
             Module = "WorkOrders",
@@ -2723,7 +2725,16 @@ public class WorkOrdersController : ControllerBase
             UploaderName = MyUsername,
             UploaderUserId = MyUserId
         });
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // رکورد ثبت نشد → فایل بی‌صاحب روی دیسک نماند
+            _store.Delete(relPath);
+            throw;
+        }
         return Ok();
     }
 

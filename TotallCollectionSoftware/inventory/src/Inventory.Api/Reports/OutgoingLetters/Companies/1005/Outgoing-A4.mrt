@@ -129,11 +129,11 @@
           <VertAlignment>Center</VertAlignment>
         <CanGrow>False</CanGrow><TextOptions>,,RightToLeft=True,,WordWrap=True,A=0</TextOptions><ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>8</ShrinkFontToFitMinimumSize></Text8>
         <Text1 Ref="9" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>2.38,0.85,0.78,0.22</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>2.4156,0.8711,0.6597,0.1903</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,8</Font>
+          <Font>Vazirmatn,9,Bold</Font>
           <Margins>0,0,0,0</Margins>
           <Name>Text1</Name>
           <Page isRef="4" />
@@ -143,11 +143,11 @@
           <Type>Expression</Type>
         <ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>6</ShrinkFontToFitMinimumSize><HorAlignment>Right</HorAlignment><VertAlignment>Center</VertAlignment><TextOptions>,,RightToLeft=True,,,A=0</TextOptions><CanGrow>False</CanGrow></Text1>
         <Text2 Ref="10" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>1.09,0.85,0.66,0.22</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>1.1378,0.8711,0.6042,0.1903</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,8</Font>
+          <Font>Vazirmatn,9,Bold</Font>
           <Margins>0,0,0,0</Margins>
           <Name>Text2</Name>
           <Page isRef="4" />
@@ -157,11 +157,11 @@
           <Type>DataColumn</Type>
         <ShrinkFontToFit>True</ShrinkFontToFit><ShrinkFontToFitMinimumSize>6</ShrinkFontToFitMinimumSize><HorAlignment>Right</HorAlignment><VertAlignment>Center</VertAlignment><TextOptions>,,RightToLeft=True,,,A=0</TextOptions><CanGrow>False</CanGrow></Text2>
         <Text3 Ref="11" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>-0.14,0.85,0.70,0.22</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>-0.0983,0.8711,0.5694,0.1903</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,8</Font>
+          <Font>Vazirmatn,9,Bold</Font>
           <HorAlignment>Right</HorAlignment>
           <Margins>0,0,0,0</Margins>
           <Name>Text3</Name>

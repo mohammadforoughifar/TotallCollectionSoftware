@@ -9,7 +9,7 @@ class ShopSaleLayoutTests(unittest.TestCase):
         for file in ['Orders/Orders.razor','Orders/OrderForm.razor','Repairs/Repairs.razor']:
             source=read('Inventory.Client/Pages/'+file)
             self.assertIn('ShopSaleInvoicePrint.Build(',source)
-            self.assertIn('"shopPrintPreview.choosePaper"',source)
+            self.assertIn('showPrintPaperChooser' if file.endswith('OrderForm.razor') else '"shopPrintPreview.choosePaper"',source)
         self.assertIn(': ShopPurchaseInvoicePrint.Build(order',read('Inventory.Client/Pages/Orders/Orders.razor'))
     def test_template_matches_approved_structure(self):
         source=read('Inventory.Client/Pages/Orders/ShopSaleInvoicePrint.cs')

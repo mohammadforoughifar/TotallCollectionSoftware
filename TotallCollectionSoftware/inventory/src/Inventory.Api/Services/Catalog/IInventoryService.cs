@@ -113,7 +113,7 @@ public interface IInventoryService
 
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
     Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false, Paging.Request? pagination = null);
-    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null);
+    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null, bool openingOnly = false);
     Task DeleteOrderAsync(int id, string? user = null, bool allowUntrackedRollback = false);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
 

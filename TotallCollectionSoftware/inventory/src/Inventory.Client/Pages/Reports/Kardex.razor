@@ -141,13 +141,13 @@ else
                                     <td class="fw-600 text-dark">@(string.IsNullOrEmpty(r.PartyName) ? "—" : r.PartyName)</td>
                                     <td class="text-secondary fs-8">@r.Description</td>
                                     <td class="text-start num fw-700 @(r.InQty > 0 ? "text-emerald" : "text-muted")">
-                                        @(r.InQty > 0 ? r.InQty.Num() : "—")
+                                        @(r.InQty > 0 ? r.InQty.Qty() : "—")
                                     </td>
                                     <td class="text-start num fw-700 @(r.OutQty > 0 ? "text-rose" : "text-muted")">
-                                        @(r.OutQty > 0 ? r.OutQty.Num() : "—")
+                                        @(r.OutQty > 0 ? r.OutQty.Qty() : "—")
                                     </td>
                                     <td class="text-start num fw-900 fs-7.5 text-dark">
-                                        @r.Balance.Num()
+                                        @r.Balance.Qty()
                                     </td>
                                 </tr>
                             }

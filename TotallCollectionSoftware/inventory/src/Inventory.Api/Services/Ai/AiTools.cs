@@ -36,6 +36,17 @@ public interface IAiTool
     string Description { get; }
     object ParametersSchema { get; }
     Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx);
+
+    /// <summary>
+    /// آیا این ابزار چیزی <b>می‌نویسد</b> (رکورد می‌سازد/تغییر می‌دهد) یا پیام می‌فرستد؟
+    ///
+    /// <para>
+    /// پیش‌فرض <c>true</c> است — یعنی ابزار تازه‌ای که این عضو را تعیین نکند، «نوشتاری»
+    /// شمرده می‌شود و در حالت فقط‌خواندنی خاموش می‌ماند. انتخاب عمدی: فراموشیِ علامت‌گذاری
+    /// باید به سمت «بسته» خطا کند، نه «باز».
+    /// </para>
+    /// </summary>
+    bool IsWrite => true;
 }
 
 public class AiToolRegistry
@@ -45,14 +56,43 @@ public class AiToolRegistry
     public AiToolRegistry(IEnumerable<IAiTool> tools) =>
         _tools = tools.ToDictionary(t => t.Name, StringComparer.OrdinalIgnoreCase);
 
-    public List<AiToolSchema> Schemas() => _tools.Values
+    /// <summary>
+    /// فهرست کامل ابزارها با علامت نوشتاری/خواندنی — برای گزارش و تست (منبع حقیقتِ کاتالوگ).
+    /// </summary>
+    public IReadOnlyList<(string Name, bool IsWrite, string Description)> Catalog() =>
+        _tools.Values.Select(t => (t.Name, t.IsWrite, t.Description)).OrderBy(t => t.Name, StringComparer.Ordinal).ToList();
+
+    /// <summary>آیا این نام، ابزار نوشتاری است؟ (نام ناشناخته ⇒ نوشتاری فرض می‌شود)</summary>
+    public bool IsWriteTool(string name) => !_tools.TryGetValue(name, out var t) || t.IsWrite;
+
+    /// <param name="allowWrite">
+    /// اگر <c>false</c> باشد (لایسنس فقط‌خواندنی)، ابزارهای نوشتاری از فهرست پنهان می‌شوند و
+    /// اجرایشان هم رد می‌شود. دو لایه: پنهان‌کردن از مدل (تا اصلاً صدا نزند) و رد کردن در
+    /// لحظهٔ اجرا (اگر مدل از حافظهٔ گفتگو نامش را صدا زد).
+    /// </param>
+    public List<AiToolSchema> Schemas(bool allowWrite = true) => _tools.Values
+        .Where(t => allowWrite || !t.IsWrite)
         .Select(t => new AiToolSchema { Name = t.Name, Description = t.Description, Parameters = t.ParametersSchema })
         .ToList();
 
-    public async Task<string> ExecuteAsync(string name, string argumentsJson, AiToolContext ctx)
+    public async Task<string> ExecuteAsync(string name, string argumentsJson, AiToolContext ctx,
+        bool allowWrite = true)
     {
         if (!_tools.TryGetValue(name, out var tool))
             return JsonSerializer.Serialize(new { error = "unknown_tool", tool = name });
+
+        if (!allowWrite && tool.IsWrite)
+        {
+            // پیام عمداً فارسی و کنش‌محور است: مدل باید بتواند به کاربر بگوید «چرا نشد».
+            return JsonSerializer.Serialize(new
+            {
+                error = "license_readonly",
+                tool = name,
+                message = "سامانه در حالت فقط‌خواندنی است (لایسنس فعال/معتبر نیست)؛ این ابزار تغییر داده " +
+                          "یا ارسال پیام انجام می‌دهد و مجاز نیست. اطلاعات را می‌توانی بخوانی و توضیح بدهی، " +
+                          "ولی برای ثبت باید لایسنس فعال شود."
+            });
+        }
         try
         {
             using var doc = string.IsNullOrWhiteSpace(argumentsJson)
@@ -119,6 +159,9 @@ internal static class AiToolArgs
 public class GuideSearchTool : IAiTool
 {
     public string Name => "guide_search";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "جستجو در راهنمای قدم‌به‌قدم سامانه. برای سؤال‌های «چطور ...؟» و «کجا ...؟» اول از این ابزار استفاده کن. لینک صفحه مرتبط هم برمی‌گرداند.";
     public object ParametersSchema => new
     {
@@ -150,6 +193,9 @@ public class GuideSearchTool : IAiTool
 public class MyLeaveBalanceTool : IAiTool
 {
     public string Name => "my_leave_balance";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "مانده مرخصی کاربر جاری به تفکیک نوع مرخصی (استحقاقی، استعلاجی و...). برای «چند روز مرخصی دارم؟» از این استفاده کن.";
     public object ParametersSchema => new
     {
@@ -178,6 +224,9 @@ public class MyLeaveBalanceTool : IAiTool
 public class MyLeavesTool : IAiTool
 {
     public string Name => "my_leaves";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فهرست درخواست‌های مرخصی کاربر جاری با وضعیت (در انتظار/تأیید/رد).";
     public object ParametersSchema => new
     {
@@ -206,6 +255,9 @@ public class MyLeavesTool : IAiTool
 public class MyAttendanceTool : IAiTool
 {
     public string Name => "my_attendance_today";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "وضعیت حضور امروز کاربر جاری: شیفت، ساعت ورود/خروج، تأخیر، کارکرد.";
     public object ParametersSchema => new { type = "object", properties = new { } };
 
@@ -230,6 +282,9 @@ public class MyAttendanceTool : IAiTool
 public class MyPayslipTool : IAiTool
 {
     public string Name => "my_payslip";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فیش حقوقی کاربر جاری: ناخالص، کسورات، مالیات، بیمه و خالص پرداختی به‌همراه اقلام. بدون ورودی = آخرین فیش.";
     public object ParametersSchema => new
     {
@@ -272,6 +327,9 @@ public class MyPayslipTool : IAiTool
 public class MyLoansTool : IAiTool
 {
     public string Name => "my_loans";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "وام‌ها و مساعده‌های کاربر جاری: مبلغ، اقساط، پرداخت‌شده و مانده.";
     public object ParametersSchema => new { type = "object", properties = new { } };
 
@@ -299,6 +357,9 @@ public class MyLoansTool : IAiTool
 public class MyMissionsTool : IAiTool
 {
     public string Name => "my_missions";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "مأموریت‌های کاربر جاری با مقصد و وضعیت.";
     public object ParametersSchema => new
     {
@@ -329,6 +390,9 @@ public class MyMissionsTool : IAiTool
 public class MyLettersStatsTool : IAiTool
 {
     public string Name => "my_letters_stats";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "آمار کارتابل نامه کاربر جاری: خوانده‌نشده‌ها، ارسالی‌ها، پیش‌نویس‌ها، مهلت‌های نزدیک.";
     public object ParametersSchema => new { type = "object", properties = new { } };
 
@@ -350,6 +414,9 @@ public class MyLettersStatsTool : IAiTool
 public class MyLettersInboxTool : IAiTool
 {
     public string Name => "my_letters_inbox";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فهرست نامه‌های وارده کاربر جاری (تازه‌ترین‌ها). برای «نامه‌ای دارم؟» و «نامه‌های خوانده‌نشده» استفاده کن.";
     public object ParametersSchema => new
     {
@@ -386,6 +453,9 @@ public class MyLettersInboxTool : IAiTool
 public class LetterDetailTool : IAiTool
 {
     public string Name => "letter_detail";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "متن کامل یک نامه + زنجیره ارجاع‌های آن (گردش). فقط اگر کاربر به نامه دسترسی داشته باشد داده برمی‌گردد.";
     public object ParametersSchema => new
     {
@@ -436,6 +506,9 @@ public class LetterDetailTool : IAiTool
 public class UsersLookupTool : IAiTool
 {
     public string Name => "users_lookup";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "جستجوی همکاران (نام و واحد سازمانی) برای پیشنهاد ارجاع نامه یا معرفی مسئول. شناسه کاربر هم برمی‌گرداند.";
     public object ParametersSchema => new
     {
@@ -624,6 +697,9 @@ public class CancelActionTool : IAiTool
 public class PendingActionsTool : IAiTool
 {
     public string Name => "my_pending_actions";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فهرست پیش‌فاکتورهای باز کاربر (اقدام‌های در انتظار تأیید).";
     public object ParametersSchema => new { type = "object", properties = new { } };
 
@@ -663,6 +739,9 @@ internal static class AiActionNames
 public class PendingApprovalsTool : IAiTool
 {
     public string Name => "pending_approvals";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "مرخصی‌های در انتظار تأییدِ کاربر جاری (برای مدیر/سرپرست: درخواست‌های نیروهای مستقیم). شناسه هر مورد را هم می‌دهد تا با decide_leave تأیید/رد شود. قبل از decide_leave حتماً این را صدا بزن تا شناسه درست را پیدا کنی.";
     public object ParametersSchema => new
     {
@@ -693,6 +772,9 @@ public class PendingApprovalsTool : IAiTool
 public class MyReferralsPendingTool : IAiTool
 {
     public string Name => "my_referrals_pending";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "ارجاع‌های بی‌پاسخ کاربر جاری از کارتابل (نامه‌هایی که باید جواب بدهد). شناسه ارجاع (erja_id) را می‌دهد تا با answer_referral پاسخ/تأیید/رد شود. قبل از answer_referral حتماً این را صدا بزن.";
     public object ParametersSchema => new
     {
@@ -1061,6 +1143,9 @@ internal static class AiBiPeriod
 public class SalesSummaryTool : IAiTool
 {
     public string Name => "sales_summary";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "خلاصه فروش و خرید یک دوره: جمع و تعداد فروش/خرید، برگشتی، سود ناخالص تقریبی، دریافتنی/پرداختنی، پرفروش‌ترین کالاها و بزرگ‌ترین طرف‌ها. دوره را می‌توانی فارسی بدهی: امروز، این هفته، این ماه، ماه گذشته، امسال.";
     public object ParametersSchema => new
     {
@@ -1104,6 +1189,9 @@ public class SalesSummaryTool : IAiTool
 public class RecentInvoicesTool : IAiTool
 {
     public string Name => "recent_invoices";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "آخرین فاکتورهای قطعی‌شده (فروش یا خرید): شماره، طرف حساب، تاریخ، مبلغ، نقد/نسیه و سررسید.";
     public object ParametersSchema => new
     {
@@ -1140,6 +1228,9 @@ public class RecentInvoicesTool : IAiTool
 public class StockStatusTool : IAiTool
 {
     public string Name => "stock_status";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "موجودی انبار. با search (نام یا کد کالا) = موجودی آن کالاها در همه انبارها؛ بدون search = فقط کالاهای زیر نقطه سفارش (کمبودها).";
     public object ParametersSchema => new
     {
@@ -1176,6 +1267,9 @@ public class StockStatusTool : IAiTool
 public class ChequesDueTool : IAiTool
 {
     public string Name => "cheques_due";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "چک‌های باز نزدیک سررسید (دریافتی و صادره، شامل معوق‌ها): شماره، نوع، طرف، مبلغ، بانک، سررسید + جمع دریافتی/صادره.";
     public object ParametersSchema => new
     {
@@ -1225,6 +1319,9 @@ public class ChequesDueTool : IAiTool
 public class TopDebtorsTool : IAiTool
 {
     public string Name => "top_debtors";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "بدهکاران بزرگ: طرف‌های با بیشترین جمع فاکتور نسیه (منهای برگشتی) — دقیقاً با همان تعریف «دریافتنی» خود سامانه.";
     public object ParametersSchema => new
     {
@@ -1254,6 +1351,9 @@ public class TopDebtorsTool : IAiTool
 public class CashStatusTool : IAiTool
 {
     public string Name => "cash_status";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "وضعیت نقدینگی: جمع موجودی صندوق‌ها و بانک‌ها، مانده هر حساب، و گردش دوره (جمع دریافت/پرداخت).";
     public object ParametersSchema => new
     {
@@ -1303,6 +1403,9 @@ public class CashStatusTool : IAiTool
 public class BuildReportTool : IAiTool
 {
     public string Name => "build_report";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "ساخت گزارش تحلیلی با خروجی اکسل. وقتی کاربر «گزارش» خواست، گفت «به تفکیک ...»، یا جدول کامل/فایل اکسل لازم داشت. datasets: فروش (sales)، موجودی (stock)، چک‌ها (cheques)، بدهکاران (debtors). خروجی: report_id + پیش‌نمایش ۱۵ سطر اول. شناسه گزارش را به کاربر نشان نده؛ فقط جدول را خلاصه کن و بگو فایل اکسل کامل با دکمه زیر پیام قابل دانلود است.";
     public object ParametersSchema => new
     {
@@ -1391,6 +1494,9 @@ public class BuildReportTool : IAiTool
 public class DataCatalogTool : IAiTool
 {
     public string Name => "data_catalog";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "راهنمای داده‌های سامانه: بدون ورودی، لیست همه موجودیت‌های قابل جستجو را می‌دهد؛ با دادن entity، فیلدها و مقادیر مجاز آن موجودیت را نشان می‌دهد. قبل از اولین explore_data روی یک موجودیت ناآشنا، حتماً این را صدا بزن.";
     public object ParametersSchema => new
     {
@@ -1440,6 +1546,9 @@ public class DataCatalogTool : IAiTool
 public class ExploreDataTool : IAiTool
 {
     public string Name => "explore_data";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "جستجوی آزاد در داده‌های سامانه (فقط خواندن). entity: کلید موجودیت از data_catalog. مثال: (entity=invoice) فیلتر Date با op=period و value=این ماه، و Kind=فروش. فیلترها: field (نام فیلد)، op (eq,neq,gt,gte,lt,lte,contains,starts,between,in,period)، value و value2 برای between. تاریخ دقیق شمسی بده (۱۴۰۴/۰۷/۰۵، امروز، دیروز)؛ برای بازه نسبی (این هفته، هفته گذشته، این ماه، ماه گذشته، امسال، پارسال، ۷ روز گذشته) حتماً op=period بگذار. مقادیر enum را فارسی بده (مثل برگشتی، قطعی، دریافتی). group_by + agg(count/sum/avg) + agg_field برای «به تفکیک». order_by + desc برای مرتب‌سازی. limit حداکثر ۵۰. excel=true اگر کاربر فایل/اکسل/گزارش کامل خواست — آن‌وقت report_id برمی‌گردد و دکمه دانلود خودکار زیر پیام می‌آید.";
     public object ParametersSchema => new
     {
@@ -1546,6 +1655,9 @@ public class ExploreDataTool : IAiTool
 public class MyAlertsTool : IAiTool
 {
     public string Name => "my_alerts";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "هشدارهای امروز کاربر: کمبود انبار، چک برگشتی، پیش‌فاکتور قدیمی، تیکت جدید، قرارداد رو به اتمام، یادآوری گزارش‌کار. هر بخش فقط با مجوز همان ماژول برمی‌گردد.";
     public object ParametersSchema => new { type = "object", properties = new { } };
 
@@ -1865,6 +1977,9 @@ public class RegisterChequeTool : IAiTool
 public class WeeklyDigestTool : IAiTool
 {
     public string Name => "weekly_digest";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "خلاصه هفته مدیر: جمع‌بندی ۷ روز گذشته (فروش و خرید، منابع انسانی، تیکت‌ها، ارجاع‌ها، چک‌های هفته آینده، گزارش‌کارها و یادآوری‌ها). فقط مدیران (مجوز FaAtt.Manage).";
     public object ParametersSchema => new
     {
@@ -1954,6 +2069,9 @@ public class SetReminderTool : IAiTool
 public class MyRemindersTool : IAiTool
 {
     public string Name => "my_reminders";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فهرست یادآورهای فعال خودت (شناسه، متن، زمان شمسی، تکرار).";
     public object ParametersSchema => new
     {
@@ -2060,6 +2178,9 @@ public class DecideLeaveBulkTool : IAiTool
 public class DraftMinutesTool : IAiTool
 {
     public string Name => "draft_minutes";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "پیش‌نویس هوشمند صورتجلسه از متن خام جلسه (فقط پیش‌نمایش؛ ذخیره نمی‌کند). خروجی: عنوان، خلاصه و بندها با نوع (مصوبه/اقدام/اطلاع) + مسئول و مهلت پیشنهادی. برای ذخیره، بعدش create_minutes.";
     public object ParametersSchema => new
     {
@@ -2257,6 +2378,9 @@ public class CreateMinutesTool : IAiTool
 public class MyMinutesActionsTool : IAiTool
 {
     public string Name => "my_minutes_actions";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "بندهای باز صورتجلسات که مسئول اجرایشان خودتی (در جریان + سررسید) — برای پیگیری اقدام‌های خودت.";
     public object ParametersSchema => new
     {
@@ -2446,6 +2570,9 @@ public class ScheduleReportTool : IAiTool
 public class MySchedulesTool : IAiTool
 {
     public string Name => "my_schedules";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "فهرست گزارش‌های زمان‌بندی‌شده فعال خودت (شناسه، عنوان، دوره، نوبت بعدی، اکسل).";
     public object ParametersSchema => new
     {
@@ -2506,6 +2633,9 @@ public class CancelScheduleTool : IAiTool
 public class SearchDocsTool : IAiTool
 {
     public string Name => "search_docs";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "جستجوی معنایی در نامه‌ها (داخلی/وارده/صادره) و تیکت‌های HR. query اجباری؛ scope اختیاری (letter/ticket/all یا «نامه»/«تیکت»)؛ فقط اسناد قابل‌مشاهده خود کاربر برمی‌گردد (نامه محرمانه/سری و حذف‌شده هرگز). اگر مدل معنایی خواب باشد، خودکار کلیدواژه‌ای می‌شود.";
     public object ParametersSchema => new
     {
@@ -2684,7 +2814,9 @@ public class MyAlertRulesTool : IAiTool
 {
     public string Name => "my_alert_rules";
     public string Description => "فهرست قانون‌های هشدار شرطی خودت (شناسه، عنوان، شرط، وضعیت برقرار/نبرقرار، آخرین خبر).";
-    public object ParametersSchema => new
+
+    /// <summary>فقط‌خواندنی — فقط فهرست را برمی‌گرداند.</summary>
+    public bool IsWrite => false;    public object ParametersSchema => new
     {
         type = "object",
         properties = new { },
@@ -2742,6 +2874,9 @@ public class DeleteAlertTool : IAiTool
 public class FeedbackStatsTool : IAiTool
 {
     public string Name => "feedback_stats";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "آمار رضایت کاربران از پاسخ‌های دستیار (فقط مدیر سیستم): تعداد آرا، درصد رضایت، دلیل‌های نارضایتی، ابزارهای دخیل در پاسخ‌های ضعیف. days اختیاری (پیش‌فرض ۱۴).";
     public object ParametersSchema => new
     {
@@ -2778,6 +2913,9 @@ public class FeedbackStatsTool : IAiTool
 public class AuditStatsTool : IAiTool
 {
     public string Name => "audit_stats";
+
+    /// <summary>فقط می‌خواند — در حالت بدون لایسنس هم مجاز است.</summary>
+    public bool IsWrite => false;
     public string Description => "آمار حسابرسی دستیار (فقط مدیر سیستم): تعداد نوبت‌ها، درصد موفقیت، پرکاربردترین ابزارها و کاربران، اقدام‌های تأییدی اجراشده/لغوشده. days اختیاری (پیش‌فرض ۱۴).";
     public object ParametersSchema => new
     {

@@ -10,15 +10,21 @@ namespace Inventory.Client.Services;
 /// ساخت PDF نامه روی سربرگ (QuestPDF + PDFsharp روی تصویر ۲۴۸۱×۳۵۰۸) در سرور کند/بار اول
 /// می‌تواند بیشتر طول بکشد؛ نتیجه این بود که صفحهٔ چاپ در حالت «در حال آماده‌سازی» می‌ماند و
 /// بعد از ۱۵ ثانیه با خطا بسته می‌شد، در حالی که سرور داشت کار می‌کرد. اکنون:
-///   • تلاش اول ۹۰ ثانیه (شامل رندر سرد، JIT و فونت‌ها)
-///   • تلاش‌های بعدی ۶۰ ثانیه (کش سرور معمولاً پاسخ را فوری می‌کند)
+///   • تلاش اول ۱۲۰ ثانیه (شامل رندر سرد، JIT و فونت‌ها)
+///   • اگر بودجهٔ تلاش اول تمام شد، **یک تلاش خودکار** دیگر با بودجهٔ ۱۵۰ ثانیه انجام می‌شود
+///     و خطا به کاربر نشان داده نمی‌شود؛ چون سرور رندر را رها نمی‌کند و نتیجه‌اش را در کش
+///     حافظه/دیسک می‌گذارد، تلاش دوم معمولاً فوری یا بسیار سریع‌تر آماده می‌شود.
+///   • تلاش‌های دستی بعدی ۹۰ ثانیه
 ///   • تحویل به مرورگر بودجهٔ جدا دارد تا زمان دانلود، از سهم مرورگر کم نشود
 ///   • بعد از ۸ ثانیه متن وضعیت به کاربر می‌گوید کار در جریان است (حس «قفل‌کردن» ندهد)
 /// </summary>
 public sealed class LetterPrintWorkflow
 {
-    private static readonly TimeSpan FirstAttemptTimeout = TimeSpan.FromSeconds(90);
-    private static readonly TimeSpan RetryTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan FirstAttemptTimeout = TimeSpan.FromSeconds(120);
+    // تلاش خودکارِ دوم: بلندتر از تلاش اول، چون رندرِ سرور که با تایم‌اوت اول قطع نشده،
+    // همان لحظه در حال تکمیل است و تلاش دوم یا از کش می‌آید یا چند ثانیهٔ آخر را صبر می‌کند.
+    private static readonly TimeSpan AutoRetryTimeout = TimeSpan.FromSeconds(150);
+    private static readonly TimeSpan RetryTimeout = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan HandoffTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SlowPreparationHintAfter = TimeSpan.FromSeconds(8);
 
@@ -75,7 +81,12 @@ public sealed class LetterPrintWorkflow
         {
             attemptNumber++;
             var attempt = Stopwatch.StartNew();
-            var loadBudget = attemptNumber == 1 ? FirstAttemptTimeout : RetryTimeout;
+            var loadBudget = attemptNumber switch
+            {
+                1 => FirstAttemptTimeout,
+                2 => AutoRetryTimeout,
+                _ => RetryTimeout
+            };
 
             // Hint that the server is still rendering: the first print on a fresh deployment
             // reads the 5 MB template, registers fonts and renders the letterhead image.
@@ -120,10 +131,32 @@ public sealed class LetterPrintWorkflow
             catch (Exception ex)
             {
                 var cancelledByBudget = ex is OperationCanceledException && attempt.Elapsed >= loadBudget - TimeSpan.FromMilliseconds(500);
+
+                // تلاش خودکار: تایم‌اوت اول به کاربر نشان داده نمی‌شود. سرور رندر را ادامه
+                // می‌دهد و نتیجه را در کش می‌گذارد؛ تلاش دوم بدون دخالت کاربر جواب می‌دهد.
+                if (cancelledByBudget && attemptNumber == 1)
+                {
+                    _logger.LogInformation(
+                        "LetterPrintClientTiming Stage=auto-retry-after-budget BudgetMs={BudgetMs} TotalMs={TotalMs}",
+                        (long)loadBudget.TotalMilliseconds, total.ElapsedMilliseconds);
+                    MarkStage("auto-retry-requested");
+                    try
+                    {
+                        await _js.InvokeVoidAsync("ltxPrintStatus", printId,
+                            "ساخت PDF کمی طول کشید؛ خودکار دوباره تلاش می‌شود و سرور همان نسخه را کامل می‌کند…");
+                    }
+                    catch (Exception jsEx)
+                    {
+                        _logger.LogDebug(jsEx, "Could not update the print status hint for the automatic retry.");
+                    }
+
+                    continue;
+                }
+
                 var message = cancelledByBudget
                     ? $"ساخت نسخهٔ چاپ بیش از {(int)loadBudget.TotalSeconds} ثانیه طول کشید. " +
                       "اگر بار اول است، ساخت PDF روی سربرگ کمی کند است؛ «تلاش مجدد» معمولاً خیلی سریع‌تر آماده می‌شود. " +
-                      "در صورت تکرار، لاگ چاپ سرور (OutgoingLetterPrintTiming) را ببینید."
+                      "در صورت تکرار، لاگ چاپ سرور (LetterPrintTiming و OutgoingLetterPrintTiming) را ببینید."
                     : ex is OperationCanceledException
                         ? "آماده‌سازی چاپ لغو شد."
                         : ex.Message;
@@ -183,7 +216,7 @@ public sealed class LetterPrintWorkflow
         {
             await Task.Delay(SlowPreparationHintAfter, cancellationToken);
             await _js.InvokeVoidAsync("ltxPrintStatus", cancellationToken, printId,
-                "در حال ساخت PDF روی سربرگ شرکت… (بار اول ممکن است تا یک دقیقه طول بکشد)");
+                "در حال ساخت PDF روی سربرگ شرکت… (بار اول ممکن است تا دو دقیقه طول بکشد)");
         }
         catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException or TaskCanceledException)
         {

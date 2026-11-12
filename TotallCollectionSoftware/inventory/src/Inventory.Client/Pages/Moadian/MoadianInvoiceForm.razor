@@ -44,6 +44,13 @@ else if (loading)
 }
 else
 {
+    @* شرکت مودیان (شرکت فعال) — فقط در صورتحساب تازه انتخاب‌شدنی است؛ در ویرایش/اصلاحی/کپی
+       خدمات‌دهنده تابع خودِ صورتحساب است تا فهرست مشتری/کالا با سندِ در حال ویرایش جابه‌جا نشود. *@
+    @if (Mode == FormMode.New)
+    {
+        <MoadianCompanyBar />
+    }
+
     @if (Mode == FormMode.Eslahi)
     {
         <div class="alert alert-warning d-flex align-items-center gap-2">
@@ -89,8 +96,13 @@ else
                         <label class="form-label">مشتری <span class="text-danger">*</span></label>
                         @if (Customers.Count == 0)
                         {
-                            <div class="alert alert-warning py-2 small">
-                                مشتری‌ای برای این شرکت تعریف نشده —
+                            <select class="form-select" disabled>
+                                <option value="">— بدون مشتری —</option>
+                            </select>
+                            <div class="form-text small text-danger">
+                                @(ProviderId > 0
+                                    ? "برای این شرکت مودیان مشتری‌ای ثبت نشده — "
+                                    : "شرکت مودیان انتخاب نشده — ")
                                 <NavLink href="moadian/basic-info/customers">ثبت مشتری</NavLink>
                             </div>
                         }
@@ -100,7 +112,7 @@ else
                                 <option value="">— انتخاب مشتری —</option>
                                 @foreach (var c in Customers)
                                 {
-                                    <option value="@c.CustomerId">@c.Name @if (!string.IsNullOrEmpty(c.Type)) { <span class="text-muted">(@c.Type)</span> }</option>
+                                    <option value="@c.CustomerId">@CustomerOptionText(c)</option>
                                 }
                             </select>
                         }
@@ -108,13 +120,36 @@ else
                 }
                 <div class="col-md-3">
                     <label class="form-label">سال مالی <span class="text-danger">*</span></label>
-                    <select class="form-select" value="@vm.FiscalYearId" @onchange="OnFiscalYear">
-                        <option value="">— انتخاب —</option>
-                        @foreach (var fy in FiscalYears)
+                    @if (FiscalYears.Count == 0)
+                    {
+                        <select class="form-select" disabled>
+                            <option value="">— بدون سال مالی —</option>
+                        </select>
+                        <div class="form-text small text-danger">
+                            @(ProviderId > 0
+                                ? "برای این شرکت سال مالی تعریف نشده — "
+                                : "شرکت مودیان انتخاب نشده — ")
+                            <NavLink href="moadian/basic-info/company">تعریف سال مالی</NavLink>
+                        </div>
+                    }
+                    else
+                    {
+                        <select class="form-select" value="@vm.FiscalYearId" @onchange="OnFiscalYear">
+                            <option value="">— انتخاب —</option>
+                            @foreach (var fy in FiscalYears)
+                            {
+                                <option value="@fy.Id">@FiscalYearLabel(fy)</option>
+                            }
+                        </select>
+                        @if (SelectedFiscalYear is { } fySel)
                         {
-                            <option value="@fy.Id">@MoadianUi.Shamsi(fy.StartDate).Split('/')[0]</option>
+                            <div class="form-text small">@MoadianUi.Shamsi(fySel.StartDate) تا @MoadianUi.Shamsi(fySel.EndDate)</div>
+                            @if (DateOutOfFiscalYear)
+                            {
+                                <div class="form-text small text-danger">تاریخ فاکتور بیرون بازهٔ این سال مالی است.</div>
+                            }
                         }
-                    </select>
+                    }
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">نوع پرداخت</label>
@@ -296,6 +331,21 @@ else
     private bool loading = true, saving, forbidden;
     private int? nextInvoiceNo; // پیش‌نمایش شمارهٔ صورتحساب جدید
 
+    /// <summary>
+    /// خدمات‌دهندهٔ مودیانِ همین فرم. در «صورتحساب جدید» از نوار شرکت بالای صفحه
+    /// (شرکت فعال) می‌آید و در ویرایش/اصلاحی/کپی از خودِ صورتحساب؛ تا فهرست مشتری،
+    /// کالا و سال مالی هرگز با دادهٔ شرکت دیگری قاطی نشود.
+    /// </summary>
+    private int ProviderId { get; set; }
+
+    private VMFiscalYear? SelectedFiscalYear
+        => int.TryParse(vm.FiscalYearId, out var fyId) ? FiscalYears.FirstOrDefault(f => f.Id == fyId) : null;
+
+    /// <summary>آیا تاریخ فاکتور بیرون بازهٔ سال مالیِ انتخاب‌شده است؟ (سامانهٔ مودیان چنین صورتحسابی را رد می‌کند)</summary>
+    private bool DateOutOfFiscalYear =>
+        vm.DateOrderPicker is { } d && SelectedFiscalYear is { } fy
+        && (d.Date < fy.StartDate.Date || d.Date > fy.EndDate.Date);
+
     private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
 
     // سیستمِ تب‌ها صفحه را زنده نگه می‌دارد (display:none)؛ پس اگر بعد از ثبت موفق دوباره
@@ -310,6 +360,7 @@ else
         _myTabKey = TabService.KeyOf(Nav.ToBaseRelativePath(Nav.Uri));
         _tabWasActive = Tabs.Active is { } a && a.Key == _myTabKey;
         Tabs.Changed += OnTabsChanged;
+        Ctx.Changed += OnCompanyChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -375,65 +426,133 @@ else
         }
     }
 
-    public void Dispose() => Tabs.Changed -= OnTabsChanged;
+    /// <summary>
+    /// تغییر «شرکت مودیان» از نوار بالای صفحه: مشتری، کالا و سال مالی باید از همان شرکت
+    /// خوانده شوند. ردیف‌های نیمه‌پر پاک می‌شوند چون کالاها به شرکت قبلی تعلق داشتند.
+    /// </summary>
+    private void OnCompanyChanged()
+    {
+        if (Mode != FormMode.New) return; // در ویرایش/اصلاحی/کپی، خدمات‌دهنده تابع خودِ صورتحساب است
+        _ = InvokeAsync(async () =>
+        {
+            var hadRows = vm.InvoiceItems.Count > 0;
+            vm.CustomerId = null;
+            vm.FiscalYearId = null;
+            vm.InvoiceItems.Clear();
+            await LoadAsync();
+            if (hadRows)
+                Toast.Warning("شرکت مودیان تغییر کرد؛ ردیف‌های فرم پاک شد چون کالاها به شرکت قبلی تعلق داشتند.");
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Tabs.Changed -= OnTabsChanged;
+        Ctx.Changed -= OnCompanyChanged;
+    }
 
     private async Task LoadAsync()
     {
         loading = true;
         try
         {
-            if (Ctx.CpInfoId > 0)
+            // ---------- ۱) تعیین خدمات‌دهنده ----------
+            if (Mode is FormMode.Edit or FormMode.Eslahi or FormMode.Copy)
             {
-                Goods = await Moadian.GetGoodsComboAsync(Ctx.CpInfoId);
-                Customers = await Moadian.GetCustomersAsync(Ctx.CpInfoId);
-                FiscalYears = await Moadian.GetFiscalYearsAsync(Ctx.CpInfoId);
-            }
-            if (IsNewLike && Ctx.CpInfoId > 0)
-            {
-                var rn = await Moadian.NextInvoiceNumberAsync(Ctx.CpInfoId);
-                if (rn.Success) nextInvoiceNo = MoadianService.As<int?>(rn);
-            }
-            if (!IsNewLike || Mode == FormMode.Copy)
-            {
-                if (!IsNewLike && Id is not > 0) return;
-                InvoiceVM? loaded = null;
-                if (Id is > 0) loaded = await Moadian.GetInvoiceAsync(Id.Value);
-                if (Mode != FormMode.New && loaded is null)
+                if (Id is not > 0)
                 {
                     Toast.Error("صورتحساب یافت نشد.");
                     Nav.NavigateTo("moadian/invoices");
                     return;
                 }
-                if (loaded is not null)
+                var loaded = await Moadian.GetInvoiceAsync(Id.Value);
+                if (loaded is null)
                 {
-                    vm = loaded;
-                    if (Mode == FormMode.Copy)
-                    {
-                        // شناسهٔ نسخهٔ کپی باید تازه باشد: شماره، وضعیت، مرجع و شماره مالیاتی پاک می‌شود
-                        vm.Id = 0;
-                        vm.IsNew = true;
-                        vm.NumberInvoice = null;
-                        vm.ReferenceId = null;
-                        vm.TaxNumber = null;
-                        vm.NewTaxNumber = null;
-                        vm.StatusSentToSystem = "0";
-                        vm.StatusSentToSystemInt = "0";
-                        vm.Subject = "اصلی";
-                        vm.ShowButtons = true;
-                        vm.DateOrderPicker = DateTime.Today;
-                    }
-                    if (vm.InvoiceItems.Count == 0) vm.InvoiceItems = new ObservableCollection<VmInvoiceItems>();
-                    foreach (var it in vm.InvoiceItems) Calc(it);
+                    Toast.Error("صورتحساب یافت نشد.");
+                    Nav.NavigateTo("moadian/invoices");
+                    return;
                 }
+                vm = loaded;
+                if (Mode == FormMode.Copy)
+                {
+                    // شناسهٔ نسخهٔ کپی باید تازه باشد: شماره، وضعیت، مرجع و شماره مالیاتی پاک می‌شود
+                    vm.Id = 0;
+                    vm.IsNew = true;
+                    vm.NumberInvoice = null;
+                    vm.ReferenceId = null;
+                    vm.TaxNumber = null;
+                    vm.NewTaxNumber = null;
+                    vm.StatusSentToSystem = "0";
+                    vm.StatusSentToSystemInt = "0";
+                    vm.Subject = "اصلی";
+                    vm.ShowButtons = true;
+                    vm.DateOrderPicker = DateTime.Today;
+                }
+                if (vm.InvoiceItems.Count == 0) vm.InvoiceItems = new ObservableCollection<VmInvoiceItems>();
+                foreach (var it in vm.InvoiceItems) Calc(it);
+                ProviderId = vm.CPInfoId ?? 0;
             }
-            else if (FiscalYears.Count > 0)
+            else
             {
-                vm.FiscalYearId = FiscalYears[0].Id.ToString();
+                // صورتحساب تازه: خدمات‌دهنده = همان شرکتی که در نوار بالای صفحه انتخاب شده است.
+                ProviderId = Ctx.CpInfoId;
+                vm.CPInfoId = ProviderId > 0 ? ProviderId : null;
+            }
+
+            // ---------- ۲) فهرست‌های وابسته به همان خدمات‌دهنده ----------
+            // قبلاً این سه فهرست فقط وقتی بارگذاری می‌شدند که Ctx.CpInfoId مقدار داشت و فرم
+            // هیچ‌جا آن را مقدار نمی‌داد؛ نتیجه: کشوی مشتری و سال مالی خالی می‌ماند.
+            Goods = new();
+            Customers = new();
+            FiscalYears = new();
+            if (ProviderId > 0)
+            {
+                Goods = await Moadian.GetGoodsComboAsync(ProviderId);
+                Customers = await Moadian.GetCustomersAsync(ProviderId);
+                FiscalYears = await Moadian.GetFiscalYearsAsync(ProviderId);
+            }
+
+            // ---------- ۳) پیش‌نمایش شمارهٔ فاکتور — فقط برای صورتحساب تازه ----------
+            nextInvoiceNo = null;
+            if (IsNewLike && ProviderId > 0)
+            {
+                var rn = await Moadian.NextInvoiceNumberAsync(ProviderId);
+                if (rn.Success) nextInvoiceNo = MoadianService.As<int?>(rn);
+            }
+
+            // ---------- ۴) انتخاب پیش‌فرض سال مالی ----------
+            // در «جدید» همیشه سالی انتخاب می‌شود که تاریخ فاکتور در آن است (نه فقط جدیدترین سال)،
+            // و در کپی/ویرایش فقط وقتی مقدار ذخیره‌شده در فهرست همین شرکت نباشد.
+            if (FiscalYears.Count > 0 && Mode != FormMode.Edit && Mode != FormMode.Eslahi)
+            {
+                var fyIdValid = int.TryParse(vm.FiscalYearId, out var fyId) && FiscalYears.Any(f => f.Id == fyId);
+                if (!fyIdValid)
+                    vm.FiscalYearId = PickFiscalYear(vm.DateOrderPicker)?.Id.ToString();
             }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
+
+    /// <summary>سالی که تاریخ موردنظر در آن می‌افتد؛ در نبود آن، سال فعال و بعد جدیدترین سال.</summary>
+    private VMFiscalYear? PickFiscalYear(DateTime? date)
+    {
+        var d = (date ?? DateTime.Today).Date;
+        return FiscalYears.FirstOrDefault(f => f.StartDate.Date <= d && d <= f.EndDate.Date)
+               ?? FiscalYears.FirstOrDefault(f => f.IsActive)
+               ?? FiscalYears.FirstOrDefault();
+    }
+
+    private static string FiscalYearLabel(VMFiscalYear fy)
+    {
+        var year = MoadianUi.Shamsi(fy.StartDate).Split('/')[0];
+        if (int.TryParse(year, out var y)) year = MoadianUi.Num(y);  // ارقام فارسی، هم‌سو با بقیهٔ صفحه
+        return string.IsNullOrWhiteSpace(fy.Title) ? year : $"{year} — {fy.Title}";
+    }
+
+    private static string CustomerOptionText(VMCustomerList c)
+        => string.IsNullOrWhiteSpace(c.Type) ? (c.Name ?? "") : $"{c.Name} ({c.Type})";
 
     // ---------- محاسبات ----------
     private decimal? Dec(ChangeEventArgs e)

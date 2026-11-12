@@ -6,19 +6,35 @@ rem ================================================================
 rem Inventory - انتشار روی Windows Server
 rem آدرس اجرا: http://192.168.30.104:8181
 rem SQL Server: 192.168.30.104 / InventoryDb
+rem
+rem ⚠️ مهم: سورس مرجع در inventory\src است، نه src قدیمی ریشه.
+rem src قدیمی موتور لایسنس ندارد و انتشار از آن = توزیع نسخهٔ بدون لایسنس.
+rem مرحلهٔ [6/6] همین را قبل از پایان بررسی می‌کند و در صورت نبود، شکست می‌دهد.
 rem ================================================================
 
 set "ROOT=%~dp0"
-set "CLIENT=%ROOT%src\Inventory.Client"
-set "API=%ROOT%src\Inventory.Api"
+set "SRCROOT=%ROOT%inventory\src"
+set "CLIENT=%SRCROOT%\Inventory.Client"
+set "API=%SRCROOT%\Inventory.Api"
 set "CLIENT_PUBLISH=%ROOT%artifacts\client-publish"
 set "API_PUBLISH=%ROOT%artifacts\inventory-server"
 set "DEPLOY=%ROOT%deploy\inventory-server"
+set "VERIFY=%ROOT%inventory\tools\verify-licensing.ps1"
 set "DB_CONNECTION=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
   echo [ERROR] .NET SDK 8 روی این سیستم نصب نیست.
+  exit /b 1
+)
+
+if not exist "%API%\Inventory.Api.csproj" (
+  echo [ERROR] سورس مرجع پیدا نشد: %API%\Inventory.Api.csproj
+  echo [ERROR] این اسکریپت باید از ریشهٔ مخزن اجرا شود و سورس در inventory\src باشد.
+  exit /b 1
+)
+if not exist "%CLIENT%\Inventory.Client.csproj" (
+  echo [ERROR] سورس کلاینت پیدا نشد: %CLIENT%\Inventory.Client.csproj
   exit /b 1
 )
 
@@ -48,6 +64,26 @@ echo [5/6] آماده‌سازی پوشه استقرار...
 xcopy "%API_PUBLISH%\*" "%DEPLOY%\" /E /I /Y >nul
 if errorlevel 1 goto :failed
 
+rem ================================================================
+rem [6/6] بررسی موتور لایسنس — شرط پایان موفق انتشار
+rem   الف) آفلاین: Inventory.Licensing.dll در خروجی + فیلد licensing در health
+rem   ب) آنلاین: فقط اگر INVENTORY_HEALTH_URL تنظیم شده باشد (سرور در حال اجرا را
+rem      بررسی می‌کند). عمداً پیش‌فرض خاموش است، چون در زمان انتشار ممکن است
+rem      نسخهٔ قدیمی روی همان پورت در حال اجرا باشد و نتیجه گمراه‌کننده شود.
+rem ================================================================
+echo [6/6] بررسی موتور لایسنس در خروجی...
+if not exist "%VERIFY%" (
+  echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
+  goto :failed
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+if errorlevel 1 (
+  echo.
+  echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.
+  echo [ERROR] انتشار متوقف شد. سورس را بررسی کنید ^(باید از inventory\src باشد^).
+  goto :failed
+)
+
 rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
 >"%DEPLOY%\run-server.bat" echo @echo off
 >>"%DEPLOY%\run-server.bat" echo set "ASPNETCORE_ENVIRONMENT=Production"
@@ -60,6 +96,7 @@ rem تنظیمات اجرایی را جداگانه می‌سازیم تا اج�
 >>"%DEPLOY%\README-DEPLOY.txt" echo اجرا: فایل run-server.bat را با دسترسی مناسب اجرا کنید.
 >>"%DEPLOY%\README-DEPLOY.txt" echo در Windows Firewall پورت TCP 8181 را باز کنید.
 >>"%DEPLOY%\README-DEPLOY.txt" echo SQL Server: 192.168.30.104 / InventoryDb
+>>"%DEPLOY%\README-DEPLOY.txt" echo موتور لایسنس: بررسی شد و در خروجی موجود است.
 
 popd
 echo.

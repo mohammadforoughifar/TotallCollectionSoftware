@@ -5,6 +5,7 @@ using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -33,6 +34,26 @@ public class NotificationsController : ControllerBase
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) && v > 0 ? v : 0;
 
     /// <summary>
+    /// شرکت فعالِ همین درخواست (از هدر <c>X-Company-Id</c> که میان‌افزار اعتبارسنجی کرده است).
+    /// <para>
+    /// قاعدهٔ نمایش: اعلان‌های عمومی (<c>CompanyId == null</c>) همیشه دیده می‌شوند؛ اعلان‌های
+    /// متعلق به یک شرکت فقط وقتی همان شرکت فعال باشد. اگر کاربر به هیچ شرکتی دسترسی نداشته باشد
+    /// (۰)، فقط اعلان‌های عمومی می‌مانند.
+    /// </para>
+    /// </summary>
+    private int ActiveCompanyId
+        => HttpContext.Items[Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey] is int id && id > 0 ? id : 0;
+
+    /// <summary>محدودکردن کوئری اعلان‌ها به «عمومی + شرکت فعال».</summary>
+    private IQueryable<AppNotification> VisibleToActiveCompany(IQueryable<AppNotification> q)
+    {
+        var company = ActiveCompanyId;
+        return company > 0
+            ? q.Where(n => n.CompanyId == null || n.CompanyId == company)
+            : q.Where(n => n.CompanyId == null);
+    }
+
+    /// <summary>
     /// اعلان‌های کاربر جاری (فهرست ساده — سازگار با فراخوان‌های قبلی).
     /// <paramref name="unreadOnly"/> فقط نخوانده‌ها را برمی‌گرداند و سقف صفحه از ۱۰۰ به ۲۰۰
     /// رسیده تا مشتری‌هایی که کل فهرست را می‌خواهند، بی‌صدا بریده نشوند.
@@ -42,14 +63,14 @@ public class NotificationsController : ControllerBase
     {
         if (MyUserId <= 0) return Unauthorized();
 
-        var q = _db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId);
+        var q = VisibleToActiveCompany(_db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId));
         if (unreadOnly) q = q.Where(n => !n.IsRead);
 
         var list = await q
             .OrderByDescending(n => n.Id)
             .Skip(Math.Max(0, skip))
             .Take(Math.Clamp(take, 1, 200))
-            .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
+            .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt, n.CompanyId })
             .ToListAsync();
 
         return Ok(list);
@@ -59,28 +80,57 @@ public class NotificationsController : ControllerBase
     /// صفحهٔ اعلان‌ها همراه با شمارش‌ها — تا شمارندهٔ زنگوله (که همهٔ نخوانده‌ها را می‌شمارد)
     /// با فهرست نمایش‌داده‌شده ناهم‌خوان نشود. پیش‌تر فهرست فقط ۵۰/۱۵ ردیف اول را می‌داد و
     /// کاربر با «+۹۹» فقط چند اعلان می‌دید.
+    /// <para>
+    /// پارامتر <paramref name="category"/> فهرست را به یکی از دو گروه کارتابل محدود می‌کند:
+    /// <c>main</c> = اقدامات اصلی (مورد تازه: نامه، دستور کار، درخواست، تیکت…) و
+    /// <c>sub</c> = اقدامات فرعی (تأیید/رد، ارجاع، پاسخ، کامنت، تمدید، بسته‌شدن…).
+    /// خالی = همه. شمارش‌های هر دو گروه همیشه برگردانده می‌شوند تا برچسب تب‌ها درست باشد.
+    /// </para>
     /// </summary>
     [HttpGet("page")]
-    public async Task<IActionResult> Page([FromQuery] int take = 25, [FromQuery] int skip = 0, [FromQuery] bool unreadOnly = false)
+    public async Task<IActionResult> Page([FromQuery] int take = 25, [FromQuery] int skip = 0,
+        [FromQuery] bool unreadOnly = false, [FromQuery] string? category = null)
     {
         if (MyUserId <= 0) return Unauthorized();
 
         take = Math.Clamp(take, 1, 200);
         skip = Math.Max(0, skip);
+        category = (category ?? "").Trim().ToLowerInvariant();
 
-        var q = _db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId);
-        var total = await q.CountAsync();
-        var unread = await q.CountAsync(n => !n.IsRead);
+        var visible = VisibleToActiveCompany(_db.AppNotifications.AsNoTracking().Where(n => n.UserId == MyUserId));
+        var mainExpr = NotificationCategory.MainPredicate();
+        var subExpr = NotificationCategory.SubPredicate();
+
+        // شمارش کل و اصلی‌ها روی «همهٔ» اعلان‌های قابل‌مشاهده (بدون فیلتر تب)؛ فرعی‌ها = تفاضل.
+        var total = await visible.CountAsync();
+        var unread = await visible.CountAsync(n => !n.IsRead);
+        var mainTotal = await visible.CountAsync(mainExpr);
+        var mainUnread = await visible.Where(mainExpr).CountAsync(n => !n.IsRead);
+
+        var q = visible;
+        if (category == NotificationCategory.Main) q = q.Where(mainExpr);
+        else if (category == NotificationCategory.Sub) q = q.Where(subExpr);
         if (unreadOnly) q = q.Where(n => !n.IsRead);
 
-        var filteredTotal = unreadOnly ? unread : total;
+        var filteredTotal = await q.CountAsync();
 
-        var items = await q
+        var rows = await q
             .OrderByDescending(n => n.Id)
             .Skip(skip)
             .Take(take)
-            .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
+            .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt, n.CompanyId })
             .ToListAsync();
+
+        // نام شرکت‌ها فقط برای ردیف‌های شرکتی؛ برای نمایش برچسب «شرکت …» کنار اعلان.
+        var companyNames = await CompanyNamesAsync(rows.Select(x => x.CompanyId).Where(x => x.HasValue).Select(x => x!.Value));
+        var items = rows.Select(x => new
+        {
+            x.Id, x.Title, x.Body, x.FromName, x.FormName, x.Link, x.IsRead, x.CreatedAt,
+            x.CompanyId,
+            CompanyName = x.CompanyId is int cid && companyNames.TryGetValue(cid, out var cn) ? cn : null,
+            // دستهٔ همین ردیف (در حافظه، چون تابع C# به SQL ترجمه نمی‌شود)
+            Category = NotificationCategory.Classify(x.Title)
+        }).ToList();
 
         return Ok(new
         {
@@ -90,6 +140,12 @@ public class NotificationsController : ControllerBase
             filteredTotal,
             skip,
             take,
+            category,
+            // برچسب تب‌های کارتابل
+            mainTotal,
+            mainUnread,
+            subTotal = total - mainTotal,
+            subUnread = unread - mainUnread,
             hasMore = skip + items.Count < filteredTotal
         });
     }
@@ -99,10 +155,21 @@ public class NotificationsController : ControllerBase
     {
         if (MyUserId <= 0) return Unauthorized();
 
-        var count = await _db.AppNotifications.AsNoTracking()
-            .CountAsync(n => n.UserId == MyUserId && !n.IsRead);
+        var count = await VisibleToActiveCompany(_db.AppNotifications.AsNoTracking()
+                .Where(n => n.UserId == MyUserId))
+            .CountAsync(n => !n.IsRead);
 
         return Ok(new { count });
+    }
+
+    /// <summary>نام شرکت‌های درخواستی — برای برچسب شرکت روی اعلان‌های شرکتی.</summary>
+    private async Task<Dictionary<int, string>> CompanyNamesAsync(IEnumerable<int> ids)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return new();
+        return await _db.SystemCompanies.AsNoTracking()
+            .Where(c => list.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name);
     }
 
     [HttpPost("{id:int}/read")]
@@ -159,6 +226,7 @@ public class NotificationsController : ControllerBase
     }
 
     /// <summary>ارسال پیام آزمایشی بله/ایتا به کاربر جاری — نتیجه‌ی هر پیام‌رسان برگردانده می‌شود.</summary>
+    [AllowInReadOnly]
     [HttpPost("test-messenger")]
     public async Task<IActionResult> TestMessenger()
     {
@@ -247,7 +315,8 @@ public class NotificationsController : ControllerBase
     {
         if (MyUserId <= 0) return Unauthorized();
 
-        var list = await _db.AppNotifications.Where(n => n.UserId == MyUserId).ToListAsync();
+        // فقط اعلان‌های همین شرکت فعال (و عمومی‌ها) پاک می‌شوند؛ اعلان شرکت دیگر دست نمی‌خورد.
+        var list = await VisibleToActiveCompany(_db.AppNotifications.Where(n => n.UserId == MyUserId)).ToListAsync();
         _db.AppNotifications.RemoveRange(list);
         await _db.SaveChangesAsync();
         return Ok(new { removed = list.Count });
@@ -258,7 +327,9 @@ public class NotificationsController : ControllerBase
     {
         if (MyUserId <= 0) return Unauthorized();
 
-        var list = await _db.AppNotifications.Where(n => n.UserId == MyUserId && !n.IsRead).ToListAsync();
+        var list = await VisibleToActiveCompany(_db.AppNotifications
+                .Where(n => n.UserId == MyUserId && !n.IsRead))
+            .ToListAsync();
         foreach (var n in list) n.IsRead = true;
         await _db.SaveChangesAsync();
         return Ok();
@@ -410,6 +481,7 @@ public class NotificationsController : ControllerBase
     }
 
     /// <summary>ارسال پیام آزمایشی push به کاربر جاری (برای تست تنظیمات).</summary>
+    [AllowInReadOnly]
     [HttpPost("test-push")]
     public async Task<IActionResult> TestPush([FromBody] PushUnsubscribeInput? input)
     {
@@ -428,6 +500,7 @@ public class NotificationsController : ControllerBase
         return Accepted(new { message = "اعلان در صف ارسال قرار گرفت؛ دریافت آن را در نوار اعلان گوشی بررسی کنید." });
     }
 
+    [AllowInReadOnly]
     [HttpPost("push-status")]
     public async Task<IActionResult> PushStatus([FromBody] PushUnsubscribeInput? input)
     {

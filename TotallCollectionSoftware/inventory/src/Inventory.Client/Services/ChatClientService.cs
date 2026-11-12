@@ -211,9 +211,9 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     public async Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file)
     {
         if (file.Size <= 0) throw new ApiException("فایل خالی قابل ارسال نیست.");
-        const long maxFileBytes = 50L * 1024L * 1024L;
-        if (file.Size > maxFileBytes) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
-        using var stream = file.OpenReadStream(maxFileBytes);
+        // سقف حجم برداشته شد. OpenReadStream پیش‌فرض ۵۰۰ کیلوبایت است؛ باید صریحاً بالا برود،
+        // وگرنه فایل‌های بزرگ‌تر همان‌جا در مرورگر رد می‌شوند.
+        using var stream = file.OpenReadStream(long.MaxValue);
         return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
             stream, file.Name, "file", file.ContentType);
     }
@@ -229,8 +229,6 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     public async Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType)
     {
         if (data == null || data.Length == 0) throw new ApiException("فایل صوتی خالی است.");
-        const long maxFileBytes = 50L * 1024L * 1024L;
-        if (data.Length > maxFileBytes) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
         using var stream = new MemoryStream(data, writable: false);
         return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
             stream, fileName, "file", contentType);

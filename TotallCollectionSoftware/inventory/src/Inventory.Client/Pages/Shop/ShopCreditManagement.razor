@@ -40,7 +40,7 @@
         <div class="row g-3 mb-4">
             <!-- چک‌های در جریان -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="fin-kpi-card border-indigo">
+                <button type="button" class="fin-kpi-card kpi-filter border-indigo" aria-label="نمایش چک‌های در جریان وصول" aria-pressed="@(IsQuickFilterActive("inhand"))" @onclick='() => ApplyQuickFilter("inhand")'>
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-indigo">چک‌های در جریان وصول</span>
@@ -56,12 +56,12 @@
                             @summary.InHandChequesCount.Num() برگ چک فعال
                         </span>
                     </div>
-                </div>
+                </button>
             </div>
 
             <!-- چک‌های برگشتی -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="fin-kpi-card border-rose">
+                <button type="button" class="fin-kpi-card kpi-filter border-rose" aria-label="نمایش چک‌های برگشتی" aria-pressed="@(IsQuickFilterActive("bounced"))" @onclick='() => ApplyQuickFilter("bounced")'>
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-rose">چک‌های برگشتی (مطالبات معوق)</span>
@@ -77,12 +77,12 @@
                             @summary.BouncedChequesCount.Num() چک برگشتی و بدهکار
                         </span>
                     </div>
-                </div>
+                </button>
             </div>
 
             <!-- اقساط پرداخت‌نشده -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="fin-kpi-card border-amber">
+                <button type="button" class="fin-kpi-card kpi-filter border-amber" aria-label="نمایش اقساط پرداخت‌نشده" aria-pressed="@(IsQuickFilterActive("pending"))" @onclick='() => ApplyQuickFilter("pending")'>
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-amber">اقساط باز و سررسیدشده</span>
@@ -98,12 +98,12 @@
                             @summary.PendingInstallmentsCount.Num() قسط باز (@summary.OverdueInstallmentsCount.Num() معوق)
                         </span>
                     </div>
-                </div>
+                </button>
             </div>
 
             <!-- وصولی‌های قطعی -->
             <div class="col-12 col-sm-6 col-xl-3">
-                <div class="fin-kpi-card border-emerald">
+                <button type="button" class="fin-kpi-card kpi-filter border-emerald" aria-label="نمایش وصولی‌های موفق" aria-pressed="@(IsQuickFilterActive("collected"))" @onclick='() => ApplyQuickFilter("collected")'>
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
                             <span class="fin-kpi-title text-emerald">مجموع وصولی‌های موفق</span>
@@ -121,10 +121,15 @@
                             @((summary.ClearedChequesCount + summary.PaidInstallmentsCount).Num()) فقره وصولی کامل
                         </span>
                     </div>
-                </div>
+                </button>
             </div>
         </div>
     }
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span class="fs-8 text-secondary">برای فیلتر، روی باکس‌ها کلیک کنید. وصولی‌ها شامل چک و قسط‌اند؛ هرکدام در تب مربوط نمایش داده می‌شوند.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetQuickFilters">نمایش همه / پاک‌کردن فیلترها</button>
+    </div>
 
     <!-- ================== تب‌های سگمنتی لوکس ================== -->
     <div class="op-tabs-nav-wrapper mb-4">
@@ -171,7 +176,7 @@
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
                                placeholder="جستجوی سریال، کد صیاد، نام یا تلفن مشتری..."
-                               @bind="chequeSearch" @bind:event="oninput" @onkeyup="ApplyChequeFilter" />
+                               @bind="chequeSearch" @bind:event="oninput" @bind:after="ApplyChequeFilter" />
                     </div>
                 </div>
 
@@ -283,7 +288,7 @@
                                     </td>
                                     <td class="num fs-8">
                                         <div class="fw-600">@c.DueDate.ToFa()</div>
-                                        @if (!c.IsCleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Endorsed)
+                                        @if (!c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Endorsed)
                                         {
                                             if (c.DaysOverdue > 0)
                                             {
@@ -344,7 +349,7 @@
                                                 <button class="btn btn-sm btn-outline-primary fin-btn-pill fs-9 py-1 px-2" title="تغییر سررسید و محاسبه تعدیل" @onclick="() => OpenReschedule(c)">سررسید</button>
                                                 <button class="btn btn-sm btn-outline-warning fin-btn-pill fs-9 py-1 px-2" title="تعویض چک وصول‌نشده" @onclick="() => OpenReplaceCheque(c)">تعویض</button>
                                             }
-                                            @if (c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && !c.IsCleared && c.Status != ChequeStatus.Bounced)
+                                            @if (c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed && !c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Bounced)
                                             {
                                                 <button class="btn btn-sm btn-outline-success fin-btn-pill fs-9 py-1 px-2.5" title="وصول / پاس شدن چک" @onclick="() => ConfirmClearCheque(c)">
                                                     <i class="bi bi-check-lg me-1"></i> وصول
@@ -389,7 +394,7 @@
                         <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control border-start-0 fin-input"
                                placeholder="جستجوی نام مشتری، تلفن، کد..."
-                               @bind="installmentSearch" @bind:event="oninput" @onkeyup="ApplyInstallmentFilter" />
+                               @bind="installmentSearch" @bind:event="oninput" @bind:after="ApplyInstallmentFilter" />
                     </div>
                 </div>
 
@@ -796,6 +801,9 @@
     position: relative;
     overflow: hidden;
 }
+.kpi-filter { width: 100%; text-align: right; font: inherit; color: inherit; cursor: pointer; }
+.kpi-filter[aria-pressed="true"] { outline: 2px solid #6366f1; outline-offset: 3px; }
+.kpi-filter:focus-visible { outline: 3px solid #6366f1; outline-offset: 3px; }
 .fin-kpi-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
@@ -1350,6 +1358,33 @@
         await LoadDataAsync();
     }
 
+    private bool IsQuickFilterActive(string key) => key switch
+    {
+        "inhand" => activeTab == "cheques" && chequeStatusFilter == ((int)ChequeStatus.InHand).ToString(),
+        "bounced" => activeTab == "cheques" && chequeStatusFilter == ((int)ChequeStatus.Bounced).ToString(),
+        "pending" => activeTab == "installments" && installmentPaidFilter == "false",
+        "collected" => activeTab == "cheques" ? chequeStatusFilter == ((int)ChequeStatus.Cleared).ToString() : installmentPaidFilter == "true",
+        _ => false
+    };
+    private void ApplyQuickFilter(string key)
+    {
+        chequeSearch = installmentSearch = chequeTxnTypeFilter = "";
+        chequeStatusFilter = installmentPaidFilter = "";
+        switch (key)
+        {
+            case "inhand": activeTab = "cheques"; chequeStatusFilter = ((int)ChequeStatus.InHand).ToString(); break;
+            case "bounced": activeTab = "cheques"; chequeStatusFilter = ((int)ChequeStatus.Bounced).ToString(); break;
+            case "pending": activeTab = "installments"; installmentPaidFilter = "false"; break;
+            case "collected": activeTab = "cheques"; chequeStatusFilter = ((int)ChequeStatus.Cleared).ToString(); installmentPaidFilter = "true"; break;
+        }
+        ApplyChequeFilter(); ApplyInstallmentFilter();
+    }
+    private void ResetQuickFilters()
+    {
+        chequeSearch = installmentSearch = chequeTxnTypeFilter = chequeStatusFilter = installmentPaidFilter = "";
+        ApplyChequeFilter(); ApplyInstallmentFilter();
+    }
+
     private void SetTab(string tab)
     {
         activeTab = tab;
@@ -1391,7 +1426,7 @@
             else if (status == ChequeStatus.Cancelled)
                 q = q.Where(c => c.Status == ChequeStatus.Cancelled);
             else
-                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled);
+                q = q.Where(c => !c.IsCleared && c.Status != ChequeStatus.Cleared && c.Status != ChequeStatus.Bounced && c.Status != ChequeStatus.Cancelled && c.Status != ChequeStatus.Endorsed);
         }
 
         if (int.TryParse(chequeTxnTypeFilter, out var tt))

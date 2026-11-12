@@ -598,6 +598,22 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserRole> UserRoles => Set<UserRole>();
 
+    // ==================== لایسنس ====================
+    // نکته: هیچ‌کدام از این جدول‌ها فیلتر «شرکت فعال» ندارند؛ لایسنس مال کل نصب است،
+    // نه یک شرکت. اگر فیلتر می‌خوردند، با تغییر شرکت در کمبوی بالا وضعیت لایسنس عوض می‌شد.
+    public DbSet<LicenseInstallation> LicenseInstallations => Set<LicenseInstallation>();
+    public DbSet<LicenseGrant> LicenseGrants => Set<LicenseGrant>();
+    public DbSet<LicenseItemRow> LicenseItemRows => Set<LicenseItemRow>();
+    public DbSet<LicenseUsage> LicenseUsages => Set<LicenseUsage>();
+
+    /// <summary>دفتر الحاقی مصرف سهمیه (مصرف/بازگشت) — ممیزی و لاگ حذف.</summary>
+    public DbSet<LicenseUsageLedger> LicenseUsageLedger => Set<LicenseUsageLedger>();
+    public DbSet<LicenseUsageBaseline> LicenseUsageBaselines => Set<LicenseUsageBaseline>();
+    public DbSet<LicenseReservation> LicenseReservations => Set<LicenseReservation>();
+    public DbSet<LicenseGrandfatherBaseline> LicenseGrandfatherBaselines => Set<LicenseGrandfatherBaseline>();
+    public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
+    public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -607,6 +623,7 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        ConfigureLicensing(mb);
         // بک‌آپ خودکار: کلیدهای رشته‌ای و تک‌ردیفی تنظیمات نباید Identity بگیرند.
         mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
         mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);
@@ -1260,6 +1277,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LinkedLeaveRequestId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // اعلان‌ها: ایندکس جست‌وجوی زنگوله/شمارنده بر اساس کاربر و شرکت فعال.
+        // (فیلتر شرکتی این‌جا اعمال نمی‌شود؛ اعلان‌های عمومی CompanyId = NULL دارند و باید دیده شوند.)
+        mb.Entity<AppNotification>()
+            .HasIndex(n => new { n.UserId, n.CompanyId, n.IsRead });
+
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasQueryFilter(w => w.DeletedAt == null);
         mb.Entity<WorkOrder>().HasIndex(w => new { w.RecurrenceSeriesId, w.RecurrenceScheduledAt })
@@ -1522,6 +1544,11 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Cascade);
 
         // ============ ماژول فاکتور ============
+        // ---------- حذف نرم فاکتور (مرحله ۲ — قاعدهٔ سهمیه) ----------
+        // فاکتور حذف‌شده از همهٔ کوئری‌های عادی ناپدید می‌شود، ولی ردیفش می‌ماند چون
+        // مصرف سهمیه‌اش برنمی‌گردد و «تعداد واقعی» مبنای مصرف مؤثر است.
+        // جاهایی که به شمارهٔ بعدی می‌نگرند باید IgnoreQueryFilters بزنند (NextNumberAsync).
+        mb.Entity<FacInvoice>().HasQueryFilter(i => !i.IsDeleted);
         mb.Entity<FacInvoice>().HasIndex(i => new { i.Kind, i.Number }).IsUnique();
         mb.Entity<FacInvoice>().HasIndex(i => i.Date);
         mb.Entity<FacInvoice>().HasIndex(i => i.Status);
@@ -1898,5 +1925,71 @@ public class AppDbContext : DbContext
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+    }
+
+    /// <summary>
+    /// پیکربندی جداول لایسنس.
+    /// <para>
+    /// همهٔ ایندکس‌های یکتا این‌جا تعریف شده‌اند تا هم مایگریشن EF و هم
+    /// <c>LicenseSchemaV1</c> (مسیر SQLite) یک نتیجه بدهند.
+    /// </para>
+    /// </summary>
+    private static void ConfigureLicensing(ModelBuilder mb)
+    {
+        // ==================== ⛔ هیچ مایگریشنی نباید جدول‌های لایسنس را بسازد ====================
+        //
+        // تصمیم صریح (بازبینی مرحله ۲): «تنها سازندهٔ جدول‌های لایسنس، LicenseSchemaV1 است».
+        // دلیلش یک مشکل واقعی است، نه سلیقه:
+        //  • نصب‌های موجود تاریخچهٔ مایگریشن ناقص دارند (مایگریشن‌ها دستی stamp شده‌اند)،
+        //    پس ترتیب و اجرای مایگریشن قابل اعتماد نیست.
+        //  • LicenseSchemaV1 عمداً idempotent نوشته شده و در هر بالا آمدن اجرا می‌شود؛
+        //    پس جدول‌ها همیشه ساخته/ترمیم می‌شوند.
+        //  • اگر مایگریشن هم همان جدول‌ها را بسازد، دو مسیر موازی برای یک اسکیما داریم و
+        //    در نصب بعدی، «جدول از قبل هست» به خطای مایگریشن تبدیل می‌شود.
+        //
+        // نتیجهٔ عملی: `dotnet ef migrations add` هیچ تغییری برای جدول‌های لایسنس تولید نمی‌کند.
+        // (تست: خروجی واقعی migrations add بررسی شد — صفر جدول License*.)
+        mb.Entity<LicenseInstallation>().ToTable("LicenseInstallations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrant>().ToTable("LicenseGrants", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseItemRow>().ToTable("LicenseItemRows", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsage>().ToTable("LicenseUsages", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageLedger>().ToTable("LicenseUsageLedger", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseUsageBaseline>().ToTable("LicenseUsageBaselines", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseReservation>().ToTable("LicenseReservations", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseGrandfatherBaseline>().ToTable("LicenseGrandfatherBaselines", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseSession>().ToTable("LicenseSessions", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseEvent>().ToTable("LicenseEvents", t => t.ExcludeFromMigrations());
+
+        // تک‌ردیفی بودن نصب با منطق برنامه تضمین می‌شود (همیشه Id = 1)؛ Identity نگه داشته می‌شود.
+        mb.Entity<LicenseInstallation>().HasIndex(x => x.InstallationId).IsUnique();
+
+        // هر فایل لایسنس فقط یک‌بار: سریال یکتا
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Serial).IsUnique();
+        mb.Entity<LicenseGrant>().HasIndex(x => x.Status);
+
+        mb.Entity<LicenseItemRow>().HasIndex(x => x.GrantId);
+        mb.Entity<LicenseItemRow>().HasIndex(x => new { x.GrantId, x.ItemId });
+
+        // کلید طبیعی مصرف: ماژول + متریک + دوره (نه آیتم — مصرف با تغییر آیتم ریست نمی‌شود)
+        mb.Entity<LicenseUsage>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        // دفتر مصرف: ایندکس برای گزارش «چه چیزی این دوره مصرف شد» و برای رکورد مرتبط
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
+        mb.Entity<LicenseUsageLedger>().HasIndex(x => new { x.EntityType, x.EntityId });
+        mb.Entity<LicenseUsageBaseline>().HasIndex(x => new { x.Module, x.Metric }).IsUnique();
+
+        // «مبنای بخشودگی»: یک ردیف برای هر (متریک، دوره) — دوره بخشی از کلید است،
+        // پس ماه تازه کلید تازه دارد و خودبه‌خود از صفر شمرده می‌شود.
+        mb.Entity<LicenseGrandfatherBaseline>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
+        mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });
+        mb.Entity<LicenseSession>().HasIndex(x => x.UserId);
+
+        // رزرو: جست‌وجوی «رزروهای در انتظار» و «رزروهای کهنه» به این ایندکس تکیه دارد.
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.State, x.ReservedAt });
+        mb.Entity<LicenseReservation>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey });
+
+        mb.Entity<LicenseEvent>().HasIndex(x => x.At);
     }
 }

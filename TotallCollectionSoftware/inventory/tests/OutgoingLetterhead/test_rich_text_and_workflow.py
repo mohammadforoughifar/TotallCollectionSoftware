@@ -69,7 +69,7 @@ class RichLetterPrintTests(unittest.TestCase):
         self.assertIn('"ltxPrintWaitForAction"', workflow)
         self.assertIn('"ltxPrintDirectPage"', workflow)
         # بودجهٔ زمانی: سقف ثابت ۱۵ ثانیه‌ای کل مسیر را قطع می‌کرد و چاپ هرگز آماده نمی‌شد.
-        self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(90)", workflow)
+        self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(120)", workflow)
         self.assertIn("CancellationTokenSource(loadBudget)", workflow)
         self.assertIn("PrintWorkflow.PrintPdfAsync", internal)
         self.assertIn("PrintWorkflow.PrintPdfAsync", outgoing)

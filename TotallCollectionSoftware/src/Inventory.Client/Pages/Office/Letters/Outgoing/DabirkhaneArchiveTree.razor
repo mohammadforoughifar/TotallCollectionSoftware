@@ -164,7 +164,7 @@
                 @if (renamingId == n.BayeganiId)
                 {
                     <input class="tin" style="padding:2px 6px;font-size:12.5px" @bind="renameValue" @bind:event="oninput"
-                           @onkeydown="@(e => { if (e.Key == "Enter") { _ = SaveRename(n.BayeganiId); } else if (e.Key == "Escape") renamingId = null; })" />
+                           @onkeydown="@((Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) => { if (e.Key == "Enter") { _ = SaveRename(n.BayeganiId); } else if (e.Key == "Escape") renamingId = null; })" />
                     <button class="lbtn ghost" style="padding:2px 8px" @onclick="() => SaveRename(n.BayeganiId)">ذخیره</button>
                     <button class="lbtn ghost" style="padding:2px 8px" @onclick="() => renamingId = null">انصراف</button>
                 }
@@ -190,7 +190,7 @@
                 <div style="display:flex;gap:6px;margin:4px 0 8px 24px">
                     <input class="tin" style="padding:3px 8px;font-size:12.5px" placeholder="نام زیرپوشه…"
                            @bind="subName" @bind:event="oninput"
-                           @onkeydown="@(e => { if (e.Key == "Enter") { _ = CreateSub(n.BayeganiId); } else if (e.Key == "Escape") addingSubId = null; })" />
+                           @onkeydown="@((Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) => { if (e.Key == "Enter") { _ = CreateSub(n.BayeganiId); } else if (e.Key == "Escape") addingSubId = null; })" />
                     <button class="lbtn pri" style="padding:2px 10px;font-size:12px" @onclick="() => CreateSub(n.BayeganiId)">ساخت</button>
                     <button class="lbtn ghost" style="padding:2px 10px;font-size:12px" @onclick="() => addingSubId = null">انصراف</button>
                 </div>

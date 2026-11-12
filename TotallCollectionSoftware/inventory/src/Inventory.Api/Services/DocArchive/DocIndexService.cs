@@ -53,6 +53,18 @@ public class DocIndexService : IDocIndexService
         if (version == null)
             return new DocExtractionResult(false, "NoVersion", "", "", 0, "ورژن مدرک یافت نشد.");
 
+        // سقف حجم خودِ پیوست برداشته شده است، ولی استخراج خودکار متن کل فایل را در حافظه
+        // می‌خواند؛ برای فایل‌های بسیار سنگین (که پیش از این قابل آپلود نبودند) همین‌جا
+        // رد می‌شود تا کارگر پس‌زمینه با کمبود حافظه از کار نیفتد. فایل ذخیره‌شده و
+        // قابل دانلود/پیش‌نمایش می‌ماند، فقط متنش ایندکس نمی‌شود.
+        const long MaxIndexBytes = 60L * 1024 * 1024;
+        var attachmentSize = !string.IsNullOrWhiteSpace(att.FilePath)
+            ? fileStore.Size(att.FilePath)
+            : (long)(att.Data?.Length ?? 0);
+        if (attachmentSize > MaxIndexBytes)
+            return new DocExtractionResult(false, "TooLarge", "", "", 0,
+                "حجم فایل برای استخراج خودکار متن بیش از حد مجاز (۶۰ مگابایت) است؛ فایل ذخیره شده و قابل دریافت است.");
+
         // Read file bytes
         byte[]? bytes = null;
         if (!string.IsNullOrWhiteSpace(att.FilePath))

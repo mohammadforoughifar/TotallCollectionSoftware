@@ -308,8 +308,6 @@
 @code {
     [Parameter] public EventCallback OnSent { get; set; }
 
-    private const long MaxFile = 20L * 1024 * 1024;
-
     private bool visible;
     private bool busy;
     private bool isEditLetter;
@@ -588,7 +586,6 @@
         foreach (var picked in e.GetMultipleFiles(int.MaxValue))
         {
             if (picked.Size <= 0) { rejected.Add($"{picked.Name} (خالی)"); continue; }
-            if (picked.Size > 20 * 1024 * 1024) { rejected.Add($"{picked.Name} (بیش از ۲۰MB)"); continue; }
             // نسخهٔ فعلی وقتی مراجع رو IBrowserFile را مثل قبل نگه می‌داشتیم، در ثبت‌ها OnRead می‌شدند
             // با «no file with ID N ... file list may have changed» می‌خوردند؛ چون سامانهٔ فایل مرورگر در
             // ورود جدید یا رندر نو، ID های قدیمی را رها می‌کند. پس فایل فوراً در حافظه خوانده می‌شود.

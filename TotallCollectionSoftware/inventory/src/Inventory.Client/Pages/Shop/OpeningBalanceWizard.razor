@@ -225,7 +225,7 @@
                     </div>
                 </div>
 
-                <!-- سابقه و گزارش ثبت‌ها در این نشست -->
+                <!-- سابقه و گزارش ثبت‌ها در سوابق -->
                 <div class="col-12 col-xl-7">
                     <div class="op-table-card">
                         <div class="op-table-header">
@@ -260,7 +260,7 @@
                                             <td colspan="5" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در این نشست ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در سوابق ثبت نشده است</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -729,7 +729,7 @@
                                     <i class="bi bi-box-seam"></i>
                                 </div>
                                 <div>
-                                    <h3 class="op-table-title">کالاهای ثبت‌شده اولیه در این نشست</h3>
+                                    <h3 class="op-table-title">کالاهای ثبت‌شده اولیه در سوابق</h3>
                                 </div>
                             </div>
                             <button type="button" class="btn btn-sm btn-success op-btn-rounded" @onclick="OpenExcelImport">
@@ -755,7 +755,7 @@
                                             <td colspan="5" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در این نشست ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در سوابق ثبت نشده است</div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -1514,6 +1514,7 @@
 
             var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
             chequesList = chqRes.Items;
+            await LoadOpeningHistoryAsync();
         }
         catch (Exception ex)
         {
@@ -1523,6 +1524,61 @@
         {
             loading = false;
         }
+    }
+
+    private async Task LoadOpeningHistoryAsync()
+    {
+        var orders = new List<Order>();
+        foreach (var type in new[] { TransactionType.Sale, TransactionType.Purchase })
+        {
+            var loaded = 0;
+            for (var page = 1; ; page++)
+            {
+                var result = await OrderSvc.GetOrdersAsync(type, page: page, pageSize: 100, openingOnly: true);
+                orders.AddRange(result.Items);
+                loaded += result.Items.Count;
+                if (result.Items.Count == 0 || loaded >= result.TotalCount) break;
+            }
+        }
+
+        var balances = new List<PartyBalanceItem>();
+        var installments = new List<Order>();
+        var stocks = new List<OpeningStockLine>();
+        foreach (var order in orders.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id))
+        {
+            if (order.IsCancelled) continue;
+            var isOpeningProduct = order.Lines.Any(l =>
+                l.ProductId == openingServiceProduct?.Id || l.ProductId == openingGoodsProduct?.Id ||
+                l.ProductName == "مانده افتتاح حساب (خدمات)" || l.ProductName == "مانده بستانکاری افتتاحیه (کالا)");
+            if (order.Description.StartsWith("[OPENING:INSTALLMENT]") ||
+                (isOpeningProduct && order.PaymentMethod == PaymentMethod.Installment) ||
+                order.Description == "مانده اقساط بدهی باز اول دوره")
+            {
+                installments.Add(order);
+            }
+            else if (order.Description.StartsWith("[OPENING:PARTY]") || isOpeningProduct ||
+                (order.PaymentMethod == PaymentMethod.Credit && order.Description.Contains("افتتاح")))
+            {
+                balances.Add(new PartyBalanceItem
+                {
+                    PartyId = order.PartyId, PartyName = order.PartyName ?? "",
+                    PartyType = order.Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier,
+                    Amount = order.TotalAmount, IsDebtor = order.Type == TransactionType.Sale,
+                    Date = order.Date, DueDate = order.DueDate, Description = order.Description
+                });
+            }
+            else if (order.Type == TransactionType.Purchase)
+            {
+                stocks.AddRange(order.Lines.Select(line => new OpeningStockLine
+                {
+                    WarehouseName = order.WarehouseName ?? "", ProductName = line.ProductName,
+                    Quantity = line.Quantity, UnitPrice = line.Price, Date = order.Date
+                }));
+            }
+        }
+        recentPartyBalances = balances;
+        recentInstallmentOrders = installments;
+        recentStockLines = stocks;
     }
 
     private void OnChequeKindChanged(ChequeKind k)
@@ -1622,7 +1678,7 @@
                 Date = docDate,
                 PaymentMethod = PaymentMethod.Credit,
                 DueDate = dueDate,
-                Description = string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description,
+                Description = "[OPENING:PARTY] " + (string.IsNullOrWhiteSpace(partyBalance.Description) ? "مانده حساب افتتاحیه اول دوره" : partyBalance.Description),
                 Lines = new List<OrderLineInput>
                 {
                     new()
@@ -1662,6 +1718,8 @@
     private async Task SaveChequeAsync()
     {
         if (saving) return;
+        var identifierError = ShopIdentifierRules.ValidateCheque(newCheque);
+        if (identifierError is not null) { Toast.Error(identifierError); return; }
         if ((newCheque.PartyId ?? 0) <= 0) { Toast.Error("لطفاً طرف حساب را انتخاب کنید."); return; }
         if (newCheque.Amount <= 0) { Toast.Error("مبلغ چک باید بزرگ‌تر از صفر باشد."); return; }
         if (newCheque.Kind == ChequeKind.Issued && (newCheque.TrsAccountId ?? 0) <= 0)
@@ -1677,7 +1735,7 @@
             newCheque.IssueDate = DateTime.Today;
             newCheque.Status = ChequeStatus.InHand;
 
-            var saved = await ChequeSvc.SaveAsync(newCheque);
+            var saved = await ChequeSvc.SaveShopAsync(newCheque);
             Toast.Success($"چک شماره {saved.Number} به مبلغ {saved.Amount:N0} ریال با موفقیت در دفتر چک ثبت شد.");
             
             try
@@ -1742,7 +1800,7 @@
                 Date = DateTime.Today,
                 PaymentMethod = PaymentMethod.Installment,
                 DueDate = lastDueDate,
-                Description = instNote,
+                Description = "[OPENING:INSTALLMENT] " + instNote,
                 Lines = new List<OrderLineInput>
                 {
                     new()
@@ -1796,7 +1854,7 @@
                 WarehouseId = stockWarehouseId,
                 Date = DateTime.Today,
                 PaymentMethod = PaymentMethod.Cash,
-                Description = stockDescription,
+                Description = "[OPENING:STOCK] " + stockDescription,
                 Lines = new List<OrderLineInput>
                 {
                     new()

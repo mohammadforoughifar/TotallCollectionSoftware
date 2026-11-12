@@ -97,7 +97,7 @@ class InvoiceEnhancements(unittest.TestCase):
         for text in ('A4 portrait', 'A5 portrait', 'compact-items', 'payment-schedule', 'این فاکتور ابطال شده است'):
             self.assertIn(text, invoice)
         self.assertNotIn('data-invoice-paper-size', form)
-        self.assertIn('shopPrintPreview.choosePaper', form)
+        self.assertIn('showPrintPaperChooser', form)
         self.assertNotIn('data-invoice-paper-size', orders)
         self.assertIn('shopPrintPreview.choosePaper', orders)
         self.assertIn('موجودی صفر یا منفی', form)
