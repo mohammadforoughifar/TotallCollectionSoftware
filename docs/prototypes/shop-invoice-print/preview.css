@@ -105,3 +105,12 @@
 .invoice .settlement .totals>div { border-left:0;border-right:0;border-bottom:1px solid #dfe3e9; }
 .invoice .settlement .totals .payable { border-bottom:0; }
 .invoice.a5 .settlement .totals { width:210px; }
+
+/* Requested live review of the detailed price table; other sections unchanged. */
+.invoice .detailed-items th,.invoice .detailed-items td { padding:9px 5px;font-size:10px; }
+.invoice .detailed-items .money { color:var(--ink);font-size:10px; }
+.invoice .detailed-items .item-note { display:block;font-size:8px;color:#7b8490;margin-top:4px; }
+.invoice .detailed-items td:last-child { font-weight:700; }
+.invoice.a5 .detailed-items th,.invoice.a5 .detailed-items td { padding:6px 3px;font-size:8px; }
+.invoice.a5 .detailed-items .money { font-size:8px; }
+.invoice.a5 .detailed-items .item-note { font-size:7px; }

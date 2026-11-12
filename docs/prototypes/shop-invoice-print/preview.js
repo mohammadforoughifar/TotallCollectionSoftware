@@ -17,12 +17,12 @@ const lines = [
 const totals = lines.reduce((t,l) => ({gross:t.gross+l.qty*l.price,discount:t.discount+l.discount,qty:t.qty+l.qty}), {gross:0,discount:0,qty:0});
 const net = totals.gross-totals.discount;
 const vat = net*0.1; // Explicitly hypothetical demo rate, NOT a production tax rule.
-$('item-rows').replaceChildren(...lines.map((l,i)=>{
+$('item-rows').replaceChildren(...lines.map((line,i)=>{
  const row=document.createElement('tr');
- [money(i+1),l.name,money(l.qty),money(l.price),money(l.qty*l.price),l.note].forEach((value,j)=>{
+ [money(i+1),line.name,money(line.qty),money(line.price),money(line.qty*line.price),line.discount?money(line.discount):'-',money(line.qty*line.price-line.discount)].forEach((value,j)=>{
   const cell=document.createElement('td');cell.textContent=value;
-  if(j===3||j===4)cell.className='money';
-  if(j===5)cell.className='remarks';
+  if(j>=3)cell.className='money';
+  if(j===1&&line.note&&line.note!=='—'){const note=document.createElement('small');note.className='item-note';note.textContent=line.note;cell.append(note);}
   row.append(cell);
  });return row;
 }));

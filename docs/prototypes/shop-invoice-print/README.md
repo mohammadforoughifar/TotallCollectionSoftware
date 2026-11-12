@@ -170,3 +170,8 @@ the selector and dynamic layout code. The original six columns are restored:
 row, description, quantity, unit price, gross amount before deductions, remarks.
 Column separators remain. Single-column totals and payment/quantity above the
 table are unchanged. Earlier proposal descriptions are historical, not active.
+
+Live review requested again: active item table now uses the seven-column detailed
+price layout (unit price, gross, discount, net), without bringing back the three
+option selector. Remarks appear below the description. Metadata spacing, payment
+facts above items, and single-column summary remain unchanged.

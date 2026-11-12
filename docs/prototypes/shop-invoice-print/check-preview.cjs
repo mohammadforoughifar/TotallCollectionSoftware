@@ -92,9 +92,9 @@ const assert=require('node:assert/strict');const puppeteer=require('puppeteer-co
  await page.evaluate(()=>{sampleInvoice.customer=null;update();});
  for(const key of ['name','phone','id','address'])assert.equal(await page.$eval('#printed-customer-'+key,e=>e.textContent),'-');
  await page.reload();await page.evaluate(()=>document.fonts.ready);
- for(const layout of ['original']){
+ for(const layout of ['detailed']){
   assert.equal(await page.$$('[data-table-layout], .table-proposals').then(a=>a.length),0);
-  assert.deepEqual(await page.$$eval('.items thead th',cells=>cells.map(e=>e.textContent.replace(/\s/g,''))),['ردیف','شرحکالا/خدمت','تعداد','فیواحدریال','مبلغکلریال،پیشازکسورات','ملاحظات']);
+  assert.deepEqual(await page.$$eval('.items thead th',cells=>cells.map(e=>e.textContent.replace(/\s/g,''))),['ردیف','شرحکالا/خدمت','تعداد','فیواحد','مبلغاولیه','تخفیف','پسازتخفیف']);
   for(const paper of ['A4','A5']){
    await page.select('#paper',paper);
    assert.equal(await page.$$('#item-rows tr').then(a=>a.length),6);
