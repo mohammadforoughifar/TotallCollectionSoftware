@@ -42,6 +42,32 @@ internal static class InnerLetterheadTemplates
         return bytes.Length == 0 ? null : bytes;
     }
 
+    // Company 1's black-on-white value slots differ from Homepa's white-on-colour layout.
+    // Read only coordinates from its MRT; never execute expressions or database sources.
+    internal sealed record ValueLayout(
+        Outgoing.HomepaLetterheadLayout.Field Number,
+        Outgoing.HomepaLetterheadLayout.Field Date,
+        Outgoing.HomepaLetterheadLayout.Field Attachment);
+
+    internal static ValueLayout? LoadValueLayout(string contentRoot, string baseDirectory, int companyId, bool a5)
+    {
+        if (companyId != 1) return null;
+        var path = new[] { CompanyTemplatePath(contentRoot, companyId, a5), CompanyTemplatePath(baseDirectory, companyId, a5) }
+            .FirstOrDefault(File.Exists);
+        if (path is null) return null;
+        var document = XDocument.Load(path);
+        Outgoing.HomepaLetterheadLayout.Field Field(string name)
+        {
+            var component = document.Descendants().First(e => e.Elements().Any(x => x.Name.LocalName == "Name" && x.Value == name));
+            var values = component.Elements().First(e => e.Name.LocalName == "ClientRectangle").Value.Split(',')
+                .Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture) * 72f).ToArray();
+            if (values.Length != 4 || values.Any(v => !float.IsFinite(v) || v < 0) || values[2] <= 0 || values[3] <= 0)
+                throw new InvalidDataException("Invalid company 1 MRT header rectangle: " + name);
+            return new(values[0], values[1], values[2], values[3]);
+        }
+        return new(Field("Text2"), Field("Text1"), Field("Text3"));
+    }
+
     internal static byte[] LoadHomepa(string contentRoot, string baseDirectory, bool a5)
     {
         var paths = new[] { HomepaPath(contentRoot, a5), HomepaPath(baseDirectory, a5) }.Distinct().ToArray();

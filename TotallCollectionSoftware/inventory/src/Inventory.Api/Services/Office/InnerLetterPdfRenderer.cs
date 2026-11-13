@@ -20,7 +20,8 @@ internal static class InnerLetterPdfRenderer
     private static bool _fontsRegistered;
 
     internal static byte[] Render(InnerLetterPrintData data, bool a5, bool withHamesh,
-        byte[]? homepaBackground, bool attachment, string fontDirectory)
+        byte[]? homepaBackground, bool attachment, string fontDirectory,
+        InnerLetterheadTemplates.ValueLayout? valueLayout = null)
     {
         EnsureFonts(fontDirectory);
         QuestPDF.Settings.License = LicenseType.Community;
@@ -37,7 +38,7 @@ internal static class InnerLetterPdfRenderer
                 .Width(field.Width).Height(field.Height).AlignMiddle();
             box = center ? box.AlignCenter() : box.AlignRight();
             box.ScaleToFit().Text(value).FontFamily("Vazirmatn-Bold").FontSize(a5 ? 7 : 9)
-                .FontColor(Colors.White).LineHeight(1.2f).DirectionFromRightToLeft();
+                .FontColor(valueLayout is null ? Colors.White : Colors.Black).LineHeight(1.2f).DirectionFromRightToLeft();
         }
 
         return Document.Create(root => root.Page(page =>
@@ -60,9 +61,12 @@ internal static class InnerLetterPdfRenderer
                     layers.PrimaryLayer().Extend();
                     // پیوند/پیوست هم‌سطح با شماره و تاریخ باشد (Right) و در یک خط بماند؛
                     // ScaleToFit اندازهсниازک می‌کند تا خط شکسته نشود و کادر عمودی بزرگ نشود.
-                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Number(a5), number);
-                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Date(a5), date);
-                    HeaderField(layers.Layer(), HomepaLetterheadLayout.Attachment(a5), attachment ? "دارد" : "ندارد", false);
+                    HeaderField(layers.Layer(), valueLayout?.Number ?? HomepaLetterheadLayout.Number(a5), number);
+                    HeaderField(layers.Layer(), valueLayout?.Date ?? HomepaLetterheadLayout.Date(a5), date);
+                    if (valueLayout is null)
+                        HeaderField(layers.Layer(), HomepaLetterheadLayout.Attachment(a5), attachment ? "دارد" : "ندارد", false);
+                    else
+                        HeaderField(layers.Layer(), valueLayout.Attachment, attachment ? "دارد" : "ندارد", false);
                 });
             }
             else
@@ -87,6 +91,8 @@ internal static class InnerLetterPdfRenderer
                 c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();
                 c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}").AlignRight();
                 c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}").AlignRight();
+                if (valueLayout is not null && !string.IsNullOrWhiteSpace(data.ReferralDates))
+                    c.Item().Text($"تاریخ ارجاع: {PersianDigits(data.ReferralDates)}").AlignRight();
                 c.Item().PaddingVertical(5).LineHorizontal(0.7f).LineColor("#999999");
                 // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.
                 c.Item().Text(body).AlignRight();

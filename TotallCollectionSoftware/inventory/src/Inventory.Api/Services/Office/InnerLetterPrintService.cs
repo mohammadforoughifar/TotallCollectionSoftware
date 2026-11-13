@@ -83,7 +83,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         {
             try
             {
-                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts);
+                var valueLayout = InnerLetterheadTemplates.LoadValueLayout(_env.ContentRootPath, AppContext.BaseDirectory, company!.Id, a5);
+                var pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts, valueLayout);
                 _log.LogInformation(
                     "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}",
                     letterId, company!.Id, InnerLetterheadTemplates.CompanyTemplatePath(_env.ContentRootPath, company!.Id, a5));
