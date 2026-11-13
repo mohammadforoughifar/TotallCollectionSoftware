@@ -8,8 +8,10 @@ namespace Inventory.Api.Services;
 /// سرویس رمزنگاری پیوست‌های پروژه:
 /// ۱) فایل‌ها با AES-256-GCM روی دیسک سرور رمزنگاری می‌شوند (نام فیزیکی تصادفی).
 /// ۲) نام اصلی فایل هم رمزنگاری شده و در دیتابیس ذخیره می‌شود.
-/// کلید از تنظیمات Files:EncryptionKey خوانده می‌شود؛ در صورت نبود، یک کلید تصادفی
-/// در فایل .key داخل پوشه ذخیره‌سازی ساخته و نگهداری می‌شود (این فایل را بکاپ بگیرید!).
+/// کلید از تنظیمات <c>Files:EncryptionKey</c> خوانده می‌شود؛ در صورت نبود، یک کلید تصادفی
+/// <b>بیرون از wwwroot</b> (ProgramData/Totall/projects/projects.key یا App_Data) ساخته
+/// و نگهداری می‌شود (این فایل را بکاپ بگیرید!). کلید قدیمیِ داخل
+/// <c>wwwroot/uploads/projects/.key</c> در نخستین اجرا خوانده و منتقل می‌شود.
 /// </summary>
 public interface IProjectFileProtection
 {
@@ -46,6 +48,8 @@ public class ProjectFileProtection : IProjectFileProtection
     private readonly byte[] _key;
     private readonly string _root;
     private readonly string _rootLegacy;
+    private readonly IConfiguration _config;
+    private readonly IWebHostEnvironment _env;
 
     /// <summary>نام پوشهٔ نوع فایل بر اساس پسوند — تصاویر از مستندات جدا می‌شوند (درخواست کاربر)</summary>
     public static string KindFolderOf(string? extension) => (extension ?? "").Trim().ToLowerInvariant() switch
@@ -69,6 +73,8 @@ public class ProjectFileProtection : IProjectFileProtection
 
     public ProjectFileProtection(IConfiguration config, IWebHostEnvironment env)
     {
+        _config = config;
+        _env = env;
         var configuredRoot = config["Files:SecureRoot"];
         // محل ذخیره‌سازی یکپارچه پیوست‌های پروژه: زیر wwwroot/uploads/projects
         _root = string.IsNullOrWhiteSpace(configuredRoot)
@@ -111,6 +117,32 @@ public class ProjectFileProtection : IProjectFileProtection
         }
     }
 
+    /// <summary>
+    /// کلید AES-GCM پیوست‌های پروژه — <b>بیرون از <c>wwwroot</c></b> (بازبینی چهارم، مورد ۶).
+    ///
+    /// <para>
+    /// <b>چرا جابه‌جا شد؟</b> کلید قبلاً در <c>wwwroot/uploads/projects/.key</c> بود؛ یعنی
+    /// داخل همان پوشه‌ای که فایل‌های رمزشده در آن‌اند و همان شاخه‌ای که وب‌سرور استاتیک
+    /// از آن سرو می‌کند. هر لایه‌ای از محافظت (میدل‌ور ۴۰۴، نبودِ MIME برای «.key») جلوی
+    /// **امروز** را می‌گیرد، ولی کلید نباید به همسایگیِ مسیر عمومی وابسته باشد. قاعده:
+    /// کلید و داده در دو گارد امنیتی جدا.
+    /// </para>
+    ///
+    /// <para><b>ترتیب جست‌وجو:</b></para>
+    /// <list type="number">
+    ///   <item><c>Files:EncryptionKey</c> — عبارت/Base64 پیکربندی (بالاترین اولویت، دست‌نخورده)</item>
+    ///   <item><c>Files:EncryptionKeyPath</c> — مسیر صریح</item>
+    ///   <item>ProgramData/Totall/projects/projects.key — پیش‌فرض جدید</item>
+    ///   <item><c>App_Data/projects/projects.key</c> — اگر ProgramData قابل‌نوشتن نبود</item>
+    ///   <item><b>سازگاری عقب‌رو:</b> <c>wwwroot/uploads/projects/.key</c> قدیمی — خوانده،
+    ///   به مسیر جدید کپی و (پس از تأیید) فایل قدیمی پاک می‌شود تا همچنان در دسترس نباشد.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// ⚠️ اگر کلید جابه‌جا شود ولی نسخهٔ قدیمی فایل هم بماند، هر دو یک مقدار دارند و
+    /// فایل‌های قبلی همچنان باز می‌شوند — هیچ دادهٔ رمزشده‌ای از دست نمی‌رود.
+    /// </para>
+    /// </summary>
     private byte[] LoadOrCreateKey(string? configured)
     {
         if (!string.IsNullOrWhiteSpace(configured))
@@ -119,13 +151,80 @@ public class ProjectFileProtection : IProjectFileProtection
             return SHA256.HashData(Encoding.UTF8.GetBytes(configured));
         }
 
-        var keyFile = Path.Combine(_root, ".key");
+        var legacyKeyFile = Path.Combine(_root, ".key");
+        var keyFile = ResolveKeyPath();
+        var keyDir = Path.GetDirectoryName(keyFile)!;
+        Directory.CreateDirectory(keyDir);
+
+        // ۱) مسیر جدید
         if (File.Exists(keyFile))
             return Convert.FromBase64String(File.ReadAllText(keyFile).Trim());
 
+        // ۲) سازگاری عقب‌رو: کلید قدیمی داخل wwwroot
+        if (File.Exists(legacyKeyFile))
+        {
+            var legacy = Convert.FromBase64String(File.ReadAllText(legacyKeyFile).Trim());
+
+            try
+            {
+                File.WriteAllText(keyFile, Convert.ToBase64String(legacy));
+
+                // فقط وقتی فایل قدیمی را پاک می‌کنیم که نسخهٔ جدیدش واقعاً خوانده شود.
+                if (File.Exists(keyFile) &&
+                    Convert.FromBase64String(File.ReadAllText(keyFile).Trim()).AsSpan().SequenceEqual(legacy))
+                {
+                    File.Delete(legacyKeyFile);
+                    Console.WriteLine($"[Projects] کلید رمزنگاری از wwwroot به «{keyFile}» منتقل شد.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // انتقال نباید مانع اجرا شود؛ کلید قدیمی در حافظه استفاده می‌شود و
+                // نوشتن‌های تازه هم با همان کلید انجام می‌شوند (سازگاری حفظ می‌شود).
+                Console.WriteLine($"[Projects] انتقال کلید رمزنگاری ناموفق بود ({ex.Message}) — از مسیر قبلی استفاده می‌شود.");
+            }
+
+            return legacy;
+        }
+
+        // ۳) کلید تازه
         var key = RandomNumberGenerator.GetBytes(32);
         File.WriteAllText(keyFile, Convert.ToBase64String(key));
+        Console.WriteLine($"[Projects] کلید رمزنگاری تازه در «{keyFile}» ساخته شد (بیرون از wwwroot).");
         return key;
+    }
+
+    /// <summary>
+    /// مسیر فایل کلید — بیرون از <c>wwwroot</c>. اگر ProgramData در دسترس نباشد،
+    /// <c>App_Data</c> (که هرگز استاتیک سرو نمی‌شود) جایگزین است.
+    /// </summary>
+    private string ResolveKeyPath()
+    {
+        var explicitPath = _config["Files:EncryptionKeyPath"];
+        if (!string.IsNullOrWhiteSpace(explicitPath)) return explicitPath;
+
+        try
+        {
+            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            if (!string.IsNullOrWhiteSpace(programData))
+            {
+                var dir = Path.Combine(programData, "Totall", "projects");
+                Directory.CreateDirectory(dir);
+
+                // آزمون نوشتن — بعضی نصب‌ها (سرویس با کاربر محدود) اجازهٔ ساخت ندارند.
+                var probe = Path.Combine(dir, ".w");
+                File.WriteAllText(probe, "1");
+                File.Delete(probe);
+
+                return Path.Combine(dir, "projects.key");
+            }
+        }
+        catch
+        {
+            // می‌افتیم روی گزینهٔ بعدی
+        }
+
+        return Path.Combine(_env.ContentRootPath, "App_Data", "projects", "projects.key");
     }
 
     // ==================== فایل ====================

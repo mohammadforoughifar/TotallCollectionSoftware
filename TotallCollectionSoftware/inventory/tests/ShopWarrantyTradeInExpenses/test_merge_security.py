@@ -43,7 +43,10 @@ class ShopMergeSecurityTests(unittest.TestCase):
         self.assertIn('controller == "Kardex" && operation == "Get"', auth)
         treasury = (ROOT / 'src/Inventory.Api/Controllers/Treasury/TreasuryController.cs').read_text(encoding='utf-8')
         account_controller = treasury.split('class TrsAccountsController', 1)[1].split('class TrsVouchersController', 1)[0]
-        self.assertEqual(account_controller.count('HasAsync("Shop", "Banks.Manage")'), 2)
+        # General save, strict shop save, and delete each retain an explicit write check.
+        self.assertEqual(account_controller.count('HasAsync("Shop", "Banks.Manage")'), 3)
+        shop_save = account_controller.split('SaveShop(', 1)[1].split('[HttpDelete', 1)[0]
+        self.assertIn('ForbiddenUnlessAsync("TrsAccounts", dto.Id == 0 ? "Create" : "Update")', shop_save)
 
     def test_quick_party_create_cannot_edit_or_grant_directory_access(self):
         controller = (ROOT / 'src/Inventory.Api/Controllers/Catalog/PartiesController.cs').read_text(encoding='utf-8')

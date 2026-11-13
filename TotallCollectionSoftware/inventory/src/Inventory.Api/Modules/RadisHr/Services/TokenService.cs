@@ -6,12 +6,31 @@ using RadisHr.Shared.Models;
 
 namespace RadisHr.Api.Services;
 
+/// <summary>
+/// صدور توکن پنل منابع انسانی (RADIS-HR).
+///
+/// <para>
+/// ⚠️ بند ۱۱ (ردیف ۲۳): این کلاس دیگر کلید ثابت ندارد. اگر <c>Jwt:Key</c> تنظیم شده باشد
+/// همان استفاده می‌شود؛ در غیر این صورت کلید از <see cref="ISigningKeys.Derive"/> با
+/// هدف <c>radis-hr-legacy</c> مشتق می‌شود — یعنی همان کلید نصب، با دامنهٔ جدا. نتیجه:
+/// نه استثنا می‌دهد (مثل حالت «کلید نبود ⇒ کرش»)، و نه توکنی با رشتهٔ عمومیِ داخل کد
+/// صادر می‌کند که هر کسی بتواند بسازد.
+/// </para>
+/// </summary>
 public class TokenService
 {
     private readonly IConfiguration _config;
-    public TokenService(IConfiguration config) => _config = config;
+    private readonly Inventory.Api.Security.ISigningKeys _keys;
 
-    public string Key => _config["Jwt:Key"] ?? "RADIS-HR-V019-DOTNET8-DEFAULT-SIGNING-KEY-CHANGE-ME-32B";
+    public TokenService(IConfiguration config, Inventory.Api.Security.ISigningKeys keys)
+    {
+        _config = config;
+        _keys = keys;
+    }
+
+    /// <summary>کلید امضا — پیکربندی یا مشتق‌شده از کلید همین نصب (بدون رشتهٔ ثابت).</summary>
+    public string Key => _config["Jwt:Key"]
+                         ?? Convert.ToBase64String(_keys.Derive("radis-hr-legacy"));
     public string Issuer => _config["Jwt:Issuer"] ?? "RadisHr";
     public string Audience => _config["Jwt:Audience"] ?? "RadisHrClient";
     public int LifetimeHours => int.TryParse(_config["Jwt:LifetimeHours"], out var h) ? h : 12;

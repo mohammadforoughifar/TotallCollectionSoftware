@@ -50,6 +50,17 @@ public class TrsAccountsController : RbacControllerBase
         return Ok(await _svc.SaveAccountAsync(dto));
     }
 
+    /// <summary>Strict identifiers for shop bank/cash forms; the general ERP route is unchanged.</summary>
+    [HttpPost("shop")]
+    public async Task<ActionResult<TrsAccount>> SaveShop([FromBody] TrsAccount dto)
+    {
+        if (!await HasAsync("Shop", "Banks.Manage") &&
+            await ForbiddenUnlessAsync("TrsAccounts", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
+        var error = ShopIdentifierRules.ValidateBank(dto);
+        if (error is not null) return BadRequest(new { message = error });
+        return Ok(await _svc.SaveAccountAsync(dto));
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
@@ -173,6 +184,16 @@ public class TrsChequesController : RbacControllerBase
     public async Task<ActionResult<TrsCheque>> Save([FromBody] TrsCheque dto)
     {
         if (await ForbiddenUnlessAsync("TrsCheques", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
+        return Ok(await _svc.SaveChequeAsync(dto, MyUsername));
+    }
+
+    /// <summary>Shop cheque creation/editing validates the optional 16-digit Sayad identifier.</summary>
+    [HttpPost("shop")]
+    public async Task<ActionResult<TrsCheque>> SaveShop([FromBody] TrsCheque dto)
+    {
+        if (await ForbiddenUnlessAsync("TrsCheques", dto.Id == 0 ? "Create" : "Update") is ObjectResult forbidden) return forbidden;
+        var error = ShopIdentifierRules.ValidateCheque(dto);
+        if (error is not null) return BadRequest(new { message = error });
         return Ok(await _svc.SaveChequeAsync(dto, MyUsername));
     }
 

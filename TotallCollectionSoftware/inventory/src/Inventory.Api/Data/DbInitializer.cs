@@ -47,7 +47,8 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Required model columns must exist before any service queries organizations/users.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await CompanyLogoSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ باید پیش از هر اسکریپت/کوئری دیگری باشد: فیلتر خودکار «شرکت» در EF به ستون
                     // CompanyId ارجاع می‌دهد؛ اگر دیتابیس قدیمی این ستون را نداشته باشد، اولین کوئری
                     // (مثلاً در TransactionLineCostSchemaV1) با خطای «no such column: CompanyId» می‌شکند.
@@ -62,6 +63,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -109,6 +111,11 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
+                // ستون CreatedAt روی جدول‌های کسب‌وکاری که سقف ماهانه دارند + ایندکس.
+                // مبنای شمارش، زمان ثبت سیستمی است، نه تاریخ قابل‌ویرایش کاربر.
+                await QuotaCountingSchemaV1.EnsureAsync(db, app.Logger);
                 }
                 else
                 {
@@ -133,7 +140,8 @@ public static class DbInitializer
                     await SaleChequeIncomeAccountSchemaV1.EnsureAsync(db);
                     await ChequeOriginalDueDateSchemaV1.EnsureAsync(db);
                     // Also repairs old databases whose migration history was previously stamped/skipped.
-                    await OrganizationSchemaV1.EnsureAsync(db);
+                    await CompanyLogoSchemaV1.EnsureAsync(db);
+                    await OrganizationSchemaV1.EnsureAsync(db, config.GetConnectionString("Default"));
                     // ⚠️ همان دلیل بالا: قبل از هر کوئری/اسکریپت دیگری ستون CompanyId باید وجود داشته باشد،
                     // وگرنه SQL Server خطای «Invalid column name 'CompanyId'» می‌دهد.
                     await SalesCompanySchemaV1.EnsureAsync(db);
@@ -147,6 +155,7 @@ public static class DbInitializer
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
+                    await ShopPrintSettingsSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -194,6 +203,11 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
+                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
+                await LicenseSchemaV1.EnsureAsync(db);
+                // ستون CreatedAt روی جدول‌های کسب‌وکاری که سقف ماهانه دارند + ایندکس.
+                // مبنای شمارش، زمان ثبت سیستمی است، نه تاریخ قابل‌ویرایش کاربر.
+                await QuotaCountingSchemaV1.EnsureAsync(db, app.Logger);
                 }
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
@@ -332,6 +346,10 @@ public static class DbInitializer
                 await SalesCompanySchemaV1.EnsureAsync(db);
                 await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                 await ShopPricingSchemaV1.EnsureAsync(db);
+                await ShopPrintSettingsSchemaV1.EnsureAsync(db);
+
+                // حذف نرم فاکتور (قاعدهٔ سهمیهٔ لایسنس: حذف توسط کاربر مصرف را برنمی‌گرداند)
+                await InvoiceSoftDeleteSchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {

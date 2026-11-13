@@ -8,6 +8,8 @@ public class SystemCompany
     [MaxLength(100)] public string? Code { get; set; }
     [MaxLength(50)] public string? Phone { get; set; }
     [MaxLength(250)] public string? Address { get; set; }
+    /// <summary>Sanitized PNG data URI, independent from the office PDF letterhead.</summary>
+    public string? LogoDataUrl { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

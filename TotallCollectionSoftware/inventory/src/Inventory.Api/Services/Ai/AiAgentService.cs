@@ -29,6 +29,7 @@ public class AiAgentService : IAiAgentService
     private readonly AiFallbackRouter _fallback;
     private readonly IServiceProvider _services;
     private readonly ILogger<AiAgentService> _log;
+    private readonly Inventory.Licensing.Abstractions.ILicenseService? _licenses;
 
     public AiAgentService(
         IOptions<AiOptions> options,
@@ -37,7 +38,9 @@ public class AiAgentService : IAiAgentService
         AiConversationService conversations,
         AiFallbackRouter fallback,
         IServiceProvider services,
-        ILogger<AiAgentService> log)
+        ILogger<AiAgentService> log,
+        // nullable: در تست‌ها و محیط‌هایی که موتور لایسنس ثبت نشده، دستیار نباید بشکند.
+        Inventory.Licensing.Abstractions.ILicenseService? licenses = null)
     {
         _options = options.Value;
         _chat = chat;
@@ -45,6 +48,7 @@ public class AiAgentService : IAiAgentService
         _conversations = conversations;
         _fallback = fallback;
         _services = services;
+        _licenses = licenses;
         _log = log;
     }
 
@@ -118,6 +122,30 @@ public class AiAgentService : IAiAgentService
             CancellationToken = ct,
         };
 
+        // ==================== هزینهٔ API خارجی در حالت بدون لایسنس ====================
+        //
+        // «هزینهٔ API» = هر تماس با مدل زبانی بیرونی (توکن مصرفی). در حالت Missing/Invalid
+        // این تماس‌ها هیچ ارزش تجاری برای نصب نمی‌سازند ولی هزینه دارند — و اگر حساب
+        // کلید مال ما باشد، هزینه‌اش با ماست. پس در آن حالت:
+        //   • هیچ تماس بیرونی زده نمی‌شود (صفر توکن).
+        //   • مسیر «آفلاین» (پاسخ‌دهندهٔ محلی، هیچ درخواست شبکه‌ای) جواب می‌دهد و همان
+        //     چیزی را می‌گوید که کاربر لازم دارد: «لایسنس فعال نیست، از این صفحه فعال کنید».
+        // نتیجه: کانال توضیح باز می‌ماند، هزینه صفر، و ابزار نوشتاری هم اجرا نمی‌شود.
+        if (!CanWrite())
+        {
+            var offlineOnly = await _fallback.TryAnswerAsync(message, ctx);
+            var licensingNote =
+                "🔒 سامانه در حالت فقط‌خواندنی است (لایسنس این نصب فعال یا معتبر نیست). " +
+                "مشاهدهٔ اطلاعات آزاد است، ولی ثبت، تغییر و ارسال مسدود است — و برای همین " +
+                "پاسخ‌های هوشمند هم در این حالت از موتور محلی می‌آیند و به سرویس بیرونی وصل نمی‌شوند. " +
+                "برای فعال‌سازی، فایل لایسنس را از صفحهٔ «لایسنس» بارگذاری کنید.";
+            var reply = offlineOnly is null ? licensingNote : licensingNote + "\n\n" + offlineOnly;
+            var offId = await _conversations.AddMessageAsync(conv.Id, "assistant", reply, "offline-readonly", false);
+            await _services.GetRequiredService<AiAuditService>().LogAsync(userId, conv.Id, channel, message,
+                "offline-readonly", true, true, "license-readonly", sw.ElapsedMilliseconds, ct);
+            return new AiChatResponse { ConversationId = conv.Id, MessageId = offId, Reply = reply, UsedFallback = true };
+        }
+
         try
         {
             var (reply, used, attachments) = await RunAgentLoopAsync(history, message, userName, ctx, ct);
@@ -146,6 +174,32 @@ public class AiAgentService : IAiAgentService
         }
     }
 
+    /// <summary>
+    /// آیا ابزارهای نوشتاری مجازند؟ در حالت فقط‌خواندنی (بدون لایسنس معتبر) نه.
+    ///
+    /// <para>
+    /// <b>چرا این‌جا و نه فقط در کنترلر؟</b> چون دستیار دو مسیر دارد (HTTP و حلقهٔ داخلی)
+    /// و ابزار را در حلقهٔ مدل اجرا می‌کند. اگر فقط لایهٔ HTTP بسته باشد، هر مسیر تازه‌ای
+    /// که به همین سرویس برسد دوباره «دست‌های اجرایی» باز می‌کند.
+    /// </para>
+    /// </summary>
+    private bool CanWrite()
+    {
+        if (_licenses is null) return true;   // بدون موتور لایسنس (تست/توسعه) — رفتار قبلی
+        try
+        {
+            var status = _licenses.GetOverallStatus();
+            // ⚠️ فقط Valid ⇒ ابزارهای نوشتاری باز. Missing و Invalid هر دو بسته‌اند.
+            // (Grace محلی در بازبینی چهارم حذف شد؛ پنجرهٔ موقت اکنون فقط از طریق
+            // «لایسنس پُل» امضاشده ممکن است — و آن هم Valid است، نه یک حالت سوم.)
+            return status == Inventory.Licensing.Entitlement.LicenseOverallStatus.Valid;
+        }
+        catch
+        {
+            return false;   // خطای خواندن وضعیت ⇒ بسته (محافظه‌کارانه)
+        }
+    }
+
     private async Task<(string reply, List<string> used, List<AiChatAttachment> attachments)> RunAgentLoopAsync(
         List<AiMessageDto> history, string message, string userName, AiToolContext ctx, CancellationToken ct)
     {
@@ -157,7 +211,10 @@ public class AiAgentService : IAiAgentService
         }));
         messages.Add(new AiChatMessage { Role = "user", Content = message });
 
-        var schemas = _tools.Schemas();
+        // ابزارهای نوشتاری در حالت فقط‌خواندنی حتی به مدل هم نشان داده نمی‌شوند
+        // (لایهٔ اول). لایهٔ دوم در ToolRegistry.ExecuteAsync است.
+        var allowWrite = CanWrite();
+        var schemas = _tools.Schemas(allowWrite);
         var used = new List<string>();
         var attachments = new List<AiChatAttachment>();
 
@@ -175,7 +232,7 @@ public class AiAgentService : IAiAgentService
             foreach (var call in result.ToolCalls)
             {
                 used.Add(call.Name);
-                var output = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, ctx);
+                var output = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, ctx, allowWrite);
                 if (call.Name == "build_report")
                     TryExtractAttachment(output, attachments);
                 messages.Add(new AiChatMessage

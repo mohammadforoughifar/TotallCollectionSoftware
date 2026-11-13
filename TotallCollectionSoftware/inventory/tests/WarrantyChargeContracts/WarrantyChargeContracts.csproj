@@ -19,6 +19,7 @@
     <Compile Include="../../src/Inventory.Shared/PersianDate.cs" Link="PersianDate.cs" />
     <Compile Include="../../src/Inventory.Shared/PersianText.cs" Link="PersianText.cs" />
     <Compile Include="../../src/Inventory.Shared/Dtos/CompanyProfileDto.cs" Link="CompanyProfileDto.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/ShopPrintSettingsDto.cs" Link="ShopPrintSettingsDto.cs" />
     <Compile Include="../../src/Inventory.Client/Extensions/PersianExtensions.cs" Link="PersianExtensions.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/Orders/SaleInvoicePrint.cs" Link="SaleInvoicePrint.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/Repairs/RepairInvoicePrint.cs" Link="RepairInvoicePrint.cs" />

@@ -7,6 +7,7 @@ using RadisHr.Api.Services;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace RadisHr.Api.Controllers;
 
@@ -33,6 +34,8 @@ public class AuthController : ControllerBase
             u.UserKey, u.DisplayName, u.RoleTitle, u.MustChangePassword, u.PasswordChangedAt, u.LastLoginAt))
             .ToList()));
     }
+
+    [AllowInReadOnly]
 
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login(LoginRequest request)
@@ -66,6 +69,8 @@ public class AuthController : ControllerBase
             meta.Item3, meta.Item4, mustChange, ageDays, expires);
     }
 
+    [AllowInReadOnly]
+
     [HttpPost("change-password")]
     public async Task<ActionResult<ApiMessage>> ChangePassword(ChangePasswordRequest request)
     {
@@ -89,6 +94,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>بازنشانی رمز توسط مدیر اداری</summary>
+    [AllowInReadOnly]
     [Authorize(Roles = "hr,ceo")]
     [HttpPost("reset-password")]
     public async Task<ActionResult<ApiMessage>> ResetPassword(ResetPasswordRequest request)

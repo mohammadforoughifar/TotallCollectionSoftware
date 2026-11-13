@@ -117,7 +117,7 @@ public interface IOrderService
     Task<List<Party>> GetInvoicePartiesAsync(TransactionType type);
     /// <summary>موجودی تعدادی انبار برای فهرست کالای فاکتور، بدون بهای تمام‌شده.</summary>
     Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000);
-    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null);
+    Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null, bool openingOnly = false);
     Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
         int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null);
     Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from = null, DateTime? to = null, int? partyId = null);

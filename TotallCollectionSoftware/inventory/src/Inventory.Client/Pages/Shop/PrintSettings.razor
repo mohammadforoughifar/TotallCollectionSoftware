@@ -1,0 +1,97 @@
+@page "/shop/print-settings"
+@inject IShopPrintSettingsClient SettingsClient
+@inject ICompanyProfileService ProfileClient
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<PageTitle>تنظیمات چاپ فروشگاه</PageTitle>
+<div class="page-head"><div><h1>تنظیمات چاپ فروشگاه</h1><p class="lead">اطلاعات بانکی فروشنده · مستقل برای شرکت فعال</p></div></div>
+@if (!CanView)
+{
+    <div class="alert alert-danger">مجوز مشاهدهٔ تنظیمات چاپ را ندارید.</div>
+}
+else if (loading)
+{
+    <div role="status">در حال بارگذاری…</div>
+}
+else if (loadError is not null)
+{
+    <div class="alert alert-danger">@loadError</div>
+}
+else
+{
+    <div class="shop-print-layout">
+        <section class="card"><div class="card-header">کارت‌ها و شباهای فروشنده</div><div class="card-body">
+            <p class="text-muted">شماره کارت ۱۶ رقم و شبا ۲۴ رقم بدون IR است. مالکیت و صحت بانکی حساب بررسی نمی‌شود.</p>
+            @foreach (var row in rows)
+            {
+                <div class="bank-editor" @key="row">
+                    <label>شماره کارت<input @ref="row.CardRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="16" maxlength="16" value="@row.Card" aria-invalid="@InvalidCard(row).ToString().ToLowerInvariant()" @oninput="e => ChangeCard(row, e.Value?.ToString())" @onkeydown="e => CardKey(e, row)" disabled="@(!CanManage || busy)" /></label>
+                    <label>شماره شبا<div class="iban-editor" dir="ltr"><span>IR</span><input @ref="row.IbanRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="24" maxlength="24" value="@row.Iban" aria-invalid="@InvalidIban(row).ToString().ToLowerInvariant()" @oninput="e => ChangeIban(row, e.Value?.ToString())" disabled="@(!CanManage || busy)" /></div></label>
+                    @if (InvalidCard(row) || InvalidIban(row)) { <small class="text-danger">شماره ناقص، غیرعددی یا تکراری است.</small> }
+                    @if (CanManage) { <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Remove(row)" disabled="@busy">حذف</button> }
+                </div>
+            }
+            @if (CanManage)
+            {
+                <div class="actions"><button type="button" class="btn btn-outline-primary" @onclick="Add" disabled="@(busy || rows.Count >= 30)">افزودن کارت / شبا</button><button type="button" class="btn btn-primary" @onclick="Save" disabled="@busy">ذخیره تنظیمات</button></div>
+            }
+            @if (error is not null) { <p class="text-danger" role="alert">@error</p> }
+            <p class="text-muted mt-3">نام، تلفن و نشانی از تعریف شرکت خوانده می‌شوند. مشخصات مشتری از سند مربوط خوانده می‌شود و اینجا ورودی ندارد. اندازهٔ کاغذ فقط هنگام چاپ انتخاب می‌شود.</p>
+        </div></section>
+        <section class="card"><div class="card-header">پیش‌نمایش اطلاعات فروشنده</div><div class="card-body seller-preview">
+            @if (profile?.LogoDataUrl is not null) { <img src="@profile.LogoDataUrl" alt="لوگوی شرکت" style="width:106px;height:74px;object-fit:contain" /> }
+            <h2>@(profile?.Name ?? "-")</h2><p>تلفن: @(profile?.Phone ?? "-")</p><p>نشانی: @(profile?.Address ?? "-")</p>
+            @foreach (var row in rows.Where(r => r.Card.Length > 0 || r.Iban.Length > 0))
+            {
+                <div class="preview-bank" @key="row">
+                    @if (row.Card.Length > 0) { <div><span>شماره کارت</span><bdi>@Group(row.Card)</bdi></div> }
+                    @if (row.Iban.Length > 0) { <div><span>شماره شبا</span><bdi>@Group("IR" + row.Iban)</bdi></div> }
+                </div>
+            }
+            <small class="text-muted">تغییرات تا زمان ذخیره فقط در همین پیش‌نمایش دیده می‌شوند.</small>
+        </div></section>
+    </div>
+}
+@code {
+    private class BankRow : ShopPrintBankDto { public ElementReference IbanRef; public ElementReference CardRef; }
+    private List<BankRow> rows = new();
+    private CompanyProfileDto? profile;
+    private bool loading = true, busy, focusNewRow;
+    private string? error, loadError;
+    private bool CanView => Auth.IsAdmin || ShopAccess.CanSee(Auth, "PrintSettings");
+    private bool CanManage => Auth.IsAdmin || ShopAccess.CanManage(Auth, "PrintSettings");
+    protected override async Task OnInitializedAsync()
+    {
+        if (!CanView) { loading = false; return; }
+        try { profile = await ProfileClient.GetAsync(); SetRows(await SettingsClient.GetAsync()); }
+        catch (Exception ex) { loadError = ex.Message; }
+        finally { loading = false; }
+    }
+    private void SetRows(ShopPrintSettingsDto value) { rows = value.Banks.Select(b => new BankRow { Card = b.Card, Iban = b.Iban.StartsWith("IR") ? b.Iban[2..] : b.Iban }).ToList(); if (rows.Count == 0) rows.Add(new()); }
+    private static bool Digits(string value, int count) => value.Length == count && value.All(c => c >= '0' && c <= '9');
+    private bool InvalidCard(BankRow row) => row.Card.Length > 0 && (!Digits(row.Card, 16) || rows.Count(r => r.Card == row.Card) > 1);
+    private bool InvalidIban(BankRow row) => row.Iban.Length > 0 && (!Digits(row.Iban, 24) || rows.Count(r => r.Iban == row.Iban) > 1);
+    private void ChangeCard(BankRow row, string? value) { var normalized = ShopPrintBankRules.Normalize(value); if (normalized.Length <= 16) row.Card = normalized; error = null; }
+    private void ChangeIban(BankRow row, string? value) { var normalized = ShopPrintBankRules.Normalize(value); if (normalized.StartsWith("IR")) normalized = normalized[2..]; if (normalized.Length <= 24) row.Iban = normalized; error = null; }
+    private async Task CardKey(KeyboardEventArgs e, BankRow row) { if (e.Key == "Enter") await row.IbanRef.FocusAsync(); }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusNewRow && rows.Count > 0) { focusNewRow = false; await rows[^1].CardRef.FocusAsync(); }
+    }
+    private void Add() { if (CanManage && rows.Count < 30) { rows.Add(new()); focusNewRow = true; } }
+    private void Remove(BankRow row) { if (CanManage) rows.Remove(row); }
+    private static string Group(string value) => string.Join(" ", Enumerable.Range(0, (value.Length + 3) / 4).Select(i => value.Substring(i * 4, Math.Min(4, value.Length - i * 4))));
+    private async Task Save()
+    {
+        if (!CanManage || busy) return;
+        try
+        {
+            var value = ShopPrintBankRules.Validate(new() { Banks = rows.Select(r => new ShopPrintBankDto { Card = r.Card, Iban = r.Iban }).ToList() });
+            busy = true; error = null;
+            SetRows(await SettingsClient.SaveAsync(value)); Toast.Success("تنظیمات چاپ ذخیره شد.");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+}

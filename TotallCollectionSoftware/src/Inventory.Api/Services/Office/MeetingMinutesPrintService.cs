@@ -1,6 +1,13 @@
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Xml.Linq;
 using Inventory.Api.Data;
+using Inventory.Api.Infrastructure;
+using Inventory.Api.Services.Office.Outgoing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
@@ -13,15 +20,27 @@ using SkiaSharp;
 namespace Inventory.Api.Services.Office;
 
 // ============================================================
-//  قالب چاپی صورتجلسه با سربرگ شرکت — A4
-//  • سربرگ اختیاری است. اگر فایل سربرگ نباشد، صورتجلسه با حاشیهٔ عادی چاپ می‌شود.
-//  • امضای الکترونیکی حاضرین به‌صورت تصویر در صفحهٔ چاپ درج می‌شود.
+//  قالب چاپی صورتجلسه روی سربرگ شرکت — A4 / A5
+//  • چاپ روی سربرگ «همان شرکتی» انجام می‌شود که صورتجلسه برایش ثبت شده است
+//    (MeetingMinutes.CompanyId؛ اگر خالی باشد، شرکت فعال در هدر درخواست).
+//  • جای عنوان، شماره صورتجلسه، تاریخ جلسه، پیوست، حاضرین و غایبین از خودِ فایل طرح
+//    شرکت خوانده می‌شود: Reports/MeetingMinutes/Companies/{CompanyId}/Minutes-{A4|A5}.mrt
+//    (همان کاری که برای نامهٔ داخلی و نامهٔ صادره انجام شد).
+//  • شماره/تاریخ/پیوست در کادرهای چاپ‌شدهٔ سربرگ می‌نشینند (لایهٔ Foreground، مختصات مطلق)
+//    و بدنه از عنوان شروع می‌شود: عنوان زیر مستطیل آبی و راست‌چین، سپس حاضرین، غایبین و
+//    بندها به‌صورت فهرست شماره‌دار (بدون جدول).
+//  • اگر قالب نبود، چیدمان قبلی کد استفاده می‌شود؛ اگر سربرگی هم نبود، نسخهٔ ساده.
+//  • امضای حاضرین: تصویر امضای ثبت‌شده در پنجرهٔ canvas اگر کاربر امضا کرده باشد، وگرنه
+//    کادر خالی برای امضای دستی روی برگه («در انتظار امضا» روی کاغذ نمی‌آید).
 // ============================================================
 
 public interface IMeetingMinutesPrintService
 {
-    /// <summary>تولید PDF صورتجلسه روی سربرگ شرکت — اگر سربرگ نباشد بدون پس‌زمینه برمی‌گردد.</summary>
-    Task<byte[]?> GeneratePdfAsync(int minutesId);
+    /// <summary>
+    /// تولید PDF صورتجلسه روی سربرگ شرکتی که صورتجلسه برایش ثبت شده است —
+    /// اگر سربرگی نباشد، بدون پس‌زمینه برمی‌گردد. <paramref name="size"/> = "A4" یا "A5".
+    /// </summary>
+    Task<byte[]?> GeneratePdfAsync(int minutesId, string size = "A4");
 }
 
 public class MeetingMinutesPrintService : IMeetingMinutesPrintService
@@ -32,12 +51,21 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
+    private readonly IConfiguration _configuration;
+    // برای لاگ‌کردن «کدام مسیر سربرگ/قالب بررسی شد» — بدون این، خطای «چاپ نشد» هیچ سرنخی ندارد.
+    private readonly ILogger _log;
 
-    public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor http)
+    // مسیر سربرگِ استخراج‌شده از قالب MRT، به‌ازای (مسیر قالب + اندازهٔ فایل + زمان تغییر).
+    private static readonly ConcurrentDictionary<string, string> TemplateLetterheads = new(StringComparer.Ordinal);
+
+    public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor http,
+        IConfiguration configuration, ILogger<MeetingMinutesPrintService>? logger = null)
     {
         _db = db;
         _env = env;
         _http = http;
+        _configuration = configuration;
+        _log = logger ?? NullLogger<MeetingMinutesPrintService>.Instance;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -88,22 +116,22 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var clean = fileName.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..")) return null;
 
-        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
-        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
-            ? clean["uploads/".Length..]
-            : clean;
+        // قاعدهٔ مشترک هر سه چاپ: مقدار ثبت‌شده ممکن است مسیر نسبی کامل باشد یا فقط نام فایل؛
+        // در حالت دوم فایل داخل wwwroot/uploads/letterheads جست‌وجو می‌شود (قبلاً فقط
+        // wwwroot/<همان متن> بررسی می‌شد و سربرگ‌هایی مثل «aria-1005-letterhead.pdf» پیدا
+        // نمی‌شدند و صورتجلسه بدون سربرگ چاپ می‌شد).
+        var found = PrintAssetResolver.Letterhead(clean,
+            _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"),
+            _env.ContentRootPath, AppContext.BaseDirectory);
 
-        var candidates = new[]
-        {
-            Path.Combine(webRoot, "uploads", uploadClean),
-            Path.Combine(webRoot, clean),
-            Path.Combine(_env.ContentRootPath, clean),
-            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
-            Path.Combine(AppContext.BaseDirectory, clean),
-            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
-        };
+        if (found == null)
+            _log.LogWarning(
+                "فایل سربرگ ثبت‌شدهٔ شرکت پیدا نشد. Value={Value}, Searched={Searched}",
+                fileName, PrintAssetResolver.Describe(
+                    PrintAssetResolver.LetterheadCandidates(clean, _env.WebRootPath, _env.ContentRootPath,
+                        AppContext.BaseDirectory)));
 
-        return candidates.FirstOrDefault(File.Exists);
+        return PrintAssetResolver.IsRenderable(found) ? found : null;
     }
 
     private static string FaDate(DateTime? d)
@@ -123,9 +151,72 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         }
     }
 
+    // ==================== شرکتِ چاپ ====================
+
+    /// <summary>منبع شناسهٔ شرکت برای چاپ صورتجلسه.</summary>
+    internal enum MinutesCompanySource
+    {
+        /// <summary>MeetingMinutes.CompanyId — مرجع اصلی و درست.</summary>
+        Record,
+        /// <summary>شرکت فعالِ درخواست (نتیجهٔ دسترسی کاربر در ActiveCompanyMiddleware).</summary>
+        ActiveContext,
+        /// <summary>هدر خام X-Company-Id.</summary>
+        Header,
+        /// <summary>هیچ شرکتی مشخص نشد ⇒ چاپ بدون سربرگ.</summary>
+        None
+    }
+
+    internal sealed record MinutesCompany(
+        int? CompanyId,
+        MinutesCompanySource Source,
+        string? Name,
+        string? LetterheadFileName);
+
+    /// <summary>
+    /// شرکت چاپ: اول شرکتِ ثبت‌شده روی صورتجلسه، بعد شرکت فعالِ درخواست (Middleware)، بعد هدر خام.
+    /// </summary>
+    private async Task<MinutesCompany> ResolveCompanyAsync(int? recordCompanyId)
+    {
+        if (recordCompanyId is > 0) return await Load(recordCompanyId.Value, MinutesCompanySource.Record);
+
+        if (_http.HttpContext?.Items[ActiveCompanyMiddleware.ItemKey] is int active && active > 0)
+            return await Load(active, MinutesCompanySource.ActiveContext);
+
+        var raw = _http.HttpContext?.Request.Headers[ActiveCompanyMiddleware.HeaderName].FirstOrDefault();
+        if (int.TryParse(raw, out var headerCompanyId) && headerCompanyId > 0)
+            return await Load(headerCompanyId, MinutesCompanySource.Header);
+
+        return new MinutesCompany(null, MinutesCompanySource.None, null, null);
+
+        async Task<MinutesCompany> Load(int id, MinutesCompanySource source)
+        {
+            try
+            {
+                var company = await _db.SystemCompanies.AsNoTracking()
+                    .Where(c => c.Id == id && c.IsActive)
+                    .Select(c => new { c.Name, c.LetterheadFileName })
+                    .FirstOrDefaultAsync();
+                if (company == null)
+                {
+                    _log.LogWarning(
+                        "شرکت {CompanyId} (از «{Source}») برای چاپ صورتجلسه پیدا نشد یا غیرفعال است؛ " +
+                        "چاپ بدون سربرگ و بدون قالب شرکت انجام می‌شود.", id, source);
+                    return new MinutesCompany(id, source, null, null);
+                }
+
+                return new MinutesCompany(id, source, company.Name, company.LetterheadFileName);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "خواندن رکورد شرکت {CompanyId} برای چاپ صورتجلسه ناموفق بود.", id);
+                return new MinutesCompany(id, source, null, null);
+            }
+        }
+    }
+
     // ==================== تولید PDF ====================
 
-    public async Task<byte[]?> GeneratePdfAsync(int minutesId)
+    public async Task<byte[]?> GeneratePdfAsync(int minutesId, string size = "A4")
     {
         var m = await _db.MeetingMinutes.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == minutesId && !x.IsDeleted);
@@ -139,55 +230,649 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             .Where(i => i.MinutesId == minutesId)
             .OrderBy(i => i.RowNo).ThenBy(i => i.Id)
             .ToListAsync();
+        // صورتجلسه فیلد «پیوست» ندارد؛ «دارد/ندارد» از پیوست‌های ثبت‌شدهٔ همین صورتجلسه
+        // (AppAttachments با Module=MeetingMinutes) شمرده می‌شود — همان قاعدهٔ فهرست صورتجلسه‌ها.
+        var attachmentCount = await _db.AppAttachments.AsNoTracking()
+            .CountAsync(a => a.Module == "MeetingMinutes" && a.RefId == minutesId);
 
-        // سربرگ اختیاری است. نبودن شرکت، ستون سربرگ، یا خودِ فایل نباید چاپ را متوقف کند.
-        string? companyName = null;
-        string? letterheadPath = null;
-        try
+        var isA5 = string.Equals(size?.Trim(), "A5", StringComparison.OrdinalIgnoreCase);
+
+        // ── شرکت: «همان شرکتی که صورتجلسه برایش ثبت شده» ──
+        // MeetingMinutes.CompanyId در لحظهٔ ثبت ست می‌شود و مرجع اصلی است؛ فقط اگر خالی
+        // باشد (صورتجلسه‌های قدیمی) شرکت فعالِ درخواست جای آن را می‌گیرد.
+        var companyResolution = await ResolveCompanyAsync(m.CompanyId);
+        var companyName = companyResolution.Name;
+        var companyId = companyResolution.CompanyId;
+        var registeredLetterhead = ResolveLetterheadPath(companyResolution.LetterheadFileName);
+
+        // اگر خودِ صورتجلسه شرکت ندارد، سربرگ از «شرکت فعال» می‌آید؛ این را صریح لاگ می‌کنیم
+        // تا دوباره سرّی نماند که چرا چاپ روی سربرگ شرکت دیگری انجام شده است.
+        if (companyResolution.Source != MinutesCompanySource.Record)
+            _log.LogWarning(
+                "صورتجلسه {MinutesId} شرکت ثبت‌شده ندارد (MeetingMinutes.CompanyId خالی است)؛ " +
+                "شرکت از «{Source}» گرفته شد: {CompanyId}. اگر سربرگ درست نیست، شرکت صورتجلسه را اصلاح کنید.",
+                m.Id, companyResolution.Source, companyId);
+
+        // ── قالب طرح همان شرکت: Reports/MeetingMinutes/Companies/{CompanyId}/Minutes-{A4|A5}.mrt ──
+        var templatePath = companyId is int templateCompanyId ? FindTemplate(templateCompanyId, isA5) : null;
+        // اعداد «کاغذ» (رزرو پابرگ/سربرگ، ستون متا، چیدمان امضا) به‌ازای طرح سربرگ همان شرکت.
+        var letterheadProfile = MinutesLetterheadProfile.For(companyId, isA5);
+        var design = MeetingMinutesDesignLayout.TryRead(templatePath);
+
+        // سربرگ: اول تصویر جاسازی‌شده در خودِ قالب (پس چاپ به فایل‌های wwwroot وابسته نیست)،
+        // بعد فایل سربرگ ثبت‌شدهٔ شرکت.
+        var templateLetterhead = templatePath != null ? ExtractTemplateLetterhead(templatePath) : null;
+        // تصویر جاسازی‌شده در قالب هم باید واقعاً قابل رسم باشد؛ اگر خراب/ناقص باشد چاپ
+        // روی سربرگ شکست می‌خورد و قبلاً بی‌صدا به «بدون سربرگ» می‌افتاد.
+        if (templateLetterhead != null && !PrintAssetResolver.IsRenderable(templateLetterhead))
         {
-            var rawCompanyId = _http.HttpContext?.Request.Headers["X-Company-Id"].FirstOrDefault();
-            var companyId = int.TryParse(rawCompanyId, out var parsedCompanyId) && parsedCompanyId > 0
-                ? parsedCompanyId
-                : 0;
-            var company = companyId > 0
-                ? await _db.SystemCompanies.AsNoTracking()
-                    .Where(c => c.Id == companyId && c.IsActive)
-                    .Select(c => new { c.Name, c.LetterheadFileName })
-                    .FirstOrDefaultAsync()
-                : null;
-            companyName = company?.Name;
-            letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
-        }
-        catch
-        {
-            letterheadPath = null;
+            _log.LogWarning(
+                "تصویر سربرگ جاسازی‌شده در قالب صورتجلسه قابل استفاده نیست؛ فایل ثبت‌شدهٔ شرکت امتحان می‌شود. " +
+                "Template={Template}, Extracted={Extracted}", templatePath, templateLetterhead);
+            templateLetterhead = null;
         }
 
-        byte[] contentPdf;
-        try
+        var letterheadSource = templateLetterhead != null ? "قالب MRT (Watermark.ImageBytes)"
+            : registeredLetterhead != null ? "فایل ثبت‌شدهٔ شرکت"
+            : "هیچ (چاپ بدون سربرگ)";
+        var letterheadPath = templateLetterhead ?? registeredLetterhead;
+        _log.LogInformation(
+            "صورتجلسه {MinutesId} شرکت {CompanyId}: قالب={Template} | سربرگ={LetterheadSource} ({LetterheadPath})",
+            m.Id, companyId, templatePath ?? "یافت نشد", letterheadSource, letterheadPath ?? "—");
+
+        // ── ساخت محتوای صورتجلسه، با نردبان «سربرگ حفظ شود» ──
+        // قبلاً هر استثنایی در ساخت محتوا بی‌صدا گرفته می‌شد و letterheadPath=null می‌شد؛
+        // نتیجه این بود که صورتجلسه «بدون سربرگ» چاپ می‌شد و هیچ سرنخی در لاگ نبود.
+        // اکنون هر پله لاگ می‌شود و تا جای ممکن سربرگ همان شرکت حفظ می‌شود.
+        var hasLetterhead = letterheadPath != null;
+        byte[]? templateContent = null;
+        if (design is { HasRequiredSlots: true } templateLayout)
         {
-            contentPdf = BuildContentPdf(m, parts, items, letterheadPath != null, companyName);
-        }
-        catch
-        {
-            // اگر چیدمان (جدول/امضا) جا نشد، نسخهٔ ساده بدون جدول ثابت برمی‌گردد
-            contentPdf = BuildFallbackPdf(m, parts, items, companyName);
-            letterheadPath = null;
+            try
+            {
+                templateContent = BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
+                    hasLetterhead, attachmentCount, letterheadProfile);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "ساخت محتوای صورتجلسه با چیدمان قالب ناموفق بود؛ بدون کادرهای شماره/تاریخ/پیوست تکرار می‌شود. " +
+                    "MinutesId={MinutesId}, CompanyId={CompanyId}, Template={Template}, HasLetterhead={HasLetterhead}",
+                    m.Id, companyId, templatePath, hasLetterhead);
+
+                try
+                {
+                    templateContent = BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
+                        hasLetterhead, attachmentCount, letterheadProfile, withHeaderMeta: false);
+                }
+                catch (Exception retryEx)
+                {
+                    _log.LogWarning(retryEx,
+                        "چیدمان قالب صورتجلسه در تلاش دوم هم جا نشد؛ چیدمان کلاسیک روی همان سربرگ امتحان می‌شود. " +
+                        "MinutesId={MinutesId}, Template={Template}", m.Id, templatePath);
+                }
+            }
         }
 
-        if (letterheadPath == null) return contentPdf;
+        // اگر هیچ‌یک از دو تلاش قالب جواب نداد، چیدمان کلاسیک — ولی باز هم روی همان سربرگ.
+        var contentPdf = templateContent ?? BuildContentSafely(m, parts, items, companyName, hasLetterhead);
+
+        if (letterheadPath == null)
+        {
+            // واقعاً سربرگی پیدا نشد (نه اینکه ساخت محتوا شکست خورده باشد) — همین را هم شفاف لاگ می‌کنیم.
+            _log.LogWarning(
+                "صورتجلسه {MinutesId} شرکت {CompanyId} بدون سربرگ چاپ می‌شود. Template={Template}",
+                m.Id, companyId, templatePath ?? "یافت نشد");
+            return contentPdf;
+        }
 
         try
         {
             return OverlayOnLetterhead(contentPdf, letterheadPath);
         }
-        catch
+        catch (Exception ex)
         {
-            // فایل سربرگ خراب — دوباره بدون حاشیهٔ مخصوص سربرگ
+            _log.LogError(ex,
+                "کشیدن صورتجلسه روی سربرگ ناموفق بود؛ نسخهٔ بدون سربرگ برگردانده می‌شود. " +
+                "MinutesId={MinutesId}, Letterhead={Letterhead}, IsPdf={IsPdf}",
+                m.Id, letterheadPath, letterheadPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase));
             try { return BuildContentPdf(m, parts, items, false, companyName); }
             catch { return BuildFallbackPdf(m, parts, items, companyName); }
         }
     }
+
+    /// <summary>
+    /// ساخت محتوای کلاسیک/ساده بدون استثنا. اگر روی سربرگ چاپ شود، هر دو مسیر شفاف‌اند
+    /// (BuildContentPdf/BuildFallbackPdf با reserveLetterhead) تا سربرگ دیده شود.
+    /// </summary>
+    private byte[] BuildContentSafely(MeetingMinutes m, List<MeetingMinutesParticipant> parts,
+        List<MeetingMinutesItem> items, string? companyName, bool reserveLetterhead)
+    {
+        try
+        {
+            return BuildContentPdf(m, parts, items, reserveLetterhead, companyName);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "چیدمان کلاسیک صورتجلسه ناموفق بود؛ نسخهٔ ساده ساخته می‌شود. MinutesId={MinutesId}, HasLetterhead={HasLetterhead}",
+                m.Id, reserveLetterhead);
+            return BuildFallbackPdf(m, parts, items, companyName, withLetterhead: reserveLetterhead);
+        }
+    }
+
+    // ==================== قالب طرح صورتجلسه (Stimulsoft MRT) ====================
+
+    /// <summary>ریشهٔ پوشهٔ قالب‌ها؛ با Reporting:MeetingMinutes:TemplateRoot قابل تغییر است.</summary>
+    private string TemplateRoot
+    {
+        get
+        {
+            var configured = _configuration["Reporting:MeetingMinutes:TemplateRoot"];
+            return string.IsNullOrWhiteSpace(configured)
+                ? Path.Combine("Reports", "MeetingMinutes", "Companies")
+                : configured.Replace('\\', Path.DirectorySeparatorChar)
+                    .Replace('/', Path.DirectorySeparatorChar);
+        }
+    }
+
+    /// <summary>
+    /// فایل قالب صورتجلسهٔ همان شرکت (Minutes-A4.mrt / Minutes-A5.mrt). اگر طراح نام دیگری
+    /// گذاشته باشد، همان پوشه بررسی می‌شود تا قالب «بی‌صدا نادیده» گرفته نشود.
+    /// </summary>
+    private string? FindTemplate(int companyId, bool isA5)
+    {
+        var size = isA5 ? "A5" : "A4";
+        var fileName = $"Minutes-{size}.mrt";
+        var roots = new[] { _env.ContentRootPath, AppContext.BaseDirectory };
+
+        // همان قاعدهٔ نامهٔ داخلی و نامهٔ صادره (PrintAssetResolver): تنظیمات → پوشهٔ داخل مخزن
+        // (inventory/src/Inventory.Api/Reports/…، همان مسیری که قالب‌ها ویرایش می‌شوند) →
+        // ContentRoot → BaseDirectory → پوشهٔ جاری، و در پایان پوشهٔ طراحی «Report/».
+        // پیش از این فقط ContentRoot/BaseDirectory/CWD بررسی می‌شد؛ نتیجه: قالب تازهٔ یک شرکت
+        // (مثلاً ۱۰۰۵) تا اولین Publish کامل دیده نمی‌شد و صورتجلسه بدون سربرگ چاپ می‌شد.
+        var candidates = PrintAssetResolver.TemplateCandidates(
+                PrintAssetResolver.MeetingMinutes, companyId, fileName, TemplateRoot, roots)
+            .Concat(PrintAssetResolver.DesignFolderCandidates("meetingminutes", companyId,
+                $"Report_{size}_MeetingMinutes.mrt", roots))
+            .ToArray();
+
+        var exact = PrintAssetResolver.FirstExisting(candidates);
+        if (exact != null) return exact;
+
+        // نام فایل استاندارد نیست (طراح با نام دیگری ذخیره کرده): همان پوشه‌ها با هر فایل MRT
+        // که اندازه در نامش باشد بررسی می‌شوند.
+        foreach (var folder in PrintAssetResolver.TemplateFolders(
+                     PrintAssetResolver.MeetingMinutes, companyId, TemplateRoot, roots))
+        {
+            if (!Directory.Exists(folder)) continue;
+            var fallback = Directory.EnumerateFiles(folder, "*.mrt")
+                .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(file => Path.GetFileNameWithoutExtension(file)
+                    .Contains(size, StringComparison.OrdinalIgnoreCase));
+            if (fallback != null) return fallback;
+        }
+
+        _log.LogWarning(
+            "قالب صورتجلسه پیدا نشد. CompanyId={CompanyId}, Size={Size}, TemplateRoot={TemplateRoot}, Searched={Searched}",
+            companyId, size, TemplateRoot, PrintAssetResolver.Describe(candidates));
+        return null;
+    }
+
+    /// <summary>
+    /// سربرگ جاسازی‌شده در قالب (Watermark.ImageBytes) را در فایل موقت ذخیره می‌کند تا
+    /// صورتجلسه روی همان تصویر سربرگِ قالب چاپ شود — مستقل از wwwroot و رکورد شرکت.
+    /// </summary>
+    private string? ExtractTemplateLetterhead(string templatePath)
+    {
+        try
+        {
+            var info = new FileInfo(templatePath);
+            var key = $"{Path.GetFullPath(templatePath)}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+            if (TemplateLetterheads.TryGetValue(key, out var cached) && File.Exists(cached)) return cached;
+
+            using var stream = File.OpenRead(templatePath);
+            var document = XDocument.Load(stream, LoadOptions.None);
+            var base64 = document.Descendants()
+                .FirstOrDefault(element => element.Name.LocalName == "Watermark")?
+                .Elements().FirstOrDefault(element => element.Name.LocalName == "ImageBytes")?.Value;
+            if (string.IsNullOrWhiteSpace(base64)) return null;
+
+            var bytes = Convert.FromBase64String(base64);
+            if (bytes.Length == 0) return null;
+
+            // پسوند باید با محتوای واقعی بخواند، وگرنه PDFsharp تصویر را باز نمی‌کند.
+            var extension = bytes.Length > 4 && bytes[0] == 0x89 && bytes[1] == 0x50 ? ".png"
+                : bytes.Length > 4 && Encoding.ASCII.GetString(bytes, 0, 4) == "%PDF" ? ".pdf"
+                : ".jpg";
+
+            var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16]
+                .ToLowerInvariant();
+            var directory = Path.Combine(Path.GetTempPath(), "totall-minutes-letterheads");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, $"minutes-{identity}{extension}");
+            if (!File.Exists(path)) File.WriteAllBytes(path, bytes);
+
+            TemplateLetterheads[key] = path;
+            return path;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// چاپ صورتجلسه با هندسهٔ قالب شرکت:
+    /// • شماره، تاریخ جلسه و «پیوست» داخل کادرهای چاپ‌شدهٔ سربرگ (بالای صفحه) می‌نشینند —
+    ///   در لایهٔ Foreground و با مختصات مطلقِ خودِ قالب.
+    /// • عنوان صورتجلسه زیر مستطیل/روبان آبی سربرگ و راست‌چین است (درخواست کارفرما).
+    /// • حاضرین، غایبین و بندها به‌صورت جاری بعد از عنوان؛ برچسب هر بخش چسبیده به مقدار و
+    ///   بندها فهرستِ شماره‌دار ساده، بدون جدول.
+    /// • امضای حاضرین در جریان صفحه (نه چسبیده به پایین) و یکجا (ShowEntire) می‌ماند؛ اگر
+    ///   کاربر در پنجرهٔ canvas امضا کرده باشد همان تصویر چاپ می‌شود، وگرنه کادر خالی برای
+    ///   امضای دستی. متن «در انتظار امضا» روی کاغذ نمی‌آید.
+    /// چون همه‌چیز در جریان عادی صفحه است، صورتجلسهٔ بلند به صفحه‌های بعد می‌رود و متن از
+    /// زیر نوار آبی/بالای پابرگ بیرون نمی‌زند.
+    /// </summary>
+    private byte[] BuildTemplateContentPdf(
+        MeetingMinutes m,
+        List<MeetingMinutesParticipant> parts,
+        List<MeetingMinutesItem> items,
+        MeetingMinutesDesignLayout design,
+        bool isA5,
+        string? companyName,
+        bool hasLetterhead,
+        int attachmentCount,
+        MinutesLetterheadProfile letterheadProfile,
+        bool withHeaderMeta = true)
+    {
+        EnsureFonts();
+
+        var attendees = parts.Where(p => p.Kind == MinutesParticipantKind.Attendee).ToList();
+        var absent = parts.Where(p => p.Kind == MinutesParticipantKind.Absent).ToList();
+        var number = LetterPrintTemplate.PersianDigits(m.Id.ToString(CultureInfo.InvariantCulture));
+        var meetingDate = LetterPrintTemplate.PersianDigits(FaDate(m.MeetingDate));
+        var attendeeText = attendees.Count > 0
+            ? string.Join("، ", attendees.Select(p => p.Name))
+            : "—";
+        var absentText = absent.Count > 0
+            ? string.Join("، ", absent.Select(p => p.Name))
+            : "—";
+        // صورتجلسه فیلد پیوست ندارد؛ شمارش از AppAttachments می‌آید (Module=MeetingMinutes).
+        var attachmentText = attachmentCount > 0 ? "دارد" : "ندارد";
+
+        var signatureImages = new Dictionary<int, byte[]>();
+        foreach (var p in attendees)
+        {
+            var png = TryDecodeSignaturePng(p.SignatureData);
+            if (png != null) signatureImages[p.Id] = png;
+        }
+
+        var titleBox = design.Title;
+        var itemsCaption = design.Caption(MeetingMinutesDesignLayout.Slot.Items);
+
+        var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
+        var flowBox = design.Items ?? design.Absentees;
+        var flowLeft = flowBox?.Left ?? 28f;
+        var flowWidth = flowBox?.Width ?? (pageWidth - 2f * flowLeft);
+
+        // رزرو پابرگ/سربرگ از پروفایل همان طرح سربرگ می‌آید (شرکت ۱: ۱۷۴/۱۲۱pt در A4).
+        var footerReserve = hasLetterhead ? letterheadProfile.FooterReserve : (isA5 ? 24f : 32f);
+        // سربرگ هر صفحه (نوار آبی/تصویر) چقدر از بالا را می‌گیرد؟ صفحهٔ اول با فاصلهٔ خودِ قالب
+        // تنظیم می‌شود، ولی صفحهٔ دوم به بعد باید از زیر سربرگ شروع کند، وگرنه متن روی آن می‌رود.
+        var headerReserve = hasLetterhead ? letterheadProfile.HeaderReserve : 0f;
+
+        // ── متای سربرگ: شماره / تاریخ / پیوست روی برچسب‌های چاپ‌شدهٔ سربرگ ──
+        var metaRows = BuildHeaderMetaRows(design, number, meetingDate, attachmentText, hasLetterhead);
+        var metaBottom = metaRows.Count == 0 ? 0f : metaRows.Max(row => row.Top + row.Height);
+
+        // عنوان: از قالب (۱۹۳pt در A4). بدون سربرگ، متا بالای صفحه است و عنوان بعد از آن می‌آید.
+        var titleTop = titleBox?.Top ?? 96f;
+        if (!hasLetterhead) titleTop = Math.Max(24f, metaBottom + 24f);
+
+        // فاصلهٔ هر بخش تا بخش بعدی از دل قالب خوانده می‌شود؛ مقادیر جای‌گزین برای قالب‌های ناقص.
+        var fallbackGap = isA5 ? 3f : 4f;
+        var captionGap = isA5 ? 4f : 5f;
+        var itemGap = isA5 ? 3f : 4f;
+        var attendeesGap = GapAfter(design.Attendees, design.Absentees);
+        var absenteesGap = GapAfter(design.Absentees, itemsCaption);
+        var itemsGap = itemsCaption != null ? GapAfter(itemsCaption, design.Items) : fallbackGap;
+
+        // شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما)؛ بنابراین هیچ جزء پویایی در چاپ نیست.
+        var doc = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                page.MarginTop(0);
+                page.MarginLeft(Math.Max(0f, flowLeft));
+                page.MarginRight(Math.Max(0f, pageWidth - flowLeft - flowWidth));
+                page.MarginBottom(footerReserve);
+                // PDF نهایی روی تصویر سربرگ کشیده می‌شود؛ صفحهٔ سفید آن را نمی‌پوشاند.
+                page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
+                page.DefaultTextStyle(style => style
+                    .FontFamily(Fnt)
+                    .FontSize(isA5 ? 9f : 10f)
+                    .FontColor(Ink)
+                    .LineHeight(1.6f)
+                    .DirectionFromRightToLeft());
+
+                // یک نوار خالی هم‌اندازهٔ ناحیهٔ سربرگ؛ روی صفحه‌های دوم به بعد متن را از زیر
+                // نوار آبی دور نگه می‌دارد.
+                page.Header().Height(headerReserve);
+
+                // مقادیر سربرگ در لایهٔ سراسری صفحه و با مختصات مطلق، روی برچسب‌های چاپ‌شده.
+                // با withHeaderMeta=false این لایه رسم نمی‌شود (مسیر «تلاش دوباره» وقتی رسم
+                // کادرهای متا شکست بخورد) تا چاپ روی سربرگ از دست نرود.
+                if (withHeaderMeta && metaRows.Count > 0)
+                    page.Foreground().ContentFromLeftToRight()
+                        .Element(host => DrawHeaderMeta(host, metaRows, letterheadProfile.MetaColumnLeft));
+
+                page.ContentFromRightToLeft();
+                page.Content().Column(col =>
+                {
+                    // ── عنوان صورتجلسه: راست‌چین، درست زیر مستطیل آبی سربرگ ──
+                    Space(col, titleTop - headerReserve);
+                    if (titleBox is { } title)
+                    {
+                        var titleText = string.IsNullOrWhiteSpace(m.Title) ? "بدون عنوان" : m.Title;
+                        col.Item().MinHeight(title.Height).Element(cell => Write(cell, title, titleText));
+                    }
+
+                    // ── حاضرین و غایبین: برچسب چسبیده به نام‌ها، بدون ستون پهن ──
+                    Pair(col, MeetingMinutesDesignLayout.Slot.Attendees, attendeeText, attendeesGap);
+                    Pair(col, MeetingMinutesDesignLayout.Slot.Absentees, absentText, absenteesGap);
+
+                    // ── بندها و تصمیمات: فهرست شماره‌دار ساده (بدون جدول) ──
+                    if (itemsCaption is { } itemsLabel)
+                    {
+                        col.Item().PaddingBottom(itemsGap)
+                            .MinHeight(Math.Max(12f, itemsLabel.Height))
+                            .Element(cell => Write(cell, itemsLabel, NormalizeCaption(itemsLabel.Text)));
+                    }
+                    else
+                    {
+                        col.Item().PaddingBottom(itemsGap)
+                            .Text(LetterPrintTemplate.RtlLabel("بندها و تصمیمات"))
+                            .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
+                            .DirectionFromRightToLeft();
+                    }
+
+                    if (items.Count == 0)
+                    {
+                        col.Item().Text("بندی ثبت نشده است.")
+                            .FontSize(isA5 ? 8f : 9f).FontColor(Muted)
+                            .DirectionFromRightToLeft();
+                    }
+                    else
+                    {
+                        foreach (var item in items) ItemRow(col, item);
+                    }
+
+                    // ── محل امضای حاضرین ──
+                    SignatureBlock(col, attendees, signatureImages);
+                });
+            });
+        });
+
+        _ = companyName; // نام شرکت روی خودِ سربرگ چاپ شده است؛ در متن تکرار نمی‌شود
+
+        return doc.GeneratePdf();
+
+        // ── فاصلهٔ خالی به اندازهٔ اختلاف مختصات قالب ──
+        static void Space(ColumnDescriptor col, float height)
+        {
+            if (height > 0.5f) col.Item().Height(height);
+        }
+
+        // ── فاصلهٔ پیش‌بینی‌شده در طرح بین دو کادر (۲ تا ۲۴pt) ──
+        float GapAfter(MeetingMinutesDesignLayout.Box? current, MeetingMinutesDesignLayout.Box? next)
+        {
+            if (current == null || next == null) return fallbackGap;
+            return Math.Clamp(next.Top - (current.Top + current.Height), 2f, 24f);
+        }
+
+        // ── یک کادر متنی با فونت/رنگ/اندازهٔ قالب ──
+        // تراز افقی در چیدمان راست‌به‌چپِ استیمول‌سافت آینه می‌شود و با آنچه روی کاغذ می‌بینیم
+        // یکی نیست؛ چون کارفرما «راست‌چین بودن» را صریح خواسته، تراز را خودِ چاپ تعیین می‌کند.
+        void Write(IContainer cell, MeetingMinutesDesignLayout.Box box, string value)
+        {
+            var family = box.Bold ? FntBold : Fnt;
+            cell.AlignMiddle().Text(text =>
+            {
+                text.DefaultTextStyle(style => style
+                    .FontFamily(family)
+                    .FontSize(box.FontSize)
+                    .FontColor(box.Color)
+                    .LineHeight(1.5f)
+                    .DirectionFromRightToLeft());
+                text.AlignRight();
+                text.Span(value);
+            });
+        }
+
+        // ── برچسب + مقدار: برچسب به عرض طبیعیِ متنِ خودش (نه ستون ثابت) ──
+        void Pair(ColumnDescriptor col, MeetingMinutesDesignLayout.Slot slot, string value, float gapAfter)
+        {
+            var found = slot switch
+            {
+                MeetingMinutesDesignLayout.Slot.Attendees => design.Attendees,
+                _ => design.Absentees
+            };
+            // متغیر الگو (غیرnullable) تا داخل lambda هم هشدار nullable ندهد.
+            if (found is not { } valueBox) return;
+
+            var caption = design.Caption(slot);
+            var line = col.Item().PaddingBottom(gapAfter).MinHeight(Math.Max(10f, valueBox.Height));
+
+            if (caption is { } captionBox)
+            {
+                line.Row(row =>
+                {
+                    // در Row راست‌به‌چپ، نخستین آیتم سمت راست صفحه می‌نشیند = جای برچسب در قالب.
+                    row.AutoItem().PaddingLeft(captionGap)
+                        .Element(cell => Write(cell, captionBox, NormalizeCaption(captionBox.Text)));
+                    row.RelativeItem().Element(cell => Write(cell, valueBox, value));
+                });
+            }
+            else
+            {
+                line.Element(cell => Write(cell, valueBox, value));
+            }
+        }
+
+        // ── یک بند: شماره + شرح + مسئول/پیگیری/وضعیت، در جریان عادی متن ──
+        void ItemRow(ColumnDescriptor col, MeetingMinutesItem item)
+        {
+            var details = new List<string>();
+            if (!string.IsNullOrWhiteSpace(item.ResponsibleName))
+                details.Add($"مسئول: {item.ResponsibleName}");
+            if (!string.IsNullOrWhiteSpace(item.FollowUpName))
+                details.Add($"پیگیری: {item.FollowUpName}");
+
+            var status = MinutesItemStatus.ToFa(item.ItemStatus);
+            var statusColor = item.ItemStatus == MinutesItemStatus.Done ? "#166534"
+                : item.ItemStatus == MinutesItemStatus.Rejected ? "#991b1b" : BrandDark;
+            var numberText = LetterPrintTemplate.PersianDigits(item.RowNo.ToString(CultureInfo.InvariantCulture));
+
+            col.Item().PaddingBottom(itemGap).Row(line =>
+            {
+                line.ConstantItem(isA5 ? 13f : 15f).AlignTop()
+                    .Text(numberText + ".")
+                    .FontFamily(FntBold).FontSize(isA5 ? 8f : 9f).FontColor(Brand);
+
+                line.RelativeItem().Text(text =>
+                {
+                    text.DefaultTextStyle(style => style
+                        .FontFamily(Fnt)
+                        .FontSize(isA5 ? 8.5f : 9.5f)
+                        .FontColor(Ink)
+                        .LineHeight(1.75f)
+                        .DirectionFromRightToLeft());
+                    text.AlignRight();
+                    text.Span(item.Description ?? string.Empty);
+                    if (details.Count > 0)
+                        text.Span(" — " + string.Join("، ", details))
+                            .FontSize(isA5 ? 7.5f : 8.5f).FontColor(Muted);
+                    text.Span(" " + status)
+                        .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f).FontColor(statusColor);
+                });
+            });
+        }
+
+        // ── محل امضای حاضرین: کادر خالی برای امضای دستی، تصویر امضا برای امضاشده‌ها ──
+        // درخواست کارفرما: «امضا باید همیشه بلافاصله بعد از پایان متن بیاید، نه در صفحهٔ دیگر.»
+        // پیش‌تر کل بلوک یک‌جا ShowEntire بود؛ چون ۷pt جا کم می‌آمد، همه‌اش به صفحهٔ بعد می‌رفت.
+        // اکنون هر ردیف جداگانه کامل می‌ماند، برچسب به ردیف اولش چسبیده است و بلوک چندردیفی
+        // کادرهای جمع‌وجورتری می‌گیرد تا در همان صفحهٔ متن بنشیند.
+        void SignatureBlock(ColumnDescriptor col, List<MeetingMinutesParticipant> people,
+            Dictionary<int, byte[]> images)
+        {
+            if (people.Count == 0) return;
+
+            // حداکثر کادر در ردیف از پروفایل طرح سربرگ (شرکت ۱: ۵، شرکت ۱۰۰۳: ۳ و در A5: ۲).
+            // با کمتر از سه نفر، ردیف با همان تعداد پر می‌شود تا کادرها بی‌دلیل پهن نشوند.
+            var maxColumns = Math.Max(1, letterheadProfile.SignatureColumns);
+            var perRow = Math.Clamp(people.Count, Math.Min(3, maxColumns), maxColumns);
+            var rowCount = (people.Count + perRow - 1) / perRow;
+            // چند ردیفی → کادر جمع‌وجورتر (فقط طرح‌هایی که این ارتفاع را اعلام کرده‌اند).
+            var boxHeight = rowCount > 1 && letterheadProfile.SignatureCompactBoxHeight > 0f
+                ? letterheadProfile.SignatureCompactBoxHeight
+                : letterheadProfile.SignatureBoxHeight;
+            var cellGap = isA5 ? 6f : 8f;
+            // عرض ثابت پروفایل (مثل ۱۶۸pt شرکت ۱۰۰۳) یا تقسیم عرض متن بین ستون‌ها.
+            var cellWidth = letterheadProfile.SignatureCellWidth > 0f && perRow == maxColumns
+                ? letterheadProfile.SignatureCellWidth
+                : (flowWidth - cellGap * (perRow - 1)) / perRow;
+
+            col.Item().PaddingTop(letterheadProfile.SignatureTopPadding).Column(block =>
+            {
+                for (var start = 0; start < people.Count; start += perRow)
+                {
+                    var group = people.Skip(start).Take(perRow).ToList();
+                    var isFirstRow = start == 0;
+
+                    // ShowEntire روی هر ردیف = هیچ ردیفی نصفه به صفحهٔ بعد نمی‌رود و برچسب
+                    // «محل امضای حاضرین» هم هیچ‌وقت از ردیف اولش جدا نمی‌شود.
+                    block.Item().PaddingBottom(cellGap).ShowEntire().Column(rowBlock =>
+                    {
+                        if (isFirstRow)
+                        {
+                            rowBlock.Item().PaddingBottom(isA5 ? 4f : 6f)
+                                .Text(LetterPrintTemplate.RtlLabel("محل امضای حاضرین"))
+                                .FontFamily(FntBold).FontSize(isA5 ? 9f : 10.5f).FontColor(BrandDark)
+                                .DirectionFromRightToLeft();
+                        }
+
+                        rowBlock.Item().Row(cells =>
+                        {
+                            for (var index = 0; index < perRow; index++)
+                            {
+                                var position = index;
+                                cells.ConstantItem(Math.Max(60f, cellWidth)).Element(cell =>
+                                {
+                                    if (position >= group.Count) return;
+                                    var person = group[position];
+                                    cell.PaddingLeft(position == perRow - 1 ? 0f : cellGap)
+                                        .Column(card =>
+                                        {
+                                            if (images.TryGetValue(person.Id, out var signature))
+                                            {
+                                                // امضای ثبت‌شده در پنجرهٔ canvas: خودِ تصویر، بدون کادر.
+                                                card.Item().Height(boxHeight).AlignCenter().AlignMiddle()
+                                                    .Image(signature).FitArea();
+                                            }
+                                            else
+                                            {
+                                                // کادر خالی برای امضای دستی روی برگه.
+                                                card.Item().Height(boxHeight)
+                                                    .Border(0.5f).BorderColor("#cbd5e1").Background(Colors.White)
+                                                    .AlignCenter().AlignMiddle()
+                                                    .Text("محل امضای دستی")
+                                                    .FontSize(isA5 ? 6.5f : 7.5f).FontColor("#b6c2d2")
+                                                    .DirectionFromRightToLeft();
+                                            }
+
+                                            card.Item().PaddingTop(3).AlignCenter().Text(person.Name)
+                                                .FontFamily(FntBold).FontSize(isA5 ? 7.5f : 8.5f)
+                                                .FontColor(Ink).DirectionFromRightToLeft();
+
+                                            // «در انتظار امضا» روی کاغذ نمی‌آید؛ فقط تاریخ امضای
+                                            // ثبت‌شده می‌ماند (سندِ امضای الکترونیکی در گردش کار).
+                                            if (person.SignedAt != null)
+                                            {
+                                                card.Item().AlignCenter()
+                                                    .Text("امضا شد: " + LetterPrintTemplate.PersianDigits(
+                                                        FaDate(person.SignedAt)))
+                                                    .FontSize(isA5 ? 6.5f : 7f).FontColor("#166534");
+                                            }
+                                        });
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+        }
+    }
+
+    /// <summary>یک کادر متای سربرگ با مقدار نهایی‌اش (مختصات مطلق صفحه، point).</summary>
+    private sealed record HeaderMetaRow(float Left, float Top, float Width, float Height, string Value,
+        string Color, float FontSize, string? Fill);
+
+    /// <summary>
+    /// کادرهای شماره/تاریخ/پیوست از خودِ قالب: مقدار در همان جای برچسبِ چاپ‌شدهٔ سربرگ
+    /// («شماره»، «تاریخ»، «پیوست») می‌نشیند. اگر قالب کادر پیوست را نداشته باشد، پیوست چاپ
+    /// نمی‌شود (قالب‌های قدیمیِ نصب‌شده نباید چاپ را بشکنند).
+    /// </summary>
+    private static List<HeaderMetaRow> BuildHeaderMetaRows(MeetingMinutesDesignLayout design,
+        string number, string date, string attachment, bool hasLetterhead)
+    {
+        var rows = new List<HeaderMetaRow>();
+
+        void Add(MeetingMinutesDesignLayout.Box? box, string value)
+        {
+            if (box == null || string.IsNullOrWhiteSpace(value)) return;
+            rows.Add(new HeaderMetaRow(box.Left, box.Top, box.Width, box.Height, value,
+                hasLetterhead ? box.Color : Ink, box.FontSize, box.Fill));
+        }
+
+        Add(design.Number, number);
+        Add(design.MeetingDate, date);
+        Add(design.Attachment, attachment);
+        return rows.OrderBy(row => row.Top).ToList();
+    }
+
+    /// <summary>
+    /// چاپ مقادیر سربرگ در مختصات مطلق صفحه (لایهٔ Foreground) — همان روش نامهٔ داخلی/صادره.
+    /// خودِ رسم در <see cref="HeaderMetaPainter"/> است تا هر سه چاپ (داخلی، صادره، صورتجلسه)
+    /// یک قاعده را دنبال کنند: سربرگ ستونی (۱۰۰۳/۳/۱) مقدارها را زیر هم و راست‌چین می‌چیند و
+    /// سربرگ ردیفی (۱۰۰۵) هر مقدار را روی نقطه‌چینِ خودش می‌نشاند.
+    /// </summary>
+    private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows,
+        float columnFloor = 0f)
+    {
+        if (rows.Count == 0) return;
+
+        HeaderMetaPainter.Draw(host,
+            rows.Select(row => new HeaderMetaCell(row.Left, row.Top, row.Width, row.Height, row.Value,
+                row.Color, row.FontSize, row.Fill)).ToList(),
+            columnFloor);
+    }
+
+    /// <summary>
+    /// برچسب ذخیره‌شده در قالب («:حاضرین») → متن قابل چاپ («حاضرین:»).
+    /// دونقطه در پایانِ منطقی می‌نشیند و با RLM محصور می‌شود تا در چاپ «:حاضرین» دیده نشود
+    /// (ایراد کارفرما: «موضوع:» به‌صورت «:موضوع» چاپ می‌شد). دونقطه‌ای که در طرح نبوده
+    /// اضافه نمی‌شود؛ فقط ترتیب نمایش اصلاح می‌شود.
+    /// </summary>
+    private static string NormalizeCaption(string text) =>
+        // قالب MRT برچسب را به‌صورت «:حاضرین» ذخیره می‌کند (دونقطه پیش از متن، در ترتیب منطقی).
+        // RtlLabel دونقطهٔ ابتدای متن را برمی‌دارد؛ اگر ensureTrailingColon:false باشد، دونقطه
+        // هیچ‌جا چاپ نمی‌شود و برچسب «حاضرین» بدون «:» می‌آید (دیده‌شده در خروجی واقعی چاپ).
+        // پس همان دونقطه‌ای که در طرح بود، در پایانِ منطقی برمی‌گردد: «حاضرین: …».
+        LetterPrintTemplate.RtlLabel(text, ensureTrailingColon: true);
 
     private const string Ink = "#0f172a";
     private const string Muted = "#64748b";
@@ -242,6 +927,10 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
+                // مهم: این PDF روی تصویر سربرگ کشیده می‌شود. QuestPDF پیش‌فرض صفحه را
+                // سفیدِ مات می‌کند و همان صفحه، سربرگ را کامل می‌پوشاند (خطای واقعی
+                // «صورتجلسه روی سربرگ چاپ نمی‌شود» در مسیر بدون قالب).
+                page.PageColor(reserveLetterhead ? Colors.Transparent : Colors.White);
                 page.ContentFromRightToLeft();
                 page.DefaultTextStyle(x => x.FontFamily(Fnt).FontSize(fs).FontColor(Ink).LineHeight(1.45f));
 
@@ -418,21 +1107,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     }
                 });
 
+                // پابرگ: فقط نام شرکت؛ شمارهٔ صفحه چاپ نمی‌شود (درخواست کارفرما).
                 page.Footer().PaddingHorizontal(reserveLetterhead ? 0 : 28).Column(f =>
                 {
                     f.Item().LineHorizontal(0.7f).LineColor(Line);
-                    f.Item().PaddingTop(5).Row(r =>
-                    {
-                        r.RelativeItem().AlignMiddle().Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
-                            .FontSize(8).FontColor("#94a3b8");
-                        r.AutoItem().AlignMiddle().Text(t =>
-                        {
-                            t.Span("صفحه ").FontSize(8).FontColor("#94a3b8");
-                            t.CurrentPageNumber().FontSize(8).FontColor("#64748b").Format(n => FaDigits(n?.ToString() ?? "0"));
-                            t.Span(" از ").FontSize(8).FontColor("#94a3b8");
-                            t.TotalPages().FontSize(8).FontColor("#64748b").Format(n => FaDigits(n?.ToString() ?? "0"));
-                        });
-                    });
+                    f.Item().PaddingTop(5).Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
+                        .FontSize(8).FontColor("#94a3b8");
                 });
             });
         });
@@ -482,7 +1162,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     }
 
     /// <summary>نسخهٔ ساده وقتی جدول یا امضا در صفحه جا نمی‌شود — باز هم بدون نیاز به سربرگ.</summary>
-    private byte[] BuildFallbackPdf(MeetingMinutes m, List<MeetingMinutesParticipant> parts, List<MeetingMinutesItem> items, string? companyName)
+    private byte[] BuildFallbackPdf(MeetingMinutes m, List<MeetingMinutesParticipant> parts, List<MeetingMinutesItem> items, string? companyName,
+        bool withLetterhead = false)
     {
         EnsureFonts();
         var attendees = parts.Where(p => p.Kind == MinutesParticipantKind.Attendee).Select(p => p.Name).ToList();
@@ -494,16 +1175,23 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
+                // نسخهٔ ساده هم اگر روی سربرگ شرکت کشیده شود باید شفاف باشد، وگرنه
+                // صفحهٔ سفید روی سربرگ می‌نشیند و چاپ «بدون سربرگ» دیده می‌شود.
+                page.PageColor(withLetterhead ? Colors.Transparent : Colors.White);
                 page.Margin(28);
+                if (withLetterhead) page.MarginTop(150);
                 page.ContentFromRightToLeft();
                 page.DefaultTextStyle(x => x.FontFamily(Fnt).FontSize(10.5f).FontColor(Ink).LineHeight(1.5f));
-                page.Header().Column(h =>
+                if (!withLetterhead)
                 {
-                    h.Item().Height(6).Background(Brand);
-                    h.Item().PaddingTop(8).Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
-                        .FontFamily(FntBold).FontSize(12).FontColor(BrandDark);
-                    h.Item().PaddingTop(4).PaddingBottom(6).LineHorizontal(0.6f).LineColor(Line);
-                });
+                    page.Header().Column(h =>
+                    {
+                        h.Item().Height(6).Background(Brand);
+                        h.Item().PaddingTop(8).Text(string.IsNullOrWhiteSpace(companyName) ? "صورتجلسه" : companyName)
+                            .FontFamily(FntBold).FontSize(12).FontColor(BrandDark);
+                        h.Item().PaddingTop(4).PaddingBottom(6).LineHorizontal(0.6f).LineColor(Line);
+                    });
+                }
                 page.Content().PaddingTop(8).Column(col =>
                 {
                     col.Item().Text("صورتجلسه").FontFamily(FntBold).FontSize(9).FontColor(Brand);
@@ -554,14 +1242,22 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             using var gfx = XGraphics.FromPdfPage(page);
             var rect = new XRect(0, 0, page.Width.Point, page.Height.Point);
 
+            // سربرگی که با ارتفاع/عرض اشتباه ذخیره شده، بی‌کشیدگی رسم می‌شود تا نقطه‌چین‌ها
+            // جابه‌جا نشوند (PrintAssetResolver.LetterheadRect).
+            var artRect = isPdf && letterheadForm != null
+                ? ArtRect(page, letterheadForm.PointWidth, letterheadForm.PointHeight)
+                : letterheadImg != null
+                    ? ArtRect(page, letterheadImg.PointWidth, letterheadImg.PointHeight)
+                    : rect;
+
             if (isPdf && letterheadForm != null)
             {
                 letterheadForm.PageNumber = 1;
-                gfx.DrawImage(letterheadForm, rect);
+                gfx.DrawImage(letterheadForm, artRect);
             }
             else if (letterheadImg != null)
             {
-                gfx.DrawImage(letterheadImg, rect);
+                gfx.DrawImage(letterheadImg, artRect);
             }
 
             contentForm.PageNumber = i + 1;
@@ -571,5 +1267,13 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         using var ms = new MemoryStream();
         output.Save(ms);
         return ms.ToArray();
+    }
+
+    /// <summary>مستطیل رسم سربرگ با حفظ نسبت (جزئیات در <see cref="PrintAssetResolver.LetterheadRect"/>).</summary>
+    private static XRect ArtRect(PdfSharp.Pdf.PdfPage page, double assetWidth, double assetHeight)
+    {
+        var (x, y, width, height) = PrintAssetResolver.LetterheadRect(
+            page.Width.Point, page.Height.Point, assetWidth, assetHeight);
+        return new XRect(x, y, width, height);
     }
 }

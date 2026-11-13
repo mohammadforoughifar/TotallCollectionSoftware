@@ -370,6 +370,10 @@
         const loads = [];
         for (const node of Array.from(document.querySelectorAll('link[rel~="stylesheet"], style'))) {
             if (node.closest('.shop-print-preview')) continue;
+            // The global office stylesheet hides every non-letter element in print.
+            // Exclude it only from this isolated shop snapshot; never change its
+            // rules or its loading/printing behavior in the main application.
+            if (node.tagName === 'LINK' && /\/css\/letters\.css$/i.test(new URL(node.href, document.baseURI).pathname)) continue;
             const copy = doc.importNode(node, true);
             if (node.tagName === 'LINK') {
                 copy.href = node.href;
@@ -603,5 +607,49 @@
         }
     }
 
-    window.shopPrintPreview = { openHtml: openHtml, openElement: openElement, openPdf: openPdf };
+    // Delegated only to shop print-setting bank fields; no other form is affected.
+    function insertBankDigits(event, text) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-shop-bank')) return;
+        event.preventDefault();
+        const max = Number(input.dataset.shopBank);
+        let normalized = String(text || '').replace(/[۰-۹]/g, c => String(c.charCodeAt(0) - 1776))
+            .replace(/[٠-٩]/g, c => String(c.charCodeAt(0) - 1632)).replace(/[\s-]/g, '').toUpperCase();
+        if (max === 24) normalized = normalized.replace(/^IR/, '');
+        const start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start;
+        if (!/^\d*$/.test(normalized) || input.value.length - (end - start) + normalized.length > max) return;
+        input.setRangeText(normalized, start, end, 'end');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    document.addEventListener('beforeinput', event => {
+        if (event.inputType === 'insertText' && event.data) insertBankDigits(event, event.data);
+    });
+    document.addEventListener('paste', event => insertBankDigits(event, event.clipboardData?.getData('text') || ''));
+
+    let paperChoice = null;
+    function choosePaper() {
+        if (paperChoice) return paperChoice;
+        const previousFocus = document.activeElement;
+        paperChoice = new Promise(function (resolve) {
+            const dialog = document.createElement('dialog');
+            dialog.className = 'shop-paper-choice';
+            dialog.dir = 'rtl';
+            dialog.setAttribute('aria-labelledby', 'shop-paper-title');
+            dialog.innerHTML = '<form method="dialog"><h2 id="shop-paper-title">اندازهٔ کاغذ این چاپ</h2>' +
+                '<label for="shop-paper-select">کاغذ<select id="shop-paper-select" autofocus><option value="A4">A4</option><option value="A5">A5</option></select></label>' +
+                '<div><button value="cancel">انصراف</button><button value="confirm" class="confirm">ادامهٔ چاپ</button></div></form>';
+            dialog.addEventListener('close', function () {
+                const value = dialog.returnValue === 'confirm' ? dialog.querySelector('select').value : null;
+                dialog.remove();
+                paperChoice = null;
+                if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+                resolve(value);
+            }, { once: true });
+            document.body.appendChild(dialog);
+            dialog.showModal();
+        });
+        return paperChoice;
+    }
+
+    window.shopPrintPreview = { choosePaper: choosePaper, openHtml: openHtml, openElement: openElement, openPdf: openPdf };
 })();

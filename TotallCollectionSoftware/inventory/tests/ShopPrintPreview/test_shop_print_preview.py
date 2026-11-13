@@ -25,8 +25,8 @@ class ShopPrintPreviewContracts(unittest.TestCase):
                 source = read(path)
                 self.assertEqual(source.count('"shopPrintPreview.openHtml"'), count)
                 self.assertNotIn('"giPrint"', source)
-        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/Orders.razor'))
-        self.assertIn('SaleInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/OrderForm.razor'))
+        self.assertIn('ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/Orders.razor'))
+        self.assertIn('ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize)', read('Pages/Orders/OrderForm.razor'))
         self.assertIn('CustomerStatementPrint.Build(statement, companyProfile, start, end)', read('Pages/Operations/OperationsOrderReport.razor'))
 
     def test_save_and_print_still_saves_first_and_preview_does_not_close_issue_details(self):
@@ -38,7 +38,8 @@ class ShopPrintPreviewContracts(unittest.TestCase):
         self.assertLess(preview, callback)
         self.assertIn('data-hotkey="f4"', invoice)
         issue = read('Pages/Catalog/GoodsIssues.razor')
-        self.assertIn('private async Task PrintCurrent() => await PrintDoc(form);', issue)
+        self.assertIn('await Print(form);', issue)
+        self.assertIn('if (form.Id <= 0)', issue)
         self.assertIn('data-hotkey="f4"', issue)
 
     def test_all_shop_report_print_buttons_have_an_explicit_report_root(self):
@@ -73,6 +74,14 @@ class ShopPrintPreviewContracts(unittest.TestCase):
         self.assertIn('format == "pdf" && PreviewPdf', exports)
         self.assertIn('"shopPrintPreview.openPdf", data, fileName', exports)
         self.assertIn('"downloadBlob"', exports)
+
+    def test_only_shop_snapshots_exclude_the_office_stylesheet(self):
+        script = read('wwwroot/js/shop-print-preview.js')
+        self.assertIn(r'/\/css\/letters\.css$/i.test(new URL(node.href, document.baseURI).pathname)', script)
+        # Office print isolation remains unchanged in the main application.
+        self.assertIn('body * { visibility:hidden !important; }', read('wwwroot/css/letters.css'))
+        self.assertIn('css/letters.css?v=12', read('wwwroot/index.html'))
+        self.assertIn('js/shop-print-preview.js?v=4', read('wwwroot/index.html'))
 
     def test_preview_is_loaded_and_has_only_one_explicit_print_call(self):
         index = read('wwwroot/index.html')

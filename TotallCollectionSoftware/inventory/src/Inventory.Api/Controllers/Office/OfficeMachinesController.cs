@@ -6,6 +6,7 @@ using Inventory.Api.Services.Office;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -623,6 +624,7 @@ public class OfficeMachinesController : RbacControllerBase
     }
 
     /// <summary>تست اتصال SNMP قبل از ذخیره — اطلاعات دستگاه برای تکمیل خودکار فرم برگردانده می‌شود.</summary>
+    [AllowInReadOnly]
     [HttpPost("snmp/test")]
     public async Task<IActionResult> TestSnmp([FromBody] SnmpSettingsDto s, CancellationToken ct)
     {

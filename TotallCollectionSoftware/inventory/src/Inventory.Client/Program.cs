@@ -48,6 +48,7 @@ builder.Services.AddScoped<IPartyService, PartyService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IShopPricingClient, ShopPricingClient>();
+builder.Services.AddScoped<IShopPrintSettingsClient, ShopPrintSettingsClient>();
 builder.Services.AddScoped<IGoodsIssueService, GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
 builder.Services.AddScoped<ISalesVisitApi, SalesVisitApi>(); // ماژول ویزیتوری
 builder.Services.AddScoped<ICartableApi, CartableApi>(); // کارتابل یکپارچه

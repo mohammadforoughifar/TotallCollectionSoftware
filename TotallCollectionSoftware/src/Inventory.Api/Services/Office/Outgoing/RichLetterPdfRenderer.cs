@@ -1,0 +1,452 @@
+using System.Globalization;
+using System.Net;
+using System.Text.RegularExpressions;
+using Inventory.Shared.Security;
+using QuestPDF.Fluent;
+using QuestPDF.Infrastructure;
+
+namespace Inventory.Api.Services.Office.Outgoing;
+
+/// <summary>Maps the editor's sanitized HTML structure to QuestPDF blocks and inline text spans.</summary>
+internal static class RichLetterPdfRenderer
+{
+    private sealed class Node
+    {
+        public string Tag { get; init; } = "#root";
+        public string Text { get; set; } = string.Empty;
+        public Dictionary<string, string> Attributes { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<Node> Children { get; } = new();
+    }
+
+    private static readonly Regex Tokens = new(@"<[^>]*>|[^<]+", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex TagHeader = new(@"^<\s*(?<close>/?)\s*(?<name>[a-zA-Z][a-zA-Z0-9]*)\b(?<attrs>.*?)\s*/?\s*>$", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex Attribute = new(@"(?<name>[^\s=/>]+)(?:\s*=\s*(?:""(?<dq>[^""]*)""|'(?<sq>[^']*)'|(?<bare>[^\s>]+)))?", RegexOptions.Compiled);
+    private static readonly HashSet<string> VoidTags = new(StringComparer.OrdinalIgnoreCase) { "br", "hr", "img" };
+    private static readonly HashSet<string> BlockTags = new(StringComparer.OrdinalIgnoreCase)
+        { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
+
+    // واژهٔ لاتین داخل متن فارسی (مثل «Workflow») باید جدا شود، وگرنه نقطه/ویرگول و
+    // پرانتزِ کنارش با آن جابه‌جا می‌شوند؛ LRI/PDI همان کار <bdi> در HTML را می‌کند.
+    private static readonly Regex LatinRun = new(
+        @"[A-Za-z][A-Za-z0-9_@.\-]*[A-Za-z0-9]|[A-Za-z]",
+        RegexOptions.Compiled);
+
+    internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
+        Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false,
+        float paragraphSpacing = 0f)
+    {
+        var root = Parse(RichLetterHtml.Sanitize(html));
+        // برای چیدمان «از دل طرح» (شرکت ۱۰۰۳): هر تکهٔ متنی با RLM محصور می‌شود تا جهت پایهٔ
+        // پاراگراف قطعاً راست‌به‌چپ باشد و ویرگول/نقطهٔ پایانی به ابتدای خط پرت نشود.
+        if (forceRtlParagraph) MarkRightToLeft(root);
+        if (keepWithTrailingText != null)
+        {
+            var lastIndex = root.Children.FindLastIndex(node => node.Tag != "#text" || !string.IsNullOrWhiteSpace(node.Text));
+            if (lastIndex >= 0)
+            {
+                var trailing = root.Children[lastIndex];
+                var isParagraph = trailing.Tag is "p" or "#text" or "strong" or "b" or "em" or "i" or "u" or "span" ||
+                    trailing.Tag == "div" && !trailing.Children.Any(child => BlockTags.Contains(child.Tag));
+                if (isParagraph && TextLength(trailing) <= 360)
+                {
+                    RenderChildren(column, root.Children.Take(lastIndex).ToList(), defaultFontSize, lineHeight,
+                        paragraphSpacing);
+                    column.Item().ShowEntire().Column(group =>
+                    {
+                        RenderChildren(group, new[] { trailing }, defaultFontSize, lineHeight,
+                            paragraphSpacing);
+                        keepWithTrailingText(group);
+                    });
+                    return true;
+                }
+
+                if (trailing.Tag is "ol" or "ul")
+                {
+                    var items = trailing.Children.Where(child => child.Tag == "li").ToList();
+                    if (items.Count >= 2 && TextLength(items[^1]) + TextLength(items[^2]) <= 360)
+                    {
+                        var ordered = trailing.Tag == "ol";
+                        var prefixItems = trailing.Children.Where(child => child.Tag == "li").Take(items.Count - 2).ToList();
+                        var preceding = root.Children.Take(lastIndex).ToList();
+                        if (prefixItems.Count > 0) preceding.Add(CloneWithChildren(trailing, prefixItems));
+                        RenderChildren(column, preceding, defaultFontSize, lineHeight, paragraphSpacing);
+                        column.Item().ShowEntire().Column(group =>
+                        {
+                            RenderListItem(group, items[^2], ordered, items.Count - 1, defaultFontSize, lineHeight);
+                            RenderListItem(group, items[^1], ordered, items.Count, defaultFontSize, lineHeight);
+                            keepWithTrailingText(group);
+                        });
+                        return true;
+                    }
+                }
+            }
+        }
+
+        RenderChildren(column, root.Children, defaultFontSize, lineHeight, paragraphSpacing);
+        return false;
+    }
+
+    /// <summary>
+    /// هر تکهٔ متنی را با RLM (U+200F) می‌پوشاند: کاراکتر «قویِ راست‌به‌چپ» در ابتدا، جهت پایهٔ
+    /// پاراگراف را قطعی می‌کند و نسخهٔ پایانی، علائم نگارشی خنثی را داخل همان اجر (run) RTL
+    /// نگه می‌دارد؛ نتیجه: «،با سلام و احترام» و «.نمایند» دیگر جابه‌جا نمی‌شوند.
+    /// </summary>
+    private static void MarkRightToLeft(Node node)
+    {
+        if (node.Tag == "#text")
+        {
+            if (!string.IsNullOrWhiteSpace(node.Text))
+                node.Text = "\u200F" + IsolateLatinRuns(node.Text.Trim()) + "\u200F";
+            return;
+        }
+
+        foreach (var child in node.Children) MarkRightToLeft(child);
+    }
+
+    /// <summary>
+    /// واژه‌های لاتین را با LRI/PDI (U+2066/U+2069) جدا می‌کند — معادل <c>&lt;bdi&gt;</c> در
+    /// HTML. بدون این جداسازی، «Workflow» و علائم کنارش در پاراگراف راست‌به‌چپ جابه‌جا
+    /// می‌شوند (آیتم‌های فهرست با واژهٔ لاتین بدترین نمونه بودند).
+    /// </summary>
+    private static string IsolateLatinRuns(string text) => LatinRun.IsMatch(text)
+        ? LatinRun.Replace(text, match => "\u2066" + match.Value + "\u2069")
+        : text;
+
+    private static int TextLength(Node node) => node.Tag == "#text"
+        ? node.Text.Length
+        : node.Children.Sum(TextLength);
+
+    private static Node CloneWithChildren(Node source, IEnumerable<Node> children)
+    {
+        var clone = new Node { Tag = source.Tag, Text = source.Text };
+        foreach (var attribute in source.Attributes) clone.Attributes[attribute.Key] = attribute.Value;
+        clone.Children.AddRange(children);
+        return clone;
+    }
+
+    private static Node Parse(string html)
+    {
+        var root = new Node();
+        var stack = new List<Node> { root };
+        foreach (Match token in Tokens.Matches(html))
+        {
+            var value = token.Value;
+            if (!value.StartsWith('<'))
+            {
+                stack[^1].Children.Add(new Node { Tag = "#text", Text = WebUtility.HtmlDecode(value) });
+                continue;
+            }
+
+            var header = TagHeader.Match(value);
+            if (!header.Success) continue;
+            var name = header.Groups["name"].Value.ToLowerInvariant();
+            if (header.Groups["close"].Value == "/")
+            {
+                var closeIndex = stack.FindLastIndex(x => x.Tag.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (closeIndex > 0) stack.RemoveRange(closeIndex, stack.Count - closeIndex);
+                continue;
+            }
+
+            var node = new Node { Tag = name };
+            foreach (Match attribute in Attribute.Matches(header.Groups["attrs"].Value))
+            {
+                var key = attribute.Groups["name"].Value.ToLowerInvariant();
+                if (key is not ("style" or "colspan" or "rowspan" or "href" or "src" or "alt" or "width" or "height" or "dir"))
+                    continue;
+                var attrValue = attribute.Groups["dq"].Success ? attribute.Groups["dq"].Value
+                    : attribute.Groups["sq"].Success ? attribute.Groups["sq"].Value
+                    : attribute.Groups["bare"].Value;
+                node.Attributes[key] = WebUtility.HtmlDecode(attrValue);
+            }
+            stack[^1].Children.Add(node);
+            if (!VoidTags.Contains(name)) stack.Add(node);
+        }
+        return root;
+    }
+
+    private static void RenderChildren(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize,
+        float lineHeight, float paragraphSpacing = 0f)
+    {
+        var inline = new List<Node>();
+        // فاصلهٔ پاراگراف فقط «بین» بلوک‌ها می‌آید؛ نه قبل از اولین بلوک و نه بعد از آخرین.
+        var emitted = false;
+        float BlockGap() => emitted ? paragraphSpacing : 0f;
+        void FlushInline()
+        {
+            if (inline.Count == 0) return;
+            AddTextBlock(column, inline, fontSize, lineHeight, bold: false, extraTop: BlockGap());
+            emitted = true;
+            inline.Clear();
+        }
+
+        foreach (var node in nodes)
+        {
+            if (node.Tag == "#text")
+            {
+                if (!string.IsNullOrWhiteSpace(node.Text)) inline.Add(node);
+                else if (inline.Count > 0) inline.Add(new Node { Tag = "#text", Text = " " });
+                continue;
+            }
+            if (BlockTags.Contains(node.Tag))
+            {
+                FlushInline();
+                switch (node.Tag)
+                {
+                    case "ul":
+                    case "ol":
+                        RenderList(column, node, fontSize, lineHeight, BlockGap());
+                        emitted = true;
+                        break;
+                    case "table":
+                        RenderTable(column, node, fontSize, lineHeight, BlockGap());
+                        emitted = true;
+                        break;
+                    case "hr":
+                        column.Item().PaddingVertical(4).LineHorizontal(0.6f).LineColor("#94a3b8");
+                        emitted = true;
+                        break;
+                    case "blockquote":
+                        column.Item().PaddingTop(BlockGap()).PaddingRight(10).Text(text =>
+                        {
+                            text.DefaultTextStyle(style => style
+                                .FontSize(fontSize)
+                                .LineHeight(lineHeight)
+                                .DirectionFromRightToLeft());
+                            text.AlignRight();
+                            AppendInline(text, node, new Formatting(), fontSize);
+                        });
+                        emitted = true;
+                        break;
+                    case "div":
+                        if (node.Children.Any(child => child.Tag != "#text" && BlockTags.Contains(child.Tag)))
+                        {
+                            column.Item().PaddingTop(BlockGap()).Column(nested =>
+                                RenderChildren(nested, node.Children, fontSize, lineHeight, paragraphSpacing));
+                            emitted = true;
+                        }
+                        else
+                        {
+                            AddTextBlock(column, node.Children, fontSize, lineHeight, bold: false,
+                                extraTop: BlockGap(), node.Attributes.GetValueOrDefault("style"));
+                            emitted = true;
+                        }
+                        break;
+                    default:
+                        var heading = node.Tag.Length == 2 && node.Tag[0] == 'h';
+                        var headingSize = heading ? Math.Min(fontSize + 2, 20) : fontSize;
+                        AddTextBlock(column, node.Children, headingSize, lineHeight, heading,
+                            Math.Max(ExtraTop(node.Tag, fontSize), BlockGap()),
+                            node.Attributes.GetValueOrDefault("style"));
+                        emitted = true;
+                        break;
+                }
+            }
+            else
+            {
+                inline.Add(node);
+            }
+        }
+        FlushInline();
+    }
+
+    private static float ExtraTop(string tag, float fontSize) => tag.StartsWith('h') ? Math.Max(2, fontSize * .25f) : 0;
+
+    private static void AddTextBlock(ColumnDescriptor column, IReadOnlyList<Node> nodes, float fontSize,
+        float lineHeight, bool bold, float extraTop, string? style = null)
+    {
+        var item = column.Item();
+        if (extraTop > 0) item = item.PaddingTop(extraTop);
+        RenderText(item, nodes, fontSize, lineHeight, bold, style);
+    }
+
+    /// <summary>یک بلوک متنی (پاراگراف) را در هر کادری می‌نویسد؛ برای سلول‌های Row هم استفاده می‌شود.</summary>
+    private static void RenderText(IContainer item, IReadOnlyList<Node> nodes, float fontSize,
+        float lineHeight, bool bold, string? style = null)
+    {
+        var blockStyle = ParseStyle(style);
+        if (blockStyle.TryGetValue("font-size", out var size) && TryFontSize(size, out var styledSize))
+            fontSize = Math.Clamp(styledSize, 6, 30);
+        item.Text(text =>
+        {
+            text.DefaultTextStyle(style => style
+                .FontSize(fontSize)
+                .LineHeight(lineHeight)
+                .DirectionFromRightToLeft());
+            switch (blockStyle.GetValueOrDefault("text-align"))
+            {
+                case "center": text.AlignCenter(); break;
+                case "left": text.AlignLeft(); break;
+                case "justify": text.Justify(); break;
+                default: text.AlignRight(); break;
+            }
+            foreach (var node in nodes) AppendInline(text, node, new Formatting { Bold = bold }, fontSize);
+        });
+    }
+
+    private static void RenderList(ColumnDescriptor column, Node list, float fontSize, float lineHeight,
+        float topGap = 0f)
+    {
+        var ordered = list.Tag == "ol";
+        var items = list.Children.Where(x => x.Tag == "li").ToList();
+        if (items.Count == 0) return;
+
+        // فاصلهٔ عمودی یکسان بالای فهرست، بین آیتم‌ها و بعد از فهرست.
+        var spacing = fontSize * 0.35f;
+        column.Item().PaddingTop(topGap).PaddingVertical(fontSize * 0.45f).Column(box =>
+        {
+            for (var position = 0; position < items.Count; position++)
+                RenderListItem(box, items[position], ordered, position + 1, fontSize, lineHeight,
+                    position == 0 ? 0f : spacing);
+        });
+    }
+
+    /// <summary>
+    /// یک آیتم فهرست در دو ستون: متن در ستون خودش و شماره/گلوله در ستون راست.
+    /// قبلاً شماره و متن در یک بلوک متنی بودند؛ نتیجه این بود که آیتم بلند در خط دوم به
+    /// زیر شماره می‌رفت و شمارهٔ آیتم بعدی به انتهای همان خط می‌چسبید. ستون‌بندی
+    /// (مثل <c>list-style-position: outside</c>) تورفتگی آویزان درست می‌دهد و شماره را
+    /// هرگز از متنش جدا نمی‌کند.
+    /// </summary>
+    private static void RenderListItem(ColumnDescriptor column, Node item, bool ordered, int index,
+        float fontSize, float lineHeight, float topPadding = 0f)
+    {
+        var nested = item.Children.Where(x => x.Tag is "ol" or "ul").ToList();
+        var content = item.Children.Where(x => x.Tag is not ("ol" or "ul" or "table")).ToList();
+        // RLM در ابتدا و انتها: جهت پایه راست‌به‌چپ قطعی می‌شود و نقطهٔ پایانِ شماره
+        // («۱.») سمت چپ عدد می‌ماند، نه ابتدای خط.
+        var marker = ordered
+            ? $"\u200F{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."
+            : "\u200F•";
+        // شماره‌های دو رقمی ستون پهن‌تری می‌گیرند تا متنشان جابه‌جا نشود.
+        var markerWidth = ordered ? fontSize * (index >= 10 ? 2.1f : 1.5f) : fontSize;
+
+        var element = topPadding > 0 ? column.Item().PaddingTop(topPadding) : column.Item();
+        element.Row(row =>
+        {
+            RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f), content, fontSize, lineHeight,
+                bold: false);
+            row.ConstantItem(markerWidth).Text(text =>
+            {
+                text.DefaultTextStyle(style => style
+                    .FontSize(fontSize)
+                    .LineHeight(lineHeight)
+                    .DirectionFromRightToLeft());
+                text.AlignRight();
+                text.Span(marker).Bold();
+            });
+        });
+        foreach (var nestedList in nested) RenderList(column, nestedList, fontSize, lineHeight);
+    }
+
+    private static void RenderTable(ColumnDescriptor column, Node tableNode, float fontSize, float lineHeight,
+        float topGap = 0f)
+    {
+        var rows = Descendants(tableNode).Where(x => x.Tag == "tr").ToList();
+        if (rows.Count == 0) return;
+        var columnCount = Math.Max(1, rows.Max(row => row.Children.Count(cell => cell.Tag is "td" or "th")));
+        column.Item().PaddingTop(topGap).Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                for (var index = 0; index < columnCount; index++) columns.RelativeColumn();
+            });
+            foreach (var row in rows)
+            {
+                foreach (var cell in row.Children.Where(x => x.Tag is "td" or "th"))
+                {
+                    table.Cell().Border(0.5f).BorderColor("#94a3b8").Padding(4)
+                        .Text(text =>
+                        {
+                            text.DefaultTextStyle(style => style
+                                .FontSize(fontSize)
+                                .LineHeight(lineHeight)
+                                .DirectionFromRightToLeft());
+                            text.AlignRight();
+                            AppendInline(text, cell, new Formatting { Bold = cell.Tag == "th" }, fontSize);
+                        });
+                }
+            }
+        });
+    }
+
+    private static IEnumerable<Node> Descendants(Node node)
+    {
+        foreach (var child in node.Children)
+        {
+            yield return child;
+            foreach (var nested in Descendants(child)) yield return nested;
+        }
+    }
+
+    private sealed class Formatting
+    {
+        public bool Bold { get; init; }
+        public bool Italic { get; init; }
+        public bool Underline { get; init; }
+        public bool Strike { get; init; }
+    }
+
+    private static void AppendInline(TextDescriptor text, Node node, Formatting parent, float fontSize)
+    {
+        if (node.Tag == "#text")
+        {
+            if (node.Text.Length == 0) return;
+            var span = text.Span(node.Text.Replace("\u00a0", " ").Replace("\u200b", string.Empty));
+            if (parent.Bold) span.Bold();
+            if (parent.Italic) span.Italic();
+            if (parent.Underline) span.Underline();
+            if (parent.Strike) span.Strikethrough();
+            var style = ParseStyle(node.Attributes.GetValueOrDefault("style"));
+            if (style.TryGetValue("font-size", out var size) && TryFontSize(size, out var styledSize)) span.FontSize(Math.Clamp(styledSize, 6, 30));
+            return;
+        }
+        if (node.Tag is "br")
+        {
+            text.Span("\n");
+            return;
+        }
+        if (node.Tag is "img")
+        {
+            var alt = node.Attributes.GetValueOrDefault("alt");
+            if (!string.IsNullOrWhiteSpace(alt)) text.Span($"[{alt}]");
+            return;
+        }
+
+        var styles = ParseStyle(node.Attributes.GetValueOrDefault("style"));
+        var formatting = new Formatting
+        {
+            Bold = parent.Bold || node.Tag is "strong" or "b" || styles.GetValueOrDefault("font-weight") is "bold" or "700" or "800" or "900",
+            Italic = parent.Italic || node.Tag is "em" or "i" || styles.GetValueOrDefault("font-style") == "italic",
+            Underline = parent.Underline || node.Tag == "u" || styles.GetValueOrDefault("text-decoration")?.Contains("underline", StringComparison.OrdinalIgnoreCase) == true,
+            Strike = parent.Strike || node.Tag is "s" or "del" || styles.GetValueOrDefault("text-decoration")?.Contains("line-through", StringComparison.OrdinalIgnoreCase) == true
+        };
+        foreach (var child in node.Children) AppendInline(text, child, formatting, fontSize);
+    }
+
+    private static Dictionary<string, string> ParseStyle(string? source)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var declaration in (source ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = declaration.Split(':', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2) result[parts[0].ToLowerInvariant()] = parts[1];
+        }
+        return result;
+    }
+
+    private static bool TryFontSize(string value, out float points)
+    {
+        points = 0;
+        var match = Regex.Match(value, @"^(?<n>\d+(?:\.\d+)?)(?<unit>px|pt|em|rem)?$", RegexOptions.IgnoreCase);
+        if (!match.Success || !float.TryParse(match.Groups["n"].Value, CultureInfo.InvariantCulture, out var amount)) return false;
+        points = match.Groups["unit"].Value.ToLowerInvariant() switch
+        {
+            "px" => amount * .75f,
+            "em" or "rem" => amount * 12,
+            _ => amount
+        };
+        return true;
+    }
+
+    private static string PersianDigits(string value) => new(value.Select(c => c is >= '0' and <= '9' ? "۰۱۲۳۴۵۶۷۸۹"[c - '0'] : c).ToArray());
+}

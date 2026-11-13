@@ -6,6 +6,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject IShopPrintSettingsClient PrintSettingsClient
 @inject ICompanyProfileService ProfileSvc
 
 <PageTitle>@(isPurchase ? "خرید" : "فروش")</PageTitle>
@@ -16,12 +17,7 @@
         <p class="lead">@(isPurchase ? "ثبت و مدیریت رسیدهای خرید" : "ثبت و مدیریت فاکتورهای فروش")</p>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2 me-auto">
-        <label class="d-flex align-items-center gap-1 fs-8 mb-0" for="orders-print-paper">
-            کاغذ چاپ
-            <select id="orders-print-paper" class="form-select form-select-sm w-auto" @bind="printPaperSize" data-invoice-paper-size>
-                <option value="default">تنظیم شرکت</option><option value="A4">A4</option><option value="A5">A5</option>
-            </select>
-        </label>
+
         @if (Auth.CanSee("ShopGuide"))
         {
             <a class="btn btn-outline-secondary" href="shop-guide">
@@ -884,13 +880,19 @@
         printingId = o.Id;
         try
         {
-            companyProfile ??= await ProfileSvc.GetAsync();
+            companyProfile = await ProfileSvc.GetAsync();
             var order = await OrderSvc.GetAsync(o.Id) ?? o;   // سند کامل (اقلام/چک‌ها)
             if (order.Lines.Count == 0)
                 Toast.Error("این سند قلمی ندارد؛ چاپ انجام نشد.");
             else
             {
-                var html = SaleInvoicePrint.Build(order, companyProfile, printPaperSize);
+                var selectedPaper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
+                if (selectedPaper is null) return;
+                printPaperSize = selectedPaper;
+                var bankSettings = order.IsSale ? await PrintSettingsClient.GetAsync() : null;
+                var html = order.IsSale
+                    ? ShopSaleInvoicePrint.Build(order, companyProfile, printPaperSize, bankSettings)
+                    : ShopPurchaseInvoicePrint.Build(order, companyProfile, printPaperSize);
                 var opened = await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html);
                 if (!opened)
                     Toast.Error("پیش‌نمایش چاپ باز نشد؛ دوباره تلاش کنید.");

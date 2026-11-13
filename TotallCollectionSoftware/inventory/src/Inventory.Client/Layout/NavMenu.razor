@@ -394,6 +394,10 @@
                         <i class="bi bi-cart3"></i><span>فروش</span>
                     </NavLink>
                 }
+                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
+                {
+                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات چاپ</span></NavLink>
+                }
                 @if (ShopAccess.CanSee(Auth, "GoodsIssue"))
                 {
                     <NavLink class="nav-link" href="goods-issues" @onclick="NotifyClose">
@@ -968,7 +972,7 @@
     // منوی او کاملاً خالی می‌ماند.
     private bool ShowOpsGroup => ShowOpsDashSub || ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup
                                  || ShopAccess.CanSeeAny(Auth, "Purchase", "Sale", "GoodsIssue", "Repairs", "Expenses",
-                                                         "Installments", "OpeningBalance", "Settlement", "Guide");
+                                                         "Installments", "OpeningBalance", "Settlement", "Guide", "PrintSettings");
 
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
     private bool ShowReportsGroup => true;

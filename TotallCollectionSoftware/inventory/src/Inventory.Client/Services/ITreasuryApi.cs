@@ -14,6 +14,7 @@ public interface ITrsAccountService
     Task<TrsAccount> GetAsync(int id);
     Task<List<LookupItem>> GetLookupsAsync(bool activeOnly = true);
     Task<TrsAccount> SaveAsync(TrsAccount account);
+    Task<TrsAccount> SaveShopAsync(TrsAccount account);
     Task DeleteAsync(int id);
 }
 
@@ -49,6 +50,7 @@ public interface ITrsChequeService
 
     Task<TrsCheque> GetAsync(int id);
     Task<TrsCheque> SaveAsync(TrsCheque cheque);
+    Task<TrsCheque> SaveShopAsync(TrsCheque cheque);
 
     /// <summary>واگذاری، وصول، برگشت، خرج یا ابطال چک</summary>
     Task<TrsCheque> RunActionAsync(TrsChequeCommand cmd);

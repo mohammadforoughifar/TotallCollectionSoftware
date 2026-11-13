@@ -4,6 +4,7 @@ using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -152,6 +153,7 @@ public class HrPayController : ControllerBase
 
     public class TestInput { public string Formula { get; set; } = ""; }
 
+    [AllowInReadOnly]
     [HttpPost("items/test")]
     public async Task<IActionResult> TestFormula([FromBody] TestInput input)
     {
