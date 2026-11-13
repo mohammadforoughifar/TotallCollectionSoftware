@@ -80,8 +80,25 @@ public class IncomingLetterDetailDto
     /// <summary>ارجاعی که کاربر جاری باید به آن پاسخ دهد</summary>
     public int? ActiveErjaId { get; set; }
 
-    /// <summary>آیا کاربر جاری مجاز به ویرایش است (ثبت‌کننده یا مدیر)</summary>
+    /// <summary>
+    /// آیا کاربر جاری مجاز به ویرایش است: ثبت‌کننده، مدیر، یا کاربرِ دبیرخانه
+    /// (مجوز IncomingLetters.Dabirkhane). ویرایش پس از رویتِ گیرندگان هم مجاز است و
+    /// در آن حالت به همهٔ کسانی که نامه را دیده‌اند اعلان «ویرایش نامه» می‌رود.
+    /// </summary>
     public bool CanEdit { get; set; }
+
+    /// <summary>
+    /// آیا کاربر جاری مجاز به «افزودن پیوست» به این نامه است؟
+    ///
+    /// قاعده (هم‌راستا با نامهٔ داخلی و صادره و همان چیزی که API در
+    /// <c>IncomingLettersController.UploadAttachment</c> بررسی می‌کند):
+    /// ثبت‌کننده‌ی نامه | هر کاربری که در گردش نامه است (ردیف ارجاع دارد) | دبیرخانه | مدیر.
+    ///
+    /// عمداً از <see cref="CanEdit"/> جدا است: ویرایشِ «متن و سربرگ نامه» کار دبیرخانه است،
+    /// ولی افزودن «نسخهٔ اسکن‌شده/پیوست تازه» حق هر کسی است که نامه در گردشش هست — مثلاً
+    /// کارشناسی که پاسخ مکتوب را گرفته و باید آن را به همان نامه ضمیمه کند.
+    /// </summary>
+    public bool CanAttach { get; set; }
 
     /// <summary>آیا نامه نزد کاربر جاری بایگانی شده</summary>
     public bool IsBayegani { get; set; }
@@ -120,10 +137,20 @@ public class AddIncomingLetterDto
     /// <summary>متن ارجاع اولیه</summary>
     public string? InitialMatnErja { get; set; }
 
-    /// <summary>مهلت پاسخ ارجاع اولیه</summary>
+    /// <summary>مهلت پاسخ ارجاع اولیه (مهلت رسیدگی گیرندهٔ اول)</summary>
     public DateTime? InitialMohlatPasokh { get; set; }
 
-    /// <summary>شناسه‌های نامه‌های مرتبط (عطف/پیرو)</summary>
+    /// <summary>
+    /// نامه‌های مرتبط (عطف / پیرو). Related = 2 یعنی «عطف»، 1 یعنی «پیرو».
+    /// تا پیش از این هیچ ورودی UI و هیچ ذخیره‌سازی‌ای برای آن نبود.
+    /// </summary>
+    public List<RelatedLetterDto> RelatedLetters { get; set; } = new();
+
+    /// <summary>
+    /// سازگاری با نسخه‌های قبلی کلاینت: شناسهٔ LetterSource نامه‌های مرتبط.
+    /// چون نوع رابطه در این فیلد مشخص نیست، همه به‌صورت «پیرو» ثبت می‌شوند.
+    /// کلاینت جدید از RelatedLetters استفاده می‌کند.
+    /// </summary>
     public List<int> RelatedSourceIds { get; set; } = new();
 }
 
@@ -146,6 +173,12 @@ public class EditIncomingLetterDto
     public string? Description { get; set; }
     public int Mahramanegi { get; set; }
     public int Foriat { get; set; }
+
+    /// <summary>
+    /// نامه‌های مرتبط (عطف/پیرو) — فهرست کامل و جایگزین‌شونده.
+    /// null یعنی «دست نزن»؛ فهرست خالی یعنی «همهٔ رابطه‌ها حذف شوند».
+    /// </summary>
+    public List<RelatedLetterDto>? RelatedLetters { get; set; }
 }
 
 /// <summary>آمار کارتابل نامه وارده</summary>
@@ -156,6 +189,12 @@ public class IncomingLetterCartableStatsDto
     public int TotalSent { get; set; }
     public int TotalArchive { get; set; }
     public int TotalStarred { get; set; }
+
+    /// <summary>تعداد نامه‌های دارای پیوست در «دریافتی» (برای عدد چیپ «پیوست‌دار»)</summary>
+    public int TotalAttach { get; set; }
+
+    /// <summary>تعداد نامه‌های دستورکارشده در «دریافتی» (برای عدد چیپ «دستورکارشده»)</summary>
+    public int TotalWorkOrder { get; set; }
 
     // نام‌های مستعار — رابط این آمار را با نام‌های رایج کارتابل می‌خواند
     public int InboxUnread => UnreadCount;

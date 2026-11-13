@@ -47,6 +47,9 @@ public class Order
     public string? WarehouseName { get; set; }
     public int PartyId { get; set; }
     public string? PartyName { get; set; }
+    public string? PartyPhone { get; set; }
+    public string? PartyAddress { get; set; }
+    public string? PartyTaxId { get; set; }
     public TransactionType Type { get; set; }
     public string Number { get; set; } = "";
     public DateTime Date { get; set; }
@@ -497,6 +500,10 @@ public class DashboardSummary
 /// <summary>داشبورد مدیریتی: فروش/سود دوره‌ای + بدهکاران سررسیدشده + چک‌های امروز (فقط ادمین).</summary>
 public class AdminDashboard
 {
+    /// <summary>تعداد چک‌های باز فروش/خرید، حتی با موعد آینده؛ برای تفکیک نبود داده از نبود سررسید.</summary>
+    public int PendingReceivedChequesCount { get; set; }
+    public int PendingIssuedChequesCount { get; set; }
+
     // فروش دوره‌ای (شمسی)
     public decimal SalesToday { get; set; }
     public decimal SalesWeek { get; set; }
@@ -561,6 +568,8 @@ public class DebtorItem
 /// <summary>چک قابل وصول امروز.</summary>
 public class ChequeAlertItem
 {
+    /// <summary>منبع هشدار: Invoice، Treasury یا Expense؛ شناسه‌ها بین منابع مشترک نیستند.</summary>
+    public string Source { get; set; } = "Invoice";
     public int ChequeId { get; set; }
     public string Number { get; set; } = "";
     public string? BankName { get; set; }

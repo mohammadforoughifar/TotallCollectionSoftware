@@ -15,6 +15,7 @@ set "CLIENT_PUBLISH=%ROOT%artifacts\client-publish"
 set "API_PUBLISH=%ROOT%artifacts\inventory-server"
 set "DEPLOY=%ROOT%deploy\inventory-server"
 set "DB_CONNECTION=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
+set "VERIFY=%ROOT%tools\verify-licensing.ps1"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
@@ -22,7 +23,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [1/6] پاک‌سازی خروجی قبلی...
+echo [1/7] پاک‌سازی خروجی قبلی...
 if exist "%CLIENT_PUBLISH%" rmdir /s /q "%CLIENT_PUBLISH%"
 if exist "%API_PUBLISH%" rmdir /s /q "%API_PUBLISH%"
 if exist "%DEPLOY%" rmdir /s /q "%DEPLOY%"
@@ -30,23 +31,51 @@ mkdir "%CLIENT_PUBLISH%" "%API_PUBLISH%" "%DEPLOY%"
 
 pushd "%ROOT%"
 
-echo [2/6] انتشار کلاینت Blazor...
+echo [2/7] انتشار کلاینت Blazor...
 dotnet publish "%CLIENT%\Inventory.Client.csproj" -c Release --no-restore -o "%CLIENT_PUBLISH%"
 if errorlevel 1 goto :failed
 
 rem فایل‌های static کلاینت باید در wwwroot API قرار بگیرند.
-echo [3/6] انتقال فایل‌های رابط کاربری به API wwwroot...
+echo [3/7] انتقال فایل‌های رابط کاربری به API wwwroot...
 if not exist "%API%\wwwroot" mkdir "%API%\wwwroot"
 xcopy "%CLIENT_PUBLISH%\wwwroot\*" "%API%\wwwroot\" /E /I /Y >nul
 if errorlevel 1 goto :failed
 
-echo [4/6] انتشار API برای Windows x64...
+echo [4/7] انتشار API برای Windows x64...
 dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -o "%API_PUBLISH%"
 if errorlevel 1 goto :failed
 
-echo [5/6] آماده‌سازی پوشه استقرار...
+echo [5/7] آماده‌سازی پوشه استقرار...
 xcopy "%API_PUBLISH%\*" "%DEPLOY%\" /E /I /Y >nul
 if errorlevel 1 goto :failed
+
+rem ================================================================
+rem [6/7] انتشار ابزار LicenseCheck در همان پوشهٔ استقرار
+rem   چرا؟ دو کاربرد دارد و هر دو روی سرور مشتری/لحظهٔ انتشار لازم است:
+rem     ۱) verify-licensing.ps1 با «--keys» می‌فهمد بیلد Release کلید عمومی دارد یا نه
+rem     ۲) مدیر مشتری با «--prepare» پیش از جایگزینی فایل‌ها شناسهٔ نصب را می‌سازد
+rem   خروجی framework-dependent است (روی سرور، .NET 8 Runtime لازم است — همان پیش‌نیاز API).
+echo [6/7] انتشار ابزار LicenseCheck...
+dotnet publish "%ROOT%tools\LicenseCheck\LicenseCheck.csproj" -c Release --self-contained false -o "%DEPLOY%\tools\LicenseCheck"
+if errorlevel 1 goto :failed
+
+rem ================================================================
+rem [7/7] بررسی موتور لایسنس — شرط پایان موفق انتشار
+rem   آفلاین: Inventory.Licensing.dll در خروجی + فیلد licensing در /api/health
+rem   آنلاین: فقط اگر INVENTORY_HEALTH_URL تنظیم شده باشد
+rem ================================================================
+echo [7/7] بررسی موتور لایسنس در خروجی...
+if not exist "%VERIFY%" (
+  echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
+  goto :failed
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+if errorlevel 1 (
+  echo.
+  echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.
+  echo [ERROR] انتشار متوقف شد.
+  goto :failed
+)
 
 rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
 >"%DEPLOY%\run-server.bat" echo @echo off

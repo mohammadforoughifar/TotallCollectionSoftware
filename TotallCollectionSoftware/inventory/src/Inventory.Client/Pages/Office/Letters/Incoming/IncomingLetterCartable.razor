@@ -379,11 +379,11 @@
                                         <div>دانلود کلی (ZIP)<small>@activeDetail.Attachments.Count.FaDigits() فایل</small></div>
                                     </button>
                                 }
-                                @if (CanEditLetter)
+                                @if (CanAttachLetter)
                                 {
                                     <label class="att att-add" title="افزودن پیوست جدید">
                                         <div class="ic"><i class="bi @(incomingAttachmentUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
-                                        <div>@(incomingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
+                                        <div>@(incomingAttachmentUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>بدون محدودیت حجم</small></div>
                                         <InputFile OnChange="OnIncomingAttachmentSelected" multiple disabled="@incomingAttachmentUploading" style="display:none" />
                                     </label>
                                 }
@@ -592,12 +592,12 @@
         {
             foreach (var file in e.GetMultipleFiles(int.MaxValue))
             {
-                if (file.Size <= 0 || file.Size > 20 * 1024 * 1024)
+                if (file.Size <= 0)
                 {
-                    Toast.Error($"حجم فایل «{file.Name}» نامعتبر است؛ حداکثر ۲۰ مگابایت مجاز است.");
+                    Toast.Error($"فایل «{file.Name}» خالی است و قابل بارگذاری نیست.");
                     continue;
                 }
-                await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+                await using var stream = file.OpenReadStream(long.MaxValue);
                 await IncomingSvc.UploadAttachmentAsync(activeDetail.LetterId, stream, file.Name, file.ContentType);
             }
             activeDetail = await IncomingSvc.GetDetailAsync(activeDetail.LetterId);
@@ -1029,6 +1029,14 @@
     /// چون ویرایش پس از رویت هم باید ممکن باشد و به بینندگان اعلان می‌رود.
     /// </summary>
     private bool CanEditLetter => activeDetail?.CanEdit == true || Auth.IsAdmin;
+
+    /// <summary>
+    /// حقِ «افزودن پیوست» — عریض‌تر از CanEdit: ثبت‌کننده، دبیرخانه، مدیر، و هر کسی که نامه
+    /// در گردش اوست (ردیف ارجاع دارد). سرور همین را در CanAttach می‌دهد و کنترلر بارگذاری
+    /// هم با CanAccessLetterAsync همین مجموعه را می‌پذیرد؛ پس هیچ کاربری دکمه‌ای نمی‌بیند
+    /// که با آن به ۴۰۳ بخورد.
+    /// </summary>
+    private bool CanAttachLetter => activeDetail?.CanAttach == true || Auth.IsAdmin;
 
     /// <summary>نشان‌کردن/برداشتن نشان از داخل ریدر — روی همان ردیف فهرست هم اعمال می‌شود</summary>
     private async Task ToggleStarReader()

@@ -1006,6 +1006,9 @@ namespace Inventory.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1035,6 +1038,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CompanyId", "IsRead");
 
                     b.ToTable("AppNotifications");
                 });

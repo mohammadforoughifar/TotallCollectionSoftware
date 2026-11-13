@@ -1685,6 +1685,17 @@ context.Customers.Any(x =>
                                 : model.Message = ex.Message;
                             model.Status = 500;
                             model.Success = false;
+
+                            // ---------- آیا نتیجه **نامعلوم** است؟ ----------
+                            // اگر استثنا بعد از ساخته‌شدن بستهٔ ارسال رخ داده باشد، ممکن است
+                            // درخواست به سامانه رسیده باشد (مثلاً Timeout/قطع اتصال پس از
+                            // ارسال) و برگرداندن «قطعاً ناموفق» مشتری را به تکرار ارسال
+                            // وادار می‌کند. درخواست‌هایی که پیش از ساخت بسته شکست خورده‌اند
+                            // (اعتبارسنجی، نبود اتصال) نامعلوم نیستند و این پرچم را نمی‌گیرند.
+                            model.DeliveryUncertain = requestJsonSnapshot is not null
+                                || ex is TimeoutException
+                                || ex is TaskCanceledException
+                                || ex.InnerException is TimeoutException;
                             return model;
                         }
 

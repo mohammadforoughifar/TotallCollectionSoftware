@@ -3,6 +3,7 @@ using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -122,6 +123,7 @@ public class DocCollabController : RbacControllerBase
     }
 
     // ==================== تشخیص تکراری ====================
+    [AllowInReadOnly]
     [HttpPost("duplicate-check")]
     public async Task<IActionResult> DuplicateCheck([FromBody] DocDuplicateCheckRequest req, CancellationToken ct)
     {

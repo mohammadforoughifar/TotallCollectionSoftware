@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
+using Inventory.Api.Licensing.Infrastructure;
 
 // نکته: این فایل پیش‌تر «namespace Inventory.Api.Controllers.System» داشت که باعث می‌شد
 // نام «System» برای همهٔ فایل‌های داخل فضای نام Inventory.Api.Controllers سایه بیفتد
@@ -21,6 +22,7 @@ public class FilesController : ControllerBase
         _store = store;
     }
 
+    [AllowInReadOnly]
     [HttpPost("upload/{module}")]
     [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload(string module, IFormFile file)

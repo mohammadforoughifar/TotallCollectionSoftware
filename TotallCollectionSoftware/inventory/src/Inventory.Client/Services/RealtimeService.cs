@@ -77,4 +77,13 @@ public class RtNotification
     public string? Link { get; set; }
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>شرکتِ صاحب اعلان؛ null = اعلان عمومی/سیستمی که در همهٔ شرکت‌ها دیده می‌شود.</summary>
+    public int? CompanyId { get; set; }
+
+    /// <summary>
+    /// دستهٔ کارتابل: <c>main</c> = اقدامات اصلی (مورد تازه)، <c>sub</c> = اقدامات فرعی.
+    /// سرور آن را از عنوان اعلان تعیین می‌کند؛ خالی‌بودن یعنی فرعی.
+    /// </summary>
+    public string? Category { get; set; }
 }

@@ -1,3 +1,4 @@
+@implements IDisposable
 @page "/trs/vouchers"
 @inject ITrsVoucherService VoucherSvc
 @inject ITrsAccountService AccountSvc
@@ -41,7 +42,7 @@
             <div class="col-12 col-md-3">
                 <label class="form-label">جستجو</label>
                 <input class="form-control" placeholder="شماره، شرح یا طرف حساب…"
-                       @bind="search" @bind:event="oninput" @onkeyup="OnSearchKey" />
+                       value="@search" @oninput="OnSearchInput" />
             </div>
             <div class="col-6 col-md-2">
                 <label class="form-label">وضعیت</label>
@@ -317,15 +318,17 @@ else
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
         try
         {
             var res = await VoucherSvc.GetAllAsync(kind, status, null, trsAccountId, search, from, to, page, pageSize);
+            if (version != loadVersion) return;
             items = res.Items;
             total = res.TotalCount;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private async Task SetKind(TreasuryKind? k)
@@ -335,11 +338,35 @@ else
         await Load();
     }
 
-    private async Task OnSearchKey(KeyboardEventArgs e)
+    private System.Threading.CancellationTokenSource? searchCts;
+    private int loadVersion;
+
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
-        if (e.Key != "Enter") return;
+        search = e.Value?.ToString() ?? "";
+        searchCts?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        searchCts = cts;
+        var version = ++loadVersion; // invalidate an older in-flight response immediately
         page = 1;
-        await Load();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(search)) await Task.Delay(300, cts.Token);
+            if (cts.IsCancellationRequested || version != loadVersion) return;
+            await Load();
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (ReferenceEquals(searchCts, cts)) searchCts = null;
+            cts.Dispose();
+        }
+    }
+
+    public void Dispose()
+    {
+        ++loadVersion;
+        searchCts?.Cancel();
     }
 
     private async Task OnStatus(ChangeEventArgs e)

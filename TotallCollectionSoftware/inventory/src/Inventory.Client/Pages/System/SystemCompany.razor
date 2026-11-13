@@ -97,6 +97,17 @@
                     <textarea class="form-control" rows="2" @bind="newCompany.Address" placeholder="آدرس"></textarea>
                 </div>
                 <div class="col-12">
+                    <label class="form-label" for="company-logo">لوگوی کمپانی</label>
+                    <InputFile id="company-logo" class="form-control" OnChange="OnLogoFile" accept="image/png,image/jpeg" disabled="@(savingCompany || readingLogo)" />
+                    <small class="text-muted">PNG یا JPEG، حداکثر ۲ مگابایت و ۲۰۴۸×۲۰۴۸ پیکسل؛ مستقل از سربرگ PDF نامه‌ها.</small>
+                    @if (!string.IsNullOrWhiteSpace(newCompany.LogoDataUrl))
+                    {
+                        <div class="mt-2"><img src="@newCompany.LogoDataUrl" alt="پیش‌نمایش لوگوی کمپانی" style="width:150px;height:90px;object-fit:contain;border:1px solid #cbd5e1;padding:6px" /></div>
+                        <button type="button" class="btn btn-sm btn-outline-danger mt-2" @onclick="ClearLogo" disabled="@(savingCompany || readingLogo)">حذف لوگو</button>
+                    }
+                    @if (logoError is not null) { <div class="text-danger small mt-1" role="alert">@logoError</div> }
+                </div>
+                <div class="col-12">
                     <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
                     <InputFile class="form-control" OnChange="OnLetterheadFile" accept=".pdf" />
                     @if (!string.IsNullOrWhiteSpace(newCompany.LetterheadFileName))
@@ -119,8 +130,9 @@
             </div>
         </ChildContent>
         <Footer>
+            @if (saveError is not null) { <div class="text-danger" role="alert">@saveError</div> }
             <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
-            <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveCompany" disabled="@(string.IsNullOrWhiteSpace(newCompany?.Name))">ذخیره</button>
+            <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveCompany" disabled="@(savingCompany || readingLogo || string.IsNullOrWhiteSpace(newCompany?.Name))">ذخیره</button>
         </Footer>
     </Modal>
 }
@@ -130,6 +142,8 @@
     private bool ShowForm = false;
     private SystemCompanyItem newCompany = new() { IsActive = true, CreatedAt = DateTime.Now };
     private bool editingCompany = false;
+    private bool savingCompany, readingLogo;
+    private string? logoError, saveError;
     private IBrowserFile? pendingLetterhead;
     private string? letterheadUploadError;
 
@@ -139,46 +153,56 @@
         catch { items = new(); }
     }
 
-    private void OpenForm() { newCompany = new() { IsActive = true, CreatedAt = DateTime.Now }; editingCompany = false; ShowForm = true; }
+    private void OpenForm() { logoError = saveError = null; pendingLetterhead = null; letterheadUploadError = null; newCompany = new() { IsActive = true, CreatedAt = DateTime.Now }; editingCompany = false; ShowForm = true; }
     private void CloseForm() { ShowForm = false; editingCompany = false; }
 
     private void EditCompany(SystemCompanyItem c)
     {
-        newCompany = new() { Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt, LetterheadFileName = c.LetterheadFileName };
+        logoError = saveError = null; pendingLetterhead = null; letterheadUploadError = null;
+        newCompany = new() { LogoDataUrl = c.LogoDataUrl, Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt, LetterheadFileName = c.LetterheadFileName };
         editingCompany = true; ShowForm = true; StateHasChanged();
     }
 
     private async Task SaveCompany()
     {
+        if (savingCompany || readingLogo) return;
+        savingCompany = true; saveError = null;
         try
         {
-            HttpResponseMessage resp;
-            int? createdId = null;
-            if (editingCompany && newCompany.Id > 0)
-            {
-                resp = await Http.PutAsJsonAsync($"/api/SystemCompanies/{newCompany.Id}", newCompany);
-            }
-            else
-            {
-                resp = await Http.PostAsJsonAsync("/api/SystemCompanies", newCompany);
-                var result = await resp.Content.ReadFromJsonAsync<SaveResult>();
-                createdId = result?.Id;
-            }
-            if (resp.IsSuccessStatusCode)
-            {
-                ShowForm = false; editingCompany = false;
-                var fileToUpload = pendingLetterhead;
-                newCompany = new() { IsActive = true, CreatedAt = DateTime.Now };
-                pendingLetterhead = null;
-                letterheadUploadError = null;
-                await OnInitializedAsync();
-                // شرکت جدید: پس از دریافت Id، فایل سربرگ در انتظار (در صورت وجود) آپلود شود
-                if (createdId is > 0 && fileToUpload is { })
-                    await UploadLetterheadAsync(createdId.Value, fileToUpload);
-            }
+            var isEdit = editingCompany && newCompany.Id > 0;
+            using var resp = isEdit
+                ? await Http.PutAsJsonAsync($"/api/SystemCompanies/{newCompany.Id}", newCompany)
+                : await Http.PostAsJsonAsync("/api/SystemCompanies", newCompany);
+            if (!resp.IsSuccessStatusCode) { saveError = "ذخیره کمپانی انجام نشد: " + await resp.Content.ReadAsStringAsync(); return; }
+            var createdId = isEdit ? newCompany.Id : (await resp.Content.ReadFromJsonAsync<SaveResult>())?.Id;
+            var fileToUpload = pendingLetterhead;
+            if (!isEdit && createdId is > 0 && fileToUpload is not null)
+                await UploadLetterheadAsync(createdId.Value, fileToUpload);
+            ShowForm = false; editingCompany = false;
+            newCompany = new() { IsActive = true, CreatedAt = DateTime.Now };
+            pendingLetterhead = null;
+            await OnInitializedAsync();
         }
-        catch { }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { savingCompany = false; }
     }
+    private async Task OnLogoFile(InputFileChangeEventArgs e)
+    {
+        logoError = null;
+        var file = e.File;
+        if (file.ContentType is not ("image/png" or "image/jpeg")) { logoError = "فقط تصویر PNG یا JPEG مجاز است."; return; }
+        readingLogo = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(2L * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            newCompany.LogoDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
+        }
+        catch (Exception ex) { logoError = "خواندن لوگو انجام نشد: " + ex.Message; }
+        finally { readingLogo = false; }
+    }
+    private void ClearLogo() { newCompany.LogoDataUrl = null; logoError = null; }
 
     private async Task OnLetterheadFile(InputFileChangeEventArgs e)
     {
@@ -264,6 +288,7 @@
         public string? Code { get; set; }
         public string? Phone { get; set; }
         public string? Address { get; set; }
+        public string? LogoDataUrl { get; set; }
         public bool IsActive { get; set; } = true;
         public int SystemCount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;

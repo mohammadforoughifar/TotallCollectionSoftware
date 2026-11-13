@@ -96,8 +96,10 @@ class InvoiceEnhancements(unittest.TestCase):
         orders = read('Inventory.Client/Pages/Orders/Orders.razor')
         for text in ('A4 portrait', 'A5 portrait', 'compact-items', 'payment-schedule', 'این فاکتور ابطال شده است'):
             self.assertIn(text, invoice)
-        self.assertIn('data-invoice-paper-size', form)
-        self.assertIn('data-invoice-paper-size', orders)
+        self.assertNotIn('data-invoice-paper-size', form)
+        self.assertIn('showPrintPaperChooser', form)
+        self.assertNotIn('data-invoice-paper-size', orders)
+        self.assertIn('shopPrintPreview.choosePaper', orders)
         self.assertIn('موجودی صفر یا منفی', form)
         self.assertIn('max-width: 5.25rem', read('Inventory.Client/Pages/Orders/OrderForm.razor.css'))
         self.assertIn('مدیریت اقساط و خزانه داری', read('Inventory.Client/Layout/NavMenu.razor'))

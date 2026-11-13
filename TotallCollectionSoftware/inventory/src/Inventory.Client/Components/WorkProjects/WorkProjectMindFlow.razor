@@ -670,27 +670,28 @@
     /// </summary>
     private async Task AttachDragAsync()
     {
+        var wasUnavailable = _dragUnavailable;
         try
         {
-            var hasGlobal = false;
+            // مسیر اول: اسکریپت کلاسیکِ index.html (window.inventoryWorkProjectMindFlow).
+            // بدون «eval» بررسی می‌شود تا با CSP سخت‌گیرانه هم کار کند؛ اگر تگ script نباشد،
+            // فراخوانی JSException می‌دهد و به مسیر ماژول می‌رویم.
+            var attached = false;
             try
             {
-                hasGlobal = await JS.InvokeAsync<bool>("eval",
-                    "typeof window.inventoryWorkProjectMindFlow === 'object' && typeof window.inventoryWorkProjectMindFlow.attachDrag === 'function'");
+                attached = await JS.InvokeAsync<bool>("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
             }
-            catch { /* eval مسدود است (CSP) */ }
+            catch (JSException) { /* تگ script در index.html نیست (نسخهٔ کش‌شده یا فراموش‌شده) */ }
 
-            if (hasGlobal)
-                await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.attachDrag", _svgId, _self);
-            else
+            if (!attached)
             {
                 _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
-                    "./js/inventory-workproject-mindflow.module.js?v=2");
-                await _dragModule.InvokeVoidAsync("attachDrag", _svgId, _self);
+                    "./js/inventory-workproject-mindflow.module.js?v=3");
+                attached = await _dragModule.InvokeAsync<bool>("attachDrag", _svgId, _self);
             }
 
             _attached = true;
-            _dragUnavailable = false;
+            _dragUnavailable = !attached;
         }
         catch (Exception ex)
         {
@@ -698,6 +699,9 @@
             _dragUnavailable = true;
             Console.WriteLine($"[MindFlow] فعال‌سازی کشیدن گره‌ها انجام نشد: {ex.Message}");
         }
+
+        // پیام «کشیدن فعال نشد» فقط وقتی نمایش داده می‌شود که وضعیت عوض شده باشد.
+        if (wasUnavailable != _dragUnavailable) await InvokeAsync(StateHasChanged);
     }
 
     private void CreateStarter()

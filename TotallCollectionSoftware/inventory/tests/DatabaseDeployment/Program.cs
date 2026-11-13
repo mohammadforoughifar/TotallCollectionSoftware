@@ -82,6 +82,75 @@ UPDATE Organizations SET CompanyId = 1;";
         if (state == "partial")
             Check(defaultOrg!.CompanyId == 1, "partial: existing company assignment is not overwritten");
     }
+    // ============================================================
+    //  تصحیح بازبینی دوم — OrganizationSchemaV1 و رشتهٔ اتصال
+    //
+    //  باگ: EnsureAsync(db) رشتهٔ اتصال را از اتصالِ **باز** EF می‌خواند. ADO.NET پس از
+    //  باز شدن اتصال، رمز را از ConnectionString حذف می‌کند (مگر Persist Security Info=True).
+    //  نتیجه: یک اتصال تازهٔ بی‌رمز ⇒ خطای 18456 با پیام گمراه‌کنندهٔ «مجوز ALTER را بررسی کنید».
+    //
+    //  این بخش فقط با SQL Server واقعی و رشتهٔ اتصال بدون Persist Security Info اجرا می‌شود
+    //  (متغیر LICENSING_SQL_CONN). بدون آن، بخش رد می‌شود تا تست آفلاین بماند.
+    // ============================================================
+    var sqlCheck = Environment.GetEnvironmentVariable("LICENSING_SQL_CONN");
+    if (!string.IsNullOrWhiteSpace(sqlCheck))
+    {
+        var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(sqlCheck)
+        {
+            PersistSecurityInfo = false   // همان تنظیمی که باگ را نمایان می‌کند
+        };
+        var noPersist = csb.ConnectionString;
+
+        Check(!noPersist.Contains("Persist Security Info", StringComparison.OrdinalIgnoreCase)
+              || noPersist.Contains("Persist Security Info=False", StringComparison.OrdinalIgnoreCase),
+            "رشتهٔ آزمون، Persist Security Info ندارد (پیش‌فرض False)");
+
+        // (۱) مسیر قدیمی: از اتصال باز EF ⇒ رمز حذف شده ⇒ باید شکست بخورد
+        var oldPathFailed = false;
+        try
+        {
+            await using var db = new Inventory.Api.Data.AppDbContext(
+                new DbContextOptionsBuilder<Inventory.Api.Data.AppDbContext>().UseSqlServer(noPersist).Options);
+            await db.Database.OpenConnectionAsync();              // باز کردن، رمز را از رشته پاک می‌کند
+            await Inventory.Api.Data.OrganizationSchemaV1.EnsureAsync(db);   // بدون رشتهٔ پیکربندی
+        }
+        catch (Exception ex)
+        {
+            oldPathFailed = true;
+            Console.WriteLine($"   (اطلاع) مسیر قدیمی شکست خورد — همان باگ مورد انتظار: {ex.GetBaseException().Message.Split('\n')[0]}");
+        }
+        Check(oldPathFailed, "مسیر قدیمی (رشته از اتصال باز) بدون Persist Security Info شکست می‌خورد — باگ بازتولید شد");
+
+        // (۲) مسیر تازه: رشته از IConfiguration ⇒ باید موفق باشد
+        var newPathOk = true;
+        string? newPathError = null;
+        try
+        {
+            await using var db = new Inventory.Api.Data.AppDbContext(
+                new DbContextOptionsBuilder<Inventory.Api.Data.AppDbContext>().UseSqlServer(noPersist).Options);
+            await db.Database.OpenConnectionAsync();
+            await Inventory.Api.Data.OrganizationSchemaV1.EnsureAsync(db, noPersist); // ← رشته از پیکربندی
+        }
+        catch (Exception ex)
+        {
+            newPathOk = false;
+            newPathError = ex.GetBaseException().Message;
+        }
+        Check(newPathOk, $"مسیر تازه (رشته از IConfiguration) موفق است — خطا: {newPathError ?? "بدون خطا"}");
+
+        // (۳) همان چیزی که DbInitializer حالا صدایش می‌زند: پیکربندی واقعی
+        var cfgSql = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = noPersist
+        }).Build();
+        Check(cfgSql.GetConnectionString("Default") == noPersist,
+            "IConfiguration رشتهٔ کامل اتصال (با رمز) را برمی‌گرداند، نه نسخهٔ بی‌رمز");
+    }
+    else
+    {
+        Console.WriteLine("SKIP: آزمون رشتهٔ اتصال SQL Server (LICENSING_SQL_CONN تنظیم نشده است)");
+    }
+
     using (var db = new RadisHr.Api.Data.DesignTimeDbContextFactory().CreateDbContext(overrides))
     {
         Check(db.Database.GetConnectionString()!.Contains("cli-test"), "RADIS-HR uses the same selected connection");

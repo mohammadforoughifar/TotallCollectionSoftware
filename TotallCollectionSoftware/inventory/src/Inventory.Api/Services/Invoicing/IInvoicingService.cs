@@ -28,7 +28,8 @@ public interface IInvoicingService
     Task<FacInvoice> UnconfirmInvoiceAsync(int id, string? user);
 
     Task<FacInvoice> CancelInvoiceAsync(int id, string? user);
-    Task DeleteInvoiceAsync(int id);
+    /// <summary>حذف <b>نرم</b> فاکتور؛ مصرف سهمیه عمداً بازگردانده نمی‌شود.</summary>
+    Task DeleteInvoiceAsync(int id, string? user = null);
 
     /// <summary>سطر آماده برای یک کالا: قیمت، نرخ مالیات، کد مالیاتی و موجودی</summary>
     Task<FacInvoiceLine> BuildLineAsync(int productId, InvoiceKind kind, int warehouseId);

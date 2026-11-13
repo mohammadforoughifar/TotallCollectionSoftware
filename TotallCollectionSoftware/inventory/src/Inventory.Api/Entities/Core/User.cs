@@ -35,6 +35,17 @@ public class User
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+    /// <summary>
+    /// این حساب از «صندلی کاربر» معاف است.
+    ///
+    /// <para>
+    /// معافیت به نقش داده نمی‌شود (نه Admin و نه هیچ نقش دیگری)؛ مدیر سیستم حداکثر
+    /// تعدادی حساب مشخص را معاف می‌کند که سقفش از فایل امضاشدهٔ لایسنس
+    /// (<c>users.exempt</c>) می‌آید. تعداد معاف‌ها بیشتر از سقف لایسنس پذیرفته نمی‌شود.
+    /// </para>
+    /// </summary>
+    public bool LicenseSeatExempt { get; set; }
+
     /// <summary>مسیر نسبی عکس داخل uploads/ (فقط اطلاعات — فایل روی دیسک است). null = عکس پیش‌فرض</summary>
     [MaxLength(200)]
     public string? PhotoPath { get; set; }

@@ -1,0 +1,155 @@
+'use strict';
+// Isolated design prototype: no API, no real company settings, no persistence.
+const $ = id => document.getElementById(id);
+const money = value => new Intl.NumberFormat('fa-IR', {maximumFractionDigits: 0}).format(value);
+// Mock of the invoice-linked customer read model; no customer settings inputs.
+// Production integration must populate this from authorized invoice/customer data.
+const sampleInvoice = {number:'۱۴۰۵–۰۰۲۱۸', date:'۱۴۰۵/۰۸/۲۰', paymentMethod:'ترکیبی — نقدی، چکی و نسیه',
+ settlement:{cash:100000000,credit:78840000,creditDue:'۱۴۰۵/۱۱/۲۰'},
+ cheques:[{bank:'ملت',sayad:'',due:'۱۴۰۵/۰۹/۲۰',amount:120000000},{bank:'ملی',sayad:'',due:'۱۴۰۵/۱۰/۲۰',amount:80000000}],
+ customer:{name:'عقاب افشان',phone:'۰۹۱۲–۰۰۰۰۰۰۰',id:'',address:''}};
+const lines = [
+ {name:'کارت شبکه', qty:6, price:2500000, discount:0, note:'—'},
+ {name:'اسپیکر کامپیوتر', qty:5, price:6800000, discount:1000000, note:'گارانتی طبق سند'},
+ {name:'دوربین مداربسته', qty:5, price:24500000, discount:4000000, note:'—'},
+ {name:'دانگل HDMI', qty:1, price:3900000, discount:0, note:'—'},
+ {name:'مانیتور سامسونگ', qty:2, price:85000000, discount:5000000, note:'شماره سریال در سند'},
+ {name:'کابل HDMI پنج متری', qty:5, price:1800000, discount:0, note:'—'}
+];
+const totals = lines.reduce((t,l) => ({gross:t.gross+l.qty*l.price,discount:t.discount+l.discount,qty:t.qty+l.qty}), {gross:0,discount:0,qty:0});
+const net = totals.gross-totals.discount;
+const vat = net*0.1; // Explicitly hypothetical demo rate, NOT a production tax rule.
+$('item-rows').replaceChildren(...lines.map((line,i)=>{
+ const row=document.createElement('tr');
+ [money(i+1),line.name,money(line.qty),money(line.price),money(line.qty*line.price),line.discount?money(line.discount):'-',money(line.qty*line.price-line.discount)].forEach((value,j)=>{
+  const cell=document.createElement('td');cell.textContent=value;
+  if(j>=3)cell.className='money';
+  if(j===1&&line.note&&line.note!=='—'){const note=document.createElement('small');note.className='item-note';note.textContent=line.note;cell.append(note);}
+  row.append(cell);
+ });return row;
+}));
+for(const [id,value] of Object.entries({gross:totals.gross,discount:totals.discount,net,vat,payable:net+vat,'quantity-total':totals.qty}))$(id).textContent=money(value);
+$('payment-method').textContent='تسویهٔ '+sampleInvoice.paymentMethod;
+$('line-count').textContent=money(lines.length);
+const chequeTotal=sampleInvoice.cheques.reduce((sum,cheque)=>sum+cheque.amount,0);
+$('settlement-breakdown').replaceChildren(...[
+ ['نقدی',sampleInvoice.settlement.cash,''],
+ ['چکی',chequeTotal,'در انتظار وصول'],
+ ['نسیه',sampleInvoice.settlement.credit,sampleInvoice.settlement.creditDue?`موعد: ${sampleInvoice.settlement.creditDue}`:'']
+].filter(([,amount])=>amount>0).map(([label,amount,detail])=>{
+ const block=document.createElement('div'),title=document.createElement('span'),value=document.createElement('strong');
+ title.textContent=label;value.textContent=`${money(amount)} ریال`;block.append(title,value);
+ if(detail){const note=document.createElement('small');note.textContent=detail;block.append(note);}
+ return block;
+}));
+
+$('cheque-rows').replaceChildren(...sampleInvoice.cheques.map(cheque=>{
+ const row=document.createElement('tr');
+ [cheque.bank,cheque.sayad||'-',cheque.due,money(cheque.amount)].forEach((value,i)=>{
+  const cell=document.createElement('td');cell.textContent=value;
+  if(i>0){cell.dir='ltr';cell.className='cheque-number';}
+  row.append(cell);
+ });return row;
+}));
+const invoice=$('invoice');
+function fitPaper(){
+ const viewport=document.querySelector('.paper-viewport');
+ invoice.style.transform='';viewport.style.height='';
+ if(window.innerWidth<=800){
+  const scale=Math.min(1,viewport.clientWidth/invoice.offsetWidth);
+  invoice.style.transform=`scale(${scale})`;invoice.style.transformOrigin='top right';
+  viewport.style.height=`${Math.ceil(invoice.offsetHeight*scale)+20}px`;
+ }
+}
+let bankRowNumber=0;
+function addBankRow({focus=false}={}){
+ const id=++bankRowNumber;
+ const row=document.createElement('div');row.className='bank-entry';
+ row.innerHTML=`<div class="bank-entry-head"><strong>کارت / شبای ${money(id)}</strong><button type="button" class="remove-bank" aria-label="حذف این کارت و شبا">حذف</button></div><label for="card-${id}">شماره کارت<input id="card-${id}" class="bank-card" dir="ltr" inputmode="numeric" minlength="16" maxlength="16" pattern="[0-9]{16}" placeholder="۱۶ رقم" aria-describedby="card-error-${id}"><small id="card-error-${id}" class="field-error card-error" aria-live="polite"></small></label><label for="iban-${id}">شماره شبا (۲۴ رقم)<span class="iban-input-wrap" dir="ltr"><span class="iban-prefix" aria-hidden="true">IR</span><input id="iban-${id}" class="bank-iban" dir="ltr" inputmode="numeric" minlength="24" maxlength="24" pattern="[0-9]{24}" placeholder="۲۴ رقم بدون IR" aria-describedby="iban-error-${id}"></span><small id="iban-error-${id}" class="field-error iban-error" aria-live="polite"></small></label>`;
+ for(const [selector,max] of [['.bank-card',16],['.bank-iban',24]]){
+  const input=row.querySelector(selector);
+  function insert(text,event){
+   event.preventDefault();
+   let normalized=ShopPrintBankValidation.normalize(text);
+   if(max===24)normalized=normalized.replace(/^IR/,'');
+   const start=input.selectionStart??input.value.length,end=input.selectionEnd??start;
+   if(!/^\d*$/.test(normalized)||input.value.length-(end-start)+normalized.length>max){
+    // Rejected keystrokes/pastes do not change the stored value or its validity.
+    updateBanks();return;
+   }
+   input.setRangeText(normalized,start,end,'end');input.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  input.addEventListener('paste',event=>insert(event.clipboardData.getData('text'),event));
+  input.addEventListener('beforeinput',event=>{
+   if(event.inputType==='insertText'&&event.data)insert(event.data,event);
+  });
+  input.addEventListener('input',()=>{
+   // Mobile keyboards may bypass beforeinput; normalize without truncating data.
+   input.value=ShopPrintBankValidation.normalize(input.value);
+  });
+ }
+ row.querySelector('.bank-card').addEventListener('keydown',event=>{
+  if(event.key!=='Enter'||event.isComposing||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+  event.preventDefault();
+  row.querySelector('.bank-iban').focus();
+ });
+ row.querySelector('button').addEventListener('click',()=>{row.remove();update();});
+ $('bank-rows').append(row);update();
+ if(focus)requestAnimationFrame(()=>{
+  // Bring the actual editable row into view, including below the mobile preview.
+  row.scrollIntoView({block:'center',behavior:'instant'});
+  row.querySelector('.bank-card').focus({preventScroll:true});
+ });
+}
+function updateBanks(){
+ const seenCards=new Set(),seenIbans=new Set();let invalid=false;const valid=[],entries=[];
+ for(const row of document.querySelectorAll('.bank-entry')){
+  const cardInput=row.querySelector('.bank-card'),ibanInput=row.querySelector('.bank-iban');
+  const card=ShopPrintBankValidation.card(cardInput.value),iban=ShopPrintBankValidation.iban(ibanInput.value);
+  if(card.value&&!card.error&&seenCards.has(card.value))card.error='این شماره کارت تکراری است.';
+  if(iban.value&&!iban.error&&seenIbans.has(iban.value))iban.error='این شماره شبا تکراری است.';
+  if(card.value)seenCards.add(card.value);if(iban.value)seenIbans.add(iban.value);
+  for(const [input,result,selector] of [[cardInput,card,'.card-error'],[ibanInput,iban,'.iban-error']]){
+   input.setAttribute('aria-invalid',String(Boolean(result.error)));row.querySelector(selector).textContent=result.error;
+  }
+  invalid ||= Boolean(card.error||iban.error);
+  if(!card.error&&!iban.error&&(card.value||iban.value))valid.push({card:card.value,iban:iban.value});
+  if(card.value||iban.value)entries.push({card:card.value,iban:iban.value,incomplete:Boolean(card.error||iban.error)});
+ }
+ $('printed-banks').replaceChildren(...entries.map((entry,i)=>{
+  const block=document.createElement('div');block.className='printed-bank-entry';
+  if(entry.incomplete){const state=document.createElement('small');state.className='preview-bank-state';state.textContent='ناقص یا تکراری — فقط پیش‌نمایش، غیرقابل چاپ';block.append(state);}
+  for(const [label,value] of [['شماره کارت',entry.card],['شماره شبا',entry.iban]])if(value){
+   const line=document.createElement('div'),name=document.createElement('span'),number=document.createElement('bdi');
+   name.textContent=label;number.textContent=value.match(/.{1,4}/g).join(' ');line.append(name,number);block.append(line);
+  }return block;
+ }));
+ if(!entries.length){const msg=document.createElement('p');msg.className='hint';msg.textContent='با ورود شماره کارت یا شبا، همین‌جا نمایش داده می‌شود.';$('printed-banks').append(msg);}
+ $('bank-status').textContent=invalid?'خطاهای شماره کارت/شبا را اصلاح کنید؛ چاپ تا رفع خطا غیرفعال است.':`${money(valid.length)} ردیف اطلاعات بانکی معتبر آمادهٔ نمایش است.`;
+ $('print').disabled=invalid;return !invalid;
+}
+function update(){
+ invoice.classList.toggle('a5',$('paper').value==='A5');
+ for(const key of ['name','phone','id','address'])$('printed-customer-'+key).textContent=sampleInvoice.customer?.[key]?.trim()||'-';
+ updateBanks();
+ // Facts of this sample only; no invented receipt, delivery or warranty assertions.
+ const buyer=sampleInvoice.customer?.name?.trim()||'-';
+ $('invoice-number').textContent=sampleInvoice.number;
+ $('invoice-date').textContent=sampleInvoice.date;
+ $('printed-notes').textContent=`فاکتور ${sampleInvoice.number} مورخ ${sampleInvoice.date} برای «${buyer}»؛ ${money(lines.length)} ردیف، ${money(totals.qty)} عدد کالا و مبلغ نهایی ${money(net+vat)} ریال.`;
+ $('paper-label').textContent=`${$('paper').value} · عمودی · ریال`;
+ $('paper-rule').textContent=`@page { size: ${$('paper').value} portrait; margin: ${$('paper').value==='A5'?6:10}mm; }`;
+ requestAnimationFrame(fitPaper);
+}
+document.querySelector('.settings').addEventListener('input',update);
+$('paper').addEventListener('change',update);
+$('add-bank').addEventListener('click',()=>addBankRow({focus:true}));
+$('reset').addEventListener('click',()=>location.reload());
+$('print').addEventListener('click',()=>{if(updateBanks())$('paper-dialog').showModal();});
+window.addEventListener('resize',fitPaper);
+document.fonts.ready.then(fitPaper);
+window.addEventListener('load',fitPaper);
+addBankRow();
+
+$('cancel-paper').addEventListener('click',()=>$('paper-dialog').close());
+$('confirm-paper').addEventListener('click',()=>{$('paper-dialog').close();window.print();});

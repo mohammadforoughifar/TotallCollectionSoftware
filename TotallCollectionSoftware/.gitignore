@@ -48,3 +48,11 @@ sql/legacy-aria/
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.pdf
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.png
 !src/Inventory.Api/wwwroot/uploads/letterheads/homepa_company1003_letterhead.jpg
+
+# ===================== دادهٔ اجرایی و کلیدها (هیچ‌جا ردیابی نشود) =====================
+# App_Data هر نسخهٔ پروژه (هم inventory/src مرجع و هم src قدیمی) شامل کلیدهای
+# مخصوص همان نصب است: vault.key، ca.key، server.pfx، DataProtectionKeys.
+# الگوی **/App_Data/ هر دو مسیر را می‌گیرد.
+**/App_Data/
+# کلید رمزنگاری پوشه‌های پیوست که در زمان اجرا ساخته می‌شود
+**/wwwroot/uploads/**/.key

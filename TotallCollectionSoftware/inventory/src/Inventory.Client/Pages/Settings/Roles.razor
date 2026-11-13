@@ -193,11 +193,11 @@
                                             @foreach (var group in catGroups.OrderBy(g => Array.IndexOf(cat.Modules, g.Key)))
                                             {
                                                 <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <summary><span title="@group.Key"><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
                                                     <div class="perm-leaf-list">
                                                         @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
-                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
                                                         }
                                                     </div>
                                                 </details>
@@ -213,11 +213,11 @@
                                             @foreach (var group in VisibleOtherPermissionGroups)
                                             {
                                                 <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <summary><span title="@group.Key"><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
                                                     <div class="perm-leaf-list">
                                                         @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
-                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
                                                         }
                                                     </div>
                                                 </details>
@@ -294,6 +294,7 @@
     .perm-leaf:hover { background: #f1f5f9; }
     .perm-leaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .perm-leaf small { color: #94a3b8; margin-right: auto; direction: ltr; }
+    .perm-leaf small.perm-key-fa { direction: rtl; color: #0f766e; font-weight: 600; }
     @@media (max-width: 650px) { .perm-leaf-list { grid-template-columns: 1fr; padding-right: 1rem; } .tree-count { display:none; } .permission-tree summary { padding: .6rem; } }
 
     /* ===== رسپانسیو کارت‌های آمار ===== */
@@ -852,6 +853,78 @@
     {
         if (ModuleActionNames.TryGetValue($"{module}.{action}", out var specific)) return specific;
         if (ActionNames.TryGetValue(action, out var generic)) return generic;
+        // بن‌سازه هیچ‌گاه نباید کلید لاتین نشان دهد؛ اگر برچسب فارسی ثبت نشده بود،
+        // نامش را از فهرست بخش‌ها می‌سازیم (مثلاً «پرسنل — حذف»).
+        if (IsBonHrModule(module)) return BonHrFallbackLabel(action);
         return action;
     }
+
+    /// <summary>
+    /// برچسب فارسیِ جایگزین برای هر مجوز بن‌سازه که در دیکشنری‌های بالا نیست.
+    /// </summary>
+    private static string BonHrFallbackLabel(string action)
+    {
+        if (string.Equals(action, "Access", StringComparison.OrdinalIgnoreCase))
+            return "دسترسی کامل به همهٔ بخش‌های بن‌سازه";
+
+        var dot = action.LastIndexOf('.');
+        if (dot <= 0)
+        {
+            var onlySection = BonHrSections.ByKey(action);
+            var onlyTitle = onlySection?.Title ?? "بخش بن‌سازه";
+            return $"{onlyTitle} — کل بخش";
+        }
+
+        var sectionTitle = BonHrSections.ByKey(action[..dot])?.Title ?? "بخش بن‌سازه";
+        var caption = PermissionBadgeText(BonHrSections.Module, action);
+        return $"{sectionTitle} — {caption}";
+    }
+
+    // ==================== نمایش تمام‌فارسی مجوزهای «منابع انسانی بن‌سازه» ====================
+    // در این شاخه هیچ متن لاتینی روی صفحه دیده نمی‌شود: نام ماژول، نام بخش و نام اکشن
+    // همه فارسی‌اند. کلید فنی مجوز (مثل RadisHr.Employees.View) فقط به‌صورت tooltip
+    // باقی می‌ماند تا پشتیبانی/برنامه‌نویس بدون شلوغیِ ظاهر به آن دسترسی داشته باشد.
+
+    private static bool IsBonHrModule(string? module) =>
+        string.Equals(module, BonHrSections.Module, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>برچسب کوتاه فارسی اکشن‌های تفکیکی بخش‌های بن‌سازه.</summary>
+    private static readonly Dictionary<string, string> BonHrActionCaption = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["View"] = "مشاهده",
+        ["Create"] = "ثبت",
+        ["Update"] = "ویرایش",
+        ["Delete"] = "حذف"
+    };
+
+    /// <summary>پسوند نام ماژول در سرشاخه — برای بن‌سازه حذف می‌شود تا نام لاتین دیده نشود.</summary>
+    private static string ModuleKeySuffix(string? module) =>
+        IsBonHrModule(module) ? "" : $" ({module})";
+
+    /// <summary>
+    /// متن کنار هر دسترسی: برای بن‌سازه به فارسی برگردانده می‌شود
+    /// («مشاهده»، «ثبت»، «ویرایش»، «حذف» یا «کل بخش (مجوز قدیمی)») و
+    /// برای سایر ماژول‌ها همان کلید اکشن نمایش داده می‌شود.
+    /// </summary>
+    private static string PermissionBadgeText(string module, string action)
+    {
+        if (!IsBonHrModule(module)) return action;
+
+        var dot = action.LastIndexOf('.');
+        if (dot > 0 && dot < action.Length - 1)
+        {
+            var act = action[(dot + 1)..];
+            if (BonHrActionCaption.TryGetValue(act, out var fa)) return fa;
+            if (ActionNames.TryGetValue(act, out var generic)) return generic;
+            return act;
+        }
+
+        return string.Equals(action, "Access", StringComparison.OrdinalIgnoreCase)
+            ? "دسترسی کامل به ماژول"
+            : "کل بخش (مجوز قدیمی)";
+    }
+
+    /// <summary>کلاس CSS متن کنار دسترسی — بن‌سازه راست‌به‌چپ و پررنگ‌تر می‌شود.</summary>
+    private static string? PermissionBadgeClass(string module) =>
+        IsBonHrModule(module) ? "perm-key-fa" : null;
 }

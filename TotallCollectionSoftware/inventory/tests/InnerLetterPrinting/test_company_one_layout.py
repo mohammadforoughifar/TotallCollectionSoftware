@@ -25,15 +25,22 @@ class CompanyOneLayoutTests(unittest.TestCase):
             self.assertTrue(art.startswith(b'\x89PNG'))
             self.assertEqual(r.find('.//Pages/*/Margins').text, '0,0,0,0')
 
-    def test_only_company_one_uses_black_mrt_coordinates(self):
+    def test_company_one_uses_shared_mrt_geometry_pipeline(self):
         loader = (API / 'Services/Office/InnerLetterheadTemplates.cs').read_text()
         renderer = (API / 'Services/Office/InnerLetterPdfRenderer.cs').read_text()
         service = (API / 'Services/Office/InnerLetterPrintService.cs').read_text()
-        self.assertIn('if (companyId != 1) return null;', loader)
-        self.assertIn('valueLayout is null ? Colors.White : Colors.Black', renderer)
-        self.assertIn('valueLayout?.Date ?? HomepaLetterheadLayout.Date(a5)', renderer)
-        self.assertIn('fonts, valueLayout)', service)
-        self.assertIn('data.ReferralDates', renderer)
+        self.assertIn('TryLoadMetaLayout', loader)
+        self.assertIn('InnerLetterheadTemplates.TryLoadMetaLayout', service)
+        self.assertIn('meta, company!.Id', service)
+        self.assertIn('box.Left', renderer)
+        self.assertIn('box.Top', renderer)
+        self.assertIn('box.Color', renderer)
+        for size in ('A4', 'A5'):
+            tree = ET.parse(API / f'Reports/InnerLetters/Companies/1/Inner-{size}.mrt')
+            for name, expression in [('Text1', 'DateShams'), ('Text2', 'LetterNumber'), ('Text3', 'Peyvast')]:
+                component = next(e for e in tree.iter() if e.findtext('Name') == name)
+                self.assertIn(expression, component.findtext('Text'))
+                self.assertEqual(component.findtext('TextBrush'), 'Black')
 
 if __name__ == '__main__':
     unittest.main()

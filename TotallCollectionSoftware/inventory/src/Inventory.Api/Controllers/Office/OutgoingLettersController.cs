@@ -151,8 +151,18 @@ public class OutgoingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
         try
         {
-            var id = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
-            return Ok(new { id, message = "نامه صادره با موفقیت ثبت شد." });
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterOutgoingCreate,
+                async () => created = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync()),
+                entityType: "OutgoingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { id = created, message = "نامه صادره با موفقیت ثبت شد." });
         }
         catch (Exception ex)
         {
@@ -826,8 +836,6 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست‌های صادره روی دیسک در «wwwroot/فایل های صادره/{شناسه نامه}/» ذخیره می‌شوند
         // (مشابه نامه داخلی؛ دانلود فقط از مسیر مجاز API)
@@ -957,8 +965,6 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست پیش‌نویس صادره هم در «فایل های صادره» ذخیره می‌شود و بعد از ارسال،
         // همراه رکورد پیوست به خود نامه منتقل می‌شود (مسیر فایل تغییر نمی‌کند).

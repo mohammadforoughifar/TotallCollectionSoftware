@@ -89,31 +89,68 @@ else
             </div>
         </div>
 
-        @* ================== پیام‌های اخیر ================== *@
+        @* ================== پیام‌ها و اقدام‌ها (دسته‌بندی‌شده) ================== *@
         <div class="col-12 col-lg-6">
             <div class="card h-100">
                 <div class="card-header">
                     <i class="bi bi-bell text-primary"></i>
-                    <span class="card-title">پیام‌های اخیر</span>
-                    @if (ntfTotal > 0)
+                    <span class="card-title">پیام‌ها و اقدام‌ها</span>
+                    <label class="ct-filter ms-auto" title="فقط پیام‌های خوانده‌نشدهٔ همین تب">
+                        <input type="checkbox" @bind="ntfUnreadOnly" @bind:after="OnNtfUnreadFilterAsync" />
+                        فقط نخوانده
+                    </label>
+                </div>
+
+                @* دو تب: «اصلی» = مورد تازه که منتظر نخستین اقدام است؛ «فرعی» = پیگیری روی مورد موجود. *@
+                <div class="ct-tabs" role="tablist" aria-label="دسته‌بندی پیام‌ها">
+                    <button type="button" role="tab" aria-selected="@(ntfTab == MainTab ? "true" : "false")"
+                            class="ct-tab @(ntfTab == MainTab ? "on" : "")" @onclick="() => SwitchTabAsync(MainTab)">
+                        <i class="bi bi-lightning-charge-fill"></i>
+                        <span>اقدامات اصلی</span>
+                        <span class="ct-tab-count">@mainTotal.FaDigits()</span>
+                        @if (mainUnread > 0)
+                        {
+                            <span class="ct-tab-unread" title="@mainUnread نخوانده">@mainUnread.FaDigits()</span>
+                        }
+                    </button>
+                    <button type="button" role="tab" aria-selected="@(ntfTab == SubTab ? "true" : "false")"
+                            class="ct-tab @(ntfTab == SubTab ? "on" : "")" @onclick="() => SwitchTabAsync(SubTab)">
+                        <i class="bi bi-arrow-repeat"></i>
+                        <span>اقدامات فرعی</span>
+                        <span class="ct-tab-count">@subTotal.FaDigits()</span>
+                        @if (subUnread > 0)
+                        {
+                            <span class="ct-tab-unread" title="@subUnread نخوانده">@subUnread.FaDigits()</span>
+                        }
+                    </button>
+                </div>
+                <div class="ct-tab-hint">
+                    @if (ntfTab == MainTab)
                     {
-                        <span class="badge bg-light text-secondary ms-auto fs-9">
-                            @ntfTotal.FaDigits() مورد — @ntfUnread.FaDigits() نخوانده
-                        </span>
+                        <span><b>اصلی</b> = مورد تازه‌ای که منتظر نخستین اقدام شماست: نامهٔ تازه، دستور کار تازه، درخواست/تیکت تازه، سفارش تازه…</span>
+                    }
+                    else
+                    {
+                        <span><b>فرعی</b> = پیگیری روی موردهای موجود: تأیید، رد، ارجاع، پاسخ، کامنت، تمدید مهلت، بسته‌شدن، تغییر وضعیت فاکتور…</span>
                     }
                 </div>
+
                 <div class="card-body p-2">
                     @if (ntfs.Count == 0)
                     {
-                        <div class="text-center text-muted py-4 fs-8"><i class="bi bi-bell-slash d-block fs-3 mb-1"></i>پیامی ندارید</div>
+                        <div class="text-center text-muted py-4 fs-8">
+                            <i class="bi @(ntfTab == MainTab ? "bi-check2-circle text-success" : "bi-bell-slash") d-block fs-3 mb-1"></i>
+                            @NtfEmptyText
+                        </div>
                     }
                     @foreach (var n in ntfs)
                     {
+                        var style = NtfStyle(n);
                         <div class="ct-item @(n.IsRead ? "" : "ct-unread")" @onclick="() => OpenNtf(n)">
-                            <div class="ct-icon" style="background:#2563eb"><i class="bi bi-envelope"></i></div>
+                            <div class="ct-icon" style="background:@style.Color"><i class="bi @style.Icon"></i></div>
                             <div class="flex-grow-1 min-w-0">
                                 <div class="fw-600 fs-8">@n.Title</div>
-                                <div class="fs-9 text-muted">@n.FormName — از: @n.FromName — @n.CreatedAt.ToFa()</div>
+                                <div class="fs-9 text-muted">@n.FormName@(string.IsNullOrWhiteSpace(n.CompanyName) ? "" : " · " + n.CompanyName) — از: @n.FromName — @n.CreatedAt.ToFa()</div>
                             </div>
                             @if (!n.IsRead)
                             {
@@ -170,7 +207,8 @@ else
                             </div>
 
                             <span class="ct-pg-info">
-                                نمایش @NtfRangeStart.FaDigits() تا @NtfRangeEnd.FaDigits() از @ntfTotal.FaDigits() پیام
+                                نمایش @NtfRangeStart.FaDigits() تا @NtfRangeEnd.FaDigits() از @ntfTotal.FaDigits()
+                                @(ntfTab == MainTab ? "اقدام اصلی" : "اقدام فرعی")
                                 — صفحهٔ @ntfPage.FaDigits() از @NtfTotalPages.FaDigits()
                                 @if (ntfBusy)
                                 {
@@ -191,6 +229,29 @@ else
     .ct-unread { background: #eff6ff; }
     .ct-icon { width: 34px; height: 34px; border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .fs-9 { font-size: .7rem; }
+
+    /* ---------- تب‌های دسته‌بندی پیام‌ها ---------- */
+    .ct-filter { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; color: #64748b; cursor: pointer; }
+    .ct-filter input { accent-color: #2563eb; }
+    .ct-tabs { display: flex; gap: .35rem; padding: .5rem .6rem 0; border-bottom: 1px solid #eef2f7; background: #f8fafc; }
+    .ct-tab { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+        border: 1px solid #e2e8f0; border-bottom: none; background: #fff; color: #475569;
+        border-radius: 10px 10px 0 0; padding: .42rem .5rem; font-size: .76rem; font-weight: 600;
+        cursor: pointer; transition: background .12s, color .12s; }
+    .ct-tab:hover { color: #1d4ed8; background: #f1f5f9; }
+    .ct-tab.on { background: #fff; color: #1d4ed8; border-color: #2563eb; box-shadow: inset 0 2px 0 #2563eb; }
+    .ct-tab.on i { color: #2563eb; }
+    .ct-tab i { font-size: .85rem; color: #94a3b8; }
+    .ct-tab-count { background: #eef2f7; color: #475569; border-radius: 999px; font-size: .68rem; padding: 0 .42rem; }
+    .ct-tab.on .ct-tab-count { background: #e0ecff; color: #1d4ed8; }
+    .ct-tab-unread { background: #dc2626; color: #fff; border-radius: 999px; font-size: .65rem; padding: 0 .32rem; min-width: 1.05rem; text-align: center; }
+    .ct-tab-hint { padding: .4rem .7rem; font-size: .68rem; color: #64748b; background: #fbfdff; border-bottom: 1px solid #eef2f7; line-height: 1.7; }
+    .ct-tab-hint b { color: #1d4ed8; }
+    @@media (max-width: 575.98px) {
+        .ct-tab { font-size: .7rem; padding: .38rem .3rem; }
+        .ct-tab span:not(.ct-tab-count):not(.ct-tab-unread) { display: none; }
+        .ct-tab i { font-size: .95rem; }
+    }
 
     /* ---------- صفحه‌بندی پیام‌ها ---------- */
     .ct-pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
@@ -216,12 +277,26 @@ else
     private List<CartableItemDto> unified = new();
     private int unifiedActionable => unified.Count(u => u.Actionable);
     private List<NtfItem> ntfs = new();
+    // ================== دسته‌بندی پیام‌ها (اقدامات اصلی / فرعی) ==================
+    // فهرست پیش‌تر یک‌جا بود و با زیادشدن اعلان‌ها، کاربر باید همه را با اسکرول و صفحه‌بندی
+    // یکی‌یکی می‌دید و موردهای مهم را گم می‌کرد. حالا «مورد تازه» از «پیگیری» جدا شده است.
+    private const string MainTab = "main";
+    private const string SubTab = "sub";
+    private string ntfTab = MainTab;
+    /// <summary>صفحهٔ جاری هر تب جدا ذخیره می‌شود تا جابه‌جایی بین تب‌ها موقعیت را از دست ندهد.</summary>
+    private readonly Dictionary<string, int> ntfTabPages = new() { [MainTab] = 1, [SubTab] = 1 };
+    /// <summary>آخرین تعداد ردیف‌های هر تب — برای کلمپ‌کردن شمارهٔ صفحه پیش از درخواست.</summary>
+    private readonly Dictionary<string, int> ntfTabTotals = new();
+    private bool ntfUnreadOnly;
+    private int mainTotal, mainUnread, subTotal, subUnread;
+
     // ================== صفحه‌بندی پیام‌ها (سمت سرور) ==================
     // شمارندهٔ زنگوله همهٔ اعلان‌ها را می‌شمارد؛ پس فهرست هم صفحه‌به‌صفحه و کامل دیده می‌شود.
     private int ntfPage = 1;
     private int ntfPageSize = 10;
     private int ntfJumpPage = 1;
     private bool ntfBusy;
+    /// <summary>تعداد ردیف‌های همان تبِ جاری (نه کل اعلان‌ها) — مبنای صفحه‌بندی.</summary>
     private int ntfTotal;
     private int ntfUnread;
     private static readonly int[] NtfPageSizes = { 10, 20, 50 };
@@ -253,11 +328,17 @@ else
         public List<NtfItem> Items { get; set; } = new();
         public int Total { get; set; }
         public int Unread { get; set; }
+        /// <summary>تعداد ردیف‌های همان تب درخواستی — مبنای صفحه‌بندی هر تب.</summary>
+        public int FilteredTotal { get; set; }
+        public int MainTotal { get; set; }
+        public int MainUnread { get; set; }
+        public int SubTotal { get; set; }
+        public int SubUnread { get; set; }
         public bool HasMore { get; set; }
     }
     private List<ActionItem> actions = new();
 
-    public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } }
+    public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } public int? CompanyId { get; set; } public string? CompanyName { get; set; } public string? Category { get; set; } }
     public class ActionItem { public string Title { get; set; } = ""; public string Sub { get; set; } = ""; public string Link { get; set; } = "/"; public string Icon { get; set; } = "bi-lightning"; public string Color { get; set; } = "#2563eb"; }
     private class AccessInfo { public int UserId { get; set; } public bool CanCreate { get; set; } public bool IsExpert { get; set; } public bool IsManager { get; set; } }
     private class ReqLite { public int Id { get; set; } public string Title { get; set; } = ""; public string Status { get; set; } = ""; public List<AsgLite> Assignments { get; set; } = new(); }
@@ -379,23 +460,61 @@ else
     private class AttStatus { public AttStats stats { get; set; } = new(); public List<object> items { get; set; } = new(); }
     private class AttStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } }
 
-    /// <summary>بارگذاری صفحهٔ جاری پیام‌ها (صفحه‌بندی سمت سرور).</summary>
+    /// <summary>متن حالت خالی، به‌تفکیک تب و فیلتر «فقط نخوانده».</summary>
+    private string NtfEmptyText =>
+        ntfUnreadOnly ? "پیام خوانده‌نشده‌ای در این دسته نیست."
+        : ntfTab == MainTab ? "اقدام اصلی جدیدی ندارید؛ همهٔ موردهای تازه بررسی شده‌اند."
+        : "اقدام فرعی تازه‌ای نیست.";
+
+    /// <summary>جابه‌جایی بین تب «اقدامات اصلی» و «اقدامات فرعی» — صفحهٔ هر تب حفظ می‌شود.</summary>
+    private async Task SwitchTabAsync(string tab)
+    {
+        if (ntfTab == tab) return;
+        ntfTabPages[ntfTab] = ntfPage;
+        ntfTab = tab;
+        ntfPage = ntfTabPages.TryGetValue(tab, out var saved) && saved > 0 ? saved : 1;
+        ntfJumpPage = ntfPage;
+        await LoadNotificationsAsync();
+    }
+
+    private async Task OnNtfUnreadFilterAsync()
+    {
+        ntfTabPages[ntfTab] = 1;
+        ntfPage = 1;
+        ntfJumpPage = 1;
+        await LoadNotificationsAsync();
+    }
+
+    /// <summary>بارگذاری صفحهٔ جاری پیام‌ها (صفحه‌بندی و دسته‌بندی سمت سرور).</summary>
     private async Task LoadNotificationsAsync(bool reset = false)
     {
-        if (reset) { ntfPage = 1; ntfJumpPage = 1; }
+        if (reset) { ntfPage = 1; ntfJumpPage = 1; ntfTabPages[ntfTab] = 1; }
         if (ntfPage < 1) ntfPage = 1;
-        if (ntfPage > NtfTotalPages) ntfPage = NtfTotalPages;
+        // سقف صفحه فقط با «تعدادِ همان تب» سنجیده می‌شود؛ وگرنه هنگام برگشت به تبی که
+        // هنوز شمارشش بارگذاری نشده، صفحهٔ درست بی‌دلیل به ۱ کلمپ می‌شد.
+        var knownTotal = ntfTabTotals.TryGetValue(ntfTab, out var known) ? known : int.MaxValue;
+        var knownMaxPage = Math.Max(1, (int)Math.Ceiling(knownTotal / (double)Math.Max(1, ntfPageSize)));
+        if (ntfPage > knownMaxPage) { ntfPage = knownMaxPage; ntfJumpPage = knownMaxPage; }
 
         ntfBusy = true;
         try
         {
             var skip = (ntfPage - 1) * ntfPageSize;
-            var page = await Http.GetFromJsonAsync<NtfPage>($"/api/notifications/page?take={ntfPageSize}&skip={skip}");
+            var url = $"/api/notifications/page?take={ntfPageSize}&skip={skip}&category={ntfTab}"
+                      + (ntfUnreadOnly ? "&unreadOnly=true" : "");
+            var page = await Http.GetFromJsonAsync<NtfPage>(url);
             if (page == null) return;
 
             ntfs = page.Items;
-            ntfTotal = page.Total;
-            ntfUnread = page.Unread;
+            // شمارنده‌های هر تب همیشه از سرور می‌آید تا با واقعیت دیتابیس یکی باشد.
+            mainTotal = page.MainTotal;
+            mainUnread = page.MainUnread;
+            subTotal = page.SubTotal;
+            subUnread = page.SubUnread;
+            // صفحه‌بندی روی همان تب جاری است، نه کل اعلان‌ها.
+            ntfTotal = page.FilteredTotal;
+            ntfTabTotals[ntfTab] = page.FilteredTotal;
+            ntfUnread = ntfTab == MainTab ? page.MainUnread : page.SubUnread;
 
             // اگر صفحهٔ جاری بعد از خواندن/پاک‌شدن خالی ماند، یک صفحه عقب برگرد
             if (ntfs.Count == 0 && ntfPage > 1)
@@ -409,11 +528,32 @@ else
         finally { ntfBusy = false; }
     }
 
+    /// <summary>
+    /// آیکن و رنگ ردیف بر اساس نوع فرم — هم تفکیک بصری نامه/دستور کار/فاکتور و…، هم کمک به
+    /// اسکن سریع فهرست بدون خواندن کامل عنوان.
+    /// </summary>
+    private static (string Icon, string Color) NtfStyle(NtfItem n)
+    {
+        var f = n.FormName;
+        if (f.Contains("نامه")) return ("bi-envelope-paper", "#0ea5e9");
+        if (f.Contains("دستور کار") || f.Contains("دستورکار")) return ("bi-clipboard-check", "#7c3aed");
+        if (f.Contains("ویزیتور") || f.Contains("سفارش") || f.Contains("فروش")) return ("bi-bag-check", "#059669");
+        if (f.Contains("منابع انسانی") || f.Contains("مرخصی") || f.Contains("HR") || f.Contains("تیکت")) return ("bi-person-badge", "#b06a00");
+        if (f.Contains("پروژه")) return ("bi-diagram-3", "#2563eb");
+        if (f.Contains("مدرک") || f.Contains("آرشیو")) return ("bi-archive", "#0891b2");
+        if (f.Contains("IT") || f.Contains("درخواست")) return ("bi-life-preserver", "#d97706");
+        // ناشناخته: اصلی‌ها نشان رعد، فرعی‌ها نشان پیگیری
+        return n.Category == MainTab
+            ? ("bi-lightning-charge-fill", "#ca8a04")
+            : ("bi-arrow-repeat", "#64748b");
+    }
+
     private async Task GoNtfPageAsync(int page)
     {
         if (page < 1 || page > NtfTotalPages || page == ntfPage) return;
         ntfPage = page;
         ntfJumpPage = page;
+        ntfTabPages[ntfTab] = page;   // صفحهٔ همان تب حفظ می‌شود
         await LoadNotificationsAsync();
     }
 
@@ -421,6 +561,7 @@ else
     {
         ntfPage = 1;
         ntfJumpPage = 1;
+        ntfTabPages[ntfTab] = 1;
         await LoadNotificationsAsync();
     }
 
@@ -444,14 +585,9 @@ else
 
     private async void OnRtNotify(RtNotification rn)
     {
-        ntfTotal++;
-        ntfUnread++;
-        // فقط در صفحهٔ اول ردیف تازه را نشان بده (در صفحه‌های بعد ردیف‌ها جابه‌جا می‌شوند)
-        if (ntfPage == 1)
-        {
-            ntfs.Insert(0, new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt });
-            if (ntfs.Count > ntfPageSize) ntfs.RemoveAt(ntfs.Count - 1);
-        }
+        // به‌جای درج دستی ردیف (که دسته/شرکت آن معلوم نبود)، صفحه و شمارنده‌های همان تب
+        // از سرور دوباره خوانده می‌شود: اعلان در تب درست می‌نشیند و اعلان شرکت دیگر نمی‌آید.
+        try { await LoadNotificationsAsync(); } catch { }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -472,6 +608,8 @@ else
         {
             n.IsRead = true;
             if (ntfUnread > 0) ntfUnread--;
+            if (n.Category == MainTab) { if (mainUnread > 0) mainUnread--; }
+            else if (subUnread > 0) subUnread--;
             try { await Http.PostAsync($"/api/notifications/{n.Id}/read", null); } catch { }
         }
         if (!string.IsNullOrWhiteSpace(n.Link)) Nav.NavigateTo(n.Link);

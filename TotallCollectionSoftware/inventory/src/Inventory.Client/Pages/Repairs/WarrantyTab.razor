@@ -35,8 +35,8 @@ else
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش گارانتی" : $"ویرایش {form.Number}")" Size="modal-xl" OnClose="() => showForm = false">
     <ChildContent>
         <div class="row g-3">
-            <div class="col-md-4"><label class="form-label">مشتری *</label><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div>
-            <div class="col-md-4"><label class="form-label">تعمیرکار</label><select class="form-select" @bind="technicianId"><option value="0">— بعداً تعیین می‌شود —</option>@foreach (var t in technicians) { <option value="@t.Id">@t.Name</option> }</select></div>
+            <div class="col-md-4"><label class="form-label">مشتری *</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف مشتری جدید" @onclick="() => showNewCustomer = true">جدید</button></div></div>
+            <div class="col-md-4"><label class="form-label">تعمیرکار</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><select class="form-select" @bind="technicianId"><option value="0">— بعداً تعیین می‌شود —</option>@foreach (var t in technicians) { <option value="@t.Id">@t.Name</option> }</select></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف تعمیرکار جدید" @onclick="() => showNewTechnician = true">جدید</button></div></div>
             <div class="col-md-4"><label class="form-label">تاریخ پذیرش *</label><DatePicker @bind-Value="receivedAt" /></div>
             <div class="col-md-6"><label class="form-label">انبار برداشت *</label><select class="form-select" @bind="form.WarehouseId"><option value="0">— انتخاب انبار —</option>@foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }</select></div>
             <div class="col-md-6"><label class="form-label">یادداشت</label><input class="form-control" maxlength="500" @bind="form.Note" /></div>
@@ -99,7 +99,27 @@ else
     }</ChildContent>
 </Modal>
 
+<PartyFormModal ShopQuickCreate="true" Visible="showNewCustomer" Type="PartyType.Customer" AllowReferrerPicker="true" OnSaved="OnCustomerCreated" OnCancel="() => showNewCustomer = false" />
+<TechnicianFormModal Visible="showNewTechnician" OnSaved="OnTechnicianCreated" OnCancel="() => showNewTechnician = false" />
+
 @code {
+    private bool showNewCustomer, showNewTechnician;
+    private Task OnCustomerCreated(Party created)
+    {
+        showNewCustomer = false;
+        customers.RemoveAll(c => c.Id == created.Id);
+        customers.Add(new LookupItem { Id = created.Id, Name = created.Name });
+        form.PartyId = created.Id;
+        return Task.CompletedTask;
+    }
+    private Task OnTechnicianCreated(Technician created)
+    {
+        showNewTechnician = false;
+        technicians.RemoveAll(t => t.Id == created.Id);
+        technicians.Add(new LookupItem { Id = created.Id, Name = created.Name });
+        technicianId = created.Id;
+        return Task.CompletedTask;
+    }
     private List<ShopWarrantyDto> items = new();
     private List<LookupItem> customers = new(), products = new();
     private List<LookupItem> warehouses = new(), technicians = new();

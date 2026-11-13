@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office;
 using Inventory.Shared.Dtos;
@@ -71,8 +72,9 @@ public class IncomingLettersController : RbacControllerBase
     private readonly ILetterGroupService _groups;
     private readonly IArchiveService _archive;
     private readonly FileStore _store;
+    private readonly INotifyService _notify;
 
-    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, ILetterGroupService groups, IArchiveService archive, FileStore store, AppDbContext db)
+    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, ILetterGroupService groups, IArchiveService archive, FileStore store, INotifyService notify, AppDbContext db)
         : base(db)
     {
         _letters = letters;
@@ -80,6 +82,7 @@ public class IncomingLettersController : RbacControllerBase
         _groups = groups;
         _archive = archive;
         _store = store;
+        _notify = notify;
     }
 
     [HttpGet("inbox")]
@@ -143,8 +146,19 @@ public class IncomingLettersController : RbacControllerBase
         if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "ثبت نامه وارده فقط از طریق دبیرخانه مجاز است." });
         try
         {
-            var id = await _letters.AddAsync(dto, MyUserId);
-            return Ok(new { id, message = "نامه وارده با موفقیت ثبت شد." });
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            // متریک تجمیعی letter.create هم خودکار شمرده می‌شود.
+            var created = 0;
+            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterIncomingCreate,
+                async () => created = await _letters.AddAsync(dto, MyUserId),
+                entityType: "IncomingLetter");
+
+            if (!guard.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
+
+            return Ok(new { id = created, message = "نامه وارده با موفقیت ثبت شد." });
         }
         catch (Exception ex)
         {
@@ -484,25 +498,14 @@ public class IncomingLettersController : RbacControllerBase
         if (!await CanAccessLetterAsync(id)) return StatusCode(403, new { message = "فقط افراد حاضر در گردش نامه می‌توانند پیوست اضافه کنند." });
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
-        // سقف مجموع پیوست‌های یک نامه: ۱۰۰ مگابایت — با احتساب پیوست‌های قبلیِ همین نامه.
-        // حجم پیوست‌های قبلی بدون خواندن بایت‌ها محاسبه می‌شود (فقط طول ستون در SQL).
-        var existingSize = (await Db.AppAttachments.AsNoTracking()
-                .Where(a => a.Module == Module && a.RefId == id)
-                .Select(a => new { a.FilePath, DataLength = a.Data == null ? 0 : a.Data.Length })
-                .ToListAsync())
-            .Sum(a => a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength);
-        if (existingSize + file.Length > 100L * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم مجموع پیوست‌های هر نامه ۱۰۰ مگابایت است." });
+        // حجم پیوست محدود نیست (خواستهٔ کارفرما): نه سقف هر فایل و نه سقف مجموع پیوست‌های نامه.
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // بدون بافر کردن کل فایل در حافظه — حجم پیوست سقف ندارد و فایل مستقیم روی دیسک نوشته می‌شود
+        await using var uploadStream = file.OpenReadStream();
 
         // ذخیره فیزیکی زیر wwwroot/uploads/IncomingLetters/{id}/{guid}_{name}
-        var relPath = await _store.SaveAsync("IncomingLetters", id, ms, file.FileName);
+        var relPath = await _store.SaveAsync("IncomingLetters", id, uploadStream, file.FileName);
 
         var att = new AppAttachment
         {
@@ -517,7 +520,48 @@ public class IncomingLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // ---------- اعلان «پیوست جدید» ----------
+        // قاعدهٔ کارفرما: افرادی که نامه در گردششان است و آن را رویت کرده‌اند + مسئول دبیرخانه.
+        // پیش‌تر این اعلان فقط برای نامه‌های صادره ارسال می‌شد، در حالی که راهنمای نامهٔ وارده
+        // هم همین رفتار را وعده داده بود. بارگذارندهٔ فایل خودش اعلان نمی‌گیرد (در Notifier).
+        try
+        {
+            await LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName,
+                // مسئول دبیرخانه (IncomingLetters.Dabirkhane) — نه لزوماً در گردش نامه.
+                await DabirkhaneRecipientsAsync(id));
+            await _notify.BroadcastChangedAsync("incoming-letters");
+        }
+        catch { /* اعلان هرگز نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
+    }
+
+    /// <summary>
+    /// گیرندگانِ «مسئول دبیرخانه» برای اعلان پیوست تازه: دارندگان مجوز
+    /// <c>IncomingLetters.Dabirkhane</c> که در ضمن به این نامه دسترسی هم دارند.
+    /// </summary>
+    /// <remarks>
+    /// چرا فیلتر دوم لازم است؟ قاعدهٔ دسترسی به نامه (<see cref="CanAccessLetterAsync"/>)
+    /// برای کسی که «ثبت‌کننده | حاضر در گردش | مدیر» نیست، حتی اجازهٔ بازکردن جزئیات را هم
+    /// نمی‌دهد. پس اعلان برای دبیرخانه‌ای که در گردش این نامه نیست، فقط یک لینک بن‌بست
+    /// می‌ساخت («شما در گردش این نامه نیستید»). در عمل هم دبیرخانه همان کسی است که نامه را
+    /// ثبت می‌کند یا آن را ارجاع می‌دهد، پس این فیلتر هیچ‌کدام از موارد واقعی را حذف نمی‌کند.
+    /// فهرست دبیرخانه از هلپر استاندارد RBAC می‌آید تا با تعریفِ <c>HasDabirkhaneAsync</c> یکی بماند.
+    /// </remarks>
+    private async Task<List<int>> DabirkhaneRecipientsAsync(int letterId)
+    {
+        var dabirkhane = await UsersWithPermissionAsync(Module, "Dabirkhane");
+        if (dabirkhane.Count == 0) return dabirkhane;
+
+        return await Db.Users.AsNoTracking()
+            .Where(u => dabirkhane.Contains(u.Id) &&
+                        (u.Role == "Admin"
+                         || Db.IncomingLetters.Any(l => l.Id == letterId && l.CreateUserId == u.Id && !l.IsDelete)
+                         || Db.Erjas.Any(e => e.SourceId == letterId && e.ReciverUserId == u.Id && !e.IsDelete)))
+            .Select(u => u.Id)
+            .ToListAsync();
     }
 
     [HttpGet("attachments/{attId:int}/download")]

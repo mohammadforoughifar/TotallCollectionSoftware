@@ -1,0 +1,25 @@
+/* Scoped to shop cash/bank management; never restyle global dashboard cards. */
+.shop-account-stat {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    height: 100%;
+    padding: 1.15rem;
+    border: 1px solid #dbe3ee;
+    border-inline-start: 3px solid #8b5cf6;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #fff, #f8fafc);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, .035);
+}
+.shop-account-stat .stat-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 1.2rem;
+}
+.shop-account-stat .stat-label { color: #64748b; font-size: .78rem; margin-bottom: .35rem; }
+.shop-account-stat .stat-value { font-size: clamp(1rem, 2vw, 1.35rem); font-weight: 800; overflow-wrap: anywhere; }

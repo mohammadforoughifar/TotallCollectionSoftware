@@ -5,17 +5,24 @@
 // در index.html مستقیم بالا بیاید. نسخهٔ ماژولی برای import پویا در فایل
 // inventory-workproject-mindflow.module.js است.
 //
+// ⚠️ این فایل باید در index.html لود شود؛ اگر تگ script نباشد و فایل ماژول هم پیدا نشود،
+// کامپوننت MindFlow پیام «کشیدن فعال نشد» نشان می‌دهد و هیچ گره‌ای جابه‌جا نمی‌شود.
+//
 // نکته: خواندن/نوشتن data-* روی عناصر SVG عمداً با getAttribute/setAttribute انجام می‌شود
 // (نه dataset)؛ dataset روی SVGElement در بعضی مرورگرها/وب‌ویوهای قدیمی پشتیبانی نمی‌شود
 // و باعث می‌شود گره‌ها با مقادیر undefined کشیده شوند.
 
 function attachDrag(svgId, dotnet) {
-    // مبدأ واحد در window تا نمونه‌های تکراری (اسکریپت + import) یک کنترلر ببینند.
-    window.inventoryWorkProjectMindFlowAttached =
-        window.inventoryWorkProjectMindFlowAttached || { attachDrag };
-
     const svg = document.getElementById(svgId);
     if (!svg) return false;
+
+    // دفتر کنترلرها در window: اگر SVG با رندر دوبارهٔ Blazor از DOM حذف و با همان id
+    // از نو ساخته شود، کنترلر قبلی باید آزاد شود؛ وگرنه شنونده‌های window روی svg قدیمی
+    // باقی می‌مانند و انباشته می‌شوند.
+    const registry = window.inventoryWorkProjectMindFlowControllers ||
+        (window.inventoryWorkProjectMindFlowControllers = {});
+    const stale = registry[svgId];
+    if (stale && stale.svg !== svg && typeof stale.detach === 'function') stale.detach();
 
     const existing = svg._wpMindFlowDragController;
     if (existing) {
@@ -23,15 +30,20 @@ function attachDrag(svgId, dotnet) {
         return true;
     }
 
-    const controller = { dotnet };
+    const controller = { dotnet, svg };
     svg._wpMindFlowDragController = controller;
     svg.setAttribute('data-wp-mind-flow-drag', '1');
+    registry[svgId] = controller;
 
     const attr = (el, name) => el.getAttribute('data-' + name);
     const setAttr = (el, name, value) => el.setAttribute('data-' + name, value);
     const num = (el, name) => Number(attr(el, name));
 
     let active = null;
+    // کلیک بلافاصله پس از یک کشیدن واقعی نباید «انتخاب گره» حساب شود؛
+    // وگرنه Blazor پیش از رسیدن CommitDrag با مختصات قدیمی رندر می‌کند و گره می‌پرد.
+    let suppressClickUntil = 0;
+
     const groups = () => [...svg.querySelectorAll('.wpmf-node')];
     const byId = id => groups().find(g => attr(g, 'node-id') === id);
     const eventElement = e => {
@@ -64,6 +76,21 @@ function attachDrag(svgId, dotnet) {
     const clearDropTargets = () => groups().forEach(n => n.classList.remove('drop-target'));
     const nodeAt = (x, y) => document.elementFromPoint(x, y)?.closest?.('.wpmf-node') || null;
 
+    // گره‌های در حال کشیدن دقیقاً زیر نشانگر می‌مانند؛ اگر همچنان قابل‌برخورد (hit-test) باشند،
+    // elementFromPoint همیشه خودِ گرهٔ کشیده را برمی‌گرداند و «رهاکردن روی گرهٔ مقصد» هرگز
+    // تشخیص داده نمی‌شود. پس در طول کشیدن، نشانگر برای آن‌ها شفاف می‌شود.
+    const setHitTest = (list, enabled) => list.forEach(n => {
+        try { n.el.style.pointerEvents = enabled ? '' : 'none'; } catch { }
+    });
+    const restore = a => {
+        setHitTest(a.originals, true);
+        for (const n of a.originals) {
+            setAttr(n.el, 'x', n.x); setAttr(n.el, 'y', n.y);
+            n.el.setAttribute('transform', `translate(${n.x},${n.y})`);
+        }
+        refreshLinks();
+    };
+
     // شنونده‌ها روی window (فاز capture) ثبت می‌شوند تا حتی اگر نشانگر از SVG بیرون برود،
     // جابه‌جایی ادامه پیدا کند و pointerup از دست نرود.
     const listeners = [];
@@ -95,6 +122,7 @@ function attachDrag(svgId, dotnet) {
                 el: n, id: attr(n, 'node-id'), x: num(n, 'x'), y: num(n, 'y')
             }))
         };
+        setHitTest(active.originals, false);
         try { svg.setPointerCapture(e.pointerId); } catch { /* رویدادهای window کشیدن را کامل می‌کنند */ }
         e.preventDefault();
         e.stopPropagation();
@@ -105,6 +133,15 @@ function attachDrag(svgId, dotnet) {
     // پس شمارش کلیک‌ها داخل همان pointerup ای انجام می‌شود که کشیدن را می‌بندد
     // (شنوندهٔ جدا روی svg دیر اجرا می‌شد و drag هم «کلیک» حساب می‌شد).
     let lastClick = { id: null, at: 0 };
+
+    // کلیکِ بعد از کشیدن را ببلع تا نه انتخابِ ناخواسته رخ دهد و نه رندرِ زودهنگام Blazor
+    // گره را لحظه‌ای به جای قبلی برگرداند.
+    on(window, 'click', e => {
+        if (Date.now() > suppressClickUntil) return;
+        suppressClickUntil = 0;
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
 
     on(window, 'pointermove', e => {
         if (!active || active.pointerId !== e.pointerId) return;
@@ -135,6 +172,7 @@ function attachDrag(svgId, dotnet) {
         const candidateId = candidate && attr(candidate, 'node-id');
         const targetId = candidate && candidateId && !a.subtree.has(candidateId) ? candidateId : null;
         active = null; clearDropTargets();
+        setHitTest(a.originals, true);
         try { svg.releasePointerCapture(e.pointerId); } catch { }
 
         if (!a.moved || !p) {
@@ -155,6 +193,7 @@ function attachDrag(svgId, dotnet) {
         }
         // کشیدن واقعی بود: شمارندهٔ دوبار کلیک را پاک کن تا رهاکردن، کلیک حساب نشود.
         lastClick = { id: null, at: 0 };
+        suppressClickUntil = Date.now() + 400;
 
         const dx = p.x - a.start.x, dy = p.y - a.start.y;
         try {
@@ -162,22 +201,14 @@ function attachDrag(svgId, dotnet) {
                 a.originals.map(n => ({ id: n.id, x: n.x + dx, y: n.y + dy })), targetId);
         } catch (err) {
             // برگرداندن گره‌ها به جای اول (سرور/اینتراپ نپذیرفت)
-            for (const n of a.originals) {
-                setAttr(n.el, 'x', n.x); setAttr(n.el, 'y', n.y);
-                n.el.setAttribute('transform', `translate(${n.x},${n.y})`);
-            }
-            refreshLinks();
+            restore(a);
             console.warn('[MindFlow] ثبت جابه‌جایی گره انجام نشد', err);
         }
     };
     const cancel = e => {
         if (!active || active.pointerId !== e.pointerId) return;
         const a = active; active = null; clearDropTargets();
-        for (const n of a.originals) {
-            setAttr(n.el, 'x', n.x); setAttr(n.el, 'y', n.y);
-            n.el.setAttribute('transform', `translate(${n.x},${n.y})`);
-        }
-        refreshLinks();
+        restore(a);
         try { svg.releasePointerCapture(e.pointerId); } catch { }
     };
 
@@ -186,6 +217,7 @@ function attachDrag(svgId, dotnet) {
     svg.addEventListener('lostpointercapture', cancel, true);
 
     controller.detach = () => {
+        if (active) { const a = active; active = null; clearDropTargets(); restore(a); }
         for (const [target, type, handler, opts] of listeners) {
             try { target.removeEventListener(type, handler, opts); } catch { }
         }
@@ -193,6 +225,7 @@ function attachDrag(svgId, dotnet) {
         svg.removeEventListener('lostpointercapture', cancel, true);
         delete svg._wpMindFlowDragController;
         svg.removeAttribute('data-wp-mind-flow-drag');
+        if (registry[svgId] === controller) delete registry[svgId];
     };
     return true;
 }
@@ -200,9 +233,11 @@ function attachDrag(svgId, dotnet) {
 window.inventoryWorkProjectMindFlow = window.inventoryWorkProjectMindFlow || {};
 window.inventoryWorkProjectMindFlow.attachDrag = attachDrag;
 window.inventoryWorkProjectMindFlow.detachDrag = function (svgId) {
-    const svg = document.getElementById(svgId);
-    const c = svg?._wpMindFlowDragController;
-    if (c?.detach) c.detach();
+    // اول دفتر کنترلرها؛ چون svg ممکن است با رندر دوبارهٔ Blazor از DOM حذف شده باشد
+    // و getElementById دیگر همان عنصرِ دارای کنترلر را برنگرداند.
+    const registry = window.inventoryWorkProjectMindFlowControllers || {};
+    const controller = registry[svgId] || document.getElementById(svgId)?._wpMindFlowDragController;
+    if (controller?.detach) controller.detach();
 };
 
 /**

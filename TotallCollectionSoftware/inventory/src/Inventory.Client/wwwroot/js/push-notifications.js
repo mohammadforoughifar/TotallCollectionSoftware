@@ -8,10 +8,18 @@
     const decode = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - text.length % 4) % 4)), c => c.charCodeAt(0));
     const keyEquals = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
     const subscriptionData = sub => { const json = sub.toJSON(); return { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }; };
+    // شرکت فعال انتخاب‌شده در کمبوی بالای برنامه؛ بدون آن سرور شرکت پیش‌فرض کاربر را
+    // می‌گیرد و اعلان‌های شرکت دیگر را برمی‌گرداند.
+    function activeCompanyHeader() {
+        try {
+            const id = parseInt(localStorage.getItem('activeCompanyId') || '', 10);
+            return id > 0 ? { 'X-Company-Id': String(id) } : {};
+        } catch (_) { return {}; }
+    }
     async function request(root, token, path, data) {
         const response = await bounded(fetch(root.replace(/\/$/, '') + '/api/notifications/' + path, {
             method: data === undefined ? 'GET' : 'POST', cache: 'no-store',
-            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+            headers: Object.assign({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, activeCompanyHeader()),
             ...(data === undefined ? {} : { body: JSON.stringify(data) })
         }));
         let result = {};

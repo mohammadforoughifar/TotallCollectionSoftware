@@ -4,6 +4,7 @@ using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.HrCore;
 
@@ -349,6 +350,7 @@ public class HrCoreController : RbacControllerBase
         return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAlertsAsync(pagination: pagination), skip, take));
     }
 
+    [AllowInReadOnly]
     [HttpPost("contract-alerts/check")]
     public async Task<IActionResult> CheckAlerts([FromQuery] int days = 30)
     {
@@ -738,6 +740,7 @@ public class HrCoreController : RbacControllerBase
         return Ok(_reports.Meta(entity));
     }
 
+    [AllowInReadOnly]
     [HttpPost("reports/run")]
     public async Task<IActionResult> RunReport([FromBody] HrReportRunDto dto)
     {

@@ -35,12 +35,16 @@ Inventory.sln
 
 ## پایگاه داده
 
-**پیش‌فرض: SQL Server** — رشته اتصال در `src/Inventory.Api/appsettings.json`:
+**پیش‌فرض: SQL Server** — رشته اتصال در `src/Inventory.Api/appsettings.json`.
+
+> 🔐 رمز دیتابیس را در این فایل **ننویسید**؛ آن را در `appsettings.Local.json` (که در
+> `.gitignore` است) یا متغیر محیطی `ConnectionStrings__Default` بگذارید. هر رشته‌ای که
+> یک‌بار در مخزن برود، تا ابد در تاریخچهٔ گیت می‌ماند.
 
 ```json
 "Database": { "Provider": "SqlServer" },
 "ConnectionStrings": {
-  "Default": "Server=localhost;Database=InventoryDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;Encrypt=False"
+  "Default": "Server=localhost;Database=InventoryDb;Integrated Security=True;TrustServerCertificate=True;Encrypt=False"
 }
 ```
 

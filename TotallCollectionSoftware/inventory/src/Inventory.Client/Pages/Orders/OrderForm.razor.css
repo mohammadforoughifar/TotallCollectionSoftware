@@ -46,12 +46,12 @@
 .purchase-summary-main > div:last-child { border: 0; padding-inline-end: 0; }
 .purchase-summary-main span { display: block; color: #64748b; font-size: .75rem; }
 .purchase-summary-main strong { display: block; color: #1e293b; font-size: .86rem; font-weight: 600; overflow-wrap: anywhere; }
-.purchase-summary-main .purchase-summary-total strong { color: #4f46e5; font-size: 1.15rem; font-weight: 700; }
+.purchase-summary-main .purchase-summary-total strong { color: #4f46e5; font-size: 1.2rem; font-weight: 900; }
 .purchase-summary-breakdown { display: block; margin-top: .15rem; color: #64748b; font-size: .67rem; line-height: 1.5; overflow-wrap: anywhere; }
 .purchase-summary-pay { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)) minmax(0,1.4fr); align-items: center; gap: .75rem; padding: .65rem 1rem; border-top: 1px solid #eef2f7; background: #fbfcfe; }
 .purchase-summary-pay > div { display: flex; align-items: center; gap: .6rem; min-width: 0; font-size: .78rem; }
 .purchase-summary-pay span { color: #64748b; white-space: nowrap; }
-.purchase-summary-pay strong { color: #334155; font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.purchase-summary-pay strong { color: #334155; font-weight: 800; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .purchase-summary-pay .purchase-summary-remaining { justify-content: space-between; background: #eef2ff; border: 1px solid #e0e7ff; color: #4338ca; border-radius: 8px; padding: .35rem .65rem; }
 .purchase-summary-remaining span, .purchase-summary-remaining strong { color: #4338ca; }
 .purchase-summary-pay .purchase-summary-remaining.is-warning { background: #fffbeb; border-color: #fde68a; }
@@ -155,3 +155,45 @@
 .dated-price-note { display: block; color: #9a5814; font-size: .66rem; line-height: 1.5; margin-top: .2rem; }
 
 .invoice-price-hint { color: #526281; font-size: .73rem; line-height: 1.7; margin: 0 0 .45rem; }
+
+/* The reserved sale action column keeps history and delete on one baseline. */
+.purchase-items .last-purchase-action {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    flex: 0 0 auto; width: max-content; max-width: 100%; min-height: 36px;
+    margin-top: 0; padding: .3rem .55rem;
+    border: 1px solid #c7d2fe; border-radius: 9px;
+    background: #eef2ff; color: #4338ca; font: inherit; font-size: .78rem;
+    font-weight: 600; line-height: 1.5; white-space: nowrap;
+    word-break: normal; overflow-wrap: normal; cursor: pointer;
+}
+.purchase-items .last-purchase-action span { white-space: nowrap; }
+.purchase-items .last-purchase-action kbd {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    min-width: 28px; padding: .1rem .3rem; border: 1px solid #c7d2fe;
+    border-radius: 5px; background: #fff; color: #4338ca;
+    font: 600 11px/1.4 ui-monospace, monospace; white-space: nowrap;
+}
+.purchase-items .last-purchase-action:hover { background: #e0e7ff; border-color: #a5b4fc; }
+.purchase-items .last-purchase-action:focus-visible { outline: 2px solid #6366f1; outline-offset: 3px; }
+@media (max-width: 991px) {
+    .sale-items tbody td:first-child { padding-left: 0; grid-column: 1 / -1; }
+    .sale-items tbody td:last-child { position: static; grid-column: 1 / -1; justify-content: flex-end; }
+    .purchase-items .last-purchase-action { min-height: 40px; }
+}
+
+.purchase-items tbody .order-line-actions { gap: .4rem; white-space: nowrap; }
+.purchase-items tbody .order-line-actions > button { flex: 0 0 auto; }
+.purchase-items tbody .order-line-actions > .btn { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; min-height: 36px; padding: .3rem; border-radius: 8px; }
+/* Local wrapper opts out of the modal's full-width mobile buttons. */
+.invoice-footer-actions { display: flex; flex: 1 1 100%; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.invoice-footer-actions > .btn { flex: 0 0 auto; width: auto; min-height: 36px; padding: .4rem .85rem; border-radius: 8px; font-size: .8rem; line-height: 1.5; white-space: nowrap; box-shadow: none; }
+.invoice-footer-actions > .btn-primary { background: #4f46e5; border-color: #4f46e5; }
+.invoice-footer-actions > .btn-primary:hover { background: #4338ca; border-color: #4338ca; }
+.invoice-footer-actions > label { flex: 0 0 auto; }
+@media (max-width: 991px) {
+    .sale-items tbody .order-line-actions > .btn { min-width: 40px; min-height: 40px; }
+}
+@media (max-width: 575px) {
+    .invoice-footer-actions { gap: .4rem; }
+    .invoice-footer-actions > .btn { flex: 0 0 auto; min-height: 40px; padding: .4rem .65rem; font-size: .76rem; }
+}

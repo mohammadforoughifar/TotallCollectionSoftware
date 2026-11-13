@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    تست‌های موتور لایسنس — به سبک پروژه‌های تست موجود همین مخزن: برنامهٔ کنسولی با
+    متد Check()، نه xUnit. دلیل: کل ۲۵ پروژهٔ tests/ همین سبک‌اند و بدون نیاز به
+    test runner و فقط با اجرای سادهٔ پروژه (dotnet run) کار می‌کنند.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Inventory.Licensing/Inventory.Licensing.csproj" />
+    <!--
+      ارجاع به API برای تست پوشش مسیرها: باید همان میدل‌ور و رجیستری واقعی سنجیده شود،
+      نه یک کپی از فهرست پیشوندها. اگر این ارجاع نباشد، تست مسیرها بی‌معنا می‌شود.
+    -->
+    <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
+  </ItemGroup>
+</Project>

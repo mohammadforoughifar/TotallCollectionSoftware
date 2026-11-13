@@ -136,9 +136,19 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddInnerLetterDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        int created = 0;
         try
         {
-            var id = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
+            // هم‌خوان با نامهٔ وارده/صادره: اگر ثبت رکورد شکست بخورد، مصرف سهمیه هم برمی‌گردد.
+            var quota = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
+                Inventory.Licensing.Modules.ModuleCodes.Letters,
+                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
+                async () => created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync()),
+                entityType: "InnerLetter");
+            if (!quota.Allowed)
+                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = quota.Message });
+            var id = created;
             return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
@@ -507,7 +517,7 @@ public class InnerLettersController : RbacControllerBase
     }
 
     /// <summary>
-    /// آپلود پیوست — بدون محدودیت تعداد؛ هر فایل حداکثر ۲۰ مگابایت؛ فایل خالی رد می‌شود.
+    /// آپلود پیوست — بدون محدودیت تعداد و حجم؛ فقط فایل خالی رد می‌شود.
     /// هر کاربر حاضر در گردش نامه (فرستنده/گیرنده) یا مدیر می‌تواند پیوست اضافه کند.
     /// فایل‌ها در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شوند و در DB فقط اطلاعات + مسیر (FilePath) ثبت می‌شود.
     /// </summary>
@@ -522,15 +532,12 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
         // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // بدون بافر کردن کل فایل در حافظه — حجم پیوست سقف ندارد و فایل مستقیم روی دیسک نوشته می‌شود
+        await using var uploadStream = file.OpenReadStream();
 
         // فایل روی دیسک در wwwroot/uploads/office/innerletter/{letterId} ذخیره می‌شود
-        var relPath = await _store.SaveAsync(Module, id, ms, file.FileName);
+        var relPath = await _store.SaveAsync(Module, id, uploadStream, file.FileName);
 
         var att = new AppAttachment
         {
@@ -634,7 +641,7 @@ public class InnerLettersController : RbacControllerBase
     }
 
     /// <summary>
-    /// آپلود پیوست روی پیش‌نویس — همان قواعد ۲۰ مگابایت/فایل خالی.
+    /// آپلود پیوست روی پیش‌نویس — همان قواعد: بدون محدودیت حجم؛ فقط فایل خالی رد می‌شود.
     /// فایل‌ها در wwwroot/uploads/innerletter/pishnevis/{pishnevisId} ذخیره می‌شوند.
     /// </summary>
     [HttpPost("pishnevis/{id:int}/attachments")]
@@ -647,15 +654,12 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
-            return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
         // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
-        ms.Position = 0;
+        // بدون بافر کردن کل فایل در حافظه — حجم پیوست سقف ندارد و فایل مستقیم روی دیسک نوشته می‌شود
+        await using var uploadStream = file.OpenReadStream();
 
         // فایل پیش‌نویس زیر wwwroot/uploads/office/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود
-        var relPath = await _store.SaveAsync(Module, id, ms, file.FileName, "pishnevis");
+        var relPath = await _store.SaveAsync(Module, id, uploadStream, file.FileName, "pishnevis");
 
         Db.AppAttachments.Add(new AppAttachment
         {

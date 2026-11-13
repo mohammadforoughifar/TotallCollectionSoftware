@@ -3,6 +3,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -79,6 +80,17 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>گفتگو با دستیار.</summary>
+    /// <remarks>
+    /// <b>چرا در حالت فقط‌خواندنی مجاز است؟</b> دو دلیل، هر دو آگاهانه:
+    /// <list type="number">
+    ///   <item>این تنها کانال درون‌برنامه‌ای است که می‌تواند به کاربر بگوید «چرا ثبت بسته
+    ///   است و چه کاری کند»؛ بستنش کاربر را با خطاهای ۴۰۳ بی‌توضیح تنها می‌گذارد.</item>
+    ///   <item>متن گفتگو <b>دادهٔ کسب‌وکار مشتری نیست</b>؛ فقط حافظهٔ همان گفت‌وگوست.</item>
+    /// </list>
+    /// در عوض، در همین حالت (۱) هیچ تماس با مدل زبانی بیرونی زده نمی‌شود — موتور محلی
+    /// جواب می‌دهد ⇒ هزینهٔ API صفر، و (۲) همهٔ ابزارهای نوشتاری خاموش‌اند.
+    /// </remarks>
+    [AllowInReadOnly]
     [HttpPost("chat")]
     public async Task<IActionResult> Chat([FromBody] AiChatRequest req, CancellationToken ct)
     {
@@ -114,6 +126,11 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>حذف (بایگانی) گفتگو.</summary>
+    /// <remarks>
+    /// حذف گفتگوی خودِ کاربر — دادهٔ کسب‌وکار نیست و اگر بسته باشد، کاربر نمی‌تواند
+    /// حافظهٔ گفتگویی را که در حالت بدون لایسنس ساخته پاک کند.
+    /// </remarks>
+    [AllowInReadOnly]
     [HttpDelete("conversations/{id:int}")]
     public async Task<IActionResult> DeleteConversation(int id)
     {
@@ -227,6 +244,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ارسال فوری گزارش صبحگاهی به همه کاربران واجد شرایط (مدیر — برای تست).</summary>
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: این اکشن پیام می‌فرستد
     [HttpPost("briefing/send-now")]
     public async Task<IActionResult> BriefingSendNow(CancellationToken ct)
     {
@@ -248,6 +266,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ارسال فوری خلاصه هفته به مدیران واجد شرایط (مدیر — برای تست).</summary>
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: این اکشن پیام می‌فرستد
     [HttpPost("digest/send-now")]
     public async Task<IActionResult> DigestSendNow(CancellationToken ct)
     {
@@ -257,6 +276,7 @@ public class AiController : RbacControllerBase
     }
 
     /// <summary>ثبت امتیاز به یک پاسخ دستیار (§۲۴).</summary>
+    // ❌ در بازبینی چهارم از AllowInReadOnly خارج شد: نوشتن ردیف در دیتابیس است.
     [HttpPost("feedback/submit")]
     public async Task<IActionResult> FeedbackSubmit([FromBody] AiFeedbackSubmitRequest req, CancellationToken ct)
     {
