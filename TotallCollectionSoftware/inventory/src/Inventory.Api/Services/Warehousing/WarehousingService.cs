@@ -1,3 +1,4 @@
+using System.Data;
 using Db = Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -576,164 +577,189 @@ public class WarehousingService : IWarehousingService
 
     public async Task<InvProduct> SaveProductAsync(InvProduct dto)
     {
-        var name = (dto.Name ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("نام کالا الزامی است.");
-
-        var whSettings = await GetWarehousingSettingsAsync();
-        var code = (dto.Code ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(code))
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
         {
-            InvCategory? cat = null;
-            if (dto.CategoryId is > 0)
+            var name = (dto.Name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                throw new InvalidOperationException("نام کالا الزامی است.");
+
+            var whSettings = await GetWarehousingSettingsAsync();
+            var code = (dto.Code ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(code))
             {
-                var catFlat = await GetCategoriesFlatAsync();
-                cat = catFlat.FirstOrDefault(c => c.Id == dto.CategoryId);
+                InvCategory? cat = null;
+                if (dto.CategoryId is > 0)
+                {
+                    var catFlat = await GetCategoriesFlatAsync();
+                    cat = catFlat.FirstOrDefault(c => c.Id == dto.CategoryId);
+                }
+                var (_, _, generated) = await GenerateProductCodeAsync(cat, whSettings);
+                code = generated;
             }
-            var (_, _, generated) = await GenerateProductCodeAsync(cat, whSettings);
-            code = generated;
-        }
 
-        if (await _db.Products.AnyAsync(p => p.Code == code && p.Id != dto.Id))
-            throw new InvalidOperationException($"کالایی با کد «{code}» قبلاً ثبت شده است.");
+            if (await _db.Products.AnyAsync(p => p.Code == code && p.Id != dto.Id))
+                throw new InvalidOperationException($"کالایی با کد «{code}» قبلاً ثبت شده است.");
 
-        if (!string.IsNullOrWhiteSpace(dto.TaxCode))
-        {
-            var tc = dto.TaxCode.Trim();
-            if (tc.Length is < 5 or > 20)
-                throw new InvalidOperationException("کد (شناسه) کالای مالیاتی معتبر نیست.");
-            if (await _db.Products.AnyAsync(p => p.TaxCode == tc && p.Id != dto.Id))
-                throw new InvalidOperationException($"شناسه کالای مالیاتی «{tc}» برای کالای دیگری ثبت شده است.");
-        }
-
-        // ---------- بررسی یکتایی کد مالیاتی ----------
-
-        Db.Product entity;
-        if (dto.Id == 0)
-        {
-            entity = new Db.Product { CreatedAt = DateTime.Now };
-            _db.Products.Add(entity);
-        }
-        else
-        {
-            entity = await _db.Products.FindAsync(dto.Id)
-                     ?? throw new InvalidOperationException("کالا یافت نشد.");
-        }
-
-        ShopPricingService.ValidatePrice(dto.SalePrice);
-        var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
-            : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
-        decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
-            ? currentPrice.Price : entity.SalePrice;
-        await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
-        var catName = dto.CategoryId is > 0
-            ? (await _db.ProductCategories.FindAsync(dto.CategoryId.Value))?.Name
-            : null;
-
-        entity.Code = code;
-        entity.Name = name;
-        entity.EnName = NullIfEmpty(dto.EnName);
-        entity.CategoryId = dto.CategoryId is > 0 ? dto.CategoryId : null;
-        entity.Category = catName;
-        entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
-        entity.SecondUnit = NullIfEmpty(dto.SecondUnit);
-        entity.UnitFactor = dto.UnitFactor;
-        entity.Brand = NullIfEmpty(dto.Brand);
-        entity.Model = NullIfEmpty(dto.Model);
-        entity.PartNumber = NullIfEmpty(dto.PartNumber);
-        entity.Barcode = NullIfEmpty(dto.Barcode);
-        entity.IsActive = dto.IsActive;
-        entity.IsService = dto.IsService;
-
-        entity.PurchasePrice = dto.PurchasePrice;
-        entity.SalePrice = dto.SalePrice;
-        entity.SalePrice2 = dto.SalePrice2;
-        entity.TaxCode = NullIfEmpty(dto.TaxCode);
-        entity.TaxUnitCode = NullIfEmpty(dto.TaxUnitCode);
-        entity.IsVatIncluded = dto.IsVatIncluded;
-        entity.VatRate = dto.VatRate;
-        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
-            throw new InvalidOperationException("ارزش افزوده فاکتور باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
-        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
-        entity.DutyRate = dto.DutyRate;
-        entity.OtherTaxRate = dto.OtherTaxRate;
-        entity.CustomsCode = NullIfEmpty(dto.CustomsCode);
-        entity.CountryOfOrigin = NullIfEmpty(dto.CountryOfOrigin);
-
-        entity.WarehouseId = dto.WarehouseId is > 0 ? dto.WarehouseId : null;
-        entity.Valuation = dto.Valuation;
-        entity.ReorderPoint = dto.ReorderPoint;
-        entity.MaxStock = dto.MaxStock;
-        entity.MinOrderQty = dto.MinOrderQty;
-        entity.ShelfCode = NullIfEmpty(dto.ShelfCode);
-        entity.TrackBatch = dto.TrackBatch;
-        entity.TrackSerial = dto.TrackSerial;
-        entity.TrackExpiry = dto.TrackExpiry;
-        entity.ShelfLifeDays = dto.ShelfLifeDays;
-        entity.Weight = dto.Weight;
-        entity.Length = dto.Length;
-        entity.Width = dto.Width;
-        entity.Height = dto.Height;
-
-        entity.Description = NullIfEmpty(dto.Description);
-        entity.Note = NullIfEmpty(dto.Note);
-        entity.ImageUrl = NullIfEmpty(dto.ImageUrl);
-        if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
-            ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
-        await _db.SaveChangesAsync();
-
-        // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
-        var currentValues = await _db.ProductAttributeValues.Where(v => v.ProductId == entity.Id).ToListAsync();
-        var incomingAttrIds = dto.Attributes.Where(v => v.AttributeId > 0).Select(v => v.AttributeId).ToHashSet();
-        var toRemove = currentValues.Where(x => !incomingAttrIds.Contains(x.AttributeId)).ToList();
-        _db.ProductAttributeValues.RemoveRange(toRemove);
-
-        foreach (var v in dto.Attributes.Where(x => x.AttributeId > 0))
-        {
-            var row = currentValues.FirstOrDefault(x => x.AttributeId == v.AttributeId);
-            if (row is null)
+            if (!string.IsNullOrWhiteSpace(dto.TaxCode))
             {
-                row = new Db.ProductAttributeValue { ProductId = entity.Id, AttributeId = v.AttributeId };
-                _db.ProductAttributeValues.Add(row);
+                var tc = dto.TaxCode.Trim();
+                if (tc.Length is < 5 or > 20)
+                    throw new InvalidOperationException("کد (شناسه) کالای مالیاتی معتبر نیست.");
+                if (await _db.Products.AnyAsync(p => p.TaxCode == tc && p.Id != dto.Id))
+                    throw new InvalidOperationException($"شناسه کالای مالیاتی «{tc}» برای کالای دیگری ثبت شده است.");
             }
-            row.IsRequired = v.IsRequired;
-            row.OptionId = v.OptionId is > 0 ? v.OptionId : null;
-            row.TextValue = NullIfEmpty(v.TextValue);
-            row.NumberValue = v.NumberValue;
-            row.BoolValue = v.BoolValue;
-            row.DateValue = v.DateValue;
-        }
-        await _db.SaveChangesAsync();
 
-        return (await GetProductAsync(entity.Id))!;
+            // ---------- بررسی یکتایی کد مالیاتی ----------
+
+            Db.Product entity;
+            if (dto.Id == 0)
+            {
+                entity = new Db.Product { CreatedAt = DateTime.Now };
+                _db.Products.Add(entity);
+            }
+            else
+            {
+                entity = await _db.Products.FirstOrDefaultAsync(p => p.Id == dto.Id)
+                         ?? throw new InvalidOperationException("کالا یافت نشد.");
+            }
+
+            ShopPricingService.ValidatePrice(dto.SalePrice);
+            var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
+                : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
+            decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
+                ? currentPrice.Price : entity.SalePrice;
+            await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
+            var catName = dto.CategoryId is > 0
+                ? (await _db.ProductCategories.FindAsync(dto.CategoryId.Value))?.Name
+                : null;
+
+            entity.Code = code;
+            entity.Name = name;
+            entity.EnName = NullIfEmpty(dto.EnName);
+            entity.CategoryId = dto.CategoryId is > 0 ? dto.CategoryId : null;
+            entity.Category = catName;
+            entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
+            entity.SecondUnit = NullIfEmpty(dto.SecondUnit);
+            entity.UnitFactor = dto.UnitFactor;
+            entity.Brand = NullIfEmpty(dto.Brand);
+            entity.Model = NullIfEmpty(dto.Model);
+            entity.PartNumber = NullIfEmpty(dto.PartNumber);
+            entity.Barcode = NullIfEmpty(dto.Barcode);
+            entity.IsActive = dto.IsActive;
+            entity.IsService = dto.IsService;
+
+            entity.PurchasePrice = dto.PurchasePrice;
+            entity.SalePrice = dto.SalePrice;
+            entity.SalePrice2 = dto.SalePrice2;
+            entity.TaxCode = NullIfEmpty(dto.TaxCode);
+            entity.TaxUnitCode = NullIfEmpty(dto.TaxUnitCode);
+            entity.IsVatIncluded = dto.IsVatIncluded;
+            entity.VatRate = dto.VatRate;
+            if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+                throw new InvalidOperationException("ارزش افزوده فاکتور باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
+            entity.DutyRate = dto.DutyRate;
+            entity.OtherTaxRate = dto.OtherTaxRate;
+            entity.CustomsCode = NullIfEmpty(dto.CustomsCode);
+            entity.CountryOfOrigin = NullIfEmpty(dto.CountryOfOrigin);
+
+            entity.WarehouseId = dto.WarehouseId is > 0 ? dto.WarehouseId : null;
+            entity.Valuation = dto.Valuation;
+            entity.ReorderPoint = dto.ReorderPoint;
+            entity.MaxStock = dto.MaxStock;
+            entity.MinOrderQty = dto.MinOrderQty;
+            entity.ShelfCode = NullIfEmpty(dto.ShelfCode);
+            entity.TrackBatch = dto.TrackBatch;
+            entity.TrackSerial = dto.TrackSerial;
+            entity.TrackExpiry = dto.TrackExpiry;
+            entity.ShelfLifeDays = dto.ShelfLifeDays;
+            entity.Weight = dto.Weight;
+            entity.Length = dto.Length;
+            entity.Width = dto.Width;
+            entity.Height = dto.Height;
+
+            entity.Description = NullIfEmpty(dto.Description);
+            entity.Note = NullIfEmpty(dto.Note);
+            entity.ImageUrl = NullIfEmpty(dto.ImageUrl);
+            if (entity.Id == 0 || previousSalePrice != dto.SalePrice || !currentPrices.ContainsKey(entity.Id))
+                ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
+            await _db.SaveChangesAsync();
+
+            // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
+            var currentValues = await _db.ProductAttributeValues.Where(v => v.ProductId == entity.Id).ToListAsync();
+            var incomingAttrIds = dto.Attributes.Where(v => v.AttributeId > 0).Select(v => v.AttributeId).ToHashSet();
+            var toRemove = currentValues.Where(x => !incomingAttrIds.Contains(x.AttributeId)).ToList();
+            _db.ProductAttributeValues.RemoveRange(toRemove);
+
+            foreach (var v in dto.Attributes.Where(x => x.AttributeId > 0))
+            {
+                var row = currentValues.FirstOrDefault(x => x.AttributeId == v.AttributeId);
+                if (row is null)
+                {
+                    row = new Db.ProductAttributeValue { ProductId = entity.Id, AttributeId = v.AttributeId };
+                    _db.ProductAttributeValues.Add(row);
+                }
+                row.IsRequired = v.IsRequired;
+                row.OptionId = v.OptionId is > 0 ? v.OptionId : null;
+                row.TextValue = NullIfEmpty(v.TextValue);
+                row.NumberValue = v.NumberValue;
+                row.BoolValue = v.BoolValue;
+                row.DateValue = v.DateValue;
+            }
+            await _db.SaveChangesAsync();
+
+            var result = (await GetProductAsync(entity.Id))!;
+            await transaction.CommitAsync();
+            return result;
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     public async Task DeleteProductAsync(int id)
     {
-        // A product with substantive price changes is retained for audit.
-        if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
-            await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
-            throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
-        var entity = await _db.Products.FindAsync(id)
-                     ?? throw new InvalidOperationException("کالا یافت نشد.");
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            // A product with substantive price changes is retained for audit.
+            if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
+                await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
+                throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
+            var entity = await _db.Products.FirstOrDefaultAsync(p => p.Id == id)
+                         ?? throw new InvalidOperationException("کالا یافت نشد.");
 
-        if (await _db.InvDocLines.AnyAsync(l => l.ProductId == id))
-            throw new InvalidOperationException("برای این کالا سند انبار ثبت شده است؛ امکان حذف وجود ندارد. می‌توانید آن را غیرفعال کنید.");
+            if (await _db.InvDocLines.AnyAsync(l => l.ProductId == id))
+                throw new InvalidOperationException("برای این کالا سند انبار ثبت شده است؛ امکان حذف وجود ندارد. می‌توانید آن را غیرفعال کنید.");
 
-        if (await _db.TransactionLines.AnyAsync(l => l.ProductId == id))
-            throw new InvalidOperationException("این کالا در اسناد خرید/فروش استفاده شده است؛ امکان حذف وجود ندارد.");
+            if (await _db.TransactionLines.AnyAsync(l => l.ProductId == id) ||
+                await _db.ShopWarrantyItems.AnyAsync(i => i.ProductId == id) ||
+                await _db.RepairItems.AnyAsync(i => i.ProductId == id && i.WarrantyDecision != WarrantyDecision.Unspecified))
+                throw new InvalidOperationException("این کالا در اسناد یا پذیرش گارانتی استفاده شده است؛ امکان حذف وجود ندارد.");
 
-        var values = await _db.ProductAttributeValues.Where(v => v.ProductId == id).ToListAsync();
-        _db.ProductAttributeValues.RemoveRange(values);
+            var values = await _db.ProductAttributeValues.Where(v => v.ProductId == id).ToListAsync();
+            _db.ProductAttributeValues.RemoveRange(values);
 
-        var invStocks = await _db.InvStocks.Where(s => s.ProductId == id).ToListAsync();
-        _db.InvStocks.RemoveRange(invStocks);
+            var invStocks = await _db.InvStocks.Where(s => s.ProductId == id).ToListAsync();
+            _db.InvStocks.RemoveRange(invStocks);
 
-        var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
-        _db.Stocks.RemoveRange(stocks);
+            var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
+            _db.Stocks.RemoveRange(stocks);
 
-        _db.Products.Remove(entity);
-        await _db.SaveChangesAsync();
+            _db.Products.Remove(entity);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     public async Task<List<LookupItem>> GetProductLookupsAsync(string? search = null, int? warehouseId = null, Paging.Request? pagination = null)

@@ -8,17 +8,6 @@ using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services.ItAssets;
 
-/// <summary>
-/// Kavenegar settings. Keep ApiKey in a secret store or Kavenegar__ApiKey environment variable;
-/// the key is part of Kavenegar's URL path, so this service deliberately uses a non-logging HttpClient.
-/// </summary>
-public sealed class KavenegarSmsOptions
-{
-    public string ApiKey { get; set; } = "";
-    public string Sender { get; set; } = "";
-    public int TimeoutSeconds { get; set; } = 20;
-}
-
 public interface IWorkOrderSmsService
 {
     bool IsConfigured { get; }

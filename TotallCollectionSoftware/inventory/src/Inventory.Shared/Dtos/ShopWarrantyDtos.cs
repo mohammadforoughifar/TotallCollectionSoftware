@@ -21,10 +21,17 @@ public class ShopWarrantyDto
     public DateTime ReceivedAt { get; set; }
     public DateTime? FinalizedAt { get; set; }
     public int? StockTransactionId { get; set; }
+    public int ChargePolicyVersion { get; set; }
+    public int? ChargeTransactionId { get; set; }
+    public string? ChargeTransactionNumber { get; set; }
+    public decimal SettledAmount { get; set; }
+    public decimal CustomerAmount => FinalizedAt.HasValue && ChargePolicyVersion == 0 ? 0m :
+        Items.Sum(i => i.CustomerAmount);
+    public decimal UnpaidAmount => FinalizedAt.HasValue ? Math.Max(0m, CustomerAmount - SettledAmount) : 0m;
     // The legacy top-level device fields mirror the first device for older clients.
     public List<ShopWarrantyDeviceDto> Devices { get; set; } = new();
     public List<ShopWarrantyItemDto> Items { get; set; } = new();
-    public decimal InternalCost => Items.Where(i => i.ProductId is null or 0 || i.Supplied)
+    public decimal InternalCost => Items.Where(i => i.ProductId is null or 0 ? i.Performed : i.Supplied)
         .Sum(i => decimal.Round(i.Quantity * i.UnitCost, 0, MidpointRounding.AwayFromZero));
 }
 
@@ -46,8 +53,13 @@ public class ShopWarrantyItemDto
     public string? ProductName { get; set; }
     public decimal Quantity { get; set; } = 1;
     public decimal UnitCost { get; set; }
+    public decimal? CustomerUnitPrice { get; set; }
     public WarrantyDecision Decision { get; set; }
     public bool Supplied { get; set; }
+    public bool Performed { get; set; } = true;
+    public bool IsChargeable => Decision == WarrantyDecision.Rejected && (ProductId is null or 0 ? Performed : Supplied);
+    public decimal CustomerAmount => IsChargeable && CustomerUnitPrice.HasValue
+        ? decimal.Round(Quantity * CustomerUnitPrice.Value, 0, MidpointRounding.AwayFromZero) : 0m;
 }
 
 public class ShopWarrantyLookupsDto

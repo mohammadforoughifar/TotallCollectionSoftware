@@ -1,5 +1,24 @@
 namespace Inventory.Shared.Dtos;
 
+public enum RepairSmsEventType { Registration = 1, Ready = 2 }
+public enum RepairSmsStatus
+{
+    Pending = 1, Sending = 2, Accepted = 3, Delivered = 4, Failed = 5,
+    Unknown = 6, InvalidMobile = 7, Disabled = 8, NotConfigured = 9, Cancelled = 10,
+    ModuleDisabled = 11, InvalidCompanyName = 12, InvalidRepairNumber = 13
+}
+
+/// <summary>وضعیت پیامک این پذیرش؛ شماره و متن پیام در این خروجی تکرار نمی‌شوند.</summary>
+public class RepairSmsNotificationDto
+{
+    public RepairSmsEventType EventType { get; set; }
+    public RepairSmsStatus Status { get; set; }
+    public long? ProviderMessageId { get; set; }
+    public int? ProviderCode { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+}
+
 /// <summary>تعمیرکار مجموعه.</summary>
 public class Technician
 {
@@ -52,6 +71,8 @@ public class RepairOrderDto
 
     /// <summary>شناسه فاکتور فروش صادرشده</summary>
     public int? InvoiceTransactionId { get; set; }
+    public bool WarrantyProcessed { get; set; }
+    public int? WarrantyStockTransactionId { get; set; }
 
     /// <summary>شماره فاکتور فروش صادرشده (پر شده توسط سرور)</summary>
     public string? InvoiceNumber { get; set; }
@@ -64,6 +85,9 @@ public class RepairOrderDto
 
     /// <summary>کارها و قطعات مصرفی مشترکِ کل پذیرش.</summary>
     public List<RepairItemDto> Items { get; set; } = new();
+
+    /// <summary>فقط خروجی سرور؛ تغییر این فهرست از سوی کلاینت باعث ارسال نمی‌شود.</summary>
+    public List<RepairSmsNotificationDto> SmsNotifications { get; set; } = new();
 
     // ---------- جمع‌های محاسباتی (پر شده توسط سرور) ----------
 
@@ -108,6 +132,19 @@ public class RepairItemDto
 
     /// <summary>مبلغ دریافتی از مشتری</summary>
     public decimal Price { get; set; }
+
+    /// <summary>عادی، گارانتی پذیرفته یا گارانتی ردشده.</summary>
+    public WarrantyDecision WarrantyDecision { get; set; }
+    /// <summary>فقط برای قطعه گارانتی؛ قطعه استفاده‌نشده نه هزینه و نه بدهی ایجاد می‌کند.</summary>
+    public bool WarrantySupplied { get; set; } = true;
+    public bool WarrantyPerformed { get; set; } = true;
+    public bool ProductIsService { get; set; }
+    public bool IsUnusedWarrantyPart => WarrantyDecision != WarrantyDecision.Unspecified &&
+        ProductId is > 0 && !ProductIsService && !WarrantySupplied;
+    public bool IsUnperformedWarrantyWork => WarrantyDecision != WarrantyDecision.Unspecified &&
+        (ProductId is null or 0 || ProductIsService) && !WarrantyPerformed;
+    public decimal CustomerUnitPrice => WarrantyDecision == WarrantyDecision.Accepted || IsUnusedWarrantyPart || IsUnperformedWarrantyWork ? 0m : Price;
+    public decimal EffectiveUnitCost => IsUnusedWarrantyPart || IsUnperformedWarrantyWork ? 0m : Cost;
 }
 
 /// <summary>درخواست صدور فاکتور فروش از روی پذیرش تعمیر.</summary>

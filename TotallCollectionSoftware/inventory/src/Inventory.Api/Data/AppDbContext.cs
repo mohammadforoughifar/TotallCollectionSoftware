@@ -175,6 +175,7 @@ public class AppDbContext : DbContext
     public DbSet<RepairOrder> RepairOrders => Set<RepairOrder>();
     public DbSet<RepairDevice> RepairDevices => Set<RepairDevice>();
     public DbSet<RepairItem> RepairItems => Set<RepairItem>();
+    public DbSet<RepairSmsNotification> RepairSmsNotifications => Set<RepairSmsNotification>();
     public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
 
     // ================== درخواست خدمت آی‌تی ==================
@@ -293,6 +294,7 @@ public class AppDbContext : DbContext
     public DbSet<SystemHandover> SystemHandovers => Set<SystemHandover>();
     public DbSet<SystemRemoteCommand> SystemRemoteCommands => Set<SystemRemoteCommand>();
     public DbSet<SystemCompany> SystemCompanies => Set<SystemCompany>();
+    public DbSet<CompanySmsSetting> CompanySmsSettings => Set<CompanySmsSetting>();
     public DbSet<UserCompanyAccess> UserCompanyAccesses => Set<UserCompanyAccess>();
     public DbSet<SystemDepartment> SystemDepartments => Set<SystemDepartment>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
@@ -654,6 +656,8 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(c => c.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<CompanySmsSetting>().HasKey(x => new { x.CompanyId, x.ModuleKey });
+        mb.Entity<CompanySmsSetting>().HasOne<SystemCompany>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
@@ -833,10 +837,13 @@ public class AppDbContext : DbContext
         mb.Entity<ShopWarranty>().HasOne(w => w.Warehouse).WithMany().HasForeignKey(w => w.WarehouseId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopWarranty>().HasOne(w => w.StockTransaction).WithMany().HasForeignKey(w => w.StockTransactionId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopWarranty>().HasIndex(w => w.StockTransactionId).IsUnique().HasFilter("[StockTransactionId] IS NOT NULL");
+        mb.Entity<ShopWarranty>().HasOne(w => w.ChargeTransaction).WithMany().HasForeignKey(w => w.ChargeTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ShopWarranty>().HasIndex(w => w.ChargeTransactionId).IsUnique().HasFilter("[ChargeTransactionId] IS NOT NULL");
         mb.Entity<ShopWarrantyDevice>().HasOne(d => d.ShopWarranty).WithMany(w => w.Devices).HasForeignKey(d => d.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<ShopWarrantyDevice>().HasIndex(d => new { d.ShopWarrantyId, d.Position }).IsUnique();
         mb.Entity<ShopWarrantyItem>().Property(i => i.Quantity).HasPrecision(18, 3);
         mb.Entity<ShopWarrantyItem>().Property(i => i.UnitCost).HasPrecision(18, 2);
+        mb.Entity<ShopWarrantyItem>().Property(i => i.CustomerUnitPrice).HasPrecision(18, 2);
         mb.Entity<ShopWarrantyItem>().HasOne(i => i.ShopWarranty).WithMany(w => w.Items).HasForeignKey(i => i.ShopWarrantyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<ShopWarrantyItem>().HasOne(i => i.Product).WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Restrict);
 
@@ -990,10 +997,15 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // ---------- تعمیرات ----------
+        mb.Entity<RepairSmsNotification>().HasIndex(x => new { x.RepairOrderId, x.EventType }).IsUnique();
+        mb.Entity<RepairSmsNotification>().HasIndex(x => new { x.Status, x.CreatedAtUtc });
+        mb.Entity<RepairSmsNotification>().HasOne<RepairOrder>().WithMany().HasForeignKey(x => x.RepairOrderId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<RepairOrder>().HasIndex(r => r.Status);
         mb.Entity<RepairOrder>().HasIndex(r => r.PartyId);
         mb.Entity<RepairOrder>().HasIndex(r => r.TechnicianId);
         mb.Entity<RepairOrder>().Property(r => r.QuotedPrice).HasPrecision(18, 2);
+        mb.Entity<RepairOrder>().HasOne<Transaction>().WithMany().HasForeignKey(r => r.WarrantyStockTransactionId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<RepairOrder>().HasIndex(r => r.WarrantyStockTransactionId).IsUnique().HasFilter("[WarrantyStockTransactionId] IS NOT NULL");
         mb.Entity<RepairOrder>()
             .HasMany(r => r.Devices)
             .WithOne()
@@ -1923,6 +1935,8 @@ public class AppDbContext : DbContext
         mb.Entity<InstallmentLine>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<Technician>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairOrder>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<CompanySmsSetting>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<RepairSmsNotification>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairDevice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<RepairItem>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
     }

@@ -1,0 +1,117 @@
+@namespace Inventory.Client.Pages
+@inject IApiClient Api
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<Modal Visible="true" Title="@($"تسویه بدهی — {DocumentNumber}")" Size="modal-lg" OnClose="Close">
+    <ChildContent>
+        @if (loading) { <div class="text-center p-3" role="status">در حال دریافت مانده…</div> }
+        else if (state is not null)
+        {
+            <div class="d-flex flex-wrap gap-3 p-2 rounded border bg-light mb-3 fs-8">
+                <div>مانده کل: <b class="num text-danger">@state.Outstanding.MoneyExact()</b> ریال</div>
+                <div>نسیه قابل دریافت: <b class="num">@state.AvailableCredit.MoneyExact()</b> ریال</div>
+                @if (state.ReservedForCheques > 0 || state.ReservedForInstallments > 0)
+                { <div class="text-muted">چک و اقساط جداگانه تسویه می‌شوند.</div> }
+            </div>
+            @if (CanManage && state.AvailableCredit > 0)
+            {
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-4"><label class="form-label">مبلغ دریافتی (ریال)</label><input class="form-control num" dir="ltr" inputmode="numeric" value="@amountText" @oninput="e => amountText = Fa.FormatTyping(e.Value?.ToString())" /></div>
+                    <div class="col-md-4"><label class="form-label">حساب مقصد *</label><select class="form-select" @bind="accountId"><option value="0">انتخاب صندوق / بانک</option>@foreach (var a in accounts) { <option value="@a.Id">@a.Name</option> }</select></div>
+                    <div class="col-md-4"><label class="form-label">تاریخ دریافت *</label><DatePicker @bind-Value="date" /></div>
+                    <div class="col-12"><button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Receive"><i class="bi bi-cash-coin ms-1"></i> ثبت دریافت واقعی</button></div>
+                </div>
+            }
+            <div class="fw-700 fs-8 mb-2">سابقه دریافت‌ها</div>
+            @if (state.Receipts.Count == 0) { <div class="text-muted fs-8">دریافتی ثبت نشده است.</div> }
+            else
+            {
+                @if (CanManage) { <div class="mb-2" style="max-width:220px"><label class="form-label fs-8">تاریخ لغو دریافت</label><DatePicker @bind-Value="reversalDate" /></div> }
+                <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>تاریخ</th><th>حساب</th><th>مبلغ (ریال)</th><th>وضعیت</th><th></th></tr></thead><tbody>
+                    @foreach (var receipt in state.Receipts)
+                    {
+                        <tr><td class="num">@receipt.Date.ToFa()</td><td>@receipt.AccountName</td><td class="num">@receipt.Amount.MoneyExact()</td>
+                            <td>@(receipt.ReversalDate.HasValue ? $"لغو در {receipt.ReversalDate.Value.ToFa()}" : "ثبت‌شده")</td><td>
+                                @if (CanManage && !receipt.ReversalDate.HasValue) { <button class="btn btn-sm btn-light text-danger" disabled="@saving" @onclick="() => Reverse(receipt)">لغو دریافت</button> }
+                            </td></tr>
+                    }
+                </tbody></table></div>
+            }
+        }
+    </ChildContent>
+    <Footer><button class="btn btn-light" disabled="@saving" @onclick="Close">بستن</button></Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public string DocumentNumber { get; set; } = "";
+    [Parameter, EditorRequired] public string StateUrl { get; set; } = "";
+    [Parameter, EditorRequired] public string ReceiptUrl { get; set; } = "";
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ShopOrderCreditState? state;
+    private List<TrsAccount> accounts = new();
+    private string amountText = "";
+    private int accountId;
+    private DateTime? date = DateTime.Today, reversalDate = DateTime.Today;
+    private Guid operationId = Guid.NewGuid();
+    private readonly Dictionary<int, Guid> reversalIds = new();
+    private bool loading, saving;
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            state = await Api.GetAsync<ShopOrderCreditState>(StateUrl);
+            accounts = CanManage && state.AvailableCredit > 0
+                ? await Api.GetAsync<List<TrsAccount>>("api/repairs/accounts") : new();
+            amountText = Fa.FormatTyping(state.AvailableCredit.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+    private async Task Close() { if (!saving) await OnClose.InvokeAsync(); }
+    private async Task Receive()
+    {
+        if (saving || state is null || !CanManage) return;
+        var amount = Fa.ParseDecimal(amountText);
+        if (amount <= 0 || amount > state.AvailableCredit || decimal.Truncate(amount) != amount)
+        { Toast.Error("مبلغ دریافت باید ریال صحیح، بیشتر از صفر و حداکثر برابر نسیه آزاد باشد."); return; }
+        if (accountId <= 0 || !date.HasValue) { Toast.Error("حساب مقصد و تاریخ دریافت را انتخاب کنید."); return; }
+        saving = true;
+        try
+        {
+            await Api.PostAsync<object>(ReceiptUrl, new ShopOrderCreditReceiptCommand
+                { OperationId = operationId, TrsAccountId = accountId, Amount = amount, Date = date.Value });
+            operationId = Guid.NewGuid();
+            Toast.Success("دریافت واقعی ثبت شد و از بدهی کسر گردید.");
+            state = null; // never permit a second submit against a stale balance if refresh fails
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private async Task Reverse(ShopOrderCreditReceiptDto receipt)
+    {
+        if (saving || !CanManage || !reversalDate.HasValue) return;
+        if (!await JS.InvokeAsync<bool>("confirm", "این دریافت با حفظ سابقه لغو شود؟")) return;
+        if (!reversalIds.TryGetValue(receipt.Id, out var operation)) reversalIds[receipt.Id] = operation = Guid.NewGuid();
+        saving = true;
+        try
+        {
+            await Api.PostAsync<object>($"{ReceiptUrl}/{receipt.Id}/reverse", new ShopOrderCreditReversalCommand
+                { OperationId = operation, Date = reversalDate.Value });
+            Toast.Success("لغو دریافت ثبت شد.");
+            state = null;
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

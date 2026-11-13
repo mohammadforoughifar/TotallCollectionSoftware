@@ -94,7 +94,7 @@ public static class RepairInvoicePrint
 
         if (hasInvoice)
         {
-            var repairItems = repair.Items.Where(i => i.Price > 0).OrderBy(i => i.Id).ToList();
+            var repairItems = repair.Items.Where(i => i.CustomerUnitPrice > 0).OrderBy(i => i.Id).ToList();
             var lines = invoice!.Lines.OrderBy(i => i.Id).ToList();
             var unmatchedRepairItems = repairItems.ToList();
             for (var i = 0; i < lines.Count; i++)
@@ -126,13 +126,14 @@ public static class RepairInvoicePrint
             {
                 var it = items[i];
                 var desc = !string.IsNullOrWhiteSpace(it.Description) ? it.Description : (it.ProductName ?? "خدمت تعمیراتی");
-                var total = it.Quantity * it.Price;
+                var total = repair.Items.Any(x => x.WarrantyDecision != WarrantyDecision.Unspecified)
+                    ? ShopInvoiceAmounts.Gross(it.Quantity, it.CustomerUnitPrice) : it.Quantity * it.Price;
                 sb.Append("<tr><td class=\"num-cell\">").Append((i + 1).Num()).Append("</td><td><strong>")
                     .Append(Esc(desc)).Append("</strong>");
                 if (!string.IsNullOrWhiteSpace(it.ProductName) && !string.Equals(desc, it.ProductName, StringComparison.Ordinal))
                     sb.Append("<small class=\"subline\">").Append(Esc(it.ProductName)).Append("</small>");
                 sb.Append("</td><td class=\"qty-cell\">").Append(it.Quantity.Qty())
-                    .Append("</td><td class=\"money-cell\">").Append(it.Price.Money())
+                    .Append("</td><td class=\"money-cell\">").Append(it.CustomerUnitPrice.Money())
                     .Append("</td><td class=\"money-cell total-cell\">").Append(total.Money()).Append("</td></tr>");
             }
             if (items.Count == 0)
@@ -143,9 +144,10 @@ public static class RepairInvoicePrint
         sb.Append("</tbody></table></section>");
 
         // Grand Total
-        decimal totalAmount = hasInvoice ? invoice!.TotalAmount : (repair.TotalPrice > 0 ? repair.TotalPrice : repair.QuotedPrice);
-        string totalLabel = hasInvoice ? "مبلغ قابل پرداخت" : (repair.TotalPrice > 0 ? "مجموع خدمات و قطعات" : "برآورد اولیه هزینه");
-        string totalSub = hasInvoice ? "جمع نهایی فاکتور فروش" : (repair.TotalPrice > 0 ? "مبلغ جاری پذیرش" : "برآورد تخمینی اعلام‌شده");
+        var hasWarrantyRows = repair.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified);
+        decimal totalAmount = hasInvoice ? invoice!.TotalAmount : (hasWarrantyRows ? repair.TotalPrice : (repair.TotalPrice > 0 ? repair.TotalPrice : repair.QuotedPrice));
+        string totalLabel = hasInvoice ? "مبلغ قابل پرداخت" : (repair.TotalPrice > 0 || hasWarrantyRows ? "مجموع خدمات و قطعات" : "برآورد اولیه هزینه");
+        string totalSub = hasInvoice ? "جمع نهایی فاکتور فروش" : (repair.TotalPrice > 0 || hasWarrantyRows ? "مبلغ جاری پذیرش" : "برآورد تخمینی اعلام‌شده");
 
         sb.Append("<section class=\"grand-total\"><div><span>").Append(totalLabel).Append("</span><small>")
             .Append(totalSub).Append("</small></div><strong>")

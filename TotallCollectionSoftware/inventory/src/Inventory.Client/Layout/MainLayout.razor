@@ -1615,6 +1615,15 @@ else
             return allowed;
         }
 
+        // SMS settings have their own permission and are accessible to shop-only users;
+        // the generic settings/ERP guard below must not intercept this route.
+        if (p == "settings/sms-service" || p.StartsWith("settings/sms-service/"))
+        {
+            var allowed = Auth.IsAdmin || Auth.Has("SmsSettings.Read") || Auth.Has("SmsSettings.Update");
+            if (!allowed) deniedTitle = "سرویس پیامکی";
+            return allowed;
+        }
+
         foreach (var (prefix, perm, title) in RouteGuards)
         {
             if (!p.StartsWith(prefix)) continue;

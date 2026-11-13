@@ -218,6 +218,9 @@ builder.Services.AddScoped<ForoughAryaHrUsers>(); // کاربران مجاز م�
 builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت اختصاصی فروغ آریا (FaHrPersonnel)
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.RepairSmsDispatcher>();
+builder.Services.AddScoped<ICompanySmsRevocationHandler, Inventory.Api.Services.Repairs.RepairSmsRevocationHandler>();
+builder.Services.AddHostedService<Inventory.Api.Services.Repairs.RepairSmsWorker>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();
@@ -260,6 +263,8 @@ builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory.Api.Services.FaCom.FaComService>(); // FaCom — ارتباطات داخلی
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
 builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(builder.Configuration.GetSection("KavenegarSms"));
+// SDK برای صف تعمیرات استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
+builder.Services.AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>();
 builder.Services.Configure<Inventory.Api.Services.Core.UserProfileOtpOptions>(builder.Configuration.GetSection("ProfileOtp"));
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery>();
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserProfileService, Inventory.Api.Services.Core.UserProfileService>();

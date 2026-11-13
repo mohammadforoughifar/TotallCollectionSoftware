@@ -99,6 +99,12 @@ public static class ShopOrderCreditPosting
         if (cmd.OperationId == Guid.Empty || cmd.TrsAccountId <= 0 || cmd.Date == default ||
             cmd.Amount <= 0 || cmd.Amount > MaxMoney || decimal.Round(cmd.Amount, 2) != cmd.Amount || user?.Length > 120)
             throw new InvalidOperationException("شناسه عملیات، مبلغ، تاریخ یا حساب نسیه معتبر نیست.");
+        // Warranty-priced invoices are issued in whole rials. Enforce the same
+        // rule on every receipt route, including the generic shop invoice API.
+        if (cmd.Amount != decimal.Truncate(cmd.Amount) &&
+            (await db.ShopWarranties.AnyAsync(w => w.ChargeTransactionId == orderId) ||
+             await db.RepairOrders.AnyAsync(r => r.WarrantyProcessed && r.InvoiceTransactionId == orderId)))
+            throw new InvalidOperationException("مبلغ دریافت گارانتی باید به ریال صحیح ثبت شود.");
         var date = cmd.Date.Date;
         // Ignore filters for globally unique IDs, but never reveal or reuse another company's operation.
         var prior = await db.ShopOrderCreditReceipts.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.OperationId == cmd.OperationId);

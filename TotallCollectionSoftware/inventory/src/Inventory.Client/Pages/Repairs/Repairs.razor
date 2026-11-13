@@ -3,7 +3,7 @@
 @page "/repairs"
 @using Inventory.Client.Pages.Orders
 @inject IRepairService RepairSvc
-@inject IOrderService OrderSvc
+@inject IApiClient Api
 @inject ISettingsService SettingsSvc
 @inject IDashboardService DashboardSvc
 @inject IPartyService PartySvc
@@ -396,7 +396,13 @@
                                 <td class="num fs-8">@(r.DeliveredAt.HasValue ? r.DeliveredAt.Value.ToFa() : "—")</td>
                                 <td class="text-start num">@r.TotalPrice.Money()</td>
                                 <td class="text-start num fw-700 @(r.Profit >= 0 ? "text-success" : "text-danger")">@r.Profit.Money()</td>
-                                <td>@StatusBadge(r)</td>
+                                <td>
+                                    @StatusBadge(r)
+                                    @if (!string.IsNullOrEmpty(SmsSummary(r)))
+                                    {
+                                        <div class="fs-8 @SmsSummaryCss(r) mt-1"><i class="bi bi-chat-left-text"></i> @SmsSummary(r)</div>
+                                    }
+                                </td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
                                     <button class="btn btn-sm btn-light text-primary" title="چاپ فیش تحویل دستگاه" @onclick="() => PrintDeliveryReceipt(r)">
@@ -408,7 +414,11 @@
                                             <i class="bi bi-receipt"></i>
                                         </button>
                                     }
-                                    @if (r.InvoiceTransactionId is null)
+                                    @if (r.WarrantyProcessed && r.InvoiceTransactionId is > 0)
+                                    {
+                                        <button class="btn btn-sm btn-light text-primary" title="مانده و تسویه" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin"></i></button>
+                                    }
+                                    @if (r.InvoiceTransactionId is null && !r.WarrantyProcessed)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
                                         <button class="btn btn-sm btn-light" title="تبدیل به فروش و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
@@ -441,6 +451,10 @@
                                 <div class="fs-8 text-muted text-truncate"><i class="bi bi-person"></i> @r.PartyName
                                     @if (!string.IsNullOrWhiteSpace(PartyTel(r))) { <span class="num" dir="ltr"> — @PartyTel(r)</span> }
                                 </div>
+                                @if (!string.IsNullOrEmpty(SmsSummary(r)))
+                                {
+                                    <div class="fs-8 @SmsSummaryCss(r)"><i class="bi bi-chat-left-text"></i> @SmsSummary(r)</div>
+                                }
                             </div>
                         </div>
                         <div class="m-card-body">
@@ -477,9 +491,10 @@
                                 <button class="btn btn-light text-success" @onclick="() => PrintInvoice(r)">
                                     <i class="bi bi-receipt"></i> فاکتور فروش
                                 </button>
+                                @if (r.WarrantyProcessed) { <button class="btn btn-light text-primary" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin"></i> مانده / تسویه</button> }
                                 <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
                             }
-                            else
+                            else if (!r.WarrantyProcessed)
                             {
                                 <button class="btn btn-light text-primary" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil"></i> ویرایش</button>
                                 <button class="btn btn-light text-success" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt"></i> تبدیل به فروش</button>
@@ -668,7 +683,21 @@
                                 var i = idx;
                                 var rowProfit = ItemProfit(i);
                                 <tr>
-                                    <td><input class="form-control form-control-sm" @bind="form.Items[i].Description" /></td>
+                                    <td>
+                                        <input class="form-control form-control-sm" @bind="form.Items[i].Description" />
+                                        <select class="form-select form-select-sm mt-1" aria-label="نوع ردیف تعمیر یا گارانتی" value="@form.Items[i].WarrantyDecision" @onchange="e => SetItemDecision(i, e)">
+                                            <option value="@WarrantyDecision.Unspecified">تعمیر عادی</option>
+                                            <option value="@WarrantyDecision.Accepted">گارانتی پذیرفته — رایگان</option>
+                                            <option value="@WarrantyDecision.Rejected">گارانتی پذیرفته‌نشده</option>
+                                        </select>
+                                        @if (form.Items[i].WarrantyDecision != WarrantyDecision.Unspecified)
+                                        {
+                                            @if (IsWarrantyPart(i))
+                                            { <label class="form-check-label fs-8"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantySupplied" /> قطعه تحویل / مصرف شد</label> }
+                                            else
+                                            { <label class="form-check-label fs-8"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantyPerformed" /> کار انجام شد</label> }
+                                        }
+                                    </td>
                                     <td>
                                         <SearchSelect Items="productLookup" Value="form.Items[i].ProductId ?? 0"
                                                       ValueChanged="v => OnItemProduct(i, v)"
@@ -685,7 +714,10 @@
                                     </td>
                                     <td><input class="form-control form-control-sm num" value="@itemQty[i]" @oninput="@(e => itemQty[i] = e.Value?.ToString() ?? "1")" inputmode="decimal" dir="ltr" /></td>
                                     <td><input type="text" class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
-                                    <td><input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
+                                    <td><input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" disabled="@(form.Items[i].WarrantyDecision == WarrantyDecision.Accepted || !ItemDone(i))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" />
+                                        @if (form.Items[i].WarrantyDecision == WarrantyDecision.Rejected && ItemDone(i)) { <small class="text-muted">قیمت مشتری را دستی وارد کنید</small> }
+                                        else if (form.Items[i].WarrantyDecision == WarrantyDecision.Accepted) { <small class="text-muted">رایگان برای مشتری</small> }
+                                    </td>
                                     <td class="text-start num @(rowProfit >= 0 ? "text-success" : "text-danger")">
                                         <div class="fw-700">@rowProfit.Money()</div>
                                         <small class="d-block text-muted">هر واحد: @ItemUnitProfit(i).Money()</small>
@@ -749,6 +781,33 @@
                     <div class="repair-view-shared-item"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
                 }
             </div>
+            <section class="border rounded p-3 mb-3" aria-label="وضعیت پیامک مشتری">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <h6 class="mb-0"><i class="bi bi-chat-left-text ms-1"></i> پیامک مشتری</h6>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefreshSmsStatus" disabled="@refreshingSms">
+                        <i class="bi bi-arrow-clockwise"></i> بروزرسانی وضعیت
+                    </button>
+                </div>
+                @if (viewing.SmsNotifications is not { Count: > 0 })
+                {
+                    <div class="fs-8 text-muted">رویداد پیامکی ثبت نشده است؛ پیام ثبت پذیرش برای پذیرش‌های قدیمی به گذشته ارسال نمی‌شود.</div>
+                }
+                else
+                {
+                    @foreach (var sms in viewing.SmsNotifications)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between gap-2 py-1 fs-8">
+                            <span>@SmsEventName(sms.EventType)</span>
+                            <span class="fw-700">@SmsStatusText(sms.Status)</span>
+                        </div>
+                        @if (sms.ProviderMessageId.HasValue || sms.ProviderCode.HasValue)
+                        {
+                            <div class="fs-8 text-muted">شناسه کاوه‌نگار: @(sms.ProviderMessageId?.ToString() ?? "—") · کد پاسخ: @(sms.ProviderCode?.ToString() ?? "—")</div>
+                        }
+                    }
+                    <div class="fs-8 text-muted mt-2">پذیرش توسط درگاه به معنی تحویل نهایی نیست. نتیجهٔ نامشخص خودکار دوباره ارسال نمی‌شود.</div>
+                }
+            </section>
             <div class="d-flex justify-content-end gap-2 mb-3">
                 <button class="btn btn-sm btn-outline-primary" data-hotkey="f4" @onclick="() => PrintDeliveryReceipt(viewing!)">
                     <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه (F4)
@@ -759,7 +818,7 @@
                         <i class="bi bi-receipt"></i> چاپ فاکتور فروش
                     </button>
                 }
-                else
+                else if (!viewing.WarrantyProcessed)
                 {
                     <button class="btn btn-sm btn-success" @onclick="() => { var v = viewing; viewing = null; OpenInvoice(v!); }">
                         <i class="bi bi-cash-coin"></i> تبدیل به فروش و تحویل
@@ -814,7 +873,7 @@
                             <th>شرح کار / قطعه</th>
                             <th class="text-start">مقدار</th>
                             <th class="text-start">هزینه</th>
-                            <th class="text-start">دریافتی</th>
+                            <th class="text-start">مبلغ مشتری</th>
                             <th class="text-start">سود</th>
                         </tr>
                     </thead>
@@ -824,15 +883,17 @@
                             <tr>
                                 <td>
                                     @i.Description
+                                    @if (i.WarrantyDecision != WarrantyDecision.Unspecified)
+                                    { <div class="fs-8 text-muted">@(i.WarrantyDecision == WarrantyDecision.Accepted ? "گارانتی پذیرفته" : "گارانتی پذیرفته‌نشده") — @(i.IsUnusedWarrantyPart || i.IsUnperformedWarrantyWork ? "استفاده / انجام نشده" : "انجام / مصرف شده")</div> }
                                     @if (!string.IsNullOrWhiteSpace(i.ProductName))
                                     {
                                         <span class="badge badge-soft-primary fs-8 me-1">@i.ProductName</span>
                                     }
                                 </td>
                                 <td class="text-start num">@i.Quantity.Qty()</td>
-                                <td class="text-start num text-muted">@((i.Cost * i.Quantity).Money())</td>
-                                <td class="text-start num fw-500">@((i.Price * i.Quantity).Money())</td>
-                                <td class="text-start num @((i.Price - i.Cost) * i.Quantity >= 0 ? "text-success" : "text-danger")">@(((i.Price - i.Cost) * i.Quantity).Money())</td>
+                                <td class="text-start num text-muted">@RepairRowCost(viewing, i).Money()</td>
+                                <td class="text-start num fw-500">@RepairRowPrice(viewing, i).Money()</td>
+                                <td class="text-start num @((RepairRowPrice(viewing, i) - RepairRowCost(viewing, i)) >= 0 ? "text-success" : "text-danger")">@((RepairRowPrice(viewing, i) - RepairRowCost(viewing, i)).Money())</td>
                             </tr>
                         }
                     </tbody>
@@ -840,7 +901,7 @@
             </div>
             <div class="d-flex justify-content-end align-items-center gap-3 mt-2">
                 <div><span class="text-muted fs-8 ms-1">جمع هزینه:</span><span class="fw-700 num">@viewing.TotalCost.Money()</span></div>
-                <div><span class="text-muted fs-8 ms-1">جمع دریافتی:</span><span class="fw-800 fs-5 text-primary num">@viewing.TotalPrice.Money()</span></div>
+                <div><span class="text-muted fs-8 ms-1">جمع مبلغ مشتری:</span><span class="fw-800 fs-5 text-primary num">@viewing.TotalPrice.Money()</span></div>
                 <div><span class="text-muted fs-8 ms-1">سود:</span><span class="fw-700 num @(viewing.Profit >= 0 ? "text-success" : "text-danger")">@viewing.Profit.Money()</span></div>
             </div>
         }
@@ -876,6 +937,8 @@
                         }
                     </select>
                 </div>
+                @if (!IsFreeWarranty(invoicing))
+                {
                 <div class="col-md-6">
                     <label class="form-label">روش تسویه فاکتور <span class="text-danger">*</span></label>
                     <div class="btn-group w-100" role="group">
@@ -894,9 +957,14 @@
                         </label>
                     </div>
                 </div>
+                }
             </div>
 
-            @if (invPaymentMethod == PaymentMethod.Cash)
+            @if (IsFreeWarranty(invoicing))
+            {
+                <div class="alert alert-light border fs-8">مبلغی از مشتری دریافت نمی‌شود؛ قطعات پذیرفته‌شده و مصرف‌شده در زمان تحویل از انبار کسر می‌شوند.</div>
+            }
+            else if (invPaymentMethod == PaymentMethod.Cash)
             {
                 <div class="p-3 border rounded bg-light mb-3">
                     <div class="row g-2 align-items-end">
@@ -976,7 +1044,7 @@
             }
 
             <div class="d-flex justify-content-between fs-8 border rounded p-2 bg-light">
-                <div>جمع دریافتی: <b class="num text-primary">@invoicing.TotalPrice.Money()</b> ریال</div>
+                <div>مبلغ مشتری: <b class="num text-primary">@invoicing.TotalPrice.Money()</b> ریال</div>
                 <div>سود تعمیر: <b class="num text-success">@invoicing.Profit.Money()</b> ریال</div>
             </div>
         }
@@ -985,7 +1053,7 @@
         <button class="btn btn-light" @onclick="() => invoicing = null">انصراف (Esc)</button>
         <button class="btn btn-success" data-hotkey="f1" @onclick="DoInvoice" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-receipt"></i> صدور فاکتور فروش (@(invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه"))
+            <i class="bi bi-receipt"></i> @(invoicing is not null && IsFreeWarranty(invoicing) ? "تحویل بدون مبلغ" : $"صدور فاکتور فروش ({(invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه")})")
         </button>
     </Footer>
 </Modal>
@@ -1050,6 +1118,12 @@ else
     <TradeInTab />
 }
 
+@if (creditRepair is not null)
+{
+    <RepairCreditDialog DocumentNumber="@creditRepair.Number" StateUrl="@($"api/repairs/{creditRepair.Id}/warranty-credit")"
+        ReceiptUrl="@($"api/repairs/{creditRepair.Id}/warranty-credit-receipts")" CanManage="@(ShopAccess.CanManage(Auth, "Repairs"))"
+        OnClose="() => creditRepair = null" OnChanged="Load" />
+}
 <TechnicianFormModal Visible="showTechnicianForm" EditTechnician="editingTechnician" OnSaved="OnTechnicianSaved" OnCancel="() => showTechnicianForm = false" />
 
 @code {
@@ -1100,7 +1174,8 @@ else
         Toast.Success($"حساب «{newAcc.DisplayName}» ایجاد و انتخاب شد.");
     }
 
-    private bool loading = true, saving, showForm, showTechs;
+    private bool loading = true, saving, showForm, showTechs, refreshingSms;
+    private RepairStatus formOriginalStatus;
     /// <summary>نوع پیش‌فرض حساب در فرم تعریف سریع بانک (این صفحه همیشه بانک/کارت‌خوان لازم دارد)</summary>
     private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
     private bool showRepairReports, reportLoading;
@@ -1117,7 +1192,7 @@ else
     private int loadVersion;
 
     private RepairOrderDto form = new();
-    private RepairOrderDto? viewing, invoicing;
+    private RepairOrderDto? viewing, invoicing, creditRepair;
     private DateTime? receivedAt;
     private string techIdStr = "0", statusStr = "0", invWarehouseStr = "1";
     private List<string> deviceQuoteTexts = new();
@@ -1257,13 +1332,13 @@ else
             customerLookup = ShopAccess.CanSee(Auth, "Repairs")
                 ? await PartySvc.GetShopCustomerLookupsAsync("repairs")
                 : await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
-            warehouses = await WarehouseSvc.GetAllAsync();
+            warehouses = await Api.GetAsync<List<Warehouse>>("api/repairs/warehouses");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
         try
         {
-            bankAccounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            bankAccounts = await Api.GetAsync<List<TrsAccount>>("api/repairs/accounts");
         }
         catch { bankAccounts = new(); }
 
@@ -1306,10 +1381,7 @@ else
             await Task.Delay(300, cts.Token);
             // جستجو و صفحه‌بندی در API است؛ حداکثر ۲۰ کالا به انتخابگر می‌رسد.
             var searchTerm = string.IsNullOrWhiteSpace(query) ? "" : query.Trim();
-            var result = await ProductSvc.GetProductsAsync(
-                string.IsNullOrEmpty(searchTerm) ? null : searchTerm,
-                page: 1,
-                pageSize: 20);
+            var result = await Api.GetAsync<PagedResult<Product>>($"api/repairs/products?page=1&pageSize=20&search={Uri.EscapeDataString(searchTerm)}", cts.Token);
             if (cts.IsCancellationRequested) return;
 
             productSearchResults = result.Items;
@@ -1356,7 +1428,7 @@ else
         var ids = form.Items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
         var tasks = ids.Select(async id =>
         {
-            try { return await ProductSvc.GetByIdAsync(id); }
+            try { return await Api.GetAsync<Product>($"api/repairs/products/{id}"); }
             catch { return null; }
         });
         foreach (var product in await Task.WhenAll(tasks))
@@ -1477,6 +1549,63 @@ else
         _ => "st-cancelled"
     };
 
+    private static string SmsEventName(RepairSmsEventType kind) => kind switch
+    {
+        RepairSmsEventType.Registration => "ثبت پذیرش",
+        RepairSmsEventType.Ready => "آماده تحویل",
+        _ => "رویداد نامشخص"
+    };
+
+    private static string SmsStatusText(RepairSmsStatus status) => status switch
+    {
+        RepairSmsStatus.Pending => "در صف ارسال",
+        RepairSmsStatus.Sending => "در حال ارسال",
+        RepairSmsStatus.Accepted => "پذیرفته‌شده توسط درگاه (تحویل قطعی نیست)",
+        RepairSmsStatus.Delivered => "تحویل‌شده",
+        RepairSmsStatus.Failed => "ارسال ناموفق",
+        RepairSmsStatus.Unknown => "نتیجه نامشخص؛ پیش از هر اقدام در کاوه‌نگار بررسی شود",
+        RepairSmsStatus.InvalidMobile => "موبایل مشتری ثبت نشده یا معتبر نیست؛ ارسال نشد",
+        RepairSmsStatus.Disabled => "درگاه غیرفعال است؛ ارسال نشد",
+        RepairSmsStatus.NotConfigured => "درگاه یا نام الگوی پیامکی تنظیم نشده است؛ ارسال نشد",
+        RepairSmsStatus.ModuleDisabled => "مجوز پیامک تعمیرات برای این رویداد غیرفعال بود یا لغو شد؛ ارسال نشد",
+        RepairSmsStatus.InvalidCompanyName => "نام شرکت با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
+        RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش با الگوی پیامک سازگار نیست؛ ارسال نشد",
+        RepairSmsStatus.Cancelled => "اطلاعات مشتری یا وضعیت پذیرش تغییر کرده؛ ارسال نشد",
+        _ => "وضعیت نامشخص"
+    };
+
+    private static string SmsSummary(RepairOrderDto r)
+    {
+        if (r.SmsNotifications is not { Count: > 0 }) return "";
+        var problem = r.SmsNotifications.FirstOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
+            or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled
+            or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber);
+        var current = problem ?? r.SmsNotifications[^1];
+        var shortStatus = current.Status switch
+        {
+            RepairSmsStatus.Pending => "در صف",
+            RepairSmsStatus.Sending => "در حال ارسال",
+            RepairSmsStatus.Accepted => "پذیرش درگاه",
+            RepairSmsStatus.Delivered => "تحویل‌شده",
+            RepairSmsStatus.Failed => "ناموفق",
+            RepairSmsStatus.Unknown => "نیاز به بررسی",
+            RepairSmsStatus.InvalidMobile => "موبایل نامعتبر",
+            RepairSmsStatus.Disabled => "درگاه غیرفعال",
+            RepairSmsStatus.NotConfigured => "درگاه یا الگو تنظیم نشده",
+            RepairSmsStatus.ModuleDisabled => "مجوز رویداد غیرفعال یا لغوشده",
+            RepairSmsStatus.InvalidCompanyName => "نام شرکت نامعتبر برای الگو",
+            RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش ناسازگار با الگو",
+            RepairSmsStatus.Cancelled => "ارسال لغو شد",
+            _ => "نامشخص"
+        };
+        return $"پیامک {SmsEventName(current.EventType)}: {shortStatus}";
+    }
+
+    private static string SmsSummaryCss(RepairOrderDto r) =>
+        r.SmsNotifications?.Any(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown or RepairSmsStatus.InvalidMobile
+            or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.InvalidCompanyName
+            or RepairSmsStatus.InvalidRepairNumber) == true ? "text-danger" : "text-muted";
+
     private static string PartyTel(RepairOrderDto r)
         => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!
          : !string.IsNullOrWhiteSpace(r.PartyPhone) ? r.PartyPhone!
@@ -1549,6 +1678,7 @@ else
             Devices = new List<RepairDeviceDto> { new() }
         };
         receivedAt = DateTime.Now;
+        formOriginalStatus = RepairStatus.Received;
         techIdStr = "0"; statusStr = "0";
         deviceQuoteTexts = new List<string> { "" };
         itemQty = new(); itemCost = new(); itemPrice = new();
@@ -1566,6 +1696,7 @@ else
             form = await RepairSvc.GetRepairAsync(r.Id);
             EnsureFormDevices();
             receivedAt = form.ReceivedAt;
+            formOriginalStatus = form.Status;
             techIdStr = (form.TechnicianId ?? 0).ToString();
             statusStr = ((int)form.Status).ToString();
             deviceQuoteTexts = form.Devices
@@ -1658,10 +1789,18 @@ else
     private async Task OnItemProduct(int i, int productId)
     {
         if (i < 0 || i >= form.Items.Count) return;
+        if ((form.Items[i].ProductId ?? 0) == productId) return;
         if (productId <= 0)
         {
+            if (form.Items[i].WarrantyDecision != WarrantyDecision.Unspecified)
+            {
+                form.Items[i].WarrantySupplied = false;
+                form.Items[i].WarrantyPerformed = false;
+                itemPrice[i] = ""; itemCost[i] = "";
+            }
             form.Items[i].ProductId = null;
             form.Items[i].ProductName = null;
+            form.Items[i].ProductIsService = false;
             if (i < itemProducts.Count) itemProducts[i] = null;
             PruneSelectedProducts();
             RebuildProductLookup();
@@ -1672,7 +1811,7 @@ else
         {
             var product = productSearchResults.FirstOrDefault(p => p.Id == productId);
             if (product is null && !selectedProducts.TryGetValue(productId, out product))
-                product = await ProductSvc.GetByIdAsync(productId);
+                product = await Api.GetAsync<Product>($"api/repairs/products/{productId}");
             if (product is null)
             {
                 Toast.Error("اطلاعات کالای انتخاب‌شده دریافت نشد.");
@@ -1684,6 +1823,12 @@ else
             var repairItem = form.Items[i];
             repairItem.ProductId = product.Id;
             repairItem.ProductName = product.Name;
+            repairItem.ProductIsService = product.IsService;
+            if (repairItem.WarrantyDecision != WarrantyDecision.Unspecified)
+            {
+                repairItem.WarrantySupplied = false;
+                repairItem.WarrantyPerformed = false;
+            }
             if (string.IsNullOrWhiteSpace(repairItem.Description) ||
                 (!string.IsNullOrWhiteSpace(oldProductName) && string.Equals(repairItem.Description, oldProductName, StringComparison.Ordinal)))
                 repairItem.Description = product.Name;
@@ -1691,41 +1836,49 @@ else
             itemProducts[i] = product;
             selectedProducts[product.Id] = product;
             itemCost[i] = FormatRialTyping(product.AvgCost.ToString("0"));
-            itemPrice[i] = FormatRialTyping(product.SalePrice.ToString("0"));
+            itemPrice[i] = repairItem.WarrantyDecision != WarrantyDecision.Unspecified ? "" : FormatRialTyping(product.SalePrice.ToString("0"));
             PruneSelectedProducts();
             RebuildProductLookup();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private decimal ItemUnitProfit(int i)
+    private bool IsWarrantyPart(int i) => form.Items[i].ProductId is > 0 && !form.Items[i].ProductIsService;
+    private bool ItemDone(int i) => form.Items[i].WarrantyDecision == WarrantyDecision.Unspecified ||
+        (IsWarrantyPart(i) ? form.Items[i].WarrantySupplied : form.Items[i].WarrantyPerformed);
+    private void SetItemDecision(int i, ChangeEventArgs e)
     {
-        var cost = Fa.ParseDecimal(itemCost.ElementAtOrDefault(i) ?? "");
-        var price = Fa.ParseDecimal(itemPrice.ElementAtOrDefault(i) ?? "");
-        return decimal.Round(price - cost, 2);
+        if (!Enum.TryParse<WarrantyDecision>(e.Value?.ToString(), out var decision)) return;
+        if (form.Items[i].WarrantyDecision == WarrantyDecision.Unspecified && decision != WarrantyDecision.Unspecified)
+        {
+            // A new warranty claim must explicitly confirm work/consumption.
+            form.Items[i].WarrantySupplied = false;
+            form.Items[i].WarrantyPerformed = false;
+        }
+        if (decision == WarrantyDecision.Rejected && form.Items[i].WarrantyDecision != WarrantyDecision.Rejected)
+            itemPrice[i] = ""; // a rejected row must be manually priced, not copied from catalog/cost
+        form.Items[i].WarrantyDecision = decision;
     }
-
+    private decimal ItemPrice(int i) => form.Items[i].WarrantyDecision == WarrantyDecision.Accepted || !ItemDone(i)
+        ? 0m : Fa.ParseDecimal(itemPrice.ElementAtOrDefault(i) ?? "");
+    private decimal ItemCost(int i) => !ItemDone(i) ? 0m : Fa.ParseDecimal(itemCost.ElementAtOrDefault(i) ?? "");
+    private bool HasWarrantyRows => form.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified);
+    private static decimal LineAmount(decimal quantity, decimal price, bool wholeRials) => wholeRials
+        ? (ShopInvoiceAmounts.TryGross(quantity, price, out var amount) ? amount : 0m) : quantity * price;
+    private static decimal RepairRowCost(RepairOrderDto repair, RepairItemDto item) =>
+        LineAmount(item.Quantity, item.EffectiveUnitCost, repair.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified));
+    private static decimal RepairRowPrice(RepairOrderDto repair, RepairItemDto item) =>
+        LineAmount(item.Quantity, item.CustomerUnitPrice, repair.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified));
+    private decimal ItemUnitProfit(int i) => decimal.Round(ItemPrice(i) - ItemCost(i), 2);
     private decimal ItemProfit(int i)
     {
         var quantity = Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1");
-        return decimal.Round(ItemUnitProfit(i) * quantity, 2);
+        return LineAmount(quantity, ItemPrice(i), HasWarrantyRows) - LineAmount(quantity, ItemCost(i), HasWarrantyRows);
     }
-
-    private decimal SumCost()
-    {
-        decimal s = 0;
-        for (var i = 0; i < form.Items.Count; i++)
-            s += Fa.ParseDecimal(itemCost.ElementAtOrDefault(i) ?? "") * Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1");
-        return s;
-    }
-
-    private decimal SumPrice()
-    {
-        decimal s = 0;
-        for (var i = 0; i < form.Items.Count; i++)
-            s += Fa.ParseDecimal(itemPrice.ElementAtOrDefault(i) ?? "") * Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1");
-        return s;
-    }
+    private decimal SumCost() => Enumerable.Range(0, form.Items.Count).Sum(i =>
+        LineAmount(Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1"), ItemCost(i), HasWarrantyRows));
+    private decimal SumPrice() => Enumerable.Range(0, form.Items.Count).Sum(i =>
+        LineAmount(Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1"), ItemPrice(i), HasWarrantyRows));
 
     private async Task SaveAndPrintReceipt() => await SaveInternal(printAfterSave: true);
     private async Task SaveAndPrint() => await SaveAndPrintReceipt();
@@ -1772,6 +1925,18 @@ else
             var isNew = form.Id == 0;
             var saved = await RepairSvc.SaveRepairAsync(form);
             Toast.Success(isNew ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
+            var eventType = isNew ? RepairSmsEventType.Registration : RepairSmsEventType.Ready;
+            if (isNew || (formOriginalStatus != RepairStatus.Ready && saved.Status == RepairStatus.Ready))
+            {
+                var sms = saved.SmsNotifications?.FirstOrDefault(x => x.EventType == eventType);
+                if (sms is not null)
+                {
+                    var message = $"پیامک {SmsEventName(eventType)}: {SmsStatusText(sms.Status)}. جزئیات در صفحهٔ پذیرش است.";
+                    if (sms.Status is RepairSmsStatus.Pending or RepairSmsStatus.Sending or RepairSmsStatus.Accepted or RepairSmsStatus.Delivered)
+                        Toast.Info(message);
+                    else Toast.Warning(message);
+                }
+            }
             await CloseForm();
             await LoadLookupsAsync();
             await Load();
@@ -1804,7 +1969,19 @@ else
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    private async Task RefreshSmsStatus()
+    {
+        if (viewing is null || refreshingSms) return;
+        refreshingSms = true;
+        try { viewing = await RepairSvc.GetRepairAsync(viewing.Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { refreshingSms = false; }
+    }
+
     // ---------------- تبدیل به فروش و تحویل ----------------
+
+    private static bool IsFreeWarranty(RepairOrderDto repair) => repair.TotalPrice <= 0 &&
+        repair.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified);
 
     private async Task OpenInvoice(RepairOrderDto r)
     {
@@ -1812,7 +1989,7 @@ else
         {
             invoicing = await RepairSvc.GetRepairAsync(r.Id);
             invWarehouseStr = (warehouses.FirstOrDefault()?.Id ?? 1).ToString();
-            invPaymentMethod = PaymentMethod.Cash;
+            invPaymentMethod = invoicing.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified) ? PaymentMethod.Credit : PaymentMethod.Cash;
             invCashType = CashType.CardReader;
             invDueDate = DateTime.Now.AddDays(30);
             invCashAmount = 0;
@@ -1827,7 +2004,9 @@ else
     {
         if (saving) return;
         if (invoicing is null) return;
-        if (invPaymentMethod == PaymentMethod.Credit)
+        if (invoicing.Items.Any(i => i.WarrantyDecision == WarrantyDecision.Rejected && !i.IsUnusedWarrantyPart && !i.IsUnperformedWarrantyWork && i.Price <= 0))
+        { Toast.Error("قیمت مشتری هر ردیف ردشده و انجام‌شده را در پذیرش وارد کنید."); return; }
+        if (!IsFreeWarranty(invoicing) && invPaymentMethod == PaymentMethod.Credit)
         {
             if (!invDueDate.HasValue)
             {
@@ -1856,7 +2035,9 @@ else
 
             var res = await RepairSvc.InvoiceAsync(invoicing.Id, req);
             var payLabel = invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه";
-            Toast.Success($"فاکتور {res.InvoiceNumber} به صورت {payLabel} صادر و دستگاه تحویل شد.");
+            Toast.Success(res.InvoiceTransactionId is > 0
+                ? $"فاکتور {res.InvoiceNumber} به صورت {payLabel} صادر و دستگاه تحویل شد."
+                : "پذیرش بدون مبلغ و با ثبت قطعات مصرف‌شده تحویل شد.");
             invoicing = null;
             await Load();
         }
@@ -1887,7 +2068,7 @@ else
                 return;
             }
 
-            var invoice = await OrderSvc.GetAsync(transactionId);
+            var invoice = await RepairSvc.LinkedInvoiceAsync(repair.Id);
             if (invoice is null)
             {
                 Toast.Error("فاکتور فروش پیوندخورده پیدا نشد.");
