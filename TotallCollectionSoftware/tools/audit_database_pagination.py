@@ -11,9 +11,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 PATTERNS = {
-    "API materialized result": (ROOT / "src/Inventory.Api", "*.cs", r"Paging\.Result\("),
-    "API materialized nested result": (ROOT / "src/Inventory.Api", "*.cs", r"Paging\.Slice\("),
-    "Client local slicing (review required)": (ROOT / "src/Inventory.Client", "*.razor", r"\.Skip\("),
+    "API materialized result": (ROOT / "inventory/src/Inventory.Api", "*.cs", r"Paging\.Result\("),
+    "API materialized nested result": (ROOT / "inventory/src/Inventory.Api", "*.cs", r"Paging\.Slice\("),
+    "Client local slicing (review required)": (ROOT / "inventory/src/Inventory.Client", "*.razor", r"\.Skip\("),
 }
 
 

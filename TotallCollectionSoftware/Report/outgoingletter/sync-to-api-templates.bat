@@ -8,8 +8,7 @@ rem  می‌خواند. تا وقتی این کپی انجام نشود، هر �
 rem
 rem  استفاده:  دوبار کلیک یا اجرا از خط فرمان (کنار همین فایل)
 rem            sync-to-api-templates.bat            → کپی به هر دو درخت کد
-rem            sync-to-api-templates.bat inventory    → فقط inventory\src
-rem            sync-to-api-templates.bat src          → فقط src
+rem            sync-to-api-templates.bat             → کپی به inventory\src (درخت فعال)
 rem ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
@@ -19,7 +18,6 @@ set "ROOT=%HERE%..\.."
 set "TARGET_ARG=%~1"
 
 set "DEST1=%ROOT%inventory\src\Inventory.Api\Reports\OutgoingLetters\Companies"
-set "DEST2=%ROOT%src\Inventory.Api\Reports\OutgoingLetters\Companies"
 
 set "COPIES=0"
 set "MISSING=0"
@@ -33,11 +31,8 @@ for %%C in (3 1003) do (
         ) else (
             if /I "%TARGET_ARG%"=="inventory" (
                 call :copy "!SRC!" "%DEST1%\%%C\Outgoing-%%S.mrt"
-            ) else if /I "%TARGET_ARG%"=="src" (
-                call :copy "!SRC!" "%DEST2%\%%C\Outgoing-%%S.mrt"
             ) else (
                 call :copy "!SRC!" "%DEST1%\%%C\Outgoing-%%S.mrt"
-                call :copy "!SRC!" "%DEST2%\%%C\Outgoing-%%S.mrt"
             )
         )
     )

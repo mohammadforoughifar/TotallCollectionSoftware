@@ -24,7 +24,7 @@
 | مسیر | کاربرد |
 | --- | --- |
 | `inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1003/Minutes-{A4,A5}.mrt` | مسیر خواسته‌شده (پروژهٔ `inventory`) |
-| `src/Inventory.Api/Reports/MeetingMinutes/Companies/1003/Minutes-{A4,A5}.mrt` | همان فایل در درخت اصلی سرور (تست‌ها هر دو درخت را می‌سنجند) |
+| `inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1003/Minutes-{A4,A5}.mrt` | همان فایل در درخت اصلی سرور (تست‌ها هر دو درخت را می‌سنجند) |
 | `.../Companies/3/…` | شناسهٔ هومپا در **نصب نمونه** (همان طرح، همان سربرگ) |
 | `Report/meetingminutes/{1003,3}/…` | نسخهٔ طراح، کنار `Report/outgoingletter/…` |
 

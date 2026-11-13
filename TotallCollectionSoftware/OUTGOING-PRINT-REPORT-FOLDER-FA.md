@@ -59,7 +59,7 @@ var isAriaLetterhead   = hasLetterhead && letterheadCompanyId == AriaCompanyId; 
 
 | اسکریپت | درختی که منتشر می‌کند |
 |---|---|
-| `publish-server.bat`، `deploy-single.ps1`، `rebuild.ps1` (ریشه) | `src/Inventory.Api` (نسل قدیمی چاپ) |
+| `publish-server.bat`، `deploy-single.ps1`، `rebuild.ps1` (ریشه) | `inventory/src/Inventory.Api` (نسل قدیمی چاپ) |
 | `inventory/publish-server.bat`، `inventory/deploy-single.ps1`، `inventory/start.bat` | `inventory/src/Inventory.Api` (نسل جاری) |
 
 ## ۴) چه چیزی اصلاح شد
@@ -117,7 +117,7 @@ private static readonly int[] DefaultAriaCompanyIds   = { AriaCompanyId };
   اشتباهاً «قالب‌های شرکت ۳» بود اصلاح شد.
 * خود فایل‌های MRT و تصویرهای این پوشه دست‌نخورده‌اند.
 
-نکته: `Report/outgoingletter/1003/*.mrt` با نسخهٔ **قدیمی‌تر** `src/Inventory.Api/Reports/.../1003`
+نکته: `Report/outgoingletter/1003/*.mrt` با نسخهٔ **قدیمی‌تر** `inventory/src/Inventory.Api/Reports/.../1003`
 یکی است (۴۶۶٬۶۴۵ بایت تصویر) و با `inventory/.../1003` (۴۷۳٬۴۹۳ بایت) یکی نیست؛
 `Report/outgoingletter/3/*` برابر `inventory/.../3` است. یعنی این پوشه آینهٔ دو درخت مختلف است.
 
@@ -199,9 +199,9 @@ QuestPDF برای متن و سپس PDFsharp روی تصویر سربرگ ۲۴۸�
 
 **کدام درخت منتشر می‌شود؟** اسکریپت‌های ریشهٔ مخزن (`publish-server.bat`، `deploy-single.*`،
 `RUN.ps1`) `src/` را منتشر می‌کنند و `inventory/publish-server.bat` مسیر `inventory/src/` را.
-قبلاً اصلاحات فقط در `inventory/` بود؛ اکنون `src/Inventory.Client` هم همان
+قبلاً اصلاحات فقط در `inventory/` بود؛ اکنون `inventory/src/Inventory.Client` هم همان
 `LetterPrintWorkflow` را دارد، همان سطح JS چاپ (`ltxPrintBegin/Ready/Fail/Status/WaitForAction/`
-`DirectPage/Cancel`) و همان کش/خطای سرور در `src/Inventory.Api`. چهار صفحهٔ چاپ (نامهٔ داخلی،
+`DirectPage/Cancel`) و همان کش/خطای سرور در `inventory/src/Inventory.Api`. چهار صفحهٔ چاپ (نامهٔ داخلی،
 کارتابل صادره، نمایش نامه، دبیرخانه) در هر دو درخت از همین سرویس مشترک استفاده می‌کنند.
 
 ### ۴-۸. «سربرگ‌های طراحی‌شده در `Reports/OutgoingLetters/Companies` خوانده نمی‌شوند»

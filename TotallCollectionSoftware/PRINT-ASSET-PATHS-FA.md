@@ -15,7 +15,7 @@
 | # | محل |
 |---|---|
 | ۱ | مسیر تنظیمات: `Reporting:OutgoingLetters:TemplateRoot` / `Reporting:InnerLetters:TemplateRoot` / `Reporting:MeetingMinutes:TemplateRoot` |
-| ۲ | **پوشهٔ داخل مخزن** — `…/inventory/src/Inventory.Api/Reports/{نوع}/Companies/{شرکت}/`، بعد `…/src/Inventory.Api/Reports/…`، بعد `…/Reports/…` |
+| ۲ | **پوشهٔ داخل مخزن** — `…/inventory/src/Inventory.Api/Reports/{نوع}/Companies/{شرکت}/`، بعد `…/inventory/src/Inventory.Api/Reports/…`، بعد `…/Reports/…` |
 | ۳ | `ContentRoot` (اجرای `dotnet run` از پوشهٔ پروژه) |
 | ۴ | `BaseDirectory` (نسخهٔ Publish) |
 | ۵ | پوشهٔ جاری (`Directory.GetCurrentDirectory()`) |

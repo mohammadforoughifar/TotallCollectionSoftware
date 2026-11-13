@@ -47,7 +47,7 @@ if ROOT is None:
 
 COMPANIES = ("1003", "3", "1", "1005")
 SIZES = ("A4", "A5")
-SOURCE = Path("src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt")
+SOURCE = Path("inventory/src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt")
 # شرکت ۱ (فروغ آریا) با همان قاعده از قالب نامهٔ صادرهٔ خودش سربرگ می‌گیرد.
 SOURCE_BY_COMPANY = {company: str(SOURCE) for company in COMPANIES}
 
@@ -337,7 +337,6 @@ def main(argv: list[str] | None = None) -> None:
         for size in SIZES:
             content = build(size, company)
             targets = [
-                ROOT / "src/Inventory.Api/Reports/MeetingMinutes/Companies" / company / f"Minutes-{size}.mrt",
                 ROOT / "inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies" / company / f"Minutes-{size}.mrt",
                 ROOT / "Report/meetingminutes" / company / f"Report_{size}_MeetingMinutes.mrt",
             ]

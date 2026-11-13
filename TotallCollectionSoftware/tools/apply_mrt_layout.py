@@ -139,10 +139,9 @@ def main() -> None:
     total = 0
     for company in COMPANIES:
         for size in SIZES:
-            relative = Path("src/Inventory.Api/Reports/OutgoingLetters/Companies") / company / f"Outgoing-{size}.mrt"
+            relative = Path("inventory/src/Inventory.Api/Reports/OutgoingLetters/Companies") / company / f"Outgoing-{size}.mrt"
             targets = [
                 ROOT / relative,
-                ROOT / "inventory" / relative,
                 ROOT / "Report" / "outgoingletter" / company / f"Report_{size}_OutgoingLetter.mrt",
             ]
             for target in targets:

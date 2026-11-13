@@ -20,7 +20,7 @@
 
 ## استفاده از قابلیت‌های Inventory
 
-- رابط مشترک پروژه و نگاشت مستقل در `src/Inventory.Client/Components/WorkProjects/WorkProjectMindFlow.razor` است. مرکز یکپارچهٔ نگار ذهنی `WorkProjectMindFlowPage.razor` است؛ `StandaloneMindFlowsPage.razor` برای بازکردن مستقیم و ویرایش نگاشت مستقل از مسیر `/mindflows/{id}` به‌کار می‌رود.
+- رابط مشترک پروژه و نگاشت مستقل در `inventory/src/Inventory.Client/Components/WorkProjects/WorkProjectMindFlow.razor` است. مرکز یکپارچهٔ نگار ذهنی `WorkProjectMindFlowPage.razor` است؛ `StandaloneMindFlowsPage.razor` برای بازکردن مستقیم و ویرایش نگاشت مستقل از مسیر `/mindflows/{id}` به‌کار می‌رود.
 - نگاشت پروژه در `WorkProjects.MindFlowJson` ذخیره می‌شود. نگاشت مستقل در جدول `StandaloneMindFlows` و نقش‌های اشتراک در `StandaloneMindFlowMembers` ذخیره می‌شوند؛ همه در همان دیتابیس Inventory.
 - هر گره می‌تواند یک یا چند WorkOrder داشته باشد. برای اتصال، دکمهٔ «افزودن دستورکار» فهرست قابل انتخاب را باز می‌کند؛ آیکون گره شمار آن‌ها را نشان می‌دهد و انتخاب هر مورد چک‌لیست اصلی همان دستور را نمایش می‌دهد. دستورهای همان شرکت، حتی متعلق به پروژهٔ دیگر یا بدون پروژه، قابل اتصال‌اند.
 - تب «دستورها»ی جزئیات پروژه، علاوه بر فهرست دستورهای همان پروژه، فهرست تجمیعیِ تمام دستورهای متصل به گره‌ها و زیرنگاشت‌های MindFlow را نشان می‌دهد؛ برای هر ردیف، لینک بازگشت به گره و لینک بازکردن خود WorkOrder موجود است.

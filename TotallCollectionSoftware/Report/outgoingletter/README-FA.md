@@ -26,7 +26,7 @@ Build/Publish کپی می‌شوند و مسیر جست‌وجو در `FindCompa
 پوشهٔ جاری) است. ریشهٔ مسیر هم از `Reporting:Stimulsoft:TemplateRoot` خوانده می‌شود (پیش‌فرض
 همان `Reports/OutgoingLetters/Companies`).
 
-پوشهٔ دیگر `src/Inventory.Api/Reports/...` نسخهٔ قدیمی‌تر همین درخت است. ابزارهای استقرار
+پوشهٔ دیگر `inventory/src/Inventory.Api/Reports/...` نسخهٔ قدیمی‌تر همین درخت است. ابزارهای استقرار
 (`publish-server.bat`، `deploy-single.sh`، `inventory/start.bat`) روی `inventory/src` کار می‌کنند؛
 پس **`src/` را ویرایش نکنید**، مگر اینکه همان را هم منتشر کنید.
 

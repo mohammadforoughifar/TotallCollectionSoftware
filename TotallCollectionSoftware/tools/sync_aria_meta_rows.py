@@ -23,7 +23,7 @@ from pathlib import Path
 
 COMPANY = "1005"
 SIZES = ("A4", "A5")
-TREES = ("src", "inventory/src")
+TREES = ("inventory/src",)
 PAGE_MARGIN_INCH = 0.39
 HEADER_ORIGIN = {"A4": 24.0, "A5": 16.0}      # همان pageTopMargin در OutgoingLetterPrintService
 SLOTS = {"date": "DateShams", "number": "LetterNumber", "attachment": "Peyvast"}
@@ -37,7 +37,7 @@ def project_root() -> Path:
 
 
 ROOT = project_root()
-LAYOUT = ROOT / "src/Inventory.Api/Services/Office/Outgoing/AriaLetterheadLayout.cs"
+LAYOUT = ROOT / "inventory/src/Inventory.Api/Services/Office/Outgoing/AriaLetterheadLayout.cs"
 
 
 def layout_source() -> str:

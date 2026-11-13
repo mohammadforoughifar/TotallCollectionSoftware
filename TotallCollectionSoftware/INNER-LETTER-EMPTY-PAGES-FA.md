@@ -62,12 +62,12 @@ return Regex.Replace(text, @"[^\S\r\n]+", " ").Trim();   // ← \r\n دست‌ن
    خط خالی در QuestPDF هر کدام یک line box است: صفحه‌بندی پیش می‌رود ولی چیزی روی کاغذ نمی‌آید.
 
 چرا نامهٔ صادره سالم است: آن مسیر بدنه را از `RichLetterHtml.Sanitize`
-(`src/Inventory.Shared/Security/RichLetterHtml.cs`) رد می‌کند که `style`/`script`/کامنت‌ها را
+(`inventory/src/Inventory.Shared/Security/RichLetterHtml.cs`) رد می‌کند که `style`/`script`/کامنت‌ها را
 **با محتوا** حذف می‌کند. مسیر نامهٔ داخلی هیچ sanitize نداشت.
 
 ## ۴. اصلاح
 
-فایل تازه: `src/Inventory.Api/Services/Office/OfficeHtmlText.cs` (و کپی یکسان در
+فایل تازه: `inventory/src/Inventory.Api/Services/Office/OfficeHtmlText.cs` (و کپی یکسان در
 `inventory/src/…`) با ترتیب:
 
 1. `RichLetterHtml.Sanitize` (حذف script/style/iframe و برگرداندن متنِ escape‌شده)

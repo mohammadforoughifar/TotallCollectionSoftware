@@ -35,7 +35,7 @@ if ROOT is None:
 
 COMPANIES = ("1005",)
 SIZES = ("A4", "A5")
-SOURCE = "src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt"
+SOURCE = "inventory/src/Inventory.Api/Reports/OutgoingLetters/Companies/{company}/Outgoing-{size}.mrt"
 PAGE_MARGIN_INCH = 0.39
 
 # ── کادرهای شماره / تاریخ / پیوست: یک ردیف افقی روی سه نقطه‌چین سربرگ ──
@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> None:
     for company in companies:
         for size in SIZES:
             content = build(size, company)
-            for tree in ("src", "inventory/src"):
+            for tree in ("inventory/src",):
                 target = (ROOT / tree / "Inventory.Api" / "Reports" / "InnerLetters" /
                           "Companies" / company / f"Inner-{size}.mrt")
                 target.parent.mkdir(parents=True, exist_ok=True)

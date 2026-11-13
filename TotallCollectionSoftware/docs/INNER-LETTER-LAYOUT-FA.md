@@ -99,7 +99,7 @@ Stimulsoft کامل دارید و می‌خواهید خودِ موتور چاپ
 
 نکته‌ها:
 
-- نسخهٔ `src/Inventory.Api/Reports/…` و `inventory/src/Inventory.Api/Reports/…` باید یکسان بمانند؛
+- نسخهٔ `inventory/src/Inventory.Api/Reports/…` و `inventory/src/Inventory.Api/Reports/…` باید یکسان بمانند؛
   تست `test_both_source_trees_share_the_same_inner_template` همین را (و یکسانی رندر) بررسی می‌کند.
 - خودِ `.mrt` تصویر سربرگ و هندسهٔ سه کادر شماره/تاریخ/پیوست را می‌دهد؛ ترتیب «گیرنده ← موضوع ←
   متن ← هامش» در `InnerLetterPdfRenderer.cs` ساخته می‌شود (قالب Stimulsoft اجرا نمی‌شود).

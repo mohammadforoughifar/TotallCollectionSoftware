@@ -13,7 +13,7 @@
 | مسیر | نقش |
 |---|---|
 | `inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1/Minutes-{A4,A5}.mrt` | مسیر خواسته‌شدهٔ کارفرما (درخت `inventory`) |
-| `src/Inventory.Api/Reports/MeetingMinutes/Companies/1/Minutes-{A4,A5}.mrt` | درخت اصلی `src` (هر دو درخت باید یکی باشند) |
+| `inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1/Minutes-{A4,A5}.mrt` | درخت اصلی `src` (هر دو درخت باید یکی باشند) |
 | `Report/meetingminutes/1/Report_{A4,A5}_MeetingMinutes.mrt` | نسخهٔ آرشیوی/Report Studio |
 
 هر سه فایل **بایت‌به‌بایت یکسان**‌اند و با `tools/build_minutes_mrt.py 1` بازتولید می‌شوند

@@ -123,13 +123,13 @@ GET    api/inv/reports/stock?warehouseId=&categoryId=&search=&below=&page=&pageS
 
 ```bash
 # اعمال مهاجرت
-dotnet ef database update -p src/Inventory.Api -s src/Inventory.Api
+dotnet ef database update -p inventory/src/Inventory.Api -s inventory/src/Inventory.Api
 
 # یا اجرای مستقیم اسکریپت
 sqlcmd -S . -d InventoryDb -i sql/warehousing/AddWarehousingModule.sql
 
 # اجرای پروژه
-dotnet run --project src/Inventory.Api
+dotnet run --project inventory/src/Inventory.Api
 ```
 
 ---

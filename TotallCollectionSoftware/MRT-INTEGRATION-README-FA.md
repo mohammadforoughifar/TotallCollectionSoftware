@@ -30,7 +30,7 @@ cd inventory
 dotnet restore
 dotnet clean
 dotnet build Inventory.sln
-dotnet run --project src\Inventory.Api
+dotnet run --project inventory/src\Inventory.Api
 ```
 
 در اجرای Visual Studio نیز یک‌بار Restore NuGet Packages و سپس Rebuild Solution انجام شود.
