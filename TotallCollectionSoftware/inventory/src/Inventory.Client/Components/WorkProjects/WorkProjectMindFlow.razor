@@ -36,6 +36,8 @@
                                     <li><i class="bi bi-cursor"></i> برای دیدن جزئیات، روی گره کلیک کن.</li>
                                 }
                                 <li><i class="bi bi-zoom-in"></i> با <b>＋ / −</b> یا «نمای کامل» بزرگ‌نمایی را تنظیم کن.</li>
+                                <li><i class="bi bi-arrows-move"></i> با <b>کلیدهای جهت</b> نقشه را افقی و عمودی بچرخان.</li>
+                                <li><i class="bi bi-printer"></i> با دکمهٔ <b>چاپ</b> برگهٔ A4 نقشه را بگیر.</li>
                             </ul>
                         </div>
                     }
@@ -70,7 +72,7 @@
             <button class="btn btn-sm btn-light" @onclick="ToggleCollapse" disabled="@(!CanEdit)" title="جمع/بازکردن شاخه">@(SelectedNode?.Collapsed == true ? "⊞" : "⊟")</button>
             <button class="btn btn-sm btn-outline-danger" @onclick="DeleteSelected" disabled="@(!CanEdit || SelectedNode?.ParentId is null)"><i class="bi bi-trash"></i></button>
         </div>
-        <div class="wpmf-zoom"><input class="form-control form-control-sm" placeholder="جست‌وجو در نقشه" @bind="_search" @bind:event="oninput" /><button class="btn btn-sm btn-light" @onclick="ZoomOut">−</button><span>@((int)(Zoom * 100))٪</span><button class="btn btn-sm btn-light" @onclick="ZoomIn">＋</button><button class="btn btn-sm btn-light" @onclick="Fit">نمای کامل</button></div>
+        <div class="wpmf-zoom"><input class="form-control form-control-sm" placeholder="جست‌وجو در نقشه" @bind="_search" @bind:event="oninput" /><button class="btn btn-sm btn-light" @onclick="ZoomOut">−</button><span>@((int)(Zoom * 100))٪</span><button class="btn btn-sm btn-light" @onclick="ZoomIn">＋</button><button class="btn btn-sm btn-light" @onclick="Fit" title="جای دادن همهٔ نقشه در صفحه">نمای کامل</button><button class="btn btn-sm btn-light" @onclick="OpenPrint" disabled="@(_loading || _map.Nodes.Count == 0)" title="پیش‌نمایش و چاپ نقشه"><i class="bi bi-printer"></i> چاپ</button></div>
     </div>
     @if (!string.IsNullOrWhiteSpace(_message)) { <div class="alert alert-warning py-2 px-3 mb-2">@_message</div> }
     @if (_dragUnavailable)
@@ -87,10 +89,10 @@
     else
     {
         <div class="wpmf-workarea">
-            <div class="wpmf-canvas-wrap">
-                <div class="wpmf-canvas-scroller">
-                    <div class="wpmf-grid"></div>
-                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
+            <div class="wpmf-canvas-wrap" id="@_canvasWrapId" @ref="_canvasWrapRef" tabindex="0" @onkeydown="OnCanvasKeyDown">
+                <div class="wpmf-canvas-scroller" style="width:@N(CanvasWidth)px;height:@N(CanvasHeight)px">
+                    <div class="wpmf-grid" style="background-size:@N(20 * Zoom)px @N(20 * Zoom)px"></div>
+                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" style="width:@N(CanvasWidth)px;height:@N(CanvasHeight)px" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
                     @foreach (var node in VisibleNodes.Where(n => n.ParentId.HasValue))
                     {
                         var parent = _map.Nodes.FirstOrDefault(n => n.Id == node.ParentId);
@@ -495,6 +497,41 @@
     }
 </div>
 
+@* ---------- پیش‌نمایش چاپ نقشه ---------- *@
+@if (_printOpen)
+{
+    <div class="wpmf-print-overlay" id="@_printOverlayId" tabindex="-1" role="dialog" aria-modal="true" aria-label="پیش‌نمایش چاپ نگار ذهنی" @onkeydown="OnPrintKeyDown">
+        <div class="wpmf-print-head">
+            <div class="wpmf-print-heading">
+                <i class="bi bi-printer"></i>
+                <div>
+                    <strong>پیش‌نمایش چاپ نگار ذهنی</strong>
+                    <span>@PrintSubtitle</span>
+                </div>
+            </div>
+            <div class="wpmf-print-actions">
+                <button type="button" class="btn btn-sm btn-light" @onclick="ClosePrint"><i class="bi bi-x-lg"></i> بستن</button>
+                <button type="button" class="btn btn-sm btn-primary" @onclick="PrintAsync"><i class="bi bi-printer"></i> چاپ</button>
+            </div>
+        </div>
+        <div class="wpmf-print-stage">
+            <div class="wpmf-print-sheet">
+                <header class="wpmf-print-sheet-head">
+                    <div class="wpmf-print-sheet-title">
+                        <strong>@PrintTitle</strong>
+                        <span>@PrintSubtitle</span>
+                    </div>
+                    <div class="wpmf-print-sheet-meta">
+                        <span>@PrintMeta</span>
+                    </div>
+                </header>
+                <div class="wpmf-print-sheet-canvas" id="@_printCanvasId"></div>
+                <footer class="wpmf-print-sheet-foot">نرم‌افزار یکپارچه فروغ آریا — نگار ذهنی</footer>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private static readonly string[] Palette = ["#596cf3", "#e28b4d", "#32a783", "#ae6fc7", "#d85d75", "#318eae"];
     private const double MinNodeWidth = 120, MaxNodeWidth = 420, MinNodeHeight = 50, MaxNodeHeight = 180;
@@ -546,9 +583,33 @@
 
     /// <summary>فیلتر فهرست «دستورکارهای این گره» — شماره، عنوان یا نام پروژه.</summary>
     private string _orderSearch = "";
+    /// <summary>اندازهٔ ثابت فضای طراحی (واحد کاربر). بزرگ‌نمایی روی خودِ بوم اعمال می‌شود، نه با برشِ viewBox.</summary>
+    private const double DesignWidth = 1600;
+    private const double DesignHeight = 900;
+    private const double MinZoom = .5;
+    private const double MaxZoom = 2.5;
     private double Zoom = 1;
+    /// <summary>بومِ رندرشده؛ با بزرگ‌نمایی بزرگ می‌شود تا سطح اسکرول افقی و عمودی هم بزرگ شود.</summary>
+    private double CanvasWidth => DesignWidth * Zoom;
+    private double CanvasHeight => DesignHeight * Zoom;
+    /// <summary>کل فضای طراحی همیشه در viewBox است؛ جابه‌جایی دید با اسکرول انجام می‌شود.</summary>
+    private string ViewBox => $"0 0 {N(DesignWidth)} {N(DesignHeight)}";
+    /// <summary>قابل اسکرول بودن بوم — برای خواندن/نوشتن موقعیت اسکرول.</summary>
+    private ElementReference _canvasWrapRef;
+    /// <summary>نقطهٔ مرکز دید (در واحد فضای طراحی) که باید پس از تغییر بزرگ‌نمایی حفظ شود.</summary>
+    private (double U, double V)? _pendingZoomAnchor;
+    /// <summary>پیش‌نمایش چاپ باز است؟</summary>
+    private bool _printOpen;
+    /// <summary>پیش‌نمایش تازه باز شده و باید نسخهٔ چاپی نقشه ساخته شود.</summary>
+    private bool _printMountPending;
+    private string _printOverlayId => $"{_svgId}-print-overlay";
+    private string _printCanvasId => $"{_svgId}-print-canvas";
+    private string PrintTitle => string.IsNullOrWhiteSpace(_map?.Title) ? ProjectTitle : _map.Title;
+    private string PrintSubtitle => IsStandalone ? "نگاشت مستقل" : $"پروژه: {ProjectTitle}";
+    private string PrintMeta => $"{PersianDate.ToLong(DateTime.Now)} — {VisibleNodes.Count} گره";
     private bool IsStandalone => StandaloneMapId is > 0;
     private string _svgId => IsStandalone ? $"wpmf-canvas-standalone-{StandaloneMapId}" : $"wpmf-canvas-{ProjectId}";
+    private string _canvasWrapId => $"{_svgId}-wrap";
     private string RootMapApiUrl => IsStandalone ? $"api/mindflows/{StandaloneMapId}" : $"api/workprojects/{ProjectId}/mindflow";
     private string ShareApiUrl => IsStandalone ? $"api/mindflows/{StandaloneMapId}" : $"api/workprojects/{ProjectId}/mindflow";
     private string SubMapApiUrl(string path) => IsStandalone
@@ -557,7 +618,6 @@
     private WorkProjectMindFlowNodeDto? SelectedNode => _map.Nodes.FirstOrDefault(n => n.Id == _selectedId);
     private string AccessMessageClass => _accessMessage.StartsWith("دسترسی ثبت شد", StringComparison.Ordinal) || _accessMessage == "دسترسی لغو شد." ? "alert-success" : "alert-warning";
     private List<WorkProjectMindFlowNodeDto> VisibleNodes => _map.Nodes.Where(IsVisible).ToList();
-    private string ViewBox => $"{N(800 - 800 / Zoom)} {N(450 - 450 / Zoom)} {N(1600 / Zoom)} {N(900 / Zoom)}";
     private int LinkedWorkOrderCount => _map.Nodes.SelectMany(NodeWorkOrderIds).Distinct().Count();
     private List<MindFlowWorkOrder> FilteredWorkOrders => _projectOrders.Concat(_workOrderCache.Values)
         .GroupBy(o => o.Id).Select(g => g.First())
@@ -655,12 +715,28 @@
         {
             _self ??= DotNetObjectReference.Create(this);
             await AttachDragAsync();
+            await BindCanvasKeysAsync();
         }
         if (_focusNodeTitlePending)
         {
             _focusNodeTitlePending = false;
             try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.focusNodeTitle", _svgId); }
             catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException) { /* فوکوس اختیاری است */ }
+        }
+        // بعد از تغییر بزرگ‌نمایی، مرکز دید را به جای قبلی برمی‌گردانیم.
+        await RestoreZoomAnchorAsync();
+
+        // پیش‌نمایش چاپ تازه باز شده: نسخهٔ چاپی نقشه را می‌سازیم (DOM الان آماده است).
+        if (_printMountPending)
+        {
+            _printMountPending = false;
+            try
+            {
+                await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.mountPrintPreview", _svgId, _printCanvasId);
+                await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.focusPrintOverlay", _printOverlayId);
+            }
+            catch (JSException) { /* پیش‌نمایش بدون نسخهٔ چاپی هم باز می‌ماند */ }
+            catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { }
         }
     }
 
@@ -686,7 +762,7 @@
             if (!attached)
             {
                 _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
-                    "./js/inventory-workproject-mindflow.module.js?v=3");
+                    "./js/inventory-workproject-mindflow.module.js?v=4");
                 attached = await _dragModule.InvokeAsync<bool>("attachDrag", _svgId, _self);
             }
 
@@ -702,6 +778,16 @@
 
         // پیام «کشیدن فعال نشد» فقط وقتی نمایش داده می‌شود که وضعیت عوض شده باشد.
         if (wasUnavailable != _dragUnavailable) await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// پیمایش بوم با کلیدهای جهت — کاملاً در JS انجام می‌شود تا حرکت نرم و بدون تأخیر باشد.
+    /// </summary>
+    private async Task BindCanvasKeysAsync()
+    {
+        try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.bindCanvasKeys", _canvasWrapRef); }
+        catch (JSException) { /* اسکریپت کلاسیک بارگذاری نشده → مسیر ماژول */ }
+        catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { }
     }
 
     private void CreateStarter()
@@ -888,8 +974,8 @@
     }
 
     private string HintText => CanEdit
-        ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود. دوبار کلیک روی گره = تغییر عنوان."
-        : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن.";
+        ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ با ＋ / − بزرگ‌نمایی کن و با کلیدهای جهت نقشه را بچرخان. گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود. دوبار کلیک روی گره = تغییر عنوان."
+        : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن و با ＋ / − بزرگ‌نمایی کن.";
 
     /// <summary>شروع ویرایش عنوان برای گرهی که تازه ساخته شده تا کاربر بلافاصله تایپ کند.</summary>
     private void FocusNewNodeTitle(WorkProjectMindFlowNodeDto node)
@@ -1352,10 +1438,131 @@
         Dirty();
     }
     private static string N(double x) => x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-    private void ZoomIn() => Zoom = Math.Min(1.7, Zoom + .1);
-    private void ZoomOut() => Zoom = Math.Max(.6, Zoom - .1);
-    private void Fit() => Zoom = 1;
+
+    // ==================== بزرگ‌نمایی و اسکرول بوم ====================
+    //
+    // بزرگ‌نمایی با «بزرگ‌کردن خودِ بوم» انجام می‌شود، نه با کوچک‌کردنِ viewBox.
+    // یعنی سطح قابل اسکرول هم به همان نسبت بزرگ می‌شود و کاربر می‌تواند در بزرگ‌نمایی
+    // بالا هم افقی و هم عمودی حرکت کند و به هر گوشهٔ نقشه برسد.
+    // برای اینکه با هر پلهٔ بزرگ‌نمایی نقشه به گوشه نپرد، مرکز دید قبل و بعد حفظ می‌شود.
+
+    private Task ZoomIn() => SetZoomAsync(Zoom + .1);
+    private Task ZoomOut() => SetZoomAsync(Zoom - .1);
+    private Task Fit() => FitAsync();
+
+    private async Task SetZoomAsync(double value)
+    {
+        var next = Math.Clamp(Math.Round(value, 2), MinZoom, MaxZoom);
+        if (Math.Abs(next - Zoom) < .001) return;
+
+        // مرکز دید فعلی، در واحد فضای طراحی.
+        double? anchorU = null, anchorV = null;
+        var view = await GetCanvasViewAsync();
+        if (view is not null && view.W > 0 && view.H > 0)
+        {
+            anchorU = (view.Left + view.W / 2) / Zoom;
+            anchorV = (view.Top + view.H / 2) / Zoom;
+        }
+
+        Zoom = next;
+        _pendingZoomAnchor = anchorU is not null && anchorV is not null ? (anchorU.Value, anchorV.Value) : null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>«نمای کامل» = جای دادن همهٔ نقشه در فضای دید (هرگز بیش از ۱۰۰٪ بزرگ نمی‌شود).</summary>
+    private async Task FitAsync()
+    {
+        var target = 1d;
+        var view = await GetCanvasViewAsync();
+        if (view is not null && view.W > 0 && view.H > 0)
+            target = Math.Min(view.W / DesignWidth, view.H / DesignHeight);
+        await SetZoomAsync(Math.Clamp(target, MinZoom, 1));
+    }
+
+    private async Task<CanvasView?> GetCanvasViewAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<CanvasView?>("inventoryWorkProjectMindFlow.getCanvasView", _canvasWrapRef);
+        }
+        catch (JSException) { /* اسکریپت کلاسیک بارگذاری نشده → مسیر ماژول */ }
+        catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { return null; }
+
+        try
+        {
+            _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
+                "./js/inventory-workproject-mindflow.module.js?v=4");
+            return await _dragModule.InvokeAsync<CanvasView?>("getCanvasView", _canvasWrapRef);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>پس از تغییر بزرگ‌نمایی، همان نقطهٔ مرکز دید را برمی‌گرداند.</summary>
+    private async Task RestoreZoomAnchorAsync()
+    {
+        if (_pendingZoomAnchor is not { } anchor) return;
+        _pendingZoomAnchor = null;
+        var view = await GetCanvasViewAsync();
+        if (view is null || view.W <= 0 || view.H <= 0) return;
+        var maxLeft = Math.Max(0, CanvasWidth - view.W);
+        var maxTop = Math.Max(0, CanvasHeight - view.H);
+        var left = Math.Clamp(anchor.U * Zoom - view.W / 2, 0, maxLeft);
+        var top = Math.Clamp(anchor.V * Zoom - view.H / 2, 0, maxTop);
+        try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.setCanvasView", _canvasWrapRef, left, top); }
+        catch (JSException) { /* مسیر ماژول */ }
+        catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { }
+    }
+
     private void ToggleFullscreen() => _isFullscreen = !_isFullscreen;
+
+    /// <summary>
+    /// میان‌برهای صفحه‌کلید روی بوم: ＋ / − برای بزرگ‌نمایی و ۰ برای «نمای کامل».
+    /// پیمایش با کلیدهای جهت در JS انجام می‌شود تا نرم و بدون تأخیر باشد.
+    /// </summary>
+    private async Task OnCanvasKeyDown(KeyboardEventArgs e)
+    {
+        if (_nodeTitleEditingId is not null) return;      // هنگام تایپ عنوان گره
+        if (e.CtrlKey || e.MetaKey || e.AltKey) return;
+
+        switch (e.Key)
+        {
+            case "+": case "=": await ZoomIn(); break;
+            case "-": case "_": await ZoomOut(); break;
+            case "0": await Fit(); break;
+        }
+    }
+
+    // ==================== چاپ نقشه ====================
+
+    /// <summary>پیش‌نمایش چاپ را باز می‌کند؛ ساخت نسخهٔ «چاپی» نقشه در OnAfterRender انجام می‌شود (بعد از رسیدن DOM).</summary>
+    private async Task OpenPrint()
+    {
+        _printOpen = true;
+        _printMountPending = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClosePrint() => _printOpen = false;
+
+    /// <summary>برگهٔ چاپ را در یک iframe جدا می‌سازد و پنجرهٔ چاپ مرورگر را باز می‌کند.</summary>
+    private async Task PrintAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.printPreview",
+                _printCanvasId, PrintTitle, PrintSubtitle, PrintMeta, _svgId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MindFlow] چاپ نقشه انجام نشد: {ex.Message}");
+        }
+    }
+
+    private Task OnPrintKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") ClosePrint();
+        return Task.CompletedTask;
+    }
 
     [JSInvokable]
     public Task CommitDrag(Guid rootId, List<DragPoint> points, Guid? targetParentId)
@@ -1401,6 +1608,14 @@
         }
     }
     public sealed class DragPoint { public Guid Id { get; set; } public double X { get; set; } public double Y { get; set; } }
+    /// <summary>وضعیت اسکرول بوم — برای نگه‌داشتن مرکز دید هنگام بزرگ‌نمایی.</summary>
+    public sealed class CanvasView
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double W { get; set; }
+        public double H { get; set; }
+    }
     public sealed class MindFlowWorkOrder
     {
         public int Id { get; set; }

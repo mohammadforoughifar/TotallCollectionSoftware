@@ -252,3 +252,245 @@ window.inventoryWorkProjectMindFlow.focusNodeTitle = function (svgId) {
     try { input.select(); } catch { }
     return true;
 };
+
+// ============================================================================
+//  اسکرول بوم — نگه‌داشتن «مرکز دید» هنگام بزرگ‌نمایی
+//
+//  بزرگ‌نمایی نقشه با بزرگ‌کردن خودِ بوم انجام می‌شود (نه با برش viewBox)،
+//  پس سطح قابل اسکرول هم بزرگ می‌شود و کاربر می‌تواند در هر دو جهت حرکت کند.
+//  برای اینکه با هر پلهٔ بزرگ‌نمایی نقشه به گوشه نپرد، نقطهٔ مرکز دید قبل و بعد
+//  از تغییر بزرگ‌نمایی محاسبه و حفظ می‌شود.
+// ============================================================================
+function resolveElement(ref) {
+    if (!ref) return null;
+    if (typeof ref === 'string') return document.getElementById(ref);
+    if (ref.nodeType === 1) return ref;
+    return null;
+}
+
+window.inventoryWorkProjectMindFlow.getCanvasView = function (wrap) {
+    const el = resolveElement(wrap);
+    if (!el) return null;
+    return { left: el.scrollLeft, top: el.scrollTop, w: el.clientWidth, h: el.clientHeight };
+};
+
+window.inventoryWorkProjectMindFlow.setCanvasView = function (wrap, left, top) {
+    const el = resolveElement(wrap);
+    if (!el) return false;
+    el.scrollLeft = left;
+    el.scrollTop = top;
+    return true;
+};
+
+/**
+ * پیمایش بوم با کلیدهای جهت — در خودِ DOM انجام می‌شود (بدون رفت‌وبرگشت به سرور)
+ * تا حرکت نرم و بدون تأخیر باشد. جلوی اسکرول پیش‌فرض مرورگر گرفته می‌شود تا
+ * نقشه دو برابر جابه‌جا نشود. روی فیلدهای ورودی (مثل عنوانِ در حال ویرایشِ گره) اثری ندارد.
+ */
+window.inventoryWorkProjectMindFlow.bindCanvasKeys = function (wrap) {
+    const el = resolveElement(wrap);
+    if (!el) return false;
+    if (el._wpmfCanvasKeys) return true;
+    el._wpmfCanvasKeys = true;
+    el.addEventListener('keydown', e => {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        const step = e.shiftKey ? 260 : 80;
+        let dx = 0, dy = 0;
+        switch (e.key) {
+            case 'ArrowLeft': dx = -step; break;
+            case 'ArrowRight': dx = step; break;
+            case 'ArrowUp': dy = -step; break;
+            case 'ArrowDown': dy = step; break;
+            default: return;
+        }
+        e.preventDefault();
+        el.scrollLeft += dx;
+        el.scrollTop += dy;
+    });
+    return true;
+};
+
+// ============================================================================
+//  چاپ نقشه
+//
+//  برگهٔ چاپ در یک iframe جدا ساخته می‌شود تا چاپ، مستقل از چیدمان صفحهٔ برنامه
+//  (منو، نوار بالا، پنل تنظیمات) و دقیقاً در اندازهٔ A4 افقی باشد.
+//
+//  نکتهٔ مهم: برچسب گره‌ها روی صفحه با foreignObject (HTML داخل SVG) نوشته می‌شود.
+//  foreignObject در بعضی مرورگرها موقع چاپ ناپایدار است؛ برای چاپ، همان متن‌ها
+//  به <text> واقعی SVG تبدیل می‌شوند تا خروجی چاپی همیشه درست و تیز باشد.
+// ============================================================================
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+/** شکستن متن روی چند خط، بر پایهٔ عرض گره (بدون اندازه‌گیری در DOM). */
+function wrapLabel(text, widthPx, fontSize) {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const perLine = Math.max(6, Math.floor((widthPx - 16) / (fontSize * 0.52)));
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        if (!line) { line = word; continue; }
+        if ((line + ' ' + word).length <= perLine) line += ' ' + word;
+        else { lines.push(line); line = word; }
+    }
+    if (line) lines.push(line);
+    // حداکثر سه خط؛ بقیه با «…» کوتاه می‌شود تا از کادر بیرون نزند.
+    if (lines.length > 3) {
+        const kept = lines.slice(0, 3);
+        kept[2] = kept[2].replace(/.$/, '') + '…';
+        return kept;
+    }
+    return lines;
+}
+
+/** نسخهٔ «چاپی» نقشه: برچسب‌ها به <text> تبدیل و دکمه‌های تعاملی حذف می‌شوند. */
+function buildPrintSvg(srcSvg) {
+    const clone = srcSvg.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.removeAttribute('data-readonly');
+    clone.removeAttribute('style');           // اندازه را برگهٔ چاپ تعیین می‌کند
+    clone.removeAttribute('width');
+    clone.removeAttribute('height');
+    clone.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    // نسبت ابعاد از viewBox گرفته می‌شود تا با height:auto برگهٔ چاپ درست مقیاس بگیرد.
+    const vb = (clone.getAttribute('viewBox') || '0 0 1600 900').split(/\s+/).map(Number);
+    if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
+        clone.style.aspectRatio = `${vb[2]} / ${vb[3]}`;
+    }
+
+    clone.querySelectorAll('.wpmf-node').forEach(group => {
+        const rect = group.querySelector('.wpmf-node-bg');
+        const boxW = Number(rect?.getAttribute('width') || 180);
+        const boxH = Number(rect?.getAttribute('height') || 70);
+        const labelHost = group.querySelector('.wpmf-node-label');
+        const text = (labelHost?.textContent || '').trim();
+        // گره ریشه پس‌زمینهٔ رنگی دارد (بقیه سفید) — متنش هم باید سفید بماند.
+        const isRoot = !!rect && rect.getAttribute('fill') !== '#fff';
+
+        // حلقهٔ پیشرفت و برچسب درصد (که HTML است) را نگه می‌داریم و به SVG تبدیل می‌کنیم.
+        const ringValue = group.querySelector('.wpmf-ring-value');
+        const ringText = group.querySelector('.wpmf-ring-label')?.textContent?.trim() || '';
+
+        group.querySelectorAll('foreignObject').forEach(fo => fo.remove());
+
+        const fontSize = isRoot ? 20 : 18;
+        const lines = wrapLabel(text, boxW, fontSize);
+        const lineHeight = fontSize * 1.3;
+        const startY = lines.length > 1 ? -((lines.length - 1) * lineHeight) / 2 : 0;
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('class', 'wpmf-print-node-label' + (isRoot ? ' root' : ''));
+        label.setAttribute('x', '0');
+        label.setAttribute('y', String(startY));
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('dominant-baseline', 'central');
+        // متن کامل روی خودِ عنصر می‌ماند تا در کپی/خواندن، شکستِ خطوط گم نشود.
+        label.setAttribute('aria-label', text);
+        lines.forEach((line, i) => {
+            const span = document.createElementNS(SVG_NS, 'tspan');
+            span.setAttribute('x', '0');
+            span.setAttribute('y', String(startY + i * lineHeight));
+            span.textContent = line;
+            label.appendChild(span);
+        });
+        group.appendChild(label);
+
+        if (ringValue && ringText) {
+            const ring = document.createElementNS(SVG_NS, 'text');
+            ring.setAttribute('class', 'wpmf-print-ring-label');
+            ring.setAttribute('x', ringValue.getAttribute('cx') || '0');
+            ring.setAttribute('y', ringValue.getAttribute('cy') || '0');
+            ring.setAttribute('text-anchor', 'middle');
+            ring.setAttribute('dominant-baseline', 'central');
+            ring.textContent = ringText;
+            group.appendChild(ring);
+        }
+        void boxH;
+    });
+
+    return clone;
+}
+
+/** کپیِ چاپی نقشه را در ظرف پیش‌نمایش می‌گذارد. */
+window.inventoryWorkProjectMindFlow.mountPrintPreview = function (srcSvgId, targetId) {
+    const src = document.getElementById(srcSvgId);
+    const target = document.getElementById(targetId);
+    if (!src || !target) return false;
+    target.innerHTML = '';
+    target.appendChild(buildPrintSvg(src));
+    return true;
+};
+
+window.inventoryWorkProjectMindFlow.focusPrintOverlay = function (overlayId) {
+    const el = document.getElementById(overlayId);
+    if (!el) return false;
+    el.focus({ preventScroll: true });
+    return true;
+};
+
+/** ساخت برگهٔ چاپ در iframe جدا و باز کردن پنجرهٔ چاپ مرورگر. */
+window.inventoryWorkProjectMindFlow.printPreview = function (targetId, title, subtitle, meta, srcSvgId) {
+    const host = document.getElementById(targetId);
+    let svg = host && host.querySelector('svg');
+    // اگر پیش‌نمایش هنوز ساخته نشده بود، همین‌جا نسخهٔ چاپی را می‌سازیم.
+    if (!svg && srcSvgId) {
+        window.inventoryWorkProjectMindFlow.mountPrintPreview(srcSvgId, targetId);
+        svg = host && host.querySelector('svg');
+    }
+    if (!svg) return false;
+
+    const frame = document.createElement('iframe');
+    frame.className = 'wpmf-print-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.setAttribute('title', 'wpmf-print-frame');
+    document.body.appendChild(frame);
+
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    const html = `<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<base href="/">
+<title>${escapeHtml(title)}</title>
+<link rel="stylesheet" href="css/mindflow-print.css">
+<link rel="stylesheet" href="Inventory.Client.styles.css">
+<style>@page{size:A4 landscape;margin:8mm}html,body{margin:0;padding:0;background:#fff}</style>
+</head><body class="wpmf-print-body">
+<div class="wpmf-print-sheet">
+<header class="wpmf-print-sheet-head">
+<div class="wpmf-print-sheet-title"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(subtitle)}</span></div>
+<div class="wpmf-print-sheet-meta">${escapeHtml(meta)}</div>
+</header>
+<div class="wpmf-print-sheet-canvas">${svg.outerHTML}</div>
+<footer class="wpmf-print-sheet-foot">نرم‌افزار یکپارچه فروغ آریا — نگار ذهنی</footer>
+</div>
+</body></html>`;
+
+    const win = frame.contentWindow;
+    let printed = false;
+    const doPrint = () => {
+        if (printed) return;
+        printed = true;
+        // صبر تا آماده‌شدن فونت‌ها؛ وگرنه متن با فونت جایگزین چاپ می‌شود.
+        const fonts = doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve();
+        Promise.resolve(fonts).then(() => {
+            try { win.focus(); win.print(); }
+            catch (err) { console.warn('[MindFlow] پنجرهٔ چاپ باز نشد', err); }
+        }).finally(() => setTimeout(() => frame.remove(), 1500));
+    };
+
+    frame.addEventListener('load', () => setTimeout(doPrint, 80), { once: true });
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // اگر رویداد load نرسید، بعد از کمی صبر خودمان چاپ می‌کنیم.
+    setTimeout(doPrint, 1500);
+    return true;
+};

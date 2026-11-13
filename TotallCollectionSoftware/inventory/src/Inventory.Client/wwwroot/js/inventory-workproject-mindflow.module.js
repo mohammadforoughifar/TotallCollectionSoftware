@@ -20,3 +20,15 @@ export const attachDrag = async (svgId, dotnet) => (await api()).attachDrag(svgI
 export const detachDrag = async svgId => (await api()).detachDrag(svgId);
 
 export const focusNodeTitle = async svgId => (await api()).focusNodeTitle(svgId);
+
+export const getCanvasView = async wrap => (await api()).getCanvasView(wrap);
+
+export const setCanvasView = async (wrap, left, top) => (await api()).setCanvasView(wrap, left, top);
+
+export const bindCanvasKeys = async wrap => (await api()).bindCanvasKeys(wrap);
+
+export const mountPrintPreview = async (srcSvgId, targetId) => (await api()).mountPrintPreview(srcSvgId, targetId);
+
+export const focusPrintOverlay = async overlayId => (await api()).focusPrintOverlay(overlayId);
+
+export const printPreview = async (targetId, title, subtitle, meta) => (await api()).printPreview(targetId, title, subtitle, meta);
