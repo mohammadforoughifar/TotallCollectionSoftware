@@ -1,0 +1,291 @@
+@page "/Requests/Details"
+@inject SupportDbContext Db
+@inject RequestService Requests
+@inject SupportAuthService Auth
+@{
+    ViewData["Title"] = "جزئیات درخواست";
+}
+@functions {
+    public int Id { get; set; }
+    public string Error { get; set; } = "";
+
+    /// <summary>در نمایش (GET) رکورد در بدنهٔ صفحه در ViewData گذاشته می‌شود.</summary>
+    private LicenseRequest? Req => ViewData["Request"] as LicenseRequest;
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    private async Task<SupportUser?> ActorAsync() => await Db.Users.FirstOrDefaultAsync(u => u.Id == User.UserId());
+
+    public async Task<IActionResult> OnPostTransitionAsync()
+    {
+        Id = ResolveId();
+        var toText = Request.Form["to"].ToString();
+        var note = Request.Form["note"].ToString();
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+        if (!Enum.TryParse<RequestStatus>(toText, true, out var to))
+        {
+            TempData["error"] = "وضعیت مقصد نامعتبر است.";
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        var result = await Requests.TransitionAsync(Id, to, note, actor);
+        TempData[result.Ok ? "ok" : "error"] = result.Ok
+            ? $"وضعیت به «{Ui.Status(to)}» تغییر کرد."
+            : result.Error;
+        return Redirect($"/Requests/Details?id={Id}");
+    }
+
+    public async Task<IActionResult> OnPostNoteAsync()
+    {
+        Id = ResolveId();
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+        await Requests.AddNoteAsync(Id, Request.Form["note"].ToString(), actor);
+        TempData["ok"] = "یادداشت ثبت شد.";
+        return Redirect($"/Requests/Details?id={Id}");
+    }
+
+    public async Task<IActionResult> OnPostLinkCustomerAsync()
+    {
+        Id = ResolveId();
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+        var customerId = int.TryParse(Request.Form["customerId"], out var parsed) ? parsed : 0;
+        if (customerId == 0)
+        {
+            TempData["error"] = "مشتری را انتخاب کنید.";
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        var (ok, error) = await Requests.LinkCustomerAsync(Id, customerId, actor);
+        TempData[ok ? "ok" : "error"] = ok ? "مشتری به درخواست وصل شد." : error;
+        return Redirect($"/Requests/Details?id={Id}");
+    }
+}
+@{
+    Id = ResolveId();
+    var request = await Db.Requests.AsNoTracking()
+        .Include(r => r.Customer)
+        .Include(r => r.InstallationRef)
+        .Include(r => r.Attachments)
+        .Include(r => r.IdentityChecks)
+        .Include(r => r.Events)
+        .Include(r => r.Licenses)
+        .Include(r => r.Drafts)
+        .FirstOrDefaultAsync(r => r.Id == Id);
+    ViewData["Request"] = request;
+
+    var customers = await Db.Customers.AsNoTracking().Where(c => c.MergedIntoId == null && c.IsActive)
+        .OrderBy(c => c.Name).Take(200).ToListAsync();
+    var warnings = string.IsNullOrWhiteSpace(request?.WarningsJson)
+        ? new List<string>()
+        : System.Text.Json.JsonSerializer.Deserialize<List<string>>(request!.WarningsJson!) ?? new List<string>();
+    var allowed = request is null ? new List<Transition>() : Workflow.AllowedFrom(request.Status, User.Role()).ToList();
+}
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (TempData["error"] is string errorMessage && !string.IsNullOrEmpty(errorMessage)) { <div class="alert error">@errorMessage</div> }
+
+@if (request is null)
+{
+    <div class="alert error">درخواست پیدا نشد.</div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>درخواست <span class="mono">@request.RequestNo</span></h1>
+            <p class="lead">@(request.Customer?.Name ?? "مشتری تعیین نشده") · شناسهٔ نصب
+                <span class="mono">@request.InstallationId</span> · <span class="badge @Ui.Badge(request.Status)">@Ui.Status(request.Status)</span>
+                @Ui.Type(request.Type) · کانال @Ui.Channel(request.Channel)</p>
+        </div>
+        <div class="ms-auto">
+            @if (request.Status == RequestStatus.Approved)
+            {
+                <a class="btn ghost" href="/Requests/Draft?id=@request.Id">پیش‌نویس امضا</a>
+                <a class="btn" href="/Requests/Sign?id=@request.Id">امضا</a>
+            }
+            else if (request.Status is RequestStatus.Issued or RequestStatus.Delivered)
+            {
+                @if (request.Licenses.Count > 0)
+                {
+                    <a class="btn" href="/Requests/Deliver?id=@request.Id">تحویل لایسنس</a>
+                }
+            }
+            else
+            {
+                <a class="btn ghost" href="/Requests/Identity?id=@request.Id">تأیید هویت</a>
+            }
+        </div>
+    </div>
+
+    if (warnings.Count > 0)
+    {
+        <div class="alert warn">هشدارهای این درخواست:
+            <ul>@foreach (var warning in warnings) { <li>@warning</li> }</ul>
+        </div>
+    }
+
+    @if (request.DuplicateOfRequestId is int originalId)
+    {
+        <div class="alert warn">این درخواست تکراری است و به <a href="/Requests/Details?id=@originalId">
+            <span class="mono">@request.RequestNo</span> مرجع</a> وصل شده است.</div>
+    }
+
+    <div class="grid">
+        <div class="card"><div class="card-head">خلاصه</div><div class="card-body">
+            <dl class="kv">
+                <dt>نوع</dt><dd>@Ui.Type(request.Type)</dd>
+                <dt>کانال</dt><dd>@Ui.Channel(request.Channel)</dd>
+                <dt>ثبت</dt><dd>@JalaliDate.Full(request.CreatedAt)</dd>
+                <dt>زمان درخواست مشتری</dt><dd>@JalaliDate.Full(request.RequestedAtUtc)</dd>
+                <dt>مشتری</dt><dd>@(request.Customer is null ? "—" : $"{request.Customer.Name} ({request.Customer.Code})")</dd>
+                <dt>تماس</dt><dd>@(string.IsNullOrWhiteSpace(request.ContactName) ? "—" : request.ContactName)
+                    · <span class="mono">@(request.ContactPhone ?? "—")</span></dd>
+                <dt>ماژول‌های موردنظر</dt><dd class="mono">@(request.InterestedModulesCsv ?? "—")</dd>
+                <dt>هش محتوا</dt><dd class="mono">@Ui.Clip(request.PayloadSha256, 16)</dd>
+            </dl>
+        </div></div>
+
+        <div class="card"><div class="card-head">تغییر وضعیت</div><div class="card-body">
+            @if (allowed.Count == 0)
+            {
+                <p class="muted">برای نقش شما از این وضعیت گذار مجازی وجود ندارد.</p>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Transition">
+                    <input type="hidden" name="id" value="@request.Id" />
+                    <div class="field"><label for="to">وضعیت مقصد</label>
+                        <select id="to" name="to">
+                            @foreach (var transition in allowed)
+                            {
+                                <option value="@transition.To">@Ui.Status(transition.To) — @transition.Title</option>
+                            }
+                        </select></div>
+                    <div class="field"><label for="note">یادداشت</label><input id="note" name="note" placeholder="اختیاری" /></div>
+                    <button type="submit" class="btn">اعمال</button>
+                </form>
+            }
+            <p class="hint">«صادرشده» فقط از مسیر امضا ثبت می‌شود؛ گذار معکوس و پرش از تأیید هویت رد می‌شود.</p>
+        </div></div>
+    </div>
+
+    <div class="grid">
+        <div class="card"><div class="card-head">مشتری</div><div class="card-body">
+            @if (request.Customer is null)
+            {
+                <form method="post" asp-page-handler="LinkCustomer">
+                    <input type="hidden" name="id" value="@request.Id" />
+                    <div class="field"><label for="customerId">وصل‌کردن به مشتری موجود</label>
+                        <select id="customerId" name="customerId">
+                            <option value="0">— انتخاب —</option>
+                            @foreach (var customer in customers)
+                            {
+                                <option value="@customer.Id">@customer.Name (@customer.Code)</option>
+                            }
+                        </select></div>
+                    <p><button class="btn ghost" type="submit">وصل کن</button>
+                        <a class="btn small ghost" href="/Customers/Edit?fromRequest=@request.Id">ساخت مشتری تازه</a></p>
+                </form>
+            }
+            else
+            {
+                <dl class="kv">
+                    <dt>نام</dt><dd>@request.Customer.Name</dd>
+                    <dt>کد</dt><dd class="mono">@request.Customer.Code</dd>
+                    <dt>تماس</dt><dd class="mono">@(request.Customer.Phone ?? "—")</dd>
+                </dl>
+                <p><a class="btn small ghost" href="/Customers/Edit?id=@request.CustomerId">ویرایش مشتری</a></p>
+            }
+        </div></div>
+
+        <div class="card"><div class="card-head">تأیید هویت</div><div class="card-body">
+            @if (request.IdentityChecks.Count == 0)
+            {
+                <p class="muted">هنوز ثبت نشده است — پیش از «تأییدشده» لازم است.</p>
+                <a class="btn small" href="/Requests/Identity?id=@request.Id">ثبت تأیید هویت</a>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>تاریخ</th><th>روش</th><th>تأییدکننده</th><th>کاربر</th></tr></thead>
+                    <tbody>
+                    @foreach (var check in request.IdentityChecks.OrderByDescending(c => c.Id))
+                    {
+                        <tr><td>@JalaliDate.Short(check.VerifiedAt)</td><td>@Ui.IdentityMethodText(check.Method)</td>
+                            <td>@check.VerifiedWith</td><td>@check.ByName</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div></div>
+    </div>
+
+    <div class="card"><div class="card-head">محتوای درخواست مشتری (فقط نمایشی — قابل ویرایش نیست)</div><div class="card-body">
+        <dl class="kv">
+            <dt>نسخه</dt><dd>@Ui.N(request.RequestVersion)</dd>
+            <dt>توضیح مشتری</dt><dd>@(string.IsNullOrWhiteSpace(request.CustomerNote) ? "—" : request.CustomerNote)</dd>
+        </dl>
+        <details><summary class="hint">متن خام (فقط خواندنی)</summary>
+            <pre>@request.PayloadJson</pre>
+        </details>
+        @if (request.Attachments.Count > 0)
+        {
+            <table style="margin-top:.6rem">
+                <thead><tr><th>فایل</th><th>حجم</th><th>SHA256</th></tr></thead>
+                <tbody>
+                @foreach (var attachment in request.Attachments)
+                {
+                    <tr><td class="mono">@attachment.FileName</td><td>@Ui.Bytes(attachment.SizeBytes)</td>
+                        <td class="mono">@Ui.Clip(attachment.Sha256, 20)</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div></div>
+
+    <div class="card"><div class="card-head">خط زمانی</div><div class="card-body">
+        <table>
+            <thead><tr><th>زمان</th><th>کاربر</th><th>رخداد</th><th>توضیح</th></tr></thead>
+            <tbody>
+            @foreach (var row in request.Events.OrderByDescending(e => e.Id))
+            {
+                <tr><td>@JalaliDate.Full(row.At)</td><td>@row.ByName</td>
+                    <td>@row.Kind@(row.FromStatus is null ? "" : $" ({row.FromStatus}←{row.ToStatus})")</td>
+                    <td>@row.Text</td></tr>
+            }
+            </tbody>
+        </table>
+        <form method="post" asp-page-handler="Note">
+            <input type="hidden" name="id" value="@request.Id" />
+            <div class="field"><label for="note-text">یادداشت تازه</label><input id="note-text" name="note" /></div>
+            <button type="submit" class="btn small ghost">افزودن یادداشت</button>
+        </form>
+    </div></div>
+
+    @if (request.Licenses.Count > 0)
+    {
+        <div class="card"><div class="card-head">لایسنس‌های صادرشده</div><div class="card-body">
+            <table>
+                <thead><tr><th>سریال</th><th>وضعیت</th><th>امضا</th><th>معتبر تا</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var license in request.Licenses.OrderByDescending(l => l.Id))
+                {
+                    <tr><td class="mono">@license.Serial</td>
+                        <td><span class="badge @Ui.LicenseBadge(license.Status)">@Ui.LicenseStatus(license.Status)</span></td>
+                        <td>@JalaliDate.Full(license.CreatedAt)</td>
+                        <td>@JalaliDate.Short(license.ValidUntil)</td>
+                        <td><a href="/Licenses/Details?id=@license.Id">جزئیات</a></td></tr>
+                }
+                </tbody>
+            </table>
+        </div></div>
+    }
+}

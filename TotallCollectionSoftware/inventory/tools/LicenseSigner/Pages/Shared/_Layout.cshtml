@@ -1,0 +1,47 @@
+@{
+    var user = User;
+    var current = "/" + (ViewContext.RouteData.Values["page"]?.ToString() ?? "/").TrimStart('/');
+    string Active(string prefix) => current.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] — پشتیبانی لایسنس</title>
+    <link rel="stylesheet" href="/site.css" />
+</head>
+<body>
+@if (user.Identity?.IsAuthenticated == true)
+{
+    <header class="top">
+        <span class="brand">🔑 پنل پشتیبانی لایسنس</span>
+        <nav>
+            <a href="/" class="@(current == "/" ? "active" : "")">داشبورد</a>
+            <a href="/Requests" class="@Active("/Requests")">درخواست‌ها</a>
+            <a href="/Requests/Ingest" class="@Active("/Requests/Ingest")">ثبت درخواست</a>
+            <a href="/Customers" class="@Active("/Customers")">مشتریان</a>
+            <a href="/Licenses" class="@Active("/Licenses")">لایسنس‌ها</a>
+            <a href="/Renewals" class="@Active("/Renewals")">تمدیدها</a>
+            @if (user.IsAdmin())
+            {
+                <a href="/Settings" class="@Active("/Settings")">تنظیمات</a>
+                <a href="/Audit" class="@Active("/Audit")">ممیزی</a>
+                <a href="/Backup" class="@Active("/Backup")">پشتیبان</a>
+            }
+        </nav>
+        <span class="me">
+            <span>@user.DisplayName() (@Ui.Role(user.Role()))</span>
+            <form method="post" action="/Logout"><button class="btn small ghost" type="submit">خروج</button></form>
+        </span>
+    </header>
+}
+<main>
+    @RenderBody()
+</main>
+<footer class="footer">
+    پنل پشتیبانی لایسنس — فقط روی ماشین پشتیبانی. کلید خصوصی و رمزها در این پنل ذخیره نمی‌شوند.
+</footer>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

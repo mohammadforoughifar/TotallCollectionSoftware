@@ -1,0 +1,63 @@
+@page "/Requests"
+@inject SupportDbContext Db
+@{
+    ViewData["Title"] = "درخواست‌ها";
+    var q = Request.Query["q"].ToString().Trim();
+    var statusFilter = Request.Query["status"].ToString().Trim();
+
+    var query = Db.Requests.AsNoTracking().Include(r => r.Customer).AsQueryable();
+    if (!string.IsNullOrWhiteSpace(q))
+        query = query.Where(r => r.RequestNo.Contains(q) || r.InstallationId.Contains(q)
+                                 || (r.Customer != null && r.Customer.Name.Contains(q)));
+    if (int.TryParse(statusFilter, out var statusValue) && Enum.IsDefined(typeof(RequestStatus), statusValue))
+        query = query.Where(r => r.Status == (RequestStatus)statusValue);
+
+    var rows = await query.OrderByDescending(r => r.Id).Take(100).ToListAsync();
+    var total = await query.CountAsync();
+}
+<div class="page-head">
+    <div><h1>درخواست‌ها</h1><p class="lead">@Ui.N(total) ردیف</p></div>
+    <div class="ms-auto"><a class="btn" href="/Requests/Ingest">ثبت درخواست تازه</a></div>
+</div>
+
+<div class="card"><div class="card-body">
+    <form method="get" class="grid">
+        <div class="field"><label for="q">جست‌وجو (شماره/مشتری/نصب)</label>
+            <input id="q" name="q" value="@q" placeholder="REQ-1405 یا شناسهٔ نصب" /></div>
+        <div class="field"><label for="status">وضعیت</label>
+            <select id="status" name="status">
+                <option value="">همه</option>
+                @foreach (RequestStatus value in Enum.GetValues(typeof(RequestStatus)))
+                {
+                    <option value="@((int)value)" selected="@(statusFilter == ((int)value).ToString())">@Ui.Status(value)</option>
+                }
+            </select></div>
+        <div class="field"><label>&nbsp;</label><button class="btn ghost" type="submit">اعمال صافی</button></div>
+    </form>
+</div></div>
+
+<div class="card">
+    <table>
+        <thead><tr><th>شماره</th><th>مشتری</th><th>نوع</th><th>وضعیت</th><th>ثبت</th><th>هشدار</th><th></th></tr></thead>
+        <tbody>
+        @if (rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">درخواستی با این صافی نیست.</td></tr>
+        }
+        @foreach (var row in rows)
+        {
+            var warnings = string.IsNullOrWhiteSpace(row.WarningsJson) ? 0
+                : System.Text.Json.JsonSerializer.Deserialize<List<string>>(row.WarningsJson!)?.Count ?? 0;
+            <tr>
+                <td class="mono">@row.RequestNo</td>
+                <td>@(row.Customer?.Name ?? "—")</td>
+                <td>@Ui.Type(row.Type)</td>
+                <td><span class="badge @Ui.Badge(row.Status)">@Ui.Status(row.Status)</span></td>
+                <td>@JalaliDate.Full(row.CreatedAt)</td>
+                <td>@(warnings == 0 ? "—" : Ui.N(warnings))</td>
+                <td><a href="/Requests/Details?id=@row.Id">جزئیات</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

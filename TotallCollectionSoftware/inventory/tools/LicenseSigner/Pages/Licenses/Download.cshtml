@@ -1,0 +1,34 @@
+@page "/Licenses/Download"
+@inject SupportDbContext Db
+@inject DeliveryService Delivery
+@inject AuditChainService Audit
+@functions {
+    public string Error { get; set; } = "";
+
+    /// <summary>
+    /// دانلود فایل امضاشده. عمداً در <c>OnGetAsync</c> انجام می‌شود تا بدنهٔ صفحه و چیدمان
+    /// هم رندر نشوند (اگر در بدنهٔ صفحه بنویسیم، HTML چیدمان به انتهای فایل .lic می‌چسبد).
+    /// </summary>
+    public async Task<IActionResult> OnGetAsync()
+    {
+        var id = int.TryParse(Request.Query["id"], out var parsed) ? parsed : 0;
+        var license = await Db.IssuedLicenses.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+        if (license is null)
+        {
+            Response.StatusCode = 404;
+            Error = "لایسنس پیدا نشد.";
+            return Page();
+        }
+
+        var (bytes, error) = Delivery.ReadLicenseFile(license);
+        if (bytes is null)
+        {
+            TempData["error"] = error ?? "فایل لایسنس خوانده نشد.";
+            return Redirect($"/Licenses/Details?id={id}");
+        }
+
+        await Audit.AppendAsync(User.UserName(), "DOWNLOAD", "IssuedLicense", license.Id.ToString(), null, User.UserId());
+        return File(bytes, "application/json", license.FileName);
+    }
+}
+<div class="alert error">@Error</div>
