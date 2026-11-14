@@ -5,6 +5,18 @@
 @inject IAuthState Auth
 
 <div class="wpmf-root @(_isFullscreen ? "wpmf-fullscreen" : "")" dir="rtl" @onkeydown="OnDocumentKeyDown">
+    @if (_newOrderFrameOpen)
+    {
+        <div class="wpmf-embed-backdrop">
+            <div class="wpmf-embed-dialog" role="dialog" aria-modal="true" aria-label="ساخت دستورکار جدید">
+                <div class="wpmf-embed-head">
+                    <span><i class="bi bi-clipboard-plus"></i> دستورکار جدید برای گرهٔ «@(SelectedNode?.Text)»</span>
+                    <button type="button" class="btn btn-sm btn-light" title="بستن" aria-label="بستن" @onclick="CloseNewOrderFrame"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <iframe src="@NewOrderFrameUrl" title="فرم دستورکار جدید"></iframe>
+            </div>
+        </div>
+    }
     <div class="wpmf-head">
         <div class="wpmf-head-title">
             <div class="wpmf-kicker">نگار ذهنی</div>
@@ -88,9 +100,9 @@
     {
         <div class="wpmf-workarea">
             <div class="wpmf-canvas-wrap">
-                <div class="wpmf-canvas-scroller">
+                <div class="wpmf-canvas-scroller" style="width:@(N(CanvasBox.W * Zoom))px;height:@(N(CanvasBox.H * Zoom))px">
                     <div class="wpmf-grid"></div>
-                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
+                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" style="width:@(N(CanvasBox.W * Zoom))px;height:@(N(CanvasBox.H * Zoom))px" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
                     @foreach (var node in VisibleNodes.Where(n => n.ParentId.HasValue))
                     {
                         var parent = _map.Nodes.FirstOrDefault(n => n.Id == node.ParentId);
@@ -232,6 +244,9 @@
                         {
                             <button type="button" class="wpmf-add-order-btn" @onclick="ToggleWorkOrderOptions" aria-expanded="@_showWorkOrderOptions" disabled="@_loadingOrders">
                                 <i class="bi @(_showWorkOrderOptions ? "bi-dash-circle" : "bi-plus-circle")"></i> @(_showWorkOrderOptions ? "بستن فهرست" : "افزودن دستورکار")
+                            </button>
+                            <button type="button" class="wpmf-add-order-btn wpmf-new-order-btn" @onclick="OpenNewOrderFrame" disabled="@(SelectedNode is null)" title="ساخت دستورکار جدید همین‌جا و اتصال خودکار آن به این گره">
+                                <i class="bi bi-plus-lg"></i> ساخت دستورکار جدید
                             </button>
                         }
                         @if (_showWorkOrderOptions && CanEdit)
@@ -557,7 +572,26 @@
     private WorkProjectMindFlowNodeDto? SelectedNode => _map.Nodes.FirstOrDefault(n => n.Id == _selectedId);
     private string AccessMessageClass => _accessMessage.StartsWith("دسترسی ثبت شد", StringComparison.Ordinal) || _accessMessage == "دسترسی لغو شد." ? "alert-success" : "alert-warning";
     private List<WorkProjectMindFlowNodeDto> VisibleNodes => _map.Nodes.Where(IsVisible).ToList();
-    private string ViewBox => $"{N(800 - 800 / Zoom)} {N(450 - 450 / Zoom)} {N(1600 / Zoom)} {N(900 / Zoom)}";
+    // قاب دیدِ نقشه: حداقل ۱۶۰۰×۹۰۰ و در صورت بیرون‌زدن گره‌ها، به اندازهٔ همهٔ گره‌های
+    // قابل‌نمایش بزرگ می‌شود (در هر جهت). اسکرول عمودی و افقی همین ابعاد را پوشش می‌دهد.
+    private (double X, double Y, double W, double H) CanvasBox
+    {
+        get
+        {
+            const double pad = 60;
+            double minX = 0, minY = 0, maxX = 1600, maxY = 900;
+            foreach (var n in VisibleNodes)
+            {
+                var w = Width(n); var h = Height(n);
+                minX = Math.Min(minX, n.X - w / 2 - pad);
+                maxX = Math.Max(maxX, n.X + w / 2 + pad);
+                minY = Math.Min(minY, n.Y - h / 2 - pad);
+                maxY = Math.Max(maxY, n.Y + h / 2 + pad);
+            }
+            return (minX, minY, maxX - minX, maxY - minY);
+        }
+    }
+    private string ViewBox => $"{N(CanvasBox.X)} {N(CanvasBox.Y)} {N(CanvasBox.W)} {N(CanvasBox.H)}";
     private int LinkedWorkOrderCount => _map.Nodes.SelectMany(NodeWorkOrderIds).Distinct().Count();
     private List<MindFlowWorkOrder> FilteredWorkOrders => _projectOrders.Concat(_workOrderCache.Values)
         .GroupBy(o => o.Id).Select(g => g.First())
@@ -651,6 +685,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // پیام‌های فرم دستورکار جاسازی‌شده (iframe) را دریافت کن
+            try
+            {
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("inventoryListenEmbedMessages", _self);
+            }
+            catch { }
+        }
         if (!_attached && !_loading && _map.Nodes.Count > 0)
         {
             _self ??= DotNetObjectReference.Create(this);
@@ -1357,6 +1401,51 @@
     private void Fit() => Zoom = 1;
     private void ToggleFullscreen() => _isFullscreen = !_isFullscreen;
 
+    // ---- ساخت دستورکار جدید داخل نگار ذهنی (فرم کامل صفحهٔ دستورکار، جاسازی‌شده) ----
+    private bool _newOrderFrameOpen;
+    private string NewOrderFrameUrl => IsStandalone || ProjectId <= 0
+        ? "/work-orders?new=1&embed=1"
+        : $"/work-orders?projectId={ProjectId}&embed=1";
+
+    private void OpenNewOrderFrame()
+    {
+        if (!CanEdit || SelectedNode is null) return;
+        _message = "";
+        _newOrderFrameOpen = true;
+    }
+
+    private void CloseNewOrderFrame() => _newOrderFrameOpen = false;
+
+    /// <summary>پیام از فرم دستورکار (iframe): «ساخته شد» → به گرهٔ انتخاب‌شده وصل؛ «بسته شد» → قاب بسته شود.</summary>
+    [JSInvokable]
+    public async Task OnEmbeddedWorkOrderEvent(string type, int id, string number)
+    {
+        if (type == "wo-closed") { _newOrderFrameOpen = false; StateHasChanged(); return; }
+        if (type != "wo-created" || id <= 0) return;
+        _newOrderFrameOpen = false;
+        if (!CanEdit || SelectedNode is null)
+        {
+            _message = $"دستورکار {number} ساخته شد، ولی گرهٔ انتخاب‌شده‌ای برای اتصال نبود.";
+            StateHasChanged();
+            return;
+        }
+        await LinkCreatedWorkOrderAsync(id);
+        _message = $"دستورکار {number} ساخته و به این گره وصل شد. برای ماندگاری، نقشه را ذخیره کن.";
+        StateHasChanged();
+    }
+
+    private async Task LinkCreatedWorkOrderAsync(int orderId)
+    {
+        if (SelectedNode is null || NodeWorkOrderIds(SelectedNode).Contains(orderId)) return;
+        Snapshot();
+        SelectedNode.WorkOrderIds ??= new();
+        SelectedNode.WorkOrderIds.Add(orderId);
+        SelectedNode.WorkOrderId = null;
+        _selectedWorkOrderId = orderId; _showNodeWorkOrderList = false;
+        _showWorkOrderOptions = false; Dirty();
+        await LoadLinkedChecklistAsync(force: true);
+    }
+
     [JSInvokable]
     public Task CommitDrag(Guid rootId, List<DragPoint> points, Guid? targetParentId)
     {
@@ -1379,6 +1468,8 @@
     {
         _workOrderLoadGeneration++;
         _candidateSearchGeneration++;
+        // قبل از آزاد کردن مرجع .NET، شنونده پیام iframe باید خاموش شود
+        try { _ = JS.InvokeVoidAsync("inventoryStopEmbedMessages"); } catch { }
         _self?.Dispose();
         DetachDrag();
     }
