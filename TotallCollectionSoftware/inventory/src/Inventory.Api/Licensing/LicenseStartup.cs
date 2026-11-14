@@ -55,6 +55,7 @@ public static class LicenseStartup
         services.AddSingleton<SeatDegradedJournal>();
         services.AddScoped<LicenseRuntimeState>();
         services.AddScoped<InstallationBinding>();
+        services.AddScoped<ClockGuard>();
         services.AddScoped<SeatService>();
 
         services.AddSingleton<EntitlementCache>();
@@ -67,6 +68,8 @@ public static class LicenseStartup
         // وضعیت Reserved می‌ماند. این سرویس آن‌ها را به Pending می‌برد تا مدیر
         // بتواند از API تسویه ببندد. هیچ سهمیه‌ای برنمی‌گردد.
         services.AddHostedService<LicenseReservationSweeper>();
+        // گام ۴-۴: سنجش دوره‌ای ساعت (لنگر سه‌جایی) — موتور «فقط‌خواندنی» با ساعت عقب‌رفته.
+        services.AddHostedService<ClockGuardWorker>();
 
         // گارد سراسری نوشتن — برای کنترلرهایی که [RequireModule] ندارند
         services.Configure<MvcOptions>(o => o.Filters.Add<LicenseWriteGuardFilter>());

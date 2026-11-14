@@ -3394,6 +3394,157 @@ Section("۳۲) گام ۴-ب: کمیت مؤلفه‌های ثانویه (۴.۳) �
         "شناسهٔ نصب و مؤلفه‌ها همگام با بایند نصب در فایل درخواست می‌آیند");
 }
 
+// ============================================================
+//  بخش ۳۳ (گام ۴-۴) — لنگر ساعت سه‌جایی، عقب‌بردن ساعت و خودترمیمی
+// ============================================================
+Section("۳۳) گام ۴-ب: ضد‌دست‌کاری ساعت (۴.۴)");
+
+{
+    await using var db = NewDb();
+    var clockEvents = new Inventory.Api.Licensing.Services.LicenseEventLogger(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseEventLogger>.Instance);
+    var clockKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+    var memA = new MemoryClockStore("mem-a");
+    var memB = new MemoryClockStore("mem-b");
+
+    Inventory.Api.Licensing.Services.ClockGuard Guard() => new(db, paths, clockEvents,
+        NullLogger<Inventory.Api.Licensing.Services.ClockGuard>.Instance,
+        new Inventory.Api.Licensing.Services.IClockStore[] { memA, memB }, clockKey);
+
+    // ساعت مرجع؛ ثانیه‌ها حفظ می‌شوند تا با زمان واقعیِ رخدادهای داده‌ای یکی باشد.
+    var t0 = DateTime.Now;
+    // رخدادهای دادهٔ موجود (فاکتور/نامه/رخداد لایسنس) با ساعت واقعی ثبت شده‌اند؛ لنگر
+    // باید با پاک‌شدن هر سه ذخیره‌گاه هم از همین داده بازسازی شود.
+    await db.LicenseEvents.AddAsync(new LicenseEvent
+    {
+        At = t0.AddMinutes(-1), Kind = "SEED", Severity = "Info", Message = "دادهٔ آزمایشی"
+    });
+    await db.SaveChangesAsync();
+
+    try
+    {
+        // ---------- الف) حالت عادی ----------
+        Inventory.Api.Licensing.Services.ClockVerdict verdict;
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal,
+            "ساعت هم‌خوان ⇒ وضعیت Normal");
+        Check(verdict.EffectiveNow >= verdict.SystemNow
+              && Math.Abs((verdict.EffectiveNow - t0).TotalSeconds) < 60,
+            "«اکنون مؤثر» همان ساعت سیستم است (یا لنگر، اگر جلوتر باشد)");
+        Check(memA.Value is not null && memB.Value is not null,
+            "لنگر در هر دو ذخیره‌گاه اضافی نوشته می‌شود (روی ویندوز: فایل + رجیستری HKCU)");
+        var anchorRow = await db.LicenseRuntime.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        Check(anchorRow?.Value?.StartsWith("v1.", StringComparison.Ordinal) == true,
+            "لنگر در LicenseRuntime (بدون تغییر اسکیما) و به‌صورت رمزشده ذخیره می‌شود");
+        Check(!(anchorRow?.Value ?? "").Contains(t0.Year.ToString(), StringComparison.Ordinal),
+            "مقدار ذخیره‌شده، زمان را به‌صورت خام لو نمی‌دهد (AES-GCM)");
+        Check(verdict.Stores.Contains("db") && verdict.Stores.Contains("mem-a") && verdict.Stores.Contains("mem-b"),
+            "سنجش، هر سه ذخیره‌گاه را می‌خواند (" + string.Join(", ", verdict.Stores) + ")");
+
+        // ---------- ب) نوسان کوچک ساعت، هشدار نیست ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddMinutes(-5)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal && !verdict.ShowBanner,
+            "۵ دقیقه عقب‌رفت طبیعی است (حاشیهٔ ۱۰ دقیقه) — هشدار نمی‌دهد");
+
+        // ---------- ج) تا ۲۴ ساعت: هشدار + بنر، نوشتن آزاد ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-3)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MinorBackward && verdict.ShowBanner,
+            "۳ ساعت عقب‌رفت ⇒ هشدار + بنر");
+        Check(!verdict.WritesBlocked && !Inventory.Api.Licensing.Infrastructure.LicenseAccessState
+                .IsReadOnly(LicenseOverallStatus.Valid),
+            "تا ۲۴ ساعت، نوشتن باز است (لایسنس معتبر همچنان کار می‌کند)");
+        Check(Math.Abs(verdict.EffectiveNow.Subtract(t0).TotalMinutes) < 1,
+            "«اکنون مؤثر» عقب نمی‌رود؛ همان لنگر می‌ماند (عقب‌بردن ساعت سودی ندارد)");
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 1,
+            "رخداد CLOCK_SET_BACK یک‌بار ثبت می‌شود");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-4)))
+            await Guard().EvaluateAsync();
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 1,
+            "تکرار همان تخلف، رخداد تکراری نمی‌سازد (ضد اسپم)");
+
+        // ---------- د) بیش از ۲۴ ساعت: فقط‌خواندنی ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-30)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MajorBackward && verdict.WritesBlocked,
+            "۳۰ ساعت عقب‌رفت ⇒ فقط‌خواندنی");
+        Check(Inventory.Api.Licensing.Infrastructure.LicenseAccessState.IsReadOnly(LicenseOverallStatus.Valid),
+            "فیلتر نوشتن (HTTP و هاب) با همین یک تابع، نوشتن را می‌بندد — وضعیت لایسنس Valid می‌ماند");
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MajorCode
+                                                     && x.Severity == "Error") == 1,
+            "رخداد CLOCK_SET_BACK_BLOCK با شدت Error ثبت می‌شود");
+
+        // ---------- هـ) خودترمیمی: به‌محض درست‌شدن ساعت ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal,
+            "ساعت درست شد ⇒ وضعیت خودکار Normal (قفل دائمی وجود ندارد)");
+        Check(!Inventory.Api.Licensing.Infrastructure.LicenseAccessState.IsReadOnly(LicenseOverallStatus.Valid)
+              && !Inventory.Api.Licensing.Services.ClockGuardState.Blocked,
+            "نوشتن خودکار باز می‌شود — بدون نیاز به دخالت پشتیبانی");
+        // ---------- و-۲) تخلف بعدی بعد از خودترمیمی: هشدار تازه (نه بی‌صدا) ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-2)))
+            await Guard().EvaluateAsync();
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 2,
+            "بعد از خودترمیمی، تخلف بعدی هشدار تازه می‌دهد (نشانهٔ هشدار پاک شده است)");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            await Guard().EvaluateAsync();
+
+        var advanced = await db.LicenseRuntime.AsNoTracking()
+            .FirstAsync(x => x.Key == Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        Check(advanced.Value != anchorRow.Value, "لنگر با جلو رفتن ساعت به‌روز می‌شود (نه فقط یک‌بار)");
+
+        // ---------- و) دست‌کاری ذخیره‌گاه: نادیده گرفته می‌شود، قفل نمی‌کند ----------
+        var guardForProtect = Guard();
+        var stored = memA.Value!;
+        var bytes = Convert.FromBase64String(stored[3..]);
+        bytes[bytes.Length - 1] ^= 0x01;                    // ← تست جهش: یک بیت در ciphertext
+        memA.Value = "v1." + Convert.ToBase64String(bytes);
+        Check(guardForProtect.Unprotect(memA.Value) is null,
+            "تغییر یک بیت در مقدار رمزشده ⇒ لنگر رد می‌شود (HMAC/AEAD — ۱ تست جهش ساعت)");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal
+              && memA.Value!.StartsWith("v1.", StringComparison.Ordinal) && guardForProtect.Unprotect(memA.Value) is not null,
+            "ذخیره‌گاه خراب بعد از سنجش با مقدار سالم بازنویسی می‌شود (خودترمیمی)");
+        Check(guardForProtect.Unprotect("garbage") is null && guardForProtect.Unprotect(null) is null,
+            "مقدار بی‌معنا/خالی ⇒ لنگر نامعتبر (نه استثنا)");
+
+        // ---------- ز) پاک‌کردن لنگرها: دادهٔ موجود جای آن را می‌گیرد ----------
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM \"LicenseRuntime\" WHERE \"Key\" = {0}", Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        memA.Value = null;
+        memB.Value = null;
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-6)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.DataMax is not null && verdict.Anchor != DateTime.MinValue,
+            "با پاک‌شدن هر سه لنگر، بیشترین زمان داده (رخداد/فاکتور/نامه) لنگر را بازمی‌سازد");
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MinorBackward,
+            "همان عقب‌رفت ۶ ساعت باز هم تشخیص داده می‌شود (پاک‌کردن لنگر، کنترل را دور نمی‌زند)");
+    }
+    finally
+    {
+        Inventory.Api.Licensing.Services.ClockGuardState.Reset();
+    }
+
+    // ---------- ح) اتصال به دروازه و راه‌اندازی (پویش منبع) ----------
+    if (repoRootForScan is not null)
+    {
+        var access = File.ReadAllText(Path.Combine(repoRootForScan, "src", "Inventory.Api",
+            "Licensing", "Infrastructure", "LicenseAccessState.cs"));
+        Check(access.Contains("ClockGuardState.Blocked", StringComparison.Ordinal),
+            "دروازهٔ نوشتن (HTTP + هاب) وضعیت قفل ساعت را می‌بیند");
+        var startup = File.ReadAllText(Path.Combine(repoRootForScan, "src", "Inventory.Api",
+            "Licensing", "LicenseStartup.cs"));
+        Check(startup.Contains("ClockGuardWorker", StringComparison.Ordinal)
+              && startup.Contains("AddScoped<ClockGuard>", StringComparison.Ordinal),
+            "سنجش ساعت در راه‌اندازی ثبت شده است (سرویس + کارگر دوره‌ای)");
+    }
+}
+
 Console.WriteLine();
 Console.WriteLine(new string('═', 96));
 if (failures == 0)
@@ -3516,4 +3667,13 @@ file sealed class SeatOnlyLicenseService(EffectiveEntitlement entitlement)
 
     public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(false);
+}
+
+/// <summary>ذخیره‌گاه لنگر ساعت در حافظه — جای فایل/رجیستری در تست.</summary>
+file sealed class MemoryClockStore(string name) : Inventory.Api.Licensing.Services.IClockStore
+{
+    public string Name { get; } = name;
+    public string? Value { get; set; }
+    public string? Read() => Value;
+    public void Write(string value) => Value = value;
 }

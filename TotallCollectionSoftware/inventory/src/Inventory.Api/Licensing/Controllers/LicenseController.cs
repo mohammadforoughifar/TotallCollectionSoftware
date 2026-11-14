@@ -92,6 +92,7 @@ public class LicenseController : ControllerBase
     private readonly ILicenseService _licenses;
     private readonly IInstallationIdentity _identity;
     private readonly InstallationBinding _binding;
+    private readonly ClockGuard _clock;
     private readonly PublicKeyRingProvider _keys;
     private readonly LicenseActivationThrottle _throttle;
     private readonly LicensePaths _paths;
@@ -104,13 +105,14 @@ public class LicenseController : ControllerBase
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
-        InstallationBinding binding, PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
+        InstallationBinding binding, ClockGuard clock, PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
         LicenseEventLogger events, AppDbContext db, LicensingOptions options,
         IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log)
     {
         _licenses = licenses;
         _identity = identity;
         _binding = binding;
+        _clock = clock;
         _keys = keys;
         _throttle = throttle;
         _paths = paths;
@@ -154,6 +156,10 @@ public class LicenseController : ControllerBase
         var usage = await BuildUsageRowsAsync(entitlement, cancellationToken);
         // بایند نصب: فقط «آیا جابه‌جا شده؟» — هرگز اعتبار لایسنس را تغییر نمی‌دهد.
         var binding = await _binding.AssessAsync(cancellationToken);
+        // ساعت: یک سنجش سبک در همان درخواست وضعیت تا داشبورد همیشه تازه باشد
+        // (کارگر پس‌زمینه هم هر ۱۰ دقیقه همین کار را می‌کند).
+        var clock = await _clock.EvaluateAsync(cancellationToken);
+        var readOnly = LicenseAccessState.IsReadOnly(entitlement.Status);
         var grants = await _db.LicenseGrants.AsNoTracking()
             .Where(g => g.Status == "Active")
             .OrderBy(g => g.AppliedAt)
@@ -171,6 +177,21 @@ public class LicenseController : ControllerBase
             computedAt = entitlement.ComputedAt,
             updatesUntil = entitlement.UpdatesUntil,
             hasPerpetualItem = entitlement.HasPerpetualItem,
+            // ---- ساعت (گام ۴-۴): وضعیت لنگر و «فقط‌خواندنی موقت» ----
+            canWrite = !readOnly,
+            clock = new
+            {
+                health = clock.Health.ToString(),
+                systemNow = clock.SystemNow,
+                anchor = clock.Anchor,
+                effectiveNow = clock.EffectiveNow,
+                backwardHours = Math.Round(clock.Backward.TotalHours, 1),
+                writesBlocked = clock.WritesBlocked,
+                showBanner = clock.ShowBanner,
+                stores = clock.Stores,
+                message = clock.ShowBanner ? clock.Summary : null
+            },
+
             // پرچم «انتقال نصب»: دو مؤلفهٔ ثانویه یا بیشتر عوض شده.
             // تصمیم با ما است؛ این پرچم فقط اطلاع‌رسانی است و چیزی را قفل نمی‌کند.
             rehostRecommended = binding.RehostRecommended,

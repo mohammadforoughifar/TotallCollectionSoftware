@@ -36,9 +36,18 @@ public static class LicenseAccessState
         }
     }
 
-    /// <summary>آیا نوشتن باید بسته باشد؟ (Missing یا Invalid — و هیچ استثنای دیگری)</summary>
+    /// <summary>
+    /// آیا نوشتن باید بسته باشد؟ (Missing یا Invalid، یا ساعت بیش از ۲۴ ساعت عقب‌تر از لنگر)
+    ///
+    /// <para>
+    /// قفل ساعت (گام ۴-۴) عمداً همین‌جا اعمال می‌شود: HTTP و هاب باید یک جواب بدهند و
+    /// «فقط‌خواندنی» یعنی هیچ مسیر نوشتنی باز نیست. این قفل <b>موقت</b> است: به‌محض
+    /// درست‌شدن ساعت، <see cref="Services.ClockGuardState.Blocked"/> خودکار false می‌شود.
+    /// </para>
+    /// </summary>
     public static bool IsReadOnly(LicenseOverallStatus status)
-        => status is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid;
+        => status is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid
+           || Services.ClockGuardState.Blocked;
 
     public static Task<bool> IsReadOnlyAsync(ILicenseService licenses, CancellationToken cancellationToken = default)
         => Task.FromResult(IsReadOnly(Resolve(licenses)));
