@@ -103,6 +103,28 @@ if errorlevel 1 (
   goto :failed
 )
 
+rem ================================================================
+rem [7/7-ب] بستهٔ به‌روزرسانی: اسکریپت Update-App.ps1 + update.bat + package-info.json
+rem   چرا package-info.json؟ Update-App.ps1 قبل از هر تغییری آن را می‌خواند؛ اگر نباشد
+rem   (بستهٔ ناقص) با کد ۱۰ رد می‌شود و هیچ فایلی را دست نمی‌زند.
+echo [7/7-ب] افزودن ابزار به‌روزرسانی به بسته...
+if not exist "%DEPLOY%\tools\update" mkdir "%DEPLOY%\tools\update"
+copy /Y "%ROOT%tools\update\Update-App.ps1" "%DEPLOY%\tools\update\Update-App.ps1" >nul
+if errorlevel 1 goto :failed
+copy /Y "%ROOT%tools\update\update.bat" "%DEPLOY%\tools\update\update.bat" >nul
+if errorlevel 1 goto :failed
+
+rem نسخه/زمان ساخت: از نام پوشهٔ artifacts نیست، از ساعت سیستم — همان چیزی که اپراتور می‌بیند.
+set "BUILD_STAMP=%DATE% %TIME%"
+>"%DEPLOY%\package-info.json" echo {
+>>"%DEPLOY%\package-info.json" echo   "version": "%BUILD_STAMP%",
+>>"%DEPLOY%\package-info.json" echo   "deployment": "%MODE_LABEL%",
+>>"%DEPLOY%\package-info.json" echo   "builtAt": "%BUILD_STAMP%",
+>>"%DEPLOY%\package-info.json" echo   "appPoolName": "TotallCollection",
+>>"%DEPLOY%\package-info.json" echo   "builtBy": "publish-server.bat"
+>>"%DEPLOY%\package-info.json" echo }
+if errorlevel 1 goto :failed
+
 rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
 >"%DEPLOY%\run-server.bat" echo @echo off
 >>"%DEPLOY%\run-server.bat" echo set "ASPNETCORE_ENVIRONMENT=Production"
