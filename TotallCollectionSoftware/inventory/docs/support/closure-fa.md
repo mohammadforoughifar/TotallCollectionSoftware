@@ -1,6 +1,6 @@
 # بستن فاز ۵ — پنل پشتیبانی (closure-fa)
 
-> شاخه: `lic/support-panel` · دامنه: `TotallCollectionSoftware/inventory/tools/LicenseSigner/` + `test/support/` + `docs/support/`
+> شاخه: `lic/support-panel` · دامنه: `TotallCollectionSoftware/support-panel/` + `test/support/` + `docs/support/`
 > `src/` مشتری، `InventoryDb` و منطق امضای `tools/LicenseTool` **دست‌نخورده**.
 
 ## ۱) وضعیت خواسته‌ها
@@ -42,14 +42,14 @@
 
 `TotallCollectionSoftware/support-panel/` — پروژهٔ مستقل همسایهٔ `inventory` با پیکربندی/رشتهٔ اتصال محلی
 (`Data Source=data/support.db`)، اسکریپت‌های `prepare/run/publish` و `README-FA.md`. کد فرم‌ها تک‌نسخه از
-`inventory/tools/LicenseSigner` خوانده می‌شود (بدون کپی منطق). آزمون سرتاسری روی همین پروژه: **۶۰/۶۰ سبز**
+`inventory/support-panel` خوانده می‌شود (بدون کپی منطق). آزمون سرتاسری روی همین پروژه: **۶۰/۶۰ سبز**
 (شاهد: `/home/user/evidence/support-panel-mini-e2e.log`).
 
 ## ۲) آزمون‌ها
 
 | آزمون | نتیجه |
 |---|---|
-| بیلد `LicenseSigner.csproj` | **۰ خطا، ۰ هشدار** |
+| بیلد `support-panel/SupportPanel.csproj` | **۰ خطا، ۰ هشدار** |
 | `test/support/e2e-fa.sh` (۶۰ بررسی) | **PASSED=60 FAILED=0** |
 | بازبینی مستقل `.lic` با `LicenseTool verify --public-key --installation-id` | «شناسهٔ نصب مطابق است» |
 | اسکن راز در `support.db` / `-wal` / `.lic` | صفر نتیجه |
@@ -83,8 +83,9 @@
 ## ۵) فهرست فایل‌ها
 
 ```
-tools/LicenseSigner/
-  LicenseSigner.csproj  Program.cs  SignerOptions.cs  appsettings.json
+support-panel/
+  SupportPanel.csproj  Program.cs  SignerOptions.cs  appsettings.json
+  prepare.sh|.cmd  run.sh|.cmd  publish.sh  README-FA.md  .gitignore
   Data/{Enums,Entities,SupportDbContext,SupportDbContextFactory}.cs
   Data/Migrations/{20261114105814_InitialCreate(.Designer).cs,SupportDbContextModelSnapshot.cs}
   Services/{JalaliDate,Ui,AuditChain,SupportAuth,Workflow,RequestIngest,RequestService,DraftService,
@@ -97,9 +98,9 @@ tools/LicenseSigner/
   Pages/Licenses/{Index,Details,Download}.cshtml
   Pages/Settings/{Index,Users}.cshtml
   wwwroot/site.css
-test/support/e2e-fa.sh
-docs/support/{DESIGN-FA.md,OPERATIONS-FA.md,closure-fa.md}
-docs/support/forms/{index,01-…,15-…}.html
+inventory/test/support/e2e-fa.sh
+inventory/docs/support/{DESIGN-FA.md,OPERATIONS-FA.md,closure-fa.md}
+inventory/docs/support/forms/{index,01-…,15-…}.html
 ```
 
 ## ۶) فرض‌ها

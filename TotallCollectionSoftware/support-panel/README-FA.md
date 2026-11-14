@@ -3,8 +3,52 @@
 پنل مستقل تیم پشتیبانی برای **دیدن درخواست مشتری → تأیید → امضا → تحویل فایل لایسنس**.
 کنار پوشهٔ `inventory` است، پایگاه‌دادهٔ **محلی خودش** را دارد و هیچ ارتباطی با `InventoryDb` مشتری ندارد.
 
-- کد فرم‌ها/سرویس‌ها یک منبع تک‌نسخه دارد: `inventory/tools/LicenseSigner` (این پروژه فقط پیکربندی/اجراست؛ دو نسخه از منطق امضا ساخته نمی‌شود).
-- امضا و بازبینی فایل لایسنس با همان ابزار رسمی `inventory/tools/LicenseTool` انجام می‌شود.
+- کد **بک‌اند و فرانت‌اند کاملِ پنل داخل همین پروژه است** (پروژهٔ خودکفای ASP.NET Core 8).
+- تنها وابستگی‌های بیرونی عمدی: کتابخانهٔ `inventory/src/Inventory.Licensing` (مدل/اعتبارسنجی لایسنس و فهرست ماژول‌ها)
+  و ابزار خط‌فرمان `inventory/tools/LicenseTool` (تنها مسیر امضا/بازبینی فایل `.lic`).
+
+## ساختار پروژه (بک‌اند + فرانت‌اند)
+
+```
+support-panel/
+├── Program.cs               راه‌اندازی: DI، کوکی احراز هویت، میان‌افزار تعویض اجباری گذرواژه، Migration + Seed
+├── SignerOptions.cs         پیکربندی (کلیدها، پوشهٔ کاری، رشتهٔ اتصال)
+├── appsettings.json         ConnectionStrings:Panel = Data Source=data/support.db  + Signer:*
+│
+├── Data/                    ◀ بک‌اند: مدل داده
+│   ├── Enums.cs             وضعیت‌ها، انواع درخواست، نقش‌ها، کانال تحویل
+│   ├── Entities.cs          ۱۵ موجودیت (Customer … AuditLog)
+│   ├── SupportDbContext.cs  نگاشت/ایندکس/قید
+│   └── Migrations/          InitialCreate (SQLite / SQL Server)
+│
+├── Services/                ◀ بک‌اند: منطق دامنه
+│   ├── Workflow.cs          جدول گذارهای مجاز + نقش‌ها
+│   ├── RequestService.cs    ثبت درخواست، گذار وضعیت، رویداد، پیوند مشتری
+│   ├── RequestIngest.cs     تجزیهٔ JSON/.eml/متن + تشخیص تکراری + رابط IRequestIngest
+│   ├── DraftService.cs      فرم → ردیف DB → پروفایل JSON ابزار
+│   ├── SigningRunner.cs     پیش‌نمایش/امضا با LicenseTool + بازبینی خودکار
+│   ├── LicenseToolRunner.cs اجرای فرزند با مهلت (بدون shell)
+│   ├── LicenseInspector.cs  بازبینی ساختار/امضا/شناسهٔ نصب
+│   ├── DeliveryService.cs   .lic / .eml با پیوست / SMTP / تحویل دستی
+│   ├── SupportAuth.cs       PBKDF2، قفل ۵ تلاش، نقش‌ها
+│   ├── AuditChain.cs        ممیزی فقط‌افزودنی با زنجیرهٔ هش
+│   ├── BackupService.cs     پشتیبان/بازگردانی SQLite
+│   └── SeedService.cs       Migration + کاربر آغازین + پیش‌تنظیم‌ها
+│
+├── Pages/                   ◀ فرانت‌اند: Razor Pages (RTL فارسی)
+│   ├── Shared/_Layout.cshtml   نوار ناوبری بر اساس نقش
+│   ├── Login/Logout/ChangePassword
+│   ├── Index (داشبورد) · Requests/* (Index, Ingest, Details, Identity, Draft, Sign, Deliver)
+│   ├── Customers/* · Licenses/* · Settings/* · Renewals · Audit · Backup
+│   └── wwwroot/site.css        استایل RTL بدون CDN/فونت بیرونی
+│
+├── prepare.sh|.cmd · run.sh|.cmd · publish.sh   اسکریپت‌های اجرا/انتشار
+└── data/                    (ساخته می‌شود) پوشهٔ کاری: DB، پیوست‌ها، لایسنس‌ها، outbox، پشتیبان
+```
+
+معماری: **Razor Pages با هندلرهای سرور** — هر فرم یک صفحهٔ `.cshtml` است که هندلرهای `OnPost*` آن
+مستقیماً سرویس‌های بک‌اند را صدا می‌زنند (بدون API واسط برای UI). برای مصرف ماشینی،
+`GET /api/health` هم موجود است.
 - کلید خصوصی و گذرواژه‌ها **هیچ‌جا در این پروژه، DB یا لاگ ذخیره نمی‌شوند**.
 
 ---

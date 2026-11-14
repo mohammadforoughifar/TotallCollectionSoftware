@@ -16,7 +16,7 @@
 ```bash
 cd TotallCollectionSoftware/inventory
 dotnet build tools/LicenseTool/LicenseTool.csproj -c Release
-dotnet build tools/LicenseSigner/LicenseSigner.csproj -c Release
+dotnet build support-panel/SupportPanel.csproj -c Release
 ```
 
 > ⚠️ **گام الزامی:** `presets.json` را کنار فایل اجرایی ابزار کپی کنید. ابزار آن را فقط کنار خودش می‌جوید و گزینهٔ CLI ندارد:
@@ -73,7 +73,7 @@ export Signer__PublicKeyPath="/opt/license-keys/prod.pem"
 export Signer__KeyId="prod-2026a"
 export Signer__WorkFolder="/var/lib/license-signer"
 export Signer__PresetsPath="$PWD/tools/LicenseTool/presets.json"
-dotnet tools/LicenseSigner/bin/Release/net8.0/LicenseSigner.dll
+dotnet support-panel/bin/Release/net8.0/SupportPanel.dll
 ```
 
 ## ۴) اولین اجرا
