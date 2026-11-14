@@ -1,0 +1,9 @@
+  !!   بیلد Release صفر کلید تولیدی دارد (با -AllowNoProductionKey اجازه داده شد)
+  OK   کلیدهای عمومی در بیلد: 0 (Release)
+  OK   حالت استقرار: SaaS (از متادیتای اسمبلی)
+  OK   Inventory.Licensing.dll  (90,112 bytes)
+  OK   SaaS: Provider دیتابیسی وجود دارد
+  OK   فیلد deployment در موتور لایسنس هست (از سند امضاشده)
+  OK   /api/health فیلد licensing دارد (متادیتای اسمبلی)
+  SKIP بررسی زندهٔ health (آدرسی داده نشد)
+licensing verification passed (offline).
