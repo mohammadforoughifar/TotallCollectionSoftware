@@ -35,8 +35,9 @@ class RegistrationContract(unittest.TestCase):
         for part in ('cmd.ChequeCharge is not null',
                      'IsolationLevel.Serializable', 'SaleChequeChargeRegistration.RegisterAsync',
                      'ApplyPayment(txn, cmd, paymentTotal ?? ShopInvoiceLineMath.Total(cmd.Lines, wholeRials))',
-                     'var goodsTotal = ShopInvoiceLineMath.Total(cmd.Lines, wholeRials)', 'await trx.CommitAsync()'):
+                     'var goodsTotal = ShopInvoiceLineMath.Total(cmd.Lines, wholeRials)',
+                     'if (ownsTransaction) await ownedTransaction!.CommitAsync()'):
             self.assertIn(part, section)
-        self.assertLess(section.index('SaleChequeChargeRegistration.RegisterAsync'), section.index('await trx.CommitAsync()'))
+        self.assertLess(section.index('SaleChequeChargeRegistration.RegisterAsync'), section.index('if (ownsTransaction) await ownedTransaction!.CommitAsync()'))
 
 if __name__ == '__main__': unittest.main()

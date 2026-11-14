@@ -80,6 +80,8 @@
     <Compile Include="$(SharedSrc)Dtos\ShopWarrantyDtos.cs" Link="Shared\ShopWarrantyDtos.cs" />
     <Compile Include="$(SharedSrc)Dtos\CatalogDtos.cs" Link="Shared\CatalogDtos.cs" />
     <Compile Include="$(SharedSrc)Dtos\OperationDtos.cs" Link="Shared\OperationDtos.cs" />
+    <!-- enumهای RepairSms که موجودیت RepairSmsNotification به آن‌ها ارجاع می‌دهد -->
+    <Compile Include="$(SharedSrc)Dtos\RepairDtos.cs" Link="Shared\RepairDtos.cs" />
 
     <!-- سرویس‌های جانبی موردنیاز کنترلر -->
     <Compile Include="$(ApiSrc)Services\Core\TehranClock.cs" Link="Api\Services\TehranClock.cs" />

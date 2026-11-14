@@ -53,6 +53,10 @@ public class RepairOrder : ICompanyOwned
     /// <summary>شناسه فاکتور فروش صادرشده (بعد از تحویل)</summary>
     public int? InvoiceTransactionId { get; set; }
 
+    /// <summary>تحویل با سیاست گارانتی جدید؛ حتی اگر هیچ مبلغی برای فاکتور نباشد.</summary>
+    public bool WarrantyProcessed { get; set; }
+    public int? WarrantyStockTransactionId { get; set; }
+
     [MaxLength(500)]
     public string? Note { get; set; }
 

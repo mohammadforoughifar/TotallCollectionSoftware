@@ -59,6 +59,7 @@ public static class DbInitializer
                     await ShopTradeInSchemaV1.EnsureAsync(db);
                     await ShopWarrantySchemaV1.EnsureAsync(db);
                     await ShopWarrantyDeviceSchemaV1.EnsureAsync(db);
+                    await ShopWarrantyChargingSchemaV1.EnsureAsync(db);
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
@@ -87,6 +88,9 @@ public static class DbInitializer
                     await DocArchivePwaSchemaV1.EnsureAsync(db);
                     // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
                     await RepairDeviceSchemaV1.EnsureAsync(db);
+                    await RepairSmsSchemaV1.EnsureAsync(db);
+                    await CompanySmsSettingsSchemaV1.EnsureAsync(db);
+                    await RepairSmsPermissionRevisionSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید
@@ -147,6 +151,7 @@ public static class DbInitializer
                     await ShopTradeInSchemaV1.EnsureAsync(db);
                     await ShopWarrantySchemaV1.EnsureAsync(db);
                     await ShopWarrantyDeviceSchemaV1.EnsureAsync(db);
+                    await ShopWarrantyChargingSchemaV1.EnsureAsync(db);
                     await ShopExpenseChequeSchemaV1.EnsureAsync(db);
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
@@ -175,6 +180,9 @@ public static class DbInitializer
                     await DocArchivePwaSchemaV1.EnsureAsync(db);
                     // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
                     await RepairDeviceSchemaV1.EnsureAsync(db);
+                    await RepairSmsSchemaV1.EnsureAsync(db);
+                    await CompanySmsSettingsSchemaV1.EnsureAsync(db);
+                    await RepairSmsPermissionRevisionSchemaV1.EnsureAsync(db);
                     // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید

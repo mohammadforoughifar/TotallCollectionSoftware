@@ -137,6 +137,8 @@ public static class SaleInvoicePrint
                 .Append(Esc(line.ProductName));
             if (line.IsService)
                 sb.Append(" <span class=\"badge\">خدمت</span>");
+            if (!string.IsNullOrWhiteSpace(line.Description) && !string.Equals(line.Description, line.ProductName, StringComparison.Ordinal))
+                sb.Append("<small class=\"subline\">").Append(Esc(line.Description)).Append("</small>");
             if (isA5)
             {
                 sb.Append("</strong></td><td class=\"qty-cell\">").Append(line.Quantity.Qty())

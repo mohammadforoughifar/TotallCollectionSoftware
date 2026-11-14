@@ -494,3 +494,25 @@ window.inventoryWorkProjectMindFlow.printPreview = function (targetId, title, su
     setTimeout(doPrint, 1500);
     return true;
 };
+// ---- پل پیام فرم دستورکار جاسازی‌شده (iframe) به نگار ذهنی ----
+// فرم دستورکار در iframe همان‌صفحه (هم‌مبدأ) باز می‌شود و نتیجه را با postMessage می‌فرستد.
+window.inventoryEmbedDotNet = null;
+window.inventoryListenEmbedMessages = function (dotnet) {
+    window.inventoryEmbedDotNet = dotnet;
+    if (window.inventoryEmbedListenerAttached) return;
+    window.inventoryEmbedListenerAttached = true;
+    window.addEventListener('message', function (e) {
+        if (e.origin !== window.location.origin || !e.data || e.data.source !== 'inventory-workorder-embed') return;
+        var ref = window.inventoryEmbedDotNet;
+        if (!ref) return;
+        ref.invokeMethodAsync('OnEmbeddedWorkOrderEvent', String(e.data.type || ''), Number(e.data.id || 0), String(e.data.number || ''));
+    });
+};
+window.inventoryStopEmbedMessages = function () {
+    window.inventoryEmbedDotNet = null;
+};
+window.inventoryNotifyEmbedParent = function (message) {
+    if (window.parent && window.parent !== window) {
+        window.parent.postMessage(message, window.location.origin);
+    }
+};

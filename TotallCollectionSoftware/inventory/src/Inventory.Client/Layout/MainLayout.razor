@@ -23,6 +23,9 @@ else
     <div class="app-shell @(collapsed ? "sidebar-collapsed" : "") @(mobileOpen ? "sidebar-open" : "") @(isMobile ? "app-mobile" : "")">
         <div class="sidebar-backdrop" @onclick="CloseMobile"></div>
 
+        @* گام ۵: بنر لایسنس (فقط‌خواندنی/ساعت/جابه‌جایی نصب) — بالای همهٔ صفحه‌ها *@
+        <LicenseBanner />
+
         <aside class="app-sidebar">
             <div class="sidebar-brand">
                 <div class="logo"><i class="bi bi-box2-fill"></i></div>
@@ -1642,6 +1645,15 @@ else
         {
             var allowed = Auth.Has("PersonalSettings.ManageLetterGroups") || Auth.Has("InnerLetters.Create");
             if (!allowed) deniedTitle = "گروه‌های گیرندگان نامه";
+            return allowed;
+        }
+
+        // SMS settings have their own permission and are accessible to shop-only users;
+        // the generic settings/ERP guard below must not intercept this route.
+        if (p == "settings/sms-service" || p.StartsWith("settings/sms-service/"))
+        {
+            var allowed = Auth.IsAdmin || Auth.Has("SmsSettings.Read") || Auth.Has("SmsSettings.Update");
+            if (!allowed) deniedTitle = "سرویس پیامکی";
             return allowed;
         }
 

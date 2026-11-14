@@ -1,0 +1,11 @@
+  !!   بیلد Release صفر کلید تولیدی دارد (با -AllowNoProductionKey اجازه داده شد)
+  OK   کلیدهای عمومی در بیلد: 0 (Release)
+
+[ERROR] حالت استقرار با انتظار نمی‌خواند (انتظار: SaaS).
+حالت استقرار این بیلد (از متادیتای اسمبلی):
+  اسمبلی: /var/tmp/ver-onprem/Inventory.Api.dll
+  نوع Inventory.Api.Licensing.Providers.DatabaseLicenseProvider: نیست
+  نتیجه: onprem
+❌ انتظار «saas» بود ولی این بیلد «onprem» است. Publish Profile را بررسی کنید.
+
+[ERROR] licensing verification failed (code 7).

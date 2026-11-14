@@ -209,6 +209,7 @@ public interface IRepairService
     Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status);
     Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request);
     Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId);
+    Task<Order> LinkedInvoiceAsync(int id);
 }
 
 

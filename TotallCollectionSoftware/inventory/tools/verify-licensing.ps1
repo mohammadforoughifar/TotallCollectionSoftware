@@ -22,6 +22,7 @@
 #     4 = سرور پاسخ داد ولی فیلد licensing نداشت
 #     5 = RequireOnline داده شده ولی سروری پاسخ نداد
 #     6 = بیلد Release هیچ کلید عمومی معتبری ندارد (کلید تولیدی در manifest.json نیست)
+#     7 = حالت استقرار (SaaS/OnPrem) با آنچه انتظار داشتیم نمی‌خواند — یا اصلاً قابل تشخیص نبود
 #
 #  نمونه:
 #     powershell -NoProfile -ExecutionPolicy Bypass -File verify-licensing.ps1 -AppPath .\deploy\inventory-server
@@ -35,7 +36,11 @@ param(
     [string]$HealthUrl = "",
     [int]$TimeoutSec = 6,
     [switch]$RequireOnline,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [ValidateSet('SaaS', 'OnPrem')][string]$Deployment = "",
+    # برای بازبینی ساختاری پیش از تولید کلید: نبود کلید تولیدی، هشدار می‌شود نه شکست.
+    # ⚠️ در چرخهٔ انتشار واقعی این سوئیچ داده نمی‌شود (پیش‌فرض: شکست با کد ۶).
+    [switch]$AllowNoProductionKey
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,13 +90,44 @@ if ($keyCount -lt 0) {
     Fail 6 ("خروجی LicenseCheck --keys قابل خواندن نبود:" + [Environment]::NewLine + $keyText)
 }
 
-if ($keyText -match 'Release' -and $keyCount -eq 0) {
+if ($keyText -match 'Release' -and $keyCount -eq 0 -and $AllowNoProductionKey) {
+    Say "  !!   بیلد Release صفر کلید تولیدی دارد (با -AllowNoProductionKey اجازه داده شد)" "DarkYellow"
+}
+elseif ($keyText -match 'Release' -and $keyCount -eq 0) {
     Fail 6 ("کلید تولیدی در manifest.json نیست: این بیلد Release صفر کلید عمومی دارد." + [Environment]::NewLine +
             "   هر فایل لایسنس روی این بیلد Invalid می‌شود و سامانه فقط‌خواندنی می‌ماند." + [Environment]::NewLine +
             "   ردیف کلید تولیدی (debugOnly=false) را به src\Inventory.Licensing\Keys\manifest.json اضافه کنید و دوباره منتشر کنید.")
 }
 
 Say ("  OK   کلیدهای عمومی در بیلد: $keyCount" + $(if ($keyText -match 'Release') { " (Release)" } else { " (Debug — در انتشار واقعی Release لازم است)" })) "Green"
+
+# ---------- ۰-ب) حالت استقرار: SaaS یا OnPrem؟ ----------
+# چرا این بررسی؟ بستهٔ OnPrem با ثابت SAAS ⇒ لایسنس از جدول‌های دیتابیس خوانده
+# می‌شود که روی نصب مشتری نیست؛ بستهٔ SaaS بدون SAAS ⇒ Provider دیتابیسی اصلاً
+# کامپایل نشده و ردیف لایسنس نادیده می‌ماند. هر دو خطا بی‌صدا هستند.
+# تشخیص با متادیتای Inventory.Api.dll است (بدون اجرای کد و بدون وابستگی).
+if ($Deployment) {
+    $expected = $Deployment.ToLowerInvariant()
+    $depExit = -1
+    $depText = $null
+    if (Test-Path -LiteralPath $licenseCheckExe) {
+        $depText = (& $licenseCheckExe --deployment --app $dir --expect $expected 2>&1 | Out-String)
+        $depExit = $LASTEXITCODE
+    } elseif (Test-Path -LiteralPath $licenseCheckDll) {
+        $depText = (& dotnet $licenseCheckDll --deployment --app $dir --expect $expected 2>&1 | Out-String)
+        $depExit = $LASTEXITCODE
+    }
+
+    if ($null -eq $depText) {
+        Fail 7 ("حالت استقرار قابل بررسی نبود: ابزار LicenseCheck در خروجی نیست." )
+    }
+    if ($depExit -ne 0) {
+        Fail 7 ("حالت استقرار با انتظار نمی‌خواند (انتظار: $Deployment)." + [Environment]::NewLine + $depText)
+    }
+    Say ("  OK   حالت استقرار: $Deployment (از متادیتای اسمبلی)") "Green"
+} else {
+    Say "  --   حالت استقرار بررسی نشد (پارامتر -Deployment داده نشده)" "DarkYellow"
+}
 
 # ---------- ۱) اسمبلی موتور ----------
 $engine = Join-Path $dir "Inventory.Licensing.dll"
@@ -125,6 +161,43 @@ function Find-Bytes([byte[]]$haystack, [byte[]]$needle) {
         if ($ok) { return $true }
     }
     return $false
+}
+
+# ---------- ۲-ب) Provider دیتابیسی لایسنس: فقط در بیلد SaaS ----------
+# چرا این بررسی (گام ۴-۴.۵)؟ کلاس DatabaseLicenseProvider داخل #if SAAS است و در بستهٔ
+# نصب مشتری نباید هیچ اثری داشته باشد؛ وگرنه کدِ «خواندن مجوز از جدول دیتابیس» روی سرور
+# مشتری وجود دارد. همان‌طور فیلد «deployment» باید در موتور باشد تا حالت استقرار از
+# سند امضاشده خوانده شود، نه از appsettings (که مشتری می‌تواند عوض کند).
+$dbProviderNeedle = [System.Text.Encoding]::UTF8.GetBytes("DatabaseLicenseProvider")
+$hasDbProvider = Find-Bytes $bytes $dbProviderNeedle
+
+if ($Deployment) {
+    if ($Deployment -eq 'OnPrem') {
+        if ($hasDbProvider) {
+            Fail 7 ("بستهٔ OnPrem کلاس DatabaseLicenseProvider را دارد؛ باید کاملاً حذف شود." +
+                    [Environment]::NewLine + "   این خروجی با ثابت SAAS ساخته شده است.")
+        }
+        Say "  OK   OnPrem: Provider دیتابیسی در اسمبلی نیست (حذف کامل)" "Green"
+    }
+    else {
+        if (-not $hasDbProvider) {
+            Fail 7 ("بستهٔ SaaS کلاس DatabaseLicenseProvider را ندارد؛ لایسنس مستأجر خوانده نمی‌شود." +
+                    [Environment]::NewLine + "   این خروجی بدون ثابت SAAS ساخته شده است.")
+        }
+        Say "  OK   SaaS: Provider دیتابیسی وجود دارد" "Green"
+    }
+}
+else {
+    Say "  --   وجود Provider دیتابیسی بررسی نشد (پارامتر -Deployment داده نشده)" "DarkYellow"
+}
+
+$engineDll = Join-Path $dir "Inventory.Licensing.dll"
+if (Test-Path -LiteralPath $engineDll) {
+    $engineBytes = [System.IO.File]::ReadAllBytes($engineDll)
+    if (-not (Find-Bytes $engineBytes ([System.Text.Encoding]::UTF8.GetBytes("deployment")))) {
+        Fail 7 "موتور لایسنس فیلد deployment را نمی‌شناسد؛ حالت استقرار از سند خوانده نمی‌شود."
+    }
+    Say "  OK   فیلد deployment در موتور لایسنس هست (از سند امضاشده)" "Green"
 }
 
 if (-not (Find-Bytes $bytes $marker)) {

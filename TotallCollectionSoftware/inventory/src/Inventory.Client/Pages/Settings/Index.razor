@@ -15,6 +15,17 @@
     </div>
 </div>
 
+@if (Auth.IsAdmin || Auth.Has("SmsSettings.Read") || Auth.Has("SmsSettings.Update"))
+{
+    <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-chat-square-text text-primary"></i><span class="card-title">سرویس پیامکی</span></div>
+        <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span class="fs-8 text-muted">انتخاب مجوز ارسال پیامک هر ماژول برای شرکت فعال</span>
+            <a href="/settings/sms-service" class="btn btn-outline-primary"><i class="bi bi-sliders"></i> تنظیم سرویس پیامکی</a>
+        </div>
+    </div>
+}
+
 <div class="card">
     <div class="card-header">
         <i class="bi bi-calculator text-primary"></i>

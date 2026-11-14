@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    ابزار صدور لایسنس — فقط برای تیم ما، نه در بستهٔ نصب مشتری.
+    عمداً در publish-server.bat منتشر نمی‌شود (تست tests/LicensingDb این را می‌سنجد).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Inventory.Licensing\Inventory.Licensing.csproj" />
+  </ItemGroup>
+</Project>

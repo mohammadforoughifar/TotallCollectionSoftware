@@ -25,6 +25,12 @@ public sealed class EntitlementCache
     private readonly LicensingOptions _options;
     private readonly ILogger<EntitlementCache> _log;
 
+    /// <summary>دور زدن لایسنس در محیط توسعه (در Production همیشه غیرفعال).</summary>
+    private readonly DevelopmentLicenseBypass? _bypass;
+
+    /// <summary>هشدار حالت توسعه فقط یک‌بار در هر فرایند چاپ می‌شود.</summary>
+    private bool _bypassLogged;
+
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private EffectiveEntitlement? _current;
     private DateTime _loadedAtUtc = DateTime.MinValue;
@@ -32,11 +38,13 @@ public sealed class EntitlementCache
     /// <summary>نسخهٔ تغییر — برای اینکه مصرف‌کننده بفهمد شکل‌گیری دوباره رخ داده است.</summary>
     private long _revision;
 
-    public EntitlementCache(IServiceScopeFactory scopes, LicensingOptions options, ILogger<EntitlementCache> log)
+    public EntitlementCache(IServiceScopeFactory scopes, LicensingOptions options, ILogger<EntitlementCache> log,
+        DevelopmentLicenseBypass? bypass = null)
     {
         _scopes = scopes;
         _options = options;
         _log = log;
+        _bypass = bypass;
     }
 
     /// <summary>نسخهٔ فعلی کش (برای تست و صفحهٔ وضعیت).</summary>
@@ -91,6 +99,22 @@ public sealed class EntitlementCache
 
     private async Task<EffectiveEntitlement> LoadAsync(CancellationToken cancellationToken)
     {
+        // ---- محیط توسعه: هیچ سندی لازم نیست ----
+        // چرا این‌جا (و نه در Provider)؟ چون Providerها «واقعیتِ روی دیسک» را می‌خوانند؛
+        // تصمیم «در توسعه لایسنس را جدی نگیر» مال میزبان است و باید پیش از هر کوئری/امضا
+        // گرفته شود. نتیجه: در Development نه فایل برنامه‌ریزی‌شده لازم است، نه کلید عمومی،
+        // نه دیتابیس — و هیچ خطای لایسنسی در لاگ نمی‌نشیند.
+        if (_bypass?.IsActive == true)
+        {
+            if (!_bypassLogged)
+            {
+                _bypassLogged = true;
+                _log.LogWarning("{Message}", _bypass.WarningMessage);
+            }
+
+            return _bypass.Build();
+        }
+
         try
         {
             using var scope = _scopes.CreateScope();

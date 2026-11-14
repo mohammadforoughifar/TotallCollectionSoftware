@@ -117,7 +117,8 @@ public static class RepairDeliveryReceiptPrint
         {
             var it = items[i];
             var desc = !string.IsNullOrWhiteSpace(it.Description) ? it.Description : (it.ProductName ?? "خدمات تعمیراتی");
-            var total = it.Quantity * it.Price;
+            var total = repair.Items.Any(x => x.WarrantyDecision != WarrantyDecision.Unspecified)
+                ? ShopInvoiceAmounts.Gross(it.Quantity, it.CustomerUnitPrice) : it.Quantity * it.Price;
             sb.Append("<tr>");
             sb.Append("<td class=\"text-center num\">").Append((i + 1).Num()).Append("</td>");
             sb.Append("<td><strong>").Append(Esc(desc)).Append("</strong>");
@@ -127,7 +128,7 @@ public static class RepairDeliveryReceiptPrint
             }
             sb.Append("</td>");
             sb.Append("<td class=\"text-center num\">").Append(it.Quantity.Qty()).Append("</td>");
-            sb.Append("<td class=\"text-left num\">").Append(it.Price.Money()).Append("</td>");
+            sb.Append("<td class=\"text-left num\">").Append(it.CustomerUnitPrice.Money()).Append("</td>");
             sb.Append("<td class=\"text-left num fw-bold\">").Append(total.Money()).Append("</td>");
             sb.Append("</tr>");
         }
@@ -138,10 +139,11 @@ public static class RepairDeliveryReceiptPrint
         sb.Append("</tbody></table></section>");
 
         // ---------- خلاصه تسویه مالی فیش تحویل ----------
-        var grandTotal = repair.TotalPrice > 0 ? repair.TotalPrice : repair.QuotedPrice;
+        var hasWarrantyRows = repair.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified);
+        var grandTotal = hasWarrantyRows ? repair.TotalPrice : (repair.TotalPrice > 0 ? repair.TotalPrice : repair.QuotedPrice);
         sb.Append("<section class=\"settlement-box\">");
         sb.Append("<div class=\"settlement-meta\">");
-        sb.Append("<div>روش تسویه: <strong>").Append(repair.InvoiceTransactionId is > 0 ? "تسویه شده / فاکتور فروش" : "تسویه نقدی کارگاهی").Append("</strong></div>");
+        sb.Append("<div>روش تسویه: <strong>").Append(repair.InvoiceTransactionId is > 0 ? "طبق فاکتور فروش؛ مانده در حساب مشتری" : (hasWarrantyRows ? "گارانتی / بدون فاکتور" : "تسویه نقدی کارگاهی")).Append("</strong></div>");
         if (!string.IsNullOrWhiteSpace(repair.Note))
         {
             sb.Append("<div class=\"repair-note\">یادداشت ترخیص: ").Append(Esc(repair.Note)).Append("</div>");

@@ -9,6 +9,8 @@ using Inventory.Licensing.Modules;
 using Inventory.Licensing.Abstractions;
 using Inventory.Licensing.Periods;
 using Inventory.Licensing.Validation;
+using Inventory.Api.Licensing;
+using Microsoft.Extensions.Configuration;
 
 // ============================================================
 //  تست‌های موتور لایسنس (مرحله ۱)
@@ -1184,6 +1186,152 @@ Section("۲۶) مرز ماه شمسی و ساعت ثبت سیستمی — مست
         "افست ایران +03:30 است (بدون ساعت تابستانی)");
 }
 
+// ============================================================
+Section("۲۷) گام ۵ — کلاینت: نگاشت منو به ماژول، خلاصهٔ وضعیت، متن خطاها");
+// ============================================================
+
+{
+    // ---------- الف) نگاشت منو ⇄ ماژول ----------
+    Check(Inventory.Client.Services.LicenseMenuMap.ModuleForPath("settings/license") == "licensing",
+        "مسیر «وضعیت لایسنس» به ماژول licensing نگاشت می‌شود");
+    Check(Inventory.Client.Services.LicenseMenuMap.ModuleForPath("/hr/payroll?tab=1") == "hr_fa",
+        "کوئری و اسلش ابتدایی، نگاشت را خراب نمی‌کند");
+    Check(Inventory.Client.Services.LicenseMenuMap.ModuleForPath("/hr-core/staff") == "hr_core",
+        "پیشوند «hr» مسیر «hr-core» را نمی‌دزدد (تطبیق روی مرز بخش)");
+    Check(Inventory.Client.Services.LicenseMenuMap.ModuleForPath("/some-unmapped-page") is null,
+        "مسیر نگاشت‌نشده ⇒ آزاد (منو بی‌دلیل پنهان نمی‌شود)");
+
+    var mapped = Inventory.Client.Services.LicenseMenuMap.MappedModuleCodes;
+    var allCodes = ModuleCodes.All.Select(m => m.Code).ToList();
+    var unknown = mapped.Where(c => !allCodes.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
+    Check(unknown.Count == 0, "همهٔ کدهای نگاشت‌شده در فهرست ۳۳ ماژول موتور وجود دارند" +
+        (unknown.Count == 0 ? "" : " — ناشناخته: " + string.Join(", ", unknown)));
+    Check(allCodes.Count == 33, $"فهرست ماژول‌های موتور ۳۳ مورد است (واقعی: {allCodes.Count})");
+    Check(mapped.Count >= 30, $"نگاشت، دست‌کم ۳۰ ماژول را پوشش می‌دهد (واقعی: {mapped.Count})");
+
+    var disabled = new[] { "sales" };
+    Check(!Inventory.Client.Services.LicenseMenuMap.IsPathAllowed("/sales/invoices", disabled),
+        "ماژول غیرفعال ⇒ منوی آن پنهان می‌شود");
+    Check(Inventory.Client.Services.LicenseMenuMap.IsPathAllowed("/catalog/products", disabled),
+        "سایر ماژول‌ها با غیرفعال‌شدن یک ماژول پنهان نمی‌شوند");
+    Check(Inventory.Client.Services.LicenseMenuMap.IsPathAllowed("/settings/audit-log", disabled),
+        "مسیر نگاشت‌نشده همیشه مجاز است");
+
+    // ---------- ب) خلاصهٔ وضعیت ----------
+    const string payload = """
+    {
+      "status": "Valid",
+      "customerName": "شرکت نمونه",
+      "installationId": "11111111-1111-1111-1111-111111111111",
+      "deployment": "OnPrem",
+      "updatesUntil": "2027-01-01T00:00:00",
+      "canWrite": false,
+      "rehostRecommended": true,
+      "clock": { "health": "MajorBackward", "writesBlocked": true, "message": "ساعت عقب است" },
+      "seats": { "mode": "Named", "globalMax": 5 },
+      "modules": [
+        { "code": "catalog", "title": "کالا", "state": "Valid", "stateTitle": "فعال", "alwaysOn": false },
+        { "code": "sales", "title": "فروش", "state": "Disabled", "stateTitle": "غیرفعال", "alwaysOn": false },
+        { "code": "core", "title": "هسته", "state": "Valid", "stateTitle": "فعال", "alwaysOn": true }
+      ],
+      "limits": [
+        { "module": "invoicing", "metric": "invoice", "used": 900, "limit": 1000 },
+        { "module": "letters", "metric": "letter", "used": 10, "limit": 0 },
+        { "module": "moadian", "metric": "invoice", "used": 1000, "limit": 1000 }
+      ],
+      "reservations": { "pending": 2, "reserved": 1, "confirmed": 10, "refunded": 0 },
+      "issues": [ { "code": "CLOCK_BEHIND", "severity": "Error", "message": "ساعت سرور عقب است" } ]
+    }
+    """;
+
+    var summary = Inventory.Client.Services.LicenseStatusSummary.Parse(payload);
+    Check(summary.Status == "Valid" && summary.StatusTitle == "فعال", "وضعیت کلی درست خوانده می‌شود");
+    Check(!summary.CanWrite, "پرچم «نوشتن بسته» از canWrite خوانده می‌شود");
+    Check(summary.ClockBlocked && summary.ClockMessage == "ساعت عقب است", "قفل ساعت و پیام آن خوانده می‌شود");
+    Check(summary.RehostRecommended, "پرچم جابه‌جایی نصب خوانده می‌شود");
+    Check(summary.SeatsGlobalMax == 5 && summary.SeatMode == "Named", "صندلی خوانده می‌شود");
+    Check(summary.Modules.Count == 3 && summary.Modules[0].Title == "کالا", "ردیف‌های ماژول خوانده می‌شوند");
+    Check(summary.DisabledModules.Count == 1 && summary.DisabledModules.Contains("sales"),
+        "ماژول‌های غیرفعال برای پنهان‌کردن منو استخراج می‌شوند");
+    Check(summary.NeedsAttention, "وضعیت نیازمند اقدام تشخیص داده می‌شود (قفل ساعت/خطا)");
+
+    var invoicing = summary.Limits.First(l => l.Module == "invoicing");
+    Check(invoicing.Percent == 90 && invoicing.AtRisk, "۹۰۰ از ۱۰۰۰ ⇒ ۹۰٪ و «در معرض خطر»");
+    var unlimited = summary.Limits.First(l => l.Module == "letters");
+    Check(unlimited.Percent is null && !unlimited.AtRisk, "سقف نامحدود ⇒ درصد ندارد و هشدار نمی‌سازد");
+    var full = summary.Limits.First(l => l.Module == "moadian");
+    Check(full.Percent == 100, "سقف پر ⇒ درصد ۱۰۰ (نه بیشتر)");
+    Check(!new Inventory.Client.Services.LicenseStatusSummary
+        { Status = "Valid" }.NeedsAttention, "وضعیت سالم ⇒ نیازی به اقدام نیست");
+
+    // ---------- ج) متن خطاها: هیچ خطای لایسنسی خروج از حساب نمی‌خواهد ----------
+    Check(!Inventory.Client.Services.LicenseErrorText.RequiresRelogin("LICENSE_READONLY")
+          && !Inventory.Client.Services.LicenseErrorText.RequiresRelogin("SEAT_ENDED"),
+        "هیچ کد لایسنسی، خروج خودکار از حساب را لازم نمی‌کند");
+    foreach (var code in new[] { "LICENSE_READONLY", "MODULE_DISABLED", "QUOTA_EXCEEDED", "SEAT_FULL", "SEAT_ENDED" })
+        Check(Inventory.Client.Services.LicenseErrorText.For(code).Length > 20,
+            $"کد {code} پیام راهنمای فارسی دارد");
+    Check(Inventory.Client.Services.LicenseErrorText.For("QUOTA_EXCEEDED", "سقف پر است").Contains("سقف پر است"),
+        "متن سرور هم در پیام می‌آید");
+    Check(Inventory.Client.Services.LicenseErrorText.IsLicenseCode("LICENSE_READONLY")
+          && !Inventory.Client.Services.LicenseErrorText.IsLicenseCode("SOMETHING_ELSE"),
+        "تشخیص کد لایسنسی درست است");
+}
+
+
+// ============================================================
+//  دور زدن لایسنس در محیط توسعه (DevelopmentBypass)
+//  هدف: «در محیط توسعه هیچ خطای لایسنسی نباید وجود داشته باشد» — و در عین حال
+//  هرگز در Production اثر نکند.
+// ============================================================
+Section("دور زدن لایسنس در محیط توسعه");
+
+{
+    // ---------- الف) وضعیت ساختگی: کامل و بدون سقف ----------
+    var dev = DevelopmentEntitlement.Build();
+
+    Check(dev.Status == LicenseOverallStatus.Valid, "وضعیت توسعه: Valid است");
+    Check(dev.HasLicense && !dev.HasErrors, "وضعیت توسعه: بدون خطا");
+    Check(dev.Modules.Count == ModuleCodes.All.Count,
+        $"وضعیت توسعه: هر {ModuleCodes.All.Count} ماژول حاضر است (شد: {dev.Modules.Count})");
+    Check(ModuleCodes.All.All(m => dev.GetState(m.Code) == ModuleState.Valid),
+        "وضعیت توسعه: همهٔ ماژول‌ها Valid هستند");
+    Check(ModuleCodes.All.All(m => dev.IsWritable(m.Code)), "وضعیت توسعه: نوشتن در همهٔ ماژول‌ها آزاد است");
+    Check(dev.Limits.Count == 0, "وضعیت توسعه: هیچ سقف سهمیه‌ای نیست (یعنی نامحدود)");
+    Check(!dev.Seats.HasUserLimit && dev.Seats.Mode == LicenseUserMode.None,
+        "وضعیت توسعه: سقف صندلی اعمال نمی‌شود");
+    Check(dev.HasPerpetualItem && dev.UpdatesUntil is null,
+        "وضعیت توسعه: بررسی نسخه/آپدیت مانع نمی‌شود");
+    Check(dev.Issues.Any(i => i.Code == DevelopmentEntitlement.IssueCode && i.Severity == LicenseIssueSeverity.Info),
+        "وضعیت توسعه: با Issue اطلاعاتی LICENSE_DEV_BYPASS علامت‌گذاری شده (پنهان نیست)");
+    Check(dev.AppliedSerials.Contains(DevelopmentEntitlement.Serial),
+        "وضعیت توسعه: سریال ساختگی در AppliedSerials است");
+    Check(dev.Issues.All(i => i.Severity != LicenseIssueSeverity.Error),
+        "وضعیت توسعه: هیچ Issue با شدت Error ندارد (پس بنر قرمز نمی‌سازد)");
+
+    // ---------- ب) تصمیم فعال‌سازی: فقط Development ----------
+    DevelopmentLicenseBypass Eval(string env, bool? flag)
+    {
+        var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder();
+        if (flag is { } value)
+            cfg.AddInMemoryCollection(new Dictionary<string, string?>
+                { [DevelopmentLicenseBypass.ConfigKey] = value ? "true" : "false" });
+        return DevelopmentLicenseBypass.Evaluate(new FakeEnv(env), cfg.Build());
+    }
+
+    Check(Eval("Development", null).IsActive, "Development بدون کلید ⇒ فعال (پیش‌فرض)");
+    Check(Eval("Development", true).IsActive, "Development با true ⇒ فعال");
+    Check(!Eval("Development", false).IsActive, "Development با false ⇒ غیرفعال (تست مسیر واقعی لایسنس)");
+
+    Check(!Eval("Production", null).IsActive, "Production بدون کلید ⇒ غیرفعال");
+    Check(!Eval("Production", true).IsActive,
+        "⛔ Production با true ⇒ همچنان غیرفعال (کلید مشتری نمی‌تواند لایسنس را دور بزند)");
+    Check(Eval("Production", true).InactiveReason is { Length: > 0 },
+        "Production با true ⇒ دلیل غیرفعال بودن گزارش می‌شود");
+    Check(!Eval("Staging", null).IsActive && !Eval("", null).IsActive,
+        "محیط‌های دیگر (Staging/خالی) ⇒ غیرفعال");
+}
+
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;
 
@@ -1192,4 +1340,16 @@ static bool merged_ok(LicenseDocument doc)
 {
     var ent = EntitlementMerger.Merge(new[] { doc });
     return ent.Status == LicenseOverallStatus.Valid && ent.Items.Count > 0;
+}
+
+// ---- کمکی: محیط ساختگی برای تست تصمیم «حالت توسعه» ----
+sealed class FakeEnv : Microsoft.Extensions.Hosting.IHostEnvironment
+{
+    public FakeEnv(string name) => EnvironmentName = name;
+
+    public string EnvironmentName { get; set; }
+    public string ApplicationName { get; set; } = "tests";
+    public string ContentRootPath { get; set; } = ".";
+    public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+        new Microsoft.Extensions.FileProviders.NullFileProvider();
 }

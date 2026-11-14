@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
+using Inventory.Api.Services.Repairs;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -189,6 +190,7 @@ public class OperationsReportsService : IOperationsReportsService
 
         var repairAdmissions = new List<RepairOrder>();
         var deliveredRepairs = new List<RepairOrder>();
+        var warrantyServiceIds = new HashSet<int>();
         if (includeRepairs)
         {
             var admissionQuery = _db.RepairOrders.AsNoTracking().Include(r => r.Items).AsQueryable();
@@ -223,10 +225,14 @@ public class OperationsReportsService : IOperationsReportsService
             result.CancelledRepairCount = repairAdmissions.Count(r => r.Status == RepairStatus.Cancelled);
             result.DeliveredRepairCount = deliveredRepairs.Count;
 
-            var deliveredItems = deliveredRepairs.SelectMany(r => r.Items).ToList();
-            result.RepairRevenue = deliveredItems.Sum(i => i.Price * i.Quantity);
-            result.RepairPartsCost = deliveredItems.Where(i => i.ProductId is > 0).Sum(i => i.Cost * i.Quantity);
-            result.RepairLaborCost = deliveredItems.Where(i => i.ProductId is null or 0).Sum(i => i.Cost * i.Quantity);
+            var warrantyProductIds = deliveredRepairs.Where(r => r.WarrantyProcessed).SelectMany(r => r.Items)
+                .Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
+            warrantyServiceIds = (await _db.Products.AsNoTracking().Where(p => warrantyProductIds.Contains(p.Id) && p.IsService)
+                .Select(p => p.Id).ToListAsync()).ToHashSet();
+            var repairTotals = deliveredRepairs.Select(r => RepairReportTotals.Calculate(r, warrantyServiceIds)).ToList();
+            result.RepairRevenue = repairTotals.Sum(t => t.Revenue);
+            result.RepairPartsCost = repairTotals.Sum(t => t.PartsCost);
+            result.RepairLaborCost = repairTotals.Sum(t => t.LaborCost);
             result.RepairCost = result.RepairPartsCost + result.RepairLaborCost;
             result.RepairProfit = result.RepairRevenue - result.RepairCost;
 
@@ -290,9 +296,7 @@ public class OperationsReportsService : IOperationsReportsService
         // درآمد و هزینهٔ تعمیر در روند بر مبنای تاریخ تحویل ثبت می‌شود؛ برآورد تعمیرات باز درآمد قطعی نیست.
         foreach (var repair in deliveredRepairs.Where(r => r.DeliveredAt.HasValue))
         {
-            var revenue = repair.Items.Sum(i => i.Price * i.Quantity);
-            var partsCost = repair.Items.Where(i => i.ProductId is > 0).Sum(i => i.Cost * i.Quantity);
-            var laborCost = repair.Items.Where(i => i.ProductId is null or 0).Sum(i => i.Cost * i.Quantity);
+            var (revenue, partsCost, laborCost) = RepairReportTotals.Calculate(repair, warrantyServiceIds);
             var cost = partsCost + laborCost;
             var point = PointFor(repair.DeliveredAt!.Value);
             point.RepairRevenue += revenue;

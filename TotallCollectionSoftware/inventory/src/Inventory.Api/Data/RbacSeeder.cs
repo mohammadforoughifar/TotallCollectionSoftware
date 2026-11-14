@@ -19,6 +19,8 @@ public static class RbacSeeder
         // حواله تحویل کالا — سند «فقط مقدار» (بدون قیمت)
         ["GoodsIssues"] = CrudActions,
         ["Repairs"] = CrudActions,
+        // Independent permission to view/change the active company's SMS module choices.
+        ["SmsSettings"] = new[] { "Read", "Update" },
         ["CctvCameras"] = CrudActions,
         ["CctvNvrs"] = CrudActions,
         // گاوصندوق رمزهای تجهیزات — Reveal: نمایش/کپی رمز (با تأیید دوبارهٔ رمز ورود) | ViewLog: لاگ دسترسی‌ها

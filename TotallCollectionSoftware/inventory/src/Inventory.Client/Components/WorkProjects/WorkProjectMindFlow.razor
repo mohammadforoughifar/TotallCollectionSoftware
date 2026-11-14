@@ -5,6 +5,18 @@
 @inject IAuthState Auth
 
 <div class="wpmf-root @(_isFullscreen ? "wpmf-fullscreen" : "")" dir="rtl" @onkeydown="OnDocumentKeyDown">
+    @if (_newOrderFrameOpen)
+    {
+        <div class="wpmf-embed-backdrop">
+            <div class="wpmf-embed-dialog" role="dialog" aria-modal="true" aria-label="ساخت دستورکار جدید">
+                <div class="wpmf-embed-head">
+                    <span><i class="bi bi-clipboard-plus"></i> دستورکار جدید برای گرهٔ «@(SelectedNode?.Text)»</span>
+                    <button type="button" class="btn btn-sm btn-light" title="بستن" aria-label="بستن" @onclick="CloseNewOrderFrame"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <iframe src="@NewOrderFrameUrl" title="فرم دستورکار جدید"></iframe>
+            </div>
+        </div>
+    }
     <div class="wpmf-head">
         <div class="wpmf-head-title">
             <div class="wpmf-kicker">نگار ذهنی</div>
@@ -36,8 +48,6 @@
                                     <li><i class="bi bi-cursor"></i> برای دیدن جزئیات، روی گره کلیک کن.</li>
                                 }
                                 <li><i class="bi bi-zoom-in"></i> با <b>＋ / −</b> یا «نمای کامل» بزرگ‌نمایی را تنظیم کن.</li>
-                                <li><i class="bi bi-arrows-move"></i> با <b>کلیدهای جهت</b> نقشه را افقی و عمودی بچرخان.</li>
-                                <li><i class="bi bi-printer"></i> با دکمهٔ <b>چاپ</b> برگهٔ A4 نقشه را بگیر.</li>
                             </ul>
                         </div>
                     }
@@ -90,9 +100,9 @@
     {
         <div class="wpmf-workarea">
             <div class="wpmf-canvas-wrap" id="@_canvasWrapId" @ref="_canvasWrapRef" tabindex="0" @onkeydown="OnCanvasKeyDown">
-                <div class="wpmf-canvas-scroller" style="width:@N(CanvasWidth)px;height:@N(CanvasHeight)px">
+                <div class="wpmf-canvas-scroller" style="width:@(N(CanvasWidth))px;height:@(N(CanvasHeight))px">
                     <div class="wpmf-grid" style="background-size:@N(20 * Zoom)px @N(20 * Zoom)px"></div>
-                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" style="width:@N(CanvasWidth)px;height:@N(CanvasHeight)px" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
+                    <svg id="@_svgId" class="wpmf-canvas" data-readonly="@(!CanEdit)" viewBox="@ViewBox" style="width:@(N(CanvasWidth))px;height:@(N(CanvasHeight))px" aria-label="@(IsStandalone ? "نگاشت ذهنی مستقل" : "نقشه ذهنی پروژه")">
                     @foreach (var node in VisibleNodes.Where(n => n.ParentId.HasValue))
                     {
                         var parent = _map.Nodes.FirstOrDefault(n => n.Id == node.ParentId);
@@ -234,6 +244,9 @@
                         {
                             <button type="button" class="wpmf-add-order-btn" @onclick="ToggleWorkOrderOptions" aria-expanded="@_showWorkOrderOptions" disabled="@_loadingOrders">
                                 <i class="bi @(_showWorkOrderOptions ? "bi-dash-circle" : "bi-plus-circle")"></i> @(_showWorkOrderOptions ? "بستن فهرست" : "افزودن دستورکار")
+                            </button>
+                            <button type="button" class="wpmf-add-order-btn wpmf-new-order-btn" @onclick="OpenNewOrderFrame" disabled="@(SelectedNode is null)" title="ساخت دستورکار جدید همین‌جا و اتصال خودکار آن به این گره">
+                                <i class="bi bi-plus-lg"></i> ساخت دستورکار جدید
                             </button>
                         }
                         @if (_showWorkOrderOptions && CanEdit)
@@ -583,21 +596,12 @@
 
     /// <summary>فیلتر فهرست «دستورکارهای این گره» — شماره، عنوان یا نام پروژه.</summary>
     private string _orderSearch = "";
-    /// <summary>اندازهٔ ثابت فضای طراحی (واحد کاربر). بزرگ‌نمایی روی خودِ بوم اعمال می‌شود، نه با برشِ viewBox.</summary>
-    private const double DesignWidth = 1600;
-    private const double DesignHeight = 900;
     private const double MinZoom = .5;
     private const double MaxZoom = 2.5;
     private double Zoom = 1;
-    /// <summary>بومِ رندرشده؛ با بزرگ‌نمایی بزرگ می‌شود تا سطح اسکرول افقی و عمودی هم بزرگ شود.</summary>
-    private double CanvasWidth => DesignWidth * Zoom;
-    private double CanvasHeight => DesignHeight * Zoom;
-    /// <summary>کل فضای طراحی همیشه در viewBox است؛ جابه‌جایی دید با اسکرول انجام می‌شود.</summary>
-    private string ViewBox => $"0 0 {N(DesignWidth)} {N(DesignHeight)}";
-    /// <summary>قابل اسکرول بودن بوم — برای خواندن/نوشتن موقعیت اسکرول.</summary>
-    private ElementReference _canvasWrapRef;
-    /// <summary>نقطهٔ مرکز دید (در واحد فضای طراحی) که باید پس از تغییر بزرگ‌نمایی حفظ شود.</summary>
-    private (double U, double V)? _pendingZoomAnchor;
+    private bool IsStandalone => StandaloneMapId is > 0;
+    private string _svgId => IsStandalone ? $"wpmf-canvas-standalone-{StandaloneMapId}" : $"wpmf-canvas-{ProjectId}";
+    private string _canvasWrapId => $"{_svgId}-wrap";
     /// <summary>پیش‌نمایش چاپ باز است؟</summary>
     private bool _printOpen;
     /// <summary>پیش‌نمایش تازه باز شده و باید نسخهٔ چاپی نقشه ساخته شود.</summary>
@@ -607,9 +611,6 @@
     private string PrintTitle => string.IsNullOrWhiteSpace(_map?.Title) ? ProjectTitle : _map.Title;
     private string PrintSubtitle => IsStandalone ? "نگاشت مستقل" : $"پروژه: {ProjectTitle}";
     private string PrintMeta => $"{PersianDate.ToLong(DateTime.Now)} — {VisibleNodes.Count} گره";
-    private bool IsStandalone => StandaloneMapId is > 0;
-    private string _svgId => IsStandalone ? $"wpmf-canvas-standalone-{StandaloneMapId}" : $"wpmf-canvas-{ProjectId}";
-    private string _canvasWrapId => $"{_svgId}-wrap";
     private string RootMapApiUrl => IsStandalone ? $"api/mindflows/{StandaloneMapId}" : $"api/workprojects/{ProjectId}/mindflow";
     private string ShareApiUrl => IsStandalone ? $"api/mindflows/{StandaloneMapId}" : $"api/workprojects/{ProjectId}/mindflow";
     private string SubMapApiUrl(string path) => IsStandalone
@@ -618,6 +619,33 @@
     private WorkProjectMindFlowNodeDto? SelectedNode => _map.Nodes.FirstOrDefault(n => n.Id == _selectedId);
     private string AccessMessageClass => _accessMessage.StartsWith("دسترسی ثبت شد", StringComparison.Ordinal) || _accessMessage == "دسترسی لغو شد." ? "alert-success" : "alert-warning";
     private List<WorkProjectMindFlowNodeDto> VisibleNodes => _map.Nodes.Where(IsVisible).ToList();
+    // قاب دیدِ نقشه: حداقل ۱۶۰۰×۹۰۰ و در صورت بیرون‌زدن گره‌ها، به اندازهٔ همهٔ گره‌های
+    // قابل‌نمایش بزرگ می‌شود (در هر جهت). اسکرول عمودی و افقی همین ابعاد را پوشش می‌دهد.
+    private (double X, double Y, double W, double H) CanvasBox
+    {
+        get
+        {
+            const double pad = 60;
+            double minX = 0, minY = 0, maxX = 1600, maxY = 900;
+            foreach (var n in VisibleNodes)
+            {
+                var w = Width(n); var h = Height(n);
+                minX = Math.Min(minX, n.X - w / 2 - pad);
+                maxX = Math.Max(maxX, n.X + w / 2 + pad);
+                minY = Math.Min(minY, n.Y - h / 2 - pad);
+                maxY = Math.Max(maxY, n.Y + h / 2 + pad);
+            }
+            return (minX, minY, maxX - minX, maxY - minY);
+        }
+    }
+    private string ViewBox => $"{N(CanvasBox.X)} {N(CanvasBox.Y)} {N(CanvasBox.W)} {N(CanvasBox.H)}";
+    /// <summary>بومِ رندرشده؛ با بزرگ‌نمایی بزرگ می‌شود تا سطح اسکرول افقی و عمودی هم بزرگ شود.</summary>
+    private double CanvasWidth => CanvasBox.W * Zoom;
+    private double CanvasHeight => CanvasBox.H * Zoom;
+    /// <summary>قابل اسکرول بودن بوم — برای خواندن/نوشتن موقعیت اسکرول.</summary>
+    private ElementReference _canvasWrapRef;
+    /// <summary>نقطهٔ مرکز دید (در واحد فضای طراحی) که باید پس از تغییر بزرگ‌نمایی حفظ شود.</summary>
+    private (double U, double V)? _pendingZoomAnchor;
     private int LinkedWorkOrderCount => _map.Nodes.SelectMany(NodeWorkOrderIds).Distinct().Count();
     private List<MindFlowWorkOrder> FilteredWorkOrders => _projectOrders.Concat(_workOrderCache.Values)
         .GroupBy(o => o.Id).Select(g => g.First())
@@ -711,6 +739,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // پیام‌های فرم دستورکار جاسازی‌شده (iframe) را دریافت کن
+            try
+            {
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("inventoryListenEmbedMessages", _self);
+            }
+            catch { }
+        }
         if (!_attached && !_loading && _map.Nodes.Count > 0)
         {
             _self ??= DotNetObjectReference.Create(this);
@@ -762,7 +800,7 @@
             if (!attached)
             {
                 _dragModule ??= await JS.InvokeAsync<IJSObjectReference>("import",
-                    "./js/inventory-workproject-mindflow.module.js?v=4");
+                    "./js/inventory-workproject-mindflow.module.js?v=3");
                 attached = await _dragModule.InvokeAsync<bool>("attachDrag", _svgId, _self);
             }
 
@@ -778,16 +816,6 @@
 
         // پیام «کشیدن فعال نشد» فقط وقتی نمایش داده می‌شود که وضعیت عوض شده باشد.
         if (wasUnavailable != _dragUnavailable) await InvokeAsync(StateHasChanged);
-    }
-
-    /// <summary>
-    /// پیمایش بوم با کلیدهای جهت — کاملاً در JS انجام می‌شود تا حرکت نرم و بدون تأخیر باشد.
-    /// </summary>
-    private async Task BindCanvasKeysAsync()
-    {
-        try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.bindCanvasKeys", _canvasWrapRef); }
-        catch (JSException) { /* اسکریپت کلاسیک بارگذاری نشده → مسیر ماژول */ }
-        catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { }
     }
 
     private void CreateStarter()
@@ -974,8 +1002,8 @@
     }
 
     private string HintText => CanEdit
-        ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ با ＋ / − بزرگ‌نمایی کن و با کلیدهای جهت نقشه را بچرخان. گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود. دوبار کلیک روی گره = تغییر عنوان."
-        : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن و با ＋ / − بزرگ‌نمایی کن.";
+        ? "برای دیدن بخش‌های بیرون قاب، افقی یا عمودی اسکرول کن؛ گره را بکش تا جابه‌جا یا روی گرهٔ مقصد رها کن تا زیرشاخه شود. دوبار کلیک روی گره = تغییر عنوان."
+        : "برای دیدن جزئیات، روی گره کلیک کن؛ برای دیدن بخش‌های بیرون قاب اسکرول کن.";
 
     /// <summary>شروع ویرایش عنوان برای گرهی که تازه ساخته شده تا کاربر بلافاصله تایپ کند.</summary>
     private void FocusNewNodeTitle(WorkProjectMindFlowNodeDto node)
@@ -1438,7 +1466,6 @@
         Dirty();
     }
     private static string N(double x) => x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-
     // ==================== بزرگ‌نمایی و اسکرول بوم ====================
     //
     // بزرگ‌نمایی با «بزرگ‌کردن خودِ بوم» انجام می‌شود، نه با کوچک‌کردنِ viewBox.
@@ -1475,7 +1502,7 @@
         var target = 1d;
         var view = await GetCanvasViewAsync();
         if (view is not null && view.W > 0 && view.H > 0)
-            target = Math.Min(view.W / DesignWidth, view.H / DesignHeight);
+            target = Math.Min(view.W / CanvasBox.W, view.H / CanvasBox.H);
         await SetZoomAsync(Math.Clamp(target, MinZoom, 1));
     }
 
@@ -1514,6 +1541,13 @@
     }
 
     private void ToggleFullscreen() => _isFullscreen = !_isFullscreen;
+
+    private async Task BindCanvasKeysAsync()
+    {
+        try { await JS.InvokeVoidAsync("inventoryWorkProjectMindFlow.bindCanvasKeys", _canvasWrapRef); }
+        catch (JSException) { /* اسکریپت کلاسیک بارگذاری نشده → مسیر ماژول */ }
+        catch (Exception ex) when (ex is InvalidOperationException or TaskCanceledException) { }
+    }
 
     /// <summary>
     /// میان‌برهای صفحه‌کلید روی بوم: ＋ / − برای بزرگ‌نمایی و ۰ برای «نمای کامل».
@@ -1564,6 +1598,52 @@
         return Task.CompletedTask;
     }
 
+
+    // ---- ساخت دستورکار جدید داخل نگار ذهنی (فرم کامل صفحهٔ دستورکار، جاسازی‌شده) ----
+    private bool _newOrderFrameOpen;
+    private string NewOrderFrameUrl => IsStandalone || ProjectId <= 0
+        ? "/work-orders?new=1&embed=1"
+        : $"/work-orders?projectId={ProjectId}&embed=1";
+
+    private void OpenNewOrderFrame()
+    {
+        if (!CanEdit || SelectedNode is null) return;
+        _message = "";
+        _newOrderFrameOpen = true;
+    }
+
+    private void CloseNewOrderFrame() => _newOrderFrameOpen = false;
+
+    /// <summary>پیام از فرم دستورکار (iframe): «ساخته شد» → به گرهٔ انتخاب‌شده وصل؛ «بسته شد» → قاب بسته شود.</summary>
+    [JSInvokable]
+    public async Task OnEmbeddedWorkOrderEvent(string type, int id, string number)
+    {
+        if (type == "wo-closed") { _newOrderFrameOpen = false; StateHasChanged(); return; }
+        if (type != "wo-created" || id <= 0) return;
+        _newOrderFrameOpen = false;
+        if (!CanEdit || SelectedNode is null)
+        {
+            _message = $"دستورکار {number} ساخته شد، ولی گرهٔ انتخاب‌شده‌ای برای اتصال نبود.";
+            StateHasChanged();
+            return;
+        }
+        await LinkCreatedWorkOrderAsync(id);
+        _message = $"دستورکار {number} ساخته و به این گره وصل شد. برای ماندگاری، نقشه را ذخیره کن.";
+        StateHasChanged();
+    }
+
+    private async Task LinkCreatedWorkOrderAsync(int orderId)
+    {
+        if (SelectedNode is null || NodeWorkOrderIds(SelectedNode).Contains(orderId)) return;
+        Snapshot();
+        SelectedNode.WorkOrderIds ??= new();
+        SelectedNode.WorkOrderIds.Add(orderId);
+        SelectedNode.WorkOrderId = null;
+        _selectedWorkOrderId = orderId; _showNodeWorkOrderList = false;
+        _showWorkOrderOptions = false; Dirty();
+        await LoadLinkedChecklistAsync(force: true);
+    }
+
     [JSInvokable]
     public Task CommitDrag(Guid rootId, List<DragPoint> points, Guid? targetParentId)
     {
@@ -1586,6 +1666,8 @@
     {
         _workOrderLoadGeneration++;
         _candidateSearchGeneration++;
+        // قبل از آزاد کردن مرجع .NET، شنونده پیام iframe باید خاموش شود
+        try { _ = JS.InvokeVoidAsync("inventoryStopEmbedMessages"); } catch { }
         _self?.Dispose();
         DetachDrag();
     }

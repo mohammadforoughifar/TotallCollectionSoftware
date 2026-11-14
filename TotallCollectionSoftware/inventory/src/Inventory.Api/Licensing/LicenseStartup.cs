@@ -25,6 +25,15 @@ public static class LicenseStartup
         configuration.GetSection(LicensingOptions.SectionName).Bind(options);
         services.AddSingleton(options);
 
+        // ---- دور زدن لایسنس در محیط توسعه ----
+        // تک‌نمونه است چون تصمیمش به محیط فرایند وابسته است و در طول عمر برنامه عوض نمی‌شود.
+        // هر مصرف‌کننده (کش وضعیت، نگهبان ساعت، صفحهٔ وضعیت) همین شیء را می‌بیند تا
+        // «یک‌جا روشن، جای دیگر خاموش» پیش نیاید.
+        services.AddSingleton(sp => DevelopmentLicenseBypass.Evaluate(
+            sp.GetRequiredService<IHostEnvironment>(),
+            configuration,
+            sp.GetService<ILoggerFactory>()?.CreateLogger("License")));
+
         services.AddSingleton<LicensePaths>();
         services.AddSingleton<PublicKeyRingProvider>();
 
@@ -53,6 +62,9 @@ public static class LicenseStartup
         // (وگرنه هر درخواست یک کوئری می‌زند) و دفتر تخریب هم یک فایل دارد.
         services.AddSingleton<SeatCache>();
         services.AddSingleton<SeatDegradedJournal>();
+        services.AddScoped<LicenseRuntimeState>();
+        services.AddScoped<InstallationBinding>();
+        services.AddScoped<ClockGuard>();
         services.AddScoped<SeatService>();
 
         services.AddSingleton<EntitlementCache>();
@@ -65,6 +77,8 @@ public static class LicenseStartup
         // وضعیت Reserved می‌ماند. این سرویس آن‌ها را به Pending می‌برد تا مدیر
         // بتواند از API تسویه ببندد. هیچ سهمیه‌ای برنمی‌گردد.
         services.AddHostedService<LicenseReservationSweeper>();
+        // گام ۴-۴: سنجش دوره‌ای ساعت (لنگر سه‌جایی) — موتور «فقط‌خواندنی» با ساعت عقب‌رفته.
+        services.AddHostedService<ClockGuardWorker>();
 
         // گارد سراسری نوشتن — برای کنترلرهایی که [RequireModule] ندارند
         services.Configure<MvcOptions>(o => o.Filters.Add<LicenseWriteGuardFilter>());
@@ -140,6 +154,41 @@ public static class LicenseStartup
         // ۰) خودبازبینی پوشش رجیستری — قبل از هر چیز دیگری و بیرون از try، چون این
         //    بررسی هیچ ربطی به لایسنس این نصب ندارد و باید همیشه در لاگ باشد.
         LogRegistryCoverage(log);
+
+        // ۰-ب) حالت توسعه: یک هشدار بلند و روشن، و بعد کمترین کار ممکن.
+        //      ⚠️ عمداً «هیچ کاری» نمی‌کنیم: نه فایل لایسنس می‌خوانیم، نه کلید عمومی را
+        //      بررسی می‌کنیم، نه رخداد «بدون کلید» می‌سازیم — چون در توسعه هیچ‌کدام لازم نیست
+        //      و همه‌شان فقط لاگ را شلوغ می‌کنند.
+        var bypass = services.GetRequiredService<DevelopmentLicenseBypass>();
+        if (bypass.IsActive)
+        {
+            log.LogWarning("{Message}", bypass.WarningMessage);
+            log.LogInformation("[License] کلید خاموش‌کردن این حالت: {Key}=false در appsettings.Development.json",
+                DevelopmentLicenseBypass.ConfigKey);
+
+            // شناسهٔ نصب را می‌سازیم (صفحهٔ لایسنس و «فایل درخواست» در توسعه هم باید کار کنند)
+            // ولی شکستش فقط «اطلاع» است، نه خطا.
+            try
+            {
+                var identity = services.GetRequiredService<InstallationIdentity>();
+                var installation = await identity.EnsureWithGraceAsync();
+                log.LogInformation("[License] شناسهٔ نصب (توسعه): {InstallationId}", installation.InstallationId);
+            }
+            catch (Exception ex)
+            {
+                log.LogInformation(ex,
+                    "[License] ساخت/خواندن شناسهٔ نصب در حالت توسعه انجام نشد (بی‌اثر است).");
+            }
+
+            // کش را با وضعیت ساختگی پر می‌کنیم تا اولین درخواست هم معطل نشود.
+            services.GetRequiredService<EntitlementCache>().Invalidate();
+            await services.GetRequiredService<EntitlementCache>().GetAsync();
+            return;
+        }
+
+        if (bypass.InactiveReason is { Length: > 0 } reason)
+            log.LogInformation("[License] بررسی لایسنس فعال است (محیط {Env}) — {Reason}",
+                bypass.EnvironmentName, reason);
 
         try
         {

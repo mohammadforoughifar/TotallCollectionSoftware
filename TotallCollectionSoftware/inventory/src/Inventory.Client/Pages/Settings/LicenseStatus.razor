@@ -1,0 +1,429 @@
+@page "/settings/license"
+@using Inventory.Client.Services
+@inject ILicensingApi Licensing
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>وضعیت لایسنس</PageTitle>
+
+@if (!Auth.IsAdmin)
+{
+    <div class="alert alert-danger">این صفحه فقط برای مدیر سیستم قابل دسترسی است.</div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1><i class="bi bi-patch-check"></i> وضعیت لایسنس</h1>
+            <p class="lead">وضعیت کلید، سهمیهٔ ماژول‌ها، صندلی‌ها، هشدارها و فعال‌سازی</p>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@loading">
+                <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
+            </button>
+            <a href="/settings" class="btn btn-secondary"><i class="bi bi-arrow-right"></i> بازگشت</a>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (status is null)
+    {
+        <div class="alert alert-warning">
+            خواندن وضعیت لایسنس ممکن نشد: @errorText
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(status.ClockMessage))
+        {
+            <div class="alert @(status.ClockBlocked ? "alert-danger" : "alert-warning")">
+                <i class="bi bi-clock-history"></i> @status.ClockMessage
+            </div>
+        }
+        @if (status.RehostRecommended)
+        {
+            <div class="alert alert-info">
+                <i class="bi bi-arrow-left-right"></i>
+                مؤلفه‌های سخت‌افزاری/شبکهٔ این نصب تغییر کرده‌اند. اعتبار لایسنس تغییر نکرده، اما اگر سرور جابه‌جا شده
+                لطفاً لایسنس را دوباره به شناسهٔ نصب ببندید.
+            </div>
+        }
+        @if (!status.CanWrite)
+        {
+            <div class="alert alert-danger">
+                <i class="bi bi-lock"></i> سامانه در حالت فقط‌خواندنی است. ثبت و ویرایش تا رفع مشکل بسته است.
+            </div>
+        }
+
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="bi bi-info-circle"></i> وضعیت کلی</div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">وضعیت</span>
+                            <span class="badge @BadgeClass(status.Status)">@status.StatusTitle</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">مشتری</span>
+                            <span>@(status.CustomerName ?? "—")</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">حالت استقرار</span>
+                            <span>@(status.Deployment ?? "—")</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">به‌روزرسانی تا</span>
+                            <span>@(status.UpdatesUntil?.ToString("yyyy/MM/dd") ?? "—")</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">شناسهٔ نصب</span>
+                            <span dir="ltr" class="small">@(status.InstallationId ?? "—")</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">صندلی</span>
+                            <span>@(status.SeatMode ?? "—") — سقف @Fa.Digits(status.SeatsGlobalMax)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="bi bi-exclamation-triangle"></i> موارد نیازمند اقدام</div>
+                    <div class="card-body">
+                        @if (status.Issues.Count == 0)
+                        {
+                            <div class="text-success"><i class="bi bi-check2-circle"></i> موردی نیست.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var issue in status.Issues)
+                                {
+                                    <li class="mb-2 small">
+                                        <span class="badge @(issue.Severity == "Error" ? "bg-danger" : "bg-warning text-dark")">@issue.Severity</span>
+                                        @issue.Message
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        @if (status.Reservations is not null && status.Reservations.Pending > 0)
+                        {
+                            <hr />
+                            <div class="small">
+                                <i class="bi bi-hourglass-split"></i>
+                                @Fa.Digits(status.Reservations.Pending) رزرو «در انتظار» — تسویهٔ دستی لازم است.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-xl-4">
+                <div class="card h-100">
+                    <div class="card-header"><i class="bi bi-key"></i> فعال‌سازی</div>
+                    <div class="card-body">
+                        <button class="btn btn-outline-primary w-100 mb-2" @onclick="DownloadRequestAsync" disabled="@busy">
+                            <i class="bi bi-download"></i> دریافت فایل درخواست لایسنس
+                        </button>
+                        <label class="form-label small">فایل لایسنس (چند فایل مجاز است)</label>
+                        <InputFile OnChange="OnFilesSelected" multiple accept=".lic,.json" class="form-control" />
+                        <button class="btn btn-primary w-100 mt-2" @onclick="UploadAsync"
+                                disabled="@(busy || selectedFiles.Count == 0)">
+                            <i class="bi bi-upload"></i> اعمال فایل‌های انتخاب‌شده (@Fa.Digits(selectedFiles.Count))
+                        </button>
+                        @if (uploadResults.Count > 0)
+                        {
+                            <ul class="list-unstyled mt-2 mb-0 small">
+                                @foreach (var row in uploadResults)
+                                {
+                                    <li class="@(row.Ok ? "text-success" : "text-danger")">
+                                        <i class="bi @(row.Ok ? "bi-check2-circle" : "bi-x-circle")"></i>
+                                        @row.FileName — @row.Message
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        <div class="small text-muted mt-2">
+                            فایل درخواست را برای پشتیبانی بفرستید؛ فایل لایسنس امضاشده را همین‌جا اعمال کنید.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-grid-3x3-gap"></i> ماژول‌ها و سهمیه</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>ماژول</th>
+                                <th>وضعیت</th>
+                                <th>انقضا</th>
+                                @foreach (var metric in Metrics)
+                                {
+                                    <th>@metric</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var module in status.Modules)
+                            {
+                                <tr>
+                                    <td>
+                                        @module.Title
+                                        @if (module.AlwaysOn)
+                                        {
+                                            <span class="badge bg-secondary ms-1">همیشه فعال</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @ModuleBadge(module.State)">@module.StateTitle</span>
+                                    </td>
+                                    <td class="small">@(module.ExpiresAt?.ToString("yyyy/MM/dd") ?? "—")</td>
+                                    @foreach (var metric in Metrics)
+                                    {
+                                        var limit = status.Limits.FirstOrDefault(l =>
+                                            l.Module == module.Code && l.Metric == metric);
+                                        <td style="min-width:9rem">
+                                            @if (limit is null)
+                                            {
+                                                <span class="text-muted small">—</span>
+                                            }
+                                            else if (limit.Percent is null)
+                                            {
+                                                <span class="small">@Fa.Digits(limit.Used) / نامحدود</span>
+                                            }
+                                            else
+                                            {
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="progress flex-grow-1" style="height:8px">
+                                                        <div class="progress-bar @(limit.AtRisk ? "bg-danger" : "bg-success")"
+                                                             style="width:@(limit.Percent)%"></div>
+                                                    </div>
+                                                    <span class="small">@Fa.Digits(limit.Used)/@Fa.Digits(limit.Limit)</span>
+                                                </div>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        @if (pendingReservations.Count > 0)
+        {
+            <div class="card mb-3">
+                <div class="card-header"><i class="bi bi-hourglass-split"></i> رزروهای در انتظار (تسویهٔ دستی)</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ماژول</th>
+                                    <th>سنجه</th>
+                                    <th>دوره</th>
+                                    <th>مقدار</th>
+                                    <th>سند</th>
+                                    <th>عمر (دقیقه)</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var reservation in pendingReservations)
+                                {
+                                    <tr>
+                                        <td>@reservation.Module</td>
+                                        <td>@reservation.Metric</td>
+                                        <td dir="ltr">@reservation.PeriodKey</td>
+                                        <td>@Fa.Digits(reservation.Amount)</td>
+                                        <td class="small">@(reservation.EntityType ?? "—") @reservation.EntityId</td>
+                                        <td>@Fa.Digits(reservation.AgeMinutes)</td>
+                                        <td class="text-nowrap">
+                                            <button class="btn btn-sm btn-success" @onclick="() => SettleAsync(reservation, true)"
+                                                    disabled="@busy">تأیید ارسال</button>
+                                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => SettleAsync(reservation, false)"
+                                                    disabled="@busy">برگشت سهمیه</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-header"><i class="bi bi-list-check"></i> آخرین هشدارها (حداکثر ۵۰ رخداد)</div>
+            <div class="card-body p-0">
+                @if (warningEvents.Count == 0)
+                {
+                    <div class="p-3 text-muted small">هشداری ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>زمان</th>
+                                    <th>کد</th>
+                                    <th>پیام</th>
+                                    <th>کاربر</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in warningEvents)
+                                {
+                                    <tr>
+                                        <td class="small text-nowrap">@row.At.ToString("yyyy/MM/dd HH:mm")</td>
+                                        <td dir="ltr" class="small">@row.Kind</td>
+                                        <td class="small">@row.Message</td>
+                                        <td class="small">@(row.UserId?.ToString() ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private static readonly string[] Metrics = { "invoice", "letter", "user" };
+
+    private LicenseStatusSummary? status;
+    private List<LicenseEventDto> warningEvents = new();
+    private List<PendingReservationDto> pendingReservations = new();
+    private List<(string FileName, bool Ok, string Message)> uploadResults = new();
+    private List<(string FileName, Stream Content)> selectedFiles = new();
+    private bool loading = true;
+    private bool busy;
+    private string? errorText;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        errorText = null;
+        try
+        {
+            status = await Licensing.GetStatusAsync();
+
+            // رخدادها و رزروها خطای جدا دارند: نبودشان نباید کل صفحه را از کار بیندازد.
+            try { warningEvents = await Licensing.GetWarningEventsAsync(50); }
+            catch (Exception ex) { errorText = ex.Message; }
+
+            try { pendingReservations = await Licensing.GetPendingReservationsAsync(); }
+            catch { pendingReservations = new List<PendingReservationDto>(); }
+        }
+        catch (Exception ex)
+        {
+            status = null;
+            errorText = ex.Message;
+            // هیچ خطای لایسنسی باعث خروج از حساب نمی‌شود؛ فقط پیام می‌دهیم.
+            Toast.Warning(LicenseErrorText.For(null, ex.Message));
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs args)
+    {
+        foreach (var stream in selectedFiles) stream.Content.Dispose();
+        selectedFiles = args.GetMultipleFiles(20)
+            .Select(f => (f.Name, f.OpenReadStream(256 * 1024)))
+            .ToList();
+        uploadResults = new();
+    }
+
+    private async Task UploadAsync()
+    {
+        busy = true;
+        try
+        {
+            var results = await Licensing.UploadFilesAsync(selectedFiles);
+            uploadResults = results.Select(r => (r.FileName, r.Ok, r.Message)).ToList();
+            var okCount = results.Count(r => r.Ok);
+            if (okCount > 0) { Toast.Success($"{okCount} فایل اعمال شد از {results.Count}."); } else { Toast.Warning($"هیچ فایلی اعمال نشد از {results.Count}."); }
+            foreach (var stream in selectedFiles) stream.Content.Dispose();
+            selectedFiles = new();
+            await LoadAsync();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DownloadRequestAsync()
+    {
+        busy = true;
+        try
+        {
+            var (data, fileName) = await Licensing.DownloadRequestFileAsync();
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, "application/json", Convert.ToBase64String(data));
+            Toast.Success("فایل درخواست دانلود شد؛ آن را برای پشتیبانی بفرستید.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Warning(LicenseErrorText.For(null, ex.Message));
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task SettleAsync(PendingReservationDto reservation, bool confirm)
+    {
+        busy = true;
+        try
+        {
+            await Licensing.SettleAsync(reservation.Id, confirm, null);
+            Toast.Success(confirm ? "ارسال تأیید شد." : "سهمیه برگشت داده شد.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Warning(LicenseErrorText.For(null, ex.Message));
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string BadgeClass(string state) => state switch
+    {
+        "Valid" => "bg-success",
+        "Invalid" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string ModuleBadge(string state) => state switch
+    {
+        "Valid" => "bg-success",
+        "ExpiringSoon" => "bg-warning text-dark",
+        "Grace" => "bg-warning text-dark",
+        "ReadOnly" => "bg-info text-dark",
+        "Disabled" => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+}

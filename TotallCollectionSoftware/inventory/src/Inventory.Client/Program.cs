@@ -31,6 +31,8 @@ builder.Services.AddScoped<IAuthApi, AuthApi>();
 
 // ---------- ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP) ----------
 builder.Services.AddScoped<IApiClient, ApiClient>();
+// گام ۵: صفحهٔ وضعیت لایسنس (فقط مدیر)
+builder.Services.AddScoped<ILicensingApi, LicensingApi>();
 builder.Services.AddScoped<IBackupSessionTracker, BackupSessionTracker>();
 builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<IMoadianService, MoadianService>(); // سامانه مودیان (SDK 0.0.27)

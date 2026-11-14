@@ -91,6 +91,8 @@ public class LicenseController : ControllerBase
 {
     private readonly ILicenseService _licenses;
     private readonly IInstallationIdentity _identity;
+    private readonly InstallationBinding _binding;
+    private readonly ClockGuard _clock;
     private readonly PublicKeyRingProvider _keys;
     private readonly LicenseActivationThrottle _throttle;
     private readonly LicensePaths _paths;
@@ -100,15 +102,21 @@ public class LicenseController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly QuotaService _quota;
     private readonly RefundPolicy _refundPolicy;
+    private readonly DevelopmentLicenseBypass _devBypass;
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
-        PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
+        InstallationBinding binding, ClockGuard clock, PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
         LicenseEventLogger events, AppDbContext db, LicensingOptions options,
-        IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log)
+        IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log,
+        DevelopmentLicenseBypass devBypass)
     {
+        _devBypass = devBypass;
+
         _licenses = licenses;
         _identity = identity;
+        _binding = binding;
+        _clock = clock;
         _keys = keys;
         _throttle = throttle;
         _paths = paths;
@@ -145,11 +153,19 @@ public class LicenseController : ControllerBase
                 status = entitlement.Status.ToString(),
                 installationId,
                 deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
+                // وضعیت توسعه: کلاینت با همین پرچم «لایسنس در حال دور زدن» را نشان می‌دهد.
+                developmentBypass = _devBypass.IsActive,
                 issues = entitlement.Issues.Select(i => new { i.Code, severity = i.Severity.ToString(), i.Message }),
                 canActivate = true
             });
 
         var usage = await BuildUsageRowsAsync(entitlement, cancellationToken);
+        // بایند نصب: فقط «آیا جابه‌جا شده؟» — هرگز اعتبار لایسنس را تغییر نمی‌دهد.
+        var binding = await _binding.AssessAsync(cancellationToken);
+        // ساعت: یک سنجش سبک در همان درخواست وضعیت تا داشبورد همیشه تازه باشد
+        // (کارگر پس‌زمینه هم هر ۱۰ دقیقه همین کار را می‌کند).
+        var clock = await _clock.EvaluateAsync(cancellationToken);
+        var readOnly = LicenseAccessState.IsReadOnly(entitlement.Status);
         var grants = await _db.LicenseGrants.AsNoTracking()
             .Where(g => g.Status == "Active")
             .OrderBy(g => g.AppliedAt)
@@ -160,13 +176,40 @@ public class LicenseController : ControllerBase
         {
             status = entitlement.Status.ToString(),
             installationId,
-            provider = "SignedFile",
+            provider = _devBypass.IsActive ? "DevelopmentBypass" : "SignedFile",
+            // ⚠️ در محیط Development هیچ سندی اعمال نشده؛ این پرچم همان چیزی است که
+            // به پشتیبانی و توسعه‌دهنده می‌گوید «چرا همه‌چیز باز است».
+            developmentBypass = _devBypass.IsActive,
             customerId = entitlement.CustomerId,
             customerName = entitlement.CustomerName,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             computedAt = entitlement.ComputedAt,
             updatesUntil = entitlement.UpdatesUntil,
             hasPerpetualItem = entitlement.HasPerpetualItem,
+            // ---- ساعت (گام ۴-۴): وضعیت لنگر و «فقط‌خواندنی موقت» ----
+            canWrite = !readOnly,
+            clock = new
+            {
+                health = clock.Health.ToString(),
+                systemNow = clock.SystemNow,
+                anchor = clock.Anchor,
+                effectiveNow = clock.EffectiveNow,
+                backwardHours = Math.Round(clock.Backward.TotalHours, 1),
+                writesBlocked = clock.WritesBlocked,
+                showBanner = clock.ShowBanner,
+                stores = clock.Stores,
+                message = clock.ShowBanner ? clock.Summary : null
+            },
+
+            // پرچم «انتقال نصب»: دو مؤلفهٔ ثانویه یا بیشتر عوض شده.
+            // تصمیم با ما است؛ این پرچم فقط اطلاع‌رسانی است و چیزی را قفل نمی‌کند.
+            rehostRecommended = binding.RehostRecommended,
+            binding = new
+            {
+                changed = binding.Changed,
+                compared = binding.Compared,
+                summary = binding.Summary
+            },
             appliedSerials = entitlement.AppliedSerials,
             seats = new
             {
@@ -316,15 +359,26 @@ public class LicenseController : ControllerBase
 
         var request = new
         {
-            requestVersion = 1,
+            requestVersion = 2,
             kind = "license-request",
             installationId,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             customerName,
+
+            // ---- موتور و بیلد (برای اینکه هنگام صدور بدانیم مشتری چه نسخه‌ای دارد) ----
+            engineVersion = Inventory.Licensing.LicenseEngineInfo.FullVersion,
+            engineSchema = Inventory.Licensing.LicenseEngineInfo.SchemaVersion,
             productVersion = _options.ProductVersion ?? typeof(LicenseController).Assembly.GetName().Version?.ToString(),
+            buildDate = BuildDate(),
+
+            // ---- مؤلفه‌های ماشین: نام خام برای پشتیبانی، هش برای تشخیص جابه‌جایی ----
             machineName = Environment.MachineName,
             osVersion = Environment.OSVersion.VersionString,
-            requestedAt = DateTime.Now,
+            components = BindingComponents.Capture(_configuration.GetConnectionString("Default")),
+
+            // ---- زمان‌ها: تهران برای انسان، UTC برای ماشین ----
+            requestedAt = Inventory.Licensing.Periods.PersianPeriodKey.NowIran(),
+            requestedAtTehranZone = Inventory.Licensing.Periods.PersianPeriodKey.IranZone.Id,
             requestedAtUtc = DateTime.UtcNow,
             note = "این فایل را برای دریافت لایسنس ارسال کنید. شناسهٔ نصب، کلید اصلی اتصال لایسنس به همین سرور است."
         };
@@ -609,6 +663,32 @@ public class LicenseController : ControllerBase
     }
 
     /// <summary>
+    /// آخرین رخدادهای لایسنس — برای صفحهٔ «وضعیت لایسنس» (آخرین ۵۰ هشدار).
+    ///
+    /// <para>
+    /// فقط مدیر. پیش‌فرض <c>severity=Warning</c> چون مدیر برای دیدن موارد <b>نیازمند
+    /// اقدام</b> به این صفحه می‌آید؛ با <c>severity=all</c> همه چیز برمی‌گردد.
+    /// </para>
+    /// </summary>
+    [HttpGet("events")]
+    public async Task<IActionResult> Events([FromQuery] int take = 50, [FromQuery] string? severity = "Warning",
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsAdmin()) return AdminOnly();
+
+        take = Math.Clamp(take, 1, 200);
+        var query = _db.LicenseEvents.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(severity) && !severity.Equals("all", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(e => e.Severity == severity);
+
+        var rows = await query.OrderByDescending(e => e.Id).Take(take)
+            .Select(e => new { e.Id, e.At, e.Kind, e.Severity, e.Message, e.UserId, e.Serial })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new { count = rows.Count, take, severity = severity ?? "all", items = rows });
+    }
+
+    /// <summary>
     /// <b>تسویهٔ دستی</b> یک رزرو «در انتظار».
     ///
     /// <para>
@@ -732,6 +812,14 @@ public class LicenseController : ControllerBase
             code = "LICENSE_ADMIN_ONLY",
             message = "مدیریت لایسنس فقط برای مدیر سیستم مجاز است."
         });
+
+    /// <summary>تاریخ ساخت اسمبلی (UTC) — مبنای «این فایل را با چه بیلدی ساختی».</summary>
+    private static DateTime? BuildDate()
+    {
+        var location = typeof(LicenseController).Assembly.Location;
+        if (string.IsNullOrWhiteSpace(location) || !System.IO.File.Exists(location)) return null;
+        return System.IO.File.GetLastWriteTimeUtc(location);
+    }
 
     private int? CurrentUserIdOrNull()
         => int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;

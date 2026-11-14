@@ -878,6 +878,19 @@
                     <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">
                         <i class="bi bi-clipboard-data"></i><span>لاگ عملیات</span>
                     </NavLink>
+                    @* گام ۵: وضعیت لایسنس — فقط مدیر *@
+                    @if (Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="settings/license" @onclick="NotifyClose">
+                            <i class="bi bi-patch-check"></i><span>وضعیت لایسنس</span>
+                        </NavLink>
+                    }
+                }
+                @if (CanSeeSmsSettings)
+                {
+                    <NavLink class="nav-link" href="settings/sms-service" @onclick="NotifyClose">
+                        <i class="bi bi-chat-square-text"></i><span>سرویس پیامکی</span>
+                    </NavLink>
                 }
                 @if (Auth.CanSee("SystemUsers"))
                 {
@@ -973,10 +986,12 @@
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
-    private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");
+    private bool ShowSysGroup => CanSeeSettings || CanSeeSmsSettings || Auth.CanSee("SystemUsers");
 
     /// <summary>ورود به بخش تنظیمات — فقط مدیر و با مجوز مشاهدهٔ ماژول تنظیمات.</summary>
     private bool CanSeeSettings => Auth.IsAdmin && Auth.CanSee("Settings");
+    // Independent of the general settings/ERP permission.
+    private bool CanSeeSmsSettings => Auth.IsAdmin || Auth.Has("SmsSettings.Read") || Auth.Has("SmsSettings.Update");
 
     private void CloseAllGroups()
     {

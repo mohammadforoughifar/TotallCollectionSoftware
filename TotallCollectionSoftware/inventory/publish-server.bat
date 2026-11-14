@@ -8,6 +8,32 @@ rem آدرس اجرا: http://192.168.30.104:8181
 rem SQL Server: 192.168.30.104 / InventoryDb
 rem ================================================================
 
+rem ================================================================
+rem  حالت استقرار: saas | onprem  (پیش‌فرض: onprem)
+rem  مثال:  publish-server.bat saas
+rem  چرا پارامتر؟ چون تنها تفاوت دو بسته یک ثابت کامپایل (SAAS) است؛ اگر دستی
+rem  پاس داده شود، یک بار فراموش می‌شود و بستهٔ اشتباه منتشر می‌شود.
+rem ================================================================
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=onprem"
+if /I "%MODE%"=="saas" goto :mode_saas
+if /I "%MODE%"=="onprem" goto :mode_onprem
+echo [ERROR] حالت نامعتبر: %MODE%  (مجاز: saas | onprem)
+exit /b 2
+
+:mode_saas
+set "PUBLISH_PROFILE=SaaS"
+set "MODE_LABEL=SaaS"
+goto :mode_ready
+
+:mode_onprem
+set "PUBLISH_PROFILE=OnPrem"
+set "MODE_LABEL=OnPrem"
+goto :mode_ready
+
+:mode_ready
+echo حالت استقرار: %MODE_LABEL%  (Publish Profile: %PUBLISH_PROFILE%)
+
 set "ROOT=%~dp0"
 set "CLIENT=%ROOT%src\Inventory.Client"
 set "API=%ROOT%src\Inventory.Api"
@@ -42,7 +68,7 @@ xcopy "%CLIENT_PUBLISH%\wwwroot\*" "%API%\wwwroot\" /E /I /Y >nul
 if errorlevel 1 goto :failed
 
 echo [4/7] انتشار API برای Windows x64...
-dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -o "%API_PUBLISH%"
+dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -p:PublishProfile=%PUBLISH_PROFILE% -o "%API_PUBLISH%"
 if errorlevel 1 goto :failed
 
 echo [5/7] آماده‌سازی پوشه استقرار...
@@ -69,13 +95,35 @@ if not exist "%VERIFY%" (
   echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
   goto :failed
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%" -Deployment %MODE_LABEL%
 if errorlevel 1 (
   echo.
   echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.
   echo [ERROR] انتشار متوقف شد.
   goto :failed
 )
+
+rem ================================================================
+rem [7/7-ب] بستهٔ به‌روزرسانی: اسکریپت Update-App.ps1 + update.bat + package-info.json
+rem   چرا package-info.json؟ Update-App.ps1 قبل از هر تغییری آن را می‌خواند؛ اگر نباشد
+rem   (بستهٔ ناقص) با کد ۱۰ رد می‌شود و هیچ فایلی را دست نمی‌زند.
+echo [7/7-ب] افزودن ابزار به‌روزرسانی به بسته...
+if not exist "%DEPLOY%\tools\update" mkdir "%DEPLOY%\tools\update"
+copy /Y "%ROOT%tools\update\Update-App.ps1" "%DEPLOY%\tools\update\Update-App.ps1" >nul
+if errorlevel 1 goto :failed
+copy /Y "%ROOT%tools\update\update.bat" "%DEPLOY%\tools\update\update.bat" >nul
+if errorlevel 1 goto :failed
+
+rem نسخه/زمان ساخت: از نام پوشهٔ artifacts نیست، از ساعت سیستم — همان چیزی که اپراتور می‌بیند.
+set "BUILD_STAMP=%DATE% %TIME%"
+>"%DEPLOY%\package-info.json" echo {
+>>"%DEPLOY%\package-info.json" echo   "version": "%BUILD_STAMP%",
+>>"%DEPLOY%\package-info.json" echo   "deployment": "%MODE_LABEL%",
+>>"%DEPLOY%\package-info.json" echo   "builtAt": "%BUILD_STAMP%",
+>>"%DEPLOY%\package-info.json" echo   "appPoolName": "TotallCollection",
+>>"%DEPLOY%\package-info.json" echo   "builtBy": "publish-server.bat"
+>>"%DEPLOY%\package-info.json" echo }
+if errorlevel 1 goto :failed
 
 rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
 >"%DEPLOY%\run-server.bat" echo @echo off

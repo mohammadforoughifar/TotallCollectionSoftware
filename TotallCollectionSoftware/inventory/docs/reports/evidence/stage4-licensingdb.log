@@ -1,0 +1,499 @@
+دیتابیس تست: SQLite — /tmp/licdb-0548b872a7d14bb288102b09248188f6.db
+
+=== ۱) سقف ساده: تا حد مجاز بله، بعد از آن نه ===
+PASS: پنج مصرف اول پذیرفته شد (واقعی: 5)
+PASS: مصرف ششم رد شد
+PASS: گزارش رد: Used=5 Limit=5
+PASS: پیام فارسی «سقف پر شده» برمی‌گردد
+
+=== ۲) اتمی‌بودن زیر بار هم‌زمان — ۵۰ درخواست، سقف ۲۰ ===
+PASS: دقیقاً ۲۰ درخواست پذیرفته شد (واقعی: 20)
+PASS: ۳۰ درخواست رد شد (واقعی: 30)
+PASS: شمارندهٔ دیتابیس دقیقاً ۲۰ است (واقعی: 20) — هیچ مصرفی گم یا اضافه نشد
+
+=== ۳) متریک تجمیعی: نامهٔ داخلی، سقف letter.create را هم می‌شمارد ===
+PASS: سه نامهٔ اول (هر سه نوع) پذیرفته شدند
+PASS: نامهٔ چهارم از سقف تجمیعی رد شد
+PASS: سقف از متریک تجمیعی letter.create خوانده شد
+PASS: شمارندهٔ تجمیعی letter.create روی ۳ است (واقعی: 3)
+PASS: متریک بدون سقف، ردیف شمارندهٔ جدا نمی‌سازد (واقعی: 0)
+
+=== ۴) دورهٔ شمسی: مصرف در ماه بعد، سقف تازه می‌گیرد ===
+PASS: کلید دورهٔ ذخیره‌شده شمسی است: 1405-08 (الگو: 1405-08)
+PASS: کلید دوره سال/ماه شمسی دارد
+
+=== ۵) بازگشت مصرف: ماهانه برمی‌گردد، دائمی نه ===
+PASS: بازگشت در دورهٔ ماهانه انجام شد
+PASS: شمارنده از ۴ به ۳ کم شد (واقعی: 3)
+PASS: بازگشت در دورهٔ دائمی انجام نشد (قاعدهٔ «یک‌بار مصرف، بدون بازگشت»)
+PASS: شمارندهٔ دائمی روی ۲ ماند (واقعی: 2)
+PASS: رخداد LICENSE_QUOTA_NO_REFUND ثبت شد (ممیزی حذف)
+
+=== ۶) دفتر الحاقی مصرف (لاگ حذف) ===
+PASS: ردیف‌های دفتر مصرف وجود دارد (7)
+PASS: مصرف‌ها با Delta مثبت ثبت شده‌اند
+PASS: بازگشت‌ها با Delta منفی ثبت شده‌اند
+PASS: همهٔ ردیف‌ها HMAC دارند
+
+=== ۷) HMAC: دست‌کاری مستقیم در دیتابیس کشف می‌شود ===
+PASS: پیش از دست‌کاری: هیچ ردیف ناسازگاری نیست (یافت‌شده: 0)
+PASS: پس از دست‌کاری: 1 ردیف ناسازگار شناسایی شد
+PASS: رخداد LICENSE_QUOTA_TAMPERED ثبت شد
+
+=== ۸) تراکنش: اگر ثبت رکورد شکست بخورد، سهمیه هم برمی‌گردد ===
+PASS: عملیات استثنا داد و به بالا رسید
+PASS: شمارندهٔ سهمیه برنگشت‌خورد — قبل=0 بعد=0
+
+=== ۹) مصرف مؤثر = بیشترین(شمارنده، تعداد واقعی) برای متریک ActiveCount ===
+PASS: متریک بدون probe فقط شمارنده را برمی‌گرداند و ۹۹۹ ردیف را نادیده می‌گیرد (واقعی: 2، شمارنده: 2)
+PASS: ارسال مودیان probe ندارد (رویداد شمرده می‌شود، نه ردیف)
+PASS: نوع متریک invoice.create = ActiveCount (واقعی: ActiveCount) — قبلاً پیش‌فرض Counter بود و مبنا هرگز ثبت نمی‌شد
+PASS: نوع متریک letter.incoming.create = ActiveCount
+PASS: نوع متریک تجمیعی letter.create = Counter (بدون probe)
+PASS: با probe و بدون مبنا: بیشترین(شمارنده، ۹۹۹) = ۹۹۹ (واقعی: 999)
+
+=== ۱۰) رد سهمیه: رکورد نیمه‌ساخته بعداً ذخیره نمی‌شود + دفتر با شناسهٔ واقعی ===
+PASS: ثبت اول داخل تراکنش پذیرفته شد
+PASS: دفتر مصرف شناسهٔ واقعی رکورد را دارد (Product#1)
+PASS: ثبت دوم به‌خاطر سقف رد شد
+PASS: رکوردِ ردشده در دیتابیس نیست (موجود: P-OK)
+PASS: برای درخواست ردشده ردیف دفتری نوشته نشد (تعداد: 1)
+
+=== ۱۱) اولین ردیف شمارنده زیر بار هم‌زمان (INSERT و UPDATE با هم) ===
+PASS: هیچ درخواستی با استثنا نشکست (خطاها: -)
+PASS: دقیقاً یک ردیف شمارنده ساخته شد (واقعی: 1)
+PASS: دقیقاً ۲۰ درخواست پذیرفته شد از ۵۰ (واقعی: 20)
+PASS: ۳۰ درخواست رد شد (واقعی: 30)
+PASS: شمارنده روی ۲۰ ماند (واقعی: 20)
+
+=== ۱۲) مبنای مصرف: دادهٔ واردشدهٔ قدیمی سقف را پر نمی‌کند ===
+PASS: شمارنده بزرگ‌تر از دادهٔ واقعی ⇒ شمارنده ملاک است (واقعی: 5)
+PASS: ۲۵٬۰۰۰ رکورد که ۲۴٬۸۰۰تایش پیش از فعال‌سازی بوده ⇒ مصرف مؤثر ۲۰۰ (واقعی: 200)
+PASS: اگر مبنا از تعداد واقعی بیشتر باشد، منفی نمی‌شود (واقعی: 0)
+PASS: مبنا بار اول ثبت شد
+PASS: ثبت دوبارهٔ مبنا نادیده گرفته شد (idempotent)
+PASS: مقدار مبنا جابه‌جا نشد (واقعی: 12345)
+
+=== ۱۳) حذف نرم: رکورد از فهرست‌ها ناپدید می‌شود ولی شمرده می‌شود ===
+PASS: فقط فاکتور حذف‌نشده دیده می‌شود (واقعی: 1)
+PASS: فاکتور حذف‌شده در شمارش سهمیه می‌ماند (واقعی: 2) — حذف، مصرف را برنمی‌گرداند
+
+=== ۱۴) رزرو ← تماس ← تسویه: ۵۰ درخواست روی آخرین واحد، فقط یک تماس واقعی ===
+PASS: دقیقاً یک درخواست مجاز شد (واقعی: 1)
+PASS: دقیقاً یک تماس با مودیان انجام شد — Mock (واقعی: 1)
+PASS: ۴۹ درخواست پیش از هر تماسی رد شدند (واقعی: 49)
+PASS: شمارنده دقیقاً ۱ است (واقعی: 1)
+
+=== ۱۴.۱) شکست قطعی ⇒ بازگشت همان واحد + رخداد؛ نتیجهٔ نامعلوم ⇒ بدون بازگشت و Pending ===
+PASS: شکست قطعی ⇒ Failure (واقعی: Failed)
+PASS: سهمیه پس از شکست قطعی برگشت (واقعی: 0)
+PASS: رخداد LICENSE_QUOTA_REFUND_TECHNICAL ثبت شد (تعداد: 1)
+PASS: ردیف دفتر با reason=refund-technical ثبت شد (تعداد: 1)
+PASS: نتیجهٔ نامعلوم ⇒ Pending (واقعی: Pending)
+PASS: سهمیه پس از نتیجهٔ نامعلوم برنگشت (واقعی: 1)
+PASS: ردیف دفتر با reason=pending ثبت شد (تعداد: 1)
+PASS: رخداد LICENSE_QUOTA_PENDING ثبت شد (تعداد: 1)
+
+=== ۱۴.۲) تعریف دقیق DeliveryUncertain: ۴xx = قطعی، ۵xx/استثنا = نامعلوم ===
+PASS: ۴۲۲ صریح ⇒ Failed (واقعی: Failed)
+PASS: ۴۲۲ صریح ⇒ سهمیه برگشت (قبل: 0، بعد: 0)
+PASS: رخداد LICENSE_QUOTA_REFUND_TECHNICAL برای خطای قطعی ثبت شد (تعداد: 1)
+PASS: ۵۰۳ + DeliveryUncertain ⇒ Pending (واقعی: Pending)
+PASS: ۵۰۳ نامعلوم ⇒ سهمیه برنگشت (0 ⇒ 1)
+PASS: استثنای Timeout ⇒ Pending (واقعی: Pending)
+PASS: هماهنگ‌کننده خودش پرچم DeliveryUncertain را روی نتیجه ست می‌کند (تا کلاینت اشتباه تفسیر نکند)
+PASS: Timeout ⇒ سهمیه برنگشت (1 ⇒ 2) — قاعدهٔ «نامعلوم ⇒ تعویق»
+PASS: دو رزرو «در انتظار» برای تسویهٔ دستی مانده (واقعی: 2)
+
+=== ۱۴.۳) مودیان: ۴۰۸ = نامعلوم (Pending) و ۴۲۹ = قطعی (بازگشت سهمیه) — بازبینی چهارم، مورد ۹ ===
+PASS: ۴۰۸ ⇒ پرچم روی «نامعلوم» تنظیم می‌شود، حتی اگر لایهٔ پایین «قطعی» گفته باشد
+PASS: ۴۲۹ ⇒ پرچم روی «قطعی» تنظیم می‌شود، حتی اگر لایهٔ پایین «نامعلوم» گفته باشد
+PASS: ۴۲۲ (خطای اعتبارسنجی) دست نمی‌خورد ⇒ قطعی می‌ماند
+PASS: پاسخ موفق دست نمی‌خورد (تابع فقط روی شکست کار می‌کند)
+PASS: ۴۰۸ از مسیر ارسال ⇒ Pending (واقعی: Pending)
+PASS: ۴۰۸ ⇒ سهمیه برنگشت (0 ⇒ 1) — «نامعلوم ⇒ تعویق»
+PASS: ۴۲۹ از مسیر ارسال ⇒ Failed (واقعی: Failed) — «قطعاً پردازش نشد»
+PASS: ۴۲۹ ⇒ سهمیه برگشت (1 ⇒ 1)
+PASS: رخداد LICENSE_QUOTA_REFUND_TECHNICAL برای ۴۲۹ ثبت شد (تعداد: 1)
+PASS: رزرو «در انتظار» برای ۴۰۸ مانده (تعداد: 1)
+
+=== ۱۵) سناریوی بازبینی: لایسنس بدون سقف ⇒ ۵۰۰۰ فاکتور ⇒ لایسنس با سقف ۳۰ ===
+PASS: لایسنس اول سقفی برای invoice.create ندارد
+PASS: ۵۰۰۰ فاکتور در دیتابیس ثبت شد (واقعی: 5000)
+   (اطلاع) متریک‌های ActiveCount در این نسخه: 3 — مبناهای ثبت‌شده: 1
+PASS: برای invoice.create مبنا ثبت شد (تعداد مبناهای این فعال‌سازی: 1)
+PASS: دست‌کم یک متریک از نوع ActiveCount وجود دارد (واقعی: 3)
+PASS: مصرف مؤثر «صدور صورتحساب» با سقف دائمی ۳۰ = ۰ (واقعی: 0) — ۵۰۰۰ فاکتور قبل از آمدن سقف، سقف را پر نکرد
+PASS: سقف ۳۰ باز است (مصرف 0 < سقف 30)
+PASS: پس از ۳۰ فاکتور تازه، مصرف مؤثر = ۳۰ (نه ۵۰۳۰) — واقعی: 30
+PASS: بعد از ۳۰ ثبت، سی‌ویکمی رد می‌شود
+
+=== ۱۵.۱) فرمول دورهٔ ماهانه برای متریک ActiveCount: فقط رکوردهای همین ماه ===
+PASS: شمارش «همین ماه» فقط ۳۰ رکورد را دید (مبنا CreatedAt، نه Date) — واقعی: 30
+PASS: عقب‌بردن تاریخ کاربر، رکورد را از سقف ماه جاری خارج نمی‌کند (۳۱ = ۳۰ + ۱ تازه، واقعی: 31)
+PASS: مرز بازهٔ ماه شمسی معتبر است (2026-10-23 تا 2026-11-22)
+PASS: ماه دو ماه بعد خالی است (واقعی: 0) — سقف ماهانه از صفر شروع می‌شود
+
+=== ۱۶) مصرف مشترک بین دو لایسنس: سقف دائمی ۳۰ با مصرف ۳۰، بعد لایسنس دوم با سقف دائمی ۱۰۰۰ ===
+PASS: لایسنس اول: سی‌ویکمی روی سقف ۳۰ رد شد
+   ⟶ نتیجهٔ سنجش: پس از لایسنس دوم، ‹Used› روی 31 از 1000 رفت (پیش از ثبت: 30)
+PASS: مصرف لایسنس اول (۳۰) به لایسنس دوم منتقل شد — Used = 30 از ۱۰۰۰
+PASS: ثبت بعد از ارتقا مجاز است (۳۰ < ۱۰۰۰)
+PASS: مصرف جدید ۳۱ شد (واقعی: 31)
+
+=== ۱۷) حذف نرم فاکتور: از گزارش‌ها و مانده‌ها حذف، از سهمیه نه ===
+PASS: جمع گزارش فقط فاکتور زنده را دید (واقعی: 1,000,000)
+PASS: تعداد گزارش ۱ است (واقعی: 1)
+PASS: فاکتور حذف‌شده در مانده‌ها نیامد (واقعی: 0)
+PASS: سهمیه هر دو را شمرد (واقعی: 2)
+PASS: شمارهٔ بعدی از حداکثر (شامل حذف‌شده) شروع می‌شود (واقعی: 700002)
+PASS: ایندکس یکتای (Kind, Number) در SQLite هست: IX_FacInvoices_Kind_Number
+
+=== ۱۸) دروازهٔ لایسنس: ماتریس فقط‌خواندنی در Missing / Invalid / Grace / ReadOnly ===
+PASS: Missing + GET ⇒ عبور می‌کند (دادهٔ مشتری قفل نمی‌شود)
+PASS: Missing + GET ⇒ هدر X-License-ReadOnly دارد
+PASS: Missing + POST ساده ⇒ ۴۰۳ (واقعی: 403)
+PASS: Missing + POST ساده ⇒ کد LICENSE_READONLY در بدنه (بدنه: {"code":"LICENSE_READONLY","status":"Missing","readOnly":true,"message":"لایسنس …)
+PASS: Missing + POST علامت‌خورده [AllowInReadOnly] ⇒ عبور می‌کند (گزارش/جست‌وجو/Export)
+PASS: Invalid + GET ⇒ عبور می‌کند
+PASS: Invalid + GET ⇒ هدر X-License-ReadOnly دارد
+PASS: Invalid + POST ساده ⇒ ۴۰۳ (واقعی: 403)
+PASS: Invalid + POST ساده ⇒ کد LICENSE_READONLY
+PASS: Invalid + POST علامت‌خورده ⇒ عبور می‌کند
+PASS: Invalid + DELETE ⇒ ۴۰۳
+PASS: پرچم Grace اثری ندارد: POST ساده همچنان ۴۰۳ (واقعی: 403)
+PASS: هدر X-License-Grace دیگر صادر نمی‌شود (Grace محلی حذف شد)
+PASS: با پرچم Grace هم هدر فقط‌خواندنی درست ست می‌شود
+PASS: پرچم Grace خواندن را هم نمی‌بندد (خواندن همیشه آزاد است)
+PASS: پرچم Grace + اکشن علامت‌خورده ⇒ عبور (تصمیم با ویژگی است، نه با Grace)
+PASS: Valid + POST ⇒ عبور می‌کند
+PASS: Valid ⇒ هیچ هدر هشداری ندارد
+PASS: Missing + POST /api/license/activate ⇒ عبور می‌کند (صفحهٔ فعال‌سازی)
+PASS: Missing + POST /api/auth/login ⇒ عبور می‌کند (ورود مدیر)
+   (اطلاع) اکشن‌های نوشتاریِ علامت‌خورده [AllowInReadOnly]: 63
+      [Inventory.Api.Controllers]
+         • AiController.Chat
+         • AiController.DeleteConversation
+         • AuthController.ChangePassword
+         • AuthController.Login
+         • AuthController.Logout
+         • AuthController.UploadUserPhoto
+         • AuthController.UploadUserSignature
+         • CompanyContextController.SetUserCompanies
+         • DashboardController.HardwareCheck
+         • DashboardsController.Create
+         • DashboardsController.Delete
+         • DashboardsController.SetDefault
+         • DashboardsController.Update
+         • FilesController.Upload
+         • HrPayController.TestFormula
+         • HttpsController.ExportPfx
+         • HttpsController.Regenerate
+         • ItRemoteController.TestConnection
+         • NotificationsController.PushStatus
+         • NotificationsController.TestMessenger
+         • NotificationsController.TestPush
+         • OfficeMachineAgentController.Printers
+         • OfficeMachinesController.TestSnmp
+         • OrdersController.PreviewChequeReturn
+         • ReportStudioController.Preview
+         • ReportStudioController.Run
+         • ServersController.TestConnection
+         • ShopPricingController.Preview
+      [Inventory.Api.Controllers.Backup]
+         • BackupController.Retry
+         • BackupController.Run
+         • BackupController.SaveSettings
+         • BackupController.Test
+         • BackupSessionController.Close
+         • BackupSessionController.Heartbeat
+         • CentralBackupController.DeleteCompany
+         • CentralBackupController.DeleteReceipt
+         • CentralBackupController.RotateKey
+         • CentralBackupController.SaveCompany
+         • CentralBackupController.Upload
+      [Inventory.Api.Controllers.Core]
+         • UserProfileController.VerifyEmailOtp
+         • UserProfileController.VerifyMobileOtp
+      [Inventory.Api.Controllers.DocArchive]
+         • DocCollabController.DuplicateCheck
+         • DocFavoritesController.Status
+         • DocSearchController.AdvancedSearch
+         • DocSearchController.SearchPage
+         • DocSemanticController.SemanticSearch
+         • DocSemanticController.Suggest
+         • DocSettingsController.RunOnce
+         • DocumentsController.ConfirmDownload
+         • DocumentsController.RunExpiryCheck
+      [Inventory.Api.Controllers.FaCom]
+         • FaComController.CheckAnniversaries
+         • FaComController.CheckBirthdays
+         • FaComController.CheckDue
+      [Inventory.Api.Controllers.FaLms]
+         • FaLmsController.Suggest
+      [Inventory.Api.Controllers.HrCore]
+         • HrCoreController.CheckAlerts
+         • HrCoreController.RunReport
+      [Inventory.Api.Controllers.Moadian]
+         • MoadianController.PreviewSendInvoiceAsync
+      [Inventory.Api.Controllers.Office]
+         • EmailController.Test
+      [Inventory.Api.Licensing.Controllers]
+         • LicenseController.SettleReservation
+      [RadisHr.Api.Controllers]
+         • AuthController.ChangePassword
+         • AuthController.Login
+         • AuthController.ResetPassword
+         • FilesController.Upload
+PASS: هیچ اکشن ناشناخته‌ای علامت نخورده (ناشناخته: )
+PASS: همهٔ اکشن‌های انتظار علامت دارند (نبود: )
+PASS: تعداد اکشن‌های علامت‌خورده با فهرست قفل‌شده یکی است (فهرست: 60، یکتا: 60، خام: 63)
+PASS: تکرارها فقط از کنترلرهای هم‌نام‌اند (واقعی: AuthController.ChangePassword×2, AuthController.Login×2, FilesController.Upload×2)
+   (اطلاع) اکشن‌های علامت‌خورده که واقعاً در حالت Missing اجرا شدند: 63
+PASS: همهٔ اکشن‌های علامت‌خورده در Missing عبور می‌کنند (مسدود: )
+PASS: کنترل منفی: بدون صفت، همان مسیرها ۴۰۳ می‌گیرند مگر در allowlist (نقض: )
+
+=== ۱۹) رزرو ردیف‌دار: وضعیت Reserved + زمان، جاروی کهنه ⇒ Pending، تسویهٔ دستی ===
+PASS: رزرو مجاز است (سقف ۱۰)
+PASS: یک ردیف رزرو ساخته شد (واقعی: 1)
+PASS: وضعیت ردیف رزرو = Reserved (واقعی: Reserved)
+PASS: ردیف رزرو زمان ثبت دارد (ReservedAt پر است)
+PASS: کلید دوره در ردیف رزرو ذخیره شد (واقعی: 1405-08) — تسویه به آن نیاز دارد
+PASS: جارو یک رزرو کهنه پیدا کرد (واقعی: 1)
+PASS: رزرو کهنه ⇒ Pending، نه Refunded (واقعی: Pending) — سهمیه بخشیده نمی‌شود
+PASS: مصرف پس از جارو برنگشت (واقعی: 1) — قاعدهٔ «نتیجهٔ نامعلوم ⇒ بازگشت نکن»
+PASS: رخداد LICENSE_QUOTA_RESERVATION_STALE ثبت شد (تعداد: 1)
+PASS: تسویهٔ دستی Confirm انجام شد
+PASS: وضعیت پس از Confirm = Confirmed (واقعی: Confirmed)
+PASS: نام کاربر تسویه‌کننده ثبت شد (واقعی: support1)
+PASS: مصرف پس از Confirm تغییر نکرد (واقعی: 1)
+PASS: رخداد تسویهٔ دستی با نام کاربر ثبت شد
+PASS: تسویهٔ دوبارهٔ همان رزرو رد می‌شود (وضعیت بسته است)
+PASS: تسویهٔ دستی Refund انجام شد
+PASS: مصرف یک واحد کم شد (2 ⇒ 1)
+PASS: ردیف دفتر با reason=manual-refund ثبت شد (تعداد: 1)
+PASS: وضعیت پس از Refund = Refunded و کاربر = support2 (واقعی: Refunded/support2)
+
+=== ۲۰) مبنا برای همهٔ متریک‌های دارای probe + بازیابی مصرف از ردیف‌ها پس از حذف شمارنده ===
+   (اطلاع) متریک‌های دارای probe: 3 — از نوع ActiveCount: 3
+PASS: دست‌کم ۳ متریک probe دارند (واقعی: 3)
+PASS: AllWithProbe همهٔ probeهای ثبت‌شده را برمی‌گرداند
+PASS: HasProbe(invoice.create) = true
+PASS: HasProbe برای متریک ناشناخته false است (پس مصرف مؤثر = شمارنده می‌ماند)
+PASS: مبنا ثبت شد برای 1 متریک (انتظار ≥ ۱)
+PASS: پیش از هر ثبت تازه، مصرف مؤثر ۰ است (واقعی: 0) — ۵۰ فاکتور قدیمی از مبنا کسر شد
+PASS: پس از ۳ فاکتور تازه، مصرف مؤثر ۳ است (واقعی: 3)
+PASS: پس از حذف ردیف شمارنده، مصرف مؤثر از ردیف‌ها بازیابی شد = ۳ (واقعی: 3)
+
+=== ۲۱) سیاست بازگشت دستی: سقف دوره، یادداشت اجباری، حداقل عمر رزرو، شمارش در وضعیت ===
+PASS: ۲٪ سقف ۱۰۰ = ۲ و min(۲،۵) = ۲ (واقعی: 2)
+PASS: ۲٪ سقف ۱۰۰۰ = ۲۰ ⇒ سقف ۵ اعمال می‌شود (واقعی: 5)
+PASS: سقف کوچک ۲۰ ⇒ ۲٪ = ۰٫۴ ولی حداقل ۱ مجاز است (واقعی: 1)
+PASS: پنج رزرو ساخته شد (واقعی: 5)
+PASS: بازگشت بدون یادداشت رد می‌شود (نتیجه: NoteRequired — برای بازگشت دستی، نوشتن یادداشت دلیل الزامی است.)
+PASS: رزرو تازه (کمتر از ۲۴ ساعت) بازگردانده نمی‌شود (نتیجه: TooRecent — این رزرو فقط 0.0 ساعت قدمت دارد؛ بازگشت دستی فقط برای رزروهای قدیمی‌تر از 24 ساعت مجاز است.)
+PASS: دقیقاً ۲ بازگشت دستی در این دوره انجام شد (واقعی: 2)
+PASS: بازگشت سوم با «سقف پر شد» رد شد (نتیجه: RefundLimitReached — سقف بازگشت دستی این دوره پر شده است (2 از 2). حداکثر 2 بازگشت دستی در هر دوره (2٪ سقف یا 5 مورد، هرکدام کمتر)، فقط برای رزروهای قدیمی‌تر از 24 ساعت.)
+PASS: مقادیر خارج از بازه کلمپ می‌شوند (درصد=50، تعداد=50، ساعت=24)
+PASS: ساعت صفر ⇒ پیش‌فرض ۲۴ (بدون محدودیت سنی نمی‌شود) — واقعی: 24
+PASS: رخداد تسویهٔ دستی با شدت Warning ثبت شد (تعداد: 2، شدت‌ها: Warning)
+   (اطلاع) خلاصهٔ رزروها: Pending=0، Reserved=4، Confirmed=0، Refunded=2، ManualRefunds=2
+PASS: ۲ رزرو در وضعیت Refunded شمرده شد (واقعی: 2)
+PASS: ۲ واحد بازگشت دستی در دفتر شمرده شد (واقعی: 2)
+PASS: رزروهای باز شمرده می‌شوند (Reserved=4)
+
+=== ۲۲) بخشودگی گذشته (Grandfather): ۳۰۰ نامهٔ همین ماه، سقف ماهانه ۱۰۰ ⇒ ثبت تازه مجاز ===
+PASS: ۳۰۰ سند در همین ماه ثبت شد (واقعی: 300)
+PASS: بدون Grandfather مصرف مؤثر = ۳۰۰+ (واقعی: 300)
+PASS: بدون Grandfather، ثبت نامهٔ تازه رد می‌شود (سقف از اول پر است)
+PASS: گزینهٔ Grandfather در سقف مؤثر منتقل شد (Merger)
+PASS: مبنای بخشودگی ثبت شد (تعداد: 1)
+PASS: با Grandfather مصرف مؤثر = ۰ (واقعی: 0)
+PASS: ✅ ثبت نامهٔ تازه با Grandfather مجاز است (سقف ماهانه ۱۰۰، ۳۰۰ نامهٔ موجود)
+PASS: دقیقاً ۱۰۰ نامهٔ تازه پذیرفته شد، نه بیشتر (واقعی: 100) — سقف دور زده نشد
+PASS: برای دورهٔ جاری مبنا ثبت است (واقعی: 300)
+PASS: برای دورهٔ بعد (1405-09) مبنا صفر است ⇒ شمارش از صفر (واقعی: 0)
+PASS: در ماه بعد هنوز نامه‌ای نیست (واقعی: 0) — پس مصرف مؤثر = ۰ بدون هیچ کسری
+PASS: ثبت دوبارهٔ مبنا اثری ندارد (ثبت‌شد=False، مقدار=300، قبلی=300) — تمدید لایسنس سقف را بازنمی‌کند
+
+(جمع میانی بخش‌های ۱..۲۲: 184 موفق / 0 ناموفق — ادامه: بخش ۲۳ به بعد)
+
+=== ۲۳) هاب‌های SignalR: نگاشت ماژول، اتصال در Missing/Invalid، رد متد نوشتاری (بازبینی چهارم، مورد ۲) ===
+PASS: همهٔ هاب‌های واقعی در نگاشت هستند (موجود: ChatHub, DashboardHub, NotifyHub, RemoteAgentHub, RemoteHub)
+PASS: هیچ هاب اضافه/ناشناخته‌ای در نگاشت نیست (تعداد: 5)
+PASS: هر هاب ماژول و دلیل مستند دارد
+PASS: هاب‌های ریموت در حالت فقط‌خواندنی بسته‌اند (قابلیتِ کنشی)
+PASS: داشبورد و اعلان باز می‌مانند (کانال نمایش وضعیت لایسنس)
+PASS: فهرست متدهای مجاز دقیقاً ۵ مورد است (واقعی: 5)
+PASS: هیچ متد نوشتاری/ارسالی در فهرست مجاز نیست (نشتی: )
+PASS: DashboardHub در Missing ⇒ اتصال برقرار می‌شود (پوسته باید بنر وضعیت را نشان دهد)
+PASS: NotifyHub در Invalid ⇒ اتصال برقرار می‌شود
+PASS: RemoteHub در Missing ⇒ اتصال با HubException رد می‌شود
+PASS: RemoteAgentHub در Invalid ⇒ اتصال رد می‌شود
+PASS: RemoteHub با لایسنس معتبر ⇒ اتصال برقرار می‌شود
+PASS: هاب واقعی با نام کامل شناخته می‌شود: Inventory.Api.Hubs.DashboardHub ⇒ DashboardHub
+PASS: هاب واقعی با نام کامل شناخته می‌شود: Inventory.Api.Hubs.NotifyHub ⇒ NotifyHub
+PASS: هاب واقعی با نام کامل شناخته می‌شود: Inventory.Api.Hubs.ChatHub ⇒ ChatHub
+PASS: هاب واقعی با نام کامل شناخته می‌شود: Inventory.Api.Hubs.Remote.RemoteHub ⇒ RemoteHub
+PASS: هاب واقعی با نام کامل شناخته می‌شود: Inventory.Api.Hubs.Remote.RemoteAgentHub ⇒ RemoteAgentHub
+PASS: نگاشت نام کامل دقیقاً 5 ردیف دارد (واقعی: 5)
+PASS: هیچ هاب واقعی از نگاشت نام کامل جا نمانده (جاافتاده: هیچ)
+PASS: کلاسِ دیگری با نام DashboardHub (namespace تست) از مسیر نام کوتاه شناخته می‌شود
+PASS: نوعِ تولیدی کامپایلر رد می‌شود (نام: <>f__AnonymousType1`1)
+PASS: نوع ناشناخته ⇒ نگاشت ندارد (fail-closed)
+PASS: هاب نگاشت‌نشده حتی با لایسنس معتبر هم بسته می‌شود (fail-closed)
+PASS: RequestHardwareCheck در Missing ⇒ مجاز (فقط آمار سخت‌افزار)
+PASS: SendTyping در Invalid ⇒ مجاز (وضعیت گذرا، نه پیام)
+PASS: NotifyHub.SendAsync (ارسال) در Missing ⇒ رد می‌شود
+PASS: متد هابِ ناشناخته/نوشتاری در Missing ⇒ رد می‌شود (allowlist، نه denylist)
+PASS: همان متد با لایسنس معتبر ⇒ مجاز
+
+=== ۲۶) کلید امضای JWT: هیچ کلید ثابتی در کد، کلید مخصوص نصب، توکن با کلید دیگر رد می‌شود (بند ۱) ===
+PASS: کلید تولیدشده ≥ ۳۲ بایت است (واقعی: 48)
+PASS: دو نصب مختلف، دو کلید مختلف دارند
+PASS: کلید مشتق‌شدهٔ «توکن چت» با کلید JWT یکی نیست
+PASS: مشتق‌گیری قطعی است (همان ورودی، همان خروجی)
+PASS: کاربرد متفاوت ⇒ کلید متفاوت
+PASS: کلید کوتاه‌تر از ۳۲ بایت رد می‌شود (پیام: کلید «Jwt:Key» باید حداقل 32 بایت (به ازای هر کاراکتر ASCII یک بایت) باشد؛ مقدار فعلی 10 بایت است)
+PASS: کلید معتبر از پیکربندی خوانده می‌شود (منبع: configuration:Jwt:Key)
+PASS: توکنِ همین نصب با کلید خودش معتبر است (خطا: )
+PASS: ⛔ توکنِ امضاشده با کلید نصب دیگر رد می‌شود (خطا: SecurityTokenSignatureKeyNotFoundException)
+PASS: علت رد شدن، امضاست نه چیز دیگر (خطا: SecurityTokenSignatureKeyNotFoundException)
+PASS: توکن فایل چت با کلید نصب خودش معتبر است
+PASS: ⛔ توکن فایل چت با کلید نصب دیگر رد می‌شود
+PASS: فیلد ثابت JwtKey در AuthService وجود ندارد (کلید از ISigningKeys می‌آید)
+PASS: هیچ فایل سورسی رشتهٔ کلید قدیمی را ندارد (تعداد فایل: 0)
+
+=== ۲۷) ساعت ثبت سیستمی (CreatedAt): تهران، از DTO بایند نمی‌شود، در ویرایش بازنویسی نمی‌شود (بند ۲) ===
+PASS: CreatedAt فاکتور = وقت تهران، نه وقت سرور (اختلاف با تهران: 0 ثانیه، ساعت سرور: 06:21، تهران: 09:51)
+PASS: CreatedAt نامهٔ وارده = وقت تهران
+PASS: CreatedAt نامهٔ صادره = وقت تهران
+PASS: اگر ساعت سرور تهران نیست، CreatedAt با آن یکی نیست (افست سرور: 00:00:00, اختلاف با ساعت سرور: 210 دقیقه)
+PASS: DTOهای نامه (افزودن/ویرایش) هیچ خاصیت CreatedAt ندارند ⇒ کلاینت نمی‌تواند زمان ثبت را تعیین کند (DTO بررسی‌شده: 6، یافته: هیچ)
+PASS: سرویس فاکتور، CreatedAt را از DTO نمی‌خواند (هیچ انتساب/استفاده‌ای از dto.CreatedAt نیست)
+PASS: سرویس فاکتور، CreatedAt را با ساعت تهران می‌نویسد (نه DateTime.Now)
+PASS: (اطلاع) DTO ورودی می‌تواند مقدار CreatedAt داشته باشد؛ مهم این است که سرویس آن را نادیده بگیرد
+PASS: ویرایش سند، CreatedAt را تغییر نداد (قبلی: 2026-11-14 09:51:28، اکنون: 2026-11-14 09:51:28)
+PASS: جابه‌جایی تاریخ سند به ماه قبل، رکورد را از سقف ماه جاری خارج نمی‌کند
+PASS: ردیفِ بدون تاریخ معتبر در سقف ماه جاری شمرده نمی‌شود
+
+=== ۲۸) صندلی لایسنس (مرحله ۳): قاعدهٔ کاربر، معافیت امضاشده، بازپس‌گیری، حالت تخریب، کلمپ، هم‌زمانی ===
+PASS: IdleMinutes پیش‌فرض ۱۵ (واقعی: 15)
+PASS: IdleMinutes(صفر) ⇒ 15 (واقعی: 15) — «بدون محدودیت» وجود ندارد
+PASS: IdleMinutes(منفی) ⇒ 15 (واقعی: 15) — «بدون محدودیت» وجود ندارد
+PASS: IdleMinutes(۱ ⇒ کف ۱۰) ⇒ 10 (واقعی: 10) — «بدون محدودیت» وجود ندارد
+PASS: IdleMinutes(۹ ⇒ کف ۱۰) ⇒ 10 (واقعی: 10) — «بدون محدودیت» وجود ندارد
+PASS: IdleMinutes(۶۰ ⇒ همان) ⇒ 60 (واقعی: 60)
+PASS: IdleMinutes(بزرگ ⇒ سقف ۲۴۰) ⇒ 240 (واقعی: 240)
+PASS: SeatCacheSeconds(0) ⇒ 45 (واقعی: 45) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(-1) ⇒ 45 (واقعی: 45) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(1) ⇒ 15 (واقعی: 15) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(5) ⇒ 15 (واقعی: 15) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(45) ⇒ 45 (واقعی: 45) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(120) ⇒ 120 (واقعی: 120) — همیشه در ۱۵..۱۲۰
+PASS: SeatCacheSeconds(500) ⇒ 120 (واقعی: 120) — همیشه در ۱۵..۱۲۰
+PASS: SeatEviction(«null») ⇒ deny (واقعی: deny)
+PASS: SeatEviction(«») ⇒ deny (واقعی: deny)
+PASS: SeatEviction(«deny») ⇒ deny (واقعی: deny)
+PASS: SeatEviction(«whatever») ⇒ deny (واقعی: deny)
+PASS: SeatEviction(«evict-oldest-idle») ⇒ evict-oldest-idle (واقعی: evict-oldest-idle)
+PASS: SeatEviction(«EVICT-OLDEST-IDLE») ⇒ evict-oldest-idle (واقعی: evict-oldest-idle)
+PASS: SeatEvictionMinIdleMinutes(0) ⇒ 5 (واقعی: 5) — کف ۵
+PASS: SeatEvictionMinIdleMinutes(-2) ⇒ 5 (واقعی: 5) — کف ۵
+PASS: SeatEvictionMinIdleMinutes(1) ⇒ 5 (واقعی: 5) — کف ۵
+PASS: SeatEvictionMinIdleMinutes(5) ⇒ 5 (واقعی: 5) — کف ۵
+PASS: SeatEvictionMinIdleMinutes(60) ⇒ 60 (واقعی: 60) — کف ۵
+PASS: SeatEvictionMinIdleMinutes(9999) ⇒ 120 (واقعی: 120) — کف ۵
+PASS: دو ورود اول با سقف ۲ پذیرفته می‌شوند
+PASS: ورود سوم رد می‌شود با کد LICENSE_SEAT_FULL (واقعی: LICENSE_SEAT_FULL)
+PASS: پیام فارسی «ظرفیت پر است» برگردانده می‌شود: «ظرفیت صندلی‌های لایسنس پر است (2 از 2). چند دقیقه بعد دوباره تلاش کنید، از یکی از کاربران فعلی بخواهید خارج شود، یا برای افزایش ظرفیت با پشتیبانی تماس بگیرید.»
+PASS: ورود دوبارهٔ همان کاربر (تب/دستگاه دوم) صندلی تازه نمی‌گیرد
+PASS: شمارش صندلی «کاربر یگانه» است (واقعی: 2 — انتظار: ۲)
+PASS: کاربر معاف (اولین نام فهرست) با وجود سقف ۱ پذیرفته می‌شود
+PASS: نام دوم فهرست معاف نیست (از سقف «exempt»=۱ گذشته) و چون کاربر معاف صندلی مصرف نمی‌کند، صندلی آزاد را می‌گیرد (کد: OK)
+PASS: و نام سوم هم معاف نیست؛ با پر شدن تک‌صندلی، رد می‌شود (کد: LICENSE_SEAT_FULL) — یعنی فقط «su1» واقعاً معاف بود
+PASS: دو «مدیر» صندلی می‌گیرند (هیچ معافیت نقشی وجود ندارد)
+PASS: ستون LicenseSeatExempt=1 هیچ اثری ندارد؛ کاربر سوم رد می‌شود (کد: LICENSE_SEAT_FULL)
+PASS: Named با سقف ۲: نفرات ۱ و ۲ (به ترتیب Id) وارد می‌شوند
+PASS: Named: نفر سوم (Id بزرگ‌تر) رد می‌شود (کد: LICENSE_SEAT_FULL)
+PASS: پیام، «نفرم» را نشان می‌دهد: «ظرفیت کاربران لایسنس پر است: این حساب نفر 3 از 2 است و ورودش مجاز نیست. برای ورود، یکی از کاربران فعال را غیرفعال کنید یا لایسنس را افزایش دهید.»
+PASS: رد شدن یک کاربر، ورود بقیه را قفل نمی‌کند (هیچ شرط سراسری وجود ندارد)
+PASS: ساخت کاربر بالاتر از سقف رد می‌شود (پیام: «ظرفیت کاربران لایسنس پر است (سقف 2، حساب فعالِ غیرمعاف 4). یا یکی از حساب‌های فعال را غیرفعال کنید، یا لایسنس را افزایش دهید.»)
+PASS: فعال‌سازی کاربر غیرفعالِ بالاتر از سقف رد می‌شود
+PASS: غیرفعال‌کردن کاربر هرگز به‌خاطر سقف رد نمی‌شود
+PASS: ورود su1: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: 32)
+PASS: ورود su2: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: 32)
+PASS: ورود su3: صندلی گرفته شد و sid یک GUID تصادفی ۳۲ نویسه‌ای است (طول: 32)
+PASS: کاربر چهارم با سقف ۳ رد می‌شود
+PASS: بعد از خالی‌شدن جدول، سه توکن معتبر صندلی را بازپس می‌گیرند (کسی بیرون نمی‌افتد)
+PASS: و چون ظرفیت هنوز پر است، کاربر چهارم همان ۴۰۳ «ظرفیت پر است» را می‌گیرد (کد: LICENSE_SEAT_FULL)
+PASS: نشست Closed ⇒ LICENSE_SEAT_ENDED (واقعی: LICENSE_SEAT_ENDED)
+PASS: نشست Evicted ⇒ LICENSE_SEAT_ENDED (واقعی: LICENSE_SEAT_ENDED)
+PASS: نشست Expired با ظرفیت آزاد بازپس گرفته می‌شود (کاربر مجبور به ورود دوباره نیست)
+PASS: نشست Active با LastSeen قدیمی شمرده نمی‌شود (واقعی: 0)
+PASS: پس یک صندلی آزاد واقعاً آزاد است و ورود تازه پذیرفته می‌شود
+PASS: همهٔ ۱۰۰ درخواست عبور می‌کنند
+PASS: ۱۰۰ درخواست در پنجرهٔ کش ⇒ حداکثر ۱ کوئری بررسی (هیت: 99، میس: 1)
+PASS: GET اعلان‌ها (شمارش/فهرست) فعالیت نیست
+PASS: GET فهرست گفتگو فعالیت نیست
+PASS: GET متریک زنده فعالیت نیست
+PASS: POST read-all در اعلان‌ها فعالیت است
+PASS: POST read در اعلان‌ها فعالیت است
+PASS: ارسال پیام در چت فعالیت است
+PASS: GET دادهٔ کسب‌وکار (فاکتورها) فعالیت است
+PASS: اتصال هاب هیچ‌وقت فعالیت نیست
+PASS: خطای گذرا (Timeout/قطع اتصال/Busy) در پنجرهٔ ۱۰ دقیقه‌ای، ورود را نمی‌شکند
+PASS: ورود در حالت تخریب‌شده در ژورنال محلی ثبت شد (خطوط: 1)
+PASS: بعد از ۱۰ دقیقهٔ بدون بررسی موفق، ورود جدید رد می‌شود (کد: LICENSE_SEAT_UNAVAILABLE)
+PASS: خطای ساختاری ⇒ ورود جدید رد می‌شود (کد: LICENSE_SEAT_UNAVAILABLE)
+PASS: رخداد SEAT_SCHEMA_BROKEN با شدت Warning ثبت شد (شدت: Warning)
+PASS: در خطای ساختاری، نشست موجود ادامه می‌دهد ولی پاسخ برچسب degraded دارد (Allowed=True، Code=LICENSE_SEAT_DEGRADED، Degraded=True)
+PASS: sid کاربر دیگر با این توکن معتبر نیست (کد: LICENSE_SESSION_MISMATCH)
+PASS: همان قاعده در بررسی هاب هم برقرار است (کد: LICENSE_SESSION_MISMATCH)
+PASS: اتصال هاب با sid بسته‌شده رد می‌شود (کد: LICENSE_SEAT_ENDED)
+PASS: هاب با sid ناموجود هم رد می‌شود (بدون بازپس‌گیری؛ درخواست API بعدی صندلی را می‌گیرد) (کد: LICENSE_SEAT_UNKNOWN)
+PASS: پیش‌فرض deny: هیچ‌کس بیرون انداخته نمی‌شود و ورود تازه ۴۰۳ می‌گیرد (واقعی: LICENSE_SEAT_FULL)
+PASS: با evict-oldest-idle، قدیمی‌ترین نشست بیکار بیرون می‌رود و ورود تازه پذیرفته می‌شود (واقعی: allowed)
+PASS: ردیف قدیمی وضعیت Evicted گرفت (واقعی: 1)
+PASS: سیاست users:None سقف کاربر ندارد (HasUserLimit=false)
+PASS: با users.mode = None هیچ سقفی اعمال نمی‌شود (ورود موفق: 4 از ۴)
+PASS: ۲۰ ورود هم‌زمان با سقف ۵ ⇒ دقیقاً ۵ موفق (واقعی: 5)
+PASS: و ۱۵ رد با کد LICENSE_SEAT_FULL (واقعی: 15) — خطاهای دیگر: 
+PASS: تعداد ردیف‌های Active دقیقاً ۵ است (واقعی: 5) — قفل از صندلی دوتایی جلوگیری کرد
+PASS: قفل روی SQL Server با sp_getapplock و owner=Transaction و timeout مشخص است
+PASS: گرفته‌نشدن قفل ⇒ کد LICENSE_SEAT_BUSY (نه degraded و نه عبور)
+PASS: هر چهار هاب کاربری در OnConnectedAsync گارد صندلی دارند (بدون: )
+PASS: RemoteAgentHub دست‌نخورده است (ایجنت بدون توکن کاربر و بدون صندلی)
+PASS: ستون Users.LicenseSeatExempt از خدمات تصمیم لایسنس حذف شد (هیچ کوئری‌ای رویش نمانده) — فایل‌ها: 
+PASS: LicenseSeatExempt فقط در تعریف/اسکیما مانده (فایل‌ها: LicenseSchemaV1.cs, User.cs)
+PASS: تنها دو محل صدور توکن وجود دارد (واقعی: AuthService.cs, TokenService.cs) — مسیر سوم یعنی صندلی دور زده می‌شود
+PASS: توکن نشست کاربر در AuthService همیشه ادعای sid دارد
+PASS: توکن RadisHr با کلید مشتق‌شده و بدون رشتهٔ ثابت صادر می‌شود (در میزبان پذیرفته نمی‌شود ⇒ صندلی نمی‌گیرد)
+
+=== ۲۹) گام ۳-ب: توکن بدون sid و ProgramData ===
+PASS: اولین استارت فقط یک‌بار درج می‌شود (idempotent) — مقدار: 2026-11-14T06:21:34.9863587+00:00
+PASS: جدول LicenseRuntime دقیقاً یک ردیف build.firstStart دارد
+PASS: ۱۲ ساعت بعد از اولین استارت، پنجرهٔ توکن بدون sid باز است
+PASS: ۱۳ ساعت و یک دقیقه بعد، پنجره بسته است (حداکثر عمر توکن ۱۲ ساعت + ۱ ساعت حاشیه)
+PASS: در پنجرهٔ گذار، درخواست با توکن بدون sid پذیرفته می‌شود
+PASS: بیرون از پنجره، پاسخ LICENSE_SESSION_ENDED است (واقعی: LICENSE_SESSION_ENDED)
+PASS: کد LICENSE_SESSION_ENDED به HTTP 401 نگاشت می‌شود تا کلاینت دوباره ورود کند
+PASS: هر چهار پوشهٔ ProgramData (security، License، projects، logs) ساخته می‌شوند
+PASS: فایل آزمایشی نوشتن بعد از بررسی پاک می‌شود
+PASS: پوشهٔ غیرقابل‌نوشتن ⇒ خطای روشن راه‌اندازی (نه فال‌بک بی‌صدا)
+
+=== ۳۰) رفت‌وبرگشت امضا (payload مشترک ابزار صدور و verifier) ===
+PASS: فایل ساخته‌شده با مسیر ابزار صدور، توسط verifier پذیرفته می‌شود
+PASS: سریال بعد از تأیید امضا درست خوانده می‌شود
+PASS: آیتم و scope بعد از رفت‌وبرگشت سالم می‌مانند
+PASS: تغییر یک بایت payload ⇒ امضا رد می‌شود (۱ تست جهش)
+
+=== ۳۱) ابزار صدور در بستهٔ نصب نیست ===
+PASS: اسکریپت انتشار پیدا شد (publish-server.bat, publish-server.bat)
+PASS: publish-server.bat ابزار LicenseTool را منتشر نمی‌کند (publish-server.bat)
+PASS: publish-server.bat ابزار LicenseTool را منتشر نمی‌کند (publish-server.bat)
+PASS: پروژهٔ tools/LicenseTool وجود دارد
+
+════════════════════════════════════════════════════════════════════════════════════════════════
+✅ همهٔ 346 بررسی موفق بود (شامل بخش ۲۸ — صندلی لایسنس).
+════════════════════════════════════════════════════════════════════════════════════════════════

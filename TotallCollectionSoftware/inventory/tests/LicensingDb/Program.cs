@@ -2365,6 +2365,8 @@ Inventory.Api.Licensing.Services.SeatService NewSeats(AppDbContext db, Effective
         cache,
         journal,
         opts,
+        new Inventory.Api.Licensing.Services.LicenseRuntimeState(db,
+            NullLogger<Inventory.Api.Licensing.Services.LicenseRuntimeState>.Instance),
         NullLogger<Inventory.Api.Licensing.Services.SeatService>.Instance);
 
 async Task SeedSeatUsersAsync(int count)
@@ -3092,6 +3094,457 @@ async Task ClearSessionsAsync()
 }
 
 
+// ============================================================
+//  بخش ۲۹ (گام ۳-ب) — پنجرهٔ توکن بدون sid و پوشه‌های ProgramData
+// ============================================================
+Section("۲۹) گام ۳-ب: توکن بدون sid و ProgramData");
+
+{
+    await using var db = NewDb();
+
+    var runtime = new Inventory.Api.Licensing.Services.LicenseRuntimeState(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseRuntimeState>.Instance);
+
+    var firstStart = await runtime.EnsureFirstStartAsync();
+    var again = await runtime.EnsureFirstStartAsync();
+    Check(firstStart == again, "اولین استارت فقط یک‌بار درج می‌شود (idempotent) — مقدار: " + firstStart.ToString("o"));
+    Check(await db.LicenseRuntime.CountAsync() == 1, "جدول LicenseRuntime دقیقاً یک ردیف build.firstStart دارد");
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(12)))
+    {
+        var open = await runtime.IsLegacyTokenWindowOpenAsync(Inventory.Api.Licensing.ClockAnchor.Now());
+        Check(open, "۱۲ ساعت بعد از اولین استارت، پنجرهٔ توکن بدون sid باز است");
+    }
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(13).AddMinutes(1)))
+    {
+        var open = await runtime.IsLegacyTokenWindowOpenAsync(Inventory.Api.Licensing.ClockAnchor.Now());
+        Check(!open, "۱۳ ساعت و یک دقیقه بعد، پنجره بسته است (حداکثر عمر توکن ۱۲ ساعت + ۱ ساعت حاشیه)");
+    }
+
+    // رفتار واقعی دروازهٔ صندلی با توکن بدون sid
+    var ent = SeatEnt(LicenseUserMode.Named, 1);
+    await SeedSeatUsersAsync(2);
+    var opts = new Inventory.Api.Licensing.LicensingOptions();
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(2)))
+    {
+        var seats = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts,
+            new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths,
+                NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance));
+        var legacyGrant = await seats.AuthorizeRequestAsync(1, sessionId: null, username: "u1", isActivity: true);
+        Check(legacyGrant.Allowed, "در پنجرهٔ گذار، درخواست با توکن بدون sid پذیرفته می‌شود");
+    }
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(20)))
+    {
+        var seats = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts,
+            new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths,
+                NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance));
+        var legacyGrant = await seats.AuthorizeRequestAsync(1, sessionId: null, username: "u1", isActivity: true);
+        Check(!legacyGrant.Allowed && legacyGrant.Code == "LICENSE_SESSION_ENDED",
+            "بیرون از پنجره، پاسخ LICENSE_SESSION_ENDED است (واقعی: " + legacyGrant.Code + ")");
+        Check(Inventory.Api.Licensing.Services.SeatGrant.StatusFor("LICENSE_SESSION_ENDED") == 401,
+            "کد LICENSE_SESSION_ENDED به HTTP 401 نگاشت می‌شود تا کلاینت دوباره ورود کند");
+    }
+}
+
+{
+    // ProgramData: ساخت چهار پوشه و شکست روشن وقتی مسیر قابل‌نوشتن نیست
+    var root = Path.Combine(Path.GetTempPath(), "totall-layout-" + Guid.NewGuid().ToString("N"));
+    var layoutPaths = new Inventory.Api.Licensing.ProgramDataPaths(
+        root, Path.Combine(root, "security"), Path.Combine(root, "License"),
+        Path.Combine(root, "projects"), Path.Combine(root, "logs"));
+    var ensured = Inventory.Api.Licensing.ProgramDataLayout.Ensure(layoutPaths);
+    Check(Directory.Exists(ensured.Security) && Directory.Exists(ensured.License)
+          && Directory.Exists(ensured.Projects) && Directory.Exists(ensured.Logs),
+        "هر چهار پوشهٔ ProgramData (security، License، projects، logs) ساخته می‌شوند");
+    Check(!File.Exists(Path.Combine(ensured.Security, ".write-probe")), "فایل آزمایشی نوشتن بعد از بررسی پاک می‌شود");
+
+    var blocked = Path.Combine(root, "blocked");
+    Directory.CreateDirectory(blocked);
+    try
+    {
+        // پوشه را فقط‌خواندنی می‌کنیم: ساخت زیرپوشه باید شکست بخورد.
+        File.SetUnixFileMode(blocked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        var bad = new Inventory.Api.Licensing.ProgramDataPaths(
+            blocked, Path.Combine(blocked, "security"), Path.Combine(blocked, "License"),
+            Path.Combine(blocked, "projects"), Path.Combine(blocked, "logs"));
+        var threw = false;
+        string message = "";
+        try { Inventory.Api.Licensing.ProgramDataLayout.Ensure(bad); }
+        catch (InvalidOperationException ex) { threw = true; message = ex.Message; }
+        Check(threw && message.Contains("راه‌اندازی متوقف شد", StringComparison.Ordinal),
+            "پوشهٔ غیرقابل‌نوشتن ⇒ خطای روشن راه‌اندازی (نه فال‌بک بی‌صدا)");
+    }
+    finally
+    {
+        try { File.SetUnixFileMode(blocked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); } catch { }
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+}
+
+// ============================================================
+//  بخش ۳۰ (گام ۴-۶) — رفت‌وبرگشت امضا: همان بایت‌هایی که امضا می‌شود، همان‌ها خوانده می‌شوند
+// ============================================================
+Section("۳۰) رفت‌وبرگشت امضا (payload مشترک ابزار صدور و verifier)");
+
+{
+    using var rsa = System.Security.Cryptography.RSA.Create(3072);
+    var publicPem = rsa.ExportSubjectPublicKeyInfoPem();
+    var ring = Inventory.Licensing.Crypto.PublicKeyRing.FromEntries(new[]
+    {
+        new Inventory.Licensing.Crypto.PublicKeyEntry
+        {
+            KeyId = "roundtrip", Algorithm = "RS256", PublicKeyPem = publicPem
+        }
+    });
+
+    var doc = new LicenseDocument
+    {
+        KeyId = "roundtrip", Serial = "LIC-ROUNDTRIP-1", CustomerId = "C-9", CustomerName = "تست رفت‌وبرگشت",
+        Deployment = DeploymentKind.OnPrem, InstallationId = "1111", IssuedAt = new DateTime(2026, 11, 1),
+        Items = new List<LicenseItem>
+        {
+            new()
+            {
+                Id = "I-1", Scope = new List<string> { ModuleCodes.Sales },
+                Term = new LicenseTerm
+                {
+                    Type = LicenseTermType.Subscription,
+                    ValidFrom = new DateTime(2026, 11, 1), ValidUntil = new DateTime(2027, 11, 1)
+                },
+                Users = new LicenseUsers { Mode = LicenseUserMode.Named, Max = 3 }
+            }
+        }
+    };
+
+    // مسیر ابزار صدور: bytes = ToPayloadBytes → امضا روی همان → پوشش
+    var payload = LicenseJson.ToPayloadBytes(doc);
+    var signature = rsa.SignData(payload, System.Security.Cryptography.HashAlgorithmName.SHA256,
+        System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+    var envelope = new SignedLicenseDocument
+    {
+        EnvelopeVersion = 1, KeyId = "roundtrip", Algorithm = "RS256",
+        Payload = Convert.ToBase64String(payload), Signature = Convert.ToBase64String(signature)
+    };
+    var fileText = System.Text.Json.JsonSerializer.Serialize(envelope,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+    var verified = Inventory.Licensing.Crypto.LicenseVerifier.Verify(fileText, ring);
+    Check(verified.Ok, "فایل ساخته‌شده با مسیر ابزار صدور، توسط verifier پذیرفته می‌شود");
+    Check(verified.Document?.Serial == "LIC-ROUNDTRIP-1", "سریال بعد از تأیید امضا درست خوانده می‌شود");
+    Check(verified.Document?.Items.Count == 1 && verified.Document.Items[0].Scope.Contains(ModuleCodes.Sales),
+        "آیتم و scope بعد از رفت‌وبرگشت سالم می‌مانند");
+
+    // جهش: یک بایت در payload ⇒ امضا باید رد شود
+    var tamperedPayload = (byte[])payload.Clone();
+    tamperedPayload[tamperedPayload.Length / 2] ^= 0x01;
+    var tamperedEnvelope = new SignedLicenseDocument
+    {
+        EnvelopeVersion = 1, KeyId = "roundtrip", Algorithm = "RS256",
+        Payload = Convert.ToBase64String(tamperedPayload), Signature = Convert.ToBase64String(signature)
+    };
+    var tampered = Inventory.Licensing.Crypto.LicenseVerifier.Verify(
+        System.Text.Json.JsonSerializer.Serialize(tamperedEnvelope), ring);
+    Check(!tampered.Ok, "تغییر یک بایت payload ⇒ امضا رد می‌شود (۱ تست جهش)");
+}
+
+{
+    // ابزار صدور نباید در بستهٔ نصب مشتری برود: کلید خصوصی و منطق صدور جای دیگری است.
+    Section("۳۱) ابزار صدور در بستهٔ نصب نیست");
+    var root = repoRootForScan is null ? Environment.CurrentDirectory : Path.GetFullPath(repoRootForScan);
+    var publishScripts = new[]
+    {
+        Path.Combine(root, "publish-server.bat"),
+        Path.Combine(root, "..", "publish-server.bat")
+    }.Where(File.Exists).Select(Path.GetFullPath).ToList();
+    Check(publishScripts.Count > 0, "اسکریپت انتشار پیدا شد (" + string.Join(", ", publishScripts.Select(Path.GetFileName)) + ")");
+    foreach (var script in publishScripts)
+    {
+        var text = File.ReadAllText(script);
+        Check(!text.Contains("LicenseTool", StringComparison.OrdinalIgnoreCase),
+            "publish-server.bat ابزار LicenseTool را منتشر نمی‌کند (" + Path.GetFileName(script) + ")");
+    }
+
+    var toolProject = Path.Combine(root, "tools", "LicenseTool", "LicenseTool.csproj");
+    Check(File.Exists(toolProject), "پروژهٔ tools/LicenseTool وجود دارد");
+}
+
+// ============================================================
+//  بخش ۳۲ (گام ۴-۲/۴-۳) — بایند نصب (جابه‌جایی) و فایل درخواست غنی‌شده
+// ============================================================
+Section("۳۲) گام ۴-ب: کمیت مؤلفه‌های ثانویه (۴.۳) و فایل درخواست (۴.۲)");
+
+{
+    await using var db = NewDb();
+    var events = new Inventory.Api.Licensing.Services.LicenseEventLogger(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseEventLogger>.Instance);
+
+    const string installId = "11111111-1111-1111-1111-111111111111";
+    db.LicenseInstallations.Add(new LicenseInstallation
+    {
+        InstallationId = installId,
+        DeploymentMode = "OnPrem",
+        CustomerName = "CUST-BIND",
+        CreatedAt = DateTime.Now,
+        UpdatedAt = DateTime.Now
+    });
+    await db.SaveChangesAsync();
+
+    var components = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // ورودی این تست همان خروجی Capture است؛ یعنی هش ۱۶ کاراکتری (نه مقدار خام).
+        ["machineName"] = "aaaaaaaaaaaaaaaa", ["machineGuid"] = "bbbbbbbbbbbbbbbb",
+        ["sqlServer"] = "cccccccccccccccc"
+    };
+    Inventory.Api.Licensing.Services.InstallationBinding Binding() =>
+        new(db, events, () => new Dictionary<string, string>(components, StringComparer.OrdinalIgnoreCase),
+            NullLogger<Inventory.Api.Licensing.Services.InstallationBinding>.Instance);
+
+    // ---------- الف) اولین اجرا: خط پایه ----------
+    var first = await Binding().AssessAsync();
+    Check(first.BaselineCreated && first.Changed.Count == 0 && !first.RehostRecommended,
+        "اجرای اول خط پایه را می‌سازد و هیچ تغییری گزارش نمی‌کند");
+    var row = await db.LicenseInstallations.AsNoTracking().FirstAsync();
+    Check(row.MachineFingerprint is not null && row.MachineFingerprint.Contains("\"components\"", StringComparison.Ordinal),
+        "خط پایه به شکل JSON مؤلفه‌ها در MachineFingerprint ذخیره می‌شود");
+    Check((row.MachineFingerprint ?? "").Length < 600,
+        "اندازهٔ JSON خط پایه در ستون nvarchar(600) جا می‌شود (واقعی: " + (row.MachineFingerprint ?? "").Length + ")");
+    Check(components.Values.All(v => row.MachineFingerprint!.Contains(v, StringComparison.Ordinal)),
+        "خط پایه همان هش‌ها را ذخیره می‌کند (هش دوباره گرفته نمی‌شود)");
+
+    // ---------- ب) بدون تغییر ----------
+    var same = await Binding().AssessAsync();
+    Check(!same.BaselineCreated && same.Changed.Count == 0 && same.Compared.Count == 3,
+        "اجرای بعدی سه مؤلفه را مقایسه و بدون تغییر گزارش می‌کند");
+
+    // ---------- ج) یک مؤلفه: طبیعی، بدون هشدار ----------
+    components["machineName"] = "zzzzzzzzzzzzzzzz";
+    var one = await Binding().AssessAsync();
+    Check(one.Changed.Count == 1 && one.Changed[0] == "machineName" && !one.RehostRecommended,
+        "تغییر یک مؤلفه ⇒ «انتقال نصب» پیشنهاد نمی‌شود");
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 0,
+        "با یک مؤلفه هیچ رخداد Warning نوشته نمی‌شود");
+
+    // ---------- د) دو مؤلفه: هشدار، بدون هیچ مهلت ----------
+    components["sqlServer"] = "yyyyyyyyyyyyyyyy";
+    var two = await Binding().AssessAsync();
+    Check(two.Changed.Count == 2 && two.RehostRecommended,
+        "دو مؤلفهٔ عوض‌شده ⇒ پرچم rehostRecommended (بدون غیرفعال‌سازی لایسنس)");
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING" && x.Severity == "Warning") == 1,
+        "یک رخداد Warning با شدت Warning ثبت می‌شود");
+    await Binding().AssessAsync();
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 1,
+        "تکرار همان وضعیت، رخداد تکراری نمی‌سازد (ضد اسپم)");
+    components["machineGuid"] = "xxxxxxxxxxxxxxxx";
+    await Binding().AssessAsync();
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 2,
+        "مجموعهٔ متفاوتِ تغییر ⇒ یک رخداد تازه (نه بیشتر)");
+
+    // ---------- هـ) قاعدهٔ سخت: شناسهٔ نصب دست‌نخورده ----------
+    var afterAll = await db.LicenseInstallations.AsNoTracking().FirstAsync();
+    Check(afterAll.InstallationId == installId,
+        "بایند ثانویه هرگز شناسهٔ نصب (GUID) را عوض نمی‌کند — ناهمخوانی GUID جای دیگری Invalid می‌دهد");
+    var props = typeof(Inventory.Api.Licensing.Services.BindingAssessment).GetProperties()
+        .Select(x => x.Name).ToList();
+    Check(!props.Any(x => x.Contains("Deadline", StringComparison.OrdinalIgnoreCase)
+                          || x.Contains("Expir", StringComparison.OrdinalIgnoreCase)
+                          || x.Contains("Block", StringComparison.OrdinalIgnoreCase)),
+        "سطح API بایند هیچ مهلت/قفل/انقضایی ندارد (" + string.Join(", ", props) + ")");
+
+    // ---------- و) مؤلفهٔ نامعلوم مقایسه نمی‌شود ----------
+    components["machineGuid"] = "";
+    var unknown = await Binding().AssessAsync();
+    Check(unknown.Compared.Count == 2 && !unknown.Changed.Contains("machineGuid"),
+        "مؤلفهٔ خوانده‌نشده (هش خالی) در مقایسه شمرده نمی‌شود — خطای خواندن ≠ جابه‌جایی");
+
+    // ---------- ز) اثر انگشت سه مؤلفهٔ واقعی ----------
+    var real = Inventory.Api.Licensing.Services.BindingComponents.Capture(
+        "Server=SQLHOST\\SQLEXPRESS,1433;Database=X;User Id=u;Password=p;TrustServerCertificate=True");
+    Check(real.Count == 3 && real["machineName"].Length == 16 && real["machineGuid"].Length == 16,
+        "Capture سه مؤلفه با هش ۱۶ کاراکتری می‌دهد");
+    Check(!real["machineName"].Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase),
+        "اثر انگشت، نام خام ماشین را در خود ندارد (فقط هش)");
+    Check(real["sqlServer"] == Inventory.Api.Licensing.Services.BindingComponents.Capture(
+              "Server=sqlhost\\sqlexpress;Database=Y;User Id=u;Password=q;TrustServerCertificate=True")["sqlServer"],
+        "نام سرور SQL مستقل از دیتابیس/کاربر/رمز است (کوچک و بی‌حساسیت به حروف)");
+}
+
+{
+    // ---------- ۴.۲: فایل درخواست غنی است و همان مسیر دسترسی/محدودیت نرخ را دارد ----------
+    var root = repoRootForScan is null ? Environment.CurrentDirectory : Path.GetFullPath(repoRootForScan);
+    var controller = Path.Combine(root, "src", "Inventory.Api", "Licensing", "Controllers", "LicenseController.cs");
+    Check(File.Exists(controller), "فایل LicenseController پیدا شد");
+    var text = File.ReadAllText(controller);
+    var start = text.IndexOf("request-file", StringComparison.Ordinal);
+    Check(start > 0, "مسیر GET /api/license/request-file وجود دارد");
+    var body = start > 0 ? text.Substring(start, Math.Min(2600, text.Length - start)) : "";
+    foreach (var field in new[]
+             {
+                 "requestVersion = 2", "installationId", "engineVersion", "engineSchema", "buildDate",
+                 "components = BindingComponents.Capture", "requestedAtTehranZone", "requestedAtUtc", "machineName"
+             })
+        Check(body.Contains(field, StringComparison.Ordinal), "فایل درخواست فیلد «" + field + "» را دارد");
+    Check(body.Contains("EnsureActivationAccessAsync", StringComparison.Ordinal),
+        "درخواست فایل، همان قاعدهٔ دسترسی را دارد (Admin وقتی لایسنس معتبر است؛ آزاد در Missing/Invalid)");
+    Check(body.Contains("TryThrottle", StringComparison.Ordinal),
+        "درخواست فایل، محدودیت نرخ دارد");
+    Check(body.Contains("installationId", StringComparison.Ordinal) && body.Contains("components", StringComparison.Ordinal),
+        "شناسهٔ نصب و مؤلفه‌ها همگام با بایند نصب در فایل درخواست می‌آیند");
+}
+
+// ============================================================
+//  بخش ۳۳ (گام ۴-۴) — لنگر ساعت سه‌جایی، عقب‌بردن ساعت و خودترمیمی
+// ============================================================
+Section("۳۳) گام ۴-ب: ضد‌دست‌کاری ساعت (۴.۴)");
+
+{
+    await using var db = NewDb();
+    var clockEvents = new Inventory.Api.Licensing.Services.LicenseEventLogger(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseEventLogger>.Instance);
+    var clockKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+    var memA = new MemoryClockStore("mem-a");
+    var memB = new MemoryClockStore("mem-b");
+
+    Inventory.Api.Licensing.Services.ClockGuard Guard() => new(db, paths, clockEvents,
+        NullLogger<Inventory.Api.Licensing.Services.ClockGuard>.Instance,
+        new Inventory.Api.Licensing.Services.IClockStore[] { memA, memB }, clockKey);
+
+    // ساعت مرجع؛ ثانیه‌ها حفظ می‌شوند تا با زمان واقعیِ رخدادهای داده‌ای یکی باشد.
+    var t0 = DateTime.Now;
+    // رخدادهای دادهٔ موجود (فاکتور/نامه/رخداد لایسنس) با ساعت واقعی ثبت شده‌اند؛ لنگر
+    // باید با پاک‌شدن هر سه ذخیره‌گاه هم از همین داده بازسازی شود.
+    await db.LicenseEvents.AddAsync(new LicenseEvent
+    {
+        At = t0.AddMinutes(-1), Kind = "SEED", Severity = "Info", Message = "دادهٔ آزمایشی"
+    });
+    await db.SaveChangesAsync();
+
+    try
+    {
+        // ---------- الف) حالت عادی ----------
+        Inventory.Api.Licensing.Services.ClockVerdict verdict;
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal,
+            "ساعت هم‌خوان ⇒ وضعیت Normal");
+        Check(verdict.EffectiveNow >= verdict.SystemNow
+              && Math.Abs((verdict.EffectiveNow - t0).TotalSeconds) < 60,
+            "«اکنون مؤثر» همان ساعت سیستم است (یا لنگر، اگر جلوتر باشد)");
+        Check(memA.Value is not null && memB.Value is not null,
+            "لنگر در هر دو ذخیره‌گاه اضافی نوشته می‌شود (روی ویندوز: فایل + رجیستری HKCU)");
+        var anchorRow = await db.LicenseRuntime.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Key == Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        Check(anchorRow?.Value?.StartsWith("v1.", StringComparison.Ordinal) == true,
+            "لنگر در LicenseRuntime (بدون تغییر اسکیما) و به‌صورت رمزشده ذخیره می‌شود");
+        Check(!(anchorRow?.Value ?? "").Contains(t0.Year.ToString(), StringComparison.Ordinal),
+            "مقدار ذخیره‌شده، زمان را به‌صورت خام لو نمی‌دهد (AES-GCM)");
+        Check(verdict.Stores.Contains("db") && verdict.Stores.Contains("mem-a") && verdict.Stores.Contains("mem-b"),
+            "سنجش، هر سه ذخیره‌گاه را می‌خواند (" + string.Join(", ", verdict.Stores) + ")");
+
+        // ---------- ب) نوسان کوچک ساعت، هشدار نیست ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddMinutes(-5)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal && !verdict.ShowBanner,
+            "۵ دقیقه عقب‌رفت طبیعی است (حاشیهٔ ۱۰ دقیقه) — هشدار نمی‌دهد");
+
+        // ---------- ج) تا ۲۴ ساعت: هشدار + بنر، نوشتن آزاد ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-3)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MinorBackward && verdict.ShowBanner,
+            "۳ ساعت عقب‌رفت ⇒ هشدار + بنر");
+        Check(!verdict.WritesBlocked && !Inventory.Api.Licensing.Infrastructure.LicenseAccessState
+                .IsReadOnly(LicenseOverallStatus.Valid),
+            "تا ۲۴ ساعت، نوشتن باز است (لایسنس معتبر همچنان کار می‌کند)");
+        Check(Math.Abs(verdict.EffectiveNow.Subtract(t0).TotalMinutes) < 1,
+            "«اکنون مؤثر» عقب نمی‌رود؛ همان لنگر می‌ماند (عقب‌بردن ساعت سودی ندارد)");
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 1,
+            "رخداد CLOCK_SET_BACK یک‌بار ثبت می‌شود");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-4)))
+            await Guard().EvaluateAsync();
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 1,
+            "تکرار همان تخلف، رخداد تکراری نمی‌سازد (ضد اسپم)");
+
+        // ---------- د) بیش از ۲۴ ساعت: فقط‌خواندنی ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-30)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MajorBackward && verdict.WritesBlocked,
+            "۳۰ ساعت عقب‌رفت ⇒ فقط‌خواندنی");
+        Check(Inventory.Api.Licensing.Infrastructure.LicenseAccessState.IsReadOnly(LicenseOverallStatus.Valid),
+            "فیلتر نوشتن (HTTP و هاب) با همین یک تابع، نوشتن را می‌بندد — وضعیت لایسنس Valid می‌ماند");
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MajorCode
+                                                     && x.Severity == "Error") == 1,
+            "رخداد CLOCK_SET_BACK_BLOCK با شدت Error ثبت می‌شود");
+
+        // ---------- هـ) خودترمیمی: به‌محض درست‌شدن ساعت ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal,
+            "ساعت درست شد ⇒ وضعیت خودکار Normal (قفل دائمی وجود ندارد)");
+        Check(!Inventory.Api.Licensing.Infrastructure.LicenseAccessState.IsReadOnly(LicenseOverallStatus.Valid)
+              && !Inventory.Api.Licensing.Services.ClockGuardState.Blocked,
+            "نوشتن خودکار باز می‌شود — بدون نیاز به دخالت پشتیبانی");
+        // ---------- و-۲) تخلف بعدی بعد از خودترمیمی: هشدار تازه (نه بی‌صدا) ----------
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-2)))
+            await Guard().EvaluateAsync();
+        Check(await db.LicenseEvents.CountAsync(x => x.Kind == Inventory.Api.Licensing.Services.ClockGuard.MinorCode) == 2,
+            "بعد از خودترمیمی، تخلف بعدی هشدار تازه می‌دهد (نشانهٔ هشدار پاک شده است)");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            await Guard().EvaluateAsync();
+
+        var advanced = await db.LicenseRuntime.AsNoTracking()
+            .FirstAsync(x => x.Key == Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        Check(advanced.Value != anchorRow.Value, "لنگر با جلو رفتن ساعت به‌روز می‌شود (نه فقط یک‌بار)");
+
+        // ---------- و) دست‌کاری ذخیره‌گاه: نادیده گرفته می‌شود، قفل نمی‌کند ----------
+        var guardForProtect = Guard();
+        var stored = memA.Value!;
+        var bytes = Convert.FromBase64String(stored[3..]);
+        bytes[bytes.Length - 1] ^= 0x01;                    // ← تست جهش: یک بیت در ciphertext
+        memA.Value = "v1." + Convert.ToBase64String(bytes);
+        Check(guardForProtect.Unprotect(memA.Value) is null,
+            "تغییر یک بیت در مقدار رمزشده ⇒ لنگر رد می‌شود (HMAC/AEAD — ۱ تست جهش ساعت)");
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(1)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.Normal
+              && memA.Value!.StartsWith("v1.", StringComparison.Ordinal) && guardForProtect.Unprotect(memA.Value) is not null,
+            "ذخیره‌گاه خراب بعد از سنجش با مقدار سالم بازنویسی می‌شود (خودترمیمی)");
+        Check(guardForProtect.Unprotect("garbage") is null && guardForProtect.Unprotect(null) is null,
+            "مقدار بی‌معنا/خالی ⇒ لنگر نامعتبر (نه استثنا)");
+
+        // ---------- ز) پاک‌کردن لنگرها: دادهٔ موجود جای آن را می‌گیرد ----------
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM \"LicenseRuntime\" WHERE \"Key\" = {0}", Inventory.Api.Licensing.Services.ClockGuard.DbKey);
+        memA.Value = null;
+        memB.Value = null;
+        using (Inventory.Api.Licensing.ClockAnchor.Fix(t0.AddHours(-6)))
+            verdict = await Guard().EvaluateAsync();
+        Check(verdict.DataMax is not null && verdict.Anchor != DateTime.MinValue,
+            "با پاک‌شدن هر سه لنگر، بیشترین زمان داده (رخداد/فاکتور/نامه) لنگر را بازمی‌سازد");
+        Check(verdict.Health == Inventory.Api.Licensing.Services.ClockHealth.MinorBackward,
+            "همان عقب‌رفت ۶ ساعت باز هم تشخیص داده می‌شود (پاک‌کردن لنگر، کنترل را دور نمی‌زند)");
+    }
+    finally
+    {
+        Inventory.Api.Licensing.Services.ClockGuardState.Reset();
+    }
+
+    // ---------- ح) اتصال به دروازه و راه‌اندازی (پویش منبع) ----------
+    if (repoRootForScan is not null)
+    {
+        var access = File.ReadAllText(Path.Combine(repoRootForScan, "src", "Inventory.Api",
+            "Licensing", "Infrastructure", "LicenseAccessState.cs"));
+        Check(access.Contains("ClockGuardState.Blocked", StringComparison.Ordinal),
+            "دروازهٔ نوشتن (HTTP + هاب) وضعیت قفل ساعت را می‌بیند");
+        var startup = File.ReadAllText(Path.Combine(repoRootForScan, "src", "Inventory.Api",
+            "Licensing", "LicenseStartup.cs"));
+        Check(startup.Contains("ClockGuardWorker", StringComparison.Ordinal)
+              && startup.Contains("AddScoped<ClockGuard>", StringComparison.Ordinal),
+            "سنجش ساعت در راه‌اندازی ثبت شده است (سرویس + کارگر دوره‌ای)");
+    }
+}
+
 Console.WriteLine();
 Console.WriteLine(new string('═', 96));
 if (failures == 0)
@@ -3214,4 +3667,13 @@ file sealed class SeatOnlyLicenseService(EffectiveEntitlement entitlement)
 
     public Task<bool> IsInExistingInstallGraceAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(false);
+}
+
+/// <summary>ذخیره‌گاه لنگر ساعت در حافظه — جای فایل/رجیستری در تست.</summary>
+file sealed class MemoryClockStore(string name) : Inventory.Api.Licensing.Services.IClockStore
+{
+    public string Name { get; } = name;
+    public string? Value { get; set; }
+    public string? Read() => Value;
+    public void Write(string value) => Value = value;
 }

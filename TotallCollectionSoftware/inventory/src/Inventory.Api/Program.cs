@@ -33,6 +33,29 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 var updateDatabaseOnly = args.Any(a => a.Equals("--update-database", StringComparison.OrdinalIgnoreCase));
 args = args.Where(a => !a.Equals("--update-database", StringComparison.OrdinalIgnoreCase)).ToArray();
 var builder = WebApplication.CreateBuilder(args);
+
+// تنظیمات محلی/عملیاتی خارج از گیت (اختیاری). چرا؟ چون appsettings.json ردیابی
+// می‌شود و هر کلیدی که در آن بماند وارد تاریخچهٔ گیت می‌شود. متغیر محیطی همچنان
+// اولویت بالاتری دارد، پس روی سرور می‌توان فقط با env کار کرد.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
+
+// ---------- پوشه‌های ProgramData: fail-fast، نه فال‌بک بی‌صدا (گام ۳-ب) ----------
+// چرا این‌جا و پیش از هر چیز؟ چون کلید امضای JWT، کلید پیوست‌ها، فایل لایسنس و
+// لاگ‌ها همه در همین پوشه‌ها زندگی می‌کنند؛ اگر ساخت/نوشتن ممکن نباشد، ادامهٔ
+// راه‌اندازی یعنی کار کردن با مسیر موقت و از دست دادن داده در اولین انتشار.
+var programData = Inventory.Api.Licensing.ProgramDataLayout.Resolve(
+    builder.Configuration["Totall:DataRoot"],
+    builder.Configuration["Licensing:StorageFolder"]);
+try
+{
+    Inventory.Api.Licensing.ProgramDataLayout.Ensure(programData);
+}
+catch (InvalidOperationException layoutError)
+{
+    Console.Error.WriteLine(layoutError.Message);
+    Environment.ExitCode = 1;
+    return;
+}
 var schemaVerbose = string.Equals(Environment.GetEnvironmentVariable("DB_SCHEMA_VERBOSE"), "true", StringComparison.OrdinalIgnoreCase);
 var schemaInitializing = true;
 if (!schemaVerbose)
@@ -218,6 +241,9 @@ builder.Services.AddScoped<ForoughAryaHrUsers>(); // کاربران مجاز م�
 builder.Services.AddScoped<FaHrPersonnelService>(); // پرسنل و چارت اختصاصی فروغ آریا (FaHrPersonnel)
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
+builder.Services.AddScoped<Inventory.Api.Services.Repairs.RepairSmsDispatcher>();
+builder.Services.AddScoped<ICompanySmsRevocationHandler, Inventory.Api.Services.Repairs.RepairSmsRevocationHandler>();
+builder.Services.AddHostedService<Inventory.Api.Services.Repairs.RepairSmsWorker>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();
@@ -260,6 +286,8 @@ builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory.Api.Services.FaCom.FaComService>(); // FaCom — ارتباطات داخلی
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
 builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(builder.Configuration.GetSection("KavenegarSms"));
+// SDK برای صف تعمیرات استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
+builder.Services.AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>();
 builder.Services.Configure<Inventory.Api.Services.Core.UserProfileOtpOptions>(builder.Configuration.GetSection("ProfileOtp"));
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery>();
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserProfileService, Inventory.Api.Services.Core.UserProfileService>();
@@ -665,6 +693,23 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+
+// ---------- وضعیت پیکربندی پیامک: خاموشِ روشن، نه خطا ----------
+// اگر کلید نباشد، سرویس‌های پیامک فقط NotConfigured/Disabled برمی‌گردانند و هیچ
+// استثنایی پرتاب نمی‌شود؛ ولی بی‌صدا بودنش خطرناک است (مدیر فکر می‌کند پیامک می‌رود).
+// پس یک خط لاگ صریح در شروع برنامه ثبت می‌شود.
+{
+    var smsOptions = app.Services.GetRequiredService<
+        Microsoft.Extensions.Options.IOptions<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(smsOptions.ApiKey))
+        app.Logger.LogWarning(
+            "[SMS] کلید KavenegarSms:ApiKey تنظیم نشده است — ارسال پیامک غیرفعال است (خطا نیست). " +
+            "برای فعال‌سازی: متغیر محیطی KavenegarSms__ApiKey یا appsettings.Local.json (خارج از گیت).");
+    else if (string.IsNullOrWhiteSpace(smsOptions.Sender))
+        app.Logger.LogWarning("[SMS] کلید پیامک تنظیم شده ولی KavenegarSms:Sender خالی است — ارسال پیامک غیرفعال است.");
+    else
+        app.Logger.LogInformation("[SMS] درگاه پیامک پیکربندی شده است (SdkSendEnabled={Enabled}).", smsOptions.SdkSendEnabled);
+}
 
 if (updateDatabaseOnly)
 {

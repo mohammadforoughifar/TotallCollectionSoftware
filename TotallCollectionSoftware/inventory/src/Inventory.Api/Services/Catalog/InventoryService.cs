@@ -504,15 +504,18 @@ public class InventoryService : IInventoryService
         {
             if (!products.TryGetValue(group.Key, out var product))
                 throw new InvalidOperationException("کالای فاکتور برای تعیین بهای تمام‌شده یافت نشد.");
-            // Services do not create stock; retain any explicitly provided service-cost snapshot.
+            // Services do not create stock. Internal repair/warranty rows already carry
+            // their actual cost and must not be overwritten by the stock estimate.
             if (product.IsService) continue;
+            var unpricedLines = group.Where(l => !l.UnitCostSnapshot.HasValue).ToList();
+            if (unpricedLines.Count == 0) continue;
             // The legacy sales cost calculator does not merge the separate warehouse ledger.
             // Never freeze a guessed cost when the product uses that ledger; an eventual return
             // must reject these rows until a reliable unified valuation is available.
             if (await _db.InvStocks.AnyAsync(s => s.ProductId == group.Key && s.WarehouseId == sale.WarehouseId) ||
                 await _db.InvLedger.AnyAsync(e => e.ProductId == group.Key && e.WarehouseId == sale.WarehouseId))
             {
-                foreach (var line in group) line.UnitCostSnapshot = null;
+                foreach (var line in unpricedLines) line.UnitCostSnapshot = null;
                 continue;
             }
             var txns = await _db.Transactions.Include(t => t.Lines)
@@ -524,7 +527,7 @@ public class InventoryService : IInventoryService
             var reliableLines = ReliableSaleCostLines(throughSale, sale.Id, group.Key);
             var costs = reliableLines.Count == 0 ? new Dictionary<int, decimal>()
                 : ComputeSaleCosts(throughSale, group.Key, costingMethod, product.PurchasePrice);
-            foreach (var line in group)
+            foreach (var line in unpricedLines)
             {
                 // When prior quantities or adjustments cannot substantiate the
                 // cost, retain an explicitly estimated result rather than freezing
@@ -1258,108 +1261,120 @@ public class InventoryService : IInventoryService
 
     public async Task<Product> SaveProductAsync(Product dto)
     {
-        Db.Product entity;
-        if (dto.Id == 0)
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
         {
-            entity = new Db.Product { CreatedAt = DateTime.Now };
-            _db.Products.Add(entity);
-        }
-        else
-        {
-            entity = await _db.Products.FindAsync(dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
-        }
-
-        var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
-            : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
-        decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
-            ? currentPrice.Price : entity.SalePrice;
-        // Preserve unchanged legacy fractional catalog prices; new/changed prices must be whole rials.
-        if (entity.Id == 0 || previousSalePrice != dto.SalePrice) ShopPricingService.ValidatePrice(dto.SalePrice);
-        if (!dto.IsService && (entity.Id == 0 || entity.PurchasePrice != dto.PurchasePrice))
-            ShopPricingService.ValidatePrice(dto.PurchasePrice);
-
-        if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
-            throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
-        await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
-        if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
-
-        entity.Name = dto.Name.Trim();
-        entity.IsService = dto.IsService;
-
-        if (dto.IsService)
-        {
-            // خدمات: بدون گروه، بارکد، واحد، قیمت خرید، نقطه سفارش، حداکثر موجودی و انبار
-            entity.Unit = "خدمت";
-            entity.Category = null;
-            entity.CategoryId = null;
-            entity.Barcode = null;
-            entity.SalePrice = dto.SalePrice;
-            entity.PurchasePrice = 0;
-            entity.ReorderPoint = 0;
-            entity.MaxStock = 0;
-            entity.WarehouseId = null;
-        }
-        else
-        {
-            entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
-            var unitOwner = entity.Id == 0
-                ? (_db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : _db.ResolveDefaultCompanyId())
-                : entity.CompanyId;
-            // Do not borrow a same-named unit from another company, even when
-            // this service is invoked without an HTTP company filter.
-            if ((unitOwner.HasValue || !_db.ResolveDefaultCompanyId().HasValue) &&
-                !await _db.MeasureUnits.AnyAsync(u => u.CompanyId == unitOwner && u.Name == entity.Unit))
-                _db.MeasureUnits.Add(new Db.MeasureUnit { CompanyId = unitOwner, Name = entity.Unit,
-                    AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(entity.Unit), CreatedAt = DateTime.Now });
-            entity.Category = NullIfEmpty(dto.Category);
-
-            // Keep the keyed and legacy text representation consistent when the shop form changes group.
-            if (entity.Category == null) entity.CategoryId = null;
+            Db.Product entity;
+            if (dto.Id == 0)
+            {
+                entity = new Db.Product { CreatedAt = DateTime.Now };
+                _db.Products.Add(entity);
+            }
             else
             {
-                var matching = await _db.ProductCategories.Where(c => c.Name == entity.Category).Select(c => c.Id).ToListAsync();
-                if (matching.Count == 0)
-                {
-                    _db.ProductCategories.Add(new Db.ProductCategory { Name = entity.Category, CreatedAt = DateTime.Now });
-                    entity.CategoryId = null; // text fallback until that new group has an ID
-                }
-                else if (entity.CategoryId is not > 0 || !matching.Contains(entity.CategoryId.Value))
-                    entity.CategoryId = matching.Count == 1 ? matching[0] : null;
+                entity = await _db.Products.FirstOrDefaultAsync(p => p.Id == dto.Id) ?? throw new InvalidOperationException("کالا یافت نشد.");
             }
-            entity.Barcode = NullIfEmpty(dto.Barcode);
-            entity.SalePrice = dto.SalePrice;
-            entity.PurchasePrice = dto.PurchasePrice;
-            entity.ReorderPoint = dto.ReorderPoint;
-            entity.MaxStock = dto.MaxStock;
-            entity.WarehouseId = dto.WarehouseId is > 0 ? dto.WarehouseId : null;
+
+            var currentPrices = entity.Id == 0 ? new Dictionary<int, Db.ShopSalePrice>()
+                : await ShopPricingService.ResolveAsync(_db, new[] { entity.Id }, DateTime.Today);
+            decimal? previousSalePrice = entity.Id == 0 ? null : currentPrices.TryGetValue(entity.Id, out var currentPrice)
+                ? currentPrice.Price : entity.SalePrice;
+            // Preserve unchanged legacy fractional catalog prices; new/changed prices must be whole rials.
+            if (entity.Id == 0 || previousSalePrice != dto.SalePrice) ShopPricingService.ValidatePrice(dto.SalePrice);
+            if (!dto.IsService && (entity.Id == 0 || entity.PurchasePrice != dto.PurchasePrice))
+                ShopPricingService.ValidatePrice(dto.PurchasePrice);
+
+            if (dto.InvoiceVatValue.HasValue && !OrderLineAmounts.IsValidVatValue(dto.InvoiceVatValue.Value))
+                throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            await ShopCommissionProductKindGuard.EnsureChangeAllowedAsync(_db, entity, dto.IsService);
+            if (dto.InvoiceVatValue.HasValue) entity.InvoiceVatValue = dto.InvoiceVatValue.Value;
+
+            entity.Name = dto.Name.Trim();
+            entity.IsService = dto.IsService;
+
+            if (dto.IsService)
+            {
+                // خدمات: بدون گروه، بارکد، واحد، قیمت خرید، نقطه سفارش، حداکثر موجودی و انبار
+                entity.Unit = "خدمت";
+                entity.Category = null;
+                entity.CategoryId = null;
+                entity.Barcode = null;
+                entity.SalePrice = dto.SalePrice;
+                entity.PurchasePrice = 0;
+                entity.ReorderPoint = 0;
+                entity.MaxStock = 0;
+                entity.WarehouseId = null;
+            }
+            else
+            {
+                entity.Unit = string.IsNullOrWhiteSpace(dto.Unit) ? "عدد" : dto.Unit.Trim();
+                var unitOwner = entity.Id == 0
+                    ? (_db.ActiveCompanyId is > 0 ? _db.ActiveCompanyId : _db.ResolveDefaultCompanyId())
+                    : entity.CompanyId;
+                // Do not borrow a same-named unit from another company, even when
+                // this service is invoked without an HTTP company filter.
+                if ((unitOwner.HasValue || !_db.ResolveDefaultCompanyId().HasValue) &&
+                    !await _db.MeasureUnits.AnyAsync(u => u.CompanyId == unitOwner && u.Name == entity.Unit))
+                    _db.MeasureUnits.Add(new Db.MeasureUnit { CompanyId = unitOwner, Name = entity.Unit,
+                        AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(entity.Unit), CreatedAt = DateTime.Now });
+                entity.Category = NullIfEmpty(dto.Category);
+
+                // Keep the keyed and legacy text representation consistent when the shop form changes group.
+                if (entity.Category == null) entity.CategoryId = null;
+                else
+                {
+                    var matching = await _db.ProductCategories.Where(c => c.Name == entity.Category).Select(c => c.Id).ToListAsync();
+                    if (matching.Count == 0)
+                    {
+                        _db.ProductCategories.Add(new Db.ProductCategory { Name = entity.Category, CreatedAt = DateTime.Now });
+                        entity.CategoryId = null; // text fallback until that new group has an ID
+                    }
+                    else if (entity.CategoryId is not > 0 || !matching.Contains(entity.CategoryId.Value))
+                        entity.CategoryId = matching.Count == 1 ? matching[0] : null;
+                }
+                entity.Barcode = NullIfEmpty(dto.Barcode);
+                entity.SalePrice = dto.SalePrice;
+                entity.PurchasePrice = dto.PurchasePrice;
+                entity.ReorderPoint = dto.ReorderPoint;
+                entity.MaxStock = dto.MaxStock;
+                entity.WarehouseId = dto.WarehouseId is > 0 ? dto.WarehouseId : null;
+            }
+
+            entity.Description = NullIfEmpty(dto.Description);
+            var taxCode = NullIfEmpty(dto.TaxCode)?.Trim();
+            if (taxCode is { Length: < 5 or > 20 })
+                throw new InvalidOperationException("شناسه مالیاتی کالا باید بین ۵ تا ۲۰ نویسه باشد.");
+            if (taxCode is not null && await _db.Products.AnyAsync(p => p.TaxCode == taxCode && p.Id != entity.Id))
+                throw new InvalidOperationException($"شناسه مالیاتی «{taxCode}» برای کالای دیگری ثبت شده است.");
+            entity.TaxCode = taxCode;
+            entity.IsActive = dto.IsActive;
+
+            if (string.IsNullOrWhiteSpace(dto.Code))
+            {
+                entity.Code = await GenerateProductCodeAsync(entity.Id, dto.IsService);
+            }
+            else
+            {
+                var code = dto.Code.Trim();
+                var dup = await _db.Products.AnyAsync(p => p.Code == code && p.Id != entity.Id);
+                if (dup) throw new InvalidOperationException(dto.IsService ? "کد خدمت تکراری است." : "کد کالا تکراری است.");
+                entity.Code = code;
+            }
+
+            if (entity.Id == 0 || previousSalePrice != dto.SalePrice ||
+                (!currentPrices.ContainsKey(entity.Id) && ShopInvoiceAmounts.IsWholePrice(dto.SalePrice)))
+                ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
+            await _db.SaveChangesAsync();
+            var result = await GetProductAsync(entity.Id) ?? throw new InvalidOperationException();
+            await transaction.CommitAsync();
+            return result;
         }
-
-        entity.Description = NullIfEmpty(dto.Description);
-        var taxCode = NullIfEmpty(dto.TaxCode)?.Trim();
-        if (taxCode is { Length: < 5 or > 20 })
-            throw new InvalidOperationException("شناسه مالیاتی کالا باید بین ۵ تا ۲۰ نویسه باشد.");
-        if (taxCode is not null && await _db.Products.AnyAsync(p => p.TaxCode == taxCode && p.Id != entity.Id))
-            throw new InvalidOperationException($"شناسه مالیاتی «{taxCode}» برای کالای دیگری ثبت شده است.");
-        entity.TaxCode = taxCode;
-        entity.IsActive = dto.IsActive;
-
-        if (string.IsNullOrWhiteSpace(dto.Code))
+        catch
         {
-            entity.Code = await GenerateProductCodeAsync(entity.Id, dto.IsService);
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
         }
-        else
-        {
-            var code = dto.Code.Trim();
-            var dup = await _db.Products.AnyAsync(p => p.Code == code && p.Id != entity.Id);
-            if (dup) throw new InvalidOperationException(dto.IsService ? "کد خدمت تکراری است." : "کد کالا تکراری است.");
-            entity.Code = code;
-        }
-
-        if (entity.Id == 0 || previousSalePrice != dto.SalePrice ||
-            (!currentPrices.ContainsKey(entity.Id) && ShopInvoiceAmounts.IsWholePrice(dto.SalePrice)))
-            ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
-        await _db.SaveChangesAsync();
-        return await GetProductAsync(entity.Id) ?? throw new InvalidOperationException();
     }
 
     private async Task<string> GenerateProductCodeAsync(int id, bool isService = false)
@@ -1377,18 +1392,31 @@ public class InventoryService : IInventoryService
 
     public async Task DeleteProductAsync(int id)
     {
-        // A product with substantive price changes is retained for audit.
-        if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
-            await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
-            throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
-        var used = await _db.TransactionLines.AnyAsync(l => l.ProductId == id);
-        if (used) throw new InvalidOperationException("این کالا دارای سوابق انبار است و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
-        var p = await _db.Products.FindAsync(id);
-        if (p is null) return;
-        var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
-        _db.Stocks.RemoveRange(stocks);
-        _db.Products.Remove(p);
-        await _db.SaveChangesAsync();
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            // A product with substantive price changes is retained for audit.
+            if (await _db.ShopSalePrices.CountAsync(h => h.ProductId == id) > 1 ||
+                await _db.ShopSalePrices.AnyAsync(h => h.ProductId == id && (h.Source == "group" || h.Source == "purchase")))
+                throw new InvalidOperationException("کالا دارای سابقه تغییر قیمت است؛ برای حفظ سابقه می‌توانید آن را غیرفعال کنید.");
+            var used = await _db.TransactionLines.AnyAsync(l => l.ProductId == id) ||
+                await _db.ShopWarrantyItems.AnyAsync(i => i.ProductId == id) ||
+                await _db.RepairItems.AnyAsync(i => i.ProductId == id && i.WarrantyDecision != WarrantyDecision.Unspecified);
+            if (used) throw new InvalidOperationException("این کالا دارای سوابق انبار است و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
+            var p = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+            if (p is null) { await transaction.CommitAsync(); return; }
+            var stocks = await _db.Stocks.Where(s => s.ProductId == id).ToListAsync();
+            _db.Stocks.RemoveRange(stocks);
+            _db.Products.Remove(p);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     // =============================== انبار ===============================
@@ -1531,47 +1559,76 @@ public class InventoryService : IInventoryService
     {
         var identifierError = ShopIdentifierRules.ValidateParty(dto);
         if (identifierError is not null) throw new InvalidOperationException(identifierError);
-        Db.Party entity;
-        if (dto.Id == 0) { entity = new Db.Party(); _db.Parties.Add(entity); }
-        else entity = await _db.Parties.FindAsync(dto.Id) ?? throw new InvalidOperationException("طرف حساب یافت نشد.");
-
-        entity.Type = dto.Type;
-        entity.Name = dto.Name.Trim();
-        entity.Phone = NullIfEmpty(dto.Phone);
-        entity.Mobile = NullIfEmpty(dto.Mobile);
-        entity.Address = NullIfEmpty(dto.Address);
-        entity.TaxId = NullIfEmpty(dto.TaxId)?.Trim();
-        entity.PostalCode = NullIfEmpty(dto.PostalCode)?.Trim();
-        if (entity.TaxId is not null && (entity.TaxId.Length is not (10 or 11 or 12 or 14) || entity.TaxId.Any(c => !char.IsAsciiDigit(c))))
-            throw new InvalidOperationException("شناسه مالیاتی خریدار باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم لاتین باشد.");
-        if (entity.PostalCode is not null && (entity.PostalCode.Length != 10 || entity.PostalCode.Any(c => !char.IsAsciiDigit(c))))
-            throw new InvalidOperationException("کد پستی خریدار باید دقیقاً ۱۰ رقم لاتین باشد.");
-        entity.Note = NullIfEmpty(dto.Note);
-        entity.IsActive = dto.IsActive;
-        // معرف فقط برای مشتری معنا دارد؛ مقدار 0/null = بدون معرف
-        entity.ReferrerId = dto.Type == PartyType.Customer && dto.ReferrerId is > 0 ? dto.ReferrerId : null;
-
-        // «چه کسی این طرف حساب را ثبت کرد» فقط در ایجاد نوشته می‌شود؛ ویرایش آن را عوض نمی‌کند.
-        if (dto.Id == 0)
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
         {
-            entity.RegisteredByUserId = dto.RegisteredByUserId is > 0 ? dto.RegisteredByUserId : null;
-            entity.RegisteredByName = NullIfEmpty(dto.RegisteredByName);
-            entity.RegisteredByReferrerId = dto.RegisteredByReferrerId is > 0 ? dto.RegisteredByReferrerId : null;
-            entity.RegisteredAt = dto.RegisteredAt ?? DateTime.Now;
-        }
+            Db.Party entity;
+            if (dto.Id == 0) { entity = new Db.Party(); _db.Parties.Add(entity); }
+            else entity = await _db.Parties.FirstOrDefaultAsync(p => p.Id == dto.Id) ?? throw new InvalidOperationException("طرف حساب یافت نشد.");
+            if (entity.Id > 0 && entity.Type != dto.Type &&
+                (await _db.ShopWarranties.AnyAsync(w => w.PartyId == entity.Id) ||
+                 await _db.RepairOrders.AnyAsync(r => r.PartyId == entity.Id && r.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified))))
+                throw new InvalidOperationException("نوع مشتری دارای پذیرش گارانتی برای حفظ سابقه قابل تغییر نیست.");
 
-        await _db.SaveChangesAsync();
-        return (await GetPartiesAsync(dto.Type)).First(p => p.Id == entity.Id);
+            entity.Type = dto.Type;
+            entity.Name = dto.Name.Trim();
+            entity.Phone = NullIfEmpty(dto.Phone);
+            entity.Mobile = NullIfEmpty(dto.Mobile);
+            entity.Address = NullIfEmpty(dto.Address);
+            entity.TaxId = NullIfEmpty(dto.TaxId)?.Trim();
+            entity.PostalCode = NullIfEmpty(dto.PostalCode)?.Trim();
+            if (entity.TaxId is not null && (entity.TaxId.Length is not (10 or 11 or 12 or 14) || entity.TaxId.Any(c => !char.IsAsciiDigit(c))))
+                throw new InvalidOperationException("شناسه مالیاتی خریدار باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم لاتین باشد.");
+            if (entity.PostalCode is not null && (entity.PostalCode.Length != 10 || entity.PostalCode.Any(c => !char.IsAsciiDigit(c))))
+                throw new InvalidOperationException("کد پستی خریدار باید دقیقاً ۱۰ رقم لاتین باشد.");
+            entity.Note = NullIfEmpty(dto.Note);
+            entity.IsActive = dto.IsActive;
+            // معرف فقط برای مشتری معنا دارد؛ مقدار 0/null = بدون معرف
+            entity.ReferrerId = dto.Type == PartyType.Customer && dto.ReferrerId is > 0 ? dto.ReferrerId : null;
+
+            // «چه کسی این طرف حساب را ثبت کرد» فقط در ایجاد نوشته می‌شود؛ ویرایش آن را عوض نمی‌کند.
+            if (dto.Id == 0)
+            {
+                entity.RegisteredByUserId = dto.RegisteredByUserId is > 0 ? dto.RegisteredByUserId : null;
+                entity.RegisteredByName = NullIfEmpty(dto.RegisteredByName);
+                entity.RegisteredByReferrerId = dto.RegisteredByReferrerId is > 0 ? dto.RegisteredByReferrerId : null;
+                entity.RegisteredAt = dto.RegisteredAt ?? DateTime.Now;
+            }
+
+            await _db.SaveChangesAsync();
+            var result = (await GetPartiesAsync(dto.Type)).First(p => p.Id == entity.Id);
+            await transaction.CommitAsync();
+            return result;
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     public async Task DeletePartyAsync(int id)
     {
-        var used = await _db.Transactions.AnyAsync(t => t.PartyId == id);
-        if (used) throw new InvalidOperationException("این طرف حساب دارای سوابق است و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
-        var p = await _db.Parties.FindAsync(id);
-        if (p is null) return;
-        _db.Parties.Remove(p);
-        await _db.SaveChangesAsync();
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var used = await _db.Transactions.AnyAsync(t => t.PartyId == id) ||
+                await _db.ShopWarranties.AnyAsync(w => w.PartyId == id) ||
+                await _db.RepairOrders.AnyAsync(r => r.PartyId == id && r.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified));
+            if (used) throw new InvalidOperationException("این طرف حساب دارای سوابق است و قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.");
+            var p = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
+            if (p is null) { await transaction.CommitAsync(); return; }
+            _db.Parties.Remove(p);
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     // =============================== موجودی ===============================
@@ -1638,87 +1695,109 @@ public class InventoryService : IInventoryService
 
     public async Task<Order> CreateOrderAsync(OrderCommand cmd, string? user = null, bool trackShopCash = true)
     {
-        ShopPricingService.ValidatePurchasePriceInputs(cmd);
-        if (cmd.Type == TransactionType.SaleReturn)
-            throw new InvalidOperationException("برگشت فروش فقط از گردش ویژه فاکتور قابل ثبت است.");
-        if (cmd.Type == TransactionType.WarrantyOut)
-            throw new InvalidOperationException("خروج گارانتی فقط از پذیرش گارانتی قابل ثبت است.");
-        if (cmd.ChequeCharge is not null && cmd.Type != TransactionType.Sale)
-            throw new InvalidOperationException("تاخیر تادیه چک فقط برای فاکتور فروش مجاز است.");
-        if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Installments.Any(i => i.IsPaid))
-            throw new InvalidOperationException("تسویه قسط هنگام ثبت اولیه فاکتور سوددار مجاز نیست؛ دریافت قسط جداگانه ثبت می‌شود.");
-        if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Cheques.Any(c => c.IsCleared))
-            throw new InvalidOperationException("وصول چک هنگام ثبت اولیه فاکتور مجاز نیست؛ وصول باید جداگانه ثبت شود.");
-        if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
-        if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
-            throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
-        if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
-        if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
-            throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
-        if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
-        if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
-
-        // Older clients do not send VAT on creation; a missing value means zero.
-        foreach (var line in cmd.Lines) line.VatValue ??= 0;
-        ValidateTaxedLinePrecision(cmd.Lines);
-        var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
-        var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        await ValidateOrderReferencesAsync(cmd, productIds, products.Count);
-
-        var date = cmd.Date == default ? DateTime.Now : cmd.Date;
-        var settings = await GetSettingsAsync();
-
-        // خدمات فقط در فروش مجاز است
-        if (cmd.Type == TransactionType.Purchase)
-        {
-            var svc = cmd.Lines.FirstOrDefault(l => products.TryGetValue(l.ProductId, out var p) && p.IsService);
-            if (svc is not null)
-            {
-                var name = products.TryGetValue(svc.ProductId, out var pp) ? pp.Name : "";
-                throw new InvalidOperationException($"«{name}» از نوع خدمات است و در سند خرید قابل انتخاب نیست.");
-            }
-        }
-
-        // کالای دارای انبار اختصاصی فقط در همان انبار قابل خرید/فروش است
-        foreach (var l in cmd.Lines)
-        {
-            if (products.TryGetValue(l.ProductId, out var prod) &&
-                !prod.IsService && prod.WarehouseId is > 0 && prod.WarehouseId != cmd.WarehouseId)
-            {
-                throw new InvalidOperationException($"کالای «{prod.Name}» مخصوص انبار دیگری است و در این انبار قابل ثبت نیست.");
-            }
-        }
-
-        // بررسی موجودی کافی برای فروش (خدمات موجودی ندارد — طبق تنظیمات)
-        if (cmd.Type == TransactionType.Sale && !settings.AllowNegativeStock)
-        {
-            var stocks = await _db.Stocks.Where(s => s.WarehouseId == cmd.WarehouseId && productIds.Contains(s.ProductId)).ToListAsync();
-            foreach (var l in cmd.Lines)
-            {
-                if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
-                var stock = stocks.FirstOrDefault(s => s.ProductId == l.ProductId);
-                var available = stock?.Quantity ?? 0;
-                if (available < l.Quantity)
-                {
-                    var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";
-                    throw new InvalidOperationException($"موجودی «{name}» کافی نیست (موجود: {available:0.##}).");
-                }
-            }
-        }
-
-        // معرف سند فروش: اگر از کلاینت نیامده باشد، خودکار از مشتری خوانده می‌شود (فاز ۹)
-        int? saleReferrerId = null;
-        if (cmd.Type == TransactionType.Sale)
-        {
-            if (cmd.ReferrerId is > 0) saleReferrerId = cmd.ReferrerId;
-            else if (cmd.PartyId > 0)
-                saleReferrerId = await _db.Parties.Where(p => p.Id == cmd.PartyId)
-                    .Select(p => p.ReferrerId).FirstOrDefaultAsync();
-        }
-
-        await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        // A repair/warranty owner may already hold the serializable transaction. Do not
+        // commit, roll back or clear its tracked state here; propagate failures to it.
+        var current = _db.Database.CurrentTransaction;
+        if (current is not null && current.GetDbTransaction().IsolationLevel != IsolationLevel.Serializable)
+            throw new InvalidOperationException("ثبت فاکتور مرتبط نیازمند تراکنش سریال‌پذیر است.");
+        var ownsTransaction = current is null;
+        await using var ownedTransaction = ownsTransaction
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable) : null;
         try
         {
+            ShopPricingService.ValidatePurchasePriceInputs(cmd);
+            if (cmd.Type == TransactionType.SaleReturn)
+                throw new InvalidOperationException("برگشت فروش فقط از گردش ویژه فاکتور قابل ثبت است.");
+            if (cmd.Type == TransactionType.WarrantyOut)
+                throw new InvalidOperationException("خروج گارانتی فقط از پذیرش گارانتی قابل ثبت است.");
+            if (cmd.ChequeCharge is not null && cmd.Type != TransactionType.Sale)
+                throw new InvalidOperationException("تاخیر تادیه چک فقط برای فاکتور فروش مجاز است.");
+            if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Installments.Any(i => i.IsPaid))
+                throw new InvalidOperationException("تسویه قسط هنگام ثبت اولیه فاکتور سوددار مجاز نیست؛ دریافت قسط جداگانه ثبت می‌شود.");
+            if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Cheques.Any(c => c.IsCleared))
+                throw new InvalidOperationException("وصول چک هنگام ثبت اولیه فاکتور مجاز نیست؛ وصول باید جداگانه ثبت شود.");
+            if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
+            if (cmd.Lines.Any(l => l.VatValue.HasValue && !OrderLineAmounts.IsValidVatValue(l.VatValue.Value)))
+                throw new InvalidOperationException("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
+            if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
+                throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
+            if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
+
+            // Older clients do not send VAT on creation; a missing value means zero.
+            foreach (var line in cmd.Lines) line.VatValue ??= 0;
+            ValidateTaxedLinePrecision(cmd.Lines);
+            var productIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
+            var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+            await ValidateOrderReferencesAsync(cmd, productIds, products.Count);
+
+            var date = cmd.Date == default ? DateTime.Now : cmd.Date;
+            var settings = await GetSettingsAsync();
+
+            // خدمات فقط در فروش مجاز است
+            if (cmd.Type == TransactionType.Purchase)
+            {
+                var svc = cmd.Lines.FirstOrDefault(l => products.TryGetValue(l.ProductId, out var p) && p.IsService);
+                if (svc is not null)
+                {
+                    var name = products.TryGetValue(svc.ProductId, out var pp) ? pp.Name : "";
+                    throw new InvalidOperationException($"«{name}» از نوع خدمات است و در سند خرید قابل انتخاب نیست.");
+                }
+            }
+
+            // کالای دارای انبار اختصاصی فقط در همان انبار قابل خرید/فروش است
+            foreach (var l in cmd.Lines)
+            {
+                if (products.TryGetValue(l.ProductId, out var prod) &&
+                    !prod.IsService && prod.WarehouseId is > 0 && prod.WarehouseId != cmd.WarehouseId)
+                {
+                    throw new InvalidOperationException($"کالای «{prod.Name}» مخصوص انبار دیگری است و در این انبار قابل ثبت نیست.");
+                }
+            }
+
+            // بررسی موجودی کافی برای فروش (خدمات موجودی ندارد — طبق تنظیمات)
+            if (cmd.Type == TransactionType.Sale && !settings.AllowNegativeStock)
+            {
+                var stocks = await _db.Stocks.Where(s => s.WarehouseId == cmd.WarehouseId && productIds.Contains(s.ProductId)).ToListAsync();
+                if (cmd.IsWarrantyInvoice)
+                {
+                    var physicalIds = productIds.Where(id => !products[id].IsService).ToList();
+                    // Current Stock includes dated movements. A future receipt must not
+                    // make a part appear available at today's warranty delivery.
+                    if (await _db.Transactions.AnyAsync(t => t.WarehouseId == cmd.WarehouseId && t.Date > date &&
+                        t.Lines.Any(l => physicalIds.Contains(l.ProductId))))
+                        throw new InvalidOperationException("برای کالای گارانتی گردش آینده ثبت شده است؛ پیش از خروج، ترتیب موجودی را بررسی کنید.");
+                    foreach (var group in cmd.Lines.Where(l => !products[l.ProductId].IsService).GroupBy(l => l.ProductId))
+                    {
+                        var available = stocks.FirstOrDefault(s => s.ProductId == group.Key)?.Quantity ?? 0m;
+                        if (available < group.Sum(l => l.Quantity))
+                            throw new InvalidOperationException($"موجودی «{products[group.Key].Name}» برای خروج گارانتی کافی نیست.");
+                    }
+                }
+                foreach (var l in cmd.Lines)
+                {
+                    if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
+                    var stock = stocks.FirstOrDefault(s => s.ProductId == l.ProductId);
+                    var available = stock?.Quantity ?? 0;
+                    if (available < l.Quantity)
+                    {
+                        var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";
+                        throw new InvalidOperationException($"موجودی «{name}» کافی نیست (موجود: {available:0.##}).");
+                    }
+                }
+            }
+
+            // معرف سند فروش: اگر از کلاینت نیامده باشد، خودکار از مشتری خوانده می‌شود (فاز ۹)
+            int? saleReferrerId = null;
+            if (cmd.Type == TransactionType.Sale)
+            {
+                if (cmd.ReferrerId is > 0) saleReferrerId = cmd.ReferrerId;
+                else if (cmd.PartyId > 0)
+                    saleReferrerId = await _db.Parties.Where(p => p.Id == cmd.PartyId)
+                        .Select(p => p.ReferrerId).FirstOrDefaultAsync();
+            }
+
             var wholeRials = (trackShopCash || cmd.ChequeCharge is not null) && (cmd.Type is TransactionType.Sale or TransactionType.Purchase);
             if (wholeRials) await ValidateShopLineRulesAsync(cmd, products);
             var txn = new Db.Transaction
@@ -1770,7 +1849,8 @@ public class InventoryService : IInventoryService
                     ProductId = l.ProductId, Quantity = l.Quantity, Price = l.Price,
                     DiscountPercent = amounts.DiscountPercent, DiscountAmount = amounts.DiscountAmount,
                     DiscountIsAmount = amounts.DiscountIsAmount, GrossAmount = amounts.Gross,
-                    VatValue = amounts.VatValue, VatAmount = amounts.VatAmount, UnitCostSnapshot = l.UnitCostSnapshot
+                    VatValue = amounts.VatValue, VatAmount = amounts.VatAmount, UnitCostSnapshot = l.UnitCostSnapshot,
+                    Description = l.SourceDescription
                 });
                 txn.Amount += amounts.Total;
             }
@@ -1779,32 +1859,24 @@ public class InventoryService : IInventoryService
             await _db.SaveChangesAsync();  // ابتدا سند ذخیره می‌شود تا در بازمحاسبه دیده شود
 
             foreach (var pid in productIds)
+            {
+                // Warranty labor is a service, not inventory consumption. Preserve
+                // the established ordinary-invoice path while avoiding synthetic
+                // negative stock for these new warranty-priced service rows.
+                if (cmd.IsWarrantyInvoice && products[pid].IsService) continue;
                 await RecalcStockAsync(cmd.WarehouseId, pid);
+            }
 
             await _db.SaveChangesAsync();
 
             // کنترل نهایی: با احتساب همه اسناد (حتی اسناد آینده) موجودی منفی نشود
-            try
-            {
-                await EnsureNoNegativeStockAsync(productIds.Select(pid => (cmd.WarehouseId, pid)));
-            }
-            catch
-            {
-                await trx.RollbackAsync();
-                throw;
-            }
+            await EnsureNoNegativeStockAsync(productIds.Select(pid => (cmd.WarehouseId, pid)));
 
             if (txn.ShopCashLedgerEnabled)
                 await ShopOrderCashLedger.RecordInitialAsync(_db, txn, user);
             if (cmd.ChequeCharge is { } registration)
             {
-                try { await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod); }
-                catch
-                {
-                    try { await trx.RollbackAsync(); }
-                    finally { _db.ChangeTracker.Clear(); }
-                    throw;
-                }
+                await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
                 await SaleChequeChargeRegistration.RegisterAsync(_db, txn.Id,
                     new SaleChequeChargeRegistrationInput(registration.CalculatorBaseAmount, registration.CalculatorRatePercent,
                         registration.CalculatorMonths, registration.AdjustmentRatePercent, registration.AdjustmentPeriodDays,
@@ -1823,13 +1895,16 @@ public class InventoryService : IInventoryService
             if (trackShopCash && txn.Type == TransactionType.Purchase)
                 await ShopPricingService.RecordPurchasePricesAsync(_db, txn, cmd, user);
             var savedOrder = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
-            await trx.CommitAsync();
+            if (ownsTransaction) await ownedTransaction!.CommitAsync();
             return savedOrder;
         }
         catch
         {
-            try { if (_db.Database.CurrentTransaction is not null) await trx.RollbackAsync(); } catch { }
-            _db.ChangeTracker.Clear();
+            if (ownsTransaction)
+            {
+                try { if (_db.Database.CurrentTransaction is not null) await ownedTransaction!.RollbackAsync(); } catch { }
+                _db.ChangeTracker.Clear();
+            }
             throw;
         }
     }
@@ -2002,6 +2077,7 @@ public class InventoryService : IInventoryService
                 Id = l.Id,
                 ProductId = l.ProductId,
                 ProductName = products.TryGetValue(l.ProductId, out var p) ? p.Name : "",
+                Description = l.Description,
                 Unit = products.TryGetValue(l.ProductId, out var p2) ? p2.Unit : "",
                 IsService = products.TryGetValue(l.ProductId, out var p3) && p3.IsService,
                 Quantity = l.Quantity,
@@ -2115,6 +2191,7 @@ public class InventoryService : IInventoryService
                 ?? throw new InvalidOperationException("سند یافت نشد.");
             if (txn.Type is not (TransactionType.Purchase or TransactionType.Sale))
                 throw new InvalidOperationException("فقط اسناد خرید و فروش قابل ویرایش هستند.");
+            await RejectLinkedWarrantyInvoiceMutationAsync(txn.Id);
             await RejectUnimplementedChequeChargeMutationAsync(txn.Id);
             if (await _db.ShopExpenseCheques.AnyAsync(c => c.SourceTransactionId == txn.Id))
                 throw new InvalidOperationException("فاکتور دارای سابقه چک خرج‌شده است و تغییر مستقیم آن مجاز نیست.");
@@ -2317,6 +2394,7 @@ public class InventoryService : IInventoryService
 
             if (t.Type == TransactionType.WarrantyOut)
                 throw new InvalidOperationException("خروج انبار گارانتی از مسیر فاکتور قابل حذف نیست.");
+            await RejectLinkedWarrantyInvoiceMutationAsync(t.Id);
             await RejectUnimplementedChequeChargeMutationAsync(t.Id);
             if (await _db.ShopExpenseCheques.AnyAsync(c => c.SourceTransactionId == t.Id))
                 throw new InvalidOperationException("فاکتور دارای سابقه چک خرج‌شده است و تغییر مستقیم آن مجاز نیست.");
@@ -2760,7 +2838,7 @@ public class InventoryService : IInventoryService
         // ---------- ۴) باقی‌مانده = نسیه ----------
         var paid = cash + chequeSum + instSum;
         var remainder = total - paid;
-        var creditRemainder = remainder > PaymentMix.Tolerance ? remainder : 0;
+        var creditRemainder = remainder > (cmd.IsWarrantyInvoice ? 0m : PaymentMix.Tolerance) ? remainder : 0;
 
         if (creditRemainder > 0)
         {
@@ -3229,6 +3307,7 @@ public class InventoryService : IInventoryService
     public async Task<SaleChequeReturnPreviewDto> PreviewSaleChequeReturnAsync(int saleId, SaleChequeReturnPreviewRequest req)
     {
         ArgumentNullException.ThrowIfNull(req);
+        await RejectLinkedWarrantyInvoiceMutationAsync(saleId);
         var inputs = req.Lines.Select(l => new SaleChequeReturnLineInput(l.OriginalLineId, l.Quantity)).ToList();
         var computed = await SaleChequeReturnService.PreviewAsync(_db, saleId, req.Date, inputs);
         var p = computed.Plan;
@@ -3249,6 +3328,7 @@ public class InventoryService : IInventoryService
         ArgumentNullException.ThrowIfNull(cmd);
         var inputs = cmd.Lines.Select(l => new SaleChequeReturnLineInput(l.OriginalLineId, l.Quantity)).ToList();
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await RejectLinkedWarrantyInvoiceMutationAsync(saleId);
         var record = await SaleChequeReturnService.ApplyAsync(
             _db, saleId, cmd.OperationId, cmd.Date, inputs, cmd.Decision, cmd.ConfirmedTotalCredit, user);
         var returnNumber = await _db.Transactions.Where(t => t.Id == record.ReturnTransactionId)
@@ -3316,6 +3396,7 @@ public class InventoryService : IInventoryService
     {
         ArgumentNullException.ThrowIfNull(cmd);
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await RejectLinkedWarrantyInvoiceMutationAsync(saleId);
         await SaleChequeCancellationService.VoidAsync(_db, saleId, cmd.OperationId, cmd.Date, cmd.Reason, user);
         await transaction.CommitAsync();
     }
@@ -3336,6 +3417,7 @@ public class InventoryService : IInventoryService
         await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
+            await RejectLinkedWarrantyInvoiceMutationAsync(saleId);
             var oldSale = await _db.Transactions.AsNoTracking().Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == saleId)
                 ?? throw new InvalidOperationException("فاکتور مورد ویرایش یافت نشد.");
             if (await _db.SaleChequeReturns.AnyAsync(r => r.SaleTransactionId == saleId) ||
@@ -3473,6 +3555,15 @@ public class InventoryService : IInventoryService
             Id = e.Id, CompanyId = e.CompanyId, Code = e.Code, Name = e.Name, Kind = e.Kind,
             BankName = e.BankName, IsDefault = e.IsDefault, IsActive = e.IsActive
         }).ToList();
+    }
+
+    // The finalized source and its customer-facing invoice must stay in agreement.
+    // Settlement is still allowed through the separate receipt ledger.
+    private async Task RejectLinkedWarrantyInvoiceMutationAsync(int transactionId)
+    {
+        if (await _db.ShopWarranties.IgnoreQueryFilters().AnyAsync(w => w.ChargeTransactionId == transactionId) ||
+            await _db.RepairOrders.IgnoreQueryFilters().AnyAsync(r => r.WarrantyProcessed && r.InvoiceTransactionId == transactionId))
+            throw new InvalidOperationException("فاکتور مرتبط با پذیرش گارانتی نهایی‌شده قابل ویرایش یا حذف مستقیم نیست.");
     }
 
     // مسیرهای قدیمی رکورد مالی و سند مرتبط را اصلاح نمی‌کنند. تا تکمیل گردش اصلاحی
