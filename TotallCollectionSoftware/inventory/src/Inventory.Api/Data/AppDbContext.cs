@@ -614,6 +614,7 @@ public class AppDbContext : DbContext
     public DbSet<LicenseReservation> LicenseReservations => Set<LicenseReservation>();
     public DbSet<LicenseGrandfatherBaseline> LicenseGrandfatherBaselines => Set<LicenseGrandfatherBaseline>();
     public DbSet<LicenseSession> LicenseSessions => Set<LicenseSession>();
+    public DbSet<LicenseRuntime> LicenseRuntime => Set<LicenseRuntime>();
     public DbSet<LicenseEvent> LicenseEvents => Set<LicenseEvent>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -1973,6 +1974,7 @@ public class AppDbContext : DbContext
         mb.Entity<LicenseGrandfatherBaseline>().ToTable("LicenseGrandfatherBaselines", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseSession>().ToTable("LicenseSessions", t => t.ExcludeFromMigrations());
         mb.Entity<LicenseEvent>().ToTable("LicenseEvents", t => t.ExcludeFromMigrations());
+        mb.Entity<LicenseRuntime>().ToTable("LicenseRuntime", t => t.ExcludeFromMigrations());
 
         // تک‌ردیفی بودن نصب با منطق برنامه تضمین می‌شود (همیشه Id = 1)؛ Identity نگه داشته می‌شود.
         mb.Entity<LicenseInstallation>().HasIndex(x => x.InstallationId).IsUnique();
@@ -1995,6 +1997,8 @@ public class AppDbContext : DbContext
         // «مبنای بخشودگی»: یک ردیف برای هر (متریک، دوره) — دوره بخشی از کلید است،
         // پس ماه تازه کلید تازه دارد و خودبه‌خود از صفر شمرده می‌شود.
         mb.Entity<LicenseGrandfatherBaseline>().HasIndex(x => new { x.Module, x.Metric, x.PeriodKey }).IsUnique();
+
+        mb.Entity<LicenseRuntime>().HasKey(x => x.Key);
 
         mb.Entity<LicenseSession>().HasIndex(x => x.SessionId).IsUnique();
         mb.Entity<LicenseSession>().HasIndex(x => new { x.Status, x.LastSeen });

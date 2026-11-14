@@ -38,6 +38,24 @@ var builder = WebApplication.CreateBuilder(args);
 // می‌شود و هر کلیدی که در آن بماند وارد تاریخچهٔ گیت می‌شود. متغیر محیطی همچنان
 // اولویت بالاتری دارد، پس روی سرور می‌توان فقط با env کار کرد.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
+
+// ---------- پوشه‌های ProgramData: fail-fast، نه فال‌بک بی‌صدا (گام ۳-ب) ----------
+// چرا این‌جا و پیش از هر چیز؟ چون کلید امضای JWT، کلید پیوست‌ها، فایل لایسنس و
+// لاگ‌ها همه در همین پوشه‌ها زندگی می‌کنند؛ اگر ساخت/نوشتن ممکن نباشد، ادامهٔ
+// راه‌اندازی یعنی کار کردن با مسیر موقت و از دست دادن داده در اولین انتشار.
+var programData = Inventory.Api.Licensing.ProgramDataLayout.Resolve(
+    builder.Configuration["Totall:DataRoot"],
+    builder.Configuration["Licensing:StorageFolder"]);
+try
+{
+    Inventory.Api.Licensing.ProgramDataLayout.Ensure(programData);
+}
+catch (InvalidOperationException layoutError)
+{
+    Console.Error.WriteLine(layoutError.Message);
+    Environment.ExitCode = 1;
+    return;
+}
 var schemaVerbose = string.Equals(Environment.GetEnvironmentVariable("DB_SCHEMA_VERBOSE"), "true", StringComparison.OrdinalIgnoreCase);
 var schemaInitializing = true;
 if (!schemaVerbose)

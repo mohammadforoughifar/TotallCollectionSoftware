@@ -26,18 +26,19 @@ public sealed class LicensePaths
                     Environment.SpecialFolderOption.Create),
                 "TotallCollection", "License");
 
-        // اگر ساخت پوشه ممکن نبود (دسترسی/قفل)، به پوشهٔ App_Data کنار برنامه برمی‌گردیم
-        // تا برنامه اصلاً به‌خاطر مسیر لایسنس از کار نیفتد.
+        // فال‌بک بی‌صدا عمداً حذف شد (گام ۳-ب): اگر پوشهٔ لایسنس ساخته نشود، برنامه
+        // باید با پیام روشن بالا نیاید، نه اینکه فایل لایسنس را کنار پوشهٔ انتشار
+        // بسازد و با اولین به‌روزرسانی از دست بدهد. بررسی قابل‌نوشتن بودن در
+        // ProgramDataLayout.Ensure انجام می‌شود که در راه‌اندازی صدا زده می‌شود.
         try
         {
             Directory.CreateDirectory(Root);
         }
         catch (Exception ex)
         {
-            var fallback = Path.Combine(AppContext.BaseDirectory, "App_Data", "License");
-            _log.LogWarning(ex, "ساخت پوشهٔ لایسنس در {Root} ممکن نشد؛ مسیر جایگزین: {Fallback}", Root, fallback);
-            try { Directory.CreateDirectory(fallback); } catch { /* آخرین تلاش: بدون پوشه */ }
-            Root = fallback;
+            throw new InvalidOperationException(
+                $"[راه‌اندازی متوقف شد] ساخت پوشهٔ لایسنس ممکن نشد: {Root} — {ex.Message}. " +
+                "به هویت App Pool دسترسی Modify بدهید یا Licensing:StorageFolder را تنظیم کنید.", ex);
         }
 
         _log.LogInformation("[License] پوشهٔ نگه‌داری لایسنس: {Root}", Root);
