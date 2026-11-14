@@ -30,11 +30,42 @@ public sealed class SignerOptions
 
     public int EffectiveTimeoutSeconds() => TimeoutSeconds is >= 5 and <= 600 ? TimeoutSeconds : 60;
 
-    /// <summary>مسیر پایگاه‌داده: اگر رشتهٔ اتصال داده نشود، SQLite در پوشهٔ کاری.</summary>
-    public string ResolveConnectionString()
+    /// <summary>
+    /// رشتهٔ اتصال به ترتیب اولویت: <c>Signer:DatabaseConnection</c> (env) →
+    /// <c>ConnectionStrings:Panel</c> از appsettings → SQLite پیش‌فرض در پوشهٔ کاری.
+    /// </summary>
+    public string ResolveConnectionString(string? connectionStringsPanel = null)
     {
         if (!string.IsNullOrWhiteSpace(DatabaseConnection)) return DatabaseConnection;
+        if (!string.IsNullOrWhiteSpace(connectionStringsPanel)) return connectionStringsPanel!;
         var path = Path.Combine(EffectiveWorkFolder(), "support.db");
         return $"Data Source={path}";
+    }
+
+    /// <summary>
+    /// مسیر نسبی SQLite را به مسیر مطلق نسبت به ریشهٔ برنامه تبدیل می‌کند تا اجرای
+    /// برنامه از هر پوشه‌ای همان فایل پایگاه‌داده را باز کند. رشته‌های غیر SQLite
+    /// (مثل SQL Server) دست‌نخورده برمی‌گردند.
+    /// </summary>
+    public static string NormalizeSqlitePath(string connection, string baseDirectory)
+    {
+        if (connection.Contains("Server=", StringComparison.OrdinalIgnoreCase)) return connection;
+
+        var parts = connection.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i].Trim();
+            if (!part.StartsWith("Data Source", StringComparison.OrdinalIgnoreCase)) continue;
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+
+            var value = part[(eq + 1)..].Trim();
+            if (value.Length == 0 || value == ":memory:" || Path.IsPathRooted(value)) return connection;
+
+            parts[i] = part[..(eq + 1)] + Path.GetFullPath(Path.Combine(baseDirectory, value));
+            return string.Join(';', parts);
+        }
+
+        return connection;
     }
 }

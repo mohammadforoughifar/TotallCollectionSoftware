@@ -25,6 +25,25 @@ dotnet build tools/LicenseSigner/LicenseSigner.csproj -c Release
 > ```
 > اگر این کار نشود و پیش‌نویس «بستهٔ آماده» داشته باشد، پنل خطای صریح می‌دهد و امضا نمی‌کند.
 
+## ۲-ب) مینی‌پروژهٔ `support-panel` (روش پیشنهادی برای سیستم پشتیبان)
+
+برای اجرا روی سیستم پشتیبان، پروژهٔ سبک `TotallCollectionSoftware/support-panel/` ساخته شده است
+(همسایهٔ `inventory`): کد فرم‌ها را از همین‌جا می‌خواند، ولی پیکربندی، رشتهٔ اتصال محلی و اسکریپت‌های
+اجرا/انتشار خودش را دارد.
+
+```bash
+cd TotallCollectionSoftware/support-panel
+./prepare.sh          # ساخت LicenseTool + کپی presets.json + ساخت پنل  (ویندوز: prepare.cmd)
+./run.sh              # http://127.0.0.1:5399                            (ویندوز: run.cmd)
+./publish.sh          # ساخت بستهٔ قابل‌حمل در out/ برای کپی روی ماشین پشتیبان
+```
+
+- رشتهٔ اتصال پیش‌فرض **محلی** است: `ConnectionStrings:Panel = Data Source=data/support.db`
+  (فایل در `support-panel/data/support.db`). برای SQL Server فقط همان خط را عوض کنید یا
+  `ConnectionStrings__Panel` را در env بگذارید.
+- `Signer:PrivateKeyPath` / `PublicKeyPath` / `KeyId` در `appsettings.json` همان پروژه یا با env.
+- مستند کامل: `support-panel/README-FA.md`.
+
 ## ۳) متغیرهای محیطی
 
 | متغیر | الزام | توضیح |
@@ -36,6 +55,7 @@ dotnet build tools/LicenseSigner/LicenseSigner.csproj -c Release
 | `Signer__WorkFolder` | ✔ (توصیهٔ جدی) | پوشهٔ کاری؛ نبودِ آن ⇒ پوشهٔ موقت سیستم |
 | `Signer__PresetsPath` | — | مسیر `presets.json` برای seed پیش‌تنظیم‌ها در DB |
 | `Signer__DatabaseConnection` | — | خالی ⇒ SQLite در `{WorkFolder}/support.db`؛ با `Server=…` ⇒ SQL Server |
+| `ConnectionStrings__Panel` | — | رشتهٔ اتصال از پیکربندی (در مینی‌پروژه پیش‌فرض `Data Source=data/support.db`) |
 | `Signer__TimeoutSeconds` | — | مهلت اجرای ابزار (۵–۶۰۰، پیش‌فرض ۶۰) |
 | `LICENSETOOL_KEY_PASSWORD` | فقط لحظهٔ امضا | پنل خودش از فرم می‌گیرد و فقط به فرزند می‌دهد؛ برای اجرای دستی ابزار لازم است |
 | `LICENSESIGNER_SMTP_PASSWORD` | — | رمز SMTP؛ نبودِ آن ⇒ ارسال غیرفعال با پیام روشن |

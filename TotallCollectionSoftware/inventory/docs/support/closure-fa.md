@@ -38,6 +38,13 @@
 - `git ls-remote origin refs/heads/main` ⇒ همان کامیت
 - ۷۲ فایل تازه؛ هیچ فایل موجودی تغییر/حذف نشده (`src/` مشتری، `InventoryDb` و `tools/LicenseTool` دست‌نخورده)
 
+## ۱-ج) مینی‌پروژهٔ اجرا روی سیستم پشتیبان
+
+`TotallCollectionSoftware/support-panel/` — پروژهٔ مستقل همسایهٔ `inventory` با پیکربندی/رشتهٔ اتصال محلی
+(`Data Source=data/support.db`)، اسکریپت‌های `prepare/run/publish` و `README-FA.md`. کد فرم‌ها تک‌نسخه از
+`inventory/tools/LicenseSigner` خوانده می‌شود (بدون کپی منطق). آزمون سرتاسری روی همین پروژه: **۶۰/۶۰ سبز**
+(شاهد: `/home/user/evidence/support-panel-mini-e2e.log`).
+
 ## ۲) آزمون‌ها
 
 | آزمون | نتیجه |

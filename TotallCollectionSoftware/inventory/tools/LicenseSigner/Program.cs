@@ -17,10 +17,30 @@ options.KeyId = Environment.GetEnvironmentVariable("Signer__KeyId") ?? options.K
 options.WorkFolder = Environment.GetEnvironmentVariable("Signer__WorkFolder") ?? options.WorkFolder;
 options.PresetsPath = Environment.GetEnvironmentVariable("Signer__PresetsPath") ?? options.PresetsPath;
 options.DatabaseConnection = Environment.GetEnvironmentVariable("Signer__DatabaseConnection") ?? options.DatabaseConnection;
+options.DatabaseConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Panel") ?? options.DatabaseConnection;
+
+// مسیرهای نسبی (پوشهٔ کاری/کلیدها) نسبت به ریشهٔ برنامه باز می‌شوند، نه پوشهٔ جاری.
+var contentRoot = builder.Environment.ContentRootPath;
+if (!string.IsNullOrWhiteSpace(options.WorkFolder) && !Path.IsPathRooted(options.WorkFolder))
+    options.WorkFolder = Path.Combine(contentRoot, options.WorkFolder);
 
 builder.Services.AddSingleton(options);
 
-var connection = options.ResolveConnectionString();
+var connection = SignerOptions.NormalizeSqlitePath(
+    options.ResolveConnectionString(builder.Configuration.GetConnectionString("Panel")), contentRoot);
+
+// پوشهٔ فایل SQLite باید پیش از Migration وجود داشته باشد.
+if (!connection.Contains("Server=", StringComparison.OrdinalIgnoreCase))
+{
+    var dataSource = connection.Split(';')
+        .Select(p => p.Trim()).FirstOrDefault(p => p.StartsWith("Data Source", StringComparison.OrdinalIgnoreCase));
+    if (dataSource is not null)
+    {
+        var path = dataSource[(dataSource.IndexOf('=') + 1)..].Trim();
+        var folder = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(folder)) Directory.CreateDirectory(folder);
+    }
+}
 builder.Services.AddDbContext<SupportDbContext>(db =>
 {
     if (connection.Contains("Server=", StringComparison.OrdinalIgnoreCase)) db.UseSqlServer(connection);
