@@ -31,6 +31,13 @@
 | ۲۲ | پشتیبان‌گیری/بازگردانی + ممیزی زنجیره‌ای قابل‌بررسی | ✅ | E2E ۱۲/۱۳ (شامل آزمون دست‌کاری) |
 | ۲۳ | اسناد DESIGN/OPERATIONS/closure + شواهد | ✅ | همین پوشه + `evidence/` |
 
+## ۱-ب) تحویل کد
+
+- شاخه: `lic/support-panel`
+- کامیت: `181f852a3fb8900048d8ce54805a158b4a3fb6a7` — feat(support): پنل مستقل پشتیبانی لایسنس (فاز ۵) — درخواست، امضا، تحویل
+- `git ls-remote origin refs/heads/lic/support-panel` ⇒ `181f852a3fb8900048d8ce54805a158b4a3fb6a7`
+- PR: https://github.com/mohammadforoughifar/TotallCollectionSoftware/pull/new/lic/support-panel
+
 ## ۲) آزمون‌ها
 
 | آزمون | نتیجه |
