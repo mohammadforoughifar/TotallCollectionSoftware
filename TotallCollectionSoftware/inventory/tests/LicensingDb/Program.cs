@@ -3184,6 +3184,93 @@ Section("۲۹) گام ۳-ب: توکن بدون sid و ProgramData");
     }
 }
 
+// ============================================================
+//  بخش ۳۰ (گام ۴-۶) — رفت‌وبرگشت امضا: همان بایت‌هایی که امضا می‌شود، همان‌ها خوانده می‌شوند
+// ============================================================
+Section("۳۰) رفت‌وبرگشت امضا (payload مشترک ابزار صدور و verifier)");
+
+{
+    using var rsa = System.Security.Cryptography.RSA.Create(3072);
+    var publicPem = rsa.ExportSubjectPublicKeyInfoPem();
+    var ring = Inventory.Licensing.Crypto.PublicKeyRing.FromEntries(new[]
+    {
+        new Inventory.Licensing.Crypto.PublicKeyEntry
+        {
+            KeyId = "roundtrip", Algorithm = "RS256", PublicKeyPem = publicPem
+        }
+    });
+
+    var doc = new LicenseDocument
+    {
+        KeyId = "roundtrip", Serial = "LIC-ROUNDTRIP-1", CustomerId = "C-9", CustomerName = "تست رفت‌وبرگشت",
+        Deployment = DeploymentKind.OnPrem, InstallationId = "1111", IssuedAt = new DateTime(2026, 11, 1),
+        Items = new List<LicenseItem>
+        {
+            new()
+            {
+                Id = "I-1", Scope = new List<string> { ModuleCodes.Sales },
+                Term = new LicenseTerm
+                {
+                    Type = LicenseTermType.Subscription,
+                    ValidFrom = new DateTime(2026, 11, 1), ValidUntil = new DateTime(2027, 11, 1)
+                },
+                Users = new LicenseUsers { Mode = LicenseUserMode.Named, Max = 3 }
+            }
+        }
+    };
+
+    // مسیر ابزار صدور: bytes = ToPayloadBytes → امضا روی همان → پوشش
+    var payload = LicenseJson.ToPayloadBytes(doc);
+    var signature = rsa.SignData(payload, System.Security.Cryptography.HashAlgorithmName.SHA256,
+        System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+    var envelope = new SignedLicenseDocument
+    {
+        EnvelopeVersion = 1, KeyId = "roundtrip", Algorithm = "RS256",
+        Payload = Convert.ToBase64String(payload), Signature = Convert.ToBase64String(signature)
+    };
+    var fileText = System.Text.Json.JsonSerializer.Serialize(envelope,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+    var verified = Inventory.Licensing.Crypto.LicenseVerifier.Verify(fileText, ring);
+    Check(verified.Ok, "فایل ساخته‌شده با مسیر ابزار صدور، توسط verifier پذیرفته می‌شود");
+    Check(verified.Document?.Serial == "LIC-ROUNDTRIP-1", "سریال بعد از تأیید امضا درست خوانده می‌شود");
+    Check(verified.Document?.Items.Count == 1 && verified.Document.Items[0].Scope.Contains(ModuleCodes.Sales),
+        "آیتم و scope بعد از رفت‌وبرگشت سالم می‌مانند");
+
+    // جهش: یک بایت در payload ⇒ امضا باید رد شود
+    var tamperedPayload = (byte[])payload.Clone();
+    tamperedPayload[tamperedPayload.Length / 2] ^= 0x01;
+    var tamperedEnvelope = new SignedLicenseDocument
+    {
+        EnvelopeVersion = 1, KeyId = "roundtrip", Algorithm = "RS256",
+        Payload = Convert.ToBase64String(tamperedPayload), Signature = Convert.ToBase64String(signature)
+    };
+    var tampered = Inventory.Licensing.Crypto.LicenseVerifier.Verify(
+        System.Text.Json.JsonSerializer.Serialize(tamperedEnvelope), ring);
+    Check(!tampered.Ok, "تغییر یک بایت payload ⇒ امضا رد می‌شود (۱ تست جهش)");
+}
+
+{
+    // ابزار صدور نباید در بستهٔ نصب مشتری برود: کلید خصوصی و منطق صدور جای دیگری است.
+    Section("۳۱) ابزار صدور در بستهٔ نصب نیست");
+    var root = repoRootForScan is null ? Environment.CurrentDirectory : Path.GetFullPath(repoRootForScan);
+    var publishScripts = new[]
+    {
+        Path.Combine(root, "publish-server.bat"),
+        Path.Combine(root, "..", "publish-server.bat")
+    }.Where(File.Exists).Select(Path.GetFullPath).ToList();
+    Check(publishScripts.Count > 0, "اسکریپت انتشار پیدا شد (" + string.Join(", ", publishScripts.Select(Path.GetFileName)) + ")");
+    foreach (var script in publishScripts)
+    {
+        var text = File.ReadAllText(script);
+        Check(!text.Contains("LicenseTool", StringComparison.OrdinalIgnoreCase),
+            "publish-server.bat ابزار LicenseTool را منتشر نمی‌کند (" + Path.GetFileName(script) + ")");
+    }
+
+    var toolProject = Path.Combine(root, "tools", "LicenseTool", "LicenseTool.csproj");
+    Check(File.Exists(toolProject), "پروژهٔ tools/LicenseTool وجود دارد");
+}
+
 Console.WriteLine();
 Console.WriteLine(new string('═', 96));
 if (failures == 0)
